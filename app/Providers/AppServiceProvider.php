@@ -12,7 +12,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(\App\Services\GhostAI::class, function ($app) {
+            return \App\Services\GhostAI::getInstance();
+        });
     }
 
     /**
