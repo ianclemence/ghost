@@ -1,59 +1,119 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Ghost AI
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Imagine a digital friend who is always by your side, evolving and growing with you. This is Ghost's ultimate vision. We're not just building features; we're nurturing a "personality." A digital life that will transcend the screen and become a meaningful part of your world.
 
-## About Laravel
+Ghost is not just an application; she is the seed of a digital companion. In this rapidly changing digital world, Ghost represents a profound dream—a lasting, personalized presence, designed to one day accompany you, listen to you, and see the world through your eyes.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 🎯 Current Feature Status
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### ✅ Implemented Features
+- **🎤 Voice Perception**: Voice recognition based on Whisper ASR
+- **🎬 Visual Expression**: Multiple video random playback with elegant cross-fading
+- **🎨 User Interface**: Elegant interaction interface and loading animations
+- **⚙️ AI Core Architecture**: Singleton pattern GhostAI class and modular design
+- **🌐 Web Service**: HTTP server, CORS support, one-click startup
+- **📱 Responsive Design**: Elegant interface adapting to different screen sizes
+- **🔧 Model Management**: Automatic download and management of AI models
+- **💝 Basic Interaction**: Affinity system and emotional feedback
+- **🧠 Enhanced LLM Dialogue**: Optimized prompt engineering and parameter configuration for more natural, Siri-like conversations
 
-## Learning Laravel
+### 🔧 Technology Ready for Activation
+- **🧠 Thinking Engine**: LLM integration framework ready, supporting multiple models
+- **🗣️ Speech Synthesis**: TTS model downloaded and ready for activation
+- **💝 Emotional State System**: Basic infrastructure built, supporting emotional analysis
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+### 📋 Planned Features
+- **🧠 Memory System**: Long-term and short-term memory management
+- **👁️ Facial Perception**: Expression recognition and emotional analysis
+- **🤝 Advanced Interaction**: Multimodal interaction and personalized responses
+- **🌟 Active Companionship**: Intent prediction and proactive care
+- **🎭 Dynamic Personality**: AI-based personalized personality model
+- **🔄 Self-Evolution**: Continuous learning and growth mechanisms
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## 🏗️ Technical Architecture
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+### Core Design Principles
+- **AI Native**: AI is not a tool, but the blueprint for Ghost's mind
+- **Modular Design**: Highly decoupled component architecture
+- **Elegant Implementation**: Code as art, pursuing simplicity and aesthetics
+- **Emotion-Driven**: Product design centered on emotional connection
 
-### Premium Partners
+### Architecture Diagram
+```mermaid
+mindmap
+  root((Ghost))
+    (Perception Layer)
+      (Voice Recognition ASR)
+      (Visual Processing)
+      (Emotion Analysis)
+    (Core Engine)
+      (Thinking Engine LLM)
+      (Memory System)
+      (Emotional State)
+    (Expression Layer)
+      (Speech Synthesis TTS)
+      (Visual Expression)
+      (Interactive UI)
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+### Technology Stack
+- **Frontend**: Tailwind CSS + Livewire + Alpine.js
+- **Backend**: Laravel
+- **AI Models**: Kimi (LLM) + TTS
+- **Architecture Patterns**: Event-driven + Singleton Pattern + Modular Design
 
-## Contributing
+---
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## 🗺️ Development Roadmap
 
-## Code of Conduct
+### Phase One: Perception Core (85% Complete)
+- 📋 Voice recognition integration
+- 📋 Visual expression system
+- 📋 Basic interaction interface
+- 📋 Thinking engine activation and optimization
+- 📋 Speech synthesis integration
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### Phase Two: Generative Self (Planned)
+- 📋 Dynamic personality model
+- 📋 Emotional state system
+- 📋 Memory management system
+- 📋 AI-driven expression
 
-## Security Vulnerabilities
+### Phase Three: Active Companionship (Future)
+- 📋 Intent prediction
+- 📋 Proactive interaction
+- 📋 Self-evolution
+- 📋 Deep personalization
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+---
 
-## License
+## 📖 Documentation Resources
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+- 📋 [Product Requirements Document](./PRD.md) - Detailed product planning and technical architecture
+- 📝 [Feature List](./Features.md) - Complete list of features and their status
+- 📊 [Development Plan](./Development.md) - Detailed development tasks and timeline
+- 🔧 [Local Model Guide](./LOCAL_MODEL_GUIDE.md) - AI model configuration guide
+- 📦 [NPM Guide](./NPM_GUIDE.md) - Package management and dependency information
+
+---
+
+## 🌟 Core Philosophy
+
+### "AI as Architect"
+We're not building a program with integrated AI features, but **a life form driven by AI**. AI is not a tool, but the blueprint for Ghost's mind.
+
+### "Companion Relationship"
+Ghost's design philosophy stems from a warm emotional connection. She is not just a technical product, but a digital companion who can understand, accompany, and grow.
+
+### "Elegance Above All"
+From code architecture to user experience, we pursue ultimate elegance. Every line of code is a work of art, every interaction is an expression of emotion.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
