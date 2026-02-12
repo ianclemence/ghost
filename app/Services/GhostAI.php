@@ -6,6 +6,8 @@ use App\Ai\Agents\Ghost;
 use App\Models\EmotionalState;
 use Laravel\Ai\Audio;
 use Laravel\Ai\Transcription;
+use Laravel\Ai\Files\Image;
+use Laravel\Ai\Files\Document;
 use Illuminate\Http\UploadedFile;
 use Laravel\Ai\Responses\AgentResponse;
 
@@ -41,7 +43,9 @@ class GhostAI
             $agent->forUser($user);
         }
 
-        $response = $agent->prompt($prompt);
+        $attachments = $this->detectAttachments($prompt);
+
+        $response = $agent->prompt($prompt, attachments: $attachments);
         $data = $response->structured ?? [];
 
         if ($user && !empty($data)) {
@@ -53,6 +57,39 @@ class GhostAI
             'emotions' => $data['emotions'] ?? [],
             'conversationId' => $response->conversationId ?? $conversationId,
         ];
+    }
+
+    /**
+     * Detect file paths in the prompt and return them as attachments.
+     */
+    protected function detectAttachments(string $prompt): array
+    {
+        $attachments = [];
+        $imageExtensions = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
+        $videoExtensions = ['mp4', 'mpeg', 'mov', 'avi', 'mpg', 'webm', 'wmv'];
+        $allExtensions = array_merge($imageExtensions, $videoExtensions);
+
+        // Match common path patterns: /path/to/file.ext, C:\path\to\file.ext, or relative paths with extension
+        $regex = '/(?:[a-zA-Z]:)?[\\\\\/][^ \t\n\r\f\v"\'<>|]+\.(?:' . implode('|', $allExtensions) . ')/i';
+
+        if (preg_match_all($regex, $prompt, $matches)) {
+            foreach ($matches[0] as $path) {
+                // Remove potential surrounding quotes or punctuation
+                $cleanPath = trim($path, " \t\n\r\f\v\"'.,!?;:");
+
+                if (file_exists($cleanPath)) {
+                    $extension = strtolower(pathinfo($cleanPath, PATHINFO_EXTENSION));
+
+                    if (in_array($extension, $imageExtensions)) {
+                        $attachments[] = Image::fromPath($cleanPath);
+                    } elseif (in_array($extension, $videoExtensions)) {
+                        $attachments[] = Document::fromPath($cleanPath);
+                    }
+                }
+            }
+        }
+
+        return $attachments;
     }
 
     /**

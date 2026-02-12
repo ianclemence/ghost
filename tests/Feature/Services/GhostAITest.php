@@ -137,3 +137,43 @@ test('ghost ai can use vision tool', function () {
 
     expect($response['reply'])->toContain('sunset');
 });
+
+test('ghost ai chat automatically attaches local files mentioned in prompt', function () {
+    $tempFile = tempnam(sys_get_temp_dir(), 'test_image') . '.png';
+    file_put_contents($tempFile, 'fake-image-data');
+
+    Ghost::fake([
+        [
+            'reply' => 'I see the image!',
+            'emotions' => [
+                'happiness' => 0.7,
+                'sadness' => 0.0,
+                'anger' => 0.0,
+                'affinity_change' => 0.0,
+            ],
+        ],
+    ]);
+
+    $service = app(GhostAI::class);
+    $response = $service->chat("Check out this file: {$tempFile}");
+
+    expect($response['reply'])->toBe('I see the image!');
+
+    // Assert that Ghost was prompted with the attachment
+    Ghost::assertPrompted(function ($agentPrompt) use ($tempFile) {
+        $prompt = $agentPrompt->prompt;
+        $attachments = $agentPrompt->attachments;
+
+        // Normalizing paths for comparison (especially on Windows)
+        $normalizedTempFile = str_replace('\\', '/', $tempFile);
+        $hasAttachment = collect($attachments)->contains(function ($attachment) use ($normalizedTempFile) {
+            return $attachment instanceof Image && str_replace('\\', '/', $attachment->path) === $normalizedTempFile;
+        });
+
+        return str_contains($prompt, $tempFile) && $hasAttachment;
+    });
+
+    if (file_exists($tempFile)) {
+        unlink($tempFile);
+    }
+});
