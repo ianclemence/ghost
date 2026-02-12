@@ -7,7 +7,12 @@ use Laravel\Ai\Transcription;
 use Illuminate\Http\UploadedFile;
 use App\Models\User;
 use Laravel\Ai\Files\Image;
+use Laravel\Ai\Embeddings;
+use App\Models\Memory;
+use Illuminate\Support\Facades\Queue;
+use App\Jobs\StoreGhostMemory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Ai\StructuredAnonymousAgent;
 
 uses(RefreshDatabase::class);
 
@@ -176,4 +181,92 @@ test('ghost ai chat automatically attaches local files mentioned in prompt', fun
     if (file_exists($tempFile)) {
         unlink($tempFile);
     }
+});
+
+test('ghost ai chat dispatches memory storage job', function () {
+    $user = User::factory()->create();
+    Queue::fake();
+
+    Ghost::fake([
+        [
+            'reply' => 'I remember!',
+            'emotions' => [
+                'happiness' => 0.5,
+                'sadness' => 0.0,
+                'anger' => 0.0,
+                'affinity_change' => 0.0,
+            ],
+        ],
+    ]);
+
+    $service = app(GhostAI::class);
+    $service->chat('I love coding in PHP', $user);
+
+    Queue::assertPushed(StoreGhostMemory::class, function ($job) use ($user) {
+        return $job->userPrompt === 'I love coding in PHP' && $job->user->id === $user->id;
+    });
+});
+
+test('store ghost memory job extracts facts and stores memory', function () {
+    $user = User::factory()->create();
+
+    // Fake the anonymous agent used in the job
+    StructuredAnonymousAgent::fake([
+        [
+            'fact' => 'User loves PHP coding',
+            'importance' => 'high'
+        ]
+    ]);
+
+    Embeddings::fake([[array_fill(0, 1536, 0.1)]]);
+
+    $job = new StoreGhostMemory('I love coding in PHP', 'That is great!', $user);
+    $job->handle();
+
+    $this->assertDatabaseHas('memories', [
+        'user_id' => $user->id,
+        'content' => 'User loves PHP coding',
+        'importance' => 'high',
+    ]);
+});
+
+test('ghost ai retrieves and prioritizes important memories', function () {
+    $user = User::factory()->create();
+
+    // Create a normal memory and a high importance memory
+    Memory::create([
+        'user_id' => $user->id,
+        'content' => 'Regular memory',
+        'embedding' => array_fill(0, 1536, 0.1),
+        'importance' => 'normal',
+    ]);
+
+    Memory::create([
+        'user_id' => $user->id,
+        'content' => 'Important fact',
+        'embedding' => array_fill(0, 1536, 0.1), // Same embedding for testing boost
+        'importance' => 'high',
+    ]);
+
+    Embeddings::fake([[array_fill(0, 1536, 0.1)]]);
+
+    Ghost::fake([
+        [
+            'reply' => 'I remember!',
+            'emotions' => [
+                'happiness' => 0.5,
+                'sadness' => 0.0,
+                'anger' => 0.0,
+                'affinity_change' => 0.0,
+            ],
+        ],
+    ]);
+
+    $service = app(GhostAI::class);
+    $service->chat('Tell me something', $user);
+
+    // Assert that the Ghost agent was prompted with context containing the important fact
+    Ghost::assertPrompted(function ($agentPrompt) {
+        return str_contains((string) $agentPrompt->agent->instructions(), 'Important fact');
+    });
 });

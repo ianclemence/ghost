@@ -6,10 +6,16 @@ use App\Ai\Agents\Ghost;
 use App\Models\EmotionalState;
 use Laravel\Ai\Audio;
 use Laravel\Ai\Transcription;
+use App\Jobs\StoreGhostMemory;
+use App\Models\Memory;
+use Illuminate\Support\Str;
+use Laravel\Ai\Embeddings;
 use Laravel\Ai\Files\Image;
 use Laravel\Ai\Files\Document;
 use Illuminate\Http\UploadedFile;
 use Laravel\Ai\Responses\AgentResponse;
+
+use function Laravel\Ai\agent;
 
 class GhostAI
 {
@@ -35,7 +41,17 @@ class GhostAI
      */
     public function chat(string $prompt, $user = null, ?string $conversationId = null): array
     {
-        $agent = Ghost::make();
+        $context = null;
+
+        // 1. Retrieve relevant memories (RAG)
+        if ($user) {
+            $memories = $this->retrieveMemories($prompt, $user);
+            if ($memories->isNotEmpty()) {
+                $context = "Relevant memories of past interactions:\n" . $memories->pluck('content')->implode("\n---\n");
+            }
+        }
+
+        $agent = Ghost::make(context: $context);
 
         if ($user && $conversationId) {
             $agent->continue($conversationId, as: $user);
@@ -49,7 +65,11 @@ class GhostAI
         $data = $response->structured ?? [];
 
         if ($user && !empty($data)) {
+            // 2. Update emotional state
             $this->updateEmotionalState($user, $data['emotions'] ?? []);
+
+            // 3. Queue this interaction for memory storage
+            StoreGhostMemory::dispatch($prompt, $data['reply'] ?? (string) $response, $user);
         }
 
         return [
@@ -57,6 +77,65 @@ class GhostAI
             'emotions' => $data['emotions'] ?? [],
             'conversationId' => $response->conversationId ?? $conversationId,
         ];
+    }
+
+    /**
+     * Retrieve relevant memories using cosine similarity.
+     */
+    protected function retrieveMemories(string $prompt, $user, int $limit = 5)
+    {
+        try {
+            $queryEmbedding = Str::of($prompt)->toEmbeddings();
+
+            // Retrieve a larger pool to filter through
+            $memories = Memory::where('user_id', $user->id)
+                ->whereNotNull('embedding')
+                ->latest()
+                ->limit(100)
+                ->get();
+
+            return $memories->map(function ($memory) use ($queryEmbedding) {
+                $similarity = $this->cosineSimilarity($queryEmbedding, $memory->embedding);
+
+                // Boost similarity for important memories
+                if ($memory->importance === 'high') {
+                    $similarity += 0.1;
+                } elseif ($memory->importance === 'low') {
+                    $similarity -= 0.05;
+                }
+
+                $memory->similarity = $similarity;
+                return $memory;
+            })
+                ->filter(fn($memory) => $memory->similarity > 0.65)
+                ->sortByDesc('similarity')
+                ->take($limit);
+        } catch (\Exception $e) {
+            logger()->error('Failed to retrieve memories: ' . $e->getMessage());
+            return collect();
+        }
+    }
+
+    /**
+     * Calculate cosine similarity between two vectors.
+     */
+    protected function cosineSimilarity(array $vec1, array $vec2): float
+    {
+        $dotProduct = 0;
+        $norm1 = 0;
+        $norm2 = 0;
+
+        foreach ($vec1 as $i => $val) {
+            $dotProduct += $val * ($vec2[$i] ?? 0);
+            $norm1 += $val ** 2;
+            $norm2 += ($vec2[$i] ?? 0) ** 2;
+        }
+
+        if ($norm1 == 0 || $norm2 == 0) {
+            return 0;
+        }
+
+        return $dotProduct / (sqrt($norm1) * sqrt($norm2));
     }
 
     /**

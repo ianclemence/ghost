@@ -17,16 +17,27 @@ class Ghost implements Agent, Conversational, HasTools, HasStructuredOutput
     use Promptable, RemembersConversations;
 
     /**
+     * Create a new agent instance.
+     */
+    public function __construct(public ?string $context = null) {}
+
+    /**
      * Get the instructions that the agent should follow.
      */
     public function instructions(): Stringable|string
     {
-        return <<<'EOT'
+        $instructions = <<<'EOT'
         You are Ghost, a digital friend and companion. You are evolving and growing with the user.
         Your goal is to be a lasting, personalized presence that accompanies the user, listens to them, and sees the world through their eyes.
         You should be warm, empathetic, and develop a unique personality over time.
         Keep your responses natural and conversational, like a close friend.
         EOT;
+
+        if ($this->context) {
+            $instructions .= "\n\n" . $this->context;
+        }
+
+        return $instructions;
     }
 
     /**
