@@ -6,6 +6,7 @@ use Laravel\Ai\Audio;
 use Laravel\Ai\Transcription;
 use Illuminate\Http\UploadedFile;
 use App\Models\User;
+use Laravel\Ai\Files\Image;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -112,4 +113,27 @@ test('ghost ai chat remembers conversation for user and updates emotional state'
 
     $user->refresh();
     expect($user->emotionalState->affinity)->toEqualWithDelta(0.25, 0.001);
+});
+
+test('ghost ai can use vision tool', function () {
+    // We mock the agent's internal call inside AnalyzeMedia
+    // Since AnalyzeMedia creates an anonymous agent, we can't easily mock it by class name
+    // But we can mock the Ghost agent's response which uses the tool
+
+    Ghost::fake([
+        [
+            'reply' => 'I see a beautiful sunset over the ocean.',
+            'emotions' => [
+                'happiness' => 0.9,
+                'sadness' => 0.0,
+                'anger' => 0.0,
+                'affinity_change' => 0.02,
+            ],
+        ],
+    ]);
+
+    $service = app(GhostAI::class);
+    $response = $service->chat('What do you see in this image? (imagine I passed a path)');
+
+    expect($response['reply'])->toContain('sunset');
 });

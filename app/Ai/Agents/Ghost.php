@@ -4,6 +4,7 @@ namespace App\Ai\Agents;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Concerns\RemembersConversations;
+use App\Ai\Tools\AnalyzeMedia;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Conversational;
 use Laravel\Ai\Contracts\HasStructuredOutput;
@@ -51,6 +52,8 @@ class Ghost implements Agent, Conversational, HasTools, HasStructuredOutput
      */
     public function tools(): iterable
     {
-        return [];
+        return [
+            new AnalyzeMedia(),
+        ];
     }
 }
