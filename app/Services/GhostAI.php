@@ -61,7 +61,11 @@ class GhostAI
 
         $attachments = $this->detectAttachments($prompt);
 
-        $response = $agent->prompt($prompt, attachments: $attachments);
+        $response = $agent->prompt(
+            prompt: $prompt,
+            attachments: $attachments,
+            model: !empty($attachments) ? 'kimi-k2.5' : null
+        );
         $data = $response->structured ?? [];
 
         if ($user && !empty($data)) {

@@ -46,7 +46,7 @@ class Ghost implements Agent, Conversational, HasTools, HasStructuredOutput
     public function schema(JsonSchema $schema): array
     {
         return [
-            'reply' => $schema->string()->required(),
+            'reply' => $schema->string()->description('Your natural, conversational response to the user.')->required(),
             'emotions' => $schema->object([
                 'happiness' => $schema->number()->min(0)->max(1)->required(),
                 'sadness' => $schema->number()->min(0)->max(1)->required(),
