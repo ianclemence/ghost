@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -207,10 +208,65 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 
 	messages = append(messages, history...)
 
-	messages = append(messages, providers.Message{
+	// Construct user message
+	userMsg := providers.Message{
 		Role:    "user",
 		Content: currentMessage,
-	})
+	}
+
+	if len(media) > 0 {
+		contentParts := []providers.ContentPart{
+			{
+				Type: "text",
+				Text: currentMessage,
+			},
+		}
+
+		for _, path := range media {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				logger.ErrorCF("agent", "Failed to read media file", map[string]interface{}{"path": path, "error": err})
+				continue
+			}
+			encoded := base64.StdEncoding.EncodeToString(data)
+			ext := strings.ToLower(filepath.Ext(path))
+
+			mimeType := "image/jpeg"
+			isImage := true
+			switch ext {
+			case ".png":
+				mimeType = "image/png"
+			case ".jpg", ".jpeg":
+				mimeType = "image/jpeg"
+			case ".webp":
+				mimeType = "image/webp"
+			case ".gif":
+				mimeType = "image/gif"
+			case ".mp4", ".mov", ".avi", ".webm":
+				mimeType = "video/mp4"
+				isImage = false
+			}
+
+			if isImage {
+				contentParts = append(contentParts, providers.ContentPart{
+					Type: "image_url",
+					ImageURL: &providers.ImageURL{
+						URL: fmt.Sprintf("data:%s;base64,%s", mimeType, encoded),
+					},
+				})
+			} else {
+				contentParts = append(contentParts, providers.ContentPart{
+					Type: "video_url",
+					VideoURL: &providers.VideoURL{
+						URL: fmt.Sprintf("data:%s;base64,%s", mimeType, encoded),
+					},
+				})
+			}
+		}
+		userMsg.MultiContent = contentParts
+	}
+
+	messages = append(messages, userMsg)
 
 	return messages
 }

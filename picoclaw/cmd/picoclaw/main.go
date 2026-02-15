@@ -589,6 +589,7 @@ func gatewayCmd() {
 		cfg.Heartbeat.Interval,
 		cfg.Heartbeat.Enabled,
 	)
+	heartbeatService.SetCronService(cronService)
 	heartbeatService.SetBus(msgBus)
 	heartbeatService.SetHandler(func(prompt, channel, chatID string) *tools.ToolResult {
 		// Use cli:direct as fallback if no valid channel
@@ -614,8 +615,11 @@ func gatewayCmd() {
 		os.Exit(1)
 	}
 
-	var transcriber *voice.GroqTranscriber
-	if cfg.Providers.Groq.APIKey != "" {
+	var transcriber voice.Transcriber
+	if cfg.Providers.Moonshot.APIKey != "" {
+		transcriber = voice.NewKimiTranscriber(cfg.Providers.Moonshot.APIKey)
+		logger.InfoC("voice", "Kimi voice transcription enabled")
+	} else if cfg.Providers.Groq.APIKey != "" {
 		transcriber = voice.NewGroqTranscriber(cfg.Providers.Groq.APIKey)
 		logger.InfoC("voice", "Groq voice transcription enabled")
 	}
@@ -624,19 +628,19 @@ func gatewayCmd() {
 		if telegramChannel, ok := channelManager.GetChannel("telegram"); ok {
 			if tc, ok := telegramChannel.(*channels.TelegramChannel); ok {
 				tc.SetTranscriber(transcriber)
-				logger.InfoC("voice", "Groq transcription attached to Telegram channel")
+				logger.InfoC("voice", "Voice transcription attached to Telegram channel")
 			}
 		}
 		if discordChannel, ok := channelManager.GetChannel("discord"); ok {
 			if dc, ok := discordChannel.(*channels.DiscordChannel); ok {
 				dc.SetTranscriber(transcriber)
-				logger.InfoC("voice", "Groq transcription attached to Discord channel")
+				logger.InfoC("voice", "Voice transcription attached to Discord channel")
 			}
 		}
 		if slackChannel, ok := channelManager.GetChannel("slack"); ok {
 			if sc, ok := slackChannel.(*channels.SlackChannel); ok {
 				sc.SetTranscriber(transcriber)
-				logger.InfoC("voice", "Groq transcription attached to Slack channel")
+				logger.InfoC("voice", "Voice transcription attached to Slack channel")
 			}
 		}
 	}

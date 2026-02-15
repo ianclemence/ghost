@@ -54,6 +54,8 @@ type processOptions struct {
 	EnableSummary   bool   // Whether to trigger summarization
 	SendResponse    bool   // Whether to send response via bus
 	NoHistory       bool   // If true, don't load session history (for heartbeat)
+	Media           []string
+	Thinking        bool
 }
 
 // createToolRegistry creates a tool registry with common tools.
@@ -70,6 +72,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 
 	// Shell execution
 	registry.Register(tools.NewExecTool(workspace, restrict))
+	registry.Register(tools.NewUpdateTool(workspace))
 
 	if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 		BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
@@ -263,6 +266,11 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		return al.processSystemMessage(ctx, msg)
 	}
 
+	thinking := false
+	if strings.HasPrefix(msg.Content, "/think") {
+		thinking = true
+	}
+
 	// Process as user message
 	return al.runAgentLoop(ctx, processOptions{
 		SessionKey:      msg.SessionKey,
@@ -272,6 +280,8 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		DefaultResponse: "I've completed processing but have no response to give.",
 		EnableSummary:   true,
 		SendResponse:    false,
+		Media:           msg.Media,
+		Thinking:        thinking,
 	})
 }
 
@@ -449,6 +459,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		response, err := al.provider.Chat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
 			"max_tokens":  8192,
 			"temperature": 0.7,
+			"thinking":    opts.Thinking,
 		})
 
 		if err != nil {

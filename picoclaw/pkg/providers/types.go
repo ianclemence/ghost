@@ -30,11 +30,27 @@ type UsageInfo struct {
 }
 
 type Message struct {
-	Role             string     `json:"role"`
-	Content          string     `json:"content"`
-	ReasoningContent string     `json:"reasoning_content,omitempty"`
-	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	Role             string        `json:"role"`
+	Content          string        `json:"content"`
+	MultiContent     []ContentPart `json:"multi_content,omitempty"`
+	ReasoningContent string        `json:"reasoning_content,omitempty"`
+	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
+	ToolCallID       string        `json:"tool_call_id,omitempty"`
+}
+
+type ContentPart struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *ImageURL `json:"image_url,omitempty"`
+	VideoURL *VideoURL `json:"video_url,omitempty"`
+}
+
+type ImageURL struct {
+	URL string `json:"url"`
+}
+
+type VideoURL struct {
+	URL string `json:"url"`
 }
 
 type LLMProvider interface {

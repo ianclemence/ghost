@@ -10,12 +10,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/constants"
+	"github.com/sipeed/picoclaw/pkg/cron"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/state"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -33,9 +36,10 @@ type HeartbeatHandler func(prompt, channel, chatID string) *tools.ToolResult
 
 // HeartbeatService manages periodic heartbeat checks
 type HeartbeatService struct {
-	workspace string
-	bus       *bus.MessageBus
-	state     *state.Manager
+	workspace   string
+	bus         *bus.MessageBus
+	cronService *cron.CronService
+	state       *state.Manager
 	handler   HeartbeatHandler
 	interval  time.Duration
 	enabled   bool
@@ -69,6 +73,13 @@ func (hs *HeartbeatService) SetBus(msgBus *bus.MessageBus) {
 	hs.bus = msgBus
 }
 
+// SetCronService sets the cron service for scheduling jobs from HEARTBEAT.md
+func (hs *HeartbeatService) SetCronService(cs *cron.CronService) {
+	hs.mu.Lock()
+	defer hs.mu.Unlock()
+	hs.cronService = cs
+}
+
 // SetHandler sets the heartbeat handler.
 func (hs *HeartbeatService) SetHandler(handler HeartbeatHandler) {
 	hs.mu.Lock()
@@ -93,6 +104,9 @@ func (hs *HeartbeatService) Start() error {
 
 	hs.stopChan = make(chan struct{})
 	go hs.runLoop(hs.stopChan)
+
+	// Parse and schedule jobs from HEARTBEAT.md
+	hs.ParseAndSchedule()
 
 	logger.InfoCF("heartbeat", "Heartbeat service started", map[string]any{
 		"interval_minutes": hs.interval.Minutes(),
@@ -362,4 +376,60 @@ func (hs *HeartbeatService) log(level, format string, args ...any) {
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	fmt.Fprintf(f, "[%s] [%s] %s\n", timestamp, level, fmt.Sprintf(format, args...))
+}
+
+// ParseAndSchedule reads HEARTBEAT.md and schedules cron jobs
+func (hs *HeartbeatService) ParseAndSchedule() {
+	hs.mu.RLock()
+	cs := hs.cronService
+	hs.mu.RUnlock()
+
+	if cs == nil {
+		return
+	}
+
+	heartbeatPath := filepath.Join(hs.workspace, "HEARTBEAT.md")
+	data, err := os.ReadFile(heartbeatPath)
+	if err != nil {
+		return
+	}
+
+	content := string(data)
+	// Regex: - Name: CRON "Message"
+	// Example: - Morning Briefing: 0 8 * * * "Brief me"
+	re := regexp.MustCompile(`-\s+(.+?):\s+([\d\*\/\-,]+\s+[\d\*\/\-,]+\s+[\d\*\/\-,]+\s+[\d\*\/\-,]+\s+[\d\*\/\-,]+)\s+"(.+?)"`)
+	matches := re.FindAllStringSubmatch(content, -1)
+
+	if len(matches) == 0 {
+		return
+	}
+
+	// Get existing jobs to avoid duplicates
+	existingJobs := cs.ListJobs(true)
+	existingNames := make(map[string]bool)
+	for _, j := range existingJobs {
+		existingNames[j.Name] = true
+	}
+
+	for _, match := range matches {
+		name := strings.TrimSpace(match[1])
+		cronExpr := strings.TrimSpace(match[2])
+		message := match[3]
+
+		if existingNames[name] {
+			continue
+		}
+
+		schedule := cron.CronSchedule{
+			Kind: "cron",
+			Expr: cronExpr,
+		}
+
+		// Add job (deliver=true to send output to channel)
+		cs.AddJob(name, schedule, message, true, "", "")
+		logger.InfoCF("heartbeat", "Scheduled job from HEARTBEAT.md", map[string]interface{}{
+			"name": name,
+			"cron": cronExpr,
+		})
+	}
 }

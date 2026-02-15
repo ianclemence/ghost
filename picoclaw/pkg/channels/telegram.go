@@ -74,7 +74,7 @@ func NewTelegramChannel(cfg config.TelegramConfig, bus *bus.MessageBus) (*Telegr
 	}, nil
 }
 
-func (c *TelegramChannel) SetTranscriber(transcriber *voice.GroqTranscriber) {
+func (c *TelegramChannel) SetTranscriber(transcriber voice.Transcriber) {
 	c.transcriber = transcriber
 }
 

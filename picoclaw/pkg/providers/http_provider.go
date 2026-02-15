@@ -232,6 +232,12 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 	// First, try to use explicitly configured provider
 	if providerName != "" {
 		switch providerName {
+		case "moonshot", "kimi":
+			if cfg.Providers.Moonshot.APIKey != "" {
+				apiKey = cfg.Providers.Moonshot.APIKey
+				apiBase = cfg.Providers.Moonshot.APIBase
+				return NewKimiProvider(apiKey, apiBase), nil
+			}
 		case "groq":
 			if cfg.Providers.Groq.APIKey != "" {
 				apiKey = cfg.Providers.Groq.APIKey
@@ -335,10 +341,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 		case (strings.Contains(lowerModel, "kimi") || strings.Contains(lowerModel, "moonshot") || strings.HasPrefix(model, "moonshot/")) && cfg.Providers.Moonshot.APIKey != "":
 			apiKey = cfg.Providers.Moonshot.APIKey
 			apiBase = cfg.Providers.Moonshot.APIBase
-			proxy = cfg.Providers.Moonshot.Proxy
-			if apiBase == "" {
-				apiBase = "https://api.moonshot.cn/v1"
-			}
+			return NewKimiProvider(apiKey, apiBase), nil
 
 		case strings.HasPrefix(model, "openrouter/") || strings.HasPrefix(model, "anthropic/") || strings.HasPrefix(model, "openai/") || strings.HasPrefix(model, "meta-llama/") || strings.HasPrefix(model, "deepseek/") || strings.HasPrefix(model, "google/"):
 			apiKey = cfg.Providers.OpenRouter.APIKey
