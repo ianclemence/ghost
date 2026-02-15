@@ -13,12 +13,14 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
 -   **Intelligent**: Powered by Kimi K2.5 for complex reasoning, coding, and vision.
 -   **Proactive**: Wakes up to brief you on news, schedule, and reminders.
 -   **Multi-Modal**: Chat via text, voice, or send images for visual analysis.
+-   **Self-Modifying**: This version includes the full PicoClaw source code, allowing you to modify and recompile your Ghost on the fly.
 
 ## 🛠️ Hardware Requirements
 
 -   **Raspberry Pi 5** (8GB RAM recommended)
 -   **32GB MicroSD Card** (or larger)
 -   **Telegram Account**
+-   **Docker** (Installed on your Pi)
 
 ## 🚀 Quick Start (Deploy on Pi)
 
@@ -41,11 +43,11 @@ nano config/config.json
 -   **TELEGRAM_BOT_TOKEN**: Get from [@BotFather](https://t.me/BotFather)
 -   **TELEGRAM_USER_ID**: Get from [@userinfobot](https://t.me/userinfobot) (Critical for privacy!)
 
-### 3. Awaken Ghost
-Start the Docker container:
+### 3. Build and Awaken Ghost
+Start the Docker container. This will compile the included `picoclaw/` source code:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 ### 4. Verify
@@ -56,6 +58,14 @@ docker compose logs -f
 ```
 
 Send `/start` to your Telegram bot. Ghost is now listening.
+
+## 💻 Hacking Ghost
+
+This repo includes the full PicoClaw source code in the `picoclaw/` directory.
+
+**To modify Ghost's behavior:**
+1.  Edit the Go code in `picoclaw/cmd/picoclaw/main.go` or other files.
+2.  Rebuild the container: `docker compose up -d --build`
 
 ## 🧠 Memory System
 

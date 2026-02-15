@@ -1,6 +1,8 @@
 services:
   ghost-core:
-    image: sipeed/picoclaw:latest
+    build: 
+      context: .
+      dockerfile: Dockerfile
     container_name: ghost-core
     restart: unless-stopped
     volumes:
