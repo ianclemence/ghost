@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/chzyer/readline"
+	"github.com/joho/godotenv"
 	"github.com/sipeed/picoclaw/pkg/agent"
 	"github.com/sipeed/picoclaw/pkg/auth"
 	"github.com/sipeed/picoclaw/pkg/bus"
@@ -118,6 +119,26 @@ func copyDirectory(src, dst string) error {
 }
 
 func main() {
+	// Try loading .env files from various locations
+	// Priority: current dir > parent dir > config dir
+	_ = godotenv.Load(".env")
+	_ = godotenv.Load("../.env")
+	if configDir := os.Getenv("PICOCLAW_CONFIG_DIR"); configDir != "" {
+		_ = godotenv.Load(filepath.Join(configDir, ".env"))
+	}
+
+	// Map simple env vars to internal config vars
+	if val := os.Getenv("TELEGRAM_TOKEN"); val != "" {
+		_ = os.Setenv("PICOCLAW_CHANNELS_TELEGRAM_TOKEN", val)
+		// Auto-enable Telegram if token is present
+		if os.Getenv("PICOCLAW_CHANNELS_TELEGRAM_ENABLED") == "" {
+			_ = os.Setenv("PICOCLAW_CHANNELS_TELEGRAM_ENABLED", "true")
+		}
+	}
+	if val := os.Getenv("TELEGRAM_USER_ID"); val != "" {
+		_ = os.Setenv("PICOCLAW_CHANNELS_TELEGRAM_ALLOW_FROM", val)
+	}
+
 	if len(os.Args) < 2 {
 		printHelp()
 		os.Exit(1)
@@ -731,6 +752,19 @@ func statusCmd() {
 			fmt.Printf("vLLM/Local: ✓ %s\n", cfg.Providers.VLLM.APIBase)
 		} else {
 			fmt.Println("vLLM/Local: not set")
+		}
+
+		fmt.Println("\nChannels:")
+		fmt.Printf("  Telegram: %s\n", status(cfg.Channels.Telegram.Enabled))
+		if cfg.Channels.Telegram.Token != "" {
+			masked := cfg.Channels.Telegram.Token
+			if len(masked) > 10 {
+				masked = masked[:5] + "..." + masked[len(masked)-5:]
+			}
+			fmt.Printf("    Token: %s\n", masked)
+		}
+		if len(cfg.Channels.Telegram.AllowFrom) > 0 {
+			fmt.Printf("    AllowFrom: %v\n", cfg.Channels.Telegram.AllowFrom)
 		}
 
 		store, _ := auth.LoadStore()
