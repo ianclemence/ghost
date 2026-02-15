@@ -969,6 +969,9 @@ func authStatusCmd() {
 }
 
 func getConfigPath() string {
+	if configDir := os.Getenv("PICOCLAW_CONFIG_DIR"); configDir != "" {
+		return filepath.Join(configDir, "config.json")
+	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".picoclaw", "config.json")
 }
