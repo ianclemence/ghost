@@ -1,0 +1,16 @@
+[Unit]
+Description=Ghost Pi - Sovereign AI Presence
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/ghost
+ExecStart=/usr/local/bin/ghost-pi gateway
+Restart=always
+RestartSec=5
+Environment=PICOCLAW_CONFIG_DIR=/home/pi/ghost/config
+Environment=PICOCLAW_WORKSPACE_DIR=/home/pi/ghost/workspace
+
+[Install]
+WantedBy=multi-user.target

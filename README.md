@@ -8,21 +8,21 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
 
 ## 🌟 Core Features
 
--   **Sovereign**: Runs on your local hardware (Raspberry Pi 5 + 32GB SD). Your memories stay with you.
+-   **Sovereign**: Runs natively on your Raspberry Pi 5.
 -   **Persistent**: Maintains a continuous thread of context via local file-based memory.
 -   **Intelligent**: Powered by Kimi K2.5 for complex reasoning, coding, and vision.
 -   **Proactive**: Wakes up to brief you on news, schedule, and reminders.
--   **Multi-Modal**: Chat via text, voice, or send images for visual analysis.
--   **Self-Modifying**: This version includes the full PicoClaw source code, allowing you to modify and recompile your Ghost on the fly.
+-   **Self-Modifying**: Includes full source code for on-device hacking.
 
 ## 🛠️ Hardware Requirements
 
 -   **Raspberry Pi 5** (8GB RAM recommended)
 -   **32GB MicroSD Card** (or larger)
 -   **Telegram Account**
--   **Docker** (Installed on your Pi)
 
-## 🚀 Quick Start (Deploy on Pi)
+## 🚀 Quick Start (Native Build on Pi)
+
+**Prerequisites:** Ensure `go` (Golang 1.22+) is installed on your Pi.
 
 ### 1. Clone the Repository
 SSH into your Raspberry Pi and clone this repo:
@@ -43,21 +43,26 @@ nano config/config.json
 -   **TELEGRAM_BOT_TOKEN**: Get from [@BotFather](https://t.me/BotFather)
 -   **TELEGRAM_USER_ID**: Get from [@userinfobot](https://t.me/userinfobot) (Critical for privacy!)
 
-### 3. Build and Awaken Ghost
-Start the Docker container. This will compile the included `picoclaw/` source code:
+### 3. Build & Run
+Compile the Ghost binary directly on your Pi:
 
 ```bash
-docker compose up -d --build
+make run
 ```
+*This will build the `ghost-pi` binary and start it in your terminal.*
 
-### 4. Verify
-Check the logs to ensure Ghost is alive:
+### 4. Install as a Service (Auto-Start)
+To make Ghost run automatically when your Pi boots:
 
-```bash
-docker compose logs -f
-```
-
-Send `/start` to your Telegram bot. Ghost is now listening.
+1.  Edit `ghost.service` if your username is not `pi` or your path is different.
+2.  Run the install command:
+    ```bash
+    make install
+    ```
+3.  Check status:
+    ```bash
+    sudo systemctl status ghost
+    ```
 
 ## 💻 Hacking Ghost
 
@@ -65,7 +70,7 @@ This repo includes the full PicoClaw source code in the `picoclaw/` directory.
 
 **To modify Ghost's behavior:**
 1.  Edit the Go code in `picoclaw/cmd/picoclaw/main.go` or other files.
-2.  Rebuild the container: `docker compose up -d --build`
+2.  Rebuild and restart: `make install`
 
 ## 🧠 Memory System
 
@@ -79,7 +84,7 @@ Ghost's memory lives in `workspace/memory/`.
 -   **Runtime**: [PicoClaw](https://github.com/sipeed/picoclaw) (Go)
 -   **Cognition**: Kimi K2.5 (API)
 -   **Interface**: Telegram Bot API
--   **Infrastructure**: Docker
+-   **System**: systemd (Linux Service)
 
 ## 📄 License
 MIT
