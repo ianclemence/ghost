@@ -11,15 +11,15 @@
   },
   "providers": {
     "moonshot": {
-      "api_key": "sk-jjEfBticsyS5dx9HXcjd653x4OofHZYR64QZ2IBDdzPdMINT",
+      "api_key": "",
       "api_base": "https://api.moonshot.ai/v1"
     }
   },
   "channels": {
     "telegram": {
       "enabled": true,
-      "token": "YOUR_TELEGRAM_BOT_TOKEN",
-      "allow_from": ["YOUR_TELEGRAM_USER_ID"]
+      "token": "",
+      "allow_from": []
     }
   },
   "tools": {

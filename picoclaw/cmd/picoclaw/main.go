@@ -123,6 +123,13 @@ func main() {
 	// Priority: current dir > parent dir > config dir
 	_ = godotenv.Load(".env")
 	_ = godotenv.Load("../.env")
+	
+	// Debug print
+	if os.Getenv("PICOCLAW_DEBUG") == "true" {
+		fmt.Printf("DEBUG: PICOCLAW_CONFIG_DIR=%s\n", os.Getenv("PICOCLAW_CONFIG_DIR"))
+		fmt.Printf("DEBUG: CWD=%s\n", func() string { d, _ := os.Getwd(); return d }())
+	}
+
 	if configDir := os.Getenv("PICOCLAW_CONFIG_DIR"); configDir != "" {
 		_ = godotenv.Load(filepath.Join(configDir, ".env"))
 	}
