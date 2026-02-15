@@ -5,3 +5,8 @@ ghost.exe
 picoclaw/ghost.exe
 workspace/sessions/
 config/config.json
+
+# Workspace Dynamic State
+workspace/state/*.json
+workspace/cron/*.json
+workspace/memory/MEMORY.md

@@ -1,8 +1,10 @@
 # Ghost Memory
 
-This directory contains your long-term episodic memory.
+This directory stores the agent's long-term memory and knowledge base.
 
-## Structure
--   `daily_logs.md`: Summaries of daily interactions.
--   `facts.md`: Key facts extracted from conversations.
--   `reflections.md`: Higher-level synthesis of your experiences with the user.
+- **`MEMORY.md`**: The primary log and summary of the agent's experiences and learnings. This file grows over time.
+- **`README.md`**: This file.
+
+## Git Tracking
+
+The main `MEMORY.md` file is often updated automatically and contains potentially personal or sensitive information, so it is recommended to **exclude** it from git tracking (done in `.gitignore`). You can keep other static memory files here if needed.
