@@ -51,15 +51,29 @@ cd ghost
 
 ### 2. Configure Secrets
 
-Edit `config/config.json` with your API keys:
+Create a `.env` file in the project root with your API keys:
 
 ```bash
-nano config/config.json
+nano .env
 ```
 
-- **MOONSHOT_API_KEY**: Get from [Moonshot AI Platform](https://platform.moonshot.cn/)
-- **TELEGRAM_BOT_TOKEN**: Get from [@BotFather](https://t.me/BotFather)
-- **TELEGRAM_USER_ID**: Get from [@userinfobot](https://t.me/userinfobot) (Critical for privacy!)
+Add the following content:
+
+```bash
+# Telegram Bot Token (from @BotFather)
+TELEGRAM_TOKEN=your_token_here
+
+# Your Telegram User ID (from @userinfobot) - Critical for privacy!
+TELEGRAM_USER_ID=your_id_here
+
+# Moonshot AI API Key (from platform.moonshot.cn)
+KIMI_API_KEY=your_key_here
+
+# Config directory location (relative to project root)
+PICOCLAW_CONFIG_DIR=config
+```
+
+Alternatively, you can edit `config/config.json` directly if you prefer not to use environment variables.
 
 ### 3. Build & Run
 

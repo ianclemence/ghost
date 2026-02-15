@@ -352,6 +352,14 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
+	// Manual override for providers since env tags with templates might not work
+	if key := os.Getenv("MOONSHOT_API_KEY"); key != "" {
+		cfg.Providers.Moonshot.APIKey = key
+	}
+	if key := os.Getenv("KIMI_API_KEY"); key != "" {
+		cfg.Providers.Moonshot.APIKey = key
+	}
+
 	return cfg, nil
 }
 
