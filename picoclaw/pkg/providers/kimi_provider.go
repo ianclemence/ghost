@@ -184,7 +184,32 @@ func (p *KimiProvider) Chat(ctx context.Context, messages []Message, tools []Too
 	}
 
 	choice := kResp.Choices[0]
-	
+
+	// Process tool calls to ensure format compatibility
+	for i := range choice.Message.ToolCalls {
+		tc := &choice.Message.ToolCalls[i]
+
+		// If Function is present, extract Name and Arguments
+		if tc.Function != nil {
+			// Set top-level Name
+			tc.Name = tc.Function.Name
+
+			// Parse arguments string to map
+			if tc.Function.Arguments != "" {
+				var args map[string]interface{}
+				if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err == nil {
+					tc.Arguments = args
+				} else {
+					logger.ErrorCF("kimi", "Failed to parse tool arguments", map[string]interface{}{
+						"tool":  tc.Name,
+						"args":  tc.Function.Arguments,
+						"error": err.Error(),
+					})
+				}
+			}
+		}
+	}
+
 	// Extract content string if it's mixed
 	contentStr := ""
     // Kimi returns string content usually
