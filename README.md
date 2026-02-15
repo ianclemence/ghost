@@ -28,7 +28,7 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
 SSH into your Raspberry Pi and clone this repo:
 
 ```bash
-git clone https://github.com/yourusername/ghost.git
+git clone https://github.com/ianclemence/ghost.git
 cd ghost
 ```
 
