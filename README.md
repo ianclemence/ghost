@@ -63,13 +63,35 @@ nano config/config.json
 
 ### 3. Build & Run
 
+**Option A: Automated Script (Recommended)**
+
+Run the included script to build and start Ghost:
+
+```bash
+chmod +x run_ghost_pi.sh
+./run_ghost_pi.sh
+```
+
+**Option B: Manual Build**
+
 Compile the Ghost binary directly on your Pi:
 
 ```bash
-make run
-```
+# Enter source directory
+cd picoclaw
 
-_This will build the `ghost-pi` binary and start it in your terminal._
+# Copy workspace assets for embedding
+cp -r ../workspace cmd/picoclaw/
+
+# Build binary
+go build -o ../ghost cmd/picoclaw/main.go
+
+# Return to root
+cd ..
+
+# Run
+./ghost agent
+```
 
 ### 4. Install as a Service (Auto-Start)
 

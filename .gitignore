@@ -3,3 +3,5 @@
 .env
 ghost.exe
 picoclaw/ghost.exe
+workspace/sessions/
+config/config.json
