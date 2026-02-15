@@ -1,0 +1,11 @@
+services:
+  ghost-core:
+    image: sipeed/picoclaw:latest
+    container_name: ghost-core
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+      - ./workspace:/app/workspace
+    environment:
+      - TZ=Asia/Shanghai
+    command: ["gateway"]
