@@ -12,7 +12,7 @@
   "providers": {
     "moonshot": {
       "api_key": "sk-jjEfBticsyS5dx9HXcjd653x4OofHZYR64QZ2IBDdzPdMINT",
-      "api_base": "https://api.moonshot.cn/v1"
+      "api_base": "https://api.moonshot.ai/v1"
     }
   },
   "channels": {
