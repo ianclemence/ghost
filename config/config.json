@@ -4,7 +4,7 @@
       "workspace": "D:/laragon/www/ghost/workspace",
       "model": "kimi-k2.5",
       "max_tokens": 8192,
-      "temperature": 0.7,
+      "temperature": 0.6,
       "max_tool_iterations": 20,
       "restrict_to_workspace": true
     }

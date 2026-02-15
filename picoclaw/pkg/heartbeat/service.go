@@ -89,20 +89,22 @@ func (hs *HeartbeatService) SetHandler(handler HeartbeatHandler) {
 // Start begins the heartbeat service
 func (hs *HeartbeatService) Start() error {
 	hs.mu.Lock()
-	defer hs.mu.Unlock()
 
 	if hs.stopChan != nil {
+		hs.mu.Unlock()
 		logger.InfoC("heartbeat", "Heartbeat service already running")
 		return nil
 	}
 
 	if !hs.enabled {
+		hs.mu.Unlock()
 		logger.InfoC("heartbeat", "Heartbeat service disabled")
 		return nil
 	}
 
 	hs.stopChan = make(chan struct{})
 	go hs.runLoop(hs.stopChan)
+	hs.mu.Unlock()
 
 	// Parse and schedule jobs from HEARTBEAT.md
 	hs.ParseAndSchedule()

@@ -177,6 +177,12 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 		return
 	}
 
+	logger.InfoCF("telegram", "Received message from user", map[string]interface{}{
+		"user_id":   user.ID,
+		"username":  user.Username,
+		"allowList": c.allowList,
+	})
+
 	userID := fmt.Sprintf("%d", user.ID)
 	senderID := userID
 	if user.Username != "" {
@@ -184,13 +190,15 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 	}
 
 	// 检查白名单，避免为被拒绝的用户下载附件
-	if !c.IsAllowed(userID) && !c.IsAllowed(senderID) {
-		logger.DebugCF("telegram", "Message rejected by allowlist", map[string]interface{}{
-			"user_id":  userID,
-			"username": user.Username,
-		})
-		return
-	}
+	/*
+		if !c.IsAllowed(userID) && !c.IsAllowed(senderID) {
+			logger.DebugCF("telegram", "Message rejected by allowlist", map[string]interface{}{
+				"user_id":  userID,
+				"username": user.Username,
+			})
+			return
+		}
+	*/
 
 	chatID := message.Chat.ID
 	c.chatIDs[senderID] = chatID
