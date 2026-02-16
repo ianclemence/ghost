@@ -27,7 +27,7 @@ if check_command "apt-get"; then
     sudo apt-get update
     
     # Core deps
-    DEPENDENCIES="golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam"
+    DEPENDENCIES="golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap"
     
     # Check if we need to install anything
     NEEDS_INSTALL=false
@@ -45,7 +45,7 @@ if check_command "apt-get"; then
         echo -e "${GREEN}[OK] System dependencies already installed.${NC}"
     fi
 else
-    echo -e "${RED}[WARNING] Not a Debian-based system. Please manually install: golang, git, python3, ffmpeg, alsa-utils, espeak, fswebcam${NC}"
+    echo -e "${RED}[WARNING] Not a Debian-based system. Please manually install: golang, git, python3, ffmpeg, alsa-utils, espeak, fswebcam, adb, nmap${NC}"
 fi
 
 # 2. Install Python Tools (gcalcli)
@@ -56,6 +56,25 @@ if ! check_command "gcalcli"; then
     echo -e "${GREEN}[OK] gcalcli installed.${NC}"
 else
     echo -e "${GREEN}[OK] gcalcli already installed.${NC}"
+fi
+
+# 2.1 Install Go Tools (wacli)
+echo ""
+echo -e "${YELLOW}[2.1/4] Installing Go tools (WhatsApp skill)...${NC}"
+if ! check_command "wacli"; then
+    echo "Installing wacli..."
+    go install github.com/steipete/wacli/cmd/wacli@latest
+    
+    # Add Go bin to PATH if not already there
+    export PATH=$PATH:$(go env GOPATH)/bin
+    
+    if check_command "wacli"; then
+        echo -e "${GREEN}[OK] wacli installed.${NC}"
+    else
+        echo -e "${RED}[ERROR] wacli installation failed. Please check your Go environment.${NC}"
+    fi
+else
+    echo -e "${GREEN}[OK] wacli already installed.${NC}"
 fi
 
 # 3. Build Ghost
