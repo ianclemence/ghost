@@ -41,6 +41,13 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
     .\ghost.exe gateway --debug
     ```
 
+3.  **Install Skills (Optional)**:
+    To enable camera, system control, and calendar features:
+
+    ```powershell
+    .\setup_ghost_skills.ps1
+    ```
+
 ### 🍓 Raspberry Pi (Native)
 
 **Prerequisites:** Ensure `go` (Golang 1.25+) is installed on your Pi.
@@ -112,7 +119,16 @@ rm -rf cmd/ghost/workspace
 ./ghost agent
 ```
 
-### 4. Install as a Service (Auto-Start)
+### 4. Install Skills (Optional)
+
+To enable camera, system control, and calendar features:
+
+```bash
+chmod +x setup_ghost_skills.sh
+./setup_ghost_skills.sh
+```
+
+### 5. Install as a Service (Auto-Start)
 
 To make Ghost run automatically when your Pi boots:
 
