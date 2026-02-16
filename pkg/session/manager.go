@@ -1,14 +1,17 @@
 package session
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/sipeed/picoclaw/pkg/db"
 	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/sipeed/picoclaw/pkg/rag"
 )
 
 type Session struct {
@@ -20,43 +23,21 @@ type Session struct {
 }
 
 type SessionManager struct {
-	sessions map[string]*Session
-	mu       sync.RWMutex
-	storage  string
+	db  *db.DB
+	rag *rag.Store
+	mu  sync.RWMutex
 }
 
-func NewSessionManager(storage string) *SessionManager {
-	sm := &SessionManager{
-		sessions: make(map[string]*Session),
-		storage:  storage,
+func NewSessionManager(database *db.DB, ragStore *rag.Store) *SessionManager {
+	return &SessionManager{
+		db:  database,
+		rag: ragStore,
 	}
-
-	if storage != "" {
-		os.MkdirAll(storage, 0755)
-		sm.loadSessions()
-	}
-
-	return sm
 }
 
-func (sm *SessionManager) GetOrCreate(key string) *Session {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	session, ok := sm.sessions[key]
-	if ok {
-		return session
-	}
-
-	session = &Session{
-		Key:      key,
-		Messages: []providers.Message{},
-		Created:  time.Now(),
-		Updated:  time.Now(),
-	}
-	sm.sessions[key] = session
-
-	return session
+// ensureSession makes sure the session record exists
+func (sm *SessionManager) ensureSession(key string) {
+	sm.db.Exec(`INSERT OR IGNORE INTO sessions (id, created_at, updated_at) VALUES (?, ?, ?)`, key, time.Now(), time.Now())
 }
 
 func (sm *SessionManager) AddMessage(sessionKey, role, content string) {
@@ -67,200 +48,148 @@ func (sm *SessionManager) AddMessage(sessionKey, role, content string) {
 }
 
 // AddFullMessage adds a complete message with tool calls and tool call ID to the session.
-// This is used to save the full conversation flow including tool calls and tool results.
 func (sm *SessionManager) AddFullMessage(sessionKey string, msg providers.Message) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
+	id := uuid.New().String()
+	meta := map[string]interface{}{
+		"tool_calls":   msg.ToolCalls,
+		"tool_call_id": msg.ToolCallID,
+	}
+	metaJSON, _ := json.Marshal(meta)
 
-	session, ok := sm.sessions[sessionKey]
-	if !ok {
-		session = &Session{
-			Key:      sessionKey,
-			Messages: []providers.Message{},
-			Created:  time.Now(),
-		}
-		sm.sessions[sessionKey] = session
+	content := msg.Content
+	if len(msg.MultiContent) > 0 {
+		contentJSON, _ := json.Marshal(msg.MultiContent)
+		content = string(contentJSON)
 	}
 
-	session.Messages = append(session.Messages, msg)
-	session.Updated = time.Now()
+	sm.ensureSession(sessionKey)
+
+	_, err := sm.db.Exec(`
+		INSERT INTO messages (id, session_id, role, content, meta, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, id, sessionKey, msg.Role, content, metaJSON, time.Now())
+
+	if err != nil {
+		// In a real app, log this error
+	}
+
+	sm.db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, time.Now(), sessionKey)
 }
 
 func (sm *SessionManager) GetHistory(key string) []providers.Message {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-
-	session, ok := sm.sessions[key]
-	if !ok {
+	rows, err := sm.db.Query(`
+		SELECT role, content, meta FROM messages 
+		WHERE session_id = ? AND (archived IS NULL OR archived = 0)
+		ORDER BY created_at ASC
+	`, key)
+	if err != nil {
 		return []providers.Message{}
 	}
+	defer rows.Close()
 
-	history := make([]providers.Message, len(session.Messages))
-	copy(history, session.Messages)
+	var history []providers.Message
+	for rows.Next() {
+		var role, content string
+		var metaJSON []byte
+		if err := rows.Scan(&role, &content, &metaJSON); err != nil {
+			continue
+		}
+
+		var meta map[string]interface{}
+		json.Unmarshal(metaJSON, &meta)
+
+		msg := providers.Message{
+			Role:    role,
+			Content: content,
+		}
+
+		if val, ok := meta["tool_call_id"].(string); ok {
+			msg.ToolCallID = val
+		}
+
+		if tc, ok := meta["tool_calls"]; ok {
+			tcJSON, _ := json.Marshal(tc)
+			var toolCalls []providers.ToolCall
+			json.Unmarshal(tcJSON, &toolCalls)
+			msg.ToolCalls = toolCalls
+		}
+
+		// Handle multi-content
+		if strings.HasPrefix(content, "[") {
+			var parts []providers.ContentPart
+			if err := json.Unmarshal([]byte(content), &parts); err == nil {
+				msg.MultiContent = parts
+				msg.Content = ""
+			}
+		}
+
+		history = append(history, msg)
+	}
 	return history
 }
 
 func (sm *SessionManager) GetSummary(key string) string {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-
-	session, ok := sm.sessions[key]
-	if !ok {
+	var summary sql.NullString
+	err := sm.db.QueryRow(`SELECT summary FROM sessions WHERE id = ?`, key).Scan(&summary)
+	if err != nil {
 		return ""
 	}
-	return session.Summary
+	if summary.Valid {
+		return summary.String
+	}
+	return ""
 }
 
 func (sm *SessionManager) SetSummary(key string, summary string) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	session, ok := sm.sessions[key]
-	if ok {
-		session.Summary = summary
-		session.Updated = time.Now()
-	}
+	sm.ensureSession(key)
+	sm.db.Exec(`UPDATE sessions SET summary = ?, updated_at = ? WHERE id = ?`, summary, time.Now(), key)
 }
 
+// TruncateHistory archives older messages, keeping the last `keepLast` messages.
 func (sm *SessionManager) TruncateHistory(key string, keepLast int) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	session, ok := sm.sessions[key]
-	if !ok {
-		return
-	}
-
 	if keepLast <= 0 {
-		session.Messages = []providers.Message{}
-		session.Updated = time.Now()
+		// Archive all
+		sm.db.Exec(`UPDATE messages SET archived = 1 WHERE session_id = ?`, key)
 		return
 	}
 
-	if len(session.Messages) <= keepLast {
-		return
-	}
-
-	session.Messages = session.Messages[len(session.Messages)-keepLast:]
-	session.Updated = time.Now()
-}
-
-// sanitizeFilename converts a session key into a cross-platform safe filename.
-// Session keys use "channel:chatID" (e.g. "telegram:123456") but ':' is the
-// volume separator on Windows, so filepath.Base would misinterpret the key.
-// We replace it with '_'. The original key is preserved inside the JSON file,
-// so loadSessions still maps back to the right in-memory key.
-func sanitizeFilename(key string) string {
-	return strings.ReplaceAll(key, ":", "_")
+	// Find the timestamp of the Nth oldest message from the end
+	// We want to keep `keepLast` messages, so we skip `keepLast` from the end and mark everything before that as archived.
+	// SQLite: UPDATE messages SET archived=1 WHERE session_id=? AND id NOT IN (SELECT id FROM messages WHERE session_id=? ORDER BY created_at DESC LIMIT ?)
+	
+	sm.db.Exec(`
+		UPDATE messages 
+		SET archived = 1 
+		WHERE session_id = ? 
+		AND id NOT IN (
+			SELECT id FROM messages 
+			WHERE session_id = ? 
+			ORDER BY created_at DESC 
+			LIMIT ?
+		)
+	`, key, key, keepLast)
 }
 
 func (sm *SessionManager) Save(key string) error {
-	if sm.storage == "" {
-		return nil
-	}
-
-	filename := sanitizeFilename(key)
-
-	// filepath.IsLocal rejects empty names, "..", absolute paths, and
-	// OS-reserved device names (NUL, COM1 … on Windows).
-	// The extra checks reject "." and any directory separators so that
-	// the session file is always written directly inside sm.storage.
-	if filename == "." || !filepath.IsLocal(filename) || strings.ContainsAny(filename, `/\`) {
-		return os.ErrInvalid
-	}
-
-	// Snapshot under read lock, then perform slow file I/O after unlock.
-	sm.mu.RLock()
-	stored, ok := sm.sessions[key]
-	if !ok {
-		sm.mu.RUnlock()
-		return nil
-	}
-
-	snapshot := Session{
-		Key:     stored.Key,
-		Summary: stored.Summary,
-		Created: stored.Created,
-		Updated: stored.Updated,
-	}
-	if len(stored.Messages) > 0 {
-		snapshot.Messages = make([]providers.Message, len(stored.Messages))
-		copy(snapshot.Messages, stored.Messages)
-	} else {
-		snapshot.Messages = []providers.Message{}
-	}
-	sm.mu.RUnlock()
-
-	data, err := json.MarshalIndent(snapshot, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	sessionPath := filepath.Join(sm.storage, filename+".json")
-	tmpFile, err := os.CreateTemp(sm.storage, "session-*.tmp")
-	if err != nil {
-		return err
-	}
-
-	tmpPath := tmpFile.Name()
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-
-	if _, err := tmpFile.Write(data); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Chmod(0644); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Sync(); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Close(); err != nil {
-		return err
-	}
-
-	if err := os.Rename(tmpPath, sessionPath); err != nil {
-		return err
-	}
-	cleanup = false
+	// No-op for DB
 	return nil
 }
 
-func (sm *SessionManager) loadSessions() error {
-	files, err := os.ReadDir(sm.storage)
-	if err != nil {
-		return err
+// GetContext retrieves relevant context for the current turn (RAG)
+// This can be used by ContextBuilder to inject RAG context
+func (sm *SessionManager) GetContext(ctx context.Context, userQuery string) string {
+	if sm.rag == nil || userQuery == "" {
+		return ""
+	}
+	results, err := sm.rag.Retrieve(ctx, userQuery, 3) // Top 3
+	if err != nil || len(results) == 0 {
+		return ""
 	}
 
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-
-		if filepath.Ext(file.Name()) != ".json" {
-			continue
-		}
-
-		sessionPath := filepath.Join(sm.storage, file.Name())
-		data, err := os.ReadFile(sessionPath)
-		if err != nil {
-			continue
-		}
-
-		var session Session
-		if err := json.Unmarshal(data, &session); err != nil {
-			continue
-		}
-
-		sm.sessions[session.Key] = &session
+	var sb strings.Builder
+	sb.WriteString("Relevant Context from Memory:\n")
+	for _, r := range results {
+		sb.WriteString("- " + r.Content + " (Source: " + r.Source + ")\n")
 	}
-
-	return nil
+	return sb.String()
 }

@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,8 +20,10 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/constants"
+	"github.com/sipeed/picoclaw/pkg/db"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/sipeed/picoclaw/pkg/rag"
 	"github.com/sipeed/picoclaw/pkg/session"
 	"github.com/sipeed/picoclaw/pkg/state"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -129,7 +130,25 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	subagentTool := tools.NewSubagentTool(subagentManager)
 	toolsRegistry.Register(subagentTool)
 
-	sessionsManager := session.NewSessionManager(filepath.Join(workspace, "sessions"))
+	// Initialize DB
+	database, err := db.NewDB(workspace)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to initialize DB: %v", err))
+	}
+
+	// Initialize RAG
+	var ragStore *rag.Store
+	if embedder, ok := provider.(providers.EmbeddingProvider); ok {
+		ragStore = rag.NewStore(database, embedder)
+	} else {
+		logger.WarnC("agent", "Provider does not support embeddings, RAG disabled")
+	}
+
+	if ragStore != nil {
+		toolsRegistry.Register(tools.NewRememberTool(workspace, ragStore))
+	}
+
+	sessionsManager := session.NewSessionManager(database, ragStore)
 
 	// Create state manager for atomic state persistence
 	stateManager := state.NewManager(workspace)
@@ -384,6 +403,16 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	if !opts.NoHistory {
 		history = al.sessions.GetHistory(opts.SessionKey)
 		summary = al.sessions.GetSummary(opts.SessionKey)
+
+		// Inject RAG context into summary
+		ragContext := al.sessions.GetContext(ctx, opts.UserMessage)
+		if ragContext != "" {
+			if summary != "" {
+				summary += "\n\n" + ragContext
+			} else {
+				summary = ragContext
+			}
+		}
 	}
 	messages := al.contextBuilder.BuildMessages(
 		history,

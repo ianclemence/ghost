@@ -66,6 +66,7 @@ type AgentDefaults struct {
 	MaxTokens           int     `json:"max_tokens" env:"GHOST_AGENTS_DEFAULTS_MAX_TOKENS"`
 	Temperature         float64 `json:"temperature" env:"GHOST_AGENTS_DEFAULTS_TEMPERATURE"`
 	MaxToolIterations   int     `json:"max_tool_iterations" env:"GHOST_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
+	EmbeddingModel      string  `json:"embedding_model" env:"GHOST_AGENTS_DEFAULTS_EMBEDDING_MODEL"`
 }
 
 type ChannelsConfig struct {

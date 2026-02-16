@@ -58,6 +58,10 @@ type LLMProvider interface {
 	GetDefaultModel() string
 }
 
+type EmbeddingProvider interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
+}
+
 type ToolDefinition struct {
 	Type     string                 `json:"type"`
 	Function ToolFunctionDefinition `json:"function"`

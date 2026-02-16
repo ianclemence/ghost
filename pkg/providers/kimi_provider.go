@@ -232,3 +232,60 @@ func (p *KimiProvider) Chat(ctx context.Context, messages []Message, tools []Too
 func (p *KimiProvider) GetDefaultModel() string {
 	return "kimi-k2.5"
 }
+
+type kimiEmbeddingRequest struct {
+	Input string `json:"input"`
+	Model string `json:"model"`
+}
+
+type kimiEmbeddingResponse struct {
+	Data []struct {
+		Embedding []float32 `json:"embedding"`
+	} `json:"data"`
+}
+
+func (p *KimiProvider) Embed(ctx context.Context, text string) ([]float32, error) {
+	reqBody := kimiEmbeddingRequest{
+		Input: text,
+		Model: "text-embedding-3-small", // Standard OpenAI compatible model
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", p.apiBase+"/embeddings", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var kResp kimiEmbeddingResponse
+	if err := json.Unmarshal(body, &kResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	if len(kResp.Data) == 0 {
+		return nil, fmt.Errorf("empty embedding data")
+	}
+
+	return kResp.Data[0].Embedding, nil
+}
