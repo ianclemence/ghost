@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/ghost
-ExecStart=/usr/local/bin/ghost-pi gateway
+ExecStart=/usr/local/bin/ghost gateway
 Restart=always
 RestartSec=5
 Environment=PICOCLAW_CONFIG_DIR=/home/pi/ghost/config
