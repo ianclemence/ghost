@@ -49,3 +49,8 @@ workspace/cron/*
 
 workspace/memory/*
 !workspace/memory/README.md
+
+# SQLite Database
+*.db
+*.db-shm
+*.db-wal
