@@ -1,43 +1,41 @@
 ---
 name: "system"
-description: "Controls computer hardware. Invoke when user says 'volume up', 'mute', 'screen off', 'lock', 'shutdown', or 'speak'. Supports local (Pi) and remote (PC) control."
+description: "Controls computer hardware. Invoke when user says 'volume up', 'mute', 'screen off', 'lock', 'shutdown', or 'speak'. Supports targeting specific devices (e.g., 'on my PC', 'on the laptop')."
 ---
 
 # System Control
 
-Controls hardware functions locally or remotely via SSH.
+Controls hardware functions locally or on remote devices via SSH.
 
-## Configuration (Remote PC Control)
+## Dynamic Targeting
 
-To control a Windows PC from your Raspberry Pi, you must set these environment variables in your `.env` file:
+Ghost can control any SSH-enabled device.
 
-```bash
-REMOTE_PC_USER=your_windows_username
-REMOTE_PC_HOST=192.168.1.100  # Your PC's local IP
-```
+1.  **Add a Device**: "Remember that my gaming PC is at 192.168.1.50"
+2.  **Control it**: "Turn up volume on my gaming PC"
 
 **Prerequisites**:
 
-1.  Enable **OpenSSH Server** on Windows (Settings > Apps > Optional Features).
-2.  Set up SSH keys so the Pi can connect without a password (run `ssh-copy-id user@host`).
-3.  Ensure `nircmd.exe` is in the Windows PATH.
+- The target device must have **OpenSSH Server** running.
+- The Pi (Ghost) must have its public key in the target's `authorized_keys`.
+- The default SSH user is assumed to be the same as `REMOTE_PC_USER` in `.env`, or you can specify `user@host` in the memory.
 
 ## Commands
 
-### Remote Control (Targeting Windows PC)
+### Remote Control (Targeting a specific device)
 
-When user says "Turn up **PC** volume" or "Lock **PC**":
+When user specifies a target (e.g., "on PC", "on 192.168.1.50"):
 
-- **Mute PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "nircmd.exe mutesysvolume 2"`
-- **Volume Up PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "nircmd.exe changesysvolume 5000"`
-- **Volume Down PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "nircmd.exe changesysvolume -5000"`
-- **Lock PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "rundll32.exe user32.dll,LockWorkStation"`
-- **Shutdown PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "shutdown /s /t 0"`
-- **Speak on PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "PowerShell -Command \"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('Hello from Pi')\""`
+- **Mute**: `ssh $TARGET_HOST "nircmd.exe mutesysvolume 2"`
+- **Volume Up**: `ssh $TARGET_HOST "nircmd.exe changesysvolume 5000"`
+- **Volume Down**: `ssh $TARGET_HOST "nircmd.exe changesysvolume -5000"`
+- **Lock**: `ssh $TARGET_HOST "rundll32.exe user32.dll,LockWorkStation"`
+- **Shutdown**: `ssh $TARGET_HOST "shutdown /s /t 0"`
+- **Speak**: `ssh $TARGET_HOST "PowerShell -Command \"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('Hello from Pi')\""`
 
-### Local Control (Targeting the device running Ghost)
+### Local Control (Default / No target specified)
 
-When user says "Turn up **local** volume" or just "volume up" (default):
+When user says "Turn up volume" (implies local device):
 
 #### Windows (Primary: nircmd)
 
