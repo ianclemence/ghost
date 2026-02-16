@@ -40,11 +40,6 @@ if %errorlevel% neq 0 (
 )
 echo [OK] Build successful: ghost.exe
 
-:: 4. Onboard (Create Config)
-echo.
-echo [4/4] Initializing configuration...
-.\ghost.exe onboard
-
 
 echo.
 echo ===================================================
@@ -53,6 +48,7 @@ echo ===================================================
 echo.
 set /p RUN_NOW="Do you want to start Ghost now? (Y/N): "
 if /i "%RUN_NOW%"=="Y" (
+    cls
     .\ghost.exe gateway --debug
 )
 
