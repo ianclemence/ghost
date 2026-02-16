@@ -111,8 +111,8 @@ Alternatively, you can edit `config/config.json` directly if you prefer not to u
 Run the included script to build and start Ghost:
 
 ```bash
-chmod +x run_ghost_pi.sh
-./run_ghost_pi.sh
+chmod +x setup.sh
+./setup.sh
 ```
 
 **Option B: Manual Build**
@@ -133,19 +133,10 @@ go build -o ghost cmd/ghost/main.go
 rm -rf cmd/ghost/workspace
 
 # Run
-./ghost agent
+./ghost gateway --debug
 ```
 
-### 4. Install Skills (Optional)
-
-To enable camera, system control, and calendar features:
-
-```bash
-chmod +x setup_ghost_skills.sh
-./setup_ghost_skills.sh
-```
-
-### 5. Install as a Service (Auto-Start)
+### 4. Install as a Service (Auto-Start)
 
 To make Ghost run automatically when your Pi boots:
 
