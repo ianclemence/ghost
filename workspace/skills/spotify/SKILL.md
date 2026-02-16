@@ -1,6 +1,6 @@
 ---
 name: "spotify"
-description: "Controls Spotify playback. Invoke when user asks to play music, pause, skip, or change volume on Spotify."
+description: "Controls Spotify playback. Invoke ONLY when user explicitly says 'Spotify' or asks to skip/pause music."
 ---
 
 # Spotify Control

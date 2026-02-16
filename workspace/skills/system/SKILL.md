@@ -1,6 +1,6 @@
 ---
 name: "system"
-description: "Controls system volume, power, and display. Invoke when user asks to change volume, mute, turn off screen, lock computer, or shutdown/restart."
+description: "Controls computer hardware. Invoke when user says 'volume up', 'mute', 'screen off', 'lock', 'shutdown', or 'speak'. PREFER THIS over Spotify for general volume."
 ---
 
 # System Control
@@ -9,9 +9,9 @@ Controls the host machine's hardware functions.
 
 ## Commands
 
-### Windows (requires `nircmd`)
+### Windows (Primary: nircmd)
 
-Ensure [nircmd](https://www.nirsoft.net/utils/nircmd.html) is in your PATH.
+Ensure `nircmd.exe` is in your PATH. If not found, these commands will fail.
 
 - **Mute**: `nircmd.exe mutesysvolume 2` (toggles mute)
 - **Volume Up**: `nircmd.exe changesysvolume 5000`
@@ -23,6 +23,14 @@ Ensure [nircmd](https://www.nirsoft.net/utils/nircmd.html) is in your PATH.
 - **Restart**: `shutdown /r /t 0`
 - **Screenshot**: `nircmd.exe savescreenshot "C:\temp\screenshot.png"`
 - **Speak (TTS)**: `PowerShell -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('Hello Ghost')"`
+
+### Windows (Fallback: PowerShell)
+
+If `nircmd` is missing, use this for volume:
+
+- **Volume Up**: `PowerShell -Command "$obj = new-object -com wscript.shell; $obj.SendKeys([char]175)"`
+- **Volume Down**: `PowerShell -Command "$obj = new-object -com wscript.shell; $obj.SendKeys([char]174)"`
+- **Mute**: `PowerShell -Command "$obj = new-object -com wscript.shell; $obj.SendKeys([char]173)"`
 
 ### Linux / Raspberry Pi
 
