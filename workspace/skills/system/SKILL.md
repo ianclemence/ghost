@@ -11,17 +11,17 @@ Controls the host machine's hardware functions.
 
 ### Windows (Primary: nircmd)
 
-Ensure `nircmd.exe` is in your PATH. If not found, these commands will fail.
+Ensure `nircmd.exe` is in your PATH or in `C:\Tools\nircmd\nircmd.exe`.
 
-- **Mute**: `nircmd.exe mutesysvolume 2` (toggles mute)
-- **Volume Up**: `nircmd.exe changesysvolume 5000`
-- **Volume Down**: `nircmd.exe changesysvolume -5000`
-- **Max Volume**: `nircmd.exe setsysvolume 65535`
-- **Turn Off Monitor**: `nircmd.exe monitor off`
+- **Mute**: `cmd /c "where nircmd && nircmd mutesysvolume 2 || C:\Tools\nircmd\nircmd.exe mutesysvolume 2"`
+- **Volume Up**: `cmd /c "where nircmd && nircmd changesysvolume 5000 || C:\Tools\nircmd\nircmd.exe changesysvolume 5000"`
+- **Volume Down**: `cmd /c "where nircmd && nircmd changesysvolume -5000 || C:\Tools\nircmd\nircmd.exe changesysvolume -5000"`
+- **Max Volume**: `cmd /c "where nircmd && nircmd setsysvolume 65535 || C:\Tools\nircmd\nircmd.exe setsysvolume 65535"`
+- **Turn Off Monitor**: `cmd /c "where nircmd && nircmd monitor off || C:\Tools\nircmd\nircmd.exe monitor off"`
 - **Lock Workstation**: `rundll32.exe user32.dll,LockWorkStation`
 - **Shutdown**: `shutdown /s /t 0`
 - **Restart**: `shutdown /r /t 0`
-- **Screenshot**: `nircmd.exe savescreenshot "C:\temp\screenshot.png"`
+- **Screenshot**: `cmd /c "where nircmd && nircmd savescreenshot \"C:\temp\screenshot.png\" || C:\Tools\nircmd\nircmd.exe savescreenshot \"C:\temp\screenshot.png\""`
 - **Speak (TTS)**: `PowerShell -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('Hello Ghost')"`
 
 ### Windows (Fallback: PowerShell)
