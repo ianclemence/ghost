@@ -49,8 +49,8 @@ if (Check-Command "winget") {
 
     # wacli (WhatsApp CLI)
     if (-not (Check-Command "wacli")) {
-        Write-Host "Installing wacli (via Go)..." -ForegroundColor Yellow
-        go install github.com/steipete/wacli/cmd/wacli@latest
+        Write-Host "Skipping wacli installation (source build not supported on Windows)." -ForegroundColor Yellow
+        Write-Host "Please download the Windows binary from: https://github.com/steipete/wacli/releases" -ForegroundColor Gray
     }
 } else {
     Write-Host "Winget not found. Please manually install:" -ForegroundColor Yellow
