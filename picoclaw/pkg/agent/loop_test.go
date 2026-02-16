@@ -527,3 +527,111 @@ func TestToolResult_UserFacingToolDoesSendMessage(t *testing.T) {
 		t.Errorf("Expected 'Command output: hello world', got: %s", response)
 	}
 }
+
+// capturingMockProvider captures the messages sent to Chat
+type capturingMockProvider struct {
+	lastMessages []providers.Message
+}
+
+func (m *capturingMockProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, opts map[string]interface{}) (*providers.LLMResponse, error) {
+	m.lastMessages = messages
+	return &providers.LLMResponse{
+		Content:   "I see the image",
+		ToolCalls: []providers.ToolCall{},
+	}, nil
+}
+
+func (m *capturingMockProvider) GetDefaultModel() string {
+	return "mock-model"
+}
+
+func TestImagePassing(t *testing.T) {
+	// Create temp workspace
+	tmpDir, err := os.MkdirTemp("", "agent-test-image-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a dummy image file
+	imagePath := filepath.Join(tmpDir, "test_image.jpg")
+	err = os.WriteFile(imagePath, []byte("fake image data"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create dummy image: %v", err)
+	}
+
+	// Create test config
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				Model:             "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 10,
+			},
+		},
+	}
+
+	// Create agent loop
+	msgBus := bus.NewMessageBus()
+	provider := &capturingMockProvider{}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	// Create inbound message with media
+	ctx := context.Background()
+	msg := bus.InboundMessage{
+		Channel:    "test",
+		SenderID:   "user1",
+		ChatID:     "chat1",
+		Content:    "Describe this image",
+		SessionKey: "test-session",
+		Media:      []string{imagePath},
+	}
+
+	// Process message
+	_, err = al.processMessage(ctx, msg)
+	if err != nil {
+		t.Fatalf("processMessage failed: %v", err)
+	}
+
+	// Verify that the provider received the image
+	if len(provider.lastMessages) == 0 {
+		t.Fatal("Provider received no messages")
+	}
+
+	// Find the user message
+	var userMsg providers.Message
+	foundUserMsg := false
+	for _, m := range provider.lastMessages {
+		if m.Role == "user" {
+			userMsg = m
+			foundUserMsg = true
+			break
+		}
+	}
+
+	if !foundUserMsg {
+		t.Fatal("Provider did not receive user message")
+	}
+
+	// Check if MultiContent is populated
+	if len(userMsg.MultiContent) == 0 {
+		t.Fatal("User message does not have MultiContent")
+	}
+
+	// Check if there is an image_url part
+	foundImage := false
+	for _, part := range userMsg.MultiContent {
+		if part.Type == "image_url" {
+			foundImage = true
+			if part.ImageURL == nil {
+				t.Error("ImageURL is nil")
+			}
+			break
+		}
+	}
+
+	if !foundImage {
+		t.Error("User message does not contain image_url part")
+	}
+}

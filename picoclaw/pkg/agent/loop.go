@@ -274,7 +274,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 	}
 
 	// Process as user message
-	return al.runAgentLoop(ctx, processOptions{
+	response, err := al.runAgentLoop(ctx, processOptions{
 		SessionKey:      msg.SessionKey,
 		Channel:         msg.Channel,
 		ChatID:          msg.ChatID,
@@ -285,6 +285,28 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		Media:           msg.Media,
 		Thinking:        thinking,
 	})
+
+	// Cleanup temporary media files
+	if len(msg.Media) > 0 {
+		go func() {
+			// Wait a bit to ensure no race conditions with async logging or other consumers
+			time.Sleep(5 * time.Second)
+			for _, path := range msg.Media {
+				if err := os.Remove(path); err != nil {
+					logger.WarnCF("agent", "Failed to cleanup media file", map[string]interface{}{
+						"path":  path,
+						"error": err.Error(),
+					})
+				} else {
+					logger.DebugCF("agent", "Cleaned up media file", map[string]interface{}{
+						"path": path,
+					})
+				}
+			}
+		}()
+	}
+
+	return response, err
 }
 
 func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
@@ -367,7 +389,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		history,
 		summary,
 		opts.UserMessage,
-		nil,
+		opts.Media,
 		opts.Channel,
 		opts.ChatID,
 	)

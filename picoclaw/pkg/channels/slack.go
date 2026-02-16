@@ -3,7 +3,7 @@ package channels
 import (
 	"context"
 	"fmt"
-	"os"
+	// "os"
 	"strings"
 	"sync"
 	"time"
@@ -230,19 +230,21 @@ func (c *SlackChannel) handleMessageEvent(ev *slackevents.MessageEvent) {
 	content = c.stripBotMention(content)
 
 	var mediaPaths []string
-	localFiles := []string{} // 跟踪需要清理的本地文件
+	// localFiles := []string{} // 跟踪需要清理的本地文件
 
 	// 确保临时文件在函数返回时被清理
-	defer func() {
-		for _, file := range localFiles {
-			if err := os.Remove(file); err != nil {
-				logger.DebugCF("slack", "Failed to cleanup temp file", map[string]interface{}{
-					"file":  file,
-					"error": err.Error(),
-				})
+	/*
+		defer func() {
+			for _, file := range localFiles {
+				if err := os.Remove(file); err != nil {
+					logger.DebugCF("slack", "Failed to cleanup temp file", map[string]interface{}{
+						"file":  file,
+						"error": err.Error(),
+					})
+				}
 			}
-		}
-	}()
+		}()
+	*/
 
 	if ev.Message != nil && len(ev.Message.Files) > 0 {
 		for _, file := range ev.Message.Files {
@@ -250,7 +252,7 @@ func (c *SlackChannel) handleMessageEvent(ev *slackevents.MessageEvent) {
 			if localPath == "" {
 				continue
 			}
-			localFiles = append(localFiles, localPath)
+			// localFiles = append(localFiles, localPath)
 			mediaPaths = append(mediaPaths, localPath)
 
 			if utils.IsAudioFile(file.Name, file.Mimetype) && c.transcriber != nil && c.transcriber.IsAvailable() {
