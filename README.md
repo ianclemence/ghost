@@ -29,8 +29,16 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
     ```
 2.  **Run**:
     Double-click `run_ghost.bat` or run in terminal:
+
     ```powershell
     .\run_ghost.bat
+    ```
+
+    **Verify Gateway**:
+    Run gateway and verify Telegram connection:
+
+    ```powershell
+    .\ghost.exe gateway --debug
     ```
 
 ### 🍓 Raspberry Pi (Native)
