@@ -1,31 +1,32 @@
-# Build Stage
-FROM golang:1.23-alpine AS builder
+# ============================================================
+# Stage 1: Build the ghost binary
+# ============================================================
+FROM golang:1.26.0-alpine AS builder
 
-WORKDIR /app
+RUN apk add --no-cache git make
 
-# Copy the local source code
-COPY picoclaw/go.mod picoclaw/go.sum ./
+WORKDIR /src
+
+# Cache dependencies
+COPY go.mod go.sum ./
 RUN go mod download
 
-COPY picoclaw/ .
+# Copy source and build
+COPY . .
+RUN make build
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -o picoclaw ./cmd/picoclaw
+# ============================================================
+# Stage 2: Minimal runtime image
+# ============================================================
+FROM alpine:3.23
 
-# Runtime Stage
-FROM alpine:latest
+RUN apk add --no-cache ca-certificates tzdata curl
 
-WORKDIR /app
+# Copy binary
+COPY --from=builder /src/build/ghost /usr/local/bin/ghost
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+# Create ghost home directory
+RUN /usr/local/bin/ghost onboard
 
-# Copy binary from builder
-COPY --from=builder /app/picoclaw /usr/local/bin/picoclaw
-
-# Set up directories
-RUN mkdir -p /app/config /app/workspace
-
-# Set default command
-ENTRYPOINT ["picoclaw"]
+ENTRYPOINT ["ghost"]
 CMD ["gateway"]

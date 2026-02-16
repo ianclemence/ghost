@@ -1,12 +1,51 @@
-*.log
-.DS_Store
+# Binaries
+bin/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/ghost
+/ghost-test
+cmd/ghost/workspace
+
+# PicoClaw/Ghost specific
+.picoclaw/
+.ghost/
+config.json
+sessions/
+build/
+
+# Coverage
+coverage.txt
+coverage.html
+
+# Secrets & Config
 .env
-ghost.exe
-picoclaw/ghost.exe
-workspace/sessions/
 config/config.json
 
-# Workspace Dynamic State
-workspace/state/*.json
-workspace/cron/*.json
-workspace/memory/MEMORY.md
+# OS
+.DS_Store
+*.log
+
+# Editors
+.vscode/
+.idea/
+
+# Goreleaser
+dist/
+
+# Workspace Data (Persist structure but ignore dynamic data)
+workspace/sessions/*
+!workspace/sessions/README.md
+
+workspace/state/*
+!workspace/state/README.md
+
+workspace/cron/*
+!workspace/cron/README.md
+
+workspace/memory/*
+!workspace/memory/README.md

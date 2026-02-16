@@ -1,13 +1,40 @@
 services:
-  ghost-core:
-    build: 
+  # ─────────────────────────────────────────────
+  # Ghost Agent (one-shot query)
+  #   docker compose run --rm ghost-agent -m "Hello"
+  # ─────────────────────────────────────────────
+  ghost-agent:
+    build:
       context: .
       dockerfile: Dockerfile
-    container_name: ghost-core
-    restart: unless-stopped
+    container_name: ghost-agent
+    profiles:
+      - agent
     volumes:
-      - ./config:/app/config
-      - ./workspace:/app/workspace
-    environment:
-      - TZ=Asia/Shanghai
+      - ./config/config.json:/root/.ghost/config.json:ro
+      - ghost-workspace:/root/.ghost/workspace
+    entrypoint: ["ghost", "agent"]
+    stdin_open: true
+    tty: true
+
+  # ─────────────────────────────────────────────
+  # Ghost Gateway (Long-running Bot)
+  #   docker compose up ghost-gateway
+  # ─────────────────────────────────────────────
+  ghost-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ghost-gateway
+    restart: unless-stopped
+    profiles:
+      - gateway
+    volumes:
+      # Configuration file
+      - ./config/config.json:/root/.ghost/config.json:ro
+      # Persistent workspace (sessions, memory, logs)
+      - ghost-workspace:/root/.ghost/workspace
     command: ["gateway"]
+
+volumes:
+  ghost-workspace:

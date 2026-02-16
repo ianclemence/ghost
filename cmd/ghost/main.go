@@ -50,7 +50,7 @@ var (
 	goVersion string
 )
 
-const logo = "🦞"
+const logo = "👻"
 
 // formatVersion returns the version string with optional git commit
 func formatVersion() string {
@@ -74,7 +74,7 @@ func formatBuildInfo() (build string, goVer string) {
 }
 
 func printVersion() {
-	fmt.Printf("%s picoclaw %s\n", logo, formatVersion())
+	fmt.Printf("%s Ghost %s\n", logo, formatVersion())
 	build, goVer := formatBuildInfo()
 	if build != "" {
 		fmt.Printf("  Build: %s\n", build)
@@ -124,20 +124,20 @@ func main() {
 	_ = godotenv.Load(".env")
 	_ = godotenv.Load("../.env")
 
-	if configDir := os.Getenv("PICOCLAW_CONFIG_DIR"); configDir != "" {
+	if configDir := os.Getenv("GHOST_CONFIG_DIR"); configDir != "" {
 		_ = godotenv.Load(filepath.Join(configDir, ".env"))
 	}
 
 	// Map simple env vars to internal config vars
 	if val := os.Getenv("TELEGRAM_TOKEN"); val != "" {
-		_ = os.Setenv("PICOCLAW_CHANNELS_TELEGRAM_TOKEN", val)
+		_ = os.Setenv("GHOST_CHANNELS_TELEGRAM_TOKEN", val)
 		// Auto-enable Telegram if token is present
-		if os.Getenv("PICOCLAW_CHANNELS_TELEGRAM_ENABLED") == "" {
-			_ = os.Setenv("PICOCLAW_CHANNELS_TELEGRAM_ENABLED", "true")
+		if os.Getenv("GHOST_CHANNELS_TELEGRAM_ENABLED") == "" {
+			_ = os.Setenv("GHOST_CHANNELS_TELEGRAM_ENABLED", "true")
 		}
 	}
 	if val := os.Getenv("TELEGRAM_USER_ID"); val != "" {
-		_ = os.Setenv("PICOCLAW_CHANNELS_TELEGRAM_ALLOW_FROM", val)
+		_ = os.Setenv("GHOST_CHANNELS_TELEGRAM_ALLOW_FROM", val)
 	}
 
 	if len(os.Args) < 2 {
@@ -181,7 +181,7 @@ func main() {
 		// 获取全局配置目录和内置 skills 目录
 		globalDir := filepath.Dir(getConfigPath())
 		globalSkillsDir := filepath.Join(globalDir, "skills")
-		builtinSkillsDir := filepath.Join(globalDir, "picoclaw", "skills")
+		builtinSkillsDir := filepath.Join(globalDir, "ghost", "skills")
 		skillsLoader := skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir)
 
 		switch subcommand {
@@ -221,17 +221,17 @@ func main() {
 }
 
 func printHelp() {
-	fmt.Printf("%s picoclaw - Personal AI Assistant v%s\n\n", logo, version)
-	fmt.Println("Usage: picoclaw <command>")
+	fmt.Printf("%s Ghost - Personal AI Assistant v%s\n\n", logo, version)
+	fmt.Println("Usage: ghost <command>")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  onboard     Initialize picoclaw configuration and workspace")
+	fmt.Println("  onboard     Initialize Ghost configuration and workspace")
 	fmt.Println("  agent       Interact with the agent directly")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
-	fmt.Println("  gateway     Start picoclaw gateway")
-	fmt.Println("  status      Show picoclaw status")
+	fmt.Println("  gateway     Start Ghost gateway")
+	fmt.Println("  status      Show Ghost status")
 	fmt.Println("  cron        Manage scheduled tasks")
-	fmt.Println("  migrate     Migrate from OpenClaw to PicoClaw")
+	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  version     Show version information")
 }
@@ -456,7 +456,7 @@ func interactiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          prompt,
-		HistoryFile:     filepath.Join(os.TempDir(), ".picoclaw_history"),
+		HistoryFile:     filepath.Join(os.TempDir(), ".ghost_history"),
 		HistoryLimit:    100,
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",
@@ -709,7 +709,7 @@ func statusCmd() {
 
 	configPath := getConfigPath()
 
-	fmt.Printf("%s picoclaw Status\n", logo)
+	fmt.Printf("%s Ghost Status\n", logo)
 	fmt.Printf("Version: %s\n", formatVersion())
 	build, _ := formatBuildInfo()
 	if build != "" {
@@ -818,11 +818,11 @@ func authHelp() {
 	fmt.Println("  --device-code        Use device code flow (for headless environments)")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  picoclaw auth login --provider openai")
-	fmt.Println("  picoclaw auth login --provider openai --device-code")
-	fmt.Println("  picoclaw auth login --provider anthropic")
-	fmt.Println("  picoclaw auth logout --provider openai")
-	fmt.Println("  picoclaw auth status")
+	fmt.Println("  ghost auth login --provider openai")
+	fmt.Println("  ghost auth login --provider openai --device-code")
+	fmt.Println("  ghost auth login --provider anthropic")
+	fmt.Println("  ghost auth logout --provider openai")
+	fmt.Println("  ghost auth status")
 }
 
 func authLoginCmd() {
@@ -981,7 +981,7 @@ func authStatusCmd() {
 
 	if len(store.Credentials) == 0 {
 		fmt.Println("No authenticated providers.")
-		fmt.Println("Run: picoclaw auth login --provider <name>")
+		fmt.Println("Run: ghost auth login --provider <name>")
 		return
 	}
 
