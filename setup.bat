@@ -48,7 +48,7 @@ echo.
 set /p RUN_NOW="Do you want to start Ghost now? (Y/N): "
 if /i "%RUN_NOW%"=="Y" (
     cls
-    .\ghost.exe agent
+    .\ghost.exe gateway --debug
 )
 
 pause

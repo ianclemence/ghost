@@ -95,5 +95,5 @@ echo ""
 
 read -p "Do you want to start Ghost now? (Y/N) " RUN_NOW
 if [[ "$RUN_NOW" =~ ^[Yy]$ ]]; then
-    ./ghost agent
+    ./ghost gateway --debug
 fi
