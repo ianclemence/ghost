@@ -40,6 +40,12 @@ if (Check-Command "winget") {
         Write-Host "Installing Nmap (for Network Scanning)..." -ForegroundColor Yellow
         winget install Insecure.Nmap --accept-source-agreements --accept-package-agreements
     }
+
+    # ADB (Android Debug Bridge)
+    if (-not (Check-Command "adb")) {
+        Write-Host "Installing ADB (for Mobile Control)..." -ForegroundColor Yellow
+        winget install Google.PlatformTools --accept-source-agreements --accept-package-agreements
+    }
 } else {
     Write-Host "Winget not found. Please manually install:" -ForegroundColor Yellow
     Write-Host "- nircmd: https://www.nirsoft.net/utils/nircmd.html"
