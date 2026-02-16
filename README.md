@@ -20,7 +20,24 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
 
 ## 🚀 Quick Start
 
-### 🪟 Windows (Native)
+### 🪟 Windows (Recommended)
+
+Double-click `setup.bat` to install skills, build, and run automatically.
+
+### 🍓 Raspberry Pi / Linux (Recommended)
+
+Run the all-in-one setup script:
+
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+---
+
+### Manual Setup (Advanced)
+
+#### Windows (Manual)
 
 1.  **Build**:
     ```powershell
@@ -28,10 +45,10 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
     go build -o ghost.exe ./cmd/ghost
     ```
 2.  **Run**:
-    Double-click `run_ghost.bat` or run in terminal:
+    Run `setup.bat` (which runs `setup_ghost_skills.ps1` internally) or run manually:
 
     ```powershell
-    .\run_ghost.bat
+    .\setup_ghost_skills.ps1
     ```
 
     **Verify Gateway**:
@@ -48,7 +65,7 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
     .\setup_ghost_skills.ps1
     ```
 
-### 🍓 Raspberry Pi (Native)
+#### Raspberry Pi (Manual)
 
 **Prerequisites:** Ensure `go` (Golang 1.25+) is installed on your Pi.
 
