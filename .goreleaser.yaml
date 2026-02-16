@@ -9,6 +9,8 @@ before:
 builds:
   - env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w
     goos:
       - linux
       - windows
@@ -21,7 +23,7 @@ builds:
       - s390x
       - mips64
       - arm
-    main: ./cmd/picoclaw
+    main: ./cmd/Ghost
     ignore:
       - goos: windows
         goarch: arm
@@ -49,9 +51,9 @@ changelog:
       - "^test:"
 
 upx:
-   - enabled: true
-     compress: best
-     lzma: true
+  - enabled: true
+    compress: best
+    lzma: true
 
 release:
   footer: >-

@@ -1,8 +1,8 @@
-// PicoClaw - Ultra-lightweight personal AI agent
+// Ghost - Ultra-lightweight personal AI agent
 // Inspired by and based on nanobot: https://github.com/HKUDS/nanobot
 // License: MIT
 //
-// Copyright (c) 2026 PicoClaw contributors
+// Copyright (c) 2026 Ghost contributors
 
 package channels
 
@@ -11,10 +11,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/sipeed/picoclaw/pkg/bus"
-	"github.com/sipeed/picoclaw/pkg/config"
-	"github.com/sipeed/picoclaw/pkg/constants"
-	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/constants"
+	"github.com/ianclemence/ghost/pkg/logger"
 )
 
 type Manager struct {
@@ -203,12 +203,25 @@ func (m *Manager) StartAll(ctx context.Context) error {
 		logger.InfoCF("channels", "Starting channel", map[string]interface{}{
 			"channel": name,
 		})
-		if err := channel.Start(ctx); err != nil {
-			logger.ErrorCF("channels", "Failed to start channel", map[string]interface{}{
-				"channel": name,
-				"error":   err.Error(),
-			})
-		}
+		
+		// Wrap channel start in panic recovery
+		go func(n string, ch Channel) {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.ErrorCF("channels", "Panic in channel start", map[string]interface{}{
+						"channel": n,
+						"panic":   r,
+					})
+				}
+			}()
+			
+			if err := ch.Start(ctx); err != nil {
+				logger.ErrorCF("channels", "Failed to start channel", map[string]interface{}{
+					"channel": n,
+					"error":   err.Error(),
+				})
+			}
+		}(name, channel)
 	}
 
 	logger.InfoC("channels", "All channels started")

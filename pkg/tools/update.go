@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/logger"
 )
 
 type UpdateTool struct {

@@ -11,8 +11,8 @@ build/
 /ghost-test
 cmd/ghost/workspace
 
-# PicoClaw/Ghost specific
-.picoclaw/
+# Ghost/Ghost specific
+.Ghost/
 .ghost/
 config.json
 sessions/

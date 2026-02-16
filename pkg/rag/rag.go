@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sipeed/picoclaw/pkg/db"
-	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/db"
+	"github.com/ianclemence/ghost/pkg/providers"
 )
 
 type Store struct {

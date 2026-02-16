@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sipeed/picoclaw/pkg/bus"
-	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/providers"
+	"os/exec"
 )
 
 type SubagentTask struct {
@@ -125,52 +126,68 @@ After completing the task, provide a clear summary of what was done.`
 	maxIter := sm.maxIterations
 	sm.mu.RUnlock()
 
-	loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
-		Provider:      sm.provider,
-		Model:         sm.defaultModel,
-		Tools:         tools,
-		MaxIterations: maxIter,
-		LLMOptions: map[string]any{
-			"max_tokens":  4096,
-			"temperature": 0.7,
-		},
-	}, messages, task.OriginChannel, task.OriginChatID)
-
-	sm.mu.Lock()
-	var result *ToolResult
-	defer func() {
+	// Detect if this is a simple script execution request that can be handled via JSON-RPC
+	// This optimization avoids the overhead of a full LLM loop for simple scripts
+	if isScriptTask(task.Task) {
+		// Optimization: Execute directly via JSON-RPC
+		resultContent, err := sm.executeScriptDirectly(ctx, task.Task)
+		sm.mu.Lock()
+		if err != nil {
+			task.Status = "failed"
+			task.Result = fmt.Sprintf("Script error: %v", err)
+		} else {
+			task.Status = "completed"
+			task.Result = resultContent
+		}
 		sm.mu.Unlock()
-		// Call callback if provided and result is set
-		if callback != nil && result != nil {
-			callback(ctx, result)
-		}
-	}()
-
-	if err != nil {
-		task.Status = "failed"
-		task.Result = fmt.Sprintf("Error: %v", err)
-		// Check if it was cancelled
-		if ctx.Err() != nil {
-			task.Status = "cancelled"
-			task.Result = "Task cancelled during execution"
-		}
-		result = &ToolResult{
-			ForLLM:  task.Result,
-			ForUser: "",
-			Silent:  false,
-			IsError: true,
-			Async:   false,
-			Err:     err,
+		
+		// Skip full loop, proceed to notification
+		if callback != nil {
+			callback(ctx, &ToolResult{
+				ForLLM: task.Result,
+				ForUser: task.Result,
+				Silent: false,
+				IsError: err != nil,
+			})
 		}
 	} else {
-		task.Status = "completed"
-		task.Result = loopResult.Content
-		result = &ToolResult{
-			ForLLM:  fmt.Sprintf("Subagent '%s' completed (iterations: %d): %s", task.Label, loopResult.Iterations, loopResult.Content),
-			ForUser: loopResult.Content,
-			Silent:  false,
-			IsError: false,
-			Async:   false,
+		// Default: Run full LLM tool loop
+		loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
+			Provider:      sm.provider,
+			Model:         sm.defaultModel,
+			Tools:         tools,
+			MaxIterations: maxIter,
+			LLMOptions: map[string]any{
+				"max_tokens":  4096,
+				"temperature": 0.7,
+			},
+		}, messages, task.OriginChannel, task.OriginChatID)
+
+		sm.mu.Lock()
+		if err != nil {
+			task.Status = "failed"
+			task.Result = fmt.Sprintf("Error: %v", err)
+			// Check if it was cancelled
+			if ctx.Err() != nil {
+				task.Status = "cancelled"
+				task.Result = "Task cancelled during execution"
+			}
+		} else {
+			task.Status = "completed"
+			task.Result = loopResult.Content
+		}
+		sm.mu.Unlock()
+		
+		if callback != nil {
+			// Create result object for callback
+			res := &ToolResult{
+				ForLLM:  fmt.Sprintf("Subagent '%s' completed: %s", task.Label, task.Result),
+				ForUser: task.Result,
+				Silent:  false,
+				IsError: err != nil,
+				Err:     err,
+			}
+			callback(ctx, res)
 		}
 	}
 
@@ -185,6 +202,24 @@ After completing the task, provide a clear summary of what was done.`
 			Content: announceContent,
 		})
 	}
+}
+
+// isScriptTask checks if the task is a direct script execution request
+func isScriptTask(task string) bool {
+	return len(task) > 7 && task[:7] == "script:"
+}
+
+// executeScriptDirectly executes a script via stdin/stdout JSON-RPC
+func (sm *SubagentManager) executeScriptDirectly(ctx context.Context, task string) (string, error) {
+	scriptPath := task[7:] // Remove "script:" prefix
+	
+	cmd := exec.CommandContext(ctx, scriptPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("script execution failed: %w, output: %s", err, output)
+	}
+	
+	return string(output), nil
 }
 
 func (sm *SubagentManager) GetTask(taskID string) (*SubagentTask, bool) {

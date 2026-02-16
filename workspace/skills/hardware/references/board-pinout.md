@@ -4,18 +4,18 @@
 
 ### I2C Buses
 
-| Bus | Pins | Notes |
-|-----|------|-------|
+| Bus   | Pins                 | Notes                                            |
+| ----- | -------------------- | ------------------------------------------------ |
 | I2C-1 | P18 (SCL), P21 (SDA) | **Shared with WiFi SDIO** — must stop WiFi first |
-| I2C-3 | Available on header | Check device tree for pin assignment |
-| I2C-5 | Software (BitBang) | Slower but no pin conflicts |
+| I2C-3 | Available on header  | Check device tree for pin assignment             |
+| I2C-5 | Software (BitBang)   | Slower but no pin conflicts                      |
 
 ### SPI Buses
 
-| Bus | Pins | Notes |
-|-----|------|-------|
+| Bus   | Pins                                        | Notes                                       |
+| ----- | ------------------------------------------- | ------------------------------------------- |
 | SPI-2 | P18 (CS), P21 (MISO), P22 (MOSI), P23 (SCK) | **Shared with WiFi** — must stop WiFi first |
-| SPI-4 | Software (BitBang) | Slower but no pin conflicts |
+| SPI-4 | Software (BitBang)                          | Slower but no pin conflicts                 |
 
 ### Setup Steps for I2C-1
 
@@ -51,6 +51,7 @@ ls /dev/spidev*
 ```
 
 ### Max Tested SPI Speed
+
 - SPI-2 hardware: tested up to **93 MHz**
 - `spidev_test` is pre-installed on the official image for loopback testing
 
@@ -60,10 +61,10 @@ ls /dev/spidev*
 
 ### I2C Buses
 
-| Bus | Pins | Notes |
-|-----|------|-------|
-| I2C-1 | Overlaps with WiFi | Not recommended |
-| I2C-3 | Overlaps with WiFi | Not recommended |
+| Bus   | Pins                 | Notes                                        |
+| ----- | -------------------- | -------------------------------------------- |
+| I2C-1 | Overlaps with WiFi   | Not recommended                              |
+| I2C-3 | Overlaps with WiFi   | Not recommended                              |
 | I2C-5 | A15 (SCL), A27 (SDA) | **Recommended** — software I2C, no conflicts |
 
 ### Setup Steps for I2C-5
@@ -71,7 +72,7 @@ ls /dev/spidev*
 ```bash
 # Configure pins using pinmap utility
 # (MaixCAM uses a pinmap tool instead of devmem)
-# Refer to: https://wiki.sipeed.com/hardware/en/maixcam/gpio.html
+# Refer to: https://wiki.ianclemence.com/hardware/en/maixcam/gpio.html
 
 # Load i2c-dev
 modprobe i2c-dev
@@ -86,10 +87,10 @@ ls /dev/i2c-*
 
 ### I2C Buses
 
-| Bus | Pins | Notes |
-|-----|------|-------|
+| Bus   | Pins               | Notes               |
+| ----- | ------------------ | ------------------- |
 | I2C-6 | A1 (SCL), A0 (SDA) | Available on header |
-| I2C-7 | Available | Check device tree |
+| I2C-7 | Available          | Check device tree   |
 
 ### Setup Steps
 
@@ -109,23 +110,29 @@ ls /dev/i2c-*
 Uses the same SG2002 SoC as LicheeRV Nano. GPIO and I2C access follows the same pinmux procedure. Refer to the LicheeRV Nano section above.
 
 Check NanoKVM-specific pin headers for available I2C/SPI lines:
-- https://wiki.sipeed.com/hardware/en/kvm/NanoKVM/introduction.html
+
+- https://wiki.ianclemence.com/hardware/en/kvm/NanoKVM/introduction.html
 
 ---
 
 ## Common Issues
 
 ### devmem not found
+
 The `devmem` utility may not be in the default image. Options:
+
 - Use `busybox devmem` if busybox is installed
-- Download devmem from the Sipeed package repository
+- Download devmem from the ianclemence package repository
 - Cross-compile from source (single C file)
 
 ### Dynamic bus numbering
+
 I2C adapter numbers can change between boots depending on driver load order. Always use `i2c detect` to find current bus assignments rather than hardcoding bus numbers.
 
 ### Permissions
+
 `/dev/i2c-*` and `/dev/spidev*` typically require root access. Options:
-- Run picoclaw as root
+
+- Run Ghost as root
 - Add user to `i2c` and `spi` groups
 - Create udev rules: `SUBSYSTEM=="i2c-dev", MODE="0666"`

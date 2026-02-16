@@ -9,8 +9,8 @@ WorkingDirectory=/home/pi/ghost
 ExecStart=/usr/local/bin/ghost gateway
 Restart=always
 RestartSec=5
-Environment=PICOCLAW_CONFIG_DIR=/home/pi/ghost/config
-Environment=PICOCLAW_WORKSPACE_DIR=/home/pi/ghost/workspace
+Environment=Ghost_CONFIG_DIR=/home/pi/ghost/config
+Environment=Ghost_WORKSPACE_DIR=/home/pi/ghost/workspace
 
 [Install]
 WantedBy=multi-user.target
