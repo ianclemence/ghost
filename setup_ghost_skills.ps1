@@ -15,7 +15,7 @@ function Check-Command {
 if (Check-Command "python") {
     if (-not (Check-Command "gcalcli")) {
         Write-Host "Installing gcalcli..." -ForegroundColor Yellow
-        pip install gcalcli
+        pip install --user gcalcli
     }
 } else {
     Write-Host "Python is missing. Please install Python to use Calendar skill." -ForegroundColor Red
