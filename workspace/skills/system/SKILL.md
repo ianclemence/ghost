@@ -1,15 +1,45 @@
 ---
 name: "system"
-description: "Controls computer hardware. Invoke when user says 'volume up', 'mute', 'screen off', 'lock', 'shutdown', or 'speak'. PREFER THIS over Spotify for general volume."
+description: "Controls computer hardware. Invoke when user says 'volume up', 'mute', 'screen off', 'lock', 'shutdown', or 'speak'. Supports local (Pi) and remote (PC) control."
 ---
 
 # System Control
 
-Controls the host machine's hardware functions.
+Controls hardware functions locally or remotely via SSH.
+
+## Configuration (Remote PC Control)
+
+To control a Windows PC from your Raspberry Pi, you must set these environment variables in your `.env` file:
+
+```bash
+REMOTE_PC_USER=your_windows_username
+REMOTE_PC_HOST=192.168.1.100  # Your PC's local IP
+```
+
+**Prerequisites**:
+
+1.  Enable **OpenSSH Server** on Windows (Settings > Apps > Optional Features).
+2.  Set up SSH keys so the Pi can connect without a password (run `ssh-copy-id user@host`).
+3.  Ensure `nircmd.exe` is in the Windows PATH.
 
 ## Commands
 
-### Windows (Primary: nircmd)
+### Remote Control (Targeting Windows PC)
+
+When user says "Turn up **PC** volume" or "Lock **PC**":
+
+- **Mute PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "nircmd.exe mutesysvolume 2"`
+- **Volume Up PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "nircmd.exe changesysvolume 5000"`
+- **Volume Down PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "nircmd.exe changesysvolume -5000"`
+- **Lock PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "rundll32.exe user32.dll,LockWorkStation"`
+- **Shutdown PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "shutdown /s /t 0"`
+- **Speak on PC**: `ssh $REMOTE_PC_USER@$REMOTE_PC_HOST "PowerShell -Command \"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('Hello from Pi')\""`
+
+### Local Control (Targeting the device running Ghost)
+
+When user says "Turn up **local** volume" or just "volume up" (default):
+
+#### Windows (Primary: nircmd)
 
 Ensure `nircmd.exe` is in your PATH or in `C:\Tools\nircmd\nircmd.exe`.
 
@@ -24,7 +54,7 @@ Ensure `nircmd.exe` is in your PATH or in `C:\Tools\nircmd\nircmd.exe`.
 - **Screenshot**: `cmd /c "where nircmd && nircmd savescreenshot \"C:\temp\screenshot.png\" || C:\Tools\nircmd\nircmd.exe savescreenshot \"C:\temp\screenshot.png\""`
 - **Speak (TTS)**: `PowerShell -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('Hello Ghost')"`
 
-### Windows (Fallback: PowerShell)
+#### Windows (Fallback: PowerShell)
 
 If `nircmd` is missing, use this for volume:
 
@@ -32,7 +62,7 @@ If `nircmd` is missing, use this for volume:
 - **Volume Down**: `PowerShell -Command "$obj = new-object -com wscript.shell; $obj.SendKeys([char]174)"`
 - **Mute**: `PowerShell -Command "$obj = new-object -com wscript.shell; $obj.SendKeys([char]173)"`
 
-### Linux / Raspberry Pi
+#### Linux / Raspberry Pi
 
 - **Volume Up**: `amixer set Master 5%+`
 - **Volume Down**: `amixer set Master 5%-`
