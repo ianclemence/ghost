@@ -26,7 +26,7 @@ if (Check-Command "winget") {
     # nircmd
     if (-not (Check-Command "nircmd")) {
         Write-Host "Installing nircmd (for System Control)..." -ForegroundColor Yellow
-        winget install nirsoft.nircmd --accept-source-agreements --accept-package-agreements
+        winget install NirSoft.NirCmd --accept-source-agreements --accept-package-agreements
     }
     
     # ffmpeg
@@ -48,9 +48,14 @@ if (Check-Command "winget") {
     }
 
     # wacli (WhatsApp CLI)
-    if (-not (Check-Command "wacli")) {
-        Write-Host "Installing wacli (via Go)..." -ForegroundColor Yellow
-        go install github.com/steipete/wacli/cmd/wacli@latest
+    # Skipped on Windows due to syscall.Flock dependency issues
+    if ($IsWindows -or $PSVersionTable.PSVersion.Major -le 5) {
+        Write-Host "Skipping wacli installation (not supported on Windows natively)" -ForegroundColor Yellow
+    } else {
+        if (-not (Check-Command "wacli")) {
+            Write-Host "Installing wacli (via Go)..." -ForegroundColor Yellow
+            go install github.com/steipete/wacli/cmd/wacli@latest
+        }
     }
 } else {
     Write-Host "Winget not found. Please manually install:" -ForegroundColor Yellow
