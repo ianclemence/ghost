@@ -31,10 +31,10 @@ You must start the RPC bridge before sending commands. This bridge translates JS
 
 ```bash
 # Windows
-start /B python workspace\skills\mobile\android_bridge.py
+start /B python workspace\skills\mobile\scripts\android_bridge.py
 
 # Linux/Pi
-nohup python3 workspace/skills/mobile/android_bridge.py > /dev/null 2>&1 &
+nohup python3 workspace/skills/mobile/scripts/android_bridge.py > /dev/null 2>&1 &
 ```
 
 ### 2. Send Commands
@@ -43,38 +43,38 @@ Use the `rpc.py` client to control the phone.
 
 #### Open App
 ```bash
-python workspace\skills\mobile\rpc.py open-app com.instagram.android
-python workspace\skills\mobile\rpc.py open-app com.google.android.youtube
+python workspace\skills\mobile\scripts\rpc.py open-app com.instagram.android
+python workspace\skills\mobile\scripts\rpc.py open-app com.google.android.youtube
 ```
 
 #### Tap Screen
 Tap at specific coordinates (x, y).
 ```bash
-python workspace\skills\mobile\rpc.py tap --x 500 --y 1000
+python workspace\skills\mobile\scripts\rpc.py tap --x 500 --y 1000
 ```
 
 #### Type Text
 Types text into the currently focused field.
 ```bash
-python workspace\skills\mobile\rpc.py enter-text --text "Hello Ghost"
+python workspace\skills\mobile\scripts\rpc.py enter-text --text "Hello Ghost"
 ```
 
 #### Swipe
 Swipe from (x1, y1) to (x2, y2).
 ```bash
-python workspace\skills\mobile\rpc.py swipe --x1 500 --y1 1500 --x2 500 --y2 500 --duration 0.5
+python workspace\skills\mobile\scripts\rpc.py swipe --x1 500 --y1 1500 --x2 500 --y2 500 --duration 0.5
 ```
 
 #### Screenshot
 Takes a screenshot and saves it to a file.
 ```bash
-python workspace\skills\mobile\rpc.py get-screen-image --print-metadata
+python workspace\skills\mobile\scripts\rpc.py get-screen-image --print-metadata
 ```
 
 #### Get UI Tree
 Dumps the current screen hierarchy (XML) to understand what is on screen.
 ```bash
-python workspace\skills\mobile\rpc.py get-tree
+python workspace\skills\mobile\scripts\rpc.py get-tree
 ```
 
 ## Common Package Names
