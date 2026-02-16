@@ -37,18 +37,23 @@ config/config.json
 # Goreleaser
 dist/
 
-# Workspace Data (Persist structure but ignore dynamic data)
-workspace/sessions/*
-!workspace/sessions/README.md
+# Workspace Data (Whitelist Approach)
+# 1. Ignore EVERYTHING in workspace by default
+workspace/*
 
-workspace/state/*
-!workspace/state/README.md
-
-workspace/cron/*
+# 2. Allow configuration and code (Whitelist)
+!workspace/skills/
+!workspace/README.md
 !workspace/cron/README.md
-
-workspace/memory/*
 !workspace/memory/README.md
+!workspace/state/README.md
+!workspace/journal/README.md
+!workspace/data/README.md
+!workspace/AGENT.md
+!workspace/HEARTBEAT.md
+!workspace/IDENTITY.md
+!workspace/SOUL.md
+!workspace/USER.md
 
 # SQLite Database
 *.db
