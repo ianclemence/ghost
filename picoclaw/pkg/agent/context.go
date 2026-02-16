@@ -231,30 +231,50 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 			encoded := base64.StdEncoding.EncodeToString(data)
 			ext := strings.ToLower(filepath.Ext(path))
 
-			mimeType := "image/jpeg"
-			isImage := true
+			var mimeType string
+			var mediaType string // "image", "video", "audio", "unknown"
+
 			switch ext {
 			case ".png":
 				mimeType = "image/png"
+				mediaType = "image"
 			case ".jpg", ".jpeg":
 				mimeType = "image/jpeg"
+				mediaType = "image"
 			case ".webp":
 				mimeType = "image/webp"
+				mediaType = "image"
 			case ".gif":
 				mimeType = "image/gif"
+				mediaType = "image"
 			case ".mp4", ".mov", ".avi", ".webm":
 				mimeType = "video/mp4"
-				isImage = false
+				mediaType = "video"
+			case ".mp3":
+				mimeType = "audio/mpeg"
+				mediaType = "audio"
+			case ".wav":
+				mimeType = "audio/wav"
+				mediaType = "audio"
+			case ".ogg":
+				mimeType = "audio/ogg"
+				mediaType = "audio"
+			default:
+				// Fallback or ignore
+				logger.WarnCF("agent", "Unsupported media type", map[string]interface{}{"path": path, "ext": ext})
+				continue
 			}
 
-			if isImage {
+			if mediaType == "image" {
 				contentParts = append(contentParts, providers.ContentPart{
 					Type: "image_url",
 					ImageURL: &providers.ImageURL{
 						URL: fmt.Sprintf("data:%s;base64,%s", mimeType, encoded),
 					},
 				})
-			} else {
+			} else if mediaType == "video" || mediaType == "audio" {
+				// Some providers (like Kimi) might accept audio via video_url or have specific handling
+				// For now, we use video_url as a generic container for non-image media if supported
 				contentParts = append(contentParts, providers.ContentPart{
 					Type: "video_url",
 					VideoURL: &providers.VideoURL{
