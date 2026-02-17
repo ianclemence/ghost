@@ -1008,7 +1008,7 @@ func authStatusCmd() {
 }
 
 func getConfigPath() string {
-	if configDir := os.Getenv("PICOCLAW_CONFIG_DIR"); configDir != "" {
+	if configDir := os.Getenv("GHOST_CONFIG_DIR"); configDir != "" {
 		return filepath.Join(configDir, "config.json")
 	}
 	home, _ := os.UserHomeDir()
