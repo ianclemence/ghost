@@ -85,6 +85,16 @@ if ! check_command "go"; then
     exit 1
 fi
 
+echo -e "${YELLOW}Running code generation (bundling workspace)...${NC}"
+# Run go generate to trigger the 'cp -r ../../workspace .' command in main.go
+go generate ./cmd/ghost
+if [ $? -ne 0 ]; then
+    echo -e "${RED}[ERROR] Code generation failed. Trying manual copy...${NC}"
+    # Fallback if go generate fails (e.g., missing cp command context)
+    rm -rf cmd/ghost/workspace
+    cp -r workspace cmd/ghost/workspace
+fi
+
 go build -o ghost ./cmd/ghost
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}[OK] Build successful: ./ghost${NC}"
