@@ -15,6 +15,7 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
 ## 🛠️ Requirements
 
 ### Hardware
+
 - **Raspberry Pi 5** (8GB RAM recommended)
 - **32GB MicroSD Card** (or larger)
 - **Telegram Account**
@@ -24,21 +25,25 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
 To run Ghost locally, you need **Ollama** installed.
 
 **Windows (PowerShell):**
+
 ```powershell
 irm https://ollama.com/install.ps1 | iex
 ```
 
 **Linux / Raspberry Pi:**
+
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
 After installing, pull the model used in config:
+
 ```bash
 ollama pull qwen3:4b
 ```
 
 Then run the following command to build the Ghost binary:
+
 ```bash
 go build ./cmd/ghost
 ```
@@ -59,6 +64,7 @@ chmod +x setup.sh
 ```
 
 This script will:
+
 1. Install system dependencies (ffmpeg, adb, etc.)
 2. Install Go tools (wacli)
 3. Build the Ghost binary
@@ -92,6 +98,37 @@ GHOST_CONFIG_DIR=config
 ```
 
 Alternatively, you can edit `config/config.json` directly.
+
+### 🤖 Running as a Service (Linux/Pi)
+
+To keep Ghost running in the background and auto-start on boot:
+
+1. **Install the binary:**
+
+   ```bash
+   sudo cp ghost /usr/local/bin/
+   ```
+
+2. **Configure the service:**
+   Check `ghost.service` and ensure `User` matches your username (default: `pi`) and paths are correct.
+
+   ```bash
+   nano ghost.service
+   ```
+
+3. **Enable the service:**
+
+   ```bash
+   sudo cp ghost.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable ghost
+   sudo systemctl start ghost
+   ```
+
+4. **View logs:**
+   ```bash
+   journalctl -u ghost -f
+   ```
 
 ## 💻 Hacking Ghost
 

@@ -4,13 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/ghost
+User=ianclemence
+WorkingDirectory=/home/ianclemence/ghost
 ExecStart=/usr/local/bin/ghost gateway
 Restart=always
 RestartSec=5
-Environment=GHOST_CONFIG_DIR=/home/pi/ghost/config
-Environment=GHOST_WORKSPACE_DIR=/home/pi/ghost/workspace
+Environment=GHOST_CONFIG_DIR=/home/ianclemence/ghost/config
+Environment=GHOST_WORKSPACE_DIR=/home/ianclemence/ghost/workspace
 
 [Install]
 WantedBy=multi-user.target
