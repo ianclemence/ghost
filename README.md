@@ -33,60 +33,24 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
+This script will:
+1. Install system dependencies (ffmpeg, adb, etc.)
+2. Install Go tools (wacli)
+3. Build the Ghost binary
+4. (Optional) Install as a system service
+
 ---
 
-### Manual Setup (Advanced)
-
-#### Windows (Manual)
-
-1.  **Build**:
-    ```powershell
-    cd ghost
-    go build -o ghost.exe ./cmd/ghost
-    ```
-2.  **Run**:
-    Run `setup.bat` (which runs `setup_ghost_skills.ps1` internally) or run manually:
-
-    ```powershell
-    .\setup_ghost_skills.ps1
-    ```
-
-    **Verify Gateway**:
-    Run gateway and verify Telegram connection:
-
-    ```powershell
-    .\ghost.exe gateway --debug
-    ```
-
-3.  **Install Skills (Optional)**:
-    To enable camera, system control, and calendar features:
-
-    ```powershell
-    .\setup_ghost_skills.ps1
-    ```
-
-#### Raspberry Pi (Manual)
-
-**Prerequisites:** Ensure `go` (Golang 1.25+) is installed on your Pi.
-
-### 1. Clone the Repository
-
-SSH into your Raspberry Pi and clone this repo:
-
-```bash
-git clone https://github.com/ianclemence/ghost.git
-cd ghost
-```
-
-### 2. Configure Secrets
+### Configuration
 
 Create a `.env` file in the project root with your API keys:
 
 ```bash
+cp .env.example .env
 nano .env
 ```
 
-Add the following content:
+Add your keys:
 
 ```bash
 # Telegram Bot Token (from @BotFather)
@@ -102,53 +66,7 @@ KIMI_API_KEY=your_key_here
 GHOST_CONFIG_DIR=config
 ```
 
-Alternatively, you can edit `config/config.json` directly if you prefer not to use environment variables.
-
-### 3. Build & Run
-
-**Option A: Automated Script (Recommended)**
-
-Run the included script to build and start Ghost:
-
-```bash
-chmod +x setup.sh
-./setup.sh
-```
-
-**Option B: Manual Build**
-
-Compile the Ghost binary directly on your Pi:
-
-```bash
-# Enter project root
-cd ghost
-
-# Copy workspace assets for embedding (required for build)
-cp -r workspace cmd/ghost/
-
-# Build binary
-go build -o ghost cmd/ghost/main.go
-
-# Clean up embedded workspace
-rm -rf cmd/ghost/workspace
-
-# Run
-./ghost gateway --debug
-```
-
-### 4. Install as a Service (Auto-Start)
-
-To make Ghost run automatically when your Pi boots:
-
-1.  Edit `ghost.service` if your username is not `pi` or your path is different.
-2.  Run the install command:
-    ```bash
-    make install
-    ```
-3.  Check status:
-    ```bash
-    sudo systemctl status ghost
-    ```
+Alternatively, you can edit `config/config.json` directly.
 
 ## 💻 Hacking Ghost
 
