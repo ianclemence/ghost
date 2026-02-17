@@ -20,6 +20,15 @@ check_command() {
     fi
 }
 
+# Detect architecture mismatch (64-bit kernel, 32-bit userland)
+# This is common on Raspberry Pi OS (64-bit kernel with 32-bit userland)
+if [ "$(uname -m)" = "aarch64" ] && [ "$(dpkg --print-architecture 2>/dev/null)" = "armhf" ]; then
+    echo -e "${YELLOW}[WARNING] Detected 64-bit kernel with 32-bit userland. Forcing GOARCH=arm.${NC}"
+    export GOARCH=arm
+    export GOARM=7
+    export CGO_ENABLED=1
+fi
+
 # 1. Update & Install System Dependencies
 echo -e "${YELLOW}[1/4] Updating system and installing dependencies...${NC}"
 # Check if apt-get is available (Debian/Ubuntu/PiOS)
