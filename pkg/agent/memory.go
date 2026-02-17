@@ -1,8 +1,8 @@
-// PicoClaw - Ultra-lightweight personal AI agent
-// Inspired by and based on nanobot: https://github.com/HKUDS/nanobot
+// Ghost - Ultra-lightweight personal AI agent
+// Inspired by and based on picoclaw: https://github.com/sipeed/picoclaw
 // License: MIT
 //
-// Copyright (c) 2026 PicoClaw contributors
+// Copyright (c) 2026 Ghost contributors
 
 package agent
 

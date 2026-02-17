@@ -1,8 +1,8 @@
-// PicoClaw - Ultra-lightweight personal AI agent
-// Inspired by and based on nanobot: https://github.com/HKUDS/nanobot
+// Ghost - Ultra-lightweight personal AI agent
+// Inspired by and based on picoclaw: https://github.com/sipeed/picoclaw
 // License: MIT
 //
-// Copyright (c) 2026 PicoClaw contributors
+// Copyright (c) 2026 Ghost contributors
 
 package main
 
@@ -348,7 +348,7 @@ func migrateCmd() {
 			}
 		case "--picoclaw-home":
 			if i+1 < len(args) {
-				opts.PicoClawHome = args[i+1]
+				opts.GhostHome = args[i+1]
 				i++
 			}
 		default:
@@ -370,7 +370,7 @@ func migrateCmd() {
 }
 
 func migrateHelp() {
-	fmt.Println("\nMigrate from OpenClaw to PicoClaw")
+	fmt.Println("\nMigrate from OpenClaw to Ghost")
 	fmt.Println()
 	fmt.Println("Usage: picoclaw migrate [options]")
 	fmt.Println()
@@ -381,7 +381,7 @@ func migrateHelp() {
 	fmt.Println("  --workspace-only   Only migrate workspace files, skip config")
 	fmt.Println("  --force            Skip confirmation prompts")
 	fmt.Println("  --openclaw-home    Override OpenClaw home directory (default: ~/.openclaw)")
-	fmt.Println("  --picoclaw-home    Override PicoClaw home directory (default: ~/.picoclaw)")
+	fmt.Println("  --picoclaw-home    Override Ghost home directory (default: ~/.picoclaw)")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  picoclaw migrate              Detect and migrate from OpenClaw")
