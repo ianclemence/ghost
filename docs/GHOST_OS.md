@@ -245,9 +245,8 @@ Agents acquire capabilities through a modular skill system:
 | Phase | Deliverable | Timeline |
 |-------|-------------|----------|
 | **Phase 1** | Control Plane + 2-agent local setup | Month 1-2 |
-| **Phase 2** | Skill Registry + 5 core skills | Month 2-3 |
-| **Phase 3** | Multi-tenant SaaS infrastructure | Month 3-5 |
-| **Phase 4** | Autonomous agent capabilities | Month 5-6 |
+| **Phase 2** | Multi-tenant SaaS infrastructure | Month 2-4 |
+| **Phase 4** | Autonomous agent capabilities | Month 4-5 |
 
 ---
 
