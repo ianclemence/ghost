@@ -89,6 +89,18 @@ fi
 # 3. Build Ghost
 echo ""
 echo -e "${YELLOW}[3/4] Building Ghost binary...${NC}"
+
+# Check for .env file
+if [ ! -f ".env" ]; then
+    if [ -f ".env.example" ]; then
+        echo -e "${YELLOW}[INFO] No .env file found. Creating from .env.example...${NC}"
+        cp .env.example .env
+        echo -e "${YELLOW}[IMPORTANT] Please edit .env and add your API keys before running Ghost!${NC}"
+    else
+        echo -e "${RED}[WARNING] No .env or .env.example found. You may need to configure API keys manually.${NC}"
+    fi
+fi
+
 if ! check_command "go"; then
     echo -e "${RED}[ERROR] Go is not installed. Cannot build.${NC}"
     exit 1
