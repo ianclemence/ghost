@@ -288,7 +288,7 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 			if content != "" {
 				content += "\n"
 			}
-			content += fmt.Sprintf("[audio]")
+			content += fmt.Sprintf("[audio: %s]", message.Audio.FileName)
 		}
 	}
 
@@ -300,7 +300,7 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, update telego.Updat
 			if content != "" {
 				content += "\n"
 			}
-			content += fmt.Sprintf("[file]")
+			content += fmt.Sprintf("[file: %s]", message.Document.FileName)
 		}
 	}
 
@@ -407,11 +407,11 @@ func markdownToTelegramHTML(text string) string {
 	inlineCodes := extractInlineCodes(text)
 	text = inlineCodes.text
 
-	text = regexp.MustCompile(`^#{1,6}\s+(.+)$`).ReplaceAllString(text, "$1")
-
-	text = regexp.MustCompile(`^>\s*(.*)$`).ReplaceAllString(text, "$1")
-
 	text = escapeHTML(text)
+
+	text = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`).ReplaceAllString(text, "<b>$1</b>")
+
+	text = regexp.MustCompile(`(?m)^&gt;\s*(.*)$`).ReplaceAllString(text, "<blockquote>$1</blockquote>")
 
 	text = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`).ReplaceAllString(text, `<a href="$2">$1</a>`)
 
@@ -430,7 +430,7 @@ func markdownToTelegramHTML(text string) string {
 
 	text = regexp.MustCompile(`~~(.+?)~~`).ReplaceAllString(text, "<s>$1</s>")
 
-	text = regexp.MustCompile(`^[-*]\s+`).ReplaceAllString(text, "• ")
+	text = regexp.MustCompile(`(?m)^[-*]\s+`).ReplaceAllString(text, "• ")
 
 	for i, code := range inlineCodes.codes {
 		escaped := escapeHTML(code)
