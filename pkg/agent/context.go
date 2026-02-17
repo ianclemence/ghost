@@ -190,16 +190,8 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 		systemPrompt += "\n\n## Summary of Previous Conversation\n\n" + summary
 	}
 
-	//This fix prevents the session memory from LLM failure due to elimination of toolu_IDs required from LLM
-	// --- INICIO DEL FIX ---
-	//Diegox-17
-	for len(history) > 0 && (history[0].Role == "tool") {
-		logger.DebugCF("agent", "Removing orphaned tool message from history to prevent LLM error",
-			map[string]interface{}{"role": history[0].Role})
-		history = history[1:]
-	}
-	//Diegox-17
-	// --- FIN DEL FIX ---
+	// Sanitize history to prevent LLM errors with missing tool outputs
+	history = cb.sanitizeHistory(history)
 
 	messages = append(messages, providers.Message{
 		Role:    "system",
@@ -341,4 +333,91 @@ func (cb *ContextBuilder) GetSkillsInfo() map[string]interface{} {
 		"available": len(allSkills),
 		"names":     skillNames,
 	}
+}
+
+// sanitizeHistory removes invalid message sequences from history that would cause LLM API errors.
+// Specifically:
+// 1. Assistant messages with tool calls that don't have corresponding tool response messages.
+// 2. Orphaned tool response messages that don't have a preceding assistant message with matching tool call ID.
+func (cb *ContextBuilder) sanitizeHistory(history []providers.Message) []providers.Message {
+	var sanitized []providers.Message
+
+	for i := 0; i < len(history); i++ {
+		msg := history[i]
+
+		// 1. Check for assistant messages with missing tool responses
+		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+			// Gather all subsequent tool messages
+			foundResponses := make(map[string]bool)
+
+			// Look ahead for tool messages (they must be contiguous after the assistant message)
+			j := i + 1
+			for j < len(history) {
+				nextMsg := history[j]
+				if nextMsg.Role == "tool" {
+					foundResponses[nextMsg.ToolCallID] = true
+					j++
+				} else {
+					// Stop if we encounter a non-tool message
+					break
+				}
+			}
+
+			// Verify if all tool calls have a response
+			allResponsesFound := true
+			for _, tc := range msg.ToolCalls {
+				if !foundResponses[tc.ID] {
+					allResponsesFound = false
+					break
+				}
+			}
+
+			if !allResponsesFound {
+				logger.WarnCF("agent", "Sanitizer: Removing assistant message with missing tool responses", map[string]interface{}{
+					"index":            i,
+					"tool_calls_count": len(msg.ToolCalls),
+					"found_responses":  len(foundResponses),
+				})
+				// Skip this assistant message AND the partial tool responses
+				// i will be incremented by the loop, so set i to j-1
+				i = j - 1
+				continue
+			}
+		}
+
+		// 2. Check for orphaned tool messages
+		if msg.Role == "tool" {
+			hasParent := false
+			// Search backwards in sanitized history for the parent assistant message
+			for k := len(sanitized) - 1; k >= 0; k-- {
+				prevMsg := sanitized[k]
+				if prevMsg.Role == "assistant" {
+					for _, tc := range prevMsg.ToolCalls {
+						if tc.ID == msg.ToolCallID {
+							hasParent = true
+							break
+						}
+					}
+					// If we found an assistant message, check if it's the parent.
+					// Note: Since we are processing sequentially, the parent MUST be in the sanitized history
+					// if we didn't remove it in step 1.
+					if hasParent {
+						break
+					}
+				}
+			}
+
+			if !hasParent {
+				logger.WarnCF("agent", "Sanitizer: Removing orphaned tool message", map[string]interface{}{
+					"index":        i,
+					"tool_call_id": msg.ToolCallID,
+				})
+				continue
+			}
+		}
+
+		sanitized = append(sanitized, msg)
+	}
+
+	return sanitized
 }

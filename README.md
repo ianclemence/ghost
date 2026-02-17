@@ -12,11 +12,36 @@ Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines t
 - **Proactive**: Wakes up to brief you on news, schedule, and reminders.
 - **Self-Modifying**: Includes full source code for on-device hacking.
 
-## 🛠️ Hardware Requirements
+## 🛠️ Requirements
 
+### Hardware
 - **Raspberry Pi 5** (8GB RAM recommended)
 - **32GB MicroSD Card** (or larger)
 - **Telegram Account**
+
+### Software: Ollama (Required for Local AI)
+
+To run Ghost locally, you need **Ollama** installed.
+
+**Windows (PowerShell):**
+```powershell
+irm https://ollama.com/install.ps1 | iex
+```
+
+**Linux / Raspberry Pi:**
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+After installing, pull the model used in config:
+```bash
+ollama pull qwen3:4b
+```
+
+Then run the following command to build the Ghost binary:
+```bash
+go build ./cmd/ghost
+```
 
 ## 🚀 Quick Start
 
