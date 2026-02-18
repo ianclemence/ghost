@@ -24,6 +24,42 @@ def find_file(root_dir, filename):
                 return os.path.join(root, file)
     return None
 
+def search_files(root_dir, query):
+    """
+    Search for a text query in all markdown files within the root directory.
+    """
+    print(f"\n--- Searching for '{query}' in {root_dir} ---\n")
+    results = []
+    for root, dirs, files in os.walk(root_dir):
+        for file in files:
+            if file.endswith(".md"):
+                path = os.path.join(root, file)
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        if query.lower() in content.lower():
+                            rel_path = os.path.relpath(path, root_dir)
+                            results.append(rel_path)
+                except Exception as e:
+                    print(f"Error reading {path}: {e}")
+    
+    if results:
+        for res in results:
+            print(f"- {res}")
+    else:
+        print("No matches found.")
+
+def list_files(root_dir):
+    """
+    List all markdown files in the knowledge graph.
+    """
+    print(f"\n--- Listing all notes in {root_dir} ---\n")
+    for root, dirs, files in os.walk(root_dir):
+        for file in files:
+            if file.endswith(".md"):
+                rel_path = os.path.relpath(os.path.join(root, file), root_dir)
+                print(f"- {rel_path}")
+
 def extract_links(content):
     """
     Extract wikilinks [[Link]] and markdown links [Link](path) from content.
@@ -95,9 +131,21 @@ def traverse(start_node, workspace_root):
     return current_path
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Traverse the Knowledge Graph.")
-    parser.add_argument("node", help="The name of the node (file) to read (e.g., 'index', 'Projects').")
+    parser = argparse.ArgumentParser(description="Traverse and Search the Knowledge Graph.")
+    parser.add_argument("node", nargs="?", help="The name of the node (file) to read (e.g., 'index', 'Projects').")
     parser.add_argument("--root", default=".", help="Root directory for the workspace.")
+    parser.add_argument("--search", help="Search for a string in the knowledge graph.")
+    parser.add_argument("--list", action="store_true", help="List all notes in the knowledge graph.")
     
     args = parser.parse_args()
-    traverse(args.node, args.root)
+    
+    knowledge_root = os.path.join(args.root, "knowledge")
+    
+    if args.search:
+        search_files(knowledge_root, args.search)
+    elif args.list:
+        list_files(knowledge_root)
+    elif args.node:
+        traverse(args.node, args.root)
+    else:
+        parser.print_help()

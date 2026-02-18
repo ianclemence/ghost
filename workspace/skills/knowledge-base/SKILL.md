@@ -6,6 +6,7 @@ description: Manage and traverse the agent's persistent knowledge graph (Three-S
 # Knowledge Base Skill
 
 This skill enables the agent to maintain a persistent "Second Brain" using the **Three-Space Architecture**:
+
 1.  **self/**: Identity, methodology, and long-term memory.
 2.  **notes/**: The core knowledge graph (connected by `[[wikilinks]]`).
 3.  **ops/**: Operational state (inbox, tasks, logs).
@@ -13,6 +14,7 @@ This skill enables the agent to maintain a persistent "Second Brain" using the *
 ## Capabilities
 
 ### 1. Initialize the Graph
+
 Create the folder structure and core files if they don't exist.
 
 ```bash
@@ -20,6 +22,7 @@ python workspace/skills/knowledge-base/scripts/init_graph.py --root workspace
 ```
 
 ### 2. Traverse the Graph
+
 Read a node and see its connections. Use this to "surf" the knowledge base.
 
 ```bash
@@ -30,7 +33,20 @@ python workspace/skills/knowledge-base/scripts/traverse.py index --root workspac
 python workspace/skills/knowledge-base/scripts/traverse.py "Project Alpha" --root workspace
 ```
 
-### 3. Quick Capture (Inbox)
+### 3. Search the Graph
+
+Find notes containing specific keywords.
+
+```bash
+# Search for "architecture"
+python workspace/skills/knowledge-base/scripts/traverse.py --search "architecture" --root workspace
+
+# List all notes
+python workspace/skills/knowledge-base/scripts/traverse.py --list --root workspace
+```
+
+### 4. Quick Capture (Inbox)
+
 Add a thought or task to the Inbox.
 
 ```bash
@@ -39,12 +55,14 @@ Add-Content workspace/knowledge/ops/inbox.md "- [ ] Check out the new API docume
 ```
 
 ## Rules of the Graph
+
 1.  **Link Generously**: Every note should link to at least one other note (`[[Parent]]` or `[[Child]]`).
 2.  **Atomic Notes**: One idea per file.
 3.  **Prose Titles**: Use descriptive filenames like `Agile Methodology.md` instead of `agile.md`.
 4.  **Frontmatter**: All notes must have a YAML header with `type` and `created` date.
 
 ## File Structure
+
 ```text
 workspace/knowledge/
 ├── self/               # Agent Memory
@@ -52,6 +70,7 @@ workspace/knowledge/
 │   └── methodology.md  # How I work
 ├── notes/              # Knowledge Graph
 │   ├── index.md        # Entry point
+│   ├── references/     # Ingested docs
 │   └── ...             # Your notes
 └── ops/                # System State
     ├── inbox.md        # Quick capture
