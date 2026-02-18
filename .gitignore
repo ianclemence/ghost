@@ -16,6 +16,7 @@ cmd/ghost/workspace
 config.json
 sessions/
 build/
+tmp/
 
 # Coverage
 coverage.txt
@@ -41,6 +42,7 @@ dist/
 workspace/*
 
 # 2. Allow configuration and code (Whitelist)
+!workspace/knowledge/
 !workspace/skills/
 !workspace/README.md
 !workspace/cron/README.md
