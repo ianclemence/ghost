@@ -38,7 +38,15 @@ ifeq ($(UNAME_S),Linux)
 	ifeq ($(UNAME_M),x86_64)
 		ARCH=amd64
 	else ifeq ($(UNAME_M),aarch64)
-		ARCH=arm64
+		# Detect 32-bit userland (Raspberry Pi OS 64-bit kernel with 32-bit userspace)
+		ifeq ($(shell dpkg --print-architecture 2>/dev/null),armhf)
+			ARCH=arm
+			export GOARCH=arm
+			export GOARM=7
+			export CGO_ENABLED=1
+		else
+			ARCH=arm64
+		endif
 	else ifeq ($(UNAME_M),riscv64)
 		ARCH=riscv64
 	else
