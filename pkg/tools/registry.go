@@ -2,22 +2,27 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/santhosh-tekuri/jsonschema/v5"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
 
 type ToolRegistry struct {
-	tools map[string]Tool
-	mu    sync.RWMutex
+	tools   map[string]Tool
+	schemas map[string]*jsonschema.Schema
+	mu      sync.RWMutex
 }
 
 func NewToolRegistry() *ToolRegistry {
 	return &ToolRegistry{
-		tools: make(map[string]Tool),
+		tools:   make(map[string]Tool),
+		schemas: make(map[string]*jsonschema.Schema),
 	}
 }
 
@@ -25,6 +30,25 @@ func (r *ToolRegistry) Register(tool Tool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.tools[tool.Name()] = tool
+
+	// Compile schema for validation
+	schemaMap := tool.Parameters()
+	if schemaMap != nil {
+		schemaJSON, err := json.Marshal(schemaMap)
+		if err == nil {
+			compiler := jsonschema.NewCompiler()
+			if err := compiler.AddResource("schema.json", strings.NewReader(string(schemaJSON))); err == nil {
+				if schema, err := compiler.Compile("schema.json"); err == nil {
+					r.schemas[tool.Name()] = schema
+				} else {
+					logger.WarnCF("tool", "Failed to compile schema for tool validation", map[string]interface{}{
+						"tool":  tool.Name(),
+						"error": err.Error(),
+					})
+				}
+			}
+		}
+	}
 }
 
 func (r *ToolRegistry) Get(name string) (Tool, bool) {
@@ -39,8 +63,7 @@ func (r *ToolRegistry) Execute(ctx context.Context, name string, args map[string
 }
 
 // ExecuteWithContext executes a tool with channel/chatID context and optional async callback.
-// If the tool implements AsyncTool and a non-nil callback is provided,
-// the callback will be set on the tool before execution.
+// It also validates tool arguments against the tool's JSON schema.
 func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args map[string]interface{}, channel, chatID string, asyncCallback AsyncCallback) *ToolResult {
 	logger.InfoCF("tool", "Tool execution started",
 		map[string]interface{}{
@@ -55,6 +78,30 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 				"tool": name,
 			})
 		return ErrorResult(fmt.Sprintf("tool %q not found", name)).WithError(fmt.Errorf("tool not found"))
+	}
+
+	// Validate arguments
+	r.mu.RLock()
+	schema, hasSchema := r.schemas[name]
+	r.mu.RUnlock()
+
+	if hasSchema {
+		if err := schema.Validate(args); err != nil {
+			logger.WarnCF("tool", "Tool argument validation failed", map[string]interface{}{
+				"tool":  name,
+				"args":  args,
+				"error": err.Error(),
+			})
+
+			var errMsg string
+			if validationErr, ok := err.(*jsonschema.ValidationError); ok {
+				errMsg = fmt.Sprintf("Invalid arguments for tool %q:\n%s", name, formatValidationError(validationErr))
+			} else {
+				errMsg = fmt.Sprintf("Invalid arguments for tool %q: %v", name, err)
+			}
+
+			return ErrorResult(errMsg).WithError(err)
+		}
 	}
 
 	// If tool implements ContextualTool, set context
@@ -99,6 +146,18 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	}
 
 	return result
+}
+
+func formatValidationError(ve *jsonschema.ValidationError) string {
+	var msgs []string
+	if len(ve.Causes) == 0 {
+		msgs = append(msgs, fmt.Sprintf("- %s: %s", ve.InstanceLocation, ve.Message))
+	} else {
+		for _, cause := range ve.Causes {
+			msgs = append(msgs, formatValidationError(cause))
+		}
+	}
+	return strings.Join(msgs, "\n")
 }
 
 func (r *ToolRegistry) GetDefinitions() []map[string]interface{} {
