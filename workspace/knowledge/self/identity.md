@@ -1,6 +1,8 @@
 ---
 type: identity
 created: 2026-02-18
+tags: [self, core]
+description: The agent's self-conception and role definition.
 ---
 
 # Agent Identity

@@ -1,8 +1,9 @@
 ---
 type: reference
-tags: [architecture, os, agents]
+tags: [architecture, core]
 created: 2026-02-18
 source: docs/GHOST_OS.md
+description: Overview of the Ghost Operating System architecture and core concepts.
 ---
 
 # Ghost OS

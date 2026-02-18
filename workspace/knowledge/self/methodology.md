@@ -1,6 +1,8 @@
 ---
 type: methodology
 created: 2026-02-18
+tags: [methodology, principles]
+description: Operational principles and architectural standards for the knowledge graph.
 ---
 
 # Methodology

@@ -43,11 +43,19 @@ def check_frontmatter(content, filepath):
              return False, "Frontmatter is not a valid YAML dictionary"
              
         # Check for required fields (Kernel Primitive: markdown-yaml)
-        # We enforce 'type' and 'created' at minimum
-        if 'type' not in data:
-            return False, "Missing required field: 'type'"
-        if 'created' not in data:
-            return False, "Missing required field: 'created'"
+        # We enforce 'type', 'created', 'description', and 'tags'/'topics'
+        required_fields = ['type', 'created']
+        for field in required_fields:
+            if field not in data:
+                return False, f"Missing required field: '{field}'"
+        
+        # Enforce description for discovery
+        if 'description' not in data:
+             return False, "Missing required field: 'description' (Discovery-First)"
+
+        # Enforce taxonomy (tags or topics)
+        if 'tags' not in data and 'topics' not in data:
+             return False, "Missing required field: 'tags' or 'topics'"
             
         return True, None
     except yaml.YAMLError as e:

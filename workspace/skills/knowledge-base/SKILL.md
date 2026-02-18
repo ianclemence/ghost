@@ -74,9 +74,21 @@ Add a thought or task to the Inbox.
 Add-Content workspace/knowledge/ops/inbox.md "- [ ] Check out the new API documentation."
 ```
 
+## Session Rhythm
+
+**Orient -> Work -> Persist**
+
+1.  **Orient**: Read `self/identity.md` and `ops/inbox.md`. Know who you are and what is pending.
+2.  **Work**: Execute tasks. Capture insights immediately in `notes/` or `ops/inbox.md`.
+3.  **Persist**: Before finishing, run `verify` to ensure graph health. Update MOCs.
+
 ## Rules of the Graph (The Kernel)
 
-1.  **Markdown-YAML**: All notes must have valid YAML frontmatter with `type` and `created`.
+1.  **Markdown-YAML**: All notes must have:
+    - `type`: The note type (e.g., concept, project).
+    - `created`: Date of creation.
+    - `description`: One-sentence summary for search/discovery.
+    - `tags` (or `topics`): Taxonomy classification.
 2.  **Wikilinks**: Use `[[Link]]` to connect concepts. All links must resolve to existing files.
 3.  **MOC Hierarchy**: Use Maps of Content (MOCs) like `index.md` to organize notes.
 4.  **Atomic Notes**: One idea per file.

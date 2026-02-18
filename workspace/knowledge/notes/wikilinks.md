@@ -2,6 +2,7 @@
 type: concept
 created: 2026-02-18
 tags: [kernel, primitive]
+description: Definition and rules for using wikilinks as graph edges.
 ---
 
 # Wikilinks

@@ -2,6 +2,7 @@
 type: moc
 created: 2026-02-18
 tags: [entry-point, root]
+description: Root entry point for the knowledge graph.
 ---
 
 # Knowledge Graph Root
@@ -19,7 +20,6 @@ Welcome to the knowledge graph. This is the entry point for all traversal.
 
 - [[ghost-os|Ghost OS]] - Architecture overview.
 - [[skill-graphs|Skill Graphs]] - The concept behind this knowledge base.
-- [[arscontexta-repo|Ars Contexta]] - External repository analysis.
 
 ## Inbox
 

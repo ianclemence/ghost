@@ -3,6 +3,7 @@ type: reference
 tags: [concept, skills, architecture]
 created: 2026-02-18
 source: docs/SKILL_GRAPHS.md
+description: Conceptual documentation on Skill Graphs and their primitives.
 ---
 
 # Skill Graphs
@@ -35,7 +36,3 @@ Most decisions happen _before_ reading a single full file.
 - **Trading Skill Graph**: risk management, market psychology, technical analysis.
 - **Legal Skill Graph**: contract patterns, compliance, jurisdiction specifics.
 - **Company Skill Graph**: org structure, product knowledge, processes.
-
-## Ars Contexta
-
-Ars Contexta is a skill graph that teaches an agent how to build skill graphs (specifically knowledge bases). It consists of ~250 connected markdown files that the agent traverses to derive a local knowledge system.
