@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/philippgille/chromem-go"
+	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/db"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -21,6 +22,7 @@ type Store struct {
 	provider   providers.EmbeddingProvider
 	chromemDB  *chromem.DB
 	collection *chromem.Collection
+	config     config.RAGConfig
 	mu         sync.RWMutex
 	ready      bool
 }
@@ -32,7 +34,7 @@ type SearchResult struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func NewStore(database *db.DB, provider providers.EmbeddingProvider) *Store {
+func NewStore(database *db.DB, provider providers.EmbeddingProvider, cfg config.RAGConfig) *Store {
 	// Initialize in-memory vector DB
 	chromemDB := chromem.NewDB()
 	// Create collection without an embedder since we provide embeddings manually
@@ -47,6 +49,7 @@ func NewStore(database *db.DB, provider providers.EmbeddingProvider) *Store {
 		provider:   provider,
 		chromemDB:  chromemDB,
 		collection: collection,
+		config:     cfg,
 	}
 }
 

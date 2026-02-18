@@ -48,10 +48,18 @@ type Config struct {
 	Channels  ChannelsConfig  `json:"channels"`
 	Providers ProvidersConfig `json:"providers"`
 	Gateway   GatewayConfig   `json:"gateway"`
+	RAG       RAGConfig       `json:"rag"`
 	Tools     ToolsConfig     `json:"tools"`
 	Heartbeat HeartbeatConfig `json:"heartbeat"`
 	Devices   DevicesConfig   `json:"devices"`
 	mu        sync.RWMutex
+}
+
+type RAGConfig struct {
+	Enabled        bool `json:"enabled" env:"GHOST_RAG_ENABLED"`
+	M              int  `json:"m" env:"GHOST_RAG_M"`                           // Max connections per layer (default 16)
+	EfConstruction int  `json:"ef_construction" env:"GHOST_RAG_EF_CONSTRUCTION"` // Size of dynamic candidate list during construction (default 200)
+	EfSearch       int  `json:"ef_search" env:"GHOST_RAG_EF_SEARCH"`             // Size of dynamic candidate list during search (default 10)
 }
 
 type AgentsConfig struct {
@@ -309,6 +317,12 @@ func DefaultConfig() *Config {
 		Gateway: GatewayConfig{
 			Host: "0.0.0.0",
 			Port: 18790,
+		},
+		RAG: RAGConfig{
+			Enabled:        true,
+			M:              16,
+			EfConstruction: 200,
+			EfSearch:       10,
 		},
 		Tools: ToolsConfig{
 			Web: WebToolsConfig{

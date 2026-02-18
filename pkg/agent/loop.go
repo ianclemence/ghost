@@ -138,16 +138,20 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	// Initialize RAG
 	var ragStore *rag.Store
-	if embedder, ok := provider.(providers.EmbeddingProvider); ok {
-		ragStore = rag.NewStore(database, embedder)
-		// Load index asynchronously
-		go func() {
-			if err := ragStore.LoadIndex(context.Background()); err != nil {
-				logger.ErrorCF("agent", "Failed to load RAG index", map[string]interface{}{"error": err.Error()})
-			}
-		}()
+	if cfg.RAG.Enabled {
+		if embedder, ok := provider.(providers.EmbeddingProvider); ok {
+			ragStore = rag.NewStore(database, embedder, cfg.RAG)
+			// Load index asynchronously
+			go func() {
+				if err := ragStore.LoadIndex(context.Background()); err != nil {
+					logger.ErrorCF("agent", "Failed to load RAG index", map[string]interface{}{"error": err.Error()})
+				}
+			}()
+		} else {
+			logger.WarnC("agent", "Provider does not support embeddings, RAG disabled")
+		}
 	} else {
-		logger.WarnC("agent", "Provider does not support embeddings, RAG disabled")
+		logger.InfoC("agent", "RAG is disabled in config")
 	}
 
 	if ragStore != nil {
