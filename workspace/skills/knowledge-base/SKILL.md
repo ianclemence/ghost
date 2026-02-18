@@ -45,7 +45,27 @@ python workspace/skills/knowledge-base/scripts/traverse.py --search "architectur
 python workspace/skills/knowledge-base/scripts/traverse.py --list --root workspace
 ```
 
-### 4. Quick Capture (Inbox)
+### 4. Verify Integrity (Kernel Primitives)
+
+Check for missing frontmatter and broken wikilinks.
+
+```bash
+# Verify the entire graph
+python workspace/skills/knowledge-base/scripts/verify.py --root workspace
+
+# Verify a specific note
+python workspace/skills/knowledge-base/scripts/verify.py --note "index" --root workspace
+```
+
+### 5. Process Inbox
+
+Review items in the inbox for processing.
+
+```bash
+python workspace/skills/knowledge-base/scripts/process.py --root workspace
+```
+
+### 6. Quick Capture (Inbox)
 
 Add a thought or task to the Inbox.
 
@@ -54,12 +74,13 @@ Add a thought or task to the Inbox.
 Add-Content workspace/knowledge/ops/inbox.md "- [ ] Check out the new API documentation."
 ```
 
-## Rules of the Graph
+## Rules of the Graph (The Kernel)
 
-1.  **Link Generously**: Every note should link to at least one other note (`[[Parent]]` or `[[Child]]`).
-2.  **Atomic Notes**: One idea per file.
-3.  **Prose Titles**: Use descriptive filenames like `Agile Methodology.md` instead of `agile.md`.
-4.  **Frontmatter**: All notes must have a YAML header with `type` and `created` date.
+1.  **Markdown-YAML**: All notes must have valid YAML frontmatter with `type` and `created`.
+2.  **Wikilinks**: Use `[[Link]]` to connect concepts. All links must resolve to existing files.
+3.  **MOC Hierarchy**: Use Maps of Content (MOCs) like `index.md` to organize notes.
+4.  **Atomic Notes**: One idea per file.
+5.  **Prose Titles**: Use descriptive filenames.
 
 ## File Structure
 
