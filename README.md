@@ -1,6 +1,5 @@
 # Ghost Pi: Your Sovereign AI Presence
-
-> "Not a tool, but a witness."
+> "Your personal autonomous, private AI companion that never sleeps."
 
 Ghost is a personal AI presence designed to run on a Raspberry Pi. It combines the efficiency of **Ghost** (Go-based agent) with the cognitive power of **Kimi K2.5** (256k context) to create a persistent, always-on companion that lives in your Telegram.
 
