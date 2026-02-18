@@ -144,9 +144,9 @@ sudo systemctl restart ghost
 **For Code Changes (Go files):**
 You must rebuild and replace the binary:
 
-1. Rebuild: `go build -o ghost ./cmd/ghost`
-2. Replace: `sudo cp ghost /usr/local/bin/`
-3. Restart: `sudo systemctl restart ghost`
+```bash
+make install && sudo systemctl restart ghost
+```
 
 ## 💻 Hacking Ghost
 
