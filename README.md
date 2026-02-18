@@ -148,15 +148,6 @@ You must rebuild and replace the binary:
 2. Replace: `sudo cp ghost /usr/local/bin/`
 3. Restart: `sudo systemctl restart ghost`
 
-## 💻 Hacking Ghost
-
-This repo includes the full source code.
-
-**To modify Ghost's behavior:**
-
-1.  Edit the Go code in `cmd/ghost/main.go` or other files in `pkg/`.
-2.  Rebuild and restart: `make install` (or just run `go build` and `./ghost agent` for testing).
-
 ## 🧠 Memory System
 
 Ghost's memory lives in `ghost.db` (SQLite) and `workspace/memory/`.
