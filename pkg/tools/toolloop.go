@@ -1,5 +1,5 @@
 // Ghost - Ultra-lightweight personal AI agent
-// Inspired by and based on picoclaw: https://github.com/sipeed/picoclaw
+// Inspired by and based on picoclaw: https://github.com/ianclemence/ghost
 // License: MIT
 //
 // Copyright (c) 2026 Ghost contributors
@@ -11,9 +11,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/sipeed/picoclaw/pkg/logger"
-	"github.com/sipeed/picoclaw/pkg/providers"
-	"github.com/sipeed/picoclaw/pkg/utils"
+	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/utils"
 )
 
 // ToolLoopConfig configures the tool execution loop.

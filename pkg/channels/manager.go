@@ -1,5 +1,5 @@
 // Ghost - Ultra-lightweight personal AI agent
-// Inspired by and based on picoclaw: https://github.com/sipeed/picoclaw
+// Inspired by and based on picoclaw: https://github.com/ianclemence/ghost
 // License: MIT
 //
 // Copyright (c) 2026 Ghost contributors
@@ -11,10 +11,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/sipeed/picoclaw/pkg/bus"
-	"github.com/sipeed/picoclaw/pkg/config"
-	"github.com/sipeed/picoclaw/pkg/constants"
-	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/constants"
+	"github.com/ianclemence/ghost/pkg/logger"
 )
 
 type Manager struct {

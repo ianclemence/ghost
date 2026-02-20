@@ -1,5 +1,5 @@
 // Ghost - Ultra-lightweight personal AI agent
-// Inspired by and based on picoclaw: https://github.com/sipeed/picoclaw
+// Inspired by and based on picoclaw: https://github.com/ianclemence/ghost
 // License: MIT
 //
 // Copyright (c) 2026 Ghost contributors
@@ -22,21 +22,21 @@ import (
 
 	"github.com/chzyer/readline"
 	"github.com/joho/godotenv"
-	"github.com/sipeed/picoclaw/pkg/agent"
-	"github.com/sipeed/picoclaw/pkg/auth"
-	"github.com/sipeed/picoclaw/pkg/bus"
-	"github.com/sipeed/picoclaw/pkg/channels"
-	"github.com/sipeed/picoclaw/pkg/config"
-	"github.com/sipeed/picoclaw/pkg/cron"
-	"github.com/sipeed/picoclaw/pkg/devices"
-	"github.com/sipeed/picoclaw/pkg/heartbeat"
-	"github.com/sipeed/picoclaw/pkg/logger"
-	"github.com/sipeed/picoclaw/pkg/migrate"
-	"github.com/sipeed/picoclaw/pkg/providers"
-	"github.com/sipeed/picoclaw/pkg/skills"
-	"github.com/sipeed/picoclaw/pkg/state"
-	"github.com/sipeed/picoclaw/pkg/tools"
-	"github.com/sipeed/picoclaw/pkg/voice"
+	"github.com/ianclemence/ghost/pkg/agent"
+	"github.com/ianclemence/ghost/pkg/auth"
+	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/channels"
+	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/cron"
+	"github.com/ianclemence/ghost/pkg/devices"
+	"github.com/ianclemence/ghost/pkg/heartbeat"
+	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/migrate"
+	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/skills"
+	"github.com/ianclemence/ghost/pkg/state"
+	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/voice"
 )
 
 //go:generate cp -r ../../workspace .

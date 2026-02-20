@@ -1,5 +1,5 @@
 // Ghost - Ultra-lightweight personal AI agent
-// Inspired by and based on picoclaw: https://github.com/sipeed/picoclaw
+// Inspired by and based on picoclaw: https://github.com/ianclemence/ghost
 // License: MIT
 //
 // Copyright (c) 2026 Ghost contributors

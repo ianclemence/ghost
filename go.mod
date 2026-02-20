@@ -1,4 +1,4 @@
-module github.com/sipeed/picoclaw
+module github.com/ianclemence/ghost
 
 go 1.25.7
 
@@ -24,6 +24,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/joho/godotenv v1.5.1
 	github.com/philippgille/chromem-go v0.7.0
+	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	modernc.org/sqlite v1.45.0
 )
 
@@ -45,7 +46,6 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/text v0.34.0 // indirect

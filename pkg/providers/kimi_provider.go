@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/logger"
 )
 
 type KimiProvider struct {
