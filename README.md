@@ -67,9 +67,8 @@ chmod +x setup.sh
 This script will:
 
 1. Install system dependencies (ffmpeg, adb, etc.)
-2. Install Go tools (wacli)
-3. Build the Ghost binary
-4. (Optional) Install as a system service
+2. Build the Ghost binary
+3. (Optional) Install as a system service
 
 ---
 

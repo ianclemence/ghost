@@ -67,25 +67,6 @@ else
     echo -e "${GREEN}[OK] gcalcli already installed.${NC}"
 fi
 
-# 2.1 Install Go Tools (wacli)
-echo ""
-echo -e "${YELLOW}[2.1/4] Installing Go tools (WhatsApp skill)...${NC}"
-if ! check_command "wacli"; then
-    echo "Installing wacli..."
-    go install github.com/steipete/wacli/cmd/wacli@latest
-    
-    # Add Go bin to PATH if not already there
-    export PATH=$PATH:$(go env GOPATH)/bin
-    
-    if check_command "wacli"; then
-        echo -e "${GREEN}[OK] wacli installed.${NC}"
-    else
-        echo -e "${RED}[ERROR] wacli installation failed. Please check your Go environment.${NC}"
-    fi
-else
-    echo -e "${GREEN}[OK] wacli already installed.${NC}"
-fi
-
 # 3. Build Ghost
 echo ""
 echo -e "${YELLOW}[3/4] Building Ghost binary...${NC}"
