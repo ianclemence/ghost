@@ -1,7 +1,7 @@
 {
   "agents": {
     "defaults": {
-      "workspace": "D:/laragon/www/ghost/workspace",
+      "workspace": "~/ghost/workspace",
       "model": "kimi-k2.5",
       "max_tokens": 8192,
       "temperature": 0.6,
