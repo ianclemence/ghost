@@ -97,7 +97,7 @@ if [ ! -f "$PICOLM_DIR/bin/picolm" ]; then
     cp picolm "$PICOLM_DIR/bin/"
     
     # Clean up
-    cd "$OLDPWD"
+    cd "$GHOST_ROOT"
     rm -rf /tmp/picolm_src
     echo -e "${GREEN}[OK] PicoLM binary installed to $PICOLM_DIR/bin/picolm${NC}"
 else
