@@ -20,7 +20,7 @@ echo [OK] Go found.
 
 :: 2. Install Skills (PowerShell Wrapper)
 echo.
-echo [2/3] Installing Ghost Skills (Camera, System, Calendar)...
+echo [2/3] Installing Ghost Skills (Camera, System, Calendar, Local LLM)...
 echo This may ask for Administrator permissions to install tools via Winget.
 powershell -ExecutionPolicy Bypass -File "%~dp0setup_ghost_skills.ps1"
 if %errorlevel% neq 0 (

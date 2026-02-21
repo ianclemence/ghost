@@ -52,4 +52,43 @@ if (Check-Command "winget") {
     Write-Host "- ffmpeg: https://ffmpeg.org/download.html"
 }
 
+# 3. PicoLM (Local LLM) Setup
+Write-Host "Checking PicoLM (Local LLM)..." -ForegroundColor Cyan
+$PicoLMDir = "$env:USERPROFILE\.picolm"
+$PicoLMBinDir = "$PicoLMDir\bin"
+$PicoLMModelDir = "$PicoLMDir\models"
+$PicoLMBinary = "$PicoLMBinDir\picolm.exe"
+$PicoLMModel = "$PicoLMModelDir\tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+
+# Create directories
+if (-not (Test-Path $PicoLMBinDir)) { New-Item -ItemType Directory -Force -Path $PicoLMBinDir | Out-Null }
+if (-not (Test-Path $PicoLMModelDir)) { New-Item -ItemType Directory -Force -Path $PicoLMModelDir | Out-Null }
+
+# Check/Download Model
+if (-not (Test-Path $PicoLMModel)) {
+    Write-Host "Downloading TinyLlama model (638MB)..." -ForegroundColor Yellow
+    try {
+        Invoke-WebRequest -Uri "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf" -OutFile $PicoLMModel
+        Write-Host "✅ Model downloaded to $PicoLMModel" -ForegroundColor Green
+    } catch {
+        Write-Host "❌ Failed to download model. Please download manually." -ForegroundColor Red
+        Write-Host "URL: https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+    }
+} else {
+    Write-Host "✅ Model found at $PicoLMModel" -ForegroundColor Green
+}
+
+# Check Binary
+if (-not (Test-Path $PicoLMBinary)) {
+    Write-Host "⚠️ PicoLM binary not found at $PicoLMBinary" -ForegroundColor Yellow
+    Write-Host "To use Local LLM on Windows:"
+    Write-Host "1. You need to compile PicoLM from source (https://github.com/picolm/picolm)"
+    Write-Host "2. Or download a pre-built Windows binary if available."
+    Write-Host "3. Place 'picolm.exe' in: $PicoLMBinDir"
+    Write-Host "Skipping binary installation (requires manual build on Windows)."
+} else {
+    Write-Host "✅ PicoLM binary found." -ForegroundColor Green
+}
+
+
 Write-Host "Done. Please restart your terminal to update PATH." -ForegroundColor Cyan

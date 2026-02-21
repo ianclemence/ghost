@@ -186,8 +186,9 @@ type ProvidersConfig struct {
 	Nvidia        ProviderConfig `json:"nvidia"`
 	Moonshot      ProviderConfig `json:"moonshot"`
 	ShengSuanYun  ProviderConfig `json:"shengsuanyun"`
-	DeepSeek      ProviderConfig `json:"deepseek"`
-	GitHubCopilot ProviderConfig `json:"github_copilot"`
+	DeepSeek      ProviderConfig       `json:"deepseek"`
+	GitHubCopilot ProviderConfig       `json:"github_copilot"`
+	PicoLM        PicoLMProviderConfig `json:"picolm"`
 }
 
 type ProviderConfig struct {
@@ -196,6 +197,14 @@ type ProviderConfig struct {
 	Proxy       string `json:"proxy,omitempty" env:"GHOST_PROVIDERS_{{.Name}}_PROXY"`
 	AuthMethod  string `json:"auth_method,omitempty" env:"GHOST_PROVIDERS_{{.Name}}_AUTH_METHOD"`
 	ConnectMode string `json:"connect_mode,omitempty" env:"GHOST_PROVIDERS_{{.Name}}_CONNECT_MODE"` //only for Github Copilot, `stdio` or `grpc`
+}
+
+type PicoLMProviderConfig struct {
+	BinaryPath string `json:"binary" env:"GHOST_PROVIDERS_PICOLM_BINARY"`
+	ModelPath  string `json:"model" env:"GHOST_PROVIDERS_PICOLM_MODEL"`
+	Threads    int    `json:"threads" env:"GHOST_PROVIDERS_PICOLM_THREADS"`
+	Context    int    `json:"context" env:"GHOST_PROVIDERS_PICOLM_CONTEXT"`
+	Template   string `json:"template" env:"GHOST_PROVIDERS_PICOLM_TEMPLATE"`
 }
 
 type GatewayConfig struct {

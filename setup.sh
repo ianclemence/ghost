@@ -67,6 +67,56 @@ else
     echo -e "${GREEN}[OK] gcalcli already installed.${NC}"
 fi
 
+# 2.5. Install PicoLM (Local LLM)
+echo ""
+echo -e "${YELLOW}[2.5/4] Installing PicoLM (Local LLM)...${NC}"
+PICOLM_DIR="$HOME/.picolm"
+mkdir -p "$PICOLM_DIR"
+
+if [ ! -f "$PICOLM_DIR/bin/picolm" ]; then
+    echo "Cloning PicoLM..."
+    # Clone to a temporary directory
+    if [ -d "/tmp/picolm_src" ]; then
+        rm -rf /tmp/picolm_src
+    fi
+    git clone https://github.com/picolm/picolm.git /tmp/picolm_src
+    
+    echo "Building PicoLM..."
+    cd /tmp/picolm_src/picolm
+    
+    # Detect architecture for make target
+    if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "armv7l" ]; then
+         echo "Building for Pi/ARM..."
+         make pi
+    else
+         echo "Building for x86/Native..."
+         make native
+    fi
+    
+    mkdir -p "$PICOLM_DIR/bin"
+    cp picolm "$PICOLM_DIR/bin/"
+    
+    # Clean up
+    cd "$OLDPWD"
+    rm -rf /tmp/picolm_src
+    echo -e "${GREEN}[OK] PicoLM binary installed to $PICOLM_DIR/bin/picolm${NC}"
+else
+    echo -e "${GREEN}[OK] PicoLM binary already exists.${NC}"
+fi
+
+# Model
+MODEL_DIR="$PICOLM_DIR/models"
+MODEL_PATH="$MODEL_DIR/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+
+if [ ! -f "$MODEL_PATH" ]; then
+    echo "Downloading TinyLlama model (638MB)..."
+    mkdir -p "$MODEL_DIR"
+    curl -L -o "$MODEL_PATH" "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+    echo -e "${GREEN}[OK] Model downloaded to $MODEL_PATH${NC}"
+else
+    echo -e "${GREEN}[OK] TinyLlama model already exists.${NC}"
+fi
+
 # 3. Build Ghost
 echo ""
 echo -e "${YELLOW}[3/4] Building Ghost binary...${NC}"

@@ -331,6 +331,8 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			}
 			return NewGitHubCopilotProvider(apiBase, cfg.Providers.GitHubCopilot.ConnectMode, model)
 
+		case "picolm":
+			return NewPicoLMProvider(cfg.Providers.PicoLM)
 		}
 
 	}
