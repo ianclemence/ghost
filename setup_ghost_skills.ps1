@@ -83,7 +83,8 @@ if (-not (Test-Path $PicoLMBinary)) {
     Write-Host "⚠️ PicoLM binary not found at $PicoLMBinary" -ForegroundColor Yellow
     Write-Host "To use Local LLM on Windows:"
     Write-Host "1. You need to compile PicoLM from source (https://github.com/picolm/picolm)"
-    Write-Host "2. Or download a pre-built Windows binary if available."
+    Write-Host "   (Note: The 'curl | bash' install script is for Linux/Pi only)"
+    Write-Host "2. Clone the repo and run 'build.bat' if you have Visual Studio (MSVC)."
     Write-Host "3. Place 'picolm.exe' in: $PicoLMBinDir"
     Write-Host "Skipping binary installation (requires manual build on Windows)."
 } else {
