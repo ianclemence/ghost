@@ -192,10 +192,18 @@ func (p *PicoLMProvider) formatPrompt(messages []Message) string {
 }
 
 func expandPath(path string) string {
-	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~\\") {
+	if strings.HasPrefix(path, "$HOME") {
 		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, path[2:])
+			return filepath.Join(home, path[5:])
 		}
 	}
-	return path
+	if strings.HasPrefix(path, "~") {
+		if home, err := os.UserHomeDir(); err == nil {
+			if len(path) == 1 {
+				return home
+			}
+			return filepath.Join(home, path[1:])
+		}
+	}
+	return os.ExpandEnv(path)
 }
