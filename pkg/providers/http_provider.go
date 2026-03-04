@@ -331,8 +331,12 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			}
 			return NewGitHubCopilotProvider(apiBase, cfg.Providers.GitHubCopilot.ConnectMode, model)
 
-		case "picolm":
-			return NewPicoLMProvider(cfg.Providers.PicoLM)
+		case "ollama":
+			apiKey = cfg.Providers.Ollama.APIKey
+			apiBase = cfg.Providers.Ollama.APIBase
+			if apiBase == "" {
+				apiBase = "http://localhost:11434/v1"
+			}
 		}
 
 	}
@@ -340,6 +344,13 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 	// Fallback: detect provider from model name
 	if apiKey == "" && apiBase == "" {
 		switch {
+		case strings.HasPrefix(model, "ollama/"):
+			apiKey = "ollama" // Placeholder for Ollama
+			apiBase = cfg.Providers.Ollama.APIBase
+			if apiBase == "" {
+				apiBase = "http://localhost:11434/v1"
+			}
+			model = model[7:] // Strip "ollama/" prefix
 		case (strings.Contains(lowerModel, "kimi") || strings.Contains(lowerModel, "moonshot") || strings.HasPrefix(model, "moonshot/")) && cfg.Providers.Moonshot.APIKey != "":
 			apiKey = cfg.Providers.Moonshot.APIKey
 			apiBase = cfg.Providers.Moonshot.APIBase
@@ -428,7 +439,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 		}
 	}
 
-	if apiKey == "" && !strings.HasPrefix(model, "bedrock/") {
+	if apiKey == "" && !strings.HasPrefix(model, "bedrock/") && !strings.Contains(apiBase, "localhost") && !strings.Contains(apiBase, "11434") {
 		return nil, fmt.Errorf("no API key configured for provider (model: %s)", model)
 	}
 
