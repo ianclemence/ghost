@@ -52,44 +52,18 @@ if (Check-Command "winget") {
     Write-Host "- ffmpeg: https://ffmpeg.org/download.html"
 }
 
-# 3. PicoLM (Local LLM) Setup
-Write-Host "Checking PicoLM (Local LLM)..." -ForegroundColor Cyan
-$PicoLMDir = "$env:USERPROFILE\.picolm"
-$PicoLMBinDir = "$PicoLMDir\bin"
-$PicoLMModelDir = "$PicoLMDir\models"
-$PicoLMBinary = "$PicoLMBinDir\picolm.exe"
-$PicoLMModel = "$PicoLMModelDir\tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
-
-# Create directories
-if (-not (Test-Path $PicoLMBinDir)) { New-Item -ItemType Directory -Force -Path $PicoLMBinDir | Out-Null }
-if (-not (Test-Path $PicoLMModelDir)) { New-Item -ItemType Directory -Force -Path $PicoLMModelDir | Out-Null }
-
-# Check/Download Model
-if (-not (Test-Path $PicoLMModel)) {
-    Write-Host "Downloading TinyLlama model (638MB)..." -ForegroundColor Yellow
-    try {
-        Invoke-WebRequest -Uri "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf" -OutFile $PicoLMModel
-        Write-Host "✅ Model downloaded to $PicoLMModel" -ForegroundColor Green
-    } catch {
-        Write-Host "❌ Failed to download model. Please download manually." -ForegroundColor Red
-        Write-Host "URL: https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
-    }
+# 3. Ollama (Local LLM) Setup
+Write-Host "Checking Ollama (Local LLM)..." -ForegroundColor Cyan
+if (Check-Command "ollama") {
+    Write-Host "✅ Ollama already installed." -ForegroundColor Green
+    Write-Host "Pulling Qwen 3.5 4B model (this may take a few minutes)..." -ForegroundColor Yellow
+    ollama pull qwen3.5:4b
 } else {
-    Write-Host "✅ Model found at $PicoLMModel" -ForegroundColor Green
-}
-
-# Check Binary
-if (-not (Test-Path $PicoLMBinary)) {
-    Write-Host "⚠️ PicoLM binary not found at $PicoLMBinary" -ForegroundColor Yellow
+    Write-Host "⚠️ Ollama not found." -ForegroundColor Yellow
     Write-Host "To use Local LLM on Windows:"
-    Write-Host "1. You need to compile PicoLM from source (https://github.com/picolm/picolm)"
-    Write-Host "   (Note: The 'curl | bash' install script is for Linux/Pi only)"
-    Write-Host "2. Clone the repo and run 'build.bat' if you have Visual Studio (MSVC)."
-    Write-Host "3. Place 'picolm.exe' in: $PicoLMBinDir"
-    Write-Host "Skipping binary installation (requires manual build on Windows)."
-} else {
-    Write-Host "✅ PicoLM binary found." -ForegroundColor Green
+    Write-Host "1. Download and install Ollama from: https://ollama.com/download"
+    Write-Host "2. After installation, run: ollama pull qwen3.5:4b"
+    Write-Host "3. Ghost will then be able to use the local model."
 }
-
 
 Write-Host "Done. Please restart your terminal to update PATH." -ForegroundColor Cyan
