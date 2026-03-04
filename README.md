@@ -23,27 +23,24 @@ Ghost is a personal AI assistant designed for Raspberry Pi. It merges a lightwei
 
 ### Software: Ollama (Required for Local AI)
 
-To run Ghost locally, you need **Ollama** installed.
+To run Ghost locally, you need **Ollama** installed and running.
 
-**Windows (PowerShell):**
+**Windows:**
 
-```powershell
-irm https://ollama.com/install.ps1 | iex
-```
+1. Download and install Ollama from [ollama.com](https://ollama.com).
+2. Once installed, open your terminal (Command Prompt or PowerShell) and run:
+   ```powershell
+   ollama pull qwen3.5:4b
+   ```
 
 **Linux / Raspberry Pi:**
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen3.5:4b
 ```
 
-After installing, pull the model used in config:
-
-```bash
-ollama pull qwen3:4b
-```
-
-Then run the following command to build the Ghost binary:
+After installing, ensure the model name matches your configuration. Then run the following command to build the Ghost binary:
 
 ```bash
 go build ./cmd/ghost
