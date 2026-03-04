@@ -67,19 +67,26 @@ else
     echo -e "${GREEN}[OK] gcalcli already installed.${NC}"
 fi
 
-# 2.5. Install PicoLM (Local LLM)
+# 2.5. Install Ollama (Local LLM)
 echo ""
-echo -e "${YELLOW}[2.5/4] Installing PicoLM (Local LLM)...${NC}"
+echo -e "${YELLOW}[2.5/4] Installing Ollama (Local LLM)...${NC}"
 
-# Use the official one-liner which handles dependencies, build, and model download
-# This script detects the platform (Pi/x86), builds with optimal flags, and downloads the model.
-if command -v curl &> /dev/null; then
-    curl -sSL https://raw.githubusercontent.com/RightNow-AI/picolm/main/install.sh | bash
+if ! check_command "ollama"; then
+    echo -e "${YELLOW}[INFO] Ollama not found. Installing...${NC}"
+    if check_command "curl"; then
+        curl -fsSL https://ollama.com/install.sh | sh
+        echo -e "${GREEN}[OK] Ollama installed.${NC}"
+        
+        echo -e "${YELLOW}[INFO] Pre-pulling Qwen 3.5 4B model (this may take a few minutes)...${NC}"
+        ollama pull qwen3.5:4b
+    else
+        echo -e "${RED}[ERROR] curl is required for Ollama installation.${NC}"
+    fi
 else
-    echo -e "${RED}[ERROR] curl is required for PicoLM installation.${NC}"
+    echo -e "${GREEN}[OK] Ollama already installed.${NC}"
+    # Ensure the model is available
+    ollama pull qwen3.5:4b
 fi
-
-PICOLM_DIR="$HOME/.picolm"
 
 
 # 3. Build Ghost
