@@ -22,14 +22,15 @@ import (
 )
 
 type HTTPProvider struct {
-	apiKey     string
-	apiBase    string
-	httpClient *http.Client
+	apiKey         string
+	apiBase        string
+	httpClient     *http.Client
+	embeddingModel string
 }
 
-func NewHTTPProvider(apiKey, apiBase, proxy string) *HTTPProvider {
+func NewHTTPProvider(apiKey, apiBase, proxy, embeddingModel string) *HTTPProvider {
 	client := &http.Client{
-		Timeout: 120 * time.Second,
+		Timeout: 300 * time.Second, // Increased to 5 minutes for slow model loading on Pi
 	}
 
 	if proxy != "" {
@@ -42,9 +43,10 @@ func NewHTTPProvider(apiKey, apiBase, proxy string) *HTTPProvider {
 	}
 
 	return &HTTPProvider{
-		apiKey:     apiKey,
-		apiBase:    strings.TrimRight(apiBase, "/"),
-		httpClient: client,
+		apiKey:         apiKey,
+		apiBase:        strings.TrimRight(apiBase, "/"),
+		httpClient:     client,
+		embeddingModel: embeddingModel,
 	}
 }
 
@@ -101,7 +103,7 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if p.apiKey != "" {
+	if p.apiKey != "" && p.apiKey != "ollama" {
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
 
@@ -193,6 +195,68 @@ func (p *HTTPProvider) parseResponse(body []byte) (*LLMResponse, error) {
 		FinishReason:     choice.FinishReason,
 		Usage:            apiResponse.Usage,
 	}, nil
+}
+
+func (p *HTTPProvider) Embed(ctx context.Context, text string) ([]float32, error) {
+	if p.apiBase == "" {
+		return nil, fmt.Errorf("API base not configured")
+	}
+
+	model := p.embeddingModel
+	if model == "" {
+		model = "text-embedding-3-small"
+	}
+
+	requestBody := map[string]interface{}{
+		"model": model,
+		"input": text,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", p.apiBase+"/embeddings", bytes.NewReader(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if p.apiKey != "" && p.apiKey != "ollama" {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API request failed:\n  Status: %d\n  Body:   %s", resp.StatusCode, string(body))
+	}
+
+	var apiResponse struct {
+		Data []struct {
+			Embedding []float32 `json:"embedding"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &apiResponse); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	if len(apiResponse.Data) == 0 {
+		return nil, fmt.Errorf("no embedding returned")
+	}
+
+	return apiResponse.Data[0].Embedding, nil
 }
 
 func (p *HTTPProvider) GetDefaultModel() string {
@@ -447,5 +511,5 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 		return nil, fmt.Errorf("no API base configured for provider (model: %s)", model)
 	}
 
-	return NewHTTPProvider(apiKey, apiBase, proxy), nil
+	return NewHTTPProvider(apiKey, apiBase, proxy, cfg.Agents.Defaults.EmbeddingModel), nil
 }
