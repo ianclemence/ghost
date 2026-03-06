@@ -23,7 +23,7 @@ coverage.txt
 coverage.html
 
 # Secrets & Config
-.env
+# .env
 config/config.json
 
 # OS
