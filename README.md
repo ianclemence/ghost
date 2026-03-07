@@ -30,14 +30,14 @@ To run Ghost locally, you need **Ollama** installed and running.
 1. Download and install Ollama from [ollama.com](https://ollama.com).
 2. Once installed, open your terminal (Command Prompt or PowerShell) and run:
    ```powershell
-   ollama pull qwen3.5:4b
+   ollama pull qwen3.5:0.8b
    ```
 
 **Linux / Raspberry Pi:**
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen3.5:4b
+ollama pull qwen3.5:0.8b
 ```
 
 After installing, ensure the model name matches your configuration. Then run the following command to build the Ghost binary:

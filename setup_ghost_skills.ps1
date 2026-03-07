@@ -56,13 +56,13 @@ if (Check-Command "winget") {
 Write-Host "Checking Ollama (Local LLM)..." -ForegroundColor Cyan
 if (Check-Command "ollama") {
     Write-Host "✅ Ollama already installed." -ForegroundColor Green
-    Write-Host "Pulling Qwen 3.5 4B model (this may take a few minutes)..." -ForegroundColor Yellow
-    ollama pull qwen3.5:4b
+    Write-Host "Pulling Qwen 3.5 0.8B model (this may take a few minutes)..." -ForegroundColor Yellow
+    ollama pull qwen3.5:0.8b
 } else {
     Write-Host "⚠️ Ollama not found." -ForegroundColor Yellow
     Write-Host "To use Local LLM on Windows:"
     Write-Host "1. Download and install Ollama from: https://ollama.com/download"
-    Write-Host "2. After installation, run: ollama pull qwen3.5:4b"
+    Write-Host "2. After installation, run: ollama pull qwen3.5:0.8b"
     Write-Host "3. Ghost will then be able to use the local model."
 }
 

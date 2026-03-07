@@ -77,15 +77,15 @@ if ! check_command "ollama"; then
         curl -fsSL https://ollama.com/install.sh | sh
         echo -e "${GREEN}[OK] Ollama installed.${NC}"
         
-        echo -e "${YELLOW}[INFO] Pre-pulling Qwen 3.5 4B model (this may take a few minutes)...${NC}"
-        ollama pull qwen3.5:4b
+        echo -e "${YELLOW}[INFO] Pre-pulling Qwen 3.5 0.8B model (this may take a few minutes)...${NC}"
+        ollama pull qwen3.5:0.8b
     else
         echo -e "${RED}[ERROR] curl is required for Ollama installation.${NC}"
     fi
 else
     echo -e "${GREEN}[OK] Ollama already installed.${NC}"
     # Ensure the model is available
-    ollama pull qwen3.5:4b
+    ollama pull qwen3.5:0.8b
 fi
 
 
