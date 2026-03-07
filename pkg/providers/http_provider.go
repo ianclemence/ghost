@@ -92,6 +92,10 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 		}
 	}
 
+	if thinking, ok := options["thinking"].(bool); ok {
+		requestBody["thinking"] = thinking
+	}
+
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
