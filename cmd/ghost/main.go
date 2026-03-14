@@ -684,6 +684,9 @@ func gatewayCmd() {
 		fmt.Printf("Error starting channels: %v\n", err)
 	}
 
+	// Start internal API for bridge-to-agent routing (mobile gets full agent runtime)
+	startInternalAPI(agentLoop)
+
 	go agentLoop.Run(ctx)
 
 	sigChan := make(chan os.Signal, 1)

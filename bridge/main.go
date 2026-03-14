@@ -27,6 +27,7 @@ import (
 type Config struct {
 	Port          string   `json:"port"`
 	GhostDBPath   string   `json:"ghost_db_path"`
+	GhostAgentURL string   `json:"ghost_agent_url"`
 	KimiAPIKey    string   `json:"kimi_api_key"`
 	BridgeSecret  string   `json:"bridge_secret"`
 	MemoryDir     string   `json:"memory_dir"`
@@ -77,6 +78,7 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 var sessionID = "mobile:default"
+var startupTime = time.Now()
 
 var wsClients = map[string]*websocket.Conn{}
 var wsMu sync.Mutex
@@ -111,7 +113,9 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "ok",
 		"timestamp": time.Now().Unix(),
-		"version":   "1.0.0",
+		"version":   "1.1.0",
+		"uptime_s":  int(time.Since(startupTime).Seconds()),
+		"started":   startupTime.Unix(),
 	})
 }
 
@@ -171,6 +175,24 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", 500)
+		return
+	}
+
+	useAgentRoute := cfg.GhostAgentURL != "" && req.MediaB64 == ""
+	if useAgentRoute {
+		if err := streamAgentResponse(w, flusher, req.Content); err == nil {
+			return
+		} else {
+			log.Printf("⚠️ Agent route failed, falling back to direct Kimi: %v", err)
+		}
+	}
+
 	ensureSession()
 	msgID := uuid.NewString()
 	metaJSON, _ := json.Marshal(map[string]interface{}{})
@@ -185,17 +207,102 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, time.Now(), sessionID)
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", 500)
-		return
-	}
-
 	messages := buildContextMessages(req.Content, req.MediaB64, req.MediaType)
 	streamKimiResponse(w, flusher, messages)
+}
+
+func streamAgentResponse(w http.ResponseWriter, flusher http.Flusher, content string) error {
+	baseURL := strings.TrimSpace(cfg.GhostAgentURL)
+	if baseURL == "" {
+		return fmt.Errorf("ghost agent url is empty")
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	bodyBytes, err := json.Marshal(map[string]interface{}{
+		"content":     content,
+		"session_key": sessionID,
+		"channel":     "mobile",
+		"chat_id":     "default",
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		baseURL+"/v1/chat",
+		bytes.NewReader(bodyBytes),
+	)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if cfg.BridgeSecret != "" {
+		req.Header.Set("X-Ghost-Secret", cfg.BridgeSecret)
+	}
+
+	client := &http.Client{Timeout: 320 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	log.Printf("🔁 Agent route response: status=%d content-type=%s", resp.StatusCode, resp.Header.Get("Content-Type"))
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("agent route http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "application/json") {
+		var payload struct {
+			Content string `json:"content"`
+			Error   string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			return err
+		}
+		if payload.Error != "" {
+			return fmt.Errorf("agent route error: %s", payload.Error)
+		}
+		if payload.Content == "" {
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", jsonEscape("No content returned by Ghost agent"))
+			_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
+			flusher.Flush()
+			return nil
+		}
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", jsonEscape(payload.Content))
+		_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
+		flusher.Flush()
+		return nil
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	hasData := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		hasData = true
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
+		if data == "[DONE]" {
+			_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
+			flusher.Flush()
+			return nil
+		}
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	if !hasData {
+		return fmt.Errorf("agent route returned no sse data")
+	}
+	_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
+	flusher.Flush()
+	return nil
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -942,13 +1049,15 @@ func handleClearMessages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"method not allowed"}`, 405)
 		return
 	}
-	_, err := db.Exec(`DELETE FROM messages WHERE session_id = ?`, sessionID)
+	// Archive instead of delete — preserves data, matches core Ghost behavior
+	_, err := db.Exec(`UPDATE messages SET archived = 1 WHERE session_id = ? AND (archived IS NULL OR archived = 0)`, sessionID)
 	if err != nil {
-		log.Printf("❌ handleClearMessages delete error: %v", err)
+		log.Printf("❌ handleClearMessages archive error: %v", err)
 		http.Error(w, `{"error":"db error"}`, 500)
 		return
 	}
 	_, _ = db.Exec(`UPDATE sessions SET summary = '', updated_at = ? WHERE id = ?`, time.Now(), sessionID)
+	log.Printf("✅ Chat messages archived for session %s", sessionID)
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
@@ -985,6 +1094,7 @@ func main() {
 	cfg = Config{
 		Port:          getEnv("BRIDGE_PORT", "8765"),
 		GhostDBPath:   getEnv("GHOST_DB_PATH", defaultDB),
+		GhostAgentURL: getEnv("GHOST_AGENT_URL", ""),
 		KimiAPIKey:    getEnv("KIMI_API_KEY", ""),
 		BridgeSecret:  getEnv("BRIDGE_SECRET", ""),
 		MemoryDir:     getEnv("MEMORY_DIR", defaultMem),
