@@ -25,9 +25,11 @@ pi4:
 
 deploy: pi
 	ssh $(PI_HOST) "mkdir -p $(PI_DIR)"
-	scp $(BINARY)-arm64 $(PI_HOST):$(PI_DIR)/$(BINARY)
+	scp $(BINARY)-arm64 $(PI_HOST):/tmp/$(BINARY)-arm64
 	scp ghost-bridge.service $(PI_HOST):/tmp/ghost-bridge.service
-	ssh $(PI_HOST) "sudo sed -i 's/User=pi/User=$(PI_USER)/g' /tmp/ghost-bridge.service && \
+	ssh $(PI_HOST) "sudo mv /tmp/$(BINARY)-arm64 $(PI_DIR)/$(BINARY) && \
+	               sudo chmod +x $(PI_DIR)/$(BINARY) && \
+	               sudo sed -i 's/User=pi/User=$(PI_USER)/g' /tmp/ghost-bridge.service && \
 	               sudo sed -i 's|/home/pi|/home/$(PI_USER)|g' /tmp/ghost-bridge.service && \
 	               sudo cp /tmp/ghost-bridge.service /etc/systemd/system/ && \
 	               sudo systemctl daemon-reload && \
