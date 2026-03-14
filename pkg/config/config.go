@@ -52,7 +52,21 @@ type Config struct {
 	Tools     ToolsConfig     `json:"tools"`
 	Heartbeat HeartbeatConfig `json:"heartbeat"`
 	Devices   DevicesConfig   `json:"devices"`
+	Skills    SkillsConfig    `json:"skills"`
 	mu        sync.RWMutex
+}
+
+type SkillsConfig struct {
+	ClawHub ClawHubConfig `json:"clawhub"`
+}
+
+type ClawHubConfig struct {
+	BaseURL      string `json:"base_url" env:"GHOST_SKILLS_CLAWHUB_BASE_URL"`
+	AuthToken    string `json:"auth_token" env:"GHOST_SKILLS_CLAWHUB_AUTH_TOKEN"`
+	SearchPath   string `json:"search_path" env:"GHOST_SKILLS_CLAWHUB_SEARCH_PATH"`
+	SkillsPath   string `json:"skills_path" env:"GHOST_SKILLS_CLAWHUB_SKILLS_PATH"`
+	DownloadPath string `json:"download_path" env:"GHOST_SKILLS_CLAWHUB_DOWNLOAD_PATH"`
+	Timeout      int    `json:"timeout" env:"GHOST_SKILLS_CLAWHUB_TIMEOUT"`
 }
 
 type RAGConfig struct {
@@ -383,6 +397,12 @@ func DefaultConfig() *Config {
 		Devices: DevicesConfig{
 			Enabled:    false,
 			MonitorUSB: true,
+		},
+		Skills: SkillsConfig{
+			ClawHub: ClawHubConfig{
+				BaseURL: "https://clawhub.ai",
+				Timeout: 30,
+			},
 		},
 	}
 }

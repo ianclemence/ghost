@@ -1,49 +1,57 @@
 package routing
 
-import "strings"
+import (
+	"github.com/ianclemence/ghost/pkg/providers"
+)
 
+// defaultThreshold is used when the config threshold is zero or negative.
+const defaultThreshold = 0.35
+
+// Router selects the appropriate model tier for each incoming message.
 type Router struct {
-	LightModel string
-	Threshold  float64
+	lightModel string
+	threshold  float64
+	classifier Classifier
 }
 
+// NewRouter creates a new Router with the given light model and threshold.
 func NewRouter(lightModel string, threshold float64) *Router {
 	if threshold <= 0 {
-		threshold = 0.35
+		threshold = defaultThreshold
 	}
-	return &Router{LightModel: lightModel, Threshold: threshold}
+	return &Router{
+		lightModel: lightModel,
+		threshold:  threshold,
+		classifier: &RuleClassifier{},
+	}
 }
 
-func (r *Router) SelectModel(prompt string, historyCount int, hasMedia bool, primary string) (string, float64) {
-	if r == nil || r.LightModel == "" {
-		return primary, 1
+// SelectModel returns the model to use for this conversation turn.
+func (r *Router) SelectModel(
+	msg string,
+	history []providers.Message,
+	hasMedia bool,
+	primaryModel string,
+) (model string, score float64) {
+	if r == nil || r.lightModel == "" {
+		return primaryModel, 1.0
 	}
-	score := complexityScore(prompt, historyCount, hasMedia)
-	if score < r.Threshold {
-		return r.LightModel, score
+
+	features := ExtractFeatures(msg, history, hasMedia)
+	score = r.classifier.Score(features)
+
+	if score < r.threshold {
+		return r.lightModel, score
 	}
-	return primary, score
+	return primaryModel, score
 }
 
-func complexityScore(prompt string, historyCount int, hasMedia bool) float64 {
-	score := 0.0
-	if len(prompt) > 400 {
-		score += 0.35
-	}
-	if len(prompt) > 1200 {
-		score += 0.25
-	}
-	if strings.Contains(prompt, "```") {
-		score += 0.25
-	}
-	if hasMedia {
-		score += 0.35
-	}
-	if historyCount > 10 {
-		score += 0.2
-	}
-	if score > 1 {
-		score = 1
-	}
-	return score
+// LightModel returns the configured light model name.
+func (r *Router) LightModel() string {
+	return r.lightModel
+}
+
+// Threshold returns the complexity threshold in use.
+func (r *Router) Threshold() float64 {
+	return r.threshold
 }

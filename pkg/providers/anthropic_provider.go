@@ -62,7 +62,7 @@ func (p *AnthropicProvider) Chat(ctx context.Context, messages []Message, tools 
 		}
 	}
 
-	params, err := buildAnthropicParams(messages, tools, model, maxTokens)
+	params, err := buildAnthropicParams(messages, tools, model, maxTokens, options)
 	if err != nil {
 		return nil, err
 	}
@@ -74,19 +74,79 @@ func (p *AnthropicProvider) Chat(ctx context.Context, messages []Message, tools 
 	return parseAnthropicResponse(resp), nil
 }
 
+func (p *AnthropicProvider) StreamChat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}, onChunk func(string)) (*LLMResponse, error) {
+	opts := []option.RequestOption{}
+	if p.tokenSource != nil {
+		tok, err := p.tokenSource()
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, option.WithAuthToken(tok))
+	}
+	if p.apiBase != "" {
+		opts = append(opts, option.WithBaseURL(p.apiBase))
+	}
+
+	maxTokens := int64(8192)
+	if val, ok := options["max_tokens"]; ok {
+		switch v := val.(type) {
+		case int:
+			maxTokens = int64(v)
+		case int64:
+			maxTokens = v
+		case float64:
+			maxTokens = int64(v)
+		}
+	}
+
+	params, err := buildAnthropicParams(messages, tools, model, maxTokens, options)
+	if err != nil {
+		return nil, err
+	}
+
+	stream := p.client.Messages.NewStreaming(ctx, params, opts...)
+	defer stream.Close()
+
+	var msg anthropic.Message
+	for stream.Next() {
+		event := stream.Current()
+		if err := msg.Accumulate(event); err != nil {
+			return nil, err
+		}
+
+		// Extract chunk for streaming
+		switch event.Type {
+		case anthropic.MessageStreamEventTypeContentBlockDelta:
+			if event.Delta.Type == anthropic.ContentBlockDeltaTypeInputJSONDelta {
+				// Tool use JSON delta - we don't send this to UI
+			} else if event.Delta.Text != "" {
+				onChunk(event.Delta.Text)
+			}
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		return nil, err
+	}
+
+	return parseAnthropicResponse(&msg), nil
+}
+
 func (p *AnthropicProvider) GetDefaultModel() string {
 	return "claude-3-5-sonnet-20240620"
 }
 
-func buildAnthropicMessages(messages []Message) (string, []anthropic.MessageParam) {
-	var systemPrompt string
+func buildAnthropicMessages(messages []Message) ([]anthropic.TextBlockParam, []anthropic.MessageParam) {
+	var systemPrompts []anthropic.TextBlockParam
 	out := make([]anthropic.MessageParam, 0, len(messages))
 	for _, msg := range messages {
 		switch msg.Role {
 		case "system":
-			if systemPrompt == "" {
-				systemPrompt = msg.Content
+			block := anthropic.TextBlockParam{Text: anthropic.String(msg.Content)}
+			if msg.CacheControl != nil && msg.CacheControl.Type == "ephemeral" {
+				block.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
+			systemPrompts = append(systemPrompts, block)
 		case "user":
 			out = append(out, anthropic.NewUserMessage(convertContentBlocks(msg)...))
 		case "assistant":
@@ -95,21 +155,28 @@ func buildAnthropicMessages(messages []Message) (string, []anthropic.MessagePara
 			out = append(out, anthropic.NewUserMessage(anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false)))
 		}
 	}
-	return systemPrompt, out
+	return systemPrompts, out
 }
 
-func buildAnthropicParams(messages []Message, tools []ToolDefinition, model string, maxTokens int64) (anthropic.MessageNewParams, error) {
-	systemPrompt, anthropicMessages := buildAnthropicMessages(messages)
+func buildAnthropicParams(messages []Message, tools []ToolDefinition, model string, maxTokens int64, options map[string]interface{}) (anthropic.MessageNewParams, error) {
+	systemPrompts, anthropicMessages := buildAnthropicMessages(messages)
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
 		MaxTokens: maxTokens,
 		Messages:  anthropicMessages,
 	}
 
-	if systemPrompt != "" {
-		params.System = []anthropic.TextBlockParam{
-			{Text: systemPrompt},
-		}
+	if len(systemPrompts) > 0 {
+		params.System = systemPrompts
+	}
+
+	if temp, ok := options["temperature"].(float64); ok {
+		params.Temperature = anthropic.Float(temp)
+	}
+
+	// Handle Thinking/Reasoning
+	if level, ok := options["thinking_level"].(string); ok && level != "" && level != "off" {
+		applyThinkingConfig(&params, level)
 	}
 
 	if len(tools) > 0 {
@@ -190,9 +257,12 @@ func parseDataURL(url string) (string, string, bool) {
 
 func parseAnthropicResponse(resp *anthropic.Message) *LLMResponse {
 	var content string
+	var reasoning string
 	var toolCalls []ToolCall
 	for _, block := range resp.Content {
 		switch block.Type {
+		case "thinking":
+			reasoning += block.Thinking
 		case "text":
 			content += block.Text
 		case "tool_use":
@@ -222,10 +292,50 @@ func parseAnthropicResponse(resp *anthropic.Message) *LLMResponse {
 		finishReason = "stop"
 	}
 	return &LLMResponse{
-		Content:   content,
-		ToolCalls: toolCalls,
-		FinishReason: finishReason,
-		Usage:     usage,
+		Content:          content,
+		ReasoningContent: reasoning,
+		ToolCalls:        toolCalls,
+		FinishReason:     finishReason,
+		Usage:            usage,
+	}
+}
+
+func applyThinkingConfig(params *anthropic.MessageNewParams, level string) {
+	// Anthropic API rejects requests with temperature set alongside thinking.
+	params.Temperature = anthropic.MessageNewParams{}.Temperature
+
+	if level == "adaptive" {
+		adaptive := anthropic.NewThinkingConfigAdaptiveParam()
+		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &adaptive}
+		params.OutputConfig = anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortHigh,
+		}
+		return
+	}
+
+	budget := int64(levelToBudget(level))
+	if budget <= 0 {
+		return
+	}
+
+	if budget >= params.MaxTokens {
+		budget = params.MaxTokens - 1
+	}
+	params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
+}
+
+func levelToBudget(level string) int {
+	switch level {
+	case "low":
+		return 4096
+	case "medium":
+		return 16384
+	case "high":
+		return 32000
+	case "xhigh":
+		return 64000
+	default:
+		return 0
 	}
 }
 
@@ -241,7 +351,7 @@ func buildClaudeParams(messages []Message, tools []ToolDefinition, model string,
 			maxTokens = int64(v)
 		}
 	}
-	return buildAnthropicParams(messages, tools, model, maxTokens)
+	return buildAnthropicParams(messages, tools, model, maxTokens, options)
 }
 
 func parseClaudeResponse(resp *anthropic.Message) *LLMResponse {

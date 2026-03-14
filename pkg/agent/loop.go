@@ -23,6 +23,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/media"
 	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/rag"
@@ -43,6 +44,7 @@ type AgentLoop struct {
 	maxIterations  int
 	sessions       *session.SessionManager
 	state          *state.Manager
+	media          media.MediaStore
 	contextBuilder *ContextBuilder
 	tools          *tools.ToolRegistry
 	commands       *commands.Registry
@@ -50,6 +52,7 @@ type AgentLoop struct {
 	router         *routing.Router
 	fallback       *providers.FallbackChain
 	fallbackModels []providers.FallbackCandidate
+	installer      *skills.SkillInstaller
 	providersByModel map[string]providers.LLMProvider
 	cfg            *config.Config
 	running        atomic.Bool
@@ -190,9 +193,20 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// Create state manager for atomic state persistence
 	stateManager := state.NewManager(workspace)
 
+	// Create media store
+	mediaStore := media.NewFileMediaStoreWithCleanup(media.MediaCleanerConfig{
+		Enabled:  true,
+		MaxAge:   24 * time.Hour,
+		Interval: 1 * time.Hour,
+	})
+	mediaStore.Start()
+
 	// Create context builder and set tools registry
 	contextBuilder := NewContextBuilder(workspace)
 	contextBuilder.SetToolsRegistry(toolsRegistry)
+
+	// Create skill installer
+	installer := skills.NewSkillInstaller(workspace)
 
 	cmdRegistry := commands.NewRegistry(commands.DefaultDefinitions())
 	cmdRuntime := &commands.Runtime{
@@ -240,6 +254,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		maxIterations:  cfg.Agents.Defaults.MaxToolIterations,
 		sessions:       sessionsManager,
 		state:          stateManager,
+		media:          mediaStore,
 		contextBuilder: contextBuilder,
 		tools:          toolsRegistry,
 		commands:       cmdRegistry,
@@ -247,6 +262,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		router:         router,
 		fallback:       fallback,
 		fallbackModels: fallbackCandidates,
+		installer:      installer,
 		providersByModel: providersByModel,
 		cfg:            cfg,
 		summarizing:    sync.Map{},
@@ -422,21 +438,17 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 		OnToolCall:      onToolCall,
 	})
 
-	// Cleanup temporary media files
+	// Cleanup temporary media files using MediaStore ReleaseAll if possible
 	if len(msg.Media) > 0 {
 		go func() {
 			// Wait a bit to ensure no race conditions with async logging or other consumers
-			time.Sleep(5 * time.Second)
-			for _, path := range msg.Media {
-				if err := os.Remove(path); err != nil {
-					logger.WarnCF("agent", "Failed to cleanup media file", map[string]interface{}{
-						"path":  path,
-						"error": err.Error(),
-					})
-				} else {
-					logger.DebugCF("agent", "Cleaned up media file", map[string]interface{}{
-						"path": path,
-					})
+			time.Sleep(10 * time.Second)
+			if al.media != nil {
+				// The media paths are registered under sessionKey scope in ProcessDirectWithChannel
+				// or they are just raw paths here. 
+				// For safety, we still do manual cleanup for paths not in media store
+				for _, path := range msg.Media {
+					_ = os.Remove(path)
 				}
 			}
 		}()
@@ -778,20 +790,24 @@ func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMP
 	if model == "" {
 		model = al.model
 	}
+
+	thinkingLevel := "off"
+	if opts.Thinking {
+		thinkingLevel = "medium" // Default to medium if thinking is enabled via prefix
+	}
+
+	options := map[string]interface{}{
+		"max_tokens":     8192,
+		"temperature":    al.temperature,
+		"thinking_level": thinkingLevel,
+	}
+
 	if opts.OnChunk != nil {
 		if sp, ok := provider.(providers.StreamingProvider); ok {
-			return sp.StreamChat(ctx, messages, tools, model, map[string]interface{}{
-				"max_tokens":  8192,
-				"temperature": al.temperature,
-				"thinking":    opts.Thinking,
-			}, opts.OnChunk)
+			return sp.StreamChat(ctx, messages, tools, model, options, opts.OnChunk)
 		}
 	}
-	resp, err := provider.Chat(ctx, messages, tools, model, map[string]interface{}{
-		"max_tokens":  8192,
-		"temperature": al.temperature,
-		"thinking":    opts.Thinking,
-	})
+	resp, err := provider.Chat(ctx, messages, tools, model, options)
 	if err == nil && opts.OnChunk != nil && resp.Content != "" {
 		opts.OnChunk(resp.Content)
 	}

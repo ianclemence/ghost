@@ -199,8 +199,9 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 	history = cb.sanitizeHistory(history)
 
 	messages = append(messages, providers.Message{
-		Role:    "system",
-		Content: systemPrompt,
+		Role:         "system",
+		Content:      systemPrompt,
+		CacheControl: &providers.CacheControl{Type: "ephemeral"},
 	})
 
 	messages = append(messages, history...)
