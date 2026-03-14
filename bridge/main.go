@@ -413,30 +413,24 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 		return
 	}
 	defer resp.Body.Close()
-	log.Printf("🌐 Upstream response: status=%d content-type=%s", resp.StatusCode, resp.Header.Get("Content-Type"))
 
 	var fullResponse strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-	chunkCount := 0
-	nonDataCount := 0
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
-			nonDataCount++
 			continue
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
 			_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()
-			log.Printf("✅ Upstream stream done: chunks=%d nonData=%d", chunkCount, nonDataCount)
 			break
 		}
 
 		var chunk map[string]interface{}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			log.Printf("⚠️ Upstream chunk parse error: %v", err)
 			continue
 		}
 
@@ -444,7 +438,6 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 			if choice, ok := choices[0].(map[string]interface{}); ok {
 				if delta, ok := choice["delta"].(map[string]interface{}); ok {
 					if content, ok := delta["content"].(string); ok && content != "" {
-						chunkCount++
 						fullResponse.WriteString(content)
 						_, _ = fmt.Fprintf(w, "data: %s\n\n", jsonEscape(content))
 						flusher.Flush()
@@ -452,12 +445,6 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 				}
 			}
 		}
-	}
-	if scanErr := scanner.Err(); scanErr != nil {
-		log.Printf("❌ Upstream scan error: %v", scanErr)
-	}
-	if chunkCount == 0 {
-		log.Printf("⚠️ Upstream stream returned no chunks (status=%d, nonData=%d)", resp.StatusCode, nonDataCount)
 	}
 
 	if fullResponse.Len() > 0 {
@@ -850,9 +837,28 @@ func handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Load .env before reading config. Try several candidate paths so it works
+	// whether run manually from the bridge/ dir or as a systemd service.
+	// Priority: explicit ENV_FILE var > sibling .env > parent .env > grandparent .env
+	envCandidates := []string{
+		os.Getenv("ENV_FILE"),                    // explicit override
+		".env",                                   // same dir as binary
+		"../.env",                                // parent dir (ghost root)
+		filepath.Join(os.Getenv("HOME"), "ghost", ".env"), // ~/ghost/.env
+	}
+	for _, candidate := range envCandidates {
+		if candidate == "" {
+			continue
+		}
+		if _, err := os.Stat(candidate); err == nil {
+			loadDotEnv(candidate)
+			break // stop at first one found
+		}
+	}
+
 	cfg = Config{
 		Port:          getEnv("BRIDGE_PORT", "8765"),
-		GhostDBPath:   getEnv("GHOST_DB_PATH", "../workspace/ghost.db"),
+		GhostDBPath:   getEnv("GHOST_DB_PATH", "../ghost.db"),
 		KimiAPIKey:    getEnv("KIMI_API_KEY", ""),
 		BridgeSecret:  getEnv("BRIDGE_SECRET", ""),
 		MemoryDir:     getEnv("MEMORY_DIR", "../workspace/memory"),
@@ -897,4 +903,38 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// loadDotEnv reads a .env file and populates os.Environ with any key that
+// isn't already set. Real env vars (systemd, shell exports) always win.
+func loadDotEnv(envPath string) {
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		return
+	}
+	loaded := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.IndexByte(line, '=')
+		if idx < 1 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		val := strings.TrimSpace(line[idx+1:])
+		if len(val) >= 2 {
+			if (val[0] == '"' && val[len(val)-1] == '"') || (val[0] == '\'' && val[len(val)-1] == '\'') {
+				val = val[1 : len(val)-1]
+			}
+		}
+		if os.Getenv(key) == "" {
+			_ = os.Setenv(key, val)
+			loaded++
+		}
+	}
+	if loaded > 0 {
+		log.Printf("📄 Loaded %d vars from %s", loaded, envPath)
+	}
 }
