@@ -115,11 +115,9 @@ func (p *AnthropicProvider) StreamChat(ctx context.Context, messages []Message, 
 		}
 
 		// Extract chunk for streaming
-		switch event.Type {
-		case anthropic.MessageStreamEventContentBlockDelta:
-			if event.Delta.Type == anthropic.ContentBlockDeltaInputJSONDelta {
-				// Tool use JSON delta - we don't send this to UI
-			} else if event.Delta.Text != "" {
+		switch string(event.Type) {
+		case "content_block_delta":
+			if event.Delta.Type == "text_delta" {
 				onChunk(event.Delta.Text)
 			}
 		}
