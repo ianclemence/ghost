@@ -116,8 +116,8 @@ func (p *AnthropicProvider) StreamChat(ctx context.Context, messages []Message, 
 
 		// Extract chunk for streaming
 		switch event.Type {
-		case anthropic.MessageStreamEventTypeContentBlockDelta:
-			if event.Delta.Type == anthropic.ContentBlockDeltaTypeInputJSONDelta {
+		case anthropic.MessageStreamEventContentBlockDelta:
+			if event.Delta.Type == anthropic.ContentBlockDeltaInputJSONDelta {
 				// Tool use JSON delta - we don't send this to UI
 			} else if event.Delta.Text != "" {
 				onChunk(event.Delta.Text)
@@ -142,7 +142,7 @@ func buildAnthropicMessages(messages []Message) ([]anthropic.TextBlockParam, []a
 	for _, msg := range messages {
 		switch msg.Role {
 		case "system":
-			block := anthropic.TextBlockParam{Text: anthropic.String(msg.Content)}
+			block := anthropic.TextBlockParam{Text: msg.Content}
 			if msg.CacheControl != nil && msg.CacheControl.Type == "ephemeral" {
 				block.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
