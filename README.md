@@ -96,6 +96,98 @@ GHOST_CONFIG_DIR=config
 
 Alternatively, you can edit `config/config.json` directly.
 
+---
+
+## 📱 Ghost Bridge (Mobile App)
+
+### 1. Add to Ghost's .env
+
+```env
+# ── ghost-bridge settings (add to existing Ghost .env) ──────────────────
+
+BRIDGE_PORT=8765
+BRIDGE_SECRET=pick_a_strong_secret_here
+
+# Absolute paths (adjust username if not 'pi')
+GHOST_DB_PATH=/home/pi/ghost/workspace/ghost.db
+MEMORY_DIR=/home/pi/ghost/workspace/memory
+
+# Optional: system prompt prepended to every request
+GHOST_SYSTEM_PROMPT=You are Ghost, a sovereign AI on a Raspberry Pi. Be concise.
+
+# Optional: comma-separated command prefixes to allow beyond the safe defaults
+# ALLOWED_CMDS=python3,ollama,curl
+
+# Optional: override screenshot command
+# SCREENSHOT_CMD=scrot /tmp/ghost-bridge-screen.png
+```
+
+### 2. Build and run manually (first test)
+
+```bash
+cd ~/ghost/bridge
+go mod tidy
+go build -o ghost-bridge .
+./ghost-bridge
+# 👻 Ghost Bridge running on 0.0.0.0:8765
+```
+
+### 3. Deploy and Install Service (Recommended)
+
+The easiest way to install is using the included Makefile, which handles building, copying, and service configuration for you (even if your user isn't 'pi'). If your host or user differs, set `PI_HOST` and `PI_USER` once in `ghost/.env` and keep the deploy command short.
+
+**From your development machine:**
+
+```bash
+cd ../ghost/bridge
+
+make deploy
+```
+
+### 4. Manual Service Installation (Alternative)
+
+If you prefer to set it up manually:
+
+```bash
+# Edit the service file if your username isn't 'pi'
+nano ghost-bridge.service
+
+sudo cp ghost-bridge.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable ghost-bridge
+sudo systemctl start ghost-bridge
+
+# Check it's running
+sudo journalctl -u ghost-bridge -f
+```
+
+### 5. Firewall (local network only)
+
+```bash
+# Allow only your home network range
+sudo ufw allow from 192.168.0.0/16 to any port 8765
+sudo ufw reload
+```
+
+### 6. Install scrot for screenshots (optional)
+
+```bash
+sudo apt install scrot
+```
+
+---
+
+## Updating ghost-bridge After Code Changes
+
+```bash
+# On your dev machine:
+cd ../ghost/bridge
+
+make deploy
+```
+
+If the Pi IP changes, update `PI_HOST` in `ghost/.env` and run `make deploy` again.
+
 ### 🤖 Running as a Service (Linux/Pi)
 
 To keep Ghost running in the background and auto-start on boot:
