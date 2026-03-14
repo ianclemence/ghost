@@ -863,8 +863,7 @@ func main() {
 
 	// Build HOME-relative default paths so no username is hardcoded.
 	// These are only used when the .env doesn't supply explicit values.
-	home := os.Getenv("HOME")
-	defaultDB  := filepath.Join(home, "ghost", "workspace", "ghost.db")
+	defaultDB := filepath.Join(home, "ghost", "workspace", "ghost.db")
 	defaultMem := filepath.Join(home, "ghost", "workspace", "memory")
 
 	cfg = Config{
