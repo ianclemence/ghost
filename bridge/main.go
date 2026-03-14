@@ -840,28 +840,39 @@ func main() {
 	// Load .env before reading config. Try several candidate paths so it works
 	// whether run manually from the bridge/ dir or as a systemd service.
 	// Priority: explicit ENV_FILE var > sibling .env > parent .env > grandparent .env
+	// Resolve the .env file. Try multiple locations so it works for any user
+	// without hardcoding a username anywhere.
+	home := os.Getenv("HOME")
 	envCandidates := []string{
-		os.Getenv("ENV_FILE"),                    // explicit override
-		".env",                                   // same dir as binary
-		"../.env",                                // parent dir (ghost root)
-		filepath.Join(os.Getenv("HOME"), "ghost", ".env"), // ~/ghost/.env
+		os.Getenv("ENV_FILE"),                         // explicit override via ENV_FILE=
+		".env",                                        // running from bridge/ dir directly
+		"../.env",                                     // bridge/ is inside ghost/ → ../ghost root
+		filepath.Join(home, "ghost", ".env"),          // ~/ghost/.env  (absolute, any user)
+		filepath.Join(home, ".env"),                   // ~/.env        (last resort)
 	}
 	for _, candidate := range envCandidates {
 		if candidate == "" {
 			continue
 		}
-		if _, err := os.Stat(candidate); err == nil {
+		if _, statErr := os.Stat(candidate); statErr == nil {
+			log.Printf("🔍 Loading env from: %s", candidate)
 			loadDotEnv(candidate)
-			break // stop at first one found
+			break
 		}
 	}
 
+	// Build HOME-relative default paths so no username is hardcoded.
+	// These are only used when the .env doesn't supply explicit values.
+	home := os.Getenv("HOME")
+	defaultDB  := filepath.Join(home, "ghost", "workspace", "ghost.db")
+	defaultMem := filepath.Join(home, "ghost", "workspace", "memory")
+
 	cfg = Config{
 		Port:          getEnv("BRIDGE_PORT", "8765"),
-		GhostDBPath:   getEnv("GHOST_DB_PATH", "../ghost.db"),
+		GhostDBPath:   getEnv("GHOST_DB_PATH", defaultDB),
 		KimiAPIKey:    getEnv("KIMI_API_KEY", ""),
 		BridgeSecret:  getEnv("BRIDGE_SECRET", ""),
-		MemoryDir:     getEnv("MEMORY_DIR", "../workspace/memory"),
+		MemoryDir:     getEnv("MEMORY_DIR", defaultMem),
 		ScreenshotCmd: getEnv("SCREENSHOT_CMD", ""),
 		SystemPrompt:  getEnv("GHOST_SYSTEM_PROMPT", "You are Ghost, a sovereign AI assistant running on a Raspberry Pi. Be concise and direct."),
 	}

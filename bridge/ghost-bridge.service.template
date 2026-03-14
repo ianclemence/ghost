@@ -1,0 +1,25 @@
+[Unit]
+Description=Ghost Mobile Bridge
+After=network.target ghost.service
+Wants=ghost.service
+
+[Service]
+Type=simple
+# User and paths are filled in by install.sh using the current $USER and $HOME.
+# Do not edit manually — re-run install.sh instead.
+User=__USER__
+WorkingDirectory=__BRIDGE_DIR__
+
+# No EnvironmentFile here. The Go binary reads ../.env itself at startup,
+# so there's no username to hardcode and no systemd env injection issues.
+ExecStart=__BRIDGE_DIR__/ghost-bridge
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ghost-bridge
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
