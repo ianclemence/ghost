@@ -866,6 +866,13 @@ func main() {
 		SystemPrompt:  getEnv("GHOST_SYSTEM_PROMPT", "You are Ghost, a sovereign AI assistant running on a Raspberry Pi. Be concise and direct."),
 	}
 
+	// Log startup diagnostic — shows whether critical keys were found
+	if cfg.KimiAPIKey != "" {
+		log.Printf("🔑 KIMI_API_KEY loaded (len=%d)", len(cfg.KimiAPIKey))
+	} else {
+		log.Println("❌ KIMI_API_KEY is EMPTY — check your .env file and loadDotEnv path")
+	}
+
 	if cfg.BridgeSecret == "" {
 		log.Println("⚠️  WARNING: BRIDGE_SECRET is not set. Using default 'ghost-pi-secret'.")
 		cfg.BridgeSecret = "ghost-pi-secret"
@@ -929,12 +936,16 @@ func loadDotEnv(envPath string) {
 				val = val[1 : len(val)-1]
 			}
 		}
-		if os.Getenv(key) == "" {
+		// Only skip if the env already has a real non-empty value.
+		// An empty string means systemd or the shell set it to nothing — overwrite it.
+		if os.Getenv(key) == "" && val != "" {
 			_ = os.Setenv(key, val)
 			loaded++
 		}
 	}
 	if loaded > 0 {
 		log.Printf("📄 Loaded %d vars from %s", loaded, envPath)
+	} else {
+		log.Printf("📄 Found %s but all keys already set in environment", envPath)
 	}
 }
