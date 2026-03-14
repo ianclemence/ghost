@@ -933,6 +933,25 @@ func handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
+func handleClearMessages(w http.ResponseWriter, r *http.Request) {
+	if db == nil {
+		http.Error(w, `{"error":"database not initialized"}`, 500)
+		return
+	}
+	if r.Method != http.MethodDelete {
+		http.Error(w, `{"error":"method not allowed"}`, 405)
+		return
+	}
+	_, err := db.Exec(`DELETE FROM messages WHERE session_id = ?`, sessionID)
+	if err != nil {
+		log.Printf("❌ handleClearMessages delete error: %v", err)
+		http.Error(w, `{"error":"db error"}`, 500)
+		return
+	}
+	_, _ = db.Exec(`UPDATE sessions SET summary = '', updated_at = ? WHERE id = ?`, time.Now(), sessionID)
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
 func main() {
 	// Load .env before reading config. Try several candidate paths so it works
 	// whether run manually from the bridge/ dir or as a systemd service.
@@ -1003,6 +1022,7 @@ func main() {
 	mux.HandleFunc("/open", authMiddleware(handleOpen))
 	mux.HandleFunc("/search", authMiddleware(handleSearch))
 	mux.HandleFunc("/message", authMiddleware(handleDeleteMessage))
+	mux.HandleFunc("/messages", authMiddleware(handleClearMessages))
 	mux.HandleFunc("/memory/files", authMiddleware(handleMemoryFiles))
 	mux.HandleFunc("/memory/file", authMiddleware(handleMemoryFile))
 	mux.HandleFunc("/ws", handleWebSocket)
