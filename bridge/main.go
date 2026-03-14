@@ -261,17 +261,25 @@ func handleMemoryFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func buildContextMessages(userText, mediaB64, mediaType string) []map[string]interface{} {
-	rows, _ := db.Query(
+	rows, err := db.Query(
 		`SELECT role, content FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0) ORDER BY created_at DESC LIMIT 20`,
 		sessionID,
 	)
-	defer rows.Close()
+	if err != nil {
+		rows, err = db.Query(
+			`SELECT role, content FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 20`,
+			sessionID,
+		)
+	}
 
 	var history []map[string]interface{}
-	for rows.Next() {
-		var role, content string
-		_ = rows.Scan(&role, &content)
-		history = append([]map[string]interface{}{{"role": role, "content": content}}, history...)
+	if err == nil && rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var role, content string
+			_ = rows.Scan(&role, &content)
+			history = append([]map[string]interface{}{{"role": role, "content": content}}, history...)
+		}
 	}
 
 	var userContent interface{}
