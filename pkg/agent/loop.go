@@ -300,6 +300,17 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 		return al.processSystemMessage(ctx, msg)
 	}
 
+	// Handle slash commands
+	if strings.HasPrefix(msg.Content, "/") {
+		response, handled, err := al.handleSlashCommand(ctx, msg, onChunk, onToolCall)
+		if err != nil {
+			return "", err
+		}
+		if handled {
+			return response, nil
+		}
+	}
+
 	thinking := false
 	if strings.HasPrefix(msg.Content, "/think") {
 		thinking = true
@@ -481,6 +492,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			"iterations":   iteration,
 			"final_length": len(finalContent),
 		})
+
+	// 10. Auto-journaling
+	if !opts.NoHistory && opts.SessionKey != "heartbeat" && !strings.HasPrefix(opts.UserMessage, "/") {
+		go al.autoJournal(opts.SessionKey)
+	}
 
 	return finalContent, nil
 }
@@ -862,4 +878,134 @@ func (al *AgentLoop) estimateTokens(messages []providers.Message) int {
 		total += utf8.RuneCountInString(m.Content) / 3
 	}
 	return total
+}
+
+func (al *AgentLoop) handleSlashCommand(ctx context.Context, msg bus.InboundMessage, onChunk func(string), onToolCall func(string, string)) (string, bool, error) {
+	parts := strings.Fields(msg.Content)
+	if len(parts) == 0 {
+		return "", false, nil
+	}
+
+	command := parts[0]
+	args := parts[1:]
+
+	switch command {
+	case "/help":
+		help := al.getHelpText()
+		return help, true, nil
+	case "/clear", "/reset":
+		// Clear session history
+		al.sessions.ClearHistory(msg.SessionKey)
+		al.sessions.SetSummary(msg.SessionKey, "")
+		al.sessions.Save(msg.SessionKey)
+		return "Session history cleared.", true, nil
+	case "/remind":
+		// Usage: /remind [message] in [time]
+		if len(args) < 3 {
+			return "Usage: /remind [message] in [time] (e.g. /remind buy milk in 10m)", true, nil
+		}
+		resp, err := al.handleRemindCommand(ctx, msg, args)
+		return resp, true, err
+	case "/think":
+		// Prefix logic already handled in processMessage
+		return "", false, nil
+	}
+
+	return "", false, nil
+}
+
+func (al *AgentLoop) getHelpText() string {
+	var sb strings.Builder
+	sb.WriteString("### Ghost Help 👻\n\n")
+	sb.WriteString("**Slash Commands:**\n")
+	sb.WriteString("- `/help`: Show this help message.\n")
+	sb.WriteString("- `/clear` or `/reset`: Archive current session history.\n")
+	sb.WriteString("- `/think [query]`: Run the query with deep reasoning enabled.\n")
+	sb.WriteString("- `/remind [msg] in [time]`: Quick reminder (e.g., `/remind coffee in 5m`).\n\n")
+
+	sb.WriteString("**Available Tools:**\n")
+	toolsList := al.tools.List()
+	for _, t := range toolsList {
+		if tool, ok := al.tools.Get(t); ok {
+			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", t, tool.Description()))
+		}
+	}
+
+	return sb.String()
+}
+
+func (al *AgentLoop) handleRemindCommand(ctx context.Context, msg bus.InboundMessage, args []string) (string, error) {
+	// Simple parser for "/remind [message] in [time]"
+	// Find the last "in"
+	inIdx := -1
+	for i := len(args) - 1; i >= 0; i-- {
+		if args[i] == "in" {
+			inIdx = i
+			break
+		}
+	}
+
+	if inIdx == -1 || inIdx == len(args)-1 {
+		return "Usage: /remind [message] in [time] (e.g. /remind coffee in 5m)", nil
+	}
+
+	message := strings.Join(args[:inIdx], " ")
+	timeStr := args[inIdx+1]
+
+	// Parse duration (e.g. 10m, 1h, 30s)
+	duration, err := time.ParseDuration(timeStr)
+	if err != nil {
+		// Try adding "s" if no unit provided
+		duration, err = time.ParseDuration(timeStr + "s")
+		if err != nil {
+			return "Invalid time format. Use 10s, 5m, 1h, etc.", nil
+		}
+	}
+
+	// Call cron tool
+	tool, ok := al.tools.Get("cron")
+	if !ok {
+		return "Cron tool not available.", nil
+	}
+
+	// Set context for tool
+	if ct, ok := tool.(tools.ContextualTool); ok {
+		ct.SetContext(msg.Channel, msg.ChatID)
+	}
+
+	res := tool.Execute(ctx, map[string]interface{}{
+		"action":     "add",
+		"message":    message,
+		"at_seconds": duration.Seconds(),
+		"deliver":    true,
+	})
+
+	if res.Err != nil {
+		return fmt.Sprintf("Failed to set reminder: %v", res.Err), nil
+	}
+
+	return fmt.Sprintf("Reminder set: '%s' in %s", message, duration.String()), nil
+}
+
+// autoJournal summarizes the session and appends it to the daily note.
+func (al *AgentLoop) autoJournal(sessionKey string) {
+	// Only journal if there's enough history
+	history := al.sessions.GetHistory(sessionKey)
+	if len(history) < 4 {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	summary, err := al.summarizeBatch(ctx, history, "")
+	if err != nil || summary == "" {
+		return
+	}
+
+	// Append to daily note via memory store
+	entry := fmt.Sprintf("\n- [%s] (journal) %s", time.Now().Format("15:04"), summary)
+	if al.contextBuilder != nil && al.contextBuilder.memory != nil {
+		al.contextBuilder.memory.AppendToday(entry)
+	}
 }
