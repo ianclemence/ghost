@@ -29,6 +29,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/rag"
 	"github.com/ianclemence/ghost/pkg/routing"
 	"github.com/ianclemence/ghost/pkg/session"
+	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/state"
 	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/utils"
@@ -770,7 +771,7 @@ func (al *AgentLoop) selectModel(opts processOptions, messages []providers.Messa
 	if al.router == nil {
 		return al.model, 1
 	}
-	return al.router.SelectModel(opts.UserMessage, len(messages), len(opts.Media) > 0, al.model)
+	return al.router.SelectModel(opts.UserMessage, messages, len(opts.Media) > 0, al.model)
 }
 
 func (al *AgentLoop) callLLM(ctx context.Context, model string, messages []providers.Message, tools []providers.ToolDefinition, opts processOptions) (*providers.LLMResponse, error) {
