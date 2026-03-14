@@ -83,16 +83,19 @@ var wsMu sync.Mutex
 
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		secret := r.Header.Get("X-Ghost-Secret")
-		if cfg.BridgeSecret != "" && secret != cfg.BridgeSecret {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
-		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Secret")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		secret := r.Header.Get("X-Ghost-Secret")
+		if cfg.BridgeSecret != "" && secret != cfg.BridgeSecret {
+			log.Printf("⚠️ Unauthorized access attempt from %s", r.RemoteAddr)
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
 		next(w, r)
@@ -261,6 +264,10 @@ func handleMemoryFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func buildContextMessages(userText, mediaB64, mediaType string) []map[string]interface{} {
+	if db == nil {
+		log.Println("❌ DB is nil in buildContextMessages")
+		return []map[string]interface{}{{"role": "user", "content": userText}}
+	}
 	rows, err := db.Query(
 		`SELECT role, content FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0) ORDER BY created_at DESC LIMIT 20`,
 		sessionID,
@@ -308,16 +315,35 @@ func buildContextMessages(userText, mediaB64, mediaType string) []map[string]int
 }
 
 func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []map[string]interface{}) {
-	payload, _ := json.Marshal(map[string]interface{}{
+	if cfg.KimiAPIKey == "" {
+		log.Println("❌ Kimi API key is missing")
+		_, _ = fmt.Fprintf(w, "data: {\"error\":\"Kimi API key is missing. Please set KIMI_API_KEY in .env\"}\n\n")
+		flusher.Flush()
+		return
+	}
+
+	payload, err := json.Marshal(map[string]interface{}{
 		"model":    "moonshot-v1-128k",
 		"messages": messages,
 		"stream":   true,
 	})
+	if err != nil {
+		log.Printf("❌ Failed to marshal payload: %v", err)
+		_, _ = fmt.Fprintf(w, "data: {\"error\":\"Failed to marshal payload: %s\"}\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
 
-	req, _ := http.NewRequestWithContext(context.Background(), "POST",
+	req, err := http.NewRequestWithContext(context.Background(), "POST",
 		"https://api.moonshot.cn/v1/chat/completions",
 		strings.NewReader(string(payload)),
 	)
+	if err != nil {
+		log.Printf("❌ Failed to create request: %v", err)
+		_, _ = fmt.Fprintf(w, "data: {\"error\":\"Failed to create request: %s\"}\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+cfg.KimiAPIKey)
 
@@ -364,6 +390,10 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 	}
 
 	if fullResponse.Len() > 0 {
+		if db == nil {
+			log.Println("❌ DB is nil in streamKimiResponse")
+			return
+		}
 		ensureSession()
 		metaJSON, _ := json.Marshal(map[string]interface{}{})
 		_, _ = db.Exec(
@@ -407,6 +437,10 @@ func initDB() {
 }
 
 func ensureSession() {
+	if db == nil {
+		log.Println("❌ DB is nil in ensureSession")
+		return
+	}
 	_, _ = db.Exec(`INSERT OR IGNORE INTO sessions (id, created_at, updated_at) VALUES (?, ?, ?)`, sessionID, time.Now(), time.Now())
 }
 
@@ -701,6 +735,12 @@ func main() {
 		MemoryDir:     getEnv("MEMORY_DIR", "../workspace/memory"),
 		ScreenshotCmd: getEnv("SCREENSHOT_CMD", ""),
 		SystemPrompt:  getEnv("GHOST_SYSTEM_PROMPT", "You are Ghost, a sovereign AI assistant running on a Raspberry Pi. Be concise and direct."),
+	}
+
+	if cfg.BridgeSecret == "" {
+		log.Println("⚠️  WARNING: BRIDGE_SECRET is not set in .env! Using default 'ghost-pi-secret'.")
+		log.Println("⚠️  Please set BRIDGE_SECRET in your .env for security.")
+		cfg.BridgeSecret = "ghost-pi-secret"
 	}
 
 	if raw := getEnv("ALLOWED_CMDS", ""); raw != "" {
