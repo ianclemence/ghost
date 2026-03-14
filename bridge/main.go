@@ -375,7 +375,8 @@ func buildContextMessages(userText, mediaB64, mediaType string) []map[string]int
 func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []map[string]interface{}) {
 	if cfg.KimiAPIKey == "" {
 		log.Println("❌ Kimi API key is missing")
-		_, _ = fmt.Fprintf(w, "data: {\"error\":\"Kimi API key is missing. Please set KIMI_API_KEY in .env\"}\n\n")
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", jsonEscape("Kimi API key is missing. Please set KIMI_API_KEY in .env"))
+		_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
 		flusher.Flush()
 		return
 	}
@@ -408,15 +409,37 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		_, _ = fmt.Fprintf(w, "data: {\"error\":\"%s\"}\n\n", err.Error())
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", jsonEscape("Upstream request failed: "+err.Error()))
+		_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
 		flusher.Flush()
 		return
 	}
 	defer resp.Body.Close()
+	log.Printf("🌐 Upstream response: status=%d content-type=%s", resp.StatusCode, resp.Header.Get("Content-Type"))
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		body := strings.TrimSpace(string(bodyBytes))
+		if len(body) > 400 {
+			body = body[:400]
+		}
+		msg := fmt.Sprintf("Upstream HTTP %d", resp.StatusCode)
+		if body != "" {
+			msg = msg + ": " + body
+		}
+		log.Printf("❌ %s", msg)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", jsonEscape(msg))
+		_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
+		flusher.Flush()
+		return
+	}
 
 	var fullResponse strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	hasTextChunk := false
+	receivedDone := false
+	upstreamError := ""
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
@@ -424,27 +447,55 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
-			flusher.Flush()
+			receivedDone = true
 			break
 		}
 
 		var chunk map[string]interface{}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			log.Printf("⚠️ Upstream chunk parse error: %v", err)
 			continue
 		}
 
-		if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
-			if choice, ok := choices[0].(map[string]interface{}); ok {
-				if delta, ok := choice["delta"].(map[string]interface{}); ok {
-					if content, ok := delta["content"].(string); ok && content != "" {
-						fullResponse.WriteString(content)
-						_, _ = fmt.Fprintf(w, "data: %s\n\n", jsonEscape(content))
-						flusher.Flush()
-					}
-				}
+		if errField, ok := chunk["error"].(map[string]interface{}); ok {
+			if m, ok := errField["message"].(string); ok && m != "" {
+				upstreamError = m
+				log.Printf("❌ Upstream error: %s", m)
 			}
+			continue
 		}
+
+		text := extractStreamText(chunk)
+		if text != "" {
+			hasTextChunk = true
+			fullResponse.WriteString(text)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", jsonEscape(text))
+			flusher.Flush()
+		}
+	}
+
+	if scanErr := scanner.Err(); scanErr != nil {
+		log.Printf("❌ Upstream scan error: %v", scanErr)
+		if upstreamError == "" {
+			upstreamError = scanErr.Error()
+		}
+	}
+
+	if !hasTextChunk {
+		msg := "No text chunks received from upstream stream"
+		if upstreamError != "" {
+			msg += ": " + upstreamError
+		}
+		log.Printf("⚠️ %s", msg)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", jsonEscape(msg))
+		_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
+		flusher.Flush()
+		return
+	}
+
+	if receivedDone {
+		_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
+		flusher.Flush()
 	}
 
 	if fullResponse.Len() > 0 {
@@ -465,6 +516,52 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 			"content": fullResponse.String(),
 		})
 	}
+}
+
+func extractStreamText(chunk map[string]interface{}) string {
+	choices, ok := chunk["choices"].([]interface{})
+	if !ok || len(choices) == 0 {
+		return ""
+	}
+	choice, ok := choices[0].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	if delta, ok := choice["delta"].(map[string]interface{}); ok {
+		if content := extractContentText(delta["content"]); content != "" {
+			return content
+		}
+	}
+	if message, ok := choice["message"].(map[string]interface{}); ok {
+		if content := extractContentText(message["content"]); content != "" {
+			return content
+		}
+	}
+	if text, ok := choice["text"].(string); ok && text != "" {
+		return text
+	}
+	return ""
+}
+
+func extractContentText(v interface{}) string {
+	switch c := v.(type) {
+	case string:
+		return c
+	case []interface{}:
+		var b strings.Builder
+		for _, part := range c {
+			switch p := part.(type) {
+			case string:
+				b.WriteString(p)
+			case map[string]interface{}:
+				if text, ok := p["text"].(string); ok {
+					b.WriteString(text)
+				}
+			}
+		}
+		return b.String()
+	}
+	return ""
 }
 
 func broadcastToWS(msg interface{}) {
