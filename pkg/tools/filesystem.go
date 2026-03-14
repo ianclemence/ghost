@@ -30,6 +30,11 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 	}
 
 	if restrict && !strings.HasPrefix(absPath, absWorkspace) {
+		// Allow access to temporary media files from mobile uploads
+		tempMediaDir := filepath.Join(os.TempDir(), "picoclaw_media")
+		if strings.HasPrefix(absPath, tempMediaDir) {
+			return absPath, nil
+		}
 		return "", fmt.Errorf("access denied: path is outside the workspace")
 	}
 

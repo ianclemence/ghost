@@ -27,11 +27,18 @@ import (
 const defaultInternalAPIPort = 8766
 
 type internalAPIRequest struct {
-	Content    string   `json:"content"`
-	SessionKey string   `json:"session_key"`
-	Media      []string `json:"media,omitempty"`
-	Channel    string   `json:"channel,omitempty"`
-	ChatID     string   `json:"chat_id,omitempty"`
+	Content    string       `json:"content"`
+	SessionKey string       `json:"session_key"`
+	Media      []string     `json:"media,omitempty"` // Legacy: just b64 strings
+	MediaItems []MediaItem  `json:"media_items,omitempty"`
+	Channel    string       `json:"channel,omitempty"`
+	ChatID     string       `json:"chat_id,omitempty"`
+}
+
+type MediaItem struct {
+	Base64   string `json:"base64"`
+	MimeType string `json:"mime_type,omitempty"`
+	Filename string `json:"filename,omitempty"`
 }
 
 type internalAPIResponse struct {
@@ -106,16 +113,31 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 
 		// Save media to temp files if provided as base64
 		mediaPaths := []string{}
+		// Handle legacy media array (just b64 strings)
 		for _, m := range req.Media {
 			if strings.HasPrefix(m, "data:") || len(m) > 100 { // Likely base64
-				path, err := saveBase64ToTemp(m)
+				path, err := saveBase64ToTemp(m, "", "")
 				if err == nil {
 					mediaPaths = append(mediaPaths, path)
 				} else {
-					logger.WarnCF("internal-api", "Failed to save base64 media", map[string]interface{}{"error": err.Error()})
+					logger.WarnCF("internal-api", "Failed to save legacy base64 media", map[string]interface{}{"error": err.Error()})
 				}
 			} else if _, err := os.Stat(m); err == nil {
 				mediaPaths = append(mediaPaths, m) // Already a path
+			}
+		}
+
+		// Handle new media_items array (with metadata)
+		for _, item := range req.MediaItems {
+			path, err := saveBase64ToTemp(item.Base64, item.MimeType, item.Filename)
+			if err == nil {
+				mediaPaths = append(mediaPaths, path)
+			} else {
+				logger.WarnCF("internal-api", "Failed to save base64 media item", map[string]interface{}{
+					"error":    err.Error(),
+					"filename": item.Filename,
+					"mime":     item.MimeType,
+				})
 			}
 		}
 
@@ -260,9 +282,16 @@ func sanitizeMobileResponse(input string) string {
 	return cleaned
 }
 
-func saveBase64ToTemp(b64Data string) (string, error) {
+func saveBase64ToTemp(b64Data string, mimeType string, originalName string) (string, error) {
 	// Strip data URL prefix if present (e.g., data:image/png;base64,)
 	if idx := strings.Index(b64Data, ","); idx != -1 {
+		if mimeType == "" {
+			// Extract mime from data URL if not provided
+			mimePart := b64Data[:idx]
+			if strings.HasPrefix(mimePart, "data:") {
+				mimeType = strings.Split(strings.TrimPrefix(mimePart, "data:"), ";")[0]
+			}
+		}
 		b64Data = b64Data[idx+1:]
 	}
 
@@ -276,7 +305,32 @@ func saveBase64ToTemp(b64Data string) (string, error) {
 		return "", err
 	}
 
-	filename := uuid.New().String() + ".jpg"
+	// Determine extension
+	ext := ".bin"
+	if originalName != "" {
+		ext = filepath.Ext(originalName)
+	} else if mimeType != "" {
+		switch mimeType {
+		case "image/jpeg", "image/jpg":
+			ext = ".jpg"
+		case "image/png":
+			ext = ".png"
+		case "image/gif":
+			ext = ".gif"
+		case "image/webp":
+			ext = ".webp"
+		case "application/pdf":
+			ext = ".pdf"
+		case "text/plain":
+			ext = ".txt"
+		case "text/markdown":
+			ext = ".md"
+		}
+	} else if len(data) > 4 && string(data[:4]) == "%PDF" {
+		ext = ".pdf"
+	}
+
+	filename := uuid.New().String() + ext
 	path := filepath.Join(tempDir, filename)
 
 	if err := os.WriteFile(path, data, 0600); err != nil {

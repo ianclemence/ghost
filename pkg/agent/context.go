@@ -236,7 +236,9 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 					},
 				})
 			} else {
-				fileTags = append(fileTags, fmt.Sprintf("File: %s (%s)", path, mimeType))
+				fileTags = append(fileTags, fmt.Sprintf("File attached: %s (%s). Use the read_file tool to see its content if needed.", filepath.Base(path), mimeType))
+				// Also add full path in a way the LLM can use it
+				fileTags = append(fileTags, fmt.Sprintf("Full path: %s", path))
 			}
 		}
 
