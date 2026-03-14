@@ -51,7 +51,7 @@ if check_command "apt-get"; then
     sudo apt-get update
     
     # Core deps
-    DEPENDENCIES="golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap"
+    DEPENDENCIES="golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc"
     
     # Check if we need to install anything
     NEEDS_INSTALL=false
@@ -72,15 +72,18 @@ else
     echo -e "${RED}[WARNING] Not a Debian-based system. Please manually install: golang, git, python3, ffmpeg, alsa-utils, espeak, fswebcam, adb, nmap${NC}"
 fi
 
-# 2. Install Python Tools (gcalcli)
+# 2. Install Python Tools
 echo ""
-echo -e "${YELLOW}[2/4] Installing Python tools (Calendar skill)...${NC}"
+echo -e "${YELLOW}[2/4] Installing Python tools (Calendar & Document skills)...${NC}"
+# Install gcalcli for Calendar
 if ! check_command "gcalcli"; then
     pip3 install gcalcli --break-system-packages 2>/dev/null || pip3 install gcalcli
-    echo -e "${GREEN}[OK] gcalcli installed.${NC}"
-else
-    echo -e "${GREEN}[OK] gcalcli already installed.${NC}"
 fi
+
+# Install document processing libraries
+pip3 install pypdf python-docx --break-system-packages 2>/dev/null || pip3 install pypdf python-docx
+
+echo -e "${GREEN}[OK] Python tools installed.${NC}"
 
 # 2.5. Install Ollama (Local LLM)
 echo ""
