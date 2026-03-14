@@ -93,9 +93,14 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		secret := r.Header.Get("X-Ghost-Secret")
-		if cfg.BridgeSecret != "" && secret != cfg.BridgeSecret {
-			log.Printf("⚠️ Unauthorized access attempt from %s", r.RemoteAddr)
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		if secret == "" {
+			log.Printf("⚠️ Unauthorized access attempt from %s: Secret is missing", r.RemoteAddr)
+			http.Error(w, `{"error":"unauthorized: secret missing"}`, http.StatusUnauthorized)
+			return
+		}
+		if secret != cfg.BridgeSecret {
+			log.Printf("⚠️ Unauthorized access attempt from %s: Secret mismatch", r.RemoteAddr)
+			http.Error(w, `{"error":"unauthorized: secret mismatch"}`, http.StatusUnauthorized)
 			return
 		}
 		next(w, r)
