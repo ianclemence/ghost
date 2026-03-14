@@ -894,38 +894,90 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 func handleScreenshot(w http.ResponseWriter, r *http.Request) {
 	outPath := "/tmp/ghost-bridge-screen.png"
 	scmdStr := cfg.ScreenshotCmd
+
+	// If no explicit command is set, try to find a suitable tool
 	if scmdStr == "" {
-		for _, tool := range []string{"scrot", "gnome-screenshot", "import"} {
-			if _, err := exec.LookPath(tool); err == nil {
-				switch tool {
-				case "scrot":
-					scmdStr = "scrot " + outPath
-				case "gnome-screenshot":
-					scmdStr = "gnome-screenshot -f " + outPath
-				case "import":
-					scmdStr = "import -window root " + outPath
+		// Detect Wayland vs X11
+		isWayland := os.Getenv("WAYLAND_DISPLAY") != "" || os.Getenv("XDG_SESSION_TYPE") == "wayland"
+
+		if isWayland {
+			// Try Wayland-native tools first
+			if _, err := exec.LookPath("grim"); err == nil {
+				scmdStr = "grim " + outPath
+			} else if _, err := exec.LookPath("gnome-screenshot"); err == nil {
+				scmdStr = "gnome-screenshot -f " + outPath
+			}
+		}
+
+		// Fallback to X11 tools if not already set or if Wayland check skipped
+		if scmdStr == "" {
+			for _, tool := range []string{"scrot", "import", "raspi2png"} {
+				if _, err := exec.LookPath(tool); err == nil {
+					switch tool {
+					case "scrot":
+						scmdStr = "scrot -z " + outPath // -z for silent
+					case "import":
+						scmdStr = "import -window root " + outPath
+					case "raspi2png":
+						scmdStr = "raspi2png -p " + outPath
+					}
+					break
 				}
-				break
 			}
 		}
 	}
+
 	if scmdStr == "" {
-		http.Error(w, `{"error":"no screenshot tool"}`, 500)
+		http.Error(w, `{"error":"no screenshot tool found (scrot, grim, or raspi2png)"}`, 500)
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "bash", "-c", "DISPLAY=:0 "+scmdStr)
-	cmd.Env = append(os.Environ(), "DISPLAY=:0")
+
+	// Try to capture with common environment variables set
+	cmd := exec.CommandContext(ctx, "bash", "-c", scmdStr)
+
+	// Ensure we have basic display environment variables if they are missing
+	// This helps when running as a service
+	env := os.Environ()
+	hasDisplay := false
+	hasWayland := false
+	for _, e := range env {
+		if strings.HasPrefix(e, "DISPLAY=") {
+			hasDisplay = true
+		}
+		if strings.HasPrefix(e, "WAYLAND_DISPLAY=") {
+			hasWayland = true
+		}
+	}
+
+	if !hasDisplay && !hasWayland {
+		// Guessing default display for X11 if none set
+		cmd.Env = append(env, "DISPLAY=:0")
+	} else {
+		cmd.Env = env
+	}
+
 	if err := cmd.Run(); err != nil {
+		// If it failed and we didn't try raspi2png yet, try it as a last resort
+		// raspi2png doesn't need X or Wayland, it reads the hardware framebuffer
+		if !strings.Contains(scmdStr, "raspi2png") {
+			if _, errPath := exec.LookPath("raspi2png"); errPath == nil {
+				cmdFallback := exec.CommandContext(ctx, "raspi2png", "-p", outPath)
+				if errFallback := cmdFallback.Run(); errFallback == nil {
+					goto captureSuccess
+				}
+			}
+		}
 		http.Error(w, fmt.Sprintf(`{"error":"screenshot failed: %s"}`, err.Error()), 500)
 		return
 	}
 
+captureSuccess:
 	imgBytes, err := os.ReadFile(outPath)
 	if err != nil {
-		http.Error(w, `{"error":"could not read screenshot"}`, 500)
+		http.Error(w, `{"error":"could not read screenshot result"}`, 500)
 		return
 	}
 	_ = os.Remove(outPath)
