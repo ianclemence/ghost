@@ -6,13 +6,13 @@ Wants=ghost.service
 
 [Service]
 Type=simple
-User=ianclemence
-WorkingDirectory=/home/ianclemence/ghost/bridge
-EnvironmentFile=/home/ianclemence/ghost/.env
+User=pi
+WorkingDirectory=/home/pi/ghost/bridge
+EnvironmentFile=/home/pi/ghost/.env
 Environment="BRIDGE_PORT=8765"
-Environment="GHOST_DB_PATH=/home/ianclemence/ghost/workspace/ghost.db"
-Environment="MEMORY_DIR=/home/ianclemence/ghost/workspace/memory"
-ExecStart=/home/ianclemence/ghost/bridge/ghost-bridge
+Environment="GHOST_DB_PATH=/home/pi/ghost/workspace/ghost.db"
+Environment="MEMORY_DIR=/home/pi/ghost/workspace/memory"
+ExecStart=/home/pi/ghost/bridge/ghost-bridge
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

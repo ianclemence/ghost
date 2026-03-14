@@ -1,6 +1,12 @@
 BINARY   = ghost-bridge
-PI_HOST  ?= ianclemence@ghost.local
-PI_DIR   ?= /home/ianclemence/ghost/bridge
+ENV_FILE ?= ../.env
+ifneq ("$(wildcard $(ENV_FILE))","")
+include $(ENV_FILE)
+endif
+PI_USER  ?= pi
+PI_HOST  ?= $(PI_USER)@raspberrypi.local
+PI_DIR   ?= /home/$(PI_USER)/ghost/bridge
+export PI_USER PI_HOST PI_DIR
 
 .PHONY: build pi pi4 deploy clean
 
@@ -21,11 +27,13 @@ deploy: pi
 	ssh $(PI_HOST) "mkdir -p $(PI_DIR)"
 	scp $(BINARY)-arm64 $(PI_HOST):$(PI_DIR)/$(BINARY)
 	scp ghost-bridge.service $(PI_HOST):/tmp/ghost-bridge.service
-	ssh $(PI_HOST) "sudo cp /tmp/ghost-bridge.service /etc/systemd/system/ && \
+	ssh $(PI_HOST) "sudo sed -i 's/User=pi/User=$(PI_USER)/g' /tmp/ghost-bridge.service && \
+	               sudo sed -i 's|/home/pi|/home/$(PI_USER)|g' /tmp/ghost-bridge.service && \
+	               sudo cp /tmp/ghost-bridge.service /etc/systemd/system/ && \
 	               sudo systemctl daemon-reload && \
 	               sudo systemctl enable ghost-bridge && \
 	               sudo systemctl restart ghost-bridge && \
-	               echo '✓ ghost-bridge deployed and running'"
+	               echo '✓ ghost-bridge deployed and running for user $(PI_USER)'"
 
 clean:
 	rm -f $(BINARY) $(BINARY)-arm64 $(BINARY)-armv7
