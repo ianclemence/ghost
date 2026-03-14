@@ -184,9 +184,9 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	useAgentRoute := cfg.GhostAgentURL != "" && req.MediaB64 == ""
+	useAgentRoute := cfg.GhostAgentURL != ""
 	if useAgentRoute {
-		if err := streamAgentResponse(w, flusher, req.Content); err == nil {
+		if err := streamAgentResponse(w, flusher, req.Content, req.MediaB64); err == nil {
 			return
 		} else {
 			log.Printf("⚠️ Agent route failed, falling back to direct Kimi: %v", err)
@@ -211,17 +211,24 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 	streamKimiResponse(w, flusher, messages)
 }
 
-func streamAgentResponse(w http.ResponseWriter, flusher http.Flusher, content string) error {
+func streamAgentResponse(w http.ResponseWriter, flusher http.Flusher, content string, mediaB64 string) error {
 	baseURL := strings.TrimSpace(cfg.GhostAgentURL)
 	if baseURL == "" {
 		return fmt.Errorf("ghost agent url is empty")
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
+
+	media := []string{}
+	if mediaB64 != "" {
+		media = append(media, mediaB64)
+	}
+
 	bodyBytes, err := json.Marshal(map[string]interface{}{
 		"content":     content,
 		"session_key": sessionID,
 		"channel":     "mobile",
 		"chat_id":     "default",
+		"media":       media,
 	})
 	if err != nil {
 		return err

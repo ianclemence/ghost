@@ -50,6 +50,10 @@ func NewGitHubCopilotProvider(uri string, connectMode string, model string) (*Gi
 
 // Chat sends a chat request to GitHub Copilot
 func (p *GitHubCopilotProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
+	return p.StreamChat(ctx, messages, tools, model, options, nil)
+}
+
+func (p *GitHubCopilotProvider) StreamChat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}, onChunk func(string)) (*LLMResponse, error) {
 	type tempMessage struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
@@ -69,11 +73,14 @@ func (p *GitHubCopilotProvider) Chat(ctx context.Context, messages []Message, to
 		Prompt: string(fullcontent),
 	})
 
+	if onChunk != nil {
+		onChunk(content)
+	}
+
 	return &LLMResponse{
 		FinishReason: "stop",
 		Content:      content,
 	}, nil
-
 }
 
 func (p *GitHubCopilotProvider) GetDefaultModel() string {

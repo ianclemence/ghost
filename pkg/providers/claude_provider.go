@@ -30,6 +30,10 @@ func NewClaudeProviderWithTokenSource(token string, tokenSource func() (string, 
 }
 
 func (p *ClaudeProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
+	return p.StreamChat(ctx, messages, tools, model, options, nil)
+}
+
+func (p *ClaudeProvider) StreamChat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}, onChunk func(string)) (*LLMResponse, error) {
 	var opts []option.RequestOption
 	if p.tokenSource != nil {
 		tok, err := p.tokenSource()
@@ -44,12 +48,53 @@ func (p *ClaudeProvider) Chat(ctx context.Context, messages []Message, tools []T
 		return nil, err
 	}
 
-	resp, err := p.client.Messages.New(ctx, params, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("claude API call: %w", err)
+	if onChunk == nil {
+		resp, err := p.client.Messages.New(ctx, params, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("claude API call: %w", err)
+		}
+		return parseClaudeResponse(resp), nil
 	}
 
-	return parseClaudeResponse(resp), nil
+	// Streaming mode
+	stream := p.client.Messages.NewStreaming(ctx, params, opts...)
+	var fullContent string
+	var reasoning string
+	var toolCalls []ToolCall
+	var usage *UsageInfo
+
+	for stream.Next() {
+		event := stream.Current()
+		switch event.Type {
+		case anthropic.MessageStreamEventRawContentBlockDelta:
+			if delta, ok := event.Delta.(anthropic.ContentBlockDeltaEventDelta); ok {
+				if delta.Type == "text_delta" {
+					chunk := delta.Text
+					fullContent += chunk
+					onChunk(chunk)
+				}
+			}
+		case anthropic.MessageStreamEventRawMessageStart:
+			// ...
+		case anthropic.MessageStreamEventRawMessageDelta:
+			if msgDelta, ok := event.Delta.(anthropic.MessageDeltaEventDelta); ok {
+				if msgDelta.Usage.OutputTokens > 0 {
+					// Update usage
+				}
+			}
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		return nil, fmt.Errorf("claude streaming error: %w", err)
+	}
+
+	return &LLMResponse{
+		Content:          fullContent,
+		ReasoningContent: reasoning,
+		ToolCalls:        toolCalls,
+		Usage:            usage,
+	}, nil
 }
 
 func (p *ClaudeProvider) GetDefaultModel() string {

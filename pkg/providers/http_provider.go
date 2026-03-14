@@ -51,6 +51,10 @@ func NewHTTPProvider(apiKey, apiBase, proxy, embeddingModel string) *HTTPProvide
 }
 
 func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
+	return p.StreamChat(ctx, messages, tools, model, options, nil)
+}
+
+func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}, onChunk func(string)) (*LLMResponse, error) {
 	if p.apiBase == "" {
 		return nil, fmt.Errorf("API base not configured")
 	}
@@ -128,7 +132,11 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("API request failed:\n  Status: %d\n  Body:   %s", resp.StatusCode, string(body))
 		}
-		return p.parseNativeResponse(body)
+		res, err := p.parseNativeResponse(body)
+		if err == nil && onChunk != nil && res.Content != "" {
+			onChunk(res.Content)
+		}
+		return res, err
 	} else {
 		req, err := http.NewRequestWithContext(ctx, "POST", p.apiBase+"/chat/completions", bytes.NewReader(jsonData))
 		if err != nil {
@@ -150,7 +158,11 @@ func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []Too
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("API request failed:\n  Status: %d\n  Body:   %s", resp.StatusCode, string(body))
 		}
-		return p.parseResponse(body)
+		res, err := p.parseResponse(body)
+		if err == nil && onChunk != nil && res.Content != "" {
+			onChunk(res.Content)
+		}
+		return res, err
 	}
 }
 

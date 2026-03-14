@@ -9,14 +9,17 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/logger"
 )
@@ -101,6 +104,21 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 
 		start := time.Now()
 
+		// Save media to temp files if provided as base64
+		mediaPaths := []string{}
+		for _, m := range req.Media {
+			if strings.HasPrefix(m, "data:") || len(m) > 100 { // Likely base64
+				path, err := saveBase64ToTemp(m)
+				if err == nil {
+					mediaPaths = append(mediaPaths, path)
+				} else {
+					logger.WarnCF("internal-api", "Failed to save base64 media", map[string]interface{}{"error": err.Error()})
+				}
+			} else if _, err := os.Stat(m); err == nil {
+				mediaPaths = append(mediaPaths, m) // Already a path
+			}
+		}
+
 		// Use a timeout context to prevent indefinite hangs
 		ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
 		defer cancel()
@@ -110,12 +128,59 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			content = "User request:\n" + req.Content + "\n\nReturn only the final user-facing answer. Do not include tool calls, command logs, safety guard messages, raw fetched payloads, or internal debugging text."
 		}
 
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			// Fallback: wait for full response and write as JSON
+			response, err := agentLoop.ProcessDirectWithChannel(
+				ctx,
+				content,
+				req.SessionKey,
+				req.Channel,
+				req.ChatID,
+				mediaPaths,
+				nil,
+				nil,
+			)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(internalAPIResponse{
+				Content:    response,
+				DurationMs: time.Since(start).Milliseconds(),
+			})
+			return
+		}
+
+		// Stream the response as SSE
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		onChunk := func(chunk string) {
+			escaped, _ := json.Marshal(chunk)
+			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
+			flusher.Flush()
+		}
+
+		onToolCall := func(name string, args string) {
+			// Format as a "Thinking..." bubble or status line for mobile
+			msg := fmt.Sprintf("\n\n*Ghost is using tool: %s...*\n\n", name)
+			escaped, _ := json.Marshal(msg)
+			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
+			flusher.Flush()
+		}
+
 		response, err := agentLoop.ProcessDirectWithChannel(
 			ctx,
 			content,
 			req.SessionKey,
 			req.Channel,
 			req.ChatID,
+			mediaPaths,
+			onChunk,
+			onToolCall,
 		)
 
 		duration := time.Since(start)
@@ -125,55 +190,14 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 				"error":       err.Error(),
 				"duration_ms": duration.Milliseconds(),
 			})
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(internalAPIResponse{
-				Error:      err.Error(),
-				DurationMs: duration.Milliseconds(),
-			})
-			return
-		}
-
-		response = sanitizeMobileResponse(response)
-
-		logger.InfoCF("internal-api", "Chat request completed", map[string]interface{}{
-			"response_length": len(response),
-			"duration_ms":     duration.Milliseconds(),
-		})
-
-		// Stream the response as SSE (compatible with bridge's existing SSE parsing)
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-		w.Header().Set("X-Ghost-Duration-Ms", fmt.Sprintf("%d", duration.Milliseconds()))
-
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			// Fallback: write as JSON
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(internalAPIResponse{
-				Content:    response,
-				DurationMs: duration.Milliseconds(),
-			})
-			return
-		}
-
-		// Write response as SSE chunks (one big chunk for now, can be improved later)
-		// Break into smaller chunks to simulate streaming for better UX
-		chunkSize := 80
-		for i := 0; i < len(response); i += chunkSize {
-			end := i + chunkSize
-			if end > len(response) {
-				end = len(response)
-			}
-			chunk := response[i:end]
-			escaped, _ := json.Marshal(chunk)
-			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
+			// We already started streaming, so we can only send an error in data format or just end
+			fmt.Fprintf(w, "data: %s\n\n", `{"error":"`+err.Error()+`"}`)
 			flusher.Flush()
-			// Tiny delay to simulate streaming
-			time.Sleep(5 * time.Millisecond)
+			return
 		}
 
+		// Final sanitize if needed (though it's harder with streaming)
+		// For now, just send [DONE]
 		fmt.Fprint(w, "data: [DONE]\n\n")
 		flusher.Flush()
 	})
@@ -235,4 +259,30 @@ func sanitizeMobileResponse(input string) string {
 		return "I completed your request, but I can only share user-facing results in mobile mode."
 	}
 	return cleaned
+}
+
+func saveBase64ToTemp(b64Data string) (string, error) {
+	// Strip data URL prefix if present (e.g., data:image/png;base64,)
+	if idx := strings.Index(b64Data, ","); idx != -1 {
+		b64Data = b64Data[idx+1:]
+	}
+
+	data, err := base64.StdEncoding.DecodeString(b64Data)
+	if err != nil {
+		return "", err
+	}
+
+	tempDir := filepath.Join(os.TempDir(), "picoclaw_media")
+	if err := os.MkdirAll(tempDir, 0700); err != nil {
+		return "", err
+	}
+
+	filename := uuid.New().String() + ".jpg"
+	path := filepath.Join(tempDir, filename)
+
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return "", err
+	}
+
+	return path, nil
 }

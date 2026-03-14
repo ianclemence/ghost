@@ -58,6 +58,8 @@ type processOptions struct {
 	NoHistory       bool   // If true, don't load session history (for heartbeat)
 	Media           []string
 	Thinking        bool
+	OnChunk         func(string)              // New: callback for streaming chunks
+	OnToolCall      func(name string, args string) // New: callback for tool calls
 }
 
 // createToolRegistry creates a tool registry with common tools.
@@ -196,7 +198,7 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 				continue
 			}
 
-			response, err := al.processMessage(ctx, msg)
+			response, err := al.processMessage(ctx, msg, nil)
 			if err != nil {
 				response = fmt.Sprintf("Error processing message: %v", err)
 			}
@@ -246,19 +248,20 @@ func (al *AgentLoop) RecordLastChatID(chatID string) error {
 }
 
 func (al *AgentLoop) ProcessDirect(ctx context.Context, content, sessionKey string) (string, error) {
-	return al.ProcessDirectWithChannel(ctx, content, sessionKey, "cli", "direct")
+	return al.ProcessDirectWithChannel(ctx, content, sessionKey, "cli", "direct", nil, nil)
 }
 
-func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string) (string, error) {
+func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string, media []string, onChunk func(string)) (string, error) {
 	msg := bus.InboundMessage{
 		Channel:    channel,
-		SenderID:   "cron",
+		SenderID:   "mobile",
 		ChatID:     chatID,
 		Content:    content,
 		SessionKey: sessionKey,
+		Media:      media,
 	}
 
-	return al.processMessage(ctx, msg)
+	return al.processMessage(ctx, msg, onChunk)
 }
 
 // ProcessHeartbeat processes a heartbeat request without session history.
@@ -276,7 +279,7 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 	})
 }
 
-func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
+func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage, onChunk func(string)) (string, error) {
 	// Add message preview to log (show full content for error messages)
 	var logContent string
 	if strings.Contains(msg.Content, "Error:") || strings.Contains(msg.Content, "error") {
@@ -313,6 +316,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		SendResponse:    false,
 		Media:           msg.Media,
 		Thinking:        thinking,
+		OnChunk:         onChunk,
 	})
 
 	// Cleanup temporary media files
@@ -519,11 +523,11 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			})
 
 		// Call LLM
-		response, err := al.provider.Chat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
+		response, err := al.provider.StreamChat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
 			"max_tokens":  8192,
 			"temperature": al.temperature,
 			"thinking":    opts.Thinking,
-		})
+		}, opts.OnChunk)
 
 		if err != nil {
 			logger.ErrorCF("agent", "LLM call failed",
@@ -549,6 +553,10 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		toolNames := make([]string, 0, len(response.ToolCalls))
 		for _, tc := range response.ToolCalls {
 			toolNames = append(toolNames, tc.Name)
+			if opts.OnToolCall != nil {
+				argsJSON, _ := json.Marshal(tc.Arguments)
+				opts.OnToolCall(tc.Name, string(argsJSON))
+			}
 		}
 		logger.InfoCF("agent", "LLM requested tool calls",
 			map[string]interface{}{

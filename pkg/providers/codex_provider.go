@@ -42,6 +42,10 @@ func NewCodexProviderWithTokenSource(token, accountID string, tokenSource func()
 }
 
 func (p *CodexProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
+	return p.StreamChat(ctx, messages, tools, model, options, nil)
+}
+
+func (p *CodexProvider) StreamChat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}, onChunk func(string)) (*LLMResponse, error) {
 	var opts []option.RequestOption
 	if p.tokenSource != nil {
 		tok, accID, err := p.tokenSource()
