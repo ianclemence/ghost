@@ -196,6 +196,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			return
 		}
 
+		logger.InfoCF("internal-api", "Chat request completed", map[string]interface{}{
+			"response_length": len(response),
+			"duration_ms":     duration.Milliseconds(),
+		})
+
 		// Final sanitize if needed (though it's harder with streaming)
 		// For now, just send [DONE]
 		fmt.Fprint(w, "data: [DONE]\n\n")

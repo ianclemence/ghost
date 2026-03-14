@@ -251,7 +251,7 @@ func (al *AgentLoop) ProcessDirect(ctx context.Context, content, sessionKey stri
 	return al.ProcessDirectWithChannel(ctx, content, sessionKey, "cli", "direct", nil, nil)
 }
 
-func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string, media []string, onChunk func(string)) (string, error) {
+func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string, media []string, onChunk func(string), onToolCall func(string, string)) (string, error) {
 	msg := bus.InboundMessage{
 		Channel:    channel,
 		SenderID:   "mobile",
@@ -261,7 +261,7 @@ func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sess
 		Media:      media,
 	}
 
-	return al.processMessage(ctx, msg, onChunk)
+	return al.processMessage(ctx, msg, onChunk, onToolCall)
 }
 
 // ProcessHeartbeat processes a heartbeat request without session history.
@@ -279,7 +279,7 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 	})
 }
 
-func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage, onChunk func(string)) (string, error) {
+func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage, onChunk func(string), onToolCall func(string, string)) (string, error) {
 	// Add message preview to log (show full content for error messages)
 	var logContent string
 	if strings.Contains(msg.Content, "Error:") || strings.Contains(msg.Content, "error") {
@@ -317,6 +317,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 		Media:           msg.Media,
 		Thinking:        thinking,
 		OnChunk:         onChunk,
+		OnToolCall:      onToolCall,
 	})
 
 	// Cleanup temporary media files
