@@ -394,7 +394,7 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 	}
 
 	req, err := http.NewRequestWithContext(context.Background(), "POST",
-		"https://api.moonshot.cn/v1/chat/completions",
+		"https://api.moonshot.ai/v1/chat/completions",
 		strings.NewReader(string(payload)),
 	)
 	if err != nil {
@@ -686,7 +686,7 @@ func handleTranscribe(w http.ResponseWriter, r *http.Request) {
 	_ = mw.Close()
 
 	req, _ := http.NewRequestWithContext(context.Background(), "POST",
-		"https://api.moonshot.cn/v1/audio/transcriptions", &buf,
+		"https://api.moonshot.ai/v1/audio/transcriptions", &buf,
 	)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+cfg.KimiAPIKey)
