@@ -30,112 +30,23 @@ func NewClaudeProviderWithTokenSource(token string, tokenSource func() (string, 
 }
 
 func (p *ClaudeProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
-	return p.StreamChat(ctx, messages, tools, model, options, nil)
-}
-
-func (p *ClaudeProvider) StreamChat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}, onChunk func(string)) (*LLMResponse, error) {
-	var opts []option.RequestOption
-	if p.tokenSource != nil {
-		tok, err := p.tokenSource()
-		if err != nil {
-			return nil, fmt.Errorf("refreshing token: %w", err)
-		}
-		opts = append(opts, option.WithAuthToken(tok))
-	}
-
-	params, err := buildClaudeParams(messages, tools, model, options)
+	cessools, model, options)
 	if err != nil {
 		return nil, err
 	}
 
-	if onChunk == nil {
-		resp, err := p.client.Messages.New(ctx, params, opts...)
-		if err != nil {
-			return nil, fmt.Errorf("claude API call: %w", err)
-		}
-		return parseClaudeResponse(resp), nil
+	resp, err := p.client.Messages.New(ctx, params, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("claude API call: %w", err)
 	}
 
-	// Streaming mode
-	stream := p.client.Messages.NewStreaming(ctx, params, opts...)
-	var fullContent string
-	var reasoning string
-	var toolCalls []ToolCall
-	var usage *UsageInfo
-
-	for stream.Next() {
-		event := stream.Current()
-		switch eventVariant := event.AsAny().(type) {
-		case anthropic.ContentBlockDeltaEvent:
-			switch deltaVariant := eventVariant.Delta.AsAny().(type) {
-			case anthropic.TextDelta:
-				chunk := deltaVariant.Text
-				fullContent += chunk
-				if onChunk != nil {
-					onChunk(chunk)
-				}
-			}
-		case anthropic.MessageStartEvent:
-			// Initial message info
-			usage = &UsageInfo{
-				PromptTokens: int(eventVariant.Message.Usage.InputTokens),
-			}
-		case anthropic.MessageDeltaEvent:
-			// Update usage at the end
-			if usage != nil {
-				usage.CompletionTokens = int(eventVariant.Usage.OutputTokens)
-				usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
-			}
-		}
-	}
-
-	if err := stream.Err(); err != nil {
-		return nil, fmt.Errorf("claude streaming error: %w", err)
-	}
-
-	return &LLMResponse{
-		Content:          fullContent,
-		ReasoningContent: reasoning,
-		ToolCalls:        toolCalls,
-		Usage:            usage,
-	}, nil
+	return parseClaudeResponse(resp), nil
 }
 
 func (p *ClaudeProvider) GetDefaultModel() string {
-	return "claude-sonnet-4-5-20250929"
-}
-
-func buildClaudeParams(messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (anthropic.MessageNewParams, error) {
-	var system []anthropic.TextBlockParam
-	var anthropicMessages []anthropic.MessageParam
-
-	for _, msg := range messages {
-		switch msg.Role {
-		case "system":
-			system = append(system, anthropic.TextBlockParam{Text: msg.Content})
-		case "user":
-			if msg.ToolCallID != "" {
-				anthropicMessages = append(anthropicMessages,
-					anthropic.NewUserMessage(anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false)),
-				)
-			} else {
-				anthropicMessages = append(anthropicMessages,
-					anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)),
-				)
-			}
-		case "assistant":
-			if len(msg.ToolCalls) > 0 {
-				var blocks []anthropic.ContentBlockParamUnion
-				if msg.Content != "" {
-					blocks = append(blocks, anthropic.NewTextBlock(msg.Content))
-				}
-				for _, tc := range msg.ToolCalls {
-					blocks = append(blocks, anthropic.NewToolUseBlock(tc.ID, tc.Arguments, tc.Name))
-				}
-				anthropicMessages = append(anthropicMessages, anthropic.NewAssistantMessage(blocks...))
-			} else {
-				anthropicMessages = append(anthropicMessages,
-					anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)),
+	return "claude-sonnet-4-5-20250929arams(messages []Message, tools []ToolDefinition, model sring, options mapstring]interface{}) (anthropic.MessageNewParams,asmk
+	vr [nte.=a{e=(ctasnaiepc.)	}
+gaeBNt)opic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)),
 				)
 			}
 		case "tool":

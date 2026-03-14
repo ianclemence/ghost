@@ -25,10 +25,6 @@ func NewClaudeCliProvider(workspace string) *ClaudeCliProvider {
 
 // Chat implements LLMProvider.Chat by executing the claude CLI.
 func (p *ClaudeCliProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
-	return p.StreamChat(ctx, messages, tools, model, options, nil)
-}
-
-func (p *ClaudeCliProvider) StreamChat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}, onChunk func(string)) (*LLMResponse, error) {
 	systemPrompt := p.buildSystemPrompt(messages, tools)
 	prompt := p.messagesToPrompt(messages)
 
@@ -58,11 +54,7 @@ func (p *ClaudeCliProvider) StreamChat(ctx context.Context, messages []Message, 
 		return nil, fmt.Errorf("claude cli error: %w", err)
 	}
 
-	res, err := p.parseClaudeCliResponse(stdout.String())
-	if err == nil && onChunk != nil && res.Content != "" {
-		onChunk(res.Content)
-	}
-	return res, err
+	return p.parseClaudeCliResponse(stdout.String())
 }
 
 // GetDefaultModel returns the default model identifier.

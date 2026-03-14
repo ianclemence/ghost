@@ -1,14 +1,12 @@
 package providers
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -77,15 +75,11 @@ type kimiResponse struct {
 }
 
 func (p *KimiProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
-	return p.StreamChat(ctx, messages, tools, model, options, nil)
-}
-
-func (p *KimiProvider) StreamChat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}, onChunk func(string)) (*LLMResponse, error) {
 	// Build request
 	reqBody := kimiRequest{
 		Model:    model,
 		Messages: make([]kimiMessage, 0, len(messages)),
-		Stream:   onChunk != nil,
+		Stream:   false,
 	}
 
 	if len(tools) > 0 {
@@ -171,18 +165,13 @@ func (p *KimiProvider) StreamChat(ctx context.Context, messages []Message, tools
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	if onChunk != nil {
-		return p.handleStreamResponse(resp.Body, onChunk)
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
 	var kResp kimiResponse
@@ -237,49 +226,6 @@ func (p *KimiProvider) StreamChat(ctx context.Context, messages []Message, tools
 		ToolCalls:    choice.Message.ToolCalls,
 		FinishReason: choice.FinishReason,
 		Usage:        kResp.Usage,
-	}, nil
-}
-
-func (p *KimiProvider) handleStreamResponse(body io.Reader, onChunk func(string)) (*LLMResponse, error) {
-	scanner := bufio.NewScanner(body)
-	var fullContent string
-	var toolCalls []ToolCall
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			break
-		}
-
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content   string     `json:"content"`
-					ToolCalls []ToolCall `json:"tool_calls"`
-				} `json:"delta"`
-			} `choices`
-		}
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue
-		}
-
-		if len(chunk.Choices) > 0 {
-			content := chunk.Choices[0].Delta.Content
-			if content != "" {
-				fullContent += content
-				onChunk(content)
-			}
-			// Handle tool calls in chunks if needed
-		}
-	}
-
-	return &LLMResponse{
-		Content:   fullContent,
-		ToolCalls: toolCalls,
 	}, nil
 }
 

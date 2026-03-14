@@ -17,6 +17,7 @@ config.json
 sessions/
 build/
 tmp/
+picoclaw/
 
 # Coverage
 coverage.txt

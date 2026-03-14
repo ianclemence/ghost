@@ -132,11 +132,7 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("API request failed:\n  Status: %d\n  Body:   %s", resp.StatusCode, string(body))
 		}
-		res, err := p.parseNativeResponse(body)
-		if err == nil && onChunk != nil && res.Content != "" {
-			onChunk(res.Content)
-		}
-		return res, err
+		return p.parseNativeResponse(body)
 	} else {
 		req, err := http.NewRequestWithContext(ctx, "POST", p.apiBase+"/chat/completions", bytes.NewReader(jsonData))
 		if err != nil {
@@ -158,11 +154,7 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("API request failed:\n  Status: %d\n  Body:   %s", resp.StatusCode, string(body))
 		}
-		res, err := p.parseResponse(body)
-		if err == nil && onChunk != nil && res.Content != "" {
-			onChunk(res.Content)
-		}
-		return res, err
+		return p.parseResponse(body)
 	}
 }
 
