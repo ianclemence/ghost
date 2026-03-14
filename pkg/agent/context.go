@@ -80,7 +80,7 @@ Your workspace is at: %s
 
 1. **ALWAYS use tools** - When you need to perform an action (schedule reminders, send messages, execute commands, etc.), you MUST call the appropriate tool. Do NOT just say you'll do it or pretend to do it.
 
-2. **Be helpful and accurate** - When using tools, briefly explain what you're doing.
+2. **Be helpful and accurate** - When using tools, just perform the action. Do NOT explain what you're doing unless specifically asked.
 
 3. **Memory** - When remembering something, write to %s/memory/MEMORY.md`,
 		now, runtime, workspacePath, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
@@ -170,7 +170,7 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 	}
 
 	if channel == "mobile" {
-		systemPrompt += "\n\n**MOBILE CHANNEL RULE**: Return only the final user-facing answer. Do not include tool calls, command logs, safety guard messages, raw fetched payloads, or internal debugging text."
+		systemPrompt += "\n\n**MOBILE CHANNEL RULE**: Return ONLY the final user-facing answer. NEVER include tool call descriptions, reasoning, thoughts, status updates (like \"using tool\"), command logs, or internal debugging text. The user only wants to see the end result."
 	}
 
 	// Log system prompt summary for debugging (debug mode only)

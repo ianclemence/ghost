@@ -162,11 +162,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		}
 
 		onToolCall := func(name string, args string) {
-			// Format as a "Thinking..." bubble or status line for mobile
-			msg := fmt.Sprintf("\n\n*Ghost is using tool: %s...*\n\n", name)
-			escaped, _ := json.Marshal(msg)
-			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
-			flusher.Flush()
+			// User requested no "using tool" status lines in the mobile app.
+			// We skip sending these status chunks entirely.
 		}
 
 		response, err := agentLoop.ProcessDirectWithChannel(
