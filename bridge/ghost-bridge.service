@@ -1,0 +1,25 @@
+[Unit]
+Description=Ghost Mobile Bridge
+Documentation=https://github.com/your/ghost
+After=network.target ghost.service
+Wants=ghost.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/ghost-bridge
+EnvironmentFile=/home/pi/ghost/.env
+Environment="BRIDGE_PORT=8765"
+Environment="GHOST_DB_PATH=/home/pi/ghost/ghost.db"
+Environment="MEMORY_DIR=/home/pi/ghost/workspace/memory"
+ExecStart=/home/pi/ghost-bridge/ghost-bridge
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ghost-bridge
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
