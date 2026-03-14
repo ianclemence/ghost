@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/agent"
@@ -104,10 +105,14 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
 		defer cancel()
 
-		// Process through the full Ghost agent runtime
+		content := req.Content
+		if req.Channel == "mobile" {
+			content = "User request:\n" + req.Content + "\n\nReturn only the final user-facing answer. Do not include tool calls, command logs, safety guard messages, raw fetched payloads, or internal debugging text."
+		}
+
 		response, err := agentLoop.ProcessDirectWithChannel(
 			ctx,
-			req.Content,
+			content,
 			req.SessionKey,
 			req.Channel,
 			req.ChatID,
@@ -128,6 +133,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			})
 			return
 		}
+
+		response = sanitizeMobileResponse(response)
 
 		logger.InfoCF("internal-api", "Chat request completed", map[string]interface{}{
 			"response_length": len(response),
@@ -195,4 +202,37 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			log.Printf("❌ Internal API server error: %v", err)
 		}
 	}()
+}
+
+func sanitizeMobileResponse(input string) string {
+	if strings.TrimSpace(input) == "" {
+		return input
+	}
+	lines := strings.Split(input, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(lower, "tool call:") {
+			continue
+		}
+		if strings.Contains(lower, "tool execution started") || strings.Contains(lower, "tool execution failed") || strings.Contains(lower, "tool execution completed") {
+			continue
+		}
+		if strings.Contains(lower, "command blocked by safety guard") {
+			continue
+		}
+		if strings.HasPrefix(lower, "fetched ") && strings.Contains(lower, "bytes") {
+			continue
+		}
+		if strings.HasPrefix(lower, "error:") && strings.Contains(lower, "safety guard") {
+			continue
+		}
+		out = append(out, line)
+	}
+	cleaned := strings.TrimSpace(strings.Join(out, "\n"))
+	if cleaned == "" {
+		return "I completed your request, but I can only share user-facing results in mobile mode."
+	}
+	return cleaned
 }
