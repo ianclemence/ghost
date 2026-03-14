@@ -198,7 +198,7 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 				continue
 			}
 
-			response, err := al.processMessage(ctx, msg, nil)
+			response, err := al.processMessage(ctx, msg, nil, nil)
 			if err != nil {
 				response = fmt.Sprintf("Error processing message: %v", err)
 			}
@@ -248,7 +248,7 @@ func (al *AgentLoop) RecordLastChatID(chatID string) error {
 }
 
 func (al *AgentLoop) ProcessDirect(ctx context.Context, content, sessionKey string) (string, error) {
-	return al.ProcessDirectWithChannel(ctx, content, sessionKey, "cli", "direct", nil, nil)
+	return al.ProcessDirectWithChannel(ctx, content, sessionKey, "cli", "direct", nil, nil, nil)
 }
 
 func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string, media []string, onChunk func(string), onToolCall func(string, string)) (string, error) {
