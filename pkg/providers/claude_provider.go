@@ -65,22 +65,26 @@ func (p *ClaudeProvider) StreamChat(ctx context.Context, messages []Message, too
 
 	for stream.Next() {
 		event := stream.Current()
-		switch event.Type {
-		case anthropic.MessageStreamEventRawContentBlockDelta:
-			if delta, ok := event.Delta.(anthropic.ContentBlockDeltaEventDelta); ok {
-				if delta.Type == "text_delta" {
-					chunk := delta.Text
-					fullContent += chunk
+		switch eventVariant := event.AsAny().(type) {
+		case anthropic.ContentBlockDeltaEvent:
+			switch deltaVariant := eventVariant.Delta.AsAny().(type) {
+			case anthropic.TextDelta:
+				chunk := deltaVariant.Text
+				fullContent += chunk
+				if onChunk != nil {
 					onChunk(chunk)
 				}
 			}
-		case anthropic.MessageStreamEventRawMessageStart:
-			// ...
-		case anthropic.MessageStreamEventRawMessageDelta:
-			if msgDelta, ok := event.Delta.(anthropic.MessageDeltaEventDelta); ok {
-				if msgDelta.Usage.OutputTokens > 0 {
-					// Update usage
-				}
+		case anthropic.MessageStartEvent:
+			// Initial message info
+			usage = &UsageInfo{
+				PromptTokens: int(eventVariant.Message.Usage.InputTokens),
+			}
+		case anthropic.MessageDeltaEvent:
+			// Update usage at the end
+			if usage != nil {
+				usage.CompletionTokens = int(eventVariant.Usage.OutputTokens)
+				usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 			}
 		}
 	}
