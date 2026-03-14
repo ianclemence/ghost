@@ -1,6 +1,6 @@
 BINARY   = ghost-bridge
-PI_HOST  ?= pi@raspberrypi.local
-PI_DIR   ?= /home/pi/ghost-bridge
+PI_HOST  ?= ianclemence@ghost.local
+PI_DIR   ?= /home/ianclemence/ghost/bridge
 
 .PHONY: build pi pi4 deploy clean
 
