@@ -238,7 +238,13 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 				})
 			} else {
 				// Add a very explicit tag for non-image files to grab the LLM's attention
-				tag := fmt.Sprintf("NEW ATTACHMENT: %s (%s). Please use the read_file tool to examine its contents if you need to describe or analyze it. Full path: %s", filepath.Base(path), mimeType, path)
+				tag := fmt.Sprintf("NEW ATTACHMENT: %s (%s).", filepath.Base(path), mimeType)
+				if strings.Contains(mimeType, "pdf") || strings.Contains(mimeType, "word") || strings.Contains(mimeType, "officedocument") {
+					tag += " This is a complex binary document. Please use the 'summarize' skill (e.g., via the shell tool) to extract its content instead of trying to read it directly with 'read_file'."
+				} else {
+					tag += " Please use the read_file tool to examine its contents if you need to describe or analyze it."
+				}
+				tag += fmt.Sprintf(" Full path: %s", path)
 				fileTags = append(fileTags, tag)
 			}
 		}

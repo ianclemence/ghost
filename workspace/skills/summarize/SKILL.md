@@ -9,13 +9,28 @@ metadata: {"nanobot":{"emoji":"🧾","requires":{"bins":["summarize"]},"install"
 
 Fast CLI to summarize URLs, local files, and YouTube links.
 
+## Document Extraction (Local Fallback)
+
+If the `summarize` binary is not available, use the local extraction script:
+
+```bash
+python workspace/skills/summarize/scripts/extract.py "/path/to/file.pdf"
+```
+
+This script supports:
+- **PDF**: Uses `pdftotext` or `pypdf`.
+- **DOCX**: Uses `pandoc` or `python-docx`.
+
 ## When to use (trigger phrases)
 
 Use this skill immediately when the user asks any of:
+- “summarize this document/file”
+- “what’s in this PDF/Word file?”
+- “read the content of this .docx”
 - “use summarize.sh”
 - “what’s this link/video about?”
 - “summarize this URL/article”
-- “transcribe this YouTube/video” (best-effort transcript extraction; no `yt-dlp` needed)
+- “transcribe this YouTube/video”
 
 ## Quick start
 
