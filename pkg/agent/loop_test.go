@@ -435,7 +435,7 @@ func (h testHelper) executeAndGetResponse(tb testing.TB, ctx context.Context, ms
 	timeoutCtx, cancel := context.WithTimeout(ctx, responseTimeout)
 	defer cancel()
 
-	response, err := h.al.processMessage(timeoutCtx, msg)
+	response, err := h.al.processMessage(timeoutCtx, msg, nil, nil)
 	if err != nil {
 		tb.Fatalf("processMessage failed: %v", err)
 	}
@@ -553,9 +553,19 @@ func TestImagePassing(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Create a dummy image file
-	imagePath := filepath.Join(tmpDir, "test_image.jpg")
-	err = os.WriteFile(imagePath, []byte("fake image data"), 0644)
+	imagePath := filepath.Join(tmpDir, "test_image.png")
+	pngData := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+		0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41,
+		0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+		0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+		0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+		0x42, 0x60, 0x82,
+	}
+	err = os.WriteFile(imagePath, pngData, 0644)
 	if err != nil {
 		t.Fatalf("Failed to create dummy image: %v", err)
 	}
@@ -589,7 +599,7 @@ func TestImagePassing(t *testing.T) {
 	}
 
 	// Process message
-	_, err = al.processMessage(ctx, msg)
+	_, err = al.processMessage(ctx, msg, nil, nil)
 	if err != nil {
 		t.Fatalf("processMessage failed: %v", err)
 	}

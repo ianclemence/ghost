@@ -2,6 +2,7 @@ package providers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,7 +18,7 @@ func TestBuildCodexParams_BasicMessage(t *testing.T) {
 	}
 	params := buildCodexParams(messages, nil, "gpt-4o", map[string]interface{}{
 		"max_tokens": 2048,
-	})
+	}, false)
 	if params.Model != "gpt-4o" {
 		t.Errorf("Model = %q, want %q", params.Model, "gpt-4o")
 	}
@@ -34,7 +35,7 @@ func TestBuildCodexParams_SystemAsInstructions(t *testing.T) {
 		{Role: "system", Content: "You are helpful"},
 		{Role: "user", Content: "Hi"},
 	}
-	params := buildCodexParams(messages, nil, "gpt-4o", map[string]interface{}{})
+	params := buildCodexParams(messages, nil, "gpt-4o", map[string]interface{}{}, false)
 	if !params.Instructions.Valid() {
 		t.Fatal("Instructions should be set")
 	}
@@ -54,7 +55,7 @@ func TestBuildCodexParams_ToolCallConversation(t *testing.T) {
 		},
 		{Role: "tool", Content: `{"temp": 72}`, ToolCallID: "call_1"},
 	}
-	params := buildCodexParams(messages, nil, "gpt-4o", map[string]interface{}{})
+	params := buildCodexParams(messages, nil, "gpt-4o", map[string]interface{}{}, false)
 	if params.Input.OfInputItemList == nil {
 		t.Fatal("Input.OfInputItemList should not be nil")
 	}
@@ -79,7 +80,7 @@ func TestBuildCodexParams_WithTools(t *testing.T) {
 			},
 		},
 	}
-	params := buildCodexParams([]Message{{Role: "user", Content: "Hi"}}, tools, "gpt-4o", map[string]interface{}{})
+	params := buildCodexParams([]Message{{Role: "user", Content: "Hi"}}, tools, "gpt-4o", map[string]interface{}{}, false)
 	if len(params.Tools) != 1 {
 		t.Fatalf("len(Tools) = %d, want 1", len(params.Tools))
 	}
@@ -92,7 +93,7 @@ func TestBuildCodexParams_WithTools(t *testing.T) {
 }
 
 func TestBuildCodexParams_StoreIsFalse(t *testing.T) {
-	params := buildCodexParams([]Message{{Role: "user", Content: "Hi"}}, nil, "gpt-4o", map[string]interface{}{})
+	params := buildCodexParams([]Message{{Role: "user", Content: "Hi"}}, nil, "gpt-4o", map[string]interface{}{}, false)
 	if !params.Store.Valid() || params.Store.Or(true) != false {
 		t.Error("Store should be explicitly set to false")
 	}
@@ -226,8 +227,16 @@ func TestCodexProvider_ChatRoundTrip(t *testing.T) {
 				"output_tokens_details": map[string]interface{}{"reasoning_tokens": 0},
 			},
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Content-Type", "text/event-stream")
+		event := map[string]interface{}{
+			"type":     "response.completed",
+			"response": resp,
+		}
+		data, _ := json.Marshal(event)
+		fmt.Fprintf(w, "event: response.completed\ndata: %s\n\n", data)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
 	}))
 	defer server.Close()
 
@@ -252,8 +261,8 @@ func TestCodexProvider_ChatRoundTrip(t *testing.T) {
 
 func TestCodexProvider_GetDefaultModel(t *testing.T) {
 	p := NewCodexProvider("test-token", "")
-	if got := p.GetDefaultModel(); got != "gpt-4o" {
-		t.Errorf("GetDefaultModel() = %q, want %q", got, "gpt-4o")
+	if got := p.GetDefaultModel(); got != "gpt-5.3-codex" {
+		t.Errorf("GetDefaultModel() = %q, want %q", got, "gpt-5.3-codex")
 	}
 }
 

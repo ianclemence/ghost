@@ -62,6 +62,43 @@ func (p *AnthropicProvider) Chat(ctx context.Context, messages []Message, tools 
 		}
 	}
 
+	params, err := buildAnthropicParams(messages, tools, model, maxTokens)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := p.client.Messages.New(ctx, params, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return parseAnthropicResponse(resp), nil
+}
+
+func (p *AnthropicProvider) GetDefaultModel() string {
+	return "claude-3-5-sonnet-20240620"
+}
+
+func buildAnthropicMessages(messages []Message) (string, []anthropic.MessageParam) {
+	var systemPrompt string
+	out := make([]anthropic.MessageParam, 0, len(messages))
+	for _, msg := range messages {
+		switch msg.Role {
+		case "system":
+			if systemPrompt == "" {
+				systemPrompt = msg.Content
+			}
+		case "user":
+			out = append(out, anthropic.NewUserMessage(convertContentBlocks(msg)...))
+		case "assistant":
+			out = append(out, anthropic.NewAssistantMessage(convertContentBlocks(msg)...))
+		case "tool":
+			out = append(out, anthropic.NewUserMessage(anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false)))
+		}
+	}
+	return systemPrompt, out
+}
+
+func buildAnthropicParams(messages []Message, tools []ToolDefinition, model string, maxTokens int64) (anthropic.MessageNewParams, error) {
 	systemPrompt, anthropicMessages := buildAnthropicMessages(messages)
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
@@ -105,36 +142,7 @@ func (p *AnthropicProvider) Chat(ctx context.Context, messages []Message, tools 
 			params.Tools = toolParams
 		}
 	}
-
-	resp, err := p.client.Messages.New(ctx, params, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return parseAnthropicResponse(resp), nil
-}
-
-func (p *AnthropicProvider) GetDefaultModel() string {
-	return "claude-3-5-sonnet-20240620"
-}
-
-func buildAnthropicMessages(messages []Message) (string, []anthropic.MessageParam) {
-	var systemPrompt string
-	out := make([]anthropic.MessageParam, 0, len(messages))
-	for _, msg := range messages {
-		switch msg.Role {
-		case "system":
-			if systemPrompt == "" {
-				systemPrompt = msg.Content
-			}
-		case "user":
-			out = append(out, anthropic.NewUserMessage(convertContentBlocks(msg)...))
-		case "assistant":
-			out = append(out, anthropic.NewAssistantMessage(convertContentBlocks(msg)...))
-		case "tool":
-			out = append(out, anthropic.NewUserMessage(anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false)))
-		}
-	}
-	return systemPrompt, out
+	return params, nil
 }
 
 func convertContentBlocks(msg Message) []anthropic.ContentBlockParamUnion {
@@ -204,9 +212,38 @@ func parseAnthropicResponse(resp *anthropic.Message) *LLMResponse {
 		CompletionTokens: int(resp.Usage.OutputTokens),
 		TotalTokens:      int(resp.Usage.InputTokens + resp.Usage.OutputTokens),
 	}
+	finishReason := "stop"
+	switch resp.StopReason {
+	case anthropic.StopReasonMaxTokens:
+		finishReason = "length"
+	case anthropic.StopReasonToolUse:
+		finishReason = "tool_calls"
+	case anthropic.StopReasonEndTurn:
+		finishReason = "stop"
+	}
 	return &LLMResponse{
 		Content:   content,
 		ToolCalls: toolCalls,
+		FinishReason: finishReason,
 		Usage:     usage,
 	}
+}
+
+func buildClaudeParams(messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (anthropic.MessageNewParams, error) {
+	maxTokens := int64(8192)
+	if val, ok := options["max_tokens"]; ok {
+		switch v := val.(type) {
+		case int:
+			maxTokens = int64(v)
+		case int64:
+			maxTokens = v
+		case float64:
+			maxTokens = int64(v)
+		}
+	}
+	return buildAnthropicParams(messages, tools, model, maxTokens)
+}
+
+func parseClaudeResponse(resp *anthropic.Message) *LLMResponse {
+	return parseAnthropicResponse(resp)
 }

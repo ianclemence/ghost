@@ -85,13 +85,13 @@ func (t *MCPTool) Parameters() map[string]interface{} {
 
 func (t *MCPTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	if t.manager == nil {
-		return ErrorResult(fmt.Errorf("mcp manager not configured"))
+		return ErrorResult("mcp manager not configured")
 	}
 	result, err := t.manager.CallTool(ctx, t.tool.Name, args)
 	if err != nil {
-		return ErrorResult(err)
+		return ErrorResult(err.Error()).WithError(err)
 	}
-	return TextResult(result)
+	return UserResult(result)
 }
 
 func sanitizeIdentifierComponent(s string) string {

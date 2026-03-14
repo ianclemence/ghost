@@ -139,7 +139,7 @@ func (c *TelegramChannel) registerCommandsWithRetry(ctx context.Context, defs []
 		if ctx.Err() != nil {
 			return
 		}
-		if err := c.registerCommands(defs); err == nil {
+		if err := c.registerCommands(ctx, defs); err == nil {
 			return
 		}
 		select {
@@ -153,7 +153,7 @@ func (c *TelegramChannel) registerCommandsWithRetry(ctx context.Context, defs []
 	}
 }
 
-func (c *TelegramChannel) registerCommands(defs []commands.Definition) error {
+func (c *TelegramChannel) registerCommands(ctx context.Context, defs []commands.Definition) error {
 	if c.bot == nil {
 		return fmt.Errorf("telegram bot not initialized")
 	}
@@ -175,7 +175,7 @@ func (c *TelegramChannel) registerCommands(defs []commands.Definition) error {
 	if len(cmds) == 0 {
 		return nil
 	}
-	_, err := c.bot.SetMyCommands(ctx, &telego.SetMyCommandsParams{
+	err := c.bot.SetMyCommands(ctx, &telego.SetMyCommandsParams{
 		Commands: cmds,
 	})
 	return err
