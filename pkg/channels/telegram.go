@@ -3,6 +3,8 @@ package channels
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
+	"net"
 	"net/http"
 	"net/url"
 	// "os"
@@ -29,6 +31,7 @@ type TelegramChannel struct {
 	transcriber  voice.Transcriber
 	placeholders sync.Map // chatID -> messageID
 	stopThinking sync.Map // chatID -> thinkingCancel
+	pollLock     net.Listener
 }
 
 type thinkingCancel struct {
@@ -80,11 +83,18 @@ func (c *TelegramChannel) SetTranscriber(transcriber voice.Transcriber) {
 
 func (c *TelegramChannel) Start(ctx context.Context) error {
 	logger.InfoC("telegram", "Starting Telegram bot (polling mode)...")
+	lock, err := acquireTelegramPollLock(c.config.Token)
+	if err != nil {
+		return err
+	}
+	c.pollLock = lock
 
 	updates, err := c.bot.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{
 		Timeout: 30,
 	})
 	if err != nil {
+		_ = c.pollLock.Close()
+		c.pollLock = nil
 		return fmt.Errorf("failed to start long polling: %w", err)
 	}
 
@@ -116,7 +126,23 @@ func (c *TelegramChannel) Start(ctx context.Context) error {
 func (c *TelegramChannel) Stop(ctx context.Context) error {
 	logger.InfoC("telegram", "Stopping Telegram bot...")
 	c.setRunning(false)
+	if c.pollLock != nil {
+		_ = c.pollLock.Close()
+		c.pollLock = nil
+	}
 	return nil
+}
+
+func acquireTelegramPollLock(token string) (net.Listener, error) {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(token))
+	port := 32000 + int(h.Sum32()%1000)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("telegram polling already active for this bot token on this host")
+	}
+	return ln, nil
 }
 
 func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) error {

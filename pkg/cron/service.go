@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -325,8 +326,19 @@ func (cs *CronService) loadStore() error {
 		}
 		return err
 	}
+	if strings.TrimSpace(string(data)) == "" {
+		return cs.saveStoreUnsafe()
+	}
 
-	return json.Unmarshal(data, cs.store)
+	if err := json.Unmarshal(data, cs.store); err != nil {
+		if strings.Contains(err.Error(), "unexpected end of JSON input") {
+			backup := cs.storePath + ".corrupt." + fmt.Sprintf("%d", time.Now().Unix())
+			_ = os.WriteFile(backup, data, 0644)
+			return cs.saveStoreUnsafe()
+		}
+		return err
+	}
+	return nil
 }
 
 func (cs *CronService) saveStoreUnsafe() error {
