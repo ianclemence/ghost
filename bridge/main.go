@@ -462,15 +462,22 @@ func queryHistory() []map[string]interface{} {
 }
 
 func buildContextMessages(userText, mediaB64, mediaType string) []map[string]interface{} {
-	history := queryHistory() // safe — always returns slice or nil
+	history := queryHistory()
 
 	var userContent interface{}
-	if mediaB64 != "" && strings.HasPrefix(mediaType, "image/") {
-		userContent = []map[string]interface{}{
-			{"type": "image_url", "image_url": map[string]string{
-				"url": fmt.Sprintf("data:%s;base64,%s", mediaType, mediaB64),
-			}},
-			{"type": "text", "text": userText},
+	if mediaB64 != "" {
+		if strings.HasPrefix(mediaType, "image/") {
+			userContent = []map[string]interface{}{
+				{"type": "image_url", "image_url": map[string]string{
+					"url": fmt.Sprintf("data:%s;base64,%s", mediaType, mediaB64),
+				}},
+				{"type": "text", "text": userText},
+			}
+		} else {
+			// For non-image files, append a text tag so the model knows a file was attached.
+			// This matches the behavior in the Go agent's context builder.
+			fileTag := fmt.Sprintf("\n\nNEW ATTACHMENT: %s. Please prioritize this over any previous context if asked to describe 'this' or 'it'.", mediaType)
+			userContent = userText + fileTag
 		}
 	} else {
 		userContent = userText
@@ -628,10 +635,9 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 		)
 		_, _ = db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, time.Now(), sessionID)
 
-		broadcastToWS(map[string]interface{}{
-			"type":    "assistant_message",
-			"content": fullResponse.String(),
-		})
+		// DO NOT broadcast to WS here if we are already streaming via SSE.
+		// The mobile app handles the SSE stream. Broadcasting to WS causes double responses.
+		// Only broadcast if this was NOT an SSE request (but currently all Send requests are SSE).
 	}
 }
 

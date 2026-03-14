@@ -237,14 +237,15 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 					},
 				})
 			} else {
-				fileTags = append(fileTags, fmt.Sprintf("File attached: %s (%s). Use the read_file tool to see its content if needed.", filepath.Base(path), mimeType))
-				// Also add full path in a way the LLM can use it
-				fileTags = append(fileTags, fmt.Sprintf("Full path: %s", path))
+				// Add a very explicit tag for non-image files to grab the LLM's attention
+				tag := fmt.Sprintf("NEW ATTACHMENT: %s (%s). Please use the read_file tool to examine its contents if you need to describe or analyze it. Full path: %s", filepath.Base(path), mimeType, path)
+				fileTags = append(fileTags, tag)
 			}
 		}
 
 		if len(fileTags) > 0 {
-			contentParts[0].Text = currentMessage + "\n\n" + strings.Join(fileTags, "\n")
+			// Prepend tags to the text part so they are seen first
+			contentParts[0].Text = "I have attached new files to this message. Please prioritize them over any previous context if asked to describe 'this' or 'it'.\n\n" + strings.Join(fileTags, "\n") + "\n\nUser Message: " + currentMessage
 		}
 		userMsg.MultiContent = contentParts
 	}
