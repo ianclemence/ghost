@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -22,7 +23,12 @@ type Manager struct {
 	bus          *bus.MessageBus
 	config       *config.Config
 	dispatchTask *asyncTask
+	commandDefs  []commands.Definition
 	mu           sync.RWMutex
+}
+
+type CommandDefinitionsSetter interface {
+	SetCommandDefinitions(defs []commands.Definition)
 }
 
 type asyncTask struct {
@@ -203,6 +209,11 @@ func (m *Manager) StartAll(ctx context.Context) error {
 		logger.InfoCF("channels", "Starting channel", map[string]interface{}{
 			"channel": name,
 		})
+		if len(m.commandDefs) > 0 {
+			if setter, ok := channel.(CommandDefinitionsSetter); ok {
+				setter.SetCommandDefinitions(m.commandDefs)
+			}
+		}
 		if err := channel.Start(ctx); err != nil {
 			logger.ErrorCF("channels", "Failed to start channel", map[string]interface{}{
 				"channel": name,
@@ -213,6 +224,10 @@ func (m *Manager) StartAll(ctx context.Context) error {
 
 	logger.InfoC("channels", "All channels started")
 	return nil
+}
+
+func (m *Manager) SetCommandDefinitions(defs []commands.Definition) {
+	m.commandDefs = defs
 }
 
 func (m *Manager) StopAll(ctx context.Context) error {

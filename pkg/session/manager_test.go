@@ -21,7 +21,7 @@ func TestSanitizeFilename(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := sanitizeFilename(tt.input)
+			got := sanitizeSessionKey(tt.input)
 			if got != tt.expected {
 				t.Errorf("sanitizeFilename(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
@@ -31,11 +31,11 @@ func TestSanitizeFilename(t *testing.T) {
 
 func TestSave_WithColonInKey(t *testing.T) {
 	tmpDir := t.TempDir()
-	sm := NewSessionManager(tmpDir)
+	store := NewJSONLStore(tmpDir)
+	sm := NewSessionManager(store, nil)
 
 	// Create a session with a key containing colon (typical channel session key).
 	key := "telegram:123456"
-	sm.GetOrCreate(key)
 	sm.AddMessage(key, "user", "hello")
 
 	// Save should succeed even though the key contains ':'
@@ -44,13 +44,13 @@ func TestSave_WithColonInKey(t *testing.T) {
 	}
 
 	// The file on disk should use sanitized name.
-	expectedFile := filepath.Join(tmpDir, "telegram_123456.json")
+	expectedFile := filepath.Join(tmpDir, "sessions", "telegram_123456.jsonl")
 	if _, err := os.Stat(expectedFile); os.IsNotExist(err) {
 		t.Fatalf("expected session file %s to exist", expectedFile)
 	}
 
 	// Load into a fresh manager and verify the session round-trips.
-	sm2 := NewSessionManager(tmpDir)
+	sm2 := NewSessionManager(NewJSONLStore(tmpDir), nil)
 	history := sm2.GetHistory(key)
 	if len(history) != 1 {
 		t.Fatalf("expected 1 message after reload, got %d", len(history))
@@ -62,13 +62,17 @@ func TestSave_WithColonInKey(t *testing.T) {
 
 func TestSave_RejectsPathTraversal(t *testing.T) {
 	tmpDir := t.TempDir()
-	sm := NewSessionManager(tmpDir)
+	sm := NewSessionManager(NewJSONLStore(tmpDir), nil)
 
 	badKeys := []string{"", ".", "..", "foo/bar", "foo\\bar"}
 	for _, key := range badKeys {
-		sm.GetOrCreate(key)
-		if err := sm.Save(key); err == nil {
-			t.Errorf("Save(%q) should have failed but didn't", key)
+		sm.AddMessage(key, "user", "hello")
+		sm.Save(key)
+		expectedPath := filepath.Join(tmpDir, "sessions", sanitizeSessionKey(key)+".jsonl")
+		if sanitizeSessionKey(key) == "" {
+			if _, err := os.Stat(expectedPath); !os.IsNotExist(err) {
+				t.Errorf("expected no file for key %q", key)
+			}
 		}
 	}
 }

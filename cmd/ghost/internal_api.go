@@ -124,9 +124,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		defer cancel()
 
 		content := req.Content
-		if req.Channel == "mobile" {
-			content = "User request:\n" + req.Content + "\n\nReturn only the final user-facing answer. Do not include tool calls, command logs, safety guard messages, raw fetched payloads, or internal debugging text."
-		}
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {

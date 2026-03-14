@@ -18,12 +18,15 @@ import (
 	"unicode/utf8"
 
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/rag"
+	"github.com/ianclemence/ghost/pkg/routing"
 	"github.com/ianclemence/ghost/pkg/session"
 	"github.com/ianclemence/ghost/pkg/state"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -42,6 +45,13 @@ type AgentLoop struct {
 	state          *state.Manager
 	contextBuilder *ContextBuilder
 	tools          *tools.ToolRegistry
+	commands       *commands.Registry
+	commandExec    *commands.Executor
+	router         *routing.Router
+	fallback       *providers.FallbackChain
+	fallbackModels []providers.FallbackCandidate
+	providersByModel map[string]providers.LLMProvider
+	cfg            *config.Config
 	running        atomic.Bool
 	summarizing    sync.Map // Tracks which sessions are currently being summarized
 }
@@ -106,6 +116,15 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	})
 	registry.Register(messageTool)
 
+	if cfg.Tools.MCP.Enabled {
+		manager := mcp.NewManager()
+		if err := manager.LoadFromConfig(context.Background(), cfg); err == nil {
+			for _, info := range manager.ListToolInfos() {
+				registry.Register(tools.NewMCPTool(manager, info.Server, info.Tool))
+			}
+		}
+	}
+
 	return registry
 }
 
@@ -160,7 +179,13 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		toolsRegistry.Register(tools.NewRememberTool(workspace, ragStore))
 	}
 
-	sessionsManager := session.NewSessionManager(database, ragStore)
+	var store session.Store
+	if strings.ToLower(cfg.Agents.Defaults.SessionStore) == "jsonl" {
+		store = session.NewJSONLStore(workspace)
+	} else {
+		store = session.NewSQLiteStore(database)
+	}
+	sessionsManager := session.NewSessionManager(store, ragStore)
 
 	// Create state manager for atomic state persistence
 	stateManager := state.NewManager(workspace)
@@ -168,6 +193,42 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// Create context builder and set tools registry
 	contextBuilder := NewContextBuilder(workspace)
 	contextBuilder.SetToolsRegistry(toolsRegistry)
+
+	cmdRegistry := commands.NewRegistry(commands.DefaultDefinitions())
+	cmdRuntime := &commands.Runtime{
+		Tools:    toolsRegistry,
+		Sessions: sessionsManager,
+		Bus:      msgBus,
+		Commands: cmdRegistry,
+	}
+	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
+
+	router := routing.NewRouter(cfg.Agents.Routing.LightModel, cfg.Agents.Routing.Threshold)
+	fallback := providers.NewFallbackChain(time.Duration(cfg.Agents.Defaults.FallbackCooldown) * time.Second)
+	providersByModel := map[string]providers.LLMProvider{
+		cfg.Agents.Defaults.Model: provider,
+	}
+	fallbackCandidates := []providers.FallbackCandidate{
+		{Name: cfg.Agents.Defaults.Model, Provider: provider, Model: cfg.Agents.Defaults.Model},
+	}
+	for _, model := range cfg.Agents.Defaults.FallbackModels {
+		if model == "" || providersByModel[model] != nil {
+			continue
+		}
+		p, err := providers.CreateProviderForModel(cfg, model)
+		if err != nil {
+			continue
+		}
+		providersByModel[model] = p
+		fallbackCandidates = append(fallbackCandidates, providers.FallbackCandidate{Name: model, Provider: p, Model: model})
+	}
+	if cfg.Agents.Routing.LightModel != "" {
+		if _, ok := providersByModel[cfg.Agents.Routing.LightModel]; !ok {
+			if p, err := providers.CreateProviderForModel(cfg, cfg.Agents.Routing.LightModel); err == nil {
+				providersByModel[cfg.Agents.Routing.LightModel] = p
+			}
+		}
+	}
 
 	return &AgentLoop{
 		bus:            msgBus,
@@ -181,6 +242,13 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		state:          stateManager,
 		contextBuilder: contextBuilder,
 		tools:          toolsRegistry,
+		commands:       cmdRegistry,
+		commandExec:    cmdExec,
+		router:         router,
+		fallback:       fallback,
+		fallbackModels: fallbackCandidates,
+		providersByModel: providersByModel,
+		cfg:            cfg,
 		summarizing:    sync.Map{},
 	}
 }
@@ -233,6 +301,13 @@ func (al *AgentLoop) Stop() {
 
 func (al *AgentLoop) RegisterTool(tool tools.Tool) {
 	al.tools.Register(tool)
+}
+
+func (al *AgentLoop) CommandDefinitions() []commands.Definition {
+	if al.commands == nil {
+		return nil
+	}
+	return al.commands.Definitions()
 }
 
 // RecordLastChannel records the last active channel for this workspace.
@@ -300,20 +375,36 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 		return al.processSystemMessage(ctx, msg)
 	}
 
-	// Handle slash commands
-	if strings.HasPrefix(msg.Content, "/") {
-		response, handled, err := al.handleSlashCommand(ctx, msg, onChunk, onToolCall)
-		if err != nil {
-			return "", err
-		}
-		if handled {
-			return response, nil
+	thinking := false
+	if strings.HasPrefix(msg.Content, "/think") {
+		trimmed := strings.TrimSpace(strings.TrimPrefix(msg.Content, "/think"))
+		if trimmed != "" {
+			thinking = true
+			msg.Content = trimmed
 		}
 	}
 
-	thinking := false
-	if strings.HasPrefix(msg.Content, "/think") {
-		thinking = true
+	if strings.HasPrefix(msg.Content, "/") {
+		var replies []string
+		req := commands.Request{
+			Text:       msg.Content,
+			Channel:    msg.Channel,
+			ChatID:     msg.ChatID,
+			SessionKey: msg.SessionKey,
+			Reply: func(text string) error {
+				replies = append(replies, text)
+				return nil
+			},
+		}
+		if al.commandExec != nil {
+			result := al.commandExec.Execute(ctx, req)
+			if result.Err != nil {
+				return "", result.Err
+			}
+			if result.Outcome == commands.OutcomeHandled {
+				return strings.Join(replies, "\n"), nil
+			}
+		}
 	}
 
 	// Process as user message
@@ -519,11 +610,11 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		// Build tool definitions
 		providerToolDefs := al.tools.ToProviderDefs()
 
-		// Log LLM request details
+		selectedModel, _ := al.selectModel(opts, messages)
 		logger.DebugCF("agent", "LLM request",
 			map[string]interface{}{
 				"iteration":         iteration,
-				"model":             al.model,
+				"model":             selectedModel,
 				"messages_count":    len(messages),
 				"tools_count":       len(providerToolDefs),
 				"max_tokens":        8192,
@@ -539,12 +630,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				"tools_json":    formatToolsForLog(providerToolDefs),
 			})
 
-		// Call LLM
-		response, err := al.provider.StreamChat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
-			"max_tokens":  8192,
-			"temperature": al.temperature,
-			"thinking":    opts.Thinking,
-		}, opts.OnChunk)
+		response, err := al.callLLM(ctx, selectedModel, messages, providerToolDefs, opts)
 
 		if err != nil {
 			logger.ErrorCF("agent", "LLM call failed",
@@ -666,6 +752,86 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	}
 
 	return finalContent, iteration, nil
+}
+
+func (al *AgentLoop) selectModel(opts processOptions, messages []providers.Message) (string, float64) {
+	if al.router == nil {
+		return al.model, 1
+	}
+	return al.router.SelectModel(opts.UserMessage, len(messages), len(opts.Media) > 0, al.model)
+}
+
+func (al *AgentLoop) callLLM(ctx context.Context, model string, messages []providers.Message, tools []providers.ToolDefinition, opts processOptions) (*providers.LLMResponse, error) {
+	candidates := al.buildCandidates(model)
+	if al.fallback != nil && len(candidates) > 0 {
+		return al.fallback.Execute(ctx, candidates, func(c providers.FallbackCandidate) (*providers.LLMResponse, error) {
+			return al.invokeProvider(ctx, c.Provider, c.Model, messages, tools, opts)
+		})
+	}
+	if len(candidates) == 0 {
+		return al.invokeProvider(ctx, al.provider, model, messages, tools, opts)
+	}
+	return al.invokeProvider(ctx, candidates[0].Provider, candidates[0].Model, messages, tools, opts)
+}
+
+func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMProvider, model string, messages []providers.Message, tools []providers.ToolDefinition, opts processOptions) (*providers.LLMResponse, error) {
+	if model == "" {
+		model = al.model
+	}
+	if opts.OnChunk != nil {
+		if sp, ok := provider.(providers.StreamingProvider); ok {
+			return sp.StreamChat(ctx, messages, tools, model, map[string]interface{}{
+				"max_tokens":  8192,
+				"temperature": al.temperature,
+				"thinking":    opts.Thinking,
+			}, opts.OnChunk)
+		}
+	}
+	resp, err := provider.Chat(ctx, messages, tools, model, map[string]interface{}{
+		"max_tokens":  8192,
+		"temperature": al.temperature,
+		"thinking":    opts.Thinking,
+	})
+	if err == nil && opts.OnChunk != nil && resp.Content != "" {
+		opts.OnChunk(resp.Content)
+	}
+	return resp, err
+}
+
+func (al *AgentLoop) buildCandidates(model string) []providers.FallbackCandidate {
+	seen := map[string]bool{}
+	var out []providers.FallbackCandidate
+	if model != "" {
+		p := al.resolveProviderForModel(model)
+		out = append(out, providers.FallbackCandidate{Name: model, Provider: p, Model: model})
+		seen[model] = true
+	}
+	for _, c := range al.fallbackModels {
+		if seen[c.Name] {
+			continue
+		}
+		out = append(out, c)
+		seen[c.Name] = true
+	}
+	return out
+}
+
+func (al *AgentLoop) resolveProviderForModel(model string) providers.LLMProvider {
+	if model == "" {
+		return al.provider
+	}
+	if p, ok := al.providersByModel[model]; ok && p != nil {
+		return p
+	}
+	if al.cfg != nil {
+		if p, err := providers.CreateProviderForModel(al.cfg, model); err == nil {
+			if al.providersByModel != nil {
+				al.providersByModel[model] = p
+			}
+			return p
+		}
+	}
+	return al.provider
 }
 
 // updateToolContexts updates the context for tools that need channel/chatID info.
@@ -878,113 +1044,6 @@ func (al *AgentLoop) estimateTokens(messages []providers.Message) int {
 		total += utf8.RuneCountInString(m.Content) / 3
 	}
 	return total
-}
-
-func (al *AgentLoop) handleSlashCommand(ctx context.Context, msg bus.InboundMessage, onChunk func(string), onToolCall func(string, string)) (string, bool, error) {
-	parts := strings.Fields(msg.Content)
-	if len(parts) == 0 {
-		return "", false, nil
-	}
-
-	command := parts[0]
-	args := parts[1:]
-
-	switch command {
-	case "/help":
-		help := al.getHelpText()
-		return help, true, nil
-	case "/clear", "/reset":
-		// Clear session history
-		al.sessions.ClearHistory(msg.SessionKey)
-		al.sessions.SetSummary(msg.SessionKey, "")
-		al.sessions.Save(msg.SessionKey)
-		return "Session history cleared.", true, nil
-	case "/remind":
-		// Usage: /remind [message] in [time]
-		if len(args) < 3 {
-			return "Usage: /remind [message] in [time] (e.g. /remind buy milk in 10m)", true, nil
-		}
-		resp, err := al.handleRemindCommand(ctx, msg, args)
-		return resp, true, err
-	case "/think":
-		// Prefix logic already handled in processMessage
-		return "", false, nil
-	}
-
-	return "", false, nil
-}
-
-func (al *AgentLoop) getHelpText() string {
-	var sb strings.Builder
-	sb.WriteString("### Ghost Help 👻\n\n")
-	sb.WriteString("**Slash Commands:**\n")
-	sb.WriteString("- `/help`: Show this help message.\n")
-	sb.WriteString("- `/clear` or `/reset`: Archive current session history.\n")
-	sb.WriteString("- `/think [query]`: Run the query with deep reasoning enabled.\n")
-	sb.WriteString("- `/remind [msg] in [time]`: Quick reminder (e.g., `/remind coffee in 5m`).\n\n")
-
-	sb.WriteString("**Available Tools:**\n")
-	toolsList := al.tools.List()
-	for _, t := range toolsList {
-		if tool, ok := al.tools.Get(t); ok {
-			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", t, tool.Description()))
-		}
-	}
-
-	return sb.String()
-}
-
-func (al *AgentLoop) handleRemindCommand(ctx context.Context, msg bus.InboundMessage, args []string) (string, error) {
-	// Simple parser for "/remind [message] in [time]"
-	// Find the last "in"
-	inIdx := -1
-	for i := len(args) - 1; i >= 0; i-- {
-		if args[i] == "in" {
-			inIdx = i
-			break
-		}
-	}
-
-	if inIdx == -1 || inIdx == len(args)-1 {
-		return "Usage: /remind [message] in [time] (e.g. /remind coffee in 5m)", nil
-	}
-
-	message := strings.Join(args[:inIdx], " ")
-	timeStr := args[inIdx+1]
-
-	// Parse duration (e.g. 10m, 1h, 30s)
-	duration, err := time.ParseDuration(timeStr)
-	if err != nil {
-		// Try adding "s" if no unit provided
-		duration, err = time.ParseDuration(timeStr + "s")
-		if err != nil {
-			return "Invalid time format. Use 10s, 5m, 1h, etc.", nil
-		}
-	}
-
-	// Call cron tool
-	tool, ok := al.tools.Get("cron")
-	if !ok {
-		return "Cron tool not available.", nil
-	}
-
-	// Set context for tool
-	if ct, ok := tool.(tools.ContextualTool); ok {
-		ct.SetContext(msg.Channel, msg.ChatID)
-	}
-
-	res := tool.Execute(ctx, map[string]interface{}{
-		"action":     "add",
-		"message":    message,
-		"at_seconds": duration.Seconds(),
-		"deliver":    true,
-	})
-
-	if res.Err != nil {
-		return fmt.Sprintf("Failed to set reminder: %v", res.Err), nil
-	}
-
-	return fmt.Sprintf("Reminder set: '%s' in %s", message, duration.String()), nil
 }
 
 // autoJournal summarizes the session and appends it to the daily note.

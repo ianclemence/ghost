@@ -4,28 +4,28 @@ import (
 	"context"
 	"fmt"
 
-	anthropicprovider "github.com/ianclemence/ghost/pkg/providers/anthropic"
+	"github.com/ianclemence/ghost/pkg/auth"
 )
 
 type ClaudeProvider struct {
-	delegate *anthropicprovider.Provider
+	delegate *AnthropicProvider
 }
 
 func NewClaudeProvider(token string) *ClaudeProvider {
 	return &ClaudeProvider{
-		delegate: anthropicprovider.NewProvider(token),
+		delegate: NewAnthropicProvider(token),
 	}
 }
 
 func NewClaudeProviderWithBaseURL(token, apiBase string) *ClaudeProvider {
 	return &ClaudeProvider{
-		delegate: anthropicprovider.NewProviderWithBaseURL(token, apiBase),
+		delegate: NewAnthropicProviderWithBaseURL(token, apiBase),
 	}
 }
 
 func NewClaudeProviderWithTokenSource(token string, tokenSource func() (string, error)) *ClaudeProvider {
 	return &ClaudeProvider{
-		delegate: anthropicprovider.NewProviderWithTokenSource(token, tokenSource),
+		delegate: NewAnthropicProviderWithTokenSource(tokenSource),
 	}
 }
 
@@ -33,11 +33,11 @@ func NewClaudeProviderWithTokenSourceAndBaseURL(
 	token string, tokenSource func() (string, error), apiBase string,
 ) *ClaudeProvider {
 	return &ClaudeProvider{
-		delegate: anthropicprovider.NewProviderWithTokenSourceAndBaseURL(token, tokenSource, apiBase),
+		delegate: NewAnthropicProviderWithTokenSourceAndBaseURL(tokenSource, apiBase),
 	}
 }
 
-func newClaudeProviderWithDelegate(delegate *anthropicprovider.Provider) *ClaudeProvider {
+func newClaudeProviderWithDelegate(delegate *AnthropicProvider) *ClaudeProvider {
 	return &ClaudeProvider{delegate: delegate}
 }
 
@@ -57,7 +57,7 @@ func (p *ClaudeProvider) GetDefaultModel() string {
 
 func createClaudeTokenSource() func() (string, error) {
 	return func() (string, error) {
-		cred, err := getCredential("anthropic")
+		cred, err := auth.GetCredential("anthropic")
 		if err != nil {
 			return "", fmt.Errorf("loading auth credentials: %w", err)
 		}

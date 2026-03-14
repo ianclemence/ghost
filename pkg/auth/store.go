@@ -35,7 +35,10 @@ func (c *AuthCredential) NeedsRefresh() bool {
 }
 
 func authFilePath() string {
-	home, _ := os.UserHomeDir()
+	home := os.Getenv("HOME")
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
 	return filepath.Join(home, ".picoclaw", "auth.json")
 }
 

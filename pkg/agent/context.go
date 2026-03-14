@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -168,6 +169,10 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 		systemPrompt += fmt.Sprintf("\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
 	}
 
+	if channel == "mobile" {
+		systemPrompt += "\n\n**MOBILE CHANNEL RULE**: Return only the final user-facing answer. Do not include tool calls, command logs, safety guard messages, raw fetched payloads, or internal debugging text."
+	}
+
 	// Log system prompt summary for debugging (debug mode only)
 	logger.DebugCF("agent", "System prompt built",
 		map[string]interface{}{
@@ -213,6 +218,7 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 				Text: currentMessage,
 			},
 		}
+		var fileTags []string
 
 		for _, path := range media {
 			data, err := os.ReadFile(path)
@@ -220,60 +226,22 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 				logger.ErrorCF("agent", "Failed to read media file", map[string]interface{}{"path": path, "error": err})
 				continue
 			}
-			encoded := base64.StdEncoding.EncodeToString(data)
-			ext := strings.ToLower(filepath.Ext(path))
-
-			var mimeType string
-			var mediaType string // "image", "video", "audio", "unknown"
-
-			switch ext {
-			case ".png":
-				mimeType = "image/png"
-				mediaType = "image"
-			case ".jpg", ".jpeg":
-				mimeType = "image/jpeg"
-				mediaType = "image"
-			case ".webp":
-				mimeType = "image/webp"
-				mediaType = "image"
-			case ".gif":
-				mimeType = "image/gif"
-				mediaType = "image"
-			case ".mp4", ".mov", ".avi", ".webm":
-				mimeType = "video/mp4"
-				mediaType = "video"
-			case ".mp3":
-				mimeType = "audio/mpeg"
-				mediaType = "audio"
-			case ".wav":
-				mimeType = "audio/wav"
-				mediaType = "audio"
-			case ".ogg":
-				mimeType = "audio/ogg"
-				mediaType = "audio"
-			default:
-				// Fallback or ignore
-				logger.WarnCF("agent", "Unsupported media type", map[string]interface{}{"path": path, "ext": ext})
-				continue
-			}
-
-			if mediaType == "image" {
+			mimeType := http.DetectContentType(data)
+			if strings.HasPrefix(mimeType, "image/") {
+				encoded := base64.StdEncoding.EncodeToString(data)
 				contentParts = append(contentParts, providers.ContentPart{
 					Type: "image_url",
 					ImageURL: &providers.ImageURL{
 						URL: fmt.Sprintf("data:%s;base64,%s", mimeType, encoded),
 					},
 				})
-			} else if mediaType == "video" || mediaType == "audio" {
-				// Some providers (like Kimi) might accept audio via video_url or have specific handling
-				// For now, we use video_url as a generic container for non-image media if supported
-				contentParts = append(contentParts, providers.ContentPart{
-					Type: "video_url",
-					VideoURL: &providers.VideoURL{
-						URL: fmt.Sprintf("data:%s;base64,%s", mimeType, encoded),
-					},
-				})
+			} else {
+				fileTags = append(fileTags, fmt.Sprintf("File: %s (%s)", path, mimeType))
 			}
+		}
+
+		if len(fileTags) > 0 {
+			contentParts[0].Text = currentMessage + "\n\n" + strings.Join(fileTags, "\n")
 		}
 		userMsg.MultiContent = contentParts
 	}

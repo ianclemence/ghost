@@ -58,6 +58,10 @@ type LLMProvider interface {
 	GetDefaultModel() string
 }
 
+type StreamingProvider interface {
+	StreamChat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}, onChunk func(string)) (*LLMResponse, error)
+}
+
 type EmbeddingProvider interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }

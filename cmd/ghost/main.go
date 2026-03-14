@@ -614,6 +614,7 @@ func gatewayCmd() {
 		fmt.Printf("Error creating channel manager: %v\n", err)
 		os.Exit(1)
 	}
+	channelManager.SetCommandDefinitions(agentLoop.CommandDefinitions())
 
 	var transcriber voice.Transcriber
 	if cfg.Providers.Moonshot.APIKey != "" {

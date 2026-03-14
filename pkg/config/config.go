@@ -64,6 +64,7 @@ type RAGConfig struct {
 
 type AgentsConfig struct {
 	Defaults AgentDefaults `json:"defaults"`
+	Routing  RoutingConfig `json:"routing"`
 }
 
 type AgentDefaults struct {
@@ -75,6 +76,14 @@ type AgentDefaults struct {
 	Temperature         float64 `json:"temperature" env:"GHOST_AGENTS_DEFAULTS_TEMPERATURE"`
 	MaxToolIterations   int     `json:"max_tool_iterations" env:"GHOST_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
 	EmbeddingModel      string  `json:"embedding_model" env:"GHOST_AGENTS_DEFAULTS_EMBEDDING_MODEL"`
+	FallbackModels      []string `json:"fallback_models" env:"GHOST_AGENTS_DEFAULTS_FALLBACK_MODELS"`
+	FallbackCooldown    int     `json:"fallback_cooldown_seconds" env:"GHOST_AGENTS_DEFAULTS_FALLBACK_COOLDOWN_SECONDS"`
+	SessionStore        string  `json:"session_store" env:"GHOST_AGENTS_DEFAULTS_SESSION_STORE"`
+}
+
+type RoutingConfig struct {
+	LightModel string  `json:"light_model" env:"GHOST_AGENTS_ROUTING_LIGHT_MODEL"`
+	Threshold  float64 `json:"threshold" env:"GHOST_AGENTS_ROUTING_THRESHOLD"`
 }
 
 type ChannelsConfig struct {
@@ -222,6 +231,24 @@ type WebToolsConfig struct {
 
 type ToolsConfig struct {
 	Web WebToolsConfig `json:"web"`
+	MCP MCPConfig      `json:"mcp"`
+}
+
+type MCPConfig struct {
+	Enabled bool                       `json:"enabled" env:"GHOST_TOOLS_MCP_ENABLED"`
+	Servers map[string]MCPServerConfig `json:"servers"`
+}
+
+type MCPServerConfig struct {
+	Enabled  bool              `json:"enabled"`
+	Command  string            `json:"command"`
+	Args     []string          `json:"args"`
+	Workdir  string            `json:"workdir"`
+	Env      map[string]string `json:"env"`
+	EnvFile  string            `json:"env_file"`
+	Headers  map[string]string `json:"headers"`
+	HTTP     bool              `json:"http"`
+	HTTPURL  string            `json:"http_url"`
 }
 
 func DefaultConfig() *Config {
@@ -235,6 +262,13 @@ func DefaultConfig() *Config {
 				MaxTokens:           8192,
 				Temperature:         0.7,
 				MaxToolIterations:   20,
+				FallbackModels:      []string{},
+				FallbackCooldown:    30,
+				SessionStore:        "sqlite",
+			},
+			Routing: RoutingConfig{
+				LightModel: "",
+				Threshold:  0.35,
 			},
 		},
 		Channels: ChannelsConfig{
@@ -336,6 +370,10 @@ func DefaultConfig() *Config {
 					Enabled:    true,
 					MaxResults: 5,
 				},
+			},
+			MCP: MCPConfig{
+				Enabled: false,
+				Servers: map[string]MCPServerConfig{},
 			},
 		},
 		Heartbeat: HeartbeatConfig{

@@ -17,6 +17,7 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/utils"
@@ -32,6 +33,7 @@ type TelegramChannel struct {
 	placeholders sync.Map // chatID -> messageID
 	stopThinking sync.Map // chatID -> thinkingCancel
 	pollLock     net.Listener
+	commandDefs  []commands.Definition
 }
 
 type thinkingCancel struct {
@@ -81,6 +83,10 @@ func (c *TelegramChannel) SetTranscriber(transcriber voice.Transcriber) {
 	c.transcriber = transcriber
 }
 
+func (c *TelegramChannel) SetCommandDefinitions(defs []commands.Definition) {
+	c.commandDefs = defs
+}
+
 func (c *TelegramChannel) Start(ctx context.Context) error {
 	logger.InfoC("telegram", "Starting Telegram bot (polling mode)...")
 	lock, err := acquireTelegramPollLock(c.config.Token)
@@ -103,6 +109,10 @@ func (c *TelegramChannel) Start(ctx context.Context) error {
 		"username": c.bot.Username(),
 	})
 
+	if len(c.commandDefs) > 0 {
+		go c.registerCommandsWithRetry(ctx, c.commandDefs)
+	}
+
 	go func() {
 		for {
 			select {
@@ -121,6 +131,54 @@ func (c *TelegramChannel) Start(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+func (c *TelegramChannel) registerCommandsWithRetry(ctx context.Context, defs []commands.Definition) {
+	delay := 2 * time.Second
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := c.registerCommands(defs); err == nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+		if delay < 60*time.Second {
+			delay *= 2
+		}
+	}
+}
+
+func (c *TelegramChannel) registerCommands(defs []commands.Definition) error {
+	if c.bot == nil {
+		return fmt.Errorf("telegram bot not initialized")
+	}
+	var cmds []telego.BotCommand
+	for _, def := range defs {
+		name := strings.TrimPrefix(def.Name, "/")
+		if name == "" {
+			continue
+		}
+		desc := def.Description
+		if desc == "" {
+			desc = "Command"
+		}
+		cmds = append(cmds, telego.BotCommand{
+			Command:     name,
+			Description: desc,
+		})
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	_, err := c.bot.SetMyCommands(ctx, &telego.SetMyCommandsParams{
+		Commands: cmds,
+	})
+	return err
 }
 
 func (c *TelegramChannel) Stop(ctx context.Context) error {
