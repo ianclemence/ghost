@@ -413,24 +413,30 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 		return
 	}
 	defer resp.Body.Close()
+	log.Printf("🌐 Upstream response: status=%d content-type=%s", resp.StatusCode, resp.Header.Get("Content-Type"))
 
 	var fullResponse strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	chunkCount := 0
+	nonDataCount := 0
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
+			nonDataCount++
 			continue
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
 			_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()
+			log.Printf("✅ Upstream stream done: chunks=%d nonData=%d", chunkCount, nonDataCount)
 			break
 		}
 
 		var chunk map[string]interface{}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			log.Printf("⚠️ Upstream chunk parse error: %v", err)
 			continue
 		}
 
@@ -438,6 +444,7 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 			if choice, ok := choices[0].(map[string]interface{}); ok {
 				if delta, ok := choice["delta"].(map[string]interface{}); ok {
 					if content, ok := delta["content"].(string); ok && content != "" {
+						chunkCount++
 						fullResponse.WriteString(content)
 						_, _ = fmt.Fprintf(w, "data: %s\n\n", jsonEscape(content))
 						flusher.Flush()
@@ -445,6 +452,12 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 				}
 			}
 		}
+	}
+	if scanErr := scanner.Err(); scanErr != nil {
+		log.Printf("❌ Upstream scan error: %v", scanErr)
+	}
+	if chunkCount == 0 {
+		log.Printf("⚠️ Upstream stream returned no chunks (status=%d, nonData=%d)", resp.StatusCode, nonDataCount)
 	}
 
 	if fullResponse.Len() > 0 {
