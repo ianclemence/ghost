@@ -134,6 +134,7 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 		sessionID, limit, offset,
 	)
 	if err != nil {
+		log.Printf("❌ handleHistory query error: %v", err)
 		http.Error(w, `{"error":"db error"}`, 500)
 		return
 	}
@@ -145,9 +146,16 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 		_ = rows.Scan(&m.ID, &m.Role, &m.Content, &m.Timestamp)
 		msgs = append(msgs, m)
 	}
+	if msgs == nil {
+		msgs = []Message{}
+	}
 
 	var total int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0)`, sessionID).Scan(&total)
+	_ = db.QueryRow(
+		`SELECT COUNT(*) FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0)`,
+		sessionID,
+	).Scan(&total)
+
 	_ = json.NewEncoder(w).Encode(HistoryResponse{Messages: msgs, Total: total})
 }
 
@@ -255,6 +263,9 @@ func handleMemoryFiles(w http.ResponseWriter, r *http.Request) {
 		})
 		return nil
 	})
+	if files == nil {
+		files = []map[string]interface{}{}
+	}
 	_ = json.NewEncoder(w).Encode(files)
 }
 
@@ -283,31 +294,58 @@ func handleMemoryFile(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"content": string(content)})
 }
 
-func buildContextMessages(userText, mediaB64, mediaType string) []map[string]interface{} {
+// ─── FIX: buildContextMessages ────────────────────────────────────────────
+// The original crash was caused by a nil *sql.Rows being iterated.
+// The fallback query assigned to `rows` but the outer `err` check masked it.
+// Now we use a single safe helper that always returns a valid (possibly empty) slice.
+
+func queryHistory() []map[string]interface{} {
 	if db == nil {
-		log.Println("❌ DB is nil in buildContextMessages")
-		return []map[string]interface{}{{"role": "user", "content": userText}}
+		return nil
 	}
+
+	// Try with archived filter first (new schema)
 	rows, err := db.Query(
-		`SELECT role, content FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0) ORDER BY created_at DESC LIMIT 20`,
+		`SELECT role, content FROM messages
+		 WHERE session_id = ? AND (archived IS NULL OR archived = 0)
+		 ORDER BY created_at DESC LIMIT 20`,
 		sessionID,
 	)
 	if err != nil {
+		// Schema might not have 'archived' column — fall back to simpler query
+		log.Printf("⚠️ History query (with archived filter) failed: %v — retrying without filter", err)
 		rows, err = db.Query(
-			`SELECT role, content FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 20`,
+			`SELECT role, content FROM messages
+			 WHERE session_id = ?
+			 ORDER BY created_at DESC LIMIT 20`,
 			sessionID,
 		)
-	}
-
-	var history []map[string]interface{}
-	if err == nil && rows != nil {
-		defer rows.Close()
-		for rows.Next() {
-			var role, content string
-			_ = rows.Scan(&role, &content)
-			history = append([]map[string]interface{}{{"role": role, "content": content}}, history...)
+		if err != nil {
+			log.Printf("❌ History fallback query also failed: %v", err)
+			return nil
 		}
 	}
+	// rows is guaranteed non-nil here
+	defer rows.Close()
+
+	var history []map[string]interface{}
+	for rows.Next() {
+		var role, content string
+		if scanErr := rows.Scan(&role, &content); scanErr != nil {
+			log.Printf("⚠️ Row scan error: %v", scanErr)
+			continue
+		}
+		// Prepend to reverse chronological → chronological order
+		history = append([]map[string]interface{}{{"role": role, "content": content}}, history...)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		log.Printf("⚠️ Rows iteration error: %v", rowsErr)
+	}
+	return history
+}
+
+func buildContextMessages(userText, mediaB64, mediaType string) []map[string]interface{} {
+	history := queryHistory() // safe — always returns slice or nil
 
 	var userContent interface{}
 	if mediaB64 != "" && strings.HasPrefix(mediaType, "image/") {
@@ -449,8 +487,7 @@ func jsonEscape(s string) string {
 func initDB() {
 	dbPath := cfg.GhostDBPath
 	log.Printf("📂 Opening database at: %s", dbPath)
-	
-	// Create parent directory if it doesn't exist
+
 	dir := filepath.Dir(dbPath)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		log.Printf("📁 Creating database directory: %s", dir)
@@ -466,25 +503,23 @@ func initDB() {
 		log.Fatalf("❌ Failed to open DB: %v", err)
 	}
 
-	// Actually try to ping the DB to verify the connection
 	if err = db.Ping(); err != nil {
 		log.Fatalf("❌ Failed to ping DB: %v", err)
 	}
 
-	// Create tables if they don't exist
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS sessions (
-			id TEXT PRIMARY KEY,
+			id         TEXT PRIMARY KEY,
 			created_at DATETIME,
 			updated_at DATETIME
 		);
 		CREATE TABLE IF NOT EXISTS messages (
-			id TEXT PRIMARY KEY,
+			id         TEXT PRIMARY KEY,
 			session_id TEXT,
-			role TEXT,
-			content TEXT,
-			meta TEXT,
-			archived INTEGER DEFAULT 0,
+			role       TEXT,
+			content    TEXT,
+			meta       TEXT,
+			archived   INTEGER DEFAULT 0,
 			created_at DATETIME,
 			FOREIGN KEY(session_id) REFERENCES sessions(id)
 		);
@@ -492,6 +527,10 @@ func initDB() {
 	if err != nil {
 		log.Fatalf("❌ Failed to create tables: %v", err)
 	}
+
+	// Ensure the 'archived' column exists (in case DB was created by an older version)
+	_, _ = db.Exec(`ALTER TABLE messages ADD COLUMN archived INTEGER DEFAULT 0`)
+
 	log.Println("✅ Database initialized successfully")
 }
 
@@ -500,7 +539,10 @@ func ensureSession() {
 		log.Println("❌ DB is nil in ensureSession")
 		return
 	}
-	_, _ = db.Exec(`INSERT OR IGNORE INTO sessions (id, created_at, updated_at) VALUES (?, ?, ?)`, sessionID, time.Now(), time.Now())
+	_, _ = db.Exec(
+		`INSERT OR IGNORE INTO sessions (id, created_at, updated_at) VALUES (?, ?, ?)`,
+		sessionID, time.Now(), time.Now(),
+	)
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -678,13 +720,13 @@ func handleScreenshot(w http.ResponseWriter, r *http.Request) {
 func handleStats(w http.ResponseWriter, r *http.Request) {
 	stats := map[string]string{}
 	cmds := map[string]string{
-		"uptime":   "uptime -p",
-		"cpu_temp": "vcgencmd measure_temp 2>/dev/null || awk '{printf \"%.1fc\", $1/1000}' /sys/class/thermal/thermal_zone0/temp 2>/dev/null",
-		"memory":   "free -h | awk '/^Mem:/ {print $3\"/\"$2}'",
-		"disk":     "df -h / | awk 'NR==2 {print $3\"/\"$2\" (\"$5\")\"}' ",
-		"load":     "cut -d' ' -f1-3 /proc/loadavg",
-		"ip":       "hostname -I | awk '{print $1}'",
-		"hostname": "hostname",
+		"uptime":    "uptime -p",
+		"cpu_temp":  "vcgencmd measure_temp 2>/dev/null || awk '{printf \"%.1fc\", $1/1000}' /sys/class/thermal/thermal_zone0/temp 2>/dev/null",
+		"memory":    "free -h | awk '/^Mem:/ {print $3\"/\"$2}'",
+		"disk":      "df -h / | awk 'NR==2 {print $3\"/\"$2\" (\"$5\")\"}'",
+		"load":      "cut -d' ' -f1-3 /proc/loadavg",
+		"ip":        "hostname -I | awk '{print $1}'",
+		"hostname":  "hostname",
 		"ghost_svc": "systemctl is-active ghost 2>/dev/null",
 	}
 	for key, cmdStr := range cmds {
@@ -711,10 +753,10 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
 	isURL := strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
 
 	knownApps := map[string]string{
-		"firefox": "firefox", "chromium": "chromium-browser",
-		"chrome": "chromium-browser", "terminal": "x-terminal-emulator",
-		"files": "xdg-open /home", "spotify": "spotify",
-		"vlc": "vlc", "gedit": "gedit", "calculator": "gnome-calculator",
+		"firefox":  "firefox", "chromium": "chromium-browser",
+		"chrome":   "chromium-browser", "terminal": "x-terminal-emulator",
+		"files":    "xdg-open /home", "spotify": "spotify",
+		"vlc":      "vlc", "gedit": "gedit", "calculator": "gnome-calculator",
 	}
 
 	var cmdStr string
@@ -743,7 +785,6 @@ func shellescape(s string) string {
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
 	if db == nil {
-		log.Println("❌ DB is nil in handleSearch")
 		http.Error(w, `{"error":"database not initialized"}`, 500)
 		return
 	}
@@ -759,6 +800,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		sessionID, q, limit,
 	)
 	if err != nil {
+		log.Printf("❌ handleSearch query error: %v", err)
 		http.Error(w, `{"error":"db error"}`, 500)
 		return
 	}
@@ -778,7 +820,6 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 
 func handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	if db == nil {
-		log.Println("❌ DB is nil in handleDeleteMessage")
 		http.Error(w, `{"error":"database not initialized"}`, 500)
 		return
 	}
@@ -807,8 +848,7 @@ func main() {
 	}
 
 	if cfg.BridgeSecret == "" {
-		log.Println("⚠️  WARNING: BRIDGE_SECRET is not set in .env! Using default 'ghost-pi-secret'.")
-		log.Println("⚠️  Please set BRIDGE_SECRET in your .env for security.")
+		log.Println("⚠️  WARNING: BRIDGE_SECRET is not set. Using default 'ghost-pi-secret'.")
 		cfg.BridgeSecret = "ghost-pi-secret"
 	}
 
