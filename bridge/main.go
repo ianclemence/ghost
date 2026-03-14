@@ -839,7 +839,7 @@ func handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 func main() {
 	cfg = Config{
 		Port:          getEnv("BRIDGE_PORT", "8765"),
-		GhostDBPath:   getEnv("GHOST_DB_PATH", "../ghost.db"),
+		GhostDBPath:   getEnv("GHOST_DB_PATH", "../workspace/ghost.db"),
 		KimiAPIKey:    getEnv("KIMI_API_KEY", ""),
 		BridgeSecret:  getEnv("BRIDGE_SECRET", ""),
 		MemoryDir:     getEnv("MEMORY_DIR", "../workspace/memory"),
