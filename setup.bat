@@ -18,6 +18,36 @@ if %errorlevel% neq 0 (
 )
 echo [OK] Go found.
 
+:: 1.5 Ensure .env and bridge secret
+echo.
+echo [1.5/3] Ensuring .env and bridge secret...
+if not exist ".env" (
+    if exist ".env.example" (
+        copy /y ".env.example" ".env" >nul
+        echo [INFO] Created .env from .env.example
+    ) else (
+        echo [WARNING] .env and .env.example not found.
+    )
+)
+
+set "BRIDGE_SECRET="
+for /f "tokens=1,* delims==" %%A in ('findstr /b /i "BRIDGE_SECRET=" ".env" 2^>nul') do (
+    set "BRIDGE_SECRET=%%B"
+)
+if "%BRIDGE_SECRET%"=="" (
+    for /f %%S in ('powershell -NoProfile -Command "$bytes=New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Fill($bytes); [Convert]::ToBase64String($bytes)"') do set "BRIDGE_SECRET=%%S"
+    echo BRIDGE_SECRET=%BRIDGE_SECRET%>>".env"
+    echo [OK] Generated BRIDGE_SECRET
+) else (
+    if /i "%BRIDGE_SECRET%"=="pick_a_strong_secret_here" (
+        for /f %%S in ('powershell -NoProfile -Command "$bytes=New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Fill($bytes); [Convert]::ToBase64String($bytes)"') do set "BRIDGE_SECRET=%%S"
+        powershell -NoProfile -Command "(Get-Content '.env') -replace '^BRIDGE_SECRET=.*','BRIDGE_SECRET=%BRIDGE_SECRET%' | Set-Content '.env'"
+        echo [OK] Updated BRIDGE_SECRET
+    ) else (
+        echo [OK] BRIDGE_SECRET already set
+    )
+)
+
 :: 2. Install Skills (PowerShell Wrapper)
 echo.
 echo [2/3] Installing Ghost Skills (Camera, System, Calendar, Local LLM)...
