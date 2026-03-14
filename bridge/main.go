@@ -381,7 +381,7 @@ func streamKimiResponse(w http.ResponseWriter, flusher http.Flusher, messages []
 	}
 
 	payload, err := json.Marshal(map[string]interface{}{
-		"model":    "moonshot-v1-128k",
+		"model":    getEnv("GHOST_AGENTS_DEFAULTS_MODEL", "kimi-k2.5"),
 		"messages": messages,
 		"stream":   true,
 	})
@@ -863,7 +863,8 @@ func main() {
 
 	// Build HOME-relative default paths so no username is hardcoded.
 	// These are only used when the .env doesn't supply explicit values.
-	defaultDB := filepath.Join(home, "ghost", "workspace", "ghost.db")
+	home := os.Getenv("HOME")
+	defaultDB  := filepath.Join(home, "ghost", "workspace", "ghost.db")
 	defaultMem := filepath.Join(home, "ghost", "workspace", "memory")
 
 	cfg = Config{
