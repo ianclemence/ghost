@@ -239,7 +239,7 @@ make install && sudo systemctl restart ghost
 
 ## 🧠 Memory System
 
-Ghost's memory lives in `ghost.db` (SQLite) and `workspace/memory/`.
+Ghost's memory lives in `gworkspace/host.db` (SQLite) and `workspace/memory/`.
 
 - **Structured History**: All conversations are stored in a local SQLite database for fast retrieval.
 - **RAG (Retrieval-Augmented Generation)**: Important facts are vectorized and stored in an **HNSW index** (via [chromem-go](https://github.com/philippgille/chromem-go)) for O(log n) semantic search, ensuring fast recall even as memory grows.
