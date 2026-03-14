@@ -116,6 +116,11 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleHistory(w http.ResponseWriter, r *http.Request) {
+	if db == nil {
+		log.Println("❌ DB is nil in handleHistory")
+		http.Error(w, `{"error":"database not initialized"}`, 500)
+		return
+	}
 	limit := 50
 	offset := 0
 	_, _ = fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
@@ -147,6 +152,11 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleSend(w http.ResponseWriter, r *http.Request) {
+	if db == nil {
+		log.Println("❌ DB is nil in handleSend")
+		http.Error(w, `{"error":"database not initialized"}`, 500)
+		return
+	}
 	var req SendRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"bad request"}`, 400)
@@ -156,10 +166,15 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 	ensureSession()
 	msgID := uuid.NewString()
 	metaJSON, _ := json.Marshal(map[string]interface{}{})
-	_, _ = db.Exec(
+	_, err := db.Exec(
 		`INSERT INTO messages (id, session_id, role, content, meta, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		msgID, sessionID, "user", req.Content, metaJSON, time.Now(),
 	)
+	if err != nil {
+		log.Printf("❌ DB insert failed: %v", err)
+		http.Error(w, `{"error":"db error"}`, 500)
+		return
+	}
 	_, _ = db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, time.Now(), sessionID)
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -432,13 +447,52 @@ func jsonEscape(s string) string {
 }
 
 func initDB() {
-	var err error
 	dbPath := cfg.GhostDBPath
+	log.Printf("📂 Opening database at: %s", dbPath)
+	
+	// Create parent directory if it doesn't exist
+	dir := filepath.Dir(dbPath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		log.Printf("📁 Creating database directory: %s", dir)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Fatalf("❌ Failed to create DB directory: %v", err)
+		}
+	}
+
 	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)", dbPath)
+	var err error
 	db, err = sql.Open("sqlite", dsn)
 	if err != nil {
-		log.Fatalf("Failed to open DB: %v", err)
+		log.Fatalf("❌ Failed to open DB: %v", err)
 	}
+
+	// Actually try to ping the DB to verify the connection
+	if err = db.Ping(); err != nil {
+		log.Fatalf("❌ Failed to ping DB: %v", err)
+	}
+
+	// Create tables if they don't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS sessions (
+			id TEXT PRIMARY KEY,
+			created_at DATETIME,
+			updated_at DATETIME
+		);
+		CREATE TABLE IF NOT EXISTS messages (
+			id TEXT PRIMARY KEY,
+			session_id TEXT,
+			role TEXT,
+			content TEXT,
+			meta TEXT,
+			archived INTEGER DEFAULT 0,
+			created_at DATETIME,
+			FOREIGN KEY(session_id) REFERENCES sessions(id)
+		);
+	`)
+	if err != nil {
+		log.Fatalf("❌ Failed to create tables: %v", err)
+	}
+	log.Println("✅ Database initialized successfully")
 }
 
 func ensureSession() {
@@ -688,6 +742,11 @@ func shellescape(s string) string {
 }
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
+	if db == nil {
+		log.Println("❌ DB is nil in handleSearch")
+		http.Error(w, `{"error":"database not initialized"}`, 500)
+		return
+	}
 	q := "%" + r.URL.Query().Get("q") + "%"
 	limit := 20
 	_, _ = fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
@@ -718,6 +777,11 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
+	if db == nil {
+		log.Println("❌ DB is nil in handleDeleteMessage")
+		http.Error(w, `{"error":"database not initialized"}`, 500)
+		return
+	}
 	if r.Method != http.MethodDelete {
 		http.Error(w, `{"error":"method not allowed"}`, 405)
 		return
