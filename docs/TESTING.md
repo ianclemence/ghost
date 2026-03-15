@@ -55,6 +55,15 @@ Use these to verify that the agent's reasoning and tools are working.
 - _"Research the difference between Raspberry Pi 5 and Orange Pi 5."_
 - _"Browse the news for any breakthroughs in AI from the last 24 hours."_
 
+#### Visuals & Canvas
+
+- _"Create a dashboard showing my Pi's CPU and Memory usage with a gauge chart."_
+- _"Draw a clean, dark-themed landing page for a personal AI project."_
+- _"Visualize my recent memory entries as a mind map or a flow chart."_
+- _"Generate a simple Todo app UI with 'Add' and 'Complete' buttons."_
+- _"Create a data table showing the top 5 cryptocurrencies by market cap with their current prices."_
+- _"Show me a real-time clock with a futuristic neon design."_
+
 #### Logic & Automation
 
 - _"Set a reminder to check the logs in 10 minutes."_
