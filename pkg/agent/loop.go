@@ -617,8 +617,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		opts.ChatID,
 	)
 
-	// 3. Save user message to session
-	al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
+	// 3. Save user message to session (only if not a slash command)
+	isSlashCommand := strings.HasPrefix(opts.UserMessage, "/")
+	if !isSlashCommand {
+		al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
+	}
 
 	// 4. Run LLM iteration loop
 	finalContent, iteration, err := al.runLLMIteration(ctx, messages, opts)
@@ -634,11 +637,13 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		finalContent = opts.DefaultResponse
 	}
 
-	// 6. Save final assistant message to session (only if it's a real response, not a tool result turn)
+	// 6. Save final assistant message to session (only if it's a real response, not a tool result turn or slash command)
 	// We don't save iterations that were just tool calls here because runLLMIteration 
 	// already handles AddFullMessage for tool turns.
-	al.sessions.AddMessage(opts.SessionKey, "assistant", finalContent)
-	al.sessions.Save(opts.SessionKey)
+	if !isSlashCommand {
+		al.sessions.AddMessage(opts.SessionKey, "assistant", finalContent)
+		al.sessions.Save(opts.SessionKey)
+	}
 
 	// 7. Optional: summarization
 	if opts.EnableSummary {

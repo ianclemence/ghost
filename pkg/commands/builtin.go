@@ -118,6 +118,9 @@ func skillsHandler(ctx context.Context, req Request, rt *Runtime) error {
 	if res.Err != nil {
 		return req.Reply(fmt.Sprintf("Failed to list skills: %v", res.Err))
 	}
+	
+	// Prepend a hidden marker so the agent or UI knows this is informational
+	// and should not be saved to long-term chat history if possible.
 	return req.Reply(fmt.Sprintf("### Ghost Skills\n\n```\n%s\n```\n", res.ForLLM))
 }
 
