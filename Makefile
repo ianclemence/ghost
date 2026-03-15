@@ -97,6 +97,11 @@ build-all: generate
 	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
 	@echo "All builds complete"
 
+## deps: Install system dependencies (Debian/Ubuntu)
+deps:
+	@echo "Installing system dependencies..."
+	@sudo apt-get update && sudo apt-get install -y golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc chromium-browser avahi-utils coreutils
+
 ## install: Install ghost to system and copy builtin skills
 install: build
 	@echo "Installing $(BINARY_NAME)..."

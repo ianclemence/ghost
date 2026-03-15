@@ -51,7 +51,7 @@ if check_command "apt-get"; then
     sudo apt-get update
     
     # Core deps
-    DEPENDENCIES="golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc"
+    DEPENDENCIES="golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc chromium-browser avahi-utils coreutils"
     
     # Check if we need to install anything
     NEEDS_INSTALL=false
