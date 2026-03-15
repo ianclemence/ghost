@@ -98,6 +98,34 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Video frames extraction
 	registry.Register(tools.NewVideoFramesTool(workspace, restrict))
 
+	// Lanes (Isolated Contexts)
+	registry.Register(tools.NewLaneTool(func(lane string) {
+		// This callback will be handled by the agent loop if needed,
+		// but for now, the tool just returns a success message to the LLM.
+		// The LLM can then decide to use this information.
+	}))
+
+	// Headless Browser Tool (Chromium-based)
+	registry.Register(tools.NewBrowserTool(workspace, restrict))
+
+	// Sandbox Execution Tool (Safe code running)
+	registry.Register(tools.NewSandboxTool(workspace))
+
+	// Networking & Discovery Tool (Tailscale, Bonjour)
+	registry.Register(tools.NewNetworkingTool(workspace))
+
+	// Voice Wake Word Control (Always-Listening)
+	registry.Register(tools.NewVoiceWakeTool(func(active bool) {
+		// This would ideally signal a background voice-processing service.
+	}))
+
+	// Context Compaction Tool (Proactive Session Summarization)
+	registry.Register(tools.NewCompactionTool(func() error {
+		// We'll trigger the summarization logic manually.
+		// In a real implementation, we'd need to access the current sessionID and loop.
+		return nil // For now, we'll just return a success message.
+	}))
+
 	// Canvas visual presence
 	canvasTool := tools.NewCanvasTool(workspace, func(html string) {
 		msgBus.PublishOutbound(bus.OutboundMessage{
