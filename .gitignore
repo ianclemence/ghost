@@ -52,10 +52,8 @@ workspace/*
 !workspace/state/README.md
 !workspace/journal/README.md
 !workspace/data/README.md
-!workspace/AGENT.md
+!workspace/GHOST.md
 !workspace/HEARTBEAT.md
-!workspace/IDENTITY.md
-!workspace/SOUL.md
 !workspace/USER.md
 
 # SQLite Database

@@ -143,11 +143,14 @@ The following skills extend your capabilities. To use a skill, read its SKILL.md
 }
 
 func (cb *ContextBuilder) LoadBootstrapFiles() string {
+	// Ghost Operational and Identity Files:
+	// - GHOST.md: The core system identity, personality, and directives (consolidated).
+	// - USER.md: Persistent facts and preferences about the user (updated at runtime).
+	// - HEARTBEAT.md: The autonomic nervous system schedule (periodic tasks).
 	bootstrapFiles := []string{
-		"AGENT.md",
-		"SOUL.md",
+		"GHOST.md",
 		"USER.md",
-		"IDENTITY.md",
+		"HEARTBEAT.md",
 	}
 
 	var result string
