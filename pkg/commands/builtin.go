@@ -3,6 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -65,6 +67,32 @@ func getGhostBinary() string {
 	return exe
 }
 
+func getWorkspaceDir() string {
+	if v := strings.TrimSpace(os.Getenv("GHOST_WORKSPACE_DIR")); v != "" {
+		return v
+	}
+	return "workspace"
+}
+
+func listWorkspaceSkills() ([]string, error) {
+	root := filepath.Join(getWorkspaceDir(), "skills")
+	dirs, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	skills := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		if !dir.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, dir.Name(), "SKILL.md")); err == nil {
+			skills = append(skills, dir.Name())
+		}
+	}
+	sort.Strings(skills)
+	return skills, nil
+}
+
 func statusHandler(ctx context.Context, req Request, rt *Runtime) error {
 	if rt == nil || rt.Tools == nil {
 		return req.Reply("Status is unavailable.")
@@ -105,23 +133,19 @@ func statusHandler(ctx context.Context, req Request, rt *Runtime) error {
 }
 
 func skillsHandler(ctx context.Context, req Request, rt *Runtime) error {
-	if rt == nil || rt.Tools == nil {
-		return req.Reply("Skills are unavailable.")
+	skills, err := listWorkspaceSkills()
+	if err != nil {
+		return req.Reply(fmt.Sprintf("Failed to list skills: %v", err))
 	}
-	tool, ok := rt.Tools.Get("exec")
-	if !ok {
-		return req.Reply("Shell execution is unavailable.")
+	if len(skills) == 0 {
+		return req.Reply("No installed skills found in workspace/skills.")
 	}
-	res := tool.Execute(ctx, map[string]interface{}{
-		"command": fmt.Sprintf("%s skills list", getGhostBinary()),
-	})
-	if res.Err != nil {
-		return req.Reply(fmt.Sprintf("Failed to list skills: %v", res.Err))
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("### Ghost Skills (%d)\n\n", len(skills)))
+	for _, name := range skills {
+		sb.WriteString(fmt.Sprintf("- `%s`\n", name))
 	}
-	
-	// Prepend a hidden marker so the agent or UI knows this is informational
-	// and should not be saved to long-term chat history if possible.
-	return req.Reply(fmt.Sprintf("### Ghost Skills\n\n```\n%s\n```\n", res.ForLLM))
+	return req.Reply(sb.String())
 }
 
 func installHandler(ctx context.Context, req Request, rt *Runtime) error {
@@ -150,17 +174,19 @@ func toolsHandler(ctx context.Context, req Request, rt *Runtime) error {
 	if rt == nil || rt.Tools == nil {
 		return req.Reply("Tools are unavailable.")
 	}
-	tool, ok := rt.Tools.Get("exec")
-	if !ok {
-		return req.Reply("Shell execution is unavailable.")
+	toolNames := rt.Tools.List()
+	if len(toolNames) == 0 {
+		return req.Reply("No tools are currently loaded.")
 	}
-	res := tool.Execute(ctx, map[string]interface{}{
-		"command": fmt.Sprintf("%s agent --list-tools", getGhostBinary()),
-	})
-	if res.Err != nil {
-		return req.Reply(fmt.Sprintf("Failed to list tools: %v", res.Err))
+	sort.Strings(toolNames)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("### Ghost Tools (%d)\n\n", len(toolNames)))
+	for _, t := range toolNames {
+		if tool, ok := rt.Tools.Get(t); ok {
+			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", t, tool.Description()))
+		}
 	}
-	return req.Reply(fmt.Sprintf("### Ghost Tools\n\n```\n%s\n```\n", res.ForLLM))
+	return req.Reply(sb.String())
 }
 
 func helpHandler(ctx context.Context, req Request, rt *Runtime) error {
