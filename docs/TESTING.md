@@ -1,26 +1,23 @@
 # Ghost Testing Guide
 
-This document contains useful commands and prompts to test the Ghost system (Pi and Mobile App).
+This document contains useful commands and prompts to test the Ghost system based on currently loaded **Tools** and **Skills**.
 
 ## 1. System Commands (Pi Terminal)
 
 Run these from the `~/ghost` directory on your Pi.
 
 ### Basic Connectivity
-
 - `ghost agent -m "ping"`: Quick test of the agent loop.
 - `ghost gateway`: Starts the full API server (for phone connection).
 - `sudo systemctl status ghost`: Check if the background service is healthy.
 
 ### Monitoring
-
 - `ghost dashboard`: Launch the terminal UI dashboard.
-- `sudo journalctl -u ghost -f`: Follow real-time logs (useful for watching tool usage).
+- `sudo journalctl -u ghost -f`: Follow real-time logs (essential for watching tool usage).
 
 ### Development
-
 - `make build`: Recompile the binary for ARM64.
-- `make install`: Install the binary to `~/.local/bin/ghost`.
+- `sudo cp build/ghost-linux-arm64 /usr/local/bin/ghost && sudo systemctl restart ghost`: Apply code changes.
 
 ---
 
@@ -28,57 +25,54 @@ Run these from the `~/ghost` directory on your Pi.
 
 Type these directly into the chat input starting with `/`.
 
-- `/status`: Displays Pi system stats (CPU, Disk, Memory).
-- `/skills`: Lists all installed skills in your workspace.
-- `/tools`: Shows the raw JSON schemas for all loaded tools.
+- `/status`: Displays Pi system stats (CPU, Disk, Memory) using `uptime` and `df`.
+- `/skills`: Lists all 28+ installed skills from `workspace/skills`.
+- `/tools`: Shows the raw JSON schemas for all 24+ loaded tools (e.g., `exec`, `web_search`).
 - `/clear`: Archives the current chat session.
 - `/help`: Shows available commands and tool descriptions.
 
 ---
 
-### 3. Test Prompts (AI Capabilities)
+### 3. Test Prompts (Aligned with Tools & Skills)
 
-Use these to verify that the agent's reasoning and tools are working.
+#### Filesystem & System (Tools: `exec`, `read_file`, `write_file`, `list_dir`)
+- *"List the files in my ghost workspace."*
+- *"What is your current CPU temperature and disk usage?"*
+- *"Check if the ghost service is running using a shell command."*
+- *"Read the content of GHOST.md and summarize it."*
 
-#### Filesystem & Tools
+#### Web & Research (Tools: `web_search`, `web_fetch`, `scraper`)
+- *"Search the web for the latest news on NVIDIA and summarize it."*
+- *"Scrape the latest headlines from a news site."*
+- *"Find the difference between Raspberry Pi 5 and Orange Pi 5."*
 
-- _"What's in my ghost workspace?"_
-- _"Read the content of GHOST.md and summarize it."_
-- _"Take a screenshot of the Pi desktop and show me."_
+#### Specialized Skills (Skills: `weather`, `aqi`, `crypto`, `speedtest`, `currency`)
+- *"What's the weather like in Tokyo?"*
+- *"Check the current AQI in Singapore."*
+- *"What is the current price of Bitcoin?"*
+- *"Run a speedtest on my Pi."*
+- *"Convert 100 USD to EUR."*
 
-#### Web & Information
+#### Multimedia & Environment (Skills: `camera`, `screenshot`, `spotify`, `homeassistant`)
+- *"Take a screenshot of the Pi desktop."*
+- *"Take a photo using the Pi camera."*
+- *"What's currently playing on my Spotify?"*
+- *"Check the status of my home assistant devices."*
 
-- _"Search the web for the latest Raspberry Pi news."_
-- _"Check the weather in Tokyo."_
-- _"What is the current AQI in Singapore?"_
-- _"Find the latest stock price for NVIDIA and summarize the sentiment."_
-- _"Research the difference between Raspberry Pi 5 and Orange Pi 5."_
-- _"Browse the news for any breakthroughs in AI from the last 24 hours."_
+#### Productivity & Memory (Tools: `remember`, `oracle`; Skills: `calendar`, `journal`, `remind`)
+- *"Set a reminder to check the logs in 10 minutes."*
+- *"Add a note to my memory about my project ideas."*
+- *"Search my history for the last time we discussed the ghost-bridge port."*
+- *"Check my calendar for upcoming events."*
 
-#### Visuals & Canvas
-
-- _"Create a dashboard showing my Pi's CPU and Memory usage with a gauge chart."_
-- _"Draw a clean, dark-themed landing page for a personal AI project."_
-- _"Visualize my recent memory entries as a mind map or a flow chart."_
-- _"Generate a simple Todo app UI with 'Add' and 'Complete' buttons."_
-- _"Create a data table showing the top 5 cryptocurrencies by market cap with their current prices."_
-- _"Show me a real-time clock with a futuristic neon design."_
-
-#### Logic & Automation
-
-- _"Set a reminder to check the logs in 10 minutes."_
-- _"Write a bash script to list all running python processes and execute it."_
-- _"Summarize my recent memory entries."_
-- _"Create a new markdown file in my workspace called 'ideas.md' and add 5 project ideas for Ghost."_
-- _"Analyze the disk usage on my Pi and suggest which directories are taking up the most space."_
-- _"Search my history for the last time we discussed the ghost-bridge port."_
-- _"Check if any services are currently failing on the system using `systemctl --failed`."_
-- _"Write a python script to calculate the first 10 prime numbers and run it."_
+#### Visuals & Canvas (Tool: `canvas`)
+- *"Create a dashboard showing my Pi's CPU and Memory usage with a gauge chart."*
+- *"Show me a real-time clock with a futuristic neon design."*
+- *"Draw a clean, dark-themed landing page for a personal AI project."*
 
 ---
 
 ### 4. Troubleshooting Commands
-
 - `sudo lsof -i :8766`: Check if the Internal API port is occupied.
 - `sudo fuser -k 8766/tcp`: Force close any process hogging the API port.
 - `pkill -9 ghost`: Force kill any "zombie" ghost processes.
