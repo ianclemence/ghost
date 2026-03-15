@@ -110,13 +110,100 @@ func resolveSession(r *http.Request) string {
 	return "mobile:default"
 }
 
+// toolStatusLabel returns a human-readable label for a tool call.
+// Sent to the mobile app as a tool_status SSE event so the user can see
+// exactly what Ghost is doing during long multi-step operations.
+func toolStatusLabel(name, args string) string {
+	var a map[string]interface{}
+	_ = json.Unmarshal([]byte(args), &a)
+
+	switch name {
+	case "web_search":
+		if q, ok := a["query"].(string); ok && q != "" {
+			if len(q) > 40 {
+				q = q[:40] + "…"
+			}
+			return "Searching: " + q
+		}
+		return "Searching the web…"
+	case "web_fetch":
+		if u, ok := a["url"].(string); ok && u != "" {
+			if len(u) > 45 {
+				u = u[:45] + "…"
+			}
+			return "Fetching: " + u
+		}
+		return "Fetching page…"
+	case "exec":
+		if c, ok := a["command"].(string); ok && c != "" {
+			if len(c) > 40 {
+				c = c[:40] + "…"
+			}
+			return "Running: " + c
+		}
+		return "Running shell command…"
+	case "sandbox":
+		if c, ok := a["command"].(string); ok && c != "" {
+			if len(c) > 40 {
+				c = c[:40] + "…"
+			}
+			return "Sandbox: " + c
+		}
+		return "Running in sandbox…"
+	case "read_file":
+		if p, ok := a["path"].(string); ok && p != "" {
+			parts := strings.Split(p, "/")
+			return "Reading: " + parts[len(parts)-1]
+		}
+		return "Reading file…"
+	case "write_file":
+		if p, ok := a["path"].(string); ok && p != "" {
+			parts := strings.Split(p, "/")
+			return "Writing: " + parts[len(parts)-1]
+		}
+		return "Writing file…"
+	case "list_dir":
+		if p, ok := a["path"].(string); ok && p != "" {
+			parts := strings.Split(strings.TrimRight(p, "/"), "/")
+			return "Listing: " + parts[len(parts)-1] + "/"
+		}
+		return "Listing directory…"
+	case "browser":
+		if u, ok := a["url"].(string); ok && u != "" {
+			if len(u) > 40 {
+				u = u[:40] + "…"
+			}
+			return "Browser: " + u
+		}
+		return "Opening browser…"
+	case "canvas":
+		return "Rendering canvas…"
+	case "oracle":
+		return "Loading context…"
+	case "remember":
+		return "Saving to memory…"
+	case "spawn", "subagent":
+		return "Spawning subagent…"
+	case "screenshot":
+		return "Capturing screenshot…"
+	case "edit_file":
+		if p, ok := a["path"].(string); ok && p != "" {
+			parts := strings.Split(p, "/")
+			return "Editing: " + parts[len(parts)-1]
+		}
+		return "Editing file…"
+	default:
+		return "Using " + name + "…"
+	}
+}
+
 type internalAPIRequest struct {
-	Content    string       `json:"content"`
-	SessionKey string       `json:"session_key"`
-	Media      []string     `json:"media,omitempty"` // Legacy: just b64 strings
-	MediaItems []MediaItem  `json:"media_items,omitempty"`
-	Channel    string       `json:"channel,omitempty"`
-	ChatID     string       `json:"chat_id,omitempty"`
+	Content    string      `json:"content"`
+	SessionKey string      `json:"session_key"`
+	Media      []string    `json:"media,omitempty"`
+	MediaItems []MediaItem `json:"media_items,omitempty"`
+	Channel    string      `json:"channel,omitempty"`
+	ChatID     string      `json:"chat_id,omitempty"`
 }
 
 type MediaItem struct {
@@ -343,10 +430,15 @@ func handleOpen(w http.ResponseWriter, r *http.Request) {
 	isURL := strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
 
 	knownApps := map[string]string{
-		"firefox":  "firefox", "chromium": "chromium-browser",
-		"chrome":   "chromium-browser", "terminal": "x-terminal-emulator",
-		"files":    "xdg-open /home", "spotify": "spotify",
-		"vlc":      "vlc", "gedit": "gedit", "calculator": "gnome-calculator",
+		"firefox":    "firefox",
+		"chromium":   "chromium-browser",
+		"chrome":     "chromium-browser",
+		"terminal":   "x-terminal-emulator",
+		"files":      "xdg-open /home",
+		"spotify":    "spotify",
+		"vlc":        "vlc",
+		"gedit":      "gedit",
+		"calculator": "gnome-calculator",
 	}
 
 	var cmdStr string
@@ -373,11 +465,12 @@ func shellescape(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-// startInternalAPI starts the internal API server for bridge-to-agent routing.
-// It listens on 0.0.0.0 and is protected by BRIDGE_SECRET.
+// startInternalAPI starts the Ghost API server.
+// Listens on 0.0.0.0 so the mobile app can connect directly over Wi-Fi.
+// One port (GHOST_API_PORT, default 8766) handles everything:
+// chat, history, memory, transcription, remote control, and WebSocket.
 func startInternalAPI(agentLoop *agent.AgentLoop) {
 	port := defaultInternalAPIPort
-	// Check for GHOST_API_PORT first, then fallback to legacy GHOST_INTERNAL_API_PORT
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
 	} else if p := os.Getenv("GHOST_INTERNAL_API_PORT"); p != "" {
@@ -401,18 +494,17 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 
 	mux := http.NewServeMux()
 
-	// 1. Health Check
+	// ── 1. Health ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/health", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
-		uptime := time.Since(apiStartTime).Seconds()
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":    "ok",
 			"timestamp": time.Now().Unix(),
 			"version":   "2.0.0",
-			"uptime_s":  int64(uptime),
+			"uptime_s":  int64(time.Since(apiStartTime).Seconds()),
 		})
 	}))
 
-	// 2. Chat Endpoint (Streaming)
+	// ── 2. Chat (streaming SSE) ───────────────────────────────────────────
 	mux.HandleFunc("/v1/chat", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -424,14 +516,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			http.Error(w, fmt.Sprintf(`{"error":"invalid request: %s"}`, err.Error()), http.StatusBadRequest)
 			return
 		}
-
 		if req.Content == "" {
 			http.Error(w, `{"error":"content is required"}`, http.StatusBadRequest)
 			return
 		}
-
 		if req.SessionKey == "" {
-			req.SessionKey = "mobile:default"
+			req.SessionKey = resolveSession(r)
 		}
 		if req.Channel == "" {
 			req.Channel = "mobile"
@@ -444,10 +534,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			"session_key":    req.SessionKey,
 			"channel":        req.Channel,
 			"content_length": len(req.Content),
-			"has_media":      len(req.Media) > 0,
+			"has_media":      len(req.Media) > 0 || len(req.MediaItems) > 0,
 		})
 
-		// Prepare SSE
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
@@ -460,7 +549,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		// Media handling
 		mediaPaths := []string{}
 		for _, m := range req.Media {
-			// Legacy support: save b64 to temp file
 			if tmp, err := saveBase64ToTemp(m); err == nil {
 				mediaPaths = append(mediaPaths, tmp)
 			}
@@ -471,17 +559,61 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			}
 		}
 
-		// Process message with streaming callback
-		ctx := r.Context()
-		
+		// onChunk — streams text tokens to the mobile app as JSON-encoded strings
 		onChunk := func(chunk string) {
-			// JSON encode the chunk string to ensure safe transport
 			escaped, _ := json.Marshal(chunk)
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
 			flusher.Flush()
 		}
 
-		_, err := agentLoop.ProcessDirectWithChannel(ctx, req.Content, req.SessionKey, req.Channel, req.ChatID, mediaPaths, onChunk, nil)
+		// onToolCall — sends a tool_status event so the app can show
+		// "Ghost is searching…", "Reading file…" etc. in real time.
+		// These are JSON objects, NOT text chunks — the app routes them
+		// to the status badge, not the message bubble.
+		onToolCall := func(name string, args string) {
+			label := toolStatusLabel(name, args)
+			payload, _ := json.Marshal(map[string]string{
+				"type":  "tool_status",
+				"tool":  name,
+				"label": label,
+			})
+			fmt.Fprintf(w, "data: %s\n\n", string(payload))
+			flusher.Flush()
+		}
+
+		// Keep-alive ticker — prevents the mobile HTTP client from timing out
+		// during long tool chains (web fetches, sandbox runs, multi-step reasoning).
+		// Sends an SSE comment every 15 seconds; the app silently ignores these.
+		keepAliveDone := make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					fmt.Fprintf(w, ": keepalive\n\n")
+					flusher.Flush()
+				case <-keepAliveDone:
+					return
+				}
+			}
+		}()
+
+		ctx := r.Context()
+		_, err := agentLoop.ProcessDirectWithChannel(
+			ctx,
+			req.Content,
+			req.SessionKey,
+			req.Channel,
+			req.ChatID,
+			mediaPaths,
+			onChunk,
+			onToolCall,
+		)
+
+		// Stop keep-alive before writing [DONE] to avoid write-after-close race
+		close(keepAliveDone)
+
 		if err != nil {
 			logger.ErrorCF("internal-api", "Error processing chat", map[string]interface{}{"error": err.Error()})
 			escaped, _ := json.Marshal("Error: " + err.Error())
@@ -492,8 +624,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			flusher.Flush()
 		}
 	}))
-	
-	// 3. History
+
+	// ── 3. History ────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/history", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		session := resolveSession(r)
 		limit := 50
@@ -507,10 +639,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		}
 
 		rows, err := db.Query(`
-			SELECT id, role, content, created_at, meta 
-			FROM messages 
-			WHERE session_id = ? AND (archived IS NULL OR archived = 0) 
-			ORDER BY created_at DESC 
+			SELECT id, role, content, created_at, meta
+			FROM messages
+			WHERE session_id = ? AND (archived IS NULL OR archived = 0)
+			ORDER BY created_at DESC
 			LIMIT ? OFFSET ?`, session, limit, offset)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"db error: %s"}`, err.Error()), http.StatusInternalServerError)
@@ -527,24 +659,21 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 				continue
 			}
 			m.Timestamp = createdAt.Unix()
-			
-			// Parse meta for tool calls if needed, or media
-			// For now, just basic fields
 			messages = append(messages, m)
 		}
-		
-		// Reverse
+
+		// Reverse DESC → ASC for the app
 		for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 			messages[i], messages[j] = messages[j], messages[i]
 		}
+		if messages == nil {
+			messages = []Message{}
+		}
 
 		total := len(messages)
-		if err := db.QueryRow(`
-			SELECT COUNT(*) 
-			FROM messages 
-			WHERE session_id = ? AND (archived IS NULL OR archived = 0)`, session).Scan(&total); err != nil {
-			total = len(messages)
-		}
+		_ = db.QueryRow(`
+			SELECT COUNT(*) FROM messages
+			WHERE session_id = ? AND (archived IS NULL OR archived = 0)`, session).Scan(&total)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"messages": messages,
@@ -552,7 +681,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		})
 	}))
 
-	// 4. Search
+	// ── 4. Search ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/search", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		session := resolveSession(r)
 		q := r.URL.Query().Get("q")
@@ -560,15 +689,14 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			json.NewEncoder(w).Encode([]Message{})
 			return
 		}
-
 		if db == nil {
 			http.Error(w, `{"error":"database not available"}`, http.StatusInternalServerError)
 			return
 		}
 
 		rows, err := db.Query(`
-			SELECT id, role, content, created_at 
-			FROM messages 
+			SELECT id, role, content, created_at
+			FROM messages
 			WHERE session_id = ? AND content LIKE ? AND (archived IS NULL OR archived = 0)
 			ORDER BY created_at DESC LIMIT 20`, session, "%"+q+"%")
 		if err != nil {
@@ -587,10 +715,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			m.Timestamp = createdAt.Unix()
 			messages = append(messages, m)
 		}
+		if messages == nil {
+			messages = []Message{}
+		}
 		json.NewEncoder(w).Encode(messages)
 	}))
 
-	// 5. Memory Files
+	// ── 5. Memory files ───────────────────────────────────────────────────
 	mux.HandleFunc("/v1/memory/files", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		type FileInfo struct {
 			Name     string `json:"name"`
@@ -618,24 +749,24 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			}
 			return nil
 		})
-		
+		if files == nil {
+			files = []FileInfo{}
+		}
 		json.NewEncoder(w).Encode(files)
 	}))
 
-	// 6. Memory File Content
+	// ── 6. Memory file content ────────────────────────────────────────────
 	mux.HandleFunc("/v1/memory/file", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Query().Get("name")
 		if name == "" {
 			http.Error(w, "name required", 400)
 			return
 		}
-		// Prevent path traversal
 		clean := filepath.Clean(name)
 		if strings.Contains(clean, "..") || strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "\\") {
 			http.Error(w, "invalid path", 403)
 			return
 		}
-		
 		content, err := os.ReadFile(filepath.Join(memoryDir, clean))
 		if err != nil {
 			http.Error(w, "file not found", 404)
@@ -644,7 +775,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		json.NewEncoder(w).Encode(map[string]string{"content": string(content)})
 	}))
 
-	// 7. Transcribe
+	// ── 7. Transcribe ─────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/transcribe", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		file, _, err := r.FormFile("audio")
 		if err != nil {
@@ -653,7 +784,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		}
 		defer file.Close()
 
-		// Forward to Moonshot
 		apiKey := os.Getenv("KIMI_API_KEY")
 		if apiKey == "" {
 			http.Error(w, "KIMI_API_KEY not set", 500)
@@ -673,35 +803,24 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 
 		client := &http.Client{Timeout: 30 * time.Second}
 		resp, err := client.Do(req)
-		if err != nil {
+		if err != nil || resp.StatusCode != http.StatusOK {
 			http.Error(w, "upstream error", 502)
 			return
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			http.Error(w, "upstream error", 502)
-			return
-		}
-
-		respBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			http.Error(w, "upstream error", 502)
-			return
-		}
-
+		respBytes, _ := io.ReadAll(resp.Body)
 		var parsed map[string]interface{}
-		if err := json.Unmarshal(respBytes, &parsed); err == nil {
+		if json.Unmarshal(respBytes, &parsed) == nil {
 			if text, ok := parsed["text"].(string); ok {
 				json.NewEncoder(w).Encode(map[string]string{"text": text})
 				return
 			}
 		}
-
 		http.Error(w, "upstream error", 502)
 	}))
 
-	// 8. Upload
+	// ── 8. Upload ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/upload", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		file, header, err := r.FormFile("file")
 		if err != nil {
@@ -709,10 +828,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			return
 		}
 		defer file.Close()
-
 		data, _ := io.ReadAll(file)
 		b64 := base64.StdEncoding.EncodeToString(data)
-		
 		json.NewEncoder(w).Encode(map[string]string{
 			"b64":       b64,
 			"mime_type": header.Header.Get("Content-Type"),
@@ -720,7 +837,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		})
 	}))
 
-	// 9. Delete Message
+	// ── 9. Delete message ─────────────────────────────────────────────────
 	mux.HandleFunc("/v1/message", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
 			http.Error(w, "method not allowed", 405)
@@ -728,44 +845,47 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		}
 		id := r.URL.Query().Get("id")
 		session := resolveSession(r)
-		
-		if db != nil {
-			// Soft delete (archive)
+		if db != nil && id != "" {
 			db.Exec("UPDATE messages SET archived = 1 WHERE id = ? AND session_id = ?", id, session)
 		}
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	}))
-	
-	// 10. Delete Session (Clear History)
+
+	// ── 10. Clear session ─────────────────────────────────────────────────
 	mux.HandleFunc("/v1/messages", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
 			http.Error(w, "method not allowed", 405)
 			return
 		}
 		session := resolveSession(r)
-		
 		if db != nil {
 			db.Exec("UPDATE messages SET archived = 1 WHERE session_id = ?", session)
 		}
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	}))
 
-	// WebSocket
-	mux.HandleFunc("/v1/exec", authMiddleware(secret, handleExec(allowedCmds)))
+	// ── Remote control endpoints ──────────────────────────────────────────
+	mux.HandleFunc("/v1/exec",       authMiddleware(secret, handleExec(allowedCmds)))
 	mux.HandleFunc("/v1/screenshot", authMiddleware(secret, handleScreenshot(screenshotCmd)))
-	mux.HandleFunc("/v1/stats", authMiddleware(secret, handleStats))
-	mux.HandleFunc("/v1/open", authMiddleware(secret, handleOpen))
+	mux.HandleFunc("/v1/stats",      authMiddleware(secret, handleStats))
+	mux.HandleFunc("/v1/open",       authMiddleware(secret, handleOpen))
+
+	// ── WebSocket ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/ws", handleWebSocket(agentLoop))
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	log.Printf("🤖 Ghost Internal API listening on %s (chat + tools)", addr)
-	
+
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Printf("❌ Internal API failed: %v", err)
 	}
 }
 
 func saveBase64ToTemp(b64 string) (string, error) {
+	// Strip data URL prefix if present (e.g., data:image/png;base64,)
+	if idx := strings.Index(b64, ","); idx != -1 {
+		b64 = b64[idx+1:]
+	}
 	data, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
 		return "", err
