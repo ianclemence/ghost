@@ -1,9 +1,33 @@
 # User Profile
 
-*This file contains persistent facts about the user. Update it when you learn something new and permanent.*
+This file stores durable, high-signal user facts and preferences.
+Only update this file when information is stable over time.
 
--   **Name**: (User)
--   **Role**: Creator of Ghost
--   **Preferences**:
-    -   Values privacy and sovereignty.
-    -   Prefers direct communication.
+## Identity
+
+- **Name**: (User)
+- **Role**: Creator of Ghost
+
+## Communication Preferences
+
+- **Style**: Direct, concise, technically precise
+- **Default Detail Level**: Medium (expand when complexity is high)
+- **Clarification Strategy**: Prefer action-first assumptions with explicit post-action notes
+
+## Product and System Preferences
+
+- **Primary Goal**: Sovereign local AI with reliable mobile-first experience
+- **Privacy Posture**: Prefer local execution and minimal external exposure
+- **Reliability Priority**: High tolerance for slower responses in exchange for correctness
+
+## Operational Preferences
+
+- **Deployment Bias**: Safe iterative rollout over large risky changes
+- **Diagnostics Preference**: Timeline-style logs for networking and state transitions
+- **Failure Reporting**: Include root cause, impact, and concrete next step
+
+## Update Rules
+
+- Add facts only if likely valid for 30+ days.
+- Do not store temporary moods, one-off requests, or ephemeral experiment details.
+- If a preference changes, replace the old value instead of appending contradictory entries.

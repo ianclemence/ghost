@@ -1,17 +1,25 @@
 # Ghost Workspace
 
-This directory is the "brain" and "home" of your Ghost agent. It contains configuration files, memory, and state that the agent uses to operate and persist information.
+This directory is Ghost's persistent runtime context: identity rules, user profile, memory artifacts, and scheduled behavior definitions.
 
 ## Directory Structure
 
-- **`HEARTBEAT.md`**: Defines periodic tasks and routines for the agent (e.g., morning briefings, evening reflections).
-- **`IDENTITY.md`**: Defines the agent's persona, core directives, and interaction style.
-- **`USER.md`**: Stores persistent facts and preferences about you (the user).
-- **`cron/`**: Stores scheduled tasks and jobs.
-- **`memory/`**: Stores the agent's long-term memory and logs.
-- **`sessions/`**: (Ignored by git) Stores chat logs and temporary session data.
-- **`state/`**: Stores the agent's current internal state (e.g., last active channel).
+- **`GHOST.md`**: Primary identity, execution constraints, and tool usage policy.
+- **`HEARTBEAT.md`**: Scheduled autonomous tasks with guardrails and budgets.
+- **`USER.md`**: Durable user facts and behavior preferences.
+- **`knowledge/`**: Structured knowledge graph notes and operational knowledge.
+- **`skills/`**: Installed skill packs (`<skill>/SKILL.md` plus optional scripts).
+- **`tmp/`**: Temporary runtime artifacts (safe workspace-scoped outputs).
 
 ## Customization
 
-You can edit `IDENTITY.md` to change how Ghost behaves, or `HEARTBEAT.md` to change its daily routine. `USER.md` will be updated by the agent as it learns about you, but you can also manually edit it.
+- Edit `GHOST.md` to change decision policy, risk posture, and tool routing rules.
+- Edit `HEARTBEAT.md` to tune periodic routines and runtime budgets.
+- Edit `USER.md` to set stable user preferences and communication defaults.
+
+## Source of Truth
+
+- If two files conflict, precedence is:
+  1. `GHOST.md` for behavior and execution policy
+  2. `USER.md` for user-specific preferences
+  3. `HEARTBEAT.md` for autonomous scheduling policy
