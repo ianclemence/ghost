@@ -1,6 +1,6 @@
 # Ghost
 
-> "Your autonomous, private AI companion."
+> "Your sovereign intelligence."
 
 Ghost is a personal AI assistant designed for Raspberry Pi. It merges a lightweight Go-based agent with the advanced reasoning of **Kimi K2.5** (256k context), providing a responsive and continuous AI presence.
 
