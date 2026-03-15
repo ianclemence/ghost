@@ -26,12 +26,10 @@ function readEnv(filePath) {
 
 const env = readEnv(path.join(__dirname, ".env"));
 const HOST = env.PI_HOST?.split("@").pop() || "127.0.0.1";
-const PORT = env.GHOST_API_PORT || "8765";
+const PORT = env.GHOST_API_PORT || "8766";
 const SECRET = env.BRIDGE_SECRET || "";
-const REMOTE_PORT = env.BRIDGE_PORT || "8766";
 
 const BASE = `http://${HOST}:${PORT}`;
-const REMOTE = `http://${HOST}:${REMOTE_PORT}`;
 
 let passed = 0;
 let failed = 0;
@@ -192,7 +190,6 @@ function assert(cond, msg) {
 async function main() {
   console.log("\n👻 Ghost API Test Suite");
   console.log(`   Internal API : ${BASE}`);
-  console.log(`   Remote Bridge: ${REMOTE}`);
   console.log(
     `   Secret set   : ${SECRET ? "yes (" + SECRET.length + " chars)" : "NO — tests will fail auth"}`,
   );
@@ -328,8 +325,8 @@ async function main() {
   });
 
   // ── 8. Remote bridge stats ───────────────────────────────────────────────
-  await test("Remote bridge /v1/stats returns system metrics", async () => {
-    const r = await get(`${REMOTE}/v1/stats`);
+  await test("/v1/stats returns system metrics", async () => {
+    const r = await get(`${BASE}/v1/stats`);
     assert(
       r.status === 200,
       `Expected 200, got ${r.status}: ${r.body.slice(0, 200)}`,
@@ -344,25 +341,11 @@ async function main() {
     );
   });
 
-  // ── 9. Ghost-bridge no longer serves chat ────────────────────────────────
-  await test("ghost-bridge /v1/chat is gone (consolidation complete)", async () => {
-    try {
-      const r = await post(`${REMOTE}/v1/chat`, { content: "test" });
-      if (r.status === 200) {
-        throw new Error(
-          "ghost-bridge still has /v1/chat — consolidation incomplete. " +
-            "Remove the chat handler from bridge/main.go.",
-        );
-      }
-      log("✅", "Chat removed from bridge", `Returned ${r.status}`);
-    } catch (err) {
-      if (err.message.includes("consolidation incomplete")) throw err;
-      log(
-        "✅",
-        "Chat removed from bridge",
-        "Endpoint gone (connection refused or 404)",
-      );
-    }
+  // ── 9. /v1/open rejects invalid target ───────────────────────────────────
+  await test("/v1/open rejects invalid target", async () => {
+    const r = await post(`${BASE}/v1/open`, { target: "not-a-real-app" });
+    assert(r.status === 400, `Expected 400, got ${r.status}`);
+    log("✅", "Open rejects invalid target", "400 on bad target");
   });
 
   // ── 10. Latency baseline ─────────────────────────────────────────────────
@@ -396,8 +379,7 @@ async function main() {
 
   if (failed === 0) {
     console.log("  ✅ All tests passed.");
-    console.log("  The mobile app can now be pointed at port 8765 directly.");
-    console.log("  ghost-bridge on port 8766 handles remote control only.\n");
+    console.log("  The mobile app can now be pointed at port 8766 directly.\n");
   } else {
     console.log("  ❌ Some tests failed. Do not update the mobile app config");
     console.log("  until all tests pass.\n");
