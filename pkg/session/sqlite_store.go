@@ -24,7 +24,8 @@ func (s *SQLiteStore) DB() *sql.DB {
 }
 
 func (s *SQLiteStore) EnsureSession(key string) {
-	s.db.Exec(`INSERT OR IGNORE INTO sessions (id, created_at, updated_at) VALUES (?, ?, ?)`, key, time.Now(), time.Now())
+	now := time.Now().Format(time.RFC3339Nano)
+	s.db.Exec(`INSERT OR IGNORE INTO sessions (id, created_at, updated_at) VALUES (?, ?, ?)`, key, now, now)
 }
 
 func (s *SQLiteStore) AddFullMessage(sessionKey string, msg providers.Message) {
@@ -42,11 +43,12 @@ func (s *SQLiteStore) AddFullMessage(sessionKey string, msg providers.Message) {
 	}
 
 	s.EnsureSession(sessionKey)
+	now := time.Now().Format(time.RFC3339Nano)
 	s.db.Exec(`
 		INSERT INTO messages (id, session_id, role, content, meta, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, id, sessionKey, msg.Role, content, metaJSON, time.Now())
-	s.db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, time.Now(), sessionKey)
+	`, id, sessionKey, msg.Role, content, metaJSON, now)
+	s.db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, now, sessionKey)
 }
 
 func (s *SQLiteStore) GetHistory(key string) []providers.Message {
@@ -114,7 +116,8 @@ func (s *SQLiteStore) GetSummary(key string) string {
 
 func (s *SQLiteStore) SetSummary(key string, summary string) {
 	s.EnsureSession(key)
-	s.db.Exec(`UPDATE sessions SET summary = ?, updated_at = ? WHERE id = ?`, summary, time.Now(), key)
+	now := time.Now().Format(time.RFC3339Nano)
+	s.db.Exec(`UPDATE sessions SET summary = ?, updated_at = ? WHERE id = ?`, summary, now, key)
 }
 
 func (s *SQLiteStore) TruncateHistory(key string, keepLast int) {
