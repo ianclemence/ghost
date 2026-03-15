@@ -40,12 +40,6 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen3.5:0.8b
 ```
 
-After installing, ensure the model name matches your configuration. Then run the following command to build the Ghost binary:
-
-```bash
-go build ./cmd/ghost
-```
-
 ## 🚀 Quick Start
 
 ### 🪟 Windows (Recommended)
