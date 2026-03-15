@@ -4,14 +4,14 @@ After=network.target
 
 [Service]
 Type=simple
-User=%u
-WorkingDirectory=%h/ghost
-ExecStart=/usr/local/bin/ghost gateway
+User=ianclemence
+WorkingDirectory=/home/ianclemence/ghost
+ExecStart=/home/ianclemence/.local/bin/ghost gateway
 Restart=always
 RestartSec=5
-EnvironmentFile=%h/ghost/.env
-Environment=GHOST_CONFIG_DIR=%h/ghost/config
-Environment=GHOST_WORKSPACE_DIR=%h/ghost/workspace
+EnvironmentFile=/home/ianclemence/ghost/.env
+Environment=GHOST_CONFIG_DIR=/home/ianclemence/ghost/config
+Environment=GHOST_WORKSPACE_DIR=/home/ianclemence/ghost/workspace
 
 [Install]
 WantedBy=multi-user.target
