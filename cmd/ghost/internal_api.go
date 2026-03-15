@@ -22,7 +22,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/ianclemence/ghost/pkg/agent"
-	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/logger"
 )
 
