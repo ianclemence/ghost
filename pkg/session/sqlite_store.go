@@ -19,6 +19,10 @@ func NewSQLiteStore(database *db.DB) *SQLiteStore {
 	return &SQLiteStore{db: database}
 }
 
+func (s *SQLiteStore) DB() *sql.DB {
+	return s.db.DB
+}
+
 func (s *SQLiteStore) EnsureSession(key string) {
 	s.db.Exec(`INSERT OR IGNORE INTO sessions (id, created_at, updated_at) VALUES (?, ?, ?)`, key, time.Now(), time.Now())
 }

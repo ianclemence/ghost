@@ -1,21 +1,26 @@
 // Ghost Internal API — lightweight HTTP server for bridge-to-agent routing
-// Exposes ProcessDirectWithChannel() via HTTP so ghost-bridge can route messages
-// through the full Ghost agent runtime (tools, RAG, memory, skills).
+// Exposes ProcessDirectWithChannel() via HTTP so the mobile app can talk directly
+// to the full Ghost agent runtime (tools, RAG, memory, skills).
 //
-// Listens on localhost only — never exposed to the network.
+// Listens on 0.0.0.0 — accessible to local network devices (e.g., phone).
 // Protected by BRIDGE_SECRET header matching.
 
 package main
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +36,19 @@ var upgrader = websocket.Upgrader{
 
 func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Auth check
+		secret := r.URL.Query().Get("secret")
+		if secret == "" {
+			secret = r.Header.Get("X-Ghost-Secret")
+		}
+		if secret != os.Getenv("BRIDGE_SECRET") && secret != os.Getenv("GHOST_BRIDGE_SECRET") {
+			// Fallback for when secret is not set in env (dev mode)
+			if os.Getenv("BRIDGE_SECRET") != "" || os.Getenv("GHOST_BRIDGE_SECRET") != "" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Printf("❌ Failed to upgrade websocket: %v", err)
@@ -54,7 +72,7 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 	}
 }
 
-const defaultInternalAPIPort = 8766
+const defaultInternalAPIPort = 8765
 
 type internalAPIRequest struct {
 	Content    string       `json:"content"`
@@ -71,17 +89,28 @@ type MediaItem struct {
 	Filename string `json:"filename,omitempty"`
 }
 
-type internalAPIResponse struct {
+type Message struct {
+	ID        string `json:"id"`
+	Role      string `json:"role"`
 	Content   string `json:"content"`
-	Error     string `json:"error,omitempty"`
-	DurationMs int64 `json:"duration_ms"`
+	Timestamp int64  `json:"timestamp"`
+	MediaType string `json:"media_type,omitempty"`
+	MediaURL  string `json:"media_url,omitempty"`
+}
+
+type HistoryResponse struct {
+	Messages []Message `json:"messages"`
+	Total    int       `json:"total"`
 }
 
 // startInternalAPI starts the internal API server for bridge-to-agent routing.
-// It listens only on localhost and is protected by BRIDGE_SECRET.
+// It listens on 0.0.0.0 and is protected by BRIDGE_SECRET.
 func startInternalAPI(agentLoop *agent.AgentLoop) {
 	port := defaultInternalAPIPort
-	if p := os.Getenv("GHOST_INTERNAL_API_PORT"); p != "" {
+	// Check for GHOST_API_PORT first, then fallback to legacy GHOST_INTERNAL_API_PORT
+	if p := os.Getenv("GHOST_API_PORT"); p != "" {
+		fmt.Sscanf(p, "%d", &port)
+	} else if p := os.Getenv("GHOST_INTERNAL_API_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
 	}
 
@@ -90,22 +119,70 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		secret = os.Getenv("GHOST_BRIDGE_SECRET")
 	}
 
+	memoryDir := os.Getenv("MEMORY_DIR")
+	if memoryDir == "" {
+		home := os.Getenv("HOME")
+		memoryDir = filepath.Join(home, "ghost", "workspace", "memory")
+	}
+
+	db := agentLoop.DB()
+
 	mux := http.NewServeMux()
 
-	// Chat endpoint — processes messages through the full agent runtime
-	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
-		// Auth check
-		if secret != "" {
-			reqSecret := r.Header.Get("X-Ghost-Secret")
-			if reqSecret == "" {
-				reqSecret = r.Header.Get("Authorization")
-			}
-			if reqSecret != secret && reqSecret != "Bearer "+secret {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+	// Auth Middleware
+	withAuth := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Secret, Authorization")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
-		}
 
+			if secret != "" {
+				reqSecret := r.Header.Get("X-Ghost-Secret")
+				if reqSecret == "" {
+					reqSecret = r.Header.Get("Authorization")
+					if strings.HasPrefix(reqSecret, "Bearer ") {
+						reqSecret = strings.TrimPrefix(reqSecret, "Bearer ")
+					}
+				}
+				if reqSecret != secret {
+					http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
+			}
+			next(w, r)
+		}
+	}
+
+	resolveSession := func(r *http.Request) string {
+		if s := r.Header.Get("X-Ghost-Session"); s != "" {
+			return s
+		}
+		if s := r.URL.Query().Get("session"); s != "" {
+			return s
+		}
+		return "mobile:default"
+	}
+
+	// 1. Health Check
+	mux.HandleFunc("/v1/health", withAuth(func(w http.ResponseWriter, r *http.Request) {
+		uptime := time.Since(time.Now()).Seconds() // Approximate, ideally use app startup time
+		// Since we don't have global startup time here easily, we'll use 0 or pass it in.
+		// For now, let's just return a static valid response.
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    "ok",
+			"timestamp": time.Now().Unix(),
+			"version":   "2.0.0",
+			"uptime_s":  int64(uptime),
+		})
+	}))
+
+	// 2. Chat Endpoint (Streaming)
+	mux.HandleFunc("/v1/chat", withAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -139,241 +216,304 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			"has_media":      len(req.Media) > 0,
 		})
 
-		start := time.Now()
-
-		// Save media to temp files if provided as base64
-		mediaPaths := []string{}
-		// Handle legacy media array (just b64 strings)
-		for _, m := range req.Media {
-			if strings.HasPrefix(m, "data:") || len(m) > 100 { // Likely base64
-				path, err := saveBase64ToTemp(m, "", "")
-				if err == nil {
-					mediaPaths = append(mediaPaths, path)
-				} else {
-					logger.WarnCF("internal-api", "Failed to save legacy base64 media", map[string]interface{}{"error": err.Error()})
-				}
-			} else if _, err := os.Stat(m); err == nil {
-				mediaPaths = append(mediaPaths, m) // Already a path
-			}
-		}
-
-		// Handle new media_items array (with metadata)
-		for _, item := range req.MediaItems {
-			path, err := saveBase64ToTemp(item.Base64, item.MimeType, item.Filename)
-			if err == nil {
-				mediaPaths = append(mediaPaths, path)
-			} else {
-				logger.WarnCF("internal-api", "Failed to save base64 media item", map[string]interface{}{
-					"error":    err.Error(),
-					"filename": item.Filename,
-					"mime":     item.MimeType,
-				})
-			}
-		}
-
-		// Use a timeout context to prevent indefinite hangs
-		ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
-		defer cancel()
-
-		content := req.Content
-
-		// Force the channel context to ensure mobile app messages get the correct system prompt
-		// "mobile" channel triggers the concise prompt in context.go
-		if req.Channel == "" {
-			req.Channel = "mobile" 
-		}
-
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			// Fallback: wait for full response and write as JSON
-			response, err := agentLoop.ProcessDirectWithChannel(
-				ctx,
-				content,
-				req.SessionKey,
-				req.Channel,
-				req.ChatID,
-				mediaPaths,
-				nil,
-				nil,
-			)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(internalAPIResponse{
-				Content:    response,
-				DurationMs: time.Since(start).Milliseconds(),
-			})
-			return
-		}
-
-		// Stream the response as SSE
+		// Prepare SSE
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
-
-		onChunk := func(chunk string) {
-			escaped, _ := json.Marshal(chunk)
-			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
-			flusher.Flush()
-		}
-
-		onToolCall := func(name string, args string) {
-			// User requested no "using tool" status lines in the mobile app.
-			// We skip sending these status chunks entirely.
-		}
-
-		response, err := agentLoop.ProcessDirectWithChannel(
-			ctx,
-			content,
-			req.SessionKey,
-			req.Channel,
-			req.ChatID,
-			mediaPaths,
-			onChunk,
-			onToolCall,
-		)
-
-		duration := time.Since(start)
-
-		if err != nil {
-			logger.ErrorCF("internal-api", "Agent processing failed", map[string]interface{}{
-				"error":       err.Error(),
-				"duration_ms": duration.Milliseconds(),
-			})
-			// We already started streaming, so we can only send an error in data format or just end
-			fmt.Fprintf(w, "data: %s\n\n", `{"error":"`+err.Error()+`"}`)
-			flusher.Flush()
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 			return
 		}
 
-		logger.InfoCF("internal-api", "Chat request completed", map[string]interface{}{
-			"response_length": len(response),
-			"duration_ms":     duration.Milliseconds(),
-		})
-
-		// Final sanitize if needed (though it's harder with streaming)
-		// For now, just send [DONE]
-		fmt.Fprint(w, "data: [DONE]\n\n")
-		flusher.Flush()
-	})
-
-	// Health check for the internal API
-	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":    "ok",
-			"type":      "ghost-internal-api",
-			"timestamp": time.Now().Unix(),
-		})
-	})
-
-	mux.HandleFunc("/v1/ws", handleWebSocket(agentLoop))
-
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	server := &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 310 * time.Second, // Slightly above the agent processing timeout
-		IdleTimeout:  120 * time.Second,
-	}
-
-	go func() {
-		log.Printf("🔌 Internal API server listening on %s", addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("❌ Internal API server error: %v", err)
-		}
-	}()
-}
-
-func sanitizeMobileResponse(input string) string {
-	if strings.TrimSpace(input) == "" {
-		return input
-	}
-	lines := strings.Split(input, "\n")
-	out := make([]string, 0, len(lines))
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		lower := strings.ToLower(trimmed)
-		if strings.HasPrefix(lower, "tool call:") {
-			continue
-		}
-		if strings.Contains(lower, "tool execution started") || strings.Contains(lower, "tool execution failed") || strings.Contains(lower, "tool execution completed") {
-			continue
-		}
-		if strings.Contains(lower, "command blocked by safety guard") {
-			continue
-		}
-		if strings.HasPrefix(lower, "fetched ") && strings.Contains(lower, "bytes") {
-			continue
-		}
-		if strings.HasPrefix(lower, "error:") && strings.Contains(lower, "safety guard") {
-			continue
-		}
-		out = append(out, line)
-	}
-	cleaned := strings.TrimSpace(strings.Join(out, "\n"))
-	if cleaned == "" {
-		return "I completed your request, but I can only share user-facing results in mobile mode."
-	}
-	return cleaned
-}
-
-func saveBase64ToTemp(b64Data string, mimeType string, originalName string) (string, error) {
-	// Strip data URL prefix if present (e.g., data:image/png;base64,)
-	if idx := strings.Index(b64Data, ","); idx != -1 {
-		if mimeType == "" {
-			// Extract mime from data URL if not provided
-			mimePart := b64Data[:idx]
-			if strings.HasPrefix(mimePart, "data:") {
-				mimeType = strings.Split(strings.TrimPrefix(mimePart, "data:"), ";")[0]
+		// Media handling
+		mediaPaths := []string{}
+		for _, m := range req.Media {
+			// Legacy support: save b64 to temp file
+			if tmp, err := saveBase64ToTemp(m); err == nil {
+				mediaPaths = append(mediaPaths, tmp)
 			}
 		}
-		b64Data = b64Data[idx+1:]
-	}
+		for _, item := range req.MediaItems {
+			if tmp, err := saveBase64ToTemp(item.Base64); err == nil {
+				mediaPaths = append(mediaPaths, tmp)
+			}
+		}
 
-	data, err := base64.StdEncoding.DecodeString(b64Data)
+		// Process message with streaming callback
+		ctx := r.Context()
+		
+		onChunk := func(chunk string) {
+			// JSON encode the chunk string to ensure safe transport
+			escaped, _ := json.Marshal(chunk)
+			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+
+		_, err := agentLoop.ProcessDirectWithChannel(ctx, req.Content, req.SessionKey, req.Channel, req.ChatID, mediaPaths, onChunk, nil)
+		if err != nil {
+			logger.ErrorCF("internal-api", "Error processing chat", map[string]interface{}{"error": err.Error()})
+			escaped, _ := json.Marshal("Error: " + err.Error())
+			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		} else {
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	}))
+	
+	// 3. History
+	mux.HandleFunc("/v1/history", withAuth(func(w http.ResponseWriter, r *http.Request) {
+		session := resolveSession(r)
+		limit := 50
+		offset := 0
+		fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
+		fmt.Sscanf(r.URL.Query().Get("offset"), "%d", &offset)
+
+		if db == nil {
+			http.Error(w, `{"error":"database not available"}`, http.StatusInternalServerError)
+			return
+		}
+
+		rows, err := db.Query(`
+			SELECT id, role, content, created_at, meta 
+			FROM messages 
+			WHERE session_id = ? AND (archived IS NULL OR archived = 0) 
+			ORDER BY created_at DESC 
+			LIMIT ? OFFSET ?`, session, limit, offset)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"db error: %s"}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var messages []Message
+		for rows.Next() {
+			var m Message
+			var createdAt time.Time
+			var metaJSON []byte
+			if err := rows.Scan(&m.ID, &m.Role, &m.Content, &createdAt, &metaJSON); err != nil {
+				continue
+			}
+			m.Timestamp = createdAt.Unix()
+			
+			// Parse meta for tool calls if needed, or media
+			// For now, just basic fields
+			messages = append(messages, m)
+		}
+		
+		// Reverse
+		for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+			messages[i], messages[j] = messages[j], messages[i]
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"messages": messages,
+			"total":    len(messages), // Approximation
+		})
+	}))
+
+	// 4. Search
+	mux.HandleFunc("/v1/search", withAuth(func(w http.ResponseWriter, r *http.Request) {
+		session := resolveSession(r)
+		q := r.URL.Query().Get("q")
+		if q == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"messages": []Message{}})
+			return
+		}
+
+		if db == nil {
+			http.Error(w, `{"error":"database not available"}`, http.StatusInternalServerError)
+			return
+		}
+
+		rows, err := db.Query(`
+			SELECT id, role, content, created_at 
+			FROM messages 
+			WHERE session_id = ? AND content LIKE ? AND (archived IS NULL OR archived = 0)
+			ORDER BY created_at DESC LIMIT 20`, session, "%"+q+"%")
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"db error: %s"}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var messages []Message
+		for rows.Next() {
+			var m Message
+			var createdAt time.Time
+			if err := rows.Scan(&m.ID, &m.Role, &m.Content, &createdAt); err != nil {
+				continue
+			}
+			m.Timestamp = createdAt.Unix()
+			messages = append(messages, m)
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"messages": messages})
+	}))
+
+	// 5. Memory Files
+	mux.HandleFunc("/v1/memory/files", withAuth(func(w http.ResponseWriter, r *http.Request) {
+		type FileInfo struct {
+			Name     string `json:"name"`
+			Modified int64  `json:"modified"`
+			Size     int64  `json:"size"`
+		}
+		var files []FileInfo
+		
+		filepath.Walk(memoryDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			if strings.HasSuffix(info.Name(), ".md") {
+				rel, _ := filepath.Rel(memoryDir, path)
+				files = append(files, FileInfo{
+					Name:     rel,
+					Modified: info.ModTime().Unix(),
+					Size:     info.Size(),
+				})
+			}
+			return nil
+		})
+		
+		json.NewEncoder(w).Encode(files)
+	}))
+
+	// 6. Memory File Content
+	mux.HandleFunc("/v1/memory/file", withAuth(func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			http.Error(w, "name required", 400)
+			return
+		}
+		// Prevent path traversal
+		clean := filepath.Clean(name)
+		if strings.Contains(clean, "..") || strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "\\") {
+			http.Error(w, "invalid path", 403)
+			return
+		}
+		
+		content, err := os.ReadFile(filepath.Join(memoryDir, clean))
+		if err != nil {
+			http.Error(w, "file not found", 404)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"content": string(content)})
+	}))
+
+	// 7. Transcribe
+	mux.HandleFunc("/v1/transcribe", withAuth(func(w http.ResponseWriter, r *http.Request) {
+		file, _, err := r.FormFile("audio")
+		if err != nil {
+			http.Error(w, "audio field required", 400)
+			return
+		}
+		defer file.Close()
+
+		// Forward to Moonshot
+		apiKey := os.Getenv("KIMI_API_KEY")
+		if apiKey == "" {
+			http.Error(w, "KIMI_API_KEY not set", 500)
+			return
+		}
+
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		part, _ := writer.CreateFormFile("file", "audio.webm") // Default name
+		io.Copy(part, file)
+		writer.WriteField("model", "moonshot-v1-auto")
+		writer.Close()
+
+		req, _ := http.NewRequest("POST", "https://api.moonshot.cn/v1/audio/transcriptions", body)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, "upstream error", 502)
+			return
+		}
+		defer resp.Body.Close()
+		
+		io.Copy(w, resp.Body)
+	}))
+
+	// 8. Upload
+	mux.HandleFunc("/v1/upload", withAuth(func(w http.ResponseWriter, r *http.Request) {
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "file field required", 400)
+			return
+		}
+		defer file.Close()
+
+		data, _ := io.ReadAll(file)
+		b64 := base64.StdEncoding.EncodeToString(data)
+		
+		json.NewEncoder(w).Encode(map[string]string{
+			"b64":       b64,
+			"mime_type": header.Header.Get("Content-Type"),
+			"filename":  header.Filename,
+		})
+	}))
+
+	// 9. Delete Message
+	mux.HandleFunc("/v1/message", withAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		id := r.URL.Query().Get("id")
+		session := resolveSession(r)
+		
+		if db != nil {
+			// Soft delete (archive)
+			db.Exec("UPDATE messages SET archived = 1 WHERE id = ? AND session_id = ?", id, session)
+		}
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	}))
+	
+	// 10. Delete Session (Clear History)
+	mux.HandleFunc("/v1/messages", withAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		session := resolveSession(r)
+		
+		if db != nil {
+			db.Exec("UPDATE messages SET archived = 1 WHERE session_id = ?", session)
+		}
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	}))
+
+	// WebSocket
+	mux.HandleFunc("/v1/ws", handleWebSocket(agentLoop))
+
+	addr := fmt.Sprintf("0.0.0.0:%d", port)
+	log.Printf("🤖 Ghost Internal API listening on %s (chat + tools)", addr)
+	
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Printf("❌ Internal API failed: %v", err)
+	}
+}
+
+func saveBase64ToTemp(b64 string) (string, error) {
+	data, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
 		return "", err
 	}
-
-	tempDir := filepath.Join(os.TempDir(), "picoclaw_media")
-	if err := os.MkdirAll(tempDir, 0700); err != nil {
+	tmp, err := os.CreateTemp("", "ghost-media-*.bin")
+	if err != nil {
 		return "", err
 	}
-
-	// Determine extension
-	ext := ".bin"
-	if originalName != "" {
-		ext = filepath.Ext(originalName)
-	} else if mimeType != "" {
-		switch mimeType {
-		case "image/jpeg", "image/jpg":
-			ext = ".jpg"
-		case "image/png":
-			ext = ".png"
-		case "image/gif":
-			ext = ".gif"
-		case "image/webp":
-			ext = ".webp"
-		case "application/pdf":
-			ext = ".pdf"
-		case "text/plain":
-			ext = ".txt"
-		case "text/markdown":
-			ext = ".md"
-		}
-	} else if len(data) > 4 && string(data[:4]) == "%PDF" {
-		ext = ".pdf"
-	}
-
-	filename := uuid.New().String() + ext
-	path := filepath.Join(tempDir, filename)
-
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return "", err
-	}
-
-	return path, nil
+	defer tmp.Close()
+	tmp.Write(data)
+	return tmp.Name(), nil
 }

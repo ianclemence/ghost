@@ -317,6 +317,14 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 }
 
+func (al *AgentLoop) DB() *sql.DB {
+	// Expose the raw DB connection if available (for internal API)
+	if sqlStore, ok := al.sessions.Store().(*session.SQLiteStore); ok {
+		return sqlStore.DB()
+	}
+	return nil
+}
+
 func (al *AgentLoop) Bus() *bus.MessageBus {
 	return al.bus
 }

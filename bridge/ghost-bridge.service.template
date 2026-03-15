@@ -1,5 +1,5 @@
 [Unit]
-Description=Ghost Mobile Bridge
+Description=Ghost Remote Bridge (remote control — exec, screenshot, stats)
 After=network.target ghost.service
 Wants=ghost.service
 

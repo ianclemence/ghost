@@ -71,7 +71,7 @@ sudo journalctl -u "$SERVICE_NAME" -n 15 --no-pager
 
 echo ""
 echo "─────────────────────────────────────"
-echo "✅ Done! Ghost Bridge installed for user: $USER"
+echo "🔧 Ghost Remote Bridge (remote control only) installed for user: $USER"
 echo ""
 echo "Useful commands:"
 echo "  sudo journalctl -u ghost-bridge -f     # follow logs"
