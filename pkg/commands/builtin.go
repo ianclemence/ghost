@@ -33,7 +33,79 @@ func DefaultDefinitions() []Definition {
 			Usage:       "/remind <message> in <time>",
 			Handler:     remindHandler,
 		},
+		{
+			Name:        "/skills",
+			Description: "List all installed skills in your workspace/skills directory",
+			Handler:     skillsHandler,
+		},
+		{
+			Name:        "/install",
+			Description: "Installs a new skill from a GitHub URL or local path",
+			Usage:       "/install <url>",
+			Handler:     installHandler,
+		},
+		{
+			Name:        "/tools",
+			Description: "Shows the specific JSON schemas for all loaded tools",
+			Handler:     toolsHandler,
+		},
 	}
+}
+
+func skillsHandler(ctx context.Context, req Request, rt *Runtime) error {
+	if rt == nil || rt.Tools == nil {
+		return req.Reply("Skills are unavailable.")
+	}
+	tool, ok := rt.Tools.Get("exec")
+	if !ok {
+		return req.Reply("Shell execution is unavailable.")
+	}
+	res := tool.Execute(ctx, map[string]interface{}{
+		"command": "ghost skills list",
+	})
+	if res.Err != nil {
+		return req.Reply(fmt.Sprintf("Failed to list skills: %v", res.Err))
+	}
+	return req.Reply(res.ForLLM)
+}
+
+func installHandler(ctx context.Context, req Request, rt *Runtime) error {
+	if rt == nil || rt.Tools == nil {
+		return req.Reply("Skills are unavailable.")
+	}
+	args := strings.Fields(req.Text)
+	if len(args) < 2 {
+		return req.Reply("Usage: /install <url>")
+	}
+	url := args[1]
+	tool, ok := rt.Tools.Get("exec")
+	if !ok {
+		return req.Reply("Shell execution is unavailable.")
+	}
+	res := tool.Execute(ctx, map[string]interface{}{
+		"command": fmt.Sprintf("ghost skills install %s", url),
+	})
+	if res.Err != nil {
+		return req.Reply(fmt.Sprintf("Failed to install skill: %v", res.Err))
+	}
+	return req.Reply(res.ForLLM)
+}
+
+func toolsHandler(ctx context.Context, req Request, rt *Runtime) error {
+	if rt == nil || rt.Tools == nil {
+		return req.Reply("Tools are unavailable.")
+	}
+	tool, ok := rt.Tools.Get("exec")
+	if !ok {
+		return req.Reply("Shell execution is unavailable.")
+	}
+	res := tool.Execute(ctx, map[string]interface{}{
+		"command": "ghost agent --list-tools",
+	})
+	if res.Err != nil {
+		return req.Reply(fmt.Sprintf("Failed to list tools: %v", res.Err))
+	}
+	return req.Reply(res.ForLLM)
 }
 
 func helpHandler(ctx context.Context, req Request, rt *Runtime) error {
