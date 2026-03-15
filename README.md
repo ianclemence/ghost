@@ -1,4 +1,4 @@
-# Ghost Pi
+# Ghost
 
 > "Your autonomous, private AI companion."
 
