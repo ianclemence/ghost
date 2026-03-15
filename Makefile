@@ -1,4 +1,4 @@
-.PHONY: all build install uninstall clean help test
+.PHONY: all build install uninstall clean help test install-service
 
 # Build variables
 BINARY_NAME=ghost
@@ -102,16 +102,21 @@ deps:
 	@echo "Installing system dependencies..."
 	@sudo apt-get update && sudo apt-get install -y golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc chromium avahi-utils coreutils
 
-## install: Install ghost to system and copy builtin skills
+## install: Stop service, install ghost binary, restart service
 install: build
 	@echo "Installing $(BINARY_NAME)..."
 	@mkdir -p $(INSTALL_BIN_DIR)
-	@cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_BIN_DIR)/$(BINARY_NAME)
+	@# Stop the service before replacing the binary to avoid "Text file busy" error.
+	@# The binary cannot be overwritten while it is being executed by systemd.
+	@sudo systemctl stop ghost 2>/dev/null || true
+	@cp $(BINARY_PATH) $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@echo "Installed binary to $(INSTALL_BIN_DIR)/$(BINARY_NAME)"
+	@# Restart the service if it was previously enabled
+	@sudo systemctl start ghost 2>/dev/null || true
 	@echo "Installation complete!"
 
-## install-service: Install ghost.service
+## install-service: Generate service file from template and install it
 install-service:
 	@echo "Installing ghost.service for user: $(USER)"
 	@sed \
