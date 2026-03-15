@@ -66,6 +66,16 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 			if !ok {
 				break
 			}
+
+			// Only forward mobile-channel messages and canvas updates to the app.
+			// Telegram and CLI responses must not appear in the mobile chat.
+			if msg.Channel != "mobile" {
+				meta, _ := msg.Metadata["type"].(string)
+				if meta != "canvas_update" {
+					continue // skip — wrong channel
+				}
+			}
+
 			if err := conn.WriteJSON(msg); err != nil {
 				log.Printf("❌ WebSocket write error: %v", err)
 				break
@@ -520,6 +530,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			http.Error(w, `{"error":"content is required"}`, http.StatusBadRequest)
 			return
 		}
+
 		if req.SessionKey == "" {
 			req.SessionKey = resolveSession(r)
 		}
@@ -537,6 +548,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			"has_media":      len(req.Media) > 0 || len(req.MediaItems) > 0,
 		})
 
+		// Prepare SSE
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
