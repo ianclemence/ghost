@@ -628,6 +628,19 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 
 		if err != nil {
 			logger.ErrorCF("internal-api", "Error processing chat", map[string]interface{}{"error": err.Error()})
+
+			// Clean up any empty/partial assistant message that may have been
+			// written to the session before the error occurred.
+			if db != nil {
+				db.Exec(`
+					DELETE FROM messages 
+					WHERE session_id = ? 
+					  AND role = 'assistant' 
+					  AND (content = '' OR content IS NULL)
+					  AND created_at > datetime('now', '-2 minutes')
+				`, req.SessionKey)
+			}
+
 			escaped, _ := json.Marshal("Error: " + err.Error())
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
 			flusher.Flush()
@@ -653,7 +666,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		rows, err := db.Query(`
 			SELECT id, role, content, created_at, meta
 			FROM messages
-			WHERE session_id = ? AND (archived IS NULL OR archived = 0)
+			WHERE session_id = ? 
+			  AND (archived IS NULL OR archived = 0)
+			  AND content IS NOT NULL
+			  AND TRIM(content) != ''
+			  AND LENGTH(content) > 0
 			ORDER BY created_at DESC
 			LIMIT ? OFFSET ?`, session, limit, offset)
 		if err != nil {

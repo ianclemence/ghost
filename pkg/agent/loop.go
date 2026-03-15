@@ -634,7 +634,9 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		finalContent = opts.DefaultResponse
 	}
 
-	// 6. Save final assistant message to session
+	// 6. Save final assistant message to session (only if it's a real response, not a tool result turn)
+	// We don't save iterations that were just tool calls here because runLLMIteration 
+	// already handles AddFullMessage for tool turns.
 	al.sessions.AddMessage(opts.SessionKey, "assistant", finalContent)
 	al.sessions.Save(opts.SessionKey)
 
