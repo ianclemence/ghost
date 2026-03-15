@@ -30,19 +30,27 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-func handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("❌ Failed to upgrade websocket: %v", err)
-		return
-	}
-	defer conn.Close()
+func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("❌ Failed to upgrade websocket: %v", err)
+			return
+		}
+		defer conn.Close()
 
-	// Use a simple global for demo purposes or a proper registry
-	for msg := range bus.GlobalBus().SubscribeOutbound() {
-		if err := conn.WriteJSON(msg); err != nil {
-			log.Printf("❌ WebSocket write error: %v", err)
-			break
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+
+		for {
+			msg, ok := agentLoop.Bus().SubscribeOutbound(ctx)
+			if !ok {
+				break
+			}
+			if err := conn.WriteJSON(msg); err != nil {
+				log.Printf("❌ WebSocket write error: %v", err)
+				break
+			}
 		}
 	}
 }
@@ -255,7 +263,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		})
 	})
 
-	mux.HandleFunc("/v1/ws", handleWebSocket)
+	mux.HandleFunc("/v1/ws", handleWebSocket(agentLoop))
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	server := &http.Server{

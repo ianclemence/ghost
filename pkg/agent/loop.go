@@ -289,6 +289,10 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 }
 
+func (al *AgentLoop) Bus() *bus.MessageBus {
+	return al.bus
+}
+
 func (al *AgentLoop) Run(ctx context.Context) error {
 	al.running.Store(true)
 
