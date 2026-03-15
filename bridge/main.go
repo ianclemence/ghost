@@ -291,6 +291,15 @@ func shellescape(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":    "ok",
+		"timestamp": time.Now().Unix(),
+		"version":   "2.0.0",
+		"uptime_s":  int64(time.Since(startupTime).Seconds()),
+	})
+}
+
 func main() {
 	home := os.Getenv("HOME")
 	envCandidates := []string{
@@ -327,6 +336,12 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/health", authMiddleware(handleHealth))
+	mux.HandleFunc("/v1/exec", authMiddleware(handleExec))
+	mux.HandleFunc("/v1/screenshot", authMiddleware(handleScreenshot))
+	mux.HandleFunc("/v1/stats", authMiddleware(handleStats))
+	mux.HandleFunc("/v1/open", authMiddleware(handleOpen))
+	mux.HandleFunc("/health", authMiddleware(handleHealth))
 	mux.HandleFunc("/exec", authMiddleware(handleExec))
 	mux.HandleFunc("/screenshot", authMiddleware(handleScreenshot))
 	mux.HandleFunc("/stats", authMiddleware(handleStats))

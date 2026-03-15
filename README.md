@@ -106,7 +106,7 @@ Ghost Bridge is a lightweight HTTP server that runs alongside Ghost on your Pi, 
 
 ```env
 # ── ghost-bridge settings ────────────────────────────────────────────────
-BRIDGE_PORT=8765
+BRIDGE_PORT=8766
 BRIDGE_SECRET=pick_a_strong_secret_here
 
 # Paths default to ~/ghost/workspace/... automatically — only set these
@@ -148,13 +148,13 @@ You should see:
 🔍 Loading env from: ../.env
 📄 Loaded N vars from ../.env
 🔑 KIMI_API_KEY loaded (len=48)
-👻 Ghost Bridge running on 0.0.0.0:8765
+👻 Ghost Bridge running on 0.0.0.0:8766
 ```
 
 ### 4. Firewall (local network only)
 
 ```bash
-sudo ufw allow from 192.168.0.0/16 to any port 8765
+sudo ufw allow from 192.168.0.0/16 to any port 8766
 sudo ufw reload
 ```
 
