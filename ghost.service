@@ -6,11 +6,10 @@ After=network.target
 Type=simple
 User=ianclemence
 WorkingDirectory=/home/ianclemence/ghost
-ExecStart=/home/ianclemence/.local/bin/ghost gateway
+ExecStart=/usr/local/bin/ghost gateway
 Restart=always
 RestartSec=5
-EnvironmentFile=/home/ianclemence/ghost/.env
-Environment=GHOST_CONFIG_DIR=/home/ianclemence/ghost/config
+Environmentig
 Environment=GHOST_WORKSPACE_DIR=/home/ianclemence/ghost/workspace
 
 [Install]
