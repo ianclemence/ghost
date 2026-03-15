@@ -102,20 +102,23 @@ Alternatively, you can edit `config/config.json` directly.
 
 Ghost Bridge is a lightweight HTTP server that runs alongside Ghost on your Pi, giving the mobile app a direct API over your local Wi-Fi.
 
-### 1. Add bridge settings to Ghost's `.env`
+### 1. Add internal API + bridge settings to Ghost's `.env`
 
 ```env
-# ── ghost-bridge settings ────────────────────────────────────────────────
+# ── Internal API (chat, history, memory) ────────────────────────────────
+GHOST_API_PORT=8765
+GHOST_AGENT_URL=http://127.0.0.1:8765
+
+# ── Ghost Remote Bridge (exec, screenshot, stats) ───────────────────────
 BRIDGE_PORT=8766
 BRIDGE_SECRET=pick_a_strong_secret_here
+PI_USER=pi
+PI_HOST=pi@raspberrypi.local
 
 # Paths default to ~/ghost/workspace/... automatically — only set these
 # if your workspace is in a non-standard location.
 # GHOST_DB_PATH=/custom/path/to/ghost.db
 # MEMORY_DIR=/custom/path/to/memory
-
-# Optional: system prompt prepended to every request
-# GHOST_SYSTEM_PROMPT=You are Ghost, a sovereign AI on a Raspberry Pi. Be concise.
 
 # Optional: comma-separated command prefixes to allow in the shell tab
 # ALLOWED_CMDS=python3,ollama,curl
@@ -124,7 +127,7 @@ BRIDGE_SECRET=pick_a_strong_secret_here
 # SCREENSHOT_CMD=scrot /tmp/ghost-bridge-screen.png
 ```
 
-> **No username to set.** The bridge reads your `.env` itself at startup and resolves all paths from `$HOME` automatically.
+> `PI_USER` / `PI_HOST` are used for remote targeting in scripts and tooling. The bridge itself still reads `.env` at startup.
 
 ### 2. Build and install (one command)
 
