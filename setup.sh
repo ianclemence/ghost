@@ -7,7 +7,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}===================================================${NC}"
-echo -e "${GREEN}  Ghost: Your Sovereign AI Presence (Linux/Pi Setup)${NC}"
+echo -e "${GREEN}  Ghost: Your Sovereign Intelligence (Linux/Pi Setup)${NC}"
 echo -e "${GREEN}===================================================${NC}"
 echo ""
 
@@ -51,7 +51,7 @@ if check_command "apt-get"; then
     sudo apt-get update
     
     # Core deps
-    DEPENDENCIES="golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc chromium-browser avahi-utils coreutils"
+    DEPENDENCIES="golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc chromium avahi-utils coreutils"
     
     # Check if we need to install anything
     NEEDS_INSTALL=false

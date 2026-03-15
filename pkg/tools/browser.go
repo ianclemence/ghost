@@ -61,14 +61,16 @@ func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) 
 	if !ok || action == "" {
 		action = "html"
 	}
-	waitFor, _ := args["wait_for"].(string)
 
 	// Determine if we should use chromium or chrome
-	browserCmd := "chromium-browser"
+	browserCmd := "chromium"
 	if _, err := exec.LookPath(browserCmd); err != nil {
-		browserCmd = "google-chrome"
+		browserCmd = "chromium-browser"
 		if _, err := exec.LookPath(browserCmd); err != nil {
-			return ErrorResult("No headless browser (chromium-browser or google-chrome) found. Please install one on your Pi.")
+			browserCmd = "google-chrome"
+			if _, err := exec.LookPath(browserCmd); err != nil {
+				return ErrorResult("No headless browser (chromium, chromium-browser or google-chrome) found. Please install one on your Pi.")
+			}
 		}
 	}
 

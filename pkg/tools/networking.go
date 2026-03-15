@@ -6,8 +6,6 @@ import (
 	"net"
 	"os/exec"
 	"strings"
-
-	"github.com/ianclemence/ghost/pkg/logger"
 )
 
 // NetworkingTool provides information on Tailscale, Bonjour, and other networking features.

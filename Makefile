@@ -100,7 +100,7 @@ build-all: generate
 ## deps: Install system dependencies (Debian/Ubuntu)
 deps:
 	@echo "Installing system dependencies..."
-	@sudo apt-get update && sudo apt-get install -y golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc chromium-browser avahi-utils coreutils
+	@sudo apt-get update && sudo apt-get install -y golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc chromium avahi-utils coreutils
 
 ## install: Install ghost to system and copy builtin skills
 install: build

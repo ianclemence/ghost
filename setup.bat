@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 title Ghost Setup (Windows)
 
 echo ===================================================
-echo   Ghost: Your Sovereign AI Presence (Windows Setup)
+echo   Ghost: Your Sovereign Intelligence (Windows Setup)
 echo ===================================================
 echo.
 
