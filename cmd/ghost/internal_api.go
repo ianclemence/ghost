@@ -10,7 +10,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -20,11 +19,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -247,9 +244,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			// JSON encode the chunk string to ensure safe transport
 			escaped, _ := json.Marshal(chunk)
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
+			flusher.Flush()
 		}
 
 		_, err := agentLoop.ProcessDirectWithChannel(ctx, req.Content, req.SessionKey, req.Channel, req.ChatID, mediaPaths, onChunk, nil)
@@ -257,14 +252,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			logger.ErrorCF("internal-api", "Error processing chat", map[string]interface{}{"error": err.Error()})
 			escaped, _ := json.Marshal("Error: " + err.Error())
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
+			flusher.Flush()
 		} else {
 			fmt.Fprintf(w, "data: [DONE]\n\n")
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
+			flusher.Flush()
 		}
 	}))
 	

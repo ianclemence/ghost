@@ -98,6 +98,10 @@ func (sm *SessionManager) ClearHistory(key string) {
 
 // GetContext retrieves relevant context for the current turn (RAG)
 // This can be used by ContextBuilder to inject RAG context
+func (sm *SessionManager) Store() Store {
+	return sm.store
+}
+
 func (sm *SessionManager) GetContext(ctx context.Context, userQuery string) string {
 	if sm.rag == nil || userQuery == "" {
 		return ""
