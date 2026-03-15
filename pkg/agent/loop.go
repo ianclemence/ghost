@@ -479,7 +479,11 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 				return "", result.Err
 			}
 			if result.Outcome == commands.OutcomeHandled {
-				return strings.Join(replies, "\n"), nil
+				resp := strings.Join(replies, "\n")
+				if onChunk != nil && resp != "" {
+					onChunk(resp)
+				}
+				return resp, nil
 			}
 		}
 	}

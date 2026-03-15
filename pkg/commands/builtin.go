@@ -34,6 +34,11 @@ func DefaultDefinitions() []Definition {
 			Handler:     remindHandler,
 		},
 		{
+			Name:        "/status",
+			Description: "Show Pi system status and Ghost version",
+			Handler:     statusHandler,
+		},
+		{
 			Name:        "/skills",
 			Description: "List all installed skills in your workspace/skills directory",
 			Handler:     skillsHandler,
@@ -52,6 +57,53 @@ func DefaultDefinitions() []Definition {
 	}
 }
 
+func getGhostBinary() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "ghost"
+	}
+	return exe
+}
+
+func statusHandler(ctx context.Context, req Request, rt *Runtime) error {
+	if rt == nil || rt.Tools == nil {
+		return req.Reply("Status is unavailable.")
+	}
+	tool, ok := rt.Tools.Get("exec")
+	if !ok {
+		return req.Reply("Shell execution is unavailable.")
+	}
+	
+	// Get system info directly via shell
+	res := tool.Execute(ctx, map[string]interface{}{
+		"command": "uptime && df -h / && free -h",
+	})
+	
+	var sb strings.Builder
+	sb.WriteString("### Ghost Pi Status\n\n")
+	
+	if res.Err == nil {
+		sb.WriteString("```\n")
+		sb.WriteString(res.ForLLM)
+		sb.WriteString("\n```\n")
+	} else {
+		sb.WriteString(fmt.Sprintf("> System info error: %v\n", res.Err))
+	}
+
+	// Also try to get ghost version info
+	ghostRes := tool.Execute(ctx, map[string]interface{}{
+		"command": fmt.Sprintf("%s version", getGhostBinary()),
+	})
+	if ghostRes.Err == nil {
+		sb.WriteString("\n**Ghost Version:**\n")
+		sb.WriteString("```\n")
+		sb.WriteString(ghostRes.ForLLM)
+		sb.WriteString("\n```\n")
+	}
+
+	return req.Reply(sb.String())
+}
+
 func skillsHandler(ctx context.Context, req Request, rt *Runtime) error {
 	if rt == nil || rt.Tools == nil {
 		return req.Reply("Skills are unavailable.")
@@ -61,12 +113,12 @@ func skillsHandler(ctx context.Context, req Request, rt *Runtime) error {
 		return req.Reply("Shell execution is unavailable.")
 	}
 	res := tool.Execute(ctx, map[string]interface{}{
-		"command": "ghost skills list",
+		"command": fmt.Sprintf("%s skills list", getGhostBinary()),
 	})
 	if res.Err != nil {
 		return req.Reply(fmt.Sprintf("Failed to list skills: %v", res.Err))
 	}
-	return req.Reply(res.ForLLM)
+	return req.Reply(fmt.Sprintf("### Ghost Skills\n\n```\n%s\n```\n", res.ForLLM))
 }
 
 func installHandler(ctx context.Context, req Request, rt *Runtime) error {
@@ -83,12 +135,12 @@ func installHandler(ctx context.Context, req Request, rt *Runtime) error {
 		return req.Reply("Shell execution is unavailable.")
 	}
 	res := tool.Execute(ctx, map[string]interface{}{
-		"command": fmt.Sprintf("ghost skills install %s", url),
+		"command": fmt.Sprintf("%s skills install %s", getGhostBinary(), url),
 	})
 	if res.Err != nil {
 		return req.Reply(fmt.Sprintf("Failed to install skill: %v", res.Err))
 	}
-	return req.Reply(res.ForLLM)
+	return req.Reply(fmt.Sprintf("### Ghost Skill Install\n\n```\n%s\n```\n", res.ForLLM))
 }
 
 func toolsHandler(ctx context.Context, req Request, rt *Runtime) error {
@@ -100,12 +152,12 @@ func toolsHandler(ctx context.Context, req Request, rt *Runtime) error {
 		return req.Reply("Shell execution is unavailable.")
 	}
 	res := tool.Execute(ctx, map[string]interface{}{
-		"command": "ghost agent --list-tools",
+		"command": fmt.Sprintf("%s agent --list-tools", getGhostBinary()),
 	})
 	if res.Err != nil {
 		return req.Reply(fmt.Sprintf("Failed to list tools: %v", res.Err))
 	}
-	return req.Reply(res.ForLLM)
+	return req.Reply(fmt.Sprintf("### Ghost Tools\n\n```\n%s\n```\n", res.ForLLM))
 }
 
 func helpHandler(ctx context.Context, req Request, rt *Runtime) error {
