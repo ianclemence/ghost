@@ -110,3 +110,16 @@ install: build
 	@chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@echo "Installed binary to $(INSTALL_BIN_DIR)/$(BINARY_NAME)"
 	@echo "Installation complete!"
+
+## install-service: Install ghost.service
+install-service:
+	@echo "Installing ghost.service for user: $(USER)"
+	@sed \
+		-e "s|__USER__|$(USER)|g" \
+		-e "s|__HOME__|$(HOME)|g" \
+		ghost.service.template > ghost.service
+	@sudo cp ghost.service /etc/systemd/system/ghost.service
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable ghost
+	@sudo systemctl restart ghost
+	@echo "✅ ghost.service installed for $(USER)"

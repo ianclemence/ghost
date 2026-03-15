@@ -19,6 +19,7 @@ build/
 tmp/
 picoclaw/
 openclaw/
+ghost.service
 
 # Coverage
 coverage.txt

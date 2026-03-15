@@ -1,0 +1,18 @@
+[Unit]
+Description=Ghost Pi - Sovereign AI Presence
+After=network.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__HOME__/ghost
+EnvironmentFile=__HOME__/ghost/.env
+Environment=GHOST_WORKSPACE_DIR=__HOME__/ghost/workspace
+ExecStart=__HOME__/.local/bin/ghost gateway
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
