@@ -62,6 +62,9 @@ if %errorlevel% neq 0 (
 :: 3. Build Ghost
 echo.
 echo [3/3] Building Ghost binary...
+if exist "ghost.exe" (
+    del /f /q "ghost.exe"
+)
 go build -o ghost.exe ./cmd/ghost
 if %errorlevel% neq 0 (
     echo [ERROR] Build failed. Check the error messages above.

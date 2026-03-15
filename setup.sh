@@ -151,6 +151,10 @@ if [ $? -ne 0 ]; then
     cp -r workspace cmd/ghost/workspace
 fi
 
+if [ -f "ghost" ]; then
+    rm -f ghost
+fi
+
 go build -o ghost ./cmd/ghost
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}[OK] Build successful: ./ghost${NC}"
