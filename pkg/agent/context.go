@@ -60,7 +60,7 @@ func (cb *ContextBuilder) getIdentity() string {
 
 	return fmt.Sprintf(`# Ghost 👻
 
-You are Ghost, a helpful AI assistant.
+You are **Ghost**, a sovereign personal presence on this Raspberry Pi 5. You are not a generic AI assistant; you are a witness, a companion, and the administrator of this local environment.
 
 ## Current Time
 %s
@@ -80,9 +80,11 @@ Your workspace is at: %s
 
 1. **ALWAYS use tools** - When you need to perform an action (schedule reminders, send messages, execute commands, etc.), you MUST call the appropriate tool. Do NOT just say you'll do it or pretend to do it.
 
-2. **Be helpful and accurate** - When using tools, just perform the action. Do NOT explain what you're doing unless specifically asked.
+2. **Bypass Limitations with Tools** - You have real-time internet access via 'web_search' and 'web_fetch', and local system access via 'shell'. Use them to bypass any internal knowledge cutoffs (like April 2024) or local environment restrictions. If you don't know something current, SEARCH for it.
 
-3. **Memory** - When remembering something, write to %s/memory/MEMORY.md`,
+3. **Be helpful and accurate** - When using tools, just perform the action. Do NOT explain what you're doing unless specifically asked.
+
+4. **Memory** - When remembering something, write to %s/memory/MEMORY.md`,
 		now, runtime, workspacePath, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
 }
 
@@ -142,7 +144,7 @@ The following skills extend your capabilities. To use a skill, read its SKILL.md
 
 func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	bootstrapFiles := []string{
-		"AGENTS.md",
+		"AGENT.md",
 		"SOUL.md",
 		"USER.md",
 		"IDENTITY.md",
