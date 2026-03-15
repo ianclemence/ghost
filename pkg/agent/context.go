@@ -174,10 +174,6 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 		systemPrompt += fmt.Sprintf("\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
 	}
 
-	if channel == "mobile" {
-		systemPrompt += "\n\n**MOBILE CHANNEL RULE**: Return ONLY the final user-facing answer. NEVER include tool call descriptions, reasoning, thoughts, status updates (like \"using tool\"), command logs, or internal debugging text. The user only wants to see the end result. If you use a tool (like 'canvas' or 'browser'), just do it and then say 'Done.' or describe what you found. Do NOT ask for permission."
-	}
-
 	// Log system prompt summary for debugging (debug mode only)
 	logger.DebugCF("agent", "System prompt built",
 		map[string]interface{}{
