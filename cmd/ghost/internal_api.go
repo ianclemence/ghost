@@ -671,7 +671,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			  AND content IS NOT NULL
 			  AND TRIM(content) != ''
 			  AND LENGTH(content) > 0
-			ORDER BY created_at DESC
+			ORDER BY datetime(created_at) DESC, rowid DESC
 			LIMIT ? OFFSET ?`, session, limit, offset)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"db error: %s"}`, err.Error()), http.StatusInternalServerError)
@@ -702,7 +702,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		total := len(messages)
 		_ = db.QueryRow(`
 			SELECT COUNT(*) FROM messages
-			WHERE session_id = ? AND (archived IS NULL OR archived = 0)`, session).Scan(&total)
+			WHERE session_id = ?
+			  AND (archived IS NULL OR archived = 0)
+			  AND content IS NOT NULL
+			  AND TRIM(content) != ''
+			  AND LENGTH(content) > 0`, session).Scan(&total)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"messages": messages,
