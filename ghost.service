@@ -9,6 +9,7 @@ WorkingDirectory=/home/ianclemence/ghost
 ExecStart=/usr/local/bin/ghost gateway
 Restart=always
 RestartSec=5
+EnvironmentFile=/home/ianclemence/ghost/.env
 Environment=GHOST_CONFIG_DIR=/home/ianclemence/ghost/config
 Environment=GHOST_WORKSPACE_DIR=/home/ianclemence/ghost/workspace
 
