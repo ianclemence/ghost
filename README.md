@@ -157,7 +157,8 @@ You should see:
 ### 4. Firewall (local network only)
 
 ```bash
-sudo ufw allow from 192.168.0.0/16 to any port 8766
+sudo ufw allow from 192.168.0.0/24 to any port 8765 proto tcp
+sudo ufw allow from 192.168.0.0/24 to any port 8766 proto tcp
 sudo ufw reload
 ```
 
