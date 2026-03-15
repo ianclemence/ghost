@@ -177,6 +177,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 
 		content := req.Content
 
+		// Force the channel context to ensure mobile app messages get the correct system prompt
+		// "mobile" channel triggers the concise prompt in context.go
+		if req.Channel == "" {
+			req.Channel = "mobile" 
+		}
+
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			// Fallback: wait for full response and write as JSON
