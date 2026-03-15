@@ -163,6 +163,9 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 			Channel: channel,
 			ChatID:  chatID,
 			Content: content,
+			Metadata: map[string]interface{}{
+				"type": "assistant_message",
+			},
 		})
 		return nil
 	})
@@ -363,6 +366,9 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 						Channel: msg.Channel,
 						ChatID:  msg.ChatID,
 						Content: response,
+						Metadata: map[string]interface{}{
+							"type": "assistant_message",
+						},
 					})
 				}
 			}
@@ -656,6 +662,9 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			Channel: opts.Channel,
 			ChatID:  opts.ChatID,
 			Content: finalContent,
+			Metadata: map[string]interface{}{
+				"type": "assistant_message",
+			},
 		})
 	}
 

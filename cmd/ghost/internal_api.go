@@ -25,6 +25,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/ianclemence/ghost/pkg/agent"
+	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/logger"
 )
 
@@ -612,7 +613,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		}()
 
 		ctx := r.Context()
-		_, err := agentLoop.ProcessDirectWithChannel(
+		response, err := agentLoop.ProcessDirectWithChannel(
 			ctx,
 			req.Content,
 			req.SessionKey,
@@ -645,6 +646,14 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
 			flusher.Flush()
 		} else {
+			agentLoop.Bus().PublishOutbound(bus.OutboundMessage{
+				Channel: req.Channel,
+				ChatID:  req.ChatID,
+				Content: response,
+				Metadata: map[string]interface{}{
+					"type": "assistant_message",
+				},
+			})
 			fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()
 		}
