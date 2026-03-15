@@ -35,6 +35,14 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 		if strings.HasPrefix(absPath, tempMediaDir) {
 			return absPath, nil
 		}
+		
+		// Allow READ-ONLY access to the project root (parent of workspace)
+		// This enables the agent to analyze its own source code (pkg/tools, etc.)
+		projectRoot := filepath.Dir(absWorkspace)
+		if strings.HasPrefix(absPath, projectRoot) {
+			return absPath, nil
+		}
+
 		return "", fmt.Errorf("access denied: path is outside the workspace")
 	}
 
