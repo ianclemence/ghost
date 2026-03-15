@@ -92,6 +92,25 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewExecTool(workspace, restrict))
 	registry.Register(tools.NewUpdateTool(workspace))
 
+	// Oracle context bundling
+	registry.Register(tools.NewOracleTool(workspace, restrict))
+
+	// Video frames extraction
+	registry.Register(tools.NewVideoFramesTool(workspace, restrict))
+
+	// Canvas visual presence
+	canvasTool := tools.NewCanvasTool(workspace, func(html string) {
+		msgBus.PublishOutbound(bus.OutboundMessage{
+			Channel: "system",
+			ChatID:  "canvas",
+			Content: html,
+			Metadata: map[string]interface{}{
+				"type": "canvas_update",
+			},
+		})
+	})
+	registry.Register(canvasTool)
+
 	if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 		BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
 		BraveMaxResults:      cfg.Tools.Web.Brave.MaxResults,

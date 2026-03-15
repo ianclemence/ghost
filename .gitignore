@@ -18,6 +18,7 @@ sessions/
 build/
 tmp/
 picoclaw/
+openclaw/
 
 # Coverage
 coverage.txt
