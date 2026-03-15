@@ -6,11 +6,13 @@ After=network.target
 Type=simple
 User=ianclemence
 WorkingDirectory=/home/ianclemence/ghost
-ExecStart=/usr/local/bin/ghost gateway
+EnvironmentFile=/home/ianclemence/ghost/.env
+Environment=GHOST_WORKSPACE_DIR=/home/ianclemence/ghost/workspace
+ExecStart=/home/ianclemence/.local/bin/ghost gateway
 Restart=always
 RestartSec=5
-Environmentig
-Environment=GHOST_WORKSPACE_DIR=/home/ianclemence/ghost/workspace
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
