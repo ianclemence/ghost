@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"sync"
 	"time"
 
@@ -25,6 +26,12 @@ type WhatsAppChannel struct {
 }
 
 func NewWhatsAppChannel(cfg config.WhatsAppConfig, bus *bus.MessageBus) (*WhatsAppChannel, error) {
+	if cfg.BridgeURL == "" {
+		return nil, fmt.Errorf("whatsapp bridge_url is required")
+	}
+	if _, err := url.ParseRequestURI(cfg.BridgeURL); err != nil {
+		return nil, fmt.Errorf("invalid whatsapp bridge_url: %w", err)
+	}
 	base := NewBaseChannel("whatsapp", cfg, bus, cfg.AllowFrom)
 
 	return &WhatsAppChannel{
@@ -85,6 +92,7 @@ func (c *WhatsAppChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 	if c.conn == nil {
 		return fmt.Errorf("whatsapp connection not established")
 	}
+	_ = c.conn.SetWriteDeadline(time.Now().Add(8 * time.Second))
 
 	payload := map[string]interface{}{
 		"type":    "message",
@@ -122,7 +130,13 @@ func (c *WhatsAppChannel) listen(ctx context.Context) {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
 				log.Printf("WhatsApp read error: %v", err)
-				time.Sleep(2 * time.Second)
+				c.mu.Lock()
+				c.connected = false
+				c.mu.Unlock()
+				if recErr := c.reconnect(ctx); recErr != nil {
+					log.Printf("WhatsApp reconnect failed: %v", recErr)
+					time.Sleep(2 * time.Second)
+				}
 				continue
 			}
 
@@ -142,6 +156,28 @@ func (c *WhatsAppChannel) listen(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (c *WhatsAppChannel) reconnect(ctx context.Context) error {
+	c.mu.Lock()
+	if c.conn != nil {
+		_ = c.conn.Close()
+		c.conn = nil
+	}
+	c.mu.Unlock()
+
+	dialer := websocket.DefaultDialer
+	dialer.HandshakeTimeout = 10 * time.Second
+	conn, _, err := dialer.Dial(c.url, nil)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.conn = conn
+	c.connected = true
+	c.mu.Unlock()
+	log.Printf("WhatsApp reconnected to %s", c.url)
+	return nil
 }
 
 func (c *WhatsAppChannel) handleIncomingMessage(msg map[string]interface{}) {

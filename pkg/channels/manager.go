@@ -151,7 +151,7 @@ func (m *Manager) initChannels() error {
 		}
 	}
 
-	if m.config.Channels.Slack.Enabled && m.config.Channels.Slack.BotToken != "" {
+	if m.config.Channels.Slack.Enabled && m.config.Channels.Slack.BotToken != "" && m.config.Channels.Slack.AppToken != "" {
 		logger.DebugC("channels", "Attempting to initialize Slack channel")
 		slackCh, err := NewSlackChannel(m.config.Channels.Slack, m.bus)
 		if err != nil {
@@ -236,6 +236,7 @@ func (m *Manager) StartAll(ctx context.Context) error {
 					"reason":  err.Error(),
 				})
 			}
+			continue
 		}
 		queue := make(chan bus.OutboundMessage, 200)
 		m.outboundQueues[name] = queue

@@ -27,6 +27,11 @@
     }
   },
   "channels": {
+    "whatsapp": {
+      "enabled": false,
+      "bridge_url": "ws://localhost:3001",
+      "allow_from": []
+    },
     "telegram": {
       "enabled": true,
       "token": "YOUR_BOT_TOKEN",
@@ -36,6 +41,12 @@
       "enabled": false,
       "token": "YOUR_BOT_TOKEN",
       "allow_from": ["YOUR_USER_ID"]
+    },
+    "slack": {
+      "enabled": false,
+      "bot_token": "xoxb-...",
+      "app_token": "xapp-...",
+      "allow_from": []
     },
     "line": {
       "enabled": false,
