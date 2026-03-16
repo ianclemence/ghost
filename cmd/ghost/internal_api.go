@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -111,6 +112,21 @@ func authMiddleware(secret string, next http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		next(w, r)
 	}
+}
+
+func jsonResponse(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func jsonError(w http.ResponseWriter, status int, kind, message string) {
+	jsonResponse(w, status, map[string]interface{}{
+		"error": map[string]string{
+			"kind":    kind,
+			"message": message,
+		},
+	})
 }
 
 func resolveSession(r *http.Request) string {
@@ -253,6 +269,15 @@ type Message struct {
 type HistoryResponse struct {
 	Messages []Message `json:"messages"`
 	Total    int       `json:"total"`
+}
+
+type SearchResult struct {
+	ID        string  `json:"id"`
+	SessionID string  `json:"session_id"`
+	Role      string  `json:"role"`
+	Content   string  `json:"content"`
+	Timestamp int64   `json:"timestamp"`
+	Rank      float64 `json:"rank"`
 }
 
 type DoctorResponse struct {
@@ -653,14 +678,14 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 	// ── 1b. Cron lifecycle ───────────────────────────────────────────────
 	mux.HandleFunc("/v1/cron/jobs/", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		if cronService == nil {
-			http.Error(w, `{"error":"cron service unavailable"}`, http.StatusServiceUnavailable)
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "cron service unavailable")
 			return
 		}
 
 		path := strings.TrimPrefix(r.URL.Path, "/v1/cron/jobs/")
 		parts := strings.Split(strings.Trim(path, "/"), "/")
 		if len(parts) < 1 || parts[0] == "" {
-			http.Error(w, `{"error":"invalid cron job path"}`, http.StatusBadRequest)
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid cron job path")
 			return
 		}
 
@@ -672,41 +697,41 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		if action == "" && r.Method == http.MethodPatch {
 			id, updates, err := decodeCronPatchRequest(r, jobID)
 			if err != nil {
-				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadRequest)
+				jsonError(w, http.StatusBadRequest, "invalid_request", err.Error())
 				return
 			}
 			if updates.Target != nil {
 				target := strings.ToLower(strings.TrimSpace(*updates.Target))
 				if target != "origin" && target != "local" {
-					http.Error(w, `{"error":"target must be origin or local"}`, http.StatusBadRequest)
+					jsonError(w, http.StatusBadRequest, "invalid_request", "target must be origin or local")
 					return
 				}
 			}
 			if err := cronService.UpdateJob(id, updates); err != nil {
-				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
+				jsonError(w, http.StatusNotFound, "not_found", err.Error())
 				return
 			}
 			status, err := cronService.GetJobStatus(id)
 			if err != nil {
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+				jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "job": status})
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "job": status})
 			return
 		}
 		if action == "" {
-			http.Error(w, `{"error":"unsupported cron action"}`, http.StatusBadRequest)
+			jsonError(w, http.StatusBadRequest, "invalid_action", "unsupported cron action")
 			return
 		}
 
 		switch action {
 		case "pause":
 			if r.Method != http.MethodPost {
-				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+				jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 				return
 			}
 			if err := cronService.PauseJob(jobID); err != nil {
-				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
+				jsonError(w, http.StatusNotFound, "not_found", err.Error())
 				return
 			}
 			if job, ok := cronService.GetJob(jobID); ok {
@@ -716,11 +741,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			_ = json.NewEncoder(w).Encode(buildCronStateResponse(jobID, "paused", nil, nil, nil))
 		case "resume":
 			if r.Method != http.MethodPost {
-				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+				jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 				return
 			}
 			if err := cronService.ResumeJob(jobID); err != nil {
-				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
+				jsonError(w, http.StatusNotFound, "not_found", err.Error())
 				return
 			}
 			resumedAt := time.Now().UTC()
@@ -731,61 +756,60 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			_ = json.NewEncoder(w).Encode(buildCronStateResponse(jobID, "active", nil, &resumedAt, nil))
 		case "run":
 			if r.Method != http.MethodPost {
-				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+				jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 				return
 			}
 			if err := cronService.RunJobNow(jobID); err != nil {
-				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
+				jsonError(w, http.StatusNotFound, "not_found", err.Error())
 				return
 			}
 			_ = json.NewEncoder(w).Encode(buildCronTriggerResponse(jobID, time.Now().UTC()))
 		default:
-			http.Error(w, `{"error":"unsupported cron action"}`, http.StatusBadRequest)
+			jsonError(w, http.StatusBadRequest, "invalid_action", "unsupported cron action")
 		}
 	}))
 
 	mux.HandleFunc("/v1/cron/jobs", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		if cronService == nil {
-			http.Error(w, `{"error":"cron service unavailable"}`, http.StatusServiceUnavailable)
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "cron service unavailable")
 			return
 		}
 
 		if r.Method == http.MethodGet {
 			jobs := cronService.ListJobs(true)
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
 				"jobs": jobs,
 			})
 			return
 		}
 
 		if r.Method != http.MethodPatch {
-			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
 		}
 
 		id, updates, err := decodeCronPatchRequest(r, "")
 		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadRequest)
+			jsonError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
 		if updates.Target != nil {
 			target := strings.ToLower(strings.TrimSpace(*updates.Target))
 			if target != "origin" && target != "local" {
-				http.Error(w, `{"error":"target must be origin or local"}`, http.StatusBadRequest)
+				jsonError(w, http.StatusBadRequest, "invalid_request", "target must be origin or local")
 				return
 			}
 		}
 		if err := cronService.UpdateJob(id, updates); err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
+			jsonError(w, http.StatusNotFound, "not_found", err.Error())
 			return
 		}
 		status, err := cronService.GetJobStatus(id)
 		if err != nil {
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "job": status})
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "job": status})
 	}))
 
 	// ── 2. Chat (streaming SSE) ───────────────────────────────────────────
@@ -997,42 +1021,100 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 
 	// ── 4. Search ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/search", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
-		session := resolveSession(r)
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
 		q := r.URL.Query().Get("q")
 		if q == "" {
-			json.NewEncoder(w).Encode([]Message{})
+			jsonError(w, http.StatusBadRequest, "invalid_request", "missing query")
 			return
 		}
 		if db == nil {
-			http.Error(w, `{"error":"database not available"}`, http.StatusInternalServerError)
+			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
 			return
 		}
 
+		limit := 20
+		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+			if n, err := strconv.Atoi(raw); err == nil && n > 0 && n <= 100 {
+				limit = n
+			}
+		}
+
+		var session string
+		if _, hasSession := r.URL.Query()["session"]; hasSession {
+			session = strings.TrimSpace(r.URL.Query().Get("session"))
+		} else {
+			session = resolveSession(r)
+		}
+
 		rows, err := db.Query(`
-			SELECT id, role, content, created_at
-			FROM messages
-			WHERE session_id = ? AND content LIKE ? AND (archived IS NULL OR archived = 0)
-			ORDER BY created_at DESC LIMIT 20`, session, "%"+q+"%")
+			SELECT
+				m.id,
+				m.session_id,
+				m.role,
+				snippet(messages_fts, 0, '[', ']', '…', 32) AS content,
+				COALESCE(unixepoch(m.created_at), 0) AS ts,
+				bm25(messages_fts) AS rank
+			FROM messages_fts
+			JOIN messages m ON m.rowid = messages_fts.rowid
+			WHERE messages_fts MATCH ?
+			  AND (m.archived IS NULL OR m.archived = 0)
+			  AND (? = '' OR m.session_id = ?)
+			ORDER BY rank
+			LIMIT ?`, q, session, session, limit)
 		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":"db error: %s"}`, err.Error()), http.StatusInternalServerError)
+			rows, err = db.Query(`
+				SELECT
+					id,
+					session_id,
+					role,
+					content,
+					COALESCE(unixepoch(created_at), 0) AS ts,
+					0.0 AS rank
+				FROM messages
+				WHERE content LIKE ?
+				  AND (archived IS NULL OR archived = 0)
+				  AND (? = '' OR session_id = ?)
+				ORDER BY datetime(created_at) DESC
+				LIMIT ?`, "%"+q+"%", session, session, limit)
+		}
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "db_error", err.Error())
 			return
 		}
 		defer rows.Close()
 
-		var messages []Message
+		var results []SearchResult
 		for rows.Next() {
-			var m Message
-			var createdAt time.Time
-			if err := rows.Scan(&m.ID, &m.Role, &m.Content, &createdAt); err != nil {
+			var item SearchResult
+			if err := rows.Scan(&item.ID, &item.SessionID, &item.Role, &item.Content, &item.Timestamp, &item.Rank); err != nil {
 				continue
 			}
-			m.Timestamp = createdAt.Unix()
-			messages = append(messages, m)
+			results = append(results, item)
 		}
-		if messages == nil {
-			messages = []Message{}
+		if results == nil {
+			results = []SearchResult{}
 		}
-		json.NewEncoder(w).Encode(messages)
+		jsonResponse(w, http.StatusOK, results)
+	}))
+
+	mux.HandleFunc("/v1/tools", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		type toolEntry struct {
+			Name string `json:"name"`
+		}
+		toolsList := make([]toolEntry, 0, len(startupInfo.Tools))
+		for _, name := range startupInfo.Tools {
+			toolsList = append(toolsList, toolEntry{Name: name})
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"tools": toolsList,
+		})
 	}))
 
 	// ── 5. Memory files ───────────────────────────────────────────────────
@@ -1073,20 +1155,20 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 	mux.HandleFunc("/v1/memory/file", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Query().Get("name")
 		if name == "" {
-			http.Error(w, "name required", 400)
+			jsonError(w, http.StatusBadRequest, "invalid_request", "name required")
 			return
 		}
 		clean := filepath.Clean(name)
 		if strings.Contains(clean, "..") || strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "\\") {
-			http.Error(w, "invalid path", 403)
+			jsonError(w, http.StatusForbidden, "forbidden", "invalid path")
 			return
 		}
 		content, err := os.ReadFile(filepath.Join(memoryDir, clean))
 		if err != nil {
-			http.Error(w, "file not found", 404)
+			jsonError(w, http.StatusNotFound, "not_found", "file not found")
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{"content": string(content)})
+		jsonResponse(w, http.StatusOK, map[string]string{"content": string(content)})
 	}))
 
 	// ── 7. Transcribe ─────────────────────────────────────────────────────
