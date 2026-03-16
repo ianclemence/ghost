@@ -10,6 +10,36 @@ import (
 	"github.com/ianclemence/ghost/pkg/providers"
 )
 
+type subagentDepthKey struct{}
+
+func WithSubagentDepth(ctx context.Context, depth int) context.Context {
+	return context.WithValue(ctx, subagentDepthKey{}, depth)
+}
+
+func SubagentDepth(ctx context.Context) int {
+	if ctx == nil {
+		return 0
+	}
+	if depth, ok := ctx.Value(subagentDepthKey{}).(int); ok {
+		return depth
+	}
+	return 0
+}
+
+type SubagentPolicy struct {
+	MaxDepth          int      `json:"max_depth"`
+	MaxConcurrency    int      `json:"max_concurrency"`
+	BlockedTools      []string `json:"blocked_tools"`
+	AllowMessageWrite bool     `json:"allow_message_write"`
+}
+
+var DefaultSubagentPolicy = SubagentPolicy{
+	MaxDepth:          1,
+	MaxConcurrency:    2,
+	BlockedTools:      []string{"subagent", "delegate", "spawn_agent", "spawn", "message_write", "message"},
+	AllowMessageWrite: false,
+}
+
 type SubagentTask struct {
 	ID            string
 	Task          string
@@ -31,6 +61,8 @@ type SubagentManager struct {
 	tools         *ToolRegistry
 	maxIterations int
 	nextID        int
+	policy        SubagentPolicy
+	activeCount   int
 }
 
 func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace string, bus *bus.MessageBus) *SubagentManager {
@@ -43,6 +75,7 @@ func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace 
 		tools:         NewToolRegistry(),
 		maxIterations: 10,
 		nextID:        1,
+		policy:        DefaultSubagentPolicy,
 	}
 }
 
@@ -54,6 +87,12 @@ func (sm *SubagentManager) SetTools(tools *ToolRegistry) {
 	sm.tools = tools
 }
 
+func (sm *SubagentManager) SetPolicy(policy SubagentPolicy) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.policy = policy
+}
+
 // RegisterTool registers a tool for subagent execution.
 func (sm *SubagentManager) RegisterTool(tool Tool) {
 	sm.mu.Lock()
@@ -61,13 +100,113 @@ func (sm *SubagentManager) RegisterTool(tool Tool) {
 	sm.tools.Register(tool)
 }
 
-func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel, originChatID string, callback AsyncCallback) (string, error) {
+func (sm *SubagentManager) currentDepth(ctx context.Context) int {
+	return SubagentDepth(ctx)
+}
+
+func (sm *SubagentManager) childContext(ctx context.Context) (context.Context, int, error) {
+	sm.mu.RLock()
+	maxDepth := sm.policy.MaxDepth
+	sm.mu.RUnlock()
+	depth := sm.currentDepth(ctx) + 1
+	if depth > maxDepth {
+		return nil, depth, fmt.Errorf("subagent depth %d exceeds max depth %d", depth, maxDepth)
+	}
+	return WithSubagentDepth(ctx, depth), depth, nil
+}
+
+func (sm *SubagentManager) acquireSlot() error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if sm.activeCount >= sm.policy.MaxConcurrency {
+		return fmt.Errorf("subagent concurrency limit reached (%d)", sm.policy.MaxConcurrency)
+	}
+	sm.activeCount++
+	return nil
+}
 
+func (sm *SubagentManager) releaseSlot() {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if sm.activeCount > 0 {
+		sm.activeCount--
+	}
+}
+
+func (sm *SubagentManager) filteredTools() *ToolRegistry {
+	sm.mu.RLock()
+	baseTools := sm.tools
+	policy := sm.policy
+	sm.mu.RUnlock()
+
+	if baseTools == nil {
+		return NewToolRegistry()
+	}
+
+	blocked := map[string]struct{}{}
+	for _, alwaysBlocked := range []string{"subagent", "spawn", "delegate", "spawn_agent"} {
+		blocked[alwaysBlocked] = struct{}{}
+	}
+	for _, name := range policy.BlockedTools {
+		blocked[name] = struct{}{}
+	}
+	if !policy.AllowMessageWrite {
+		blocked["message"] = struct{}{}
+		blocked["message_write"] = struct{}{}
+	}
+
+	filtered := NewToolRegistry()
+	for _, name := range baseTools.List() {
+		if _, isBlocked := blocked[name]; isBlocked {
+			continue
+		}
+		if tool, ok := baseTools.Get(name); ok {
+			filtered.Register(tool)
+		}
+	}
+	return filtered
+}
+
+func (sm *SubagentManager) runLoop(ctx context.Context, taskPrompt, originChannel, originChatID, label string) (*ToolLoopResult, error) {
+	messages := []providers.Message{
+		{
+			Role:    "system",
+			Content: "You are a subagent. Complete the task independently and return only the final result.",
+		},
+		{
+			Role:    "user",
+			Content: taskPrompt,
+		},
+	}
+
+	sm.mu.RLock()
+	maxIter := sm.maxIterations
+	sm.mu.RUnlock()
+
+	return RunToolLoop(ctx, ToolLoopConfig{
+		Provider:      sm.provider,
+		Model:         sm.defaultModel,
+		Tools:         sm.filteredTools(),
+		MaxIterations: maxIter,
+		LLMOptions: map[string]any{
+			"max_tokens":  4096,
+			"temperature": 0.7,
+		},
+	}, messages, originChannel, originChatID)
+}
+
+func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel, originChatID string, callback AsyncCallback) (string, error) {
+	childCtx, _, err := sm.childContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	if err := sm.acquireSlot(); err != nil {
+		return "", err
+	}
+
+	sm.mu.Lock()
 	taskID := fmt.Sprintf("subagent-%d", sm.nextID)
 	sm.nextID++
-
 	subagentTask := &SubagentTask{
 		ID:            taskID,
 		Task:          task,
@@ -78,9 +217,9 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel
 		Created:       time.Now().UnixMilli(),
 	}
 	sm.tasks[taskID] = subagentTask
+	sm.mu.Unlock()
 
-	// Start task in background with context cancellation support
-	go sm.runTask(ctx, subagentTask, callback)
+	go sm.runTask(childCtx, subagentTask, callback)
 
 	if label != "" {
 		return fmt.Sprintf("Spawned subagent '%s' for task: %s", label, task), nil
@@ -89,24 +228,9 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel
 }
 
 func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, callback AsyncCallback) {
+	defer sm.releaseSlot()
 	task.Status = "running"
 	task.Created = time.Now().UnixMilli()
-
-	// Build system prompt for subagent
-	systemPrompt := `You are a subagent. Complete the given task independently and report the result.
-You have access to tools - use them as needed to complete your task.
-After completing the task, provide a clear summary of what was done.`
-
-	messages := []providers.Message{
-		{
-			Role:    "system",
-			Content: systemPrompt,
-		},
-		{
-			Role:    "user",
-			Content: task.Task,
-		},
-	}
 
 	// Check if context is already cancelled before starting
 	select {
@@ -119,22 +243,7 @@ After completing the task, provide a clear summary of what was done.`
 	default:
 	}
 
-	// Run tool loop with access to tools
-	sm.mu.RLock()
-	tools := sm.tools
-	maxIter := sm.maxIterations
-	sm.mu.RUnlock()
-
-	loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
-		Provider:      sm.provider,
-		Model:         sm.defaultModel,
-		Tools:         tools,
-		MaxIterations: maxIter,
-		LLMOptions: map[string]any{
-			"max_tokens":  4096,
-			"temperature": 0.7,
-		},
-	}, messages, task.OriginChannel, task.OriginChatID)
+	loopResult, err := sm.runLoop(ctx, task.Task, task.OriginChannel, task.OriginChatID, task.Label)
 
 	sm.mu.Lock()
 	var result *ToolResult
@@ -185,6 +294,18 @@ After completing the task, provide a clear summary of what was done.`
 			Content: announceContent,
 		})
 	}
+}
+
+func (sm *SubagentManager) RunSync(ctx context.Context, task, label, originChannel, originChatID string) (*ToolLoopResult, error) {
+	childCtx, _, err := sm.childContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := sm.acquireSlot(); err != nil {
+		return nil, err
+	}
+	defer sm.releaseSlot()
+	return sm.runLoop(childCtx, task, originChannel, originChatID, label)
 }
 
 func (sm *SubagentManager) GetTask(taskID string) (*SubagentTask, bool) {
@@ -264,35 +385,7 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{})
 		return ErrorResult("Subagent manager not configured").WithError(fmt.Errorf("manager is nil"))
 	}
 
-	// Build messages for subagent
-	messages := []providers.Message{
-		{
-			Role:    "system",
-			Content: "You are a subagent. Complete the given task independently and provide a clear, concise result.",
-		},
-		{
-			Role:    "user",
-			Content: task,
-		},
-	}
-
-	// Use RunToolLoop to execute with tools (same as async SpawnTool)
-	sm := t.manager
-	sm.mu.RLock()
-	tools := sm.tools
-	maxIter := sm.maxIterations
-	sm.mu.RUnlock()
-
-	loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
-		Provider:      sm.provider,
-		Model:         sm.defaultModel,
-		Tools:         tools,
-		MaxIterations: maxIter,
-		LLMOptions: map[string]any{
-			"max_tokens":  4096,
-			"temperature": 0.7,
-		},
-	}, messages, t.originChannel, t.originChatID)
+	loopResult, err := t.manager.RunSync(ctx, task, label, t.originChannel, t.originChatID)
 
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("Subagent execution failed: %v", err)).WithError(err)

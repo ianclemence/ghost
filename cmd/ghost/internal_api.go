@@ -26,6 +26,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/logger"
 )
 
@@ -92,7 +93,7 @@ func authMiddleware(secret string, next http.HandlerFunc) http.HandlerFunc {
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Secret, X-Ghost-Session")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -480,7 +481,7 @@ func shellescape(s string) string {
 // Listens on 0.0.0.0 so the mobile app can connect directly over Wi-Fi.
 // One port (GHOST_API_PORT, default 8766) handles everything:
 // chat, history, memory, transcription, remote control, and WebSocket.
-func startInternalAPI(agentLoop *agent.AgentLoop) {
+func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService) {
 	port := defaultInternalAPIPort
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
@@ -513,6 +514,108 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 			"version":   "2.0.0",
 			"uptime_s":  int64(time.Since(apiStartTime).Seconds()),
 		})
+	}))
+
+	// ── 1b. Cron lifecycle ───────────────────────────────────────────────
+	mux.HandleFunc("/v1/cron/jobs/", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if cronService == nil {
+			http.Error(w, `{"error":"cron service unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+
+		path := strings.TrimPrefix(r.URL.Path, "/v1/cron/jobs/")
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) < 2 || parts[0] == "" {
+			http.Error(w, `{"error":"invalid cron job path"}`, http.StatusBadRequest)
+			return
+		}
+
+		jobID := parts[0]
+		action := parts[1]
+
+		switch action {
+		case "pause":
+			if r.Method != http.MethodPost {
+				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+				return
+			}
+			if err := cronService.PauseJob(jobID); err != nil {
+				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
+				return
+			}
+			if status, err := cronService.GetJobStatus(jobID); err == nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "job": status})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+		case "resume":
+			if r.Method != http.MethodPost {
+				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+				return
+			}
+			if err := cronService.ResumeJob(jobID); err != nil {
+				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
+				return
+			}
+			if status, err := cronService.GetJobStatus(jobID); err == nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "job": status})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+		case "run":
+			if r.Method != http.MethodPost {
+				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+				return
+			}
+			if err := cronService.RunJobNow(jobID); err != nil {
+				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "triggered": true})
+		default:
+			http.Error(w, `{"error":"unsupported cron action"}`, http.StatusBadRequest)
+		}
+	}))
+
+	mux.HandleFunc("/v1/cron/jobs", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if cronService == nil {
+			http.Error(w, `{"error":"cron service unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if r.Method != http.MethodPatch {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			ID      string          `json:"id"`
+			Updates cron.JobUpdate  `json:"updates"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"invalid request: %s"}`, err.Error()), http.StatusBadRequest)
+			return
+		}
+		if req.ID == "" {
+			http.Error(w, `{"error":"id is required"}`, http.StatusBadRequest)
+			return
+		}
+		if req.Updates.Target != nil {
+			target := strings.ToLower(strings.TrimSpace(*req.Updates.Target))
+			if target != "origin" && target != "local" {
+				http.Error(w, `{"error":"target must be origin or local"}`, http.StatusBadRequest)
+				return
+			}
+		}
+		if err := cronService.UpdateJob(req.ID, req.Updates); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
+			return
+		}
+		status, err := cronService.GetJobStatus(req.ID)
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "job": status})
 	}))
 
 	// ── 2. Chat (streaming SSE) ───────────────────────────────────────────

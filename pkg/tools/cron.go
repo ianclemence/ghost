@@ -198,7 +198,7 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 	if command != "" {
 		job.Payload.Command = command
 		// Need to save the updated payload
-		t.cronService.UpdateJob(job)
+		t.cronService.SaveJob(job)
 	}
 
 	return SilentResult(fmt.Sprintf("Cron job added: %s (id: %s)", job.Name, job.ID))

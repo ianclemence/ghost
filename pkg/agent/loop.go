@@ -838,7 +838,8 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				continue
 			}
 
-			toolResult := activeTools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
+			toolCtx := tools.WithSubagentDepth(ctx, tools.SubagentDepth(ctx))
+			toolResult := activeTools.ExecuteWithContext(toolCtx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
 
 			// Send ForUser content to user immediately if not Silent
 			if !toolResult.Silent && toolResult.ForUser != "" && opts.SendResponse {
