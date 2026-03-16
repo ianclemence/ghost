@@ -96,7 +96,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewAppendFileTool(workspace, restrict))
 
 	// Shell execution
-	registry.Register(tools.NewExecTool(workspace, restrict))
+	registry.RegisterHidden(tools.NewExecTool(workspace, restrict), 6*time.Hour)
 	registry.Register(tools.NewUpdateTool(workspace))
 
 	// Oracle context bundling
@@ -113,10 +113,10 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	}))
 
 	// Headless Browser Tool (Chromium-based)
-	registry.Register(tools.NewBrowserTool(workspace, restrict))
+	registry.RegisterHidden(tools.NewBrowserTool(workspace, restrict), 2*time.Hour)
 
 	// Sandbox Execution Tool (Safe code running)
-	registry.Register(tools.NewSandboxTool(workspace))
+	registry.RegisterHidden(tools.NewSandboxTool(workspace), 2*time.Hour)
 
 	// Networking & Discovery Tool (Tailscale, Bonjour)
 	registry.Register(tools.NewNetworkingTool(workspace))
@@ -185,6 +185,11 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 			}
 		}
 	}
+
+	registry.SetToolEnabledForChannel("mobile", "exec", false)
+	registry.SetToolEnabledForChannel("mobile", "write_file", false)
+	registry.SetToolEnabledForChannel("telegram", "exec", false)
+	registry.SetToolEnabledForChannel("telegram", "write_file", false)
 
 	return registry
 }
@@ -521,7 +526,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 
 	// Process as user message
 	isCronTriggered := strings.HasPrefix(msg.SessionKey, "cron-")
-	profile := channels.DetectToolProfile(msg.Channel, "", false)
+	profile := channels.DetectToolProfile(msg.Channel, "", msg.SessionKey, false)
 	if isCronTriggered {
 		profile = tools.ProfileHeartbeatSafe
 	}
@@ -859,7 +864,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 
 			toolCtx := tools.WithSubagentDepth(ctx, tools.SubagentDepth(ctx))
-			toolResult := activeTools.ExecuteWithContext(toolCtx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
+			toolResult := activeTools.ExecuteWithContext(toolCtx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, opts.SessionKey, asyncCallback)
 
 			// Send ForUser content to user immediately if not Silent
 			if !toolResult.Silent && toolResult.ForUser != "" && opts.SendResponse {

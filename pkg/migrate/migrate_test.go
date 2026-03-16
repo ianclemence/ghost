@@ -234,7 +234,7 @@ func TestConvertConfig(t *testing.T) {
 	t.Run("unsupported channel warning", func(t *testing.T) {
 		data := map[string]interface{}{
 			"channels": map[string]interface{}{
-				"email": map[string]interface{}{
+				"onebot": map[string]interface{}{
 					"enabled": true,
 				},
 			},
@@ -247,7 +247,7 @@ func TestConvertConfig(t *testing.T) {
 		if len(warnings) != 1 {
 			t.Fatalf("expected 1 warning, got %d", len(warnings))
 		}
-		if warnings[0] != "Channel 'email' not supported in Ghost, skipping" {
+		if warnings[0] != "Channel 'onebot' not supported in Ghost, skipping" {
 			t.Errorf("unexpected warning: %s", warnings[0])
 		}
 	})
@@ -589,7 +589,7 @@ func TestRunDryRun(t *testing.T) {
 	opts := Options{
 		DryRun:       true,
 		OpenClawHome: openclawHome,
-		GhostHome: picoClawHome,
+		GhostHome:    picoClawHome,
 	}
 
 	result, err := Run(opts)
@@ -644,7 +644,7 @@ func TestRunFullMigration(t *testing.T) {
 	opts := Options{
 		Force:        true,
 		OpenClawHome: openclawHome,
-		GhostHome: picoClawHome,
+		GhostHome:    picoClawHome,
 	}
 
 	result, err := Run(opts)
@@ -709,7 +709,7 @@ func TestRunFullMigration(t *testing.T) {
 func TestRunOpenClawNotFound(t *testing.T) {
 	opts := Options{
 		OpenClawHome: "/nonexistent/path/to/openclaw",
-		GhostHome: t.TempDir(),
+		GhostHome:    t.TempDir(),
 	}
 
 	_, err := Run(opts)
@@ -791,7 +791,7 @@ func TestRunConfigOnly(t *testing.T) {
 		Force:        true,
 		ConfigOnly:   true,
 		OpenClawHome: openclawHome,
-		GhostHome: picoClawHome,
+		GhostHome:    picoClawHome,
 	}
 
 	result, err := Run(opts)
@@ -831,7 +831,7 @@ func TestRunWorkspaceOnly(t *testing.T) {
 		Force:         true,
 		WorkspaceOnly: true,
 		OpenClawHome:  openclawHome,
-		GhostHome:  picoClawHome,
+		GhostHome:     picoClawHome,
 	}
 
 	result, err := Run(opts)

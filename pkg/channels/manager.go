@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/commands"
@@ -21,12 +22,17 @@ import (
 )
 
 type Manager struct {
-	channels     map[string]Channel
-	bus          *bus.MessageBus
-	config       *config.Config
-	dispatchTask *asyncTask
-	commandDefs  []commands.Definition
-	mu           sync.RWMutex
+	channels       map[string]Channel
+	outboundQueues map[string]chan bus.OutboundMessage
+	bus            *bus.MessageBus
+	config         *config.Config
+	dispatchTask   *asyncTask
+	workerTasks    map[string]*asyncTask
+	failureCount   map[string]int
+	fatalChannels  map[string]string
+	deliveryRouter *DeliveryRouter
+	commandDefs    []commands.Definition
+	mu             sync.RWMutex
 }
 
 type CommandDefinitionsSetter interface {
@@ -37,7 +43,36 @@ type asyncTask struct {
 	cancel context.CancelFunc
 }
 
-func DetectToolProfile(channel, clientType string, isHeartbeat bool) tools.ToolProfile {
+var (
+	channelToolProfiles = map[string]tools.ToolProfile{
+		"mobile":    tools.ProfileMobileSafe,
+		"heartbeat": tools.ProfileHeartbeatSafe,
+		"cron":      tools.ProfileHeartbeatSafe,
+	}
+	sessionToolProfiles = map[string]tools.ToolProfile{}
+	toolPolicyMu        sync.RWMutex
+)
+
+func SetChannelToolProfile(channel string, profile tools.ToolProfile) {
+	toolPolicyMu.Lock()
+	defer toolPolicyMu.Unlock()
+	channelToolProfiles[strings.ToLower(strings.TrimSpace(channel))] = profile
+}
+
+func SetSessionToolProfile(sessionKey string, profile tools.ToolProfile) {
+	toolPolicyMu.Lock()
+	defer toolPolicyMu.Unlock()
+	sessionToolProfiles[strings.TrimSpace(sessionKey)] = profile
+}
+
+func DetectToolProfile(channel, clientType, sessionKey string, isHeartbeat bool) tools.ToolProfile {
+	toolPolicyMu.RLock()
+	if profile, ok := sessionToolProfiles[strings.TrimSpace(sessionKey)]; ok {
+		toolPolicyMu.RUnlock()
+		return profile
+	}
+	toolPolicyMu.RUnlock()
+
 	if isHeartbeat {
 		return tools.ProfileHeartbeatSafe
 	}
@@ -46,21 +81,25 @@ func DetectToolProfile(channel, clientType string, isHeartbeat bool) tools.ToolP
 		return tools.ProfileMobileSafe
 	}
 
-	switch strings.ToLower(strings.TrimSpace(channel)) {
-	case "mobile":
-		return tools.ProfileMobileSafe
-	case "heartbeat", "cron":
-		return tools.ProfileHeartbeatSafe
-	default:
-		return tools.ProfileFull
+	normalized := strings.ToLower(strings.TrimSpace(channel))
+	toolPolicyMu.RLock()
+	defer toolPolicyMu.RUnlock()
+	if profile, ok := channelToolProfiles[normalized]; ok {
+		return profile
 	}
+	return tools.ProfileFull
 }
 
 func NewManager(cfg *config.Config, messageBus *bus.MessageBus) (*Manager, error) {
 	m := &Manager{
-		channels: make(map[string]Channel),
-		bus:      messageBus,
-		config:   cfg,
+		channels:       make(map[string]Channel),
+		outboundQueues: make(map[string]chan bus.OutboundMessage),
+		workerTasks:    make(map[string]*asyncTask),
+		failureCount:   make(map[string]int),
+		fatalChannels:  make(map[string]string),
+		bus:            messageBus,
+		config:         cfg,
+		deliveryRouter: NewDeliveryRouter(),
 	}
 
 	if err := m.initChannels(); err != nil {
@@ -99,19 +138,6 @@ func (m *Manager) initChannels() error {
 		}
 	}
 
-	if m.config.Channels.Feishu.Enabled {
-		logger.DebugC("channels", "Attempting to initialize Feishu channel")
-		feishu, err := NewFeishuChannel(m.config.Channels.Feishu, m.bus)
-		if err != nil {
-			logger.ErrorCF("channels", "Failed to initialize Feishu channel", map[string]interface{}{
-				"error": err.Error(),
-			})
-		} else {
-			m.channels["feishu"] = feishu
-			logger.InfoC("channels", "Feishu channel enabled successfully")
-		}
-	}
-
 	if m.config.Channels.Discord.Enabled && m.config.Channels.Discord.Token != "" {
 		logger.DebugC("channels", "Attempting to initialize Discord channel")
 		discord, err := NewDiscordChannel(m.config.Channels.Discord, m.bus)
@@ -122,45 +148,6 @@ func (m *Manager) initChannels() error {
 		} else {
 			m.channels["discord"] = discord
 			logger.InfoC("channels", "Discord channel enabled successfully")
-		}
-	}
-
-	if m.config.Channels.MaixCam.Enabled {
-		logger.DebugC("channels", "Attempting to initialize MaixCam channel")
-		maixcam, err := NewMaixCamChannel(m.config.Channels.MaixCam, m.bus)
-		if err != nil {
-			logger.ErrorCF("channels", "Failed to initialize MaixCam channel", map[string]interface{}{
-				"error": err.Error(),
-			})
-		} else {
-			m.channels["maixcam"] = maixcam
-			logger.InfoC("channels", "MaixCam channel enabled successfully")
-		}
-	}
-
-	if m.config.Channels.QQ.Enabled {
-		logger.DebugC("channels", "Attempting to initialize QQ channel")
-		qq, err := NewQQChannel(m.config.Channels.QQ, m.bus)
-		if err != nil {
-			logger.ErrorCF("channels", "Failed to initialize QQ channel", map[string]interface{}{
-				"error": err.Error(),
-			})
-		} else {
-			m.channels["qq"] = qq
-			logger.InfoC("channels", "QQ channel enabled successfully")
-		}
-	}
-
-	if m.config.Channels.DingTalk.Enabled && m.config.Channels.DingTalk.ClientID != "" {
-		logger.DebugC("channels", "Attempting to initialize DingTalk channel")
-		dingtalk, err := NewDingTalkChannel(m.config.Channels.DingTalk, m.bus)
-		if err != nil {
-			logger.ErrorCF("channels", "Failed to initialize DingTalk channel", map[string]interface{}{
-				"error": err.Error(),
-			})
-		} else {
-			m.channels["dingtalk"] = dingtalk
-			logger.InfoC("channels", "DingTalk channel enabled successfully")
 		}
 	}
 
@@ -190,16 +177,16 @@ func (m *Manager) initChannels() error {
 		}
 	}
 
-	if m.config.Channels.OneBot.Enabled && m.config.Channels.OneBot.WSUrl != "" {
-		logger.DebugC("channels", "Attempting to initialize OneBot channel")
-		onebot, err := NewOneBotChannel(m.config.Channels.OneBot, m.bus)
+	if m.config.Channels.Email.Enabled {
+		logger.DebugC("channels", "Attempting to initialize Email channel")
+		email, err := NewEmailChannel(m.config.Channels.Email, m.bus)
 		if err != nil {
-			logger.ErrorCF("channels", "Failed to initialize OneBot channel", map[string]interface{}{
+			logger.ErrorCF("channels", "Failed to initialize Email channel", map[string]interface{}{
 				"error": err.Error(),
 			})
 		} else {
-			m.channels["onebot"] = onebot
-			logger.InfoC("channels", "OneBot channel enabled successfully")
+			m.channels["email"] = email
+			logger.InfoC("channels", "Email channel enabled successfully")
 		}
 	}
 
@@ -240,7 +227,21 @@ func (m *Manager) StartAll(ctx context.Context) error {
 				"channel": name,
 				"error":   err.Error(),
 			})
+			m.failureCount[name]++
+			errText := strings.ToLower(err.Error())
+			if strings.Contains(errText, "conflict") || strings.Contains(errText, "unauthorized") || strings.Contains(errText, "forbidden") {
+				m.fatalChannels[name] = err.Error()
+				logger.ErrorCF("channels", "Channel startup entered fatal state", map[string]interface{}{
+					"channel": name,
+					"reason":  err.Error(),
+				})
+			}
 		}
+		queue := make(chan bus.OutboundMessage, 200)
+		m.outboundQueues[name] = queue
+		workerCtx, workerCancel := context.WithCancel(dispatchCtx)
+		m.workerTasks[name] = &asyncTask{cancel: workerCancel}
+		go m.channelWorker(workerCtx, name, queue)
 	}
 
 	logger.InfoC("channels", "All channels started")
@@ -260,6 +261,14 @@ func (m *Manager) StopAll(ctx context.Context) error {
 	if m.dispatchTask != nil {
 		m.dispatchTask.cancel()
 		m.dispatchTask = nil
+	}
+	for name, task := range m.workerTasks {
+		task.cancel()
+		delete(m.workerTasks, name)
+	}
+	for name, q := range m.outboundQueues {
+		close(q)
+		delete(m.outboundQueues, name)
 	}
 
 	for name, channel := range m.channels {
@@ -306,33 +315,95 @@ func (m *Manager) dispatchOutbound(ctx context.Context) {
 				continue
 			}
 
+			target := m.deliveryRouter.ResolveTarget(msg)
 			m.mu.RLock()
-			channel, exists := m.channels[msg.Channel]
+			q, exists := m.outboundQueues[target]
+			reason := m.fatalChannels[target]
 			m.mu.RUnlock()
-
-			if !exists {
-				logger.WarnCF("channels", "Unknown channel for outbound message", map[string]interface{}{
-					"channel": msg.Channel,
+			if reason != "" {
+				logger.ErrorCF("channels", "Skipping outbound for fatal channel", map[string]interface{}{
+					"channel": target,
+					"reason":  reason,
 				})
 				continue
 			}
-
-			if err := channel.Send(ctx, msg); err != nil {
-				logger.ErrorCF("channels", "Error sending message to channel", map[string]interface{}{
-					"channel": msg.Channel,
-					"error":   err.Error(),
-					"chat_id": msg.ChatID,
+			if !exists {
+				logger.WarnCF("channels", "Unknown channel for outbound message", map[string]interface{}{
+					"channel": target,
 				})
-			} else {
-				logger.DebugCF("channels", "Channel send completed", map[string]interface{}{
-					"channel":    msg.Channel,
-					"chat_id":    msg.ChatID,
-					"session_id": sessionID,
-					"message_id": messageID,
+				continue
+			}
+			select {
+			case q <- msg:
+			default:
+				logger.WarnCF("channels", "Outbound queue full; dropping oldest then enqueue", map[string]interface{}{
+					"channel": target,
 				})
+				select {
+				case <-q:
+				default:
+				}
+				q <- msg
 			}
 		}
 	}
+}
+
+func (m *Manager) channelWorker(ctx context.Context, name string, queue <-chan bus.OutboundMessage) {
+	backoff := 200 * time.Millisecond
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-queue:
+			if !ok {
+				return
+			}
+			m.mu.RLock()
+			channel := m.channels[name]
+			m.mu.RUnlock()
+			if channel == nil {
+				continue
+			}
+			var sendErr error
+			for attempt := 1; attempt <= 3; attempt++ {
+				sendErr = channel.Send(ctx, msg)
+				if sendErr == nil {
+					break
+				}
+				time.Sleep(backoff * time.Duration(attempt))
+			}
+			if sendErr != nil {
+				logger.ErrorCF("channels", "Channel worker send failed after retries", map[string]interface{}{
+					"channel": name,
+					"error":   sendErr.Error(),
+				})
+				m.markChannelFailure(name, sendErr)
+			} else {
+				m.markChannelSuccess(name)
+			}
+		}
+	}
+}
+
+func (m *Manager) markChannelFailure(name string, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failureCount[name]++
+	if m.failureCount[name] >= 5 {
+		m.fatalChannels[name] = err.Error()
+		logger.ErrorCF("channels", "Channel entered fatal state", map[string]interface{}{
+			"channel": name,
+			"reason":  err.Error(),
+		})
+	}
+}
+
+func (m *Manager) markChannelSuccess(name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failureCount[name] = 0
+	delete(m.fatalChannels, name)
 }
 
 func (m *Manager) GetChannel(name string) (Channel, bool) {
@@ -348,9 +419,12 @@ func (m *Manager) GetStatus() map[string]interface{} {
 
 	status := make(map[string]interface{})
 	for name, channel := range m.channels {
+		fatalReason := m.fatalChannels[name]
 		status[name] = map[string]interface{}{
 			"enabled": true,
 			"running": channel.IsRunning(),
+			"fatal":   fatalReason != "",
+			"reason":  fatalReason,
 		}
 	}
 	return status
@@ -395,4 +469,15 @@ func (m *Manager) SendToChannel(ctx context.Context, channelName, chatID, conten
 	}
 
 	return channel.Send(ctx, msg)
+}
+
+func (m *Manager) SendRouted(ctx context.Context, chatID, content, originChannel string, metadata map[string]interface{}) error {
+	msg := bus.OutboundMessage{
+		Channel:  originChannel,
+		ChatID:   chatID,
+		Content:  content,
+		Metadata: metadata,
+	}
+	target := m.deliveryRouter.ResolveTarget(msg)
+	return m.SendToChannel(ctx, target, chatID, content)
 }

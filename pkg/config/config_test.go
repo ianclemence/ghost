@@ -111,23 +111,14 @@ func TestDefaultConfig_Channels(t *testing.T) {
 	if cfg.Channels.Telegram.Enabled {
 		t.Error("Telegram should be disabled by default")
 	}
-	if cfg.Channels.Feishu.Enabled {
-		t.Error("Feishu should be disabled by default")
-	}
 	if cfg.Channels.Discord.Enabled {
 		t.Error("Discord should be disabled by default")
 	}
-	if cfg.Channels.MaixCam.Enabled {
-		t.Error("MaixCam should be disabled by default")
-	}
-	if cfg.Channels.QQ.Enabled {
-		t.Error("QQ should be disabled by default")
-	}
-	if cfg.Channels.DingTalk.Enabled {
-		t.Error("DingTalk should be disabled by default")
-	}
 	if cfg.Channels.Slack.Enabled {
 		t.Error("Slack should be disabled by default")
+	}
+	if cfg.Channels.Email.Enabled {
+		t.Error("Email should be disabled by default")
 	}
 }
 

@@ -44,6 +44,16 @@
       "webhook_port": 18791,
       "webhook_path": "/webhook/line",
       "allow_from": []
+    },
+    "email": {
+      "enabled": false,
+      "smtp_host": "smtp.example.com",
+      "smtp_port": 587,
+      "username": "bot@example.com",
+      "password": "APP_PASSWORD",
+      "from": "bot@example.com",
+      "to": "you@example.com",
+      "allow_from": []
     }
   },
   "tools": {

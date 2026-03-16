@@ -25,10 +25,7 @@ var supportedChannels = map[string]bool{
 	"telegram": true,
 	"discord":  true,
 	"whatsapp": true,
-	"feishu":   true,
-	"qq":       true,
-	"dingtalk": true,
-	"maixcam":  true,
+	"email":    true,
 }
 
 func findOpenClawConfig(openclawHome string) (string, error) {
@@ -155,47 +152,26 @@ func ConvertConfig(data map[string]interface{}) (*config.Config, []string, error
 				if v, ok := getString(cMap, "bridge_url"); ok {
 					cfg.Channels.WhatsApp.BridgeURL = v
 				}
-			case "feishu":
-				cfg.Channels.Feishu.Enabled = enabled
-				cfg.Channels.Feishu.AllowFrom = allowFrom
-				if v, ok := getString(cMap, "app_id"); ok {
-					cfg.Channels.Feishu.AppID = v
+			case "email":
+				cfg.Channels.Email.Enabled = enabled
+				cfg.Channels.Email.AllowFrom = allowFrom
+				if v, ok := getString(cMap, "smtp_host"); ok {
+					cfg.Channels.Email.SMTPHost = v
 				}
-				if v, ok := getString(cMap, "app_secret"); ok {
-					cfg.Channels.Feishu.AppSecret = v
+				if v, ok := getFloat(cMap, "smtp_port"); ok {
+					cfg.Channels.Email.SMTPPort = int(v)
 				}
-				if v, ok := getString(cMap, "encrypt_key"); ok {
-					cfg.Channels.Feishu.EncryptKey = v
+				if v, ok := getString(cMap, "username"); ok {
+					cfg.Channels.Email.Username = v
 				}
-				if v, ok := getString(cMap, "verification_token"); ok {
-					cfg.Channels.Feishu.VerificationToken = v
+				if v, ok := getString(cMap, "password"); ok {
+					cfg.Channels.Email.Password = v
 				}
-			case "qq":
-				cfg.Channels.QQ.Enabled = enabled
-				cfg.Channels.QQ.AllowFrom = allowFrom
-				if v, ok := getString(cMap, "app_id"); ok {
-					cfg.Channels.QQ.AppID = v
+				if v, ok := getString(cMap, "from"); ok {
+					cfg.Channels.Email.From = v
 				}
-				if v, ok := getString(cMap, "app_secret"); ok {
-					cfg.Channels.QQ.AppSecret = v
-				}
-			case "dingtalk":
-				cfg.Channels.DingTalk.Enabled = enabled
-				cfg.Channels.DingTalk.AllowFrom = allowFrom
-				if v, ok := getString(cMap, "client_id"); ok {
-					cfg.Channels.DingTalk.ClientID = v
-				}
-				if v, ok := getString(cMap, "client_secret"); ok {
-					cfg.Channels.DingTalk.ClientSecret = v
-				}
-			case "maixcam":
-				cfg.Channels.MaixCam.Enabled = enabled
-				cfg.Channels.MaixCam.AllowFrom = allowFrom
-				if v, ok := getString(cMap, "host"); ok {
-					cfg.Channels.MaixCam.Host = v
-				}
-				if v, ok := getFloat(cMap, "port"); ok {
-					cfg.Channels.MaixCam.Port = int(v)
+				if v, ok := getString(cMap, "to"); ok {
+					cfg.Channels.Email.To = v
 				}
 			}
 		}
@@ -263,17 +239,8 @@ func MergeConfig(existing, incoming *config.Config) *config.Config {
 	if !existing.Channels.WhatsApp.Enabled && incoming.Channels.WhatsApp.Enabled {
 		existing.Channels.WhatsApp = incoming.Channels.WhatsApp
 	}
-	if !existing.Channels.Feishu.Enabled && incoming.Channels.Feishu.Enabled {
-		existing.Channels.Feishu = incoming.Channels.Feishu
-	}
-	if !existing.Channels.QQ.Enabled && incoming.Channels.QQ.Enabled {
-		existing.Channels.QQ = incoming.Channels.QQ
-	}
-	if !existing.Channels.DingTalk.Enabled && incoming.Channels.DingTalk.Enabled {
-		existing.Channels.DingTalk = incoming.Channels.DingTalk
-	}
-	if !existing.Channels.MaixCam.Enabled && incoming.Channels.MaixCam.Enabled {
-		existing.Channels.MaixCam = incoming.Channels.MaixCam
+	if !existing.Channels.Email.Enabled && incoming.Channels.Email.Enabled {
+		existing.Channels.Email = incoming.Channels.Email
 	}
 
 	if existing.Tools.Web.Brave.APIKey == "" {

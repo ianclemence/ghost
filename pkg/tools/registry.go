@@ -8,21 +8,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/santhosh-tekuri/jsonschema/v5"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
 type ToolRegistry struct {
-	tools   map[string]Tool
-	schemas map[string]*jsonschema.Schema
-	mu      sync.RWMutex
+	tools             map[string]Tool
+	schemas           map[string]*jsonschema.Schema
+	hiddenTools       map[string]time.Time
+	channelToolPolicy map[string]map[string]bool
+	sessionToolPolicy map[string]map[string]bool
+	mu                sync.RWMutex
 }
 
 func NewToolRegistry() *ToolRegistry {
 	return &ToolRegistry{
-		tools:   make(map[string]Tool),
-		schemas: make(map[string]*jsonschema.Schema),
+		tools:             make(map[string]Tool),
+		schemas:           make(map[string]*jsonschema.Schema),
+		hiddenTools:       make(map[string]time.Time),
+		channelToolPolicy: make(map[string]map[string]bool),
+		sessionToolPolicy: make(map[string]map[string]bool),
 	}
 }
 
@@ -51,6 +57,74 @@ func (r *ToolRegistry) Register(tool Tool) {
 	}
 }
 
+func (r *ToolRegistry) RegisterHidden(tool Tool, ttl time.Duration) {
+	r.Register(tool)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
+	r.hiddenTools[tool.Name()] = time.Now().Add(ttl)
+}
+
+func (r *ToolRegistry) Promote(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.hiddenTools, name)
+}
+
+func (r *ToolRegistry) SetToolEnabledForChannel(channel, tool string, enabled bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	channel = strings.ToLower(strings.TrimSpace(channel))
+	if _, ok := r.channelToolPolicy[channel]; !ok {
+		r.channelToolPolicy[channel] = map[string]bool{}
+	}
+	r.channelToolPolicy[channel][tool] = enabled
+}
+
+func (r *ToolRegistry) SetToolEnabledForSession(sessionKey, tool string, enabled bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	sessionKey = strings.TrimSpace(sessionKey)
+	if _, ok := r.sessionToolPolicy[sessionKey]; !ok {
+		r.sessionToolPolicy[sessionKey] = map[string]bool{}
+	}
+	r.sessionToolPolicy[sessionKey][tool] = enabled
+}
+
+func (r *ToolRegistry) isAllowed(name, channel, sessionKey string) bool {
+	if until, ok := r.hiddenTools[name]; ok {
+		if time.Now().Before(until) {
+			return false
+		}
+		delete(r.hiddenTools, name)
+	}
+	channel = strings.ToLower(strings.TrimSpace(channel))
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionPolicy, ok := r.sessionToolPolicy[sessionKey]; ok {
+		if allowed, exists := sessionPolicy[name]; exists {
+			return allowed
+		}
+	}
+	if channelPolicy, ok := r.channelToolPolicy[channel]; ok {
+		if allowed, exists := channelPolicy[name]; exists {
+			return allowed
+		}
+	}
+	return true
+}
+
+func (r *ToolRegistry) isVisible(name string) bool {
+	if until, ok := r.hiddenTools[name]; ok {
+		if time.Now().Before(until) {
+			return false
+		}
+		delete(r.hiddenTools, name)
+	}
+	return true
+}
+
 func (r *ToolRegistry) Get(name string) (Tool, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -59,12 +133,12 @@ func (r *ToolRegistry) Get(name string) (Tool, bool) {
 }
 
 func (r *ToolRegistry) Execute(ctx context.Context, name string, args map[string]interface{}) *ToolResult {
-	return r.ExecuteWithContext(ctx, name, args, "", "", nil)
+	return r.ExecuteWithContext(ctx, name, args, "", "", "", nil)
 }
 
 // ExecuteWithContext executes a tool with channel/chatID context and optional async callback.
 // It also validates tool arguments against the tool's JSON schema.
-func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args map[string]interface{}, channel, chatID string, asyncCallback AsyncCallback) *ToolResult {
+func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args map[string]interface{}, channel, chatID, sessionKey string, asyncCallback AsyncCallback) *ToolResult {
 	logger.InfoCF("tool", "Tool execution started",
 		map[string]interface{}{
 			"tool": name,
@@ -78,6 +152,12 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 				"tool": name,
 			})
 		return ErrorResult(fmt.Sprintf("tool %q not found", name)).WithError(fmt.Errorf("tool not found"))
+	}
+	r.mu.Lock()
+	allowed := r.isAllowed(name, channel, sessionKey)
+	r.mu.Unlock()
+	if !allowed {
+		return ErrorResult(fmt.Sprintf("tool %q is disabled for this channel/session", name))
 	}
 
 	// Validate arguments
@@ -165,7 +245,10 @@ func (r *ToolRegistry) GetDefinitions() []map[string]interface{} {
 	defer r.mu.RUnlock()
 
 	definitions := make([]map[string]interface{}, 0, len(r.tools))
-	for _, tool := range r.tools {
+	for name, tool := range r.tools {
+		if !r.isVisible(name) {
+			continue
+		}
 		definitions = append(definitions, ToolToSchema(tool))
 	}
 	return definitions
@@ -178,7 +261,10 @@ func (r *ToolRegistry) ToProviderDefs() []providers.ToolDefinition {
 	defer r.mu.RUnlock()
 
 	definitions := make([]providers.ToolDefinition, 0, len(r.tools))
-	for _, tool := range r.tools {
+	for name, tool := range r.tools {
+		if !r.isVisible(name) {
+			continue
+		}
 		schema := ToolToSchema(tool)
 
 		// Safely extract nested values with type checks
@@ -210,6 +296,9 @@ func (r *ToolRegistry) List() []string {
 
 	names := make([]string, 0, len(r.tools))
 	for name := range r.tools {
+		if !r.isVisible(name) {
+			continue
+		}
 		names = append(names, name)
 	}
 	return names
@@ -229,7 +318,10 @@ func (r *ToolRegistry) GetSummaries() []string {
 	defer r.mu.RUnlock()
 
 	summaries := make([]string, 0, len(r.tools))
-	for _, tool := range r.tools {
+	for name, tool := range r.tools {
+		if !r.isVisible(name) {
+			continue
+		}
 		summaries = append(summaries, fmt.Sprintf("- `%s` - %s", tool.Name(), tool.Description()))
 	}
 	return summaries

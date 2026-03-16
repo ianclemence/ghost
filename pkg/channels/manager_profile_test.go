@@ -23,10 +23,18 @@ func TestDetectToolProfile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := DetectToolProfile(tt.channel, tt.clientType, tt.heartbeat)
+			got := DetectToolProfile(tt.channel, tt.clientType, "", tt.heartbeat)
 			if got != tt.want {
 				t.Fatalf("DetectToolProfile() = %s, want %s", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDetectToolProfile_SessionOverride(t *testing.T) {
+	SetSessionToolProfile("mobile:default", tools.ProfileFull)
+	got := DetectToolProfile("mobile", "", "mobile:default", false)
+	if got != tools.ProfileFull {
+		t.Fatalf("expected session override to win, got %s", got)
 	}
 }

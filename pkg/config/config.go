@@ -71,7 +71,7 @@ type ClawHubConfig struct {
 
 type RAGConfig struct {
 	Enabled        bool `json:"enabled" env:"GHOST_RAG_ENABLED"`
-	M              int  `json:"m" env:"GHOST_RAG_M"`                           // Max connections per layer (default 16)
+	M              int  `json:"m" env:"GHOST_RAG_M"`                             // Max connections per layer (default 16)
 	EfConstruction int  `json:"ef_construction" env:"GHOST_RAG_EF_CONSTRUCTION"` // Size of dynamic candidate list during construction (default 200)
 	EfSearch       int  `json:"ef_search" env:"GHOST_RAG_EF_SEARCH"`             // Size of dynamic candidate list during search (default 10)
 }
@@ -82,18 +82,18 @@ type AgentsConfig struct {
 }
 
 type AgentDefaults struct {
-	Workspace           string  `json:"workspace" env:"GHOST_AGENTS_DEFAULTS_WORKSPACE"`
-	RestrictToWorkspace bool    `json:"restrict_to_workspace" env:"GHOST_AGENTS_DEFAULTS_RESTRICT_TO_WORKSPACE"`
-	SearchEnabled       bool    `json:"search_enabled" env:"GHOST_AGENTS_DEFAULTS_SEARCH_ENABLED"`
-	Provider            string  `json:"provider" env:"GHOST_AGENTS_DEFAULTS_PROVIDER"`
-	Model               string  `json:"model" env:"GHOST_AGENTS_DEFAULTS_MODEL"`
-	MaxTokens           int     `json:"max_tokens" env:"GHOST_AGENTS_DEFAULTS_MAX_TOKENS"`
-	Temperature         float64 `json:"temperature" env:"GHOST_AGENTS_DEFAULTS_TEMPERATURE"`
-	MaxToolIterations   int     `json:"max_tool_iterations" env:"GHOST_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
-	EmbeddingModel      string  `json:"embedding_model" env:"GHOST_AGENTS_DEFAULTS_EMBEDDING_MODEL"`
+	Workspace           string   `json:"workspace" env:"GHOST_AGENTS_DEFAULTS_WORKSPACE"`
+	RestrictToWorkspace bool     `json:"restrict_to_workspace" env:"GHOST_AGENTS_DEFAULTS_RESTRICT_TO_WORKSPACE"`
+	SearchEnabled       bool     `json:"search_enabled" env:"GHOST_AGENTS_DEFAULTS_SEARCH_ENABLED"`
+	Provider            string   `json:"provider" env:"GHOST_AGENTS_DEFAULTS_PROVIDER"`
+	Model               string   `json:"model" env:"GHOST_AGENTS_DEFAULTS_MODEL"`
+	MaxTokens           int      `json:"max_tokens" env:"GHOST_AGENTS_DEFAULTS_MAX_TOKENS"`
+	Temperature         float64  `json:"temperature" env:"GHOST_AGENTS_DEFAULTS_TEMPERATURE"`
+	MaxToolIterations   int      `json:"max_tool_iterations" env:"GHOST_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
+	EmbeddingModel      string   `json:"embedding_model" env:"GHOST_AGENTS_DEFAULTS_EMBEDDING_MODEL"`
 	FallbackModels      []string `json:"fallback_models" env:"GHOST_AGENTS_DEFAULTS_FALLBACK_MODELS"`
-	FallbackCooldown    int     `json:"fallback_cooldown_seconds" env:"GHOST_AGENTS_DEFAULTS_FALLBACK_COOLDOWN_SECONDS"`
-	SessionStore        string  `json:"session_store" env:"GHOST_AGENTS_DEFAULTS_SESSION_STORE"`
+	FallbackCooldown    int      `json:"fallback_cooldown_seconds" env:"GHOST_AGENTS_DEFAULTS_FALLBACK_COOLDOWN_SECONDS"`
+	SessionStore        string   `json:"session_store" env:"GHOST_AGENTS_DEFAULTS_SESSION_STORE"`
 }
 
 type RoutingConfig struct {
@@ -104,14 +104,10 @@ type RoutingConfig struct {
 type ChannelsConfig struct {
 	WhatsApp WhatsAppConfig `json:"whatsapp"`
 	Telegram TelegramConfig `json:"telegram"`
-	Feishu   FeishuConfig   `json:"feishu"`
 	Discord  DiscordConfig  `json:"discord"`
-	MaixCam  MaixCamConfig  `json:"maixcam"`
-	QQ       QQConfig       `json:"qq"`
-	DingTalk DingTalkConfig `json:"dingtalk"`
 	Slack    SlackConfig    `json:"slack"`
 	LINE     LINEConfig     `json:"line"`
-	OneBot   OneBotConfig   `json:"onebot"`
+	Email    EmailConfig    `json:"email"`
 }
 
 type WhatsAppConfig struct {
@@ -127,40 +123,10 @@ type TelegramConfig struct {
 	AllowFrom FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_TELEGRAM_ALLOW_FROM"`
 }
 
-type FeishuConfig struct {
-	Enabled           bool                `json:"enabled" env:"GHOST_CHANNELS_FEISHU_ENABLED"`
-	AppID             string              `json:"app_id" env:"GHOST_CHANNELS_FEISHU_APP_ID"`
-	AppSecret         string              `json:"app_secret" env:"GHOST_CHANNELS_FEISHU_APP_SECRET"`
-	EncryptKey        string              `json:"encrypt_key" env:"GHOST_CHANNELS_FEISHU_ENCRYPT_KEY"`
-	VerificationToken string              `json:"verification_token" env:"GHOST_CHANNELS_FEISHU_VERIFICATION_TOKEN"`
-	AllowFrom         FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_FEISHU_ALLOW_FROM"`
-}
-
 type DiscordConfig struct {
 	Enabled   bool                `json:"enabled" env:"GHOST_CHANNELS_DISCORD_ENABLED"`
 	Token     string              `json:"token" env:"GHOST_CHANNELS_DISCORD_TOKEN"`
 	AllowFrom FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_DISCORD_ALLOW_FROM"`
-}
-
-type MaixCamConfig struct {
-	Enabled   bool                `json:"enabled" env:"GHOST_CHANNELS_MAIXCAM_ENABLED"`
-	Host      string              `json:"host" env:"GHOST_CHANNELS_MAIXCAM_HOST"`
-	Port      int                 `json:"port" env:"GHOST_CHANNELS_MAIXCAM_PORT"`
-	AllowFrom FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_MAIXCAM_ALLOW_FROM"`
-}
-
-type QQConfig struct {
-	Enabled   bool                `json:"enabled" env:"GHOST_CHANNELS_QQ_ENABLED"`
-	AppID     string              `json:"app_id" env:"GHOST_CHANNELS_QQ_APP_ID"`
-	AppSecret string              `json:"app_secret" env:"GHOST_CHANNELS_QQ_APP_SECRET"`
-	AllowFrom FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_QQ_ALLOW_FROM"`
-}
-
-type DingTalkConfig struct {
-	Enabled      bool                `json:"enabled" env:"GHOST_CHANNELS_DINGTALK_ENABLED"`
-	ClientID     string              `json:"client_id" env:"GHOST_CHANNELS_DINGTALK_CLIENT_ID"`
-	ClientSecret string              `json:"client_secret" env:"GHOST_CHANNELS_DINGTALK_CLIENT_SECRET"`
-	AllowFrom    FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_DINGTALK_ALLOW_FROM"`
 }
 
 type SlackConfig struct {
@@ -180,13 +146,15 @@ type LINEConfig struct {
 	AllowFrom          FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_LINE_ALLOW_FROM"`
 }
 
-type OneBotConfig struct {
-	Enabled            bool                `json:"enabled" env:"GHOST_CHANNELS_ONEBOT_ENABLED"`
-	WSUrl              string              `json:"ws_url" env:"GHOST_CHANNELS_ONEBOT_WS_URL"`
-	AccessToken        string              `json:"access_token" env:"GHOST_CHANNELS_ONEBOT_ACCESS_TOKEN"`
-	ReconnectInterval  int                 `json:"reconnect_interval" env:"GHOST_CHANNELS_ONEBOT_RECONNECT_INTERVAL"`
-	GroupTriggerPrefix []string            `json:"group_trigger_prefix" env:"GHOST_CHANNELS_ONEBOT_GROUP_TRIGGER_PREFIX"`
-	AllowFrom          FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_ONEBOT_ALLOW_FROM"`
+type EmailConfig struct {
+	Enabled   bool                `json:"enabled" env:"GHOST_CHANNELS_EMAIL_ENABLED"`
+	SMTPHost  string              `json:"smtp_host" env:"GHOST_CHANNELS_EMAIL_SMTP_HOST"`
+	SMTPPort  int                 `json:"smtp_port" env:"GHOST_CHANNELS_EMAIL_SMTP_PORT"`
+	Username  string              `json:"username" env:"GHOST_CHANNELS_EMAIL_USERNAME"`
+	Password  string              `json:"password" env:"GHOST_CHANNELS_EMAIL_PASSWORD"`
+	From      string              `json:"from" env:"GHOST_CHANNELS_EMAIL_FROM"`
+	To        string              `json:"to" env:"GHOST_CHANNELS_EMAIL_TO"`
+	AllowFrom FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_EMAIL_ALLOW_FROM"`
 }
 
 type HeartbeatConfig struct {
@@ -210,9 +178,9 @@ type ProvidersConfig struct {
 	Nvidia        ProviderConfig `json:"nvidia"`
 	Moonshot      ProviderConfig `json:"moonshot"`
 	ShengSuanYun  ProviderConfig `json:"shengsuanyun"`
-	DeepSeek      ProviderConfig       `json:"deepseek"`
-	GitHubCopilot ProviderConfig       `json:"github_copilot"`
-	Ollama        ProviderConfig       `json:"ollama"`
+	DeepSeek      ProviderConfig `json:"deepseek"`
+	GitHubCopilot ProviderConfig `json:"github_copilot"`
+	Ollama        ProviderConfig `json:"ollama"`
 }
 
 type ProviderConfig struct {
@@ -255,15 +223,15 @@ type MCPConfig struct {
 }
 
 type MCPServerConfig struct {
-	Enabled  bool              `json:"enabled"`
-	Command  string            `json:"command"`
-	Args     []string          `json:"args"`
-	Workdir  string            `json:"workdir"`
-	Env      map[string]string `json:"env"`
-	EnvFile  string            `json:"env_file"`
-	Headers  map[string]string `json:"headers"`
-	HTTP     bool              `json:"http"`
-	HTTPURL  string            `json:"http_url"`
+	Enabled bool              `json:"enabled"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Workdir string            `json:"workdir"`
+	Env     map[string]string `json:"env"`
+	EnvFile string            `json:"env_file"`
+	Headers map[string]string `json:"headers"`
+	HTTP    bool              `json:"http"`
+	HTTPURL string            `json:"http_url"`
 }
 
 func DefaultConfig() *Config {
@@ -298,36 +266,10 @@ func DefaultConfig() *Config {
 				Token:     "",
 				AllowFrom: FlexibleStringSlice{},
 			},
-			Feishu: FeishuConfig{
-				Enabled:           false,
-				AppID:             "",
-				AppSecret:         "",
-				EncryptKey:        "",
-				VerificationToken: "",
-				AllowFrom:         FlexibleStringSlice{},
-			},
 			Discord: DiscordConfig{
 				Enabled:   false,
 				Token:     "",
 				AllowFrom: FlexibleStringSlice{},
-			},
-			MaixCam: MaixCamConfig{
-				Enabled:   false,
-				Host:      "0.0.0.0",
-				Port:      18790,
-				AllowFrom: FlexibleStringSlice{},
-			},
-			QQ: QQConfig{
-				Enabled:   false,
-				AppID:     "",
-				AppSecret: "",
-				AllowFrom: FlexibleStringSlice{},
-			},
-			DingTalk: DingTalkConfig{
-				Enabled:      false,
-				ClientID:     "",
-				ClientSecret: "",
-				AllowFrom:    FlexibleStringSlice{},
 			},
 			Slack: SlackConfig{
 				Enabled:   false,
@@ -344,13 +286,15 @@ func DefaultConfig() *Config {
 				WebhookPath:        "/webhook/line",
 				AllowFrom:          FlexibleStringSlice{},
 			},
-			OneBot: OneBotConfig{
-				Enabled:            false,
-				WSUrl:              "ws://127.0.0.1:3001",
-				AccessToken:        "",
-				ReconnectInterval:  5,
-				GroupTriggerPrefix: []string{},
-				AllowFrom:          FlexibleStringSlice{},
+			Email: EmailConfig{
+				Enabled:   false,
+				SMTPHost:  "",
+				SMTPPort:  587,
+				Username:  "",
+				Password:  "",
+				From:      "",
+				To:        "",
+				AllowFrom: FlexibleStringSlice{},
 			},
 		},
 		Providers: ProvidersConfig{

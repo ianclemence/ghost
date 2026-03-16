@@ -126,7 +126,7 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 			// Execute tool (no async callback for subagents - they run independently)
 			var toolResult *ToolResult
 			if config.Tools != nil {
-				toolResult = config.Tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, channel, chatID, nil)
+				toolResult = config.Tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, channel, chatID, "", nil)
 			} else {
 				toolResult = ErrorResult("No tools available")
 			}
