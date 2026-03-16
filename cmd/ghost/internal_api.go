@@ -267,6 +267,21 @@ type DoctorCheckPayload struct {
 	LatencyMS int64  `json:"latency_ms,omitempty"`
 }
 
+type CronStateResponse struct {
+	ID        string     `json:"id"`
+	State     string     `json:"state"`
+	PausedAt  *time.Time `json:"paused_at,omitempty"`
+	ResumedAt *time.Time `json:"resumed_at,omitempty"`
+	NextRunAt *time.Time `json:"next_run_at,omitempty"`
+}
+
+type CronTriggerResponse struct {
+	ID          string    `json:"id"`
+	Triggered   bool      `json:"triggered"`
+	RunAsync    bool      `json:"run_async"`
+	TriggeredAt time.Time `json:"triggered_at"`
+}
+
 type cronPatchRequestBody struct {
 	ID      string         `json:"id"`
 	Updates cron.JobUpdate `json:"updates"`
@@ -295,6 +310,25 @@ func decodeCronPatchRequest(r *http.Request, pathID string) (string, cron.JobUpd
 		return "", cron.JobUpdate{}, fmt.Errorf("id is required")
 	}
 	return id, body.Updates, nil
+}
+
+func buildCronStateResponse(id string, state string, pausedAt, resumedAt, nextRunAt *time.Time) CronStateResponse {
+	return CronStateResponse{
+		ID:        id,
+		State:     state,
+		PausedAt:  pausedAt,
+		ResumedAt: resumedAt,
+		NextRunAt: nextRunAt,
+	}
+}
+
+func buildCronTriggerResponse(id string, now time.Time) CronTriggerResponse {
+	return CronTriggerResponse{
+		ID:          id,
+		Triggered:   true,
+		RunAsync:    true,
+		TriggeredAt: now,
+	}
 }
 
 func handleExec(allowedCmds []string) http.HandlerFunc {
@@ -653,11 +687,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
 				return
 			}
-			if status, err := cronService.GetJobStatus(jobID); err == nil {
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "job": status})
+			if job, ok := cronService.GetJob(jobID); ok {
+				_ = json.NewEncoder(w).Encode(buildCronStateResponse(job.ID, string(job.LifecycleState), job.PausedAt, nil, job.NextRunAt))
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+			_ = json.NewEncoder(w).Encode(buildCronStateResponse(jobID, "paused", nil, nil, nil))
 		case "resume":
 			if r.Method != http.MethodPost {
 				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -667,11 +701,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
 				return
 			}
-			if status, err := cronService.GetJobStatus(jobID); err == nil {
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "job": status})
+			resumedAt := time.Now().UTC()
+			if job, ok := cronService.GetJob(jobID); ok {
+				_ = json.NewEncoder(w).Encode(buildCronStateResponse(job.ID, string(job.LifecycleState), nil, &resumedAt, job.NextRunAt))
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+			_ = json.NewEncoder(w).Encode(buildCronStateResponse(jobID, "active", nil, &resumedAt, nil))
 		case "run":
 			if r.Method != http.MethodPost {
 				http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -681,7 +716,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "triggered": true})
+			_ = json.NewEncoder(w).Encode(buildCronTriggerResponse(jobID, time.Now().UTC()))
 		default:
 			http.Error(w, `{"error":"unsupported cron action"}`, http.StatusBadRequest)
 		}

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolveRequestChannel(t *testing.T) {
@@ -49,5 +51,41 @@ func TestDecodeCronPatchRequest(t *testing.T) {
 	reqMissingID, _ := http.NewRequest(http.MethodPatch, "/v1/cron/jobs", strings.NewReader(`{"updates":{"message":"z"}}`))
 	if _, _, err := decodeCronPatchRequest(reqMissingID, ""); err == nil {
 		t.Fatalf("expected error when no id is provided")
+	}
+}
+
+func TestBuildCronStateResponseShape(t *testing.T) {
+	now := time.Now().UTC()
+	next := now.Add(1 * time.Hour)
+	resp := buildCronStateResponse("job-1", "paused", &now, nil, &next)
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal cron state response: %v", err)
+	}
+	raw := string(data)
+	for _, key := range []string{`"id":"job-1"`, `"state":"paused"`, `"paused_at"`, `"next_run_at"`} {
+		if !strings.Contains(raw, key) {
+			t.Fatalf("expected key/value %s in response: %s", key, raw)
+		}
+	}
+	if strings.Contains(raw, `"resumed_at"`) {
+		t.Fatalf("did not expect resumed_at in paused response: %s", raw)
+	}
+}
+
+func TestBuildCronTriggerResponseShape(t *testing.T) {
+	now := time.Now().UTC()
+	resp := buildCronTriggerResponse("job-2", now)
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal cron trigger response: %v", err)
+	}
+	raw := string(data)
+	for _, key := range []string{`"id":"job-2"`, `"triggered":true`, `"run_async":true`, `"triggered_at"`} {
+		if !strings.Contains(raw, key) {
+			t.Fatalf("expected key/value %s in response: %s", key, raw)
+		}
 	}
 }
