@@ -259,6 +259,14 @@ type DoctorResponse struct {
 	Status    string               `json:"status"`
 	Checks    []DoctorCheckPayload `json:"checks"`
 	Timestamp int64                `json:"timestamp"`
+	Uptime    int64                `json:"uptime"`
+	Version   string               `json:"version"`
+	Profile   ProfileInfo          `json:"profile"`
+}
+
+type ProfileInfo struct {
+	Name        string   `json:"name"`
+	Permissions []string `json:"permissions"`
 }
 
 type DoctorCheckPayload struct {
