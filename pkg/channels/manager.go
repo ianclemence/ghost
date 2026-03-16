@@ -280,16 +280,17 @@ func (m *Manager) StopAll(ctx context.Context) error {
 
 func (m *Manager) dispatchOutbound(ctx context.Context) {
 	logger.InfoC("channels", "Outbound dispatcher started")
+	outboundCh, unsubscribe := m.bus.SubscribeOutbound()
+	defer unsubscribe()
 
 	for {
 		select {
 		case <-ctx.Done():
 			logger.InfoC("channels", "Outbound dispatcher stopped")
 			return
-		default:
-			msg, ok := m.bus.SubscribeOutbound(ctx)
+		case msg, ok := <-outboundCh:
 			if !ok {
-				continue
+				return
 			}
 
 			// Silently skip internal channels

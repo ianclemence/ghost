@@ -6,17 +6,18 @@ import (
 )
 
 type MessageBus struct {
-	inbound  chan InboundMessage
-	outbound chan OutboundMessage
-	handlers map[string]MessageHandler
-	mu       sync.RWMutex
+	inbound             chan InboundMessage
+	handlers            map[string]MessageHandler
+	outboundSubscribers map[int]chan OutboundMessage
+	nextSubscriberID    int
+	mu                  sync.RWMutex
 }
 
 func NewMessageBus() *MessageBus {
 	return &MessageBus{
-		inbound:  make(chan InboundMessage, 100),
-		outbound: make(chan OutboundMessage, 100),
-		handlers: make(map[string]MessageHandler),
+		inbound:             make(chan InboundMessage, 100),
+		handlers:            make(map[string]MessageHandler),
+		outboundSubscribers: make(map[int]chan OutboundMessage),
 	}
 }
 
@@ -34,16 +35,33 @@ func (mb *MessageBus) ConsumeInbound(ctx context.Context) (InboundMessage, bool)
 }
 
 func (mb *MessageBus) PublishOutbound(msg OutboundMessage) {
-	mb.outbound <- msg
+	mb.mu.RLock()
+	defer mb.mu.RUnlock()
+	for _, ch := range mb.outboundSubscribers {
+		select {
+		case ch <- msg:
+		default:
+		}
+	}
 }
 
-func (mb *MessageBus) SubscribeOutbound(ctx context.Context) (OutboundMessage, bool) {
-	select {
-	case msg := <-mb.outbound:
-		return msg, true
-	case <-ctx.Done():
-		return OutboundMessage{}, false
+func (mb *MessageBus) SubscribeOutbound() (<-chan OutboundMessage, func()) {
+	mb.mu.Lock()
+	id := mb.nextSubscriberID
+	mb.nextSubscriberID++
+	ch := make(chan OutboundMessage, 100)
+	mb.outboundSubscribers[id] = ch
+	mb.mu.Unlock()
+
+	unsubscribe := func() {
+		mb.mu.Lock()
+		if sub, ok := mb.outboundSubscribers[id]; ok {
+			delete(mb.outboundSubscribers, id)
+			close(sub)
+		}
+		mb.mu.Unlock()
 	}
+	return ch, unsubscribe
 }
 
 func (mb *MessageBus) RegisterHandler(channel string, handler MessageHandler) {
@@ -61,5 +79,10 @@ func (mb *MessageBus) GetHandler(channel string) (MessageHandler, bool) {
 
 func (mb *MessageBus) Close() {
 	close(mb.inbound)
-	close(mb.outbound)
+	mb.mu.Lock()
+	for id, ch := range mb.outboundSubscribers {
+		close(ch)
+		delete(mb.outboundSubscribers, id)
+	}
+	mb.mu.Unlock()
 }

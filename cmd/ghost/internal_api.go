@@ -10,6 +10,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -64,25 +65,55 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
+		outboundCh, unsubscribe := agentLoop.Bus().SubscribeOutbound()
+		defer unsubscribe()
 
 		for {
-			msg, ok := agentLoop.Bus().SubscribeOutbound(ctx)
-			if !ok {
-				break
-			}
-
-			// Only forward mobile-channel messages and canvas updates to the app.
-			// Telegram and CLI responses must not appear in the mobile chat.
-			if msg.Channel != "mobile" {
-				meta, _ := msg.Metadata["type"].(string)
-				if meta != "canvas_update" {
-					continue // skip — wrong channel
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-outboundCh:
+				if !ok {
+					return
 				}
-			}
 
-			if err := conn.WriteJSON(msg); err != nil {
-				log.Printf("❌ WebSocket write error: %v", err)
-				break
+				// Only forward mobile-channel messages and canvas updates to the app.
+				// Telegram and CLI responses must not appear in the mobile chat.
+				if msg.Channel != "mobile" {
+					meta, _ := msg.Metadata["type"].(string)
+					if meta != "canvas_update" {
+						continue // skip — wrong channel
+					}
+				}
+
+				payload := map[string]interface{}{
+					"channel":  msg.Channel,
+					"chat_id":  msg.ChatID,
+					"content":  msg.Content,
+					"metadata": msg.Metadata,
+				}
+				if t, ok := msg.Metadata["type"].(string); ok && t != "" {
+					payload["type"] = t
+				}
+				if id, ok := msg.Metadata["message_id"].(string); ok && id != "" {
+					payload["id"] = id
+				}
+				if sid, ok := msg.Metadata["session_id"].(string); ok && sid != "" {
+					payload["session_id"] = sid
+				}
+				switch ts := msg.Metadata["timestamp"].(type) {
+				case int64:
+					payload["timestamp"] = ts
+				case int:
+					payload["timestamp"] = int64(ts)
+				case float64:
+					payload["timestamp"] = int64(ts)
+				}
+
+				if err := conn.WriteJSON(payload); err != nil {
+					log.Printf("❌ WebSocket write error: %v", err)
+					return
+				}
 			}
 		}
 	}
@@ -942,13 +973,30 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
 			flusher.Flush()
 		} else {
+			meta := map[string]interface{}{
+				"type": "assistant_message",
+			}
+			if db != nil {
+				var messageID string
+				var timestamp int64
+				err := db.QueryRow(`
+					SELECT id, COALESCE(unixepoch(created_at), 0)
+					FROM messages
+					WHERE session_id = ? AND role = 'assistant'
+					ORDER BY datetime(created_at) DESC, rowid DESC
+					LIMIT 1
+				`, req.SessionKey).Scan(&messageID, &timestamp)
+				if err == nil && messageID != "" {
+					meta["message_id"] = messageID
+					meta["session_id"] = req.SessionKey
+					meta["timestamp"] = timestamp
+				}
+			}
 			agentLoop.Bus().PublishOutbound(bus.OutboundMessage{
-				Channel: req.Channel,
-				ChatID:  req.ChatID,
-				Content: response,
-				Metadata: map[string]interface{}{
-					"type": "assistant_message",
-				},
+				Channel:  req.Channel,
+				ChatID:   req.ChatID,
+				Content:  response,
+				Metadata: meta,
 			})
 			fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()
@@ -960,24 +1008,46 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		session := resolveSession(r)
 		limit := 50
 		offset := 0
+		since := int64(0)
 		fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
 		fmt.Sscanf(r.URL.Query().Get("offset"), "%d", &offset)
+		if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
+			if ts, err := strconv.ParseInt(raw, 10, 64); err == nil && ts > 0 {
+				since = ts
+			}
+		}
 
 		if db == nil {
 			http.Error(w, `{"error":"database not available"}`, http.StatusInternalServerError)
 			return
 		}
 
-		rows, err := db.Query(`
-			SELECT id, role, content, created_at, meta
-			FROM messages
-			WHERE session_id = ? 
-			  AND (archived IS NULL OR archived = 0)
-			  AND content IS NOT NULL
-			  AND TRIM(content) != ''
-			  AND LENGTH(content) > 0
-			ORDER BY datetime(created_at) DESC, rowid DESC
-			LIMIT ? OFFSET ?`, session, limit, offset)
+		var rows *sql.Rows
+		var err error
+		if since > 0 {
+			rows, err = db.Query(`
+				SELECT id, role, content, created_at, meta
+				FROM messages
+				WHERE session_id = ? 
+				  AND (archived IS NULL OR archived = 0)
+				  AND content IS NOT NULL
+				  AND TRIM(content) != ''
+				  AND LENGTH(content) > 0
+				  AND unixepoch(created_at) > ?
+				ORDER BY datetime(created_at) ASC, rowid ASC
+				LIMIT ?`, session, since, limit)
+		} else {
+			rows, err = db.Query(`
+				SELECT id, role, content, created_at, meta
+				FROM messages
+				WHERE session_id = ? 
+				  AND (archived IS NULL OR archived = 0)
+				  AND content IS NOT NULL
+				  AND TRIM(content) != ''
+				  AND LENGTH(content) > 0
+				ORDER BY datetime(created_at) DESC, rowid DESC
+				LIMIT ? OFFSET ?`, session, limit, offset)
+		}
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"db error: %s"}`, err.Error()), http.StatusInternalServerError)
 			return
@@ -996,9 +1066,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			messages = append(messages, m)
 		}
 
-		// Reverse DESC → ASC for the app
-		for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-			messages[i], messages[j] = messages[j], messages[i]
+		if since <= 0 {
+			for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+				messages[i], messages[j] = messages[j], messages[i]
+			}
 		}
 		if messages == nil {
 			messages = []Message{}
