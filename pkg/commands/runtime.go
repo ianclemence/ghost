@@ -2,6 +2,7 @@ package commands
 
 import (
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/session"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
@@ -11,4 +12,5 @@ type Runtime struct {
 	Sessions *session.SessionManager
 	Bus      *bus.MessageBus
 	Commands *Registry
+	Doctor   *doctor.Doctor
 }

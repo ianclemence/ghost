@@ -41,6 +41,12 @@ func DefaultDefinitions() []Definition {
 			Handler:     statusHandler,
 		},
 		{
+			Name:        "/doctor",
+			Aliases:     []string{"/health"},
+			Description: "Run read-only Ghost diagnostics checks",
+			Handler:     doctorHandler,
+		},
+		{
 			Name:        "/skills",
 			Description: "List all installed skills in your workspace/skills directory",
 			Handler:     skillsHandler,
@@ -129,6 +135,30 @@ func statusHandler(ctx context.Context, req Request, rt *Runtime) error {
 		sb.WriteString("\n```\n")
 	}
 
+	return req.Reply(sb.String())
+}
+
+func doctorHandler(ctx context.Context, req Request, rt *Runtime) error {
+	if rt == nil || rt.Doctor == nil {
+		return req.Reply("Doctor diagnostics are unavailable.")
+	}
+	results := rt.Doctor.RunAll(ctx)
+	var sb strings.Builder
+	sb.WriteString("### Ghost Doctor\n\n")
+	for _, check := range results {
+		status := strings.ToUpper(check.Status)
+		if check.Status == "" {
+			status = "UNKNOWN"
+		}
+		sb.WriteString(fmt.Sprintf("- **%s**: %s", check.Name, status))
+		if check.Latency > 0 {
+			sb.WriteString(fmt.Sprintf(" (%dms)", check.Latency))
+		}
+		if check.Message != "" {
+			sb.WriteString(fmt.Sprintf(" — %s", check.Message))
+		}
+		sb.WriteString("\n")
+	}
 	return req.Reply(sb.String())
 }
 

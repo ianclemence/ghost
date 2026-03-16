@@ -12,6 +12,7 @@ Ghost is a personal AI assistant designed for Raspberry Pi. It merges a lightwei
 - **Robust**: Built-in JSON Schema validation for tool parameters to prevent hallucinations.
 - **Proactive**: Wakes up to brief you on news, schedule, and reminders.
 - **Self-Modifying**: Includes full source code for on-device hacking.
+- **Observable**: Read-only diagnostics via `/doctor` and `GET /v1/doctor`.
 
 ## 🛠️ Requirements
 

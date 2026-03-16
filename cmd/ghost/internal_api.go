@@ -516,6 +516,34 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		})
 	}))
 
+	mux.HandleFunc("/v1/doctor", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		doctorRunner := agentLoop.Doctor()
+		if doctorRunner == nil {
+			http.Error(w, `{"error":"doctor unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		results := doctorRunner.RunAll(r.Context())
+		overall := "ok"
+		for _, check := range results {
+			if check.Status == "error" {
+				overall = "error"
+				break
+			}
+			if check.Status == "warning" && overall != "error" {
+				overall = "warning"
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    overall,
+			"checks":    results,
+			"timestamp": time.Now().Unix(),
+		})
+	}))
+
 	// ── 1b. Cron lifecycle ───────────────────────────────────────────────
 	mux.HandleFunc("/v1/cron/jobs/", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		if cronService == nil {

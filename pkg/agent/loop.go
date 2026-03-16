@@ -24,6 +24,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/db"
+	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/media"
 	"github.com/ianclemence/ghost/pkg/mcp"
@@ -59,6 +60,7 @@ type AgentLoop struct {
 	installer      *skills.SkillInstaller
 	providersByModel map[string]providers.LLMProvider
 	cfg            *config.Config
+	doctor         *doctor.Doctor
 	running        atomic.Bool
 	summarizing    sync.Map // Tracks which sessions are currently being summarized
 }
@@ -270,11 +272,13 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	installer := skills.NewSkillInstaller(workspace)
 
 	cmdRegistry := commands.NewRegistry(commands.DefaultDefinitions())
+	doctorRunner := doctor.New(database.DB, provider, nil, toolsRegistry)
 	cmdRuntime := &commands.Runtime{
 		Tools:    toolsRegistry,
 		Sessions: sessionsManager,
 		Bus:      msgBus,
 		Commands: cmdRegistry,
+		Doctor:   doctorRunner,
 	}
 	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
 
@@ -327,6 +331,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		installer:      installer,
 		providersByModel: providersByModel,
 		cfg:            cfg,
+		doctor:         doctorRunner,
 		summarizing:    sync.Map{},
 	}
 }
@@ -341,6 +346,10 @@ func (al *AgentLoop) DB() *sql.DB {
 
 func (al *AgentLoop) Bus() *bus.MessageBus {
 	return al.bus
+}
+
+func (al *AgentLoop) Doctor() *doctor.Doctor {
+	return al.doctor
 }
 
 func (al *AgentLoop) Run(ctx context.Context) error {
