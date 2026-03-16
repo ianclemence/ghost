@@ -17,8 +17,6 @@ config.json
 sessions/
 build/
 tmp/
-picoclaw/
-openclaw/
 ghost.service
 
 # Coverage
@@ -61,3 +59,6 @@ workspace/*
 *.db
 *.db-shm
 *.db-wal
+
+picoclaw/
+hermes-agent/
