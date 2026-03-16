@@ -2,7 +2,9 @@ package tools
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/providers"
 )
@@ -85,4 +87,45 @@ func TestSubagentPolicyBlockedToolsFilter(t *testing.T) {
 	if _, ok := filtered.Get("message"); ok {
 		t.Fatalf("message tool must be blocked when AllowMessageWrite is false")
 	}
+}
+
+type slowProvider struct{}
+
+func (s *slowProvider) Chat(ctx context.Context, messages []providers.Message, tools []providers.ToolDefinition, model string, options map[string]interface{}) (*providers.LLMResponse, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(2 * time.Second):
+		return &providers.LLMResponse{Content: "late"}, nil
+	}
+}
+func (s *slowProvider) GetDefaultModel() string { return "test-model" }
+func (s *slowProvider) SupportsTools() bool     { return true }
+func (s *slowProvider) GetContextWindow() int   { return 4096 }
+
+func TestSubagentTimeoutReleasesConcurrencySlot(t *testing.T) {
+	oldTimeout := subagentTimeout
+	subagentTimeout = 40 * time.Millisecond
+	defer func() { subagentTimeout = oldTimeout }()
+
+	sm := NewSubagentManager(&slowProvider{}, "test-model", t.TempDir(), nil)
+	sm.SetPolicy(SubagentPolicy{
+		MaxDepth:          1,
+		MaxConcurrency:    1,
+		BlockedTools:      []string{"subagent", "spawn"},
+		AllowMessageWrite: false,
+	})
+
+	_, err := sm.RunSync(context.Background(), "slow task", "slow", "cli", "direct")
+	if err == nil {
+		t.Fatalf("expected timeout error from RunSync")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "deadline") {
+		t.Fatalf("expected deadline timeout error, got: %v", err)
+	}
+
+	if err := sm.acquireSlot(); err != nil {
+		t.Fatalf("expected slot to be released after timeout, got: %v", err)
+	}
+	sm.releaseSlot()
 }

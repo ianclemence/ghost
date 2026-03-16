@@ -267,6 +267,36 @@ type DoctorCheckPayload struct {
 	LatencyMS int64  `json:"latency_ms,omitempty"`
 }
 
+type cronPatchRequestBody struct {
+	ID      string         `json:"id"`
+	Updates cron.JobUpdate `json:"updates"`
+}
+
+func resolveRequestChannel(existing, clientType, userAgent string) string {
+	if strings.TrimSpace(existing) != "" {
+		return existing
+	}
+	if strings.EqualFold(strings.TrimSpace(clientType), "mobile") || strings.Contains(strings.ToLower(userAgent), "expo") {
+		return "mobile"
+	}
+	return "cli"
+}
+
+func decodeCronPatchRequest(r *http.Request, pathID string) (string, cron.JobUpdate, error) {
+	var body cronPatchRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return "", cron.JobUpdate{}, fmt.Errorf("invalid request: %w", err)
+	}
+	id := strings.TrimSpace(pathID)
+	if id == "" {
+		id = strings.TrimSpace(body.ID)
+	}
+	if id == "" {
+		return "", cron.JobUpdate{}, fmt.Errorf("id is required")
+	}
+	return id, body.Updates, nil
+}
+
 func handleExec(allowedCmds []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req ExecRequest
@@ -573,13 +603,45 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 
 		path := strings.TrimPrefix(r.URL.Path, "/v1/cron/jobs/")
 		parts := strings.Split(strings.Trim(path, "/"), "/")
-		if len(parts) < 2 || parts[0] == "" {
+		if len(parts) < 1 || parts[0] == "" {
 			http.Error(w, `{"error":"invalid cron job path"}`, http.StatusBadRequest)
 			return
 		}
 
 		jobID := parts[0]
-		action := parts[1]
+		action := ""
+		if len(parts) > 1 {
+			action = parts[1]
+		}
+		if action == "" && r.Method == http.MethodPatch {
+			id, updates, err := decodeCronPatchRequest(r, jobID)
+			if err != nil {
+				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadRequest)
+				return
+			}
+			if updates.Target != nil {
+				target := strings.ToLower(strings.TrimSpace(*updates.Target))
+				if target != "origin" && target != "local" {
+					http.Error(w, `{"error":"target must be origin or local"}`, http.StatusBadRequest)
+					return
+				}
+			}
+			if err := cronService.UpdateJob(id, updates); err != nil {
+				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
+				return
+			}
+			status, err := cronService.GetJobStatus(id)
+			if err != nil {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "job": status})
+			return
+		}
+		if action == "" {
+			http.Error(w, `{"error":"unsupported cron action"}`, http.StatusBadRequest)
+			return
+		}
 
 		switch action {
 		case "pause":
@@ -635,30 +697,23 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			return
 		}
 
-		var req struct {
-			ID      string         `json:"id"`
-			Updates cron.JobUpdate `json:"updates"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":"invalid request: %s"}`, err.Error()), http.StatusBadRequest)
+		id, updates, err := decodeCronPatchRequest(r, "")
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadRequest)
 			return
 		}
-		if req.ID == "" {
-			http.Error(w, `{"error":"id is required"}`, http.StatusBadRequest)
-			return
-		}
-		if req.Updates.Target != nil {
-			target := strings.ToLower(strings.TrimSpace(*req.Updates.Target))
+		if updates.Target != nil {
+			target := strings.ToLower(strings.TrimSpace(*updates.Target))
 			if target != "origin" && target != "local" {
 				http.Error(w, `{"error":"target must be origin or local"}`, http.StatusBadRequest)
 				return
 			}
 		}
-		if err := cronService.UpdateJob(req.ID, req.Updates); err != nil {
+		if err := cronService.UpdateJob(id, updates); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusNotFound)
 			return
 		}
-		status, err := cronService.GetJobStatus(req.ID)
+		status, err := cronService.GetJobStatus(id)
 		if err != nil {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
 			return
@@ -687,13 +742,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			req.SessionKey = resolveSession(r)
 		}
 		clientType := strings.TrimSpace(r.Header.Get("X-Client-Type"))
-		if req.Channel == "" {
-			if strings.EqualFold(clientType, "mobile") || strings.Contains(strings.ToLower(r.UserAgent()), "expo") {
-				req.Channel = "mobile"
-			} else {
-				req.Channel = "mobile"
-			}
-		}
+		req.Channel = resolveRequestChannel(req.Channel, clientType, r.UserAgent())
 		if req.ChatID == "" {
 			req.ChatID = "default"
 		}

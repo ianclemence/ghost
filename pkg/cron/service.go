@@ -24,13 +24,14 @@ type CronSchedule struct {
 }
 
 type CronPayload struct {
-	Kind    string `json:"kind"`
-	Message string `json:"message"`
-	Command string `json:"command,omitempty"`
-	Deliver bool   `json:"deliver"`
-	Channel string `json:"channel,omitempty"`
-	To      string `json:"to,omitempty"`
-	Target  string `json:"target,omitempty"`
+	Kind     string `json:"kind"`
+	Message  string `json:"message"`
+	Command  string `json:"command,omitempty"`
+	Deliver  bool   `json:"deliver"`
+	Channel  string `json:"channel,omitempty"`
+	To       string `json:"to,omitempty"`
+	Target   string `json:"target,omitempty"`
+	OriginID string `json:"origin_id,omitempty"`
 }
 
 type CronJobState struct {
@@ -72,6 +73,11 @@ type CronService struct {
 	running   bool
 	stopChan  chan struct{}
 	gronx     *gronx.Gronx
+}
+
+type executionOptions struct {
+	RunAsync         bool
+	PreserveSchedule bool
 }
 
 func NewCronService(storePath string, onJob JobHandler) *CronService {
@@ -177,11 +183,11 @@ func (cs *CronService) checkJobs() {
 
 	// Execute jobs outside lock.
 	for _, jobID := range dueJobIDs {
-		cs.executeJobByID(jobID)
+		cs.executeJobByID(jobID, executionOptions{})
 	}
 }
 
-func (cs *CronService) executeJobByID(jobID string) {
+func (cs *CronService) executeJobByID(jobID string, opts executionOptions) {
 	startTime := time.Now().UnixMilli()
 
 	cs.mu.RLock()
@@ -236,26 +242,34 @@ func (cs *CronService) executeJobByID(jobID string) {
 		job.State.LastError = ""
 	}
 
-	// Compute next run time
-	if job.Schedule.Kind == "at" {
-		if job.DeleteAfterRun {
-			cs.removeJobUnsafe(job.ID)
+	// Compute next run time unless this is a manual async trigger that preserves cadence
+	if !opts.PreserveSchedule {
+		if job.Schedule.Kind == "at" {
+			if job.DeleteAfterRun {
+				cs.removeJobUnsafe(job.ID)
+			} else {
+				job.Enabled = false
+				job.State.NextRunAtMS = nil
+				job.NextRunAt = nil
+				job.LifecycleState = JobStatePaused
+			}
 		} else {
-			job.Enabled = false
-			job.State.NextRunAtMS = nil
-			job.NextRunAt = nil
-			job.LifecycleState = JobStatePaused
+			nextRun := cs.computeNextRun(&job.Schedule, time.Now().UnixMilli())
+			job.State.NextRunAtMS = nextRun
+			if nextRun != nil {
+				next := time.UnixMilli(*nextRun)
+				job.NextRunAt = &next
+			} else {
+				job.NextRunAt = nil
+			}
+			job.LifecycleState = JobStateActive
 		}
 	} else {
-		nextRun := cs.computeNextRun(&job.Schedule, time.Now().UnixMilli())
-		job.State.NextRunAtMS = nextRun
-		if nextRun != nil {
-			next := time.UnixMilli(*nextRun)
-			job.NextRunAt = &next
+		if job.Enabled {
+			job.LifecycleState = JobStateActive
 		} else {
-			job.NextRunAt = nil
+			job.LifecycleState = JobStatePaused
 		}
-		job.LifecycleState = JobStateActive
 	}
 
 	if err := cs.saveStoreUnsafe(); err != nil {
@@ -487,7 +501,7 @@ func (cs *CronService) RunJobNow(id string) error {
 	if idx < 0 {
 		return fmt.Errorf("job not found")
 	}
-	go cs.executeJobByID(id)
+	go cs.executeJobByID(id, executionOptions{RunAsync: true, PreserveSchedule: true})
 	return nil
 }
 

@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +24,7 @@ type CronTool struct {
 	executor    JobExecutor
 	msgBus      *bus.MessageBus
 	execTool    *ExecTool
+	instanceID  string
 	channel     string
 	chatID      string
 	mu          sync.RWMutex
@@ -34,7 +37,18 @@ func NewCronTool(cronService *cron.CronService, executor JobExecutor, msgBus *bu
 		executor:    executor,
 		msgBus:      msgBus,
 		execTool:    NewExecTool(workspace, false),
+		instanceID:  detectCronInstanceID(),
 	}
+}
+
+func detectCronInstanceID() string {
+	if v := strings.TrimSpace(os.Getenv("GHOST_INSTANCE_ID")); v != "" {
+		return v
+	}
+	if host, err := os.Hostname(); err == nil && strings.TrimSpace(host) != "" {
+		return host
+	}
+	return "local-instance"
 }
 
 // Name returns the tool name
@@ -197,7 +211,11 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 
 	if command != "" {
 		job.Payload.Command = command
+		job.Payload.OriginID = t.instanceID
 		// Need to save the updated payload
+		t.cronService.SaveJob(job)
+	} else {
+		job.Payload.OriginID = t.instanceID
 		t.cronService.SaveJob(job)
 	}
 
@@ -260,7 +278,17 @@ func (t *CronTool) enableJob(args map[string]interface{}, enable bool) *ToolResu
 }
 
 // ExecuteJob executes a cron job through the agent
-func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) string {
+func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(job.Payload.Target)) {
+	case "", "local":
+	case "origin":
+		if job.Payload.OriginID != "" && job.Payload.OriginID != t.instanceID {
+			return "skipped", nil
+		}
+	default:
+		return "", fmt.Errorf("invalid target: %s", job.Payload.Target)
+	}
+
 	// Get channel/chatID from job payload
 	channel := job.Payload.Channel
 	chatID := job.Payload.To
@@ -292,7 +320,7 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) string {
 			ChatID:  chatID,
 			Content: output,
 		})
-		return "ok"
+		return "ok", nil
 	}
 
 	// If deliver=true, send message directly without agent processing
@@ -302,7 +330,7 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) string {
 			ChatID:  chatID,
 			Content: job.Payload.Message,
 		})
-		return "ok"
+		return "ok", nil
 	}
 
 	// For deliver=false, process through agent (for complex tasks)
@@ -321,10 +349,10 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) string {
 	)
 
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return "", err
 	}
 
 	// Resp sent via MessageBus by AgentLoop
 	_ = response // Will be sent by AgentLoop
-	return "ok"
+	return "ok", nil
 }

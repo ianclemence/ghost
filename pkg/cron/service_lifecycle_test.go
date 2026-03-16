@@ -85,3 +85,50 @@ func TestCronLifecyclePauseResumeUpdateRunNow(t *testing.T) {
 	status, _ := cs.GetJobStatus(job.ID)
 	t.Fatalf("expected run_count > 0 after RunJobNow, got %d", status.RunCount)
 }
+
+func TestRunJobNowPreservesRecurringSchedule(t *testing.T) {
+	store := filepath.Join(t.TempDir(), "jobs-preserve.json")
+	cs := NewCronService(store, func(job *CronJob) (string, error) {
+		return "ok", nil
+	})
+
+	every := int64(3_600_000)
+	job, err := cs.AddJob(
+		"preserve cadence",
+		CronSchedule{Kind: "every", EveryMS: &every},
+		"hello",
+		true,
+		"mobile",
+		"default",
+	)
+	if err != nil {
+		t.Fatalf("AddJob failed: %v", err)
+	}
+
+	before, ok := cs.GetJob(job.ID)
+	if !ok || before.State.NextRunAtMS == nil {
+		t.Fatalf("expected next run before manual trigger")
+	}
+	originalNext := *before.State.NextRunAtMS
+
+	if err := cs.RunJobNow(job.ID); err != nil {
+		t.Fatalf("RunJobNow failed: %v", err)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := cs.GetJobStatus(job.ID)
+		if err == nil && status.RunCount > 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	after, ok := cs.GetJob(job.ID)
+	if !ok || after.State.NextRunAtMS == nil {
+		t.Fatalf("expected next run after manual trigger")
+	}
+	if *after.State.NextRunAtMS != originalNext {
+		t.Fatalf("expected next run to remain %d, got %d", originalNext, *after.State.NextRunAtMS)
+	}
+}

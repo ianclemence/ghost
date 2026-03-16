@@ -12,6 +12,10 @@ import (
 
 type subagentDepthKey struct{}
 
+const DefaultSubagentTimeout = 5 * time.Minute
+
+var subagentTimeout = DefaultSubagentTimeout
+
 func WithSubagentDepth(ctx context.Context, depth int) context.Context {
 	return context.WithValue(ctx, subagentDepthKey{}, depth)
 }
@@ -231,10 +235,12 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, call
 	defer sm.releaseSlot()
 	task.Status = "running"
 	task.Created = time.Now().UnixMilli()
+	runCtx, cancel := context.WithTimeout(ctx, subagentTimeout)
+	defer cancel()
 
 	// Check if context is already cancelled before starting
 	select {
-	case <-ctx.Done():
+	case <-runCtx.Done():
 		sm.mu.Lock()
 		task.Status = "cancelled"
 		task.Result = "Task cancelled before execution"
@@ -243,7 +249,7 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, call
 	default:
 	}
 
-	loopResult, err := sm.runLoop(ctx, task.Task, task.OriginChannel, task.OriginChatID, task.Label)
+	loopResult, err := sm.runLoop(runCtx, task.Task, task.OriginChannel, task.OriginChatID, task.Label)
 
 	sm.mu.Lock()
 	var result *ToolResult
@@ -259,9 +265,13 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, call
 		task.Status = "failed"
 		task.Result = fmt.Sprintf("Error: %v", err)
 		// Check if it was cancelled
-		if ctx.Err() != nil {
+		if runCtx.Err() != nil {
 			task.Status = "cancelled"
 			task.Result = "Task cancelled during execution"
+			if runCtx.Err() == context.DeadlineExceeded {
+				task.Status = "failed"
+				task.Result = "Task timed out"
+			}
 		}
 		result = &ToolResult{
 			ForLLM:  task.Result,
@@ -305,7 +315,9 @@ func (sm *SubagentManager) RunSync(ctx context.Context, task, label, originChann
 		return nil, err
 	}
 	defer sm.releaseSlot()
-	return sm.runLoop(childCtx, task, originChannel, originChatID, label)
+	runCtx, cancel := context.WithTimeout(childCtx, subagentTimeout)
+	defer cancel()
+	return sm.runLoop(runCtx, task, originChannel, originChatID, label)
 }
 
 func (sm *SubagentManager) GetTask(taskID string) (*SubagentTask, bool) {

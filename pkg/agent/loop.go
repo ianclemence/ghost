@@ -71,6 +71,7 @@ type processOptions struct {
 	Channel         string // Target channel for tool execution
 	ChatID          string // Target chat ID for tool execution
 	ToolProfile     tools.ToolProfile
+	IsCronTriggered bool
 	UserMessage     string // User message content (may include prefix)
 	DefaultResponse string // Response when LLM returns empty
 	EnableSummary   bool   // Whether to trigger summarization
@@ -515,11 +516,17 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 	}
 
 	// Process as user message
+	isCronTriggered := strings.HasPrefix(msg.SessionKey, "cron-")
+	profile := channels.DetectToolProfile(msg.Channel, "", false)
+	if isCronTriggered {
+		profile = tools.ProfileHeartbeatSafe
+	}
 	response, err := al.runAgentLoop(ctx, processOptions{
 		SessionKey:      msg.SessionKey,
 		Channel:         msg.Channel,
 		ChatID:          msg.ChatID,
-		ToolProfile:     channels.DetectToolProfile(msg.Channel, "", false),
+		ToolProfile:     profile,
+		IsCronTriggered: isCronTriggered,
 		UserMessage:     msg.Content,
 		DefaultResponse: "I've completed processing but have no response to give.",
 		EnableSummary:   true,
