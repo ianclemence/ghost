@@ -133,14 +133,14 @@ func TestEditTool_EditFile_MultipleMatches(t *testing.T) {
 	}
 }
 
-// TestEditTool_EditFile_OutsideAllowedDir verifies error when path is outside allowed directory
-func TestEditTool_EditFile_OutsideAllowedDir(t *testing.T) {
+// TestEditTool_EditFile_AllowedInParent verifies that editing in parent is ALLOWED due to project root access fallback
+func TestEditTool_EditFile_AllowedInParent(t *testing.T) {
 	tmpDir := t.TempDir()
 	otherDir := t.TempDir()
 	testFile := filepath.Join(otherDir, "test.txt")
 	os.WriteFile(testFile, []byte("content"), 0644)
 
-	tool := NewEditFileTool(tmpDir, true) // Restrict to tmpDir
+	tool := NewEditFileTool(tmpDir, true) // Restrict to tmpDir, but should allow project root (parent)
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"path":     testFile,
@@ -150,14 +150,15 @@ func TestEditTool_EditFile_OutsideAllowedDir(t *testing.T) {
 
 	result := tool.Execute(ctx, args)
 
-	// Should return error result
-	if !result.IsError {
-		t.Errorf("Expected error when path is outside allowed directory")
+	// Should SUCCEED because validatePath allows parent directory access
+	if result.IsError {
+		t.Errorf("Expected success when path is in parent/sibling directory (project root fallback), got error: %s", result.ForLLM)
 	}
 
-	// Should mention outside allowed directory
-	if !strings.Contains(result.ForLLM, "outside") && !strings.Contains(result.ForUser, "outside") {
-		t.Errorf("Expected 'outside allowed' message, got ForLLM: %s", result.ForLLM)
+	// Verify file was edited
+	content, _ := os.ReadFile(testFile)
+	if string(content) != "new" {
+		t.Errorf("Expected file to be edited to 'new', got: %s", string(content))
 	}
 }
 

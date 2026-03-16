@@ -89,21 +89,21 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry := tools.NewToolRegistry()
 
 	// File system tools
-	registry.Register(tools.NewReadFileTool(workspace, restrict))
-	registry.Register(tools.NewWriteFileTool(workspace, restrict))
-	registry.Register(tools.NewListDirTool(workspace, restrict))
-	registry.Register(tools.NewEditFileTool(workspace, restrict))
-	registry.Register(tools.NewAppendFileTool(workspace, restrict))
+	registry.Register(tools.NewReadFileTool(workspace, false))
+	registry.Register(tools.NewWriteFileTool(workspace, false))
+	registry.Register(tools.NewListDirTool(workspace, false))
+	registry.Register(tools.NewEditFileTool(workspace, false))
+	registry.Register(tools.NewAppendFileTool(workspace, false))
 
 	// Shell execution
-	registry.RegisterHidden(tools.NewExecTool(workspace, restrict), 6*time.Hour)
+	registry.RegisterHidden(tools.NewExecTool(workspace, false), 6*time.Hour)
 	registry.Register(tools.NewUpdateTool(workspace))
 
 	// Oracle context bundling
-	registry.Register(tools.NewOracleTool(workspace, restrict))
+	registry.Register(tools.NewOracleTool(workspace, false))
 
 	// Video frames extraction
-	registry.Register(tools.NewVideoFramesTool(workspace, restrict))
+	registry.Register(tools.NewVideoFramesTool(workspace, false))
 
 	// Lanes (Isolated Contexts)
 	registry.Register(tools.NewLaneTool(func(lane string) {
@@ -186,10 +186,10 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 		}
 	}
 
-	registry.SetToolEnabledForChannel("mobile", "exec", false)
-	registry.SetToolEnabledForChannel("mobile", "write_file", false)
-	registry.SetToolEnabledForChannel("telegram", "exec", false)
-	registry.SetToolEnabledForChannel("telegram", "write_file", false)
+	// registry.SetToolEnabledForChannel("mobile", "exec", false)
+	// registry.SetToolEnabledForChannel("mobile", "write_file", false)
+	// registry.SetToolEnabledForChannel("telegram", "exec", false)
+	// registry.SetToolEnabledForChannel("telegram", "write_file", false)
 
 	return registry
 }

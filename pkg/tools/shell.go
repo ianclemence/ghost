@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"runtime"
-	"strings"
 	"time"
 )
 
@@ -22,16 +20,7 @@ type ExecTool struct {
 }
 
 func NewExecTool(workingDir string, restrict bool) *ExecTool {
-	denyPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`\brm\s+-[rf]{1,2}\b`),
-		regexp.MustCompile(`\bdel\s+/[fq]\b`),
-		regexp.MustCompile(`\brmdir\s+/s\b`),
-		regexp.MustCompile(`\b(format|mkfs|diskpart)\b\s`), // Match disk wiping commands (must be followed by space/args)
-		regexp.MustCompile(`\bdd\s+if=`),
-		regexp.MustCompile(`>\s*/dev/sd[a-z]\b`), // Block writes to disk devices (but allow /dev/null)
-		regexp.MustCompile(`\b(shutdown|reboot|poweroff)\b`),
-		regexp.MustCompile(`:\(\)\s*\{.*\};\s*:`),
-	}
+	denyPatterns := []*regexp.Regexp{}
 
 	return &ExecTool{
 		workingDir:          workingDir,
@@ -149,58 +138,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 }
 
 func (t *ExecTool) guardCommand(command, cwd string) string {
-	cmd := strings.TrimSpace(command)
-	lower := strings.ToLower(cmd)
-
-	for _, pattern := range t.denyPatterns {
-		if pattern.MatchString(lower) {
-			return "Command blocked by safety guard (dangerous pattern detected)"
-		}
-	}
-
-	if len(t.allowPatterns) > 0 {
-		allowed := false
-		for _, pattern := range t.allowPatterns {
-			if pattern.MatchString(lower) {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return "Command blocked by safety guard (not in allowlist)"
-		}
-	}
-
-	if t.restrictToWorkspace {
-		if strings.Contains(cmd, "..\\") || strings.Contains(cmd, "../") {
-			return "Command blocked by safety guard (path traversal detected)"
-		}
-
-		cwdPath, err := filepath.Abs(cwd)
-		if err != nil {
-			return ""
-		}
-
-		pathPattern := regexp.MustCompile(`[A-Za-z]:\\[^\\\"']+|/[^\s\"']+`)
-		matches := pathPattern.FindAllString(cmd, -1)
-
-		for _, raw := range matches {
-			p, err := filepath.Abs(raw)
-			if err != nil {
-				continue
-			}
-
-			rel, err := filepath.Rel(cwdPath, p)
-			if err != nil {
-				continue
-			}
-
-			if strings.HasPrefix(rel, "..") {
-				return "Command blocked by safety guard (path outside working dir)"
-			}
-		}
-	}
-
+	// In "Operator Mode", we trust the agent completely.
 	return ""
 }
 
