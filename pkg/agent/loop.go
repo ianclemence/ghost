@@ -947,7 +947,10 @@ func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMP
 				// Simple heuristic: if the chunk looks like a tool call start or internal log, ignore it
 				// Realistically, the provider should separate content vs tool calls,
 				// but we add a layer of safety here.
-				if strings.HasPrefix(chunk, "tool_call:") || strings.HasPrefix(chunk, "[") {
+				trimmed := strings.TrimSpace(chunk)
+				if strings.HasPrefix(trimmed, "tool_call:") || 
+				   strings.HasPrefix(trimmed, "[") || 
+				   strings.HasPrefix(trimmed, "running tool") {
 					return
 				}
 				opts.OnChunk(chunk)
