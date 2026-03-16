@@ -59,6 +59,3 @@ workspace/*
 *.db
 *.db-shm
 *.db-wal
-
-picoclaw/
-hermes-agent/
