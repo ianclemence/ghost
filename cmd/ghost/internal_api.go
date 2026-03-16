@@ -1108,8 +1108,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		type toolEntry struct {
 			Name string `json:"name"`
 		}
-		toolsList := make([]toolEntry, 0, len(startupInfo.Tools))
-		for _, name := range startupInfo.Tools {
+		info := agentLoop.GetStartupInfo()
+		rawTools, _ := info["tools"].([]string)
+		toolsList := make([]toolEntry, 0, len(rawTools))
+		for _, name := range rawTools {
 			toolsList = append(toolsList, toolEntry{Name: name})
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
