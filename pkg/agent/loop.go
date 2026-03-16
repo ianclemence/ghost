@@ -944,15 +944,26 @@ func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMP
 		if sp, ok := provider.(providers.StreamingProvider); ok {
 			// Wrap the OnChunk callback to ensure only assistant content is streamed
 			safeOnChunk := func(chunk string) {
-				// Simple heuristic: if the chunk looks like a tool call start or internal log, ignore it
-				// Realistically, the provider should separate content vs tool calls,
-				// but we add a layer of safety here.
+				// Deny by default: If the chunk looks like a tool call or internal log, ignore it.
+				// This is a more robust filter than just checking for "tool_call:"
 				trimmed := strings.TrimSpace(chunk)
+				
+				// 1. Tool Call Start: standard JSON or formatted tool call
 				if strings.HasPrefix(trimmed, "tool_call:") || 
-				   strings.HasPrefix(trimmed, "[") || 
+				   strings.HasPrefix(trimmed, "{\"tool") || 
 				   strings.HasPrefix(trimmed, "running tool") {
 					return
 				}
+
+				// 2. Internal Thought Blocks (often used by models before final answer)
+				// If we want to hide "thinking", we should filter these too.
+				// But for now, we focus on tool leakage.
+				if strings.HasPrefix(trimmed, "[") && !strings.HasPrefix(trimmed, "[User]") {
+					// Likely an internal log like [Reading file...]
+					return
+				}
+
+				// 3. Pass through only user-facing content
 				opts.OnChunk(chunk)
 			}
 			// Only pass OnChunk if we are NOT in a thinking/tool-use phase that might leak.
