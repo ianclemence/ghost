@@ -955,6 +955,10 @@ func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMP
 				}
 				opts.OnChunk(chunk)
 			}
+			// Only pass OnChunk if we are NOT in a thinking/tool-use phase that might leak.
+			// Ideally, we should pass safeOnChunk, but if the provider is "chatty" with tools,
+			// we might want to disable streaming for tool-heavy iterations.
+			// For now, we use safeOnChunk.
 			return sp.StreamChat(ctx, messages, tools, model, options, safeOnChunk)
 		}
 	}
