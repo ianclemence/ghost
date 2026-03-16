@@ -937,9 +937,22 @@ func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMP
 		"thinking_level": thinkingLevel,
 	}
 
+	// Safeguard: Ensure OnChunk is only used for assistant content streaming.
+	// We pass it to the provider, which is responsible for streaming the response.
+	// The provider should NOT stream tool inputs/outputs, only the assistant's generation.
 	if opts.OnChunk != nil {
 		if sp, ok := provider.(providers.StreamingProvider); ok {
-			return sp.StreamChat(ctx, messages, tools, model, options, opts.OnChunk)
+			// Wrap the OnChunk callback to ensure only assistant content is streamed
+			safeOnChunk := func(chunk string) {
+				// Simple heuristic: if the chunk looks like a tool call start or internal log, ignore it
+				// Realistically, the provider should separate content vs tool calls,
+				// but we add a layer of safety here.
+				if strings.HasPrefix(chunk, "tool_call:") || strings.HasPrefix(chunk, "[") {
+					return
+				}
+				opts.OnChunk(chunk)
+			}
+			return sp.StreamChat(ctx, messages, tools, model, options, safeOnChunk)
 		}
 	}
 	resp, err := provider.Chat(ctx, messages, tools, model, options)
