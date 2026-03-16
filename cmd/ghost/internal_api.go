@@ -28,6 +28,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 var upgrader = websocket.Upgrader{
@@ -621,10 +622,23 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 				overall = "warning"
 			}
 		}
+
+		profileName := agentLoop.GetToolProfile()
+		permissions := tools.ProfileAllowlists[profileName]
+		if permissions == nil {
+			permissions = []string{"*"} // Full access
+		}
+
 		_ = json.NewEncoder(w).Encode(DoctorResponse{
 			Status:    overall,
 			Checks:    checks,
 			Timestamp: time.Now().Unix(),
+			Uptime:    int64(time.Since(apiStartTime).Seconds()),
+			Version:   "2.0.0",
+			Profile: ProfileInfo{
+				Name:        string(profileName),
+				Permissions: permissions,
+			},
 		})
 	}))
 
@@ -727,6 +741,16 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			http.Error(w, `{"error":"cron service unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
+
+		if r.Method == http.MethodGet {
+			jobs := cronService.ListJobs(true)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"jobs": jobs,
+			})
+			return
+		}
+
 		if r.Method != http.MethodPatch {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return

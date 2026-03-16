@@ -353,6 +353,10 @@ func (al *AgentLoop) Doctor() *doctor.Doctor {
 	return al.doctor
 }
 
+func (al *AgentLoop) GetToolProfile() tools.ToolProfile {
+	return al.toolProfile
+}
+
 func (al *AgentLoop) Run(ctx context.Context) error {
 	al.running.Store(true)
 
