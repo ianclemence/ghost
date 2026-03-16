@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/constants"
@@ -49,6 +50,7 @@ type AgentLoop struct {
 	media          media.MediaStore
 	contextBuilder *ContextBuilder
 	tools          *tools.ToolRegistry
+	toolProfile    tools.ToolProfile
 	commands       *commands.Registry
 	commandExec    *commands.Executor
 	router         *routing.Router
@@ -66,6 +68,7 @@ type processOptions struct {
 	SessionKey      string // Session identifier for history/context
 	Channel         string // Target channel for tool execution
 	ChatID          string // Target chat ID for tool execution
+	ToolProfile     tools.ToolProfile
 	UserMessage     string // User message content (may include prefix)
 	DefaultResponse string // Response when LLM returns empty
 	EnableSummary   bool   // Whether to trigger summarization
@@ -212,6 +215,12 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		panic(fmt.Sprintf("Failed to initialize DB: %v", err))
 	}
 
+	if cfg.Agents.Defaults.SearchEnabled {
+		searchTool := tools.NewSessionSearchTool(database.DB)
+		toolsRegistry.Register(searchTool)
+		subagentTools.Register(searchTool)
+	}
+
 	// Initialize RAG
 	var ragStore *rag.Store
 	if cfg.RAG.Enabled {
@@ -309,6 +318,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		media:          mediaStore,
 		contextBuilder: contextBuilder,
 		tools:          toolsRegistry,
+		toolProfile:    tools.ProfileFull,
 		commands:       cmdRegistry,
 		commandExec:    cmdExec,
 		router:         router,
@@ -429,6 +439,7 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 		SessionKey:      "heartbeat",
 		Channel:         channel,
 		ChatID:          chatID,
+		ToolProfile:     tools.ProfileHeartbeatSafe,
 		UserMessage:     content,
 		DefaultResponse: "I've completed processing but have no response to give.",
 		EnableSummary:   false,
@@ -499,6 +510,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 		SessionKey:      msg.SessionKey,
 		Channel:         msg.Channel,
 		ChatID:          msg.ChatID,
+		ToolProfile:     channels.DetectToolProfile(msg.Channel, "", false),
 		UserMessage:     msg.Content,
 		DefaultResponse: "I've completed processing but have no response to give.",
 		EnableSummary:   true,
@@ -690,6 +702,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions) (string, int, error) {
 	iteration := 0
 	var finalContent string
+	activeProfile := opts.ToolProfile
+	if activeProfile == "" {
+		activeProfile = al.toolProfile
+	}
+	activeTools := tools.FilterRegistryByProfile(al.tools, activeProfile)
 
 	for iteration < al.maxIterations {
 		iteration++
@@ -701,7 +718,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			})
 
 		// Build tool definitions
-		providerToolDefs := al.tools.ToProviderDefs()
+		providerToolDefs := activeTools.ToProviderDefs()
 
 		selectedModel, _ := al.selectModel(opts, messages)
 		logger.DebugCF("agent", "LLM request",
@@ -810,7 +827,18 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				}
 			}
 
-			toolResult := al.tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
+			if !activeProfile.Allows(tc.Name) {
+				toolResultMsg := providers.Message{
+					Role:       "tool",
+					Content:    fmt.Sprintf("tool %s not available in profile %s", tc.Name, activeProfile),
+					ToolCallID: tc.ID,
+				}
+				messages = append(messages, toolResultMsg)
+				al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+				continue
+			}
+
+			toolResult := activeTools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
 
 			// Send ForUser content to user immediately if not Silent
 			if !toolResult.Silent && toolResult.ForUser != "" && opts.SendResponse {

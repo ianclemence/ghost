@@ -9,6 +9,7 @@ package channels
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/ianclemence/ghost/pkg/bus"
@@ -16,6 +17,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 type Manager struct {
@@ -33,6 +35,25 @@ type CommandDefinitionsSetter interface {
 
 type asyncTask struct {
 	cancel context.CancelFunc
+}
+
+func DetectToolProfile(channel, clientType string, isHeartbeat bool) tools.ToolProfile {
+	if isHeartbeat {
+		return tools.ProfileHeartbeatSafe
+	}
+
+	if strings.EqualFold(strings.TrimSpace(clientType), "mobile") {
+		return tools.ProfileMobileSafe
+	}
+
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "mobile":
+		return tools.ProfileMobileSafe
+	case "heartbeat", "cron":
+		return tools.ProfileHeartbeatSafe
+	default:
+		return tools.ProfileFull
+	}
 }
 
 func NewManager(cfg *config.Config, messageBus *bus.MessageBus) (*Manager, error) {

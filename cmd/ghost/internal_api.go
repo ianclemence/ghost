@@ -535,8 +535,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop) {
 		if req.SessionKey == "" {
 			req.SessionKey = resolveSession(r)
 		}
+		clientType := strings.TrimSpace(r.Header.Get("X-Client-Type"))
 		if req.Channel == "" {
-			req.Channel = "mobile"
+			if strings.EqualFold(clientType, "mobile") || strings.Contains(strings.ToLower(r.UserAgent()), "expo") {
+				req.Channel = "mobile"
+			} else {
+				req.Channel = "mobile"
+			}
 		}
 		if req.ChatID == "" {
 			req.ChatID = "default"

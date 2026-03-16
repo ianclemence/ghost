@@ -109,6 +109,48 @@ func (db *DB) initSchema() error {
 		}
 	}
 
+	if err := db.MigrateFTS5(); err != nil {
+		return fmt.Errorf("failed to migrate FTS5 schema: %w", err)
+	}
+
+	return nil
+}
+
+func (db *DB) MigrateFTS5() error {
+	queries := []string{
+		`CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+			content,
+			session_id UNINDEXED,
+			created_at UNINDEXED,
+			content=messages,
+			content_rowid=rowid
+		)`,
+		`CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+			INSERT INTO messages_fts(rowid, content, session_id, created_at)
+			VALUES (new.rowid, new.content, new.session_id, new.created_at);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+			INSERT INTO messages_fts(messages_fts, rowid, content, session_id, created_at)
+			VALUES ('delete', old.rowid, old.content, old.session_id, old.created_at);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+			INSERT INTO messages_fts(messages_fts, rowid, content, session_id, created_at)
+			VALUES ('delete', old.rowid, old.content, old.session_id, old.created_at);
+			INSERT INTO messages_fts(rowid, content, session_id, created_at)
+			VALUES (new.rowid, new.content, new.session_id, new.created_at);
+		END`,
+	}
+
+	for _, query := range queries {
+		if _, err := db.Exec(query); err != nil {
+			return err
+		}
+	}
+
+	if _, err := db.Exec(`INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`); err != nil {
+		return err
+	}
+
 	return nil
 }
 

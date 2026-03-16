@@ -84,6 +84,7 @@ type AgentsConfig struct {
 type AgentDefaults struct {
 	Workspace           string  `json:"workspace" env:"GHOST_AGENTS_DEFAULTS_WORKSPACE"`
 	RestrictToWorkspace bool    `json:"restrict_to_workspace" env:"GHOST_AGENTS_DEFAULTS_RESTRICT_TO_WORKSPACE"`
+	SearchEnabled       bool    `json:"search_enabled" env:"GHOST_AGENTS_DEFAULTS_SEARCH_ENABLED"`
 	Provider            string  `json:"provider" env:"GHOST_AGENTS_DEFAULTS_PROVIDER"`
 	Model               string  `json:"model" env:"GHOST_AGENTS_DEFAULTS_MODEL"`
 	MaxTokens           int     `json:"max_tokens" env:"GHOST_AGENTS_DEFAULTS_MAX_TOKENS"`
@@ -271,6 +272,7 @@ func DefaultConfig() *Config {
 			Defaults: AgentDefaults{
 				Workspace:           "~/.ghost/workspace",
 				RestrictToWorkspace: true,
+				SearchEnabled:       true,
 				Provider:            "",
 				Model:               "glm-4.7",
 				MaxTokens:           8192,
