@@ -227,6 +227,7 @@ func printHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  onboard     Initialize Ghost configuration and workspace")
 	fmt.Println("  agent       Interact with the agent directly")
+	fmt.Println("  dashboard   Launch the terminal dashboard")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  gateway     Start Ghost gateway")
 	fmt.Println("  status      Show Ghost status")
@@ -538,13 +539,24 @@ func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 }
 
 func gatewayCmd() {
-	// Check for --debug flag
+	noCron := false
+	apiOnly := false
+
+	// Check for flags
 	args := os.Args[2:]
 	for _, arg := range args {
 		if arg == "--debug" || arg == "-d" {
 			logger.SetLevel(logger.DEBUG)
 			fmt.Println("🔍 Debug mode enabled")
-			break
+		}
+		if arg == "--no-cron" {
+			noCron = true
+			fmt.Println("🕒 Cron service disabled")
+		}
+		if arg == "--api-only" {
+			apiOnly = true
+			noCron = true
+			fmt.Println("🔌 API Only mode enabled (Cron, Channels, Heartbeat disabled)")
 		}
 	}
 
@@ -617,39 +629,41 @@ func gatewayCmd() {
 	channelManager.SetCommandDefinitions(agentLoop.CommandDefinitions())
 
 	var transcriber voice.Transcriber
-	if cfg.Providers.Moonshot.APIKey != "" {
-		transcriber = voice.NewKimiTranscriber(cfg.Providers.Moonshot.APIKey)
-		logger.InfoC("voice", "Kimi voice transcription enabled")
-	} else if cfg.Providers.Groq.APIKey != "" {
-		transcriber = voice.NewGroqTranscriber(cfg.Providers.Groq.APIKey)
-		logger.InfoC("voice", "Groq voice transcription enabled")
-	}
+	if !apiOnly {
+		if cfg.Providers.Moonshot.APIKey != "" {
+			transcriber = voice.NewKimiTranscriber(cfg.Providers.Moonshot.APIKey)
+			logger.InfoC("voice", "Kimi voice transcription enabled")
+		} else if cfg.Providers.Groq.APIKey != "" {
+			transcriber = voice.NewGroqTranscriber(cfg.Providers.Groq.APIKey)
+			logger.InfoC("voice", "Groq voice transcription enabled")
+		}
 
-	if transcriber != nil {
-		if telegramChannel, ok := channelManager.GetChannel("telegram"); ok {
-			if tc, ok := telegramChannel.(*channels.TelegramChannel); ok {
-				tc.SetTranscriber(transcriber)
-				logger.InfoC("voice", "Voice transcription attached to Telegram channel")
+		if transcriber != nil {
+			if telegramChannel, ok := channelManager.GetChannel("telegram"); ok {
+				if tc, ok := telegramChannel.(*channels.TelegramChannel); ok {
+					tc.SetTranscriber(transcriber)
+					logger.InfoC("voice", "Voice transcription attached to Telegram channel")
+				}
 			}
-		}
-		if discordChannel, ok := channelManager.GetChannel("discord"); ok {
-			if dc, ok := discordChannel.(*channels.DiscordChannel); ok {
-				dc.SetTranscriber(transcriber)
-				logger.InfoC("voice", "Voice transcription attached to Discord channel")
+			if discordChannel, ok := channelManager.GetChannel("discord"); ok {
+				if dc, ok := discordChannel.(*channels.DiscordChannel); ok {
+					dc.SetTranscriber(transcriber)
+					logger.InfoC("voice", "Voice transcription attached to Discord channel")
+				}
 			}
-		}
-		if slackChannel, ok := channelManager.GetChannel("slack"); ok {
-			if sc, ok := slackChannel.(*channels.SlackChannel); ok {
-				sc.SetTranscriber(transcriber)
-				logger.InfoC("voice", "Voice transcription attached to Slack channel")
+			if slackChannel, ok := channelManager.GetChannel("slack"); ok {
+				if sc, ok := slackChannel.(*channels.SlackChannel); ok {
+					sc.SetTranscriber(transcriber)
+					logger.InfoC("voice", "Voice transcription attached to Slack channel")
+				}
 			}
 		}
 	}
 
 	enabledChannels := channelManager.GetEnabledChannels()
-	if len(enabledChannels) > 0 {
+	if !apiOnly && len(enabledChannels) > 0 {
 		fmt.Printf("✓ Channels enabled: %s\n", enabledChannels)
-	} else {
+	} else if !apiOnly {
 		fmt.Println("⚠ Warning: No channels enabled")
 	}
 
@@ -659,15 +673,19 @@ func gatewayCmd() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := cronService.Start(); err != nil {
-		fmt.Printf("Error starting cron service: %v\n", err)
+	if !noCron {
+		if err := cronService.Start(); err != nil {
+			fmt.Printf("Error starting cron service: %v\n", err)
+		}
+		fmt.Println("✓ Cron service started")
 	}
-	fmt.Println("✓ Cron service started")
 
-	if err := heartbeatService.Start(); err != nil {
-		fmt.Printf("Error starting heartbeat service: %v\n", err)
+	if !apiOnly {
+		if err := heartbeatService.Start(); err != nil {
+			fmt.Printf("Error starting heartbeat service: %v\n", err)
+		}
+		fmt.Println("✓ Heartbeat service started")
 	}
-	fmt.Println("✓ Heartbeat service started")
 
 	stateManager := state.NewManager(cfg.WorkspacePath())
 	deviceService := devices.NewService(devices.Config{
@@ -681,8 +699,10 @@ func gatewayCmd() {
 		fmt.Println("✓ Device event service started")
 	}
 
-	if err := channelManager.StartAll(ctx); err != nil {
-		fmt.Printf("Error starting channels: %v\n", err)
+	if !apiOnly {
+		if err := channelManager.StartAll(ctx); err != nil {
+			fmt.Printf("Error starting channels: %v\n", err)
+		}
 	}
 
 	// Start internal API for bridge-to-agent routing (mobile gets full agent runtime)
@@ -697,10 +717,16 @@ func gatewayCmd() {
 	fmt.Println("\nShutting down...")
 	cancel()
 	deviceService.Stop()
-	heartbeatService.Stop()
-	cronService.Stop()
+	if !apiOnly {
+		heartbeatService.Stop()
+	}
+	if !noCron {
+		cronService.Stop()
+	}
 	agentLoop.Stop()
-	channelManager.StopAll(ctx)
+	if !apiOnly {
+		channelManager.StopAll(ctx)
+	}
 	fmt.Println("✓ Gateway stopped")
 }
 

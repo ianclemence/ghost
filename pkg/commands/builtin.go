@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -100,39 +101,32 @@ func listWorkspaceSkills() ([]string, error) {
 }
 
 func statusHandler(ctx context.Context, req Request, rt *Runtime) error {
-	if rt == nil || rt.Tools == nil {
-		return req.Reply("Status is unavailable.")
-	}
-	tool, ok := rt.Tools.Get("exec")
-	if !ok {
-		return req.Reply("Shell execution is unavailable.")
-	}
-
-	// Get system info directly via shell
-	res := tool.Execute(ctx, map[string]interface{}{
-		"command": "uptime && df -h / && free -h",
-	})
-
 	var sb strings.Builder
-	sb.WriteString("### Ghost Pi Status\n\n")
+	sb.WriteString("### Ghost System Status\n\n")
 
-	if res.Err == nil {
-		sb.WriteString("```\n")
-		sb.WriteString(res.ForLLM)
-		sb.WriteString("\n```\n")
-	} else {
-		sb.WriteString(fmt.Sprintf("> System info error: %v\n", res.Err))
-	}
+	// Ghost Version
+	sb.WriteString(fmt.Sprintf("**Ghost Version**: %s\n", "dev")) // You might want to pass version through runtime
+	sb.WriteString(fmt.Sprintf("**Go Version**: %s\n", runtime.Version()))
+	sb.WriteString(fmt.Sprintf("**OS/Arch**: %s/%s\n", runtime.GOOS, runtime.GOARCH))
+	sb.WriteString(fmt.Sprintf("**CPUs**: %d\n", runtime.NumCPU()))
 
-	// Also try to get ghost version info
-	ghostRes := tool.Execute(ctx, map[string]interface{}{
-		"command": fmt.Sprintf("%s version", getGhostBinary()),
-	})
-	if ghostRes.Err == nil {
-		sb.WriteString("\n**Ghost Version:**\n")
-		sb.WriteString("```\n")
-		sb.WriteString(ghostRes.ForLLM)
-		sb.WriteString("\n```\n")
+	// Memory Usage
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	sb.WriteString(fmt.Sprintf("**Memory**: %v MB (Alloc) / %v MB (Sys)\n", m.Alloc/1024/1024, m.Sys/1024/1024))
+	sb.WriteString(fmt.Sprintf("**Goroutines**: %d\n", runtime.NumGoroutine()))
+
+	// Uptime (approximate via tool if available, or just omit if too complex without global start time)
+	// We could use uptime command if available
+	if rt != nil && rt.Tools != nil {
+		if tool, ok := rt.Tools.Get("exec"); ok {
+			res := tool.Execute(ctx, map[string]interface{}{
+				"command": "uptime",
+			})
+			if res.Err == nil {
+				sb.WriteString(fmt.Sprintf("**Uptime**: %s\n", strings.TrimSpace(res.ForLLM)))
+			}
+		}
 	}
 
 	return req.Reply(sb.String())

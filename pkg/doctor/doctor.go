@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/providers"
@@ -43,12 +45,55 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkProvider,
 		d.checkGateway,
 		d.checkToolRegistry,
+		d.checkPython,
 	}
 	results := make([]CheckResult, 0, len(checks))
 	for _, check := range checks {
 		results = append(results, check(ctx))
 	}
 	return results
+}
+
+func (d *Doctor) checkPython(ctx context.Context) CheckResult {
+	start := time.Now()
+	
+	// Check python3
+	cmd := exec.CommandContext(ctx, "python3", "--version")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Try python
+		cmd = exec.CommandContext(ctx, "python", "--version")
+		out, err = cmd.CombinedOutput()
+	}
+
+	if err != nil {
+		return CheckResult{
+			Name:    "python_env",
+			Status:  "error",
+			Message: "python/python3 not found",
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
+
+	version := strings.TrimSpace(string(out))
+
+	// Check pip
+	cmd = exec.CommandContext(ctx, "pip", "--version")
+	if err := cmd.Run(); err != nil {
+		return CheckResult{
+			Name:    "python_env",
+			Status:  "warning",
+			Message: fmt.Sprintf("%s (pip not found)", version),
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
+
+	return CheckResult{
+		Name:    "python_env",
+		Status:  "ok",
+		Message: fmt.Sprintf("%s (pip available)", version),
+		Latency: time.Since(start).Milliseconds(),
+	}
 }
 
 func (d *Doctor) checkDatabase(ctx context.Context) CheckResult {
