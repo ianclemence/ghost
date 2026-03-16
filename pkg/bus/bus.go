@@ -38,10 +38,7 @@ func (mb *MessageBus) PublishOutbound(msg OutboundMessage) {
 	mb.mu.RLock()
 	defer mb.mu.RUnlock()
 	for _, ch := range mb.outboundSubscribers {
-		select {
-		case ch <- msg:
-		default:
-		}
+		ch <- msg
 	}
 }
 
@@ -49,7 +46,7 @@ func (mb *MessageBus) SubscribeOutbound() (<-chan OutboundMessage, func()) {
 	mb.mu.Lock()
 	id := mb.nextSubscriberID
 	mb.nextSubscriberID++
-	ch := make(chan OutboundMessage, 100)
+	ch := make(chan OutboundMessage, 1000)
 	mb.outboundSubscribers[id] = ch
 	mb.mu.Unlock()
 

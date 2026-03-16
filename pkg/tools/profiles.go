@@ -12,6 +12,8 @@ var ProfileAllowlists = map[ToolProfile][]string{
 	ProfileMobileSafe: {
 		"read_file", "search_files", "session_search",
 		"view", "read", "grep_search",
+		"web_search", "web_fetch",
+		"sandbox", "exec",
 	},
 	ProfileHeartbeatSafe: {
 		"read_file", "view", "session_search",
