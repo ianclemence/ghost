@@ -26,8 +26,8 @@ import (
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/logger"
-	"github.com/ianclemence/ghost/pkg/media"
 	"github.com/ianclemence/ghost/pkg/mcp"
+	"github.com/ianclemence/ghost/pkg/media"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/rag"
 	"github.com/ianclemence/ghost/pkg/routing"
@@ -39,30 +39,30 @@ import (
 )
 
 type AgentLoop struct {
-	bus            *bus.MessageBus
-	provider       providers.LLMProvider
-	workspace      string
-	model          string
-	temperature    float64
-	contextWindow  int // Maximum context window size in tokens
-	maxIterations  int
-	sessions       *session.SessionManager
-	state          *state.Manager
-	media          media.MediaStore
-	contextBuilder *ContextBuilder
-	tools          *tools.ToolRegistry
-	toolProfile    tools.ToolProfile
-	commands       *commands.Registry
-	commandExec    *commands.Executor
-	router         *routing.Router
-	fallback       *providers.FallbackChain
-	fallbackModels []providers.FallbackCandidate
-	installer      *skills.SkillInstaller
+	bus              *bus.MessageBus
+	provider         providers.LLMProvider
+	workspace        string
+	model            string
+	temperature      float64
+	contextWindow    int // Maximum context window size in tokens
+	maxIterations    int
+	sessions         *session.SessionManager
+	state            *state.Manager
+	media            media.MediaStore
+	contextBuilder   *ContextBuilder
+	tools            *tools.ToolRegistry
+	toolProfile      tools.ToolProfile
+	commands         *commands.Registry
+	commandExec      *commands.Executor
+	router           *routing.Router
+	fallback         *providers.FallbackChain
+	fallbackModels   []providers.FallbackCandidate
+	installer        *skills.SkillInstaller
 	providersByModel map[string]providers.LLMProvider
-	cfg            *config.Config
-	doctor         *doctor.Doctor
-	running        atomic.Bool
-	summarizing    sync.Map // Tracks which sessions are currently being summarized
+	cfg              *config.Config
+	doctor           *doctor.Doctor
+	running          atomic.Bool
+	summarizing      sync.Map // Tracks which sessions are currently being summarized
 }
 
 // processOptions configures how a message is processed
@@ -78,7 +78,7 @@ type processOptions struct {
 	NoHistory       bool   // If true, don't load session history (for heartbeat)
 	Media           []string
 	Thinking        bool
-	OnChunk         func(string)              // New: callback for streaming chunks
+	OnChunk         func(string)                   // New: callback for streaming chunks
 	OnToolCall      func(name string, args string) // New: callback for tool calls
 }
 
@@ -310,29 +310,29 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 
 	return &AgentLoop{
-		bus:            msgBus,
-		provider:       provider,
-		workspace:      workspace,
-		model:          cfg.Agents.Defaults.Model,
-		temperature:    cfg.Agents.Defaults.Temperature,
-		contextWindow:  cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
-		maxIterations:  cfg.Agents.Defaults.MaxToolIterations,
-		sessions:       sessionsManager,
-		state:          stateManager,
-		media:          mediaStore,
-		contextBuilder: contextBuilder,
-		tools:          toolsRegistry,
-		toolProfile:    tools.ProfileFull,
-		commands:       cmdRegistry,
-		commandExec:    cmdExec,
-		router:         router,
-		fallback:       fallback,
-		fallbackModels: fallbackCandidates,
-		installer:      installer,
+		bus:              msgBus,
+		provider:         provider,
+		workspace:        workspace,
+		model:            cfg.Agents.Defaults.Model,
+		temperature:      cfg.Agents.Defaults.Temperature,
+		contextWindow:    cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
+		maxIterations:    cfg.Agents.Defaults.MaxToolIterations,
+		sessions:         sessionsManager,
+		state:            stateManager,
+		media:            mediaStore,
+		contextBuilder:   contextBuilder,
+		tools:            toolsRegistry,
+		toolProfile:      tools.ProfileFull,
+		commands:         cmdRegistry,
+		commandExec:      cmdExec,
+		router:           router,
+		fallback:         fallback,
+		fallbackModels:   fallbackCandidates,
+		installer:        installer,
 		providersByModel: providersByModel,
-		cfg:            cfg,
-		doctor:         doctorRunner,
-		summarizing:    sync.Map{},
+		cfg:              cfg,
+		doctor:           doctorRunner,
+		summarizing:      sync.Map{},
 	}
 }
 
@@ -537,7 +537,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 			time.Sleep(10 * time.Second)
 			if al.media != nil {
 				// The media paths are registered under sessionKey scope in ProcessDirectWithChannel
-				// or they are just raw paths here. 
+				// or they are just raw paths here.
 				// For safety, we still do manual cleanup for paths not in media store
 				for _, path := range msg.Media {
 					_ = os.Remove(path)
@@ -665,7 +665,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	}
 
 	// 6. Save final assistant message to session (only if it's a real response, not a tool result turn or slash command)
-	// We don't save iterations that were just tool calls here because runLLMIteration 
+	// We don't save iterations that were just tool calls here because runLLMIteration
 	// already handles AddFullMessage for tool turns.
 	if !isSlashCommand {
 		al.sessions.AddMessage(opts.SessionKey, "assistant", finalContent)

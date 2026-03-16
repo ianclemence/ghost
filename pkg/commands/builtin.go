@@ -107,15 +107,15 @@ func statusHandler(ctx context.Context, req Request, rt *Runtime) error {
 	if !ok {
 		return req.Reply("Shell execution is unavailable.")
 	}
-	
+
 	// Get system info directly via shell
 	res := tool.Execute(ctx, map[string]interface{}{
 		"command": "uptime && df -h / && free -h",
 	})
-	
+
 	var sb strings.Builder
 	sb.WriteString("### Ghost Pi Status\n\n")
-	
+
 	if res.Err == nil {
 		sb.WriteString("```\n")
 		sb.WriteString(res.ForLLM)

@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/chzyer/readline"
-	"github.com/joho/godotenv"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/auth"
 	"github.com/ianclemence/ghost/pkg/bus"
@@ -37,6 +36,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/state"
 	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/voice"
+	"github.com/joho/godotenv"
 )
 
 //go:generate cp -r ../../workspace .

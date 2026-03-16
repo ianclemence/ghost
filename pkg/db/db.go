@@ -35,17 +35,17 @@ type Message struct {
 
 // MemoryChunk represents a chunk of text with its embedding
 type MemoryChunk struct {
-	ID        string          `json:"id"`
-	Content   string          `json:"content"`
-	Embedding []float32       `json:"embedding"` // Stored as JSON
-	CreatedAt time.Time       `json:"created_at"`
-	Source    string          `json:"source,omitempty"` // e.g., "conversation", "file:..."
+	ID        string    `json:"id"`
+	Content   string    `json:"content"`
+	Embedding []float32 `json:"embedding"` // Stored as JSON
+	CreatedAt time.Time `json:"created_at"`
+	Source    string    `json:"source,omitempty"` // e.g., "conversation", "file:..."
 }
 
 // NewDB creates or opens the SQLite database
 func NewDB(workspace string) (*DB, error) {
 	dbPath := filepath.Join(workspace, "ghost.db")
-	
+
 	// Ensure workspace exists
 	if err := os.MkdirAll(workspace, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create workspace: %w", err)

@@ -254,6 +254,19 @@ type HistoryResponse struct {
 	Total    int       `json:"total"`
 }
 
+type DoctorResponse struct {
+	Status    string               `json:"status"`
+	Checks    []DoctorCheckPayload `json:"checks"`
+	Timestamp int64                `json:"timestamp"`
+}
+
+type DoctorCheckPayload struct {
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	Message   string `json:"message,omitempty"`
+	LatencyMS int64  `json:"latency_ms,omitempty"`
+}
+
 func handleExec(allowedCmds []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req ExecRequest
@@ -528,19 +541,26 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		}
 		results := doctorRunner.RunAll(r.Context())
 		overall := "ok"
+		checks := make([]DoctorCheckPayload, 0, len(results))
 		for _, check := range results {
+			checks = append(checks, DoctorCheckPayload{
+				Name:      check.Name,
+				Status:    check.Status,
+				Message:   check.Message,
+				LatencyMS: check.Latency,
+			})
 			if check.Status == "error" {
 				overall = "error"
-				break
+				continue
 			}
 			if check.Status == "warning" && overall != "error" {
 				overall = "warning"
 			}
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":    overall,
-			"checks":    results,
-			"timestamp": time.Now().Unix(),
+		_ = json.NewEncoder(w).Encode(DoctorResponse{
+			Status:    overall,
+			Checks:    checks,
+			Timestamp: time.Now().Unix(),
 		})
 	}))
 
@@ -616,8 +636,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		}
 
 		var req struct {
-			ID      string          `json:"id"`
-			Updates cron.JobUpdate  `json:"updates"`
+			ID      string         `json:"id"`
+			Updates cron.JobUpdate `json:"updates"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"invalid request: %s"}`, err.Error()), http.StatusBadRequest)
@@ -1043,10 +1063,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 	}))
 
 	// ── Remote control endpoints ──────────────────────────────────────────
-	mux.HandleFunc("/v1/exec",       authMiddleware(secret, handleExec(allowedCmds)))
+	mux.HandleFunc("/v1/exec", authMiddleware(secret, handleExec(allowedCmds)))
 	mux.HandleFunc("/v1/screenshot", authMiddleware(secret, handleScreenshot(screenshotCmd)))
-	mux.HandleFunc("/v1/stats",      authMiddleware(secret, handleStats))
-	mux.HandleFunc("/v1/open",       authMiddleware(secret, handleOpen))
+	mux.HandleFunc("/v1/stats", authMiddleware(secret, handleStats))
+	mux.HandleFunc("/v1/open", authMiddleware(secret, handleOpen))
 
 	// ── WebSocket ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/ws", handleWebSocket(agentLoop))

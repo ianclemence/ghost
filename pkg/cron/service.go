@@ -417,11 +417,11 @@ func (cs *CronService) AddJob(name string, schedule CronSchedule, message string
 	deleteAfterRun := (schedule.Kind == "at")
 
 	job := CronJob{
-		ID:       generateID(),
-		Name:     name,
-		Enabled:  true,
+		ID:             generateID(),
+		Name:           name,
+		Enabled:        true,
 		LifecycleState: JobStateActive,
-		Schedule: schedule,
+		Schedule:       schedule,
 		Payload: CronPayload{
 			Kind:    "agent_turn",
 			Message: message,

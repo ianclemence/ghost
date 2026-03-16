@@ -9,7 +9,7 @@ type testTool struct {
 	name string
 }
 
-func (t testTool) Name() string { return t.name }
+func (t testTool) Name() string        { return t.name }
 func (t testTool) Description() string { return "test tool" }
 func (t testTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{

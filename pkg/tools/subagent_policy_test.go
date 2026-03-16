@@ -18,9 +18,11 @@ func (n *noopProvider) GetContextWindow() int   { return 4096 }
 
 type namedTool struct{ name string }
 
-func (n namedTool) Name() string                              { return n.name }
-func (n namedTool) Description() string                       { return "test tool" }
-func (n namedTool) Parameters() map[string]interface{}        { return map[string]interface{}{"type": "object"} }
+func (n namedTool) Name() string        { return n.name }
+func (n namedTool) Description() string { return "test tool" }
+func (n namedTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{"type": "object"}
+}
 func (n namedTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	return UserResult("ok")
 }
