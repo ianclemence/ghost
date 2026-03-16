@@ -213,7 +213,14 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		return fmt.Errorf("invalid chat ID: %w", err)
 	}
 
-	// Stop thinking animation
+	sessionID, _ := msg.Metadata["session_id"].(string)
+	messageID, _ := msg.Metadata["message_id"].(string)
+	logger.DebugCF("telegram", "Send start", map[string]interface{}{
+		"chat_id":    msg.ChatID,
+		"session_id": sessionID,
+		"message_id": messageID,
+	})
+
 	if stop, ok := c.stopThinking.Load(msg.ChatID); ok {
 		if cf, ok := stop.(*thinkingCancel); ok && cf != nil {
 			cf.Cancel()
@@ -223,30 +230,79 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 
 	htmlContent := markdownToTelegramHTML(msg.Content)
 
-	// Try to edit placeholder
+	sendWithTimeout := func(fn func(context.Context) error) error {
+		var lastErr error
+		for attempt := 0; attempt < 2; attempt++ {
+			sendCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			lastErr = fn(sendCtx)
+			cancel()
+			if lastErr == nil {
+				return nil
+			}
+		}
+		return lastErr
+	}
+
 	if pID, ok := c.placeholders.Load(msg.ChatID); ok {
 		c.placeholders.Delete(msg.ChatID)
-		editMsg := tu.EditMessageText(tu.ID(chatID), pID.(int), htmlContent)
-		editMsg.ParseMode = telego.ModeHTML
-
-		if _, err = c.bot.EditMessageText(ctx, editMsg); err == nil {
+		err = sendWithTimeout(func(sendCtx context.Context) error {
+			editMsg := tu.EditMessageText(tu.ID(chatID), pID.(int), htmlContent)
+			editMsg.ParseMode = telego.ModeHTML
+			_, editErr := c.bot.EditMessageText(sendCtx, editMsg)
+			return editErr
+		})
+		if err == nil {
+			logger.DebugCF("telegram", "Send complete via placeholder edit", map[string]interface{}{
+				"chat_id":    msg.ChatID,
+				"session_id": sessionID,
+				"message_id": messageID,
+			})
 			return nil
 		}
-		// Fallback to new message if edit fails
+		logger.WarnCF("telegram", "Placeholder edit failed, falling back to new send", map[string]interface{}{
+			"chat_id": msg.ChatID,
+			"error":   err.Error(),
+		})
 	}
 
 	tgMsg := tu.Message(tu.ID(chatID), htmlContent)
 	tgMsg.ParseMode = telego.ModeHTML
 
-	if _, err = c.bot.SendMessage(ctx, tgMsg); err != nil {
+	err = sendWithTimeout(func(sendCtx context.Context) error {
+		_, sendErr := c.bot.SendMessage(sendCtx, tgMsg)
+		return sendErr
+	})
+	if err != nil {
 		logger.ErrorCF("telegram", "HTML parse failed, falling back to plain text", map[string]interface{}{
 			"error": err.Error(),
 		})
 		tgMsg.ParseMode = ""
-		_, err = c.bot.SendMessage(ctx, tgMsg)
+		err = sendWithTimeout(func(sendCtx context.Context) error {
+			_, sendErr := c.bot.SendMessage(sendCtx, tgMsg)
+			return sendErr
+		})
+		if err != nil {
+			logger.ErrorCF("telegram", "Send failed", map[string]interface{}{
+				"chat_id":    msg.ChatID,
+				"session_id": sessionID,
+				"message_id": messageID,
+				"error":      err.Error(),
+			})
+			return err
+		}
+		logger.DebugCF("telegram", "Send complete via fallback plain text", map[string]interface{}{
+			"chat_id":    msg.ChatID,
+			"session_id": sessionID,
+			"message_id": messageID,
+		})
 		return err
 	}
 
+	logger.DebugCF("telegram", "Send complete", map[string]interface{}{
+		"chat_id":    msg.ChatID,
+		"session_id": sessionID,
+		"message_id": messageID,
+	})
 	return nil
 }
 

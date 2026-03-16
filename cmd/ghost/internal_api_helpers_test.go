@@ -89,3 +89,26 @@ func TestBuildCronTriggerResponseShape(t *testing.T) {
 		}
 	}
 }
+
+func TestEnrichWeatherPrompt(t *testing.T) {
+	base := "what is the weather today"
+	out := enrichWeatherPrompt(base, map[string]string{
+		"city":            "Bangkok",
+		"country":         "Thailand",
+		"timezone":        "Asia/Bangkok",
+		"location_source": "mobile_ip",
+	})
+	if out == base {
+		t.Fatalf("expected enriched prompt with location context")
+	}
+	if !strings.Contains(out, "Bangkok") {
+		t.Fatalf("expected city in enriched prompt, got %q", out)
+	}
+
+	explicit := enrichWeatherPrompt("weather in London", map[string]string{
+		"city": "Bangkok",
+	})
+	if explicit != "weather in London" {
+		t.Fatalf("expected explicit city prompt unchanged")
+	}
+}

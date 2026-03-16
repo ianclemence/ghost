@@ -280,7 +280,7 @@ func (m *Manager) StopAll(ctx context.Context) error {
 
 func (m *Manager) dispatchOutbound(ctx context.Context) {
 	logger.InfoC("channels", "Outbound dispatcher started")
-	outboundCh, unsubscribe := m.bus.SubscribeOutbound()
+	outboundCh, unsubscribe := m.bus.SubscribeOutbound("channels-dispatcher", true, 2000)
 	defer unsubscribe()
 
 	for {
@@ -292,6 +292,14 @@ func (m *Manager) dispatchOutbound(ctx context.Context) {
 			if !ok {
 				return
 			}
+			sessionID, _ := msg.Metadata["session_id"].(string)
+			messageID, _ := msg.Metadata["message_id"].(string)
+			logger.DebugCF("channels", "Outbound dequeued", map[string]interface{}{
+				"channel":    msg.Channel,
+				"chat_id":    msg.ChatID,
+				"session_id": sessionID,
+				"message_id": messageID,
+			})
 
 			// Silently skip internal channels
 			if constants.IsInternalChannel(msg.Channel) {
@@ -313,6 +321,14 @@ func (m *Manager) dispatchOutbound(ctx context.Context) {
 				logger.ErrorCF("channels", "Error sending message to channel", map[string]interface{}{
 					"channel": msg.Channel,
 					"error":   err.Error(),
+					"chat_id": msg.ChatID,
+				})
+			} else {
+				logger.DebugCF("channels", "Channel send completed", map[string]interface{}{
+					"channel":    msg.Channel,
+					"chat_id":    msg.ChatID,
+					"session_id": sessionID,
+					"message_id": messageID,
 				})
 			}
 		}

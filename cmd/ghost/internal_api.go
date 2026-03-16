@@ -65,7 +65,7 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
-		outboundCh, unsubscribe := agentLoop.Bus().SubscribeOutbound()
+		outboundCh, unsubscribe := agentLoop.Bus().SubscribeOutbound("mobile-ws", false, 300)
 		defer unsubscribe()
 
 		for {
@@ -76,6 +76,14 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 				if !ok {
 					return
 				}
+				sessionID, _ := msg.Metadata["session_id"].(string)
+				messageID, _ := msg.Metadata["message_id"].(string)
+				logger.DebugCF("internal-api", "WS outbound dequeued", map[string]interface{}{
+					"channel":    msg.Channel,
+					"chat_id":    msg.ChatID,
+					"session_id": sessionID,
+					"message_id": messageID,
+				})
 
 				// Only forward mobile-channel messages and canvas updates to the app.
 				// Telegram and CLI responses must not appear in the mobile chat.
@@ -110,6 +118,7 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 					payload["timestamp"] = int64(ts)
 				}
 
+				_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				if err := conn.WriteJSON(payload); err != nil {
 					log.Printf("❌ WebSocket write error: %v", err)
 					return
@@ -117,6 +126,47 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 			}
 		}
 	}
+}
+
+func enrichWeatherPrompt(content string, metadata map[string]string) string {
+	lc := strings.ToLower(content)
+	if !strings.Contains(lc, "weather") && !strings.Contains(lc, "forecast") && !strings.Contains(lc, "temperature") {
+		return content
+	}
+	if strings.Contains(lc, " in ") || strings.Contains(lc, " at ") || strings.Contains(lc, " for ") {
+		return content
+	}
+	city := strings.TrimSpace(metadata["city"])
+	region := strings.TrimSpace(metadata["region"])
+	country := strings.TrimSpace(metadata["country"])
+	lat := strings.TrimSpace(metadata["latitude"])
+	lon := strings.TrimSpace(metadata["longitude"])
+	tz := strings.TrimSpace(metadata["timezone"])
+	source := strings.TrimSpace(metadata["location_source"])
+	details := []string{}
+	if city != "" {
+		details = append(details, "city="+city)
+	}
+	if region != "" {
+		details = append(details, "region="+region)
+	}
+	if country != "" {
+		details = append(details, "country="+country)
+	}
+	if lat != "" && lon != "" {
+		details = append(details, "lat="+lat)
+		details = append(details, "lon="+lon)
+	}
+	if tz != "" {
+		details = append(details, "timezone="+tz)
+	}
+	if source != "" {
+		details = append(details, "source="+source)
+	}
+	if len(details) == 0 {
+		return content + "\n\nIf location is unknown, ask a short clarification or clearly label fallback location source."
+	}
+	return content + "\n\nUser weather location context: " + strings.Join(details, ", ") + ". Use this location unless user explicitly asked another place. If falling back, state the fallback source explicitly."
 }
 
 const defaultInternalAPIPort = 8766
@@ -258,12 +308,13 @@ func toolStatusLabel(name, args string) string {
 }
 
 type internalAPIRequest struct {
-	Content    string      `json:"content"`
-	SessionKey string      `json:"session_key"`
-	Media      []string    `json:"media,omitempty"`
-	MediaItems []MediaItem `json:"media_items,omitempty"`
-	Channel    string      `json:"channel,omitempty"`
-	ChatID     string      `json:"chat_id,omitempty"`
+	Content    string            `json:"content"`
+	SessionKey string            `json:"session_key"`
+	Media      []string          `json:"media,omitempty"`
+	MediaItems []MediaItem       `json:"media_items,omitempty"`
+	Channel    string            `json:"channel,omitempty"`
+	ChatID     string            `json:"chat_id,omitempty"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
 }
 
 type MediaItem struct {
@@ -942,7 +993,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		ctx := r.Context()
 		response, err := agentLoop.ProcessDirectWithChannel(
 			ctx,
-			req.Content,
+			enrichWeatherPrompt(req.Content, req.Metadata),
 			req.SessionKey,
 			req.Channel,
 			req.ChatID,
