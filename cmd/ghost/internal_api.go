@@ -89,7 +89,7 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 				// Telegram and CLI responses must not appear in the mobile chat.
 				if msg.Channel != "mobile" {
 					meta, _ := msg.Metadata["type"].(string)
-					if meta != "canvas_update" {
+					if meta != "canvas_update" && meta != "cron_update" {
 						continue // skip — wrong channel
 					}
 				}

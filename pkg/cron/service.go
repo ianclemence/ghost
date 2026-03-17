@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/adhocore/gronx"
+	"github.com/ianclemence/ghost/pkg/bus"
 )
 
 type CronSchedule struct {
@@ -69,6 +70,7 @@ type CronService struct {
 	storePath string
 	store     *CronStore
 	onJob     JobHandler
+	bus       *bus.MessageBus
 	mu        sync.RWMutex
 	running   bool
 	stopChan  chan struct{}
@@ -80,10 +82,11 @@ type executionOptions struct {
 	PreserveSchedule bool
 }
 
-func NewCronService(storePath string, onJob JobHandler) *CronService {
+func NewCronService(storePath string, onJob JobHandler, bus *bus.MessageBus) *CronService {
 	cs := &CronService{
 		storePath: storePath,
 		onJob:     onJob,
+		bus:       bus,
 		gronx:     gronx.New(),
 	}
 	// Initialize and load store on creation
@@ -183,8 +186,42 @@ func (cs *CronService) checkJobs() {
 
 	// Execute jobs outside lock.
 	for _, jobID := range dueJobIDs {
+		cs.notifyUpdate(jobID, "started")
 		cs.executeJobByID(jobID, executionOptions{})
 	}
+}
+
+func (cs *CronService) notifyUpdate(jobID string, status string) {
+	if cs.bus == nil {
+		return
+	}
+
+	cs.mu.RLock()
+	var jobCopy *CronJob
+	for i := range cs.store.Jobs {
+		if cs.store.Jobs[i].ID == jobID {
+			jc := cs.store.Jobs[i]
+			jobCopy = &jc
+			break
+		}
+	}
+	cs.mu.RUnlock()
+
+	if jobCopy == nil {
+		return
+	}
+
+	cs.bus.PublishOutbound(bus.OutboundMessage{
+		Channel: "system",
+		ChatID:  "cron_update",
+		Content: status,
+		Metadata: map[string]interface{}{
+			"type":   "cron_update",
+			"job_id": jobID,
+			"status": status,
+			"job":    jobCopy,
+		},
+	})
 }
 
 func (cs *CronService) executeJobByID(jobID string, opts executionOptions) {
@@ -275,6 +312,8 @@ func (cs *CronService) executeJobByID(jobID string, opts executionOptions) {
 	if err := cs.saveStoreUnsafe(); err != nil {
 		log.Printf("[cron] failed to save store: %v", err)
 	}
+
+	cs.notifyUpdate(jobID, "finished")
 }
 
 func (cs *CronService) computeNextRun(schedule *CronSchedule, nowMS int64) *int64 {
