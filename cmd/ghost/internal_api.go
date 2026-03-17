@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -1371,6 +1372,47 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			return
 		}
 
+		mimeType := ""
+		if ext := strings.ToLower(filepath.Ext(fullPath)); ext != "" {
+			mimeType = mime.TypeByExtension(ext)
+		}
+		if len(data) > 0 {
+			sniffLen := 512
+			if len(data) < sniffLen {
+				sniffLen = len(data)
+			}
+			detected := http.DetectContentType(data[:sniffLen])
+			if mimeType == "" || strings.HasPrefix(detected, "image/") {
+				mimeType = detected
+			}
+		}
+		if strings.HasPrefix(mimeType, "image/") {
+			const maxImagePreviewBytes int64 = 4 * 1024 * 1024
+			if int64(len(data)) > maxImagePreviewBytes {
+				jsonResponse(w, http.StatusOK, map[string]interface{}{
+					"previewable": false,
+					"kind":        "image",
+					"mime_type":   mimeType,
+					"reason":      "image_too_large",
+					"size":        info.Size(),
+					"truncated":   true,
+					"content":     "",
+				})
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"previewable": true,
+				"kind":        "image",
+				"mime_type":   mimeType,
+				"reason":      "",
+				"size":        info.Size(),
+				"truncated":   false,
+				"content":     "",
+				"image_base64": base64.StdEncoding.EncodeToString(data),
+			})
+			return
+		}
+
 		preview := data
 		truncated := false
 		if int64(len(data)) > maxPreviewBytes {
@@ -1381,6 +1423,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		if bytes.Contains(preview, []byte{0x00}) || !utf8.Valid(preview) {
 			jsonResponse(w, http.StatusOK, map[string]interface{}{
 				"previewable": false,
+				"kind":        "binary",
+				"mime_type":   mimeType,
 				"reason":      "binary_or_unsupported_encoding",
 				"size":        info.Size(),
 				"truncated":   truncated,
@@ -1391,6 +1435,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
 			"previewable": true,
+			"kind":        "text",
+			"mime_type":   mimeType,
 			"reason":      "",
 			"size":        info.Size(),
 			"truncated":   truncated,
