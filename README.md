@@ -130,6 +130,15 @@ npx expo start
 
 Scan the QR code with Expo Go. Open **⚙️ Settings**, enter your Pi's local IP, port `8766`, and your `BRIDGE_SECRET`.
 
+#### 60-second Tailscale + Ghost Mobile checklist
+
+- Pi is connected: `tailscale status`
+- Phone is connected in Tailscale app (same account)
+- Host in Ghost Settings is Pi Tailscale IP (`tailscale ip -4`)
+- Port is `8766`
+- Secret matches `BRIDGE_SECRET` in Pi `.env`
+- Tap **Test Connection**, then **Save & Connect**
+
 ### 3. Firewall (local network only)
 
 ```bash
