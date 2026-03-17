@@ -10,13 +10,15 @@ const (
 
 var ProfileAllowlists = map[ToolProfile][]string{
 	ProfileMobileSafe: {
-		"read_file", "search_files", "session_search",
-		"view", "read", "grep_search",
+		"read_file", "write_file", "list_dir", "edit_file", "append_file",
+		"search_files", "session_search", "grep_search",
+		"view", "read",
 		"web_search", "web_fetch",
 		"sandbox", "exec",
+		"cron", "remember",
 	},
 	ProfileHeartbeatSafe: {
-		"read_file", "view", "session_search",
+		"read_file", "view", "session_search", "exec",
 	},
 	ProfileFull: nil,
 }
