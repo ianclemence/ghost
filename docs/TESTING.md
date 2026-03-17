@@ -7,15 +7,18 @@ This document contains useful commands and prompts to test the Ghost system base
 Run these from the `~/ghost` directory on your Pi.
 
 ### Basic Connectivity
+
 - `ghost agent -m "ping"`: Quick test of the agent loop.
 - `ghost gateway`: Starts the full API server (for phone connection).
 - `sudo systemctl status ghost`: Check if the background service is healthy.
 
 ### Monitoring
+
 - `ghost dashboard`: Launch the terminal UI dashboard.
 - `sudo journalctl -u ghost -f`: Follow real-time logs (essential for watching tool usage).
 
 ### Development
+
 - `make build`: Recompile the binary for ARM64.
 - `sudo cp build/ghost-linux-arm64 /usr/local/bin/ghost && sudo systemctl restart ghost`: Apply code changes.
 
@@ -36,43 +39,92 @@ Type these directly into the chat input starting with `/`.
 ### 3. Test Prompts (Aligned with Tools & Skills)
 
 #### Filesystem & System (Tools: `exec`, `read_file`, `write_file`, `list_dir`)
-- *"List the files in my ghost workspace."*
-- *"What is your current CPU temperature and disk usage?"*
-- *"Check if the ghost service is running using a shell command."*
-- *"Read the content of GHOST.md and summarize it."*
+
+- _"List the files in my ghost workspace."_
+- _"What is your current CPU temperature and disk usage?"_
+- _"Check if the ghost service is running using a shell command."_
+- _"Read the content of GHOST.md and summarize it."_
 
 #### Web & Research (Tools: `web_search`, `web_fetch`, `scraper`)
-- *"Search the web for the latest news on NVIDIA and summarize it."*
-- *"Scrape the latest headlines from a news site."*
-- *"Find the difference between Raspberry Pi 5 and Orange Pi 5."*
+
+- _"Search the web for the latest news on NVIDIA and summarize it."_
+- _"Scrape the latest headlines from a news site."_
+- _"Find the difference between Raspberry Pi 5 and Orange Pi 5."_
 
 #### Specialized Skills (Skills: `weather`, `aqi`, `crypto`, `speedtest`, `currency`)
-- *"What's the weather like in Tokyo?"*
-- *"Check the current AQI in Singapore."*
-- *"What is the current price of Bitcoin?"*
-- *"Run a speedtest on my Pi."*
-- *"Convert 100 USD to EUR."*
+
+- _"What's the weather like in Tokyo?"_
+- _"Check the current AQI in Singapore."_
+- _"What is the current price of Bitcoin?"_
+- _"Run a speedtest on my Pi."_
+- _"Convert 100 USD to EUR."_
 
 #### Multimedia & Environment (Skills: `camera`, `screenshot`, `spotify`, `homeassistant`)
-- *"Take a screenshot of the Pi desktop."*
-- *"Take a photo using the Pi camera."*
-- *"What's currently playing on my Spotify?"*
-- *"Check the status of my home assistant devices."*
+
+- _"Take a screenshot of the Pi desktop."_
+- _"Take a photo using the Pi camera."_
+- _"What's currently playing on my Spotify?"_
+- _"Check the status of my home assistant devices."_
 
 #### Productivity & Memory (Tools: `remember`, `oracle`; Skills: `calendar`, `journal`, `remind`)
-- *"Set a reminder to check the logs in 10 minutes."*
-- *"Add a note to my memory about my project ideas."*
-- *"Search my history for the last time we discussed the ghost-bridge port."*
-- *"Check my calendar for upcoming events."*
+
+- _"Set a reminder to check the logs in 10 minutes."_
+- _"Add a note to my memory about my project ideas."_
+- _"Search my history for the last time we discussed the ghost-bridge port."_
+- _"Check my calendar for upcoming events."_
 
 #### Visuals & Canvas (Tool: `canvas`)
-- *"Create a dashboard showing my Pi's CPU and Memory usage with a gauge chart."*
-- *"Show me a real-time clock with a futuristic neon design."*
-- *"Draw a clean, dark-themed landing page for a personal AI project."*
+
+- _"Create a dashboard showing my Pi's CPU and Memory usage with a gauge chart."_
+- _"Show me a real-time clock with a futuristic neon design."_
+- _"Draw a clean, dark-themed landing page for a personal AI project."_
 
 ---
 
-### 4. Troubleshooting Commands
+### 4. Prompt Ladder (Simple → Complex)
+
+Use this sequence to progressively stress-test Ghost from basic response quality to deep autonomous behavior.
+
+#### Level 1 — Simple Sanity Checks
+
+- _"Ping test: reply with one sentence confirming you are online."_
+- _"What tools do you have right now for filesystem, web, and shell access?"_
+- _"Summarize your current mission in 3 bullet points."_
+
+#### Level 2 — Practical Daily Tasks
+
+- _"Check current CPU temperature, RAM usage, and disk status, then give a quick health summary."_
+- _"List recent files in my workspace and tell me which ones changed most recently."_
+- _"Read GHOST.md and explain the top 5 operating rules in plain English."_
+
+#### Level 3 — Research Quality Tests
+
+- _"Find the latest Raspberry Pi 5 performance tuning recommendations and summarize with citations in this format: [Source: Institution / Article Title]."_
+- _"Compare Tailscale vs WireGuard for remote Pi access. Include trade-offs and one final recommendation."_
+- _"Give me a short report using: phenomenon → cause → impact → solution."_
+
+#### Level 4 — Reasoning + Planning
+
+- _"/think Diagnose why a mobile app can connect in Expo Go but fail in a preview build on the same network. Rank top 3 likely causes and verification steps."_
+- _"Create a prioritized hardening plan for my Ghost deployment: quick wins, medium effort, and long-term upgrades."_
+- _"Identify 3 operational risks in my current setup and mark each key finding with 【Insight】."_
+
+#### Level 5 — Agentic End-to-End Scenarios
+
+- _"Act as my SRE assistant: run a full connectivity investigation plan, then provide an executive incident summary and prevention checklist."_
+- _"Prepare a mini research brief on self-hosted AI agent security best practices with citations and a practical action list for this Pi."_
+- _"Design a weekly maintenance runbook for Ghost (health checks, backups, updates, logs, security), optimized for low downtime."_
+
+#### Level 6 — Reporting Workflow (Research Skill + LaTeX)
+
+- _"Use the research skill workflow to draft a professional report outline on AI agents for small businesses. Include section headers and source plan."_
+- _"Generate a LaTeX-ready report draft with executive summary, analysis, recommendations, and references."_
+- _"Produce a concise decision memo: should I run Ghost as local-only, Tailscale-only, or public with reverse proxy + TLS?"_
+
+---
+
+### 5. Troubleshooting Commands
+
 - `sudo lsof -i :8766`: Check if the Internal API port is occupied.
 - `sudo fuser -k 8766/tcp`: Force close any process hogging the API port.
 - `pkill -9 ghost`: Force kill any "zombie" ghost processes.
