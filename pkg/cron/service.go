@@ -197,19 +197,32 @@ func (cs *CronService) notifyUpdate(jobID string, status string) {
 	}
 
 	cs.mu.RLock()
-	var jobCopy *CronJob
-	for i := range cs.store.Jobs {
-		if cs.store.Jobs[i].ID == jobID {
-			jc := cs.store.Jobs[i]
-			jobCopy = &jc
-			break
-		}
-	}
+	jobCopy, _ := cs.findJobUnsafe(jobID)
 	cs.mu.RUnlock()
 
 	if jobCopy == nil {
 		return
 	}
+
+	cs.publishUpdate(jobCopy, status)
+}
+
+func (cs *CronService) notifyUpdateUnsafe(jobID string, status string) {
+	if cs.bus == nil {
+		return
+	}
+
+	job, _ := cs.findJobUnsafe(jobID)
+	if job == nil {
+		return
+	}
+
+	cs.publishUpdate(job, status)
+}
+
+func (cs *CronService) publishUpdate(job *CronJob, status string) {
+	// Send a copy to avoid data race if the job object is modified later
+	jobCopy := *job
 
 	cs.bus.PublishOutbound(bus.OutboundMessage{
 		Channel: "system",
@@ -217,9 +230,9 @@ func (cs *CronService) notifyUpdate(jobID string, status string) {
 		Content: status,
 		Metadata: map[string]interface{}{
 			"type":   "cron_update",
-			"job_id": jobID,
+			"job_id": job.ID,
 			"status": status,
-			"job":    jobCopy,
+			"job":    &jobCopy,
 		},
 	})
 }
@@ -313,7 +326,7 @@ func (cs *CronService) executeJobByID(jobID string, opts executionOptions) {
 		log.Printf("[cron] failed to save store: %v", err)
 	}
 
-	cs.notifyUpdate(jobID, "finished")
+	cs.notifyUpdateUnsafe(jobID, "finished")
 }
 
 func (cs *CronService) computeNextRun(schedule *CronSchedule, nowMS int64) *int64 {
@@ -500,7 +513,7 @@ func (cs *CronService) AddJob(name string, schedule CronSchedule, message string
 		return nil, err
 	}
 
-	cs.notifyUpdate(job.ID, "added")
+	cs.notifyUpdateUnsafe(job.ID, "added")
 
 	return &job, nil
 }
@@ -672,7 +685,7 @@ func (cs *CronService) removeJobUnsafe(jobID string) bool {
 		if err := cs.saveStoreUnsafe(); err != nil {
 			log.Printf("[cron] failed to save store after remove: %v", err)
 		}
-		cs.notifyUpdate(jobID, "removed")
+		cs.notifyUpdateUnsafe(jobID, "removed")
 	}
 
 	return removed
@@ -711,7 +724,7 @@ func (cs *CronService) EnableJob(jobID string, enabled bool) *CronJob {
 			if err := cs.saveStoreUnsafe(); err != nil {
 				log.Printf("[cron] failed to save store after enable: %v", err)
 			}
-			cs.notifyUpdate(job.ID, "updated")
+			cs.notifyUpdateUnsafe(job.ID, "updated")
 			return job
 		}
 	}
