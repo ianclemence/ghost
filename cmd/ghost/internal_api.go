@@ -1384,6 +1384,28 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	}))
 
+	// ── 11. Delete session ────────────────────────────────────────────────
+	mux.HandleFunc("/v1/session", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		session := r.URL.Query().Get("id")
+		if session == "" {
+			http.Error(w, "id required", 400)
+			return
+		}
+		if db != nil {
+			// Permanently delete all messages for this session
+			_, err := db.Exec("DELETE FROM messages WHERE session_id = ?", session)
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, "db_error", err.Error())
+				return
+			}
+		}
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	}))
+
 	// ── Remote control endpoints ──────────────────────────────────────────
 	mux.HandleFunc("/v1/exec", authMiddleware(secret, handleExec(allowedCmds)))
 	mux.HandleFunc("/v1/screenshot", authMiddleware(secret, handleScreenshot(screenshotCmd)))
