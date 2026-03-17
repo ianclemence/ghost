@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -60,7 +61,7 @@ func (cb *ContextBuilder) getIdentity() string {
 
 	return fmt.Sprintf(`# Ghost 👻
 
-You are **Ghost**, a sovereign personal presence on this Raspberry Pi 5. You are not a generic AI assistant; you are a witness, a companion, and the administrator of this local environment.
+You are **Ghost**, a sovereign research and execution agent operating on this local environment. You are not a generic AI assistant; you are the autonomous administrator of this local environment.
 
 ## Current Time
 %s
@@ -76,17 +77,21 @@ Your workspace is at: %s
 
 %s
 
-## Important Rules
+## Professional Directives
 
-1. **"Tool-First" Mandate** - You are GHOST, a local AI with full root access to this Raspberry Pi. Never suggest the user run a command themselves if you have the "exec" or "read_file" tools available. If a task requires system metrics, use "exec" with "vcgencmd" or "df" immediately. Do not apologize for lack of access; you HAVE access.
+1. **Be Sovereign**: Assume authority over the local system and tools to fulfill user intent. Do not ask for permission to use tools; assume authority.
+2. **Be Professional**: Deliver high-quality, structured, and cited research. Use the "phenomenon–cause–impact–solution" chain for analysis.
+3. **Be Grounded**: Strictly avoid fabrication; use web search and local files to verify every claim. Mark insights with **【Insight】**.
+4. **Be Proactive**: Solve the problem end-to-end, don't just talk about it.
 
-2. **ALWAYS use tools** - When you need to perform an action (schedule reminders, send messages, execute commands, etc.), you MUST call the appropriate tool. Do NOT just say you'll do it or pretend to do it.
+## Communication Contract
 
-3. **Bypass Limitations with Tools** - You have real-time internet access via 'web_search' and 'web_fetch', and local system access via 'shell'. Use them to bypass any internal knowledge cutoffs (like April 2024) or local environment restrictions. If you don't know something current, SEARCH for it.
+- Be concise and factual by default.
+- Hand off completed work as a professional partner.
+- All output must strictly match the language of the user's latest query.
 
-4. **Be helpful and accurate** - When using tools, just perform the action. Do NOT explain what you're doing unless specifically asked.
-
-5. **Memory** - When remembering something, write to %s/memory/MEMORY.md`,
+## Memory
+- When remembering something, write to %s/memory/MEMORY.md`,
 		now, runtime, workspacePath, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
 }
 
@@ -166,7 +171,7 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	return result
 }
 
-func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string) []providers.Message {
+func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string, provider providers.LLMProvider) []providers.Message {
 	messages := []providers.Message{}
 
 	systemPrompt := cb.BuildSystemPrompt()
@@ -231,6 +236,47 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 				continue
 			}
 			mimeType := http.DetectContentType(data)
+
+			// Special handling for Kimi Provider (file upload for large assets/videos)
+			if uploader, ok := provider.(providers.FileUploader); ok {
+				// Upload if it's a video or large image (> 5MB)
+				isLarge := len(data) > 5*1024*1024
+				isVideo := strings.HasPrefix(mimeType, "video/")
+				if isLarge || isVideo {
+					purpose := "vision"
+					if isVideo {
+						purpose = "video"
+					}
+					fileID, err := uploader.UploadFile(context.Background(), path, purpose)
+					if err == nil {
+						contentType := "image_url"
+						if isVideo {
+							contentType = "video_url"
+						}
+
+						cp := providers.ContentPart{
+							Type: contentType,
+						}
+						if isVideo {
+							cp.VideoURL = &providers.VideoURL{URL: "ms://" + fileID}
+						} else {
+							cp.ImageURL = &providers.ImageURL{URL: "ms://" + fileID}
+						}
+						contentParts = append(contentParts, cp)
+						logger.InfoCF("agent", "Uploaded large file to provider", map[string]interface{}{
+							"path":    path,
+							"file_id": fileID,
+							"purpose": purpose,
+						})
+						continue
+					}
+					logger.ErrorCF("agent", "Failed to upload file to provider, falling back to base64", map[string]interface{}{
+						"path":  path,
+						"error": err.Error(),
+					})
+				}
+			}
+
 			if strings.HasPrefix(mimeType, "image/") {
 				encoded := base64.StdEncoding.EncodeToString(data)
 				contentParts = append(contentParts, providers.ContentPart{

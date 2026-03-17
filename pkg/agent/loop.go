@@ -671,6 +671,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		opts.Media,
 		opts.Channel,
 		opts.ChatID,
+		al.provider,
 	)
 
 	// 3. Save user message to session (only if not a slash command)

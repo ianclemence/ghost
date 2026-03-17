@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -38,6 +41,8 @@ type kimiRequest struct {
 	Tools       []ToolDefinition       `json:"tools,omitempty"`
 	ToolChoice  interface{}            `json:"tool_choice,omitempty"` // "auto" or "none"
 	Temperature float64                `json:"temperature,omitempty"`
+	TopP        float64                `json:"top_p,omitempty"`
+	N           int                    `json:"n,omitempty"`
 	MaxTokens   int                    `json:"max_tokens,omitempty"`
 	Stream      bool                   `json:"stream"`
 }
@@ -90,12 +95,17 @@ func (p *KimiProvider) Chat(ctx context.Context, messages []Message, tools []Too
 	// Handle Thinking
 	if thinking, ok := options["thinking"].(bool); ok && thinking {
 		reqBody.Thinking = &kimiThinking{Type: "enabled"}
-		// Kimi docs say: tool_choice can only be "auto" or "none" with thinking enabled.
-		// Temp/TopP fixed values handled by Kimi, we don't send them if thinking is enabled to avoid errors.
+		// Kimi docs say: for K2.5 thinking models, these values are FIXED
+		reqBody.Temperature = 1.0
+		reqBody.TopP = 0.95
+		reqBody.N = 1
 	} else {
 		// Non-thinking mode parameters
 		if temp, ok := options["temperature"].(float64); ok {
 			reqBody.Temperature = temp
+		} else {
+			// Kimi docs: non-thinking mode for K2.5 should use 0.6
+			reqBody.Temperature = 0.6
 		}
 		if maxTokens, ok := options["max_tokens"].(int); ok {
 			reqBody.MaxTokens = maxTokens
@@ -231,6 +241,67 @@ func (p *KimiProvider) Chat(ctx context.Context, messages []Message, tools []Too
 
 func (p *KimiProvider) GetDefaultModel() string {
 	return "kimi-k2.5"
+}
+
+func (p *KimiProvider) UploadFile(ctx context.Context, filePath string, purpose string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// Create part for file
+	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	if err != nil {
+		return "", fmt.Errorf("failed to create form file: %w", err)
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		return "", fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	// Create part for purpose
+	if err := writer.WriteField("purpose", purpose); err != nil {
+		return "", fmt.Errorf("failed to write purpose field: %w", err)
+	}
+
+	writer.Close()
+
+	// Moonshot file upload endpoint: /v1/files
+	// Purpose can be "vision", "video", "file-extract", etc.
+	req, err := http.NewRequestWithContext(ctx, "POST", p.apiBase+"/files", body)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return result.ID, nil
 }
 
 type kimiEmbeddingRequest struct {

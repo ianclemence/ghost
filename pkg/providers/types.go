@@ -71,6 +71,10 @@ type EmbeddingProvider interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
+type FileUploader interface {
+	UploadFile(ctx context.Context, filePath string, purpose string) (string, error)
+}
+
 type ToolDefinition struct {
 	Type     string                 `json:"type"`
 	Function ToolFunctionDefinition `json:"function"`
