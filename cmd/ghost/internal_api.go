@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
 	"github.com/ianclemence/ghost/pkg/agent"
@@ -694,6 +695,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		home := os.Getenv("HOME")
 		memoryDir = filepath.Join(home, "ghost", "workspace", "memory")
 	}
+	workspaceDir := os.Getenv("GHOST_WORKSPACE_DIR")
+	if workspaceDir == "" {
+		home := os.Getenv("HOME")
+		workspaceDir = filepath.Join(home, "ghost", "workspace")
+	}
 
 	db := agentLoop.DB()
 
@@ -1293,6 +1299,103 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			return
 		}
 		jsonResponse(w, http.StatusOK, map[string]string{"content": string(content)})
+	}))
+
+	mux.HandleFunc("/v1/workspace/files", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		type FileInfo struct {
+			Name     string `json:"name"`
+			Modified int64  `json:"modified"`
+			Size     int64  `json:"size"`
+		}
+		var files []FileInfo
+
+		if _, err := os.Stat(workspaceDir); err != nil {
+			json.NewEncoder(w).Encode([]FileInfo{})
+			return
+		}
+
+		filepath.Walk(workspaceDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			rel, err := filepath.Rel(workspaceDir, path)
+			if err != nil {
+				return nil
+			}
+			files = append(files, FileInfo{
+				Name:     rel,
+				Modified: info.ModTime().Unix(),
+				Size:     info.Size(),
+			})
+			return nil
+		})
+		if files == nil {
+			files = []FileInfo{}
+		}
+		json.NewEncoder(w).Encode(files)
+	}))
+
+	mux.HandleFunc("/v1/workspace/file", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "name required")
+			return
+		}
+		clean := filepath.Clean(name)
+		if strings.Contains(clean, "..") || strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "\\") {
+			jsonError(w, http.StatusForbidden, "forbidden", "invalid path")
+			return
+		}
+
+		fullPath := filepath.Join(workspaceDir, clean)
+		rel, err := filepath.Rel(workspaceDir, fullPath)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			jsonError(w, http.StatusForbidden, "forbidden", "invalid path")
+			return
+		}
+
+		info, err := os.Stat(fullPath)
+		if err != nil {
+			jsonError(w, http.StatusNotFound, "not_found", "file not found")
+			return
+		}
+		if info.IsDir() {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "path is a directory")
+			return
+		}
+
+		const maxPreviewBytes int64 = 256 * 1024
+		data, err := os.ReadFile(fullPath)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "io_error", "failed to read file")
+			return
+		}
+
+		preview := data
+		truncated := false
+		if int64(len(data)) > maxPreviewBytes {
+			preview = data[:maxPreviewBytes]
+			truncated = true
+		}
+
+		if bytes.Contains(preview, []byte{0x00}) || !utf8.Valid(preview) {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"previewable": false,
+				"reason":      "binary_or_unsupported_encoding",
+				"size":        info.Size(),
+				"truncated":   truncated,
+				"content":     "",
+			})
+			return
+		}
+
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"previewable": true,
+			"reason":      "",
+			"size":        info.Size(),
+			"truncated":   truncated,
+			"content":     string(preview),
+		})
 	}))
 
 	// ── 7. Transcribe ─────────────────────────────────────────────────────
