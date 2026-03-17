@@ -1406,6 +1406,70 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	}))
 
+	// ── 12. Rename session ────────────────────────────────────────────────
+	mux.HandleFunc("/v1/session/rename", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+
+		var req struct {
+			OldID string `json:"old_id"`
+			NewID string `json:"new_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+			return
+		}
+		oldID := strings.TrimSpace(req.OldID)
+		newID := strings.TrimSpace(req.NewID)
+		if oldID == "" || newID == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "old_id and new_id are required")
+			return
+		}
+		if oldID == newID {
+			json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+			return
+		}
+		if db == nil {
+			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
+			return
+		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "db_error", err.Error())
+			return
+		}
+		defer tx.Rollback()
+
+		var existing int
+		if err := tx.QueryRow("SELECT COUNT(1) FROM messages WHERE session_id = ?", newID).Scan(&existing); err != nil {
+			jsonError(w, http.StatusInternalServerError, "db_error", err.Error())
+			return
+		}
+		if existing > 0 {
+			jsonError(w, http.StatusConflict, "conflict", "target session id already exists")
+			return
+		}
+
+		res, err := tx.Exec("UPDATE messages SET session_id = ? WHERE session_id = ?", newID, oldID)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "db_error", err.Error())
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			jsonError(w, http.StatusInternalServerError, "db_error", err.Error())
+			return
+		}
+
+		rowsAffected, _ := res.RowsAffected()
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok":            true,
+			"rows_affected": rowsAffected,
+		})
+	}))
+
 	// ── Remote control endpoints ──────────────────────────────────────────
 	mux.HandleFunc("/v1/exec", authMiddleware(secret, handleExec(allowedCmds)))
 	mux.HandleFunc("/v1/screenshot", authMiddleware(secret, handleScreenshot(screenshotCmd)))
