@@ -1401,13 +1401,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 				return
 			}
 			jsonResponse(w, http.StatusOK, map[string]interface{}{
-				"previewable": true,
-				"kind":        "image",
-				"mime_type":   mimeType,
-				"reason":      "",
-				"size":        info.Size(),
-				"truncated":   false,
-				"content":     "",
+				"previewable":  true,
+				"kind":         "image",
+				"mime_type":    mimeType,
+				"reason":       "",
+				"size":         info.Size(),
+				"truncated":    false,
+				"content":      "",
 				"image_base64": base64.StdEncoding.EncodeToString(data),
 			})
 			return
