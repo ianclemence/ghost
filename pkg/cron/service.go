@@ -500,6 +500,8 @@ func (cs *CronService) AddJob(name string, schedule CronSchedule, message string
 		return nil, err
 	}
 
+	cs.notifyUpdate(job.ID, "added")
+
 	return &job, nil
 }
 
@@ -670,6 +672,7 @@ func (cs *CronService) removeJobUnsafe(jobID string) bool {
 		if err := cs.saveStoreUnsafe(); err != nil {
 			log.Printf("[cron] failed to save store after remove: %v", err)
 		}
+		cs.notifyUpdate(jobID, "removed")
 	}
 
 	return removed
@@ -708,6 +711,7 @@ func (cs *CronService) EnableJob(jobID string, enabled bool) *CronJob {
 			if err := cs.saveStoreUnsafe(); err != nil {
 				log.Printf("[cron] failed to save store after enable: %v", err)
 			}
+			cs.notifyUpdate(job.ID, "updated")
 			return job
 		}
 	}
