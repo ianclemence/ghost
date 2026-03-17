@@ -427,7 +427,7 @@ func (hs *HeartbeatService) ParseAndSchedule() {
 		}
 
 		// Add job (deliver=true to send output to channel)
-		cs.AddJob(name, schedule, message, true, "", "")
+		cs.AddJob(name, schedule, message, true, "", "", nil)
 		logger.InfoCF("heartbeat", "Scheduled job from HEARTBEAT.md", map[string]interface{}{
 			"name": name,
 			"cron": cronExpr,

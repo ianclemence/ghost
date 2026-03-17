@@ -10,7 +10,7 @@ func TestCronLifecyclePauseResumeUpdateRunNow(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "jobs.json")
 	cs := NewCronService(store, func(job *CronJob) (string, error) {
 		return "ok", nil
-	})
+	}, nil)
 
 	every := int64(60_000)
 	job, err := cs.AddJob(
@@ -20,6 +20,7 @@ func TestCronLifecyclePauseResumeUpdateRunNow(t *testing.T) {
 		true,
 		"mobile",
 		"default",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("AddJob failed: %v", err)
@@ -90,7 +91,7 @@ func TestRunJobNowPreservesRecurringSchedule(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "jobs-preserve.json")
 	cs := NewCronService(store, func(job *CronJob) (string, error) {
 		return "ok", nil
-	})
+	}, nil)
 
 	every := int64(3_600_000)
 	job, err := cs.AddJob(
@@ -100,6 +101,7 @@ func TestRunJobNowPreservesRecurringSchedule(t *testing.T) {
 		true,
 		"mobile",
 		"default",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("AddJob failed: %v", err)

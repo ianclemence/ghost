@@ -6,8 +6,14 @@ import (
 	"github.com/ianclemence/ghost/pkg/bus"
 )
 
+type mockSessionProvider struct{}
+
+func (m *mockSessionProvider) GetLastActiveSession() (string, string) {
+	return "", ""
+}
+
 func TestDeliveryRouterResolveTarget(t *testing.T) {
-	r := NewDeliveryRouter()
+	r := NewDeliveryRouter(&mockSessionProvider{})
 	msg := bus.OutboundMessage{
 		Channel: "telegram",
 		Metadata: map[string]interface{}{

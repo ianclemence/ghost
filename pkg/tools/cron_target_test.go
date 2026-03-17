@@ -18,7 +18,7 @@ func (c *countingExecutor) ProcessDirectWithChannel(ctx context.Context, content
 }
 
 func TestCronExecuteJobTargetRouting(t *testing.T) {
-	cs := cron.NewCronService(filepath.Join(t.TempDir(), "jobs.json"), nil)
+	cs := cron.NewCronService(filepath.Join(t.TempDir(), "jobs.json"), nil, nil)
 	exec := &countingExecutor{}
 	tool := NewCronTool(cs, exec, nil, t.TempDir())
 
@@ -77,7 +77,7 @@ func TestCronExecuteJobTargetRouting(t *testing.T) {
 }
 
 func TestCronExecuteJobInvalidTarget(t *testing.T) {
-	cs := cron.NewCronService(filepath.Join(t.TempDir(), "jobs.json"), nil)
+	cs := cron.NewCronService(filepath.Join(t.TempDir(), "jobs.json"), nil, nil)
 	exec := &countingExecutor{}
 	tool := NewCronTool(cs, exec, nil, t.TempDir())
 
