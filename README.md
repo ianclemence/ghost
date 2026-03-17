@@ -137,7 +137,67 @@ sudo ufw allow from 192.168.0.0/16 to any port 8766
 sudo ufw reload
 ```
 
-### 4. Screenshots (optional)
+### 4. Remote Access with Tailscale (from anywhere)
+
+Tailscale creates a secure private network between your devices so you can reach your Pi even when your phone and Pi are on different networks.
+
+| Without Tailscale                 | With Tailscale                            |
+| --------------------------------- | ----------------------------------------- |
+| Devices must be on same WiFi      | Devices connect from anywhere             |
+| IPs change when networks change   | Stable private `100.x.x.x` address        |
+| Port forwarding is often required | Works through NAT/firewalls automatically |
+| Public internet exposure risk     | End-to-end encrypted private mesh         |
+
+#### Install Tailscale on your Pi
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+Approve the login URL shown in terminal.
+
+#### Install Tailscale on your phone
+
+| Platform | Install Path                  |
+| -------- | ----------------------------- |
+| Android  | Google Play Store → Tailscale |
+| iOS      | App Store → Tailscale         |
+
+Sign in with the same account used on your Pi.
+
+#### Get your Pi Tailscale IP
+
+```bash
+tailscale ip -4
+```
+
+Use that address in Ghost Mobile Settings as the host (instead of local LAN IP).
+
+#### SSH from anywhere
+
+```bash
+ssh <pi-user>@100.x.x.x
+```
+
+#### Useful Tailscale commands
+
+| Command            | Purpose                         |
+| ------------------ | ------------------------------- |
+| `tailscale status` | Show connected devices          |
+| `tailscale ip -4`  | Show your device Tailscale IPv4 |
+| `tailscale up`     | Connect/reconnect               |
+| `tailscale down`   | Disconnect                      |
+
+#### Troubleshooting
+
+| Issue                    | Check                                                                |
+| ------------------------ | -------------------------------------------------------------------- |
+| Cannot connect           | Confirm both devices are logged in and visible in `tailscale status` |
+| Name resolution issues   | Use `tailscale ip -4` directly                                       |
+| Mobile app still offline | Re-test in Ghost Settings (`Test Connection`, `Run Diagnostics`)     |
+
+### 5. Screenshots (optional)
 
 ```bash
 sudo apt install scrot
