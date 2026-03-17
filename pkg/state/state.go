@@ -19,6 +19,12 @@ type State struct {
 	// LastChatID is the last chat ID used for communication
 	LastChatID string `json:"last_chat_id,omitempty"`
 
+	// LastActiveChannel is the last channel used by the user
+	LastActiveChannel string `json:"last_active_channel,omitempty"`
+
+	// LastActiveChatID is the last chat ID used by the user
+	LastActiveChatID string `json:"last_active_chat_id,omitempty"`
+
 	// Timestamp is the last time this state was updated
 	Timestamp time.Time `json:"timestamp"`
 }
@@ -98,6 +104,31 @@ func (sm *Manager) SetLastChatID(chatID string) error {
 	}
 
 	return nil
+}
+
+// SetLastActiveSession atomically updates the last active session (channel/chat) and saves the state.
+func (sm *Manager) SetLastActiveSession(channel, chatID string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Update state
+	sm.state.LastActiveChannel = channel
+	sm.state.LastActiveChatID = chatID
+	sm.state.Timestamp = time.Now()
+
+	// Atomic save using temp file + rename
+	if err := sm.saveAtomic(); err != nil {
+		return fmt.Errorf("failed to save state atomically: %w", err)
+	}
+
+	return nil
+}
+
+// GetLastActiveSession returns the last active channel and chat ID.
+func (sm *Manager) GetLastActiveSession() (string, string) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.state.LastActiveChannel, sm.state.LastActiveChatID
 }
 
 // GetLastChannel returns the last channel from the state.

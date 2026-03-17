@@ -621,7 +621,8 @@ func gatewayCmd() {
 		return tools.SilentResult(response)
 	})
 
-	channelManager, err := channels.NewManager(cfg, msgBus)
+	// Pass agentLoop as ActiveSessionProvider to channelManager
+	channelManager, err := channels.NewManager(cfg, msgBus, agentLoop)
 	if err != nil {
 		fmt.Printf("Error creating channel manager: %v\n", err)
 		os.Exit(1)
@@ -1241,7 +1242,7 @@ func cronAddCmd(storePath string) {
 	}
 
 	cs := cron.NewCronService(storePath, nil, nil)
-	job, err := cs.AddJob(name, schedule, message, deliver, channel, to)
+	job, err := cs.AddJob(name, schedule, message, deliver, channel, to, nil)
 	if err != nil {
 		fmt.Printf("Error adding job: %v\n", err)
 		return

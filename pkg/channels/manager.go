@@ -90,7 +90,7 @@ func DetectToolProfile(channel, clientType, sessionKey string, isHeartbeat bool)
 	return tools.ProfileFull
 }
 
-func NewManager(cfg *config.Config, messageBus *bus.MessageBus) (*Manager, error) {
+func NewManager(cfg *config.Config, messageBus *bus.MessageBus, sp ActiveSessionProvider) (*Manager, error) {
 	m := &Manager{
 		channels:       make(map[string]Channel),
 		outboundQueues: make(map[string]chan bus.OutboundMessage),
@@ -99,7 +99,7 @@ func NewManager(cfg *config.Config, messageBus *bus.MessageBus) (*Manager, error
 		fatalChannels:  make(map[string]string),
 		bus:            messageBus,
 		config:         cfg,
-		deliveryRouter: NewDeliveryRouter(),
+		deliveryRouter: NewDeliveryRouter(sp),
 	}
 
 	if err := m.initChannels(); err != nil {

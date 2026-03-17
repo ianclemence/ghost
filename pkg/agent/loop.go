@@ -350,6 +350,10 @@ func (al *AgentLoop) DB() *sql.DB {
 	return nil
 }
 
+func (al *AgentLoop) GetLastActiveSession() (string, string) {
+	return al.state.GetLastActiveSession()
+}
+
 func (al *AgentLoop) Bus() *bus.MessageBus {
 	return al.bus
 }
@@ -432,6 +436,11 @@ func (al *AgentLoop) RecordLastChannel(channel string) error {
 // This uses the atomic state save mechanism to prevent data loss on crash.
 func (al *AgentLoop) RecordLastChatID(chatID string) error {
 	return al.state.SetLastChatID(chatID)
+}
+
+// RecordLastActiveSession records the last active session (channel/chat) for this workspace.
+func (al *AgentLoop) RecordLastActiveSession(channel, chatID string) error {
+	return al.state.SetLastActiveSession(channel, chatID)
 }
 
 func (al *AgentLoop) ProcessDirect(ctx context.Context, content, sessionKey string) (string, error) {
@@ -627,6 +636,10 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			channelKey := fmt.Sprintf("%s:%s", opts.Channel, opts.ChatID)
 			if err := al.RecordLastChannel(channelKey); err != nil {
 				logger.WarnCF("agent", "Failed to record last channel: %v", map[string]interface{}{"error": err.Error()})
+			}
+			// Also record specifically as active session for smart routing
+			if err := al.RecordLastActiveSession(opts.Channel, opts.ChatID); err != nil {
+				logger.WarnCF("agent", "Failed to record last active session: %v", map[string]interface{}{"error": err.Error()})
 			}
 		}
 	}

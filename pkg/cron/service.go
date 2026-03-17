@@ -53,10 +53,11 @@ type CronJob struct {
 	NextRunAt      *time.Time   `json:"next_run_at,omitempty"`
 	Schedule       CronSchedule `json:"schedule"`
 	Payload        CronPayload  `json:"payload"`
-	State          CronJobState `json:"state"`
-	CreatedAtMS    int64        `json:"createdAtMs"`
-	UpdatedAtMS    int64        `json:"updatedAtMs"`
-	DeleteAfterRun bool         `json:"deleteAfterRun"`
+	State          CronJobState           `json:"state"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	CreatedAtMS    int64                  `json:"createdAtMs"`
+	UpdatedAtMS    int64                  `json:"updatedAtMs"`
+	DeleteAfterRun bool                   `json:"deleteAfterRun"`
 }
 
 type CronStore struct {
@@ -473,7 +474,7 @@ func (cs *CronService) saveStoreUnsafe() error {
 	return os.WriteFile(cs.storePath, data, 0644)
 }
 
-func (cs *CronService) AddJob(name string, schedule CronSchedule, message string, deliver bool, channel, to string) (*CronJob, error) {
+func (cs *CronService) AddJob(name string, schedule CronSchedule, message string, deliver bool, channel, to string, metadata map[string]interface{}) (*CronJob, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
@@ -499,6 +500,7 @@ func (cs *CronService) AddJob(name string, schedule CronSchedule, message string
 		State: CronJobState{
 			NextRunAtMS: cs.computeNextRun(&schedule, now),
 		},
+		Metadata:       metadata,
 		CreatedAtMS:    now,
 		UpdatedAtMS:    now,
 		DeleteAfterRun: deleteAfterRun,

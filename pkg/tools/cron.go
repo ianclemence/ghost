@@ -186,16 +186,17 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 	}
 
 	command, _ := args["command"].(string)
-	if command != "" {
-		// Commands must be processed by agent/exec tool, so deliver must be false (or handled specifically)
-		// Actually, let's keep deliver=false to let the system know it's not a simple chat message
-		// But for our new logic in ExecuteJob, we can handle it regardless of deliver flag if Payload.Command is set.
-		// However, logically, it's not "delivered" to chat directly as is.
-		deliver = false
-	}
-
+	
 	// Truncate message for job name (max 30 chars)
 	messagePreview := utils.Truncate(message, 30)
+
+	// Build metadata for smart delivery
+	var metadata map[string]interface{}
+	if command == "" {
+		metadata = map[string]interface{}{
+			"delivery_mode": "smart",
+		}
+	}
 
 	job, err := t.cronService.AddJob(
 		messagePreview,
@@ -204,6 +205,7 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 		deliver,
 		channel,
 		chatID,
+		metadata,
 	)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("Error adding job: %v", err))
@@ -212,8 +214,11 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 	job.Payload.To = chatID
 	job.Payload.Channel = channel
 	job.Payload.OriginID = t.instanceID
+	
 	if command != "" {
 		job.Payload.Command = command
+		// Commands must be processed by agent/exec tool, so deliver must be false
+		job.Payload.Deliver = false
 	}
 	
 	// Save the updated payload with correct ChatID/Channel
@@ -316,9 +321,10 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) (string, e
 		}
 
 		t.msgBus.PublishOutbound(bus.OutboundMessage{
-			Channel: channel,
-			ChatID:  chatID,
-			Content: output,
+			Channel:  channel,
+			ChatID:   chatID,
+			Content:  output,
+			Metadata: job.Metadata,
 		})
 		return "ok", nil
 	}
@@ -326,9 +332,10 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) (string, e
 	// If deliver=true, send message directly without agent processing
 	if job.Payload.Deliver {
 		t.msgBus.PublishOutbound(bus.OutboundMessage{
-			Channel: channel,
-			ChatID:  chatID,
-			Content: job.Payload.Message,
+			Channel:  channel,
+			ChatID:   chatID,
+			Content:  job.Payload.Message,
+			Metadata: job.Metadata,
 		})
 		return "ok", nil
 	}
