@@ -27,11 +27,11 @@ const dashboardVersion = "2.2.0"
 
 // ─── Ghost ASCII Art (Tasteful, integrated) ─────────────────────────────────
 const ghostASCII = `
-   ╭───╮
-  ╭│ ◉ ◉│╮
- ╭││ ╰─╯││╮
- ╰│╰────╯│╯
-  ╰─╯  ╰─╯ 
+   ╭━━━━━━╮
+  ╭│      │╮
+ │ │ ●  ● │ │
+ │ │      │ │
+ ╰─╯╭╮╭╮╭╮╰─╯
 `
 
 // ─── Theme: Apple/Anthropic Cyber Blend ─────────────────────────────────────
