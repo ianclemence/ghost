@@ -1,4 +1,4 @@
-package skills
+﻿package skills
 
 import (
 	"context"
@@ -93,7 +93,7 @@ func (si *SkillInstaller) Uninstall(skillName string) error {
 }
 
 func (si *SkillInstaller) ListAvailableSkills(ctx context.Context) ([]AvailableSkill, error) {
-	url := "https://raw.githubusercontent.com/sipeed/picoclaw-skills/main/skills.json"
+	url := "https://raw.githubusercontent.com/sipeed/GHOST-skills/main/skills.json"
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -125,7 +125,7 @@ func (si *SkillInstaller) ListAvailableSkills(ctx context.Context) ([]AvailableS
 }
 
 func (si *SkillInstaller) ListBuiltinSkills() []BuiltinSkill {
-	builtinSkillsDir := filepath.Join(filepath.Dir(si.workspace), "picoclaw", "skills")
+	builtinSkillsDir := filepath.Join(filepath.Dir(si.workspace), "GHOST", "skills")
 
 	entries, err := os.ReadDir(builtinSkillsDir)
 	if err != nil {
@@ -160,7 +160,7 @@ func (si *SkillInstaller) ListBuiltinSkills() []BuiltinSkill {
 			// 	Enabled: true,
 			// }
 
-			status := "✓"
+			status := "âœ“"
 			fmt.Printf("  %s  %s\n", status, entry.Name())
 			if description != "" {
 				fmt.Printf("    %s\n", description)
@@ -169,3 +169,4 @@ func (si *SkillInstaller) ListBuiltinSkills() []BuiltinSkill {
 	}
 	return skills
 }
+

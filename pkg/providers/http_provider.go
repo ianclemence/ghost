@@ -1,5 +1,5 @@
-// Ghost - Ultra-lightweight personal AI agent
-// Inspired by and based on picoclaw: https://github.com/ianclemence/ghost
+﻿// Ghost - Ultra-lightweight personal AI agent
+// Inspired by and based on GHOST: https://github.com/ianclemence/ghost
 // License: MIT
 //
 // Copyright (c) 2026 Ghost contributors
@@ -389,7 +389,7 @@ func createClaudeAuthProvider() (LLMProvider, error) {
 		return nil, fmt.Errorf("loading auth credentials: %w", err)
 	}
 	if cred == nil {
-		return nil, fmt.Errorf("no credentials for anthropic. Run: picoclaw auth login --provider anthropic")
+		return nil, fmt.Errorf("no credentials for anthropic. Run: GHOST auth login --provider anthropic")
 	}
 	return NewClaudeProviderWithTokenSource(cred.AccessToken, createClaudeTokenSource()), nil
 }
@@ -400,7 +400,7 @@ func createCodexAuthProvider() (LLMProvider, error) {
 		return nil, fmt.Errorf("loading auth credentials: %w", err)
 	}
 	if cred == nil {
-		return nil, fmt.Errorf("no credentials for openai. Run: picoclaw auth login --provider openai")
+		return nil, fmt.Errorf("no credentials for openai. Run: GHOST auth login --provider openai")
 	}
 	return NewCodexProviderWithTokenSource(cred.AccessToken, cred.AccountID, createCodexTokenSource()), nil
 }
@@ -633,3 +633,4 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 
 	return NewHTTPProvider(apiKey, apiBase, proxy, cfg.Agents.Defaults.EmbeddingModel), nil
 }
+

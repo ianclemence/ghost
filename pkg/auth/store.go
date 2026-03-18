@@ -1,4 +1,4 @@
-package auth
+﻿package auth
 
 import (
 	"encoding/json"
@@ -39,7 +39,7 @@ func authFilePath() string {
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
-	return filepath.Join(home, ".picoclaw", "auth.json")
+	return filepath.Join(home, ".GHOST", "auth.json")
 }
 
 func LoadStore() (*AuthStore, error) {
@@ -113,3 +113,4 @@ func DeleteAllCredentials() error {
 	}
 	return nil
 }
+

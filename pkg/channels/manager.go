@@ -1,5 +1,5 @@
-// Ghost - Ultra-lightweight personal AI agent
-// Inspired by and based on picoclaw: https://github.com/ianclemence/ghost
+﻿// Ghost - Ultra-lightweight personal AI agent
+// Inspired by and based on GHOST: https://github.com/ianclemence/ghost
 // License: MIT
 //
 // Copyright (c) 2026 Ghost contributors
@@ -572,3 +572,4 @@ func (m *Manager) SendRouted(ctx context.Context, chatID, content, originChannel
 	target := m.deliveryRouter.ResolveTarget(msg)
 	return m.SendToChannel(ctx, target, chatID, content)
 }
+

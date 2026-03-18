@@ -1,4 +1,4 @@
-package providers
+﻿package providers
 
 import (
 	"context"
@@ -62,8 +62,9 @@ func createClaudeTokenSource() func() (string, error) {
 			return "", fmt.Errorf("loading auth credentials: %w", err)
 		}
 		if cred == nil {
-			return "", fmt.Errorf("no credentials for anthropic. Run: picoclaw auth login --provider anthropic")
+			return "", fmt.Errorf("no credentials for anthropic. Run: GHOST auth login --provider anthropic")
 		}
 		return cred.AccessToken, nil
 	}
 }
+

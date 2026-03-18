@@ -1,4 +1,4 @@
-package skills
+﻿package skills
 
 import (
 	"encoding/json"
@@ -23,16 +23,16 @@ type SkillInfo struct {
 
 type SkillsLoader struct {
 	workspace       string
-	workspaceSkills string // workspace skills (项目级别)
-	globalSkills    string // 全局 skills (~/.picoclaw/skills)
-	builtinSkills   string // 内置 skills
+	workspaceSkills string // workspace skills (é¡¹ç›®çº§åˆ«)
+	globalSkills    string // å…¨å±€ skills (~/.GHOST/skills)
+	builtinSkills   string // å†…ç½® skills
 }
 
 func NewSkillsLoader(workspace string, globalSkills string, builtinSkills string) *SkillsLoader {
 	return &SkillsLoader{
 		workspace:       workspace,
 		workspaceSkills: filepath.Join(workspace, "skills"),
-		globalSkills:    globalSkills, // ~/.picoclaw/skills
+		globalSkills:    globalSkills, // ~/.GHOST/skills
 		builtinSkills:   builtinSkills,
 	}
 }
@@ -62,14 +62,14 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 		}
 	}
 
-	// 全局 skills (~/.picoclaw/skills) - 被 workspace skills 覆盖
+	// å…¨å±€ skills (~/.GHOST/skills) - è¢« workspace skills è¦†ç›–
 	if sl.globalSkills != "" {
 		if dirs, err := os.ReadDir(sl.globalSkills); err == nil {
 			for _, dir := range dirs {
 				if dir.IsDir() {
 					skillFile := filepath.Join(sl.globalSkills, dir.Name(), "SKILL.md")
 					if _, err := os.Stat(skillFile); err == nil {
-						// 检查是否已被 workspace skills 覆盖
+						// æ£€æŸ¥æ˜¯å¦å·²è¢« workspace skills è¦†ç›–
 						exists := false
 						for _, s := range skills {
 							if s.Name == dir.Name() && s.Source == "workspace" {
@@ -103,7 +103,7 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 				if dir.IsDir() {
 					skillFile := filepath.Join(sl.builtinSkills, dir.Name(), "SKILL.md")
 					if _, err := os.Stat(skillFile); err == nil {
-						// 检查是否已被 workspace 或 global skills 覆盖
+						// æ£€æŸ¥æ˜¯å¦å·²è¢« workspace æˆ– global skills è¦†ç›–
 						exists := false
 						for _, s := range skills {
 							if s.Name == dir.Name() && (s.Source == "workspace" || s.Source == "global") {
@@ -135,7 +135,7 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 }
 
 func (sl *SkillsLoader) LoadSkill(name string) (string, bool) {
-	// 1. 优先从 workspace skills 加载（项目级别）
+	// 1. ä¼˜å…ˆä»Ž workspace skills åŠ è½½ï¼ˆé¡¹ç›®çº§åˆ«ï¼‰
 	if sl.workspaceSkills != "" {
 		skillFile := filepath.Join(sl.workspaceSkills, name, "SKILL.md")
 		if content, err := os.ReadFile(skillFile); err == nil {
@@ -143,7 +143,7 @@ func (sl *SkillsLoader) LoadSkill(name string) (string, bool) {
 		}
 	}
 
-	// 2. 其次从全局 skills 加载 (~/.picoclaw/skills)
+	// 2. å…¶æ¬¡ä»Žå…¨å±€ skills åŠ è½½ (~/.GHOST/skills)
 	if sl.globalSkills != "" {
 		skillFile := filepath.Join(sl.globalSkills, name, "SKILL.md")
 		if content, err := os.ReadFile(skillFile); err == nil {
@@ -151,7 +151,7 @@ func (sl *SkillsLoader) LoadSkill(name string) (string, bool) {
 		}
 	}
 
-	// 3. 最后从内置 skills 加载
+	// 3. æœ€åŽä»Žå†…ç½® skills åŠ è½½
 	if sl.builtinSkills != "" {
 		skillFile := filepath.Join(sl.builtinSkills, name, "SKILL.md")
 		if content, err := os.ReadFile(skillFile); err == nil {
@@ -282,3 +282,4 @@ func escapeXML(s string) string {
 	s = strings.ReplaceAll(s, ">", "&gt;")
 	return s
 }
+

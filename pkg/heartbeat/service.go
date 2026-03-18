@@ -1,5 +1,5 @@
-// Ghost - Ultra-lightweight personal AI agent
-// Inspired by and based on picoclaw: https://github.com/ianclemence/ghost
+﻿// Ghost - Ultra-lightweight personal AI agent
+// Inspired by and based on GHOST: https://github.com/ianclemence/ghost
 // License: MIT
 //
 // Copyright (c) 2026 Ghost contributors
@@ -434,3 +434,4 @@ func (hs *HeartbeatService) ParseAndSchedule() {
 		})
 	}
 }
+

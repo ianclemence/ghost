@@ -1,4 +1,4 @@
-package tools
+﻿package tools
 
 import (
 	"context"
@@ -31,7 +31,7 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 
 	if restrict && !strings.HasPrefix(absPath, absWorkspace) {
 		// Allow access to temporary media files from mobile uploads
-		tempMediaDir := filepath.Join(os.TempDir(), "picoclaw_media")
+		tempMediaDir := filepath.Join(os.TempDir(), "GHOST_media")
 		if strings.HasPrefix(absPath, tempMediaDir) {
 			return absPath, nil
 		}
@@ -217,3 +217,4 @@ func (t *ListDirTool) Execute(ctx context.Context, args map[string]interface{}) 
 
 	return NewToolResult(result)
 }
+

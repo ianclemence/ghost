@@ -1,4 +1,4 @@
-MIT License
+﻿MIT License
 
 Copyright (c) 2026 Ghost contributors
 
@@ -22,4 +22,5 @@ SOFTWARE.
 
 ---
 
-Ghost is heavily inspired by and based on [Picoclaw](https://github.com/sipeed/picoclaw).
+Ghost is heavily inspired by and based on [GHOST](https://github.com/sipeed/GHOST).
+

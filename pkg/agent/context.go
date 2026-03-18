@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"context"
@@ -29,7 +29,7 @@ func getGlobalConfigDir() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".picoclaw")
+	return filepath.Join(home, ".GHOST")
 }
 
 func NewContextBuilder(workspace string) *ContextBuilder {
@@ -59,7 +59,7 @@ func (cb *ContextBuilder) getIdentity() string {
 	// Build tools section dynamically
 	toolsSection := cb.buildToolsSection()
 
-	return fmt.Sprintf(`# Ghost 👻
+	return fmt.Sprintf(`# Ghost ðŸ‘»
 
 You are **Ghost**, a sovereign research and execution agent operating on this local environment. You are not a generic AI assistant; you are the autonomous administrator of this local environment.
 
@@ -80,8 +80,8 @@ Your workspace is at: %s
 ## Professional Directives
 
 1. **Be Sovereign**: Assume authority over the local system and tools to fulfill user intent. Do not ask for permission to use tools; assume authority.
-2. **Be Professional**: Deliver high-quality, structured, and cited research. Use the "phenomenon–cause–impact–solution" chain for analysis.
-3. **Be Grounded**: Strictly avoid fabrication; use web search and local files to verify every claim. Mark insights with **【Insight】**.
+2. **Be Professional**: Deliver high-quality, structured, and cited research. Use the "phenomenonâ€“causeâ€“impactâ€“solution" chain for analysis.
+3. **Be Grounded**: Strictly avoid fabrication; use web search and local files to verify every claim. Mark insights with **ã€Insightã€‘**.
 4. **Be Proactive**: Solve the problem end-to-end, don't just talk about it.
 
 ## Communication Contract
@@ -448,3 +448,4 @@ func (cb *ContextBuilder) sanitizeHistory(history []providers.Message) []provide
 
 	return sanitized
 }
+

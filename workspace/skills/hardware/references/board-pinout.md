@@ -1,4 +1,4 @@
-# Board Pinout & Pinmux Reference
+﻿# Board Pinout & Pinmux Reference
 
 ## LicheeRV Nano (SG2002)
 
@@ -6,7 +6,7 @@
 
 | Bus | Pins | Notes |
 |-----|------|-------|
-| I2C-1 | P18 (SCL), P21 (SDA) | **Shared with WiFi SDIO** — must stop WiFi first |
+| I2C-1 | P18 (SCL), P21 (SDA) | **Shared with WiFi SDIO** â€” must stop WiFi first |
 | I2C-3 | Available on header | Check device tree for pin assignment |
 | I2C-5 | Software (BitBang) | Slower but no pin conflicts |
 
@@ -14,7 +14,7 @@
 
 | Bus | Pins | Notes |
 |-----|------|-------|
-| SPI-2 | P18 (CS), P21 (MISO), P22 (MOSI), P23 (SCK) | **Shared with WiFi** — must stop WiFi first |
+| SPI-2 | P18 (CS), P21 (MISO), P22 (MOSI), P23 (SCK) | **Shared with WiFi** â€” must stop WiFi first |
 | SPI-4 | Software (BitBang) | Slower but no pin conflicts |
 
 ### Setup Steps for I2C-1
@@ -24,8 +24,8 @@
 /etc/init.d/S30wifi stop
 
 # 2. Configure pinmux for I2C-1
-devmem 0x030010D0 b 0x2   # P18 → I2C1_SCL
-devmem 0x030010DC b 0x2   # P21 → I2C1_SDA
+devmem 0x030010D0 b 0x2   # P18 â†’ I2C1_SCL
+devmem 0x030010DC b 0x2   # P21 â†’ I2C1_SDA
 
 # 3. Load i2c-dev module
 modprobe i2c-dev
@@ -41,10 +41,10 @@ ls /dev/i2c-*
 /etc/init.d/S30wifi stop
 
 # 2. Configure pinmux for SPI-2
-devmem 0x030010D0 b 0x1   # P18 → SPI2_CS
-devmem 0x030010DC b 0x1   # P21 → SPI2_MISO
-devmem 0x030010E0 b 0x1   # P22 → SPI2_MOSI
-devmem 0x030010E4 b 0x1   # P23 → SPI2_SCK
+devmem 0x030010D0 b 0x1   # P18 â†’ SPI2_CS
+devmem 0x030010DC b 0x1   # P21 â†’ SPI2_MISO
+devmem 0x030010E0 b 0x1   # P22 â†’ SPI2_MOSI
+devmem 0x030010E4 b 0x1   # P23 â†’ SPI2_SCK
 
 # 3. Verify
 ls /dev/spidev*
@@ -64,7 +64,7 @@ ls /dev/spidev*
 |-----|------|-------|
 | I2C-1 | Overlaps with WiFi | Not recommended |
 | I2C-3 | Overlaps with WiFi | Not recommended |
-| I2C-5 | A15 (SCL), A27 (SDA) | **Recommended** — software I2C, no conflicts |
+| I2C-5 | A15 (SCL), A27 (SDA) | **Recommended** â€” software I2C, no conflicts |
 
 ### Setup Steps for I2C-5
 
@@ -95,7 +95,7 @@ ls /dev/i2c-*
 
 ```bash
 # Configure pinmap for I2C-6
-# A1 → I2C6_SCL, A0 → I2C6_SDA
+# A1 â†’ I2C6_SCL, A0 â†’ I2C6_SDA
 # Refer to MaixCAM2 documentation for pinmap commands
 
 modprobe i2c-dev
@@ -126,6 +126,7 @@ I2C adapter numbers can change between boots depending on driver load order. Alw
 
 ### Permissions
 `/dev/i2c-*` and `/dev/spidev*` typically require root access. Options:
-- Run picoclaw as root
+- Run GHOST as root
 - Add user to `i2c` and `spi` groups
 - Create udev rules: `SUBSYSTEM=="i2c-dev", MODE="0666"`
+

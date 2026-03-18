@@ -1,4 +1,4 @@
-package auth
+﻿package auth
 
 import (
 	"context"
@@ -101,7 +101,7 @@ func LoginBrowser(cfg OAuthProviderConfig) (*AuthCredential, error) {
 		fmt.Printf("Could not open browser automatically.\nPlease open this URL manually:\n\n%s\n\n", authURL)
 	}
 
-	fmt.Println("If you're running in a headless environment, use: picoclaw auth login --provider openai --device-code")
+	fmt.Println("If you're running in a headless environment, use: GHOST auth login --provider openai --device-code")
 	fmt.Println("Waiting for authentication in browser...")
 
 	select {
@@ -417,3 +417,4 @@ func openBrowser(url string) error {
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
 }
+

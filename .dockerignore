@@ -1,10 +1,11 @@
-.git
+﻿.git
 .gitignore
 build/
-.picoclaw/
+.GHOST/
 config/
 .env
 .env.example
 *.md
 LICENSE
 assets/
+

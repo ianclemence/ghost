@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+﻿# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 version: 2
 
@@ -21,7 +21,7 @@ builds:
       - s390x
       - mips64
       - arm
-    main: ./cmd/picoclaw
+    main: ./cmd/GHOST
     ignore:
       - goos: windows
         goarch: arm
@@ -59,3 +59,4 @@ release:
     ---
 
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+
