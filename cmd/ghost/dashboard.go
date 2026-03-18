@@ -23,7 +23,7 @@ import (
 // Apple/Anthropic Aesthetic: Clean, Intentional, Hierarchical, Insightful
 // ═════════════════════════════════════════════════════════════════════════════
 
-const dashboardVersion = "3.0.0"
+const dashboardVersion = "1.0.0"
 
 const ghostASCII = `
    ╭━━━━━━╮
