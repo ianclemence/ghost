@@ -16,40 +16,35 @@ import (
 )
 
 var (
-	subtle    = lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
-	highlight = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	special   = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
+	accentGreen  = lipgloss.AdaptiveColor{Light: "#2D8A56", Dark: "#73F59F"}
+	accentAmber  = lipgloss.AdaptiveColor{Light: "#A06A00", Dark: "#F5C15D"}
+	accentRed    = lipgloss.AdaptiveColor{Light: "#A33030", Dark: "#FF7A7A"}
+	accentBlue   = lipgloss.AdaptiveColor{Light: "#4E66D6", Dark: "#7D9DFF"}
+	accentBorder = lipgloss.AdaptiveColor{Light: "#B8BBC5", Dark: "#3A3F4C"}
+	dimText      = lipgloss.AdaptiveColor{Light: "#667085", Dark: "#8A93A7"}
 
-	listStyle = lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder(), false, true, false, false).
-			BorderForeground(subtle).
-			MarginRight(2).
-			Height(8).
-			Width(30)
-
-	listHeader = lipgloss.NewStyle().
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderBottom(true).
-			BorderForeground(subtle).
-			MarginRight(2).
-			Render
-
-	listItem = lipgloss.NewStyle().PaddingLeft(2).Render
-
-	checkMark = lipgloss.NewStyle().SetString("✓").
-			Foreground(special).
-			PaddingRight(1).
-			String()
-
-	listDone = func(s string) string {
-		return checkMark + lipgloss.NewStyle().
-			Strikethrough(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#969B86", Dark: "#696969"}).
-			Render(s)
-	}
-
-	docStyle = lipgloss.NewStyle().Padding(1, 2, 1, 2)
+	docStyle   = lipgloss.NewStyle().Padding(1, 2, 1, 2)
+	panelStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(accentBorder).
+			Padding(0, 1)
+	headerStyle = lipgloss.NewStyle().
+			Foreground(accentBlue).
+			Bold(true)
+	heroStyle = lipgloss.NewStyle().
+			Foreground(accentGreen).
+			Bold(true)
+	kvKeyStyle = lipgloss.NewStyle().
+			Foreground(dimText)
 )
+
+const ghostASCII = `
+   .-.
+  (o o)   G H O S T   O P E R A T O R
+  | O \
+   \   \
+    '~~~'
+`
 
 type dashboardModel struct {
 	client       *operatorClient
@@ -222,91 +217,143 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m dashboardModel) View() string {
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Ghost Operator TUI v%s\n", version))
-	if !m.lastUpdated.IsZero() {
-		b.WriteString(fmt.Sprintf("Updated: %s\n", m.lastUpdated.Format("15:04:05")))
-	}
+	hero := heroStyle.Render(ghostASCII) + "\n" +
+		rowKV("version", version) + "\n" +
+		rowKV("updated", func() string {
+			if m.lastUpdated.IsZero() {
+				return "—"
+			}
+			return m.lastUpdated.Format("15:04:05")
+		}()) + "\n" +
+		rowKV("doctor", statusPill(strings.ToUpper(m.doctor.Status))) + "\n" +
+		rowKV("session", safeVal(m.inspector.RequestedSession))
 	if m.lastError != "" {
-		b.WriteString(fmt.Sprintf("Error: %s\n", m.lastError))
+		hero += "\n" + lipgloss.NewStyle().Foreground(accentRed).Render("error: "+m.lastError)
 	}
-	b.WriteString("\nOperator Auth Sanity\n")
-	b.WriteString(fmt.Sprintf("  BRIDGE_SECRET configured: %v\n", m.sanity.BridgeSecretConfigured))
-	b.WriteString(fmt.Sprintf("  API reachable: %v\n", m.sanity.APIReachable))
+
+	sanityLines := []string{
+		rowKV("BRIDGE_SECRET", boolLabel(m.sanity.BridgeSecretConfigured)),
+		rowKV("API", boolLabel(m.sanity.APIReachable)),
+	}
 	for _, ep := range m.sanity.Endpoints {
-		b.WriteString(fmt.Sprintf("  %-16s reachable=%-5v", ep.Name, ep.Reachable))
+		meta := ""
 		if ep.Status > 0 {
-			b.WriteString(fmt.Sprintf(" status=%d", ep.Status))
+			meta = fmt.Sprintf(" (%d)", ep.Status)
 		}
 		if ep.Detail != "" {
-			b.WriteString(" " + ep.Detail)
+			meta += " " + ep.Detail
 		}
-		b.WriteString("\n")
+		sanityLines = append(sanityLines, rowKV("└─ "+ep.Name, boolLabel(ep.Reachable)+meta))
 	}
-	if m.sanity.Blocking {
-		b.WriteString("\nLive sections paused until sanity checks pass.\n")
-		b.WriteString("\n" + m.actionStatus)
-		return docStyle.Render(b.String())
-	}
-	b.WriteString(fmt.Sprintf("Doctor: %s  Session: %s  Target: %s\n\n", strings.ToUpper(m.doctor.Status), m.inspector.RequestedSession, m.inspector.DeliveryTarget))
+	sanityPanel := renderPanel("AUTH SANITY", strings.Join(sanityLines, "\n"))
 
-	b.WriteString("Channels\n")
+	if m.sanity.Blocking {
+		block := lipgloss.NewStyle().Foreground(accentAmber).Render("Live sections paused until sanity checks pass.") + "\n\n" + m.actionStatus
+		return docStyle.Render(lipgloss.JoinVertical(lipgloss.Left, hero, sanityPanel, renderPanel("OPERATOR", block)))
+	}
+
+	channelLines := make([]string, 0, len(m.channelNames)*2)
 	for idx, name := range m.channelNames {
 		ch := m.channels[name]
-		prefix := "  "
+		cursor := " "
 		if idx == m.selected {
-			prefix = "› "
+			cursor = ">"
 		}
-		health := "down"
+		status := "DOWN"
 		if ch.Running {
-			health = "running"
+			status = "RUNNING"
 		}
-		b.WriteString(fmt.Sprintf("%s%-10s enabled=%-3v running=%-3v failures=%d\n", prefix, name, ch.Enabled, ch.Running, ch.FailureCount))
+		channelLines = append(channelLines, fmt.Sprintf("%s %-10s %-8s failures=%d", cursor, strings.ToUpper(name), status, ch.FailureCount))
 		if ch.FatalReason != "" {
-			b.WriteString(fmt.Sprintf("   fatal: %s\n", ch.FatalReason))
+			channelLines = append(channelLines, "  fatal: "+ch.FatalReason)
 		}
 		if ch.LastSendErr != "" {
-			b.WriteString(fmt.Sprintf("   last error: %s\n", ch.LastSendErr))
-		}
-		if health == "running" && ch.LastSuccess > 0 {
-			b.WriteString(fmt.Sprintf("   last success: %s\n", time.Unix(ch.LastSuccess, 0).Format("15:04:05")))
+			channelLines = append(channelLines, "  last:  "+ch.LastSendErr)
 		}
 	}
+	if len(channelLines) == 0 {
+		channelLines = append(channelLines, "No channels reported")
+	}
+	channelsPanel := renderPanel("CHANNELS", strings.Join(channelLines, "\n"))
 
-	b.WriteString("\nDelivery Trace\n")
+	traceLines := []string{}
 	if len(m.trace.Events) == 0 {
-		b.WriteString("  no events\n")
+		traceLines = append(traceLines, "No trace events")
 	} else {
 		for _, evt := range m.trace.Events {
-			b.WriteString(fmt.Sprintf("  %s  %s", time.Unix(evt.At, 0).Format("15:04:05"), evt.State))
+			row := fmt.Sprintf("%s | %-18s", time.Unix(evt.At, 0).Format("15:04:05"), strings.ToUpper(evt.State))
 			if evt.Channel != "" {
-				b.WriteString("  " + evt.Channel)
+				row += " | " + evt.Channel
 			}
 			if evt.Detail != "" {
-				b.WriteString("  " + evt.Detail)
+				row += " | " + evt.Detail
 			}
-			b.WriteString("\n")
+			traceLines = append(traceLines, row)
 		}
 	}
 	if len(m.trace.Incidents) > 0 {
-		b.WriteString("\nIncidents\n")
-		incs := sortedIncidentKeys(m.trace.Incidents)
-		for _, name := range incs {
+		traceLines = append(traceLines, "", "INCIDENTS")
+		for _, name := range sortedIncidentKeys(m.trace.Incidents) {
 			inc := m.trace.Incidents[name]
-			b.WriteString(fmt.Sprintf("  %s failures=%d last=%s at=%s\n", name, inc.FailureCount, inc.LastError, time.Unix(inc.LastAt, 0).Format("15:04:05")))
+			traceLines = append(traceLines, fmt.Sprintf("- %s x%d %s", name, inc.FailureCount, inc.LastError))
 		}
 	}
+	tracePanel := renderPanel("DELIVERY TRACE", strings.Join(traceLines, "\n"))
 
-	b.WriteString("\nDoctor Checks\n")
+	doctorLines := []string{
+		rowKV("target", safeVal(m.inspector.DeliveryTarget)),
+		rowKV("last request", safeVal(m.inspector.LastRequestID)),
+	}
 	if len(m.doctor.Checks) == 0 {
-		b.WriteString("  no checks\n")
+		doctorLines = append(doctorLines, "", "No checks")
 	} else {
+		doctorLines = append(doctorLines, "")
 		for _, check := range m.doctor.Checks {
-			b.WriteString(fmt.Sprintf("  %-8s %-28s %s\n", check.Status, check.Name, check.Message))
+			doctorLines = append(doctorLines, fmt.Sprintf("%-8s %-28s %s", strings.ToUpper(check.Status), check.Name, check.Message))
 		}
 	}
-	b.WriteString("\n" + m.actionStatus)
-	return docStyle.Render(b.String())
+	doctorPanel := renderPanel("DOCTOR", strings.Join(doctorLines, "\n"))
+	controlPanel := renderPanel("CONTROLS", m.actionStatus+"\nTAB  cycle channel\nR    reconnect selected\nD    refresh now\nQ    quit")
+
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, channelsPanel, tracePanel)
+	bottomRow := lipgloss.JoinHorizontal(lipgloss.Top, doctorPanel, controlPanel)
+	return docStyle.Render(lipgloss.JoinVertical(lipgloss.Left, hero, sanityPanel, topRow, bottomRow))
+}
+
+func renderPanel(title, body string) string {
+	head := headerStyle.Render("[" + title + "]")
+	return panelStyle.Render(head + "\n" + body)
+}
+
+func rowKV(k, v string) string {
+	return kvKeyStyle.Render(fmt.Sprintf("%-16s", k)) + " " + v
+}
+
+func boolLabel(v bool) string {
+	if v {
+		return lipgloss.NewStyle().Foreground(accentGreen).Render("OK")
+	}
+	return lipgloss.NewStyle().Foreground(accentRed).Render("NO")
+}
+
+func statusPill(status string) string {
+	switch strings.ToLower(status) {
+	case "ok", "healthy":
+		return lipgloss.NewStyle().Foreground(accentGreen).Bold(true).Render(status)
+	case "warning", "degraded":
+		return lipgloss.NewStyle().Foreground(accentAmber).Bold(true).Render(status)
+	case "error", "failed":
+		return lipgloss.NewStyle().Foreground(accentRed).Bold(true).Render(status)
+	default:
+		return lipgloss.NewStyle().Foreground(accentBlue).Bold(true).Render(status)
+	}
+}
+
+func safeVal(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return "—"
+	}
+	return v
 }
 
 func (m dashboardModel) selectedChannel() string {
