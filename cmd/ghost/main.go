@@ -706,10 +706,8 @@ func gatewayCmd() {
 		}
 	}
 
-	// Start internal API for bridge-to-agent routing (mobile gets full agent runtime)
-	startInternalAPI(agentLoop, cronService)
-
 	go agentLoop.Run(ctx)
+	go startInternalAPI(agentLoop, cronService)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
