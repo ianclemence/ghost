@@ -58,12 +58,19 @@ const ghostASCII = `
    '~~~'
 `
 
+const (
+	viewOverview = "overview"
+	viewChannels = "channels"
+	viewTrace    = "trace"
+)
+
 type dashboardModel struct {
 	client       *operatorClient
 	width        int
 	height       int
 	lastUpdated  time.Time
 	lastError    string
+	lastErrorAt  time.Time
 	actionStatus string
 	doctor       doctorPayload
 	channels     map[string]channelHealth
@@ -73,6 +80,11 @@ type dashboardModel struct {
 	trace        tracePayload
 	sanity       authSanity
 	programStart time.Time
+	viewMode     string
+	detailOpen   bool
+	pulseTicks   int
+	failuresSeen map[string]int
+	history      map[string]string
 }
 
 type tickMsg struct{}
@@ -166,9 +178,12 @@ type tracePayload struct {
 func initialModel(client *operatorClient) dashboardModel {
 	return dashboardModel{
 		client:       client,
-		actionStatus: "Press TAB to change channel • R reconnect • D refresh • Q quit",
+		actionStatus: "TAB cycle • ENTER detail • F1/F2/F3 views • R reconnect • D refresh • Q quit",
 		channels:     map[string]channelHealth{},
 		programStart: time.Now(),
+		viewMode:     viewOverview,
+		failuresSeen: map[string]int{},
+		history:      map[string]string{},
 		trace: tracePayload{
 			Incidents: map[string]channelIncident{},
 		},
@@ -185,11 +200,19 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "f1":
+			m.viewMode = viewOverview
+		case "f2":
+			m.viewMode = viewChannels
+		case "f3":
+			m.viewMode = viewTrace
 		case "tab":
 			if len(m.channelNames) > 0 {
 				m.selected = (m.selected + 1) % len(m.channelNames)
 				m.actionStatus = fmt.Sprintf("Selected channel: %s", m.selectedChannel())
 			}
+		case "enter":
+			m.detailOpen = !m.detailOpen
 		case "d":
 			return m, fetchSnapshotCmd(m.client)
 		case "r":
@@ -202,11 +225,15 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case tickMsg:
+		if m.pulseTicks > 0 {
+			m.pulseTicks--
+		}
 		return m, tea.Batch(fetchSnapshotCmd(m.client), scheduleTick())
 	case refreshResultMsg:
 		m.sanity = msg.sanity
 		if msg.err != nil {
 			m.lastError = msg.err.Error()
+			m.lastErrorAt = msg.at
 		} else {
 			m.lastError = ""
 			m.lastUpdated = msg.at
@@ -215,6 +242,8 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inspector = msg.inspector
 			m.trace = msg.trace
 			m.channelNames = sortedKeys(msg.channels)
+			m.updateChannelHistory()
+			m.pulseTicks = 2
 			if len(m.channelNames) > 0 && m.selected >= len(m.channelNames) {
 				m.selected = 0
 			}
@@ -222,6 +251,8 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case reconnectResultMsg:
 		if msg.err != nil {
 			m.actionStatus = fmt.Sprintf("Reconnect failed for %s: %v", msg.channel, msg.err)
+			m.lastError = msg.err.Error()
+			m.lastErrorAt = time.Now()
 		} else {
 			m.actionStatus = fmt.Sprintf("Reconnect triggered for %s", msg.channel)
 			return m, fetchSnapshotCmd(m.client)
@@ -234,107 +265,139 @@ func (m dashboardModel) View() string {
 	if m.sanity.Blocking {
 		return m.renderLockScreen()
 	}
-
-	// Layout Dimensions
-	headerHeight := 3
-	footerHeight := 3
-	contentHeight := m.height - headerHeight - footerHeight
-	if contentHeight < 10 {
-		contentHeight = 10 // Min height
+	width := m.width
+	height := m.height
+	if width <= 0 {
+		width = 140
 	}
-
-	leftWidth := int(float64(m.width) * 0.4)
-	rightWidth := m.width - leftWidth - 2 // -2 for borders/padding
-
-	// 1. Header
-	header := m.renderHeader()
-
-	// 2. Left Column (Channels, Doctor, Controls)
-	channelsPanel := m.renderChannels(leftWidth)
-	doctorPanel := m.renderDoctor(leftWidth)
-	
-	leftCol := lipgloss.JoinVertical(lipgloss.Left,
-		channelsPanel,
-		doctorPanel,
-	)
-
-	// 3. Right Column (Trace Log)
-	tracePanel := m.renderTrace(rightWidth, contentHeight)
-
-	// 4. Footer (Status Bar)
-	footer := m.renderFooter()
-
-	// Combine Content
-	content := lipgloss.JoinHorizontal(lipgloss.Top,
-		leftCol,
-		tracePanel,
-	)
-
-	// Full Page
-	return lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		content,
-		footer,
-	)
+	if height <= 0 {
+		height = 42
+	}
+	header := m.renderHeader(width)
+	bodyHeight := height - 7
+	if bodyHeight < 12 {
+		bodyHeight = 12
+	}
+	var content string
+	switch m.viewMode {
+	case viewChannels:
+		content = m.renderChannelsMode(width, bodyHeight)
+	case viewTrace:
+		content = m.renderTraceMode(width, bodyHeight)
+	default:
+		content = m.renderOverviewMode(width, bodyHeight)
+	}
+	footer := m.renderFooter(width)
+	return lipgloss.JoinVertical(lipgloss.Left, header, content, footer)
 }
 
-func (m dashboardModel) renderHeader() string {
+func (m dashboardModel) renderHeader(width int) string {
 	uptime := time.Since(m.programStart).Round(time.Second)
-	
 	ascii := lipgloss.NewStyle().Foreground(colSuccess).Render(ghostASCII)
 	logo := titleStyle.Render("GHOST SYSTEM MONITOR")
-	stats := lipgloss.NewStyle().Foreground(colSub).Render(fmt.Sprintf("UPTIME: %s  |  API: %s", uptime, m.client.baseURL))
+	stats := lipgloss.NewStyle().Foreground(colSub).Render(fmt.Sprintf("UP %s", uptime))
 	ver := lipgloss.NewStyle().Foreground(colActive).Render("v" + version)
-
-	// Spacer
-	w := m.width - lipgloss.Width(ascii) - lipgloss.Width(logo) - lipgloss.Width(stats) - lipgloss.Width(ver) - 6
+	strip := m.renderHealthStrip()
+	w := width - lipgloss.Width(ascii) - lipgloss.Width(logo) - lipgloss.Width(stats) - lipgloss.Width(ver) - lipgloss.Width(strip) - 8
 	if w < 0 {
 		w = 0
 	}
 	spacer := strings.Repeat(" ", w)
-
 	bar := lipgloss.JoinHorizontal(lipgloss.Center,
 		ascii,
 		" ",
 		logo,
 		"  ",
 		stats,
+		" ",
 		spacer,
+		strip,
+		" ",
 		ver,
 	)
-	
 	return panelStyle.
-		Width(m.width - 2).
+		Width(width - 2).
 		Height(1).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(colBorder).
 		Render(bar)
 }
 
+func (m dashboardModel) renderOverviewMode(width, bodyHeight int) string {
+	leftWidth := int(float64(width) * 0.42)
+	if leftWidth < 46 {
+		leftWidth = 46
+	}
+	rightWidth := width - leftWidth - 3
+	if rightWidth < 46 {
+		rightWidth = 46
+	}
+	left := lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.renderChannels(leftWidth),
+		m.renderDoctor(leftWidth),
+	)
+	right := m.renderTrace(rightWidth, bodyHeight)
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+}
+
+func (m dashboardModel) renderChannelsMode(width, bodyHeight int) string {
+	listWidth := int(float64(width) * 0.56)
+	if listWidth < 52 {
+		listWidth = 52
+	}
+	drawerWidth := width - listWidth - 3
+	if drawerWidth < 36 {
+		drawerWidth = 36
+	}
+	list := m.renderChannels(listWidth)
+	var right string
+	if m.detailOpen {
+		right = m.renderChannelDrawer(drawerWidth, bodyHeight)
+	} else {
+		right = m.renderDoctor(drawerWidth)
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, list, right)
+}
+
+func (m dashboardModel) renderTraceMode(width, bodyHeight int) string {
+	traceWidth := int(float64(width) * 0.68)
+	if traceWidth < 56 {
+		traceWidth = 56
+	}
+	sideWidth := width - traceWidth - 3
+	if sideWidth < 32 {
+		sideWidth = 32
+	}
+	trace := m.renderTrace(traceWidth, bodyHeight)
+	side := lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.renderDoctor(sideWidth),
+		m.renderMiniChannels(sideWidth),
+	)
+	return lipgloss.JoinHorizontal(lipgloss.Top, trace, side)
+}
+
 func (m dashboardModel) renderChannels(width int) string {
 	var rows []string
-	
-	// Title
-	rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Bold(true).Render("CHANNEL MATRIX"))
+	rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Bold(true).Render("CHANNEL MATRIX "+m.viewHint()))
 	rows = append(rows, "")
-
 	if len(m.channelNames) == 0 {
-		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("No channels detected"))
+		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("No channels yet — enable gateway channels to start delivery."))
 	}
-
 	for i, name := range m.channelNames {
 		ch := m.channels[name]
-		
-		// Styles
 		borderColor := colBorder
 		statusColor := colSub
 		statusIcon := "●"
 		statusText := "OFFLINE"
-
 		if i == m.selected {
-			borderColor = colActive
+			if m.pulseTicks > 0 {
+				borderColor = colSuccess
+			} else {
+				borderColor = colActive
+			}
 		}
-
 		if ch.Running {
 			statusColor = colSuccess
 			statusText = "RUNNING"
@@ -345,134 +408,381 @@ func (m dashboardModel) renderChannels(width int) string {
 		} else {
 			statusText = "DISABLED"
 		}
-
-		// Box Content
 		nameLine := lipgloss.NewStyle().Foreground(colText).Bold(true).Render(strings.ToUpper(name))
 		statusLine := lipgloss.NewStyle().Foreground(statusColor).Render(fmt.Sprintf("%s %s", statusIcon, statusText))
-		
-		statLine := lipgloss.NewStyle().Foreground(colSub).Render(fmt.Sprintf("Fails: %d", ch.FailureCount))
+		spark := lipgloss.NewStyle().Foreground(colSub).Render(m.history[name])
+		statLine := lipgloss.NewStyle().Foreground(colSub).Render(fmt.Sprintf("fails %d • ok %s • fail %s", ch.FailureCount, relativeUnix(ch.LastSuccess), relativeUnix(ch.LastFailure)))
 		if ch.LastSendErr != "" {
 			statLine = lipgloss.NewStyle().Foreground(colError).Render("Last Err: " + truncate(ch.LastSendErr, 20))
 		}
-
-		// Render Box
+		gap := width - 8 - lipgloss.Width(nameLine) - lipgloss.Width(statusLine)
+		if gap < 1 {
+			gap = 1
+		}
 		box := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(borderColor).
 			Padding(0, 1).
-			Width(width - 4). // Adjust for padding
+			Width(width - 4).
 			Render(
 				lipgloss.JoinVertical(lipgloss.Left,
-					lipgloss.JoinHorizontal(lipgloss.Top, nameLine, strings.Repeat(" ", width-4-lipgloss.Width(nameLine)-lipgloss.Width(statusLine)), statusLine),
+					lipgloss.JoinHorizontal(lipgloss.Top, nameLine, strings.Repeat(" ", gap), statusLine),
+					spark,
 					statLine,
 				),
 			)
-		
 		rows = append(rows, box)
 	}
-
 	return panelStyle.
 		Width(width).
 		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }
 
 func (m dashboardModel) renderTrace(width, height int) string {
-	title := lipgloss.NewStyle().Foreground(colSub).Bold(true).Render("LIVE TRACES // " + m.inspector.LastRequestID)
-	
+	latency := m.pipelineLatency()
+	title := lipgloss.NewStyle().Foreground(colSub).Bold(true).Render("LIVE TRACE • req "+safeValue(m.inspector.LastRequestID))
+	latencyBadge := m.latencyBadge(latency)
 	var lines []string
 	if len(m.trace.Events) == 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(colSub).Render("Waiting for events..."))
+		lines = append(lines, lipgloss.NewStyle().Foreground(colSub).Render("No trace yet — send a message via "+safeValue(m.inspector.DeliveryTarget)+" to populate lifecycle events."))
 	} else {
-		for _, evt := range m.trace.Events {
-			ts := time.Unix(evt.At, 0).Format("15:04:05.000")
-			
-			stateColor := colActive
-			switch evt.State {
-			case "error", "failed":
-				stateColor = colError
-			case "sent", "delivered":
-				stateColor = colSuccess
-			}
-
-			row := fmt.Sprintf("%s  %s", 
-				lipgloss.NewStyle().Foreground(colSub).Render(ts),
-				lipgloss.NewStyle().Foreground(stateColor).Bold(true).Render(fmt.Sprintf("%-12s", strings.ToUpper(evt.State))),
+		start := 0
+		maxLines := height - 4
+		if maxLines < 5 {
+			maxLines = 5
+		}
+		if len(m.trace.Events) > maxLines {
+			start = len(m.trace.Events) - maxLines
+		}
+		for i := start; i < len(m.trace.Events); i++ {
+			evt := m.trace.Events[i]
+			icon, color := traceSeverity(evt.State, evt.Detail)
+			line := fmt.Sprintf(
+				"%s %s %s",
+				lipgloss.NewStyle().Foreground(color).Bold(true).Render(icon),
+				lipgloss.NewStyle().Foreground(colSub).Render(relativeUnix(evt.At)),
+				lipgloss.NewStyle().Foreground(color).Bold(true).Render(strings.ToUpper(evt.State)),
 			)
-			
 			if evt.Channel != "" {
-				row += lipgloss.NewStyle().Foreground(colText).Render(" [" + evt.Channel + "]")
+				line += " " + lipgloss.NewStyle().Foreground(colText).Render("["+evt.Channel+"]")
 			}
 			if evt.Detail != "" {
-				detail := evt.Detail
-				if len(detail) > width - 40 {
-					detail = detail[:width-40] + "..."
-				}
-				row += lipgloss.NewStyle().Foreground(colSub).Render(" " + detail)
+				line += " " + lipgloss.NewStyle().Foreground(colSub).Render(truncate(evt.Detail, width-34))
 			}
-			lines = append(lines, row)
+			if i == len(m.trace.Events)-1 && m.pulseTicks > 0 {
+				line = lipgloss.NewStyle().Foreground(colSuccess).Render("• " + line)
+			}
+			lines = append(lines, line)
 		}
 	}
-
-	// Pad with empty lines to keep height stable
 	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	
+	topGap := width - lipgloss.Width(title) - lipgloss.Width(latencyBadge) - 2
+	if topGap < 1 {
+		topGap = 1
+	}
+	head := lipgloss.JoinHorizontal(lipgloss.Top, title, strings.Repeat(" ", topGap), latencyBadge)
 	return panelStyle.
 		Width(width).
 		Height(height).
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, "", content))
+		Render(lipgloss.JoinVertical(lipgloss.Left, head, "", content))
 }
 
 func (m dashboardModel) renderDoctor(width int) string {
 	title := lipgloss.NewStyle().Foreground(colSub).Bold(true).Render("SYSTEM DIAGNOSTICS")
-	
 	var rows []string
 	rows = append(rows, title, "")
-	
-	// Session Info
-	rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("Session Target:"))
-	rows = append(rows, lipgloss.NewStyle().Foreground(colText).Render(m.inspector.DeliveryTarget))
+	rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("Target: "+safeValue(m.inspector.DeliveryTarget)))
+	rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("Last update: "+relativeTime(m.lastUpdated)))
 	rows = append(rows, "")
-
-	// Doctor Checks
 	if len(m.doctor.Checks) == 0 {
-		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("No checks run"))
+		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("No checks run yet — press D to refresh doctor checks."))
 	} else {
 		for _, check := range m.doctor.Checks {
-			icon := "✓"
+			icon := "●"
 			color := colSuccess
 			if check.Status != "ok" && check.Status != "healthy" {
-				icon = "!"
+				icon = "▲"
 				color = colWarn
-				if check.Status == "error" {
+				if check.Status == "error" || strings.Contains(strings.ToLower(check.Message), "fail") {
+					icon = "✖"
 					color = colError
 				}
 			}
-			
-			line := fmt.Sprintf("%s %s", 
-				lipgloss.NewStyle().Foreground(color).Render(icon),
-				lipgloss.NewStyle().Foreground(colText).Render(check.Name),
-			)
-			rows = append(rows, line)
+			rows = append(rows, lipgloss.NewStyle().Foreground(color).Render(icon)+" "+truncate(check.Name, width-10))
 		}
 	}
+	return panelStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+}
 
+func (m dashboardModel) renderMiniChannels(width int) string {
+	rows := []string{lipgloss.NewStyle().Foreground(colSub).Bold(true).Render("CHANNEL SNAPSHOT"), ""}
+	if len(m.channelNames) == 0 {
+		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("No channels available."))
+	} else {
+		for _, name := range m.channelNames {
+			ch := m.channels[name]
+			marker := "●"
+			color := colSub
+			if ch.Running {
+				color = colSuccess
+			} else if ch.Enabled {
+				color = colError
+				marker = "✖"
+			}
+			rows = append(rows, lipgloss.NewStyle().Foreground(color).Render(marker)+" "+name+" "+truncate(m.history[name], 16))
+		}
+	}
+	return panelStyle.Width(width).Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+}
+
+func (m dashboardModel) renderChannelDrawer(width, height int) string {
+	name := m.selectedChannel()
+	var rows []string
+	rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Bold(true).Render("CHANNEL DETAIL DRAWER"), "")
+	if name == "" {
+		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("Select a channel with TAB."))
+	} else {
+		ch := m.channels[name]
+		rows = append(rows, lipgloss.NewStyle().Foreground(colText).Bold(true).Render(strings.ToUpper(name)))
+		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("running: "+boolWord(ch.Running)))
+		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("enabled: "+boolWord(ch.Enabled)))
+		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render(fmt.Sprintf("failures: %d", ch.FailureCount)))
+		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("last success: "+relativeUnix(ch.LastSuccess)))
+		rows = append(rows, lipgloss.NewStyle().Foreground(colSub).Render("last failure: "+relativeUnix(ch.LastFailure)))
+		rows = append(rows, "")
+		if ch.FatalReason != "" {
+			rows = append(rows, lipgloss.NewStyle().Foreground(colError).Render("fatal: "+truncate(ch.FatalReason, width-8)))
+		}
+		if ch.LastSendErr != "" {
+			rows = append(rows, lipgloss.NewStyle().Foreground(colWarn).Render("send err: "+truncate(ch.LastSendErr, width-8)))
+		}
+		if ch.FatalReason == "" && ch.LastSendErr == "" {
+			rows = append(rows, lipgloss.NewStyle().Foreground(colSuccess).Render("No active fault markers."))
+		}
+	}
 	return panelStyle.
 		Width(width).
+		Height(height).
 		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }
 
-func (m dashboardModel) renderFooter() string {
+func (m dashboardModel) renderFooter(width int) string {
 	help := m.actionStatus
 	if m.lastError != "" {
-		help = "ERROR: " + m.lastError
+		help = "ERROR " + truncate(m.lastError, 48) + " • " + relativeTime(m.lastErrorAt)
 	}
-	
+	incidents := m.incidentMemoryLane()
+	mode := strings.ToUpper(m.viewMode)
+	left := lipgloss.NewStyle().Foreground(colSub).Render("MODE "+mode+" • "+help)
+	right := lipgloss.NewStyle().Foreground(colWarn).Render(incidents)
+	gap := width - lipgloss.Width(left) - lipgloss.Width(right) - 2
+	if gap < 1 {
+		gap = 1
+	}
 	return lipgloss.NewStyle().
-		Width(m.width).
+		Width(width).
 		Padding(0, 1).
 		Foreground(colSub).
 		Background(colBg).
-		Render(help)
+		Render(left + strings.Repeat(" ", gap) + right)
+}
+
+func (m dashboardModel) renderHealthStrip() string {
+	selected := m.selectedChannel()
+	if selected == "" {
+		selected = "none"
+	}
+	lastErrAge := "none"
+	if m.lastError != "" {
+		lastErrAge = relativeTime(m.lastErrorAt)
+	}
+	return lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		statusChip("doctor", strings.ToUpper(safeValue(m.doctor.Status)), statusColor(m.doctor.Status)),
+		" ",
+		statusChip("api", boolWord(m.sanity.APIReachable), pickColor(m.sanity.APIReachable, colSuccess, colError)),
+		" ",
+		statusChip("secret", boolWord(m.sanity.BridgeSecretConfigured), pickColor(m.sanity.BridgeSecretConfigured, colSuccess, colError)),
+		" ",
+		statusChip("channel", selected, colActive),
+		" ",
+		statusChip("last_err", lastErrAge, colWarn),
+	)
+}
+
+func (m dashboardModel) updateChannelHistory() {
+	for name, ch := range m.channels {
+		h := m.history[name]
+		next := "·"
+		if ch.Running {
+			next = "█"
+		}
+		if ch.FailureCount > m.failuresSeen[name] {
+			next = "▆"
+		}
+		h += next
+		if len(h) > 24 {
+			h = h[len(h)-24:]
+		}
+		m.history[name] = h
+		m.failuresSeen[name] = ch.FailureCount
+	}
+}
+
+func (m dashboardModel) pipelineLatency() time.Duration {
+	if len(m.trace.Events) < 2 {
+		return 0
+	}
+	first := m.trace.Events[0].At
+	last := m.trace.Events[len(m.trace.Events)-1].At
+	if first <= 0 || last <= first {
+		return 0
+	}
+	return time.Duration(last-first) * time.Second
+}
+
+func (m dashboardModel) latencyBadge(d time.Duration) string {
+	if d <= 0 {
+		return statusChip("latency", "—", colSub)
+	}
+	color := colSuccess
+	if d > 8*time.Second {
+		color = colError
+	} else if d > 3*time.Second {
+		color = colWarn
+	}
+	return statusChip("latency", d.String(), color)
+}
+
+func (m dashboardModel) incidentMemoryLane() string {
+	if len(m.trace.Incidents) == 0 {
+		return "incidents: clear"
+	}
+	type item struct {
+		text string
+		at   int64
+	}
+	items := make([]item, 0, len(m.trace.Incidents))
+	dedupe := map[string]int{}
+	for _, inc := range m.trace.Incidents {
+		key := strings.TrimSpace(inc.Channel + " " + inc.LastError)
+		if key == "" {
+			key = inc.Channel + " unknown"
+		}
+		dedupe[key] += inc.FailureCount
+		items = append(items, item{text: key, at: inc.LastAt})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].at > items[j].at })
+	seen := map[string]bool{}
+	parts := []string{}
+	for _, it := range items {
+		if seen[it.text] {
+			continue
+		}
+		seen[it.text] = true
+		parts = append(parts, truncate(fmt.Sprintf("%s x%d", it.text, dedupe[it.text]), 34))
+		if len(parts) == 3 {
+			break
+		}
+	}
+	if len(parts) == 0 {
+		return "incidents: clear"
+	}
+	return "incidents: " + strings.Join(parts, " | ")
+}
+
+func (m dashboardModel) viewHint() string {
+	if m.viewMode == viewChannels && m.detailOpen {
+		return "• ENTER hides detail"
+	}
+	if m.viewMode == viewChannels {
+		return "• ENTER shows detail"
+	}
+	return "• TAB selects channel"
+}
+
+func traceSeverity(state, detail string) (string, lipgloss.Color) {
+	s := strings.ToLower(state + " " + detail)
+	if strings.Contains(s, "fail") || strings.Contains(s, "error") {
+		return "✖", colError
+	}
+	if strings.Contains(s, "queue") || strings.Contains(s, "process") || strings.Contains(s, "retry") {
+		return "▲", colWarn
+	}
+	if strings.Contains(s, "deliver") || strings.Contains(s, "sent") {
+		return "●", colSuccess
+	}
+	return "•", colActive
+}
+
+func statusChip(label, value string, color lipgloss.Color) string {
+	return lipgloss.NewStyle().
+		Foreground(color).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(color).
+		Padding(0, 1).
+		Render(label + ":" + value)
+}
+
+func statusColor(status string) lipgloss.Color {
+	switch strings.ToLower(status) {
+	case "ok", "healthy":
+		return colSuccess
+	case "warning", "degraded":
+		return colWarn
+	case "error", "failed":
+		return colError
+	default:
+		return colActive
+	}
+}
+
+func pickColor(v bool, yes, no lipgloss.Color) lipgloss.Color {
+	if v {
+		return yes
+	}
+	return no
+}
+
+func boolWord(v bool) string {
+	if v {
+		return "yes"
+	}
+	return "no"
+}
+
+func relativeUnix(ts int64) string {
+	if ts <= 0 {
+		return "never"
+	}
+	return relativeTime(time.Unix(ts, 0))
+}
+
+func relativeTime(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	d := time.Since(t)
+	if d < 0 {
+		d = 0
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%ds ago", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+}
+
+func safeValue(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return "—"
+	}
+	return v
 }
 
 func (m dashboardModel) renderLockScreen() string {
