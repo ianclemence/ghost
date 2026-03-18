@@ -956,28 +956,10 @@ func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMP
 	// The provider should NOT stream tool inputs/outputs, only the assistant's generation.
 	if opts.OnChunk != nil {
 		if sp, ok := provider.(providers.StreamingProvider); ok {
-			// Wrap the OnChunk callback to ensure only assistant content is streamed
 			safeOnChunk := func(chunk string) {
-				// Deny by default: If the chunk looks like a tool call or internal log, ignore it.
-				// This is a more robust filter than just checking for "tool_call:"
-				trimmed := strings.TrimSpace(chunk)
-				
-				// 1. Tool Call Start: standard JSON or formatted tool call
-				if strings.HasPrefix(trimmed, "tool_call:") || 
-				   strings.HasPrefix(trimmed, "{\"tool") || 
-				   strings.HasPrefix(trimmed, "running tool") {
+				if shouldFilterAssistantChunk(chunk) {
 					return
 				}
-
-				// 2. Internal Thought Blocks (often used by models before final answer)
-				// If we want to hide "thinking", we should filter these too.
-				// But for now, we focus on tool leakage.
-				if strings.HasPrefix(trimmed, "[") && !strings.HasPrefix(trimmed, "[User]") {
-					// Likely an internal log like [Reading file...]
-					return
-				}
-
-				// 3. Pass through only user-facing content
 				opts.OnChunk(chunk)
 			}
 			// Only pass OnChunk if we are NOT in a thinking/tool-use phase that might leak.
@@ -992,6 +974,33 @@ func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMP
 		opts.OnChunk(resp.Content)
 	}
 	return resp, err
+}
+
+func shouldFilterAssistantChunk(chunk string) bool {
+	trimmed := strings.TrimSpace(chunk)
+	if trimmed == "" {
+		return true
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "tool_call:") || strings.HasPrefix(lower, "{\"tool") || strings.HasPrefix(lower, "running tool") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "[") && !strings.HasPrefix(trimmed, "[User]") {
+		return true
+	}
+	if strings.Contains(lower, "<skills>") || strings.Contains(lower, "</skills>") {
+		return true
+	}
+	if strings.Contains(lower, "skills/{skill-name}/skill.md") {
+		return true
+	}
+	if strings.HasPrefix(lower, "name:") && strings.Contains(lower, "\ndescription:") {
+		return true
+	}
+	if strings.Contains(lower, "\"metadata\"") && strings.Contains(lower, "\"homepage\"") && strings.Contains(lower, "\"description\"") {
+		return true
+	}
+	return false
 }
 
 func (al *AgentLoop) buildCandidates(model string) []providers.FallbackCandidate {

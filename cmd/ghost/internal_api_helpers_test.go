@@ -112,3 +112,21 @@ func TestEnrichWeatherPrompt(t *testing.T) {
 		t.Fatalf("expected explicit city prompt unchanged")
 	}
 }
+
+func TestIsUserVisibleHistoryMessage(t *testing.T) {
+	if !isUserVisibleHistoryMessage("user", "hello", nil) {
+		t.Fatalf("expected user message to be visible")
+	}
+	metaWithToolCalls := []byte(`{"tool_calls":[{"id":"tc-1"}]}`)
+	if isUserVisibleHistoryMessage("assistant", "intermediate planning", metaWithToolCalls) {
+		t.Fatalf("expected assistant tool-call turn to be hidden")
+	}
+	leakySkill := "name: weather\ndescription: Get current weather and forecast"
+	if isUserVisibleHistoryMessage("assistant", leakySkill, nil) {
+		t.Fatalf("expected skill frontmatter-like leak to be hidden")
+	}
+	finalResponse := "Weather in Singapore is 31°C and humid."
+	if !isUserVisibleHistoryMessage("assistant", finalResponse, nil) {
+		t.Fatalf("expected clean assistant response to be visible")
+	}
+}

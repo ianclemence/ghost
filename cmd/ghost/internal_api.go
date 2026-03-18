@@ -222,6 +222,39 @@ func resolveSession(r *http.Request) string {
 	return "mobile:default"
 }
 
+func isUserVisibleHistoryMessage(role, content string, metaJSON []byte) bool {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return false
+	}
+	if role != "assistant" {
+		return true
+	}
+	var meta map[string]interface{}
+	if len(metaJSON) > 0 {
+		_ = json.Unmarshal(metaJSON, &meta)
+		if tc, ok := meta["tool_calls"]; ok {
+			if arr, ok := tc.([]interface{}); ok && len(arr) > 0 {
+				return false
+			}
+		}
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.Contains(lower, "<skills>") || strings.Contains(lower, "</skills>") {
+		return false
+	}
+	if strings.Contains(lower, "skills/{skill-name}/skill.md") {
+		return false
+	}
+	if strings.Contains(lower, "```json") && strings.Contains(lower, "\"metadata\"") && strings.Contains(lower, "\"homepage\"") {
+		return false
+	}
+	if strings.HasPrefix(lower, "name:") && strings.Contains(lower, "\ndescription:") {
+		return false
+	}
+	return true
+}
+
 // toolStatusLabel returns a human-readable label for a tool call.
 // Sent to the mobile app as a tool_status SSE event so the user can see
 // exactly what Ghost is doing during long multi-step operations.
@@ -1120,6 +1153,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			if err := rows.Scan(&m.ID, &m.Role, &m.Content, &createdAt, &metaJSON); err != nil {
 				continue
 			}
+			if !isUserVisibleHistoryMessage(m.Role, m.Content, metaJSON) {
+				continue
+			}
 			m.Timestamp = createdAt.Unix()
 			messages = append(messages, m)
 		}
@@ -1134,13 +1170,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		}
 
 		total := len(messages)
-		_ = db.QueryRow(`
-			SELECT COUNT(*) FROM messages
-			WHERE session_id = ?
-			  AND (archived IS NULL OR archived = 0)
-			  AND content IS NOT NULL
-			  AND TRIM(content) != ''
-			  AND LENGTH(content) > 0`, session).Scan(&total)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"messages": messages,
