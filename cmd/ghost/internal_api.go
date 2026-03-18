@@ -24,12 +24,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -343,6 +345,7 @@ func toolStatusLabel(name, args string) string {
 }
 
 type internalAPIRequest struct {
+	RequestID  string            `json:"request_id,omitempty"`
 	Content    string            `json:"content"`
 	SessionKey string            `json:"session_key"`
 	Media      []string          `json:"media,omitempty"`
@@ -709,7 +712,7 @@ func shellescape(s string) string {
 // Listens on 0.0.0.0 so the mobile app can connect directly over Wi-Fi.
 // One port (GHOST_API_PORT, default 8766) handles everything:
 // chat, history, memory, transcription, remote control, and WebSocket.
-func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService) {
+func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService, channelManager *channels.Manager) {
 	port := defaultInternalAPIPort
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
@@ -736,6 +739,62 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 	}
 
 	db := agentLoop.DB()
+	type deliveryTraceEvent struct {
+		RequestID string `json:"request_id"`
+		State     string `json:"state"`
+		At        int64  `json:"at"`
+		Channel   string `json:"channel,omitempty"`
+		ChatID    string `json:"chat_id,omitempty"`
+		Detail    string `json:"detail,omitempty"`
+	}
+	type channelIncident struct {
+		Channel      string `json:"channel"`
+		FailureCount int    `json:"failure_count"`
+		LastError    string `json:"last_error"`
+		LastAt       int64  `json:"last_at"`
+	}
+	var traceMu sync.RWMutex
+	traceByRequest := map[string][]deliveryTraceEvent{}
+	lastRequestBySession := map[string]string{}
+	channelIncidents := map[string]channelIncident{}
+	appendTrace := func(session, reqID, state, channel, chatID, detail string) {
+		if reqID == "" {
+			return
+		}
+		event := deliveryTraceEvent{
+			RequestID: reqID,
+			State:     state,
+			At:        time.Now().Unix(),
+			Channel:   channel,
+			ChatID:    chatID,
+			Detail:    detail,
+		}
+		traceMu.Lock()
+		traceByRequest[reqID] = append(traceByRequest[reqID], event)
+		if session != "" {
+			lastRequestBySession[session] = reqID
+		}
+		traceMu.Unlock()
+	}
+	if channelManager != nil {
+		channelManager.SetDeliveryObserver(func(msg bus.OutboundMessage, target string, ok bool, errText string) {
+			reqID, _ := msg.Metadata["request_id"].(string)
+			session, _ := msg.Metadata["session_id"].(string)
+			if ok {
+				appendTrace(session, reqID, "channel_delivery", target, msg.ChatID, "")
+				return
+			}
+			appendTrace(session, reqID, "delivery_failed", target, msg.ChatID, errText)
+			traceMu.Lock()
+			entry := channelIncidents[target]
+			entry.Channel = target
+			entry.FailureCount++
+			entry.LastError = errText
+			entry.LastAt = time.Now().Unix()
+			channelIncidents[target] = entry
+			traceMu.Unlock()
+		})
+	}
 
 	mux := http.NewServeMux()
 
@@ -784,16 +843,160 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			permissions = []string{"*"} // Full access
 		}
 
-		_ = json.NewEncoder(w).Encode(DoctorResponse{
-			Status:    overall,
-			Checks:    checks,
-			Timestamp: time.Now().Unix(),
-			Uptime:    int64(time.Since(apiStartTime).Seconds()),
-			Version:   "2.0.0",
-			Profile: ProfileInfo{
+		if channelManager != nil {
+			statuses := channelManager.GetOperationalStatus()
+			for name, raw := range statuses {
+				statusMap, _ := raw.(map[string]interface{})
+				failureCount, _ := statusMap["failure_count"].(int)
+				lastErr, _ := statusMap["last_send_error"].(string)
+				if failureCount >= 3 && lastErr != "" {
+					level := "warning"
+					if failureCount >= 5 {
+						level = "error"
+						overall = "error"
+					} else if overall == "ok" {
+						overall = "warning"
+					}
+					checks = append(checks, DoctorCheckPayload{
+						Name:    "channel_" + name + "_delivery",
+						Status:  level,
+						Message: fmt.Sprintf("Repeated send failures (%d): %s", failureCount, lastErr),
+					})
+				}
+			}
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    overall,
+			"checks":    checks,
+			"timestamp": time.Now().Unix(),
+			"uptime":    int64(time.Since(apiStartTime).Seconds()),
+			"version":   "2.0.0",
+			"profile": ProfileInfo{
 				Name:        string(profileName),
 				Permissions: permissions,
 			},
+			"channels": func() map[string]interface{} {
+				if channelManager == nil {
+					return map[string]interface{}{}
+				}
+				return channelManager.GetOperationalStatus()
+			}(),
+		})
+	}))
+
+	mux.HandleFunc("/v1/channels/status", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		if channelManager == nil {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"channels": map[string]interface{}{}})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"channels":  channelManager.GetOperationalStatus(),
+			"timestamp": time.Now().Unix(),
+		})
+	}))
+
+	mux.HandleFunc("/v1/channels/reconnect", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		if channelManager == nil {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "channel manager unavailable")
+			return
+		}
+		var req struct {
+			Channel string `json:"channel"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+			return
+		}
+		channel := strings.ToLower(strings.TrimSpace(req.Channel))
+		if channel == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "channel is required")
+			return
+		}
+		if err := channelManager.RestartChannel(r.Context(), channel); err != nil {
+			jsonError(w, http.StatusBadRequest, "restart_failed", err.Error())
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok":        true,
+			"channel":   channel,
+			"status":    channelManager.GetOperationalStatus(),
+			"timestamp": time.Now().Unix(),
+		})
+	}))
+
+	mux.HandleFunc("/v1/session/inspect", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		session := resolveSession(r)
+		channel := strings.TrimSpace(r.URL.Query().Get("channel"))
+		if channel == "" {
+			channel = "mobile"
+		}
+		chatID := strings.TrimSpace(r.URL.Query().Get("chat_id"))
+		if chatID == "" {
+			chatID = "default"
+		}
+		lastChannel, lastChatID := agentLoop.GetLastActiveSession()
+		target := channel
+		if channelManager != nil {
+			target = channelManager.ResolveTarget(bus.OutboundMessage{
+				Channel: channel,
+				ChatID:  chatID,
+				Metadata: map[string]interface{}{
+					"session_id": session,
+				},
+			})
+		}
+		traceMu.RLock()
+		lastReq := lastRequestBySession[session]
+		traceMu.RUnlock()
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"requested_session": session,
+			"active_session": map[string]string{
+				"channel": lastChannel,
+				"chat_id": lastChatID,
+			},
+			"delivery_target": target,
+			"last_request_id": lastReq,
+			"timestamp":       time.Now().Unix(),
+		})
+	}))
+
+	mux.HandleFunc("/v1/traces", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
+		session := strings.TrimSpace(r.URL.Query().Get("session"))
+		traceMu.RLock()
+		if requestID == "" && session != "" {
+			requestID = lastRequestBySession[session]
+		}
+		traces := traceByRequest[requestID]
+		incidents := make(map[string]channelIncident, len(channelIncidents))
+		for k, v := range channelIncidents {
+			incidents[k] = v
+		}
+		traceMu.RUnlock()
+		if traces == nil {
+			traces = []deliveryTraceEvent{}
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"request_id": requestID,
+			"events":     traces,
+			"incidents":  incidents,
 		})
 	}))
 
@@ -959,6 +1162,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		if req.ChatID == "" {
 			req.ChatID = "default"
 		}
+		if strings.TrimSpace(req.RequestID) == "" {
+			req.RequestID = fmt.Sprintf("req-%d", time.Now().UnixNano())
+		}
 
 		logger.InfoCF("internal-api", "Processing chat request", map[string]interface{}{
 			"session_key":    req.SessionKey,
@@ -976,6 +1182,17 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 			return
 		}
+		emitObject := func(payload interface{}) {
+			raw, _ := json.Marshal(payload)
+			fmt.Fprintf(w, "data: %s\n\n", string(raw))
+			flusher.Flush()
+		}
+		appendTrace(req.SessionKey, req.RequestID, "queued", req.Channel, req.ChatID, "")
+		emitObject(map[string]interface{}{
+			"type":       "lifecycle",
+			"request_id": req.RequestID,
+			"state":      "queued",
+		})
 
 		// Media handling
 		mediaPaths := []string{}
@@ -1031,6 +1248,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 		}()
 
 		ctx := r.Context()
+		appendTrace(req.SessionKey, req.RequestID, "sent_to_gateway", req.Channel, req.ChatID, "")
+		appendTrace(req.SessionKey, req.RequestID, "agent_processing", req.Channel, req.ChatID, "")
+		emitObject(map[string]interface{}{
+			"type":       "lifecycle",
+			"request_id": req.RequestID,
+			"state":      "agent_processing",
+		})
 		response, err := agentLoop.ProcessDirectWithChannel(
 			ctx,
 			enrichWeatherPrompt(req.Content, req.Metadata),
@@ -1047,6 +1271,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 
 		if err != nil {
 			logger.ErrorCF("internal-api", "Error processing chat", map[string]interface{}{"error": err.Error()})
+			appendTrace(req.SessionKey, req.RequestID, "delivery_failed", req.Channel, req.ChatID, err.Error())
 
 			// Clean up any empty/partial assistant message that may have been
 			// written to the session before the error occurred.
@@ -1064,8 +1289,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
 			flusher.Flush()
 		} else {
+			appendTrace(req.SessionKey, req.RequestID, "agent_completed", req.Channel, req.ChatID, "")
 			meta := map[string]interface{}{
-				"type": "assistant_message",
+				"type":       "assistant_message",
+				"request_id": req.RequestID,
 			}
 			if db != nil {
 				var messageID string
@@ -1083,11 +1310,20 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService)
 					meta["timestamp"] = timestamp
 				}
 			}
+			if _, ok := meta["session_id"]; !ok {
+				meta["session_id"] = req.SessionKey
+			}
 			agentLoop.Bus().PublishOutbound(bus.OutboundMessage{
 				Channel:  req.Channel,
 				ChatID:   req.ChatID,
 				Content:  response,
 				Metadata: meta,
+			})
+			appendTrace(req.SessionKey, req.RequestID, "channel_delivery", req.Channel, req.ChatID, "")
+			emitObject(map[string]interface{}{
+				"type":       "lifecycle",
+				"request_id": req.RequestID,
+				"state":      "channel_delivery",
 			})
 			fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()

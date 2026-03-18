@@ -22,17 +22,21 @@ import (
 )
 
 type Manager struct {
-	channels       map[string]Channel
-	outboundQueues map[string]chan bus.OutboundMessage
-	bus            *bus.MessageBus
-	config         *config.Config
-	dispatchTask   *asyncTask
-	workerTasks    map[string]*asyncTask
-	failureCount   map[string]int
-	fatalChannels  map[string]string
-	deliveryRouter *DeliveryRouter
-	commandDefs    []commands.Definition
-	mu             sync.RWMutex
+	channels         map[string]Channel
+	outboundQueues   map[string]chan bus.OutboundMessage
+	bus              *bus.MessageBus
+	config           *config.Config
+	dispatchTask     *asyncTask
+	workerTasks      map[string]*asyncTask
+	failureCount     map[string]int
+	fatalChannels    map[string]string
+	lastSendError    map[string]string
+	lastFailureAt    map[string]int64
+	lastSuccessAt    map[string]int64
+	deliveryRouter   *DeliveryRouter
+	commandDefs      []commands.Definition
+	deliveryObserver func(msg bus.OutboundMessage, target string, ok bool, errText string)
+	mu               sync.RWMutex
 }
 
 type CommandDefinitionsSetter interface {
@@ -97,6 +101,9 @@ func NewManager(cfg *config.Config, messageBus *bus.MessageBus, sp ActiveSession
 		workerTasks:    make(map[string]*asyncTask),
 		failureCount:   make(map[string]int),
 		fatalChannels:  make(map[string]string),
+		lastSendError:  make(map[string]string),
+		lastFailureAt:  make(map[string]int64),
+		lastSuccessAt:  make(map[string]int64),
 		bus:            messageBus,
 		config:         cfg,
 		deliveryRouter: NewDeliveryRouter(sp),
@@ -380,8 +387,20 @@ func (m *Manager) channelWorker(ctx context.Context, name string, queue <-chan b
 					"error":   sendErr.Error(),
 				})
 				m.markChannelFailure(name, sendErr)
+				m.mu.RLock()
+				observer := m.deliveryObserver
+				m.mu.RUnlock()
+				if observer != nil {
+					observer(msg, name, false, sendErr.Error())
+				}
 			} else {
 				m.markChannelSuccess(name)
+				m.mu.RLock()
+				observer := m.deliveryObserver
+				m.mu.RUnlock()
+				if observer != nil {
+					observer(msg, name, true, "")
+				}
 			}
 		}
 	}
@@ -391,6 +410,8 @@ func (m *Manager) markChannelFailure(name string, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.failureCount[name]++
+	m.lastSendError[name] = err.Error()
+	m.lastFailureAt[name] = time.Now().Unix()
 	if m.failureCount[name] >= 5 {
 		m.fatalChannels[name] = err.Error()
 		logger.ErrorCF("channels", "Channel entered fatal state", map[string]interface{}{
@@ -404,6 +425,7 @@ func (m *Manager) markChannelSuccess(name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.failureCount[name] = 0
+	m.lastSuccessAt[name] = time.Now().Unix()
 	delete(m.fatalChannels, name)
 }
 
@@ -440,6 +462,74 @@ func (m *Manager) GetEnabledChannels() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+func (m *Manager) SetDeliveryObserver(observer func(msg bus.OutboundMessage, target string, ok bool, errText string)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.deliveryObserver = observer
+}
+
+func (m *Manager) ResolveTarget(msg bus.OutboundMessage) string {
+	return m.deliveryRouter.ResolveTarget(msg)
+}
+
+func (m *Manager) RestartChannel(ctx context.Context, name string) error {
+	target := strings.ToLower(strings.TrimSpace(name))
+	m.mu.RLock()
+	ch, ok := m.channels[target]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("channel %s not found", target)
+	}
+	_ = ch.Stop(ctx)
+	if err := ch.Start(ctx); err != nil {
+		m.markChannelFailure(target, err)
+		return err
+	}
+	m.markChannelSuccess(target)
+	return nil
+}
+
+func (m *Manager) GetOperationalStatus() map[string]interface{} {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	known := []string{"telegram", "slack", "discord", "line", "whatsapp", "email"}
+	result := make(map[string]interface{}, len(known))
+	for _, name := range known {
+		enabled := false
+		switch name {
+		case "telegram":
+			enabled = m.config.Channels.Telegram.Enabled
+		case "slack":
+			enabled = m.config.Channels.Slack.Enabled
+		case "discord":
+			enabled = m.config.Channels.Discord.Enabled
+		case "line":
+			enabled = m.config.Channels.LINE.Enabled
+		case "whatsapp":
+			enabled = m.config.Channels.WhatsApp.Enabled
+		case "email":
+			enabled = m.config.Channels.Email.Enabled
+		}
+		ch := m.channels[name]
+		running := false
+		if ch != nil {
+			running = ch.IsRunning()
+		}
+		result[name] = map[string]interface{}{
+			"enabled":         enabled,
+			"running":         running,
+			"fatal":           m.fatalChannels[name] != "",
+			"fatal_reason":    m.fatalChannels[name],
+			"failure_count":   m.failureCount[name],
+			"last_send_error": m.lastSendError[name],
+			"last_failure_at": m.lastFailureAt[name],
+			"last_success_at": m.lastSuccessAt[name],
+		}
+	}
+	return result
 }
 
 func (m *Manager) RegisterChannel(name string, channel Channel) {

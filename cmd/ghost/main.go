@@ -707,7 +707,7 @@ func gatewayCmd() {
 	}
 
 	go agentLoop.Run(ctx)
-	go startInternalAPI(agentLoop, cronService)
+	go startInternalAPI(agentLoop, cronService, channelManager)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
