@@ -152,6 +152,8 @@ func main() {
 		onboard()
 	case "agent":
 		agentCmd()
+	case "dashboard", "operator":
+		runDashboard()
 	case "gateway":
 		gatewayCmd()
 	case "status":
@@ -227,7 +229,8 @@ func printHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  onboard     Initialize Ghost configuration and workspace")
 	fmt.Println("  agent       Interact with the agent directly")
-	fmt.Println("  dashboard   Launch the terminal dashboard")
+	fmt.Println("  dashboard   Launch the operator TUI")
+	fmt.Println("  operator    Launch the operator TUI")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  gateway     Start Ghost gateway")
 	fmt.Println("  status      Show Ghost status")
