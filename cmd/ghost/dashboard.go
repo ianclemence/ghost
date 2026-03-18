@@ -64,10 +64,12 @@ type dashboardModel struct {
 	selected     int
 	inspector    sessionInspector
 	trace        tracePayload
+	sanity       authSanity
 }
 
 type tickMsg struct{}
 type refreshResultMsg struct {
+	sanity    authSanity
 	doctor    doctorPayload
 	channels  map[string]channelHealth
 	inspector sessionInspector
@@ -86,6 +88,21 @@ type operatorClient struct {
 	http    *http.Client
 	session string
 	chatID  string
+}
+
+type endpointProbe struct {
+	Name      string
+	Path      string
+	Reachable bool
+	Status    int
+	Detail    string
+}
+
+type authSanity struct {
+	BridgeSecretConfigured bool
+	APIReachable           bool
+	Endpoints              []endpointProbe
+	Blocking               bool
 }
 
 type doctorCheck struct {
@@ -178,6 +195,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		return m, tea.Batch(fetchSnapshotCmd(m.client), scheduleTick())
 	case refreshResultMsg:
+		m.sanity = msg.sanity
 		if msg.err != nil {
 			m.lastError = msg.err.Error()
 		} else {
@@ -211,6 +229,24 @@ func (m dashboardModel) View() string {
 	}
 	if m.lastError != "" {
 		b.WriteString(fmt.Sprintf("Error: %s\n", m.lastError))
+	}
+	b.WriteString("\nOperator Auth Sanity\n")
+	b.WriteString(fmt.Sprintf("  BRIDGE_SECRET configured: %v\n", m.sanity.BridgeSecretConfigured))
+	b.WriteString(fmt.Sprintf("  API reachable: %v\n", m.sanity.APIReachable))
+	for _, ep := range m.sanity.Endpoints {
+		b.WriteString(fmt.Sprintf("  %-16s reachable=%-5v", ep.Name, ep.Reachable))
+		if ep.Status > 0 {
+			b.WriteString(fmt.Sprintf(" status=%d", ep.Status))
+		}
+		if ep.Detail != "" {
+			b.WriteString(" " + ep.Detail)
+		}
+		b.WriteString("\n")
+	}
+	if m.sanity.Blocking {
+		b.WriteString("\nLive sections paused until sanity checks pass.\n")
+		b.WriteString("\n" + m.actionStatus)
+		return docStyle.Render(b.String())
 	}
 	b.WriteString(fmt.Sprintf("Doctor: %s  Session: %s  Target: %s\n\n", strings.ToUpper(m.doctor.Status), m.inspector.RequestedSession, m.inspector.DeliveryTarget))
 
@@ -286,22 +322,30 @@ func scheduleTick() tea.Cmd {
 
 func fetchSnapshotCmd(client *operatorClient) tea.Cmd {
 	return func() tea.Msg {
+		sanity := client.sanityCheck()
+		if sanity.Blocking {
+			return refreshResultMsg{
+				sanity: sanity,
+				at:     time.Now(),
+			}
+		}
 		doctor, channelsData, err := client.fetchDoctorAndChannels()
 		if err != nil {
-			return refreshResultMsg{err: err, at: time.Now()}
+			return refreshResultMsg{sanity: sanity, err: err, at: time.Now()}
 		}
 		inspector, err := client.fetchSessionInspector()
 		if err != nil {
-			return refreshResultMsg{err: err, at: time.Now()}
+			return refreshResultMsg{sanity: sanity, err: err, at: time.Now()}
 		}
 		trace := tracePayload{Incidents: map[string]channelIncident{}}
 		if inspector.LastRequestID != "" {
 			trace, err = client.fetchTrace(inspector.LastRequestID)
 			if err != nil {
-				return refreshResultMsg{err: err, at: time.Now()}
+				return refreshResultMsg{sanity: sanity, err: err, at: time.Now()}
 			}
 		}
 		return refreshResultMsg{
+			sanity:    sanity,
 			doctor:    doctor,
 			channels:  channelsData,
 			inspector: inspector,
@@ -377,6 +421,69 @@ func (c *operatorClient) request(method, path string, body []byte, target interf
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func (c *operatorClient) requestStatus(method, path string) (int, error) {
+	req, err := http.NewRequest(method, c.baseURL+path, nil)
+	if err != nil {
+		return 0, err
+	}
+	if c.secret != "" {
+		req.Header.Set("X-Ghost-Secret", c.secret)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode, nil
+}
+
+func (c *operatorClient) sanityCheck() authSanity {
+	s := authSanity{
+		BridgeSecretConfigured: strings.TrimSpace(c.secret) != "",
+		APIReachable:           false,
+		Endpoints:              []endpointProbe{},
+	}
+	apiStatus, apiErr := c.requestStatus(http.MethodGet, "/v1/health")
+	if apiErr == nil && apiStatus < 500 {
+		s.APIReachable = true
+	}
+	probes := []struct {
+		name string
+		path string
+	}{
+		{name: "doctor", path: "/v1/doctor"},
+		{name: "channels", path: "/v1/channels/status"},
+		{name: "inspector", path: "/v1/session/inspect?session=mobile:default&channel=mobile&chat_id=default"},
+		{name: "traces", path: "/v1/traces?request_id=probe"},
+	}
+	for _, p := range probes {
+		status, err := c.requestStatus(http.MethodGet, p.path)
+		probe := endpointProbe{Name: p.name, Path: p.path}
+		if err != nil {
+			probe.Detail = err.Error()
+			probe.Reachable = false
+		} else {
+			probe.Status = status
+			probe.Reachable = status != http.StatusNotFound && status < 500
+			switch status {
+			case http.StatusUnauthorized, http.StatusForbidden:
+				probe.Detail = "auth required"
+			default:
+				probe.Detail = fmt.Sprintf("http %d", status)
+			}
+		}
+		s.Endpoints = append(s.Endpoints, probe)
+	}
+	s.Blocking = !s.BridgeSecretConfigured || !s.APIReachable
+	for _, p := range s.Endpoints {
+		if !p.Reachable {
+			s.Blocking = true
+			break
+		}
+	}
+	return s
 }
 
 func (c *operatorClient) fetchDoctorAndChannels() (doctorPayload, map[string]channelHealth, error) {
