@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -805,6 +806,60 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			"timestamp": time.Now().Unix(),
 			"version":   "2.0.0",
 			"uptime_s":  int64(time.Since(apiStartTime).Seconds()),
+		})
+	}))
+
+	mux.HandleFunc("/v1/telemetry", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		var mem runtime.MemStats
+		runtime.ReadMemStats(&mem)
+		system := map[string]interface{}{
+			"memory_alloc_mb": float64(mem.Alloc) / 1024 / 1024,
+			"num_goroutine":   runtime.NumGoroutine(),
+		}
+
+		fileCount := 0
+		var sizeBytes int64 = 0
+		if workspaceDir != "" {
+			filepath.Walk(workspaceDir, func(path string, info os.FileInfo, err error) error {
+				if err == nil && !info.IsDir() {
+					fileCount++
+					sizeBytes += info.Size()
+				}
+				return nil
+			})
+		}
+		workspace := map[string]interface{}{
+			"file_count": fileCount,
+			"size_bytes": sizeBytes,
+			"path":       workspaceDir,
+		}
+
+		database := map[string]interface{}{
+			"active_sessions_24h": 0,
+			"messages_24h":        0,
+		}
+		if db != nil {
+			row := db.QueryRow(`
+				SELECT COUNT(DISTINCT session_id), COUNT(*) 
+				FROM messages 
+				WHERE created_at > datetime('now', '-24 hours')`)
+			var sessions, msgs int
+			if err := row.Scan(&sessions, &msgs); err == nil {
+				database["active_sessions_24h"] = sessions
+				database["messages_24h"] = msgs
+			}
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"system":    system,
+			"workspace": workspace,
+			"database":  database,
+			"timestamp": time.Now().Unix(),
 		})
 	}))
 
