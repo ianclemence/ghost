@@ -28,8 +28,8 @@ const dashboardVersion = "1.0.0"
 const ghostASCII = `
    ╭━━━━━━╮
   ╭│      │╮
- │ │  ●  ● │ │
- │ │       │ │
+ │ │ ●  ● │ │
+ │ │      │ │
  ╰─╯╭╮╭╮╭╮╰─╯
 `
 
