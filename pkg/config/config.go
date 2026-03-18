@@ -192,8 +192,9 @@ type ProviderConfig struct {
 }
 
 type GatewayConfig struct {
-	Host string `json:"host" env:"GHOST_GATEWAY_HOST"`
-	Port int    `json:"port" env:"GHOST_GATEWAY_PORT"`
+	Host         string `json:"host" env:"GHOST_GATEWAY_HOST"`
+	Port         int    `json:"port" env:"GHOST_GATEWAY_PORT"`
+	BridgeSecret string `json:"bridge_secret" env:"BRIDGE_SECRET"`
 }
 
 type BraveConfig struct {

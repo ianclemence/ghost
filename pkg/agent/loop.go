@@ -1106,7 +1106,7 @@ func formatMessagesForLog(messages []providers.Message) string {
 	result += "[\n"
 	for i, msg := range messages {
 		result += fmt.Sprintf("  [%d] Role: %s\n", i, msg.Role)
-		if msg.ToolCalls != nil && len(msg.ToolCalls) > 0 {
+		if len(msg.ToolCalls) > 0 {
 			result += "  ToolCalls:\n"
 			for _, tc := range msg.ToolCalls {
 				result += fmt.Sprintf("    - ID: %s, Type: %s, Name: %s\n", tc.ID, tc.Type, tc.Name)

@@ -717,11 +717,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	port := agentLoop.Config().Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
-	} else if p := os.Getenv("GHOST_INTERNAL_API_PORT"); p != "" {
-		fmt.Sscanf(p, "%d", &port)
 	}
 
 	secret := os.Getenv("BRIDGE_SECRET")
+	if secret == "" {
+		secret = agentLoop.Config().Gateway.BridgeSecret
+	}
 	allowedCmds := []string{}
 	if raw := os.Getenv("ALLOWED_CMDS"); raw != "" {
 		allowedCmds = strings.Split(raw, ",")

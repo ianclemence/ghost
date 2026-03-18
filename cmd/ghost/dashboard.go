@@ -698,7 +698,13 @@ func (c *operatorClient) reconnect(channel string) error {
 func runDashboard() {
 	port := 8766
 	if p := os.Getenv("GHOST_API_PORT"); p != "" { fmt.Sscanf(p, "%d", &port) }
-	client := newOperatorClient(fmt.Sprintf("http://localhost:%d", port), os.Getenv("BRIDGE_SECRET"))
+	secret := os.Getenv("BRIDGE_SECRET")
+	if secret == "" {
+		if cfg, err := loadConfig(); err == nil {
+			secret = cfg.Gateway.BridgeSecret
+		}
+	}
+	client := newOperatorClient(fmt.Sprintf("http://127.0.0.1:%d", port), secret)
 	if _, err := tea.NewProgram(initialModel(client), tea.WithAltScreen()).Run(); err != nil {
 		fmt.Printf("Error: %v\n", err); os.Exit(1)
 	}

@@ -115,11 +115,16 @@ func copyDirectory(src, dst string) error {
 func main() {
 	// Try loading .env files from various locations
 	// Priority: current dir > parent dir > config dir
-	_ = godotenv.Load(".env")
-	_ = godotenv.Load("../.env")
+	if err := godotenv.Load(".env"); err == nil {
+		fmt.Printf("✓ Loaded .env (from current dir)\n")
+	} else if err := godotenv.Load("../.env"); err == nil {
+		fmt.Printf("✓ Loaded .env (from parent dir)\n")
+	}
 
 	if configDir := os.Getenv("GHOST_CONFIG_DIR"); configDir != "" {
-		_ = godotenv.Load(filepath.Join(configDir, ".env"))
+		if err := godotenv.Load(filepath.Join(configDir, ".env")); err == nil {
+			fmt.Printf("✓ Loaded .env (from GHOST_CONFIG_DIR)\n")
+		}
 	}
 
 	// Map simple env vars to internal config vars
@@ -769,7 +774,6 @@ func statusCmd() {
 		hasGemini := cfg.Providers.Gemini.APIKey != ""
 		hasZhipu := cfg.Providers.Zhipu.APIKey != ""
 		hasGroq := cfg.Providers.Groq.APIKey != ""
-		hasVLLM := cfg.Providers.VLLM.APIBase != ""
 
 		status := func(enabled bool) string {
 			if enabled {
@@ -782,11 +786,18 @@ func statusCmd() {
 		fmt.Println("OpenAI API:", status(hasOpenAI))
 		fmt.Println("Gemini API:", status(hasGemini))
 		fmt.Println("Zhipu API:", status(hasZhipu))
+		fmt.Println("Moonshot/Kimi API:", status(cfg.Providers.Moonshot.APIKey != ""))
 		fmt.Println("Groq API:", status(hasGroq))
-		if hasVLLM {
-			fmt.Printf("vLLM/Local: ✓ %s\n", cfg.Providers.VLLM.APIBase)
-		} else {
-			fmt.Println("vLLM/Local: not set")
+		
+		fmt.Println("\nRemote Bridge:")
+		fmt.Printf("  API Port: %d\n", cfg.Gateway.Port)
+		fmt.Printf("  Bridge Key: %s\n", status(cfg.Gateway.BridgeSecret != ""))
+		if cfg.Gateway.BridgeSecret != "" {
+			masked := cfg.Gateway.BridgeSecret
+			if len(masked) > 8 {
+				masked = masked[:4] + "..." + masked[len(masked)-4:]
+			}
+			fmt.Printf("    Secret: %s\n", masked)
 		}
 
 		fmt.Println("\nChannels:")
@@ -1040,6 +1051,13 @@ func authStatusCmd() {
 func getConfigPath() string {
 	if configDir := os.Getenv("GHOST_CONFIG_DIR"); configDir != "" {
 		return filepath.Join(configDir, "config.json")
+	}
+	// Priority: current dir/config/config.json > current dir/config.json > ~/.ghost/config.json
+	if _, err := os.Stat("config/config.json"); err == nil {
+		return "config/config.json"
+	}
+	if _, err := os.Stat("config.json"); err == nil {
+		return "config.json"
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".ghost", "config.json")
