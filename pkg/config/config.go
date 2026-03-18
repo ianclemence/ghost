@@ -311,7 +311,7 @@ func DefaultConfig() *Config {
 		},
 		Gateway: GatewayConfig{
 			Host: "0.0.0.0",
-			Port: 18790,
+			Port: 8766,
 		},
 		RAG: RAGConfig{
 			Enabled:        true,

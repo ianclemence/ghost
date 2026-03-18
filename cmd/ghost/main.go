@@ -664,7 +664,12 @@ func gatewayCmd() {
 		fmt.Println("⚠ Warning: No channels enabled")
 	}
 
-	fmt.Printf("✓ Gateway started on %s:%d\n", cfg.Gateway.Host, cfg.Gateway.Port)
+	// Determine actual API port (respecting env as startInternalAPI does)
+	apiPort := cfg.Gateway.Port
+	if p := os.Getenv("GHOST_API_PORT"); p != "" {
+		fmt.Sscanf(p, "%d", &apiPort)
+	}
+	fmt.Printf("✓ Gateway started on %s:%d\n", cfg.Gateway.Host, apiPort)
 	fmt.Println("Press Ctrl+C to stop")
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -714,7 +714,7 @@ func shellescape(s string) string {
 // One port (GHOST_API_PORT, default 8766) handles everything:
 // chat, history, memory, transcription, remote control, and WebSocket.
 func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService, channelManager *channels.Manager) {
-	port := defaultInternalAPIPort
+	port := agentLoop.Config().Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
 	} else if p := os.Getenv("GHOST_INTERNAL_API_PORT"); p != "" {
