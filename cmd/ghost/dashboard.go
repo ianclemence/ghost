@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"sort"
-	"math"
 	"strings"
 	"time"
 
@@ -50,6 +49,14 @@ var (
 			Padding(0, 1).
 			Bold(true)
 )
+
+const ghostASCII = `
+  .-.
+ (o o)
+ | O \
+  \   \
+   '~~~'
+`
 
 type dashboardModel struct {
 	client       *operatorClient
@@ -274,18 +281,21 @@ func (m dashboardModel) View() string {
 func (m dashboardModel) renderHeader() string {
 	uptime := time.Since(m.programStart).Round(time.Second)
 	
+	ascii := lipgloss.NewStyle().Foreground(colSuccess).Render(ghostASCII)
 	logo := titleStyle.Render("GHOST SYSTEM MONITOR")
 	stats := lipgloss.NewStyle().Foreground(colSub).Render(fmt.Sprintf("UPTIME: %s  |  API: %s", uptime, m.client.baseURL))
 	ver := lipgloss.NewStyle().Foreground(colActive).Render("v" + version)
 
 	// Spacer
-	w := m.width - lipgloss.Width(logo) - lipgloss.Width(stats) - lipgloss.Width(ver) - 4
+	w := m.width - lipgloss.Width(ascii) - lipgloss.Width(logo) - lipgloss.Width(stats) - lipgloss.Width(ver) - 6
 	if w < 0 {
 		w = 0
 	}
 	spacer := strings.Repeat(" ", w)
 
 	bar := lipgloss.JoinHorizontal(lipgloss.Center,
+		ascii,
+		" ",
 		logo,
 		"  ",
 		stats,
