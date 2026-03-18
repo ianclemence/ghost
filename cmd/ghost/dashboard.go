@@ -20,7 +20,7 @@ import (
 // Design: Apple/Anthropic inspired - Clean, Hierarchical, Breathing Room
 // ═════════════════════════════════════════════════════════════════════════════
 
-const version = "2.1.0"
+const dashboardVersion = "2.1.0"
 
 // ─── Refined Color System ───────────────────────────────────────────────────
 var (
@@ -105,6 +105,76 @@ type refreshMsg struct {
 type reconnectMsg struct {
 	channel string
 	err     error
+}
+
+// ─── Additional Types ───────────────────────────────────────────────────────
+
+type operatorClient struct {
+	BaseURL string
+	Secret  string
+	HTTP    *http.Client
+}
+
+type authSanity struct {
+	BridgeSecretConfigured bool `json:"bridge_secret_configured"`
+	APIReachable           bool `json:"api_reachable"`
+	Blocking               bool `json:"blocking"`
+}
+
+type doctorPayload struct {
+	Status    string               `json:"status"`
+	Checks    []doctorCheckPayload `json:"checks"`
+	Timestamp int64                `json:"timestamp"`
+	Uptime    int64                `json:"uptime"`
+	Version   string               `json:"version"`
+	Channels  map[string]interface{} `json:"channels"`
+}
+
+type doctorCheckPayload struct {
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	Message   string `json:"message,omitempty"`
+	LatencyMS int64  `json:"latency_ms,omitempty"`
+}
+
+type channelHealth struct {
+	Running      bool   `json:"running"`
+	Enabled      bool   `json:"enabled"`
+	LastSuccess  int64  `json:"last_success"`
+	LastFailure  int64  `json:"last_failure"`
+	FailureCount int    `json:"failure_count"`
+	LastSendErr  string `json:"last_send_error"`
+	Fatal        bool   `json:"fatal"`
+}
+
+type sessionInspector struct {
+	RequestedSession string            `json:"requested_session"`
+	ActiveSession    map[string]string `json:"active_session"`
+	DeliveryTarget   string            `json:"delivery_target"`
+	LastRequestID    string            `json:"last_request_id"`
+	Timestamp        int64             `json:"timestamp"`
+}
+
+type tracePayload struct {
+	RequestID string                     `json:"request_id"`
+	Events    []traceEvent               `json:"events"`
+	Incidents map[string]channelIncident `json:"incidents"`
+}
+
+type traceEvent struct {
+	RequestID string `json:"request_id"`
+	State     string `json:"state"`
+	At        int64  `json:"at"`
+	Channel   string `json:"channel,omitempty"`
+	ChatID    string `json:"chat_id,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+}
+
+type channelIncident struct {
+	Channel      string `json:"channel"`
+	FailureCount int    `json:"failure_count"`
+	LastError    string `json:"last_error"`
+	LastAt       int64  `json:"last_at"`
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -234,7 +304,7 @@ func (m dashboardModel) renderHeader() string {
 	brand := lipgloss.NewStyle().Foreground(cGhost).Bold(true).Render("◉ GHOST")
 	status := m.renderConnectionStatus()
 	uptime := lipgloss.NewStyle().Foreground(cTextTertiary).Render(formatDuration(time.Since(m.programStart)))
-	ver := lipgloss.NewStyle().Foreground(cTextTertiary).Render("v" + version)
+	ver := lipgloss.NewStyle().Foreground(cTextTertiary).Render("v" + dashboardVersion)
 
 	spacer := strings.Repeat(" ", max(1, m.width-lipgloss.Width(brand)-lipgloss.Width(status)-lipgloss.Width(uptime)-lipgloss.Width(ver)-6))
 	
@@ -588,7 +658,7 @@ func (m dashboardModel) renderSanityChecks() string {
 // ─── Compact View ───────────────────────────────────────────────────────────
 
 func (m dashboardModel) renderCompactView() string {
-	lines := []string{"GHOST " + version, ""}
+	lines := []string{"GHOST " + dashboardVersion, ""}
 	
 	for _, name := range m.channelNames {
 		ch := m.channels[name]
@@ -648,6 +718,128 @@ func reconnectCmd(client *operatorClient, channel string) tea.Cmd {
 	return func() tea.Msg {
 		err := client.reconnect(channel)
 		return reconnectMsg{channel: channel, err: err}
+	}
+}
+
+// ─── operatorClient Implementation ──────────────────────────────────────────
+
+func newOperatorClient(baseURL, secret string) *operatorClient {
+	return &operatorClient{
+		BaseURL: strings.TrimRight(baseURL, "/"),
+		Secret:  secret,
+		HTTP:    &http.Client{Timeout: 5 * time.Second},
+	}
+}
+
+func (c *operatorClient) get(path string, target interface{}) error {
+	req, err := http.NewRequest("GET", c.BaseURL+path, nil)
+	if err != nil {
+		return err
+	}
+
+	if c.Secret != "" {
+		req.Header.Set("X-Ghost-Secret", c.Secret)
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func (c *operatorClient) sanityCheck() authSanity {
+	var res struct {
+		Status string `json:"status"`
+	}
+	err := c.get("/v1/health", &res)
+	
+	s := authSanity{
+		BridgeSecretConfigured: c.Secret != "",
+		APIReachable:           err == nil,
+	}
+	s.Blocking = !s.APIReachable
+	return s
+}
+
+func (c *operatorClient) fetchDoctorAndChannels() (doctorPayload, map[string]channelHealth, error) {
+	var res doctorPayload
+	err := c.get("/v1/doctor", &res)
+	if err != nil {
+		return doctorPayload{}, nil, err
+	}
+
+	channels := make(map[string]channelHealth)
+	for name, raw := range res.Channels {
+		if data, err := json.Marshal(raw); err == nil {
+			var ch channelHealth
+			if json.Unmarshal(data, &ch) == nil {
+				channels[name] = ch
+			}
+		}
+	}
+
+	return res, channels, nil
+}
+
+func (c *operatorClient) fetchSessionInspector() (sessionInspector, error) {
+	var res sessionInspector
+	err := c.get("/v1/session/inspect", &res)
+	return res, err
+}
+
+func (c *operatorClient) fetchTrace(requestID string) (tracePayload, error) {
+	var res tracePayload
+	err := c.get("/v1/traces?request_id="+url.QueryEscape(requestID), &res)
+	return res, err
+}
+
+func (c *operatorClient) reconnect(channel string) error {
+	payload, _ := json.Marshal(map[string]string{"channel": channel})
+	req, err := http.NewRequest("POST", c.BaseURL+"/v1/channels/reconnect", bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if c.Secret != "" {
+		req.Header.Set("X-Ghost-Secret", c.Secret)
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// ─── Entry Point ────────────────────────────────────────────────────────────
+
+func runDashboard() {
+	port := 8766
+	if p := os.Getenv("GHOST_API_PORT"); p != "" {
+		fmt.Sscanf(p, "%d", &port)
+	}
+	
+	secret := os.Getenv("BRIDGE_SECRET")
+	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	
+	client := newOperatorClient(baseURL, secret)
+	p := tea.NewProgram(initialModel(client), tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Error running dashboard: %v\n", err)
+		os.Exit(1)
 	}
 }
 
