@@ -1,29 +1,28 @@
 {
   "agents": {
     "defaults": {
-      "model": "anthropic/claude-3.5-sonnet",
+      "workspace": "~/ghost/workspace",
+      "provider": "anthropic",
+      "model": "claude-3.5-sonnet",
+      "embedding_model": "nomic-embed-text",
       "max_tokens": 8192,
       "temperature": 0.7,
-      "max_tool_iterations": 20
+      "max_tool_iterations": 20,
+      "restrict_to_workspace": true
     }
+  },
+  "rag": {
+    "enabled": true
   },
   "providers": {
     "openrouter": {
-      "api_key": "YOUR_OPENROUTER_API_KEY",
       "api_base": "https://openrouter.ai/api/v1"
     },
     "zhipu": {
-      "api_key": "YOUR_ZHIPU_API_KEY",
       "api_base": "https://open.bigmodel.cn/api/paas/v4"
     },
-    "anthropic": {
-      "api_key": "YOUR_ANTHROPIC_API_KEY"
-    },
-    "openai": {
-      "api_key": "YOUR_OPENAI_API_KEY"
-    },
-    "gemini": {
-      "api_key": "YOUR_GEMINI_API_KEY"
+    "ollama": {
+      "api_base": "http://localhost:11434/v1"
     }
   },
   "channels": {
@@ -34,24 +33,18 @@
     },
     "telegram": {
       "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "allow_from": ["YOUR_USER_ID"]
+      "allow_from": []
     },
     "discord": {
       "enabled": false,
-      "token": "YOUR_BOT_TOKEN",
-      "allow_from": ["YOUR_USER_ID"]
+      "allow_from": []
     },
     "slack": {
       "enabled": false,
-      "bot_token": "xoxb-...",
-      "app_token": "xapp-...",
       "allow_from": []
     },
     "line": {
       "enabled": false,
-      "channel_secret": "YOUR_CHANNEL_SECRET",
-      "channel_access_token": "YOUR_ACCESS_TOKEN",
       "webhook_port": 18791,
       "webhook_path": "/webhook/line",
       "allow_from": []
@@ -60,10 +53,6 @@
       "enabled": false,
       "smtp_host": "smtp.example.com",
       "smtp_port": 587,
-      "username": "bot@example.com",
-      "password": "APP_PASSWORD",
-      "from": "bot@example.com",
-      "to": "you@example.com",
       "allow_from": []
     }
   },
@@ -71,7 +60,6 @@
     "web": {
       "brave": {
         "enabled": false,
-        "api_key": "YOUR_BRAVE_API_KEY",
         "max_results": 5
       },
       "duckduckgo": {

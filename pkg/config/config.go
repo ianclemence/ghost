@@ -373,11 +373,29 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	// Manual override for providers since env tags with templates might not work
-	if key := os.Getenv("MOONSHOT_API_KEY"); key != "" {
-		cfg.Providers.Moonshot.APIKey = key
-	}
 	if key := os.Getenv("KIMI_API_KEY"); key != "" {
 		cfg.Providers.Moonshot.APIKey = key
+	}
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+		cfg.Providers.Anthropic.APIKey = key
+	}
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		cfg.Providers.OpenAI.APIKey = key
+	}
+	if key := os.Getenv("GEMINI_API_KEY"); key != "" {
+		cfg.Providers.Gemini.APIKey = key
+	}
+	if key := os.Getenv("OPENROUTER_API_KEY"); key != "" {
+		cfg.Providers.OpenRouter.APIKey = key
+	}
+	if key := os.Getenv("ZHIPU_API_KEY"); key != "" {
+		cfg.Providers.Zhipu.APIKey = key
+	}
+	if key := os.Getenv("GROQ_API_KEY"); key != "" {
+		cfg.Providers.Groq.APIKey = key
+	}
+	if key := os.Getenv("DEEPSEEK_API_KEY"); key != "" {
+		cfg.Providers.DeepSeek.APIKey = key
 	}
 
 	return cfg, nil
