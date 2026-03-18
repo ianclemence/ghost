@@ -1,4 +1,4 @@
-﻿package migrate
+package migrate
 
 import (
 	"fmt"
@@ -28,7 +28,7 @@ type Options struct {
 	Force         bool
 	Refresh       bool
 	OpenClawHome  string
-	GhostHome  string
+	GhostHome     string
 }
 
 type Action struct {
@@ -392,4 +392,3 @@ func relPath(path, base string) string {
 	}
 	return rel
 }
-

@@ -1,4 +1,4 @@
-﻿package migrate
+package migrate
 
 import (
 	"encoding/json"
@@ -347,4 +347,3 @@ func getStringSlice(data map[string]interface{}, key string) []string {
 	}
 	return result
 }
-

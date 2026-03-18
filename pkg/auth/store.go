@@ -1,4 +1,4 @@
-﻿package auth
+package auth
 
 import (
 	"encoding/json"
@@ -113,4 +113,3 @@ func DeleteAllCredentials() error {
 	}
 	return nil
 }
-

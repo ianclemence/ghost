@@ -1,4 +1,4 @@
-﻿# Board Pinout & Pinmux Reference
+# Board Pinout & Pinmux Reference
 
 ## LicheeRV Nano (SG2002)
 

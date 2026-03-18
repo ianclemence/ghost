@@ -1,4 +1,4 @@
-﻿package tools
+package tools
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 		if strings.HasPrefix(absPath, tempMediaDir) {
 			return absPath, nil
 		}
-		
+
 		// Allow READ-ONLY access to the project root (parent of workspace)
 		// This enables the agent to analyze its own source code (pkg/tools, etc.)
 		projectRoot := filepath.Dir(absWorkspace)
@@ -217,4 +217,3 @@ func (t *ListDirTool) Execute(ctx context.Context, args map[string]interface{}) 
 
 	return NewToolResult(result)
 }
-

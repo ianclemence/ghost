@@ -1,4 +1,4 @@
-﻿// Ghost - Ultra-lightweight personal AI agent
+// Ghost - Ultra-lightweight personal AI agent
 // Inspired by and based on GHOST: https://github.com/ianclemence/ghost
 // License: MIT
 //
@@ -39,11 +39,11 @@ type HeartbeatService struct {
 	bus         *bus.MessageBus
 	cronService *cron.CronService
 	state       *state.Manager
-	handler   HeartbeatHandler
-	interval  time.Duration
-	enabled   bool
-	mu        sync.RWMutex
-	stopChan  chan struct{}
+	handler     HeartbeatHandler
+	interval    time.Duration
+	enabled     bool
+	mu          sync.RWMutex
+	stopChan    chan struct{}
 }
 
 // NewHeartbeatService creates a new heartbeat service
@@ -434,4 +434,3 @@ func (hs *HeartbeatService) ParseAndSchedule() {
 		})
 	}
 }
-

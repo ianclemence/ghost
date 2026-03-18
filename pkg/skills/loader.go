@@ -1,4 +1,4 @@
-﻿package skills
+package skills
 
 import (
 	"encoding/json"
@@ -282,4 +282,3 @@ func escapeXML(s string) string {
 	s = strings.ReplaceAll(s, ">", "&gt;")
 	return s
 }
-

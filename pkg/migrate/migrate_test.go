@@ -1,4 +1,4 @@
-﻿package migrate
+package migrate
 
 import (
 	"encoding/json"
@@ -852,4 +852,3 @@ func TestRunWorkspaceOnly(t *testing.T) {
 		t.Errorf("SOUL.md content = %q", string(soulData))
 	}
 }
-

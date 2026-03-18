@@ -1,4 +1,4 @@
-﻿package utils
+package utils
 
 import (
 	"io"
@@ -141,4 +141,3 @@ func DownloadFileSimple(url, filename string) string {
 		LoggerPrefix: "media",
 	})
 }
-

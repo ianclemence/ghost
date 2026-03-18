@@ -1,4 +1,4 @@
-﻿package skills
+package skills
 
 import (
 	"context"
@@ -169,4 +169,3 @@ func (si *SkillInstaller) ListBuiltinSkills() []BuiltinSkill {
 	}
 	return skills
 }
-

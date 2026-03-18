@@ -1,4 +1,4 @@
-﻿// Ghost - Ultra-lightweight personal AI agent
+// Ghost - Ultra-lightweight personal AI agent
 // Inspired by and based on GHOST: https://github.com/ianclemence/ghost
 // License: MIT
 //
@@ -152,4 +152,3 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 		Iterations: iteration,
 	}, nil
 }
-

@@ -1,4 +1,4 @@
-﻿package providers
+package providers
 
 import (
 	"context"
@@ -439,4 +439,3 @@ func createCodexTokenSource() func() (string, string, error) {
 		return cred.AccessToken, cred.AccountID, nil
 	}
 }
-

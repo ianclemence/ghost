@@ -1,4 +1,4 @@
-﻿// Ghost - Ultra-lightweight personal AI agent
+// Ghost - Ultra-lightweight personal AI agent
 // Inspired by and based on GHOST: https://github.com/ianclemence/ghost
 // License: MIT
 //
@@ -159,4 +159,3 @@ func (ms *MemoryStore) GetMemoryContext() string {
 	}
 	return fmt.Sprintf("# Memory\n\n%s", result)
 }
-

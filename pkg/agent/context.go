@@ -1,4 +1,4 @@
-﻿package agent
+package agent
 
 import (
 	"context"
@@ -448,4 +448,3 @@ func (cb *ContextBuilder) sanitizeHistory(history []providers.Message) []provide
 
 	return sanitized
 }
-

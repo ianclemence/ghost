@@ -1,4 +1,4 @@
-﻿package providers
+package providers
 
 import (
 	"context"
@@ -67,4 +67,3 @@ func createClaudeTokenSource() func() (string, error) {
 		return cred.AccessToken, nil
 	}
 }
-

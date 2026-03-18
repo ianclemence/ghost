@@ -1,4 +1,4 @@
-﻿package auth
+package auth
 
 import (
 	"os"
@@ -191,4 +191,3 @@ func TestLoadStoreEmpty(t *testing.T) {
 		t.Errorf("expected empty credentials, got %d", len(store.Credentials))
 	}
 }
-
