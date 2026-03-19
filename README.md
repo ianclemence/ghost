@@ -43,11 +43,11 @@ ollama pull qwen3.5:0.8b
 
 ## 🚀 Quick Start
 
-### 🪟 Windows (Recommended)
+### Windows
 
 Double-click `setup.bat` to install skills, build, and run automatically.
 
-### 🍓 Raspberry Pi / Linux (Recommended)
+### Raspberry Pi / Linux (Recommended)
 
 Run the all-in-one setup script:
 
