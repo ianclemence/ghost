@@ -2,12 +2,13 @@
 name: subagent-driven-development
 description: Use when executing implementation plans with independent tasks. Dispatches fresh delegate_task per task with two-stage review (spec compliance then code quality).
 version: 1.1.0
-author: Hermes Agent (adapted from obra/superpowers)
+author: Ghost (adapted from obra/superpowers)
 license: MIT
 metadata:
   hermes:
     tags: [delegation, subagent, implementation, workflow, parallel]
-    related_skills: [writing-plans, requesting-code-review, test-driven-development]
+    related_skills:
+      [writing-plans, requesting-code-review, test-driven-development]
 ---
 
 # Subagent-Driven Development
@@ -21,12 +22,14 @@ Execute implementation plans by dispatching fresh subagents per task with system
 ## When to Use
 
 Use this skill when:
+
 - You have an implementation plan (from writing-plans skill or user requirements)
 - Tasks are mostly independent
 - Quality and spec compliance are important
 - You want automated review between tasks
 
 **vs. manual execution:**
+
 - Fresh context per task (no confusion from accumulated state)
 - Automated review process catches issues early
 - Consistent quality checks across all tasks
@@ -191,9 +194,11 @@ git add -A && git commit -m "feat: complete [feature name] implementation"
 **Each task = 2-5 minutes of focused work.**
 
 **Too big:**
+
 - "Implement user authentication system"
 
 **Right size:**
+
 - "Create User model with email and password fields"
 - "Add password hashing function"
 - "Create login endpoint"
@@ -238,16 +243,19 @@ git add -A && git commit -m "feat: complete [feature name] implementation"
 ## Efficiency Notes
 
 **Why fresh subagent per task:**
+
 - Prevents context pollution from accumulated state
 - Each subagent gets clean, focused context
 - No confusion from prior tasks' code or reasoning
 
 **Why two-stage review:**
+
 - Spec review catches under/over-building early
 - Quality review ensures the implementation is well-built
 - Catches issues before they compound across tasks
 
 **Cost trade-off:**
+
 - More subagent invocations (implementer + 2 reviewers per task)
 - But catches issues early (cheaper than debugging compounded problems later)
 
@@ -256,12 +264,14 @@ git add -A && git commit -m "feat: complete [feature name] implementation"
 ### With writing-plans
 
 This skill EXECUTES plans created by the writing-plans skill:
+
 1. User requirements → writing-plans → implementation plan
 2. Implementation plan → subagent-driven-development → working code
 
 ### With test-driven-development
 
 Implementer subagents should follow TDD:
+
 1. Write failing test first
 2. Implement minimal code
 3. Verify test passes
@@ -276,6 +286,7 @@ The two-stage review process IS the code review. For final integration review, u
 ### With systematic-debugging
 
 If a subagent encounters bugs during implementation:
+
 1. Follow systematic-debugging process
 2. Find root cause before fixing
 3. Write regression test

@@ -2,12 +2,13 @@
 name: test-driven-development
 description: Use when implementing any feature or bugfix, before writing implementation code. Enforces RED-GREEN-REFACTOR cycle with test-first approach.
 version: 1.1.0
-author: Hermes Agent (adapted from obra/superpowers)
+author: Ghost
 license: MIT
 metadata:
   hermes:
     tags: [testing, tdd, development, quality, red-green-refactor]
-    related_skills: [systematic-debugging, writing-plans, subagent-driven-development]
+    related_skills:
+      [systematic-debugging, writing-plans, subagent-driven-development]
 ---
 
 # Test-Driven Development (TDD)
@@ -23,12 +24,14 @@ Write the test first. Watch it fail. Write minimal code to pass.
 ## When to Use
 
 **Always:**
+
 - New features
 - Bug fixes
 - Refactoring
 - Behavior changes
 
 **Exceptions (ask the user first):**
+
 - Throwaway prototypes
 - Generated code
 - Configuration files
@@ -44,6 +47,7 @@ NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
 Write code before the test? Delete it. Start over.
 
 **No exceptions:**
+
 - Don't keep it as "reference"
 - Don't "adapt" it while writing tests
 - Don't look at it
@@ -58,6 +62,7 @@ Implement fresh from tests. Period.
 Write one minimal test showing what should happen.
 
 **Good test:**
+
 ```python
 def test_retries_failed_operations_3_times():
     attempts = 0
@@ -73,9 +78,11 @@ def test_retries_failed_operations_3_times():
     assert result == 'success'
     assert attempts == 3
 ```
+
 Clear name, tests real behavior, one thing.
 
 **Bad test:**
+
 ```python
 def test_retry_works():
     mock = MagicMock()
@@ -83,9 +90,11 @@ def test_retry_works():
     result = retry_operation(mock)
     assert result == 'success'  # What about retry count? Timing?
 ```
+
 Vague name, tests mock not real code.
 
 **Requirements:**
+
 - One behavior per test
 - Clear descriptive name ("and" in name? Split it)
 - Real code, not mocks (unless truly unavoidable)
@@ -101,6 +110,7 @@ pytest tests/test_feature.py::test_specific_behavior -v
 ```
 
 Confirm:
+
 - Test fails (not errors from typos)
 - Failure message is expected
 - Fails because the feature is missing
@@ -114,12 +124,14 @@ Confirm:
 Write the simplest code to pass the test. Nothing more.
 
 **Good:**
+
 ```python
 def add(a, b):
     return a + b  # Nothing extra
 ```
 
 **Bad:**
+
 ```python
 def add(a, b):
     result = a + b
@@ -130,6 +142,7 @@ def add(a, b):
 Don't add features, refactor other code, or "improve" beyond the test.
 
 **Cheating is OK in GREEN:**
+
 - Hardcode return values
 - Copy-paste
 - Duplicate code
@@ -150,6 +163,7 @@ pytest tests/ -q
 ```
 
 Confirm:
+
 - Test passes
 - Other tests still pass
 - Output pristine (no errors, warnings)
@@ -161,6 +175,7 @@ Confirm:
 ### REFACTOR — Clean Up
 
 After green only:
+
 - Remove duplication
 - Improve names
 - Extract helpers
@@ -179,6 +194,7 @@ Next failing test for next behavior. One cycle at a time.
 **"I'll write tests after to verify it works"**
 
 Tests written after code pass immediately. Passing immediately proves nothing:
+
 - Might test the wrong thing
 - Might test implementation, not behavior
 - Might miss edge cases you forgot
@@ -189,6 +205,7 @@ Test-first forces you to see the test fail, proving it actually tests something.
 **"I already manually tested all the edge cases"**
 
 Manual testing is ad-hoc. You think you tested everything but:
+
 - No record of what you tested
 - Can't re-run when code changes
 - Easy to forget cases under pressure
@@ -199,6 +216,7 @@ Automated tests are systematic. They run the same way every time.
 **"Deleting X hours of work is wasteful"**
 
 Sunk cost fallacy. The time is already gone. Your choice now:
+
 - Delete and rewrite with TDD (high confidence)
 - Keep it and add tests after (low confidence, likely bugs)
 
@@ -207,6 +225,7 @@ The "waste" is keeping code you can't trust.
 **"TDD is dogmatic, being pragmatic means adapting"**
 
 TDD IS pragmatic:
+
 - Finds bugs before commit (faster than debugging after)
 - Prevents regressions (tests catch breaks immediately)
 - Documents behavior (tests show how to use code)
@@ -222,19 +241,19 @@ Tests-after are biased by your implementation. You test what you built, not what
 
 ## Common Rationalizations
 
-| Excuse | Reality |
-|--------|---------|
-| "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
-| "I'll test after" | Tests passing immediately prove nothing. |
-| "Tests after achieve same goals" | Tests-after = "what does this do?" Tests-first = "what should this do?" |
-| "Already manually tested" | Ad-hoc ≠ systematic. No record, can't re-run. |
-| "Deleting X hours is wasteful" | Sunk cost fallacy. Keeping unverified code is technical debt. |
-| "Keep as reference, write tests first" | You'll adapt it. That's testing after. Delete means delete. |
-| "Need to explore first" | Fine. Throw away exploration, start with TDD. |
-| "Test hard = design unclear" | Listen to the test. Hard to test = hard to use. |
-| "TDD will slow me down" | TDD faster than debugging. Pragmatic = test-first. |
-| "Manual test faster" | Manual doesn't prove edge cases. You'll re-test every change. |
-| "Existing code has no tests" | You're improving it. Add tests for the code you touch. |
+| Excuse                                 | Reality                                                                 |
+| -------------------------------------- | ----------------------------------------------------------------------- |
+| "Too simple to test"                   | Simple code breaks. Test takes 30 seconds.                              |
+| "I'll test after"                      | Tests passing immediately prove nothing.                                |
+| "Tests after achieve same goals"       | Tests-after = "what does this do?" Tests-first = "what should this do?" |
+| "Already manually tested"              | Ad-hoc ≠ systematic. No record, can't re-run.                           |
+| "Deleting X hours is wasteful"         | Sunk cost fallacy. Keeping unverified code is technical debt.           |
+| "Keep as reference, write tests first" | You'll adapt it. That's testing after. Delete means delete.             |
+| "Need to explore first"                | Fine. Throw away exploration, start with TDD.                           |
+| "Test hard = design unclear"           | Listen to the test. Hard to test = hard to use.                         |
+| "TDD will slow me down"                | TDD faster than debugging. Pragmatic = test-first.                      |
+| "Manual test faster"                   | Manual doesn't prove edge cases. You'll re-test every change.           |
+| "Existing code has no tests"           | You're improving it. Add tests for the code you touch.                  |
 
 ## Red Flags — STOP and Start Over
 
@@ -272,14 +291,14 @@ Can't check all boxes? You skipped TDD. Start over.
 
 ## When Stuck
 
-| Problem | Solution |
-|---------|----------|
+| Problem                | Solution                                                           |
+| ---------------------- | ------------------------------------------------------------------ |
 | Don't know how to test | Write the wished-for API. Write the assertion first. Ask the user. |
-| Test too complicated | Design too complicated. Simplify the interface. |
-| Must mock everything | Code too coupled. Use dependency injection. |
-| Test setup huge | Extract helpers. Still complex? Simplify the design. |
+| Test too complicated   | Design too complicated. Simplify the interface.                    |
+| Must mock everything   | Code too coupled. Use dependency injection.                        |
+| Test setup huge        | Extract helpers. Still complex? Simplify the design.               |
 
-## Hermes Agent Integration
+## Ghost Integration
 
 ### Running Tests
 

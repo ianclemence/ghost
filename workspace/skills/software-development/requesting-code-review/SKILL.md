@@ -2,12 +2,13 @@
 name: requesting-code-review
 description: Use when completing tasks, implementing major features, or before merging. Validates work meets requirements through systematic review process.
 version: 1.1.0
-author: Hermes Agent (adapted from obra/superpowers)
+author: Ghost (adapted from obra/superpowers)
 license: MIT
 metadata:
   hermes:
     tags: [code-review, quality, validation, workflow, review]
-    related_skills: [subagent-driven-development, writing-plans, test-driven-development]
+    related_skills:
+      [subagent-driven-development, writing-plans, test-driven-development]
 ---
 
 # Requesting Code Review
@@ -21,18 +22,21 @@ Dispatch a reviewer subagent to catch issues before they cascade. Review early, 
 ## When to Request Review
 
 **Mandatory:**
+
 - After each task in subagent-driven development
 - After completing a major feature
 - Before merge to main
 - After bug fixes
 
 **Optional but valuable:**
+
 - When stuck (fresh perspective)
 - Before refactoring (baseline check)
 - After complex logic implementation
 - When touching critical code (auth, payments, data)
 
 **Never skip because:**
+
 - "It's simple" — simple bugs compound
 - "I'm in a hurry" — reviews save time
 - "I tested it" — you have blind spots
@@ -118,6 +122,7 @@ delegate_task(
 ### Step 4: Act on Feedback
 
 **Critical Issues (block merge):**
+
 - Security vulnerabilities
 - Broken functionality
 - Data loss risk
@@ -125,6 +130,7 @@ delegate_task(
 - **Action:** Fix immediately before proceeding
 
 **Important Issues (should fix):**
+
 - Missing edge case handling
 - Poor error messages
 - Unclear code
@@ -132,12 +138,14 @@ delegate_task(
 - **Action:** Fix before merge if possible
 
 **Minor Issues (nice to have):**
+
 - Style preferences
 - Refactoring suggestions
 - Documentation improvements
 - **Action:** Note for later or quick fix
 
 **If reviewer is wrong:**
+
 - Push back with technical reasoning
 - Show code/tests that prove it works
 - Request clarification
@@ -145,30 +153,35 @@ delegate_task(
 ## Review Dimensions
 
 ### Correctness
+
 - Does it implement the requirements?
 - Are there logic errors?
 - Do edge cases work?
 - Are there race conditions?
 
 ### Code Quality
+
 - Is code readable?
 - Are names clear and descriptive?
 - Is it too complex? (Functions >20 lines = smell)
 - Is there duplication?
 
 ### Testing
+
 - Are there meaningful tests?
 - Do they cover edge cases?
 - Do they test behavior, not implementation?
 - Do all tests pass?
 
 ### Security
+
 - Any injection vulnerabilities?
 - Proper input validation?
 - Secrets handled correctly?
 - Access control in place?
 
 ### Performance
+
 - Any N+1 queries?
 - Unnecessary computation in loops?
 - Memory leaks?
@@ -215,6 +228,7 @@ Standard format for reviewer subagent output:
 ### With subagent-driven-development
 
 Review after EACH task — this is the two-stage review:
+
 1. Spec compliance review (does it match the plan?)
 2. Code quality review (is it well-built?)
 3. Fix issues from either review
@@ -223,6 +237,7 @@ Review after EACH task — this is the two-stage review:
 ### With test-driven-development
 
 Review verifies:
+
 - Tests were written first (RED-GREEN-REFACTOR followed?)
 - Tests are meaningful (not just asserting True)?
 - Edge cases covered?
@@ -231,6 +246,7 @@ Review verifies:
 ### With writing-plans
 
 Review validates:
+
 - Implementation matches the plan?
 - All tasks completed?
 - Quality standards met?
@@ -238,6 +254,7 @@ Review validates:
 ## Red Flags
 
 **Never:**
+
 - Skip review because "it's simple"
 - Ignore Critical issues
 - Proceed with unfixed Important issues
@@ -246,12 +263,14 @@ Review validates:
 ## Quality Gates
 
 **Must pass before merge:**
+
 - [ ] No critical issues
 - [ ] All tests pass
 - [ ] Review verdict: APPROVE
 - [ ] Requirements met
 
 **Should pass before merge:**
+
 - [ ] No important issues
 - [ ] Documentation updated
 - [ ] Performance acceptable

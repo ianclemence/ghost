@@ -2,12 +2,14 @@
 name: systematic-debugging
 description: Use when encountering any bug, test failure, or unexpected behavior. 4-phase root cause investigation — NO fixes without understanding the problem first.
 version: 1.1.0
-author: Hermes Agent (adapted from obra/superpowers)
+author: Ghost (adapted from obra/superpowers)
 license: MIT
 metadata:
   hermes:
-    tags: [debugging, troubleshooting, problem-solving, root-cause, investigation]
-    related_skills: [test-driven-development, writing-plans, subagent-driven-development]
+    tags:
+      [debugging, troubleshooting, problem-solving, root-cause, investigation]
+    related_skills:
+      [test-driven-development, writing-plans, subagent-driven-development]
 ---
 
 # Systematic Debugging
@@ -31,6 +33,7 @@ If you haven't completed Phase 1, you cannot propose fixes.
 ## When to Use
 
 Use for ANY technical issue:
+
 - Test failures
 - Bugs in production
 - Unexpected behavior
@@ -39,6 +42,7 @@ Use for ANY technical issue:
 - Integration issues
 
 **Use this ESPECIALLY when:**
+
 - Under time pressure (emergencies make guessing tempting)
 - "Just one quick fix" seems obvious
 - You've already tried multiple fixes
@@ -46,6 +50,7 @@ Use for ANY technical issue:
 - You don't fully understand the issue
 
 **Don't skip when:**
+
 - Issue seems simple (simple bugs have root causes too)
 - You're in a hurry (rushing guarantees rework)
 - Someone wants it fixed NOW (systematic is faster than thrashing)
@@ -112,6 +117,7 @@ git log -p --follow src/problematic_file.py | head -100
 **BEFORE proposing fixes, add diagnostic instrumentation:**
 
 For EACH component boundary:
+
 - Log what data enters the component
 - Log what data exits the component
 - Verify environment/config propagation
@@ -258,11 +264,13 @@ pytest tests/ -q
 ### 5. If 3+ Fixes Failed: Question Architecture
 
 **Pattern indicating an architectural problem:**
+
 - Each fix reveals new shared state/coupling in a different place
 - Fixes require "massive refactoring" to implement
 - Each fix creates new symptoms elsewhere
 
 **STOP and question fundamentals:**
+
 - Is this pattern fundamentally sound?
 - Are we "sticking with it through sheer inertia"?
 - Should we refactor the architecture vs. continue fixing symptoms?
@@ -276,6 +284,7 @@ This is NOT a failed hypothesis — this is a wrong architecture.
 ## Red Flags — STOP and Follow Process
 
 If you catch yourself thinking:
+
 - "Quick fix for now, investigate later"
 - "Just try changing X and see if it works"
 - "Add multiple changes, run tests"
@@ -294,27 +303,27 @@ If you catch yourself thinking:
 
 ## Common Rationalizations
 
-| Excuse | Reality |
-|--------|---------|
-| "Issue is simple, don't need process" | Simple issues have root causes too. Process is fast for simple bugs. |
-| "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check thrashing. |
-| "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
-| "I'll write test after confirming fix works" | Untested fixes don't stick. Test first proves it. |
-| "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
-| "Reference too long, I'll adapt the pattern" | Partial understanding guarantees bugs. Read it completely. |
-| "I see the problem, let me fix it" | Seeing symptoms ≠ understanding root cause. |
-| "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Question the pattern, don't fix again. |
+| Excuse                                       | Reality                                                                     |
+| -------------------------------------------- | --------------------------------------------------------------------------- |
+| "Issue is simple, don't need process"        | Simple issues have root causes too. Process is fast for simple bugs.        |
+| "Emergency, no time for process"             | Systematic debugging is FASTER than guess-and-check thrashing.              |
+| "Just try this first, then investigate"      | First fix sets the pattern. Do it right from the start.                     |
+| "I'll write test after confirming fix works" | Untested fixes don't stick. Test first proves it.                           |
+| "Multiple fixes at once saves time"          | Can't isolate what worked. Causes new bugs.                                 |
+| "Reference too long, I'll adapt the pattern" | Partial understanding guarantees bugs. Read it completely.                  |
+| "I see the problem, let me fix it"           | Seeing symptoms ≠ understanding root cause.                                 |
+| "One more fix attempt" (after 2+ failures)   | 3+ failures = architectural problem. Question the pattern, don't fix again. |
 
 ## Quick Reference
 
-| Phase | Key Activities | Success Criteria |
-|-------|---------------|------------------|
-| **1. Root Cause** | Read errors, reproduce, check changes, gather evidence, trace data flow | Understand WHAT and WHY |
-| **2. Pattern** | Find working examples, compare, identify differences | Know what's different |
-| **3. Hypothesis** | Form theory, test minimally, one variable at a time | Confirmed or new hypothesis |
-| **4. Implementation** | Create regression test, fix root cause, verify | Bug resolved, all tests pass |
+| Phase                 | Key Activities                                                          | Success Criteria             |
+| --------------------- | ----------------------------------------------------------------------- | ---------------------------- |
+| **1. Root Cause**     | Read errors, reproduce, check changes, gather evidence, trace data flow | Understand WHAT and WHY      |
+| **2. Pattern**        | Find working examples, compare, identify differences                    | Know what's different        |
+| **3. Hypothesis**     | Form theory, test minimally, one variable at a time                     | Confirmed or new hypothesis  |
+| **4. Implementation** | Create regression test, fix root cause, verify                          | Bug resolved, all tests pass |
 
-## Hermes Agent Integration
+## Ghost Integration
 
 ### Investigation Tools
 
@@ -350,6 +359,7 @@ delegate_task(
 ### With test-driven-development
 
 When fixing bugs:
+
 1. Write a test that reproduces the bug (RED)
 2. Debug systematically to find root cause
 3. Fix the root cause (GREEN)
@@ -358,6 +368,7 @@ When fixing bugs:
 ## Real-World Impact
 
 From debugging sessions:
+
 - Systematic approach: 15-30 minutes to fix
 - Random fixes approach: 2-3 hours of thrashing
 - First-time fix rate: 95% vs 40%

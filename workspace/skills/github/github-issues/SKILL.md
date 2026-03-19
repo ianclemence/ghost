@@ -2,7 +2,7 @@
 name: github-issues
 description: Create, manage, triage, and close GitHub issues. Search existing issues, add labels, assign people, and link to PRs. Works with gh CLI or falls back to git + GitHub REST API via curl.
 version: 1.1.0
-author: Hermes Agent
+author: Ghost
 license: MIT
 metadata:
   hermes:
@@ -353,13 +353,13 @@ curl -s \
 
 ## Quick Reference Table
 
-| Action | gh | curl endpoint |
-|--------|-----|--------------|
-| List issues | `gh issue list` | `GET /repos/{o}/{r}/issues` |
-| View issue | `gh issue view N` | `GET /repos/{o}/{r}/issues/N` |
-| Create issue | `gh issue create ...` | `POST /repos/{o}/{r}/issues` |
-| Add labels | `gh issue edit N --add-label ...` | `POST /repos/{o}/{r}/issues/N/labels` |
-| Assign | `gh issue edit N --add-assignee ...` | `POST /repos/{o}/{r}/issues/N/assignees` |
-| Comment | `gh issue comment N --body ...` | `POST /repos/{o}/{r}/issues/N/comments` |
-| Close | `gh issue close N` | `PATCH /repos/{o}/{r}/issues/N` |
-| Search | `gh issue list --search "..."` | `GET /search/issues?q=...` |
+| Action       | gh                                   | curl endpoint                            |
+| ------------ | ------------------------------------ | ---------------------------------------- |
+| List issues  | `gh issue list`                      | `GET /repos/{o}/{r}/issues`              |
+| View issue   | `gh issue view N`                    | `GET /repos/{o}/{r}/issues/N`            |
+| Create issue | `gh issue create ...`                | `POST /repos/{o}/{r}/issues`             |
+| Add labels   | `gh issue edit N --add-label ...`    | `POST /repos/{o}/{r}/issues/N/labels`    |
+| Assign       | `gh issue edit N --add-assignee ...` | `POST /repos/{o}/{r}/issues/N/assignees` |
+| Comment      | `gh issue comment N --body ...`      | `POST /repos/{o}/{r}/issues/N/comments`  |
+| Close        | `gh issue close N`                   | `PATCH /repos/{o}/{r}/issues/N`          |
+| Search       | `gh issue list --search "..."`       | `GET /search/issues?q=...`               |

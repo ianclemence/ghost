@@ -2,7 +2,7 @@
 name: github-repo-management
 description: Clone, create, fork, configure, and manage GitHub repositories. Manage remotes, secrets, releases, and workflows. Works with gh CLI or falls back to git + GitHub REST API via curl.
 version: 1.1.0
-author: Hermes Agent
+author: Ghost
 license: MIT
 metadata:
   hermes:
@@ -498,14 +498,14 @@ for g in json.load(sys.stdin):
 
 ## Quick Reference Table
 
-| Action | gh | git + curl |
-|--------|-----|-----------|
-| Clone | `gh repo clone o/r` | `git clone https://github.com/o/r.git` |
-| Create repo | `gh repo create name --public` | `curl POST /user/repos` |
-| Fork | `gh repo fork o/r --clone` | `curl POST /repos/o/r/forks` + `git clone` |
-| Repo info | `gh repo view o/r` | `curl GET /repos/o/r` |
-| Edit settings | `gh repo edit --...` | `curl PATCH /repos/o/r` |
-| Create release | `gh release create v1.0` | `curl POST /repos/o/r/releases` |
-| List workflows | `gh workflow list` | `curl GET /repos/o/r/actions/workflows` |
-| Rerun CI | `gh run rerun ID` | `curl POST /repos/o/r/actions/runs/ID/rerun` |
-| Set secret | `gh secret set KEY` | `curl PUT /repos/o/r/actions/secrets/KEY` (+ encryption) |
+| Action         | gh                             | git + curl                                               |
+| -------------- | ------------------------------ | -------------------------------------------------------- |
+| Clone          | `gh repo clone o/r`            | `git clone https://github.com/o/r.git`                   |
+| Create repo    | `gh repo create name --public` | `curl POST /user/repos`                                  |
+| Fork           | `gh repo fork o/r --clone`     | `curl POST /repos/o/r/forks` + `git clone`               |
+| Repo info      | `gh repo view o/r`             | `curl GET /repos/o/r`                                    |
+| Edit settings  | `gh repo edit --...`           | `curl PATCH /repos/o/r`                                  |
+| Create release | `gh release create v1.0`       | `curl POST /repos/o/r/releases`                          |
+| List workflows | `gh workflow list`             | `curl GET /repos/o/r/actions/workflows`                  |
+| Rerun CI       | `gh run rerun ID`              | `curl POST /repos/o/r/actions/runs/ID/rerun`             |
+| Set secret     | `gh secret set KEY`            | `curl PUT /repos/o/r/actions/secrets/KEY` (+ encryption) |

@@ -2,7 +2,7 @@
 name: github-code-review
 description: Review code changes by analyzing git diffs, leaving inline comments on PRs, and performing thorough pre-push review. Works with gh CLI or falls back to git + GitHub REST API via curl.
 version: 1.1.0
-author: Hermes Agent
+author: Ghost
 license: MIT
 metadata:
   hermes:
@@ -257,7 +257,7 @@ curl -s -X POST \
   -d "{
     \"commit_id\": \"$HEAD_SHA\",
     \"event\": \"COMMENT\",
-    \"body\": \"Code review from Hermes Agent\",
+    \"body\": \"Code review from Ghost\",
     \"comments\": [
       {\"path\": \"src/auth.py\", \"line\": 45, \"body\": \"Use parameterized queries to prevent SQL injection.\"},
       {\"path\": \"src/models/user.py\", \"line\": 23, \"body\": \"Hash passwords with bcrypt before storing.\"},
@@ -268,7 +268,7 @@ curl -s -X POST \
 
 Event values: `"APPROVE"`, `"REQUEST_CHANGES"`, `"COMMENT"`
 
-The `line` field refers to the line number in the *new* version of the file. For deleted lines, use `"side": "LEFT"`.
+The `line` field refers to the line number in the _new_ version of the file. For deleted lines, use `"side": "LEFT"`.
 
 ---
 
@@ -277,33 +277,39 @@ The `line` field refers to the line number in the *new* version of the file. For
 When performing a code review (local or PR), systematically check:
 
 ### Correctness
+
 - Does the code do what it claims?
 - Edge cases handled (empty inputs, nulls, large data, concurrent access)?
 - Error paths handled gracefully?
 
 ### Security
+
 - No hardcoded secrets, credentials, or API keys
 - Input validation on user-facing inputs
 - No SQL injection, XSS, or path traversal
 - Auth/authz checks where needed
 
 ### Code Quality
+
 - Clear naming (variables, functions, classes)
 - No unnecessary complexity or premature abstraction
 - DRY — no duplicated logic that should be extracted
 - Functions are focused (single responsibility)
 
 ### Testing
+
 - New code paths tested?
 - Happy path and error cases covered?
 - Tests readable and maintainable?
 
 ### Performance
+
 - No N+1 queries or unnecessary loops
 - Appropriate caching where beneficial
 - No blocking operations in async code paths
 
 ### Documentation
+
 - Public APIs documented
 - Non-obvious logic has comments explaining "why"
 - README updated if behavior changed
@@ -339,6 +345,7 @@ source ~/.hermes/skills/github/github-auth/scripts/gh-env.sh
 Get the PR metadata, description, and list of changed files to understand scope before diving into code.
 
 **With gh:**
+
 ```bash
 gh pr view 123
 gh pr diff 123 --name-only
@@ -346,6 +353,7 @@ gh pr checks 123
 ```
 
 **With curl:**
+
 ```bash
 PR_NUMBER=123
 
@@ -402,15 +410,17 @@ Go through each category: Correctness, Security, Code Quality, Testing, Performa
 Collect your findings and submit them as a formal review with inline comments.
 
 **With gh:**
+
 ```bash
 # If no issues — approve
-gh pr review $PR_NUMBER --approve --body "Reviewed by Hermes Agent. Code looks clean — good test coverage, no security concerns."
+gh pr review $PR_NUMBER --approve --body "Reviewed by Ghost. Code looks clean — good test coverage, no security concerns."
 
 # If issues found — request changes with inline comments
 gh pr review $PR_NUMBER --request-changes --body "Found a few issues — see inline comments."
 ```
 
 **With curl — atomic review with multiple inline comments:**
+
 ```bash
 HEAD_SHA=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
   https://api.github.com/repos/$GH_OWNER/$GH_REPO/pulls/$PR_NUMBER \
@@ -423,7 +433,7 @@ curl -s -X POST \
   -d "{
     \"commit_id\": \"$HEAD_SHA\",
     \"event\": \"REQUEST_CHANGES\",
-    \"body\": \"## Hermes Agent Review\n\nFound 2 issues, 1 suggestion. See inline comments.\",
+    \"body\": \"## Ghost Review\n\nFound 2 issues, 1 suggestion. See inline comments.\",
     \"comments\": [
       {\"path\": \"src/auth.py\", \"line\": 45, \"body\": \"🔴 **Critical:** User input passed directly to SQL query — use parameterized queries.\"},
       {\"path\": \"src/models.py\", \"line\": 23, \"body\": \"⚠️ **Warning:** Password stored without hashing.\"},
@@ -437,6 +447,7 @@ curl -s -X POST \
 In addition to inline comments, leave a top-level summary so the PR author gets the full picture at a glance. Use the review output format from `references/review-output-template.md`.
 
 **With gh:**
+
 ```bash
 gh pr comment $PR_NUMBER --body "$(cat <<'EOF'
 ## Code Review Summary
@@ -457,7 +468,7 @@ gh pr comment $PR_NUMBER --body "$(cat <<'EOF'
 - Good error handling in the middleware layer
 
 ---
-*Reviewed by Hermes Agent*
+*Reviewed by Ghost*
 EOF
 )"
 ```

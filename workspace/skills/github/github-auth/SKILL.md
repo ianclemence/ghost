@@ -2,12 +2,18 @@
 name: github-auth
 description: Set up GitHub authentication for the agent using git (universally available) or the gh CLI. Covers HTTPS tokens, SSH keys, credential helpers, and gh auth — with a detection flow to pick the right method automatically.
 version: 1.1.0
-author: Hermes Agent
+author: Ghost
 license: MIT
 metadata:
   hermes:
     tags: [GitHub, Authentication, Git, gh-cli, SSH, Setup]
-    related_skills: [github-pr-workflow, github-code-review, github-issues, github-repo-management]
+    related_skills:
+      [
+        github-pr-workflow,
+        github-code-review,
+        github-issues,
+        github-repo-management,
+      ]
 ---
 
 # GitHub Authentication Setup
@@ -32,6 +38,7 @@ git config --global credential.helper 2>/dev/null || echo "no git credential hel
 ```
 
 **Decision tree:**
+
 1. If `gh auth status` shows authenticated → you're good, use `gh` for everything
 2. If `gh` is installed but not authenticated → use "gh auth" method below
 3. If `gh` is not installed → use "git-only" method below (no sudo needed)
@@ -128,6 +135,7 @@ cat ~/.ssh/id_ed25519.pub
 ```
 
 Tell the user to add the public key at: **https://github.com/settings/keys**
+
 - Click "New SSH key"
 - Paste the public key content
 - Give it a title like "hermes-agent-<machine-name>"
@@ -232,12 +240,12 @@ fi
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| `git push` asks for password | GitHub disabled password auth. Use a personal access token as the password, or switch to SSH |
-| `remote: Permission to X denied` | Token may lack `repo` scope — regenerate with correct scopes |
-| `fatal: Authentication failed` | Cached credentials may be stale — run `git credential reject` then re-authenticate |
+| Problem                                                       | Solution                                                                                                        |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `git push` asks for password                                  | GitHub disabled password auth. Use a personal access token as the password, or switch to SSH                    |
+| `remote: Permission to X denied`                              | Token may lack `repo` scope — regenerate with correct scopes                                                    |
+| `fatal: Authentication failed`                                | Cached credentials may be stale — run `git credential reject` then re-authenticate                              |
 | `ssh: connect to host github.com port 22: Connection refused` | Try SSH over HTTPS port: add `Host github.com` with `Port 443` and `Hostname ssh.github.com` to `~/.ssh/config` |
-| Credentials not persisting | Check `git config --global credential.helper` — must be `store` or `cache` |
-| Multiple GitHub accounts | Use SSH with different keys per host alias in `~/.ssh/config`, or per-repo credential URLs |
-| `gh: command not found` + no sudo | Use git-only Method 1 above — no installation needed |
+| Credentials not persisting                                    | Check `git config --global credential.helper` — must be `store` or `cache`                                      |
+| Multiple GitHub accounts                                      | Use SSH with different keys per host alias in `~/.ssh/config`, or per-repo credential URLs                      |
+| `gh: command not found` + no sudo                             | Use git-only Method 1 above — no installation needed                                                            |

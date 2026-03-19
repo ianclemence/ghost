@@ -2,7 +2,7 @@
 name: codebase-inspection
 description: Inspect and analyze codebases using pygount for LOC counting, language breakdown, and code-vs-comment ratios. Use when asked to check lines of code, repo size, language composition, or codebase stats.
 version: 1.0.0
-author: Hermes Agent
+author: Ghost
 license: MIT
 metadata:
   hermes:
@@ -94,6 +94,7 @@ pygount --format=summary . 2>/dev/null
 ## 6. Interpreting Results
 
 The summary table columns:
+
 - **Language** — detected programming language
 - **Files** — number of files of that language
 - **Code** — lines of actual code (executable/declarative)
@@ -101,6 +102,7 @@ The summary table columns:
 - **%** — percentage of total
 
 Special pseudo-languages:
+
 - `__empty__` — empty files
 - `__binary__` — binary files (images, compiled, etc.)
 - `__generated__` — auto-generated files (detected heuristically)
