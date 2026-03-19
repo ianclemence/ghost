@@ -1,7 +1,7 @@
 ---
 name: summarize
 description: Summarize or extract text from URLs, YouTube videos, podcasts, and local files (PDF, DOCX, PPTX, TXT). Invoke when user asks to "summarize this", "extract text from file", "transcribe this video", "read this PDF", or "what does this document say". Falls back to python script when binary unavailable.
-version: 1.0.0
+version: 1.1.0
 author: Ghost
 license: MIT
 metadata:

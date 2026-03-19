@@ -1,7 +1,7 @@
 ---
 name: skill-creator
 description: Bootstrap a new Ghost skill from scratch. Use when user asks to "create a skill", "make a new skill for X", "add a skill", or "build a skill that does Y". Produces a complete SKILL.md with frontmatter, workflow, examples, and references.
-version: 1.0.0
+version: 1.1.0
 author: Ghost
 license: MIT
 metadata:

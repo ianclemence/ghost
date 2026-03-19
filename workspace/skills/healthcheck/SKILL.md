@@ -1,7 +1,7 @@
 ---
 name: healthcheck
 description: Audit system security, hardening, and status for Ghost deployments. Invoke when user asks for a "security audit", "check system status", "hardening checklist", "risk assessment", or "is my system up to date". Runs diagnostics on firewall, SSH, updates, and package versions.
-version: 1.0.0
+version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
@@ -50,10 +50,13 @@ Since Ghost does not have a built-in audit command yet, use standard tools:
 
 ### 3) Check Ghost Status
 
-Run the available Ghost commands:
+Run Ghost's built-in diagnostic command:
 
-1. `ghost status` - Check agent health and connections.
-2. `ghost version` - Check current build version.
+```bash
+ghost doctor
+```
+
+This runs automated checks for: database, LLM provider, gateway, tool registry, Python, and skill dependencies.
 
 ### 4) Determine Risk Tolerance (Profiles)
 

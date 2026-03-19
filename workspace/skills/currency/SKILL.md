@@ -1,7 +1,7 @@
 ---
 name: currency
 description: Convert amounts between currencies using real-time exchange rates. Invoke when user asks "convert X to Y", "how much is USD in EUR", "exchange rate", or "currency conversion". No API key required.
-version: 1.0.0
+version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
@@ -13,46 +13,42 @@ prerequisites:
 
 # Currency Converter
 
-## Tools
+Uses open.er-api.com. No API key. Free tier covers 160+ currencies.
 
-- **Exchange Rate API**: `https://open.er-api.com/v6/latest/{BASE_CURRENCY}` (Free, no key required).
-- **PowerShell**: Used to fetch and parse JSON data.
+## Quick Reference
 
-## Cross-Platform Method (Python)
+| Task | Command |
+|------|---------|
+| Convert | `python workspace/skills/currency/scripts/convert.py 100 USD EUR` |
+| All rates for base | `curl -s "https://open.er-api.com/v6/latest/USD"` |
+| Parse rate | `curl -s "https://open.er-api.com/v6/latest/USD" | python3 -c "import sys,json; print(json.load(sys.stdin)['rates']['EUR'])"` |
 
-Works on Windows, Linux, and Mac.
+## Primary Method (Python)
 
-1.  **Run Script**:
-    ```bash
-    # Usage: python convert.py <amount> <from> <to>
-    python workspace/skills/currency/scripts/convert.py 100 USD EUR
-    ```
+```bash
+python workspace/skills/currency/scripts/convert.py 100 USD EUR
+```
 
-## Workflow (PowerShell Only)
+## Manual Method
 
-1.  **Fetch Rates**:
-    - Use `Invoke-RestMethod` in PowerShell to get the latest rates for a base currency (default: USD).
-      ```powershell
-      $rates = Invoke-RestMethod "https://open.er-api.com/v6/latest/USD"
-      ```
+```bash
+curl -s "https://open.er-api.com/v6/latest/USD" | python3 -c "
+import sys,json
+rates = json.load(sys.stdin)['rates']
+amount = float('${AMOUNT}')
+from_cur = '${FROM}'.upper()
+to_cur = '${TO}'.upper()
+result = amount * rates[to_cur] / rates[from_cur]
+print(f'{amount} {from_cur} = {result:.2f} {to_cur}')
+"
+```
 
-2.  **Calculate**:
-    - Get the rate for the target currency (e.g., EUR).
-    - Multiply the amount by the rate.
-      ```powershell
-      $amount = 100
-      $targetRate = $rates.rates.EUR
-      $result = $amount * $targetRate
-      Write-Output "100 USD = $result EUR"
-      ```
+Replace `${AMOUNT}`, `${FROM}`, `${TO}` with values.
 
-3.  **Example Command**:
-    - To convert 50 USD to GBP:
-      ```powershell
-      $r = Invoke-RestMethod "https://open.er-api.com/v6/latest/USD"; $r.rates.GBP * 50
-      ```
+## Rate Limit
+
+No auth required. Be respectful — cache results rather than re-querying on every request.
 
 ## Supported Currencies
 
-- Common: USD, EUR, GBP, JPY, CAD, AUD, CHF, CNY, INR, etc.
-- The API returns 160+ currencies.
+USD, EUR, GBP, JPY, CAD, AUD, CHF, CNY, INR, and 150+ more. Full list in API response.

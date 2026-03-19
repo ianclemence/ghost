@@ -1,14 +1,14 @@
 ---
 name: hardware
 description: Read and control I2C and SPI peripherals on Sipeed boards (LicheeRV Nano, MaixCAM, NanoKVM) and Raspberry Pi. Invoke when user asks to "read sensor data", "scan I2C bus", "communicate over SPI", "read GPIO", or "control hardware peripherals". Requires i2c-tools and relevant hardware.
-version: 1.0.0
+version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
   ghost:
     tags: [hardware, I2C, SPI, sensors, peripherals, embedded]
 prerequisites:
-  commands: [i2cdetect, i2cget]
+  commands: [i2c, spi]
 ---
 
 # Hardware (I2C / SPI)

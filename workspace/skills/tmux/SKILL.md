@@ -1,7 +1,7 @@
 ---
 name: tmux
 description: Control tmux sessions programmatically — send keystrokes to interactive CLIs, capture pane output, spawn persistent sessions. Invoke when user asks to "attach to tmux", "send a command to tmux session", "run interactive CLI in background", or "watch tmux pane for output". Requires tmux binary.
-version: 1.0.0
+version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
@@ -18,10 +18,10 @@ Use tmux only when you need an interactive TTY. Prefer exec background mode for 
 ## Quickstart (isolated socket, exec tool)
 
 ```bash
-SOCKET_DIR="${NANOBOT_TMUX_SOCKET_DIR:-${TMPDIR:-/tmp}/nanobot-tmux-sockets}"
+SOCKET_DIR="${GHOST_TMUX_SOCKET_DIR:-${TMPDIR:-/tmp}/ghost-tmux-sockets}"
 mkdir -p "$SOCKET_DIR"
-SOCKET="$SOCKET_DIR/nanobot.sock"
-SESSION=nanobot-python
+SOCKET="$SOCKET_DIR/ghost.sock"
+SESSION=ghost-tmux
 
 tmux -S "$SOCKET" new -d -s "$SESSION" -n shell
 tmux -S "$SOCKET" send-keys -t "$SESSION":0.0 -- 'PYTHON_BASIC_REPL=1 python3 -q' Enter
@@ -38,8 +38,8 @@ To monitor:
 
 ## Socket convention
 
-- Use `NANOBOT_TMUX_SOCKET_DIR` environment variable.
-- Default socket path: `"$NANOBOT_TMUX_SOCKET_DIR/nanobot.sock"`.
+- Use `GHOST_TMUX_SOCKET_DIR` environment variable.
+- Default socket path: `"$GHOST_TMUX_SOCKET_DIR/ghost.sock"`.
 
 ## Targeting panes and naming
 
@@ -50,7 +50,7 @@ To monitor:
 ## Finding sessions
 
 - List sessions on your socket: `{baseDir}/scripts/find-sessions.sh -S "$SOCKET"`.
-- Scan all sockets: `{baseDir}/scripts/find-sessions.sh --all` (uses `NANOBOT_TMUX_SOCKET_DIR`).
+- Scan all sockets: `{baseDir}/scripts/find-sessions.sh --all` (uses `GHOST_TMUX_SOCKET_DIR`).
 
 ## Sending input safely
 

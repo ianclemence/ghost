@@ -1,7 +1,7 @@
 ---
 name: aqi
 description: Check current Air Quality Index (AQI), PM2.5, PM10, and pollen levels for any city. Invoke when user asks "air quality", "AQI", "pollution level", "is the air safe to breathe", or "pollen count" for a specific location.
-version: 1.0.0
+version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
@@ -13,44 +13,68 @@ prerequisites:
 
 # Air Quality Index (AQI) & Pollen
 
-## Tools
+Uses Open-Meteo's geocoding and air quality APIs. No API key required.
 
-- **Geocoding API**: `https://geocoding-api.open-meteo.com/v1/search?name={CITY}`
-- **Air Quality API**: `https://air-quality-api.open-meteo.com/v1/air-quality?latitude={LAT}&longitude={LON}&current=us_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,aerosol_optical_depth,dust,uv_index`
+## Quick Reference
 
-## Cross-Platform Method (Python)
+| Task          | Command                                                                                                                      |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Check AQI     | `python workspace/skills/aqi/scripts/check_aqi.py "New York"`                                                                |
+| Geocode city  | `curl -s "https://geocoding-api.open-meteo.com/v1/search?name=City&count=1&language=en&format=json"`                         |
+| AQI by coords | `curl -s "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=LAT&longitude=LON&current=us_aqi,pm2_5,pm10,ozone"` |
 
-Works on Windows, Linux, and Mac.
+## Primary Method (Python)
 
-1.  **Run Script**:
-    ```bash
-    python workspace/skills/aqi/scripts/check_aqi.py "New York"
-    ```
+```bash
+python workspace/skills/aqi/scripts/check_aqi.py "CityName"
+```
 
-## Workflow (PowerShell Only)
+## Manual Method
 
-1.  **Get Location**:
-    - Ask the user for their City (e.g., "New York").
-    - Fetch coordinates:
-      ```powershell
-      curl "https://geocoding-api.open-meteo.com/v1/search?name=New+York&count=1&language=en&format=json"
-      ```
-    - Extract `latitude` and `longitude` from the JSON response.
+### 1. Geocode
 
-2.  **Fetch AQI Data**:
-    - Use the coordinates to query the Air Quality API.
-      ```powershell
-      curl "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=40.71&longitude=-74.01&current=us_aqi,pm2_5,pm10"
-      ```
+```bash
+curl -s "https://geocoding-api.open-meteo.com/v1/search?name=London&count=1&language=en&format=json" | python3 -c "
+import sys,json
+d = json.load(sys.stdin)
+r = d['results'][0]
+print(f\"{r['name']}: lat={r['latitude']}, lon={r['longitude']}\")"
+```
 
-3.  **Report**:
-    - Display the **US AQI**, **PM2.5**, and **PM10** values clearly to the user.
-    - Interpret the AQI (e.g., 0-50 Good, 51-100 Moderate, >100 Unhealthy).
+### 2. Fetch AQI
 
-## Alternative (Simpler)
+```bash
+curl -s "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=51.51&longitude=-0.13&current=us_aqi,pm2_5,pm10,ozone,dust,nitrogen_dioxide" | python3 -c "
+import sys,json
+d = json.load(sys.stdin)['current']
+aqi = d['us_aqi']
+pm25 = d['pm2_5']
+pm10 = d['pm10']
+print(f'AQI: {aqi} ({aqi_label(aqi))}')
+print(f'PM2.5: {pm25} µg/m³')
+print(f'PM10: {pm10} µg/m³')
+def aqi_label(v):
+    if v<=50: return 'Good'
+    elif v<=100: return 'Moderate'
+    elif v<=150: return 'Unhealthy for Sensitive'
+    elif v<=200: return 'Unhealthy'
+    elif v<=300: return 'Very Unhealthy'
+    return 'Hazardous'
+print(f'Category: {aqi_label(aqi)}')
+"
+```
 
-- Use `wttr.in` if only weather/simple info is needed:
-  ```powershell
-  curl wttr.in/New_York
-  ```
-  _(Note: wttr.in is primarily weather, but sometimes includes basic environmental info. The API method above is preferred for specific AQI tasks.)_
+## AQI Scale
+
+| AQI     | Category                       |
+| ------- | ------------------------------ |
+| 0–50    | Good                           |
+| 51–100  | Moderate                       |
+| 101–150 | Unhealthy for Sensitive Groups |
+| 151–200 | Unhealthy                      |
+| 201–300 | Very Unhealthy                 |
+| 301+    | Hazardous                      |
+
+## Coverage
+
+Open-Meteo AQI covers most cities globally. Not all pollutants are available in all locations.

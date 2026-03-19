@@ -1,7 +1,7 @@
 ---
 name: mobile
 description: Control an Android device via ADB — open apps, tap, swipe, type, screenshot, install APKs. Invoke when user asks to "open app on my phone", "take a screenshot", "tap the button", "type on my phone", or "install this APK". Requires Android device with USB debugging enabled and adb installed.
-version: 1.0.0
+version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
@@ -35,7 +35,7 @@ Controls an Android device via ADB (Android Debug Bridge).
 
 ### 1. Start the Bridge (Background)
 
-You must start the RPC bridge before sending commands. This bridge translates JSON-RPC to ADB commands.
+You must start the RPC bridge before sending commands. This bridge translates JSON-RPC to ADB commands. Default port: `5037`.
 
 ```bash
 # Windows
@@ -44,6 +44,8 @@ start /B python workspace\skills\mobile\scripts\android_bridge.py
 # Linux/Pi
 nohup python3 workspace/skills/mobile/scripts/android_bridge.py > /dev/null 2>&1 &
 ```
+
+To change the ADB port, pass `--port 5038`.
 
 ### 2. Send Commands
 

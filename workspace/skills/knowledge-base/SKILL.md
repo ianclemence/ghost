@@ -1,7 +1,7 @@
 ---
 name: knowledge-base
 description: Build and traverse a persistent personal knowledge graph ("Second Brain"). Invoke when user asks to "add to my memory", "remember this", "what do you know about X", "build a knowledge graph", or "initialize my notes". Manages self/, notes/, and ops/ spaces.
-version: 1.0.0
+version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
@@ -18,6 +18,17 @@ This skill enables the agent to maintain a persistent "Second Brain" using the *
 1.  **self/**: Identity, methodology, and long-term memory.
 2.  **notes/**: The core knowledge graph (connected by `[[wikilinks]]`).
 3.  **ops/**: Operational state (inbox, tasks, logs).
+
+## Wikilinks
+
+Notes are cross-referenced using `[[wikilink]]` syntax:
+
+```
+[[my-note]]
+[[folder/nested-note]]
+```
+
+When creating or linking notes, use `[[note-name]]` to establish connections. The knowledge graph traverses these links to build context.
 
 ## Capabilities
 

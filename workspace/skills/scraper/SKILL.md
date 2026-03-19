@@ -1,7 +1,7 @@
 ---
 name: scraper
-description: Extract clean readable content from any webpage. Invoke when user asks "read this website", "scrape this page", "extract content from URL", "what does this article say", or "summarize this page". Uses r.jina.ai reader API — no installation required.
-version: 1.0.0
+description: Extract clean text content from any webpage. Invoke when user asks to "read this website", "scrape this page", "extract content from URL", "what does this article say", or "summarize this page". Uses r.jina.ai reader mode — no API key, no installation required.
+version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
@@ -13,39 +13,82 @@ prerequisites:
 
 # Web Scraper
 
-Converts a webpage to Markdown for easier reading by the LLM.
+Extracts clean, readable text from any URL using r.jina.ai.
 
-## Requirements
+## Quick Reference
 
-- **Tool**: `r.jina.ai` (Free Reader API) - No installation needed, just use `curl`.
+| Task | Command |
+|------|---------|
+| Extract content | `curl -s https://r.jina.ai/https://example.com` |
+| Extract + markdown | `curl -s https://r.jina.ai/m/https://example.com` |
+| Batch (newline-sep) | `curl -s -X POST https://r.jina.ai/m/ -H "Content-Type: text/plain" -d "url1\nurl2"` |
+| Meta description only | `curl -s https://r.jina.ai/meta/https://example.com` |
 
-## Cross-Platform Method (Python)
-
-Works on Windows, Linux, and Mac.
-
-1.  **Run Script**:
-    ```bash
-    python workspace/skills/scraper/scripts/scrape.py "https://example.com"
-    ```
-
-## Commands (Bash/Linux/Mac)
-
-### Read Page (Markdown)
-
-Fetches the URL and converts it to clean Markdown.
+## Single URL
 
 ```bash
 curl -s "https://r.jina.ai/https://example.com"
 ```
 
-### Read Page (Text Only)
+Returns: clean article text, no HTML, no ads, no trackers.
 
-Fetches the URL and returns plain text.
+## Markdown Output
 
 ```bash
-curl -s -H "Accept: text/plain" "https://r.jina.ai/https://example.com"
+curl -s "https://r.jina.ai/m/https://example.com"
 ```
 
-## Usage
+Returns: Markdown-formatted content. Use this when structure (headings, lists, code blocks) matters.
 
-Ghost uses this to "read" documentation, news articles, or blog posts that are otherwise too cluttered with HTML/JS for simple analysis.
+## Batch Extraction
+
+```bash
+curl -s -X POST "https://r.jina.ai/m/" \
+  -H "Content-Type: text/plain" \
+  -d "https://news.ycombinator.com/news
+https://example.com/article"
+```
+
+Each URL on its own line. Results separated by `\n---\n`.
+
+## Parse Response
+
+```bash
+curl -s "https://r.jina.ai/https://example.com" | python3 -c "
+import sys
+lines = sys.stdin.read().strip().split('\n')
+print(lines[0][:200] if lines else 'No content')
+"
+```
+
+## Limitations
+
+- JavaScript-heavy sites (React/Vue SPAs) may render poorly — r.jina.ai handles most but not all
+- Rate limits: avoid scraping the same site repeatedly in short bursts
+- Some paywalled or login-protected content cannot be extracted
+- `r.jina.ai` may return empty for sites that block crawlers
+
+## robots.txt
+
+Check and respect robots.txt before scraping:
+```bash
+curl -s https://example.com/robots.txt | grep -i "disallow"
+```
+
+## Timeout
+
+Set a timeout to avoid hanging on slow sites:
+```bash
+curl -s --max-time 10 "https://r.jina.ai/https://slow-site.com"
+```
+
+## JavaScript-Heavy Sites
+
+If r.jina.ai returns thin content, try with a different approach:
+
+```bash
+# Try with screenshot mode (if available)
+curl -s "https://r.jina.ai/screenshot/https://example.com"
+```
+
+Or fall back to `python3 -c "$(curl -s url)"` for basic HTML parsing with BeautifulSoup.
