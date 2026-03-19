@@ -42,7 +42,7 @@ dist/
 # 1. Ignore EVERYTHING in workspace by default
 workspace/*
 
-# 2. Allow configuration and code (Whitelist)
+# 2. Allow structural content (Whitelist)
 !workspace/knowledge/
 !workspace/skills/
 !workspace/README.md
@@ -54,6 +54,17 @@ workspace/*
 !workspace/GHOST.md
 !workspace/HEARTBEAT.md
 !workspace/USER.md
+
+# Knowledge — operational state (never commit — changes every session)
+# Block individual files within the already-negated knowledge/ directory
+workspace/knowledge/self/context.md
+workspace/knowledge/self/recent-errors.md
+workspace/knowledge/self/skills-state.md
+workspace/knowledge/self/channels.md
+workspace/knowledge/logs/sessions.md
+workspace/knowledge/logs/errors.md
+workspace/knowledge/ops/inbox.md
+workspace/knowledge/ops/tasks.md
 
 # SQLite Database
 *.db
