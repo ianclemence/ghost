@@ -25,7 +25,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -35,6 +34,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
 
@@ -741,60 +741,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}
 
 	db := agentLoop.DB()
-	type deliveryTraceEvent struct {
-		RequestID string `json:"request_id"`
-		State     string `json:"state"`
-		At        int64  `json:"at"`
-		Channel   string `json:"channel,omitempty"`
-		ChatID    string `json:"chat_id,omitempty"`
-		Detail    string `json:"detail,omitempty"`
-	}
-	type channelIncident struct {
-		Channel      string `json:"channel"`
-		FailureCount int    `json:"failure_count"`
-		LastError    string `json:"last_error"`
-		LastAt       int64  `json:"last_at"`
-	}
-	var traceMu sync.RWMutex
-	traceByRequest := map[string][]deliveryTraceEvent{}
-	lastRequestBySession := map[string]string{}
-	channelIncidents := map[string]channelIncident{}
-	appendTrace := func(session, reqID, state, channel, chatID, detail string) {
-		if reqID == "" {
-			return
-		}
-		event := deliveryTraceEvent{
-			RequestID: reqID,
-			State:     state,
-			At:        time.Now().Unix(),
-			Channel:   channel,
-			ChatID:    chatID,
-			Detail:    detail,
-		}
-		traceMu.Lock()
-		traceByRequest[reqID] = append(traceByRequest[reqID], event)
-		if session != "" {
-			lastRequestBySession[session] = reqID
-		}
-		traceMu.Unlock()
-	}
 	if channelManager != nil {
 		channelManager.SetDeliveryObserver(func(msg bus.OutboundMessage, target string, ok bool, errText string) {
-			reqID, _ := msg.Metadata["request_id"].(string)
-			session, _ := msg.Metadata["session_id"].(string)
-			if ok {
-				appendTrace(session, reqID, "channel_delivery", target, msg.ChatID, "")
-				return
-			}
-			appendTrace(session, reqID, "delivery_failed", target, msg.ChatID, errText)
-			traceMu.Lock()
-			entry := channelIncidents[target]
-			entry.Channel = target
-			entry.FailureCount++
-			entry.LastError = errText
-			entry.LastAt = time.Now().Unix()
-			channelIncidents[target] = entry
-			traceMu.Unlock()
+			// Now handled directly in Manager using telemetry.Global
 		})
 	}
 
@@ -1014,9 +963,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				},
 			})
 		}
-		traceMu.RLock()
-		lastReq := lastRequestBySession[session]
-		traceMu.RUnlock()
+		lastReq := telemetry.Global.GetLastRequestID(session)
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
 			"requested_session": session,
 			"active_session": map[string]string{
@@ -1036,19 +983,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		}
 		requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
 		session := strings.TrimSpace(r.URL.Query().Get("session"))
-		traceMu.RLock()
 		if requestID == "" && session != "" {
-			requestID = lastRequestBySession[session]
+			requestID = telemetry.Global.GetLastRequestID(session)
 		}
-		traces := traceByRequest[requestID]
-		incidents := make(map[string]channelIncident, len(channelIncidents))
-		for k, v := range channelIncidents {
-			incidents[k] = v
-		}
-		traceMu.RUnlock()
-		if traces == nil {
-			traces = []deliveryTraceEvent{}
-		}
+		traces := telemetry.Global.GetTraces(requestID)
+		incidents := telemetry.Global.GetIncidents()
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
 			"request_id": requestID,
 			"events":     traces,
@@ -1243,7 +1182,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			fmt.Fprintf(w, "data: %s\n\n", string(raw))
 			flusher.Flush()
 		}
-		appendTrace(req.SessionKey, req.RequestID, "queued", req.Channel, req.ChatID, "")
 		emitObject(map[string]interface{}{
 			"type":       "lifecycle",
 			"request_id": req.RequestID,
@@ -1304,8 +1242,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		}()
 
 		ctx := r.Context()
-		appendTrace(req.SessionKey, req.RequestID, "sent_to_gateway", req.Channel, req.ChatID, "")
-		appendTrace(req.SessionKey, req.RequestID, "agent_processing", req.Channel, req.ChatID, "")
 		emitObject(map[string]interface{}{
 			"type":       "lifecycle",
 			"request_id": req.RequestID,
@@ -1327,7 +1263,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 
 		if err != nil {
 			logger.ErrorCF("internal-api", "Error processing chat", map[string]interface{}{"error": err.Error()})
-			appendTrace(req.SessionKey, req.RequestID, "delivery_failed", req.Channel, req.ChatID, err.Error())
 
 			// Clean up any empty/partial assistant message that may have been
 			// written to the session before the error occurred.
@@ -1345,7 +1280,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
 			flusher.Flush()
 		} else {
-			appendTrace(req.SessionKey, req.RequestID, "agent_completed", req.Channel, req.ChatID, "")
+			// agent_completed is recorded in AgentLoop
 			meta := map[string]interface{}{
 				"type":       "assistant_message",
 				"request_id": req.RequestID,
@@ -1375,7 +1310,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				Content:  response,
 				Metadata: meta,
 			})
-			appendTrace(req.SessionKey, req.RequestID, "channel_delivery", req.Channel, req.ChatID, "")
+			// channel_delivery is recorded in channels.Manager
 			emitObject(map[string]interface{}{
 				"type":       "lifecycle",
 				"request_id": req.RequestID,

@@ -34,6 +34,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/session"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/state"
+	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/utils"
 )
@@ -81,6 +82,7 @@ type processOptions struct {
 	Thinking        bool
 	OnChunk         func(string)                   // New: callback for streaming chunks
 	OnToolCall      func(name string, args string) // New: callback for tool calls
+	RequestID       string                         // Unique request identifier for tracing
 }
 
 // createToolRegistry creates a tool registry with common tools.
@@ -481,6 +483,19 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 }
 
 func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage, onChunk func(string), onToolCall func(string, string)) (string, error) {
+	// Ensure request ID exists for tracing
+	if msg.Metadata == nil {
+		msg.Metadata = make(map[string]string)
+	}
+	requestID := msg.Metadata["request_id"]
+	if requestID == "" {
+		requestID = fmt.Sprintf("req-%d", time.Now().UnixNano())
+		msg.Metadata["request_id"] = requestID
+	}
+
+	// Record initial trace
+	telemetry.Global.Record(msg.SessionKey, requestID, "queued", msg.Channel, msg.ChatID, "")
+
 	// Add message preview to log (show full content for error messages)
 	var logContent string
 	if strings.Contains(msg.Content, "Error:") || strings.Contains(msg.Content, "error") {
@@ -557,6 +572,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 		Thinking:        thinking,
 		OnChunk:         onChunk,
 		OnToolCall:      onToolCall,
+		RequestID:       requestID,
 	})
 
 	// Cleanup temporary media files using MediaStore ReleaseAll if possible
@@ -685,6 +701,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	}
 
 	// 4. Run LLM iteration loop
+	telemetry.Global.Record(opts.SessionKey, opts.RequestID, "agent_processing", opts.Channel, opts.ChatID, "")
 	finalContent, iteration, err := al.runLLMIteration(ctx, messages, opts)
 	if err != nil {
 		return "", err
@@ -736,6 +753,8 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	if !opts.NoHistory && opts.SessionKey != "heartbeat" && !strings.HasPrefix(opts.UserMessage, "/") {
 		go al.autoJournal(opts.SessionKey)
 	}
+
+	telemetry.Global.Record(opts.SessionKey, opts.RequestID, "agent_completed", opts.Channel, opts.ChatID, "")
 
 	return finalContent, nil
 }

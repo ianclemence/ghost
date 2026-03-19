@@ -18,6 +18,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
 
@@ -393,6 +394,12 @@ func (m *Manager) channelWorker(ctx context.Context, name string, queue <-chan b
 				if observer != nil {
 					observer(msg, name, false, sendErr.Error())
 				}
+				// Also record to global telemetry if request ID is present
+				if reqID, _ := msg.Metadata["request_id"].(string); reqID != "" {
+					session, _ := msg.Metadata["session_id"].(string)
+					telemetry.Global.Record(session, reqID, "delivery_failed", name, msg.ChatID, sendErr.Error())
+					telemetry.Global.RecordIncident(name, sendErr.Error())
+				}
 			} else {
 				m.markChannelSuccess(name)
 				m.mu.RLock()
@@ -400,6 +407,12 @@ func (m *Manager) channelWorker(ctx context.Context, name string, queue <-chan b
 				m.mu.RUnlock()
 				if observer != nil {
 					observer(msg, name, true, "")
+				}
+				// Also record to global telemetry if request ID is present
+				if reqID, _ := msg.Metadata["request_id"].(string); reqID != "" {
+					session, _ := msg.Metadata["session_id"].(string)
+					telemetry.Global.Record(session, reqID, "channel_delivery", name, msg.ChatID, "")
+					telemetry.Global.ClearIncidents(name)
 				}
 			}
 		}
