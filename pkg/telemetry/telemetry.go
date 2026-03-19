@@ -29,7 +29,9 @@ type Manager struct {
 	traceByRequest       map[string][]TraceEvent
 	lastRequestBySession map[string]string
 	channelIncidents     map[string]ChannelIncident
+	globalEvents         []TraceEvent
 	maxTracesPerRequest  int
+	maxGlobalEvents      int
 }
 
 // Global is the default telemetry manager instance.
@@ -41,7 +43,9 @@ func NewManager() *Manager {
 		traceByRequest:       make(map[string][]TraceEvent),
 		lastRequestBySession: make(map[string]string),
 		channelIncidents:     make(map[string]ChannelIncident),
+		globalEvents:         make([]TraceEvent, 0),
 		maxTracesPerRequest:  100,
+		maxGlobalEvents:      500,
 	}
 }
 
@@ -69,6 +73,11 @@ func (m *Manager) Record(session, reqID, state, channel, chatID, detail string) 
 		traces = traces[1:]
 	}
 	m.traceByRequest[reqID] = append(traces, event)
+
+	if len(m.globalEvents) >= m.maxGlobalEvents {
+		m.globalEvents = m.globalEvents[1:]
+	}
+	m.globalEvents = append(m.globalEvents, event)
 
 	if session != "" {
 		m.lastRequestBySession[session] = reqID
@@ -108,6 +117,21 @@ func (m *Manager) GetTraces(reqID string) []TraceEvent {
 	// Return a copy to avoid data races
 	cp := make([]TraceEvent, len(traces))
 	copy(cp, traces)
+	return cp
+}
+
+// GetGlobalTraces returns the most recent events across all sessions.
+func (m *Manager) GetGlobalTraces(limit int) []TraceEvent {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	events := m.globalEvents
+	if limit > 0 && len(events) > limit {
+		events = events[len(events)-limit:]
+	}
+
+	cp := make([]TraceEvent, len(events))
+	copy(cp, events)
 	return cp
 }
 

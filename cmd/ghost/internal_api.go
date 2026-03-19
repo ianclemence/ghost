@@ -986,7 +986,14 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		if requestID == "" && session != "" {
 			requestID = telemetry.Global.GetLastRequestID(session)
 		}
-		traces := telemetry.Global.GetTraces(requestID)
+		
+		var traces []telemetry.TraceEvent
+		if requestID != "" {
+			traces = telemetry.Global.GetTraces(requestID)
+		} else {
+			// If no request/session specified, return the most recent global events
+			traces = telemetry.Global.GetGlobalTraces(50)
+		}
 		incidents := telemetry.Global.GetIncidents()
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
 			"request_id": requestID,

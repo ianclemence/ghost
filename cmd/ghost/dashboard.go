@@ -614,8 +614,7 @@ func fetchDataCmd(client *operatorClient) tea.Cmd {
 		doctor, channels, err := client.fetchDoctorAndChannels()
 		if err != nil { return refreshMsg{sanity: sanity, err: err} }
 		inspector, _ := client.fetchSessionInspector()
-		trace := tracePayload{Incidents: make(map[string]channelIncident)}
-		if inspector.LastRequestID != "" { trace, _ = client.fetchTrace(inspector.LastRequestID) }
+		trace, _ := client.fetchTrace(inspector.LastRequestID)
 		telemetry, _ := client.fetchTelemetry()
 		return refreshMsg{sanity: sanity, doctor: doctor, channels: channels, inspector: inspector, trace: trace, telemetry: telemetry}
 	}
