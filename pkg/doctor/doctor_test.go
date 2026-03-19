@@ -34,9 +34,9 @@ func TestDoctorRunAll(t *testing.T) {
 	reg := tools.NewToolRegistry()
 	reg.Register(tools.NewSessionSearchTool(database.DB))
 
-	runner := New(database.DB, &testProvider{}, &testGateway{}, reg)
+	runner := New(database.DB, &testProvider{}, &testGateway{}, reg, t.TempDir())
 	results := runner.RunAll(context.Background())
-	if len(results) != 5 {
+	if len(results) != 6 {
 		t.Fatalf("expected 5 checks, got %d", len(results))
 	}
 	for _, check := range results {

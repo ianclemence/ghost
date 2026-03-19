@@ -280,7 +280,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	installer := skills.NewSkillInstaller(workspace)
 
 	cmdRegistry := commands.NewRegistry(commands.DefaultDefinitions())
-	doctorRunner := doctor.New(database.DB, provider, nil, toolsRegistry)
+	doctorRunner := doctor.New(database.DB, provider, nil, toolsRegistry, workspace)
 	cmdRuntime := &commands.Runtime{
 		Tools:    toolsRegistry,
 		Sessions: sessionsManager,

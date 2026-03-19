@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
 
@@ -28,14 +29,16 @@ type Doctor struct {
 	provider providers.LLMProvider
 	gateway  GatewayClient
 	registry *tools.ToolRegistry
+	workspace string
 }
 
-func New(db *sql.DB, provider providers.LLMProvider, gateway GatewayClient, registry *tools.ToolRegistry) *Doctor {
+func New(db *sql.DB, provider providers.LLMProvider, gateway GatewayClient, registry *tools.ToolRegistry, workspace string) *Doctor {
 	return &Doctor{
 		db:       db,
 		provider: provider,
 		gateway:  gateway,
 		registry: registry,
+		workspace: workspace,
 	}
 }
 
@@ -46,6 +49,7 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkGateway,
 		d.checkToolRegistry,
 		d.checkPython,
+		d.checkSkillDependencies,
 	}
 	results := make([]CheckResult, 0, len(checks))
 	for _, check := range checks {
@@ -176,6 +180,40 @@ func (d *Doctor) checkToolRegistry(ctx context.Context) CheckResult {
 		Name:    "tool_registry",
 		Status:  "ok",
 		Message: fmt.Sprintf("%d tools registered", len(names)),
+		Latency: time.Since(start).Milliseconds(),
+	}
+}
+
+func (d *Doctor) checkSkillDependencies(ctx context.Context) CheckResult {
+	start := time.Now()
+	if d.workspace == "" {
+		return CheckResult{
+			Name:    "skill_dependencies",
+			Status:  "warning",
+			Message: "workspace not configured",
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
+
+	report := skills.CheckSkillDependencies(d.workspace)
+	if !report.HasMissing() {
+		return CheckResult{
+			Name:    "skill_dependencies",
+			Status:  "ok",
+			Message: fmt.Sprintf("all %d skill prerequisites satisfied", len(report.Results)),
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
+
+	missingCount := 0
+	for _, res := range report.Results {
+		missingCount += len(res.Missing)
+	}
+
+	return CheckResult{
+		Name:    "skill_dependencies",
+		Status:  "warning",
+		Message: fmt.Sprintf("%d skill(s) missing %d command(s): %s", len(report.Results), missingCount, report.Summary()),
 		Latency: time.Since(start).Milliseconds(),
 	}
 }

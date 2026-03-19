@@ -10,7 +10,7 @@ import (
 
 func TestDoctorHandler(t *testing.T) {
 	rt := &Runtime{
-		Doctor: doctor.New(nil, nil, nil, nil),
+		Doctor: doctor.New(nil, nil, nil, nil, ""),
 	}
 
 	var out string
