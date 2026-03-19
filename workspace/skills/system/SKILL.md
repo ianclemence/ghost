@@ -1,6 +1,14 @@
 ---
-name: "system"
-description: "Controls computer hardware. Invoke when user says 'volume up', 'mute', 'screen off', 'lock', 'shutdown', or 'speak'. Supports targeting specific devices (e.g., 'on my PC', 'on the laptop')."
+name: system
+description: Control local or remote machine hardware — volume, mute, screen brightness, lock, shutdown, restart. Invoke when user says "volume up", "mute my PC", "lock the screen", "shutdown", "restart", "turn off monitor", or "speak this aloud". Supports targeting specific devices via SSH.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [system, hardware-control, volume, shutdown, lock, SSH]
+prerequisites:
+  commands: []
 ---
 
 # System Control

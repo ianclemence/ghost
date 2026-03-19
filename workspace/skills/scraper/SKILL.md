@@ -1,9 +1,17 @@
 ---
-name: "scraper"
-description: "Extracts readable content from websites. Invoke when user asks 'Read this website', 'Summarize this URL', or 'Scrape this page'. BETTER than simple curl."
+name: scraper
+description: Extract clean readable content from any webpage. Invoke when user asks "read this website", "scrape this page", "extract content from URL", "what does this article say", or "summarize this page". Uses r.jina.ai reader API — no installation required.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [web, scraping, content-extraction, reader, URLs]
+prerequisites:
+  commands: [curl]
 ---
 
-# Web Scraper (Advanced)
+# Web Scraper
 
 Converts a webpage to Markdown for easier reading by the LLM.
 

@@ -1,13 +1,17 @@
-# Network Speed Monitor Skill
+---
+name: speedtest
+description: Measure internet connection speed (ping, download, upload). Invoke when user asks "check my internet speed", "run a speed test", "how fast is my connection", or "bandwidth test".
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [network, speedtest, bandwidth, internet, connectivity]
+prerequisites:
+  commands: [speedtest-cli]
+---
 
-## Description
-
-This skill allows the agent to check the current internet connection speed (upload/download/ping) using the `speedtest-cli` tool.
-
-## Dependencies
-
-- **Python**: Must be installed.
-- **speedtest-cli**: Install via `pip install speedtest-cli`.
+# Network Speed Monitor
 
 ## Cross-Platform Usage
 

@@ -1,8 +1,14 @@
 ---
 name: summarize
-description: Summarize or extract text/transcripts from URLs, podcasts, and local files (great fallback for “transcribe this YouTube/video”).
-homepage: https://summarize.sh
-metadata: {"nanobot":{"emoji":"🧾","requires":{"bins":["summarize"]},"install":[{"id":"brew","kind":"brew","formula":"steipete/tap/summarize","bins":["summarize"],"label":"Install summarize (brew)"}]}}
+description: Summarize or extract text from URLs, YouTube videos, podcasts, and local files (PDF, DOCX, PPTX, TXT). Invoke when user asks to "summarize this", "extract text from file", "transcribe this video", "read this PDF", or "what does this document say". Falls back to python script when binary unavailable.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [summarize, extraction, text, PDF, documents, YouTube, transcription]
+prerequisites:
+  commands: [python]
 ---
 
 # Summarize
@@ -18,12 +24,14 @@ python workspace/skills/summarize/scripts/extract.py "/path/to/file.pdf"
 ```
 
 This script supports:
+
 - **PDF**: Uses `pdftotext` or `pypdf`.
 - **DOCX**: Uses `pandoc` or `python-docx`.
 
 ## When to use (trigger phrases)
 
 Use this skill immediately when the user asks any of:
+
 - “summarize this document/file”
 - “what’s in this PDF/Word file?”
 - “read the content of this .docx”
@@ -53,6 +61,7 @@ If the user asked for a transcript but it’s huge, return a tight summary first
 ## Model + keys
 
 Set the API key for your chosen provider:
+
 - OpenAI: `OPENAI_API_KEY`
 - Anthropic: `ANTHROPIC_API_KEY`
 - xAI: `XAI_API_KEY`
@@ -78,5 +87,6 @@ Optional config file: `~/.summarize/config.json`
 ```
 
 Optional services:
+
 - `FIRECRAWL_API_KEY` for blocked sites
 - `APIFY_API_TOKEN` for YouTube fallback

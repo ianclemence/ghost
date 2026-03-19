@@ -1,6 +1,14 @@
 ---
-name: "network"
-description: "Scans the local network for connected devices. Invoke when user asks 'Who is on the WiFi?', 'Scan network', or 'List devices'."
+name: network
+description: Scan the local network to discover connected devices, find IP addresses, and check device availability. Invoke when user asks "who is on the WiFi", "scan the network", "find devices on my LAN", "is X connected", or "network scan". Requires nmap.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [network, scan, nmap, LAN, WiFi, discovery]
+prerequisites:
+  commands: [nmap]
 ---
 
 # Network Scanner

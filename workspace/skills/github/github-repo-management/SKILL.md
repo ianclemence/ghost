@@ -5,7 +5,7 @@ version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
-  hermes:
+  ghost:
     tags: [GitHub, Repositories, Git, Releases, Secrets, Configuration]
     related_skills: [github-auth, github-pr-workflow, github-issues]
 ---

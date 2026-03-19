@@ -5,7 +5,7 @@ version: 1.1.0
 author: Ghost (adapted from obra/superpowers)
 license: MIT
 metadata:
-  hermes:
+  ghost:
     tags:
       [debugging, troubleshooting, problem-solving, root-cause, investigation]
     related_skills:

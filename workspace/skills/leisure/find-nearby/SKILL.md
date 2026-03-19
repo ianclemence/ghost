@@ -3,7 +3,7 @@ name: find-nearby
 description: Find nearby places (restaurants, cafes, bars, pharmacies, etc.) using OpenStreetMap. Works with coordinates, addresses, cities, zip codes, or Telegram location pins. No API keys needed.
 version: 1.0.0
 metadata:
-  hermes:
+  ghost:
     tags: [location, maps, nearby, places, restaurants, local]
     related_skills: []
 ---
@@ -36,14 +36,14 @@ python3 SKILL_DIR/scripts/find_nearby.py --near "90210" --type pharmacy --json
 
 ### Parameters
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--lat`, `--lon` | Exact coordinates | — |
-| `--near` | Address, city, zip, or landmark (geocoded) | — |
-| `--type` | Place type (repeatable for multiple) | restaurant |
-| `--radius` | Search radius in meters | 1500 |
-| `--limit` | Max results | 15 |
-| `--json` | Machine-readable JSON output | off |
+| Flag             | Description                                | Default    |
+| ---------------- | ------------------------------------------ | ---------- |
+| `--lat`, `--lon` | Exact coordinates                          | —          |
+| `--near`         | Address, city, zip, or landmark (geocoded) | —          |
+| `--type`         | Place type (repeatable for multiple)       | restaurant |
+| `--radius`       | Search radius in meters                    | 1500       |
+| `--limit`        | Max results                                | 15         |
+| `--json`         | Machine-readable JSON output               | off        |
 
 ### Common Place Types
 

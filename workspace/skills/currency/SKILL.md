@@ -1,8 +1,17 @@
-# Currency Converter Skill
+---
+name: currency
+description: Convert amounts between currencies using real-time exchange rates. Invoke when user asks "convert X to Y", "how much is USD in EUR", "exchange rate", or "currency conversion". No API key required.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [currency, conversion, exchange-rate, finance]
+prerequisites:
+  commands: [python]
+---
 
-## Description
-
-This skill allows the agent to convert currency amounts between different denominations (e.g., USD to EUR, GBP to JPY) using real-time exchange rates.
+# Currency Converter
 
 ## Tools
 

@@ -5,7 +5,7 @@ version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
-  hermes:
+  ghost:
     tags: [planning, design, implementation, workflow, documentation]
     related_skills:
       [

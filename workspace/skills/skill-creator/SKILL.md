@@ -1,6 +1,14 @@
 ---
 name: skill-creator
-description: Create or update AgentSkills. Use when designing, structuring, or packaging skills with scripts, references, and assets.
+description: Bootstrap a new Ghost skill from scratch. Use when user asks to "create a skill", "make a new skill for X", "add a skill", or "build a skill that does Y". Produces a complete SKILL.md with frontmatter, workflow, examples, and references.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [skill-creation, bootstrapping, development, authoring]
+prerequisites:
+  commands: []
 ---
 
 # Skill Creator
@@ -349,7 +357,6 @@ scripts/package_skill.py <path/to/skill-folder> ./dist
 The packaging script will:
 
 1. **Validate** the skill automatically, checking:
-
    - YAML frontmatter format and required fields
    - Skill naming conventions and directory structure
    - Description completeness and quality

@@ -1,9 +1,17 @@
 ---
 name: knowledge-base
-description: Manage and traverse the agent's persistent knowledge graph (Three-Space Architecture).
+description: Build and traverse a persistent personal knowledge graph ("Second Brain"). Invoke when user asks to "add to my memory", "remember this", "what do you know about X", "build a knowledge graph", or "initialize my notes". Manages self/, notes/, and ops/ spaces.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [knowledge, memory, graph, notes, wiki, rag]
+prerequisites:
+  commands: [python]
 ---
 
-# Knowledge Base Skill
+# Knowledge Base
 
 This skill enables the agent to maintain a persistent "Second Brain" using the **Three-Space Architecture**:
 

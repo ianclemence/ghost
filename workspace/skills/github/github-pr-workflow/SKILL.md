@@ -5,7 +5,7 @@ version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
-  hermes:
+  ghost:
     tags: [GitHub, Pull-Requests, CI/CD, Git, Automation, Merge]
     related_skills: [github-auth, github-code-review]
 ---

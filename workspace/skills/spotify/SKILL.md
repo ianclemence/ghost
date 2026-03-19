@@ -1,6 +1,14 @@
 ---
-name: "spotify"
-description: "Controls Spotify playback. Invoke ONLY when user explicitly says 'Spotify' or asks to skip/pause music."
+name: spotify
+description: Control Spotify playback on desktop client. Invoke ONLY when user explicitly says "Spotify" or asks to "play", "pause", "skip", "next track", or "what's playing". Requires spotify-cli wrapper (Windows: spotify-cli-windows, Linux: spotify-cli-linux).
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [spotify, music, playback, audio]
+prerequisites:
+  commands: [spotify]
 ---
 
 # Spotify Control
@@ -25,6 +33,7 @@ Using `spotify-cli` (example wrapper):
 ## Alternative (PowerShell)
 
 If no CLI tool is installed, you can use media keys via generic system control:
+
 - **Play/Pause**: `[System.Windows.Forms.SendKeys]::SendWait("^{p}")` (depends on app focus)
 - **Better**: Use `nircmd` media keys:
   - `nircmd.exe sendkeypress 0xB3` (Play/Pause)

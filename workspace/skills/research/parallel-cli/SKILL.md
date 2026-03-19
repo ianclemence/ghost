@@ -5,7 +5,7 @@ version: 1.1.0
 author: Ghost
 license: MIT
 metadata:
-  hermes:
+  ghost:
     tags: [Research, Web, Search, Deep-Research, Enrichment, CLI]
     related_skills: [duckduckgo-search, mcporter]
 ---

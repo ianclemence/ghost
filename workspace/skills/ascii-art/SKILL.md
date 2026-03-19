@@ -6,10 +6,21 @@ author: Ghost
 license: MIT
 dependencies: []
 metadata:
-  hermes:
-    tags: [ASCII, Art, Banners, Creative, Unicode, Text-Art, pyfiglet, figlet, cowsay, boxes]
+  ghost:
+    tags:
+      [
+        ASCII,
+        Art,
+        Banners,
+        Creative,
+        Unicode,
+        Text-Art,
+        pyfiglet,
+        figlet,
+        cowsay,
+        boxes,
+      ]
     related_skills: [excalidraw]
-
 ---
 
 # ASCII Art Skill
@@ -36,16 +47,16 @@ python3 -m pyfiglet --list_fonts             # List all 571 fonts
 
 ### Recommended fonts
 
-| Style | Font | Best for |
-|-------|------|----------|
-| Clean & modern | `slant` | Project names, headers |
-| Bold & blocky | `doom` | Titles, logos |
-| Big & readable | `big` | Banners |
-| Classic banner | `banner3` | Wide displays |
-| Compact | `small` | Subtitles |
-| Cyberpunk | `cyberlarge` | Tech themes |
-| 3D effect | `3-d` | Splash screens |
-| Gothic | `gothic` | Dramatic text |
+| Style          | Font         | Best for               |
+| -------------- | ------------ | ---------------------- |
+| Clean & modern | `slant`      | Project names, headers |
+| Bold & blocky  | `doom`       | Titles, logos          |
+| Big & readable | `big`        | Banners                |
+| Classic banner | `banner3`    | Wide displays          |
+| Compact        | `small`      | Subtitles              |
+| Cyberpunk      | `cyberlarge` | Tech themes            |
+| 3D effect      | `3-d`        | Splash screens         |
+| Gothic         | `gothic`     | Dramatic text          |
 
 ### Tips
 
@@ -252,6 +263,7 @@ for art in arts:
 ```
 
 **Available subjects** (use as URL path):
+
 - Animals: `cat`, `dog`, `horse`, `bird`, `fish`, `dragon`, `snake`, `rabbit`, `elephant`, `dolphin`, `butterfly`, `owl`, `wolf`, `bear`, `penguin`, `turtle`
 - Objects: `car`, `ship`, `airplane`, `rocket`, `guitar`, `computer`, `coffee`, `beer`, `cake`, `house`, `castle`, `sword`, `crown`, `key`
 - Nature: `tree`, `flower`, `sun`, `moon`, `star`, `mountain`, `ocean`, `rainbow`
@@ -259,6 +271,7 @@ for art in arts:
 - Holidays: `christmas`, `halloween`, `valentine`
 
 **Tips:**
+
 - Preserve artist signatures/initials — important etiquette
 - Multiple art pieces per page — pick the best one for the user
 - Works reliably via curl, no JavaScript needed

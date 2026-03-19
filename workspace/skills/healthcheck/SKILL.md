@@ -1,9 +1,17 @@
 ---
 name: healthcheck
-description: Host security hardening and system status for Ghost deployments. Use when a user asks for security audits, firewall/SSH/update hardening, risk posture, or version status checks.
+description: Audit system security, hardening, and status for Ghost deployments. Invoke when user asks for a "security audit", "check system status", "hardening checklist", "risk assessment", or "is my system up to date". Runs diagnostics on firewall, SSH, updates, and package versions.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [security, hardening, audit, system-status, diagnostics]
+prerequisites:
+  commands: []
 ---
 
-# Ghost Host Hardening
+# Host Hardening & Diagnostics
 
 ## Overview
 

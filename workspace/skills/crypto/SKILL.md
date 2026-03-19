@@ -1,6 +1,14 @@
 ---
-name: "crypto"
-description: "Checks cryptocurrency prices. Invoke when user asks 'Check Bitcoin price', 'What is ETH worth?', or 'Crypto market status'."
+name: crypto
+description: Check real-time cryptocurrency prices and market data. Invoke when user asks "what is Bitcoin worth", "ETH price", "crypto market", "X coin price", or "Bitcoin price in USD". Uses CoinGecko API — no API key required.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [crypto, cryptocurrency, bitcoin, ethereum, prices, finance]
+prerequisites:
+  commands: [curl]
 ---
 
 # Crypto Ticker

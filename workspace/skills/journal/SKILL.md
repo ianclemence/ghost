@@ -1,9 +1,17 @@
 ---
-name: "journal"
-description: "Logs daily notes, thoughts, or events to a markdown file. Invoke when user says 'Log that...', 'Write in my journal', or 'Note to self'."
+name: journal
+description: Append timestamped notes to a daily markdown journal. Invoke when user says "log that", "note to self", "write in my journal", "remember that I...", or "add to daily notes". Creates dated files in workspace/journal/ directory.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [journal, notes, daily-notes, memory, logging]
+prerequisites:
+  commands: []
 ---
 
-# Journal / Note Taker
+# Journal
 
 Appends text to a daily markdown file in the `workspace/journal` directory.
 

@@ -1,6 +1,14 @@
 ---
-name: "shopping"
-description: "Manages a simple shopping list. Invoke when user says 'Add to list', 'What do I need to buy', or 'Remove from list'."
+name: shopping
+description: Maintain a persistent shopping list. Invoke when user says "add X to my shopping list", "what do I need to buy", "remove X from the list", or "clear my shopping list". Items persist in workspace/data/shopping_list.txt.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [shopping, todo, list, productivity]
+prerequisites:
+  commands: []
 ---
 
 # Shopping List

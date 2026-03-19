@@ -5,7 +5,7 @@ version: 1.2.0
 author: gamedevCloudy
 license: MIT
 metadata:
-  hermes:
+  ghost:
     tags: [search, duckduckgo, web-search, free, fallback]
     related_skills: [arxiv]
     fallback_for_toolsets: [web]
@@ -105,12 +105,12 @@ Returns: `title`, `content`, `description`, `duration`, `provider`, `published`,
 
 ### Quick Reference
 
-| Method | Use When | Key Fields |
-|--------|----------|------------|
-| `text()` | General research, companies | title, href, body |
-| `news()` | Current events, updates | date, title, source, body, url |
-| `images()` | Visuals, diagrams | title, image, thumbnail, url |
-| `videos()` | Tutorials, demos | title, content, duration, provider |
+| Method     | Use When                    | Key Fields                         |
+| ---------- | --------------------------- | ---------------------------------- |
+| `text()`   | General research, companies | title, href, body                  |
+| `news()`   | Current events, updates     | date, title, source, body, url     |
+| `images()` | Visuals, diagrams           | title, image, thumbnail, url       |
+| `videos()` | Tutorials, demos            | title, content, duration, provider |
 
 ## CLI (Alternative)
 
@@ -141,14 +141,14 @@ ddgs text -k "fastapi tutorial" -m 5 -o json
 
 ### CLI Flags
 
-| Flag | Description | Example |
-|------|-------------|---------|
+| Flag | Description                     | Example             |
+| ---- | ------------------------------- | ------------------- |
 | `-k` | Keywords (query) — **required** | `-k "search terms"` |
-| `-m` | Max results | `-m 5` |
-| `-r` | Region | `-r us-en` |
-| `-t` | Time limit | `-t w` (week) |
-| `-s` | Safe search | `-s off` |
-| `-o` | Output format | `-o json` |
+| `-m` | Max results                     | `-m 5`              |
+| `-r` | Region                          | `-r us-en`          |
+| `-t` | Time limit                      | `-t w` (week)       |
+| `-s` | Safe search                     | `-s off`            |
+| `-o` | Output format                   | `-o json`           |
 
 ## Workflow: Search then Extract
 

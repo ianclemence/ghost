@@ -1,13 +1,25 @@
-# Air Quality Index (AQI) & Pollen Skill
+---
+name: aqi
+description: Check current Air Quality Index (AQI), PM2.5, PM10, and pollen levels for any city. Invoke when user asks "air quality", "AQI", "pollution level", "is the air safe to breathe", or "pollen count" for a specific location.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [air-quality, AQI, pollution, weather, environment, health]
+prerequisites:
+  commands: [python]
+---
 
-## Description
-Check the current Air Quality Index (AQI) and Pollen levels for a specific location using open APIs.
+# Air Quality Index (AQI) & Pollen
 
 ## Tools
+
 - **Geocoding API**: `https://geocoding-api.open-meteo.com/v1/search?name={CITY}`
 - **Air Quality API**: `https://air-quality-api.open-meteo.com/v1/air-quality?latitude={LAT}&longitude={LON}&current=us_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,aerosol_optical_depth,dust,uv_index`
 
 ## Cross-Platform Method (Python)
+
 Works on Windows, Linux, and Mac.
 
 1.  **Run Script**:
@@ -16,6 +28,7 @@ Works on Windows, Linux, and Mac.
     ```
 
 ## Workflow (PowerShell Only)
+
 1.  **Get Location**:
     - Ask the user for their City (e.g., "New York").
     - Fetch coordinates:
@@ -35,8 +48,9 @@ Works on Windows, Linux, and Mac.
     - Interpret the AQI (e.g., 0-50 Good, 51-100 Moderate, >100 Unhealthy).
 
 ## Alternative (Simpler)
+
 - Use `wttr.in` if only weather/simple info is needed:
   ```powershell
   curl wttr.in/New_York
   ```
-  *(Note: wttr.in is primarily weather, but sometimes includes basic environmental info. The API method above is preferred for specific AQI tasks.)*
+  _(Note: wttr.in is primarily weather, but sometimes includes basic environmental info. The API method above is preferred for specific AQI tasks.)_

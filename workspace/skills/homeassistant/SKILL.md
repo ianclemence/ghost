@@ -1,6 +1,14 @@
 ---
-name: "homeassistant"
-description: "Controls smart home devices via Home Assistant. Invoke when user asks to turn on/off lights, check sensors, or run scenes."
+name: homeassistant
+description: Control smart home devices via Home Assistant. Invoke when user asks to "turn on the lights", "set thermostat to 72", "is the front door locked", "trigger scene movie mode", "check sensor readings", or any smart home command. Requires HASS_URL and HASS_TOKEN env vars.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [homeassistant, smart-home, IoT, automation, sensors]
+prerequisites:
+  commands: [curl]
 ---
 
 # Smart Home Bridge (Home Assistant)

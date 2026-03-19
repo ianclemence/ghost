@@ -5,7 +5,7 @@ version: 1.0.0
 author: Ghost
 license: MIT
 metadata:
-  hermes:
+  ghost:
     tags: [Research, Arxiv, Papers, Academic, Science, API]
     related_skills: [ocr-and-documents]
 ---

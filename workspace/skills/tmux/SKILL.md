@@ -1,7 +1,14 @@
 ---
 name: tmux
-description: Remote-control tmux sessions for interactive CLIs by sending keystrokes and scraping pane output.
-metadata: {"nanobot":{"emoji":"🧵","os":["darwin","linux"],"requires":{"bins":["tmux"]}}}
+description: Control tmux sessions programmatically — send keystrokes to interactive CLIs, capture pane output, spawn persistent sessions. Invoke when user asks to "attach to tmux", "send a command to tmux session", "run interactive CLI in background", or "watch tmux pane for output". Requires tmux binary.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [tmux, terminal, session, multiplexer, CLI]
+prerequisites:
+  commands: [tmux]
 ---
 
 # tmux Skill
@@ -95,6 +102,7 @@ tmux -S "$SOCKET" capture-pane -p -t agent-1 -S -500
 ```
 
 **Tips:**
+
 - Use separate git worktrees for parallel fixes (no branch conflicts)
 - `pnpm install` first before running codex in fresh clones
 - Check for shell prompt (`❯` or `$`) to detect completion
