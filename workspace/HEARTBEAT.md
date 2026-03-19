@@ -21,8 +21,8 @@ This file defines autonomous background routines. Heartbeat tasks must never deg
 
 - [ ] Check system time and timezone consistency.
 - [ ] Collect top tech and world headlines (max 5 sources total).
-- [ ] Review `state/` for pending multi-day tasks.
-- [ ] Send one concise morning briefing to Telegram.
+- [ ] Review `state/state.json` for pending multi-day tasks.
+- [ ] Send one concise morning briefing to the primary configured channel.
 
 Output constraints:
 - One briefing message only.
@@ -32,12 +32,12 @@ Output constraints:
 ## Evening Reflection (22:00, Local Time)
 
 - [ ] Summarize significant interactions from the day.
-- [ ] Append one structured entry to `memory/daily_logs.md`.
-- [ ] Update `USER.md` only for durable user facts.
+- [ ] Append one structured entry to `knowledge/logs/sessions.md`.
+- [ ] Update `knowledge/self/context.md` with current topic and session outcome.
 - [ ] Archive obsolete `state/` files older than 7 days.
 
 Output constraints:
-- One memory entry per day.
+- One session log entry per day.
 - No duplicate entries for the same date key.
 
 ## Maintenance (Every 4 Hours)
@@ -47,10 +47,18 @@ Output constraints:
   - CPU temp >= 80°C
   - Disk usage >= 90%
   - Available RAM < 10%
-- [ ] Perform memory grooming only if a memory file exceeds 2 MB.
+- [ ] Perform memory grooming only if `memory/MEMORY.md` exceeds 2 MB.
 
 ## Continuous Learning (Weekly)
 
-- [ ] List installed skills and short descriptions.
+- [ ] List installed skills and short descriptions (`ghost skills list`).
+- [ ] Run `ghost doctor` and note any new skill dependency issues.
+- [ ] Review `knowledge/ops/inbox.md` — process any stale captures (>48h).
 - [ ] Recommend up to 3 improvements based on recurring user requests.
 - [ ] Avoid repeating prior recommendations from the last 14 days.
+
+## Skill Health Check (Daily)
+
+- [ ] Run `ghost doctor` skill dependency check.
+- [ ] Update `knowledge/self/skills-state.md` with current missing dependencies.
+- [ ] Flag any skill whose prerequisite binary is permanently unavailable.

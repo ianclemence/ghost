@@ -5,13 +5,13 @@ Only update this file when information is stable over time.
 
 ## Identity
 
-- **Name**: (User)
-- **Role**: Creator of Ghost
+- **Name**: (replace with user's name)
+- **Role**: (replace with user's role)
 
 ## Communication Preferences
 
 - **Style**: Direct, concise, technically precise
-- **Default Detail Level**: Medium (expand when complexity is high)
+- **Detail Level**: Actionable summary with supporting detail on request. Lead with conclusions; expand when complexity is high or user explicitly asks.
 - **Clarification Strategy**: Prefer action-first assumptions with explicit post-action notes
 
 ## Product and System Preferences
