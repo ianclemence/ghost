@@ -36,6 +36,14 @@ Log significant errors here. Include: what happened, root cause, what resolved i
 - **Resolution**: Fixed by removing the `#---` line; clean `---` document marker on line 1
 - **Files affected**: `workspace/skills/speedtest/SKILL.md`
 
+## 2026-03-19 — skill count mismatch: 28 vs 33
+
+- **What**: Ghost via Telegram/mobile reported 28 skills; `ghost skills list` CLI reported 33
+- **Symptom**: Agent gave inaccurate skill count depending on how it was invoked
+- **Root cause**: `ContextBuilder.NewContextBuilder()` used `filepath.Join(wd, "skills")` for builtin skills, where `wd` is the CWD of the running ghost binary. This resolved to the ghost project's own `skills/` directory (5 extra skills), not `<globalConfigDir>/ghost/skills` which is where the CLI looks. The agent loop used `~/.GHOST/skills` for global skills, matching the CLI, but the builtin path was wrong.
+- **Resolution**: Changed `builtinSkillsDir` from `filepath.Join(wd, "skills")` to `filepath.Join(getGlobalConfigDir(), "ghost", "skills")`, matching the CLI's builtin skills path. Both global and builtin paths now use the global config directory.
+- **Files affected**: `pkg/agent/context.go`
+
 ## Template for new entries
 
 ```

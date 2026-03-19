@@ -10,6 +10,15 @@ description: Chronological error log. Deduplicated against self/recent-errors.
 
 Timestamp-ordered error records. Newest entries at top.
 
+## 2026-03-19 — skill count mismatch (28 vs 33)
+
+- **Time**: ~15:00
+- **What**: Ghost via Telegram/mobile counted 28 skills; `ghost skills list` CLI counted 33
+- **Symptom**: Agent skill count was wrong depending on how it was invoked
+- **Root cause**: `ContextBuilder.NewContextBuilder()` used `filepath.Join(wd, "skills")` for builtin skills (wrong path); CLI used `filepath.Join(getGlobalConfigDir(), "ghost", "skills")`. Both now use the same path.
+- **Resolution**: Changed `builtinSkillsDir` to `filepath.Join(getGlobalConfigDir(), "ghost", "skills")` in `pkg/agent/context.go`
+- **See**: [[self/recent-errors]]
+
 ## 2026-03-19 — doctor.New signature mismatch
 
 - **Time**: ~14:00
