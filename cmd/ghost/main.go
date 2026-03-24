@@ -1078,6 +1078,35 @@ func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace
 		return cronTool.ExecuteJob(context.Background(), job)
 	})
 
+	// Auto-discover scheduled workflows
+	sl := skills.NewSkillsLoader(workspace, "", "")
+	existingJobs := cronService.ListJobs(true)
+	existingNames := make(map[string]bool)
+	for _, j := range existingJobs {
+		existingNames[j.Name] = true
+	}
+
+	for _, skill := range sl.ListSkills() {
+		if skill.Schedule != "" {
+			workflowName := "Workflow: " + skill.Name
+			if !existingNames[workflowName] {
+				parsedCron := cron.ParseSchedule(skill.Schedule)
+				if parsedCron != "" {
+					cronService.AddJob(workflowName, cron.CronSchedule{Kind: "cron", Expr: parsedCron}, fmt.Sprintf("Execute the %s skill", skill.Name), true, "", "", nil)
+					logger.InfoCF("cron", "Auto-discovered scheduled workflow", map[string]interface{}{
+						"name": skill.Name,
+						"cron": parsedCron,
+					})
+				} else {
+					logger.InfoCF("cron", "Failed to parse schedule for workflow", map[string]interface{}{
+						"name": skill.Name,
+						"schedule": skill.Schedule,
+					})
+				}
+			}
+		}
+	}
+
 	return cronService
 }
 

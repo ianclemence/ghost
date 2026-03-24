@@ -12,6 +12,7 @@ import (
 type SkillMetadata struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Schedule    string `json:"schedule,omitempty"`
 }
 
 type SkillInfo struct {
@@ -19,6 +20,7 @@ type SkillInfo struct {
 	Path        string `json:"path"`
 	Source      string `json:"source"`
 	Description string `json:"description"`
+	Schedule    string `json:"schedule,omitempty"`
 }
 
 type SkillsLoader struct {
@@ -43,6 +45,33 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 	if sl.workspaceSkills != "" {
 		if dirs, err := os.ReadDir(sl.workspaceSkills); err == nil {
 			for _, dir := range dirs {
+				if dir.IsDir() && dir.Name() == "workflows" {
+					// Load flat .md files from workflows directory
+					workflowsDir := filepath.Join(sl.workspaceSkills, "workflows")
+					if wfiles, err := os.ReadDir(workflowsDir); err == nil {
+						for _, f := range wfiles {
+							if !f.IsDir() && strings.HasSuffix(f.Name(), ".md") {
+								skillName := strings.TrimSuffix(f.Name(), ".md")
+								skillFile := filepath.Join(workflowsDir, f.Name())
+								info := SkillInfo{
+									Name:   skillName,
+									Path:   skillFile,
+									Source: "workspace",
+								}
+								metadata := sl.getSkillMetadata(skillFile)
+								if metadata != nil {
+									info.Description = metadata.Description
+									info.Schedule = metadata.Schedule
+								}
+								// Only append if there isn't one already added with same name?
+								// Just append.
+								skills = append(skills, info)
+							}
+						}
+					}
+					continue
+				}
+				
 				if dir.IsDir() {
 					skillFile := filepath.Join(sl.workspaceSkills, dir.Name(), "SKILL.md")
 					if _, err := os.Stat(skillFile); err == nil {
@@ -54,6 +83,7 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 						metadata := sl.getSkillMetadata(skillFile)
 						if metadata != nil {
 							info.Description = metadata.Description
+							info.Schedule = metadata.Schedule
 						}
 						skills = append(skills, info)
 					}
@@ -137,6 +167,13 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 func (sl *SkillsLoader) LoadSkill(name string) (string, bool) {
 	// 1. ä¼˜å…ˆä»Ž workspace skills åŠ è½½ï¼ˆé¡¹ç›®çº§åˆ«ï¼‰
 	if sl.workspaceSkills != "" {
+		// First try as a flat workflow file
+		workflowFile := filepath.Join(sl.workspaceSkills, "workflows", name+".md")
+		if content, err := os.ReadFile(workflowFile); err == nil {
+			return sl.stripFrontmatter(string(content)), true
+		}
+		
+		// Then try as a directory
 		skillFile := filepath.Join(sl.workspaceSkills, name, "SKILL.md")
 		if content, err := os.ReadFile(skillFile); err == nil {
 			return sl.stripFrontmatter(string(content)), true
@@ -220,11 +257,13 @@ func (sl *SkillsLoader) getSkillMetadata(skillPath string) *SkillMetadata {
 	var jsonMeta struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
+		Schedule    string `json:"schedule"`
 	}
 	if err := json.Unmarshal([]byte(frontmatter), &jsonMeta); err == nil {
 		return &SkillMetadata{
 			Name:        jsonMeta.Name,
 			Description: jsonMeta.Description,
+			Schedule:    jsonMeta.Schedule,
 		}
 	}
 
@@ -233,6 +272,7 @@ func (sl *SkillsLoader) getSkillMetadata(skillPath string) *SkillMetadata {
 	return &SkillMetadata{
 		Name:        yamlMeta["name"],
 		Description: yamlMeta["description"],
+		Schedule:    yamlMeta["schedule"],
 	}
 }
 
