@@ -114,8 +114,12 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 		// The LLM can then decide to use this information.
 	}))
 
-	// Headless Browser Tool (Chromium-based)
-	registry.RegisterHidden(tools.NewBrowserTool(workspace, restrict), 2*time.Hour)
+	// Interactive Browser Automation (CDP-based)
+	registry.RegisterHidden(tools.NewBrowserTool(workspace, "navigate"), 2*time.Hour)
+	registry.RegisterHidden(tools.NewBrowserTool(workspace, "snapshot"), 2*time.Hour)
+	registry.RegisterHidden(tools.NewBrowserTool(workspace, "click"), 2*time.Hour)
+	registry.RegisterHidden(tools.NewBrowserTool(workspace, "type"), 2*time.Hour)
+	registry.RegisterHidden(tools.NewBrowserTool(workspace, "press"), 2*time.Hour)
 
 	// Sandbox Execution Tool (Safe code running)
 	registry.RegisterHidden(tools.NewSandboxTool(workspace), 2*time.Hour)
@@ -178,6 +182,12 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 		return nil
 	})
 	registry.Register(messageTool)
+
+	// Self-improving Skills — agent can create/patch/delete skills autonomously
+	registry.Register(tools.NewSkillManageTool(workspace))
+
+	// Bounded Curated Memory — agent can maintain a persistent, curated profile of the user and project
+	registry.Register(tools.NewMemoryCurateTool(workspace))
 
 	if cfg.Tools.MCP.Enabled {
 		manager := mcp.NewManager()

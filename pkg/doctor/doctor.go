@@ -49,6 +49,7 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkGateway,
 		d.checkToolRegistry,
 		d.checkPython,
+		d.checkBrowser,
 		d.checkSkillDependencies,
 	}
 	results := make([]CheckResult, 0, len(checks))
@@ -96,6 +97,29 @@ func (d *Doctor) checkPython(ctx context.Context) CheckResult {
 		Name:    "python_env",
 		Status:  "ok",
 		Message: fmt.Sprintf("%s (pip available)", version),
+		Latency: time.Since(start).Milliseconds(),
+	}
+}
+
+func (d *Doctor) checkBrowser(ctx context.Context) CheckResult {
+	start := time.Now()
+	
+	cmd := exec.CommandContext(ctx, "agent-browser", "--version")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return CheckResult{
+			Name:    "browser_env",
+			Status:  "warning",
+			Message: "agent-browser not found (install via: npm i -g agent-browser)",
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
+
+	version := strings.TrimSpace(string(out))
+	return CheckResult{
+		Name:    "browser_env",
+		Status:  "ok",
+		Message: fmt.Sprintf("agent-browser %s", version),
 		Latency: time.Since(start).Milliseconds(),
 	}
 }

@@ -138,10 +138,19 @@ The following skills extend your capabilities. To use a skill, read its SKILL.md
 %s`, skillsSummary))
 	}
 
-	// Memory context
+	// Memory context (Old RAG string method, keep if it exists)
 	memoryContext := cb.memory.GetMemoryContext()
 	if memoryContext != "" {
-		parts = append(parts, "# Memory\n\n"+memoryContext)
+		parts = append(parts, "# Memory (Search Results)\n\n"+memoryContext)
+	}
+
+	// Curated Memory (Always injected)
+	curateTool := tools.NewMemoryCurateTool(cb.workspace)
+	if profileContext := curateTool.FormatForSystemPrompt("user"); profileContext != "" {
+		parts = append(parts, profileContext)
+	}
+	if curateMemoryContext := curateTool.FormatForSystemPrompt("memory"); curateMemoryContext != "" {
+		parts = append(parts, curateMemoryContext)
 	}
 
 	// Join with "---" separator
