@@ -86,26 +86,28 @@ Ghost runs a unified gateway that connects to **7 messaging channels** simultane
 
 Each channel has **allow-list filtering** (`allow_from`) for access control.
 
-### 2. Agentic Tool System (24+ Built-in Tools)
+### 2. Agentic Tool System (30+ Built-in Tools)
 
 | Category | Tools |
 |----------|-------|
 | **Filesystem** | `read_file`, `write_file`, `edit_file`, `append_file`, `list_dir` |
 | **Shell** | `exec` (guarded, 6h cooldown), `sandbox` (safe code running) |
-| **Web** | `web_search` (Brave/DuckDuckGo), `web_fetch` |
-| **Memory** | `remember` (RAG vectorization), `oracle` (context bundling), `session_search` |
+| **Web** | `web_search` (Brave/DuckDuckGo), `web_fetch`, `agent-browser` (interactive CDP automation) |
+| **Memory** | `remember` (RAG vectorization), `oracle` (context bundling), `memory_curate` (bounded dual-store), `session_search` (FTS5 SQLite) |
 | **Communication** | `message` (direct user reply), `canvas` (visual HTML output) |
 | **Hardware** | `i2c`, `spi` (Linux GPIO), `networking` (Tailscale/Bonjour) |
-| **Media** | `video_frames`, `browser` (headless Chromium) |
+| **Media** | `video_frames` |
 | **Agent** | `spawn` (async subagent), `subagent` (sync), `lane` (isolated context), `compaction` |
 | **Automation** | [cron](file:///d:/laragon/www/ghost/cmd/ghost/main.go#1088-1125) (schedule tasks), `voice_wake` (always-listening trigger) |
 | **Infra** | [update](file:///d:/laragon/www/ghost/pkg/agent/loop.go#1065-1084) (self-update), MCP tools (dynamic external tools) |
 
 All tool parameters are validated against **JSON Schema** to prevent LLM hallucinations.
 
-### 3. Skill System (33 Installed Skills)
+### 3. Skill System (53+ Installed Skills)
 
 Skills are modular capability packs in `workspace/skills/`, each containing a `SKILL.md` definition plus optional scripts:
+
+Ghost features **Self-Improving Skills**: the LLM is granted the `skill_manage` tool, allowing it to autonomously author, edit, and patch its own behavioral skillpacks on the fly.
 
 ````carousel
 | Skill | Purpose |
@@ -153,9 +155,9 @@ Skills can be installed from repositories via `ghost skills install <repo>`, lis
 
 Ghost maintains **4 layers of memory**:
 
-1. **Structured History** — All conversations in SQLite with full-text search (FTS)
+1. **Structured History** — All conversations in SQLite with **FTS5 full-text search** (`session_search` tool)
 2. **RAG (Semantic Search)** — Important facts vectorized via embeddings, stored in an HNSW index ([chromem-go](https://github.com/philippgille/chromem-go)) for O(log n) similarity retrieval
-3. **Episodic** — Daily conversation logs in `workspace/memory/`
+3. **Bounded Curated Memory** — A dual-store (`user-profile.md` + `curated-memory.md`) mechanism managed autonomously by the `memory_curate` tool. Enforces token limits (5k chars per file) and injects strictly verified context directly into the system prompt.
 4. **Reflective** — Periodic LLM-generated summaries (auto-triggered by session length)
 
 The `remember` tool lets Ghost explicitly store facts, while the `oracle` tool bundles workspace context (GHOST.md, USER.md, state) into a single grounded prompt.
@@ -183,12 +185,16 @@ Ghost doesn't just wait for messages — it has autonomous routines:
 
 All heartbeat tasks have **guardrails**: max 120s per cycle, 45s per task, deferred during active chat, idempotent execution.
 
-### 7. Cron Scheduler
+### 8. Hybrid Workflow System (20+ Bundled Workflows)
 
-Full cron-based task scheduling with `ghost cron` CLI:
-- Standard cron expression support (via gronx)
-- Tasks run through the agent loop with restricted tool profiles
-- Persistent job storage
+Ghost integrates a powerful ClawFlows-inspired workflow engine natively into the cron service. Workflows are scheduled, deterministic markdown skill files (`workspace/skills/workflows/*.md`) executed on natural language schedules (e.g. `schedule: "Sunday 6pm"`). 
+
+**20 predefined personal productivity routines** are included covering:
+- Daily briefings & evening prep
+- Pre-meeting attendee research
+- Subscription audits & bill tracking
+- Package delivery consolidation
+- Automated digital hygiene & cleanup
 
 ### 8. Smart Routing & Provider Fallback
 
@@ -276,8 +282,8 @@ Based on the codebase, documentation, and architecture:
 |--------|-------|
 | Go packages | 29 |
 | Go source files | 143+ |
-| Built-in tools | 24+ |
-| Installed skills | 33 |
+| Built-in tools | 30+ |
+| Installed skills | 53+ |
 | Messaging channels | 7 |
 | LLM providers | 8+ |
 | Binary size | ~34 MB |
