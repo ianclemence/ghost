@@ -109,7 +109,7 @@ Skills are modular capability packs in `workspace/skills/`, each containing a `S
 
 Ghost features **Self-Improving Skills**: the LLM is granted the `skill_manage` tool, allowing it to autonomously author, edit, and patch its own behavioral skillpacks on the fly.
 
-````carousel
+
 | Skill | Purpose |
 |-------|---------|
 | `weather` | Weather forecasts |
@@ -124,9 +124,6 @@ Ghost features **Self-Improving Skills**: the LLM is granted the `skill_manage` 
 | `email` | Email send/receive |
 | `journal` | Daily journaling |
 | `git` / `github` | Version control |
-<!-- slide -->
-| Skill | Purpose |
-|-------|---------|
 | `research` | Deep research workflow |
 | `summarize` | Text summarization |
 | `scraper` | Web scraping |
@@ -147,7 +144,6 @@ Ghost features **Self-Improving Skills**: the LLM is granted the `skill_manage` 
 | `mobile` | Mobile app bridge |
 | `system` | System administration |
 | `tmux` | Terminal multiplexing |
-````
 
 Skills can be installed from repositories via `ghost skills install <repo>`, listed, removed, and searched through the CLI.
 
