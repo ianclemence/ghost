@@ -181,7 +181,7 @@ Ghost doesn't just wait for messages — it has autonomous routines:
 
 All heartbeat tasks have **guardrails**: max 120s per cycle, 45s per task, deferred during active chat, idempotent execution.
 
-### 8. Hybrid Workflow System (20+ Bundled Workflows)
+### 7. Hybrid Workflow System (20+ Bundled Workflows)
 
 Ghost integrates a powerful ClawFlows-inspired workflow engine natively into the cron service. Workflows are scheduled, deterministic markdown skill files (`workspace/skills/workflows/*.md`) executed on natural language schedules (e.g. `schedule: "Sunday 6pm"`). 
 
