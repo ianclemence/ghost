@@ -109,6 +109,7 @@ install: build
 	@# Stop the service before replacing the binary to avoid "Text file busy" error.
 	@# The binary cannot be overwritten while it is being executed by systemd.
 	@sudo systemctl stop ghost 2>/dev/null || true
+	@rm -f $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@cp $(BINARY_PATH) $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@echo "Installed binary to $(INSTALL_BIN_DIR)/$(BINARY_NAME)"
