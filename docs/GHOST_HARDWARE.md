@@ -111,3 +111,54 @@ Best Practices:
 ---
 
 This reference aims to help you choose the right hardware for a Ghost device that remains private, responsive, and capable — fully sovereign and cloud‑independent. For a tailored bill of materials, share your constraints (budget, size, noise tolerance, expected workloads), and we’ll derive a precise configuration.
+
+## Cost & Pricing
+
+The following ranges reflect typical 2026 market prices for new parts, with notes on used components where common. Final pricing varies by region, availability, and warranty/support level.
+
+### Starter (Always‑On Voice + 1–7B Models)
+
+- Bill of Materials (BOM): $350–$700
+  - Pi 5 (8 GB) or x86 mini‑PC: $100–$400
+  - 1 TB NVMe + USB enclosure: $65–$80
+  - Far‑field mic array: $60–$200
+  - Coral TPU / Intel VPU (optional): $100–$150
+  - Compact amp + speaker: $50–$100
+  - Small UPS: $60–$120
+  - Case/PSU/cooling/cables: $50–$100
+- Suggested Retail: $699–$999
+  - Includes assembly, OS provisioning, Ghost configuration, QA burn‑in, 1–2 year warranty, and support margin.
+
+### Pro (7–13B Models, Faster Reasoning, Vision)
+
+- BOM (new GPU): $3,000–$5,000
+  - CPU/Motherboard/Case/Cooling: $700–$1,100
+  - RAM 64–128 GB: $150–$450
+  - Storage (2 TB NVMe + 4 TB SSD): $280–$430
+  - GPU 24 GB VRAM (RTX 3090/4090/RTX 4000 Ada): $1,500–$2,500
+  - PSU 850–1000 W: $120–$180
+  - Audio I/O + mic array: $150–$300
+  - UPS: $150–$300
+- BOM (used GPU path): $2,300–$3,800 (e.g., used RTX 3090 $700–$1,000)
+- Suggested Retail: $3,999–$6,999
+  - Reflects quiet thermal engineering, hardware integration, warranty, device‑level support, and margin.
+
+### Ultra (20–34B+, Deep Reasoning, Multimodal)
+
+- BOM (new 48 GB GPU): $12,000–$20,000
+  - Threadripper‑class CPU/Motherboard/Chassis: $1,400–$2,700
+  - RAM 128–256 GB: $350–$1,200
+  - Storage (4–8 TB NVMe + 8–16 TB SSD/HDD): $1,000–$2,000
+  - GPU 48 GB VRAM (RTX 6000 Ada): $7,000–$8,000 (new)
+  - PSU 1–1.2 kW: $200–$300
+  - Audio/DSP, multi‑camera, UPS: $900–$2,000
+- BOM (used A6000 single GPU): $6,000–$12,000
+- Suggested Retail: $12,999–$24,999
+  - Multi‑GPU or advanced sensor arrays can exceed $25k; add margin for rack mounting and pro support SLAs.
+
+### Assumptions & Notes
+
+- New‑parts baseline; used enterprise GPUs reduce BOM but affect warranty and supply predictability.
+- Pricing includes professional assembly, QA, OS provisioning, Ghost configuration, and reasonable support/warranty margin (typically 20–40% over BOM + labor/overheads).
+- Costs exclude taxes, shipping, and optional accessories (monitors, cameras beyond baseline, specialty microphones).
+- Sovereignty features (UPS, encryption, kill switches, secure pairing) are part of the baseline value proposition and reflected in pricing.
