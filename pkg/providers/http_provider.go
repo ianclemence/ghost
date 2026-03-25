@@ -101,13 +101,34 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		requestBody["thinking"] = thinking
 	}
 
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
 	useNative := (strings.Contains(p.apiBase, "11434") || strings.Contains(p.apiBase, "ollama.com")) && !strings.Contains(p.apiBase, "/v1")
 	if useNative {
+		// Build a minimal payload for Ollama's native chat API
+		nativeMsgs := make([]map[string]string, 0, len(messages))
+		for _, m := range messages {
+			content := m.Content
+			if content == "" && len(m.MultiContent) > 0 {
+				var sb strings.Builder
+				for _, part := range m.MultiContent {
+					if part.Type == "text" && part.Text != "" {
+						sb.WriteString(part.Text)
+					}
+				}
+				content = sb.String()
+			}
+			nativeMsgs = append(nativeMsgs, map[string]string{
+				"role":    m.Role,
+				"content": content,
+			})
+		}
+		nativeBody := map[string]interface{}{
+			"model":    model,
+			"messages": nativeMsgs,
+		}
+		jsonData, err := json.Marshal(nativeBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request: %w", err)
+		}
 		root := strings.TrimRight(p.apiBase, "/")
 		url := root + "/api/chat"
 		if strings.HasSuffix(root, "/api") {
@@ -138,6 +159,10 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		}
 		return p.parseNativeResponse(body)
 	} else {
+		jsonData, err := json.Marshal(requestBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request: %w", err)
+		}
 		req, err := http.NewRequestWithContext(ctx, "POST", p.apiBase+"/chat/completions", bytes.NewReader(jsonData))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create request: %w", err)
