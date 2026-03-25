@@ -109,7 +109,7 @@ Skills are modular capability packs in `workspace/skills/`, each containing a `S
 
 Ghost features **Self-Improving Skills**: the LLM is granted the `skill_manage` tool, allowing it to autonomously author, edit, and patch its own behavioral skillpacks on the fly.
 
-````carousel
+
 | Skill | Purpose |
 |-------|---------|
 | `weather` | Weather forecasts |
@@ -124,9 +124,6 @@ Ghost features **Self-Improving Skills**: the LLM is granted the `skill_manage` 
 | `email` | Email send/receive |
 | `journal` | Daily journaling |
 | `git` / `github` | Version control |
-<!-- slide -->
-| Skill | Purpose |
-|-------|---------|
 | `research` | Deep research workflow |
 | `summarize` | Text summarization |
 | `scraper` | Web scraping |
@@ -147,7 +144,6 @@ Ghost features **Self-Improving Skills**: the LLM is granted the `skill_manage` 
 | `mobile` | Mobile app bridge |
 | `system` | System administration |
 | `tmux` | Terminal multiplexing |
-````
 
 Skills can be installed from repositories via `ghost skills install <repo>`, listed, removed, and searched through the CLI.
 
@@ -185,7 +181,7 @@ Ghost doesn't just wait for messages — it has autonomous routines:
 
 All heartbeat tasks have **guardrails**: max 120s per cycle, 45s per task, deferred during active chat, idempotent execution.
 
-### 8. Hybrid Workflow System (20+ Bundled Workflows)
+### 7. Hybrid Workflow System (20+ Bundled Workflows)
 
 Ghost integrates a powerful ClawFlows-inspired workflow engine natively into the cron service. Workflows are scheduled, deterministic markdown skill files (`workspace/skills/workflows/*.md`) executed on natural language schedules (e.g. `schedule: "Sunday 6pm"`). 
 
