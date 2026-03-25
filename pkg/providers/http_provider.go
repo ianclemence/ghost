@@ -106,12 +106,15 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	useNative := strings.Contains(p.apiBase, "11434") || strings.Contains(p.apiBase, "ollama.com")
+	useNative := (strings.Contains(p.apiBase, "11434") || strings.Contains(p.apiBase, "ollama.com")) && !strings.Contains(p.apiBase, "/v1")
 	if useNative {
 		root := strings.TrimRight(p.apiBase, "/")
 		url := root + "/api/chat"
 		if strings.HasSuffix(root, "/api") {
 			url = root + "/chat"
+		}
+		if strings.HasSuffix(root, "/api/chat") {
+			url = root
 		}
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
 		if err != nil {
