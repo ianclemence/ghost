@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/logger"
 )
 
 type FallbackCandidate struct {
@@ -59,8 +61,10 @@ func (f *FallbackChain) Execute(ctx context.Context, candidates []FallbackCandid
 	var lastErr error
 	for _, c := range candidates {
 		if f.tracker != nil && !f.tracker.IsAvailable(c.Name) {
+			logger.DebugCF("fallback", "skipping candidate (cooldown)", map[string]interface{}{"name": c.Name})
 			continue
 		}
+		logger.InfoCF("fallback", "trying candidate", map[string]interface{}{"name": c.Name})
 		resp, err := run(c)
 		if err == nil {
 			if f.tracker != nil {
@@ -68,6 +72,7 @@ func (f *FallbackChain) Execute(ctx context.Context, candidates []FallbackCandid
 			}
 			return resp, nil
 		}
+		logger.ErrorCF("fallback", "candidate failed", map[string]interface{}{"name": c.Name, "error": err.Error()})
 		if f.tracker != nil {
 			f.tracker.MarkFailure(c.Name)
 		}

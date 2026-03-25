@@ -62,7 +62,8 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 	// Strip provider prefix from model name (e.g., moonshot/kimi-k2.5 -> kimi-k2.5)
 	if idx := strings.Index(model, "/"); idx != -1 {
 		prefix := model[:idx]
-		if prefix == "moonshot" || prefix == "nvidia" {
+		switch prefix {
+		case "moonshot", "kimi", "nvidia", "ollama", "anthropic", "openai", "google", "groq", "deepseek", "openrouter":
 			model = model[idx+1:]
 		}
 	}

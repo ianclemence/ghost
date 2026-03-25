@@ -377,6 +377,9 @@ func LoadConfig(path string) (*Config, error) {
 	if key := os.Getenv("KIMI_API_KEY"); key != "" {
 		cfg.Providers.Moonshot.APIKey = key
 	}
+	if base := os.Getenv("KIMI_API_BASE"); base != "" {
+		cfg.Providers.Moonshot.APIBase = base
+	}
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
 		cfg.Providers.Anthropic.APIKey = key
 	}

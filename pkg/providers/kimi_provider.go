@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -80,6 +81,14 @@ type kimiResponse struct {
 }
 
 func (p *KimiProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
+	// Strip provider prefix from model name (e.g., moonshot/kimi-k2.5 -> kimi-k2.5)
+	if idx := strings.Index(model, "/"); idx != -1 {
+		prefix := model[:idx]
+		if prefix == "moonshot" || prefix == "kimi" {
+			model = model[idx+1:]
+		}
+	}
+
 	// Build request
 	reqBody := kimiRequest{
 		Model:    model,
