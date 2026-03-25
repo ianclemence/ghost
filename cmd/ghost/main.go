@@ -114,16 +114,31 @@ func copyDirectory(src, dst string) error {
 
 func main() {
 	// Try loading .env files from various locations
-	// Priority: current dir > parent dir > config dir
+	// Priority: current dir > parent dir > config dir > ~/.ghost > ~/ghost
+	var envLoaded bool
+
 	if err := godotenv.Load(".env"); err == nil {
 		fmt.Printf("✓ Loaded .env (from current dir)\n")
+		envLoaded = true
 	} else if err := godotenv.Load("../.env"); err == nil {
 		fmt.Printf("✓ Loaded .env (from parent dir)\n")
+		envLoaded = true
 	}
 
 	if configDir := os.Getenv("GHOST_CONFIG_DIR"); configDir != "" {
 		if err := godotenv.Load(filepath.Join(configDir, ".env")); err == nil {
 			fmt.Printf("✓ Loaded .env (from GHOST_CONFIG_DIR)\n")
+			envLoaded = true
+		}
+	}
+
+	if !envLoaded {
+		if home, err := os.UserHomeDir(); err == nil {
+			if err := godotenv.Load(filepath.Join(home, ".ghost", ".env")); err == nil {
+				fmt.Printf("✓ Loaded .env (from ~/.ghost)\n")
+			} else if err := godotenv.Load(filepath.Join(home, "ghost", ".env")); err == nil {
+				fmt.Printf("✓ Loaded .env (from ~/ghost)\n")
+			}
 		}
 	}
 
@@ -1052,7 +1067,7 @@ func getConfigPath() string {
 	if configDir := os.Getenv("GHOST_CONFIG_DIR"); configDir != "" {
 		return filepath.Join(configDir, "config.json")
 	}
-	// Priority: current dir/config/config.json > current dir/config.json > ~/.ghost/config.json
+	// Priority: current dir/config/config.json > current dir/config.json > ~/ghost/config/config.json > ~/.ghost/config.json
 	if _, err := os.Stat("config/config.json"); err == nil {
 		return "config/config.json"
 	}
@@ -1060,6 +1075,12 @@ func getConfigPath() string {
 		return "config.json"
 	}
 	home, _ := os.UserHomeDir()
+	
+	fallback := filepath.Join(home, "ghost", "config", "config.json")
+	if _, err := os.Stat(fallback); err == nil {
+		return fallback
+	}
+
 	return filepath.Join(home, ".ghost", "config.json")
 }
 
