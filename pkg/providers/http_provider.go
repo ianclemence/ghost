@@ -101,6 +101,26 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		requestBody["thinking"] = thinking
 	}
 
+	// Map generic thinking options to Ollama's expected "think" parameter
+	// - For Qwen/DeepSeek: bool true/false
+	// - For GPT-OSS: "low" | "medium" | "high"
+	var thinkParam interface{} = nil
+	if v, ok := options["thinking"].(bool); ok {
+		thinkParam = v
+	} else if lvl, ok := options["thinking_level"].(string); ok {
+		switch strings.ToLower(lvl) {
+		case "low", "medium", "high":
+			thinkParam = lvl
+		case "on", "enabled", "true":
+			thinkParam = true
+		default:
+			thinkParam = false
+		}
+	} else {
+		// Default: disable thinking to improve latency on local models
+		thinkParam = false
+	}
+
 	useNative := (strings.Contains(p.apiBase, "11434") || strings.Contains(p.apiBase, "ollama.com")) && !strings.Contains(p.apiBase, "/v1")
 	if useNative {
 		// Build a minimal payload for Ollama's native chat API
@@ -124,6 +144,9 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		nativeBody := map[string]interface{}{
 			"model":    model,
 			"messages": nativeMsgs,
+		}
+		if thinkParam != nil {
+			nativeBody["think"] = thinkParam
 		}
 		jsonData, err := json.Marshal(nativeBody)
 		if err != nil {
