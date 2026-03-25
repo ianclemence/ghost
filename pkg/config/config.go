@@ -247,7 +247,7 @@ func DefaultConfig() *Config {
 				MaxTokens:           8192,
 				Temperature:         0.7,
 				MaxToolIterations:   20,
-				FallbackModels:      []string{},
+				FallbackModels:      []string{"ollama/qwen3.5:2b"},
 				FallbackCooldown:    30,
 				SessionStore:        "sqlite",
 			},
