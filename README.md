@@ -1,38 +1,126 @@
 # Ghost
 
-> "Your Sovereign Intelligence."
+> **Your Sovereign Intelligence.**  
+> *An edge-native AI system that thinks locally, reacts instantly, and scales infinitely.*
 
-Ghost is a personal AI assistant designed for Raspberry Pi. It merges a lightweight Go-based agent with the advanced reasoning of **Kimi K2.5** (256k context), providing a responsive and continuous AI presence.
+---
+
+## ⚡ What is Ghost?
+
+Ghost isn’t just an AI assistant.
+
+It’s a **distributed intelligence system** that runs on your own hardware — combining:
+
+- ⚡ **Real-time local reflexes** (instant responses)
+- 🧠 **On-device reasoning** (private, fast, offline-capable)
+- ☁️ **Cloud intelligence** (for deep thinking when needed)
+
+👉 The result:  
+An AI that feels **alive, responsive, and truly yours** — not dependent on the cloud.
+
+---
+
+## 🧠 The Architecture (What makes Ghost different)
+
+Most AI apps:
+
+```
+
+You → Cloud → Response
+
+```
+
+Ghost:
+
+```
+
+You → Local Reflex → Local Brain → Cloud (only if needed)
+
+````
+
+### ⚡ Reflex Layer (Edge AI)
+- Instant intent detection (<50ms)
+- Command routing
+- Wake-word + triggers
+- Local embeddings
+
+### 🧠 Local Brain
+- Runs small LLMs via Ollama
+- Handles memory, RAG, and tools
+- Works offline
+
+### ☁️ Cloud Brain (Optional)
+- Kimi / OpenAI / Anthropic
+- Used only for:
+  - deep reasoning
+  - coding
+  - complex tasks
+
+👉 **90% of interactions never leave your device**
+
+---
 
 ## 🌟 Core Features
 
-- **Sovereign**: Runs natively on your Raspberry Pi 5.
-- **Persistent**: Maintains a continuous thread of context via **SQLite** database and **HNSW Vector Index** (RAG).
-- **Intelligent**: Powered by Kimi K2.5 (or other LLMs) for complex reasoning, coding, and vision.
-- **Robust**: Built-in JSON Schema validation for tool parameters to prevent hallucinations.
-- **Proactive**: Wakes up to brief you on news, schedule, and reminders.
-- **Self-Modifying**: Includes full source code for on-device hacking.
-- **Observable**: Read-only diagnostics via `/doctor` and `GET /v1/doctor`.
+- **Sovereign**: Runs locally on your own hardware (RK1 recommended)
+- **Persistent**: Continuous context via **SQLite** + **HNSW Vector Index**
+- **Hybrid Intelligence**: Local-first routing with cloud fallback
+- **Robust**: JSON Schema validation prevents hallucinated tool calls
+- **Proactive**: Briefings, reminders, scheduled automation
+- **Self-Modifying**: Full source available for on-device hacking
+- **Observable**: Diagnostics via `/doctor` and `GET /v1/doctor`
+
+---
+
+## ⚙️ Hardware Philosophy
+
+Ghost is built for **edge-first computing**.
+
+### 🥇 Recommended
+**RK1 (16GB RAM)**
+
+Why:
+- Built-in **NPU (AI acceleration)**
+- Better performance than Raspberry Pi
+- Enables real-time local intelligence
+
+---
+
+### 🥈 Compatible
+- Raspberry Pi 5 / CM5
+- x86 mini-PCs
+
+👉 Works fine, but limited to **basic local intelligence**
+
+---
+
+### 🧠 Scaling Up
+- Add GPU → run 7B–13B models locally  
+- Full offline reasoning becomes possible
+
+---
 
 ## 🛠️ Requirements
 
 ### Hardware
 
-- **Raspberry Pi 5** (8GB RAM recommended)
-- **32GB MicroSD Card** (or larger)
-- **Telegram Account**
+- RK1 (16GB) **recommended**
+- Raspberry Pi 5 (8GB+) supported
+- 32GB MicroSD / NVMe storage
+- Telegram Account
+
+---
 
 ### Software: Ollama (Required for Local AI)
 
-To run Ghost locally, you need **Ollama** installed and running.
-
 **Windows:**
 
-1. Download and install Ollama from [ollama.com](https://ollama.com).
-2. Once installed, open your terminal (Command Prompt or PowerShell) and run:
-   ```powershell
-   ollama pull qwen3.5:0.8b
-   ```
+1. Install from https://ollama.com  
+2. Run:
+
+```powershell
+ollama pull qwen3.5:0.8b
+````
 
 **Linux / Raspberry Pi:**
 
@@ -41,70 +129,59 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen3.5:0.8b
 ```
 
+---
+
 ## 🚀 Quick Start
 
 ### Windows
 
-Double-click `setup.bat` to install skills, build, and run automatically.
+Double-click `setup.bat`
 
-### Raspberry Pi / Linux (Recommended)
+---
 
-Run the all-in-one setup script:
+### Linux / RK1 / Raspberry Pi
 
 ```bash
 chmod +x setup.sh
 ./setup.sh
 ```
 
-This script handles everything in one pass:
+This script:
 
-1. Installs system dependencies (ffmpeg, adb, chromium, etc.)
-2. Installs Python tools (document and calendar skills)
-3. Installs Ollama and pulls the default model
-4. Creates `.env` from `.env.example` if missing
-5. Auto-generates a strong `BRIDGE_SECRET`
-6. Builds the Ghost binary
-7. Installs the binary to `~/.local/bin/ghost`
-8. **(Optional)** Installs and starts Ghost as a systemd service
+1. Installs dependencies
+2. Installs Python tools
+3. Installs Ollama
+4. Creates `.env`
+5. Generates `BRIDGE_SECRET`
+6. Builds Ghost
+7. Installs binary
+8. (Optional) installs systemd service
 
-When asked "install as a system service?" answer `y`. The script generates the service file for your current user automatically — no usernames to hardcode.
+---
 
 ## ⚙️ Configuration
 
-Ghost uses a **Hybrid Configuration Architecture** to stay secure and flexible:
-
-1. **`.env` (Secrets)**: Use this for API keys, tokens, and environment-specific paths.
-2. **`config/config.json` (Architecture)**: Use this for bot behavior, model selections, and channel logic.
-
-### 1. Set up Secrets (.env)
+### `.env` (Secrets)
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-Add your keys to `.env`:
-
-```bash
-# Telegram Bot Token
+```env
 TELEGRAM_TOKEN=your_token_here
-
-# LLM API Keys (Anthropic, OpenAI, Moonshot, etc.)
 KIMI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here
-
-# Ghost Internal Bridge Secret (auto-generated by setup.sh)
 BRIDGE_SECRET=strong_secret_here
 ```
 
-### 2. Set up Behavior (config.json)
+---
+
+### `config.json` (Behavior)
 
 ```bash
 cp config/config.example.json config/config.json
-nano config/config.json
 ```
-
-Modify `config/config.json` to change how Ghost behaves:
 
 ```json
 {
@@ -120,60 +197,60 @@ Modify `config/config.json` to change how Ghost behaves:
 }
 ```
 
-> **Why two files?** Storing secrets in `.env` prevents accidental leakage to Git, while `config.json` allows for complex structural settings (like routing between multiple AI models) that are too messy for a flat `.env` file.
+---
 
 ## 🧭 Ghost CLI Commands
-
-Use these commands from the project root or from your installed binary path (`ghost <command>`).
 
 | Command     | Purpose                                   | Example             |
 | ----------- | ----------------------------------------- | ------------------- |
 | `onboard`   | Initialize config and workspace templates | `ghost onboard`     |
 | `agent`     | Chat directly with Ghost in terminal      | `ghost agent`       |
 | `dashboard` | Open the terminal operator dashboard      | `ghost dashboard`   |
-| `gateway`   | Start multi-channel gateway runtime       | `ghost gateway`     |
-| `status`    | Show runtime and profile status           | `ghost status`      |
-| `auth`      | Run auth workflows (login/logout/status)  | `ghost auth status` |
-| `cron`      | Manage scheduled automation jobs          | `ghost cron list`   |
-| `skills`    | Manage skills in workspace                | `ghost skills list` |
-| `migrate`   | Migrate old setup/config into Ghost       | `ghost migrate`     |
-| `version`   | Print binary and build info               | `ghost version`     |
+| `gateway`   | Start multi-channel runtime               | `ghost gateway`     |
+| `status`    | Show runtime status                       | `ghost status`      |
+| `auth`      | Auth workflows                            | `ghost auth status` |
+| `cron`      | Manage scheduled jobs                     | `ghost cron list`   |
+| `skills`    | Manage skills                             | `ghost skills list` |
+| `migrate`   | Migrate configs                           | `ghost migrate`     |
+| `version`   | Show build info                           | `ghost version`     |
 
-### Skills subcommands
+---
 
-| Command                        | Purpose                           |
-| ------------------------------ | --------------------------------- |
-| `ghost skills list`            | List installed skills             |
-| `ghost skills install <repo>`  | Install a skill from a repository |
-| `ghost skills remove <name>`   | Remove an installed skill         |
-| `ghost skills install-builtin` | Copy built-in skills to workspace |
-| `ghost skills list-builtin`    | List built-in skills available    |
-| `ghost skills search`          | Search skills registry            |
-| `ghost skills show <name>`     | Show skill details                |
+### Skills Subcommands
+
+| Command                        | Purpose                 |
+| ------------------------------ | ----------------------- |
+| `ghost skills list`            | List installed skills   |
+| `ghost skills install <repo>`  | Install from repository |
+| `ghost skills remove <name>`   | Remove skill            |
+| `ghost skills install-builtin` | Copy built-ins          |
+| `ghost skills list-builtin`    | List built-ins          |
+| `ghost skills search`          | Search registry         |
+| `ghost skills show <name>`     | Show details            |
+
+---
 
 ## 📱 Ghost Mobile
 
-Ghost exposes a single API on port **8766** for everything the mobile app needs — chat, history, memory, voice transcription, and Pi remote control.
+Ghost exposes a unified API on port **8766**:
 
-### 1. Add API settings to `.env`
+* Chat
+* Memory
+* Voice
+* Remote control
+
+---
+
+### API Setup
 
 ```env
-# Ghost API — one port for everything
 GHOST_API_PORT=8766
-BRIDGE_SECRET=pick_a_strong_secret_here   # auto-generated by setup.sh
-
-# Paths default to ~/ghost/workspace/... — only set if non-standard
-# GHOST_DB_PATH=/custom/path/to/ghost.db
-# MEMORY_DIR=/custom/path/to/memory
-
-# Optional: extra shell commands to allow in the Remote tab
-# ALLOWED_CMDS=python3,ollama,curl
-
-# Optional: override screenshot tool
-# SCREENSHOT_CMD=scrot /tmp/ghost-bridge-screen.png
+BRIDGE_SECRET=your_secret_here
 ```
 
-### 2. Run the mobile app
+---
+
+### Run Mobile App
 
 ```bash
 cd ghost-app
@@ -181,108 +258,36 @@ npm install
 npx expo start
 ```
 
-Scan the QR code with Expo Go. Open **⚙️ Settings**, enter your Pi's local IP, port `8766`, and your `BRIDGE_SECRET`.
+---
 
-#### 60-second Tailscale + Ghost Mobile checklist
-
-- Pi is connected: `tailscale status`
-- Phone is connected in Tailscale app (same account)
-- Host in Ghost Settings is Pi Tailscale IP (`tailscale ip -4`)
-- Port is `8766`
-- Secret matches `BRIDGE_SECRET` in Pi `.env`
-- Tap **Test Connection**, then **Save & Connect**
-
-### 3. Firewall (local network only)
-
-```bash
-sudo ufw allow from 192.168.0.0/16 to any port 8766
-sudo ufw reload
-```
-
-### 4. Remote Access with Tailscale (from anywhere)
-
-Tailscale creates a secure private network between your devices so you can reach your Pi even when your phone and Pi are on different networks.
-
-| Without Tailscale                 | With Tailscale                            |
-| --------------------------------- | ----------------------------------------- |
-| Devices must be on same WiFi      | Devices connect from anywhere             |
-| IPs change when networks change   | Stable private `100.x.x.x` address        |
-| Port forwarding is often required | Works through NAT/firewalls automatically |
-| Public internet exposure risk     | End-to-end encrypted private mesh         |
-
-#### Install Tailscale on your Pi
+### Tailscale Setup
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```
 
-Approve the login URL shown in terminal.
-
-#### Install Tailscale on your phone
-
-| Platform | Install Path                  |
-| -------- | ----------------------------- |
-| Android  | Google Play Store → Tailscale |
-| iOS      | App Store → Tailscale         |
-
-Sign in with the same account used on your Pi.
-
-#### Get your Pi Tailscale IP
-
 ```bash
 tailscale ip -4
 ```
 
-Use that address in Ghost Mobile Settings as the host (instead of local LAN IP).
+Use that IP in app settings.
 
-#### SSH from anywhere
-
-```bash
-ssh <pi-user>@100.x.x.x
-```
-
-#### Useful Tailscale commands
-
-| Command            | Purpose                         |
-| ------------------ | ------------------------------- |
-| `tailscale status` | Show connected devices          |
-| `tailscale ip -4`  | Show your device Tailscale IPv4 |
-| `tailscale up`     | Connect/reconnect               |
-| `tailscale down`   | Disconnect                      |
-
-#### Troubleshooting
-
-| Issue                    | Check                                                                |
-| ------------------------ | -------------------------------------------------------------------- |
-| Cannot connect           | Confirm both devices are logged in and visible in `tailscale status` |
-| Name resolution issues   | Use `tailscale ip -4` directly                                       |
-| Mobile app still offline | Re-test in Ghost Settings (`Test Connection`, `Run Diagnostics`)     |
-
-### 5. Screenshots (optional)
-
-```bash
-sudo apt install scrot
-```
+---
 
 ## 🤖 Running as a Service
-
-The easiest way is to answer `y` when `setup.sh` asks. It handles everything — generating the service file for your user, installing it, enabling it, and starting it.
-
-If you need to reinstall the service manually at any time:
 
 ```bash
 make install-service
 ```
 
-### Day-to-day commands
+### Commands
 
-| Command                                        | Purpose                                |
-| ---------------------------------------------- | -------------------------------------- |
-| `sudo systemctl status ghost`                  | Check if the service is running        |
-| `sudo journalctl -u ghost -f`                  | Follow live service logs               |
-| `sudo systemctl restart ghost`                 | Restart after `.env` or config changes |
-| `make install && sudo systemctl restart ghost` | Rebuild and restart after code changes |
+```bash
+sudo systemctl status ghost
+sudo journalctl -u ghost -f
+sudo systemctl restart ghost
+```
 
 ---
 
@@ -298,22 +303,53 @@ make install && sudo systemctl restart ghost
 
 ## 🧠 Memory System
 
-Ghost's memory lives in `workspace/ghost.db` (SQLite) and `workspace/memory/`.
+* SQLite database
+* HNSW vector index
+* Episodic logs
+* Reflective summaries
 
-- **Structured History**: All conversations stored in a local SQLite database for fast retrieval.
-- **RAG (Retrieval-Augmented Generation)**: Important facts vectorized and stored in an **HNSW index** (via [chromem-go](https://github.com/philippgille/chromem-go)) for O(log n) semantic search.
-- **Episodic**: Daily conversation logs in `workspace/memory/`.
-- **Reflective**: Periodic summaries generated by Kimi.
+---
 
 ## 🤖 Tech Stack
 
-- **Runtime**: Ghost (Go 1.25+)
-- **Database**: SQLite (local) + HNSW Vector Index (in-memory)
-- **Cognition**: Kimi K2.5, Ollama, or OpenAI (API)
-- **Validation**: JSON Schema (santhosh-tekuri/jsonschema)
-- **Interface**: Telegram Bot API + Ghost Mobile (iOS/Android)
-- **System**: systemd (Linux Service)
+* Go (runtime)
+* Ollama (local LLMs)
+* SQLite + HNSW
+* JSON Schema validation
+* Telegram + Mobile API
+* Linux (systemd)
+
+---
+
+## 🔄 Evolution
+
+### Phase 1
+
+* API-first assistant
+
+### Phase 2 (current)
+
+* Local-first routing
+* Reflex intelligence
+* Reduced cloud usage
+
+### Phase 3
+
+* Multi-agent system
+* Autonomous reasoning
+
+---
+
+## 🔐 Sovereignty
+
+* Local-first execution
+* No forced cloud
+* Full data ownership
+* Secure API access
+
+---
 
 ## 📄 License
 
 MIT
+
