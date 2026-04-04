@@ -5,7 +5,7 @@
 
 ---
 
-## ⚡ What is Ghost?
+## 👻 What is Ghost?
 
 Ghost isn’t just an AI assistant.
 
