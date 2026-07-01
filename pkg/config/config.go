@@ -57,15 +57,8 @@ type Config struct {
 	mu        sync.RWMutex
 }
 
-type BuiltInSkillsConfig struct {
-	Planning   bool `json:"planning" env:"GHOST_SKILLS_PLANNING_ENABLED"`
-	Debugging  bool `json:"debugging" env:"GHOST_SKILLS_DEBUGGING_ENABLED"`
-	CodeReview bool `json:"code_review" env:"GHOST_SKILLS_CODE_REVIEW_ENABLED"`
-}
-
 type SkillsConfig struct {
 	ClawHub   ClawHubConfig     `json:"clawhub"`
-	BuiltIn   BuiltInSkillsConfig `json:"built_in"`
 }
 
 type ClawHubConfig struct {
@@ -417,11 +410,6 @@ func DefaultConfig() *Config {
 			ClawHub: ClawHubConfig{
 				BaseURL: "https://clawhub.ai",
 				Timeout: 30,
-			},
-			BuiltIn: BuiltInSkillsConfig{
-				Planning:   true,
-				Debugging:  true,
-				CodeReview: true,
 			},
 		},
 	}
