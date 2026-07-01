@@ -191,6 +191,24 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Bounded Curated Memory — agent can maintain a persistent, curated profile of the user and project
 	registry.Register(tools.NewMemoryCurateTool(workspace))
 
+	// Todo Tool — task decomposition and tracking
+	registry.Register(tools.NewTodoTool())
+
+	// Clarify Tool — interactive user questions with choices
+	registry.Register(tools.NewClarifyTool(msgBus))
+
+	// TTS Tool — text-to-speech conversion
+	ttsConfig := tools.TTSConfig{
+		Enabled:      true,
+		Provider:     "edge-tts",
+		DefaultVoice: "en-US-GuyNeural",
+		OutputFormat: "mp3",
+	}
+	registry.Register(tools.NewTTSTool(ttsConfig, workspace))
+
+	// Document Parser — .docx/.xlsx/.ipynb parsing
+	registry.Register(tools.NewDocParserTool(workspace))
+
 	if cfg.Tools.MCP.Enabled {
 		manager := mcp.NewManager()
 		if err := manager.LoadFromConfig(context.Background(), cfg); err == nil {
@@ -230,6 +248,12 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// Register subagent tool (synchronous execution)
 	subagentTool := tools.NewSubagentTool(subagentManager)
 	toolsRegistry.Register(subagentTool)
+
+	// Register batch delegate tool (parallel execution)
+	if cfg.Tools.Delegation.Enabled {
+		batchDelegate := tools.NewBatchDelegateTool(subagentManager)
+		toolsRegistry.Register(batchDelegate)
+	}
 
 	// Initialize DB
 	database, err := db.NewDB(workspace)
