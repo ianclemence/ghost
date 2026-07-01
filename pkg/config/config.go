@@ -57,8 +57,15 @@ type Config struct {
 	mu        sync.RWMutex
 }
 
+type BuiltInSkillsConfig struct {
+	Planning   bool `json:"planning" env:"GHOST_SKILLS_PLANNING_ENABLED"`
+	Debugging  bool `json:"debugging" env:"GHOST_SKILLS_DEBUGGING_ENABLED"`
+	CodeReview bool `json:"code_review" env:"GHOST_SKILLS_CODE_REVIEW_ENABLED"`
+}
+
 type SkillsConfig struct {
-	ClawHub ClawHubConfig `json:"clawhub"`
+	ClawHub   ClawHubConfig     `json:"clawhub"`
+	BuiltIn   BuiltInSkillsConfig `json:"built_in"`
 }
 
 type ClawHubConfig struct {
@@ -109,6 +116,27 @@ type ChannelsConfig struct {
 	Slack    SlackConfig    `json:"slack"`
 	LINE     LINEConfig     `json:"line"`
 	Email    EmailConfig    `json:"email"`
+	SMS      SMSConfig      `json:"sms"`
+	WeChat   WeChatConfig   `json:"wechat"`
+}
+
+type SMSConfig struct {
+	Enabled    bool                `json:"enabled" env:"GHOST_CHANNELS_SMS_ENABLED"`
+	AccountSID string              `json:"account_sid" env:"GHOST_CHANNELS_SMS_ACCOUNT_SID"`
+	AuthToken  string              `json:"auth_token" env:"GHOST_CHANNELS_SMS_AUTH_TOKEN"`
+	From       string              `json:"from" env:"GHOST_CHANNELS_SMS_FROM"`
+	WebhookURL string              `json:"webhook_url" env:"GHOST_CHANNELS_SMS_WEBHOOK_URL"`
+	AllowFrom  FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_SMS_ALLOW_FROM"`
+}
+
+type WeChatConfig struct {
+	Enabled        bool                `json:"enabled" env:"GHOST_CHANNELS_WECHAT_ENABLED"`
+	CorpID         string              `json:"corp_id" env:"GHOST_CHANNELS_WECHAT_CORP_ID"`
+	AgentID        string              `json:"agent_id" env:"GHOST_CHANNELS_WECHAT_AGENT_ID"`
+	Secret         string              `json:"secret" env:"GHOST_CHANNELS_WECHAT_SECRET"`
+	Token          string              `json:"token" env:"GHOST_CHANNELS_WECHAT_TOKEN"`
+	EncodingAESKey string              `json:"encoding_aes_key" env:"GHOST_CHANNELS_WECHAT_ENCODING_AES_KEY"`
+	AllowFrom      FlexibleStringSlice `json:"allow_from" env:"GHOST_CHANNELS_WECHAT_ALLOW_FROM"`
 }
 
 type WhatsAppConfig struct {
@@ -227,10 +255,18 @@ type CuratorConfig struct {
 	CheckIntervalMins int  `json:"check_interval_mins" env:"GHOST_CURATOR_CHECK_INTERVAL_MINS"`
 }
 
+type DelegationConfig struct {
+	Enabled       bool `json:"enabled" env:"GHOST_DELEGATION_ENABLED"`
+	MaxConcurrent int  `json:"max_concurrent" env:"GHOST_DELEGATION_MAX_CONCURRENT"`
+	MaxTasks      int  `json:"max_tasks" env:"GHOST_DELEGATION_MAX_TASKS"`
+	BudgetTokens  int  `json:"budget_tokens" env:"GHOST_DELEGATION_BUDGET_TOKENS"`
+}
+
 type ToolsConfig struct {
-	Web     WebToolsConfig `json:"web"`
-	MCP     MCPConfig      `json:"mcp"`
-	Curator CuratorConfig  `json:"curator"`
+	Web        WebToolsConfig     `json:"web"`
+	MCP        MCPConfig          `json:"mcp"`
+	Curator    CuratorConfig      `json:"curator"`
+	Delegation DelegationConfig   `json:"delegation"`
 }
 
 type MCPConfig struct {
@@ -357,6 +393,12 @@ func DefaultConfig() *Config {
 				ArchiveAfterDays:  90,
 				CheckIntervalMins: 60,
 			},
+			Delegation: DelegationConfig{
+				Enabled:       true,
+				MaxConcurrent: 5,
+				MaxTasks:      5,
+				BudgetTokens:  100000,
+			},
 		},
 		Nudge: NudgeConfig{
 			Enabled:        true,
@@ -375,6 +417,11 @@ func DefaultConfig() *Config {
 			ClawHub: ClawHubConfig{
 				BaseURL: "https://clawhub.ai",
 				Timeout: 30,
+			},
+			BuiltIn: BuiltInSkillsConfig{
+				Planning:   true,
+				Debugging:  true,
+				CodeReview: true,
 			},
 		},
 	}
