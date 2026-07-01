@@ -165,6 +165,19 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	}
 	registry.Register(tools.NewWebFetchTool(50000))
 
+	// Vision tool - image analysis
+	registry.Register(tools.NewVisionTool(workspace))
+
+	// Image Generation tool - DALL-E image creation
+	openaiKey := cfg.Providers.OpenAI.APIKey
+	if openaiKey == "" {
+		openaiKey = os.Getenv("OPENAI_API_KEY")
+	}
+	if openaiKey != "" {
+		imageGen := tools.NewImageGenTool(workspace, openaiKey, "")
+		registry.Register(imageGen)
+	}
+
 	// Hardware tools (I2C, SPI) - Linux only, returns error on other platforms
 	registry.Register(tools.NewI2CTool())
 	registry.Register(tools.NewSPITool())
