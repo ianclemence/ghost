@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 type SessionSearchTool struct {
@@ -18,6 +19,29 @@ type SessionSearchResult struct {
 	Rank      float64 `json:"rank"`
 }
 
+type BrowseResult struct {
+	SessionID string `json:"session_id"`
+	Summary   string `json:"summary,omitempty"`
+	Preview   string `json:"preview,omitempty"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type ScrollResult struct {
+	ID        int64  `json:"id"`
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	Timestamp string `json:"timestamp"`
+}
+
+type ReadResult struct {
+	ID        int64  `json:"id"`
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	ToolCalls string `json:"tool_calls,omitempty"`
+	Timestamp string `json:"timestamp"`
+}
+
 func NewSessionSearchTool(database *sql.DB) *SessionSearchTool {
 	return &SessionSearchTool{db: database}
 }
@@ -27,7 +51,7 @@ func (t *SessionSearchTool) Name() string {
 }
 
 func (t *SessionSearchTool) Description() string {
-	return "Search ranked message history using full-text matching across sessions."
+	return "Search message history. Modes: discover (FTS search), browse (recent sessions), scroll (around a message), read (full session)."
 }
 
 func (t *SessionSearchTool) Parameters() map[string]interface{} {
@@ -36,19 +60,40 @@ func (t *SessionSearchTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"query": map[string]interface{}{
 				"type":        "string",
-				"description": "Search query to match against message content",
+				"description": "Search query (required for discover mode)",
+			},
+			"mode": map[string]interface{}{
+				"type":        "string",
+				"enum":        []string{"discover", "browse", "scroll", "read"},
+				"description": "Search mode (default: discover)",
+				"default":     "discover",
 			},
 			"session_id": map[string]interface{}{
 				"type":        "string",
-				"description": "Optional session filter; empty searches all sessions",
+				"description": "Session ID filter (discover, scroll, read modes)",
+			},
+			"around_message_id": map[string]interface{}{
+				"type":        "integer",
+				"description": "Message ID to anchor scroll mode (requires session_id)",
+			},
+			"window": map[string]interface{}{
+				"type":        "integer",
+				"description": "Messages before/after anchor in scroll mode (default 5, max 20)",
+				"default":     5,
 			},
 			"limit": map[string]interface{}{
 				"type":        "integer",
-				"description": "Maximum number of results (default 10, max 50)",
+				"description": "Maximum results (default 10, max 50)",
 				"default":     10,
 			},
+			"sort": map[string]interface{}{
+				"type":        "string",
+				"enum":        []string{"relevance", "newest", "oldest"},
+				"description": "Sort order for discover mode (default: relevance)",
+				"default":     "relevance",
+			},
 		},
-		"required": []string{"query"},
+		"required": []string{},
 	}
 }
 
@@ -57,18 +102,35 @@ func (t *SessionSearchTool) Execute(ctx context.Context, args map[string]interfa
 		return ErrorResult("session_search unavailable: database not configured")
 	}
 
+	mode, _ := args["mode"].(string)
+	if mode == "" {
+		mode = "discover"
+	}
+
+	switch mode {
+	case "browse":
+		return t.browse(ctx, args)
+	case "scroll":
+		return t.scroll(ctx, args)
+	case "read":
+		return t.readSession(ctx, args)
+	case "discover":
+		return t.discover(ctx, args)
+	default:
+		return ErrorResult(fmt.Sprintf("unknown mode: %s", mode))
+	}
+}
+
+func (t *SessionSearchTool) discover(ctx context.Context, args map[string]interface{}) *ToolResult {
 	query, ok := args["query"].(string)
 	if !ok || query == "" {
-		return ErrorResult("query is required")
+		return ErrorResult("query is required for discover mode")
 	}
 
 	sessionID, _ := args["session_id"].(string)
 	limit := 10
 	if raw, ok := args["limit"].(float64); ok {
 		limit = int(raw)
-	}
-	if raw, ok := args["limit"].(int); ok {
-		limit = raw
 	}
 	if limit <= 0 {
 		limit = 10
@@ -77,10 +139,19 @@ func (t *SessionSearchTool) Execute(ctx context.Context, args map[string]interfa
 		limit = 50
 	}
 
-	sqlQuery := `
+	sort, _ := args["sort"].(string)
+	orderClause := "ORDER BY rank"
+	switch sort {
+	case "newest":
+		orderClause = "ORDER BY ts DESC, rank"
+	case "oldest":
+		orderClause = "ORDER BY ts ASC, rank"
+	}
+
+	sqlQuery := fmt.Sprintf(`
 		SELECT
 			m.session_id,
-			snippet(messages_fts, 0, '[', ']', '…', 32) AS content,
+			snippet(messages_fts, 0, '[', ']', '...', 32) AS content,
 			COALESCE(unixepoch(m.created_at), 0) AS ts,
 			bm25(messages_fts) AS rank
 		FROM messages_fts
@@ -88,9 +159,9 @@ func (t *SessionSearchTool) Execute(ctx context.Context, args map[string]interfa
 		WHERE messages_fts MATCH ?
 		  AND (m.archived IS NULL OR m.archived = 0)
 		  AND (? = '' OR m.session_id = ?)
-		ORDER BY rank
+		%s
 		LIMIT ?
-	`
+	`, orderClause)
 
 	rows, err := t.db.QueryContext(ctx, sqlQuery, query, sessionID, sessionID, limit)
 	if err != nil {
@@ -111,6 +182,7 @@ func (t *SessionSearchTool) Execute(ctx context.Context, args map[string]interfa
 	}
 
 	payload := map[string]interface{}{
+		"mode":       "discover",
 		"query":      query,
 		"session_id": sessionID,
 		"count":      len(results),
@@ -120,6 +192,274 @@ func (t *SessionSearchTool) Execute(ctx context.Context, args map[string]interfa
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("session_search marshal failed: %v", err)).WithError(err)
 	}
-
 	return UserResult(string(raw))
+}
+
+func (t *SessionSearchTool) browse(ctx context.Context, args map[string]interface{}) *ToolResult {
+	limit := 10
+	if raw, ok := args["limit"].(float64); ok {
+		limit = int(raw)
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	sqlQuery := `
+		SELECT
+			s.id AS session_id,
+			COALESCE(s.summary, '') AS summary,
+			(SELECT content FROM messages WHERE session_id = s.id AND role = 'user' LIMIT 1) AS preview,
+			COALESCE(s.created_at, '') AS created_at,
+			COALESCE(s.updated_at, '') AS updated_at
+		FROM sessions s
+		ORDER BY s.updated_at DESC
+		LIMIT ?
+	`
+
+	rows, err := t.db.QueryContext(ctx, sqlQuery, limit)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search browse failed: %v", err)).WithError(err)
+	}
+	defer rows.Close()
+
+	results := make([]BrowseResult, 0, limit)
+	for rows.Next() {
+		var r BrowseResult
+		if err := rows.Scan(&r.SessionID, &r.Summary, &r.Preview, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return ErrorResult(fmt.Sprintf("session_search browse scan failed: %v", err)).WithError(err)
+		}
+		if len(r.Preview) > 100 {
+			r.Preview = r.Preview[:100] + "..."
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return ErrorResult(fmt.Sprintf("session_search browse failed: %v", err)).WithError(err)
+	}
+
+	payload := map[string]interface{}{
+		"mode":   "browse",
+		"count":  len(results),
+		"results": results,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search marshal failed: %v", err)).WithError(err)
+	}
+	return UserResult(string(raw))
+}
+
+func (t *SessionSearchTool) scroll(ctx context.Context, args map[string]interface{}) *ToolResult {
+	sessionID, _ := args["session_id"].(string)
+	if sessionID == "" {
+		return ErrorResult("session_id is required for scroll mode")
+	}
+
+	aroundMsgID, ok := args["around_message_id"].(float64)
+	if !ok || aroundMsgID <= 0 {
+		return ErrorResult("around_message_id is required for scroll mode")
+	}
+	msgID := int64(aroundMsgID)
+
+	window := 5
+	if raw, ok := args["window"].(float64); ok {
+		window = int(raw)
+	}
+	if window <= 0 {
+		window = 5
+	}
+	if window > 20 {
+		window = 20
+	}
+
+	beforeQuery := `
+		SELECT id, role, content, COALESCE(created_at, '') AS ts
+		FROM messages
+		WHERE session_id = ? AND id <= ?
+		  AND (archived IS NULL OR archived = 0)
+		ORDER BY id DESC
+		LIMIT ?
+	`
+	afterQuery := `
+		SELECT id, role, content, COALESCE(created_at, '') AS ts
+		FROM messages
+		WHERE session_id = ? AND id > ?
+		  AND (archived IS NULL OR archived = 0)
+		ORDER BY id ASC
+		LIMIT ?
+	`
+
+	beforeRows, err := t.db.QueryContext(ctx, beforeQuery, sessionID, msgID, window+1)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search scroll before failed: %v", err)).WithError(err)
+	}
+	defer beforeRows.Close()
+
+	var before []ScrollResult
+	for beforeRows.Next() {
+		var r ScrollResult
+		if err := beforeRows.Scan(&r.ID, &r.Role, &r.Content, &r.Timestamp); err != nil {
+			return ErrorResult(fmt.Sprintf("session_search scroll scan failed: %v", err)).WithError(err)
+		}
+		before = append(before, r)
+	}
+	if err := beforeRows.Err(); err != nil {
+		return ErrorResult(fmt.Sprintf("session_search scroll failed: %v", err)).WithError(err)
+	}
+
+	afterRows, err := t.db.QueryContext(ctx, afterQuery, sessionID, msgID, window)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search scroll after failed: %v", err)).WithError(err)
+	}
+	defer afterRows.Close()
+
+	var after []ScrollResult
+	for afterRows.Next() {
+		var r ScrollResult
+		if err := afterRows.Scan(&r.ID, &r.Role, &r.Content, &r.Timestamp); err != nil {
+			return ErrorResult(fmt.Sprintf("session_search scroll scan failed: %v", err)).WithError(err)
+		}
+		after = append(after, r)
+	}
+	if err := afterRows.Err(); err != nil {
+		return ErrorResult(fmt.Sprintf("session_search scroll failed: %v", err)).WithError(err)
+	}
+
+	for i := 0; i < len(before)/2; i++ {
+		j := len(before) - 1 - i
+		before[i], before[j] = before[j], before[i]
+	}
+
+	results := append(before, after...)
+
+	payload := map[string]interface{}{
+		"mode":           "scroll",
+		"session_id":     sessionID,
+		"anchor_msg_id":  msgID,
+		"window":         window,
+		"messages_before": len(before) - 1,
+		"messages_after":  len(after),
+		"count":          len(results),
+		"results":        results,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search marshal failed: %v", err)).WithError(err)
+	}
+	return UserResult(string(raw))
+}
+
+func (t *SessionSearchTool) readSession(ctx context.Context, args map[string]interface{}) *ToolResult {
+	sessionID, _ := args["session_id"].(string)
+	if sessionID == "" {
+		return ErrorResult("session_id is required for read mode")
+	}
+
+	sqlQuery := `
+		SELECT id, role, content, COALESCE(tool_calls, '') AS tool_calls, COALESCE(created_at, '') AS ts
+		FROM messages
+		WHERE session_id = ?
+		  AND (archived IS NULL OR archived = 0)
+		ORDER BY id ASC
+	`
+
+	rows, err := t.db.QueryContext(ctx, sqlQuery, sessionID)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search read failed: %v", err)).WithError(err)
+	}
+	defer rows.Close()
+
+	var results []ReadResult
+	for rows.Next() {
+		var r ReadResult
+		if err := rows.Scan(&r.ID, &r.Role, &r.Content, &r.ToolCalls, &r.Timestamp); err != nil {
+			return ErrorResult(fmt.Sprintf("session_search read scan failed: %v", err)).WithError(err)
+		}
+		if r.Role == "assistant" && r.ToolCalls != "" {
+			r.Content = truncateWithToolCalls(r.Content, r.ToolCalls)
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return ErrorResult(fmt.Sprintf("session_search read failed: %v", err)).WithError(err)
+	}
+
+	const maxHead = 20
+	const maxTail = 10
+	var truncated bool
+	displayResults := results
+	if len(results) > maxHead+maxTail {
+		truncated = true
+		displayResults = append(results[:maxHead], results[len(results)-maxTail:]...)
+	}
+
+	payload := map[string]interface{}{
+		"mode":       "read",
+		"session_id": sessionID,
+		"total":      len(results),
+		"count":      len(displayResults),
+		"truncated":  truncated,
+		"results":    displayResults,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search marshal failed: %v", err)).WithError(err)
+	}
+	return UserResult(string(raw))
+}
+
+func truncateWithToolCalls(content, toolCalls string) string {
+	if content == "" {
+		return fmt.Sprintf("[tool calls: %s]", toolCalls)
+	}
+	if len(content) > 200 {
+		content = content[:200] + "..."
+	}
+	return content
+}
+
+func sanitizeFTS5Query(query string) string {
+	var protected []string
+	result := query
+	for {
+		start := strings.Index(result, "\"")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(result[start+1:], "\"")
+		if end == -1 {
+			break
+		}
+		phrase := result[start : start+end+2]
+		placeholder := fmt.Sprintf("___PHRASE%d___", len(protected))
+		protected = append(protected, phrase)
+		result = result[:start] + placeholder + result[start+end+2:]
+	}
+
+	replacer := strings.NewReplacer(
+		"+", "",
+		"{", "",
+		"}", "",
+		"(", "",
+		")", "",
+		":", "",
+		"^", "",
+	)
+	result = replacer.Replace(result)
+
+	for strings.Contains(result, "**") {
+		result = strings.ReplaceAll(result, "**", "*")
+	}
+	for strings.HasPrefix(result, "*") {
+		result = result[1:]
+	}
+
+	for _, phrase := range protected {
+		result = strings.Replace(result, "___PHRASE"+fmt.Sprintf("%d", strings.Index(query, phrase)), phrase, 1)
+	}
+
+	return strings.TrimSpace(result)
 }
