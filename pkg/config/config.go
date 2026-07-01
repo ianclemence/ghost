@@ -53,6 +53,7 @@ type Config struct {
 	Heartbeat HeartbeatConfig `json:"heartbeat"`
 	Devices   DevicesConfig   `json:"devices"`
 	Skills    SkillsConfig    `json:"skills"`
+	Nudge     NudgeConfig     `json:"nudge"`
 	mu        sync.RWMutex
 }
 
@@ -213,9 +214,23 @@ type WebToolsConfig struct {
 	DuckDuckGo DuckDuckGoConfig `json:"duckduckgo"`
 }
 
+type NudgeConfig struct {
+	Enabled        bool `json:"enabled" env:"GHOST_NUDGE_ENABLED"`
+	MemoryInterval int  `json:"memory_interval" env:"GHOST_NUDGE_MEMORY_INTERVAL"`
+	SkillInterval  int  `json:"skill_interval" env:"GHOST_NUDGE_SKILL_INTERVAL"`
+}
+
+type CuratorConfig struct {
+	Enabled           bool `json:"enabled" env:"GHOST_CURATOR_ENABLED"`
+	StaleAfterDays    int  `json:"stale_after_days" env:"GHOST_CURATOR_STALE_AFTER_DAYS"`
+	ArchiveAfterDays  int  `json:"archive_after_days" env:"GHOST_CURATOR_ARCHIVE_AFTER_DAYS"`
+	CheckIntervalMins int  `json:"check_interval_mins" env:"GHOST_CURATOR_CHECK_INTERVAL_MINS"`
+}
+
 type ToolsConfig struct {
-	Web WebToolsConfig `json:"web"`
-	MCP MCPConfig      `json:"mcp"`
+	Web     WebToolsConfig `json:"web"`
+	MCP     MCPConfig      `json:"mcp"`
+	Curator CuratorConfig  `json:"curator"`
 }
 
 type MCPConfig struct {
@@ -336,6 +351,17 @@ func DefaultConfig() *Config {
 				Enabled: false,
 				Servers: map[string]MCPServerConfig{},
 			},
+			Curator: CuratorConfig{
+				Enabled:           true,
+				StaleAfterDays:    30,
+				ArchiveAfterDays:  90,
+				CheckIntervalMins: 60,
+			},
+		},
+		Nudge: NudgeConfig{
+			Enabled:        true,
+			MemoryInterval: 20,
+			SkillInterval:  15,
 		},
 		Heartbeat: HeartbeatConfig{
 			Enabled:  true,
