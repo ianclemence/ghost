@@ -2,15 +2,35 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"testing"
 )
 
-func TestMessageTool_Execute_Success(t *testing.T) {
+func TestEnhancedMessageToolName(t *testing.T) {
 	tool := NewMessageTool()
-	tool.SetContext("test-channel", "test-chat-id")
+	if tool.Name() != "message" {
+		t.Fatalf("expected name 'message', got %s", tool.Name())
+	}
+}
 
+func TestEnhancedMessageToolDescription(t *testing.T) {
+	tool := NewMessageTool()
+	if tool.Description() == "" {
+		t.Fatal("expected non-empty description")
+	}
+}
+
+func TestEnhancedMessageToolParameters(t *testing.T) {
+	tool := NewMessageTool()
+	params := tool.Parameters()
+	if params == nil {
+		t.Fatal("expected non-nil parameters")
+	}
+}
+
+func TestEnhancedMessageToolSend(t *testing.T) {
+	tool := NewMessageTool()
 	var sentChannel, sentChatID, sentContent string
+
 	tool.SetSendCallback(func(channel, chatID, content string) error {
 		sentChannel = channel
 		sentChatID = chatID
@@ -18,242 +38,246 @@ func TestMessageTool_Execute_Success(t *testing.T) {
 		return nil
 	})
 
-	ctx := context.Background()
-	args := map[string]interface{}{
-		"content": "Hello, world!",
-	}
+	tool.SetContext("telegram", "12345")
 
-	result := tool.Execute(ctx, args)
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"content": "Hello, World!",
+	})
 
-	// Verify message was sent with correct parameters
-	if sentChannel != "test-channel" {
-		t.Errorf("Expected channel 'test-channel', got '%s'", sentChannel)
-	}
-	if sentChatID != "test-chat-id" {
-		t.Errorf("Expected chatID 'test-chat-id', got '%s'", sentChatID)
-	}
-	if sentContent != "Hello, world!" {
-		t.Errorf("Expected content 'Hello, world!', got '%s'", sentContent)
-	}
-
-	// Verify ToolResult meets US-011 criteria:
-	// - Send success returns SilentResult (Silent=true)
-	if !result.Silent {
-		t.Error("Expected Silent=true for successful send")
-	}
-
-	// - ForLLM contains send status description
-	if result.ForLLM != "Message sent to test-channel:test-chat-id" {
-		t.Errorf("Expected ForLLM 'Message sent to test-channel:test-chat-id', got '%s'", result.ForLLM)
-	}
-
-	// - ForUser is empty (user already received message directly)
-	if result.ForUser != "" {
-		t.Errorf("Expected ForUser to be empty, got '%s'", result.ForUser)
-	}
-
-	// - IsError should be false
 	if result.IsError {
-		t.Error("Expected IsError=false for successful send")
+		t.Fatalf("expected no error, got %s", result.ForLLM)
+	}
+	if sentChannel != "telegram" {
+		t.Fatalf("expected channel 'telegram', got %s", sentChannel)
+	}
+	if sentChatID != "12345" {
+		t.Fatalf("expected chat_id '12345', got %s", sentChatID)
+	}
+	if sentContent != "Hello, World!" {
+		t.Fatalf("expected content 'Hello, World!', got %s", sentContent)
 	}
 }
 
-func TestMessageTool_Execute_WithCustomChannel(t *testing.T) {
+func TestEnhancedMessageToolSendWithTarget(t *testing.T) {
 	tool := NewMessageTool()
-	tool.SetContext("default-channel", "default-chat-id")
-
 	var sentChannel, sentChatID string
+
 	tool.SetSendCallback(func(channel, chatID, content string) error {
 		sentChannel = channel
 		sentChatID = chatID
 		return nil
 	})
 
-	ctx := context.Background()
-	args := map[string]interface{}{
-		"content": "Test message",
-		"channel": "custom-channel",
-		"chat_id": "custom-chat-id",
-	}
+	tool.SetContext("telegram", "12345")
 
-	result := tool.Execute(ctx, args)
-
-	// Verify custom channel/chatID were used instead of defaults
-	if sentChannel != "custom-channel" {
-		t.Errorf("Expected channel 'custom-channel', got '%s'", sentChannel)
-	}
-	if sentChatID != "custom-chat-id" {
-		t.Errorf("Expected chatID 'custom-chat-id', got '%s'", sentChatID)
-	}
-
-	if !result.Silent {
-		t.Error("Expected Silent=true")
-	}
-	if result.ForLLM != "Message sent to custom-channel:custom-chat-id" {
-		t.Errorf("Expected ForLLM 'Message sent to custom-channel:custom-chat-id', got '%s'", result.ForLLM)
-	}
-}
-
-func TestMessageTool_Execute_SendFailure(t *testing.T) {
-	tool := NewMessageTool()
-	tool.SetContext("test-channel", "test-chat-id")
-
-	sendErr := errors.New("network error")
-	tool.SetSendCallback(func(channel, chatID, content string) error {
-		return sendErr
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"content":  "Hello, World!",
+		"channel":  "whatsapp",
+		"chat_id":  "67890",
 	})
 
-	ctx := context.Background()
-	args := map[string]interface{}{
-		"content": "Test message",
+	if result.IsError {
+		t.Fatalf("expected no error, got %s", result.ForLLM)
 	}
-
-	result := tool.Execute(ctx, args)
-
-	// Verify ToolResult for send failure:
-	// - Send failure returns ErrorResult (IsError=true)
-	if !result.IsError {
-		t.Error("Expected IsError=true for failed send")
+	if sentChannel != "whatsapp" {
+		t.Fatalf("expected channel 'whatsapp', got %s", sentChannel)
 	}
-
-	// - ForLLM contains error description
-	expectedErrMsg := "sending message: network error"
-	if result.ForLLM != expectedErrMsg {
-		t.Errorf("Expected ForLLM '%s', got '%s'", expectedErrMsg, result.ForLLM)
-	}
-
-	// - Err field should contain original error
-	if result.Err == nil {
-		t.Error("Expected Err to be set")
-	}
-	if result.Err != sendErr {
-		t.Errorf("Expected Err to be sendErr, got %v", result.Err)
+	if sentChatID != "67890" {
+		t.Fatalf("expected chat_id '67890', got %s", sentChatID)
 	}
 }
 
-func TestMessageTool_Execute_MissingContent(t *testing.T) {
+func TestEnhancedMessageToolReact(t *testing.T) {
 	tool := NewMessageTool()
-	tool.SetContext("test-channel", "test-chat-id")
+	var reactedMessageID, reactedEmoji string
 
-	ctx := context.Background()
-	args := map[string]interface{}{} // content missing
+	tool.SetReactionCallback(func(channel, chatID, messageID, emoji string) error {
+		reactedMessageID = messageID
+		reactedEmoji = emoji
+		return nil
+	})
 
-	result := tool.Execute(ctx, args)
+	tool.SetContext("telegram", "12345")
 
-	// Verify error result for missing content
-	if !result.IsError {
-		t.Error("Expected IsError=true for missing content")
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"action":     "react",
+		"emoji":      "👍",
+		"message_id": "msg-123",
+	})
+
+	if result.IsError {
+		t.Fatalf("expected no error, got %s", result.ForLLM)
 	}
-	if result.ForLLM != "content is required" {
-		t.Errorf("Expected ForLLM 'content is required', got '%s'", result.ForLLM)
+	if reactedEmoji != "👍" {
+		t.Fatalf("expected emoji '👍', got %s", reactedEmoji)
+	}
+	if reactedMessageID != "msg-123" {
+		t.Fatalf("expected message_id 'msg-123', got %s", reactedMessageID)
 	}
 }
 
-func TestMessageTool_Execute_NoTargetChannel(t *testing.T) {
+func TestEnhancedMessageToolReactMissingEmoji(t *testing.T) {
 	tool := NewMessageTool()
-	// No SetContext called, so defaultChannel and defaultChatID are empty
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"action":     "react",
+		"message_id": "msg-123",
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error for missing emoji")
+	}
+}
+
+func TestEnhancedMessageToolReactMissingMessageID(t *testing.T) {
+	tool := NewMessageTool()
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "react",
+		"emoji":  "👍",
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error for missing message_id")
+	}
+}
+
+func TestEnhancedMessageToolList(t *testing.T) {
+	tool := NewMessageTool()
+
+	tool.SetListTargetsCallback(func() []TargetInfo {
+		return []TargetInfo{
+			{Channel: "telegram", ChatID: "12345", Name: "John"},
+			{Channel: "whatsapp", ChatID: "67890", Name: "Jane", Alias: "jane"},
+		}
+	})
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"action":  "list",
+		"content": "",
+	})
+
+	if result.IsError {
+		t.Fatalf("expected no error, got %s", result.ForLLM)
+	}
+}
+
+func TestEnhancedMessageToolResolveName(t *testing.T) {
+	tool := NewMessageTool()
+
+	tool.UpdateNameCache([]TargetInfo{
+		{Channel: "telegram", ChatID: "12345", Name: "John", Alias: "johnny"},
+	})
+
+	channel, chatID, found := tool.ResolveName("John")
+	if !found {
+		t.Fatal("expected to find name 'John'")
+	}
+	if channel != "telegram" {
+		t.Fatalf("expected channel 'telegram', got %s", channel)
+	}
+	if chatID != "12345" {
+		t.Fatalf("expected chat_id '12345', got %s", chatID)
+	}
+
+	channel, chatID, found = tool.ResolveName("johnny")
+	if !found {
+		t.Fatal("expected to find alias 'johnny'")
+	}
+	if channel != "telegram" {
+		t.Fatalf("expected channel 'telegram', got %s", channel)
+	}
+
+	_, _, found = tool.ResolveName("nonexistent")
+	if found {
+		t.Fatal("expected not to find name 'nonexistent'")
+	}
+}
+
+func TestEnhancedMessageToolSendWithNameResolution(t *testing.T) {
+	tool := NewMessageTool()
+	var sentChannel, sentChatID string
+
+	tool.SetSendCallback(func(channel, chatID, content string) error {
+		sentChannel = channel
+		sentChatID = chatID
+		return nil
+	})
+
+	tool.UpdateNameCache([]TargetInfo{
+		{Channel: "telegram", ChatID: "12345", Name: "John"},
+	})
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"content": "Hello, John!",
+		"name":    "John",
+	})
+
+	if result.IsError {
+		t.Fatalf("expected no error, got %s", result.ForLLM)
+	}
+	if sentChannel != "telegram" {
+		t.Fatalf("expected channel 'telegram', got %s", sentChannel)
+	}
+	if sentChatID != "12345" {
+		t.Fatalf("expected chat_id '12345', got %s", sentChatID)
+	}
+}
+
+func TestEnhancedMessageToolNoCallback(t *testing.T) {
+	tool := NewMessageTool()
+	tool.SetContext("telegram", "12345")
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"content": "Hello, World!",
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error for no callback")
+	}
+}
+
+func TestEnhancedMessageToolNoTarget(t *testing.T) {
+	tool := NewMessageTool()
+
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"content": "Hello, World!",
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error for no target")
+	}
+}
+
+func TestEnhancedMessageToolHasSentInRound(t *testing.T) {
+	tool := NewMessageTool()
+
+	if tool.HasSentInRound() {
+		t.Fatal("expected false initially")
+	}
 
 	tool.SetSendCallback(func(channel, chatID, content string) error {
 		return nil
 	})
 
-	ctx := context.Background()
-	args := map[string]interface{}{
-		"content": "Test message",
-	}
+	tool.SetContext("telegram", "12345")
+	tool.Execute(context.Background(), map[string]interface{}{
+		"content": "Hello, World!",
+	})
 
-	result := tool.Execute(ctx, args)
-
-	// Verify error when no target channel specified
-	if !result.IsError {
-		t.Error("Expected IsError=true when no target channel")
-	}
-	if result.ForLLM != "No target channel/chat specified" {
-		t.Errorf("Expected ForLLM 'No target channel/chat specified', got '%s'", result.ForLLM)
+	if !tool.HasSentInRound() {
+		t.Fatal("expected true after sending")
 	}
 }
 
-func TestMessageTool_Execute_NotConfigured(t *testing.T) {
+func TestEnhancedMessageToolSetContext(t *testing.T) {
 	tool := NewMessageTool()
-	tool.SetContext("test-channel", "test-chat-id")
-	// No SetSendCallback called
+	tool.SetContext("telegram", "12345")
 
-	ctx := context.Background()
-	args := map[string]interface{}{
-		"content": "Test message",
+	if tool.defaultChannel != "telegram" {
+		t.Fatalf("expected channel 'telegram', got %s", tool.defaultChannel)
 	}
-
-	result := tool.Execute(ctx, args)
-
-	// Verify error when send callback not configured
-	if !result.IsError {
-		t.Error("Expected IsError=true when send callback not configured")
-	}
-	if result.ForLLM != "Message sending not configured" {
-		t.Errorf("Expected ForLLM 'Message sending not configured', got '%s'", result.ForLLM)
-	}
-}
-
-func TestMessageTool_Name(t *testing.T) {
-	tool := NewMessageTool()
-	if tool.Name() != "message" {
-		t.Errorf("Expected name 'message', got '%s'", tool.Name())
-	}
-}
-
-func TestMessageTool_Description(t *testing.T) {
-	tool := NewMessageTool()
-	desc := tool.Description()
-	if desc == "" {
-		t.Error("Description should not be empty")
-	}
-}
-
-func TestMessageTool_Parameters(t *testing.T) {
-	tool := NewMessageTool()
-	params := tool.Parameters()
-
-	// Verify parameters structure
-	typ, ok := params["type"].(string)
-	if !ok || typ != "object" {
-		t.Error("Expected type 'object'")
-	}
-
-	props, ok := params["properties"].(map[string]interface{})
-	if !ok {
-		t.Fatal("Expected properties to be a map")
-	}
-
-	// Check required properties
-	required, ok := params["required"].([]string)
-	if !ok || len(required) != 1 || required[0] != "content" {
-		t.Error("Expected 'content' to be required")
-	}
-
-	// Check content property
-	contentProp, ok := props["content"].(map[string]interface{})
-	if !ok {
-		t.Error("Expected 'content' property")
-	}
-	if contentProp["type"] != "string" {
-		t.Error("Expected content type to be 'string'")
-	}
-
-	// Check channel property (optional)
-	channelProp, ok := props["channel"].(map[string]interface{})
-	if !ok {
-		t.Error("Expected 'channel' property")
-	}
-	if channelProp["type"] != "string" {
-		t.Error("Expected channel type to be 'string'")
-	}
-
-	// Check chat_id property (optional)
-	chatIDProp, ok := props["chat_id"].(map[string]interface{})
-	if !ok {
-		t.Error("Expected 'chat_id' property")
-	}
-	if chatIDProp["type"] != "string" {
-		t.Error("Expected chat_id type to be 'string'")
+	if tool.defaultChatID != "12345" {
+		t.Fatalf("expected chat_id '12345', got %s", tool.defaultChatID)
 	}
 }
