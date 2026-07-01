@@ -340,6 +340,26 @@ func toolStatusLabel(name, args string) string {
 			return "Editing: " + parts[len(parts)-1]
 		}
 		return "Editing file…"
+	case "vision":
+		if u, ok := a["url"].(string); ok && u != "" {
+			if len(u) > 40 {
+				u = u[:40] + "…"
+			}
+			return "Analyzing: " + u
+		}
+		if p, ok := a["path"].(string); ok && p != "" {
+			parts := strings.Split(p, "/")
+			return "Analyzing: " + parts[len(parts)-1]
+		}
+		return "Analyzing image…"
+	case "image_generate":
+		if p, ok := a["prompt"].(string); ok && p != "" {
+			if len(p) > 40 {
+				p = p[:40] + "…"
+			}
+			return "Generating image: " + p
+		}
+		return "Generating image…"
 	default:
 		return "Using " + name + "…"
 	}

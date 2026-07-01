@@ -1189,6 +1189,8 @@ func cronHelp() {
 	fmt.Println("  -d, --deliver     Deliver response to channel")
 	fmt.Println("  --to             Recipient for delivery")
 	fmt.Println("  --channel        Channel for delivery")
+	fmt.Println("  --skills         Comma-separated skills to load (e.g. 'planning,code-review')")
+	fmt.Println("  --no-agent       Run script directly without agent (script IS the job)")
 }
 
 func cronListCmd(storePath string) {
@@ -1227,6 +1229,13 @@ func cronListCmd(storePath string) {
 		fmt.Printf("    Schedule: %s\n", schedule)
 		fmt.Printf("    Status: %s\n", status)
 		fmt.Printf("    Next run: %s\n", nextRun)
+
+		if len(job.Skills) > 0 {
+			fmt.Printf("    Skills: %s\n", strings.Join(job.Skills, ", "))
+		}
+		if job.NoAgent {
+			fmt.Printf("    Mode: no-agent (script execution)\n")
+		}
 	}
 }
 
@@ -1238,6 +1247,8 @@ func cronAddCmd(storePath string) {
 	deliver := false
 	channel := ""
 	to := ""
+	skillsStr := ""
+	noAgent := false
 
 	args := os.Args[3:]
 	for i := 0; i < len(args); i++ {
@@ -1276,6 +1287,13 @@ func cronAddCmd(storePath string) {
 				channel = args[i+1]
 				i++
 			}
+		case "--skills":
+			if i+1 < len(args) {
+				skillsStr = args[i+1]
+				i++
+			}
+		case "--no-agent":
+			noAgent = true
 		}
 	}
 
@@ -1308,8 +1326,16 @@ func cronAddCmd(storePath string) {
 		}
 	}
 
+	var skills []string
+	if skillsStr != "" {
+		skills = strings.Split(skillsStr, ",")
+		for i := range skills {
+			skills[i] = strings.TrimSpace(skills[i])
+		}
+	}
+
 	cs := cron.NewCronService(storePath, nil, nil)
-	job, err := cs.AddJob(name, schedule, message, deliver, channel, to, nil)
+	job, err := cs.AddJobWithOptions(name, schedule, message, deliver, channel, to, nil, skills, noAgent)
 	if err != nil {
 		fmt.Printf("Error adding job: %v\n", err)
 		return

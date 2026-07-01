@@ -99,6 +99,15 @@ func (t *CronTool) Parameters() map[string]interface{} {
 				"type":        "boolean",
 				"description": "If true, send message directly to channel. If false, let agent process message (for complex tasks). Default: true",
 			},
+			"skills": map[string]interface{}{
+				"type":        "array",
+				"items":       map[string]interface{}{"type": "string"},
+				"description": "Optional: Skills to load when job executes (e.g., ['planning', 'code-review']). Skills provide specialized instructions to the agent.",
+			},
+			"no_agent": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Optional: If true, run script directly without agent processing. The script IS the job. Default: false",
+			},
 		},
 		"required": []string{"action"},
 	}
@@ -187,6 +196,22 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 
 	command, _ := args["command"].(string)
 	
+	// Read skills parameter
+	var skills []string
+	if skillsArr, ok := args["skills"].([]interface{}); ok {
+		for _, s := range skillsArr {
+			if skillStr, ok := s.(string); ok && skillStr != "" {
+				skills = append(skills, skillStr)
+			}
+		}
+	}
+
+	// Read no_agent parameter
+	noAgent := false
+	if na, ok := args["no_agent"].(bool); ok {
+		noAgent = na
+	}
+
 	// Truncate message for job name (max 30 chars)
 	messagePreview := utils.Truncate(message, 30)
 
@@ -198,7 +223,7 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 		}
 	}
 
-	job, err := t.cronService.AddJob(
+	job, err := t.cronService.AddJobWithOptions(
 		messagePreview,
 		schedule,
 		message,
@@ -206,6 +231,8 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 		channel,
 		chatID,
 		metadata,
+		skills,
+		noAgent,
 	)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("Error adding job: %v", err))
