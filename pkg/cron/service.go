@@ -25,14 +25,16 @@ type CronSchedule struct {
 }
 
 type CronPayload struct {
-	Kind     string `json:"kind"`
-	Message  string `json:"message"`
-	Command  string `json:"command,omitempty"`
-	Deliver  bool   `json:"deliver"`
-	Channel  string `json:"channel,omitempty"`
-	To       string `json:"to,omitempty"`
-	Target   string `json:"target,omitempty"`
-	OriginID string `json:"origin_id,omitempty"`
+	Kind     string   `json:"kind"`
+	Message  string   `json:"message"`
+	Command  string   `json:"command,omitempty"`
+	Deliver  bool     `json:"deliver"`
+	Channel  string   `json:"channel,omitempty"`
+	To       string   `json:"to,omitempty"`
+	Target   string   `json:"target,omitempty"`
+	OriginID string   `json:"origin_id,omitempty"`
+	Skills   []string `json:"skills,omitempty"`
+	NoAgent  bool     `json:"no_agent,omitempty"`
 }
 
 type CronJobState struct {
@@ -58,6 +60,8 @@ type CronJob struct {
 	CreatedAtMS    int64                  `json:"createdAtMs"`
 	UpdatedAtMS    int64                  `json:"updatedAtMs"`
 	DeleteAfterRun bool                   `json:"deleteAfterRun"`
+	Skills         []string               `json:"skills,omitempty"`
+	NoAgent        bool                   `json:"no_agent,omitempty"`
 }
 
 type CronStore struct {
@@ -475,12 +479,15 @@ func (cs *CronService) saveStoreUnsafe() error {
 }
 
 func (cs *CronService) AddJob(name string, schedule CronSchedule, message string, deliver bool, channel, to string, metadata map[string]interface{}) (*CronJob, error) {
+	return cs.AddJobWithOptions(name, schedule, message, deliver, channel, to, metadata, nil, false)
+}
+
+func (cs *CronService) AddJobWithOptions(name string, schedule CronSchedule, message string, deliver bool, channel, to string, metadata map[string]interface{}, skills []string, noAgent bool) (*CronJob, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
 	now := time.Now().UnixMilli()
 
-	// One-time tasks (at) should be deleted after execution
 	deleteAfterRun := (schedule.Kind == "at")
 
 	job := CronJob{
@@ -496,6 +503,8 @@ func (cs *CronService) AddJob(name string, schedule CronSchedule, message string
 			Channel: channel,
 			To:      to,
 			Target:  "origin",
+			Skills:  skills,
+			NoAgent: noAgent,
 		},
 		State: CronJobState{
 			NextRunAtMS: cs.computeNextRun(&schedule, now),
@@ -504,6 +513,8 @@ func (cs *CronService) AddJob(name string, schedule CronSchedule, message string
 		CreatedAtMS:    now,
 		UpdatedAtMS:    now,
 		DeleteAfterRun: deleteAfterRun,
+		Skills:         skills,
+		NoAgent:        noAgent,
 	}
 	if job.State.NextRunAtMS != nil {
 		next := time.UnixMilli(*job.State.NextRunAtMS)
@@ -604,6 +615,14 @@ func (cs *CronService) UpdateJob(id string, updates JobUpdate) error {
 			nowTime := time.Now()
 			job.PausedAt = &nowTime
 		}
+	}
+	if updates.Skills != nil {
+		job.Skills = updates.Skills
+		job.Payload.Skills = updates.Skills
+	}
+	if updates.NoAgent != nil {
+		job.NoAgent = *updates.NoAgent
+		job.Payload.NoAgent = *updates.NoAgent
 	}
 
 	nowMS := time.Now().UnixMilli()

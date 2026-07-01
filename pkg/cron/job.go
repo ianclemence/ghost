@@ -20,6 +20,8 @@ type JobUpdate struct {
 	To       *string       `json:"to,omitempty"`
 	Target   *string       `json:"target,omitempty"`
 	Enabled  *bool         `json:"enabled,omitempty"`
+	Skills   []string      `json:"skills,omitempty"`
+	NoAgent  *bool         `json:"no_agent,omitempty"`
 }
 
 type JobStatus struct {
