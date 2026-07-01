@@ -18,7 +18,7 @@ func TestWebTool_WebFetch_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tool := NewWebFetchTool(50000)
+	tool := NewWebFetchToolWithConfig(50000, "", true)
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": server.URL,
@@ -54,7 +54,7 @@ func TestWebTool_WebFetch_JSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tool := NewWebFetchTool(50000)
+	tool := NewWebFetchToolWithConfig(50000, "", true)
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": server.URL,
@@ -75,7 +75,7 @@ func TestWebTool_WebFetch_JSON(t *testing.T) {
 
 // TestWebTool_WebFetch_InvalidURL verifies error handling for invalid URL
 func TestWebTool_WebFetch_InvalidURL(t *testing.T) {
-	tool := NewWebFetchTool(50000)
+	tool := NewWebFetchToolWithConfig(50000, "", true)
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": "not-a-valid-url",
@@ -96,7 +96,7 @@ func TestWebTool_WebFetch_InvalidURL(t *testing.T) {
 
 // TestWebTool_WebFetch_UnsupportedScheme verifies error handling for non-http URLs
 func TestWebTool_WebFetch_UnsupportedScheme(t *testing.T) {
-	tool := NewWebFetchTool(50000)
+	tool := NewWebFetchToolWithConfig(50000, "", true)
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": "ftp://example.com/file.txt",
@@ -117,7 +117,7 @@ func TestWebTool_WebFetch_UnsupportedScheme(t *testing.T) {
 
 // TestWebTool_WebFetch_MissingURL verifies error handling for missing URL
 func TestWebTool_WebFetch_MissingURL(t *testing.T) {
-	tool := NewWebFetchTool(50000)
+	tool := NewWebFetchToolWithConfig(50000, "", true)
 	ctx := context.Background()
 	args := map[string]interface{}{}
 
@@ -145,7 +145,7 @@ func TestWebTool_WebFetch_Truncation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tool := NewWebFetchTool(1000) // Limit to 1000 chars
+	tool := NewWebFetchToolWithConfig(1000, "", true) // Limit to 1000 chars
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": server.URL,
@@ -206,7 +206,7 @@ func TestWebTool_WebFetch_HTMLExtraction(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tool := NewWebFetchTool(50000)
+	tool := NewWebFetchToolWithConfig(50000, "", true)
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": server.URL,
@@ -232,7 +232,7 @@ func TestWebTool_WebFetch_HTMLExtraction(t *testing.T) {
 
 // TestWebTool_WebFetch_MissingDomain verifies error handling for URL without domain
 func TestWebTool_WebFetch_MissingDomain(t *testing.T) {
-	tool := NewWebFetchTool(50000)
+	tool := NewWebFetchToolWithConfig(50000, "", true)
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": "https://",

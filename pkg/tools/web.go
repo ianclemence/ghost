@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -266,7 +267,10 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 }
 
 type WebFetchTool struct {
-	maxChars int
+	maxChars    int
+	urlSafety   *URLSafety
+	workspace   string
+	cacheDir    string
 }
 
 func NewWebFetchTool(maxChars int) *WebFetchTool {
@@ -274,7 +278,24 @@ func NewWebFetchTool(maxChars int) *WebFetchTool {
 		maxChars = 50000
 	}
 	return &WebFetchTool{
-		maxChars: maxChars,
+		maxChars:  maxChars,
+		urlSafety: NewURLSafety(URLSafetyConfig{AllowPrivateURLs: false}),
+	}
+}
+
+func NewWebFetchToolWithConfig(maxChars int, workspace string, allowPrivate bool) *WebFetchTool {
+	if maxChars <= 0 {
+		maxChars = 50000
+	}
+	cacheDir := ""
+	if workspace != "" {
+		cacheDir = workspace + "/cache/web"
+	}
+	return &WebFetchTool{
+		maxChars:  maxChars,
+		urlSafety: NewURLSafety(URLSafetyConfig{AllowPrivateURLs: allowPrivate}),
+		workspace: workspace,
+		cacheDir:  cacheDir,
 	}
 }
 
@@ -321,6 +342,14 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 
 	if parsedURL.Host == "" {
 		return ErrorResult("missing domain in URL")
+	}
+
+	if safe, reason := t.urlSafety.IsSafe(urlStr); !safe {
+		return ErrorResult(fmt.Sprintf("URL blocked: %s", reason))
+	}
+
+	if secrets := DetectSecretsInURL(urlStr); len(secrets) > 0 {
+		return ErrorResult(fmt.Sprintf("URL contains secrets: %v", secrets))
 	}
 
 	maxChars := t.maxChars
@@ -388,8 +417,24 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 
 	truncated := len(text) > maxChars
+	var fullTextPath string
 	if truncated {
-		text = text[:maxChars]
+		headSize := maxChars * 75 / 100
+		tailSize := maxChars * 25 / 100
+		if headSize+tailSize > len(text) {
+			headSize = len(text)
+			tailSize = 0
+		}
+		head := text[:headSize]
+		tail := ""
+		if tailSize > 0 {
+			tail = text[len(text)-tailSize:]
+		}
+		text = head + "\n\n[... CONTENT OMITTED ...]\n\n" + tail
+
+		if t.cacheDir != "" {
+			fullTextPath = t.saveFullText(urlStr, text)
+		}
 	}
 
 	result := map[string]interface{}{
@@ -399,6 +444,10 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 		"truncated": truncated,
 		"length":    len(text),
 		"text":      text,
+	}
+	if fullTextPath != "" {
+		result["full_text_path"] = fullTextPath
+		result["footer"] = fmt.Sprintf("Full text saved to: %s. Use read_file with offset to read omitted content.", fullTextPath)
 	}
 
 	resultJSON, _ := json.MarshalIndent(result, "", "  ")
@@ -432,4 +481,34 @@ func (t *WebFetchTool) extractText(htmlContent string) string {
 	}
 
 	return strings.Join(cleanLines, "\n")
+}
+
+func (t *WebFetchTool) saveFullText(urlStr, text string) string {
+	if t.cacheDir == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		return ""
+	}
+
+	host := parsed.Hostname()
+	if host == "" {
+		host = "unknown"
+	}
+
+	filename := fmt.Sprintf("%s_%d.txt", host, time.Now().UnixMilli())
+	filepath := t.cacheDir + "/" + filename
+
+	dir := t.cacheDir
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return ""
+	}
+
+	if err := os.WriteFile(filepath, []byte(text), 0644); err != nil {
+		return ""
+	}
+
+	return filepath
 }
