@@ -64,6 +64,8 @@ type AgentLoop struct {
 	doctor           *doctor.Doctor
 	running          atomic.Bool
 	summarizing      sync.Map // Tracks which sessions are currently being summarized
+	curator          *tools.Curator
+	nudge            *NudgeManager
 }
 
 // processOptions configures how a message is processed
@@ -327,6 +329,24 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		}
 	}
 
+	// Initialize curator
+	curator := tools.NewCurator(database.DB, tools.CuratorConfig{
+		Enabled:           cfg.Tools.Curator.Enabled,
+		StaleAfterDays:    cfg.Tools.Curator.StaleAfterDays,
+		ArchiveAfterDays:  cfg.Tools.Curator.ArchiveAfterDays,
+		CheckIntervalMins: cfg.Tools.Curator.CheckIntervalMins,
+	})
+	if err := curator.EnsureSchema(); err != nil {
+		logger.WarnCF("agent", "Failed to initialize curator schema: %v", map[string]interface{}{"error": err.Error()})
+	}
+
+	// Initialize nudge manager
+	nudgeMgr := NewNudgeManager(NudgeConfig{
+		Enabled:        cfg.Nudge.Enabled,
+		MemoryInterval: cfg.Nudge.MemoryInterval,
+		SkillInterval:  cfg.Nudge.SkillInterval,
+	}, sessionsManager)
+
 	return &AgentLoop{
 		bus:              msgBus,
 		provider:         provider,
@@ -351,6 +371,8 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		cfg:              cfg,
 		doctor:           doctorRunner,
 		summarizing:      sync.Map{},
+		curator:          curator,
+		nudge:            nudgeMgr,
 	}
 }
 
@@ -384,6 +406,9 @@ func (al *AgentLoop) GetToolProfile() tools.ToolProfile {
 
 func (al *AgentLoop) Run(ctx context.Context) error {
 	al.running.Store(true)
+
+	// Start curator background goroutine
+	go al.curator.Start(ctx)
 
 	for al.running.Load() {
 		select {
@@ -429,6 +454,7 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 
 func (al *AgentLoop) Stop() {
 	al.running.Store(false)
+	al.curator.Stop()
 }
 
 func (al *AgentLoop) RegisterTool(tool tools.Tool) {
@@ -708,6 +734,8 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	isSlashCommand := strings.HasPrefix(opts.UserMessage, "/")
 	if !isSlashCommand {
 		al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
+		// Track user turn for memory nudge
+		al.nudge.OnUserTurn(opts.SessionKey)
 	}
 
 	// 4. Run LLM iteration loop
@@ -738,7 +766,32 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		al.maybeSummarize(opts.SessionKey)
 	}
 
-	// 8. Optional: send response via bus
+	// 8. Nudge system: inject memory/skill review prompts if thresholds met
+	if !isSlashCommand && opts.SessionKey != "heartbeat" {
+		if al.nudge.ShouldReviewMemory() {
+			history := al.sessions.GetHistory(opts.SessionKey)
+			if prompt := al.nudge.BuildMemoryPrompt(history); prompt != "" {
+				al.sessions.AddMessage(opts.SessionKey, "system", prompt)
+			}
+		}
+		if al.nudge.ShouldReviewSkills() {
+			// Collect tools used in this turn from history
+			history := al.sessions.GetHistory(opts.SessionKey)
+			var toolsUsed []string
+			for _, msg := range history {
+				if msg.Role == "assistant" {
+					for _, tc := range msg.ToolCalls {
+						toolsUsed = append(toolsUsed, tc.Name)
+					}
+				}
+			}
+			if prompt := al.nudge.BuildSkillPrompt(toolsUsed); prompt != "" {
+				al.sessions.AddMessage(opts.SessionKey, "system", prompt)
+			}
+		}
+	}
+
+	// 9. Optional: send response via bus
 	if opts.SendResponse {
 		al.bus.PublishOutbound(bus.OutboundMessage{
 			Channel: opts.Channel,
@@ -942,6 +995,17 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 
 			// Save tool result message to session
 			al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+
+			// Record tool usage for curator
+			al.curator.RecordUsage(tc.Name)
+
+			// Track tool iteration for skill creation nudge
+			al.nudge.OnToolIteration(opts.SessionKey)
+
+			// Reset skill counter if skill-related tool used
+			if tc.Name == "skill_manage" || tc.Name == "remember" {
+				al.nudge.OnSkillToolUsed(opts.SessionKey)
+			}
 		}
 	}
 
