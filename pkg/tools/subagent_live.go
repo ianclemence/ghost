@@ -182,20 +182,28 @@ func parseTranscriptLine(line string) *TranscriptLine {
 		return nil
 	}
 
-	tsPart := parts[0]
+	tsRolePart := parts[0]
 	text := parts[1]
 
-	ts, err := time.Parse("15:04:05", tsPart)
-	if err != nil {
-		return nil
+	// Format: "HH:MM:SS role" - split on first space after timestamp
+	spaceIdx := -1
+	for i := 0; i < len(tsRolePart) && i < 8; i++ {
+		if tsRolePart[i] == ' ' {
+			spaceIdx = i
+			break
+		}
 	}
 
-	roleFields := splitN(tsPart, " ", 2)
 	role := "unknown"
-	if len(roleFields) == 1 {
-		role = "system"
-	} else {
-		_ = roleFields
+	tsStr := tsRolePart
+	if spaceIdx > 0 {
+		tsStr = tsRolePart[:spaceIdx]
+		role = tsRolePart[spaceIdx+1:]
+	}
+
+	ts, err := time.Parse("15:04:05", tsStr)
+	if err != nil {
+		return nil
 	}
 
 	return &TranscriptLine{

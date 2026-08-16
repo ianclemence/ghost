@@ -7,9 +7,7 @@ import (
 )
 
 func CreateProviderForModel(cfg *config.Config, model string) (LLMProvider, error) {
-	c := *cfg
-	c.Agents = cfg.Agents
-	c.Agents.Defaults = cfg.Agents.Defaults
+	c := cfg
 	if strings.Contains(model, "/") {
 		parts := strings.SplitN(model, "/", 2)
 		c.Agents.Defaults.Provider = parts[0]
@@ -17,5 +15,5 @@ func CreateProviderForModel(cfg *config.Config, model string) (LLMProvider, erro
 	} else {
 		c.Agents.Defaults.Model = model
 	}
-	return CreateProvider(&c)
+	return CreateProvider(c)
 }

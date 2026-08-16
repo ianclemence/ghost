@@ -142,7 +142,7 @@ func (rs *RecoveryServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 			return
 		}
-		data, _ := json.MarshalIndent(cfg, "", "  ")
+		data, _ := json.MarshalIndent(&cfg, "", "  ")
 		if err := os.WriteFile(rs.ConfigPath, data, 0644); err != nil {
 			http.Error(w, `{"error":"failed to write config"}`, http.StatusInternalServerError)
 			return

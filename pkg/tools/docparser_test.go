@@ -153,7 +153,11 @@ func TestDetectFormat(t *testing.T) {
 		{"file.xlsx", "xlsx"},
 		{"file.xls", "xlsx"},
 		{"file.ipynb", "ipynb"},
-		{"file.txt", ""},
+		{"file.txt", "txt"},
+		{"file.pdf", "pdf"},
+		{"file.html", "html"},
+		{"file.csv", "csv"},
+		{"file.json", "json"},
 		{"file.unknown", ""},
 	}
 

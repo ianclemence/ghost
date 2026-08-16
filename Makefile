@@ -177,6 +177,7 @@ install-ghost: build-ghost
 	@echo "Ghost installed"
 	@echo "Run 'sudo systemctl start ghost-firstboot' to begin setup now"
 	@echo "Or reboot to start setup automatically"
+	@echo "Note: Ghost service will start automatically after firstboot completes"
 
 ## rebuild-firstboot: Quick rebuild and install firstboot only
 rebuild-firstboot:

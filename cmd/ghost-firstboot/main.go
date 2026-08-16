@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/config"
@@ -28,6 +29,8 @@ var (
 func main() {
 	port := flag.Int("port", 80, "HTTP port for setup wizard")
 	ghostDir := flag.String("dir", "/var/ghost", "Ghost installation directory")
+	waitMode := flag.Bool("wait", false, "Block until setup is complete (for oneshot systemd)")
+	forceMode := flag.Bool("force", false, "Re-run setup even if already complete")
 	flag.Parse()
 
 	fb = appliance.NewFirstBoot()
@@ -39,8 +42,8 @@ func main() {
 	fb.EnvPath = filepath.Join(*ghostDir, ".env")
 
 	// Check if first boot is needed
-	if !fb.IsFirstBoot() {
-		log.Println("Setup already complete. Use --force to re-run.")
+	if !*forceMode && !fb.IsFirstBoot() {
+		log.Println("Setup already complete.")
 		os.Exit(0)
 	}
 
@@ -87,8 +90,36 @@ func main() {
 		log.Fatal("All ports (80, 8080, 8888, 9090) are in use. Please stop the service using port 80.")
 	}
 
-	if err := http.Serve(listener, mux); err != nil {
-		log.Fatalf("Server failed: %v", err)
+	if *waitMode {
+		// In wait mode, run the server in a goroutine and block until setup completes.
+		// This is used by the oneshot systemd service to ensure setup finishes before
+		// the main Ghost service starts.
+		go func() {
+			if err := http.Serve(listener, mux); err != nil {
+				log.Printf("Wizard server error: %v", err)
+			}
+		}()
+
+		log.Println("Waiting for setup to complete...")
+		waitForSetupComplete()
+		log.Println("Setup complete, exiting.")
+	} else {
+		if err := http.Serve(listener, mux); err != nil {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}
+}
+
+// waitForSetupComplete polls for the .setup-complete flag file.
+func waitForSetupComplete() {
+	flagPath := filepath.Join(fb.GhostDir, appliance.SetupCompleteFlag)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if _, err := os.Stat(flagPath); err == nil {
+			return
+		}
 	}
 }
 
@@ -204,12 +235,12 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 	// Clean up firewall rule (port 80 no longer needed)
 	cleanupFirewall()
 
-	// Restart ghost service to pick up new config
-	restartGhostService()
+	// Note: Ghost service start is handled by systemd ExecStartPost in the
+	// firstboot service. We don't restart it here to avoid races.
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":    true,
-		"message": "Setup complete! Ghost will restart shortly.",
+		"ok":      true,
+		"message": "Setup complete! Ghost will start shortly.",
 	})
 }
 
