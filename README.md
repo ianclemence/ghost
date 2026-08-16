@@ -335,8 +335,11 @@ make install && sudo systemctl restart ghost
 
 ### Phase 3
 
-* Multi-agent system
-* Autonomous reasoning
+* Multi-agent system (Mixture of Agents with parallel advisors + aggregator)
+* Autonomous reasoning (reasoning chain tracking, background self-review)
+* Skills self-improvement (learned skill refinement from execution patterns)
+* Trajectory compression (interaction summaries for context window management)
+* Cross-session learning graph (knowledge graph connecting skills, memory, trajectories)
 
 ---
 
