@@ -201,6 +201,12 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Clean up firewall rule (port 80 no longer needed)
+	cleanupFirewall()
+
+	// Restart ghost service to pick up new config
+	restartGhostService()
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":    true,
 		"message": "Setup complete! Ghost will restart shortly.",
@@ -454,4 +460,15 @@ func pullOllamaModel(model string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// cleanupFirewall removes the port 80 rule after setup completes.
+func cleanupFirewall() {
+	exec.Command("ufw", "delete", "allow", "80/tcp").Run()
+}
+
+// restartGhostService restarts the ghost service after setup.
+func restartGhostService() {
+	exec.Command("systemctl", "daemon-reload").Run()
+	exec.Command("systemctl", "restart", "ghost").Run()
 }
