@@ -35,6 +35,7 @@ type CronPayload struct {
 	OriginID string   `json:"origin_id,omitempty"`
 	Skills   []string `json:"skills,omitempty"`
 	NoAgent  bool     `json:"no_agent,omitempty"`
+	Profile  string   `json:"profile,omitempty"`
 }
 
 type CronJobState struct {
@@ -479,10 +480,10 @@ func (cs *CronService) saveStoreUnsafe() error {
 }
 
 func (cs *CronService) AddJob(name string, schedule CronSchedule, message string, deliver bool, channel, to string, metadata map[string]interface{}) (*CronJob, error) {
-	return cs.AddJobWithOptions(name, schedule, message, deliver, channel, to, metadata, nil, false)
+	return cs.AddJobWithOptions(name, schedule, message, deliver, channel, to, metadata, nil, false, "")
 }
 
-func (cs *CronService) AddJobWithOptions(name string, schedule CronSchedule, message string, deliver bool, channel, to string, metadata map[string]interface{}, skills []string, noAgent bool) (*CronJob, error) {
+func (cs *CronService) AddJobWithOptions(name string, schedule CronSchedule, message string, deliver bool, channel, to string, metadata map[string]interface{}, skills []string, noAgent bool, profile string) (*CronJob, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
@@ -505,6 +506,7 @@ func (cs *CronService) AddJobWithOptions(name string, schedule CronSchedule, mes
 			Target:  "origin",
 			Skills:  skills,
 			NoAgent: noAgent,
+			Profile: profile,
 		},
 		State: CronJobState{
 			NextRunAtMS: cs.computeNextRun(&schedule, now),
@@ -769,6 +771,90 @@ func (cs *CronService) ListJobs(includeDisabled bool) []CronJob {
 	}
 
 	return enabled
+}
+
+func (cs *CronService) ListJobsByProfile(profile string, includeDisabled bool) []CronJob {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	var result []CronJob
+	for _, job := range cs.store.Jobs {
+		if job.Payload.Profile != profile {
+			continue
+		}
+		if includeDisabled || job.Enabled {
+			result = append(result, job)
+		}
+	}
+	return result
+}
+
+func (cs *CronService) PauseJobsByProfile(profile string) int {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	count := 0
+	for i := range cs.store.Jobs {
+		job := &cs.store.Jobs[i]
+		if job.Payload.Profile == profile && job.Enabled {
+			job.Enabled = false
+			job.LifecycleState = JobStatePaused
+			job.State.NextRunAtMS = nil
+			job.NextRunAt = nil
+			job.UpdatedAtMS = time.Now().UnixMilli()
+			count++
+		}
+	}
+	if count > 0 {
+		cs.saveStoreUnsafe()
+	}
+	return count
+}
+
+func (cs *CronService) ResumeJobsByProfile(profile string) int {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	nowMS := time.Now().UnixMilli()
+	count := 0
+	for i := range cs.store.Jobs {
+		job := &cs.store.Jobs[i]
+		if job.Payload.Profile == profile && !job.Enabled && job.LifecycleState == JobStatePaused {
+			job.Enabled = true
+			job.LifecycleState = JobStateActive
+			job.PausedAt = nil
+			job.State.NextRunAtMS = cs.computeNextRun(&job.Schedule, nowMS)
+			if job.State.NextRunAtMS != nil {
+				next := time.UnixMilli(*job.State.NextRunAtMS)
+				job.NextRunAt = &next
+			}
+			job.UpdatedAtMS = nowMS
+			count++
+		}
+	}
+	if count > 0 {
+		cs.saveStoreUnsafe()
+	}
+	return count
+}
+
+func (cs *CronService) RemoveJobsByProfile(profile string) int {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	before := len(cs.store.Jobs)
+	var kept []CronJob
+	for _, job := range cs.store.Jobs {
+		if job.Payload.Profile != profile {
+			kept = append(kept, job)
+		}
+	}
+	removed := before - len(kept)
+	cs.store.Jobs = kept
+	if removed > 0 {
+		cs.saveStoreUnsafe()
+	}
+	return removed
 }
 
 func (cs *CronService) Status() map[string]interface{} {

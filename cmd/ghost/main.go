@@ -1363,7 +1363,7 @@ func cronAddCmd(storePath string) {
 	}
 
 	cs := cron.NewCronService(storePath, nil, nil)
-	job, err := cs.AddJobWithOptions(name, schedule, message, deliver, channel, to, nil, skills, noAgent)
+	job, err := cs.AddJobWithOptions(name, schedule, message, deliver, channel, to, nil, skills, noAgent, "")
 	if err != nil {
 		fmt.Printf("Error adding job: %v\n", err)
 		return

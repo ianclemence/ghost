@@ -27,6 +27,7 @@ type CronTool struct {
 	instanceID  string
 	channel     string
 	chatID      string
+	profile     string
 	mu          sync.RWMutex
 }
 
@@ -121,6 +122,13 @@ func (t *CronTool) SetContext(channel, chatID string) {
 	t.chatID = chatID
 }
 
+// SetProfile sets the profile name for cron job namespacing
+func (t *CronTool) SetProfile(profile string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.profile = profile
+}
+
 // Execute runs the tool with the given arguments
 func (t *CronTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	action, ok := args["action"].(string)
@@ -148,6 +156,7 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 	t.mu.RLock()
 	channel := t.channel
 	chatID := t.chatID
+	profile := t.profile
 	t.mu.RUnlock()
 
 	if channel == "" || chatID == "" {
@@ -233,6 +242,7 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 		metadata,
 		skills,
 		noAgent,
+		profile,
 	)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("Error adding job: %v", err))
@@ -255,7 +265,16 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 }
 
 func (t *CronTool) listJobs() *ToolResult {
-	jobs := t.cronService.ListJobs(false)
+	t.mu.RLock()
+	profile := t.profile
+	t.mu.RUnlock()
+
+	var jobs []cron.CronJob
+	if profile != "" {
+		jobs = t.cronService.ListJobsByProfile(profile, false)
+	} else {
+		jobs = t.cronService.ListJobs(false)
+	}
 
 	if len(jobs) == 0 {
 		return SilentResult("No scheduled jobs")
