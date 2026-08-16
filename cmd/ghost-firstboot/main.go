@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -30,18 +33,90 @@ var (
 	// ghost-firstboot.service unit, whose ExecStartPost starts the ghost
 	// service. When false, handleConfigure must start ghost itself.
 	waitingOnSystemd bool
+	// forceMode is true when the wizard was launched with -force, meaning
+	// re-running setup is permitted after authentication.
+	forceMode bool
 	// boundPort is the port the wizard actually bound to (may differ from the
 	// requested -port when it fell back, e.g. 80 -> 8080).
 	boundPort int
+	// sessions tracks authenticated admin sessions for wizard re-runs.
+	sessions = newSessionStore()
 )
+
+// sessionStore keeps issued admin session tokens with an expiry.
+type sessionStore struct {
+	mu     sync.Mutex
+	tokens map[string]time.Time
+}
+
+const sessionTTL = 30 * time.Minute
+
+func newSessionStore() *sessionStore {
+	return &sessionStore{tokens: make(map[string]time.Time)}
+}
+
+// issue creates a new random session token valid for sessionTTL.
+func (s *sessionStore) issue() (string, error) {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(b)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Prune expired tokens opportunistically.
+	for k, exp := range s.tokens {
+		if time.Now().After(exp) {
+			delete(s.tokens, k)
+		}
+	}
+	s.tokens[token] = time.Now().Add(sessionTTL)
+	return token, nil
+}
+
+// valid reports whether the given token is currently valid.
+func (s *sessionStore) valid(token string) bool {
+	if token == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	exp, ok := s.tokens[token]
+	if !ok {
+		return false
+	}
+	if time.Now().After(exp) {
+		delete(s.tokens, token)
+		return false
+	}
+	return true
+}
+
+// revokeAll invalidates every session (e.g. after setup completes).
+func (s *sessionStore) revokeAll() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tokens = make(map[string]time.Time)
+}
+
+// sessionToken reads the admin session token from the request cookie.
+func sessionToken(r *http.Request) string {
+	c, err := r.Cookie("ghost_admin_session")
+	if err != nil {
+		return ""
+	}
+	return c.Value
+}
 
 func main() {
 	port := flag.Int("port", 80, "HTTP port for setup wizard")
 	ghostDir := flag.String("dir", "/var/ghost", "Ghost installation directory")
 	waitMode := flag.Bool("wait", false, "Block until setup is complete (for oneshot systemd)")
-	forceMode := flag.Bool("force", false, "Re-run setup even if already complete")
+	forceFlag := flag.Bool("force", false, "Re-run setup even if already complete")
 	flag.Parse()
 
+	forceMode = *forceFlag
 	fb = appliance.NewFirstBoot()
 	fb.GhostDir = *ghostDir
 	fb.ConfigDir = filepath.Join(*ghostDir, "config")
@@ -51,7 +126,7 @@ func main() {
 	fb.EnvPath = filepath.Join(*ghostDir, ".env")
 
 	// Check if first boot is needed
-	if !*forceMode && !fb.IsFirstBoot() {
+	if !*forceFlag && !fb.IsFirstBoot() {
 		flagPath := filepath.Join(fb.GhostDir, appliance.SetupCompleteFlag)
 		log.Println("Setup already complete. The wizard only runs on first boot.")
 		log.Println("To re-open the wizard, run with -force, or remove " + flagPath + " and restart the ghost-firstboot service.")
@@ -72,6 +147,7 @@ func main() {
 	mux.HandleFunc("/api/scan-wifi", handleScanWiFi)
 	mux.HandleFunc("/api/connect-wifi", handleConnectWiFi)
 	mux.HandleFunc("/api/status", handleStatus)
+	mux.HandleFunc("/api/login", handleLogin)
 	mux.HandleFunc("/api/configure", handleConfigure)
 	mux.HandleFunc("/api/pairing-code", handlePairingCode)
 	mux.HandleFunc("/api/ollama/models", handleOllamaModels)
@@ -223,8 +299,61 @@ func handleConnectWiFi(w http.ResponseWriter, r *http.Request) {
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"first_boot": fb.IsFirstBoot(),
-		"version":    version,
+		"first_boot":        fb.IsFirstBoot(),
+		"admin_configured":  appliance.AdminConfigured(fb.GhostDir),
+		"force":             forceMode,
+		"version":           version,
+	})
+}
+
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"ok":false,"error":"invalid request"}`, http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	ok, err := appliance.VerifyAdminPassword(fb.GhostDir, req.Password)
+	if err != nil {
+		http.Error(w, `{"ok":false,"error":"failed to verify password"}`, http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":    false,
+			"error": "invalid password",
+		})
+		return
+	}
+
+	token, err := sessions.issue()
+	if err != nil {
+		http.Error(w, `{"ok":false,"error":"failed to create session"}`, http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ghost_admin_session",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(sessionTTL.Seconds()),
+	})
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"message": "Logged in",
 	})
 }
 
@@ -235,10 +364,11 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		AdminPassword string `json:"admin_password"`
-		Model         string `json:"model"`
-		Provider      string `json:"provider"`
-		OllamaURL     string `json:"ollama_url"`
+		AdminPassword   string `json:"admin_password"`
+		CurrentPassword string `json:"current_password"`
+		Model           string `json:"model"`
+		Provider        string `json:"provider"`
+		OllamaURL       string `json:"ollama_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"ok":false,"error":"invalid request"}`, http.StatusBadRequest)
@@ -247,8 +377,66 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
+	// If an admin password already exists, re-running setup requires an
+	// authenticated session AND the current password. Fresh first-boot runs
+	// (or a migration with no password yet) only need the new password.
+	if appliance.AdminConfigured(fb.GhostDir) {
+		if !sessions.valid(sessionToken(r)) {
+			http.Error(w, `{"ok":false,"error":"session expired, please log in"}`, http.StatusUnauthorized)
+			return
+		}
+
+		ok, err := appliance.VerifyAdminPassword(fb.GhostDir, req.CurrentPassword)
+		if err != nil {
+			http.Error(w, `{"ok":false,"error":"failed to verify current password"}`, http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": "current password is incorrect",
+			})
+			return
+		}
+
+		// Optional: set a new password during a re-run.
+		if req.AdminPassword != "" {
+			if err := appliance.SetAdminPassword(fb.GhostDir, req.AdminPassword); err != nil {
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"ok":    false,
+					"error": "failed to update admin password: " + err.Error(),
+				})
+				return
+			}
+		}
+	} else {
+		if req.AdminPassword == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": "admin password is required",
+			})
+			return
+		}
+		if err := appliance.SetAdminPassword(fb.GhostDir, req.AdminPassword); err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": "failed to save admin password: " + err.Error(),
+			})
+			return
+		}
+	}
+
+	// The bridge secret is always generated fresh and is never derived from
+	// the admin password, so re-running setup cannot leak the admin password
+	// into the API channel.
+	bridgeSecret, err := appliance.GenerateBridgeSecret()
+	if err != nil {
+		http.Error(w, `{"ok":false,"error":"failed to generate bridge secret"}`, http.StatusInternalServerError)
+		return
+	}
+
 	// Generate config
-	if err := generateConfig(req.AdminPassword, req.Model, req.Provider, req.OllamaURL); err != nil {
+	if err := generateConfig(bridgeSecret, req.Model, req.Provider, req.OllamaURL); err != nil {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":    false,
 			"error": err.Error(),
@@ -264,6 +452,9 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// Invalidate all admin sessions: the configuration has changed.
+	sessions.revokeAll()
 
 	// Clean up firewall rule for the wizard port (no longer needed once
 	// setup is complete).
@@ -344,8 +535,10 @@ func handleOllamaPull(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// generateConfig creates the .env and config.json files.
-func generateConfig(adminPassword, model, provider, ollamaURL string) error {
+// generateConfig creates the .env and config.json files. The admin password
+// is never written here; it lives only as a bcrypt hash in data/admin.hash.
+// bridgeSecret is the API shared secret used by the mobile app.
+func generateConfig(bridgeSecret, model, provider, ollamaURL string) error {
 	// Generate .env
 	envContent := fmt.Sprintf(`# Ghost Appliance Configuration
 # Generated by setup wizard
@@ -362,7 +555,7 @@ MEMORY_DIR=%s/memory
 
 # Timezone
 TZ=UTC
-`, adminPassword, fb.Workspace, fb.Workspace)
+`, bridgeSecret, fb.Workspace, fb.Workspace)
 
 	if err := os.WriteFile(fb.EnvPath, []byte(envContent), 0600); err != nil {
 		return fmt.Errorf("failed to write .env: %w", err)
@@ -390,7 +583,7 @@ TZ=UTC
 	}
 
 	// Set gateway secret
-	cfg.Gateway.BridgeSecret = adminPassword
+	cfg.Gateway.BridgeSecret = bridgeSecret
 	cfg.Gateway.Port = 8766
 
 	// Enable heartbeat

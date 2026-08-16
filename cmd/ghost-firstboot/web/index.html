@@ -324,16 +324,140 @@
                 </div>
             </div>
         </div>
+
+        <!-- Login (re-running setup on a configured device) -->
+        <div class="step" id="step-login">
+            <div class="card">
+                <h2>Admin Login</h2>
+                <p class="help-text" style="margin-bottom: 16px;">Ghost is already set up. Enter the admin password to change configuration.</p>
+                <div class="form-group">
+                    <label>Admin Password</label>
+                    <input type="password" id="login-password" placeholder="Admin password" onkeydown="if(event.key==='Enter')login()">
+                </div>
+                <div id="login-error" class="error"></div>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-secondary" onclick="location.reload()">Cancel</button>
+                <button class="btn btn-primary" onclick="login()">Login</button>
+            </div>
+        </div>
+
+        <!-- Already configured -->
+        <div class="step" id="step-already">
+            <div class="card" style="text-align: center;">
+                <div class="success-icon">✓</div>
+                <h2>Ghost is Already Set Up</h2>
+                <p class="help-text" style="margin: 16px 0;">
+                    This device has already been configured.<br>
+                    Open <strong>ghost.local:8766</strong> or the Ghost app to start chatting.
+                </p>
+                <p class="help-text" style="margin: 16px 0;">
+                    To re-run the setup wizard, connect via SSH and run:<br>
+                    <code style="background: #09090b; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 8px;">sudo ghost-firstboot -force</code>
+                </p>
+            </div>
+            <button class="btn btn-secondary" onclick="location.reload()">Refresh</button>
+        </div>
     </div>
 
     <script>
         let currentStep = 1;
         let selectedWifi = null;
         let adminPassword = '';
+        let currentPassword = '';
+        let rerunMode = false;
         let setupData = {};
 
         async function init() {
-            scanWifi();
+            const status = await fetchStatus();
+            if (!status) {
+                showAlreadySetup();
+                return;
+            }
+
+            if (status.first_boot || !status.admin_configured) {
+                // First boot (or setup interrupted before a password existed):
+                // run the full setup flow.
+                showStepIndicator();
+                scanWifi();
+            } else if (status.force) {
+                // Configured device opened with -force: authenticate first.
+                showLogin();
+            } else {
+                // Configured device opened without -force: nothing to do here.
+                showAlreadySetup();
+            }
+        }
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                return await res.json();
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function showStepIndicator() {
+            document.querySelector('.step-indicator').style.display = 'flex';
+        }
+
+        function hideStepIndicator() {
+            document.querySelector('.step-indicator').style.display = 'none';
+        }
+
+        function goToStep(n) {
+            document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+            document.getElementById('step-' + n).classList.add('active');
+            currentStep = n;
+            updateDots();
+        }
+
+        function showLogin() {
+            hideStepIndicator();
+            document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+            document.getElementById('step-login').classList.add('active');
+            document.getElementById('login-password').focus();
+        }
+
+        function showAlreadySetup() {
+            hideStepIndicator();
+            document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+            document.getElementById('step-already').classList.add('active');
+        }
+
+        async function login() {
+            const pw = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error');
+            errorEl.textContent = '';
+
+            if (!pw) {
+                errorEl.textContent = 'Enter the admin password';
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pw })
+                });
+                const data = await res.json();
+
+                if (data.ok) {
+                    currentPassword = pw;
+                    rerunMode = true;
+                    document.getElementById('step-2').querySelector('h2').textContent = 'Change Admin Password (optional)';
+                    document.querySelector('#step-2 .help-text').textContent = 'Leave blank to keep your current password.';
+                    document.getElementById('admin-password').placeholder = 'New password (leave blank to keep)';
+                    showStepIndicator();
+                    goToStep(2);
+                } else {
+                    errorEl.textContent = data.error || 'Login failed';
+                }
+            } catch (e) {
+                errorEl.textContent = 'Login failed';
+            }
         }
 
         async function scanWifi() {
@@ -412,6 +536,14 @@
             const confirm = document.getElementById('admin-password-confirm').value;
             const errorEl = document.getElementById('password-error');
             errorEl.textContent = '';
+
+            // In rerun mode the password is optional: blank keeps the
+            // current password (verified at login time).
+            if (pw === '' && rerunMode) {
+                adminPassword = '';
+                nextStep();
+                return;
+            }
 
             if (pw.length < 8) {
                 errorEl.textContent = 'Password must be at least 8 characters';
@@ -512,10 +644,7 @@
 
         async function completeSetup() {
             // Advance to step 4 first so the user sees progress
-            document.getElementById(`step-${currentStep}`).classList.remove('active');
-            currentStep = 4;
-            document.getElementById(`step-${currentStep}`).classList.add('active');
-            updateDots();
+            goToStep(4);
 
             const provider = document.getElementById('provider').value;
             const modelSelect = document.getElementById('model');
@@ -523,6 +652,7 @@
 
             setupData = {
                 admin_password: adminPassword,
+                current_password: currentPassword,
                 model: model,
                 provider: provider,
                 ollama_url: 'http://localhost:11434'
