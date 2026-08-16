@@ -511,6 +511,12 @@
         }
 
         async function completeSetup() {
+            // Advance to step 4 first so the user sees progress
+            document.getElementById(`step-${currentStep}`).classList.remove('active');
+            currentStep = 4;
+            document.getElementById(`step-${currentStep}`).classList.add('active');
+            updateDots();
+
             const provider = document.getElementById('provider').value;
             const modelSelect = document.getElementById('model');
             const model = modelSelect.value || document.getElementById('installed-models').value;
