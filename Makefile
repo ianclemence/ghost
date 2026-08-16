@@ -145,6 +145,15 @@ build-appliance: build
 	@ln -sf $(UPDATER_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(UPDATER_NAME)
 	@echo "Appliance binaries built"
 
+## rebuild-firstboot: Quick rebuild and install firstboot only
+rebuild-firstboot:
+	@echo "Rebuilding firstboot..."
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) ./$(FIRSTBOOT_DIR)
+	@sudo cp $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(FIRSTBOOT_NAME)
+	@sudo systemctl daemon-reload
+	@sudo systemctl restart ghost-firstboot
+	@echo "Firstboot rebuilt and restarted"
+
 ## install-appliance: Install appliance binaries and services
 install-appliance: build-appliance
 	@echo "Installing Ghost Appliance..."
