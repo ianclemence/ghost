@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/appliance"
@@ -24,6 +26,13 @@ var webFiles embed.FS
 var (
 	version = "dev"
 	fb      *appliance.FirstBoot
+	// waitingOnSystemd is true when running in -wait mode under the
+	// ghost-firstboot.service unit, whose ExecStartPost starts the ghost
+	// service. When false, handleConfigure must start ghost itself.
+	waitingOnSystemd bool
+	// boundPort is the port the wizard actually bound to (may differ from the
+	// requested -port when it fell back, e.g. 80 -> 8080).
+	boundPort int
 )
 
 func main() {
@@ -57,10 +66,6 @@ func main() {
 		log.Fatalf("Failed to create directories: %v", err)
 	}
 
-	// Best-effort open the wizard port on the firewall so the wizard is
-	// reachable from other devices even when re-run manually with -force.
-	openFirewallPort(*port)
-
 	// Start the wizard server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleWizardIndex)
@@ -83,18 +88,40 @@ func main() {
 		addr := fmt.Sprintf("0.0.0.0:%d", p)
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
-			log.Printf("Port %d in use, trying next...", p)
+			// Distinguish the real failure so users aren't misled.
+			switch {
+			case errors.Is(err, syscall.EADDRINUSE):
+				log.Printf("Port %d is already in use by another process, trying next...", p)
+			case errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM):
+				if p < 1024 {
+					log.Printf("Cannot bind port %d: permission denied. Ports below 1024 require root.", p)
+					log.Printf("Run as root (sudo ghost-firstboot -force), or use -port 8080 / another unprivileged port.")
+				} else {
+					log.Printf("Cannot bind port %d: permission denied (%v)", p, err)
+				}
+			default:
+				log.Printf("Cannot bind port %d: %v", p, err)
+			}
 			continue
 		}
 		listener = ln
-		log.Printf("Setup wizard running at http://ghost.local:%d", p)
-		log.Printf("Also available at http://<your-pi-ip>:%d", p)
+		boundPort = p
+		// Open the firewall for the port we actually bound (may differ from
+		// -port when port 80 fell back). Best-effort.
+		openFirewallPort(boundPort)
+		log.Printf("Setup wizard running at http://ghost.local:%d", boundPort)
+		log.Printf("Also available at http://<your-pi-ip>:%d", boundPort)
 		break
 	}
 
 	if listener == nil {
-		log.Fatal("All ports (80, 8080, 8888, 9090) are in use. Please stop the service using port 80.")
+		log.Fatalf("All ports failed to bind: %v", ports)
 	}
+
+	// Remember how we're running so handleConfigure knows whether systemd's
+	// ExecStartPost will start the ghost service (wait mode) or whether we
+	// must do it ourselves (manual -force runs).
+	waitingOnSystemd = *waitMode
 
 	if *waitMode {
 		// In wait mode, run the server in a goroutine and block until setup completes.
@@ -238,11 +265,16 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clean up firewall rule (port 80 no longer needed)
+	// Clean up firewall rule for the wizard port (no longer needed once
+	// setup is complete).
 	cleanupFirewall()
 
-	// Note: Ghost service start is handled by systemd ExecStartPost in the
-	// firstboot service. We don't restart it here to avoid races.
+	// Under systemd (wait mode), the ghost-firstboot service's ExecStartPost
+	// is responsible for starting ghost after setup. When running in
+	// foreground / -force mode there is no ExecStartPost, so start it here.
+	if !waitingOnSystemd {
+		restartGhostService()
+	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":      true,
@@ -509,17 +541,32 @@ func pullOllamaModel(model string) error {
 	return cmd.Run()
 }
 
-// cleanupFirewall removes the port 80 rule after setup completes.
+// runPrivileged runs a command, prefixing with sudo when we're not root so
+// manual (non-systemd) runs of ghost-firstboot can still manage ufw/systemd.
+func runPrivileged(name string, args ...string) ([]byte, error) {
+	if os.Geteuid() != 0 {
+		args = append([]string{name}, args...)
+		name = "sudo"
+	}
+	return exec.Command(name, args...).CombinedOutput()
+}
+
+// cleanupFirewall removes the wizard port rule (whatever port was actually
+// bound) after setup completes.
 func cleanupFirewall() {
-	exec.Command("ufw", "delete", "allow", "80/tcp").Run()
+	if boundPort > 0 {
+		runPrivileged("ufw", "delete", "allow", fmt.Sprintf("%d/tcp", boundPort))
+	}
+	// Also remove the common default in case setup was completed by an old
+	// binary that only managed port 80.
+	runPrivileged("ufw", "delete", "allow", "80/tcp")
 }
 
 // openFirewallPort opens the given TCP port on the firewall so the wizard is
 // reachable from other devices. Best-effort: failures are logged and ignored
 // (ufw may not be installed or active on the device).
 func openFirewallPort(port int) {
-	cmd := exec.Command("ufw", "allow", fmt.Sprintf("%d/tcp", port))
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := runPrivileged("ufw", "allow", fmt.Sprintf("%d/tcp", port)); err != nil {
 		log.Printf("Failed to open firewall port %d (ufw may not be active): %v: %s", port, err, strings.TrimSpace(string(out)))
 	} else {
 		log.Printf("Opened firewall port %d", port)
@@ -528,6 +575,6 @@ func openFirewallPort(port int) {
 
 // restartGhostService restarts the ghost service after setup.
 func restartGhostService() {
-	exec.Command("systemctl", "daemon-reload").Run()
-	exec.Command("systemctl", "restart", "ghost").Run()
+	runPrivileged("systemctl", "daemon-reload")
+	runPrivileged("systemctl", "restart", "ghost")
 }

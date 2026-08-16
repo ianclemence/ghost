@@ -112,6 +112,28 @@ After reboot, open `http://<pi-ip>` on your phone to complete setup:
 3. Select AI model
 4. Connect the Ghost app
 
+### How setup works (don't guess)
+
+**First boot:** `ghost-firstboot.service` runs the setup wizard on port 80, opens the
+firewall for it, and waits. Completing the wizard:
+1. Writes `/var/ghost/.setup-complete`
+2. Closes the wizard's firewall rule
+3. Starts the `ghost` service (port 8766)
+
+**After setup:** the wizard is intentionally offline — port 80 is closed and
+`ghost` serves the API on port 8766. This is correct behavior, not a bug.
+
+**Re-open the wizard later:**
+```bash
+sudo ghost-firstboot -force      # run as root; port 80 needs root
+```
+Then open `http://<pi-ip>` (or `http://<pi-ip>:8080` if port 80 is busy). Completing
+setup restarts `ghost`. To make the wizard start again on every boot instead:
+```bash
+sudo rm /var/ghost/.setup-complete
+sudo systemctl restart ghost-firstboot
+```
+
 ### Developer Mode
 
 **Windows:** Double-click `setup.bat`
