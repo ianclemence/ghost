@@ -10,9 +10,11 @@ MAIN_GO=$(CMD_DIR)/main.go
 FIRSTBOOT_NAME=ghost-firstboot
 UPDATER_NAME=ghost-updater
 UPDATE_NAME=ghost-update
+SERVICE_NAME=ghost-service
 FIRSTBOOT_DIR=cmd/$(FIRSTBOOT_NAME)
 UPDATER_DIR=cmd/$(UPDATER_NAME)
 UPDATE_DIR=cmd/$(UPDATE_NAME)
+SERVICE_DIR=cmd/$(SERVICE_NAME)
 
 # Version
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -144,9 +146,11 @@ build-appliance: build
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) ./$(FIRSTBOOT_DIR)
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(UPDATER_NAME)-$(PLATFORM)-$(ARCH) ./$(UPDATER_DIR)
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(UPDATE_NAME)-$(PLATFORM)-$(ARCH) ./$(UPDATE_DIR)
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(SERVICE_NAME)-$(PLATFORM)-$(ARCH) ./$(SERVICE_DIR)
 	@ln -sf $(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(FIRSTBOOT_NAME)
 	@ln -sf $(UPDATER_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(UPDATER_NAME)
 	@ln -sf $(UPDATE_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(UPDATE_NAME)
+	@ln -sf $(SERVICE_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(SERVICE_NAME)
 	@echo "Appliance binaries built"
 
 ## rebuild-firstboot: Quick rebuild and install firstboot only
@@ -166,7 +170,8 @@ install-appliance: build-appliance
 	@sudo cp $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(FIRSTBOOT_NAME)
 	@sudo cp $(BUILD_DIR)/$(UPDATER_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(UPDATER_NAME)
 	@sudo cp $(BUILD_DIR)/$(UPDATE_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(UPDATE_NAME)
-	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(FIRSTBOOT_NAME) /usr/local/bin/$(UPDATER_NAME) /usr/local/bin/$(UPDATE_NAME)
+	@sudo cp $(BUILD_DIR)/$(SERVICE_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(SERVICE_NAME)
+	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(FIRSTBOOT_NAME) /usr/local/bin/$(UPDATER_NAME) /usr/local/bin/$(UPDATE_NAME) /usr/local/bin/$(SERVICE_NAME)
 	@sudo chown -R $(USER):$(USER) /var/ghost
 	@# Install firstboot service
 	@sed \

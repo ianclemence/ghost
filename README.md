@@ -307,12 +307,13 @@ Use that IP in app settings.
 
 ## 🤖 Running as a Service
 
-### Appliance Mode (Recommended)
+### Appliance Mode
 
 ```bash
-make install-appliance
-sudo systemctl start ghost
+ghost-service
 ```
+
+This automatically starts the setup wizard if needed, or starts Ghost if setup is complete.
 
 ### Developer Mode
 
@@ -333,7 +334,6 @@ sudo systemctl restart ghost
 If Ghost fails to start, enable recovery mode:
 
 ```bash
-# Set recovery mode in the service file or environment
 GHOST_RECOVERY_MODE=1 ghost gateway
 ```
 
