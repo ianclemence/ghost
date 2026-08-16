@@ -165,7 +165,7 @@ install-ghost: build-ghost
 		-e "s|__GROUP__|$(USER)|g" \
 		-e "s|__GHOST_DIR__|/var/ghost|g" \
 		-e "s|__BIN_DIR__|/usr/local/bin|g" \
-		ghost-appliance.service.template > ghost.service
+		ghost.service.template > ghost.service
 	@sudo cp ghost.service /etc/systemd/system/ghost.service
 	@# Open firewall ports
 	@sudo ufw allow 80/tcp 2>/dev/null || true
