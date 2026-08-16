@@ -114,25 +114,65 @@ After reboot, open `http://<pi-ip>` on your phone to complete setup:
 
 ### How setup works
 
-**First boot:** `ghost-firstboot.service` runs the setup wizard on port 80, opens the
-firewall for it, and waits. Completing the wizard:
+**First boot:** `ghost-firstboot.service` starts the setup wizard on port 80 and
+opens the firewall for it. Completing the wizard:
 1. Writes `/var/ghost/.setup-complete`
-2. Closes the wizard's firewall rule
-3. Starts the `ghost` service (port 8766)
+2. Starts the `ghost` service (port 8766)
 
-**After setup:** the wizard is intentionally offline — port 80 is closed and
-`ghost` serves the API on port 8766. This is correct behavior, not a bug.
+**Always-on wizard:** the wizard stays running as an always-on service, so you can
+reach it from your phone at any time at `http://<pi-ip>`:
+- **Before setup:** shows the setup screen
+- **After setup:** shows a login screen (your admin password) with settings
 
-**Re-open the wizard later:**
+The wizard and `ghost` are separate: wizard on port 80, API on port 8766.
+
+If you ever want the wizard turned off entirely:
 ```bash
-sudo ghost-firstboot -force      # run as root; port 80 needs root
+sudo systemctl disable --now ghost-firstboot
 ```
-Then open `http://<pi-ip>` (or `http://<pi-ip>:8080` if port 80 is busy). Completing
-setup restarts `ghost`. To make the wizard start again on every boot instead:
+
+---
+
+## Updating
+
+### On a device already running Ghost
+
 ```bash
-sudo rm /var/ghost/.setup-complete
-sudo systemctl restart ghost-firstboot
+cd ghost                 # the cloned repo
+sudo ghost update        # git pull + rebuild + redeploy + restart services
 ```
+
+`sudo ghost update`:
+1. `git pull` from GitHub
+2. Builds all binaries and deploys them
+3. Reinstalls the systemd services
+4. Restarts `ghost` and the always-on wizard
+
+Requires root. If you no longer have a repo clone on the device, clone one:
+
+```bash
+sudo apt install -y git make golang-go   # if not installed
+git clone https://github.com/ianclemence/ghost.git && cd ghost
+sudo make install-ghost
+```
+
+### On a fresh Pi
+
+```bash
+sudo apt install -y git make golang-go
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen3:0.6b
+git clone https://github.com/ianclemence/ghost.git
+cd ghost
+sudo make install-ghost
+sudo reboot
+```
+
+After reboot, open `http://<pi-ip>` on your phone to complete setup:
+1. Connect to WiFi
+2. Create admin password
+3. Select AI model
+4. Connect the Ghost app
 
 ### Developer Mode
 
@@ -174,7 +214,7 @@ chmod +x setup.sh
 
 | Command | Description |
 |---------|-------------|
-| `ghost-firstboot` | Setup wizard (runs automatically on first boot) |
+| `ghost-firstboot` | Setup wizard (always-on service; setup screen before config, login after) |
 
 ---
 
