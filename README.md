@@ -112,7 +112,7 @@ After reboot, open `http://<pi-ip>` on your phone to complete setup:
 3. Select AI model
 4. Connect the Ghost app
 
-### How setup works (don't guess)
+### How setup works
 
 **First boot:** `ghost-firstboot.service` runs the setup wizard on port 80, opens the
 firewall for it, and waits. Completing the wizard:
