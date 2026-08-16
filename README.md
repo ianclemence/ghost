@@ -138,13 +138,13 @@ ollama pull qwen3.5:0.8b
 The easiest way to run Ghost on a Raspberry Pi:
 
 ```bash
-git clone -b feat/ghost-appliance https://github.com/ianclemence/ghost.git
+git clone https://github.com/ianclemence/ghost.git
 cd ghost
-make install-appliance
-sudo systemctl start ghost
+sudo make install-appliance
+sudo reboot
 ```
 
-Then open `http://ghost.local` on your phone to complete setup:
+After reboot, open `http://<pi-ip>` on your phone to complete setup:
 1. Connect to WiFi
 2. Create admin password
 3. Select AI model
@@ -370,6 +370,16 @@ ghost-updater -interval 6h
 cd ~/ghost
 git pull --rebase origin main
 make install && sudo systemctl restart ghost
+```
+
+### Quick Firstboot Update
+
+If you only changed the firstboot wizard:
+
+```bash
+cd ~/ghost
+git pull
+make rebuild-firstboot
 ```
 
 ---
