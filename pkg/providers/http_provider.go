@@ -144,6 +144,10 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		nativeBody := map[string]interface{}{
 			"model":    model,
 			"messages": nativeMsgs,
+			// The native /api/chat endpoint streams NDJSON by default, but
+			// we read the whole body and decode a single JSON object below,
+			// so request a non-streaming response.
+			"stream": false,
 		}
 		if thinkParam != nil {
 			nativeBody["think"] = thinkParam
