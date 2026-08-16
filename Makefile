@@ -9,8 +9,10 @@ MAIN_GO=$(CMD_DIR)/main.go
 # Appliance binaries
 FIRSTBOOT_NAME=ghost-firstboot
 UPDATER_NAME=ghost-updater
+UPDATE_NAME=ghost-update
 FIRSTBOOT_DIR=cmd/$(FIRSTBOOT_NAME)
 UPDATER_DIR=cmd/$(UPDATER_NAME)
+UPDATE_DIR=cmd/$(UPDATE_NAME)
 
 # Version
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -136,13 +138,15 @@ install-service:
 	@sudo systemctl restart ghost
 	@echo "✅ ghost.service installed for $(USER)"
 
-## build-appliance: Build all appliance binaries (firstboot, updater)
+## build-appliance: Build all appliance binaries (firstboot, updater, update)
 build-appliance: build
 	@echo "Building appliance binaries..."
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) ./$(FIRSTBOOT_DIR)
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(UPDATER_NAME)-$(PLATFORM)-$(ARCH) ./$(UPDATER_DIR)
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(UPDATE_NAME)-$(PLATFORM)-$(ARCH) ./$(UPDATE_DIR)
 	@ln -sf $(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(FIRSTBOOT_NAME)
 	@ln -sf $(UPDATER_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(UPDATER_NAME)
+	@ln -sf $(UPDATE_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(UPDATE_NAME)
 	@echo "Appliance binaries built"
 
 ## rebuild-firstboot: Quick rebuild and install firstboot only
@@ -161,7 +165,8 @@ install-appliance: build-appliance
 	@sudo cp $(BUILD_DIR)/$(BINARY_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost
 	@sudo cp $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(FIRSTBOOT_NAME)
 	@sudo cp $(BUILD_DIR)/$(UPDATER_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(UPDATER_NAME)
-	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(FIRSTBOOT_NAME) /usr/local/bin/$(UPDATER_NAME)
+	@sudo cp $(BUILD_DIR)/$(UPDATE_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(UPDATE_NAME)
+	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(FIRSTBOOT_NAME) /usr/local/bin/$(UPDATER_NAME) /usr/local/bin/$(UPDATE_NAME)
 	@sudo chown -R $(USER):$(USER) /var/ghost
 	@# Install firstboot service
 	@sed \

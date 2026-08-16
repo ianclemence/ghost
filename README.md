@@ -347,39 +347,20 @@ This starts a web UI at `http://ghost.local:8766` with:
 
 ## 🔄 Updating Ghost
 
-### Appliance Mode (OTA)
-
-The updater daemon checks for updates every 6 hours automatically.
-
-To update manually:
+### Appliance Mode
 
 ```bash
-ghost-updater -force
+ghost-update
 ```
 
-To run the updater as a service:
-
-```bash
-# Add to systemd or run in background
-ghost-updater -interval 6h
-```
+That's it. Pulls latest code, rebuilds, and restarts.
 
 ### Developer Mode
 
 ```bash
 cd ~/ghost
-git pull --rebase origin main
-make install && sudo systemctl restart ghost
-```
-
-### Quick Firstboot Update
-
-If you only changed the firstboot wizard:
-
-```bash
-cd ~/ghost
 git pull
-make rebuild-firstboot
+make install && sudo systemctl restart ghost
 ```
 
 ---
