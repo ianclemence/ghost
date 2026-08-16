@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -62,9 +63,31 @@ func main() {
 	mux.HandleFunc("/api/ollama/models", handleOllamaModels)
 	mux.HandleFunc("/api/ollama/pull", handleOllamaPull)
 
-	addr := fmt.Sprintf("0.0.0.0:%d", *port)
-	log.Printf("Setup wizard running at http://ghost.local:%d", *port)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	// Try ports in order: 80, 8080, 8888, 9090
+	ports := []int{*port, 8080, 8888, 9090}
+	if *port != 80 {
+		ports = append([]int{*port}, ports...)
+	}
+
+	var listener net.Listener
+	for _, p := range ports {
+		addr := fmt.Sprintf("0.0.0.0:%d", p)
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			log.Printf("Port %d in use, trying next...", p)
+			continue
+		}
+		listener = ln
+		log.Printf("Setup wizard running at http://ghost.local:%d", p)
+		log.Printf("Also available at http://<your-pi-ip>:%d", p)
+		break
+	}
+
+	if listener == nil {
+		log.Fatal("All ports (80, 8080, 8888, 9090) are in use. Please stop the service using port 80.")
+	}
+
+	if err := http.Serve(listener, mux); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }
