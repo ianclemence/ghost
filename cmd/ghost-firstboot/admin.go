@@ -578,6 +578,15 @@ func handleChannelsSet(w http.ResponseWriter, r *http.Request) {
 			Enabled bool   `json:"enabled"`
 			Token   string `json:"token"`
 		} `json:"discord"`
+		Slack *struct {
+			Enabled  bool   `json:"enabled"`
+			BotToken string `json:"bot_token"`
+			AppToken string `json:"app_token"`
+		} `json:"slack"`
+		WhatsApp *struct {
+			Enabled   bool   `json:"enabled"`
+			BridgeURL string `json:"bridge_url"`
+		} `json:"whatsapp"`
 		Email *struct {
 			Enabled  bool   `json:"enabled"`
 			SMTPHost string `json:"smtp_host"`
@@ -615,6 +624,23 @@ func handleChannelsSet(w http.ResponseWriter, r *http.Request) {
 		if req.Discord.Token != "" && !strings.HasPrefix(req.Discord.Token, "••") {
 			cfg.Channels.Discord.Token = req.Discord.Token
 			updateEnvFile("DISCORD_BOT_TOKEN", req.Discord.Token)
+		}
+	}
+	if req.Slack != nil {
+		cfg.Channels.Slack.Enabled = req.Slack.Enabled
+		if req.Slack.BotToken != "" && !strings.HasPrefix(req.Slack.BotToken, "••") {
+			cfg.Channels.Slack.BotToken = req.Slack.BotToken
+			updateEnvFile("SLACK_BOT_TOKEN", req.Slack.BotToken)
+		}
+		if req.Slack.AppToken != "" && !strings.HasPrefix(req.Slack.AppToken, "••") {
+			cfg.Channels.Slack.AppToken = req.Slack.AppToken
+			updateEnvFile("SLACK_APP_TOKEN", req.Slack.AppToken)
+		}
+	}
+	if req.WhatsApp != nil {
+		cfg.Channels.WhatsApp.Enabled = req.WhatsApp.Enabled
+		if req.WhatsApp.BridgeURL != "" {
+			cfg.Channels.WhatsApp.BridgeURL = req.WhatsApp.BridgeURL
 		}
 	}
 	if req.Email != nil {
@@ -1048,6 +1074,326 @@ func handleSkillRemove(w http.ResponseWriter, r *http.Request) {
 
 // startTime is recorded when the wizard process starts.
 var startTime = time.Now()
+
+// ---------- Tools, Gateway & Advanced Configuration ----------
+
+func handleToolsGet(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true,
+		"web": map[string]interface{}{
+			"brave": map[string]interface{}{
+				"enabled":    cfg.Tools.Web.Brave.Enabled,
+				"api_key":    maskKey(cfg.Tools.Web.Brave.APIKey),
+				"max_results": cfg.Tools.Web.Brave.MaxResults,
+			},
+			"duckduckgo": map[string]interface{}{
+				"enabled":     cfg.Tools.Web.DuckDuckGo.Enabled,
+				"max_results": cfg.Tools.Web.DuckDuckGo.MaxResults,
+			},
+		},
+		"curator": map[string]interface{}{
+			"enabled":            cfg.Tools.Curator.Enabled,
+			"stale_after_days":   cfg.Tools.Curator.StaleAfterDays,
+			"archive_after_days": cfg.Tools.Curator.ArchiveAfterDays,
+			"check_interval_mins": cfg.Tools.Curator.CheckIntervalMins,
+		},
+		"delegation": map[string]interface{}{
+			"enabled":        cfg.Tools.Delegation.Enabled,
+			"max_concurrent": cfg.Tools.Delegation.MaxConcurrent,
+			"max_tasks":      cfg.Tools.Delegation.MaxTasks,
+			"budget_tokens":  cfg.Tools.Delegation.BudgetTokens,
+		},
+	})
+}
+
+func handleToolsSet(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Web *struct {
+			Brave *struct {
+				Enabled    bool   `json:"enabled"`
+				APIKey     string `json:"api_key"`
+				MaxResults int    `json:"max_results"`
+			} `json:"brave"`
+			DuckDuckGo *struct {
+				Enabled     bool `json:"enabled"`
+				MaxResults int  `json:"max_results"`
+			} `json:"duckduckgo"`
+		} `json:"web"`
+		Curator *struct {
+			Enabled            bool `json:"enabled"`
+			StaleAfterDays     int  `json:"stale_after_days"`
+			ArchiveAfterDays   int  `json:"archive_after_days"`
+			CheckIntervalMins  int  `json:"check_interval_mins"`
+		} `json:"curator"`
+		Delegation *struct {
+			Enabled        bool `json:"enabled"`
+			MaxConcurrent  int  `json:"max_concurrent"`
+			MaxTasks       int  `json:"max_tasks"`
+			BudgetTokens   int  `json:"budget_tokens"`
+		} `json:"delegation"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	if req.Web != nil {
+		if req.Web.Brave != nil {
+			cfg.Tools.Web.Brave.Enabled = req.Web.Brave.Enabled
+			if req.Web.Brave.APIKey != "" && !strings.HasPrefix(req.Web.Brave.APIKey, "••") {
+				cfg.Tools.Web.Brave.APIKey = req.Web.Brave.APIKey
+				updateEnvFile("BRAVE_SEARCH_API_KEY", req.Web.Brave.APIKey)
+			}
+			if req.Web.Brave.MaxResults > 0 {
+				cfg.Tools.Web.Brave.MaxResults = req.Web.Brave.MaxResults
+			}
+		}
+		if req.Web.DuckDuckGo != nil {
+			cfg.Tools.Web.DuckDuckGo.Enabled = req.Web.DuckDuckGo.Enabled
+			if req.Web.DuckDuckGo.MaxResults > 0 {
+				cfg.Tools.Web.DuckDuckGo.MaxResults = req.Web.DuckDuckGo.MaxResults
+			}
+		}
+	}
+	if req.Curator != nil {
+		cfg.Tools.Curator.Enabled = req.Curator.Enabled
+		if req.Curator.StaleAfterDays > 0 {
+			cfg.Tools.Curator.StaleAfterDays = req.Curator.StaleAfterDays
+		}
+		if req.Curator.ArchiveAfterDays > 0 {
+			cfg.Tools.Curator.ArchiveAfterDays = req.Curator.ArchiveAfterDays
+		}
+		if req.Curator.CheckIntervalMins > 0 {
+			cfg.Tools.Curator.CheckIntervalMins = req.Curator.CheckIntervalMins
+		}
+	}
+	if req.Delegation != nil {
+		cfg.Tools.Delegation.Enabled = req.Delegation.Enabled
+		if req.Delegation.MaxConcurrent > 0 {
+			cfg.Tools.Delegation.MaxConcurrent = req.Delegation.MaxConcurrent
+		}
+		if req.Delegation.MaxTasks > 0 {
+			cfg.Tools.Delegation.MaxTasks = req.Delegation.MaxTasks
+		}
+		if req.Delegation.BudgetTokens > 0 {
+			cfg.Tools.Delegation.BudgetTokens = req.Delegation.BudgetTokens
+		}
+	}
+
+	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Tools settings saved"})
+}
+
+func handleGatewayGet(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":             true,
+		"host":           cfg.Gateway.Host,
+		"port":           cfg.Gateway.Port,
+		"bridge_secret":  maskKey(cfg.Gateway.BridgeSecret),
+	})
+}
+
+func handleGatewaySet(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Host string `json:"host"`
+		Port int    `json:"port"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	if req.Host != "" {
+		cfg.Gateway.Host = req.Host
+	}
+	if req.Port > 0 && req.Port < 65536 {
+		cfg.Gateway.Port = req.Port
+	}
+
+	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Gateway settings saved"})
+}
+
+func handleAdvancedGet(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true,
+		"rag": map[string]interface{}{
+			"enabled":         cfg.RAG.Enabled,
+			"m":               cfg.RAG.M,
+			"ef_construction": cfg.RAG.EfConstruction,
+			"ef_search":       cfg.RAG.EfSearch,
+		},
+		"nudge": map[string]interface{}{
+			"enabled":         cfg.Nudge.Enabled,
+			"memory_interval": cfg.Nudge.MemoryInterval,
+			"skill_interval":  cfg.Nudge.SkillInterval,
+		},
+		"devices": map[string]interface{}{
+			"enabled":    cfg.Devices.Enabled,
+			"monitor_usb": cfg.Devices.MonitorUSB,
+		},
+		"routing": map[string]interface{}{
+			"light_model": cfg.Agents.Routing.LightModel,
+			"threshold":   cfg.Agents.Routing.Threshold,
+		},
+		"search_enabled":       cfg.Agents.Defaults.SearchEnabled,
+		"restrict_to_workspace": cfg.Agents.Defaults.RestrictToWorkspace,
+		"max_tool_iterations":  cfg.Agents.Defaults.MaxToolIterations,
+	})
+}
+
+func handleAdvancedSet(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		RAG *struct {
+			Enabled         bool `json:"enabled"`
+			M               int  `json:"m"`
+			EfConstruction  int  `json:"ef_construction"`
+			EfSearch        int  `json:"ef_search"`
+		} `json:"rag"`
+		Nudge *struct {
+			Enabled         bool `json:"enabled"`
+			MemoryInterval  int  `json:"memory_interval"`
+			SkillInterval   int  `json:"skill_interval"`
+		} `json:"nudge"`
+		Devices *struct {
+			Enabled    bool `json:"enabled"`
+			MonitorUSB bool `json:"monitor_usb"`
+		} `json:"devices"`
+		Routing *struct {
+			LightModel string  `json:"light_model"`
+			Threshold  float64 `json:"threshold"`
+		} `json:"routing"`
+		SearchEnabled       *bool `json:"search_enabled"`
+		RestrictToWorkspace *bool `json:"restrict_to_workspace"`
+		MaxToolIterations   *int  `json:"max_tool_iterations"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	if req.RAG != nil {
+		cfg.RAG.Enabled = req.RAG.Enabled
+		if req.RAG.M > 0 {
+			cfg.RAG.M = req.RAG.M
+		}
+		if req.RAG.EfConstruction > 0 {
+			cfg.RAG.EfConstruction = req.RAG.EfConstruction
+		}
+		if req.RAG.EfSearch > 0 {
+			cfg.RAG.EfSearch = req.RAG.EfSearch
+		}
+	}
+	if req.Nudge != nil {
+		cfg.Nudge.Enabled = req.Nudge.Enabled
+		if req.Nudge.MemoryInterval > 0 {
+			cfg.Nudge.MemoryInterval = req.Nudge.MemoryInterval
+		}
+		if req.Nudge.SkillInterval > 0 {
+			cfg.Nudge.SkillInterval = req.Nudge.SkillInterval
+		}
+	}
+	if req.Devices != nil {
+		cfg.Devices.Enabled = req.Devices.Enabled
+		cfg.Devices.MonitorUSB = req.Devices.MonitorUSB
+	}
+	if req.Routing != nil {
+		cfg.Agents.Routing.LightModel = req.Routing.LightModel
+		if req.Routing.Threshold > 0 {
+			cfg.Agents.Routing.Threshold = req.Routing.Threshold
+		}
+	}
+	if req.SearchEnabled != nil {
+		cfg.Agents.Defaults.SearchEnabled = *req.SearchEnabled
+	}
+	if req.RestrictToWorkspace != nil {
+		cfg.Agents.Defaults.RestrictToWorkspace = *req.RestrictToWorkspace
+	}
+	if req.MaxToolIterations != nil && *req.MaxToolIterations > 0 {
+		cfg.Agents.Defaults.MaxToolIterations = *req.MaxToolIterations
+	}
+
+	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Advanced settings saved"})
+}
 
 // systemUptime returns the system uptime as a human-readable string.
 // Reads /proc/uptime on Linux, falls back to wizard process uptime.

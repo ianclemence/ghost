@@ -6,54 +6,32 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Ghost Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* ═══════════════════════════════════════════════════
+           SHARED FOUNDATION
+           ═══════════════════════════════════════════════════ */
         :root {
-            --bg-body: #09090b;
-            --bg-card: #18181b;
-            --bg-card-inner: #09090b;
-            --bg-input: #09090b;
-            --border: #27272a;
-            --border-subtle: #1e1e22;
-            --border-focus: #4ade80;
-            --accent: #22c55e;
-            --accent-light: #4ade80;
-            --accent-glow: rgba(74, 222, 128, 0.08);
-            --accent-glow-strong: rgba(74, 222, 128, 0.15);
-            --text-primary: #fafafa;
-            --text-secondary: #a1a1aa;
-            --text-muted: #71717a;
-            --text-dim: #52525b;
-            --error: #ef4444;
-            --error-bg: #450a0a;
-            --error-border: rgba(239, 68, 68, 0.4);
-            --success: #4ade80;
-            --success-bg: #14532d;
-            --warning: #fb923c;
-            --warning-bg: #451a03;
-            --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-            --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
-            --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
-            --radius-sm: 8px;
-            --radius-md: 12px;
-            --radius-lg: 16px;
-            --radius-pill: 999px;
             --space-xs: 4px;
             --space-sm: 8px;
             --space-md: 16px;
             --space-lg: 24px;
             --space-xl: 32px;
             --space-2xl: 48px;
-            --transition-fast: 120ms ease;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --radius-pill: 999px;
+            --transition-fast: 100ms ease;
             --transition-base: 180ms ease;
-            --transition-slow: 280ms ease;
+            --transition-slow: 400ms cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html { -webkit-text-size-adjust: 100%; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-body);
-            color: var(--text-primary);
             min-height: 100vh;
             min-height: 100dvh;
             padding-top: env(safe-area-inset-top);
@@ -62,62 +40,124 @@
             -moz-osx-font-smoothing: grayscale;
         }
 
-        ::selection {
-            background: var(--accent-glow-strong);
-            color: var(--text-primary);
+        .hidden { display: none !important; }
+
+        /* ═══════════════════════════════════════════════════
+           WIZARD WORLD — Radar Command
+           Accent: electric cyan (#00e5ff) + violet ghost (#a855f7)
+           ═══════════════════════════════════════════════════ */
+        .world-wizard {
+            font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
+            background: #06060e;
+            color: #c8d6e5;
+            overflow-x: hidden;
         }
 
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
-        ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
-
-        .container { max-width: 640px; margin: 0 auto; padding: var(--space-2xl) var(--space-lg); }
-
-        /* ── Cards ── */
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: var(--space-xl);
-            margin-bottom: var(--space-lg);
-            box-shadow: var(--shadow-sm);
-            transition: border-color var(--transition-base), box-shadow var(--transition-base);
-        }
-        .card-active {
-            border-top: 2px solid var(--accent);
-        }
-        .card-inner {
-            background: var(--bg-card-inner);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: var(--space-lg);
+        /* Radar background grid */
+        .world-wizard::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(0, 229, 255, 0.025) 39px, rgba(0, 229, 255, 0.025) 40px),
+                repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(0, 229, 255, 0.025) 39px, rgba(0, 229, 255, 0.025) 40px);
+            pointer-events: none;
+            z-index: 0;
         }
 
-        /* ── Typography ── */
-        h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: var(--space-sm); line-height: 1.2; }
-        h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: var(--space-sm); line-height: 1.3; }
-        h3 { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: var(--space-md); }
-        p { color: var(--text-muted); font-size: 14px; line-height: 1.6; }
-        .help-text { margin-bottom: var(--space-sm); }
-        .subtitle { color: var(--text-muted); font-size: 15px; line-height: 1.5; }
+        /* Radar pulse rings — the signature element */
+        .world-wizard::after {
+            content: '';
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 200vmax;
+            height: 200vmax;
+            transform: translate(-50%, -50%);
+            background: repeating-radial-gradient(
+                circle at center,
+                transparent 0px,
+                transparent 58px,
+                rgba(0, 229, 255, 0.04) 58px,
+                rgba(0, 229, 255, 0.04) 60px
+            );
+            animation: radarPulse 6s linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+        @keyframes radarPulse {
+            from { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+            15% { opacity: 1; }
+            85% { opacity: 1; }
+            to { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
 
-        /* ── Logo ── */
-        .logo { text-align: center; margin-bottom: var(--space-2xl); }
-        .logo-icon {
-            width: 64px; height: 64px; margin: 0 auto var(--space-md);
-            background: linear-gradient(135deg, #4ade80, #22c55e);
-            border-radius: 18px;
+        .world-wizard .container {
+            max-width: 520px;
+            margin: 0 auto;
+            padding: var(--space-2xl) var(--space-lg);
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ── Wizard Logo ── */
+        .world-wizard .logo {
+            text-align: center;
+            margin-bottom: var(--space-2xl);
+        }
+        .world-wizard .logo-icon {
+            width: 68px; height: 68px;
+            margin: 0 auto var(--space-md);
+            background: #0d0d18;
+            border: 2px solid rgba(0, 229, 255, 0.2);
+            border-radius: 16px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 32px; color: #052e16; font-weight: 800;
-            box-shadow: 0 4px 24px rgba(34, 197, 94, 0.25);
+            font-size: 32px; color: #00e5ff; font-weight: 700;
+            font-family: 'Space Grotesk', sans-serif;
+            position: relative;
+            animation: logoAppear 800ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
         }
-        .logo h1 { margin-bottom: 2px; }
-        .logo h1 span { color: var(--accent-light); }
-        .logo .tagline { color: var(--text-dim); font-size: 13px; margin-top: var(--space-xs); letter-spacing: 0.02em; }
+        .world-wizard .logo-icon::before {
+            content: '';
+            position: absolute;
+            inset: -6px;
+            border-radius: 20px;
+            background: conic-gradient(from 0deg, transparent 0deg, rgba(0, 229, 255, 0.15) 30deg, transparent 60deg);
+            animation: radarSweep 4s linear infinite;
+            z-index: -1;
+        }
+        @keyframes radarSweep {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes logoAppear {
+            from { opacity: 0; transform: scale(0.85); filter: blur(6px); }
+            to { opacity: 1; transform: scale(1); filter: blur(0); }
+        }
+        .world-wizard .logo h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 28px; font-weight: 700; letter-spacing: -0.03em;
+            margin-bottom: 2px; line-height: 1.2;
+            animation: fadeSlideUp 600ms 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+        }
+        .world-wizard .logo h1 span { color: #00e5ff; }
+        .world-wizard .logo .tagline {
+            color: #4a5568; font-size: 12px; margin-top: var(--space-xs);
+            letter-spacing: 0.06em; text-transform: uppercase;
+            font-family: 'IBM Plex Mono', monospace;
+            animation: fadeSlideUp 600ms 350ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+        }
 
-        /* ── Step Indicator (numbered progress bar) ── */
-        .step-indicator {
+        @keyframes fadeSlideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Wizard Step Indicator ── */
+        .world-wizard .step-indicator {
             display: none;
             align-items: flex-start;
             justify-content: center;
@@ -125,495 +165,788 @@
             margin-bottom: var(--space-2xl);
             padding: 0 var(--space-md);
         }
-        .step-indicator.visible { display: flex; }
-        .step-node {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            position: relative;
-            flex: 1;
-            max-width: 120px;
+        .world-wizard .step-indicator.visible { display: flex; }
+        .world-wizard .step-node {
+            display: flex; flex-direction: column; align-items: center;
+            position: relative; flex: 1; max-width: 100px;
         }
-        .step-circle {
+        .world-wizard .step-circle {
             width: 36px; height: 36px;
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            font-size: 14px; font-weight: 700;
-            background: var(--bg-card);
-            border: 2px solid var(--border);
-            color: var(--text-dim);
-            transition: all var(--transition-base);
-            position: relative;
-            z-index: 2;
+            font-size: 13px; font-weight: 600;
+            font-family: 'IBM Plex Mono', monospace;
+            background: rgba(0, 229, 255, 0.05);
+            border: 1.5px solid rgba(0, 229, 255, 0.15);
+            color: #4a5568;
+            transition: all 300ms cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative; z-index: 2;
         }
-        .step-node.active .step-circle {
-            background: var(--accent);
-            border-color: var(--accent);
-            color: #052e16;
-            box-shadow: 0 0 0 4px var(--accent-glow);
+        .world-wizard .step-node.active .step-circle {
+            background: rgba(0, 229, 255, 0.1);
+            border-color: #00e5ff;
+            color: #00e5ff;
+            box-shadow: 0 0 16px rgba(0, 229, 255, 0.2);
         }
-        .step-node.completed .step-circle {
-            background: var(--accent);
-            border-color: var(--accent);
-            color: #052e16;
+        .world-wizard .step-node.completed .step-circle {
+            background: #00e5ff;
+            border-color: #00e5ff;
+            color: #06060e;
         }
-        .step-label {
-            margin-top: var(--space-sm);
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
+        .world-wizard .step-label {
+            margin-top: 6px;
+            font-size: 10px; font-weight: 500;
+            color: #3a4a5c;
+            text-transform: uppercase; letter-spacing: 0.06em;
             text-align: center;
-            transition: color var(--transition-base);
+            font-family: 'IBM Plex Mono', monospace;
+            transition: color 300ms;
         }
-        .step-node.active .step-label { color: var(--accent-light); }
-        .step-node.completed .step-label { color: var(--text-secondary); }
-        .step-connector {
-            flex: 1;
-            height: 2px;
-            background: var(--border);
+        .world-wizard .step-node.active .step-label { color: #00e5ff; }
+        .world-wizard .step-node.completed .step-label { color: #5a6a7c; }
+        .world-wizard .step-connector {
+            flex: 1; height: 1.5px;
+            background: rgba(0, 229, 255, 0.1);
             margin-top: 17px;
-            transition: background var(--transition-base);
-            min-width: 24px;
+            transition: background 300ms;
+            min-width: 20px;
         }
-        .step-connector.filled { background: var(--accent); }
+        .world-wizard .step-connector.filled {
+            background: #00e5ff;
+            box-shadow: 0 0 6px rgba(0, 229, 255, 0.3);
+        }
 
-        /* ── Forms ── */
-        .form-group { margin-bottom: var(--space-md); }
-        label {
-            display: block; margin-bottom: 6px;
-            font-size: 13px; font-weight: 500; color: var(--text-secondary);
+        /* ── Wizard Cards ── */
+        .world-wizard .card {
+            background: rgba(10, 10, 22, 0.85);
+            border: 1px solid rgba(0, 229, 255, 0.08);
+            border-radius: var(--radius-md);
+            padding: var(--space-xl);
+            margin-bottom: var(--space-lg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            transition: border-color 300ms;
         }
-        input, select {
-            width: 100%;
-            padding: 12px 14px;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
+        .world-wizard .card-active {
+            border-color: rgba(0, 229, 255, 0.18);
+        }
+        .world-wizard .card-inner {
+            background: rgba(0, 229, 255, 0.03);
+            border: 1px solid rgba(0, 229, 255, 0.08);
             border-radius: var(--radius-sm);
-            color: var(--text-primary);
-            font-size: 14px;
-            font-family: inherit;
+            padding: var(--space-lg);
+        }
+
+        /* ── Wizard Typography ── */
+        .world-wizard h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 24px; font-weight: 700; letter-spacing: -0.02em;
+            margin-bottom: var(--space-sm); line-height: 1.2;
+            color: #e8edf2;
+        }
+        .world-wizard h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 20px; font-weight: 700; letter-spacing: -0.01em;
+            margin-bottom: var(--space-sm); line-height: 1.3;
+            color: #e8edf2;
+        }
+        .world-wizard h3 {
+            font-size: 10px; font-weight: 600;
+            color: #5a6a7c;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            margin-bottom: var(--space-md);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+        .world-wizard p { color: #6a7a8c; font-size: 13px; line-height: 1.6; }
+        .world-wizard .subtitle { color: #6a7a8c; font-size: 14px; line-height: 1.5; }
+        .world-wizard .help-text { margin-bottom: var(--space-sm); font-size: 12px; }
+
+        /* ── Wizard Forms ── */
+        .world-wizard .form-group { margin-bottom: var(--space-md); }
+        .world-wizard label {
+            display: block; margin-bottom: 5px;
+            font-size: 11px; font-weight: 500; color: #7a8a9c;
+            font-family: 'IBM Plex Mono', monospace;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .world-wizard input, .world-wizard select {
+            width: 100%;
+            padding: 10px 12px;
+            background: rgba(0, 229, 255, 0.03);
+            border: 1px solid rgba(0, 229, 255, 0.12);
+            border-radius: var(--radius-sm);
+            color: #e8edf2;
+            font-size: 13px;
+            font-family: 'IBM Plex Mono', monospace;
             outline: none;
-            transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+            transition: border-color 200ms, box-shadow 200ms;
         }
-        input:focus, select:focus {
-            border-color: var(--border-focus);
-            box-shadow: 0 0 0 3px var(--accent-glow);
+        .world-wizard input:focus, .world-wizard select:focus {
+            border-color: #00e5ff;
+            box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.08), 0 0 12px rgba(0, 229, 255, 0.06);
         }
-        input::placeholder { color: var(--text-dim); }
-        input.error-input {
-            border-color: var(--error-border);
-            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        .world-wizard input::placeholder { color: #2a3a4c; }
+        .world-wizard input.error-input {
+            border-color: rgba(239, 68, 68, 0.5);
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.06);
         }
-        select {
+        .world-wizard select {
             cursor: pointer;
             appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2371717a' d='M6 8.5L1.5 4h9z'/%3E%3C/svg%3E");
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235a6a7c' d='M6 8.5L1.5 4h9z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
             background-position: right 12px center;
             padding-right: 36px;
         }
 
-        /* ── Buttons ── */
-        .btn-row { display: flex; gap: var(--space-md); margin-top: var(--space-xl); }
-        .btn {
+        /* ── Wizard Buttons ── */
+        .world-wizard .btn-row { display: flex; gap: var(--space-md); margin-top: var(--space-xl); }
+        .world-wizard .btn {
             flex: 1;
-            padding: 14px var(--space-lg);
+            padding: 12px var(--space-lg);
             border: none;
             border-radius: var(--radius-sm);
-            font-size: 14px;
-            font-weight: 600;
-            font-family: inherit;
+            font-size: 12px; font-weight: 600;
+            font-family: 'IBM Plex Mono', monospace;
             cursor: pointer;
-            transition: all var(--transition-fast);
-            min-height: 48px;
+            transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+            min-height: 44px;
             display: flex; align-items: center; justify-content: center; gap: var(--space-sm);
+            text-transform: uppercase; letter-spacing: 0.04em;
         }
-        .btn:hover { transform: translateY(-1px); }
-        .btn:active { transform: translateY(0); }
-        .btn-primary {
-            background: var(--accent);
-            color: #052e16;
-            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.2);
+        .world-wizard .btn:hover { transform: translateY(-1px); }
+        .world-wizard .btn:active { transform: translateY(0); }
+        .world-wizard .btn-primary {
+            background: #00e5ff;
+            color: #06060e;
+            box-shadow: 0 2px 12px rgba(0, 229, 255, 0.2);
         }
-        .btn-primary:hover {
-            background: #16a34a;
-            box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);
+        .world-wizard .btn-primary:hover {
+            background: #33ebff;
+            box-shadow: 0 4px 20px rgba(0, 229, 255, 0.3);
         }
-        .btn-secondary {
-            background: var(--border);
-            color: var(--text-primary);
+        .world-wizard .btn-secondary {
+            background: rgba(0, 229, 255, 0.06);
+            color: #7a8a9c;
+            border: 1px solid rgba(0, 229, 255, 0.12);
         }
-        .btn-secondary:hover { background: #3f3f46; }
-        .btn-ghost {
+        .world-wizard .btn-secondary:hover {
+            background: rgba(0, 229, 255, 0.1);
+            color: #c8d6e5;
+        }
+        .world-wizard .btn-ghost {
             background: transparent;
-            color: var(--text-muted);
-            border: 1px solid var(--border);
+            color: #3a4a5c;
+            border: 1px solid rgba(0, 229, 255, 0.06);
         }
-        .btn-ghost:hover { color: var(--text-primary); border-color: var(--text-dim); }
-        .btn-danger {
-            background: var(--error);
+        .world-wizard .btn-ghost:hover { color: #7a8a9c; border-color: rgba(0, 229, 255, 0.15); }
+        .world-wizard .btn-danger {
+            background: #dc2626;
             color: #fff;
-            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
+            box-shadow: 0 2px 12px rgba(220, 38, 38, 0.2);
         }
-        .btn-danger:hover { background: #dc2626; }
-        .btn-small { flex: 0 0 auto; padding: 8px 16px; font-size: 12px; min-height: 36px; }
-        .btn[disabled] { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .btn-icon {
-            width: 36px; height: 36px; padding: 0; flex: 0 0 36px;
-            border-radius: var(--radius-sm); font-size: 14px;
+        .world-wizard .btn-danger:hover { background: #ef4444; }
+        .world-wizard .btn-small { flex: 0 0 auto; padding: 6px 14px; font-size: 11px; min-height: 32px; }
+        .world-wizard .btn[disabled] { opacity: 0.35; cursor: not-allowed; transform: none; }
+        .world-wizard .btn-icon {
+            width: 34px; height: 34px; padding: 0; flex: 0 0 34px;
+            border-radius: var(--radius-sm); font-size: 13px;
         }
 
-        /* ── Messages ── */
-        .error { color: var(--error); font-size: 13px; margin-top: var(--space-sm); }
-        .success { color: var(--success); font-size: 13px; margin-top: var(--space-sm); }
-        .muted { color: var(--text-dim); font-size: 12px; }
+        /* ── Wizard Messages ── */
+        .world-wizard .error { color: #f87171; font-size: 12px; margin-top: var(--space-sm); }
+        .world-wizard .success { color: #00e5ff; font-size: 12px; margin-top: var(--space-sm); }
+        .world-wizard .muted { color: #2a3a4c; font-size: 11px; }
 
-        /* ── Steps ── */
-        .step { display: none; }
-        .step.active { display: block; animation: fadeStepIn 180ms ease-out; }
-        @keyframes fadeStepIn {
-            from { opacity: 0; transform: translateY(6px); }
+        /* ── Wizard Steps ── */
+        .world-wizard .step { display: none; }
+        .world-wizard .step.active {
+            display: block;
+            animation: wizardStepIn 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes wizardStepIn {
+            from { opacity: 0; transform: translateY(12px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* ── WiFi ── */
-        .wifi-list-header {
+        /* ── Wizard WiFi ── */
+        .world-wizard .wifi-list-header {
             display: flex; align-items: center; justify-content: space-between;
             margin-bottom: var(--space-md);
         }
-        .wifi-count {
-            font-size: 12px; color: var(--text-dim); font-weight: 500;
-            background: var(--bg-input); padding: 4px 10px; border-radius: var(--radius-pill);
-            border: 1px solid var(--border);
+        .world-wizard .wifi-count {
+            font-size: 11px; color: #4a5568; font-weight: 500;
+            background: rgba(0, 229, 255, 0.04);
+            padding: 3px 8px; border-radius: var(--radius-pill);
+            border: 1px solid rgba(0, 229, 255, 0.08);
+            font-family: 'IBM Plex Mono', monospace;
         }
-        .wifi-item {
+        .world-wizard .wifi-item {
             display: flex; align-items: center; gap: var(--space-md);
-            padding: 14px var(--space-md); margin-bottom: var(--space-sm);
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
+            padding: 10px var(--space-md); margin-bottom: var(--space-xs);
+            background: rgba(0, 229, 255, 0.02);
+            border: 1px solid rgba(0, 229, 255, 0.05);
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            transition: all var(--transition-fast);
+            transition: all 150ms;
+            animation: wifiSlideIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
         }
-        .wifi-item:hover { border-color: var(--text-dim); background: #0f0f12; }
-        .wifi-item.selected {
-            border-color: var(--accent);
-            background: var(--accent-glow);
-            box-shadow: 0 0 0 1px var(--accent-glow);
+        .world-wizard .wifi-item:nth-child(1) { animation-delay: 0ms; }
+        .world-wizard .wifi-item:nth-child(2) { animation-delay: 40ms; }
+        .world-wizard .wifi-item:nth-child(3) { animation-delay: 80ms; }
+        .world-wizard .wifi-item:nth-child(4) { animation-delay: 120ms; }
+        .world-wizard .wifi-item:nth-child(5) { animation-delay: 160ms; }
+        .world-wizard .wifi-item:nth-child(n+6) { animation-delay: 200ms; }
+        @keyframes wifiSlideIn {
+            from { opacity: 0; transform: translateX(-6px); }
+            to { opacity: 1; transform: translateX(0); }
         }
-        .wifi-signal {
-            display: flex; align-items: flex-end; gap: 2px; height: 16px;
+        .world-wizard .wifi-item:hover {
+            border-color: rgba(0, 229, 255, 0.15);
+            background: rgba(0, 229, 255, 0.04);
         }
-        .wifi-bar {
-            width: 3px; border-radius: 1px; background: var(--text-dim);
-            transition: background var(--transition-fast);
+        .world-wizard .wifi-item.selected {
+            border-color: rgba(0, 229, 255, 0.35);
+            background: rgba(0, 229, 255, 0.06);
         }
-        .wifi-bar:nth-child(1) { height: 4px; }
-        .wifi-bar:nth-child(2) { height: 7px; }
-        .wifi-bar:nth-child(3) { height: 10px; }
-        .wifi-bar:nth-child(4) { height: 14px; }
-        .wifi-item.selected .wifi-bar { background: var(--accent); }
-        .wifi-ssid { flex: 1; font-size: 14px; font-weight: 500; }
-        .wifi-lock { font-size: 11px; color: var(--text-dim); }
+        .world-wizard .wifi-signal {
+            display: flex; align-items: flex-end; gap: 2px; height: 14px;
+        }
+        .world-wizard .wifi-bar {
+            width: 2.5px; border-radius: 1px; background: #2a3a4c;
+            transition: background 200ms;
+        }
+        .world-wizard .wifi-bar:nth-child(1) { height: 3px; }
+        .world-wizard .wifi-bar:nth-child(2) { height: 6px; }
+        .world-wizard .wifi-bar:nth-child(3) { height: 9px; }
+        .world-wizard .wifi-bar:nth-child(4) { height: 13px; }
+        .world-wizard .wifi-item.selected .wifi-bar { background: #00e5ff; }
+        .world-wizard .wifi-ssid { flex: 1; font-size: 13px; font-weight: 500; color: #c8d6e5; }
+        .world-wizard .wifi-lock { font-size: 10px; color: #2a3a4c; }
 
-        /* ── Spinner ── */
-        .loading { text-align: center; padding: var(--space-xl) 0; color: var(--text-muted); }
-        .spinner {
-            width: 28px; height: 28px; margin: 0 auto var(--space-md);
-            border: 3px solid var(--border);
-            border-top-color: var(--accent);
+        /* ── Wizard Spinner ── */
+        .world-wizard .loading { text-align: center; padding: var(--space-xl) 0; color: #5a6a7c; font-size: 12px; }
+        .world-wizard .spinner {
+            width: 24px; height: 24px; margin: 0 auto var(--space-md);
+            border: 2px solid rgba(0, 229, 255, 0.1);
+            border-top-color: #00e5ff;
             border-radius: 50%;
             animation: spin 0.7s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ── Success Icon & Animation ── */
-        .success-icon-wrap {
+        /* ── Wizard Success ── */
+        .world-wizard .success-icon-wrap {
             width: 72px; height: 72px; margin: 0 auto var(--space-lg);
             position: relative;
         }
-        .success-circle {
+        .world-wizard .success-circle {
             width: 72px; height: 72px;
-            background: var(--success-bg);
+            background: rgba(0, 229, 255, 0.06);
+            border: 1.5px solid rgba(0, 229, 255, 0.25);
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            animation: scaleIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation: successPulse 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
-        @keyframes scaleIn {
-            from { transform: scale(0); opacity: 0; }
-            to { transform: scale(1); opacity: 1; }
+        @keyframes successPulse {
+            0% { transform: scale(0); opacity: 0; }
+            60% { transform: scale(1.08); }
+            100% { transform: scale(1); opacity: 1; }
         }
-        .success-check {
+        .world-wizard .success-check {
             width: 32px; height: 32px;
-            stroke: var(--accent);
-            stroke-width: 3;
+            stroke: #00e5ff;
+            stroke-width: 2.5;
             fill: none;
             stroke-linecap: round;
             stroke-linejoin: round;
         }
-        .success-check path {
+        .world-wizard .success-check path {
             stroke-dasharray: 40;
             stroke-dashoffset: 40;
             animation: drawCheck 400ms 200ms ease-out forwards;
         }
-        @keyframes drawCheck {
-            to { stroke-dashoffset: 0; }
-        }
+        @keyframes drawCheck { to { stroke-dashoffset: 0; } }
 
-        /* ── Pairing Code ── */
-        .pairing-code-wrap {
+        /* ── Wizard Pairing Code ── */
+        .world-wizard .pairing-code-wrap {
             display: flex; align-items: center; justify-content: center; gap: var(--space-sm);
             margin: var(--space-lg) 0;
         }
-        .pairing-code {
-            font-size: 28px; font-weight: 800; letter-spacing: 3px;
-            color: var(--accent-light); font-variant-numeric: tabular-nums;
-            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+        .world-wizard .pairing-code {
+            font-size: 28px; font-weight: 700; letter-spacing: 3px;
+            color: #00e5ff; font-variant-numeric: tabular-nums;
+            font-family: 'IBM Plex Mono', monospace;
         }
-        .copy-btn {
-            width: 40px; height: 40px; padding: 0;
-            background: var(--bg-input); border: 1px solid var(--border);
-            border-radius: var(--radius-sm); color: var(--text-muted);
+        .world-wizard .copy-btn {
+            width: 36px; height: 36px; padding: 0;
+            background: rgba(0, 229, 255, 0.04);
+            border: 1px solid rgba(0, 229, 255, 0.1);
+            border-radius: var(--radius-sm); color: #5a6a7c;
             cursor: pointer; display: flex; align-items: center; justify-content: center;
-            transition: all var(--transition-fast);
+            transition: all 150ms;
         }
-        .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
-        .copy-btn.copied { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
-        .copy-btn svg { width: 18px; height: 18px; }
+        .world-wizard .copy-btn:hover { border-color: #00e5ff; color: #00e5ff; }
+        .world-wizard .copy-btn.copied { border-color: #00e5ff; color: #00e5ff; background: rgba(0, 229, 255, 0.06); }
+        .world-wizard .copy-btn svg { width: 16px; height: 16px; }
 
-        /* ── Steps: hidden/shown ── */
-        .hidden { display: none !important; }
+        /* ── Wizard Code block ── */
+        .world-wizard .code {
+            background: rgba(0, 229, 255, 0.03);
+            padding: 3px 8px; border-radius: var(--radius-sm);
+            font-size: 12px; color: #7a8a9c;
+            font-family: 'IBM Plex Mono', monospace;
+            border: 1px solid rgba(0, 229, 255, 0.06);
+        }
 
-        /* ── Dashboard ── */
-        .topbar {
+        /* ── Wizard Toast ── */
+        .world-wizard .toast {
+            position: fixed; bottom: var(--space-xl); left: 50%; transform: translateX(-50%);
+            background: rgba(10, 10, 22, 0.92);
+            border: 1px solid rgba(0, 229, 255, 0.15);
+            border-radius: var(--radius-sm); padding: 10px 18px;
+            font-size: 12px; color: #c8d6e5;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+            z-index: 1000;
+            animation: toastIn 200ms ease-out forwards;
+            max-width: calc(100vw - 48px);
+            backdrop-filter: blur(12px);
+        }
+        .world-wizard .toast.error { border-color: rgba(239, 68, 68, 0.35); }
+        .world-wizard .toast.success { border-color: rgba(0, 229, 255, 0.35); }
+
+        /* ── Wizard Focus rings ── */
+        .world-wizard input:focus-visible, .world-wizard select:focus-visible {
+            outline: 2px solid #00e5ff;
+            outline-offset: 1px;
+        }
+        .world-wizard button:focus-visible {
+            outline: 2px solid #00e5ff;
+            outline-offset: 2px;
+        }
+
+        /* ── Wizard Selection ── */
+        .world-wizard ::selection {
+            background: rgba(0, 229, 255, 0.15);
+            color: #e8edf2;
+        }
+
+        /* ── Wizard Scrollbar ── */
+        .world-wizard ::-webkit-scrollbar { width: 5px; height: 5px; }
+        .world-wizard ::-webkit-scrollbar-track { background: transparent; }
+        .world-wizard ::-webkit-scrollbar-thumb { background: rgba(0, 229, 255, 0.15); border-radius: var(--radius-pill); }
+        .world-wizard ::-webkit-scrollbar-thumb:hover { background: rgba(0, 229, 255, 0.25); }
+
+        /* ═══════════════════════════════════════════════════
+           DASHBOARD WORLD — Command Center
+           Accent: electric cyan (#00e5ff) + violet ghost (#a855f7)
+           ═══════════════════════════════════════════════════ */
+        .world-dashboard {
+            font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
+            background: #08080f;
+            color: #c8d6e5;
+        }
+
+        .world-dashboard .container { max-width: 640px; margin: 0 auto; padding: var(--space-2xl) var(--space-lg); }
+
+        /* ── Dashboard Topbar ── */
+        .world-dashboard .topbar {
             display: flex; align-items: center; justify-content: space-between;
-            padding: var(--space-md) var(--space-lg);
-            border-bottom: 1px solid var(--border);
-            position: sticky; top: 0; background: var(--bg-body); z-index: 100;
+            padding: 0 var(--space-lg);
+            border-bottom: 1px solid rgba(0, 229, 255, 0.1);
+            position: sticky; top: 0;
+            background: rgba(8, 8, 15, 0.95);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            background: rgba(9, 9, 11, 0.85);
+            z-index: 100;
+            height: 48px;
         }
-        .topbar .brand { font-size: 16px; font-weight: 700; }
-        .topbar .brand span { color: var(--accent-light); }
-        .topbar-center {
-            display: flex; align-items: center; gap: var(--space-sm);
-            font-size: 13px; color: var(--text-dim);
+        .world-dashboard .topbar .brand {
+            font-size: 13px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.06em;
+            font-family: 'Space Grotesk', sans-serif;
+            color: #e8edf2;
         }
-        .status-dot {
-            width: 8px; height: 8px; border-radius: 50%;
-            background: var(--accent);
-            box-shadow: 0 0 6px var(--accent);
-            animation: pulse 2s ease-in-out infinite;
+        .world-dashboard .topbar .brand span { color: #a855f7; }
+        .world-dashboard .topbar-center {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 10px; color: #5a6a7c;
+            text-transform: uppercase; letter-spacing: 0.08em;
         }
-        @keyframes pulse {
+        .world-dashboard .status-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #00e5ff;
+            box-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
+            animation: statusPulse 2s ease-in-out infinite;
+        }
+        @keyframes statusPulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
-        .nav-right { display: flex; align-items: center; gap: var(--space-md); }
+        .world-dashboard .nav-right { display: flex; align-items: center; gap: var(--space-md); }
 
-        .tab-bar {
-            display: flex; gap: var(--space-xs); padding: var(--space-sm) var(--space-md);
-            border-bottom: 1px solid var(--border); overflow-x: auto;
-            position: sticky; top: 57px; background: rgba(9, 9, 11, 0.85);
+        /* ── Dashboard Tabs ── */
+        .world-dashboard .tab-bar {
+            display: flex; gap: 0; padding: 0 var(--space-md);
+            border-bottom: 1px solid rgba(0, 229, 255, 0.06);
+            overflow-x: auto;
+            position: sticky; top: 48px;
+            background: rgba(8, 8, 15, 0.95);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             z-index: 99;
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
-        .tab-bar::-webkit-scrollbar { display: none; }
-        .tab {
-            padding: 10px 16px; border-radius: var(--radius-sm);
-            font-size: 13px; font-weight: 600;
-            color: var(--text-muted); cursor: pointer; white-space: nowrap;
-            border: 1px solid transparent;
-            transition: all var(--transition-fast);
+        .world-dashboard .tab-bar::-webkit-scrollbar { display: none; }
+        .world-dashboard .tab {
+            padding: 10px 14px;
+            font-size: 10px; font-weight: 600;
+            color: #3a4a5c; cursor: pointer; white-space: nowrap;
+            border-bottom: 1.5px solid transparent;
+            transition: color 150ms, border-color 150ms;
+            text-transform: uppercase; letter-spacing: 0.08em;
             min-height: 40px;
             display: flex; align-items: center;
+            margin-bottom: -1px;
         }
-        .tab:hover { color: var(--text-primary); background: var(--bg-card); }
-        .tab.active {
-            background: var(--accent); color: #052e16;
-            border-color: var(--accent);
+        .world-dashboard .tab:hover { color: #7a8a9c; }
+        .world-dashboard .tab.active {
+            color: #00e5ff;
+            border-bottom-color: #00e5ff;
         }
 
-        .tab-content { display: none; padding: var(--space-lg) var(--space-md); max-width: 960px; margin: 0 auto; }
-        .tab-content.active { display: block; animation: fadeStepIn 180ms ease-out; }
+        /* ── Dashboard Tab Content ── */
+        .world-dashboard .tab-content { display: none; padding: var(--space-lg) var(--space-md); max-width: 960px; margin: 0 auto; }
+        .world-dashboard .tab-content.active { display: block; }
+
+        /* ── Dashboard Cards ── */
+        .world-dashboard .card {
+            background: rgba(10, 10, 20, 0.6);
+            border: 1px solid rgba(0, 229, 255, 0.06);
+            border-radius: var(--radius-sm);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-md);
+        }
+        .world-dashboard .card h3 {
+            font-size: 10px; font-weight: 600;
+            color: #a855f7;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            margin-bottom: var(--space-md);
+            padding-bottom: var(--space-sm);
+            border-bottom: 1px solid rgba(0, 229, 255, 0.05);
+            font-family: 'IBM Plex Mono', monospace;
+        }
 
         /* ── Dashboard Grid ── */
-        .dash-grid {
+        .world-dashboard .dash-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: var(--space-md);
+            gap: 1px;
+            background: rgba(0, 229, 255, 0.04);
+            border: 1px solid rgba(0, 229, 255, 0.06);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
         }
         @media (max-width: 700px) {
-            .dash-grid { grid-template-columns: repeat(2, 1fr); }
+            .world-dashboard .dash-grid { grid-template-columns: repeat(2, 1fr); }
         }
-        .stat-card {
-            background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: var(--radius-md); padding: var(--space-lg);
-            transition: border-color var(--transition-fast);
+        .world-dashboard .stat-card {
+            background: rgba(10, 10, 20, 0.8);
+            padding: var(--space-lg);
         }
-        .stat-card:hover { border-color: var(--text-dim); }
-        .stat-card .label {
-            font-size: 11px; color: var(--text-dim);
-            text-transform: uppercase; letter-spacing: 0.06em;
-            margin-bottom: var(--space-sm); font-weight: 600;
+        .world-dashboard .stat-card .label {
+            font-size: 9px; color: #4a5568;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            margin-bottom: var(--space-sm);
+            font-family: 'IBM Plex Mono', monospace;
         }
-        .stat-card .value {
-            font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
-            line-height: 1.1;
+        .world-dashboard .stat-card .value {
+            font-size: 24px; font-weight: 700;
+            letter-spacing: -0.02em; line-height: 1.1;
+            color: #e8edf2;
+            font-family: 'Space Grotesk', sans-serif;
         }
-        .stat-card .value small {
-            font-size: 13px; color: var(--text-dim); font-weight: 400;
+        .world-dashboard .stat-card .value small {
+            font-size: 10px; color: #4a5568; font-weight: 400;
             margin-left: var(--space-xs);
+            font-family: 'IBM Plex Mono', monospace;
         }
 
-        .dash-two-col {
+        .world-dashboard .dash-two-col {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: var(--space-lg);
-            margin-top: var(--space-lg);
+            gap: var(--space-md);
+            margin-top: var(--space-md);
         }
         @media (max-width: 700px) {
-            .dash-two-col { grid-template-columns: 1fr; }
+            .world-dashboard .dash-two-col { grid-template-columns: 1fr; }
         }
 
-        .service-row {
+        /* ── Dashboard Service Rows ── */
+        .world-dashboard .service-row {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--border-subtle);
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(0, 229, 255, 0.04);
+            font-size: 12px;
         }
-        .service-row:last-child { border-bottom: none; }
+        .world-dashboard .service-row:last-child { border-bottom: none; }
 
-        .badge {
-            padding: 3px 12px; border-radius: var(--radius-pill);
-            font-size: 11px; font-weight: 700;
-            letter-spacing: 0.02em;
+        /* ── Dashboard Badges ── */
+        .world-dashboard .badge {
+            padding: 2px 7px;
+            font-size: 9px; font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            border: 1px solid;
+            border-radius: 3px;
+            font-family: 'IBM Plex Mono', monospace;
         }
-        .badge.ok { background: var(--success-bg); color: var(--accent); }
-        .badge.fail { background: var(--error-bg); color: var(--error); }
-        .badge.warn { background: var(--warning-bg); color: var(--warning); }
+        .world-dashboard .badge.ok { border-color: rgba(0, 229, 255, 0.4); color: #00e5ff; }
+        .world-dashboard .badge.fail { border-color: rgba(239, 68, 68, 0.4); color: #f87171; }
+        .world-dashboard .badge.warn { border-color: rgba(251, 191, 36, 0.4); color: #fbbf24; }
 
-        .kv {
+        /* ── Dashboard KV ── */
+        .world-dashboard .kv {
             display: flex; justify-content: space-between;
-            padding: 10px 0; border-bottom: 1px solid var(--border-subtle);
-            font-size: 14px;
+            padding: 6px 0; border-bottom: 1px solid rgba(0, 229, 255, 0.03);
+            font-size: 11px;
         }
-        .kv:last-child { border-bottom: none; }
-        .kv .k { color: var(--text-muted); }
-        .kv .v { font-weight: 600; text-align: right; }
+        .world-dashboard .kv:last-child { border-bottom: none; }
+        .world-dashboard .kv .k { color: #4a5568; text-transform: uppercase; letter-spacing: 0.04em; }
+        .world-dashboard .kv .v { font-weight: 600; text-align: right; color: #c8d6e5; }
 
-        .log-box {
-            background: var(--bg-card-inner); border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: var(--space-md); font-family: 'SF Mono', 'Fira Code', monospace;
-            font-size: 12px; line-height: 1.6;
+        /* ── Dashboard Log Box ── */
+        .world-dashboard .log-box {
+            background: rgba(6, 6, 12, 0.8);
+            border: 1px solid rgba(0, 229, 255, 0.06);
+            padding: var(--space-md);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px; line-height: 1.7;
             white-space: pre-wrap; word-break: break-word;
-            max-height: 300px; overflow-y: auto;
-            color: var(--text-secondary); margin-top: var(--space-md);
+            max-height: 280px; overflow-y: auto;
+            color: #00e5ff;
+            margin-top: var(--space-md);
+            border-radius: var(--radius-sm);
         }
 
-        .check-row {
+        /* ── Dashboard Check Rows ── */
+        .world-dashboard .check-row {
             display: flex; align-items: center; gap: var(--space-sm);
-            padding: 10px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px;
+            padding: 6px 0; border-bottom: 1px solid rgba(0, 229, 255, 0.03); font-size: 11px;
         }
-        .check-row:last-child { border-bottom: none; }
+        .world-dashboard .check-row:last-child { border-bottom: none; }
 
-        .inline-form { display: flex; gap: var(--space-sm); align-items: flex-end; flex-wrap: wrap; }
-        .inline-form .form-group { flex: 1; min-width: 180px; margin-bottom: 0; }
+        /* ── Dashboard Forms ── */
+        .world-dashboard .form-group { margin-bottom: var(--space-md); }
+        .world-dashboard label {
+            display: block; margin-bottom: 4px;
+            font-size: 9px; font-weight: 600; color: #4a5568;
+            text-transform: uppercase; letter-spacing: 0.08em;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+        .world-dashboard input, .world-dashboard select {
+            width: 100%;
+            padding: 8px 10px;
+            background: rgba(6, 6, 12, 0.6);
+            border: 1px solid rgba(0, 229, 255, 0.1);
+            border-radius: var(--radius-sm);
+            color: #c8d6e5;
+            font-size: 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            outline: none;
+            transition: border-color 150ms;
+        }
+        .world-dashboard input:focus, .world-dashboard select:focus {
+            border-color: #00e5ff;
+        }
+        .world-dashboard input::placeholder { color: #2a3a4c; }
+        .world-dashboard select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%234a5568' d='M6 8.5L1.5 4h9z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 32px;
+        }
 
-        .skill-card {
+        /* ── Dashboard Buttons ── */
+        .world-dashboard .btn-row { display: flex; gap: var(--space-md); margin-top: var(--space-lg); }
+        .world-dashboard .btn {
+            flex: 1;
+            padding: 10px var(--space-lg);
+            border: 1px solid;
+            border-radius: var(--radius-sm);
+            font-size: 11px; font-weight: 600;
+            font-family: 'IBM Plex Mono', monospace;
+            cursor: pointer;
+            transition: all 150ms;
+            text-transform: uppercase; letter-spacing: 0.06em;
+            min-height: 40px;
+            display: flex; align-items: center; justify-content: center; gap: var(--space-sm);
+        }
+        .world-dashboard .btn:hover { filter: brightness(1.15); }
+        .world-dashboard .btn:active { filter: brightness(0.9); }
+        .world-dashboard .btn-primary {
+            background: #00e5ff;
+            color: #06060e;
+            border-color: #00e5ff;
+        }
+        .world-dashboard .btn-secondary {
+            background: transparent;
+            color: #7a8a9c;
+            border-color: rgba(0, 229, 255, 0.15);
+        }
+        .world-dashboard .btn-secondary:hover { color: #c8d6e5; border-color: rgba(0, 229, 255, 0.3); }
+        .world-dashboard .btn-ghost {
+            background: transparent;
+            color: #3a4a5c;
+            border-color: rgba(0, 229, 255, 0.06);
+        }
+        .world-dashboard .btn-ghost:hover { color: #7a8a9c; border-color: rgba(0, 229, 255, 0.15); }
+        .world-dashboard .btn-danger {
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+        .world-dashboard .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
+        .world-dashboard .btn-small { flex: 0 0 auto; padding: 5px 10px; font-size: 10px; min-height: 30px; }
+        .world-dashboard .btn[disabled] { opacity: 0.3; cursor: not-allowed; }
+
+        /* ── Dashboard Messages ── */
+        .world-dashboard .error { color: #f87171; font-size: 11px; margin-top: var(--space-sm); }
+        .world-dashboard .success { color: #00e5ff; font-size: 11px; margin-top: var(--space-sm); }
+        .world-dashboard .muted { color: #2a3a4c; font-size: 10px; }
+
+        /* ── Dashboard Toggle ── */
+        .world-dashboard .toggle-row {
             display: flex; align-items: center; justify-content: space-between;
-            padding: var(--space-md); margin-bottom: var(--space-sm);
-            background: var(--bg-input); border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            transition: border-color var(--transition-fast);
+            padding: 10px 0; border-bottom: 1px solid rgba(0, 229, 255, 0.03);
         }
-        .skill-card:hover { border-color: var(--text-dim); }
-        .skill-card .meta { flex: 1; min-width: 0; }
-        .skill-card .name { font-weight: 600; font-size: 14px; }
-        .skill-card .desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-        .api-key-row { display: flex; gap: var(--space-sm); align-items: center; }
-        .api-key-row input { flex: 1; }
-
-        .toggle-row {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 14px 0; border-bottom: 1px solid var(--border-subtle);
+        .world-dashboard .toggle-row:last-child { border-bottom: none; }
+        .world-dashboard .toggle-row span {
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
         }
-        .toggle-row:last-child { border-bottom: none; }
-        .toggle {
-            width: 48px; height: 26px; border-radius: var(--radius-pill);
-            background: var(--border);
-            position: relative; cursor: pointer; border: none; flex-shrink: 0;
-            transition: background var(--transition-fast);
+        .world-dashboard .toggle {
+            width: 36px; height: 20px; border-radius: 10px;
+            background: rgba(6, 6, 12, 0.6);
+            border: 1px solid rgba(0, 229, 255, 0.1);
+            position: relative; cursor: pointer; flex-shrink: 0;
+            transition: border-color 150ms, background 150ms;
         }
-        .toggle::after {
-            content: ''; position: absolute; top: 3px; left: 3px;
-            width: 20px; height: 20px; border-radius: 50%;
-            background: var(--text-primary);
-            transition: transform var(--transition-fast);
-            box-shadow: var(--shadow-sm);
+        .world-dashboard .toggle::after {
+            content: ''; position: absolute; top: 2px; left: 2px;
+            width: 14px; height: 14px; border-radius: 50%;
+            background: #3a4a5c;
+            transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), background 200ms;
         }
-        .toggle.on { background: var(--accent); }
-        .toggle.on::after { transform: translateX(22px); }
-        .toggle:focus-visible {
-            outline: 2px solid var(--accent);
+        .world-dashboard .toggle.on { border-color: #00e5ff; background: rgba(0, 229, 255, 0.1); }
+        .world-dashboard .toggle.on::after { transform: translateX(16px); background: #00e5ff; }
+        .world-dashboard .toggle:focus-visible {
+            outline: 2px solid #00e5ff;
             outline-offset: 2px;
         }
 
-        .section-title { font-size: 16px; font-weight: 700; margin: var(--space-xl) 0 var(--space-md); }
+        /* ── Dashboard Skill Cards ── */
+        .world-dashboard .skill-card {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: var(--space-md); margin-bottom: 0;
+            border-bottom: 1px solid rgba(0, 229, 255, 0.03);
+            transition: background 100ms;
+        }
+        .world-dashboard .skill-card:hover { background: rgba(0, 229, 255, 0.02); }
+        .world-dashboard .skill-card .meta { flex: 1; min-width: 0; }
+        .world-dashboard .skill-card .name { font-weight: 600; font-size: 12px; color: #c8d6e5; }
+        .world-dashboard .skill-card .desc { font-size: 10px; color: #4a5568; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-        .code {
-            background: var(--bg-card-inner); padding: 4px 10px; border-radius: var(--radius-sm);
-            font-size: 13px; color: var(--text-secondary);
-            font-family: 'SF Mono', 'Fira Code', monospace;
+        /* ── Dashboard API Key Row ── */
+        .world-dashboard .api-key-row { display: flex; gap: var(--space-sm); align-items: center; }
+        .world-dashboard .api-key-row input { flex: 1; }
+
+        /* ── Dashboard Inline Form ── */
+        .world-dashboard .inline-form { display: flex; gap: var(--space-sm); align-items: flex-end; flex-wrap: wrap; }
+        .world-dashboard .inline-form .form-group { flex: 1; min-width: 160px; margin-bottom: 0; }
+
+        /* ── Dashboard Section Title ── */
+        .world-dashboard .section-title {
+            font-size: 12px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.08em;
+            margin: var(--space-xl) 0 var(--space-md);
+            color: #7a8a9c;
+            font-family: 'Space Grotesk', sans-serif;
         }
 
-        /* ── Focus rings ── */
-        input:focus-visible, select:focus-visible {
-            outline: 2px solid var(--accent);
+        /* ── Dashboard Code ── */
+        .world-dashboard .code {
+            background: rgba(0, 229, 255, 0.04); padding: 3px 8px; border-radius: 3px;
+            font-size: 11px; color: #00e5ff;
+            font-family: 'IBM Plex Mono', monospace;
+            border: 1px solid rgba(0, 229, 255, 0.06);
+        }
+
+        /* ── Dashboard Focus rings ── */
+        .world-dashboard input:focus-visible, .world-dashboard select:focus-visible {
+            outline: 2px solid #00e5ff;
             outline-offset: 1px;
         }
-        button:focus-visible {
-            outline: 2px solid var(--accent);
+        .world-dashboard button:focus-visible {
+            outline: 2px solid #00e5ff;
             outline-offset: 2px;
         }
 
-        /* ── Responsive ── */
-        @media (max-width: 480px) {
-            .container { padding: var(--space-xl) var(--space-md); }
-            .card { padding: var(--space-lg); }
-            h1 { font-size: 24px; }
-            .pairing-code { font-size: 22px; letter-spacing: 2px; }
-            .step-label { font-size: 10px; }
-            .step-circle { width: 32px; height: 32px; font-size: 13px; }
-            .step-connector { margin-top: 15px; }
+        /* ── Dashboard Selection ── */
+        .world-dashboard ::selection {
+            background: rgba(0, 229, 255, 0.15);
+            color: #e8edf2;
         }
 
-        /* ── Toast notification ── */
-        .toast {
-            position: fixed; bottom: var(--space-xl); left: 50%; transform: translateX(-50%);
-            background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: var(--radius-md); padding: 12px 20px;
-            font-size: 13px; color: var(--text-primary);
-            box-shadow: var(--shadow-lg); z-index: 1000;
-            animation: toastIn 200ms ease-out forwards;
-            max-width: calc(100vw - 48px);
+        /* ── Dashboard Scrollbar ── */
+        .world-dashboard ::-webkit-scrollbar { width: 5px; height: 5px; }
+        .world-dashboard ::-webkit-scrollbar-track { background: transparent; }
+        .world-dashboard ::-webkit-scrollbar-thumb { background: rgba(0, 229, 255, 0.15); border-radius: var(--radius-pill); }
+        .world-dashboard ::-webkit-scrollbar-thumb:hover { background: rgba(0, 229, 255, 0.25); }
+
+        /* ── Dashboard Loading ── */
+        .world-dashboard .loading { text-align: center; padding: var(--space-xl) 0; color: #3a4a5c; font-size: 11px; }
+        .world-dashboard .spinner {
+            width: 20px; height: 20px; margin: 0 auto var(--space-md);
+            border: 1.5px solid rgba(0, 229, 255, 0.08);
+            border-top-color: #00e5ff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
         }
-        .toast.error { border-color: var(--error-border); }
-        .toast.success { border-color: var(--accent); }
+
+        /* ═══════════════════════════════════════════════════
+           RESPONSIVE — SHARED
+           ═══════════════════════════════════════════════════ */
+        @media (max-width: 480px) {
+            .world-wizard .container { padding: var(--space-xl) var(--space-md); }
+            .world-wizard .card { padding: var(--space-lg); }
+            .world-wizard h1 { font-size: 22px; }
+            .world-wizard .pairing-code { font-size: 22px; letter-spacing: 2px; }
+            .world-wizard .step-label { font-size: 9px; }
+            .world-wizard .step-circle { width: 30px; height: 30px; font-size: 12px; }
+            .world-wizard .step-connector { margin-top: 14px; }
+            .world-dashboard .stat-card .value { font-size: 20px; }
+        }
+
         @keyframes toastIn {
-            from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+            from { opacity: 0; transform: translateX(-50%) translateY(6px); }
             to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        /* ── Reduced motion ── */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
     </style>
 </head>
-<body>
+<body class="world-wizard">
     <div class="container" id="wizard-container">
         <div class="logo">
             <div class="logo-icon">G</div>
@@ -752,7 +1085,7 @@
                 <div id="setup-complete" style="display: none;">
                     <div class="card-inner" style="margin-bottom: var(--space-lg);">
                         <h3 style="margin-bottom: var(--space-md);">Connect Your App</h3>
-                        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: var(--space-md);">
+                        <p style="font-size: 12px; color: #7a8a9c; margin-bottom: var(--space-md);">
                             Open the Ghost app and enter the pairing code below, or visit
                         </p>
                         <div class="pairing-code-wrap">
@@ -764,8 +1097,8 @@
                                 </svg>
                             </button>
                         </div>
-                        <p style="font-size: 13px; color: var(--text-dim); margin-top: var(--space-sm);">
-                            Or connect to <strong style="color: var(--text-secondary);">ghost.local:8766</strong>
+                        <p style="font-size: 12px; color: #3a4a5c; margin-top: var(--space-sm);">
+                            Or connect to <strong style="color: #7a8a9c;">ghost.local:8766</strong>
                         </p>
                     </div>
                     <button class="btn btn-primary" style="width: 100%;" onclick="finishSetup()">Done</button>
@@ -803,7 +1136,7 @@
                 <h2>Ghost is Already Set Up</h2>
                 <p class="subtitle" style="margin: var(--space-lg) 0;">
                     This device has already been configured.<br>
-                    Open <strong style="color: var(--text-primary);">ghost.local:8766</strong> or the Ghost app to start chatting.
+                    Open <strong style="color: #c8d6e5;">ghost.local:8766</strong> or the Ghost app to start chatting.
                 </p>
                 <p class="subtitle" style="margin: var(--space-lg) 0;">
                     To open the admin dashboard, connect via SSH and run:
@@ -830,6 +1163,8 @@
             <div class="tab active" data-tab="home" onclick="switchTab('home')">Home</div>
             <div class="tab" data-tab="ai" onclick="switchTab('ai')">AI</div>
             <div class="tab" data-tab="channels" onclick="switchTab('channels')">Channels</div>
+            <div class="tab" data-tab="tools" onclick="switchTab('tools')">Tools</div>
+            <div class="tab" data-tab="advanced" onclick="switchTab('advanced')">Advanced</div>
             <div class="tab" data-tab="system" onclick="switchTab('system')">System</div>
             <div class="tab" data-tab="skills" onclick="switchTab('skills')">Skills</div>
         </div>
@@ -837,7 +1172,7 @@
         <!-- Home tab -->
         <div class="tab-content active" id="tab-home">
             <h3>System Health</h3>
-            <div class="dash-grid" style="margin-bottom: var(--space-lg);">
+            <div class="dash-grid" style="margin-bottom: var(--space-md);">
                 <div class="stat-card">
                     <div class="label">CPU</div>
                     <div class="value" id="stat-cpu">-</div>
@@ -960,7 +1295,7 @@
                 <h3>Telegram</h3>
                 <p class="help-text">Chat with Ghost from Telegram.</p>
                 <div class="toggle-row">
-                    <span style="font-size: 14px;">Enabled</span>
+                    <span>Enabled</span>
                     <button class="toggle" id="tg-toggle" onclick="toggleChannel('tg')"></button>
                 </div>
                 <div class="form-group" style="margin-top: var(--space-md);">
@@ -972,7 +1307,7 @@
                 <h3>Discord</h3>
                 <p class="help-text">Chat with Ghost from Discord.</p>
                 <div class="toggle-row">
-                    <span style="font-size: 14px;">Enabled</span>
+                    <span>Enabled</span>
                     <button class="toggle" id="ds-toggle" onclick="toggleChannel('ds')"></button>
                 </div>
                 <div class="form-group" style="margin-top: var(--space-md);">
@@ -984,7 +1319,7 @@
                 <h3>Email</h3>
                 <p class="help-text">Send and receive email via SMTP.</p>
                 <div class="toggle-row">
-                    <span style="font-size: 14px;">Enabled</span>
+                    <span>Enabled</span>
                     <button class="toggle" id="em-toggle" onclick="toggleChannel('em')"></button>
                 </div>
                 <div class="form-group" style="margin-top: var(--space-md);">
@@ -1013,10 +1348,38 @@
                 </div>
             </div>
             <div class="card">
+                <h3>Slack</h3>
+                <p class="help-text">Chat with Ghost from Slack using Socket Mode.</p>
+                <div class="toggle-row">
+                    <span>Enabled</span>
+                    <button class="toggle" id="sl-toggle" onclick="toggleChannel('sl')"></button>
+                </div>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="sl-bot-token">Bot token</label>
+                    <input type="password" id="sl-bot-token" placeholder="xoxb-...">
+                </div>
+                <div class="form-group">
+                    <label for="sl-app-token">App token</label>
+                    <input type="password" id="sl-app-token" placeholder="xapp-...">
+                </div>
+            </div>
+            <div class="card">
+                <h3>WhatsApp</h3>
+                <p class="help-text">Chat with Ghost from WhatsApp via a bridge service.</p>
+                <div class="toggle-row">
+                    <span>Enabled</span>
+                    <button class="toggle" id="wa-toggle" onclick="toggleChannel('wa')"></button>
+                </div>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="wa-bridge-url">Bridge URL</label>
+                    <input type="text" id="wa-bridge-url" placeholder="ws://localhost:3001">
+                </div>
+            </div>
+            <div class="card">
                 <h3>Heartbeat</h3>
                 <p class="help-text">Periodic status check so Ghost notices when it goes offline.</p>
                 <div class="toggle-row">
-                    <span style="font-size: 14px;">Enabled</span>
+                    <span>Enabled</span>
                     <button class="toggle" id="hb-toggle" onclick="toggleHeartbeat()"></button>
                 </div>
                 <div class="form-group" style="margin-top: var(--space-md);">
@@ -1029,8 +1392,170 @@
             <button class="btn btn-primary" style="margin-top: var(--space-sm); width: 100%;" onclick="saveChannels()">Save channel settings</button>
         </div>
 
+        <!-- Tools tab -->
+        <div class="tab-content" id="tab-tools">
+            <div class="card">
+                <h3>Web Search</h3>
+                <p class="help-text">Configure web search providers for the agent.</p>
+                <div class="toggle-row">
+                    <span>Brave Search</span>
+                    <button class="toggle" id="brave-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="brave-key">Brave API key</label>
+                    <input type="password" id="brave-key" placeholder="BSA...">
+                </div>
+                <div class="form-group">
+                    <label for="brave-max">Max results</label>
+                    <input type="number" id="brave-max" placeholder="5">
+                </div>
+                <div class="toggle-row" style="margin-top: var(--space-md);">
+                    <span>DuckDuckGo</span>
+                    <button class="toggle" id="ddg-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="ddg-max">Max results</label>
+                    <input type="number" id="ddg-max" placeholder="5">
+                </div>
+            </div>
+            <div class="card">
+                <h3>Content Curator</h3>
+                <p class="help-text">Automatic cleanup of stale workspace content.</p>
+                <div class="toggle-row">
+                    <span>Enabled</span>
+                    <button class="toggle" id="curator-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="curator-stale">Stale after (days)</label>
+                    <input type="number" id="curator-stale" placeholder="30">
+                </div>
+                <div class="form-group">
+                    <label for="curator-archive">Archive after (days)</label>
+                    <input type="number" id="curator-archive" placeholder="90">
+                </div>
+                <div class="form-group">
+                    <label for="curator-interval">Check interval (mins)</label>
+                    <input type="number" id="curator-interval" placeholder="60">
+                </div>
+            </div>
+            <div class="card">
+                <h3>Task Delegation</h3>
+                <p class="help-text">Concurrent task execution limits.</p>
+                <div class="toggle-row">
+                    <span>Enabled</span>
+                    <button class="toggle" id="delegation-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="delegation-concurrent">Max concurrent tasks</label>
+                    <input type="number" id="delegation-concurrent" placeholder="5">
+                </div>
+                <div class="form-group">
+                    <label for="delegation-tasks">Max queued tasks</label>
+                    <input type="number" id="delegation-tasks" placeholder="5">
+                </div>
+                <div class="form-group">
+                    <label for="delegation-budget">Token budget</label>
+                    <input type="number" id="delegation-budget" placeholder="100000">
+                </div>
+            </div>
+            <div id="tools-msg" class="error"></div>
+            <div id="tools-success" class="success"></div>
+            <button class="btn btn-primary" style="margin-top: var(--space-sm); width: 100%;" onclick="saveTools()">Save tools settings</button>
+        </div>
+
+        <!-- Advanced tab -->
+        <div class="tab-content" id="tab-advanced">
+            <div class="card">
+                <h3>Retrieval-Augmented Generation</h3>
+                <p class="help-text">Vector search settings for knowledge retrieval.</p>
+                <div class="toggle-row">
+                    <span>Enabled</span>
+                    <button class="toggle" id="rag-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="rag-m">HNSW M (connections per layer)</label>
+                    <input type="number" id="rag-m" placeholder="16">
+                </div>
+                <div class="form-group">
+                    <label for="rag-ef-const">ef_construction</label>
+                    <input type="number" id="rag-ef-const" placeholder="200">
+                </div>
+                <div class="form-group">
+                    <label for="rag-ef-search">ef_search</label>
+                    <input type="number" id="rag-ef-search" placeholder="10">
+                </div>
+            </div>
+            <div class="card">
+                <h3>Proactive Nudges</h3>
+                <p class="help-text">Ghost periodically checks in with reminders and suggestions.</p>
+                <div class="toggle-row">
+                    <span>Enabled</span>
+                    <button class="toggle" id="nudge-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="nudge-memory">Memory check interval (messages)</label>
+                    <input type="number" id="nudge-memory" placeholder="20">
+                </div>
+                <div class="form-group">
+                    <label for="nudge-skill">Skill check interval (messages)</label>
+                    <input type="number" id="nudge-skill" placeholder="15">
+                </div>
+            </div>
+            <div class="card">
+                <h3>Device Monitoring</h3>
+                <p class="help-text">Monitor USB and hardware events.</p>
+                <div class="toggle-row">
+                    <span>Enabled</span>
+                    <button class="toggle" id="devices-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+                <div class="toggle-row">
+                    <span>Monitor USB</span>
+                    <button class="toggle" id="devices-usb-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Agent Behavior</h3>
+                <div class="toggle-row">
+                    <span>Web search enabled</span>
+                    <button class="toggle" id="adv-search-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+                <div class="toggle-row">
+                    <span>Restrict to workspace</span>
+                    <button class="toggle" id="adv-workspace-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="adv-max-iter">Max tool iterations</label>
+                    <input type="number" id="adv-max-iter" placeholder="20">
+                </div>
+                <div class="form-group">
+                    <label for="adv-light-model">Light routing model (optional)</label>
+                    <input type="text" id="adv-light-model" placeholder="e.g. qwen3:0.6b">
+                </div>
+                <div class="form-group">
+                    <label for="adv-threshold">Routing threshold</label>
+                    <input type="number" id="adv-threshold" step="0.05" placeholder="0.35">
+                </div>
+            </div>
+            <div id="advanced-msg" class="error"></div>
+            <div id="advanced-success" class="success"></div>
+            <button class="btn btn-primary" style="margin-top: var(--space-sm); width: 100%;" onclick="saveAdvanced()">Save advanced settings</button>
+        </div>
+
         <!-- System tab -->
         <div class="tab-content" id="tab-system">
+            <div class="card">
+                <h3>Gateway</h3>
+                <div class="form-group">
+                    <label for="gw-host">Bind host</label>
+                    <input type="text" id="gw-host" placeholder="0.0.0.0">
+                </div>
+                <div class="form-group">
+                    <label for="gw-port">API port</label>
+                    <input type="number" id="gw-port" placeholder="8766">
+                </div>
+                <div id="gateway-msg" class="error"></div>
+                <button class="btn btn-primary btn-small" onclick="saveGateway()">Save gateway settings</button>
+            </div>
             <div class="card">
                 <h3>Network</h3>
                 <div class="kv"><span class="k">Hostname</span><span class="v" id="net-host">-</span></div>
@@ -1071,8 +1596,8 @@
                 <button class="btn btn-danger btn-small" onclick="regenBridge()">Regenerate bridge secret</button>
                 <div id="bridge-msg" class="error"></div>
             </div>
-            <div class="card" style="border-color: var(--error-border);">
-                <h3 style="color: var(--error);">Danger zone</h3>
+            <div class="card" style="border-color: rgba(239, 68, 68, 0.2);">
+                <h3 style="color: #f87171; border-bottom-color: rgba(239, 68, 68, 0.15);">Danger zone</h3>
                 <button class="btn btn-danger btn-small" onclick="rebootDevice()">Reboot device</button>
             </div>
         </div>
@@ -1209,11 +1734,15 @@
         async function showDashboard() {
             document.getElementById('wizard-container').style.display = 'none';
             document.getElementById('dashboard').classList.remove('hidden');
+            document.body.className = 'world-dashboard';
             document.getElementById('nav-host').textContent = 'Online';
             switchTab('home');
             loadHome();
             loadAIConfig();
             loadChannels();
+            loadTools();
+            loadAdvanced();
+            loadGateway();
             loadSystem();
             loadSkills();
         }
@@ -1222,6 +1751,7 @@
             loggedIn = false;
             document.getElementById('dashboard').classList.add('hidden');
             document.getElementById('wizard-container').style.display = '';
+            document.body.className = 'world-wizard';
             showLogin();
             document.getElementById('login-password').value = '';
         }
@@ -1269,7 +1799,7 @@
                 const services = document.getElementById('services');
                 services.innerHTML = (data.services || []).map(s => `
                     <div class="service-row">
-                        <span style="font-size: 14px;">${s.name}</span>
+                        <span style="font-size: 12px;">${s.name}</span>
                         <span class="badge ${s.active ? 'ok' : 'fail'}">${s.active ? 'Running' : 'Stopped'}</span>
                     </div>
                 `).join('');
@@ -1461,7 +1991,7 @@
             if (!name) { errorEl.textContent = 'Enter a model name.'; return; }
             try {
                 await api('/api/ollama/pull', 'POST', { model: name });
-                errorEl.style.color = '#4ade80';
+                errorEl.style.color = '#00e5ff';
                 errorEl.textContent = 'Download started (may take a while on a Pi).';
                 document.getElementById('ollama-new-model').value = '';
                 setTimeout(loadOllamaModels, 15000);
@@ -1486,6 +2016,8 @@
                 channelsState = data.channels || {};
                 const tg = channelsState.telegram || {};
                 const ds = channelsState.discord || {};
+                const sl = channelsState.slack || {};
+                const wa = channelsState.whatsapp || {};
                 const em = channelsState.email || {};
                 const hb = data.heartbeat || {};
 
@@ -1493,6 +2025,10 @@
                 document.getElementById('tg-token').placeholder = tg.token || 'Enter bot token';
                 document.getElementById('ds-toggle').classList.toggle('on', !!ds.enabled);
                 document.getElementById('ds-token').placeholder = ds.token || 'Enter bot token';
+                document.getElementById('sl-toggle').classList.toggle('on', !!sl.enabled);
+                document.getElementById('sl-bot-token').placeholder = sl.bot_token || 'Enter bot token';
+                document.getElementById('sl-app-token').placeholder = sl.app_token || 'Enter app token';
+                document.getElementById('wa-toggle').classList.toggle('on', !!wa.enabled);
                 document.getElementById('em-toggle').classList.toggle('on', !!em.enabled);
                 document.getElementById('em-host').value = em.smtp_host || '';
                 document.getElementById('em-port').value = em.smtp_port || '';
@@ -1527,6 +2063,15 @@
                     enabled: document.getElementById('ds-toggle').classList.contains('on'),
                     token: document.getElementById('ds-token').value
                 },
+                slack: {
+                    enabled: document.getElementById('sl-toggle').classList.contains('on'),
+                    bot_token: document.getElementById('sl-bot-token').value,
+                    app_token: document.getElementById('sl-app-token').value
+                },
+                whatsapp: {
+                    enabled: document.getElementById('wa-toggle').classList.contains('on'),
+                    bridge_url: document.getElementById('wa-bridge-url').value
+                },
                 email: {
                     enabled: document.getElementById('em-toggle').classList.contains('on'),
                     smtp_host: document.getElementById('em-host').value,
@@ -1547,6 +2092,8 @@
                     successEl.textContent = 'Channel settings saved.';
                     document.getElementById('tg-token').value = '';
                     document.getElementById('ds-token').value = '';
+                    document.getElementById('sl-bot-token').value = '';
+                    document.getElementById('sl-app-token').value = '';
                     document.getElementById('em-pass').value = '';
                     loadChannels();
                 } else {
@@ -1574,7 +2121,7 @@
             try {
                 const data = await api('/api/admin/hostname', 'POST', { hostname: host });
                 if (data.ok) {
-                    errorEl.style.color = '#4ade80';
+                    errorEl.style.color = '#00e5ff';
                     errorEl.textContent = 'Hostname updated. It applies immediately on most systems.';
                     document.getElementById('sys-hostname').value = '';
                     loadSystem();
@@ -1602,7 +2149,7 @@
             try {
                 const data = await api('/api/admin/password', 'POST', { current, new: next });
                 if (data.ok) {
-                    msg.style.color = '#4ade80';
+                    msg.style.color = '#00e5ff';
                     msg.textContent = 'Password updated.';
                     currentPassword = next;
                     document.getElementById('pw-current').value = '';
@@ -1620,7 +2167,7 @@
             try {
                 const data = await api('/api/admin/bridge', 'POST');
                 if (data.ok) {
-                    msg.style.color = '#4ade80';
+                    msg.style.color = '#00e5ff';
                     msg.textContent = 'Bridge secret regenerated: ' + data.secret;
                 } else {
                     msg.textContent = data.error || 'Failed to regenerate.';
@@ -1672,7 +2219,7 @@
             try {
                 const data = await api('/api/admin/skills/install', 'POST', { owner, repo, path, name });
                 if (data.ok) {
-                    errorEl.style.color = '#4ade80';
+                    errorEl.style.color = '#00e5ff';
                     errorEl.textContent = 'Skill installed. It is available to Ghost immediately.';
                     ['sk-owner', 'sk-repo', 'sk-path', 'sk-name'].forEach(id => document.getElementById(id).value = '');
                     loadSkills();
@@ -1690,6 +2237,168 @@
             } catch (e) {}
         }
 
+        // ---------- Tools ----------
+        async function loadTools() {
+            try {
+                const data = await api('/api/admin/tools');
+                if (!data.ok) return;
+                const w = data.web || {};
+                const brave = w.brave || {};
+                const ddg = w.duckduckgo || {};
+                document.getElementById('brave-toggle').classList.toggle('on', !!brave.enabled);
+                document.getElementById('brave-key').placeholder = brave.api_key ? 'Keep current (masked)' : 'Enter API key';
+                document.getElementById('brave-max').value = brave.max_results || 5;
+                document.getElementById('ddg-toggle').classList.toggle('on', !!ddg.enabled);
+                document.getElementById('ddg-max').value = ddg.max_results || 5;
+
+                const cu = data.curator || {};
+                document.getElementById('curator-toggle').classList.toggle('on', !!cu.enabled);
+                document.getElementById('curator-stale').value = cu.stale_after_days || 30;
+                document.getElementById('curator-archive').value = cu.archive_after_days || 90;
+                document.getElementById('curator-interval').value = cu.check_interval_mins || 60;
+
+                const dl = data.delegation || {};
+                document.getElementById('delegation-toggle').classList.toggle('on', !!dl.enabled);
+                document.getElementById('delegation-concurrent').value = dl.max_concurrent || 5;
+                document.getElementById('delegation-tasks').value = dl.max_tasks || 5;
+                document.getElementById('delegation-budget').value = dl.budget_tokens || 100000;
+            } catch (e) {}
+        }
+
+        async function saveTools() {
+            const msgEl = document.getElementById('tools-msg');
+            const successEl = document.getElementById('tools-success');
+            msgEl.textContent = '';
+            successEl.textContent = '';
+            try {
+                const data = await api('/api/admin/tools/save', 'POST', {
+                    web: {
+                        brave: {
+                            enabled: document.getElementById('brave-toggle').classList.contains('on'),
+                            api_key: document.getElementById('brave-key').value,
+                            max_results: parseInt(document.getElementById('brave-max').value) || 5
+                        },
+                        duckduckgo: {
+                            enabled: document.getElementById('ddg-toggle').classList.contains('on'),
+                            max_results: parseInt(document.getElementById('ddg-max').value) || 5
+                        }
+                    },
+                    curator: {
+                        enabled: document.getElementById('curator-toggle').classList.contains('on'),
+                        stale_after_days: parseInt(document.getElementById('curator-stale').value) || 30,
+                        archive_after_days: parseInt(document.getElementById('curator-archive').value) || 90,
+                        check_interval_mins: parseInt(document.getElementById('curator-interval').value) || 60
+                    },
+                    delegation: {
+                        enabled: document.getElementById('delegation-toggle').classList.contains('on'),
+                        max_concurrent: parseInt(document.getElementById('delegation-concurrent').value) || 5,
+                        max_tasks: parseInt(document.getElementById('delegation-tasks').value) || 5,
+                        budget_tokens: parseInt(document.getElementById('delegation-budget').value) || 100000
+                    }
+                });
+                if (data.ok) {
+                    successEl.textContent = 'Tools settings saved.';
+                    document.getElementById('brave-key').value = '';
+                    loadTools();
+                } else {
+                    msgEl.textContent = data.error || 'Failed to save.';
+                }
+            } catch (e) { msgEl.textContent = 'Failed to save.'; }
+        }
+
+        // ---------- Advanced ----------
+        async function loadAdvanced() {
+            try {
+                const data = await api('/api/admin/advanced');
+                if (!data.ok) return;
+                const rag = data.rag || {};
+                document.getElementById('rag-toggle').classList.toggle('on', !!rag.enabled);
+                document.getElementById('rag-m').value = rag.m || 16;
+                document.getElementById('rag-ef-const').value = rag.ef_construction || 200;
+                document.getElementById('rag-ef-search').value = rag.ef_search || 10;
+
+                const nudge = data.nudge || {};
+                document.getElementById('nudge-toggle').classList.toggle('on', !!nudge.enabled);
+                document.getElementById('nudge-memory').value = nudge.memory_interval || 20;
+                document.getElementById('nudge-skill').value = nudge.skill_interval || 15;
+
+                const dev = data.devices || {};
+                document.getElementById('devices-toggle').classList.toggle('on', !!dev.enabled);
+                document.getElementById('devices-usb-toggle').classList.toggle('on', !!dev.monitor_usb);
+
+                document.getElementById('adv-search-toggle').classList.toggle('on', !!data.search_enabled);
+                document.getElementById('adv-workspace-toggle').classList.toggle('on', !!data.restrict_to_workspace);
+                document.getElementById('adv-max-iter').value = data.max_tool_iterations || 20;
+                document.getElementById('adv-light-model').value = (data.routing || {}).light_model || '';
+                document.getElementById('adv-threshold').value = (data.routing || {}).threshold || 0.35;
+            } catch (e) {}
+        }
+
+        async function saveAdvanced() {
+            const msgEl = document.getElementById('advanced-msg');
+            const successEl = document.getElementById('advanced-success');
+            msgEl.textContent = '';
+            successEl.textContent = '';
+            try {
+                const data = await api('/api/admin/advanced/save', 'POST', {
+                    rag: {
+                        enabled: document.getElementById('rag-toggle').classList.contains('on'),
+                        m: parseInt(document.getElementById('rag-m').value) || 16,
+                        ef_construction: parseInt(document.getElementById('rag-ef-const').value) || 200,
+                        ef_search: parseInt(document.getElementById('rag-ef-search').value) || 10
+                    },
+                    nudge: {
+                        enabled: document.getElementById('nudge-toggle').classList.contains('on'),
+                        memory_interval: parseInt(document.getElementById('nudge-memory').value) || 20,
+                        skill_interval: parseInt(document.getElementById('nudge-skill').value) || 15
+                    },
+                    devices: {
+                        enabled: document.getElementById('devices-toggle').classList.contains('on'),
+                        monitor_usb: document.getElementById('devices-usb-toggle').classList.contains('on')
+                    },
+                    search_enabled: document.getElementById('adv-search-toggle').classList.contains('on'),
+                    restrict_to_workspace: document.getElementById('adv-workspace-toggle').classList.contains('on'),
+                    max_tool_iterations: parseInt(document.getElementById('adv-max-iter').value) || 20,
+                    routing: {
+                        light_model: document.getElementById('adv-light-model').value,
+                        threshold: parseFloat(document.getElementById('adv-threshold').value) || 0.35
+                    }
+                });
+                if (data.ok) {
+                    successEl.textContent = 'Advanced settings saved.';
+                } else {
+                    msgEl.textContent = data.error || 'Failed to save.';
+                }
+            } catch (e) { msgEl.textContent = 'Failed to save.'; }
+        }
+
+        // ---------- Gateway ----------
+        async function loadGateway() {
+            try {
+                const data = await api('/api/admin/gateway');
+                if (!data.ok) return;
+                document.getElementById('gw-host').value = data.host || '0.0.0.0';
+                document.getElementById('gw-port').value = data.port || 8766;
+            } catch (e) {}
+        }
+
+        async function saveGateway() {
+            const msgEl = document.getElementById('gateway-msg');
+            msgEl.textContent = '';
+            try {
+                const data = await api('/api/admin/gateway/save', 'POST', {
+                    host: document.getElementById('gw-host').value,
+                    port: parseInt(document.getElementById('gw-port').value) || 8766
+                });
+                if (data.ok) {
+                    msgEl.style.color = '#00e5ff';
+                    msgEl.textContent = 'Gateway settings saved.';
+                } else {
+                    msgEl.textContent = data.error || 'Failed to save.';
+                }
+            } catch (e) { msgEl.textContent = 'Failed to save.'; }
+        }
+
         // ---------- Wizard helpers ----------
         async function scanWifi() {
             try {
@@ -1704,17 +2413,17 @@
                     document.getElementById('wifi-networks').innerHTML = data.networks.map(n => `
                         <div class="wifi-item" onclick="selectWifi('${n.ssid}', ${n.encrypted}, this)">
                             <div class="wifi-signal">
-                                <div class="wifi-bar" style="height: 4px; ${n.signal >= 25 ? 'background: var(--accent)' : ''}"></div>
-                                <div class="wifi-bar" style="height: 7px; ${n.signal >= 50 ? 'background: var(--accent)' : ''}"></div>
-                                <div class="wifi-bar" style="height: 10px; ${n.signal >= 75 ? 'background: var(--accent)' : ''}"></div>
-                                <div class="wifi-bar" style="height: 14px; ${n.signal >= 75 ? 'background: var(--accent)' : ''}"></div>
+                                <div class="wifi-bar" style="height: 3px; ${n.signal >= 25 ? 'background: #00e5ff' : ''}"></div>
+                                <div class="wifi-bar" style="height: 6px; ${n.signal >= 50 ? 'background: #00e5ff' : ''}"></div>
+                                <div class="wifi-bar" style="height: 9px; ${n.signal >= 75 ? 'background: #00e5ff' : ''}"></div>
+                                <div class="wifi-bar" style="height: 13px; ${n.signal >= 75 ? 'background: #00e5ff' : ''}"></div>
                             </div>
                             <span class="wifi-ssid">${n.ssid}</span>
                             ${n.encrypted ? '<span class="wifi-lock">&#128274;</span>' : ''}
                         </div>
                     `).join('');
                 } else {
-                    document.getElementById('wifi-networks').innerHTML = '<p style="text-align: center; color: var(--text-dim); padding: var(--space-xl) 0;">No networks found</p>';
+                    document.getElementById('wifi-networks').innerHTML = '<p style="text-align: center; color: #2a3a4c; padding: var(--space-xl) 0;">No networks found</p>';
                 }
             } catch (e) {
                 document.getElementById('wifi-loading').innerHTML = '<p class="error">Failed to scan networks</p>';
@@ -1869,7 +2578,7 @@
                 if (step < currentStep) node.classList.add('completed');
                 const circle = node.querySelector('.step-circle');
                 if (step < currentStep) {
-                    circle.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5L10.5 17L18 7"/></svg>';
+                    circle.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5L10.5 17L18 7"/></svg>';
                 } else {
                     circle.textContent = step;
                 }
@@ -1930,7 +2639,7 @@
             const btn = document.getElementById('copy-btn');
             navigator.clipboard.writeText(code).then(() => {
                 btn.classList.add('copied');
-                btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5L10.5 17L18 7"/></svg>';
+                btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5L10.5 17L18 7"/></svg>';
                 setTimeout(() => {
                     btn.classList.remove('copied');
                     btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
@@ -1942,6 +2651,7 @@
             loggedIn = true;
             document.getElementById('wizard-container').style.display = 'none';
             document.getElementById('dashboard').classList.remove('hidden');
+            document.body.className = 'world-dashboard';
             showDashboard();
         }
 

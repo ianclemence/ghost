@@ -10,11 +10,24 @@
       "fallback_models": [],
       "fallback_cooldown_seconds": 30,
       "max_tool_iterations": 20,
-      "restrict_to_workspace": true
+      "restrict_to_workspace": true,
+      "search_enabled": true,
+      "session_store": "sqlite"
+    },
+    "routing": {
+      "light_model": "",
+      "threshold": 0.35
     }
   },
+  "gateway": {
+    "host": "0.0.0.0",
+    "port": 8766
+  },
   "rag": {
-    "enabled": true
+    "enabled": true,
+    "m": 16,
+    "ef_construction": 200,
+    "ef_search": 10
   },
   "providers": {
     "openrouter": {
@@ -35,6 +48,7 @@
     },
     "telegram": {
       "enabled": true,
+      "proxy": "",
       "allow_from": []
     },
     "discord": {
@@ -47,6 +61,7 @@
     },
     "line": {
       "enabled": false,
+      "webhook_host": "0.0.0.0",
       "webhook_port": 18791,
       "webhook_path": "/webhook/line",
       "allow_from": []
@@ -55,6 +70,14 @@
       "enabled": false,
       "smtp_host": "smtp.example.com",
       "smtp_port": 587,
+      "allow_from": []
+    },
+    "sms": {
+      "enabled": false,
+      "allow_from": []
+    },
+    "wechat": {
+      "enabled": false,
       "allow_from": []
     }
   },
@@ -68,6 +91,43 @@
         "enabled": true,
         "max_results": 5
       }
+    },
+    "mcp": {
+      "enabled": false,
+      "servers": {}
+    },
+    "curator": {
+      "enabled": true,
+      "stale_after_days": 30,
+      "archive_after_days": 90,
+      "check_interval_mins": 60
+    },
+    "delegation": {
+      "enabled": true,
+      "max_concurrent": 5,
+      "max_tasks": 5,
+      "budget_tokens": 100000
+    }
+  },
+  "nudge": {
+    "enabled": true,
+    "memory_interval": 20,
+    "skill_interval": 15
+  },
+  "personality": {
+    "active": ""
+  },
+  "toolsets": {
+    "active": ""
+  },
+  "devices": {
+    "enabled": false,
+    "monitor_usb": true
+  },
+  "skills": {
+    "clawhub": {
+      "base_url": "https://clawhub.ai",
+      "timeout": 30
     }
   },
   "heartbeat": {

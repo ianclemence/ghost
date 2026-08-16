@@ -19,8 +19,8 @@ import (
 )
 
 // ═════════════════════════════════════════════════════════════════════════════
-// GHOST Terminal UI - Operational Intelligence Center
-// Apple/Anthropic Aesthetic: Clean, Intentional, Hierarchical, Insightful
+// GHOST Terminal UI - Radar Command
+// Monitoring station aesthetic: electric cyan + violet ghost
 // ═════════════════════════════════════════════════════════════════════════════
 
 const dashboardVersion = "1.0.0"
@@ -28,25 +28,25 @@ const dashboardVersion = "1.0.0"
 const ghostASCII = `
    ╭━━━━━━╮
   ╭│      │╮
- │ │ ●  ● │ │
+ │ │ ◉  ◉ │ │
  │ │      │ │
- ╰─╯╭╮╭╮╭╮╰─╯
+ ╰─╯╰╯╰╯╰╯╰─╯
 `
 
 var (
-	themeBg      = lipgloss.Color("#0d0d0f")
-	themeCardBg  = lipgloss.Color("#151518")
-	themeCardHi  = lipgloss.Color("#1c1c20")
-	themeAccent  = lipgloss.Color("#7aa2f7") // Blue
-	themeSuccess = lipgloss.Color("#9ece6a") // Green
-	themeWarning = lipgloss.Color("#e0af68") // Yellow/Orange
-	themeError   = lipgloss.Color("#f7768e") // Red
-	themeGhost   = lipgloss.Color("#bf5af2") // Purple
+	themeBg      = lipgloss.Color("#06060e")
+	themeCardBg  = lipgloss.Color("#0a0a14")
+	themeCardHi  = lipgloss.Color("#0e0e1c")
+	themeAccent  = lipgloss.Color("#00e5ff") // Electric cyan
+	themeSuccess = lipgloss.Color("#00e5ff") // Cyan (success = operational)
+	themeWarning = lipgloss.Color("#fbbf24") // Amber
+	themeError   = lipgloss.Color("#f87171") // Red
+	themeGhost   = lipgloss.Color("#a855f7") // Violet
 
-	cTextPrimary   = lipgloss.Color("#f4f4f5")
-	cTextSecondary = lipgloss.Color("#a1a1aa")
-	cTextTertiary  = lipgloss.Color("#71717a")
-	cTextMuted     = lipgloss.Color("#3f3f46")
+	cTextPrimary   = lipgloss.Color("#e8edf2")
+	cTextSecondary = lipgloss.Color("#7a8a9c")
+	cTextTertiary  = lipgloss.Color("#4a5568")
+	cTextMuted     = lipgloss.Color("#2a3a4c")
 
 	styleBase = lipgloss.NewStyle().Foreground(cTextPrimary)
 	styleCard = lipgloss.NewStyle().
@@ -374,18 +374,18 @@ func (m dashboardModel) View() string {
 // ─── Header ─────────────────────────────────────────────────────────────────
 
 func (m dashboardModel) renderHeader() string {
-	art := lipgloss.NewStyle().Foreground(cTextMuted).PaddingRight(2).Render(ghostASCII)
+	art := lipgloss.NewStyle().Foreground(themeAccent).PaddingRight(2).Render(ghostASCII)
 	brand := lipgloss.NewStyle().Foreground(themeGhost).Bold(true).Render("◉ GHOST")
 	versionStr := lipgloss.NewStyle().Foreground(cTextMuted).Render("v" + dashboardVersion)
-	uptimeStr := lipgloss.NewStyle().Foreground(cTextSecondary).Render("Up: " + formatDuration(time.Since(m.programStart)))
+	uptimeStr := lipgloss.NewStyle().Foreground(cTextSecondary).Render("Up " + formatDuration(time.Since(m.programStart)))
 	
 	statusColor := themeSuccess
-	statusText := "● Live"
-	if m.isRefreshing { statusColor, statusText = themeAccent, "⟳ Sync" }
-	if m.lastError != "" && time.Since(m.lastErrorAt) < 30*time.Second { statusColor, statusText = themeError, "● Err" }
+	statusText := "● LIVE"
+	if m.isRefreshing { statusColor, statusText = themeAccent, "⟳ SYNC" }
+	if m.lastError != "" && time.Since(m.lastErrorAt) < 30*time.Second { statusColor, statusText = themeError, "● ERR" }
 	connectionStatus := styleBadge.Copy().BorderForeground(statusColor).Foreground(statusColor).Render(statusText)
 
-	topInfo := lipgloss.JoinHorizontal(lipgloss.Center, brand, " ", versionStr, "  •  ", connectionStatus, "  •  ", uptimeStr)
+	topInfo := lipgloss.JoinHorizontal(lipgloss.Center, brand, " ", versionStr, "  ", connectionStatus, "  ", uptimeStr)
 	pills := m.renderStatusPills()
 	rightNav := lipgloss.JoinVertical(lipgloss.Left, topInfo, "", pills)
 
@@ -404,12 +404,12 @@ func (m dashboardModel) renderStatusPills() string {
 	routinesStr := fmt.Sprintf("%d", m.telemetry.System.NumGoroutine)
 
 	pills := []string{
-		m.renderPill("SYSTEM", sysStatus, statusColor(sysStatus)),
+		m.renderPill("SYS", sysStatus, statusColor(sysStatus)),
 		m.renderPill("API", boolStatus(m.sanity.APIReachable), boolColor(m.sanity.APIReachable)),
-		m.renderPill("CHANNELS", fmt.Sprintf("%d/%d", chActive, len(m.channels)), themeAccent),
+		m.renderPill("CH", fmt.Sprintf("%d/%d", chActive, len(m.channels)), themeAccent),
 		m.renderPill("RAM", ramStr, cTextSecondary),
-		m.renderPill("ROUTINES", routinesStr, cTextTertiary),
-		m.renderPill("LATENCY", m.formatLatency(), m.latencyColor()),
+		m.renderPill("GO", routinesStr, cTextTertiary),
+		m.renderPill("LAT", m.formatLatency(), m.latencyColor()),
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, pills...)
 }
@@ -418,7 +418,7 @@ func (m dashboardModel) renderPill(label, value string, color lipgloss.Color) st
 	valStr := lipgloss.NewStyle().Foreground(color).PaddingLeft(1).Render(value)
 	lblStr := lipgloss.NewStyle().Foreground(cTextTertiary).Render(label)
 	comp := lipgloss.JoinHorizontal(lipgloss.Top, lblStr, valStr)
-	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder(), false, true, false, false).BorderForeground(cTextMuted).PaddingRight(2).MarginRight(2).Render(comp)
+	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder(), false, true, false, false).BorderForeground(cTextMuted).PaddingRight(1).MarginRight(1).Render(comp)
 }
 
 // ─── Dashboard Body ─────────────────────────────────────────────────────────

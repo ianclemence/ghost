@@ -242,6 +242,12 @@ func main() {
 	mux.HandleFunc("/api/admin/skills", handleSkillsList)
 	mux.HandleFunc("/api/admin/skills/install", handleSkillInstall)
 	mux.HandleFunc("/api/admin/skills/remove", handleSkillRemove)
+	mux.HandleFunc("/api/admin/tools", handleToolsGet)
+	mux.HandleFunc("/api/admin/tools/save", handleToolsSet)
+	mux.HandleFunc("/api/admin/gateway", handleGatewayGet)
+	mux.HandleFunc("/api/admin/gateway/save", handleGatewaySet)
+	mux.HandleFunc("/api/admin/advanced", handleAdvancedGet)
+	mux.HandleFunc("/api/admin/advanced/save", handleAdvancedSet)
 
 	// Try ports in order: 80, 8080, 8888, 9090
 	ports := []int{*port, 8080, 8888, 9090}
