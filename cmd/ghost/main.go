@@ -228,6 +228,10 @@ func main() {
 			fmt.Printf("Unknown skills command: %s\n", subcommand)
 			skillsHelp()
 		}
+	case "update":
+		updateCmd()
+	case "updater":
+		updaterCmd()
 	case "version", "--version", "-v":
 		printVersion()
 	default:
@@ -245,9 +249,11 @@ func printHelp() {
 	fmt.Println("  onboard     Initialize Ghost configuration and workspace")
 	fmt.Println("  agent       Interact with the agent directly")
 	fmt.Println("  dashboard   Launch the operator TUI")
-	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  gateway     Start Ghost gateway")
 	fmt.Println("  status      Show Ghost status")
+	fmt.Println("  update      Pull latest changes and rebuild")
+	fmt.Println("  updater     Run auto-update daemon")
+	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
 	fmt.Println("  skills      Manage skills (install, list, remove)")

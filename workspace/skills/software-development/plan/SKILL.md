@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Plan mode for Hermes — inspect context, write a markdown plan into the active workspace's `.ghost/plans/` directory, and do not execute the work.
+description: Plan mode for Ghost — inspect context, write a markdown plan into the active workspace's `.ghost/plans/` directory, and do not execute the work.
 version: 1.0.0
 author: Ghost
 license: MIT
@@ -46,7 +46,7 @@ Save the plan with `write_file` under:
 
 - `.ghost/plans/YYYY-MM-DD_HHMMSS-<slug>.md`
 
-Treat that as relative to the active working directory / backend workspace. Hermes file tools are backend-aware, so using this relative path keeps the plan with the workspace on local, docker, ssh, modal, and daytona backends.
+Treat that as relative to the active working directory / backend workspace. Ghost file tools are backend-aware, so using this relative path keeps the plan with the workspace on local, docker, ssh, modal, and daytona backends.
 
 If the runtime provides a specific target path, use that exact path.
 If not, create a sensible timestamped filename yourself under `.ghost/plans/`.

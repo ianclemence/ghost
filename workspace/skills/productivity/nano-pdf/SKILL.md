@@ -19,7 +19,7 @@ Edit PDFs using natural-language instructions. Point it at a page and describe w
 ## Prerequisites
 
 ```bash
-# Install with uv (recommended — already available in Hermes)
+# Install with uv (recommended — already available in Ghost)
 uv pip install nano-pdf
 
 # Or with pip

@@ -11,19 +11,19 @@ This document outlines the progression from Ghost as a Go binary to a full opera
 | Stage | What It Is | Effort | Time |
 |-------|-----------|--------|------|
 | **Ghost Binary** (current) | Go binary + config files on any Linux | Done | — |
-| **Ghost Appliance** | Ghost + dependencies pre-installed, auto-starts on boot | Low | 2-4 weeks |
+| **Ghost Ready** | Ghost + dependencies pre-installed, auto-starts on boot | Low | 2-4 weeks |
 | **Ghost Distribution** | Custom Debian image with Ghost pre-baked, read-only root, OTA updates | Medium | 2-3 months |
 | **Ghost OS** | Full system: custom boot flow, dedicated UI layer, hardware abstraction, app ecosystem | High | 6-12 months |
 
 ---
 
-## Stage 1: Ghost Appliance
+## Stage 1: Ghost Ready
 
-**Goal:** Make Ghost behave like an appliance — plug it in, it works.
+**Goal:** Make Ghost work out of the box — plug it in, it works.
 
-### Current vs Appliance State
+### Current vs Ready State
 
-| Current State | Appliance State |
+| Current State | Ready State |
 |--------------|-----------------|
 | User clones repo, runs `setup.sh` | Image is pre-flashed. First boot runs wizard. |
 | `.env` and `config.json` edited by hand | Web-based onboarding at `ghost.local` |

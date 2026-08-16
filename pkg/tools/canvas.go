@@ -8,7 +8,7 @@ import (
 )
 
 // CanvasTool allows the agent to present visual content (HTML/CSS/JS) to the mobile app.
-// Inspired by OpenClaw's canvas skill.
+// Adapted from OpenClaw's canvas skill.
 type CanvasTool struct {
 	workspace string
 	onPresent func(html string)

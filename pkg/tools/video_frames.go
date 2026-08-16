@@ -12,7 +12,7 @@ import (
 )
 
 // VideoFramesTool extracts frames or short clips from videos using ffmpeg.
-// Inspired by OpenClaw's video-frames skill.
+// Adapted from OpenClaw's video-frames skill.
 type VideoFramesTool struct {
 	workspace string
 	restrict  bool

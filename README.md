@@ -1,126 +1,85 @@
 # Ghost
 
-> **Your Sovereign Intelligence.**  
-> *An edge-native AI system that thinks locally, reacts instantly, and scales infinitely.*
+> **Your AI, Your Hardware.**  
+> *A personal AI assistant that runs locally, responds instantly, and scales with you.*
 
 ---
 
-## 👻 What is Ghost?
+## What is Ghost?
 
-Ghost isn’t just an AI assistant.
+Ghost is a **personal AI assistant** that runs on your own hardware — combining:
 
-It’s a **distributed intelligence system** that runs on your own hardware — combining:
+- **Real-time local reflexes** (instant responses)
+- **On-device reasoning** (private, fast, offline-capable)
+- **Cloud intelligence** (for deep thinking when needed)
 
-- ⚡ **Real-time local reflexes** (instant responses)
-- 🧠 **On-device reasoning** (private, fast, offline-capable)
-- ☁️ **Cloud intelligence** (for deep thinking when needed)
-
-👉 The result:  
-An AI that feels **alive, responsive, and truly yours** — not dependent on the cloud.
+The result: An AI that feels **alive, responsive, and truly yours** — not dependent on the cloud.
 
 ---
 
-## 🧠 The Architecture (What makes Ghost different)
+## Architecture
 
 Most AI apps:
 
 ```
-
 You → Cloud → Response
-
 ```
 
 Ghost:
 
 ```
-
 You → Local Reflex → Local Brain → Cloud (only if needed)
+```
 
-````
-
-### ⚡ Reflex Layer (Edge AI)
+### Local Reflex Layer
 - Instant intent detection (<50ms)
 - Command routing
 - Wake-word + triggers
 - Local embeddings
 
-### 🧠 Local Brain
+### Local Brain
 - Runs small LLMs via Ollama
 - Handles memory, RAG, and tools
 - Works offline
 
-### ☁️ Cloud Brain (Optional)
+### Cloud Brain (Optional)
 - Kimi / OpenAI / Anthropic
-- Used only for:
-  - deep reasoning
-  - coding
-  - complex tasks
+- Used only for deep reasoning, coding, complex tasks
 
-👉 **90% of interactions never leave your device**
+**90% of interactions never leave your device**
 
 ---
 
-## 🌟 Core Features
+## Core Features
 
-- **Sovereign**: Runs locally on your own hardware (RK1 recommended)
-- **Persistent**: Continuous context via **SQLite** + **HNSW Vector Index**
+- **Local-First**: Runs on your own hardware (Raspberry Pi, RK1, or x86)
+- **Persistent Memory**: Continuous context via SQLite + HNSW Vector Index
 - **Hybrid Intelligence**: Local-first routing with cloud fallback
 - **Robust**: JSON Schema validation prevents hallucinated tool calls
 - **Proactive**: Briefings, reminders, scheduled automation
-- **Self-Modifying**: Full source available for on-device hacking
 - **Observable**: Diagnostics via `/doctor` and `GET /v1/doctor`
 
 ---
 
-## ⚙️ Hardware Philosophy
+## Hardware
 
-Ghost is built for **edge-first computing**.
+### Recommended
+**RK1 (16GB RAM)** — Built-in NPU for AI acceleration
 
-### 🥇 Recommended
-**RK1 (16GB RAM)**
-
-Why:
-- Built-in **NPU (AI acceleration)**
-- Better performance than Raspberry Pi
-- Enables real-time local intelligence
-
----
-
-### 🥈 Compatible
+### Compatible
 - Raspberry Pi 5 / CM5
 - x86 mini-PCs
 
-👉 Works fine, but limited to **basic local intelligence**
-
 ---
 
-### 🧠 Scaling Up
-- Add GPU → run 7B–13B models locally  
-- Full offline reasoning becomes possible
-
----
-
-## 🛠️ Requirements
+## Requirements
 
 ### Hardware
-
-- RK1 (16GB) **recommended**
-- Raspberry Pi 5 (8GB+) supported
+- Raspberry Pi 5 (8GB+) or RK1 (16GB)
 - 32GB MicroSD storage
 - Mobile phone with Ghost app
 
----
-
 ### Software: Ollama (Required for Local AI)
-
-**Windows:**
-
-1. Install from https://ollama.com  
-2. Run:
-
-```powershell
-ollama pull qwen3.5:0.8b
-````
 
 **Linux / Raspberry Pi:**
 
@@ -129,18 +88,21 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen3.5:0.8b
 ```
 
+**Windows:**
+
+1. Install from https://ollama.com  
+2. Run: `ollama pull qwen3.5:0.8b`
+
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### Appliance Mode (Recommended)
-
-The easiest way to run Ghost on a Raspberry Pi:
+### Raspberry Pi (Recommended)
 
 ```bash
 git clone https://github.com/ianclemence/ghost.git
 cd ghost
-sudo make install-appliance
+sudo make install-ghost
 sudo reboot
 ```
 
@@ -150,37 +112,51 @@ After reboot, open `http://<pi-ip>` on your phone to complete setup:
 3. Select AI model
 4. Connect the Ghost app
 
----
-
 ### Developer Mode
 
-**Windows:**
+**Windows:** Double-click `setup.bat`
 
-Double-click `setup.bat`
-
----
-
-### Linux / RK1 / Raspberry Pi
+**Linux / Raspberry Pi:**
 
 ```bash
 chmod +x setup.sh
 ./setup.sh
 ```
 
-This script:
+---
 
-1. Installs dependencies
-2. Installs Python tools
-3. Installs Ollama
-4. Creates `.env`
-5. Generates `BRIDGE_SECRET`
-6. Builds Ghost
-7. Installs binary
-8. (Optional) installs systemd service
+## Commands
+
+### Core Commands
+
+| Command | Description |
+|---------|-------------|
+| `ghost gateway` | Start Ghost (main service) |
+| `ghost agent` | Chat directly in terminal |
+| `ghost dashboard` | Launch operator TUI |
+| `ghost status` | Show system status |
+| `ghost update` | Pull latest changes and rebuild |
+| `ghost updater` | Run auto-update daemon |
+
+### Management Commands
+
+| Command | Description |
+|---------|-------------|
+| `ghost onboard` | Initialize configuration |
+| `ghost auth` | Manage authentication |
+| `ghost cron` | Manage scheduled tasks |
+| `ghost skills` | Manage skills |
+| `ghost version` | Show version info |
+
+### First Boot
+
+| Command | Description |
+|---------|-------------|
+| `ghost-firstboot` | Setup wizard (runs automatically on first boot) |
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 ### `.env` (Secrets)
 
@@ -195,8 +171,6 @@ KIMI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here
 BRIDGE_SECRET=strong_secret_here
 ```
-
----
 
 ### `config.json` (Behavior)
 
@@ -220,47 +194,21 @@ cp config/config.example.json config/config.json
 
 ---
 
-## 🧭 Ghost CLI Commands
+## Skills Subcommands
 
-### Core
-
-| Command     | Purpose                                   | Example             |
-| ----------- | ----------------------------------------- | ------------------- |
-| `onboard`   | Initialize config and workspace templates | `ghost onboard`     |
-| `agent`     | Chat directly with Ghost in terminal      | `ghost agent`       |
-| `dashboard` | Open the terminal operator dashboard      | `ghost dashboard`   |
-| `gateway`   | Start multi-channel runtime               | `ghost gateway`     |
-| `status`    | Show runtime status                       | `ghost status`      |
-| `auth`      | Auth workflows                            | `ghost auth status` |
-| `cron`      | Manage scheduled jobs                     | `ghost cron list`   |
-| `skills`    | Manage skills                             | `ghost skills list` |
-| `migrate`   | Migrate configs                           | `ghost migrate`     |
-| `version`   | Show build info                           | `ghost version`     |
-
-### Appliance
-
-| Command              | Purpose                              | Example                    |
-| -------------------- | ------------------------------------ | -------------------------- |
-| `ghost-firstboot`    | Setup wizard for first boot          | `ghost-firstboot`          |
-| `ghost-updater`      | OTA update daemon                    | `ghost-updater -url <url>` |
+| Command | Description |
+|---------|-------------|
+| `ghost skills list` | List installed skills |
+| `ghost skills install <repo>` | Install from repository |
+| `ghost skills remove <name>` | Remove skill |
+| `ghost skills install-builtin` | Copy built-ins |
+| `ghost skills list-builtin` | List built-ins |
+| `ghost skills search` | Search registry |
+| `ghost skills show <name>` | Show details |
 
 ---
 
-### Skills Subcommands
-
-| Command                        | Purpose                 |
-| ------------------------------ | ----------------------- |
-| `ghost skills list`            | List installed skills   |
-| `ghost skills install <repo>`  | Install from repository |
-| `ghost skills remove <name>`   | Remove skill            |
-| `ghost skills install-builtin` | Copy built-ins          |
-| `ghost skills list-builtin`    | List built-ins          |
-| `ghost skills search`          | Search registry         |
-| `ghost skills show <name>`     | Show details            |
-
----
-
-## 📱 Ghost Mobile
+## Mobile App
 
 Ghost exposes a unified API on port **8766**:
 
@@ -269,16 +217,12 @@ Ghost exposes a unified API on port **8766**:
 * Voice
 * Remote control
 
----
-
 ### API Setup
 
 ```env
 GHOST_API_PORT=8766
 BRIDGE_SECRET=your_secret_here
 ```
-
----
 
 ### Run Mobile App
 
@@ -288,16 +232,11 @@ npm install
 npx expo start
 ```
 
----
-
 ### Tailscale Setup
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
-```
-
-```bash
 tailscale ip -4
 ```
 
@@ -305,20 +244,19 @@ Use that IP in app settings.
 
 ---
 
-## 🤖 Running as a Service
+## Running as a Service
 
-### Appliance Mode
+### Raspberry Pi
 
 ```bash
-ghost-service
+sudo make install-ghost
 ```
 
-This automatically starts the setup wizard if needed, or starts Ghost if setup is complete.
-
-### Developer Mode
+Then:
 
 ```bash
-make install-service
+ghost-firstboot  # Start setup wizard
+ghost            # Start Ghost (after setup)
 ```
 
 ### Service Commands
@@ -345,15 +283,21 @@ This starts a web UI at `http://ghost.local:8766` with:
 
 ---
 
-## 🔄 Updating Ghost
+## Updating Ghost
 
-### Appliance Mode
+### Manual Update
 
 ```bash
-ghost-update
+ghost update
 ```
 
-That's it. Pulls latest code, rebuilds, and restarts.
+### Auto-Update Daemon
+
+```bash
+ghost updater
+```
+
+This checks for updates every 6 hours automatically.
 
 ### Developer Mode
 
@@ -365,7 +309,7 @@ make install && sudo systemctl restart ghost
 
 ---
 
-## 🧠 Memory System
+## Memory System
 
 * SQLite database
 * HNSW vector index
@@ -374,56 +318,43 @@ make install && sudo systemctl restart ghost
 
 ---
 
-## 🤖 Tech Stack
+## Tech Stack
 
 * Go (runtime)
 * Ollama (local LLMs)
 * SQLite + HNSW
 * JSON Schema validation
-* Telegram + Mobile API
+* Mobile App API
 * Linux (systemd)
 
 ---
 
-## 🔄 Evolution
+## Evolution
 
 ### Phase 1
-
 * API-first assistant
 
-### Phase 2 (current)
-
+### Phase 2
 * Local-first routing
 * Reflex intelligence
 * Reduced cloud usage
 
 ### Phase 3
+* Multi-agent system
+* Autonomous reasoning
+* Skills self-improvement
+* Trajectory compression
+* Cross-session learning graph
 
-* Multi-agent system (Mixture of Agents with parallel advisors + aggregator)
-* Autonomous reasoning (reasoning chain tracking, background self-review)
-* Skills self-improvement (learned skill refinement from execution patterns)
-* Trajectory compression (interaction summaries for context window management)
-* Cross-session learning graph (knowledge graph connecting skills, memory, trajectories)
-
-### Phase 4: Ghost OS
-
-* Appliance mode (first-boot wizard, OTA updates, recovery mode)
+### Phase 4
+* First-boot wizard
+* OTA updates
+* Recovery mode
 * Custom Linux distribution
-* Multi-agent isolation
 * Hardware abstraction layer
 
 ---
 
-## 🔐 Sovereignty
-
-* Local-first execution
-* No forced cloud
-* Full data ownership
-* Secure API access
-
----
-
-## 📄 License
+## License
 
 MIT
-

@@ -1,18 +1,36 @@
 [Unit]
-Description=Ghost Pi - Sovereign AI Presence
-After=network.target
+Description=Ghost - Personal AI Assistant
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=__GHOST_DIR__/.setup-complete
 
 [Service]
 Type=simple
 User=__USER__
-WorkingDirectory=__HOME__/ghost
-EnvironmentFile=__HOME__/ghost/.env
-Environment=GHOST_WORKSPACE_DIR=__HOME__/ghost/workspace
-ExecStart=__HOME__/.local/bin/ghost gateway
+Group=__GROUP__
+WorkingDirectory=__GHOST_DIR__
+EnvironmentFile=__GHOST_DIR__/.env
+Environment=GHOST_WORKSPACE_DIR=__GHOST_DIR__/workspace
+ExecStart=__BIN_DIR__/ghost gateway
 Restart=always
 RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+# Health check via watchdog
+WatchdogSec=120
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=__GHOST_DIR__
+PrivateTmp=true
+
+# Logging
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=ghost
 
 [Install]
 WantedBy=multi-user.target

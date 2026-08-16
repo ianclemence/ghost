@@ -6,7 +6,7 @@ import (
 )
 
 // LaneTool allows the agent to switch to a different conversation "lane" (isolated context).
-// Inspired by OpenClaw's lanes skill.
+// Adapted from OpenClaw's lanes skill.
 type LaneTool struct {
 	onSwitch func(lane string)
 }

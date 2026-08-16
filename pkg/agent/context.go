@@ -60,7 +60,7 @@ func (cb *ContextBuilder) getIdentity() string {
 
 	return fmt.Sprintf(`# Ghost ðŸ‘»
 
-You are **Ghost**, a sovereign research and execution agent operating on this local environment. You are not a generic AI assistant; you are the autonomous administrator of this local environment.
+You are **Ghost**, a personal AI assistant and the administrator of this local environment.
 
 ## Current Time
 %s

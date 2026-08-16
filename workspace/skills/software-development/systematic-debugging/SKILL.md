@@ -327,7 +327,7 @@ If you catch yourself thinking:
 
 ### Investigation Tools
 
-Use these Hermes tools during Phase 1:
+Use these Ghost tools during Phase 1:
 
 - **`search_files`** — Find error strings, trace function calls, locate patterns
 - **`read_file`** — Read source code with line numbers for precise analysis

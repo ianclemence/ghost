@@ -1,6 +1,6 @@
-# Ghost Sovereign Hardware Reference
+# Ghost Hardware Reference
 
-Ghost is designed as a **sovereign intelligence system** that runs across layered computation — combining real-time local processing, on-device reasoning, and optional cloud cognition.
+Ghost is designed as a **personal AI system** that runs across layered computation — combining real-time local processing, on-device reasoning, and optional cloud cognition.
 
 This document defines the hardware required to build a Ghost system that is **responsive, private, and capable**, from compact always-on devices to full AI workstations.
 
@@ -8,7 +8,7 @@ This document defines the hardware required to build a Ghost system that is **re
 
 ## 🧠 Capability Tiers
 
-| Capability | Sovereign Starter (Edge Node) | Sovereign Pro (Local Intelligence Hub) | Sovereign Ultra (AI Workstation) |
+| Capability | Starter (Edge Node) | Pro (Local Intelligence Hub) | Ultra (AI Workstation) |
 |----------|------------------------------|----------------------------------------|----------------------------------|
 | CPU | RK1 (16GB) or Pi CM5 / x86 mini-PC | 12–16 core x86 (Ryzen 9 / i7/i9) | 24–32 core workstation |
 | RAM | 16 GB | 64–128 GB | 128–256 GB |

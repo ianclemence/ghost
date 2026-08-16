@@ -8,7 +8,7 @@ import (
 )
 
 // VoiceWakeTool allows the agent to control its "always-listening" state for wake words.
-// Inspired by OpenClaw's voicewake.ts.
+// Adapted from OpenClaw's voicewake.ts.
 type VoiceWakeTool struct {
 	onUpdate func(active bool)
 }
