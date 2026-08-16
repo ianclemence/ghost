@@ -417,7 +417,6 @@ func parseIwlistOutput(output string) []WiFiNetwork {
 
 // connectToWiFi connects to a WiFi network.
 func connectToWiFi(ssid, password string) error {
-	// Try nmcli first
 	if password == "" {
 		// Open network
 		out, err := exec.Command("nmcli", "dev", "wifi", "connect", ssid).CombinedOutput()
@@ -425,9 +424,20 @@ func connectToWiFi(ssid, password string) error {
 			return fmt.Errorf("failed to connect: %s", string(out))
 		}
 	} else {
-		out, err := exec.Command("nmcli", "dev", "wifi", "connect", ssid, "password", password).CombinedOutput()
+		// Secured network - use connection clone with proper security
+		// First try to connect with password
+		out, err := exec.Command("nmcli", "dev", "wifi", "connect", ssid, "password", password, "key", "wpa-psk").CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to connect: %s", string(out))
+			// If that fails, try with wifi-sec key-mgmt
+			out, err = exec.Command("nmcli", "connection", "add", "type", "wifi", "ssid", ssid, "wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", password, "connection.autoconnect", "yes").CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("failed to connect: %s", string(out))
+			}
+			// Try to activate the connection
+			out, err = exec.Command("nmcli", "connection", "up", ssid).CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("failed to activate connection: %s", string(out))
+			}
 		}
 	}
 	return nil
