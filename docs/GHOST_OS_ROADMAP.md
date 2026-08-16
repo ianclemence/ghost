@@ -30,7 +30,7 @@ This document outlines the progression from Ghost as a Go binary to a full opera
 | Ollama installed separately | Ollama bundled, models pre-cached or downloaded on first boot |
 | Ghost started manually or via systemd | Ghost starts automatically, restarts on crash |
 | Updates via `git pull` | OTA updates via secure channel |
-| Storage on SD card | NVMe auto-detected and preferred, SD as fallback |
+| Storage on SD card | Managed storage with automatic backups |
 
 ### First Boot Wizard
 
@@ -77,10 +77,6 @@ When someone plugs in their Pi:
    - Set admin password
    - Telegram bot token input
    - Store config in `/var/ghost/config.json`
-
-3. **NVMe migration**
-   - Script to detect NVMe, format, migrate data from SD, update boot order
-   - Ghost should prefer NVMe automatically
 
 ---
 
@@ -246,9 +242,6 @@ Each "agent" is an isolated Ghost instance with its own memory, skills, and chan
    - WiFi scan + connect
    - Set admin password
    - Telegram bot token input
-
-3. **NVMe preparation**
-   - Script to detect and migrate to NVMe when available
 
 ---
 
