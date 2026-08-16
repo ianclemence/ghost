@@ -188,6 +188,7 @@ install-ghost: build-ghost
 	@sudo systemctl enable ghost-firstboot
 	@sudo systemctl enable ghost
 	@sudo systemctl restart ghost 2>/dev/null || true
+	@sudo systemctl restart ghost-firstboot 2>/dev/null || true
 	@# Restore repo ownership to the developer user
 	@sudo chown -R $(shell stat -c '%U' .):$(shell stat -c '%G' .) $(BUILD_DIR) $(CMD_DIR)/workspace ghost.service ghost-firstboot.service 2>/dev/null || true
 	@echo "Ghost installed"
