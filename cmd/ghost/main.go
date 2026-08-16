@@ -16,6 +16,7 @@ import (
 
 	"github.com/chzyer/readline"
 	"github.com/ianclemence/ghost/pkg/agent"
+	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/auth"
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/channels"
@@ -555,6 +556,27 @@ func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 }
 
 func gatewayCmd() {
+	// Check for recovery mode
+	if os.Getenv("GHOST_RECOVERY_MODE") == "1" {
+		fmt.Println("🔧 Recovery mode active")
+		recovery := appliance.NewRecoveryServer()
+		if err := recovery.Start(); err != nil {
+			fmt.Printf("Recovery server failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Check if first boot is needed
+	fb := appliance.NewFirstBoot()
+	if fb.IsFirstBoot() {
+		fmt.Println("👋 First boot detected. Starting setup wizard...")
+		// The firstboot wizard should be running separately
+		// If we get here without setup, show error and exit
+		fmt.Println("Please run ghost-firstboot to complete setup, or set GHOST_RECOVERY_MODE=1 for recovery.")
+		os.Exit(1)
+	}
+
 	noCron := false
 	apiOnly := false
 

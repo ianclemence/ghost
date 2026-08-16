@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghost Setup</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #09090b;
+            color: #e4e4e7;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 420px;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .logo h1 {
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .logo p {
+            color: #71717a;
+            font-size: 14px;
+        }
+        .step {
+            display: none;
+        }
+        .step.active {
+            display: block;
+        }
+        .card {
+            background: #18181b;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+        .step-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #27272a;
+            transition: background 0.3s;
+        }
+        .step-dot.active {
+            background: #4ade80;
+        }
+        .step-dot.completed {
+            background: #22c55e;
+        }
+        h2 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            font-weight: 500;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            font-size: 13px;
+            color: #a1a1aa;
+            margin-bottom: 6px;
+        }
+        input[type="text"],
+        input[type="password"],
+        select {
+            width: 100%;
+            padding: 12px 14px;
+            background: #09090b;
+            border: 1px solid #27272a;
+            border-radius: 8px;
+            color: #e4e4e7;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus, select:focus {
+            border-color: #4ade80;
+        }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+        .btn-primary {
+            background: #4ade80;
+            color: #09090b;
+        }
+        .btn-primary:hover {
+            background: #22c55e;
+        }
+        .btn-primary:disabled {
+            background: #27272a;
+            color: #71717a;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: #27272a;
+            color: #e4e4e7;
+        }
+        .btn-secondary:hover {
+            background: #3f3f46;
+        }
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .btn-row .btn {
+            flex: 1;
+        }
+        .wifi-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .wifi-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid #27272a;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .wifi-item:hover {
+            border-color: #4ade80;
+        }
+        .wifi-item.selected {
+            border-color: #4ade80;
+            background: rgba(74, 222, 128, 0.1);
+        }
+        .wifi-item .signal {
+            margin-right: 12px;
+            font-size: 12px;
+            color: #71717a;
+        }
+        .wifi-item .ssid {
+            flex: 1;
+        }
+        .wifi-item .lock {
+            color: #71717a;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #71717a;
+        }
+        .spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 2px solid #27272a;
+            border-top-color: #4ade80;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .success-icon {
+            text-align: center;
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        .help-text {
+            font-size: 12px;
+            color: #71717a;
+            margin-top: 6px;
+        }
+        .error {
+            color: #ef4444;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>Ghost</h1>
+            <p>Setup your AI assistant</p>
+        </div>
+
+        <div class="step-indicator">
+            <div class="step-dot active" data-step="1"></div>
+            <div class="step-dot" data-step="2"></div>
+            <div class="step-dot" data-step="3"></div>
+            <div class="step-dot" data-step="4"></div>
+        </div>
+
+        <!-- Step 1: WiFi -->
+        <div class="step active" id="step-1">
+            <div class="card">
+                <h2>Connect to WiFi</h2>
+                <div id="wifi-loading" class="loading">
+                    <div class="spinner"></div>
+                    <p>Scanning for networks...</p>
+                </div>
+                <div id="wifi-list" class="wifi-list" style="display: none;"></div>
+                <div id="wifi-password-form" style="display: none;">
+                    <div class="form-group">
+                        <label>WiFi Password</label>
+                        <input type="password" id="wifi-password" placeholder="Enter password">
+                    </div>
+                    <button class="btn btn-primary" onclick="connectWifi()">Connect</button>
+                    <div id="wifi-error" class="error"></div>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-secondary" onclick="skipWifi()">Skip</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Admin Password -->
+        <div class="step" id="step-2">
+            <div class="card">
+                <h2>Create Admin Password</h2>
+                <p class="help-text" style="margin-bottom: 16px;">This password protects your Ghost instance and is used by the mobile app to connect.</p>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="admin-password" placeholder="Choose a strong password">
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" id="admin-password-confirm" placeholder="Confirm password">
+                </div>
+                <div id="password-error" class="error"></div>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-secondary" onclick="prevStep()">Back</button>
+                <button class="btn btn-primary" onclick="validatePassword()">Next</button>
+            </div>
+        </div>
+
+        <!-- Step 3: Model Selection -->
+        <div class="step" id="step-3">
+            <div class="card">
+                <h2>AI Model</h2>
+                <p class="help-text" style="margin-bottom: 16px;">Choose the AI model to use. You can change this later in settings.</p>
+                <div class="form-group">
+                    <label>Provider</label>
+                    <select id="provider" onchange="updateModels()">
+                        <option value="ollama">Ollama (Local)</option>
+                        <option value="moonshot">Moonshot (Kimi)</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="openai">OpenAI (GPT)</option>
+                        <option value="openrouter">OpenRouter</option>
+                        <option value="groq">Groq</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Model</label>
+                    <select id="model">
+                        <option value="qwen3.5:0.8b">Qwen 3.5 0.8B (Fast, Light)</option>
+                        <option value="qwen3.5:2b">Qwen 3.5 2B (Balanced)</option>
+                        <option value="qwen3.5:7b">Qwen 3.5 7B (Smart, Needs 8GB+)</option>
+                    </select>
+                </div>
+                <div class="form-group" id="ollama-models-section" style="display: none;">
+                    <label>Or select an installed model</label>
+                    <select id="installed-models">
+                        <option value="">None found</option>
+                    </select>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-secondary" onclick="prevStep()">Back</button>
+                <button class="btn btn-primary" onclick="nextStep()">Next</button>
+            </div>
+        </div>
+
+        <!-- Step 4: Complete -->
+        <div class="step" id="step-4">
+            <div class="card">
+                <div class="success-icon">✓</div>
+                <h2 style="text-align: center;">Setup Complete</h2>
+                <p style="text-align: center; color: #71717a; margin-bottom: 16px;">
+                    Ghost is configuring your AI assistant. This will take a moment.
+                </p>
+                <div id="setup-status" class="loading">
+                    <div class="spinner"></div>
+                    <p>Configuring Ghost...</p>
+                </div>
+                <div id="setup-complete" style="display: none;">
+                    <div class="card" style="background: #09090b;">
+                        <h2 style="font-size: 14px; margin-bottom: 12px;">Connect Your App</h2>
+                        <p style="font-size: 13px; color: #a1a1aa; margin-bottom: 12px;">
+                            Open the Ghost app and enter:
+                        </p>
+                        <p style="font-size: 24px; font-weight: bold; text-align: center; color: #4ade80; letter-spacing: 2px;" id="pairing-code">
+                            ----
+                        </p>
+                        <p style="font-size: 12px; color: #71717a; text-align: center; margin-top: 8px;">
+                            Or connect to <strong>ghost.local:8766</strong>
+                        </p>
+                    </div>
+                    <button class="btn btn-primary" onclick="finishSetup()">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 1;
+        let selectedWifi = null;
+        let adminPassword = '';
+        let setupData = {};
+
+        async function init() {
+            scanWifi();
+        }
+
+        async function scanWifi() {
+            try {
+                const res = await fetch('/api/scan-wifi');
+                const data = await res.json();
+                document.getElementById('wifi-loading').style.display = 'none';
+                const list = document.getElementById('wifi-list');
+                list.style.display = 'block';
+
+                if (data.networks && data.networks.length > 0) {
+                    list.innerHTML = data.networks.map(n => `
+                        <div class="wifi-item" onclick="selectWifi('${n.ssid}', ${n.encrypted})">
+                            <span class="signal">${getSignalIcon(n.signal)}</span>
+                            <span class="ssid">${n.ssid}</span>
+                            ${n.encrypted ? '<span class="lock">🔒</span>' : ''}
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = '<p style="text-align: center; color: #71717a;">No networks found</p>';
+                }
+            } catch (e) {
+                document.getElementById('wifi-loading').innerHTML = '<p>Failed to scan networks</p>';
+            }
+        }
+
+        function getSignalIcon(signal) {
+            if (signal >= 75) return '▂▄▆█';
+            if (signal >= 50) return '▂▄▆░';
+            if (signal >= 25) return '▂▄░░';
+            return '▂░░░';
+        }
+
+        function selectWifi(ssid, encrypted) {
+            selectedWifi = ssid;
+            document.querySelectorAll('.wifi-item').forEach(el => el.classList.remove('selected'));
+            event.currentTarget.classList.add('selected');
+
+            if (encrypted) {
+                document.getElementById('wifi-password-form').style.display = 'block';
+                document.getElementById('wifi-password').focus();
+            } else {
+                connectWifi();
+            }
+        }
+
+        async function connectWifi() {
+            const password = document.getElementById('wifi-password').value;
+            const errorEl = document.getElementById('wifi-error');
+            errorEl.textContent = '';
+
+            try {
+                const res = await fetch('/api/connect-wifi', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ssid: selectedWifi, password })
+                });
+                const data = await res.json();
+
+                if (data.ok) {
+                    nextStep();
+                } else {
+                    errorEl.textContent = data.error || 'Failed to connect';
+                }
+            } catch (e) {
+                errorEl.textContent = 'Connection failed';
+            }
+        }
+
+        function skipWifi() {
+            nextStep();
+        }
+
+        function validatePassword() {
+            const pw = document.getElementById('admin-password').value;
+            const confirm = document.getElementById('admin-password-confirm').value;
+            const errorEl = document.getElementById('password-error');
+            errorEl.textContent = '';
+
+            if (pw.length < 8) {
+                errorEl.textContent = 'Password must be at least 8 characters';
+                return;
+            }
+
+            if (pw !== confirm) {
+                errorEl.textContent = 'Passwords do not match';
+                return;
+            }
+
+            adminPassword = pw;
+            nextStep();
+        }
+
+        function updateModels() {
+            const provider = document.getElementById('provider').value;
+            const modelSelect = document.getElementById('model');
+            const ollamaSection = document.getElementById('ollama-models-section');
+
+            if (provider === 'ollama') {
+                modelSelect.innerHTML = `
+                    <option value="qwen3.5:0.8b">Qwen 3.5 0.8B (Fast, Light)</option>
+                    <option value="qwen3.5:2b">Qwen 3.5 2B (Balanced)</option>
+                    <option value="qwen3.5:7b">Qwen 3.5 7B (Smart, Needs 8GB+)</option>
+                `;
+                ollamaSection.style.display = 'block';
+                loadInstalledModels();
+            } else if (provider === 'moonshot') {
+                modelSelect.innerHTML = '<option value="kimi-k2.5">Kimi K2.5</option>';
+                ollamaSection.style.display = 'none';
+            } else if (provider === 'anthropic') {
+                modelSelect.innerHTML = `
+                    <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                    <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Fast)</option>
+                `;
+                ollamaSection.style.display = 'none';
+            } else if (provider === 'openai') {
+                modelSelect.innerHTML = `
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="gpt-4o-mini">GPT-4o Mini (Fast)</option>
+                `;
+                ollamaSection.style.display = 'none';
+            } else if (provider === 'groq') {
+                modelSelect.innerHTML = `
+                    <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+                    <option value="llama-3.1-8b-instant">Llama 3.1 8B (Fast)</option>
+                `;
+                ollamaSection.style.display = 'none';
+            } else {
+                modelSelect.innerHTML = '<option value="">Select a model</option>';
+                ollamaSection.style.display = 'none';
+            }
+        }
+
+        async function loadInstalledModels() {
+            try {
+                const res = await fetch('/api/ollama/models');
+                const data = await res.json();
+                const select = document.getElementById('installed-models');
+
+                if (data.ok && data.models && data.models.length > 0) {
+                    select.innerHTML = data.models.map(m =>
+                        `<option value="${m}">${m}</option>`
+                    ).join('');
+                }
+            } catch (e) {
+                console.error('Failed to load models:', e);
+            }
+        }
+
+        function nextStep() {
+            if (currentStep === 3) {
+                completeSetup();
+                return;
+            }
+            document.getElementById(`step-${currentStep}`).classList.remove('active');
+            currentStep++;
+            document.getElementById(`step-${currentStep}`).classList.add('active');
+            updateDots();
+        }
+
+        function prevStep() {
+            document.getElementById(`step-${currentStep}`).classList.remove('active');
+            currentStep--;
+            document.getElementById(`step-${currentStep}`).classList.add('active');
+            updateDots();
+        }
+
+        function updateDots() {
+            document.querySelectorAll('.step-dot').forEach(dot => {
+                const step = parseInt(dot.dataset.step);
+                dot.classList.remove('active', 'completed');
+                if (step === currentStep) dot.classList.add('active');
+                if (step < currentStep) dot.classList.add('completed');
+            });
+        }
+
+        async function completeSetup() {
+            const provider = document.getElementById('provider').value;
+            const modelSelect = document.getElementById('model');
+            const model = modelSelect.value || document.getElementById('installed-models').value;
+
+            setupData = {
+                admin_password: adminPassword,
+                model: model,
+                provider: provider,
+                ollama_url: 'http://localhost:11434'
+            };
+
+            // Show loading state
+            document.getElementById('setup-status').style.display = 'block';
+            document.getElementById('setup-complete').style.display = 'none';
+
+            try {
+                const res = await fetch('/api/configure', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(setupData)
+                });
+                const data = await res.json();
+
+                if (data.ok) {
+                    // Get pairing code
+                    const codeRes = await fetch('/api/pairing-code');
+                    const codeData = await codeRes.json();
+                    if (codeData.ok) {
+                        document.getElementById('pairing-code').textContent = codeData.code;
+                    }
+
+                    document.getElementById('setup-status').style.display = 'none';
+                    document.getElementById('setup-complete').style.display = 'block';
+                    updateDots();
+                } else {
+                    document.getElementById('setup-status').innerHTML =
+                        `<p style="color: #ef4444;">Error: ${data.error}</p>`;
+                }
+            } catch (e) {
+                document.getElementById('setup-status').innerHTML =
+                    '<p style="color: #ef4444;">Failed to configure. Please try again.</p>';
+            }
+        }
+
+        function finishSetup() {
+            document.body.innerHTML = `
+                <div class="container">
+                    <div class="card" style="text-align: center;">
+                        <div class="success-icon">✓</div>
+                        <h2>Ghost is Ready</h2>
+                        <p style="color: #71717a; margin: 16px 0;">
+                            The device will restart in a moment.<br>
+                            Open the Ghost app to start chatting.
+                        </p>
+                    </div>
+                </div>
+            `;
+            // Reload after a delay
+            setTimeout(() => {
+                window.location.reload();
+            }, 10000);
+        }
+
+        init();
+    </script>
+</body>
+</html>
