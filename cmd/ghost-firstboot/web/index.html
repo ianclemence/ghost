@@ -2,246 +2,688 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Ghost Admin</title>
     <style>
+        :root {
+            --bg-body: #09090b;
+            --bg-card: #18181b;
+            --bg-card-inner: #09090b;
+            --bg-input: #09090b;
+            --border: #27272a;
+            --border-subtle: #1e1e22;
+            --border-focus: #4ade80;
+            --accent: #22c55e;
+            --accent-light: #4ade80;
+            --accent-glow: rgba(74, 222, 128, 0.08);
+            --accent-glow-strong: rgba(74, 222, 128, 0.15);
+            --text-primary: #fafafa;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+            --text-dim: #52525b;
+            --error: #ef4444;
+            --error-bg: #450a0a;
+            --error-border: rgba(239, 68, 68, 0.4);
+            --success: #4ade80;
+            --success-bg: #14532d;
+            --warning: #fb923c;
+            --warning-bg: #451a03;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+            --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+            --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-pill: 999px;
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 16px;
+            --space-lg: 24px;
+            --space-xl: 32px;
+            --space-2xl: 48px;
+            --transition-fast: 120ms ease;
+            --transition-base: 180ms ease;
+            --transition-slow: 280ms ease;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { -webkit-text-size-adjust: 100%; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #09090b;
-            color: #fafafa;
+            background: var(--bg-body);
+            color: var(--text-primary);
             min-height: 100vh;
+            min-height: 100dvh;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
-        .container { max-width: 640px; margin: 0 auto; padding: 40px 20px; }
+
+        ::selection {
+            background: var(--accent-glow-strong);
+            color: var(--text-primary);
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+        .container { max-width: 640px; margin: 0 auto; padding: var(--space-2xl) var(--space-lg); }
+
+        /* ── Cards ── */
         .card {
-            background: #18181b;
-            border: 1px solid #27272a;
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-xl);
+            margin-bottom: var(--space-lg);
+            box-shadow: var(--shadow-sm);
+            transition: border-color var(--transition-base), box-shadow var(--transition-base);
         }
-        h1 { font-size: 24px; margin-bottom: 8px; }
-        h2 { font-size: 18px; margin-bottom: 8px; }
-        h3 { font-size: 14px; margin-bottom: 8px; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; }
-        p { color: #71717a; font-size: 14px; line-height: 1.5; }
-        .help-text { margin-bottom: 8px; }
-        .logo { text-align: center; margin-bottom: 32px; }
-        .logo .icon {
-            width: 56px; height: 56px; margin: 0 auto 16px;
+        .card-active {
+            border-top: 2px solid var(--accent);
+        }
+        .card-inner {
+            background: var(--bg-card-inner);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+        }
+
+        /* ── Typography ── */
+        h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: var(--space-sm); line-height: 1.2; }
+        h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: var(--space-sm); line-height: 1.3; }
+        h3 { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: var(--space-md); }
+        p { color: var(--text-muted); font-size: 14px; line-height: 1.6; }
+        .help-text { margin-bottom: var(--space-sm); }
+        .subtitle { color: var(--text-muted); font-size: 15px; line-height: 1.5; }
+
+        /* ── Logo ── */
+        .logo { text-align: center; margin-bottom: var(--space-2xl); }
+        .logo-icon {
+            width: 64px; height: 64px; margin: 0 auto var(--space-md);
             background: linear-gradient(135deg, #4ade80, #22c55e);
-            border-radius: 14px;
+            border-radius: 18px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 28px; color: #052e16; font-weight: bold;
+            font-size: 32px; color: #052e16; font-weight: 800;
+            box-shadow: 0 4px 24px rgba(34, 197, 94, 0.25);
         }
-        .form-group { margin-bottom: 16px; }
-        label { display: block; margin-bottom: 6px; font-size: 13px; color: #a1a1aa; }
+        .logo h1 { margin-bottom: 2px; }
+        .logo h1 span { color: var(--accent-light); }
+        .logo .tagline { color: var(--text-dim); font-size: 13px; margin-top: var(--space-xs); letter-spacing: 0.02em; }
+
+        /* ── Step Indicator (numbered progress bar) ── */
+        .step-indicator {
+            display: none;
+            align-items: flex-start;
+            justify-content: center;
+            gap: 0;
+            margin-bottom: var(--space-2xl);
+            padding: 0 var(--space-md);
+        }
+        .step-indicator.visible { display: flex; }
+        .step-node {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            flex: 1;
+            max-width: 120px;
+        }
+        .step-circle {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 700;
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            color: var(--text-dim);
+            transition: all var(--transition-base);
+            position: relative;
+            z-index: 2;
+        }
+        .step-node.active .step-circle {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #052e16;
+            box-shadow: 0 0 0 4px var(--accent-glow);
+        }
+        .step-node.completed .step-circle {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #052e16;
+        }
+        .step-label {
+            margin-top: var(--space-sm);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            text-align: center;
+            transition: color var(--transition-base);
+        }
+        .step-node.active .step-label { color: var(--accent-light); }
+        .step-node.completed .step-label { color: var(--text-secondary); }
+        .step-connector {
+            flex: 1;
+            height: 2px;
+            background: var(--border);
+            margin-top: 17px;
+            transition: background var(--transition-base);
+            min-width: 24px;
+        }
+        .step-connector.filled { background: var(--accent); }
+
+        /* ── Forms ── */
+        .form-group { margin-bottom: var(--space-md); }
+        label {
+            display: block; margin-bottom: 6px;
+            font-size: 13px; font-weight: 500; color: var(--text-secondary);
+        }
         input, select {
             width: 100%;
-            padding: 10px 12px;
-            background: #09090b;
-            border: 1px solid #27272a;
-            border-radius: 8px;
-            color: #fafafa;
+            padding: 12px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
             font-size: 14px;
+            font-family: inherit;
             outline: none;
+            transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
         }
-        input:focus, select:focus { border-color: #4ade80; }
-        input::placeholder { color: #52525b; }
-        .btn-row { display: flex; gap: 12px; margin-top: 20px; }
+        input:focus, select:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        input::placeholder { color: var(--text-dim); }
+        input.error-input {
+            border-color: var(--error-border);
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        }
+        select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2371717a' d='M6 8.5L1.5 4h9z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+
+        /* ── Buttons ── */
+        .btn-row { display: flex; gap: var(--space-md); margin-top: var(--space-xl); }
         .btn {
             flex: 1;
-            padding: 12px;
+            padding: 14px var(--space-lg);
             border: none;
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             font-size: 14px;
             font-weight: 600;
+            font-family: inherit;
             cursor: pointer;
-            transition: opacity 0.15s;
+            transition: all var(--transition-fast);
+            min-height: 48px;
+            display: flex; align-items: center; justify-content: center; gap: var(--space-sm);
         }
-        .btn:hover { opacity: 0.85; }
-        .btn-primary { background: #22c55e; color: #052e16; }
-        .btn-secondary { background: #27272a; color: #fafafa; }
-        .btn-danger { background: #ef4444; color: #fff; }
-        .btn-small { flex: 0 0 auto; padding: 6px 14px; font-size: 12px; }
-        .error { color: #ef4444; font-size: 13px; margin-top: 8px; }
-        .success { color: #4ade80; font-size: 13px; margin-top: 8px; }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn-primary {
+            background: var(--accent);
+            color: #052e16;
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.2);
+        }
+        .btn-primary:hover {
+            background: #16a34a;
+            box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);
+        }
+        .btn-secondary {
+            background: var(--border);
+            color: var(--text-primary);
+        }
+        .btn-secondary:hover { background: #3f3f46; }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+        }
+        .btn-ghost:hover { color: var(--text-primary); border-color: var(--text-dim); }
+        .btn-danger {
+            background: var(--error);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
+        }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-small { flex: 0 0 auto; padding: 8px 16px; font-size: 12px; min-height: 36px; }
+        .btn[disabled] { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-icon {
+            width: 36px; height: 36px; padding: 0; flex: 0 0 36px;
+            border-radius: var(--radius-sm); font-size: 14px;
+        }
+
+        /* ── Messages ── */
+        .error { color: var(--error); font-size: 13px; margin-top: var(--space-sm); }
+        .success { color: var(--success); font-size: 13px; margin-top: var(--space-sm); }
+        .muted { color: var(--text-dim); font-size: 12px; }
+
+        /* ── Steps ── */
         .step { display: none; }
-        .step.active { display: block; }
-        .wifi-item {
-            display: flex; align-items: center; gap: 12px;
-            padding: 12px; margin-bottom: 8px;
-            background: #09090b; border: 1px solid #27272a; border-radius: 8px;
-            cursor: pointer;
+        .step.active { display: block; animation: fadeStepIn 180ms ease-out; }
+        @keyframes fadeStepIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
         }
-        .wifi-item.selected { border-color: #4ade80; background: #14532d33; }
-        .signal { color: #4ade80; font-size: 13px; }
-        .ssid { flex: 1; font-size: 14px; }
-        .lock { font-size: 12px; }
-        .loading { text-align: center; padding: 20px 0; color: #71717a; }
+
+        /* ── WiFi ── */
+        .wifi-list-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: var(--space-md);
+        }
+        .wifi-count {
+            font-size: 12px; color: var(--text-dim); font-weight: 500;
+            background: var(--bg-input); padding: 4px 10px; border-radius: var(--radius-pill);
+            border: 1px solid var(--border);
+        }
+        .wifi-item {
+            display: flex; align-items: center; gap: var(--space-md);
+            padding: 14px var(--space-md); margin-bottom: var(--space-sm);
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+        .wifi-item:hover { border-color: var(--text-dim); background: #0f0f12; }
+        .wifi-item.selected {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+            box-shadow: 0 0 0 1px var(--accent-glow);
+        }
+        .wifi-signal {
+            display: flex; align-items: flex-end; gap: 2px; height: 16px;
+        }
+        .wifi-bar {
+            width: 3px; border-radius: 1px; background: var(--text-dim);
+            transition: background var(--transition-fast);
+        }
+        .wifi-bar:nth-child(1) { height: 4px; }
+        .wifi-bar:nth-child(2) { height: 7px; }
+        .wifi-bar:nth-child(3) { height: 10px; }
+        .wifi-bar:nth-child(4) { height: 14px; }
+        .wifi-item.selected .wifi-bar { background: var(--accent); }
+        .wifi-ssid { flex: 1; font-size: 14px; font-weight: 500; }
+        .wifi-lock { font-size: 11px; color: var(--text-dim); }
+
+        /* ── Spinner ── */
+        .loading { text-align: center; padding: var(--space-xl) 0; color: var(--text-muted); }
         .spinner {
-            width: 24px; height: 24px; margin: 0 auto 12px;
-            border: 3px solid #27272a; border-top-color: #4ade80;
-            border-radius: 50%; animation: spin 0.8s linear infinite;
+            width: 28px; height: 28px; margin: 0 auto var(--space-md);
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .success-icon {
-            width: 56px; height: 56px; margin: 0 auto 16px;
-            background: #14532d; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 28px; color: #4ade80;
-        }
-        .step-indicator { display: none; justify-content: center; gap: 8px; margin-bottom: 32px; }
-        .step-dot {
-            width: 10px; height: 10px; border-radius: 50%;
-            background: #27272a;
-        }
-        .step-dot.active { background: #4ade80; }
-        .step-dot.completed { background: #22c55e; }
-        code {
-            background: #09090b; padding: 4px 8px; border-radius: 4px;
-            font-size: 13px; color: #a1a1aa;
-        }
-        .hidden { display: none; }
 
-        /* Dashboard layout */
+        /* ── Success Icon & Animation ── */
+        .success-icon-wrap {
+            width: 72px; height: 72px; margin: 0 auto var(--space-lg);
+            position: relative;
+        }
+        .success-circle {
+            width: 72px; height: 72px;
+            background: var(--success-bg);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            animation: scaleIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes scaleIn {
+            from { transform: scale(0); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .success-check {
+            width: 32px; height: 32px;
+            stroke: var(--accent);
+            stroke-width: 3;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .success-check path {
+            stroke-dasharray: 40;
+            stroke-dashoffset: 40;
+            animation: drawCheck 400ms 200ms ease-out forwards;
+        }
+        @keyframes drawCheck {
+            to { stroke-dashoffset: 0; }
+        }
+
+        /* ── Pairing Code ── */
+        .pairing-code-wrap {
+            display: flex; align-items: center; justify-content: center; gap: var(--space-sm);
+            margin: var(--space-lg) 0;
+        }
+        .pairing-code {
+            font-size: 28px; font-weight: 800; letter-spacing: 3px;
+            color: var(--accent-light); font-variant-numeric: tabular-nums;
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+        }
+        .copy-btn {
+            width: 40px; height: 40px; padding: 0;
+            background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text-muted);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all var(--transition-fast);
+        }
+        .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .copy-btn.copied { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+        .copy-btn svg { width: 18px; height: 18px; }
+
+        /* ── Steps: hidden/shown ── */
+        .hidden { display: none !important; }
+
+        /* ── Dashboard ── */
         .topbar {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 16px 24px; border-bottom: 1px solid #27272a;
-            position: sticky; top: 0; background: #09090b; z-index: 10;
+            padding: var(--space-md) var(--space-lg);
+            border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; background: var(--bg-body); z-index: 100;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            background: rgba(9, 9, 11, 0.85);
         }
         .topbar .brand { font-size: 16px; font-weight: 700; }
-        .topbar .brand span { color: #4ade80; }
-        .topbar .nav-right { display: flex; align-items: center; gap: 12px; font-size: 12px; color: #71717a; }
+        .topbar .brand span { color: var(--accent-light); }
+        .topbar-center {
+            display: flex; align-items: center; gap: var(--space-sm);
+            font-size: 13px; color: var(--text-dim);
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 6px var(--accent);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .nav-right { display: flex; align-items: center; gap: var(--space-md); }
+
         .tab-bar {
-            display: flex; gap: 4px; padding: 8px 16px;
-            border-bottom: 1px solid #27272a; overflow-x: auto;
-            position: sticky; top: 60px; background: #09090b; z-index: 9;
+            display: flex; gap: var(--space-xs); padding: var(--space-sm) var(--space-md);
+            border-bottom: 1px solid var(--border); overflow-x: auto;
+            position: sticky; top: 57px; background: rgba(9, 9, 11, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            z-index: 99;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
+        .tab-bar::-webkit-scrollbar { display: none; }
         .tab {
-            padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
-            color: #71717a; cursor: pointer; white-space: nowrap;
+            padding: 10px 16px; border-radius: var(--radius-sm);
+            font-size: 13px; font-weight: 600;
+            color: var(--text-muted); cursor: pointer; white-space: nowrap;
             border: 1px solid transparent;
+            transition: all var(--transition-fast);
+            min-height: 40px;
+            display: flex; align-items: center;
         }
-        .tab:hover { color: #fafafa; }
+        .tab:hover { color: var(--text-primary); background: var(--bg-card); }
         .tab.active {
-            background: #22c55e; color: #052e16;
+            background: var(--accent); color: #052e16;
+            border-color: var(--accent);
         }
-        .tab-content { display: none; padding: 24px 16px; max-width: 900px; margin: 0 auto; }
-        .tab-content.active { display: block; }
-        .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+
+        .tab-content { display: none; padding: var(--space-lg) var(--space-md); max-width: 960px; margin: 0 auto; }
+        .tab-content.active { display: block; animation: fadeStepIn 180ms ease-out; }
+
+        /* ── Dashboard Grid ── */
+        .dash-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-md);
+        }
+        @media (max-width: 700px) {
+            .dash-grid { grid-template-columns: repeat(2, 1fr); }
+        }
         .stat-card {
-            background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 16px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius-md); padding: var(--space-lg);
+            transition: border-color var(--transition-fast);
         }
-        .stat-card .label { font-size: 12px; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
-        .stat-card .value { font-size: 24px; font-weight: 700; }
-        .stat-card .value small { font-size: 13px; color: #71717a; font-weight: 400; }
+        .stat-card:hover { border-color: var(--text-dim); }
+        .stat-card .label {
+            font-size: 11px; color: var(--text-dim);
+            text-transform: uppercase; letter-spacing: 0.06em;
+            margin-bottom: var(--space-sm); font-weight: 600;
+        }
+        .stat-card .value {
+            font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+            line-height: 1.1;
+        }
+        .stat-card .value small {
+            font-size: 13px; color: var(--text-dim); font-weight: 400;
+            margin-left: var(--space-xs);
+        }
+
+        .dash-two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-lg);
+            margin-top: var(--space-lg);
+        }
+        @media (max-width: 700px) {
+            .dash-two-col { grid-template-columns: 1fr; }
+        }
+
         .service-row {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 10px 0; border-bottom: 1px solid #27272a;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-subtle);
         }
         .service-row:last-child { border-bottom: none; }
+
         .badge {
-            padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+            padding: 3px 12px; border-radius: var(--radius-pill);
+            font-size: 11px; font-weight: 700;
+            letter-spacing: 0.02em;
         }
-        .badge.ok { background: #14532d; color: #4ade80; }
-        .badge.fail { background: #450a0a; color: #ef4444; }
-        .badge.warn { background: #451a03; color: #fb923c; }
+        .badge.ok { background: var(--success-bg); color: var(--accent); }
+        .badge.fail { background: var(--error-bg); color: var(--error); }
+        .badge.warn { background: var(--warning-bg); color: var(--warning); }
+
+        .kv {
+            display: flex; justify-content: space-between;
+            padding: 10px 0; border-bottom: 1px solid var(--border-subtle);
+            font-size: 14px;
+        }
+        .kv:last-child { border-bottom: none; }
+        .kv .k { color: var(--text-muted); }
+        .kv .v { font-weight: 600; text-align: right; }
+
         .log-box {
-            background: #09090b; border: 1px solid #27272a; border-radius: 8px;
-            padding: 12px; font-family: monospace; font-size: 12px;
+            background: var(--bg-card-inner); border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: var(--space-md); font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px; line-height: 1.6;
             white-space: pre-wrap; word-break: break-word;
-            max-height: 300px; overflow-y: auto; color: #a1a1aa; margin-top: 12px;
+            max-height: 300px; overflow-y: auto;
+            color: var(--text-secondary); margin-top: var(--space-md);
         }
+
         .check-row {
-            display: flex; align-items: center; gap: 10px;
-            padding: 8px 0; border-bottom: 1px solid #27272a; font-size: 13px;
+            display: flex; align-items: center; gap: var(--space-sm);
+            padding: 10px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px;
         }
         .check-row:last-child { border-bottom: none; }
-        .inline-form { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+
+        .inline-form { display: flex; gap: var(--space-sm); align-items: flex-end; flex-wrap: wrap; }
         .inline-form .form-group { flex: 1; min-width: 180px; margin-bottom: 0; }
-        .muted { color: #71717a; font-size: 12px; }
-        .kv { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #27272a; font-size: 14px; }
-        .kv:last-child { border-bottom: none; }
-        .kv .k { color: #71717a; }
-        .kv .v { font-weight: 600; text-align: right; }
+
         .skill-card {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 12px; margin-bottom: 8px;
-            background: #09090b; border: 1px solid #27272a; border-radius: 8px;
+            padding: var(--space-md); margin-bottom: var(--space-sm);
+            background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            transition: border-color var(--transition-fast);
         }
-        .skill-card .meta { flex: 1; }
+        .skill-card:hover { border-color: var(--text-dim); }
+        .skill-card .meta { flex: 1; min-width: 0; }
         .skill-card .name { font-weight: 600; font-size: 14px; }
-        .skill-card .desc { font-size: 12px; color: #71717a; margin-top: 2px; }
-        .api-key-row { display: flex; gap: 8px; align-items: center; }
+        .skill-card .desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .api-key-row { display: flex; gap: var(--space-sm); align-items: center; }
         .api-key-row input { flex: 1; }
+
         .toggle-row {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 0; border-bottom: 1px solid #27272a;
+            padding: 14px 0; border-bottom: 1px solid var(--border-subtle);
         }
         .toggle-row:last-child { border-bottom: none; }
         .toggle {
-            width: 44px; height: 24px; border-radius: 999px; background: #27272a;
+            width: 48px; height: 26px; border-radius: var(--radius-pill);
+            background: var(--border);
             position: relative; cursor: pointer; border: none; flex-shrink: 0;
-            transition: background 0.2s;
+            transition: background var(--transition-fast);
         }
         .toggle::after {
             content: ''; position: absolute; top: 3px; left: 3px;
-            width: 18px; height: 18px; border-radius: 50%; background: #fafafa;
-            transition: transform 0.2s;
+            width: 20px; height: 20px; border-radius: 50%;
+            background: var(--text-primary);
+            transition: transform var(--transition-fast);
+            box-shadow: var(--shadow-sm);
         }
-        .toggle.on { background: #22c55e; }
-        .toggle.on::after { transform: translateX(20px); }
-        .section-title { font-size: 16px; font-weight: 700; margin: 24px 0 12px; }
-        .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+        .toggle.on { background: var(--accent); }
+        .toggle.on::after { transform: translateX(22px); }
+        .toggle:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .section-title { font-size: 16px; font-weight: 700; margin: var(--space-xl) 0 var(--space-md); }
+
+        .code {
+            background: var(--bg-card-inner); padding: 4px 10px; border-radius: var(--radius-sm);
+            font-size: 13px; color: var(--text-secondary);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+
+        /* ── Focus rings ── */
+        input:focus-visible, select:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+        }
+        button:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 480px) {
+            .container { padding: var(--space-xl) var(--space-md); }
+            .card { padding: var(--space-lg); }
+            h1 { font-size: 24px; }
+            .pairing-code { font-size: 22px; letter-spacing: 2px; }
+            .step-label { font-size: 10px; }
+            .step-circle { width: 32px; height: 32px; font-size: 13px; }
+            .step-connector { margin-top: 15px; }
+        }
+
+        /* ── Toast notification ── */
+        .toast {
+            position: fixed; bottom: var(--space-xl); left: 50%; transform: translateX(-50%);
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius-md); padding: 12px 20px;
+            font-size: 13px; color: var(--text-primary);
+            box-shadow: var(--shadow-lg); z-index: 1000;
+            animation: toastIn 200ms ease-out forwards;
+            max-width: calc(100vw - 48px);
+        }
+        .toast.error { border-color: var(--error-border); }
+        .toast.success { border-color: var(--accent); }
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
     </style>
 </head>
 <body>
     <div class="container" id="wizard-container">
         <div class="logo">
-            <div class="icon">G</div>
-            <h1>Ghost Admin</h1>
+            <div class="logo-icon">G</div>
+            <h1>Ghost <span>Admin</span></h1>
+            <p class="tagline">Your AI, Your Hardware</p>
         </div>
 
-        <div class="step-indicator">
-            <div class="step-dot active" data-step="1"></div>
-            <div class="step-dot" data-step="2"></div>
-            <div class="step-dot" data-step="3"></div>
-            <div class="step-dot" data-step="4"></div>
+        <div class="step-indicator" id="step-indicator">
+            <div class="step-node active" data-step="1">
+                <div class="step-circle">1</div>
+                <div class="step-label">WiFi</div>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-node" data-step="2">
+                <div class="step-circle">2</div>
+                <div class="step-label">Password</div>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-node" data-step="3">
+                <div class="step-circle">3</div>
+                <div class="step-label">AI Model</div>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-node" data-step="4">
+                <div class="step-circle">4</div>
+                <div class="step-label">Done</div>
+            </div>
         </div>
 
         <!-- Step 1: Network -->
         <div class="step active" id="step-1">
-            <div class="card">
+            <div class="card card-active">
                 <h2>Connect to WiFi</h2>
-                <p class="help-text" style="margin-bottom: 16px;">Select a network to get online.</p>
+                <p class="subtitle" style="margin-bottom: var(--space-lg);">Select a network to get your device online.</p>
                 <div id="wifi-loading" class="loading">
                     <div class="spinner"></div>
                     <p>Scanning for networks...</p>
                 </div>
-                <div id="wifi-list" style="display: none;"></div>
-                <div id="wifi-password-form" style="display: none; margin-top: 16px;" class="form-group">
-                    <label>WiFi Password</label>
-                    <input type="password" id="wifi-password" placeholder="Enter WiFi password"
-                           onkeydown="if(event.key==='Enter')connectWifi()">
+                <div id="wifi-list" style="display: none;">
+                    <div class="wifi-list-header">
+                        <span id="wifi-count" class="wifi-count"></span>
+                    </div>
+                    <div id="wifi-networks"></div>
+                </div>
+                <div id="wifi-password-form" style="display: none; margin-top: var(--space-md);">
+                    <div class="form-group">
+                        <label for="wifi-password">WiFi Password</label>
+                        <input type="password" id="wifi-password" placeholder="Enter WiFi password"
+                               onkeydown="if(event.key==='Enter')connectWifi()">
+                    </div>
                     <div id="wifi-error" class="error"></div>
+                    <button class="btn btn-primary" style="width: 100%;" onclick="connectWifi()">Connect</button>
                 </div>
             </div>
             <div class="btn-row">
-                <button class="btn btn-secondary" onclick="skipWifi()">Skip</button>
+                <button class="btn btn-ghost" onclick="skipWifi()">Skip for now</button>
             </div>
         </div>
 
         <!-- Step 2: Admin password -->
         <div class="step" id="step-2">
-            <div class="card">
+            <div class="card card-active">
                 <h2>Set Admin Password</h2>
-                <p class="help-text" style="margin-bottom: 16px;">This password protects Ghost's settings. Keep it somewhere safe.</p>
+                <p class="subtitle" style="margin-bottom: var(--space-lg);">This protects Ghost's settings. Keep it somewhere safe.</p>
                 <div class="form-group">
-                    <label>Admin Password</label>
+                    <label for="admin-password">Admin Password</label>
                     <input type="password" id="admin-password" placeholder="At least 8 characters">
                 </div>
                 <div class="form-group">
-                    <label>Confirm Password</label>
+                    <label for="admin-password-confirm">Confirm Password</label>
                     <input type="password" id="admin-password-confirm" placeholder="Repeat password">
                 </div>
                 <div id="password-error" class="error"></div>
@@ -254,11 +696,11 @@
 
         <!-- Step 3: Model Selection -->
         <div class="step" id="step-3">
-            <div class="card">
-                <h2>AI Model</h2>
-                <p class="help-text" style="margin-bottom: 16px;">Choose the AI model to use. You can change this later in settings.</p>
+            <div class="card card-active">
+                <h2>Choose Your AI</h2>
+                <p class="subtitle" style="margin-bottom: var(--space-lg);">Select a provider and model. You can change this later in settings.</p>
                 <div class="form-group">
-                    <label>Provider</label>
+                    <label for="provider">Provider</label>
                     <select id="provider" onchange="updateModels()">
                         <option value="ollama">Ollama (Local)</option>
                         <option value="moonshot">Moonshot (Kimi)</option>
@@ -269,7 +711,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Model</label>
+                    <label for="model">Model</label>
                     <select id="model">
                         <option value="qwen3:0.6b">Qwen 3 0.6B (Fastest, Light)</option>
                         <option value="qwen3:1.7b">Qwen 3 1.7B (Balanced)</option>
@@ -277,7 +719,7 @@
                     </select>
                 </div>
                 <div class="form-group" id="ollama-models-section" style="display: none;">
-                    <label>Or select an installed model</label>
+                    <label for="installed-models">Or select an installed model</label>
                     <select id="installed-models">
                         <option value="">None found</option>
                     </select>
@@ -291,10 +733,16 @@
 
         <!-- Step 4: Complete -->
         <div class="step" id="step-4">
-            <div class="card">
-                <div class="success-icon">✓</div>
-                <h2 style="text-align: center;">Setup Complete</h2>
-                <p style="text-align: center; color: #71717a; margin-bottom: 16px;">
+            <div class="card" style="text-align: center;">
+                <div class="success-icon-wrap">
+                    <div class="success-circle">
+                        <svg class="success-check" viewBox="0 0 24 24">
+                            <path d="M6 12.5L10.5 17L18 7"/>
+                        </svg>
+                    </div>
+                </div>
+                <h2 style="text-align: center; margin-bottom: var(--space-sm);">Setup Complete</h2>
+                <p class="subtitle" style="text-align: center; margin-bottom: var(--space-lg);">
                     Ghost is configuring your AI assistant. This will take a moment.
                 </p>
                 <div id="setup-status" class="loading">
@@ -302,30 +750,36 @@
                     <p>Configuring Ghost...</p>
                 </div>
                 <div id="setup-complete" style="display: none;">
-                    <div class="card" style="background: #09090b;">
-                        <h2 style="font-size: 14px; margin-bottom: 12px;">Connect Your App</h2>
-                        <p style="font-size: 13px; color: #a1a1aa; margin-bottom: 12px;">
-                            Open the Ghost app and enter:
+                    <div class="card-inner" style="margin-bottom: var(--space-lg);">
+                        <h3 style="margin-bottom: var(--space-md);">Connect Your App</h3>
+                        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: var(--space-md);">
+                            Open the Ghost app and enter the pairing code below, or visit
                         </p>
-                        <p style="font-size: 24px; font-weight: bold; text-align: center; color: #4ade80; letter-spacing: 2px;" id="pairing-code">
-                            ----
-                        </p>
-                        <p style="font-size: 12px; color: #71717a; text-align: center; margin-top: 8px;">
-                            Or connect to <strong>ghost.local:8766</strong>
+                        <div class="pairing-code-wrap">
+                            <span class="pairing-code" id="pairing-code">----</span>
+                            <button class="copy-btn" id="copy-btn" onclick="copyPairingCode()" title="Copy pairing code">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <p style="font-size: 13px; color: var(--text-dim); margin-top: var(--space-sm);">
+                            Or connect to <strong style="color: var(--text-secondary);">ghost.local:8766</strong>
                         </p>
                     </div>
-                    <button class="btn btn-primary" onclick="finishSetup()">Done</button>
+                    <button class="btn btn-primary" style="width: 100%;" onclick="finishSetup()">Done</button>
                 </div>
             </div>
         </div>
 
         <!-- Login (re-running setup on a configured device) -->
         <div class="step" id="step-login">
-            <div class="card">
+            <div class="card card-active">
                 <h2>Admin Login</h2>
-                <p class="help-text" style="margin-bottom: 16px;">Ghost is already set up. Enter the admin password to open the admin dashboard.</p>
+                <p class="subtitle" style="margin-bottom: var(--space-lg);">Ghost is already set up. Enter the admin password to open the dashboard.</p>
                 <div class="form-group">
-                    <label>Admin Password</label>
+                    <label for="login-password">Admin Password</label>
                     <input type="password" id="login-password" placeholder="Admin password" onkeydown="if(event.key==='Enter')login()">
                 </div>
                 <div id="login-error" class="error"></div>
@@ -339,18 +793,24 @@
         <!-- Already configured -->
         <div class="step" id="step-already">
             <div class="card" style="text-align: center;">
-                <div class="success-icon">✓</div>
+                <div class="success-icon-wrap">
+                    <div class="success-circle">
+                        <svg class="success-check" viewBox="0 0 24 24">
+                            <path d="M6 12.5L10.5 17L18 7"/>
+                        </svg>
+                    </div>
+                </div>
                 <h2>Ghost is Already Set Up</h2>
-                <p class="help-text" style="margin: 16px 0;">
+                <p class="subtitle" style="margin: var(--space-lg) 0;">
                     This device has already been configured.<br>
-                    Open <strong>ghost.local:8766</strong> or the Ghost app to start chatting.
+                    Open <strong style="color: var(--text-primary);">ghost.local:8766</strong> or the Ghost app to start chatting.
                 </p>
-                <p class="help-text" style="margin: 16px 0;">
-                    To open the admin dashboard, connect via SSH and run:<br>
-                    <code style="background: #09090b; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 8px;">sudo ghost-firstboot -force</code>
+                <p class="subtitle" style="margin: var(--space-lg) 0;">
+                    To open the admin dashboard, connect via SSH and run:
                 </p>
+                <div class="code" style="display: inline-block; margin-top: var(--space-sm);">sudo ghost-firstboot -force</div>
             </div>
-            <button class="btn btn-secondary" onclick="location.reload()">Refresh</button>
+            <button class="btn btn-secondary" style="width: 100%;" onclick="location.reload()">Refresh</button>
         </div>
     </div>
 
@@ -358,8 +818,11 @@
     <div class="hidden" id="dashboard">
         <div class="topbar">
             <div class="brand">Ghost <span>Admin</span></div>
+            <div class="topbar-center">
+                <div class="status-dot"></div>
+                <span id="nav-host">Online</span>
+            </div>
             <div class="nav-right">
-                <span id="nav-host"></span>
                 <button class="btn btn-secondary btn-small" onclick="logout()">Logout</button>
             </div>
         </div>
@@ -373,8 +836,8 @@
 
         <!-- Home tab -->
         <div class="tab-content active" id="tab-home">
-            <h3 style="margin-bottom: 12px;">System Health</h3>
-            <div class="dash-grid" style="margin-bottom: 20px;">
+            <h3>System Health</h3>
+            <div class="dash-grid" style="margin-bottom: var(--space-lg);">
                 <div class="stat-card">
                     <div class="label">CPU</div>
                     <div class="value" id="stat-cpu">-</div>
@@ -392,29 +855,35 @@
                     <div class="value" id="stat-uptime">-</div>
                 </div>
             </div>
-            <div class="card">
-                <h3>Services</h3>
-                <div id="services"></div>
-            </div>
-            <div class="card">
-                <h3>Configuration</h3>
-                <div class="kv"><span class="k">Hostname</span><span class="v" id="cfg-host">-</span></div>
-                <div class="kv"><span class="k">IP address</span><span class="v" id="cfg-ip">-</span></div>
-                <div class="kv"><span class="k">Version</span><span class="v" id="cfg-ver">-</span></div>
-                <div class="kv"><span class="k">Provider</span><span class="v" id="cfg-provider">-</span></div>
-                <div class="kv"><span class="k">Model</span><span class="v" id="cfg-model">-</span></div>
-                <div class="kv"><span class="k">Ollama</span><span class="v" id="cfg-ollama">-</span></div>
-            </div>
-            <div class="card">
-                <h3>Diagnostics</h3>
-                <button class="btn btn-secondary btn-small" style="margin-bottom: 12px;" onclick="runDoctor()">Run checks</button>
-                <div id="doctor-results"></div>
-            </div>
-            <div class="card">
-                <h3>Software Update</h3>
-                <p class="help-text">Pulls the latest Ghost version from GitHub and redeploys. The device stays online.</p>
-                <button class="btn btn-primary btn-small" id="update-btn" onclick="startUpdate()">Check for updates</button>
-                <div class="log-box hidden" id="update-log"></div>
+            <div class="dash-two-col">
+                <div>
+                    <div class="card">
+                        <h3>Services</h3>
+                        <div id="services"></div>
+                    </div>
+                    <div class="card">
+                        <h3>Configuration</h3>
+                        <div class="kv"><span class="k">Hostname</span><span class="v" id="cfg-host">-</span></div>
+                        <div class="kv"><span class="k">IP address</span><span class="v" id="cfg-ip">-</span></div>
+                        <div class="kv"><span class="k">Version</span><span class="v" id="cfg-ver">-</span></div>
+                        <div class="kv"><span class="k">Provider</span><span class="v" id="cfg-provider">-</span></div>
+                        <div class="kv"><span class="k">Model</span><span class="v" id="cfg-model">-</span></div>
+                        <div class="kv"><span class="k">Ollama</span><span class="v" id="cfg-ollama">-</span></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="card">
+                        <h3>Diagnostics</h3>
+                        <button class="btn btn-secondary btn-small" style="margin-bottom: var(--space-md);" onclick="runDoctor()">Run checks</button>
+                        <div id="doctor-results"></div>
+                    </div>
+                    <div class="card">
+                        <h3>Software Update</h3>
+                        <p class="help-text">Pulls the latest Ghost version from GitHub and redeploys. The device stays online.</p>
+                        <button class="btn btn-primary btn-small" id="update-btn" onclick="startUpdate()">Check for updates</button>
+                        <div class="log-box hidden" id="update-log"></div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -423,7 +892,7 @@
             <div class="card">
                 <h3>AI Model</h3>
                 <div class="form-group">
-                    <label>Provider</label>
+                    <label for="ai-provider">Provider</label>
                     <select id="ai-provider">
                         <option value="ollama">Ollama (Local)</option>
                         <option value="moonshot">Moonshot (Kimi)</option>
@@ -437,23 +906,23 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Model</label>
+                    <label for="ai-model">Model</label>
                     <input type="text" id="ai-model" placeholder="e.g. qwen3:0.6b, kimi-k2.5, claude-sonnet-4">
                 </div>
                 <div class="form-group">
-                    <label>Fallback models (comma separated)</label>
+                    <label for="ai-fallback">Fallback models (comma separated)</label>
                     <input type="text" id="ai-fallback" placeholder="e.g. qwen3:0.6b">
                 </div>
                 <div class="form-group">
-                    <label>Embedding model</label>
+                    <label for="ai-embedding">Embedding model</label>
                     <input type="text" id="ai-embedding" placeholder="e.g. nomic-embed-text">
                 </div>
                 <div class="form-group">
-                    <label>Ollama URL</label>
+                    <label for="ai-ollama">Ollama URL</label>
                     <input type="text" id="ai-ollama" placeholder="http://localhost:11434">
                 </div>
                 <div class="form-group">
-                    <label>Max tokens</label>
+                    <label for="ai-maxtokens">Max tokens</label>
                     <input type="number" id="ai-maxtokens" placeholder="4096">
                 </div>
                 <div id="ai-error" class="error"></div>
@@ -468,14 +937,14 @@
                 <h3>API Keys</h3>
                 <p class="help-text">Keys are stored in .env on the device and masked here. Leave blank to keep the current value.</p>
                 <div id="api-keys"></div>
-                <button class="btn btn-primary btn-small" style="margin-top: 8px;" onclick="saveAIKeys()">Save API keys</button>
+                <button class="btn btn-primary btn-small" style="margin-top: var(--space-sm);" onclick="saveAIKeys()">Save API keys</button>
             </div>
 
             <div class="card">
                 <h3>Ollama Models</h3>
                 <p class="help-text">Models installed locally on this device.</p>
                 <div id="ollama-models"></div>
-                <div class="inline-form" style="margin-top: 12px;">
+                <div class="inline-form" style="margin-top: var(--space-md);">
                     <div class="form-group">
                         <input type="text" id="ollama-new-model" placeholder="e.g. qwen3:4b">
                     </div>
@@ -494,8 +963,8 @@
                     <span style="font-size: 14px;">Enabled</span>
                     <button class="toggle" id="tg-toggle" onclick="toggleChannel('tg')"></button>
                 </div>
-                <div class="form-group" style="margin-top: 12px;">
-                    <label>Bot token</label>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="tg-token">Bot token</label>
                     <input type="password" id="tg-token" placeholder="123456:ABC-DEF...">
                 </div>
             </div>
@@ -506,8 +975,8 @@
                     <span style="font-size: 14px;">Enabled</span>
                     <button class="toggle" id="ds-toggle" onclick="toggleChannel('ds')"></button>
                 </div>
-                <div class="form-group" style="margin-top: 12px;">
-                    <label>Bot token</label>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="ds-token">Bot token</label>
                     <input type="password" id="ds-token" placeholder="Discord bot token">
                 </div>
             </div>
@@ -518,28 +987,28 @@
                     <span style="font-size: 14px;">Enabled</span>
                     <button class="toggle" id="em-toggle" onclick="toggleChannel('em')"></button>
                 </div>
-                <div class="form-group" style="margin-top: 12px;">
-                    <label>SMTP host</label>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="em-host">SMTP host</label>
                     <input type="text" id="em-host" placeholder="smtp.gmail.com">
                 </div>
                 <div class="form-group">
-                    <label>SMTP port</label>
+                    <label for="em-port">SMTP port</label>
                     <input type="number" id="em-port" placeholder="587">
                 </div>
                 <div class="form-group">
-                    <label>Username</label>
+                    <label for="em-user">Username</label>
                     <input type="text" id="em-user" placeholder="you@example.com">
                 </div>
                 <div class="form-group">
-                    <label>Password</label>
+                    <label for="em-pass">Password</label>
                     <input type="password" id="em-pass" placeholder="App password">
                 </div>
                 <div class="form-group">
-                    <label>From address</label>
+                    <label for="em-from">From address</label>
                     <input type="text" id="em-from" placeholder="you@example.com">
                 </div>
                 <div class="form-group">
-                    <label>To address (notifications)</label>
+                    <label for="em-to">To address (notifications)</label>
                     <input type="text" id="em-to" placeholder="you@example.com">
                 </div>
             </div>
@@ -550,14 +1019,14 @@
                     <span style="font-size: 14px;">Enabled</span>
                     <button class="toggle" id="hb-toggle" onclick="toggleHeartbeat()"></button>
                 </div>
-                <div class="form-group" style="margin-top: 12px;">
-                    <label>Interval (minutes, min 5)</label>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="hb-interval">Interval (minutes, min 5)</label>
                     <input type="number" id="hb-interval" placeholder="30">
                 </div>
             </div>
             <div id="channels-error" class="error"></div>
             <div id="channels-success" class="success"></div>
-            <button class="btn btn-primary" style="margin-top: 8px;" onclick="saveChannels()">Save channel settings</button>
+            <button class="btn btn-primary" style="margin-top: var(--space-sm); width: 100%;" onclick="saveChannels()">Save channel settings</button>
         </div>
 
         <!-- System tab -->
@@ -586,11 +1055,11 @@
             <div class="card">
                 <h3>Change admin password</h3>
                 <div class="form-group">
-                    <label>Current password</label>
+                    <label for="pw-current">Current password</label>
                     <input type="password" id="pw-current" placeholder="Current admin password">
                 </div>
                 <div class="form-group">
-                    <label>New password</label>
+                    <label for="pw-new">New password</label>
                     <input type="password" id="pw-new" placeholder="At least 8 characters">
                 </div>
                 <div id="password-msg" class="error"></div>
@@ -602,8 +1071,8 @@
                 <button class="btn btn-danger btn-small" onclick="regenBridge()">Regenerate bridge secret</button>
                 <div id="bridge-msg" class="error"></div>
             </div>
-            <div class="card" style="border-color: #450a0a;">
-                <h3 style="color: #ef4444;">Danger zone</h3>
+            <div class="card" style="border-color: var(--error-border);">
+                <h3 style="color: var(--error);">Danger zone</h3>
                 <button class="btn btn-danger btn-small" onclick="rebootDevice()">Reboot device</button>
             </div>
         </div>
@@ -619,19 +1088,19 @@
                 <h3>Install from GitHub</h3>
                 <p class="help-text">Install a skill from a public GitHub repo. Works with skills published on skills.sh.</p>
                 <div class="form-group">
-                    <label>Owner</label>
+                    <label for="sk-owner">Owner</label>
                     <input type="text" id="sk-owner" placeholder="e.g. mattpocock">
                 </div>
                 <div class="form-group">
-                    <label>Repo</label>
+                    <label for="sk-repo">Repo</label>
                     <input type="text" id="sk-repo" placeholder="e.g. skills">
                 </div>
                 <div class="form-group">
-                    <label>Path to skill (within repo)</label>
+                    <label for="sk-path">Path to skill (within repo)</label>
                     <input type="text" id="sk-path" placeholder="e.g. skills/productivity/grill-me">
                 </div>
                 <div class="form-group">
-                    <label>Name (optional, defaults to folder name)</label>
+                    <label for="sk-name">Name (optional, defaults to folder name)</label>
                     <input type="text" id="sk-name" placeholder="e.g. grill-me">
                 </div>
                 <div id="skills-error" class="error"></div>
@@ -676,18 +1145,18 @@
         }
 
         function showStepIndicator() {
-            document.querySelector('.step-indicator').style.display = 'flex';
+            document.getElementById('step-indicator').classList.add('visible');
         }
 
         function hideStepIndicator() {
-            document.querySelector('.step-indicator').style.display = 'none';
+            document.getElementById('step-indicator').classList.remove('visible');
         }
 
         function goToStep(n) {
             document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
             document.getElementById('step-' + n).classList.add('active');
             currentStep = n;
-            updateDots();
+            updateStepIndicator();
         }
 
         function showLogin() {
@@ -740,7 +1209,7 @@
         async function showDashboard() {
             document.getElementById('wizard-container').style.display = 'none';
             document.getElementById('dashboard').classList.remove('hidden');
-            document.getElementById('nav-host').textContent = 'Admin';
+            document.getElementById('nav-host').textContent = 'Online';
             switchTab('home');
             loadHome();
             loadAIConfig();
@@ -792,10 +1261,8 @@
                 if (!data.ok) return;
                 document.getElementById('stat-cpu').textContent = (data.cpu_percent || 0).toFixed(0) + '%';
                 const memPct = data.memory.total ? (data.memory.used / data.memory.total * 100).toFixed(0) : 0;
-                document.getElementById('stat-mem').textContent = memPct + '%';
                 document.getElementById('stat-mem').innerHTML = memPct + '% <small>' + fmtBytes(data.memory.used) + '</small>';
                 const diskPct = data.disk.total ? (data.disk.used / data.disk.total * 100).toFixed(0) : 0;
-                document.getElementById('stat-disk').textContent = diskPct + '%';
                 document.getElementById('stat-disk').innerHTML = diskPct + '% <small>' + fmtBytes(data.disk.used) + '</small>';
                 document.getElementById('stat-uptime').textContent = data.uptime || '-';
 
@@ -842,7 +1309,6 @@
 
             try {
                 await api('/api/admin/update', 'POST');
-                // Poll the update status until it finishes.
                 const poll = setInterval(async () => {
                     const data = await api('/api/admin/update/status');
                     log.textContent = data.log || '';
@@ -879,7 +1345,6 @@
                 }
                 document.getElementById('ai-maxtokens').value = data.max_tokens || '';
 
-                // API keys
                 providerKeys = {};
                 const keysBox = document.getElementById('api-keys');
                 const providerNames = {
@@ -1225,7 +1690,7 @@
             } catch (e) {}
         }
 
-        // ---------- Wizard helpers (kept from original) ----------
+        // ---------- Wizard helpers ----------
         async function scanWifi() {
             try {
                 const res = await fetch('/api/scan-wifi');
@@ -1235,32 +1700,31 @@
                 list.style.display = 'block';
 
                 if (data.networks && data.networks.length > 0) {
-                    list.innerHTML = data.networks.map(n => `
-                        <div class="wifi-item" onclick="selectWifi('${n.ssid}', ${n.encrypted})">
-                            <span class="signal">${getSignalIcon(n.signal)}</span>
-                            <span class="ssid">${n.ssid}</span>
-                            ${n.encrypted ? '<span class="lock">🔒</span>' : ''}
+                    document.getElementById('wifi-count').textContent = data.networks.length + ' network' + (data.networks.length !== 1 ? 's' : '') + ' found';
+                    document.getElementById('wifi-networks').innerHTML = data.networks.map(n => `
+                        <div class="wifi-item" onclick="selectWifi('${n.ssid}', ${n.encrypted}, this)">
+                            <div class="wifi-signal">
+                                <div class="wifi-bar" style="height: 4px; ${n.signal >= 25 ? 'background: var(--accent)' : ''}"></div>
+                                <div class="wifi-bar" style="height: 7px; ${n.signal >= 50 ? 'background: var(--accent)' : ''}"></div>
+                                <div class="wifi-bar" style="height: 10px; ${n.signal >= 75 ? 'background: var(--accent)' : ''}"></div>
+                                <div class="wifi-bar" style="height: 14px; ${n.signal >= 75 ? 'background: var(--accent)' : ''}"></div>
+                            </div>
+                            <span class="wifi-ssid">${n.ssid}</span>
+                            ${n.encrypted ? '<span class="wifi-lock">&#128274;</span>' : ''}
                         </div>
                     `).join('');
                 } else {
-                    list.innerHTML = '<p style="text-align: center; color: #71717a;">No networks found</p>';
+                    document.getElementById('wifi-networks').innerHTML = '<p style="text-align: center; color: var(--text-dim); padding: var(--space-xl) 0;">No networks found</p>';
                 }
             } catch (e) {
-                document.getElementById('wifi-loading').innerHTML = '<p>Failed to scan networks</p>';
+                document.getElementById('wifi-loading').innerHTML = '<p class="error">Failed to scan networks</p>';
             }
         }
 
-        function getSignalIcon(signal) {
-            if (signal >= 75) return '▂▄▆█';
-            if (signal >= 50) return '▂▄▆░';
-            if (signal >= 25) return '▂▄░░';
-            return '▂░░░';
-        }
-
-        function selectWifi(ssid, encrypted) {
+        function selectWifi(ssid, encrypted, el) {
             selectedWifi = ssid;
-            document.querySelectorAll('.wifi-item').forEach(el => el.classList.remove('selected'));
-            event.currentTarget.classList.add('selected');
+            document.querySelectorAll('.wifi-item').forEach(e => e.classList.remove('selected'));
+            el.classList.add('selected');
 
             if (encrypted) {
                 document.getElementById('wifi-password-form').style.display = 'block';
@@ -1387,22 +1851,31 @@
             document.getElementById(`step-${currentStep}`).classList.remove('active');
             currentStep++;
             document.getElementById(`step-${currentStep}`).classList.add('active');
-            updateDots();
+            updateStepIndicator();
         }
 
         function prevStep() {
             document.getElementById(`step-${currentStep}`).classList.remove('active');
             currentStep--;
             document.getElementById(`step-${currentStep}`).classList.add('active');
-            updateDots();
+            updateStepIndicator();
         }
 
-        function updateDots() {
-            document.querySelectorAll('.step-dot').forEach(dot => {
-                const step = parseInt(dot.dataset.step);
-                dot.classList.remove('active', 'completed');
-                if (step === currentStep) dot.classList.add('active');
-                if (step < currentStep) dot.classList.add('completed');
+        function updateStepIndicator() {
+            document.querySelectorAll('.step-node').forEach(node => {
+                const step = parseInt(node.dataset.step);
+                node.classList.remove('active', 'completed');
+                if (step === currentStep) node.classList.add('active');
+                if (step < currentStep) node.classList.add('completed');
+                const circle = node.querySelector('.step-circle');
+                if (step < currentStep) {
+                    circle.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5L10.5 17L18 7"/></svg>';
+                } else {
+                    circle.textContent = step;
+                }
+            });
+            document.querySelectorAll('.step-connector').forEach((conn, i) => {
+                conn.classList.toggle('filled', i < currentStep - 1);
             });
         }
 
@@ -1441,19 +1914,31 @@
 
                     document.getElementById('setup-status').style.display = 'none';
                     document.getElementById('setup-complete').style.display = 'block';
-                    updateDots();
+                    updateStepIndicator();
                 } else {
                     document.getElementById('setup-status').innerHTML =
-                        `<p style="color: #ef4444;">Error: ${data.error}</p>`;
+                        `<p class="error">Error: ${data.error}</p>`;
                 }
             } catch (e) {
                 document.getElementById('setup-status').innerHTML =
-                    '<p style="color: #ef4444;">Failed to configure. Please try again.</p>';
+                    '<p class="error">Failed to configure. Please try again.</p>';
             }
         }
 
+        function copyPairingCode() {
+            const code = document.getElementById('pairing-code').textContent;
+            const btn = document.getElementById('copy-btn');
+            navigator.clipboard.writeText(code).then(() => {
+                btn.classList.add('copied');
+                btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5L10.5 17L18 7"/></svg>';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+                }, 1500);
+            }).catch(() => {});
+        }
+
         function finishSetup() {
-            // Show the admin dashboard directly when the wizard is always-on.
             loggedIn = true;
             document.getElementById('wizard-container').style.display = 'none';
             document.getElementById('dashboard').classList.remove('hidden');

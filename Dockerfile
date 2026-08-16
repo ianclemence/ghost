@@ -1,32 +1,38 @@
-# ============================================================
-# Stage 1: Build the ghost binary
-# ============================================================
-FROM golang:1.26.0-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
-RUN apk add --no-cache git make
+RUN apk add --no-cache git
 
 WORKDIR /src
-
-# Cache dependencies
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source and build
 COPY . .
-RUN make build
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o /ghost ./cmd/ghost
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o /ghost-firstboot ./cmd/ghost-firstboot
 
-# ============================================================
-# Stage 2: Minimal runtime image
-# ============================================================
-FROM alpine:3.23
+FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata curl
+RUN apk add --no-cache ca-certificates tzdata sqlite-libs
 
-# Copy binary
-COPY --from=builder /src/build/ghost /usr/local/bin/ghost
+RUN addgroup -S ghost && adduser -S -G ghost ghost
 
-# Create ghost home directory
-RUN /usr/local/bin/ghost onboard
+RUN mkdir -p /var/ghost/data /var/ghost/workspace /etc/ghost
+
+COPY --from=builder /ghost /usr/local/bin/ghost
+COPY --from=builder /ghost-firstboot /usr/local/bin/ghost-firstboot
+
+COPY config/config.example.json /etc/ghost/config.json
+
+RUN chown -R ghost:ghost /var/ghost /etc/ghost
+
+USER ghost
+
+EXPOSE 8766 80
+
+VOLUME ["/var/ghost/data", "/var/ghost/workspace"]
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD wget -qO- http://localhost:8766/v1/status || exit 1
 
 ENTRYPOINT ["ghost"]
-CMD ["gateway"]
+CMD ["agent"]

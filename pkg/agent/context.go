@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -18,10 +19,11 @@ import (
 )
 
 type ContextBuilder struct {
-	workspace    string
-	skillsLoader *skills.SkillsLoader
-	memory       *MemoryStore
-	tools        *tools.ToolRegistry // Direct reference to tool registry
+	workspace       string
+	skillsLoader    *skills.SkillsLoader
+	memory          *MemoryStore
+	tools           *tools.ToolRegistry // Direct reference to tool registry
+	personalityName string
 }
 
 func getGlobalConfigDir() string {
@@ -48,6 +50,11 @@ func NewContextBuilder(workspace string) *ContextBuilder {
 // SetToolsRegistry sets the tools registry for dynamic tool summary generation.
 func (cb *ContextBuilder) SetToolsRegistry(registry *tools.ToolRegistry) {
 	cb.tools = registry
+}
+
+// SetPersonality sets the active personality name for system prompt injection.
+func (cb *ContextBuilder) SetPersonality(name string) {
+	cb.personalityName = name
 }
 
 func (cb *ContextBuilder) getIdentity() string {
@@ -153,6 +160,14 @@ The following skills extend your capabilities. To use a skill, read its SKILL.md
 		parts = append(parts, curateMemoryContext)
 	}
 
+	// Personality override (if set and not default)
+	if cb.personalityName != "" && cb.personalityName != "default" {
+		personalityContent := cb.loadPersonalityContent()
+		if personalityContent != "" {
+			parts = append(parts, fmt.Sprintf("# Active Personality: %s\n\n%s", cb.personalityName, personalityContent))
+		}
+	}
+
 	// Join with "---" separator
 	return strings.Join(parts, "\n\n---\n\n")
 }
@@ -162,10 +177,14 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	// - GHOST.md: The core system identity, personality, and directives (consolidated).
 	// - USER.md: Persistent facts and preferences about the user (updated at runtime).
 	// - HEARTBEAT.md: The autonomic nervous system schedule (periodic tasks).
+	// - AGENTS.md: Project-level agent instructions and conventions (Hermes-inspired).
+	// - SOUL.md: Persona and personality override (Hermes-inspired).
 	bootstrapFiles := []string{
 		"GHOST.md",
 		"USER.md",
 		"HEARTBEAT.md",
+		"AGENTS.md",
+		"SOUL.md",
 	}
 
 	var result string
@@ -354,6 +373,26 @@ func (cb *ContextBuilder) loadSkills() string {
 	}
 
 	return "# Skill Definitions\n\n" + content
+}
+
+// loadPersonalityContent reads the active personality from the personalities directory.
+func (cb *ContextBuilder) loadPersonalityContent() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	personalityFile := filepath.Join(home, ".GHOST", "personalities", cb.personalityName+".json")
+	data, err := os.ReadFile(personalityFile)
+	if err != nil {
+		return ""
+	}
+	var p struct {
+		Content string `json:"content"`
+	}
+	if json.Unmarshal(data, &p) != nil {
+		return ""
+	}
+	return p.Content
 }
 
 // GetSkillsInfo returns information about loaded skills.

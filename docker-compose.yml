@@ -1,40 +1,49 @@
-services:
-  # ─────────────────────────────────────────────
-  # Ghost Agent (one-shot query)
-  #   docker compose run --rm ghost-agent -m "Hello"
-  # ─────────────────────────────────────────────
-  ghost-agent:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ghost-agent
-    profiles:
-      - agent
-    volumes:
-      - ./config/config.json:/root/.ghost/config.json:ro
-      - ghost-workspace:/root/.ghost/workspace
-    entrypoint: ["ghost", "agent"]
-    stdin_open: true
-    tty: true
+version: '3.8'
 
-  # ─────────────────────────────────────────────
-  # Ghost Gateway (Long-running Bot)
-  #   docker compose up ghost-gateway
-  # ─────────────────────────────────────────────
-  ghost-gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ghost-gateway
+services:
+  ghost:
+    build: .
+    container_name: ghost
     restart: unless-stopped
-    profiles:
-      - gateway
+    ports:
+      - "8766:8766"
     volumes:
-      # Configuration file
-      - ./config/config.json:/root/.ghost/config.json:ro
-      # Persistent workspace (sessions, memory, logs)
-      - ghost-workspace:/root/.ghost/workspace
-    command: ["gateway"]
+      - ghost-data:/var/ghost/data
+      - ghost-workspace:/var/ghost/workspace
+    environment:
+      - GHOST_AGENTS_DEFAULTS_PROVIDER=${GHOST_PROVIDER:-moonshot}
+      - GHOST_AGENTS_DEFAULTS_MODEL=${GHOST_MODEL:-kimi-k2.5}
+      - KIMI_API_KEY=${KIMI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GHOST_CHANNELS_TELEGRAM_ENABLED=${GHOST_TELEGRAM_ENABLED:-false}
+      - GHOST_CHANNELS_TELEGRAM_TOKEN=${GHOST_TELEGRAM_TOKEN:-}
+      - GHOST_CHANNELS_DISCORD_ENABLED=${GHOST_DISCORD_ENABLED:-false}
+      - GHOST_CHANNELS_DISCORD_TOKEN=${GHOST_DISCORD_TOKEN:-}
+    networks:
+      - ghost-net
+
+  firstboot:
+    build: .
+    container_name: ghost-firstboot
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ghost-data:/var/ghost/data
+      - ghost-workspace:/var/ghost/workspace
+    environment:
+      - BRIDGE_SECRET=${BRIDGE_SECRET:-}
+    networks:
+      - ghost-net
+    profiles:
+      - setup
 
 volumes:
+  ghost-data:
   ghost-workspace:
+
+networks:
+  ghost-net:
+    driver: bridge

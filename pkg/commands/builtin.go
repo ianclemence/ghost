@@ -26,7 +26,7 @@ func DefaultDefinitions() []Definition {
 		},
 		{
 			Name:        "/clear",
-			Aliases:     []string{"/reset"},
+			Aliases:     []string{"/reset", "/new"},
 			Description: "Archive current session history",
 			Handler:     clearHandler,
 		},
@@ -80,6 +80,29 @@ func DefaultDefinitions() []Definition {
 			Description: "Stop a loop. Usage: /stoploop <job_id>",
 			Usage:       "/stoploop <job_id>",
 			Handler:     stoploopHandler,
+		},
+		{
+			Name:        "/personality",
+			Aliases:     []string{"/person"},
+			Description: "Switch or list AI personalities",
+			Usage:       "/personality [name]",
+			Handler:     personalityHandler,
+		},
+		{
+			Name:        "/model",
+			Description: "Switch AI model or show current model",
+			Usage:       "/model [provider:model]",
+			Handler:     modelHandler,
+		},
+		{
+			Name:        "/usage",
+			Description: "Show current session token usage and stats",
+			Handler:     usageHandler,
+		},
+		{
+			Name:        "/compress",
+			Description: "Force compress current conversation context",
+			Handler:     compressHandler,
 		},
 	}
 }
@@ -321,4 +344,68 @@ func remindHandler(ctx context.Context, req Request, rt *Runtime) error {
 		return req.Reply(fmt.Sprintf("Failed to set reminder: %v", res.Err))
 	}
 	return req.Reply(fmt.Sprintf("Reminder set: '%s' in %s", message, duration.String()))
+}
+
+func personalityHandler(ctx context.Context, req Request, rt *Runtime) error {
+	args := strings.Fields(req.Text)
+	if len(args) < 2 {
+		list := []string{
+			"default", "hacker", "creative", "teacher", "minimal",
+		}
+		var sb strings.Builder
+		sb.WriteString("### Available Personalities\n\n")
+		for _, name := range list {
+			sb.WriteString(fmt.Sprintf("- `%s`\n", name))
+		}
+		sb.WriteString("\nUsage: /personality <name>")
+		return req.Reply(sb.String())
+	}
+	name := args[1]
+	if err := rt.SetPersonality(name); err != nil {
+		return req.Reply(fmt.Sprintf("Failed to set personality: %v", err))
+	}
+	return req.Reply(fmt.Sprintf("Personality set to **%s**", name))
+}
+
+func modelHandler(ctx context.Context, req Request, rt *Runtime) error {
+	args := strings.Fields(req.Text)
+	if len(args) < 2 {
+		current := rt.GetCurrentModel()
+		return req.Reply(fmt.Sprintf("Current model: `%s`\n\nUsage: /model <provider:model>", current))
+	}
+	target := args[1]
+	if err := rt.SetModel(target); err != nil {
+		return req.Reply(fmt.Sprintf("Failed to set model: %v", err))
+	}
+	return req.Reply(fmt.Sprintf("Model set to `%s`", target))
+}
+
+func usageHandler(ctx context.Context, req Request, rt *Runtime) error {
+	stats := rt.GetSessionStats(req.SessionKey)
+	var sb strings.Builder
+	sb.WriteString("### Session Usage\n\n")
+	if stats.Messages > 0 {
+		sb.WriteString(fmt.Sprintf("- **Messages**: %d\n", stats.Messages))
+	}
+	if stats.TotalTokens > 0 {
+		sb.WriteString(fmt.Sprintf("- **Total tokens**: %d\n", stats.TotalTokens))
+	}
+	if stats.ToolCalls > 0 {
+		sb.WriteString(fmt.Sprintf("- **Tool calls**: %d\n", stats.ToolCalls))
+	}
+	if stats.SummaryTokens > 0 {
+		sb.WriteString(fmt.Sprintf("- **Summary tokens**: %d\n", stats.SummaryTokens))
+	}
+	if sb.String() == "### Session Usage\n\n" {
+		sb.WriteString("No usage data available for this session.")
+	}
+	return req.Reply(sb.String())
+}
+
+func compressHandler(ctx context.Context, req Request, rt *Runtime) error {
+	if rt.Sessions == nil {
+		return req.Reply("Session manager unavailable.")
+	}
+	rt.Sessions.ClearHistory(req.SessionKey)
+	return req.Reply("Session compressed. History cleared and summary will be generated on next message.")
 }

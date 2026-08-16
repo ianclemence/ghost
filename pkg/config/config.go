@@ -44,17 +44,19 @@ func (f *FlexibleStringSlice) UnmarshalJSON(data []byte) error {
 }
 
 type Config struct {
-	Agents    AgentsConfig    `json:"agents"`
-	Channels  ChannelsConfig  `json:"channels"`
-	Providers ProvidersConfig `json:"providers"`
-	Gateway   GatewayConfig   `json:"gateway"`
-	RAG       RAGConfig       `json:"rag"`
-	Tools     ToolsConfig     `json:"tools"`
-	Heartbeat HeartbeatConfig `json:"heartbeat"`
-	Devices   DevicesConfig   `json:"devices"`
-	Skills    SkillsConfig    `json:"skills"`
-	Nudge     NudgeConfig     `json:"nudge"`
-	mu        sync.RWMutex
+	Agents      AgentsConfig      `json:"agents"`
+	Channels    ChannelsConfig    `json:"channels"`
+	Providers   ProvidersConfig   `json:"providers"`
+	Gateway     GatewayConfig     `json:"gateway"`
+	RAG         RAGConfig         `json:"rag"`
+	Tools       ToolsConfig       `json:"tools"`
+	Heartbeat   HeartbeatConfig   `json:"heartbeat"`
+	Devices     DevicesConfig     `json:"devices"`
+	Skills      SkillsConfig      `json:"skills"`
+	Nudge       NudgeConfig       `json:"nudge"`
+	Personality PersonalityConfig `json:"personality"`
+	Toolsets    ToolsetsConfig    `json:"toolsets"`
+	mu          sync.RWMutex
 }
 
 type SkillsConfig struct {
@@ -239,6 +241,14 @@ type NudgeConfig struct {
 	Enabled        bool `json:"enabled" env:"GHOST_NUDGE_ENABLED"`
 	MemoryInterval int  `json:"memory_interval" env:"GHOST_NUDGE_MEMORY_INTERVAL"`
 	SkillInterval  int  `json:"skill_interval" env:"GHOST_NUDGE_SKILL_INTERVAL"`
+}
+
+type PersonalityConfig struct {
+	Active string `json:"active" env:"GHOST_PERSONALITY_ACTIVE"`
+}
+
+type ToolsetsConfig struct {
+	Active string `json:"active" env:"GHOST_TOOLSETS_ACTIVE"`
 }
 
 type CuratorConfig struct {
