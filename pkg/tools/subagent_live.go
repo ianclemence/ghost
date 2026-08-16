@@ -187,7 +187,7 @@ func parseTranscriptLine(line string) *TranscriptLine {
 
 	// Format: "HH:MM:SS role" - split on first space after timestamp
 	spaceIdx := -1
-	for i := 0; i < len(tsRolePart) && i < 8; i++ {
+	for i := 0; i < len(tsRolePart); i++ {
 		if tsRolePart[i] == ' ' {
 			spaceIdx = i
 			break

@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/ianclemence/ghost/pkg/profiles"
 )
 
 type AgentMessageTool struct {
+	manager *profiles.Manager
 }
 
-func NewAgentMessageTool() *AgentMessageTool {
-	return &AgentMessageTool{}
+func NewAgentMessageTool(manager *profiles.Manager) *AgentMessageTool {
+	return &AgentMessageTool{manager: manager}
 }
 
 func (t *AgentMessageTool) Name() string {
@@ -19,7 +22,7 @@ func (t *AgentMessageTool) Name() string {
 }
 
 func (t *AgentMessageTool) Description() string {
-	return "Send a message to another bot profile. The message will be delivered via the agent CLI."
+	return "Send messages to other bots via CLI handoff or shared channels. Supports @mentions and multi-bot channels."
 }
 
 func (t *AgentMessageTool) Parameters() map[string]interface{} {
@@ -28,7 +31,7 @@ func (t *AgentMessageTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"to": map[string]interface{}{
 				"type":        "string",
-				"description": "Target profile name",
+				"description": "Target profile name (for CLI handoff) or channel_id (for channel send)",
 			},
 			"message": map[string]interface{}{
 				"type":        "string",
@@ -36,10 +39,15 @@ func (t *AgentMessageTool) Parameters() map[string]interface{} {
 			},
 			"sender": map[string]interface{}{
 				"type":        "string",
-				"description": "Sender profile name (for attribution)",
+				"description": "Sender profile name",
+			},
+			"mode": map[string]interface{}{
+				"type":        "string",
+				"enum":        []string{"cli", "channel"},
+				"description": "Delivery mode: 'cli' for CLI handoff, 'channel' for shared channel",
 			},
 		},
-		"required": []string{"to", "message"},
+		"required": []string{"to", "message", "sender"},
 	}
 }
 
@@ -47,6 +55,7 @@ func (t *AgentMessageTool) Execute(ctx context.Context, args map[string]interfac
 	to, _ := args["to"].(string)
 	message, _ := args["message"].(string)
 	sender, _ := args["sender"].(string)
+	mode, _ := args["mode"].(string)
 
 	if to == "" {
 		return ErrorResult("to is required")
@@ -54,11 +63,18 @@ func (t *AgentMessageTool) Execute(ctx context.Context, args map[string]interfac
 	if message == "" {
 		return ErrorResult("message is required")
 	}
-
 	if sender == "" {
 		sender = "unknown"
 	}
 
+	if mode == "channel" {
+		return t.sendViaChannel(to, sender, message)
+	}
+
+	return t.sendViaCLI(to, sender, message)
+}
+
+func (t *AgentMessageTool) sendViaCLI(to, sender, message string) *ToolResult {
 	formattedMsg := fmt.Sprintf("[Message from '%s'] %s", sender, message)
 
 	cmd := exec.Command("ghost", "-p", to, "agent", "-c", "Agent Inbox", "-m", formattedMsg)
@@ -72,12 +88,22 @@ func (t *AgentMessageTool) Execute(ctx context.Context, args map[string]interfac
 		return ErrorResult(fmt.Sprintf("failed to deliver message to '%s': %s", to, errMsg))
 	}
 
-	return UserResult(fmt.Sprintf("Message delivered to '%s': %s", to, truncate(message, 100)))
+	return UserResult(fmt.Sprintf("Message delivered to '%s' via CLI", to))
 }
 
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
+func (t *AgentMessageTool) sendViaChannel(channelID, sender, message string) *ToolResult {
+	if t.manager == nil {
+		return ErrorResult("Profile manager not available")
 	}
-	return s[:maxLen] + "..."
+
+	if err := t.manager.SendChannelMessage(channelID, sender, message); err != nil {
+		return ErrorResult(fmt.Sprintf("failed to send to channel: %v", err))
+	}
+
+	ch, err := t.manager.GetChannel(channelID)
+	if err != nil {
+		return UserResult(fmt.Sprintf("Message sent to channel '%s'", channelID))
+	}
+
+	return UserResult(fmt.Sprintf("Message sent to channel '%s' (members: %v)", ch.Name, ch.Members))
 }
