@@ -9,6 +9,7 @@ build/
 *.out
 /ghost
 /ghost-test
+/ghost-firstboot
 cmd/ghost/workspace
 
 # Ghost specific

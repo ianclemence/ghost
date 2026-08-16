@@ -122,7 +122,18 @@ opens the firewall for it. Completing the wizard:
 **Always-on wizard:** the wizard stays running as an always-on service, so you can
 reach it from your phone at any time at `http://<pi-ip>`:
 - **Before setup:** shows the setup screen
-- **After setup:** shows a login screen (your admin password) with settings
+- **After setup:** shows a login screen (your admin password) that opens the
+  **admin dashboard** with tabs for:
+  - **Home** — system health (CPU/memory/disk), service status, diagnostics
+    checks, and one-click software updates
+  - **AI** — provider, model, fallback models, API keys, and Ollama model
+    management (list, pull, delete)
+  - **Channels** — Telegram, Discord, and Email bot configuration plus the
+    heartbeat interval
+  - **System** — hostname, backup download, admin password, bridge-secret
+    regeneration, and reboot
+  - **Skills** — browse installed skills and install more from any public
+    GitHub repo (including skills.sh)
 
 The wizard and `ghost` are separate: wizard on port 80, API on port 8766.
 

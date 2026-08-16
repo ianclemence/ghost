@@ -39,8 +39,10 @@ var (
 	// boundPort is the port the wizard actually bound to (may differ from the
 	// requested -port when it fell back, e.g. 80 -> 8080).
 	boundPort int
-	// sessions tracks authenticated admin sessions for wizard re-runs.
-	sessions = newSessionStore()
+// sessions tracks authenticated admin sessions for wizard re-runs.
+sessions = newSessionStore()
+// loginThrottle tracks consecutive failed login attempts per client IP.
+loginThrottle = newLoginThrottle()
 )
 
 // sessionStore keeps issued admin session tokens with an expiry.
@@ -50,6 +52,74 @@ type sessionStore struct {
 }
 
 const sessionTTL = 30 * time.Minute
+
+// loginThrottle limits failed login attempts per client IP to slow brute-force.
+type loginThrottler struct {
+	mu           sync.Mutex
+	failures     map[string]time.Time
+	attemptCounts map[string]int
+}
+
+const (
+	maxLoginAttempts    = 5
+	loginCooldownPeriod = 10 * time.Minute
+)
+
+func newLoginThrottle() *loginThrottler {
+	return &loginThrottler{
+		failures:      make(map[string]time.Time),
+		attemptCounts: make(map[string]int),
+	}
+}
+
+// allowed reports whether ip may attempt a login and the remaining wait.
+func (t *loginThrottler) allowed(ip string) (bool, time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.attemptCounts[ip] >= maxLoginAttempts {
+		first, ok := t.failures[ip]
+		if ok {
+			wait := loginCooldownPeriod - time.Since(first)
+			if wait > 0 {
+				return false, wait
+			}
+		}
+		// Cooldown expired: reset and allow.
+		delete(t.failures, ip)
+		delete(t.attemptCounts, ip)
+	}
+	return true, 0
+}
+
+func (t *loginThrottler) recordFailure(ip string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if _, ok := t.failures[ip]; !ok {
+		t.failures[ip] = time.Now()
+	}
+	t.attemptCounts[ip]++
+}
+
+func (t *loginThrottler) recordSuccess(ip string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.failures, ip)
+	delete(t.attemptCounts, ip)
+}
+
+func (t *loginThrottler) attempts(ip string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.attemptCounts[ip]
+}
+
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
 
 func newSessionStore() *sessionStore {
 	return &sessionStore{tokens: make(map[string]time.Time)}
@@ -152,6 +222,26 @@ func main() {
 	mux.HandleFunc("/api/pairing-code", handlePairingCode)
 	mux.HandleFunc("/api/ollama/models", handleOllamaModels)
 	mux.HandleFunc("/api/ollama/pull", handleOllamaPull)
+	mux.HandleFunc("/api/ollama/delete", handleOllamaDelete)
+
+	// Admin dashboard API (Phase 1-4)
+	mux.HandleFunc("/api/admin/status", handleSystemStatus)
+	mux.HandleFunc("/api/admin/doctor", handleDoctor)
+	mux.HandleFunc("/api/admin/update", handleUpdateStart)
+	mux.HandleFunc("/api/admin/update/status", handleUpdateStatus)
+	mux.HandleFunc("/api/admin/config", handleConfigGet)
+	mux.HandleFunc("/api/admin/config/save", handleConfigSet)
+	mux.HandleFunc("/api/admin/channels", handleChannelsGet)
+	mux.HandleFunc("/api/admin/channels/save", handleChannelsSet)
+	mux.HandleFunc("/api/admin/network", handleNetworkStatus)
+	mux.HandleFunc("/api/admin/hostname", handleSetHostname)
+	mux.HandleFunc("/api/admin/backup", handleBackup)
+	mux.HandleFunc("/api/admin/reboot", handleReboot)
+	mux.HandleFunc("/api/admin/password", handleChangePassword)
+	mux.HandleFunc("/api/admin/bridge", handleRegenBridge)
+	mux.HandleFunc("/api/admin/skills", handleSkillsList)
+	mux.HandleFunc("/api/admin/skills/install", handleSkillInstall)
+	mux.HandleFunc("/api/admin/skills/remove", handleSkillRemove)
 
 	// Try ports in order: 80, 8080, 8888, 9090
 	ports := []int{*port, 8080, 8888, 9090}
@@ -322,12 +412,24 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
+	ip := clientIP(r)
+	if ok, wait := loginThrottle.allowed(ip); !ok {
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":       false,
+			"error":    fmt.Sprintf("too many failed attempts, try again in %d seconds", int(wait.Seconds())+1),
+			"retry_in": int(wait.Seconds()) + 1,
+		})
+		return
+	}
+
 	ok, err := appliance.VerifyAdminPassword(fb.GhostDir, req.Password)
 	if err != nil {
 		http.Error(w, `{"ok":false,"error":"failed to verify password"}`, http.StatusInternalServerError)
 		return
 	}
 	if !ok {
+		loginThrottle.recordFailure(ip)
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":    false,
@@ -336,6 +438,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	loginThrottle.recordSuccess(ip)
 	token, err := sessions.issue()
 	if err != nil {
 		http.Error(w, `{"ok":false,"error":"failed to create session"}`, http.StatusInternalServerError)

@@ -3,208 +3,203 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ghost Setup</title>
+    <title>Ghost Admin</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #09090b;
-            color: #e4e4e7;
+            color: #fafafa;
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
         }
-        .container {
-            width: 100%;
-            max-width: 420px;
-        }
-        .logo {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-        .logo h1 {
-            font-size: 32px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .logo p {
-            color: #71717a;
-            font-size: 14px;
-        }
-        .step {
-            display: none;
-        }
-        .step.active {
-            display: block;
-        }
+        .container { max-width: 640px; margin: 0 auto; padding: 40px 20px; }
         .card {
             background: #18181b;
             border: 1px solid #27272a;
             border-radius: 12px;
             padding: 24px;
-            margin-bottom: 16px;
+            margin-bottom: 20px;
         }
-        .step-indicator {
-            display: flex;
-            justify-content: center;
-            gap: 8px;
-            margin-bottom: 24px;
+        h1 { font-size: 24px; margin-bottom: 8px; }
+        h2 { font-size: 18px; margin-bottom: 8px; }
+        h3 { font-size: 14px; margin-bottom: 8px; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; }
+        p { color: #71717a; font-size: 14px; line-height: 1.5; }
+        .help-text { margin-bottom: 8px; }
+        .logo { text-align: center; margin-bottom: 32px; }
+        .logo .icon {
+            width: 56px; height: 56px; margin: 0 auto 16px;
+            background: linear-gradient(135deg, #4ade80, #22c55e);
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px; color: #052e16; font-weight: bold;
         }
-        .step-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #27272a;
-            transition: background 0.3s;
-        }
-        .step-dot.active {
-            background: #4ade80;
-        }
-        .step-dot.completed {
-            background: #22c55e;
-        }
-        h2 {
-            font-size: 18px;
-            margin-bottom: 16px;
-            font-weight: 500;
-        }
-        .form-group {
-            margin-bottom: 16px;
-        }
-        label {
-            display: block;
-            font-size: 13px;
-            color: #a1a1aa;
-            margin-bottom: 6px;
-        }
-        input[type="text"],
-        input[type="password"],
-        select {
+        .form-group { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 6px; font-size: 13px; color: #a1a1aa; }
+        input, select {
             width: 100%;
-            padding: 12px 14px;
+            padding: 10px 12px;
             background: #09090b;
             border: 1px solid #27272a;
             border-radius: 8px;
-            color: #e4e4e7;
+            color: #fafafa;
             font-size: 14px;
             outline: none;
-            transition: border-color 0.2s;
         }
-        input:focus, select:focus {
-            border-color: #4ade80;
-        }
+        input:focus, select:focus { border-color: #4ade80; }
+        input::placeholder { color: #52525b; }
+        .btn-row { display: flex; gap: 12px; margin-top: 20px; }
         .btn {
-            width: 100%;
-            padding: 14px;
+            flex: 1;
+            padding: 12px;
             border: none;
             border-radius: 8px;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
-            margin-top: 8px;
+            transition: opacity 0.15s;
         }
-        .btn-primary {
-            background: #4ade80;
-            color: #09090b;
-        }
-        .btn-primary:hover {
-            background: #22c55e;
-        }
-        .btn-primary:disabled {
-            background: #27272a;
-            color: #71717a;
-            cursor: not-allowed;
-        }
-        .btn-secondary {
-            background: #27272a;
-            color: #e4e4e7;
-        }
-        .btn-secondary:hover {
-            background: #3f3f46;
-        }
-        .btn-row {
-            display: flex;
-            gap: 12px;
-            margin-top: 16px;
-        }
-        .btn-row .btn {
-            flex: 1;
-        }
-        .wifi-list {
-            max-height: 300px;
-            overflow-y: auto;
-        }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: #22c55e; color: #052e16; }
+        .btn-secondary { background: #27272a; color: #fafafa; }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-small { flex: 0 0 auto; padding: 6px 14px; font-size: 12px; }
+        .error { color: #ef4444; font-size: 13px; margin-top: 8px; }
+        .success { color: #4ade80; font-size: 13px; margin-top: 8px; }
+        .step { display: none; }
+        .step.active { display: block; }
         .wifi-item {
-            display: flex;
-            align-items: center;
-            padding: 12px;
-            border: 1px solid #27272a;
-            border-radius: 8px;
-            margin-bottom: 8px;
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px; margin-bottom: 8px;
+            background: #09090b; border: 1px solid #27272a; border-radius: 8px;
             cursor: pointer;
-            transition: border-color 0.2s;
         }
-        .wifi-item:hover {
-            border-color: #4ade80;
-        }
-        .wifi-item.selected {
-            border-color: #4ade80;
-            background: rgba(74, 222, 128, 0.1);
-        }
-        .wifi-item .signal {
-            margin-right: 12px;
-            font-size: 12px;
-            color: #71717a;
-        }
-        .wifi-item .ssid {
-            flex: 1;
-        }
-        .wifi-item .lock {
-            color: #71717a;
-        }
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #71717a;
-        }
+        .wifi-item.selected { border-color: #4ade80; background: #14532d33; }
+        .signal { color: #4ade80; font-size: 13px; }
+        .ssid { flex: 1; font-size: 14px; }
+        .lock { font-size: 12px; }
+        .loading { text-align: center; padding: 20px 0; color: #71717a; }
         .spinner {
-            display: inline-block;
-            width: 24px;
-            height: 24px;
-            border: 2px solid #27272a;
-            border-top-color: #4ade80;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin-bottom: 12px;
+            width: 24px; height: 24px; margin: 0 auto 12px;
+            border: 3px solid #27272a; border-top-color: #4ade80;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .success-icon {
-            text-align: center;
-            font-size: 48px;
-            margin-bottom: 16px;
+            width: 56px; height: 56px; margin: 0 auto 16px;
+            background: #14532d; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px; color: #4ade80;
         }
-        .help-text {
-            font-size: 12px;
-            color: #71717a;
-            margin-top: 6px;
+        .step-indicator { display: none; justify-content: center; gap: 8px; margin-bottom: 32px; }
+        .step-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: #27272a;
         }
-        .error {
-            color: #ef4444;
-            font-size: 13px;
-            margin-top: 8px;
+        .step-dot.active { background: #4ade80; }
+        .step-dot.completed { background: #22c55e; }
+        code {
+            background: #09090b; padding: 4px 8px; border-radius: 4px;
+            font-size: 13px; color: #a1a1aa;
         }
+        .hidden { display: none; }
+
+        /* Dashboard layout */
+        .topbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 24px; border-bottom: 1px solid #27272a;
+            position: sticky; top: 0; background: #09090b; z-index: 10;
+        }
+        .topbar .brand { font-size: 16px; font-weight: 700; }
+        .topbar .brand span { color: #4ade80; }
+        .topbar .nav-right { display: flex; align-items: center; gap: 12px; font-size: 12px; color: #71717a; }
+        .tab-bar {
+            display: flex; gap: 4px; padding: 8px 16px;
+            border-bottom: 1px solid #27272a; overflow-x: auto;
+            position: sticky; top: 60px; background: #09090b; z-index: 9;
+        }
+        .tab {
+            padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+            color: #71717a; cursor: pointer; white-space: nowrap;
+            border: 1px solid transparent;
+        }
+        .tab:hover { color: #fafafa; }
+        .tab.active {
+            background: #22c55e; color: #052e16;
+        }
+        .tab-content { display: none; padding: 24px 16px; max-width: 900px; margin: 0 auto; }
+        .tab-content.active { display: block; }
+        .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+        .stat-card {
+            background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 16px;
+        }
+        .stat-card .label { font-size: 12px; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+        .stat-card .value { font-size: 24px; font-weight: 700; }
+        .stat-card .value small { font-size: 13px; color: #71717a; font-weight: 400; }
+        .service-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 0; border-bottom: 1px solid #27272a;
+        }
+        .service-row:last-child { border-bottom: none; }
+        .badge {
+            padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+        }
+        .badge.ok { background: #14532d; color: #4ade80; }
+        .badge.fail { background: #450a0a; color: #ef4444; }
+        .badge.warn { background: #451a03; color: #fb923c; }
+        .log-box {
+            background: #09090b; border: 1px solid #27272a; border-radius: 8px;
+            padding: 12px; font-family: monospace; font-size: 12px;
+            white-space: pre-wrap; word-break: break-word;
+            max-height: 300px; overflow-y: auto; color: #a1a1aa; margin-top: 12px;
+        }
+        .check-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 0; border-bottom: 1px solid #27272a; font-size: 13px;
+        }
+        .check-row:last-child { border-bottom: none; }
+        .inline-form { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+        .inline-form .form-group { flex: 1; min-width: 180px; margin-bottom: 0; }
+        .muted { color: #71717a; font-size: 12px; }
+        .kv { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #27272a; font-size: 14px; }
+        .kv:last-child { border-bottom: none; }
+        .kv .k { color: #71717a; }
+        .kv .v { font-weight: 600; text-align: right; }
+        .skill-card {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px; margin-bottom: 8px;
+            background: #09090b; border: 1px solid #27272a; border-radius: 8px;
+        }
+        .skill-card .meta { flex: 1; }
+        .skill-card .name { font-weight: 600; font-size: 14px; }
+        .skill-card .desc { font-size: 12px; color: #71717a; margin-top: 2px; }
+        .api-key-row { display: flex; gap: 8px; align-items: center; }
+        .api-key-row input { flex: 1; }
+        .toggle-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 0; border-bottom: 1px solid #27272a;
+        }
+        .toggle-row:last-child { border-bottom: none; }
+        .toggle {
+            width: 44px; height: 24px; border-radius: 999px; background: #27272a;
+            position: relative; cursor: pointer; border: none; flex-shrink: 0;
+            transition: background 0.2s;
+        }
+        .toggle::after {
+            content: ''; position: absolute; top: 3px; left: 3px;
+            width: 18px; height: 18px; border-radius: 50%; background: #fafafa;
+            transition: transform 0.2s;
+        }
+        .toggle.on { background: #22c55e; }
+        .toggle.on::after { transform: translateX(20px); }
+        .section-title { font-size: 16px; font-weight: 700; margin: 24px 0 12px; }
+        .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container" id="wizard-container">
         <div class="logo">
-            <h1>Ghost</h1>
-            <p>Setup your AI assistant</p>
+            <div class="icon">G</div>
+            <h1>Ghost Admin</h1>
         </div>
 
         <div class="step-indicator">
@@ -214,21 +209,20 @@
             <div class="step-dot" data-step="4"></div>
         </div>
 
-        <!-- Step 1: WiFi -->
+        <!-- Step 1: Network -->
         <div class="step active" id="step-1">
             <div class="card">
                 <h2>Connect to WiFi</h2>
+                <p class="help-text" style="margin-bottom: 16px;">Select a network to get online.</p>
                 <div id="wifi-loading" class="loading">
                     <div class="spinner"></div>
                     <p>Scanning for networks...</p>
                 </div>
-                <div id="wifi-list" class="wifi-list" style="display: none;"></div>
-                <div id="wifi-password-form" style="display: none;">
-                    <div class="form-group">
-                        <label>WiFi Password</label>
-                        <input type="password" id="wifi-password" placeholder="Enter password">
-                    </div>
-                    <button class="btn btn-primary" onclick="connectWifi()">Connect</button>
+                <div id="wifi-list" style="display: none;"></div>
+                <div id="wifi-password-form" style="display: none; margin-top: 16px;" class="form-group">
+                    <label>WiFi Password</label>
+                    <input type="password" id="wifi-password" placeholder="Enter WiFi password"
+                           onkeydown="if(event.key==='Enter')connectWifi()">
                     <div id="wifi-error" class="error"></div>
                 </div>
             </div>
@@ -237,18 +231,18 @@
             </div>
         </div>
 
-        <!-- Step 2: Admin Password -->
+        <!-- Step 2: Admin password -->
         <div class="step" id="step-2">
             <div class="card">
-                <h2>Create Admin Password</h2>
-                <p class="help-text" style="margin-bottom: 16px;">This password protects your Ghost instance and is used by the mobile app to connect.</p>
+                <h2>Set Admin Password</h2>
+                <p class="help-text" style="margin-bottom: 16px;">This password protects Ghost's settings. Keep it somewhere safe.</p>
                 <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="admin-password" placeholder="Choose a strong password">
+                    <label>Admin Password</label>
+                    <input type="password" id="admin-password" placeholder="At least 8 characters">
                 </div>
                 <div class="form-group">
                     <label>Confirm Password</label>
-                    <input type="password" id="admin-password-confirm" placeholder="Confirm password">
+                    <input type="password" id="admin-password-confirm" placeholder="Repeat password">
                 </div>
                 <div id="password-error" class="error"></div>
             </div>
@@ -329,7 +323,7 @@
         <div class="step" id="step-login">
             <div class="card">
                 <h2>Admin Login</h2>
-                <p class="help-text" style="margin-bottom: 16px;">Ghost is already set up. Enter the admin password to change configuration.</p>
+                <p class="help-text" style="margin-bottom: 16px;">Ghost is already set up. Enter the admin password to open the admin dashboard.</p>
                 <div class="form-group">
                     <label>Admin Password</label>
                     <input type="password" id="login-password" placeholder="Admin password" onkeydown="if(event.key==='Enter')login()">
@@ -352,11 +346,297 @@
                     Open <strong>ghost.local:8766</strong> or the Ghost app to start chatting.
                 </p>
                 <p class="help-text" style="margin: 16px 0;">
-                    To re-run the setup wizard, connect via SSH and run:<br>
+                    To open the admin dashboard, connect via SSH and run:<br>
                     <code style="background: #09090b; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 8px;">sudo ghost-firstboot -force</code>
                 </p>
             </div>
             <button class="btn btn-secondary" onclick="location.reload()">Refresh</button>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div class="hidden" id="dashboard">
+        <div class="topbar">
+            <div class="brand">Ghost <span>Admin</span></div>
+            <div class="nav-right">
+                <span id="nav-host"></span>
+                <button class="btn btn-secondary btn-small" onclick="logout()">Logout</button>
+            </div>
+        </div>
+        <div class="tab-bar">
+            <div class="tab active" data-tab="home" onclick="switchTab('home')">Home</div>
+            <div class="tab" data-tab="ai" onclick="switchTab('ai')">AI</div>
+            <div class="tab" data-tab="channels" onclick="switchTab('channels')">Channels</div>
+            <div class="tab" data-tab="system" onclick="switchTab('system')">System</div>
+            <div class="tab" data-tab="skills" onclick="switchTab('skills')">Skills</div>
+        </div>
+
+        <!-- Home tab -->
+        <div class="tab-content active" id="tab-home">
+            <h3 style="margin-bottom: 12px;">System Health</h3>
+            <div class="dash-grid" style="margin-bottom: 20px;">
+                <div class="stat-card">
+                    <div class="label">CPU</div>
+                    <div class="value" id="stat-cpu">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Memory</div>
+                    <div class="value" id="stat-mem">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Disk</div>
+                    <div class="value" id="stat-disk">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Uptime</div>
+                    <div class="value" id="stat-uptime">-</div>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Services</h3>
+                <div id="services"></div>
+            </div>
+            <div class="card">
+                <h3>Configuration</h3>
+                <div class="kv"><span class="k">Hostname</span><span class="v" id="cfg-host">-</span></div>
+                <div class="kv"><span class="k">IP address</span><span class="v" id="cfg-ip">-</span></div>
+                <div class="kv"><span class="k">Version</span><span class="v" id="cfg-ver">-</span></div>
+                <div class="kv"><span class="k">Provider</span><span class="v" id="cfg-provider">-</span></div>
+                <div class="kv"><span class="k">Model</span><span class="v" id="cfg-model">-</span></div>
+                <div class="kv"><span class="k">Ollama</span><span class="v" id="cfg-ollama">-</span></div>
+            </div>
+            <div class="card">
+                <h3>Diagnostics</h3>
+                <button class="btn btn-secondary btn-small" style="margin-bottom: 12px;" onclick="runDoctor()">Run checks</button>
+                <div id="doctor-results"></div>
+            </div>
+            <div class="card">
+                <h3>Software Update</h3>
+                <p class="help-text">Pulls the latest Ghost version from GitHub and redeploys. The device stays online.</p>
+                <button class="btn btn-primary btn-small" id="update-btn" onclick="startUpdate()">Check for updates</button>
+                <div class="log-box hidden" id="update-log"></div>
+            </div>
+        </div>
+
+        <!-- AI tab -->
+        <div class="tab-content" id="tab-ai">
+            <div class="card">
+                <h3>AI Model</h3>
+                <div class="form-group">
+                    <label>Provider</label>
+                    <select id="ai-provider">
+                        <option value="ollama">Ollama (Local)</option>
+                        <option value="moonshot">Moonshot (Kimi)</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="openai">OpenAI (GPT)</option>
+                        <option value="openrouter">OpenRouter</option>
+                        <option value="groq">Groq</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="zhipu">Zhipu (GLM)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Model</label>
+                    <input type="text" id="ai-model" placeholder="e.g. qwen3:0.6b, kimi-k2.5, claude-sonnet-4">
+                </div>
+                <div class="form-group">
+                    <label>Fallback models (comma separated)</label>
+                    <input type="text" id="ai-fallback" placeholder="e.g. qwen3:0.6b">
+                </div>
+                <div class="form-group">
+                    <label>Embedding model</label>
+                    <input type="text" id="ai-embedding" placeholder="e.g. nomic-embed-text">
+                </div>
+                <div class="form-group">
+                    <label>Ollama URL</label>
+                    <input type="text" id="ai-ollama" placeholder="http://localhost:11434">
+                </div>
+                <div class="form-group">
+                    <label>Max tokens</label>
+                    <input type="number" id="ai-maxtokens" placeholder="4096">
+                </div>
+                <div id="ai-error" class="error"></div>
+                <div id="ai-success" class="success"></div>
+                <div class="btn-row">
+                    <button class="btn btn-secondary btn-small" onclick="loadAIConfig()">Reload</button>
+                    <button class="btn btn-primary" onclick="saveAIConfig()">Save AI settings</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>API Keys</h3>
+                <p class="help-text">Keys are stored in .env on the device and masked here. Leave blank to keep the current value.</p>
+                <div id="api-keys"></div>
+                <button class="btn btn-primary btn-small" style="margin-top: 8px;" onclick="saveAIKeys()">Save API keys</button>
+            </div>
+
+            <div class="card">
+                <h3>Ollama Models</h3>
+                <p class="help-text">Models installed locally on this device.</p>
+                <div id="ollama-models"></div>
+                <div class="inline-form" style="margin-top: 12px;">
+                    <div class="form-group">
+                        <input type="text" id="ollama-new-model" placeholder="e.g. qwen3:4b">
+                    </div>
+                    <button class="btn btn-primary btn-small" onclick="pullOllamaModel()">Pull model</button>
+                </div>
+                <div id="ollama-error" class="error"></div>
+            </div>
+        </div>
+
+        <!-- Channels tab -->
+        <div class="tab-content" id="tab-channels">
+            <div class="card">
+                <h3>Telegram</h3>
+                <p class="help-text">Chat with Ghost from Telegram.</p>
+                <div class="toggle-row">
+                    <span style="font-size: 14px;">Enabled</span>
+                    <button class="toggle" id="tg-toggle" onclick="toggleChannel('tg')"></button>
+                </div>
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>Bot token</label>
+                    <input type="password" id="tg-token" placeholder="123456:ABC-DEF...">
+                </div>
+            </div>
+            <div class="card">
+                <h3>Discord</h3>
+                <p class="help-text">Chat with Ghost from Discord.</p>
+                <div class="toggle-row">
+                    <span style="font-size: 14px;">Enabled</span>
+                    <button class="toggle" id="ds-toggle" onclick="toggleChannel('ds')"></button>
+                </div>
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>Bot token</label>
+                    <input type="password" id="ds-token" placeholder="Discord bot token">
+                </div>
+            </div>
+            <div class="card">
+                <h3>Email</h3>
+                <p class="help-text">Send and receive email via SMTP.</p>
+                <div class="toggle-row">
+                    <span style="font-size: 14px;">Enabled</span>
+                    <button class="toggle" id="em-toggle" onclick="toggleChannel('em')"></button>
+                </div>
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>SMTP host</label>
+                    <input type="text" id="em-host" placeholder="smtp.gmail.com">
+                </div>
+                <div class="form-group">
+                    <label>SMTP port</label>
+                    <input type="number" id="em-port" placeholder="587">
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="em-user" placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="em-pass" placeholder="App password">
+                </div>
+                <div class="form-group">
+                    <label>From address</label>
+                    <input type="text" id="em-from" placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label>To address (notifications)</label>
+                    <input type="text" id="em-to" placeholder="you@example.com">
+                </div>
+            </div>
+            <div class="card">
+                <h3>Heartbeat</h3>
+                <p class="help-text">Periodic status check so Ghost notices when it goes offline.</p>
+                <div class="toggle-row">
+                    <span style="font-size: 14px;">Enabled</span>
+                    <button class="toggle" id="hb-toggle" onclick="toggleHeartbeat()"></button>
+                </div>
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>Interval (minutes, min 5)</label>
+                    <input type="number" id="hb-interval" placeholder="30">
+                </div>
+            </div>
+            <div id="channels-error" class="error"></div>
+            <div id="channels-success" class="success"></div>
+            <button class="btn btn-primary" style="margin-top: 8px;" onclick="saveChannels()">Save channel settings</button>
+        </div>
+
+        <!-- System tab -->
+        <div class="tab-content" id="tab-system">
+            <div class="card">
+                <h3>Network</h3>
+                <div class="kv"><span class="k">Hostname</span><span class="v" id="net-host">-</span></div>
+                <div class="kv"><span class="k">IP address</span><span class="v" id="net-ip">-</span></div>
+                <div class="kv"><span class="k">WiFi</span><span class="v" id="net-wifi">-</span></div>
+            </div>
+            <div class="card">
+                <h3>Change hostname</h3>
+                <div class="inline-form">
+                    <div class="form-group">
+                        <input type="text" id="sys-hostname" placeholder="e.g. ghost">
+                    </div>
+                    <button class="btn btn-primary btn-small" onclick="setHostname()">Set hostname</button>
+                </div>
+                <div id="hostname-error" class="error"></div>
+            </div>
+            <div class="card">
+                <h3>Backup</h3>
+                <p class="help-text">Download a tar.gz archive of config, data, workspace and settings.</p>
+                <button class="btn btn-primary btn-small" onclick="downloadBackup()">Download backup</button>
+            </div>
+            <div class="card">
+                <h3>Change admin password</h3>
+                <div class="form-group">
+                    <label>Current password</label>
+                    <input type="password" id="pw-current" placeholder="Current admin password">
+                </div>
+                <div class="form-group">
+                    <label>New password</label>
+                    <input type="password" id="pw-new" placeholder="At least 8 characters">
+                </div>
+                <div id="password-msg" class="error"></div>
+                <button class="btn btn-primary btn-small" onclick="changePassword()">Change password</button>
+            </div>
+            <div class="card">
+                <h3>Bridge secret</h3>
+                <p class="help-text">Regenerating this secret invalidates the mobile app pairing. You will need to re-pair.</p>
+                <button class="btn btn-danger btn-small" onclick="regenBridge()">Regenerate bridge secret</button>
+                <div id="bridge-msg" class="error"></div>
+            </div>
+            <div class="card" style="border-color: #450a0a;">
+                <h3 style="color: #ef4444;">Danger zone</h3>
+                <button class="btn btn-danger btn-small" onclick="rebootDevice()">Reboot device</button>
+            </div>
+        </div>
+
+        <!-- Skills tab -->
+        <div class="tab-content" id="tab-skills">
+            <div class="card">
+                <h3>Installed Skills</h3>
+                <p class="help-text">Skills are markdown instructions Ghost can use as tools.</p>
+                <div id="skills-list"></div>
+            </div>
+            <div class="card">
+                <h3>Install from GitHub</h3>
+                <p class="help-text">Install a skill from a public GitHub repo. Works with skills published on skills.sh.</p>
+                <div class="form-group">
+                    <label>Owner</label>
+                    <input type="text" id="sk-owner" placeholder="e.g. mattpocock">
+                </div>
+                <div class="form-group">
+                    <label>Repo</label>
+                    <input type="text" id="sk-repo" placeholder="e.g. skills">
+                </div>
+                <div class="form-group">
+                    <label>Path to skill (within repo)</label>
+                    <input type="text" id="sk-path" placeholder="e.g. skills/productivity/grill-me">
+                </div>
+                <div class="form-group">
+                    <label>Name (optional, defaults to folder name)</label>
+                    <input type="text" id="sk-name" placeholder="e.g. grill-me">
+                </div>
+                <div id="skills-error" class="error"></div>
+                <button class="btn btn-primary btn-small" onclick="installSkill()">Install skill</button>
+            </div>
         </div>
     </div>
 
@@ -367,6 +647,7 @@
         let currentPassword = '';
         let rerunMode = false;
         let setupData = {};
+        let loggedIn = false;
 
         async function init() {
             const status = await fetchStatus();
@@ -376,15 +657,11 @@
             }
 
             if (status.first_boot || !status.admin_configured) {
-                // First boot (or setup interrupted before a password existed):
-                // run the full setup flow.
                 showStepIndicator();
                 scanWifi();
             } else if (status.force) {
-                // Configured device opened with -force: authenticate first.
                 showLogin();
             } else {
-                // Configured device opened without -force: nothing to do here.
                 showAlreadySetup();
             }
         }
@@ -446,20 +723,509 @@
 
                 if (data.ok) {
                     currentPassword = pw;
-                    rerunMode = true;
-                    document.getElementById('step-2').querySelector('h2').textContent = 'Change Admin Password (optional)';
-                    document.querySelector('#step-2 .help-text').textContent = 'Leave blank to keep your current password.';
-                    document.getElementById('admin-password').placeholder = 'New password (leave blank to keep)';
-                    showStepIndicator();
-                    goToStep(2);
+                    loggedIn = true;
+                    showDashboard();
                 } else {
-                    errorEl.textContent = data.error || 'Login failed';
+                    if (data.retry_in) {
+                        errorEl.textContent = data.error;
+                    } else {
+                        errorEl.textContent = data.error || 'Login failed';
+                    }
                 }
             } catch (e) {
                 errorEl.textContent = 'Login failed';
             }
         }
 
+        async function showDashboard() {
+            document.getElementById('wizard-container').style.display = 'none';
+            document.getElementById('dashboard').classList.remove('hidden');
+            document.getElementById('nav-host').textContent = 'Admin';
+            switchTab('home');
+            loadHome();
+            loadAIConfig();
+            loadChannels();
+            loadSystem();
+            loadSkills();
+        }
+
+        function logout() {
+            loggedIn = false;
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('wizard-container').style.display = '';
+            showLogin();
+            document.getElementById('login-password').value = '';
+        }
+
+        function switchTab(name) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + name));
+        }
+
+        async function api(path, method, body) {
+            const opts = { method: method || 'GET', headers: {} };
+            if (body !== undefined) {
+                opts.headers['Content-Type'] = 'application/json';
+                opts.body = JSON.stringify(body);
+            }
+            const res = await fetch(path, opts);
+            if (res.status === 401) {
+                alert('Session expired, please log in again.');
+                logout();
+                throw new Error('unauthorized');
+            }
+            return res.json();
+        }
+
+        function fmtBytes(n) {
+            if (!n) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let i = 0;
+            while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+            return n.toFixed(1) + ' ' + units[i];
+        }
+
+        // ---------- Home ----------
+        async function loadHome() {
+            try {
+                const data = await api('/api/admin/status');
+                if (!data.ok) return;
+                document.getElementById('stat-cpu').textContent = (data.cpu_percent || 0).toFixed(0) + '%';
+                const memPct = data.memory.total ? (data.memory.used / data.memory.total * 100).toFixed(0) : 0;
+                document.getElementById('stat-mem').textContent = memPct + '%';
+                document.getElementById('stat-mem').innerHTML = memPct + '% <small>' + fmtBytes(data.memory.used) + '</small>';
+                const diskPct = data.disk.total ? (data.disk.used / data.disk.total * 100).toFixed(0) : 0;
+                document.getElementById('stat-disk').textContent = diskPct + '%';
+                document.getElementById('stat-disk').innerHTML = diskPct + '% <small>' + fmtBytes(data.disk.used) + '</small>';
+                document.getElementById('stat-uptime').textContent = data.uptime || '-';
+
+                const services = document.getElementById('services');
+                services.innerHTML = (data.services || []).map(s => `
+                    <div class="service-row">
+                        <span style="font-size: 14px;">${s.name}</span>
+                        <span class="badge ${s.active ? 'ok' : 'fail'}">${s.active ? 'Running' : 'Stopped'}</span>
+                    </div>
+                `).join('');
+
+                document.getElementById('cfg-host').textContent = data.hostname;
+                document.getElementById('cfg-ip').textContent = data.ip;
+                document.getElementById('cfg-ver').textContent = data.version;
+                document.getElementById('cfg-provider').textContent = data.provider || '-';
+                document.getElementById('cfg-model').textContent = data.model || '-';
+                document.getElementById('cfg-ollama').textContent = data.ollama_url || '-';
+            } catch (e) {}
+        }
+
+        async function runDoctor() {
+            const box = document.getElementById('doctor-results');
+            box.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+            try {
+                const data = await api('/api/admin/doctor');
+                box.innerHTML = (data.checks || []).map(c => `
+                    <div class="check-row">
+                        <span class="badge ${c.status === 'ok' ? 'ok' : c.status === 'fail' ? 'fail' : 'warn'}">${c.status.toUpperCase()}</span>
+                        <span>${c.name}</span>
+                        <span class="muted" style="margin-left:auto; text-align:right;">${c.message || ''}</span>
+                    </div>
+                `).join('');
+            } catch (e) {
+                box.innerHTML = '<div class="error">Failed to run checks.</div>';
+            }
+        }
+
+        async function startUpdate() {
+            const btn = document.getElementById('update-btn');
+            const log = document.getElementById('update-log');
+            btn.disabled = true;
+            log.classList.remove('hidden');
+            log.textContent = 'Starting update...';
+
+            try {
+                await api('/api/admin/update', 'POST');
+                // Poll the update status until it finishes.
+                const poll = setInterval(async () => {
+                    const data = await api('/api/admin/update/status');
+                    log.textContent = data.log || '';
+                    log.scrollTop = log.scrollHeight;
+                    if (!data.running) {
+                        clearInterval(poll);
+                        btn.disabled = false;
+                        log.textContent = data.log + (data.success ? '\n\n✓ Update complete' : '\n\n✗ Update failed');
+                        loadHome();
+                    }
+                }, 1000);
+            } catch (e) {
+                btn.disabled = false;
+                log.textContent = 'Failed to start update.';
+            }
+        }
+
+        // ---------- AI ----------
+        let providerKeys = {};
+
+        async function loadAIConfig() {
+            try {
+                const data = await api('/api/admin/config');
+                if (!data.ok) return;
+                document.getElementById('ai-provider').value = data.provider || 'ollama';
+                document.getElementById('ai-model').value = data.model || '';
+                document.getElementById('ai-fallback').value = (data.fallback_models || []).join(', ');
+                document.getElementById('ai-embedding').value = data.embedding_model || '';
+                const p = data.providers || {};
+                if (p.ollama && p.ollama.api_base) {
+                    document.getElementById('ai-ollama').value = p.ollama.api_base;
+                } else {
+                    document.getElementById('ai-ollama').value = 'http://localhost:11434';
+                }
+                document.getElementById('ai-maxtokens').value = data.max_tokens || '';
+
+                // API keys
+                providerKeys = {};
+                const keysBox = document.getElementById('api-keys');
+                const providerNames = {
+                    moonshot: 'Moonshot (Kimi)',
+                    anthropic: 'Anthropic (Claude)',
+                    openai: 'OpenAI',
+                    openrouter: 'OpenRouter',
+                    groq: 'Groq',
+                    deepseek: 'DeepSeek',
+                    gemini: 'Google Gemini',
+                    zhipu: 'Zhipu (GLM)'
+                };
+                keysBox.innerHTML = Object.keys(providerNames).map(name => {
+                    const current = (p[name] && p[name].api_key) || '';
+                    providerKeys[name] = current;
+                    return `
+                        <div class="form-group">
+                            <label>${providerNames[name]} ${current ? '<span class="muted">(set)</span>' : '<span class="muted">(not set)</span>'}</label>
+                            <div class="api-key-row">
+                                <input type="password" id="key-${name}" placeholder="${current ? 'Leave blank to keep current' : 'Enter API key'}" autocomplete="off">
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                loadOllamaModels();
+            } catch (e) {}
+        }
+
+        async function saveAIConfig() {
+            const errorEl = document.getElementById('ai-error');
+            const successEl = document.getElementById('ai-success');
+            errorEl.textContent = '';
+            successEl.textContent = '';
+            const fallback = document.getElementById('ai-fallback').value
+                .split(',').map(s => s.trim()).filter(Boolean);
+            const maxTokens = parseInt(document.getElementById('ai-maxtokens').value) || 0;
+            const temp = parseFloat(document.getElementById('ai-temperature')?.value) || 0;
+            try {
+                const data = await api('/api/admin/config/save', 'POST', {
+                    provider: document.getElementById('ai-provider').value,
+                    model: document.getElementById('ai-model').value,
+                    fallback_models: fallback,
+                    embedding_model: document.getElementById('ai-embedding').value,
+                    ollama_url: document.getElementById('ai-ollama').value,
+                    max_tokens: maxTokens,
+                    temperature: temp
+                });
+                if (data.ok) {
+                    successEl.textContent = 'AI settings saved.';
+                    loadHome();
+                } else {
+                    errorEl.textContent = data.error || 'Failed to save.';
+                }
+            } catch (e) { errorEl.textContent = 'Failed to save.'; }
+        }
+
+        async function saveAIKeys() {
+            const errorEl = document.getElementById('ai-error');
+            const successEl = document.getElementById('ai-success');
+            errorEl.textContent = '';
+            successEl.textContent = '';
+            const keys = {};
+            const names = ['moonshot', 'anthropic', 'openai', 'openrouter', 'groq', 'deepseek', 'gemini', 'zhipu'];
+            names.forEach(n => {
+                const el = document.getElementById('key-' + n);
+                if (el && el.value) keys[n] = el.value;
+            });
+            if (Object.keys(keys).length === 0) {
+                errorEl.textContent = 'Enter at least one API key.';
+                return;
+            }
+            try {
+                const data = await api('/api/admin/config/save', 'POST', { api_keys: keys });
+                if (data.ok) {
+                    successEl.textContent = 'API keys saved.';
+                    document.querySelectorAll('[id^="key-"]').forEach(el => el.value = '');
+                    loadAIConfig();
+                } else {
+                    errorEl.textContent = data.error || 'Failed to save keys.';
+                }
+            } catch (e) { errorEl.textContent = 'Failed to save keys.'; }
+        }
+
+        async function loadOllamaModels() {
+            const box = document.getElementById('ollama-models');
+            try {
+                const res = await fetch('/api/ollama/models');
+                const data = await res.json();
+                if (!data.ok) {
+                    box.innerHTML = '<div class="muted">Ollama not reachable.</div>';
+                    return;
+                }
+                if (!data.models || data.models.length === 0) {
+                    box.innerHTML = '<div class="muted">No models installed yet.</div>';
+                    return;
+                }
+                box.innerHTML = data.models.map(m => `
+                    <div class="skill-card">
+                        <div class="meta">
+                            <div class="name">${m}</div>
+                        </div>
+                        <button class="btn btn-danger btn-small" onclick="deleteOllamaModel('${m}')">Delete</button>
+                    </div>
+                `).join('');
+            } catch (e) {
+                box.innerHTML = '<div class="muted">Ollama not reachable.</div>';
+            }
+        }
+
+        async function pullOllamaModel() {
+            const name = document.getElementById('ollama-new-model').value.trim();
+            const errorEl = document.getElementById('ollama-error');
+            errorEl.textContent = '';
+            if (!name) { errorEl.textContent = 'Enter a model name.'; return; }
+            try {
+                await api('/api/ollama/pull', 'POST', { model: name });
+                errorEl.style.color = '#4ade80';
+                errorEl.textContent = 'Download started (may take a while on a Pi).';
+                document.getElementById('ollama-new-model').value = '';
+                setTimeout(loadOllamaModels, 15000);
+            } catch (e) { errorEl.textContent = 'Failed to start download.'; }
+        }
+
+        async function deleteOllamaModel(name) {
+            if (!confirm('Delete model ' + name + '?')) return;
+            try {
+                const data = await api('/api/ollama/delete', 'POST', { model: name });
+                loadOllamaModels();
+            } catch (e) {}
+        }
+
+        // ---------- Channels ----------
+        let channelsState = {};
+
+        async function loadChannels() {
+            try {
+                const data = await api('/api/admin/channels');
+                if (!data.ok) return;
+                channelsState = data.channels || {};
+                const tg = channelsState.telegram || {};
+                const ds = channelsState.discord || {};
+                const em = channelsState.email || {};
+                const hb = data.heartbeat || {};
+
+                document.getElementById('tg-toggle').classList.toggle('on', !!tg.enabled);
+                document.getElementById('tg-token').placeholder = tg.token || 'Enter bot token';
+                document.getElementById('ds-toggle').classList.toggle('on', !!ds.enabled);
+                document.getElementById('ds-token').placeholder = ds.token || 'Enter bot token';
+                document.getElementById('em-toggle').classList.toggle('on', !!em.enabled);
+                document.getElementById('em-host').value = em.smtp_host || '';
+                document.getElementById('em-port').value = em.smtp_port || '';
+                document.getElementById('em-user').value = em.username || '';
+                document.getElementById('em-pass').placeholder = em.password ? 'Keep current (masked)' : 'Enter password';
+                document.getElementById('em-from').value = em.from || '';
+                document.getElementById('em-to').value = em.to || '';
+                document.getElementById('hb-toggle').classList.toggle('on', !!hb.enabled);
+                document.getElementById('hb-interval').value = hb.interval || 30;
+            } catch (e) {}
+        }
+
+        function toggleChannel(id) {
+            document.getElementById(id + '-toggle').classList.toggle('on');
+        }
+
+        function toggleHeartbeat() {
+            document.getElementById('hb-toggle').classList.toggle('on');
+        }
+
+        async function saveChannels() {
+            const errorEl = document.getElementById('channels-error');
+            const successEl = document.getElementById('channels-success');
+            errorEl.textContent = '';
+            successEl.textContent = '';
+            const body = {
+                telegram: {
+                    enabled: document.getElementById('tg-toggle').classList.contains('on'),
+                    token: document.getElementById('tg-token').value
+                },
+                discord: {
+                    enabled: document.getElementById('ds-toggle').classList.contains('on'),
+                    token: document.getElementById('ds-token').value
+                },
+                email: {
+                    enabled: document.getElementById('em-toggle').classList.contains('on'),
+                    smtp_host: document.getElementById('em-host').value,
+                    smtp_port: parseInt(document.getElementById('em-port').value) || 0,
+                    username: document.getElementById('em-user').value,
+                    password: document.getElementById('em-pass').value,
+                    from: document.getElementById('em-from').value,
+                    to: document.getElementById('em-to').value
+                },
+                heartbeat: {
+                    enabled: document.getElementById('hb-toggle').classList.contains('on'),
+                    interval: parseInt(document.getElementById('hb-interval').value) || 30
+                }
+            };
+            try {
+                const data = await api('/api/admin/channels/save', 'POST', body);
+                if (data.ok) {
+                    successEl.textContent = 'Channel settings saved.';
+                    document.getElementById('tg-token').value = '';
+                    document.getElementById('ds-token').value = '';
+                    document.getElementById('em-pass').value = '';
+                    loadChannels();
+                } else {
+                    errorEl.textContent = data.error || 'Failed to save.';
+                }
+            } catch (e) { errorEl.textContent = 'Failed to save.'; }
+        }
+
+        // ---------- System ----------
+        async function loadSystem() {
+            try {
+                const data = await api('/api/admin/network');
+                if (!data.ok) return;
+                document.getElementById('net-host').textContent = data.hostname;
+                document.getElementById('net-ip').textContent = data.ip;
+                document.getElementById('net-wifi').textContent = (data.connected || 'wired/unknown');
+            } catch (e) {}
+        }
+
+        async function setHostname() {
+            const host = document.getElementById('sys-hostname').value.trim();
+            const errorEl = document.getElementById('hostname-error');
+            errorEl.textContent = '';
+            if (!host) { errorEl.textContent = 'Enter a hostname.'; return; }
+            try {
+                const data = await api('/api/admin/hostname', 'POST', { hostname: host });
+                if (data.ok) {
+                    errorEl.style.color = '#4ade80';
+                    errorEl.textContent = 'Hostname updated. It applies immediately on most systems.';
+                    document.getElementById('sys-hostname').value = '';
+                    loadSystem();
+                } else {
+                    errorEl.textContent = data.error || 'Failed to set hostname.';
+                }
+            } catch (e) { errorEl.textContent = 'Failed to set hostname.'; }
+        }
+
+        function downloadBackup() {
+            const a = document.createElement('a');
+            a.href = '/api/admin/backup';
+            a.download = 'ghost-backup.tar.gz';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+
+        async function changePassword() {
+            const current = document.getElementById('pw-current').value;
+            const next = document.getElementById('pw-new').value;
+            const msg = document.getElementById('password-msg');
+            msg.textContent = '';
+            if (!current || !next) { msg.textContent = 'Fill in both fields.'; return; }
+            try {
+                const data = await api('/api/admin/password', 'POST', { current, new: next });
+                if (data.ok) {
+                    msg.style.color = '#4ade80';
+                    msg.textContent = 'Password updated.';
+                    currentPassword = next;
+                    document.getElementById('pw-current').value = '';
+                    document.getElementById('pw-new').value = '';
+                } else {
+                    msg.textContent = data.error || 'Failed to change password.';
+                }
+            } catch (e) { msg.textContent = 'Failed to change password.'; }
+        }
+
+        async function regenBridge() {
+            if (!confirm('Regenerate bridge secret? The mobile app will need to be re-paired.')) return;
+            const msg = document.getElementById('bridge-msg');
+            msg.textContent = '';
+            try {
+                const data = await api('/api/admin/bridge', 'POST');
+                if (data.ok) {
+                    msg.style.color = '#4ade80';
+                    msg.textContent = 'Bridge secret regenerated: ' + data.secret;
+                } else {
+                    msg.textContent = data.error || 'Failed to regenerate.';
+                }
+            } catch (e) { msg.textContent = 'Failed to regenerate.'; }
+        }
+
+        async function rebootDevice() {
+            if (!confirm('Reboot this device now?')) return;
+            if (!confirm('Are you sure? The device will restart.')) return;
+            try {
+                await api('/api/admin/reboot', 'POST');
+                alert('Rebooting... The page will stop responding. Wait a minute and reload.');
+            } catch (e) {}
+        }
+
+        // ---------- Skills ----------
+        async function loadSkills() {
+            try {
+                const data = await api('/api/admin/skills');
+                const box = document.getElementById('skills-list');
+                if (!data.skills || data.skills.length === 0) {
+                    box.innerHTML = '<div class="muted">No skills installed yet.</div>';
+                    return;
+                }
+                box.innerHTML = data.skills.map(s => `
+                    <div class="skill-card">
+                        <div class="meta">
+                            <div class="name">${s.name}</div>
+                            <div class="desc">${s.description || ''}</div>
+                        </div>
+                        <button class="btn btn-danger btn-small" onclick="removeSkill('${s.name}')">Remove</button>
+                    </div>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function installSkill() {
+            const errorEl = document.getElementById('skills-error');
+            errorEl.textContent = '';
+            const owner = document.getElementById('sk-owner').value.trim();
+            const repo = document.getElementById('sk-repo').value.trim();
+            const path = document.getElementById('sk-path').value.trim();
+            const name = document.getElementById('sk-name').value.trim();
+            if (!owner || !repo || !path) {
+                errorEl.textContent = 'Owner, repo and path are required.';
+                return;
+            }
+            try {
+                const data = await api('/api/admin/skills/install', 'POST', { owner, repo, path, name });
+                if (data.ok) {
+                    errorEl.style.color = '#4ade80';
+                    errorEl.textContent = 'Skill installed. It is available to Ghost immediately.';
+                    ['sk-owner', 'sk-repo', 'sk-path', 'sk-name'].forEach(id => document.getElementById(id).value = '');
+                    loadSkills();
+                } else {
+                    errorEl.textContent = data.error || 'Failed to install.';
+                }
+            } catch (e) { errorEl.textContent = 'Failed to install skill.'; }
+        }
+
+        async function removeSkill(name) {
+            if (!confirm('Remove skill ' + name + '?')) return;
+            try {
+                const data = await api('/api/admin/skills/remove', 'POST', { name });
+                loadSkills();
+            } catch (e) {}
+        }
+
+        // ---------- Wizard helpers (kept from original) ----------
         async function scanWifi() {
             try {
                 const res = await fetch('/api/scan-wifi');
@@ -537,8 +1303,6 @@
             const errorEl = document.getElementById('password-error');
             errorEl.textContent = '';
 
-            // In rerun mode the password is optional: blank keeps the
-            // current password (verified at login time).
             if (pw === '' && rerunMode) {
                 adminPassword = '';
                 nextStep();
@@ -643,7 +1407,6 @@
         }
 
         async function completeSetup() {
-            // Advance to step 4 first so the user sees progress
             goToStep(4);
 
             const provider = document.getElementById('provider').value;
@@ -658,7 +1421,6 @@
                 ollama_url: 'http://localhost:11434'
             };
 
-            // Show loading state
             document.getElementById('setup-status').style.display = 'block';
             document.getElementById('setup-complete').style.display = 'none';
 
@@ -671,7 +1433,6 @@
                 const data = await res.json();
 
                 if (data.ok) {
-                    // Get pairing code
                     const codeRes = await fetch('/api/pairing-code');
                     const codeData = await codeRes.json();
                     if (codeData.ok) {
@@ -692,22 +1453,11 @@
         }
 
         function finishSetup() {
-            document.body.innerHTML = `
-                <div class="container">
-                    <div class="card" style="text-align: center;">
-                        <div class="success-icon">✓</div>
-                        <h2>Ghost is Ready</h2>
-                        <p style="color: #71717a; margin: 16px 0;">
-                            The device will restart in a moment.<br>
-                            Open the Ghost app to start chatting.
-                        </p>
-                    </div>
-                </div>
-            `;
-            // Reload after a delay
-            setTimeout(() => {
-                window.location.reload();
-            }, 10000);
+            // Show the admin dashboard directly when the wizard is always-on.
+            loggedIn = true;
+            document.getElementById('wizard-container').style.display = 'none';
+            document.getElementById('dashboard').classList.remove('hidden');
+            showDashboard();
         }
 
         init();
