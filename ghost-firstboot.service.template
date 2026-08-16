@@ -1,18 +1,27 @@
 [Unit]
-Description=Ghost First Boot Setup
+Description=Ghost Setup Wizard (Always On)
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=!__GHOST_DIR__/.setup-complete
 Before=ghost.service
 
 [Service]
-Type=oneshot
-RemainAfterExit=yes
+Type=simple
 User=root
-ExecStartPre=/usr/bin/sudo ufw allow 80/tcp
-ExecStart=__BIN_DIR__/ghost-firstboot -port 80 -dir __GHOST_DIR__ -wait
-ExecStartPost=/usr/bin/sudo ufw delete allow 80/tcp 2>/dev/null || true
-ExecStartPost=/bin/bash -c 'systemctl daemon-reload && systemctl start ghost'
+Restart=always
+RestartSec=5
+ExecStart=__BIN_DIR__/ghost-firstboot -force -port 80 -dir __GHOST_DIR__
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=__GHOST_DIR__ /run
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ghost-firstboot
 
 [Install]
 WantedBy=multi-user.target

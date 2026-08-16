@@ -18,6 +18,7 @@ sessions/
 build/
 tmp/
 ghost.service
+ghost-firstboot.service
 
 # Coverage
 coverage.txt

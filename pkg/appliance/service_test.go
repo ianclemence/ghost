@@ -14,29 +14,29 @@ func TestFirstbootServiceTemplate(t *testing.T) {
 	}
 	content := string(data)
 
-	// Verify Type=oneshot (required for proper sequencing with ghost.service)
-	if !strings.Contains(content, "Type=oneshot") {
-		t.Error("firstboot service should be Type=oneshot")
+	// Verify Type=simple (always-on wizard, not a oneshot)
+	if !strings.Contains(content, "Type=simple") {
+		t.Error("firstboot service should be Type=simple")
 	}
 
-	// Verify RemainAfterExit=yes (keeps service marked as active after exit)
-	if !strings.Contains(content, "RemainAfterExit=yes") {
-		t.Error("firstboot service should have RemainAfterExit=yes")
+	// Verify Restart=always (keeps the wizard always available)
+	if !strings.Contains(content, "Restart=always") {
+		t.Error("firstboot service should have Restart=always")
 	}
 
-	// Verify Before=ghost.service (ensures firstboot completes before ghost starts)
+	// Verify Before=ghost.service (ensures firstboot starts before ghost)
 	if !strings.Contains(content, "Before=ghost.service") {
 		t.Error("firstboot service should have Before=ghost.service")
 	}
 
-	// Verify ConditionPathExists (only runs when setup is not complete)
-	if !strings.Contains(content, "ConditionPathExists=") {
-		t.Error("firstboot service should have ConditionPathExists")
+	// Verify -force flag is used (wizard stays available after setup)
+	if !strings.Contains(content, "-force") {
+		t.Error("firstboot service should use -force flag to stay available after setup")
 	}
 
-	// Verify -wait flag is used (blocks until setup completes)
-	if !strings.Contains(content, "-wait") {
-		t.Error("firstboot service should use -wait flag for oneshot lifecycle")
+	// Verify no ConditionPathExists (wizard must run even when setup is complete)
+	if strings.Contains(content, "ConditionPathExists=") {
+		t.Error("firstboot service should not have ConditionPathExists")
 	}
 
 	// Verify WantedBy=multi-user.target

@@ -456,9 +456,12 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 	// Invalidate all admin sessions: the configuration has changed.
 	sessions.revokeAll()
 
-	// Clean up firewall rule for the wizard port (no longer needed once
-	// setup is complete).
-	cleanupFirewall()
+	// Clean up the wizard firewall rule only in wait mode, where the oneshot
+	// service exits after setup. In -force mode the wizard stays running as
+	// an always-available login/management screen, so port 80 must stay open.
+	if waitingOnSystemd {
+		cleanupFirewall()
+	}
 
 	// Under systemd (wait mode), the ghost-firstboot service's ExecStartPost
 	// is responsible for starting ghost after setup. When running in
