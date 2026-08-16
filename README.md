@@ -106,8 +106,8 @@ Why:
 
 - RK1 (16GB) **recommended**
 - Raspberry Pi 5 (8GB+) supported
-- 32GB MicroSD / NVMe storage
-- Telegram Account
+- 32GB MicroSD storage
+- Mobile phone with Ghost app
 
 ---
 
@@ -133,7 +133,28 @@ ollama pull qwen3.5:0.8b
 
 ## 🚀 Quick Start
 
-### Windows
+### Appliance Mode (Recommended)
+
+The easiest way to run Ghost on a Raspberry Pi:
+
+```bash
+git clone -b feat/ghost-appliance https://github.com/ianclemence/ghost.git
+cd ghost
+make install-appliance
+sudo systemctl start ghost
+```
+
+Then open `http://ghost.local` on your phone to complete setup:
+1. Connect to WiFi
+2. Create admin password
+3. Select AI model
+4. Connect the Ghost app
+
+---
+
+### Developer Mode
+
+**Windows:**
 
 Double-click `setup.bat`
 
@@ -201,6 +222,8 @@ cp config/config.example.json config/config.json
 
 ## 🧭 Ghost CLI Commands
 
+### Core
+
 | Command     | Purpose                                   | Example             |
 | ----------- | ----------------------------------------- | ------------------- |
 | `onboard`   | Initialize config and workspace templates | `ghost onboard`     |
@@ -213,6 +236,13 @@ cp config/config.example.json config/config.json
 | `skills`    | Manage skills                             | `ghost skills list` |
 | `migrate`   | Migrate configs                           | `ghost migrate`     |
 | `version`   | Show build info                           | `ghost version`     |
+
+### Appliance
+
+| Command              | Purpose                              | Example                    |
+| -------------------- | ------------------------------------ | -------------------------- |
+| `ghost-firstboot`    | Setup wizard for first boot          | `ghost-firstboot`          |
+| `ghost-updater`      | OTA update daemon                    | `ghost-updater -url <url>` |
 
 ---
 
@@ -277,11 +307,20 @@ Use that IP in app settings.
 
 ## 🤖 Running as a Service
 
+### Appliance Mode (Recommended)
+
+```bash
+make install-appliance
+sudo systemctl start ghost
+```
+
+### Developer Mode
+
 ```bash
 make install-service
 ```
 
-### Commands
+### Service Commands
 
 ```bash
 sudo systemctl status ghost
@@ -289,9 +328,43 @@ sudo journalctl -u ghost -f
 sudo systemctl restart ghost
 ```
 
+### Recovery Mode
+
+If Ghost fails to start, enable recovery mode:
+
+```bash
+# Set recovery mode in the service file or environment
+GHOST_RECOVERY_MODE=1 ghost gateway
+```
+
+This starts a web UI at `http://ghost.local:8766` with:
+- System status
+- Logs viewer
+- Config reset option
+- Restart button
+
 ---
 
 ## 🔄 Updating Ghost
+
+### Appliance Mode (OTA)
+
+The updater daemon checks for updates every 6 hours automatically.
+
+To update manually:
+
+```bash
+ghost-updater -force
+```
+
+To run the updater as a service:
+
+```bash
+# Add to systemd or run in background
+ghost-updater -interval 6h
+```
+
+### Developer Mode
 
 ```bash
 cd ~/ghost
@@ -340,6 +413,13 @@ make install && sudo systemctl restart ghost
 * Skills self-improvement (learned skill refinement from execution patterns)
 * Trajectory compression (interaction summaries for context window management)
 * Cross-session learning graph (knowledge graph connecting skills, memory, trajectories)
+
+### Phase 4: Ghost OS
+
+* Appliance mode (first-boot wizard, OTA updates, recovery mode)
+* Custom Linux distribution
+* Multi-agent isolation
+* Hardware abstraction layer
 
 ---
 
