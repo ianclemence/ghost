@@ -1162,11 +1162,14 @@
         <div class="tab-bar">
             <div class="tab active" data-tab="home" onclick="switchTab('home')">Home</div>
             <div class="tab" data-tab="ai" onclick="switchTab('ai')">AI</div>
+            <div class="tab" data-tab="personality" onclick="switchTab('personality')">Personality</div>
             <div class="tab" data-tab="channels" onclick="switchTab('channels')">Channels</div>
             <div class="tab" data-tab="tools" onclick="switchTab('tools')">Tools</div>
+            <div class="tab" data-tab="toolsets" onclick="switchTab('toolsets')">Toolsets</div>
             <div class="tab" data-tab="advanced" onclick="switchTab('advanced')">Advanced</div>
             <div class="tab" data-tab="system" onclick="switchTab('system')">System</div>
             <div class="tab" data-tab="skills" onclick="switchTab('skills')">Skills</div>
+            <div class="tab" data-tab="logs" onclick="switchTab('logs')">Logs</div>
         </div>
 
         <!-- Home tab -->
@@ -1286,6 +1289,44 @@
                     <button class="btn btn-primary btn-small" onclick="pullOllamaModel()">Pull model</button>
                 </div>
                 <div id="ollama-error" class="error"></div>
+            </div>
+        </div>
+
+        <!-- Personality tab -->
+        <div class="tab-content" id="tab-personality">
+            <div class="card">
+                <h3>Active Personality</h3>
+                <p class="help-text">Choose how Ghost communicates. Built-in personalities are ready to use; create custom ones below.</p>
+                <div id="personality-list"></div>
+            </div>
+            <div class="card" style="margin-top: var(--space-md);">
+                <h3>Custom Personalities</h3>
+                <p class="help-text">Create your own personality profiles.</p>
+                <div id="custom-personalities"></div>
+                <div class="inline-form" style="margin-top: var(--space-md); flex-direction: column; align-items: stretch;">
+                    <div class="form-group">
+                        <label for="new-personality-name">Name</label>
+                        <input type="text" id="new-personality-name" placeholder="e.g. poet">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-personality-desc">Description</label>
+                        <input type="text" id="new-personality-desc" placeholder="e.g. poetic and lyrical">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-personality-content">System prompt</label>
+                        <textarea id="new-personality-content" rows="4" placeholder="You are Ghost in poet mode. Express ideas through verse and metaphor."></textarea>
+                    </div>
+                    <button class="btn btn-primary btn-small" onclick="createPersonality()">Create personality</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toolsets tab -->
+        <div class="tab-content" id="tab-toolsets">
+            <div class="card">
+                <h3>Active Toolset</h3>
+                <p class="help-text">Control which tools Ghost can use. Toolsets bundle related capabilities.</p>
+                <div id="toolsets-list"></div>
             </div>
         </div>
 
@@ -1536,6 +1577,47 @@
                     <input type="number" id="adv-threshold" step="0.05" placeholder="0.35">
                 </div>
             </div>
+            <div class="card" style="margin-top: var(--space-md);">
+                <h3>MCP Servers</h3>
+                <p class="help-text">Model Context Protocol servers extend Ghost with external tools. Configure servers below.</p>
+                <div class="toggle-row">
+                    <span>MCP enabled</span>
+                    <button class="toggle" id="mcp-toggle" onclick="this.classList.toggle('on')"></button>
+                </div>
+                <div id="mcp-servers-list" style="margin-top: var(--space-md);"></div>
+                <div class="inline-form" style="margin-top: var(--space-md); flex-direction: column; align-items: stretch;">
+                    <div class="form-group">
+                        <label for="mcp-new-name">Server name</label>
+                        <input type="text" id="mcp-new-name" placeholder="e.g. my-tools">
+                    </div>
+                    <div class="form-group">
+                        <label for="mcp-new-cmd">Command</label>
+                        <input type="text" id="mcp-new-cmd" placeholder="e.g. npx, python3">
+                    </div>
+                    <div class="form-group">
+                        <label for="mcp-new-args">Args (space-separated)</label>
+                        <input type="text" id="mcp-new-args" placeholder="e.g. -y @modelcontextprotocol/server-filesystem /tmp">
+                    </div>
+                    <div class="toggle-row">
+                        <span>HTTP mode</span>
+                        <button class="toggle" id="mcp-http-toggle" onclick="this.classList.toggle('on')"></button>
+                    </div>
+                    <div class="form-group" id="mcp-http-url-group" style="display: none;">
+                        <label for="mcp-new-url">HTTP URL</label>
+                        <input type="text" id="mcp-new-url" placeholder="http://localhost:3000/mcp">
+                    </div>
+                    <button class="btn btn-primary btn-small" onclick="addMCPServer()">Add server</button>
+                </div>
+            </div>
+            <div class="card" style="margin-top: var(--space-md);">
+                <h3>Voice & TTS</h3>
+                <p class="help-text">Voice transcription uses Groq or Kimi (configured in AI providers). TTS uses edge-tts.</p>
+                <div class="kv"><span class="k">Transcription</span><span class="v" id="voice-transcriber">-</span></div>
+                <div class="form-group" style="margin-top: var(--space-md);">
+                    <label for="tts-voice">Default TTS voice</label>
+                    <input type="text" id="tts-voice" placeholder="e.g. en-US-AriaNeural">
+                </div>
+            </div>
             <div id="advanced-msg" class="error"></div>
             <div id="advanced-success" class="success"></div>
             <button class="btn btn-primary" style="margin-top: var(--space-sm); width: 100%;" onclick="saveAdvanced()">Save advanced settings</button>
@@ -1606,12 +1688,23 @@
         <div class="tab-content" id="tab-skills">
             <div class="card">
                 <h3>Installed Skills</h3>
-                <p class="help-text">Skills are markdown instructions Ghost can use as tools.</p>
+                <p class="help-text">Skills are markdown instructions Ghost can use as tools. Toggle them on/off without removing.</p>
                 <div id="skills-list"></div>
             </div>
             <div class="card">
+                <h3>ClawHub Marketplace</h3>
+                <p class="help-text">Search and install skills from the community registry.</p>
+                <div class="inline-form">
+                    <div class="form-group" style="flex: 1;">
+                        <input type="text" id="clawhub-search" placeholder="Search skills..." onkeydown="if(event.key==='Enter')searchClawHub()">
+                    </div>
+                    <button class="btn btn-primary btn-small" onclick="searchClawHub()">Search</button>
+                </div>
+                <div id="clawhub-results" style="margin-top: var(--space-md);"></div>
+            </div>
+            <div class="card">
                 <h3>Install from GitHub</h3>
-                <p class="help-text">Install a skill from a public GitHub repo. Works with skills published on skills.sh.</p>
+                <p class="help-text">Install a skill from a public GitHub repo.</p>
                 <div class="form-group">
                     <label for="sk-owner">Owner</label>
                     <input type="text" id="sk-owner" placeholder="e.g. mattpocock">
@@ -1630,6 +1723,27 @@
                 </div>
                 <div id="skills-error" class="error"></div>
                 <button class="btn btn-primary btn-small" onclick="installSkill()">Install skill</button>
+            </div>
+        </div>
+
+        <!-- Logs tab -->
+        <div class="tab-content" id="tab-logs">
+            <div class="card">
+                <h3>Ghost Service Logs</h3>
+                <p class="help-text">Recent logs from the Ghost daemon. Auto-refreshes every 10 seconds.</p>
+                <div class="inline-form" style="margin-bottom: var(--space-md);">
+                    <div class="form-group">
+                        <label for="log-lines">Lines</label>
+                        <select id="log-lines" onchange="loadLogs()">
+                            <option value="50">50</option>
+                            <option value="100" selected>100</option>
+                            <option value="200">200</option>
+                            <option value="500">500</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-small" onclick="loadLogs()">Refresh</button>
+                </div>
+                <div id="logs-output" style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-md); max-height: 500px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6; color: var(--text-secondary); white-space: pre-wrap; word-break: break-all;"></div>
             </div>
         </div>
     </div>
@@ -1745,6 +1859,10 @@
             loadGateway();
             loadSystem();
             loadSkills();
+            loadPersonality();
+            loadToolsets();
+            loadLogs();
+            startLogsAutoRefresh();
         }
 
         function logout() {
@@ -2199,9 +2317,19 @@
                             <div class="name">${s.name}</div>
                             <div class="desc">${s.description || ''}</div>
                         </div>
-                        <button class="btn btn-danger btn-small" onclick="removeSkill('${s.name}')">Remove</button>
+                        <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                            <button class="btn btn-small" onclick="toggleSkill('${s.name}', false)">Disable</button>
+                            <button class="btn btn-danger btn-small" onclick="removeSkill('${s.name}')">Remove</button>
+                        </div>
                     </div>
                 `).join('');
+            } catch (e) {}
+        }
+
+        async function toggleSkill(name, enabled) {
+            try {
+                const data = await api('/api/admin/skills/toggle', 'POST', { name, enabled });
+                loadSkills();
             } catch (e) {}
         }
 
@@ -2234,6 +2362,43 @@
             try {
                 const data = await api('/api/admin/skills/remove', 'POST', { name });
                 loadSkills();
+            } catch (e) {}
+        }
+
+        // ---------- ClawHub Marketplace ----------
+        async function searchClawHub() {
+            const query = document.getElementById('clawhub-search').value.trim();
+            const resultsEl = document.getElementById('clawhub-results');
+            if (!query) { resultsEl.innerHTML = ''; return; }
+            resultsEl.innerHTML = '<p style="color: var(--text-secondary);">Searching...</p>';
+            try {
+                const data = await api('/api/admin/skills/clawhub/search?q=' + encodeURIComponent(query));
+                if (!data.ok || !data.results || data.results.length === 0) {
+                    resultsEl.innerHTML = '<p style="color: var(--text-secondary);">No results found.</p>';
+                    return;
+                }
+                resultsEl.innerHTML = data.results.map(r => `
+                    <div class="toggle-row" style="cursor: default;">
+                        <div style="flex: 1;">
+                            <strong style="color: #00e5ff;">${r.display_name || r.slug}</strong>
+                            <span style="color: var(--text-secondary); margin-left: var(--space-sm); font-size: 0.8rem;">v${r.version || '?'}</span>
+                            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 2px;">${r.summary || ''}</div>
+                        </div>
+                        <button class="btn btn-primary btn-small" onclick="installFromClawHub('${r.slug}')">Install</button>
+                    </div>
+                `).join('');
+            } catch (e) {
+                resultsEl.innerHTML = '<p class="error">Search failed.</p>';
+            }
+        }
+
+        async function installFromClawHub(slug) {
+            try {
+                const data = await api('/api/admin/skills/clawhub/install', 'POST', { slug });
+                if (data.ok) {
+                    loadSkills();
+                    searchClawHub();
+                }
             } catch (e) {}
         }
 
@@ -2331,6 +2496,13 @@
                 document.getElementById('adv-max-iter').value = data.max_tool_iterations || 20;
                 document.getElementById('adv-light-model').value = (data.routing || {}).light_model || '';
                 document.getElementById('adv-threshold').value = (data.routing || {}).threshold || 0.35;
+
+                const mcp = data.mcp || {};
+                document.getElementById('mcp-toggle').classList.toggle('on', !!mcp.enabled);
+                mcpServers = mcp.servers || {};
+                renderMCPServers();
+                initVoiceToggle();
+                document.getElementById('voice-transcriber').textContent = 'Groq or Kimi (check AI providers)';
             } catch (e) {}
         }
 
@@ -2397,6 +2569,171 @@
                     msgEl.textContent = data.error || 'Failed to save.';
                 }
             } catch (e) { msgEl.textContent = 'Failed to save.'; }
+        }
+
+        // ---------- Personality ----------
+        async function loadPersonality() {
+            try {
+                const data = await api('/api/admin/personality');
+                if (!data.ok) return;
+                const active = data.active || 'default';
+                const all = [...(data.builtins || []), ...(data.custom || [])];
+                const listEl = document.getElementById('personality-list');
+                listEl.innerHTML = all.map(p => `
+                    <div class="toggle-row" style="cursor: pointer;" onclick="setPersonality('${p.name}')">
+                        <div>
+                            <strong style="color: ${p.name === active ? '#00e5ff' : 'var(--text-primary)'}">${p.name}</strong>
+                            <span style="color: var(--text-secondary); margin-left: var(--space-sm); font-size: 0.85rem;">${p.description || ''}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: var(--space-sm);">
+                            ${p.name === active ? '<span style="color: #00e5ff; font-size: 0.75rem;">ACTIVE</span>' : ''}
+                            ${data.custom && data.custom.some(c => c.name === p.name) ? '<button class="btn btn-small" style="color: #f87171; background: none; border: none; cursor: pointer;" onclick="event.stopPropagation(); deletePersonality(\'' + p.name + '\')">&#10005;</button>' : ''}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function setPersonality(name) {
+            try {
+                const data = await api('/api/admin/personality/save', 'POST', { active: name });
+                if (data.ok) loadPersonality();
+            } catch (e) {}
+        }
+
+        async function createPersonality() {
+            const name = document.getElementById('new-personality-name').value.trim();
+            const desc = document.getElementById('new-personality-desc').value.trim();
+            const content = document.getElementById('new-personality-content').value.trim();
+            if (!name || !content) return;
+            try {
+                const data = await api('/api/admin/personality/create', 'POST', { name, description: desc, content });
+                if (data.ok) {
+                    document.getElementById('new-personality-name').value = '';
+                    document.getElementById('new-personality-desc').value = '';
+                    document.getElementById('new-personality-content').value = '';
+                    loadPersonality();
+                }
+            } catch (e) {}
+        }
+
+        async function deletePersonality(name) {
+            try {
+                const data = await api('/api/admin/personality/delete', 'POST', { name });
+                if (data.ok) loadPersonality();
+            } catch (e) {}
+        }
+
+        // ---------- Toolsets ----------
+        async function loadToolsets() {
+            try {
+                const data = await api('/api/admin/toolsets');
+                if (!data.ok) return;
+                const active = data.active || 'default';
+                const listEl = document.getElementById('toolsets-list');
+                listEl.innerHTML = (data.toolsets || []).map(t => `
+                    <div class="toggle-row" style="cursor: pointer;" onclick="setToolset('${t.name}')">
+                        <div>
+                            <strong style="color: ${t.name === active ? '#00e5ff' : 'var(--text-primary)'}">${t.name}</strong>
+                            <span style="color: var(--text-secondary); margin-left: var(--space-sm); font-size: 0.85rem;">${t.description || ''}</span>
+                        </div>
+                        ${t.name === active ? '<span style="color: #00e5ff; font-size: 0.75rem;">ACTIVE</span>' : ''}
+                    </div>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function setToolset(name) {
+            try {
+                const data = await api('/api/admin/toolsets/save', 'POST', { active: name });
+                if (data.ok) loadToolsets();
+            } catch (e) {}
+        }
+
+        // ---------- MCP Servers ----------
+        let mcpServers = {};
+
+        function renderMCPServers() {
+            const el = document.getElementById('mcp-servers-list');
+            const names = Object.keys(mcpServers);
+            if (names.length === 0) {
+                el.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.85rem;">No MCP servers configured.</p>';
+                return;
+            }
+            el.innerHTML = names.map(name => {
+                const s = mcpServers[name];
+                const cmd = s.command || s.http_url || '?';
+                const args = (s.args || []).join(' ');
+                return `<div class="toggle-row">
+                    <div>
+                        <strong style="color: #00e5ff;">${name}</strong>
+                        <span style="color: var(--text-secondary); margin-left: var(--space-sm); font-size: 0.85rem;">${cmd} ${args}</span>
+                    </div>
+                    <button class="btn btn-small" style="color: #f87171; background: none; border: none; cursor: pointer;" onclick="removeMCPServer('${name}')">&#10005;</button>
+                </div>`;
+            }).join('');
+        }
+
+        async function addMCPServer() {
+            const name = document.getElementById('mcp-new-name').value.trim();
+            const cmd = document.getElementById('mcp-new-cmd').value.trim();
+            const argsStr = document.getElementById('mcp-new-args').value.trim();
+            const httpMode = document.getElementById('mcp-http-toggle').classList.contains('on');
+            const httpUrl = document.getElementById('mcp-new-url').value.trim();
+            if (!name) return;
+            const args = argsStr ? argsStr.split(/\s+/) : [];
+            mcpServers[name] = httpMode
+                ? { enabled: true, http: true, http_url: httpUrl, command: '', args: [] }
+                : { enabled: true, command: cmd, args: args, http: false };
+            await saveMCPConfig();
+            document.getElementById('mcp-new-name').value = '';
+            document.getElementById('mcp-new-cmd').value = '';
+            document.getElementById('mcp-new-args').value = '';
+            document.getElementById('mcp-new-url').value = '';
+        }
+
+        async function removeMCPServer(name) {
+            delete mcpServers[name];
+            await saveMCPConfig();
+        }
+
+        async function saveMCPConfig() {
+            const enabled = document.getElementById('mcp-toggle').classList.contains('on');
+            try {
+                await api('/api/admin/advanced/save', 'POST', {
+                    mcp: { enabled, servers: mcpServers }
+                });
+                renderMCPServers();
+            } catch (e) {}
+        }
+
+        // ---------- Voice / TTS ----------
+        function initVoiceToggle() {
+            document.getElementById('mcp-http-toggle').onclick = function() {
+                this.classList.toggle('on');
+                document.getElementById('mcp-http-url-group').style.display =
+                    this.classList.contains('on') ? '' : 'none';
+            };
+        }
+
+        // ---------- Logs ----------
+        let logsInterval = null;
+
+        async function loadLogs() {
+            const lines = document.getElementById('log-lines').value;
+            try {
+                const data = await api('/api/admin/logs?lines=' + lines);
+                if (data.ok) {
+                    const el = document.getElementById('logs-output');
+                    el.textContent = (data.logs || []).join('\n');
+                    el.scrollTop = el.scrollHeight;
+                }
+            } catch (e) {}
+        }
+
+        function startLogsAutoRefresh() {
+            if (logsInterval) clearInterval(logsInterval);
+            logsInterval = setInterval(loadLogs, 10000);
         }
 
         // ---------- Wizard helpers ----------

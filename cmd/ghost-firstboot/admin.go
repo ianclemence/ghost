@@ -3,10 +3,12 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -896,6 +898,265 @@ func handleRegenBridge(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ---------- Personality ----------
+
+func handlePersonalityGet(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	builtins := []map[string]string{
+		{"name": "default", "description": "Professional, concise, helpful"},
+		{"name": "hacker", "description": "Technical deep-dive, code-first"},
+		{"name": "creative", "description": "Brainstorming, writing, ideation"},
+		{"name": "teacher", "description": "Patient educator, step-by-step"},
+		{"name": "minimal", "description": "Ultra-concise, one-line answers"},
+	}
+
+	// Scan for custom personalities in ~/.GHOST/personalities/
+	customDir := filepath.Join(fb.GhostDir, "personalities")
+	var custom []map[string]string
+	if entries, err := os.ReadDir(customDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(customDir, e.Name()))
+			if err != nil {
+				continue
+			}
+			var p struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			}
+			if json.Unmarshal(b, &p) == nil && p.Name != "" {
+				custom = append(custom, map[string]string{"name": p.Name, "description": p.Description})
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"active":  cfg.Personality.Active,
+		"builtins": builtins,
+		"custom":   custom,
+	})
+}
+
+func handlePersonalitySet(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Active string `json:"active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+	if req.Active == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "active personality is required"})
+		return
+	}
+
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	cfg.Personality.Active = req.Active
+	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Personality set to " + req.Active})
+}
+
+func handlePersonalityCreate(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Content     string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+	if req.Name == "" || req.Content == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "name and content are required"})
+		return
+	}
+
+	customDir := filepath.Join(fb.GhostDir, "personalities")
+	if err := os.MkdirAll(customDir, 0755); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	p := map[string]string{
+		"name":        strings.ToLower(strings.TrimSpace(req.Name)),
+		"description": req.Description,
+		"content":     req.Content,
+	}
+	data, _ := json.MarshalIndent(p, "", "  ")
+	path := filepath.Join(customDir, p["name"]+".json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Custom personality created: " + p["name"]})
+}
+
+func handlePersonalityDelete(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "name is required"})
+		return
+	}
+
+	builtins := map[string]bool{"default": true, "hacker": true, "creative": true, "teacher": true, "minimal": true}
+	if builtins[req.Name] {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "cannot delete builtin personality"})
+		return
+	}
+
+	path := filepath.Join(fb.GhostDir, "personalities", req.Name+".json")
+	if err := os.Remove(path); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]interface{}{"ok": false, "error": "personality not found"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Personality deleted"})
+}
+
+// ---------- Logs ----------
+
+func handleLogs(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+
+	lines := 100
+	if l := r.URL.Query().Get("lines"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 500 {
+			lines = v
+		}
+	}
+
+	// Try journalctl for ghost service logs, fallback to syslog
+	var out []byte
+	var err error
+	out, err = exec.Command("journalctl", "-u", "ghost", "-n", strconv.Itoa(lines), "--no-pager", "-o", "short-iso").CombinedOutput()
+	if err != nil {
+		// Fallback: try reading from /var/log/syslog for ghost entries
+		out, err = exec.Command("tail", "-n", strconv.Itoa(lines), "/var/log/syslog").CombinedOutput()
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"ok":    true,
+				"logs":  []string{},
+				"error": "no log source available",
+			})
+			return
+		}
+	}
+
+	logLines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":   true,
+		"logs": logLines,
+	})
+}
+
+// ---------- Toolsets ----------
+
+func handleToolsetsGet(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	// Default toolsets
+	toolsets := []map[string]interface{}{
+		{"name": "default", "description": "Standard tools: memory, web search, file access", "tools": "memory,web_search,read,write,edit,list_files,glob,grep"},
+		{"name": "minimal", "description": "Minimal tools: chat only, no external access", "tools": "memory"},
+		{"name": "developer", "description": "Full developer tools: code, files, web, terminal", "tools": "memory,web_search,read,write,edit,list_files,glob,grep,terminal,web_fetch"},
+		{"name": "researcher", "description": "Research tools: web search, reading, memory", "tools": "memory,web_search,web_fetch,read,list_files,glob,grep"},
+		{"name": "creator", "description": "Content creation: files, web, code generation", "tools": "memory,web_search,web_fetch,read,write,edit,list_files,glob,grep,terminal"},
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":       true,
+		"active":   cfg.Toolsets.Active,
+		"toolsets": toolsets,
+	})
+}
+
+func handleToolsetsSet(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Active string `json:"active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	cfg.Toolsets.Active = req.Active
+	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Toolset set to " + req.Active})
+}
+
 // ---------- Skills ----------
 
 func workspaceSkillsDir() string {
@@ -1070,6 +1331,290 @@ func handleSkillRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Skill removed"})
+}
+
+func handleSkillToggle(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Name    string `json:"name"`
+		Enabled bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "name is required"})
+		return
+	}
+
+	dir := workspaceSkillsDir()
+	skillDir := filepath.Join(dir, req.Name)
+	if !strings.HasPrefix(skillDir, dir) {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid skill name"})
+		return
+	}
+
+	src := filepath.Join(skillDir, "SKILL.md")
+	dst := filepath.Join(skillDir, "SKILL.md.disabled")
+
+	if req.Enabled {
+		// Enable: rename .disabled back to SKILL.md
+		if _, err := os.Stat(dst); err == nil {
+			if err := os.Rename(dst, src); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Skill enabled"})
+	} else {
+		// Disable: rename SKILL.md to .disabled
+		if _, err := os.Stat(src); err == nil {
+			if err := os.Rename(src, dst); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Skill disabled"})
+	}
+}
+
+func handleClawHubSearch(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "query is required"})
+		return
+	}
+
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	ctx := r.Context()
+	registry := newClawHubRegistry(cfg)
+	results, err := registry.Search(ctx, query, 20)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"results": results,
+	})
+}
+
+func handleClawHubInstall(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Slug    string `json:"slug"`
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Slug == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "slug is required"})
+		return
+	}
+
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	ctx := r.Context()
+	registry := newClawHubRegistry(cfg)
+	targetDir := workspaceSkillsDir()
+	result, err := registry.DownloadAndInstall(ctx, req.Slug, req.Version, targetDir)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"message": "Skill installed from ClawHub",
+		"version": result,
+	})
+}
+
+// newClawHubRegistry creates a ClawHub registry client from config.
+func newClawHubRegistry(cfg *config.Config) *clawHubClient {
+	baseURL := cfg.Skills.ClawHub.BaseURL
+	if baseURL == "" {
+		baseURL = "https://clawhub.ai"
+	}
+	searchPath := cfg.Skills.ClawHub.SearchPath
+	if searchPath == "" {
+		searchPath = "/api/v1/search"
+	}
+	skillsPath := cfg.Skills.ClawHub.SkillsPath
+	if skillsPath == "" {
+		skillsPath = "/api/v1/skills"
+	}
+	downloadPath := cfg.Skills.ClawHub.DownloadPath
+	if downloadPath == "" {
+		downloadPath = "/api/v1/download"
+	}
+	timeout := 30 * time.Second
+	if cfg.Skills.ClawHub.Timeout > 0 {
+		timeout = time.Duration(cfg.Skills.ClawHub.Timeout) * time.Second
+	}
+	return &clawHubClient{
+		baseURL:      baseURL,
+		authToken:    cfg.Skills.ClawHub.AuthToken,
+		searchPath:   searchPath,
+		skillsPath:   skillsPath,
+		downloadPath: downloadPath,
+		client:       &http.Client{Timeout: timeout},
+	}
+}
+
+// clawHubClient is a lightweight ClawHub HTTP client for the admin API.
+type clawHubClient struct {
+	baseURL, authToken, searchPath, skillsPath, downloadPath string
+	client                                                   *http.Client
+}
+
+type clawHubSearchResp struct {
+	Results []struct {
+		Score       float64 `json:"score"`
+		Slug        *string `json:"slug"`
+		DisplayName *string `json:"displayName"`
+		Summary     *string `json:"summary"`
+		Version     *string `json:"version"`
+	} `json:"results"`
+}
+
+func derefStr(s *string, def string) string {
+	if s != nil {
+		return *s
+	}
+	return def
+}
+
+func (c *clawHubClient) Search(ctx context.Context, query string, limit int) ([]map[string]interface{}, error) {
+	u, err := url.Parse(c.baseURL + c.searchPath)
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	q.Set("q", query)
+	if limit > 0 {
+		q.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	var sr clawHubSearchResp
+	if err := json.Unmarshal(body, &sr); err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+	for _, r := range sr.Results {
+		slug := derefStr(r.Slug, "")
+		if slug == "" {
+			continue
+		}
+		results = append(results, map[string]interface{}{
+			"slug":         slug,
+			"display_name": derefStr(r.DisplayName, slug),
+			"summary":      derefStr(r.Summary, ""),
+			"version":      derefStr(r.Version, ""),
+			"score":        r.Score,
+		})
+	}
+	return results, nil
+}
+
+func (c *clawHubClient) DownloadAndInstall(ctx context.Context, slug, version, targetDir string) (string, error) {
+	u, err := url.Parse(c.baseURL + c.downloadPath)
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	q.Set("slug", slug)
+	if version != "" {
+		q.Set("version", version)
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return "", err
+	}
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+	}
+
+	tmpFile, err := os.CreateTemp("", "ghost-clawhub-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(tmpFile.Name())
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		tmpFile.Close()
+		return "", err
+	}
+	tmpFile.Close()
+
+	if err := extractZipToDir(tmpFile.Name(), targetDir); err != nil {
+		return "", err
+	}
+	return version, nil
+}
+
+func extractZipToDir(zipPath, targetDir string) error {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return err
+	}
+	cmd := exec.Command("unzip", "-o", zipPath, "-d", targetDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("extract failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // startTime is recorded when the wizard process starts.
@@ -1299,6 +1844,10 @@ func handleAdvancedGet(w http.ResponseWriter, r *http.Request) {
 		"search_enabled":       cfg.Agents.Defaults.SearchEnabled,
 		"restrict_to_workspace": cfg.Agents.Defaults.RestrictToWorkspace,
 		"max_tool_iterations":  cfg.Agents.Defaults.MaxToolIterations,
+		"mcp": map[string]interface{}{
+			"enabled": cfg.Tools.MCP.Enabled,
+			"servers": cfg.Tools.MCP.Servers,
+		},
 	})
 }
 
@@ -1334,6 +1883,10 @@ func handleAdvancedSet(w http.ResponseWriter, r *http.Request) {
 		SearchEnabled       *bool `json:"search_enabled"`
 		RestrictToWorkspace *bool `json:"restrict_to_workspace"`
 		MaxToolIterations   *int  `json:"max_tool_iterations"`
+		MCP                 *struct {
+			Enabled bool                     `json:"enabled"`
+			Servers map[string]config.MCPServerConfig `json:"servers"`
+		} `json:"mcp"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
@@ -1385,6 +1938,12 @@ func handleAdvancedSet(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.MaxToolIterations != nil && *req.MaxToolIterations > 0 {
 		cfg.Agents.Defaults.MaxToolIterations = *req.MaxToolIterations
+	}
+	if req.MCP != nil {
+		cfg.Tools.MCP.Enabled = req.MCP.Enabled
+		if req.MCP.Servers != nil {
+			cfg.Tools.MCP.Servers = req.MCP.Servers
+		}
 	}
 
 	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {
