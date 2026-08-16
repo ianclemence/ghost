@@ -17,9 +17,6 @@ RestartSec=5
 StartLimitIntervalSec=300
 StartLimitBurst=3
 
-# Health check via watchdog
-WatchdogSec=120
-
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict

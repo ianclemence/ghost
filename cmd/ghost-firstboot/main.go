@@ -43,7 +43,9 @@ func main() {
 
 	// Check if first boot is needed
 	if !*forceMode && !fb.IsFirstBoot() {
-		log.Println("Setup already complete.")
+		flagPath := filepath.Join(fb.GhostDir, appliance.SetupCompleteFlag)
+		log.Println("Setup already complete. The wizard only runs on first boot.")
+		log.Println("To re-open the wizard, run with -force, or remove " + flagPath + " and restart the ghost-firstboot service.")
 		os.Exit(0)
 	}
 
@@ -54,6 +56,10 @@ func main() {
 	if err := fb.EnsureDirectories(); err != nil {
 		log.Fatalf("Failed to create directories: %v", err)
 	}
+
+	// Best-effort open the wizard port on the firewall so the wizard is
+	// reachable from other devices even when re-run manually with -force.
+	openFirewallPort(*port)
 
 	// Start the wizard server
 	mux := http.NewServeMux()
@@ -506,6 +512,18 @@ func pullOllamaModel(model string) error {
 // cleanupFirewall removes the port 80 rule after setup completes.
 func cleanupFirewall() {
 	exec.Command("ufw", "delete", "allow", "80/tcp").Run()
+}
+
+// openFirewallPort opens the given TCP port on the firewall so the wizard is
+// reachable from other devices. Best-effort: failures are logged and ignored
+// (ufw may not be installed or active on the device).
+func openFirewallPort(port int) {
+	cmd := exec.Command("ufw", "allow", fmt.Sprintf("%d/tcp", port))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("Failed to open firewall port %d (ufw may not be active): %v: %s", port, err, strings.TrimSpace(string(out)))
+	} else {
+		log.Printf("Opened firewall port %d", port)
+	}
 }
 
 // restartGhostService restarts the ghost service after setup.
