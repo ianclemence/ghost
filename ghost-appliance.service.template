@@ -1,0 +1,36 @@
+[Unit]
+Description=Ghost - Sovereign AI Assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=__GROUP__
+WorkingDirectory=__GHOST_DIR__
+EnvironmentFile=__GHOST_DIR__/.env
+Environment=GHOST_WORKSPACE_DIR=__GHOST_DIR__/workspace
+ExecStartPre=/usr/bin/test -f __GHOST_DIR__/.setup-complete || /usr/local/bin/ghost-firstboot
+ExecStart=__BIN_DIR__/ghost gateway
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+# Health check via watchdog
+WatchdogSec=120
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=__GHOST_DIR__
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ghost
+
+[Install]
+WantedBy=multi-user.target

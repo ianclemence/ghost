@@ -1,10 +1,16 @@
-.PHONY: all build install uninstall clean help test install-service
+.PHONY: all build install uninstall clean help test install-service build-appliance
 
 # Build variables
 BINARY_NAME=ghost
 BUILD_DIR=build
 CMD_DIR=cmd/$(BINARY_NAME)
 MAIN_GO=$(CMD_DIR)/main.go
+
+# Appliance binaries
+FIRSTBOOT_NAME=ghost-firstboot
+UPDATER_NAME=ghost-updater
+FIRSTBOOT_DIR=cmd/$(FIRSTBOOT_NAME)
+UPDATER_DIR=cmd/$(UPDATER_NAME)
 
 # Version
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -129,3 +135,33 @@ install-service:
 	@sudo systemctl enable ghost
 	@sudo systemctl restart ghost
 	@echo "✅ ghost.service installed for $(USER)"
+
+## build-appliance: Build all appliance binaries (firstboot, updater)
+build-appliance: build
+	@echo "Building appliance binaries..."
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) ./$(FIRSTBOOT_DIR)
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(UPDATER_NAME)-$(PLATFORM)-$(ARCH) ./$(UPDATER_DIR)
+	@ln -sf $(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(FIRSTBOOT_NAME)
+	@ln -sf $(UPDATER_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(UPDATER_NAME)
+	@echo "Appliance binaries built"
+
+## install-appliance: Install appliance binaries and service
+install-appliance: build-appliance
+	@echo "Installing Ghost Appliance..."
+	@sudo mkdir -p /var/ghost/config /var/ghost/data /var/ghost/workspace
+	@sudo cp $(BUILD_DIR)/$(BINARY_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost
+	@sudo cp $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(FIRSTBOOT_NAME)
+	@sudo cp $(BUILD_DIR)/$(UPDATER_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(UPDATER_NAME)
+	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(FIRSTBOOT_NAME) /usr/local/bin/$(UPDATER_NAME)
+	@sudo chown -R $(USER):$(USER) /var/ghost
+	@sed \
+		-e "s|__USER__|$(USER)|g" \
+		-e "s|__GROUP__|$(USER)|g" \
+		-e "s|__GHOST_DIR__|/var/ghost|g" \
+		-e "s|__BIN_DIR__|/usr/local/bin|g" \
+		ghost-appliance.service.template > ghost-appliance.service
+	@sudo cp ghost-appliance.service /etc/systemd/system/ghost.service
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable ghost
+	@echo "✅ Ghost Appliance installed"
+	@echo "Run 'sudo systemctl start ghost' to begin setup"
