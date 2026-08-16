@@ -567,6 +567,8 @@ TZ=UTC
 	// Set model configuration
 	if model != "" {
 		cfg.Agents.Defaults.Model = model
+	} else if strings.Contains(provider, "ollama") {
+		cfg.Agents.Defaults.Model = "qwen3:0.6b"
 	}
 	if provider != "" {
 		cfg.Agents.Defaults.Provider = provider

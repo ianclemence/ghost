@@ -9,6 +9,7 @@ import (
 )
 
 func updateCmd() {
+	requireRoot()
 	ghostDir := findGhostDir()
 
 	fmt.Println("Updating Ghost...")
@@ -23,9 +24,9 @@ func updateCmd() {
 		os.Exit(1)
 	}
 
-	// Build
-	fmt.Println("2. Building...")
-	cmd = exec.Command("make", "-C", ghostDir, "build")
+	// Build and deploy
+	fmt.Println("2. Building and deploying...")
+	cmd = exec.Command("make", "-C", ghostDir, "install-ghost")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -33,12 +34,14 @@ func updateCmd() {
 		os.Exit(1)
 	}
 
-	// Restart services
-	fmt.Println("3. Restarting services...")
-	exec.Command("systemctl", "daemon-reload").Run()
-	exec.Command("systemctl", "restart", "ghost").Run()
-
 	fmt.Println("Update complete!")
+}
+
+func requireRoot() {
+	if os.Geteuid() != 0 {
+		fmt.Println("This command must be run as root (e.g. 'sudo ghost update')")
+		os.Exit(1)
+	}
 }
 
 func updaterCmd() {
@@ -72,7 +75,7 @@ func checkAndUpdate() {
 
 	// Get current version
 	cmd := exec.Command("git", "-C", ghostDir, "describe", "--tags", "--always")
- currentVersion, _ := cmd.Output()
+	currentVersion, _ := cmd.Output()
 
 	// Pull latest
 	cmd = exec.Command("git", "-C", ghostDir, "pull")
@@ -90,19 +93,14 @@ func checkAndUpdate() {
 
 	fmt.Println("New changes found, rebuilding...")
 
-	// Build
-	cmd = exec.Command("make", "-C", ghostDir, "build")
+	// Build and deploy
+	cmd = exec.Command("make", "-C", ghostDir, "install-ghost")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Error building: %v\n", err)
 		return
 	}
-
-	// Restart
-	fmt.Println("Restarting Ghost...")
-	exec.Command("systemctl", "daemon-reload").Run()
-	exec.Command("systemctl", "restart", "ghost").Run()
 
 	fmt.Println("Updated successfully")
 	_ = currentVersion

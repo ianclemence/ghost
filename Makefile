@@ -142,17 +142,30 @@ build-ghost: build
 	@ln -sf $(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(FIRSTBOOT_NAME)
 	@echo "Build complete"
 
-## install-ghost: Install Ghost and firstboot binaries with services
+## install-ghost: Build, install binaries and services, then restart Ghost
 install-ghost: build-ghost
 	@echo "Installing Ghost..."
 	@# Stop services before replacing binaries
 	@sudo systemctl stop ghost 2>/dev/null || true
 	@sudo systemctl stop ghost-firstboot 2>/dev/null || true
 	@sudo mkdir -p /var/ghost/config /var/ghost/data /var/ghost/workspace
-	@sudo cp $(BINARY_PATH) /usr/local/bin/ghost
-	@sudo cp $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(FIRSTBOOT_NAME)
+	@# Copy to temp then rename so a running 'ghost update' binary can be replaced (ETXTBSY)
+	@sudo cp $(BINARY_PATH) /usr/local/bin/ghost.new
+	@sudo mv -f /usr/local/bin/ghost.new /usr/local/bin/ghost
+	@sudo cp $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(FIRSTBOOT_NAME).new
+	@sudo mv -f /usr/local/bin/$(FIRSTBOOT_NAME).new /usr/local/bin/$(FIRSTBOOT_NAME)
 	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(FIRSTBOOT_NAME)
 	@sudo chown -R $(USER):$(USER) /var/ghost
+	@# Build and deploy update tooling
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-$(PLATFORM)-$(ARCH) ./cmd/ghost-update
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-updater-$(PLATFORM)-$(ARCH) ./cmd/ghost-updater
+	@ln -sf ghost-update-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/ghost-update
+	@ln -sf ghost-updater-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/ghost-updater
+	@sudo cp $(BUILD_DIR)/ghost-update-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost-update.new
+	@sudo mv -f /usr/local/bin/ghost-update.new /usr/local/bin/ghost-update
+	@sudo cp $(BUILD_DIR)/ghost-updater-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost-updater.new
+	@sudo mv -f /usr/local/bin/ghost-updater.new /usr/local/bin/ghost-updater
+	@sudo chmod +x /usr/local/bin/ghost-update /usr/local/bin/ghost-updater
 	@# Install firstboot service
 	@sed \
 		-e "s|__GHOST_DIR__|/var/ghost|g" \
@@ -170,14 +183,15 @@ install-ghost: build-ghost
 	@# Open firewall ports
 	@sudo ufw allow 80/tcp 2>/dev/null || true
 	@sudo ufw allow 8766/tcp 2>/dev/null || true
-	@# Enable services
+	@# Enable and restart services
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable ghost-firstboot
 	@sudo systemctl enable ghost
+	@sudo systemctl restart ghost 2>/dev/null || true
+	@# Restore repo ownership to the developer user
+	@sudo chown -R $(shell stat -c '%U' .):$(shell stat -c '%G' .) $(BUILD_DIR) $(CMD_DIR)/workspace ghost.service ghost-firstboot.service 2>/dev/null || true
 	@echo "Ghost installed"
-	@echo "Run 'sudo systemctl start ghost-firstboot' to begin setup now"
-	@echo "Or reboot to start setup automatically"
-	@echo "Note: Ghost service will start automatically after firstboot completes"
+	@if [ ! -f /var/ghost/.setup-complete ]; then echo "Run 'sudo systemctl start ghost-firstboot' to begin setup now"; echo "Or reboot to start setup automatically"; fi
 
 ## rebuild-firstboot: Quick rebuild and install firstboot only
 rebuild-firstboot:

@@ -8,6 +8,11 @@ import (
 )
 
 func main() {
+	if os.Geteuid() != 0 {
+		fmt.Println("This command must be run as root (e.g. 'sudo ghost-update')")
+		os.Exit(1)
+	}
+
 	ghostDir := "/home/ianclemence/ghost"
 	if dir := os.Getenv("GHOST_DIR"); dir != "" {
 		ghostDir = dir
@@ -38,7 +43,7 @@ func main() {
 
 	// Make install
 	fmt.Println("2. Building and installing...")
-	cmd = exec.Command("make", "-C", ghostDir, "install-appliance")
+	cmd = exec.Command("make", "-C", ghostDir, "install-ghost")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

@@ -85,13 +85,13 @@ You → Local Reflex → Local Brain → Cloud (only if needed)
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen3.5:0.8b
+ollama pull qwen3:0.6b
 ```
 
 **Windows:**
 
 1. Install from https://ollama.com  
-2. Run: `ollama pull qwen3.5:0.8b`
+2. Run: `ollama pull qwen3:0.6b`
 
 ---
 
@@ -204,7 +204,7 @@ cp config/config.example.json config/config.json
 {
   "agents": {
     "defaults": {
-      "model": "kimi-k2.5",
+      "model": "qwen3:0.6b",
       "temperature": 0.7
     }
   },
