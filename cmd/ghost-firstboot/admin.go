@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -169,7 +170,7 @@ func handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"ok":         true,
 		"hostname":   hostname,
 		"version":    version,
-		"uptime":     time.Since(startTime).String(),
+		"uptime":     systemUptime(),
 		"ip":         ip,
 		"model":      model,
 		"provider":   provider,
@@ -1047,6 +1048,34 @@ func handleSkillRemove(w http.ResponseWriter, r *http.Request) {
 
 // startTime is recorded when the wizard process starts.
 var startTime = time.Now()
+
+// systemUptime returns the system uptime as a human-readable string.
+// Reads /proc/uptime on Linux, falls back to wizard process uptime.
+func systemUptime() string {
+	data, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return time.Since(startTime).String()
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 1 {
+		return time.Since(startTime).String()
+	}
+	uptimeSec, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return time.Since(startTime).String()
+	}
+	d := time.Duration(uptimeSec * float64(time.Second))
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	mins := int(d.Minutes()) % 60
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, mins)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, mins)
+	}
+	return fmt.Sprintf("%dm", mins)
+}
 
 // skillSummary extracts a one-line description from a SKILL.md file, preferring
 // the frontmatter description field and falling back to the first content line.
