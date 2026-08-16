@@ -145,7 +145,7 @@ build-appliance: build
 	@ln -sf $(UPDATER_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(UPDATER_NAME)
 	@echo "Appliance binaries built"
 
-## install-appliance: Install appliance binaries and service
+## install-appliance: Install appliance binaries and services
 install-appliance: build-appliance
 	@echo "Installing Ghost Appliance..."
 	@sudo mkdir -p /var/ghost/config /var/ghost/data /var/ghost/workspace
@@ -154,6 +154,13 @@ install-appliance: build-appliance
 	@sudo cp $(BUILD_DIR)/$(UPDATER_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(UPDATER_NAME)
 	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(FIRSTBOOT_NAME) /usr/local/bin/$(UPDATER_NAME)
 	@sudo chown -R $(USER):$(USER) /var/ghost
+	@# Install firstboot service
+	@sed \
+		-e "s|__GHOST_DIR__|/var/ghost|g" \
+		-e "s|__BIN_DIR__|/usr/local/bin|g" \
+		ghost-firstboot.service.template > ghost-firstboot.service
+	@sudo cp ghost-firstboot.service /etc/systemd/system/ghost-firstboot.service
+	@# Install main ghost service
 	@sed \
 		-e "s|__USER__|$(USER)|g" \
 		-e "s|__GROUP__|$(USER)|g" \
@@ -161,7 +168,13 @@ install-appliance: build-appliance
 		-e "s|__BIN_DIR__|/usr/local/bin|g" \
 		ghost-appliance.service.template > ghost-appliance.service
 	@sudo cp ghost-appliance.service /etc/systemd/system/ghost.service
+	@# Open firewall ports
+	@sudo ufw allow 80/tcp 2>/dev/null || true
+	@sudo ufw allow 8766/tcp 2>/dev/null || true
+	@# Enable and start firstboot service (runs on next boot)
 	@sudo systemctl daemon-reload
+	@sudo systemctl enable ghost-firstboot
 	@sudo systemctl enable ghost
 	@echo "✅ Ghost Appliance installed"
-	@echo "Run 'sudo systemctl start ghost' to begin setup"
+	@echo "Run 'sudo systemctl start ghost-firstboot' to begin setup now"
+	@echo "Or reboot to start setup automatically"
