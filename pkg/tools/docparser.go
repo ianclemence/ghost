@@ -8,8 +8,24 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	maxDocumentBytes   = 50 * 1024 * 1024 // 50MB limit matching Hermes
+	pandocTimeout      = 30 * time.Second
+	pandocRetrySeconds = 300.0
+)
+
+var (
+	pandocAvailable      *bool
+	pandocMu             sync.Mutex
+	pandocInstallFailed  bool
+	pandocInstallFailedAt time.Time
 )
 
 type DocParserTool struct {
@@ -27,7 +43,7 @@ func (t *DocParserTool) Name() string {
 }
 
 func (t *DocParserTool) Description() string {
-	return "Extract text content from documents: .docx (Word), .xlsx (Excel), .ipynb (Jupyter Notebook)."
+	return "Extract text from documents: .docx, .xlsx, .ipynb (native), PDF, PPTX, ODT, ODS, ODP, RTF, EPUB, HTML, TXT, CSV, JSON, XML (via pandoc)."
 }
 
 func (t *DocParserTool) Parameters() map[string]interface{} {
@@ -40,7 +56,7 @@ func (t *DocParserTool) Parameters() map[string]interface{} {
 			},
 			"format": map[string]interface{}{
 				"type":        "string",
-				"enum":        []string{"docx", "xlsx", "ipynb", "auto"},
+				"enum":        []string{"docx", "xlsx", "ipynb", "pdf", "pptx", "ppt", "odt", "ods", "odp", "rtf", "epub", "html", "txt", "csv", "json", "xml", "auto"},
 				"description": "Document format (auto-detected from extension if not specified)",
 			},
 		},
@@ -63,12 +79,15 @@ func (t *DocParserTool) Execute(ctx context.Context, args map[string]interface{}
 		return ErrorResult("file path is not accessible")
 	}
 
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	info, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
 		return ErrorResult(fmt.Sprintf("file not found: %s", filePath))
+	}
+	if info != nil && info.Size() > maxDocumentBytes {
+		return ErrorResult(fmt.Sprintf("file too large (%d bytes, limit is %d)", info.Size(), maxDocumentBytes))
 	}
 
 	var content string
-	var err error
 
 	switch format {
 	case "docx":
@@ -78,7 +97,7 @@ func (t *DocParserTool) Execute(ctx context.Context, args map[string]interface{}
 	case "ipynb":
 		content, err = t.parseIpynb(filePath)
 	default:
-		return ErrorResult(fmt.Sprintf("unsupported format: %s", format))
+		content, err = convertWithPandoc(filePath, format)
 	}
 
 	if err != nil {
@@ -360,9 +379,122 @@ func detectFormat(filePath string) string {
 		return "xlsx"
 	case ".ipynb":
 		return "ipynb"
+	case ".pdf":
+		return "pdf"
+	case ".pptx", ".ppt":
+		return "pptx"
+	case ".odt":
+		return "odt"
+	case ".ods":
+		return "ods"
+	case ".odp":
+		return "odp"
+	case ".rtf":
+		return "rtf"
+	case ".epub":
+		return "epub"
+	case ".html", ".htm":
+		return "html"
+	case ".txt", ".md", ".markdown":
+		return "txt"
+	case ".csv":
+		return "csv"
+	case ".json":
+		return "json"
+	case ".xml":
+		return "xml"
 	default:
 		return ""
 	}
+}
+
+// ensurePandoc lazily detects or installs pandoc, returning the path.
+// Follows Hermes's lazy dependency pattern with retry on failure.
+func ensurePandoc() (string, error) {
+	pandocMu.Lock()
+	defer pandocMu.Unlock()
+
+	// Return cached result if available
+	if pandocAvailable != nil {
+		if *pandocAvailable {
+			path, err := exec.LookPath("pandoc")
+			if err == nil {
+				return path, nil
+			}
+		}
+		return "", fmt.Errorf("pandoc not found")
+	}
+
+	// Check if we recently failed and retry window hasn't elapsed
+	if pandocInstallFailed && time.Since(pandocInstallFailedAt).Seconds() < pandocRetrySeconds {
+		return "", fmt.Errorf("pandoc installation failed recently, retrying in %ds", int(pandocRetrySeconds-time.Since(pandocInstallFailedAt).Seconds()))
+	}
+
+	// Try to find pandoc first
+	if path, err := exec.LookPath("pandoc"); err == nil {
+		t := true
+		pandocAvailable = &t
+		pandocInstallFailed = false
+		return path, nil
+	}
+
+	// Try to install pandoc
+	if err := installPandoc(); err != nil {
+		pandocInstallFailed = true
+		pandocInstallFailedAt = time.Now()
+		return "", fmt.Errorf("pandoc not found and auto-install failed: %w", err)
+	}
+
+	// Verify installation succeeded
+	if path, err := exec.LookPath("pandoc"); err == nil {
+		t := true
+		pandocAvailable = &t
+		pandocInstallFailed = false
+		return path, nil
+	}
+
+	pandocInstallFailed = true
+	pandocInstallFailedAt = time.Now()
+	return "", fmt.Errorf("pandoc installation completed but binary not found")
+}
+
+// installPandoc attempts to install pandoc via apt-get.
+func installPandoc() error {
+	cmd := exec.Command("sudo", "apt-get", "install", "-y", "pandoc")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	return cmd.Run()
+}
+
+// convertWithPandoc converts a document using pandoc.
+func convertWithPandoc(filePath, format string) (string, error) {
+	pandocPath, err := ensurePandoc()
+	if err != nil {
+		return "", err
+	}
+
+	// Map format names to pandoc input formats
+	pandocFormat := format
+	switch format {
+	case "pptx", "ppt":
+		pandocFormat = "pptx"
+	case "txt", "csv", "json", "xml":
+		pandocFormat = "plain"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), pandocTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, pandocPath, "-f", pandocFormat, "-t", "markdown", "--wrap=none", filePath)
+	output, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("pandoc conversion timed out after %v", pandocTimeout)
+		}
+		return "", fmt.Errorf("pandoc conversion failed: %w", err)
+	}
+
+	return string(output), nil
 }
 
 func isAccessible(filePath, workspace string) bool {

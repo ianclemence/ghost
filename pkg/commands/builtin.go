@@ -63,6 +63,24 @@ func DefaultDefinitions() []Definition {
 			Description: "Shows the specific JSON schemas for all loaded tools",
 			Handler:     toolsHandler,
 		},
+		{
+			Name:        "/loop",
+			Aliases:     []string{"/repeat"},
+			Description: "Re-run a prompt on an interval. Usage: /loop [interval] <prompt>",
+			Usage:       "/loop [5m|1h|30s] <prompt>",
+			Handler:     loopHandler,
+		},
+		{
+			Name:        "/loops",
+			Description: "List active loops",
+			Handler:     loopsHandler,
+		},
+		{
+			Name:        "/stoploop",
+			Description: "Stop a loop. Usage: /stoploop <job_id>",
+			Usage:       "/stoploop <job_id>",
+			Handler:     stoploopHandler,
+		},
 	}
 }
 
