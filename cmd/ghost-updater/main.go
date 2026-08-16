@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"time"
 )
@@ -158,9 +157,9 @@ func performUpdate(manifest *UpdateManifest) error {
 	log.Println("Waiting for Ghost to start...")
 	time.Sleep(30 * time.Second)
 
-	if !healthCheck() {
+	if err := healthCheck(); err != nil {
 		log.Println("Health check failed, rolling back...")
-		return fmt.Errorf("health check failed after update")
+		return fmt.Errorf("health check failed after update: %w", err)
 	}
 
 	log.Println("Update verified successfully")
