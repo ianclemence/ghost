@@ -332,20 +332,12 @@ const recoveryHTML = `<!DOCTYPE html>
             try {
                 const res = await fetch('/api/status');
                 const data = await res.json();
-                document.getElementById('status').innerHTML = `
-                    <div class="status-item">
-                        <div class="label">Ghost Running</div>
-                        <div class="value ${data.ghost_running ? 'ok' : 'error'}">${data.ghost_running ? 'Yes' : 'No'}</div>
-                    </div>
-                    <div class="status-item">
-                        <div class="label">Config Exists</div>
-                        <div class="value ${data.config_exists ? 'ok' : 'warning'}">${data.config_exists ? 'Yes' : 'No'}</div>
-                    </div>
-                    <div class="status-item">
-                        <div class="label">Version</div>
-                        <div class="value">${data.version || 'unknown'}</div>
-                    </div>
-                `;
+                var runningClass = data.ghost_running ? 'ok' : 'error';
+                var runningText = data.ghost_running ? 'Yes' : 'No';
+                var configClass = data.config_exists ? 'ok' : 'warning';
+                var configText = data.config_exists ? 'Yes' : 'No';
+                var version = data.version || 'unknown';
+                document.getElementById('status').innerHTML = '<div class="status-item"><div class="label">Ghost Running</div><div class="value ' + runningClass + '">' + runningText + '</div></div><div class="status-item"><div class="label">Config Exists</div><div class="value ' + configClass + '">' + configText + '</div></div><div class="status-item"><div class="label">Version</div><div class="value">' + version + '</div></div>';
             } catch (e) {
                 console.error('Failed to load status:', e);
             }
