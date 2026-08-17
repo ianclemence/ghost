@@ -190,12 +190,24 @@ func findGhostDir() string {
 		return dir
 	}
 
-	// Try common locations
+	// Try common locations (including non-root home dirs when running as root)
 	home, _ := os.UserHomeDir()
 	candidates := []string{
 		filepath.Join(home, "ghost"),
 		filepath.Join(home, ".ghost"),
 		"/var/ghost",
+		"/home/ianclemence/ghost",
+	}
+
+	// When running as root, also check /home/*  for the repo
+	if home == "/root" {
+		if entries, err := os.ReadDir("/home"); err == nil {
+			for _, e := range entries {
+				if e.IsDir() {
+					candidates = append(candidates, filepath.Join("/home", e.Name(), "ghost"))
+				}
+			}
+		}
 	}
 
 	for _, dir := range candidates {
