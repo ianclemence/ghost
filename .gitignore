@@ -9,6 +9,7 @@ build/
 *.out
 /ghost
 /ghost-test
+/ghost-web
 /ghost-firstboot
 cmd/ghost/workspace
 
@@ -19,6 +20,7 @@ sessions/
 build/
 tmp/
 ghost.service
+ghost-web.service
 ghost-firstboot.service
 
 # Coverage

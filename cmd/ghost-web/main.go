@@ -32,7 +32,7 @@ var (
 	version = "dev"
 	fb      *appliance.FirstBoot
 	// waitingOnSystemd is true when running in -wait mode under the
-	// ghost-firstboot.service unit, whose ExecStartPost starts the ghost
+	// ghost-web.service unit, whose ExecStartPost starts the ghost
 	// service. When false, handleConfigure must start ghost itself.
 	waitingOnSystemd bool
 	// forceMode is true when the wizard was launched with -force, meaning
@@ -237,11 +237,11 @@ func main() {
 	if !*forceFlag && !fb.IsFirstBoot() {
 		flagPath := filepath.Join(fb.GhostDir, appliance.SetupCompleteFlag)
 		log.Println("Setup already complete. The wizard only runs on first boot.")
-		log.Println("To re-open the wizard, run with -force, or remove " + flagPath + " and restart the ghost-firstboot service.")
+		log.Println("To re-open the wizard, run with -force, or remove " + flagPath + " and restart the ghost-web service.")
 		os.Exit(0)
 	}
 
-	log.Printf("Ghost First Boot Wizard v%s", version)
+	log.Printf("Ghost Web Console v%s", version)
 	log.Printf("Starting setup wizard on port %d...", *port)
 
 	// Ensure directories exist
@@ -347,7 +347,7 @@ func main() {
 			case errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM):
 				if p < 1024 {
 					log.Printf("Cannot bind port %d: permission denied. Ports below 1024 require root.", p)
-					log.Printf("Run as root (sudo ghost-firstboot -force), or use -port 8080 / another unprivileged port.")
+					log.Printf("Run as root (sudo ghost-web -force), or use -port 8080 / another unprivileged port.")
 				} else {
 					log.Printf("Cannot bind port %d: permission denied (%v)", p, err)
 				}
@@ -660,7 +660,7 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 		cleanupFirewall()
 	}
 
-	// Under systemd (wait mode), the ghost-firstboot service's ExecStartPost
+	// Under systemd (wait mode), the ghost-web service's ExecStartPost
 	// is responsible for starting ghost after setup. When running in
 	// foreground / -force mode there is no ExecStartPost, so start it here.
 	if !waitingOnSystemd {
@@ -937,7 +937,7 @@ func pullOllamaModel(model string) error {
 }
 
 // runPrivileged runs a command, prefixing with sudo when we're not root so
-// manual (non-systemd) runs of ghost-firstboot can still manage ufw/systemd.
+// manual (non-systemd) runs of ghost-web can still manage ufw/systemd.
 func runPrivileged(name string, args ...string) ([]byte, error) {
 	if os.Geteuid() != 0 {
 		args = append([]string{name}, args...)

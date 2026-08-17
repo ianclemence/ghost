@@ -1,5 +1,5 @@
 [Unit]
-Description=Ghost Setup Wizard (Always On)
+Description=Ghost Web Console (Setup Wizard + Admin Dashboard)
 After=network-online.target
 Wants=network-online.target
 Before=ghost.service
@@ -9,7 +9,7 @@ Type=simple
 User=root
 Restart=always
 RestartSec=5
-ExecStart=__BIN_DIR__/ghost-firstboot -force -port 80 -dir __GHOST_DIR__
+ExecStart=__BIN_DIR__/ghost-web -force -port 80 -dir __GHOST_DIR__
 Environment=GHOST_WORKSPACE_DIR=/var/lib/ghost/workspace
 
 # Security hardening
@@ -22,7 +22,8 @@ PrivateTmp=true
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=ghost-firstboot
+SyslogIdentifier=ghost-web
 
 [Install]
 WantedBy=multi-user.target
+Alias=ghost-firstboot.service

@@ -50,7 +50,7 @@ When someone plugs in their Pi:
 ```
 /ghost/
   /bin/ghost              # Existing binary
-  /bin/ghost-firstboot    # First-boot wizard (Go + embedded web server)
+  /bin/ghost-web          # Web console: setup wizard + admin dashboard (Go + embedded web server)
   /bin/ghost-updater      # OTA update daemon
   /etc/ghost/             # Configs (read-only base + writable overlay)
   /var/ghost/             # Runtime data, SQLite, models, skills

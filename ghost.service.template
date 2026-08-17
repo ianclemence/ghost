@@ -1,6 +1,6 @@
 [Unit]
 Description=Ghost - Personal AI Assistant
-After=network-online.target ghost-firstboot.service
+After=network-online.target ghost-web.service
 Wants=network-online.target
 ConditionPathExists=__GHOST_DIR__/.setup-complete
 

@@ -225,7 +225,7 @@ func (rs *RecoveryServer) handleResetPassword(w http.ResponseWriter, r *http.Req
 	log.Printf("Admin password reset from recovery mode")
 	go func() {
 		time.Sleep(1 * time.Second)
-		exec.Command("systemctl", "restart", "ghost-firstboot").Run()
+		exec.Command("systemctl", "restart", "ghost-web").Run()
 	}()
 
 	w.Header().Set("Content-Type", "application/json")

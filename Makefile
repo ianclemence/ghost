@@ -1,4 +1,4 @@
-.PHONY: all build install uninstall clean help test install-service build-ghost
+.PHONY: all build install uninstall clean help test install-service build-ghost rebuild-web rebuild-firstboot
 
 # Build variables
 BINARY_NAME=ghost
@@ -6,9 +6,9 @@ BUILD_DIR=build
 CMD_DIR=cmd/$(BINARY_NAME)
 MAIN_GO=$(CMD_DIR)/main.go
 
-# Firstboot binary (needed for initial setup)
-FIRSTBOOT_NAME=ghost-firstboot
-FIRSTBOOT_DIR=cmd/$(FIRSTBOOT_NAME)
+# Web console binary (setup wizard + admin dashboard, always-on on port 80)
+WEB_NAME=ghost-web
+WEB_DIR=cmd/$(WEB_NAME)
 
 # Version
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -111,6 +111,7 @@ install: build
 	@# Stop the service before replacing the binary to avoid "Text file busy" error.
 	@# The binary cannot be overwritten while it is being executed by systemd.
 	@sudo systemctl stop ghost 2>/dev/null || true
+	@sudo systemctl stop ghost-web 2>/dev/null || true
 	@sudo systemctl stop ghost-firstboot 2>/dev/null || true
 	@rm -f $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@cp $(BINARY_PATH) $(INSTALL_BIN_DIR)/$(BINARY_NAME)
@@ -135,9 +136,9 @@ install-service:
 
 ## build-ghost: Build all Ghost binaries
 build-ghost: build
-	@echo "Building firstboot binary..."
-	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) ./$(FIRSTBOOT_DIR)
-	@ln -sf $(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(FIRSTBOOT_NAME)
+	@echo "Building web console binary..."
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(WEB_NAME)-$(PLATFORM)-$(ARCH) ./$(WEB_DIR)
+	@ln -sf $(WEB_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(WEB_NAME)
 	@echo "Build complete"
 
 ## install-ghost: Build, install binaries and services, then restart Ghost
@@ -145,15 +146,18 @@ install-ghost: build-ghost
 	@echo "Installing Ghost..."
 	@# Stop services before replacing binaries
 	@sudo systemctl stop ghost 2>/dev/null || true
+	@sudo systemctl stop ghost-web 2>/dev/null || true
 	@sudo systemctl stop ghost-firstboot 2>/dev/null || true
 	@sudo mkdir -p /var/ghost/config /var/ghost/data /var/ghost/workspace
 	@sudo mkdir -p $(WORKSPACE_DIR)
 	@# Copy to temp then rename so a running 'ghost update' binary can be replaced (ETXTBSY)
 	@sudo cp $(BINARY_PATH) /usr/local/bin/ghost.new
 	@sudo mv -f /usr/local/bin/ghost.new /usr/local/bin/ghost
-	@sudo cp $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(FIRSTBOOT_NAME).new
-	@sudo mv -f /usr/local/bin/$(FIRSTBOOT_NAME).new /usr/local/bin/$(FIRSTBOOT_NAME)
-	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(FIRSTBOOT_NAME)
+	@sudo cp $(BUILD_DIR)/$(WEB_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(WEB_NAME).new
+	@sudo mv -f /usr/local/bin/$(WEB_NAME).new /usr/local/bin/$(WEB_NAME)
+	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(WEB_NAME)
+	@# Legacy alias so existing scripts and docs keep working during the transition
+	@sudo ln -sf /usr/local/bin/$(WEB_NAME) /usr/local/bin/ghost-firstboot
 	@sudo chown -R $(USER):$(USER) /var/ghost
 	@sudo chown -R $(USER):$(USER) /var/lib/ghost
 	@# Build and deploy update tooling
@@ -166,12 +170,13 @@ install-ghost: build-ghost
 	@sudo cp $(BUILD_DIR)/ghost-updater-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost-updater.new
 	@sudo mv -f /usr/local/bin/ghost-updater.new /usr/local/bin/ghost-updater
 	@sudo chmod +x /usr/local/bin/ghost-update /usr/local/bin/ghost-updater
-	@# Install firstboot service
+	@# Install web console service (alias ghost-firstboot.service for compat)
 	@sed \
 		-e "s|__GHOST_DIR__|/var/ghost|g" \
 		-e "s|__BIN_DIR__|/usr/local/bin|g" \
-		ghost-firstboot.service.template > ghost-firstboot.service
-	@sudo cp ghost-firstboot.service /etc/systemd/system/ghost-firstboot.service
+		ghost-web.service.template > ghost-web.service
+	@sudo cp ghost-web.service /etc/systemd/system/ghost-web.service
+	@sudo cp ghost-web.service /etc/systemd/system/ghost-firstboot.service
 	@# Install main ghost service
 	@sed \
 		-e "s|__USER__|$(USER)|g" \
@@ -185,21 +190,27 @@ install-ghost: build-ghost
 	@sudo ufw allow 8766/tcp 2>/dev/null || true
 	@# Enable and restart services
 	@sudo systemctl daemon-reload
-	@sudo systemctl enable ghost-firstboot
+	@sudo systemctl enable ghost-web
 	@sudo systemctl enable ghost
 	@sudo systemctl restart ghost 2>/dev/null || true
-	@sudo systemctl restart ghost-firstboot 2>/dev/null || true
+	@sudo systemctl restart ghost-web 2>/dev/null || true
 	@# Restore repo ownership to the developer user
-	@sudo chown -R $(shell stat -c '%U' .):$(shell stat -c '%G' .) $(BUILD_DIR) $(CMD_DIR)/workspace ghost.service ghost-firstboot.service 2>/dev/null || true
+	@sudo chown -R $(shell stat -c '%U' .):$(shell stat -c '%G' .) $(BUILD_DIR) $(CMD_DIR)/workspace ghost.service ghost-web.service 2>/dev/null || true
 	@echo "Ghost installed"
-	@if [ ! -f /var/ghost/.setup-complete ]; then echo "Run 'sudo systemctl start ghost-firstboot' to begin setup now"; echo "Or reboot to start setup automatically"; fi
+	@if [ ! -f /var/ghost/.setup-complete ]; then echo "Run 'sudo systemctl start ghost-web' to begin setup now"; echo "Or reboot to start setup automatically"; fi
 
-## rebuild-firstboot: Quick rebuild and install firstboot only
-rebuild-firstboot:
-	@echo "Rebuilding firstboot..."
+## rebuild-web: Quick rebuild and install web console only
+rebuild-web:
+	@echo "Rebuilding web console..."
+	@sudo systemctl stop ghost-web 2>/dev/null || true
 	@sudo systemctl stop ghost-firstboot 2>/dev/null || true
-	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) ./$(FIRSTBOOT_DIR)
-	@sudo cp $(BUILD_DIR)/$(FIRSTBOOT_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(FIRSTBOOT_NAME)
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(WEB_NAME)-$(PLATFORM)-$(ARCH) ./$(WEB_DIR)
+	@sudo cp $(BUILD_DIR)/$(WEB_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(WEB_NAME)
+	@sudo ln -sf /usr/local/bin/$(WEB_NAME) /usr/local/bin/ghost-firstboot
 	@sudo systemctl daemon-reload
-	@sudo systemctl restart ghost-firstboot
-	@echo "Firstboot rebuilt and restarted"
+	@sudo systemctl restart ghost-web
+	@echo "Web console rebuilt and restarted"
+
+## rebuild-firstboot: Compatibility alias for rebuild-web
+rebuild-firstboot: rebuild-web
+	@true

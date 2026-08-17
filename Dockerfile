@@ -8,7 +8,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o /ghost ./cmd/ghost
-RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o /ghost-firstboot ./cmd/ghost-firstboot
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o /ghost-web ./cmd/ghost-web
 
 FROM alpine:3.20
 
@@ -19,7 +19,8 @@ RUN addgroup -S ghost && adduser -S -G ghost ghost
 RUN mkdir -p /var/ghost/data /var/ghost/workspace /var/lib/ghost/workspace /etc/ghost
 
 COPY --from=builder /ghost /usr/local/bin/ghost
-COPY --from=builder /ghost-firstboot /usr/local/bin/ghost-firstboot
+COPY --from=builder /ghost-web /usr/local/bin/ghost-web
+RUN ln -s /usr/local/bin/ghost-web /usr/local/bin/ghost-firstboot
 
 COPY config/config.example.json /etc/ghost/config.json
 

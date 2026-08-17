@@ -114,7 +114,7 @@ After reboot, open `http://<pi-ip>` on your phone to complete setup:
 
 ### How setup works
 
-**First boot:** `ghost-firstboot.service` starts the setup wizard on port 80 and
+**First boot:** `ghost-web.service` starts the setup wizard on port 80 and
 opens the firewall for it. Completing the wizard:
 1. Writes `/var/ghost/.setup-complete`
 2. Starts the `ghost` service (port 8766)
@@ -140,7 +140,7 @@ The wizard and `ghost` are separate: wizard on port 80, API on port 8766.
 
 If you ever want the wizard turned off entirely:
 ```bash
-sudo systemctl disable --now ghost-firstboot
+sudo systemctl disable --now ghost-web
 ```
 
 ---
@@ -243,7 +243,7 @@ chmod +x setup.sh
 
 | Command | Description |
 |---------|-------------|
-| `ghost-firstboot` | Setup wizard (always-on service; setup screen before config, login after) |
+| `ghost-web` | Web console — setup wizard + admin dashboard (always-on service on port 80; setup screen before config, login after) |
 
 ---
 
@@ -347,8 +347,8 @@ sudo make install-ghost
 Then:
 
 ```bash
-ghost-firstboot  # Start setup wizard
-ghost            # Start Ghost (after setup)
+ghost-web  # Start web console (setup wizard + admin dashboard)
+ghost      # Start Ghost (after setup)
 ```
 
 ### Service Commands

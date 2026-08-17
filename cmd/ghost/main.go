@@ -630,9 +630,9 @@ func gatewayCmd() {
 	fb := appliance.NewFirstBoot()
 	if fb.IsFirstBoot() {
 		fmt.Println("👋 First boot detected. Starting setup wizard...")
-		// The firstboot wizard should be running separately
+		// The web console should be running separately
 		// If we get here without setup, show error and exit
-		fmt.Println("Please run ghost-firstboot to complete setup, or set GHOST_RECOVERY_MODE=1 for recovery.")
+		fmt.Println("Please run ghost-web to complete setup, or set GHOST_RECOVERY_MODE=1 for recovery.")
 		os.Exit(1)
 	}
 
@@ -1011,10 +1011,10 @@ func resetPasswordCmd() {
 
 	// Restart the wizard service to invalidate all in-memory sessions.
 	if runtime.GOOS == "linux" {
-		if err := exec.Command("systemctl", "restart", "ghost-firstboot").Run(); err != nil {
-			fmt.Printf("Warning: could not restart ghost-firstboot to invalidate sessions: %v\n", err)
+		if err := exec.Command("systemctl", "restart", "ghost-web").Run(); err != nil {
+			fmt.Printf("Warning: could not restart ghost-web to invalidate sessions: %v\n", err)
 		} else {
-			fmt.Println("✓ Sessions invalidated (ghost-firstboot restarted).")
+			fmt.Println("✓ Sessions invalidated (ghost-web restarted).")
 		}
 	}
 }

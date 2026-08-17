@@ -8,40 +8,50 @@ import (
 )
 
 func TestFirstbootServiceTemplate(t *testing.T) {
-	data, err := os.ReadFile("../../ghost-firstboot.service.template")
+	data, err := os.ReadFile("../../ghost-web.service.template")
 	if err != nil {
-		t.Fatalf("failed to read firstboot service template: %v", err)
+		t.Fatalf("failed to read web console service template: %v", err)
 	}
 	content := string(data)
 
 	// Verify Type=simple (always-on wizard, not a oneshot)
 	if !strings.Contains(content, "Type=simple") {
-		t.Error("firstboot service should be Type=simple")
+		t.Error("web console service should be Type=simple")
 	}
 
 	// Verify Restart=always (keeps the wizard always available)
 	if !strings.Contains(content, "Restart=always") {
-		t.Error("firstboot service should have Restart=always")
+		t.Error("web console service should have Restart=always")
 	}
 
-	// Verify Before=ghost.service (ensures firstboot starts before ghost)
+	// Verify Before=ghost.service (ensures web console starts before ghost)
 	if !strings.Contains(content, "Before=ghost.service") {
-		t.Error("firstboot service should have Before=ghost.service")
+		t.Error("web console service should have Before=ghost.service")
 	}
 
 	// Verify -force flag is used (wizard stays available after setup)
 	if !strings.Contains(content, "-force") {
-		t.Error("firstboot service should use -force flag to stay available after setup")
+		t.Error("web console service should use -force flag to stay available after setup")
 	}
 
 	// Verify no ConditionPathExists (wizard must run even when setup is complete)
 	if strings.Contains(content, "ConditionPathExists=") {
-		t.Error("firstboot service should not have ConditionPathExists")
+		t.Error("web console service should not have ConditionPathExists")
 	}
 
 	// Verify WantedBy=multi-user.target
 	if !strings.Contains(content, "WantedBy=multi-user.target") {
-		t.Error("firstboot service should be wanted by multi-user.target")
+		t.Error("web console service should be wanted by multi-user.target")
+	}
+
+	// Verify the legacy alias is preserved for compatibility
+	if !strings.Contains(content, "Alias=ghost-firstboot.service") {
+		t.Error("web console service should alias ghost-firstboot.service for compatibility")
+	}
+
+	// Verify the ExecStart points at the new binary name
+	if !strings.Contains(content, "ghost-web") {
+		t.Error("web console service ExecStart should reference ghost-web")
 	}
 }
 
@@ -57,9 +67,9 @@ func TestGhostServiceTemplate(t *testing.T) {
 		t.Error("ghost service should have ConditionPathExists")
 	}
 
-	// Verify After includes ghost-firstboot.service (waits for firstboot)
-	if !strings.Contains(content, "ghost-firstboot.service") {
-		t.Error("ghost service should depend on ghost-firstboot.service")
+	// Verify After includes ghost-web.service (waits for web console)
+	if !strings.Contains(content, "ghost-web.service") {
+		t.Error("ghost service should depend on ghost-web.service")
 	}
 
 	// Verify Restart=always
@@ -83,7 +93,7 @@ func TestServiceTemplatesHaveUser(t *testing.T) {
 		file     string
 		hasUser  bool
 	}{
-		{"../../ghost-firstboot.service.template", true},
+		{"../../ghost-web.service.template", true},
 		{"../../ghost.service.template", true},
 	}
 

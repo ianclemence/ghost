@@ -17,15 +17,15 @@ func main() {
 
 	// Check if setup is complete
 	if _, err := os.Stat(setupComplete); os.IsNotExist(err) {
-		// Setup not complete - start firstboot wizard
+		// Setup not complete - start web console (setup wizard + dashboard)
 		fmt.Println("Setup not complete. Starting setup wizard...")
 		fmt.Println("Open http://<your-pi-ip> on your phone to continue.")
-		cmd := exec.Command("systemctl", "start", "ghost-firstboot")
+		cmd := exec.Command("systemctl", "start", "ghost-web")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
 			fmt.Printf("Failed to start setup wizard: %v\n", err)
-			fmt.Println("Try: sudo systemctl start ghost-firstboot")
+			fmt.Println("Try: sudo systemctl start ghost-web")
 		}
 		return
 	}

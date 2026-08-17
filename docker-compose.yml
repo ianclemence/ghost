@@ -24,9 +24,9 @@ services:
     networks:
       - ghost-net
 
-  firstboot:
+  ghost-web:
     build: .
-    container_name: ghost-firstboot
+    container_name: ghost-web
     restart: unless-stopped
     ports:
       - "80:80"

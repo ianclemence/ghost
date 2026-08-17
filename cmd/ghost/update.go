@@ -47,7 +47,7 @@ func updateCmd() {
 	// move never happens under a running gateway with the DB open.
 	fmt.Println("2. Stopping services...")
 	exec.Command("systemctl", "stop", "ghost").Run()
-	exec.Command("systemctl", "stop", "ghost-firstboot").Run()
+	exec.Command("systemctl", "stop", "ghost-web").Run()
 
 	// Migrate the workspace out of the install tree if the running install
 	// still uses the legacy layout. This must happen before install-ghost
@@ -156,7 +156,7 @@ func checkAndUpdate() {
 
 	// Quiesce the appliance before touching its runtime workspace.
 	exec.Command("systemctl", "stop", "ghost").Run()
-	exec.Command("systemctl", "stop", "ghost-firstboot").Run()
+	exec.Command("systemctl", "stop", "ghost-web").Run()
 
 	// Migrate the workspace layout if the running install still uses the
 	// legacy location.
