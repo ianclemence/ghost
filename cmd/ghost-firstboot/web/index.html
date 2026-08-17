@@ -81,8 +81,8 @@
 
             <!-- Model -->
             <section class="screen" id="screen-model">
-                <h1 class="wizard__title">Who should Ghost be?</h1>
-                <p class="wizard__sub">Pick how quick-witted your assistant is. You can change this anytime in settings.</p>
+                <h1 class="wizard__title">What should Ghost's personality be?</h1>
+                <p class="wizard__sub">Choose how your assistant behaves. You can change this anytime in settings.</p>
                 <div id="model-choices"></div>
                 <button class="link-btn" id="btn-advanced-model" type="button">Show advanced options</button>
                 <div class="advanced-pick hidden" id="advanced-model">
@@ -119,7 +119,7 @@
             <!-- Login (device already configured) -->
             <section class="screen screen--center" id="screen-login">
                 <div class="ember ember--sm" aria-hidden="true"></div>
-                <h1 class="wizard__title">Ghost is set up</h1>
+                <h1 class="wizard__title">Ghost is set up.</h1>
                 <p class="wizard__sub">Enter the admin password to manage your Ghost.</p>
                 <div class="field field--center">
                     <label for="login-password" class="visually-hidden">Admin password</label>
@@ -135,7 +135,7 @@
             <!-- Already configured -->
             <section class="screen screen--center" id="screen-already">
                 <div class="ember ember--sm ember--offline" aria-hidden="true"></div>
-                <h1 class="wizard__title">Ghost is already set up</h1>
+                <h1 class="wizard__title">Ghost is already set up.</h1>
                 <p class="wizard__sub">This device has its assistant configured. Chat from the Ghost app or <code class="code">ghost.local:8766</code>.</p>
                 <p class="wizard__sub">To open the admin dashboard, connect over SSH and run:</p>
                 <code class="code code--block">sudo ghost-firstboot -force</code>
@@ -344,13 +344,13 @@
 
                 <div class="card">
                     <h2 class="card__title">Toolset</h2>
-                    <p class="help-text">What Ghost is allowed to reach.</p>
+                    <p class="help-text">What tools and services Ghost can access.</p>
                     <div id="toolsets-list" class="row-list"></div>
                 </div>
 
                 <div class="card">
                     <h2 class="card__title">Cloud AI</h2>
-                    <p class="help-text">Optional API keys for cloud models. Keys live on the device and are masked here &mdash; leave blank to keep the current value.</p>
+                    <p class="help-text">Optional API keys for cloud models. Keys are stored on this device and hidden for security &mdash; leave blank to keep the current value.</p>
                     <div id="api-keys"></div>
                     <div class="form-actions">
                         <button class="btn btn--primary btn--sm" id="btn-save-keys" type="button">Save API keys</button>
@@ -365,14 +365,14 @@
                         <div class="field field--grow">
                             <input class="input" type="text" id="ollama-new-model" placeholder="e.g. qwen3:4b">
                         </div>
-                        <button class="btn btn--primary btn--sm" id="btn-ollama-pull" type="button">Pull model</button>
+                        <button class="btn btn--primary btn--sm" id="btn-ollama-pull" type="button">Download model</button>
                     </div>
                     <p class="error-text hidden" id="ollama-error"></p>
                 </div>
 
                 <div class="card">
                     <h2 class="card__title">Voice</h2>
-                    <p class="help-text">Voice transcription uses your cloud provider (Groq or Kimi). Text-to-speech uses edge-tts.</p>
+                    <p class="help-text">Voice transcription uses your cloud provider (Groq or Kimi). Text-to-speech uses a local synthesizer.</p>
                 </div>
             </section>
 
@@ -483,7 +483,7 @@
                         <div class="channel__name"><span class="channel__icon">&#9829;</span>Heartbeat</div>
                         <button class="toggle" id="hb-toggle" role="switch" aria-checked="false" aria-label="Heartbeat enabled"></button>
                     </div>
-                    <p class="help-text">Ghost checks in periodically so it notices when something goes quiet.</p>
+                        <p class="help-text">Ghost checks in regularly so it can alert you when something stops responding.</p>
                     <div class="field">
                         <label for="hb-interval">Check every (minutes)</label>
                         <input class="input" type="number" id="hb-interval" placeholder="30" min="5">
@@ -500,7 +500,7 @@
                     <div class="card__head">
                         <div>
                             <h2 class="card__title">Installed</h2>
-                            <p class="help-text">Skills are little instructions Ghost can use. Edit, disable or remove them.</p>
+                            <p class="help-text">Skills are instructions Ghost can use. Edit, disable, or remove them.</p>
                         </div>
                         <button class="btn btn--secondary btn--sm" id="btn-skills-sync" type="button">Resync bundled</button>
                     </div>
@@ -510,7 +510,7 @@
 
                 <div class="card">
                     <h2 class="card__title">Discover</h2>
-                    <p class="help-text">Search the community skill registry.</p>
+                    <p class="help-text">Find and install new skills from the community registry.</p>
                     <div class="inline-form">
                         <div class="field field--grow">
                             <input class="input" type="search" id="clawhub-search" placeholder="Search skills..." autocomplete="off">
@@ -518,33 +518,6 @@
                         <button class="btn btn--primary btn--sm" id="btn-clawhub-search" type="button">Search</button>
                     </div>
                     <div id="clawhub-results" class="row-list"></div>
-                </div>
-
-                <div class="card">
-                    <h2 class="card__title">Install from GitHub</h2>
-                    <p class="help-text">Install a skill from any public repository.</p>
-                    <div class="dash-two-col">
-                        <div class="field">
-                            <label for="sk-owner">Owner</label>
-                            <input class="input" type="text" id="sk-owner" placeholder="e.g. mattpocock">
-                        </div>
-                        <div class="field">
-                            <label for="sk-repo">Repo</label>
-                            <input class="input" type="text" id="sk-repo" placeholder="e.g. skills">
-                        </div>
-                    </div>
-                    <div class="field">
-                        <label for="sk-path">Path to skill (within repo)</label>
-                        <input class="input" type="text" id="sk-path" placeholder="e.g. skills/productivity/grill-me">
-                    </div>
-                    <div class="field">
-                        <label for="sk-name">Name <span class="muted">(optional)</span></label>
-                        <input class="input" type="text" id="sk-name" placeholder="Defaults to folder name">
-                    </div>
-                    <p class="error-text hidden" id="skills-error"></p>
-                    <div class="form-actions">
-                        <button class="btn btn--primary btn--sm" id="btn-install-skill" type="button">Install skill</button>
-                    </div>
                 </div>
             </section>
 
@@ -561,7 +534,7 @@
                             <div class="field field--grow">
                                 <input class="input" type="text" id="sys-hostname" placeholder="e.g. ghost" autocomplete="off">
                             </div>
-                            <button class="btn btn--secondary btn--sm" id="btn-set-hostname" type="button">Save</button>
+                            <button class="btn btn--secondary btn--sm" id="btn-set-hostname" type="button">Save name</button>
                         </div>
                     </div>
                     <p class="form-msg hidden" id="hostname-msg"></p>
@@ -595,7 +568,7 @@
 
                 <div class="card">
                     <h2 class="card__title">Pairing</h2>
-                    <p class="help-text">This secret pairs the Ghost app with your device. Regenerating it means re-pairing every app.</p>
+                    <p class="help-text">This secret pairs the Ghost app with your device. Regenerating it will disconnect all paired apps &mdash; you'll need to pair them again.</p>
                     <p class="form-msg hidden" id="bridge-msg"></p>
                     <div class="form-actions">
                         <button class="btn btn--danger-ghost btn--sm" id="btn-regen-bridge" type="button">Regenerate pairing secret</button>
@@ -604,7 +577,7 @@
 
                 <div class="card">
                     <h2 class="card__title">Gateway</h2>
-                    <p class="help-text">The port the Ghost app talks to.</p>
+                    <p class="help-text">The network port the Ghost app uses.</p>
                     <div class="dash-two-col">
                         <div class="field">
                             <label for="gw-host">Bind host</label>
@@ -617,7 +590,7 @@
                     </div>
                     <p class="form-msg hidden" id="gateway-msg"></p>
                     <div class="form-actions">
-                        <button class="btn btn--secondary btn--sm" id="btn-save-gateway" type="button">Save gateway</button>
+                        <button class="btn btn--secondary btn--sm" id="btn-save-gateway" type="button">Save Gateway</button>
                     </div>
                 </div>
 
@@ -643,11 +616,11 @@
                     <summary>Advanced</summary>
                     <div class="accordion__body">
                         <div class="field">
-                            <label class="toggle-row"><span>Retrieval &mdash; vector memory</span><button class="toggle" id="rag-toggle" role="switch" aria-checked="false"></button></label>
+                            <label class="toggle-row"><span>Memory search &mdash; lets Ghost recall past conversations</span><button class="toggle" id="rag-toggle" role="switch" aria-checked="false"></button></label>
                         </div>
                         <div class="dash-two-col">
                             <div class="field">
-                                <label for="rag-m">HNSW connections (M)</label>
+                                <label for="rag-m">Memory connections (M)</label>
                                 <input class="input" type="number" id="rag-m" placeholder="16">
                             </div>
                             <div class="field">
@@ -656,7 +629,7 @@
                             </div>
                         </div>
                         <div class="field">
-                            <label for="rag-ef-const">Build effort (ef_construction)</label>
+                            <label for="rag-ef-const">Build effort</label>
                             <input class="input" type="number" id="rag-ef-const" placeholder="200">
                         </div>
 
@@ -689,21 +662,21 @@
                         </div>
                         <div class="dash-two-col">
                             <div class="field">
-                                <label for="adv-max-iter">Max tool iterations</label>
+                                <label for="adv-max-iter">Max steps per request</label>
                                 <input class="input" type="number" id="adv-max-iter" placeholder="20">
                             </div>
                             <div class="field">
-                                <label for="adv-threshold">Routing threshold</label>
+                                <label for="adv-threshold">Decision threshold</label>
                                 <input class="input" type="number" id="adv-threshold" step="0.05" placeholder="0.35">
                             </div>
                         </div>
                         <div class="field">
-                            <label for="adv-light-model">Light routing model <span class="muted">(optional)</span></label>
+                            <label for="adv-light-model">Fast fallback model <span class="muted">(optional)</span></label>
                             <input class="input" type="text" id="adv-light-model" placeholder="e.g. qwen3:0.6b">
                         </div>
 
                         <div class="field">
-                            <label class="toggle-row"><span>MCP servers &mdash; external tools</span><button class="toggle" id="mcp-toggle" role="switch" aria-checked="false"></button></label>
+                            <label class="toggle-row"><span>External tool servers (MCP)</span><button class="toggle" id="mcp-toggle" role="switch" aria-checked="false"></button></label>
                         </div>
                         <div id="mcp-servers-list" class="row-list"></div>
                         <div class="field">

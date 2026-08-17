@@ -122,7 +122,7 @@
             const offlineServices = (data.services || []).filter((s) => !s.active);
             if (offlineServices.length) {
                 $('overview-title').textContent = 'Some services are stopped.';
-                $('overview-sub').textContent = offlineServices.map((s) => s.name).join(', ') + ' need attention.';
+                $('overview-sub').textContent = offlineServices.map((s) => s.name).join(', ') + (offlineServices.length === 1 ? ' needs attention.' : ' need attention.');
             } else {
                 $('overview-title').textContent = 'Your Ghost is online.';
                 $('overview-sub').textContent = 'Everything looks good on this device.';
@@ -248,9 +248,9 @@
                 Ghost.toast.ok('Model settings saved.');
                 loadOverview();
             } else {
-                Ghost.toast.err(data.error || 'Failed to save.');
+                Ghost.toast.err(data.error || 'Failed to save model settings.');
             }
-        } catch (e) { Ghost.toast.err('Failed to save.'); }
+        } catch (e) { Ghost.toast.err('Failed to save model settings.'); }
     }
 
     async function saveKeys() {
@@ -359,8 +359,8 @@
                 $('new-personality-content').value = '';
                 Ghost.toast.ok('Personality created.');
                 loadPersonality();
-            } else { Ghost.toast.err(data.error || 'Failed to create.'); }
-        } catch (e) { Ghost.toast.err('Failed to create.'); }
+            } else { Ghost.toast.err(data.error || 'Failed to create personality.'); }
+        } catch (e) { Ghost.toast.err('Failed to create personality.'); }
     }
 
     async function deletePersonality(name) {
@@ -456,16 +456,15 @@
             const data = await api('/api/admin/channels/save', 'POST', bodies[id]);
             if (data.ok) {
                 Ghost.toast.ok('Saved.');
-                $('tg-token').value = '';
-                $('ds-token').value = '';
-                $('sl-bot-token').value = '';
-                $('sl-app-token').value = '';
-                $('em-pass').value = '';
+                if (id === 'tg') $('tg-token').value = '';
+                if (id === 'ds') $('ds-token').value = '';
+                if (id === 'sl') { $('sl-bot-token').value = ''; $('sl-app-token').value = ''; }
+                if (id === 'em') $('em-pass').value = '';
                 loadConnections();
             } else {
-                Ghost.toast.err(data.error || 'Failed to save.');
+                Ghost.toast.err(data.error || 'Failed to save channel settings.');
             }
-        } catch (e) { Ghost.toast.err('Failed to save.'); }
+        } catch (e) { Ghost.toast.err('Failed to save channel settings.'); }
     }
 
     /* ════════════════════════════════════ SKILLS ════════════════════════════════════ */
@@ -570,12 +569,9 @@
                 closeSkillEditor();
                 loadSkills();
             } else {
-                Ghost.toast.err(data.error || 'Failed to save.');
+                Ghost.toast.err(data.error || 'Failed to save skill edits.');
             }
-        } catch (e) { Ghost.toast.err('Failed to save.'); }
-    }
-
-    /* ── resync bundled ── */
+        } catch (e) { Ghost.toast.err('Failed to save skill edits.'); }
     async function resyncSkills() {
         const note = $('skills-sync-note');
         note.classList.remove('hidden');
@@ -585,9 +581,9 @@
             if (!data.ok) { note.textContent = 'Sync failed: ' + (data.error || 'unknown error'); return; }
             const r = data.report || {};
             const parts = [];
-            if (r.seeded && r.seeded.length) parts.push('seeded ' + r.seeded.length);
-            if (r.updated && r.updated.length) parts.push('updated ' + r.updated.length);
-            if (r.user_modified && r.user_modified.length) parts.push('preserved ' + r.user_modified.length + ' edited');
+            if (r.seeded && r.seeded.length) parts.push(r.seeded.length + ' new');
+            if (r.updated && r.updated.length) parts.push(r.updated.length + ' updated');
+            if (r.user_modified && r.user_modified.length) parts.push(r.user_modified.length + ' edited (preserved)');
             if (r.unchanged && r.unchanged.length) parts.push(r.unchanged.length + ' unchanged');
             if (!parts.length) parts.push('already in sync');
             note.textContent = 'Sync complete — ' + parts.join(', ') + '.';
@@ -626,24 +622,6 @@
             if (data.ok) { Ghost.toast.ok('Skill installed.'); loadSkills(); searchClawHub(); }
             else { Ghost.toast.err(data.error || 'Install failed.'); }
         } catch (e) {}
-    }
-
-    async function installSkill() {
-        const owner = $('sk-owner').value.trim();
-        const repo = $('sk-repo').value.trim();
-        const path = $('sk-path').value.trim();
-        const name = $('sk-name').value.trim();
-        if (!owner || !repo || !path) { Ghost.toast.err('Owner, repo and path are required.'); return; }
-        try {
-            const data = await api('/api/admin/skills/install', 'POST', { owner, repo, path, name });
-            if (data.ok) {
-                Ghost.toast.ok('Skill installed — available to Ghost immediately.');
-                ['sk-owner', 'sk-repo', 'sk-path', 'sk-name'].forEach((id) => ($(id).value = ''));
-                loadSkills();
-            } else {
-                Ghost.toast.err(data.error || 'Failed to install.');
-            }
-        } catch (e) { Ghost.toast.err('Failed to install skill.'); }
     }
 
     /* ════════════════════════════════════ SETTINGS ════════════════════════════════════ */
@@ -721,8 +699,8 @@
             const data = await api('/api/admin/bridge', 'POST');
             if (data.ok) {
                 msg('bridge-msg', 'New pairing secret: ' + (data.secret || '') + ' — re-pair your app with it.', true);
-            } else { Ghost.toast.err(data.error || 'Failed to regenerate.'); }
-        } catch (e) { Ghost.toast.err('Failed to regenerate.'); }
+            } else { Ghost.toast.err(data.error || 'Failed to regenerate pairing secret.'); }
+        } catch (e) { Ghost.toast.err('Failed to regenerate pairing secret.'); }
     }
 
     async function loadGateway() {
@@ -741,8 +719,8 @@
                 port: parseInt($('gw-port').value) || 8766,
             });
             if (data.ok) { msg('gateway-msg', 'Gateway saved.', true); }
-            else { Ghost.toast.err(data.error || 'Failed to save.'); }
-        } catch (e) { Ghost.toast.err('Failed to save.'); }
+            else { Ghost.toast.err(data.error || 'Failed to save gateway settings.'); }
+        } catch (e) { Ghost.toast.err('Failed to save gateway settings.'); }
     }
 
     async function loadAdvanced() {
@@ -804,8 +782,8 @@
                 },
             });
             if (data.ok) { msg('advanced-msg', 'Advanced settings saved.', true); }
-            else { Ghost.toast.err(data.error || 'Failed to save.'); }
-        } catch (e) { Ghost.toast.err('Failed to save.'); }
+            else { Ghost.toast.err(data.error || 'Failed to save advanced settings.'); }
+        } catch (e) { Ghost.toast.err('Failed to save advanced settings.'); }
     }
 
     /* MCP */
@@ -887,7 +865,7 @@
         if (!yes) return;
         try {
             await api('/api/admin/reboot', 'POST');
-            Ghost.toast('Rebooting\u2026 the page will stop responding for a minute.');
+            Ghost.toast.ok('Rebooting\u2026 the page will stop responding for a minute.');
         } catch (e) {}
     }
 
@@ -915,7 +893,6 @@
 
         $('btn-clawhub-search').addEventListener('click', searchClawHub);
         $('clawhub-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') searchClawHub(); });
-        $('btn-install-skill').addEventListener('click', installSkill);
         $('btn-skills-sync').addEventListener('click', resyncSkills);
         $('btn-sk-cancel').addEventListener('click', closeSkillEditor);
         $('btn-sk-save').addEventListener('click', saveSkillEdits);

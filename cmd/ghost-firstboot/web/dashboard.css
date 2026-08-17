@@ -103,7 +103,7 @@
     background: none;
     border: none;
     color: var(--faint);
-    font: 600 10px/1 var(--font-sans);
+    font: 600 11px/1 var(--font-sans);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     transition: color var(--d-base) ease;
@@ -186,7 +186,7 @@
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--r-md);
-    padding: var(--s-4) var(--s-4);
+    padding: var(--s-4);
     transition: border-color var(--d-base) ease, box-shadow var(--d-base) ease;
 }
 @media (hover: hover) and (pointer: fine) {
@@ -220,7 +220,6 @@
     grid-template-columns: 1fr;
     gap: var(--s-4);
 }
-.dash-two-col > .card { margin-bottom: 0; }
 
 /* ── Cards ──────────────────────────────────────────────────── */
 /* (base card styling is in app.css; these override for dashboard) */
@@ -321,7 +320,7 @@
 .channel__icon {
     width: 34px;
     height: 34px;
-    border-radius: 10px;
+    border-radius: var(--r-md);
     background: var(--surface-2);
     border: 1px solid var(--line);
     display: flex;
@@ -362,14 +361,19 @@
 .skill-toggle { min-width: 74px; }
 
 /* Skill editor modal */
-.modal--wide { width: min(720px, 100%); }
-.skill-editor { max-height: 86vh; display: flex; flex-direction: column; }
+.modal--wide { width: min(720px, calc(100% - 32px)); }
+.skill-editor {
+    max-height: 90dvh;
+    display: flex;
+    flex-direction: column;
+}
 .skill-editor__head {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--s-4);
     margin-bottom: var(--s-3);
+    flex-shrink: 0;
 }
 .skill-editor__head .modal__title { margin-bottom: 0; }
 .skill-editor__badges { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: flex-end; }
@@ -378,11 +382,12 @@
     flex-wrap: wrap;
     gap: var(--s-2);
     margin-bottom: var(--s-3);
+    flex-shrink: 0;
 }
 .skill-editor__file {
     font-family: var(--font-mono);
     font-size: 12px;
-    padding: 5px 10px;
+    padding: var(--s-2) var(--s-3);
     border-radius: var(--r-md);
     border: 1px solid var(--line);
     background: transparent;
@@ -397,8 +402,9 @@
     background: rgba(255, 180, 92, 0.08);
 }
 .skill-editor__code {
-    flex: 1;
-    min-height: 240px;
+    flex: 1 1 0;
+    min-height: 200px;
+    height: 50dvh;
     font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.55;
@@ -407,12 +413,31 @@
     border: 1px solid var(--line);
     border-radius: var(--r-md);
     padding: var(--s-4);
-    resize: vertical;
+    resize: none;
     white-space: pre;
     overflow: auto;
 }
 .skill-editor__code:focus { outline: none; border-color: var(--ember); }
-.skill-editor .modal__actions { margin-top: var(--s-4); }
+.skill-editor .modal__actions {
+    margin-top: var(--s-4);
+    flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+    .skill-editor { padding: var(--s-4); }
+    .skill-editor__code {
+        min-height: 160px;
+        height: 45dvh;
+        font-size: 12px;
+        padding: var(--s-3);
+    }
+    .skill-editor__head {
+        flex-direction: column;
+        gap: var(--s-2);
+    }
+    .skill-editor__badges { justify-content: flex-start; }
+    .skill-editor__file { font-size: 11px; padding: var(--s-1) var(--s-2); }
+}
 
 /* ── Form grid (assistant model section) ─────────────────────── */
 .form-grid {
@@ -599,5 +624,23 @@
     .dash-header__inner,
     .dash-main {
         max-width: 1040px;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SMALL MOBILE (≤ 480px)
+   Stack two-column field pairs, tighten padding.
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+    .form-grid > .field--pair,
+    .advanced-grid > .field--pair,
+    .dash-two-col {
+        grid-template-columns: 1fr;
+    }
+    .overview-hero {
+        padding: var(--s-4);
+    }
+    .dash-nav__item {
+        font-size: 11px;
     }
 }
