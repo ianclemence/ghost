@@ -98,6 +98,10 @@
         $('btn-login').addEventListener('click', login);
         $('btn-login-cancel').addEventListener('click', () => location.reload());
         $('login-password').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+        $('btn-forgot').addEventListener('click', () => {
+            const panel = $('forgot-panel');
+            panel.classList.toggle('hidden');
+        });
 
         $('btn-already').addEventListener('click', () => location.reload());
     }

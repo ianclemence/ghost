@@ -136,6 +136,20 @@
                     <button class="btn btn--secondary" id="btn-login-cancel" type="button">Cancel</button>
                     <button class="btn btn--primary" id="btn-login" type="button">Log in</button>
                 </div>
+                <p class="forgot-link">
+                    <button class="link-btn" id="btn-forgot" type="button">Forgot password?</button>
+                </p>
+                <div class="forgot-panel hidden" id="forgot-panel">
+                    <p class="wizard__sub" style="margin-bottom: var(--s-3); max-width: 40ch;">Set a new password over SSH, or from the recovery panel if Ghost won't start:</p>
+                    <div class="forgot-option">
+                        <div class="forgot-option__title">Over SSH (Ghost running)</div>
+                        <code class="code code--block" style="margin-bottom: var(--s-2);">sudo ghost reset-password --force</code>
+                    </div>
+                    <div class="forgot-option">
+                        <div class="forgot-option__title">Recovery panel (Ghost won't start)</div>
+                        <p class="help-text">Reboot the device, then open <code class="code">http://ghost.local:8766</code> within 15 minutes and choose "Reset admin password".</p>
+                    </div>
+                </div>
             </section>
 
             <!-- Already configured -->
@@ -145,6 +159,8 @@
                 <p class="wizard__sub">This device has its assistant configured. Chat from the Ghost app or <code class="code">ghost.local:8766</code>.</p>
                 <p class="wizard__sub">To open the admin dashboard, connect over SSH and run:</p>
                 <code class="code code--block">sudo ghost-firstboot -force</code>
+                <p class="wizard__sub">Forgot the admin password? Connect over SSH and run:</p>
+                <code class="code code--block">sudo ghost reset-password --force</code>
                 <button class="btn btn--secondary btn--block" id="btn-already" type="button">Refresh</button>
             </section>
 

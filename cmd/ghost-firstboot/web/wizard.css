@@ -77,6 +77,40 @@
 
 .field--center { max-width: 340px; margin-left: auto; margin-right: auto; }
 
+/* ── forgot password ── */
+.forgot-link { margin-top: var(--s-4); text-align: center; }
+.link-btn {
+    font: 500 14px var(--font-sans);
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--d-fast) ease;
+}
+.link-btn:hover { color: var(--ember); }
+.forgot-panel {
+    margin-top: var(--s-5);
+    padding: var(--s-4);
+    background: var(--bg-soft);
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--r-md);
+    text-align: left;
+}
+.forgot-panel .wizard__sub { text-align: left; }
+.forgot-option { margin-bottom: var(--s-4); }
+.forgot-option:last-child { margin-bottom: 0; }
+.forgot-option__title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: var(--s-2);
+}
+.forgot-option .help-text { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
 /* ── welcome ── */
 .screen--center .ember--lg { margin: 0 auto var(--s-7); }
 
