@@ -85,6 +85,78 @@ func (p *BraveSearchProvider) Search(ctx context.Context, query string, count in
 	return strings.Join(lines, "\n"), nil
 }
 
+// FirecrawlSearchProvider uses the Firecrawl API for web search.
+type FirecrawlSearchProvider struct {
+	apiKey string
+}
+
+func (p *FirecrawlSearchProvider) Search(ctx context.Context, query string, count int) (string, error) {
+	searchURL := "https://api.firecrawl.dev/v1/search"
+
+	body, err := json.Marshal(map[string]interface{}{
+		"query":   query,
+		"limit":   count,
+		"scrape":  false,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", searchURL, strings.NewReader(string(body)))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var searchResp struct {
+		Success bool `json:"success"`
+		Data    []struct {
+			Title       string `json:"title"`
+			URL         string `json:"url"`
+			Description string `json:"description"`
+			Markdown    string `json:"markdown"`
+		} `json:"data"`
+		Error string `json:"error"`
+	}
+
+	if err := json.Unmarshal(respBody, &searchResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if !searchResp.Success {
+		return "", fmt.Errorf("firecrawl error: %s", searchResp.Error)
+	}
+
+	if len(searchResp.Data) == 0 {
+		return fmt.Sprintf("No results for: %s", query), nil
+	}
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("Results for: %s (via Firecrawl)", query))
+	for i, item := range searchResp.Data {
+		lines = append(lines, fmt.Sprintf("%d. %s\n   %s", i+1, item.Title, item.URL))
+		if item.Description != "" {
+			lines = append(lines, fmt.Sprintf("   %s", item.Description))
+		}
+	}
+
+	return strings.Join(lines, "\n"), nil
+}
+
 type DuckDuckGoSearchProvider struct{}
 
 func (p *DuckDuckGoSearchProvider) Search(ctx context.Context, query string, count int) (string, error) {
@@ -183,6 +255,9 @@ type WebSearchTool struct {
 }
 
 type WebSearchToolOptions struct {
+	FirecrawlAPIKey      string
+	FirecrawlMaxResults  int
+	FirecrawlEnabled     bool
 	BraveAPIKey          string
 	BraveMaxResults      int
 	BraveEnabled         bool
@@ -194,8 +269,13 @@ func NewWebSearchTool(opts WebSearchToolOptions) *WebSearchTool {
 	var provider SearchProvider
 	maxResults := 5
 
-	// Priority: Brave > DuckDuckGo
-	if opts.BraveEnabled && opts.BraveAPIKey != "" {
+	// Priority: Firecrawl > Brave > DuckDuckGo
+	if opts.FirecrawlEnabled && opts.FirecrawlAPIKey != "" {
+		provider = &FirecrawlSearchProvider{apiKey: opts.FirecrawlAPIKey}
+		if opts.FirecrawlMaxResults > 0 {
+			maxResults = opts.FirecrawlMaxResults
+		}
+	} else if opts.BraveEnabled && opts.BraveAPIKey != "" {
 		provider = &BraveSearchProvider{apiKey: opts.BraveAPIKey}
 		if opts.BraveMaxResults > 0 {
 			maxResults = opts.BraveMaxResults

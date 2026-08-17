@@ -78,18 +78,93 @@ func loadEnvFile(path string) (map[string]string, error) {
 	return envVars, nil
 }
 
+// OAuthToken holds OAuth2 credentials for an MCP server.
+type OAuthToken struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token,omitempty"`
+	TokenType    string    `json:"token_type"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
+// SchemaCache caches tool schemas to avoid repeated ListTools calls.
+type SchemaCache struct {
+	tools     map[string][]*mcp.Tool // server name -> tools
+	updatedAt map[string]time.Time
+	mu        sync.RWMutex
+	ttl       time.Duration
+}
+
+func NewSchemaCache(ttl time.Duration) *SchemaCache {
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+	return &SchemaCache{
+		tools:     make(map[string][]*mcp.Tool),
+		updatedAt: make(map[string]time.Time),
+		ttl:       ttl,
+	}
+}
+
+func (c *SchemaCache) Get(server string) ([]*mcp.Tool, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	tools, ok := c.tools[server]
+	if !ok {
+		return nil, false
+	}
+	if time.Since(c.updatedAt[server]) > c.ttl {
+		return nil, false
+	}
+	return tools, true
+}
+
+func (c *SchemaCache) Set(server string, tools []*mcp.Tool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.tools[server] = tools
+	c.updatedAt[server] = time.Now()
+}
+
+func (c *SchemaCache) Invalidate(server string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.tools, server)
+	delete(c.updatedAt, server)
+}
+
+func (c *SchemaCache) InvalidateAll() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.tools = make(map[string][]*mcp.Tool)
+	c.updatedAt = make(map[string]time.Time)
+}
+
+// ServerHealth tracks the health status of a stdio MCP server.
+type ServerHealth struct {
+	Connected   bool      `json:"connected"`
+	LastError   string    `json:"last_error,omitempty"`
+	LastCheck   time.Time `json:"last_check"`
+	RestartCount int      `json:"restart_count"`
+}
+
 type ServerConnection struct {
-	Name    string
-	Client  *mcp.Client
-	Session *mcp.ClientSession
-	Tools   []*mcp.Tool
+	Name      string
+	Client    *mcp.Client
+	Session   *mcp.ClientSession
+	Tools     []*mcp.Tool
+	OAuth     *OAuthToken
+	Health    ServerHealth
+	cfg       config.MCPServerConfig
+	cancelFn  context.CancelFunc
 }
 
 type Manager struct {
-	servers map[string]*ServerConnection
-	mu      sync.RWMutex
-	closed  atomic.Bool
-	wg      sync.WaitGroup
+	servers    map[string]*ServerConnection
+	schemaCache *SchemaCache
+	oauthTokens map[string]*OAuthToken // server name -> token
+	mu         sync.RWMutex
+	closed     atomic.Bool
+	wg         sync.WaitGroup
 }
 
 type ToolInfo struct {
@@ -99,7 +174,9 @@ type ToolInfo struct {
 
 func NewManager() *Manager {
 	return &Manager{
-		servers: make(map[string]*ServerConnection),
+		servers:     make(map[string]*ServerConnection),
+		schemaCache: NewSchemaCache(5 * time.Minute),
+		oauthTokens: make(map[string]*OAuthToken),
 	}
 }
 
@@ -176,9 +253,19 @@ func (m *Manager) ConnectServer(ctx context.Context, name string, cfg config.MCP
 	var client *mcp.Client
 	var session *mcp.ClientSession
 	var tools []*mcp.Tool
+	var cancelFn context.CancelFunc
 
 	if cfg.HTTP {
 		headers := cfg.Headers
+
+		// Inject OAuth token if available
+		if token, ok := m.oauthTokens[name]; ok && token.ExpiresAt.After(time.Now()) {
+			if headers == nil {
+				headers = make(map[string]string)
+			}
+			headers["Authorization"] = token.TokenType + " " + token.AccessToken
+		}
+
 		client = mcp.NewClient(&mcp.Implementation{Name: "ghost"}, nil)
 		transport := &mcp.SSEClientTransport{
 			Endpoint: cfg.HTTPURL,
@@ -195,6 +282,7 @@ func (m *Manager) ConnectServer(ctx context.Context, name string, cfg config.MCP
 			return err
 		}
 		session = sess
+		cancelFn = cancel
 	} else {
 		cmd := exec.Command(cfg.Command, cfg.Args...)
 		if cfg.Workdir != "" {
@@ -216,19 +304,33 @@ func (m *Manager) ConnectServer(ctx context.Context, name string, cfg config.MCP
 			return err
 		}
 		session = sess
+		cancelFn = cancel
 	}
 
-	toolsResult, err := session.ListTools(ctx, &mcp.ListToolsParams{})
-	if err != nil {
-		return err
+	// Check schema cache first
+	if cachedTools, ok := m.schemaCache.Get(name); ok {
+		tools = cachedTools
+		logger.DebugCF("mcp", "Using cached schemas", map[string]any{"server": name})
+	} else {
+		toolsResult, err := session.ListTools(ctx, &mcp.ListToolsParams{})
+		if err != nil {
+			return err
+		}
+		tools = toolsResult.Tools
+		m.schemaCache.Set(name, tools)
 	}
-	tools = toolsResult.Tools
 
 	conn := &ServerConnection{
-		Name:    name,
-		Client:  client,
-		Session: session,
-		Tools:   tools,
+		Name:     name,
+		Client:   client,
+		Session:  session,
+		Tools:    tools,
+		cfg:      cfg,
+		cancelFn: cancelFn,
+		Health: ServerHealth{
+			Connected: true,
+			LastCheck: time.Now(),
+		},
 	}
 
 	m.mu.Lock()
@@ -309,6 +411,166 @@ func (m *Manager) Close() error {
 		return errors.Join(errs...)
 	}
 	return nil
+}
+
+// SetOAuthToken stores an OAuth token for a specific MCP server.
+func (m *Manager) SetOAuthToken(serverName string, token *OAuthToken) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.oauthTokens[serverName] = token
+}
+
+// GetOAuthToken retrieves the stored OAuth token for a server.
+func (m *Manager) GetOAuthToken(serverName string) (*OAuthToken, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	token, ok := m.oauthTokens[serverName]
+	return token, ok
+}
+
+// RefreshOAuthToken calls the server's token endpoint to refresh an expired token.
+func (m *Manager) RefreshOAuthToken(ctx context.Context, serverName string, tokenURL string, clientID string, clientSecret string) error {
+	m.mu.RLock()
+	token, ok := m.oauthTokens[serverName]
+	m.mu.RUnlock()
+	if !ok || token.RefreshToken == "" {
+		return fmt.Errorf("no refresh token available for server %s", serverName)
+	}
+
+	// Build refresh request
+	data := fmt.Sprintf("grant_type=refresh_token&refresh_token=%s&client_id=%s&client_secret=%s",
+		token.RefreshToken, clientID, clientSecret)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var tokenResp struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int    `json:"expires_in"`
+		TokenType    string `json:"token_type"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return err
+	}
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("token refresh failed: HTTP %d", resp.StatusCode)
+	}
+
+	newToken := &OAuthToken{
+		AccessToken:  tokenResp.AccessToken,
+		RefreshToken: tokenResp.RefreshToken,
+		TokenType:    tokenResp.TokenType,
+		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
+	}
+	if newToken.RefreshToken == "" {
+		newToken.RefreshToken = token.RefreshToken
+	}
+
+	m.SetOAuthToken(serverName, newToken)
+	logger.InfoCF("mcp", "OAuth token refreshed", map[string]any{"server": serverName})
+	return nil
+}
+
+// ReconnectServer closes and re-establishes connection to a server.
+func (m *Manager) ReconnectServer(ctx context.Context, name string) error {
+	m.mu.RLock()
+	conn, ok := m.servers[name]
+	m.mu.RUnlock()
+
+	if !ok {
+		return fmt.Errorf("server %q not found", name)
+	}
+
+	// Close existing connection
+	if conn.cancelFn != nil {
+		conn.cancelFn()
+	}
+	if conn.Session != nil {
+		conn.Session.Close()
+	}
+
+	// Invalidate schema cache
+	m.schemaCache.Invalidate(name)
+
+	// Reconnect using stored config
+	if err := m.ConnectServer(ctx, name, conn.cfg); err != nil {
+		return err
+	}
+
+	logger.InfoCF("mcp", "Server reconnected", map[string]any{"server": name})
+	return nil
+}
+
+// CheckHealth checks connectivity to all servers and reconnects if needed.
+func (m *Manager) CheckHealth(ctx context.Context) map[string]ServerHealth {
+	m.mu.RLock()
+	servers := make(map[string]*ServerConnection)
+	for k, v := range m.servers {
+		servers[k] = v
+	}
+	m.mu.RUnlock()
+
+	healthMap := make(map[string]ServerHealth)
+	for name, conn := range servers {
+		health := conn.Health
+		health.LastCheck = time.Now()
+
+		// Try a simple ListTools call to verify connectivity
+		_, err := conn.Session.ListTools(ctx, &mcp.ListToolsParams{})
+		if err != nil {
+			health.Connected = false
+			health.LastError = err.Error()
+			logger.WarnCF("mcp", "Server unhealthy, attempting reconnect", map[string]any{
+				"server": name,
+				"error":  err.Error(),
+			})
+
+			if reconnectErr := m.ReconnectServer(ctx, name); reconnectErr == nil {
+				health.Connected = true
+				health.LastError = ""
+				health.RestartCount++
+			} else {
+				health.LastError = reconnectErr.Error()
+			}
+		} else {
+			health.Connected = true
+			health.LastError = ""
+		}
+
+		healthMap[name] = health
+	}
+	return healthMap
+}
+
+// GetServerHealth returns health status for a specific server.
+func (m *Manager) GetServerHealth(name string) (ServerHealth, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	conn, ok := m.servers[name]
+	if !ok {
+		return ServerHealth{}, false
+	}
+	return conn.Health, true
+}
+
+// InvalidateSchemaCache forces a schema refresh for the next tool call.
+func (m *Manager) InvalidateSchemaCache(server string) {
+	if server == "" {
+		m.schemaCache.InvalidateAll()
+	} else {
+		m.schemaCache.Invalidate(server)
+	}
 }
 
 func flattenMCPContent(content []mcp.Content) string {

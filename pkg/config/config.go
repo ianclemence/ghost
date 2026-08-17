@@ -61,6 +61,7 @@ type Config struct {
 
 type SkillsConfig struct {
 	ClawHub   ClawHubConfig     `json:"clawhub"`
+	Honcho    HonchoConfig      `json:"honcho"`
 }
 
 type ClawHubConfig struct {
@@ -70,6 +71,13 @@ type ClawHubConfig struct {
 	SkillsPath   string `json:"skills_path" env:"GHOST_SKILLS_CLAWHUB_SKILLS_PATH"`
 	DownloadPath string `json:"download_path" env:"GHOST_SKILLS_CLAWHUB_DOWNLOAD_PATH"`
 	Timeout      int    `json:"timeout" env:"GHOST_SKILLS_CLAWHUB_TIMEOUT"`
+}
+
+type HonchoConfig struct {
+	Enabled   bool   `json:"enabled" env:"GHOST_HONCHO_ENABLED"`
+	APIKey    string `json:"api_key" env:"GHOST_HONCHO_API_KEY"`
+	ProjectID string `json:"project_id" env:"GHOST_HONCHO_PROJECT_ID"`
+	BaseURL   string `json:"base_url" env:"GHOST_HONCHO_BASE_URL"`
 }
 
 type RAGConfig struct {
@@ -232,7 +240,14 @@ type DuckDuckGoConfig struct {
 	MaxResults int  `json:"max_results" env:"GHOST_TOOLS_WEB_DUCKDUCKGO_MAX_RESULTS"`
 }
 
+type FirecrawlConfig struct {
+	Enabled    bool   `json:"enabled" env:"GHOST_TOOLS_WEB_FIRECRAWL_ENABLED"`
+	APIKey     string `json:"api_key" env:"GHOST_TOOLS_WEB_FIRECRAWL_API_KEY"`
+	MaxResults int    `json:"max_results" env:"GHOST_TOOLS_WEB_FIRECRAWL_MAX_RESULTS"`
+}
+
 type WebToolsConfig struct {
+	Firecrawl  FirecrawlConfig  `json:"firecrawl"`
 	Brave      BraveConfig      `json:"brave"`
 	DuckDuckGo DuckDuckGoConfig `json:"duckduckgo"`
 }
@@ -376,6 +391,11 @@ func DefaultConfig() *Config {
 		},
 		Tools: ToolsConfig{
 			Web: WebToolsConfig{
+				Firecrawl: FirecrawlConfig{
+					Enabled:    false,
+					APIKey:     "",
+					MaxResults: 5,
+				},
 				Brave: BraveConfig{
 					Enabled:    false,
 					APIKey:     "",

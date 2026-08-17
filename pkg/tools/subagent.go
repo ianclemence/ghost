@@ -44,6 +44,29 @@ var DefaultSubagentPolicy = SubagentPolicy{
 	AllowMessageWrite: false,
 }
 
+// OutputSchema defines the expected structure of a subagent's output.
+type OutputSchema struct {
+	Type        string                    `json:"type"` // "text", "json", "markdown"
+	Fields      []OutputSchemaField       `json:"fields,omitempty"`
+	MaxTokens   int                       `json:"max_tokens,omitempty"`
+}
+
+type OutputSchemaField struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"` // "string", "number", "boolean", "array"
+	Description string `json:"description"`
+	Required    bool   `json:"required"`
+}
+
+// SubagentLogEntry represents a single log entry from a subagent.
+type SubagentLogEntry struct {
+	TaskID    string    `json:"task_id"`
+	Timestamp time.Time `json:"timestamp"`
+	Level     string    `json:"level"` // "info", "warn", "error", "tool"
+	Source    string    `json:"source"` // "llm", "tool", "system"
+	Message   string    `json:"message"`
+}
+
 type SubagentTask struct {
 	ID            string
 	Task          string
@@ -53,6 +76,9 @@ type SubagentTask struct {
 	Status        string
 	Result        string
 	Created       int64
+	OutputSchema  *OutputSchema
+	Logs          []SubagentLogEntry
+	LogChannel    chan SubagentLogEntry // live log streaming
 }
 
 type SubagentManager struct {
@@ -199,6 +225,99 @@ func (sm *SubagentManager) runLoop(ctx context.Context, taskPrompt, originChanne
 	}, messages, originChannel, originChatID)
 }
 
+// SpawnWithSchema spawns a subagent with an output schema for structured output.
+func (sm *SubagentManager) SpawnWithSchema(ctx context.Context, task, label, originChannel, originChatID string, schema *OutputSchema, callback AsyncCallback) (string, error) {
+	childCtx, _, err := sm.childContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	if err := sm.acquireSlot(); err != nil {
+		return "", err
+	}
+
+	sm.mu.Lock()
+	taskID := fmt.Sprintf("subagent-%d", sm.nextID)
+	sm.nextID++
+	logCh := make(chan SubagentLogEntry, 100)
+	subagentTask := &SubagentTask{
+		ID:            taskID,
+		Task:          task,
+		Label:         label,
+		OriginChannel: originChannel,
+		OriginChatID:  originChatID,
+		Status:        "running",
+		Created:       time.Now().UnixMilli(),
+		OutputSchema:  schema,
+		Logs:          make([]SubagentLogEntry, 0),
+		LogChannel:    logCh,
+	}
+	sm.tasks[taskID] = subagentTask
+	sm.mu.Unlock()
+
+	go sm.runTask(childCtx, subagentTask, callback)
+
+	if label != "" {
+		return fmt.Sprintf("Spawned subagent '%s' for task: %s", label, task), nil
+	}
+	return fmt.Sprintf("Spawned subagent for task: %s", task), nil
+}
+
+// SubscribeLogs returns a channel that streams live logs for a specific task.
+func (sm *SubagentManager) SubscribeLogs(taskID string) (<-chan SubagentLogEntry, error) {
+	sm.mu.RLock()
+	task, ok := sm.tasks[taskID]
+	sm.mu.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("task %q not found", taskID)
+	}
+
+	if task.LogChannel == nil {
+		return nil, fmt.Errorf("log channel not available for task %q", taskID)
+	}
+
+	return task.LogChannel, nil
+}
+
+// GetTaskLogs returns all collected logs for a task.
+func (sm *SubagentManager) GetTaskLogs(taskID string) ([]SubagentLogEntry, error) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	task, ok := sm.tasks[taskID]
+	if !ok {
+		return nil, fmt.Errorf("task %q not found", taskID)
+	}
+
+	logs := make([]SubagentLogEntry, len(task.Logs))
+	copy(logs, task.Logs)
+	return logs, nil
+}
+
+// emitLog sends a log entry to the task's log channel and stores it.
+func (sm *SubagentManager) emitLog(task *SubagentTask, level, source, message string) {
+	entry := SubagentLogEntry{
+		TaskID:    task.ID,
+		Timestamp: time.Now(),
+		Level:     level,
+		Source:    source,
+		Message:   message,
+	}
+
+	sm.mu.Lock()
+	task.Logs = append(task.Logs, entry)
+	logCh := task.LogChannel
+	sm.mu.Unlock()
+
+	if logCh != nil {
+		select {
+		case logCh <- entry:
+		default:
+			// Channel full, drop to avoid blocking
+		}
+	}
+}
+
 func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel, originChatID string, callback AsyncCallback) (string, error) {
 	childCtx, _, err := sm.childContext(ctx)
 	if err != nil {
@@ -233,6 +352,13 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel
 
 func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, callback AsyncCallback) {
 	defer sm.releaseSlot()
+	defer func() {
+		if task.LogChannel != nil {
+			close(task.LogChannel)
+		}
+	}()
+
+	sm.emitLog(task, "info", "system", "Subagent task starting")
 	task.Status = "running"
 	task.Created = time.Now().UnixMilli()
 	runCtx, cancel := context.WithTimeout(ctx, subagentTimeout)
@@ -245,10 +371,12 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, call
 		task.Status = "cancelled"
 		task.Result = "Task cancelled before execution"
 		sm.mu.Unlock()
+		sm.emitLog(task, "warn", "system", "Task cancelled before execution")
 		return
 	default:
 	}
 
+	sm.emitLog(task, "info", "system", fmt.Sprintf("Running with timeout: %v", subagentTimeout))
 	loopResult, err := sm.runLoop(runCtx, task.Task, task.OriginChannel, task.OriginChatID, task.Label)
 
 	sm.mu.Lock()
@@ -273,6 +401,7 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, call
 				task.Result = "Task timed out"
 			}
 		}
+		sm.emitLog(task, "error", "system", task.Result)
 		result = &ToolResult{
 			ForLLM:  task.Result,
 			ForUser: "",
@@ -284,6 +413,7 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, call
 	} else {
 		task.Status = "completed"
 		task.Result = loopResult.Content
+		sm.emitLog(task, "info", "system", fmt.Sprintf("Task completed in %d iterations", loopResult.Iterations))
 		result = &ToolResult{
 			ForLLM:  fmt.Sprintf("Subagent '%s' completed (iterations: %d): %s", task.Label, loopResult.Iterations, loopResult.Content),
 			ForUser: loopResult.Content,
