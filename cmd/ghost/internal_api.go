@@ -1908,6 +1908,49 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	mux.HandleFunc("/v1/stats", authMiddleware(secret, handleStats))
 	mux.HandleFunc("/v1/open", authMiddleware(secret, handleOpen))
 
+	// ── Mid-turn steering ─────────────────────────────────────────────────
+	mux.HandleFunc("/v1/steering", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			SessionKey string `json:"session_key"`
+			Content    string `json:"content"`
+			Action     string `json:"action"` // "redirect" | "interrupt" | "abort"
+			Channel    string `json:"channel"`
+			ChatID     string `json:"chat_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"ok":false,"error":"invalid request"}`, http.StatusBadRequest)
+			return
+		}
+		sm := agentLoop.Steering()
+		if sm == nil {
+			http.Error(w, `{"ok":false,"error":"steering unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		switch req.Action {
+		case "abort":
+			sm.HardAbort(req.SessionKey)
+		case "interrupt":
+			sm.Interrupt(req.SessionKey)
+		default: // "redirect"
+			if req.Content == "" {
+				http.Error(w, `{"ok":false,"error":"content required for redirect"}`, http.StatusBadRequest)
+				return
+			}
+			sm.Inject(agent.SteeringMessage{
+				Content:    req.Content,
+				SessionKey: req.SessionKey,
+				Channel:    req.Channel,
+				ChatID:     req.ChatID,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true}`)
+	}))
+
 	// ── WebSocket ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/ws", handleWebSocket(agentLoop))
 

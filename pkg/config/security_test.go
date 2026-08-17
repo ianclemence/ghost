@@ -308,3 +308,192 @@ func containsSubstr(s, substr string) bool {
 	}
 	return false
 }
+
+func TestSaveConfigSeparatesSecrets(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config", "config.json")
+
+	cfg := DefaultConfig()
+	cfg.Providers.Moonshot.APIKey = "moonshot-secret-key"
+	cfg.Channels.Telegram.Token = "telegram-secret-token"
+	cfg.Gateway.BridgeSecret = "bridge-secret-value"
+
+	if err := SaveConfig(path, cfg); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+
+	// config.json must NOT contain any secret.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config.json: %v", err)
+	}
+	for _, secret := range []string{"moonshot-secret-key", "telegram-secret-token", "bridge-secret-value"} {
+		if containsSubstr(string(raw), secret) {
+			t.Errorf("config.json leaked secret: %s", secret)
+		}
+	}
+
+	// config.json should be 0600.
+	if fi, err := os.Stat(path); err == nil {
+		if perm := fi.Mode().Perm(); perm != 0600 {
+			t.Errorf("config.json should be 0600, got %o", perm)
+		}
+	}
+
+	// .secrets.json must contain the secrets at 0600.
+	secrets, err := LoadSecrets(SecretsPath(path))
+	if err != nil {
+		t.Fatalf("LoadSecrets failed: %v", err)
+	}
+	if secrets.ProviderAPIKeys["moonshot"] != "moonshot-secret-key" {
+		t.Errorf("moonshot key not persisted: %q", secrets.ProviderAPIKeys["moonshot"])
+	}
+	if secrets.TelegramToken != "telegram-secret-token" {
+		t.Errorf("telegram token not persisted: %q", secrets.TelegramToken)
+	}
+	if secrets.BridgeSecret != "bridge-secret-value" {
+		t.Errorf("bridge secret not persisted: %q", secrets.BridgeSecret)
+	}
+	if fi, err := os.Stat(SecretsPath(path)); err == nil {
+		if perm := fi.Mode().Perm(); perm != 0600 {
+			t.Errorf(".secrets.json should be 0600, got %o", perm)
+		}
+	}
+}
+
+func TestLoadConfigMergesSecrets(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config", "config.json")
+
+	cfg := DefaultConfig()
+	cfg.Providers.Moonshot.APIKey = "merged-moonshot-key"
+	cfg.Channels.Discord.Token = "merged-discord-token"
+	if err := SaveConfig(path, cfg); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+
+	// Fresh load must see secrets merged back from .secrets.json.
+	loaded, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	if loaded.Providers.Moonshot.APIKey != "merged-moonshot-key" {
+		t.Errorf("moonshot key not merged: %q", loaded.Providers.Moonshot.APIKey)
+	}
+	if loaded.Channels.Discord.Token != "merged-discord-token" {
+		t.Errorf("discord token not merged: %q", loaded.Channels.Discord.Token)
+	}
+}
+
+func TestSecretsRoundTripAllFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config", "config.json")
+
+	cfg := DefaultConfig()
+	cfg.Providers.Anthropic.APIKey = "ak-ant"
+	cfg.Providers.OpenAI.APIKey = "ak-oa"
+	cfg.Providers.OpenRouter.APIKey = "ak-or"
+	cfg.Providers.Groq.APIKey = "ak-gq"
+	cfg.Providers.Zhipu.APIKey = "ak-zp"
+	cfg.Providers.DeepSeek.APIKey = "ak-ds"
+	cfg.Providers.Gemini.APIKey = "ak-gm"
+	cfg.Providers.Nvidia.APIKey = "ak-nv"
+	cfg.Providers.Ollama.APIKey = "ak-ol"
+	cfg.Providers.VLLM.APIKey = "ak-vl"
+	cfg.Providers.GitHubCopilot.APIKey = "ak-gh"
+	cfg.Providers.ShengSuanYun.APIKey = "ak-ss"
+	cfg.Channels.Slack.BotToken = "slack-bot"
+	cfg.Channels.Slack.AppToken = "slack-app"
+	cfg.Channels.LINE.ChannelSecret = "line-secret"
+	cfg.Channels.LINE.ChannelAccessToken = "line-access"
+	cfg.Channels.Email.Password = "email-pw"
+	cfg.Channels.SMS.AccountSID = "sms-sid"
+	cfg.Channels.SMS.AuthToken = "sms-auth"
+	cfg.Channels.WeChat.Secret = "wx-secret"
+	cfg.Skills.ClawHub.AuthToken = "clawhub-tok"
+	cfg.Skills.Honcho.APIKey = "honcho-key"
+	cfg.Tools.Web.Firecrawl.APIKey = "firecrawl-key"
+	cfg.Tools.Web.Brave.APIKey = "brave-key"
+
+	if err := SaveConfig(path, cfg); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+
+	loaded, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if got := loaded.Providers.Anthropic.APIKey; got != "ak-ant" {
+		t.Errorf("anthropic: %q", got)
+	}
+	if got := loaded.Providers.OpenAI.APIKey; got != "ak-oa" {
+		t.Errorf("openai: %q", got)
+	}
+	if got := loaded.Providers.OpenRouter.APIKey; got != "ak-or" {
+		t.Errorf("openrouter: %q", got)
+	}
+	if got := loaded.Providers.Groq.APIKey; got != "ak-gq" {
+		t.Errorf("groq: %q", got)
+	}
+	if got := loaded.Providers.Zhipu.APIKey; got != "ak-zp" {
+		t.Errorf("zhipu: %q", got)
+	}
+	if got := loaded.Providers.DeepSeek.APIKey; got != "ak-ds" {
+		t.Errorf("deepseek: %q", got)
+	}
+	if got := loaded.Providers.Gemini.APIKey; got != "ak-gm" {
+		t.Errorf("gemini: %q", got)
+	}
+	if got := loaded.Providers.Nvidia.APIKey; got != "ak-nv" {
+		t.Errorf("nvidia: %q", got)
+	}
+	if got := loaded.Providers.Ollama.APIKey; got != "ak-ol" {
+		t.Errorf("ollama: %q", got)
+	}
+	if got := loaded.Providers.VLLM.APIKey; got != "ak-vl" {
+		t.Errorf("vllm: %q", got)
+	}
+	if got := loaded.Providers.GitHubCopilot.APIKey; got != "ak-gh" {
+		t.Errorf("githubcopilot: %q", got)
+	}
+	if got := loaded.Providers.ShengSuanYun.APIKey; got != "ak-ss" {
+		t.Errorf("shengsuanyun: %q", got)
+	}
+	if got := loaded.Channels.Slack.BotToken; got != "slack-bot" {
+		t.Errorf("slack bot: %q", got)
+	}
+	if got := loaded.Channels.Slack.AppToken; got != "slack-app" {
+		t.Errorf("slack app: %q", got)
+	}
+	if got := loaded.Channels.LINE.ChannelSecret; got != "line-secret" {
+		t.Errorf("line secret: %q", got)
+	}
+	if got := loaded.Channels.LINE.ChannelAccessToken; got != "line-access" {
+		t.Errorf("line access: %q", got)
+	}
+	if got := loaded.Channels.Email.Password; got != "email-pw" {
+		t.Errorf("email pw: %q", got)
+	}
+	if got := loaded.Channels.SMS.AccountSID; got != "sms-sid" {
+		t.Errorf("sms sid: %q", got)
+	}
+	if got := loaded.Channels.SMS.AuthToken; got != "sms-auth" {
+		t.Errorf("sms auth: %q", got)
+	}
+	if got := loaded.Channels.WeChat.Secret; got != "wx-secret" {
+		t.Errorf("wechat secret: %q", got)
+	}
+	if got := loaded.Skills.ClawHub.AuthToken; got != "clawhub-tok" {
+		t.Errorf("clawhub: %q", got)
+	}
+	if got := loaded.Skills.Honcho.APIKey; got != "honcho-key" {
+		t.Errorf("honcho: %q", got)
+	}
+	if got := loaded.Tools.Web.Firecrawl.APIKey; got != "firecrawl-key" {
+		t.Errorf("firecrawl: %q", got)
+	}
+	if got := loaded.Tools.Web.Brave.APIKey; got != "brave-key" {
+		t.Errorf("brave: %q", got)
+	}
+}

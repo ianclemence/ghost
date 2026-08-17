@@ -354,6 +354,16 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) (string, e
 
 	// Execute command if present
 	if job.Payload.Command != "" {
+		if err := CheckCronCommand(job.Payload.Command); err != nil {
+			t.msgBus.PublishOutbound(bus.OutboundMessage{
+				Channel:  channel,
+				ChatID:   chatID,
+				Content:  fmt.Sprintf("Scheduled command blocked: %s", err),
+				Metadata: job.Metadata,
+			})
+			return "blocked", nil
+		}
+
 		args := map[string]interface{}{
 			"command": job.Payload.Command,
 		}

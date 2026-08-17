@@ -26,6 +26,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/devices"
 	"github.com/ianclemence/ghost/pkg/heartbeat"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/migrate"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
@@ -182,6 +183,8 @@ func main() {
 		authCmd()
 	case "cron":
 		cronCmd()
+	case "mcp":
+		mcpCmd()
 	case "skills":
 		if len(os.Args) < 3 {
 			skillsHelp()
@@ -1548,6 +1551,215 @@ func cronEnableCmd(storePath string, disable bool) {
 	} else {
 		fmt.Printf("✗ Job %s not found\n", jobID)
 	}
+}
+
+// mcpCmd manages MCP servers from the CLI, mirroring the dashboard's MCP
+// section for headless or scripted configuration.
+func mcpCmd() {
+	if len(os.Args) < 3 {
+		mcpHelp()
+		return
+	}
+
+	subcommand := os.Args[2]
+
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	switch subcommand {
+	case "list":
+		mcpListCmd(cfg)
+	case "add":
+		mcpAddCmd(cfg)
+	case "edit":
+		mcpEditCmd(cfg)
+	case "remove":
+		mcpRemoveCmd(cfg)
+	case "test":
+		mcpTestCmd(cfg)
+	default:
+		fmt.Printf("Unknown mcp command: %s\n", subcommand)
+		mcpHelp()
+	}
+}
+
+func mcpHelp() {
+	fmt.Println("\nMCP server commands:")
+	fmt.Println("  list                    List configured MCP servers")
+	fmt.Println("  add <name> -- <command> [args...]   Add a stdio MCP server")
+	fmt.Println("  add <name> --http <url>  Add an HTTP/SSE MCP server")
+	fmt.Println("  edit <name> -- <command> [args...]  Update an MCP server")
+	fmt.Println("  remove <name>            Remove an MCP server")
+	fmt.Println("  test <name>              Connect and list tools from a server")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  ghost mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem /tmp")
+	fmt.Println("  ghost mcp add remote --http https://example.com/sse")
+}
+
+func mcpListCmd(cfg *config.Config) {
+	servers := cfg.Tools.MCP.Servers
+	if len(servers) == 0 {
+		fmt.Println("No MCP servers configured.")
+		return
+	}
+	fmt.Println("Configured MCP servers:")
+	for name, s := range servers {
+		state := "disabled"
+		if s.Enabled {
+			state = "enabled"
+		}
+		kind := "stdio"
+		if s.HTTP {
+			kind = "http"
+		}
+		target := s.Command
+		if s.HTTP {
+			target = s.HTTPURL
+		}
+		fmt.Printf("  %-20s %-8s %-7s %s\n", name, state, kind, target)
+	}
+}
+
+func mcpAddCmd(cfg *config.Config) {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: ghost mcp add <name> -- <command> [args...]")
+		fmt.Println("       ghost mcp add <name> --http <url>")
+		return
+	}
+	name := os.Args[3]
+
+	server, ok := buildMCPServerFromArgs(os.Args[4:])
+	if !ok {
+		return
+	}
+	server.Enabled = true
+	if cfg.Tools.MCP.Servers == nil {
+		cfg.Tools.MCP.Servers = map[string]config.MCPServerConfig{}
+	}
+	cfg.Tools.MCP.Servers[name] = server
+
+	if err := saveConfigFromCLI(cfg); err != nil {
+		fmt.Printf("Failed to save config: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ MCP server '%s' added\n", name)
+}
+
+func mcpEditCmd(cfg *config.Config) {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: ghost mcp edit <name> -- <command> [args...]")
+		fmt.Println("       ghost mcp edit <name> --http <url>")
+		return
+	}
+	name := os.Args[3]
+	if _, exists := cfg.Tools.MCP.Servers[name]; !exists {
+		fmt.Printf("✗ MCP server '%s' not found\n", name)
+		return
+	}
+	server, ok := buildMCPServerFromArgs(os.Args[4:])
+	if !ok {
+		return
+	}
+	server.Enabled = cfg.Tools.MCP.Servers[name].Enabled
+	cfg.Tools.MCP.Servers[name] = server
+
+	if err := saveConfigFromCLI(cfg); err != nil {
+		fmt.Printf("Failed to save config: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ MCP server '%s' updated\n", name)
+}
+
+func mcpRemoveCmd(cfg *config.Config) {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: ghost mcp remove <name>")
+		return
+	}
+	name := os.Args[3]
+	if _, exists := cfg.Tools.MCP.Servers[name]; !exists {
+		fmt.Printf("✗ MCP server '%s' not found\n", name)
+		return
+	}
+	delete(cfg.Tools.MCP.Servers, name)
+	if err := saveConfigFromCLI(cfg); err != nil {
+		fmt.Printf("Failed to save config: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ MCP server '%s' removed\n", name)
+}
+
+func mcpTestCmd(cfg *config.Config) {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: ghost mcp test <name>")
+		return
+	}
+	name := os.Args[3]
+	server, exists := cfg.Tools.MCP.Servers[name]
+	if !exists {
+		fmt.Printf("✗ MCP server '%s' not found\n", name)
+		return
+	}
+
+	manager := mcp.NewManager()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := manager.ConnectServer(ctx, name, server); err != nil {
+		fmt.Printf("✗ Failed to connect to '%s': %v\n", name, err)
+		return
+	}
+	defer manager.Close()
+
+	tools := manager.ListToolInfos()
+	fmt.Printf("✓ Connected to '%s': %d tool(s)\n", name, len(tools))
+	for _, ti := range tools {
+		fmt.Printf("  - %s\n", ti.Tool.Name)
+	}
+}
+
+// buildMCPServerFromArgs parses CLI args into an MCPServerConfig.
+// Supports: <name> -- <command> [args...]  OR  <name> --http <url>
+func buildMCPServerFromArgs(args []string) (config.MCPServerConfig, bool) {
+	if len(args) == 0 {
+		fmt.Println("Missing server configuration.")
+		return config.MCPServerConfig{}, false
+	}
+
+	// HTTP mode: --http <url>
+	if args[0] == "--http" {
+		if len(args) < 2 {
+			fmt.Println("Usage: ghost mcp add <name> --http <url>")
+			return config.MCPServerConfig{}, false
+		}
+		return config.MCPServerConfig{
+			HTTP:    true,
+			HTTPURL: args[1],
+			Enabled: true,
+		}, true
+	}
+
+	// stdio mode: -- <command> [args...]
+	if args[0] != "--" {
+		fmt.Println("Expected '--' before the command. Usage: ghost mcp add <name> -- <command> [args...]")
+		return config.MCPServerConfig{}, false
+	}
+	if len(args) < 2 {
+		fmt.Println("Missing command after '--'.")
+		return config.MCPServerConfig{}, false
+	}
+	return config.MCPServerConfig{
+		Command: args[1],
+		Args:    args[2:],
+		Enabled: true,
+	}, true
+}
+
+// saveConfigFromCLI persists the config (and split secrets) to disk.
+func saveConfigFromCLI(cfg *config.Config) error {
+	return config.SaveConfig(getConfigPath(), cfg)
 }
 
 func skillsHelp() {

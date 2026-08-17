@@ -493,14 +493,39 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Providers.DeepSeek.APIKey = key
 	}
 
+	// Apply the strict secrets boundary: overlay .secrets.json (0600) so
+	// credentials stored there win over any that slipped into config.json.
+	secrets, err := LoadSecrets(SecretsPath(path))
+	if err != nil {
+		return nil, err
+	}
+	applySecrets(cfg, secrets)
+
 	return cfg, nil
 }
 
+// SaveConfig persists config.json (0600, atomic) and splits every secret out
+// into .secrets.json (0600, atomic). config.json never stores credentials.
 func SaveConfig(path string, cfg *Config) error {
 	cfg.mu.RLock()
-	defer cfg.mu.RUnlock()
 
-	data, err := json.MarshalIndent(cfg, "", "  ")
+	// Serialize once, then rebuild a clean copy without the mutex (copying
+	// the struct directly would copy the embedded sync.RWMutex).
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		cfg.mu.RUnlock()
+		return err
+	}
+	secrets := extractSecrets(cfg)
+	cfg.mu.RUnlock()
+
+	var clean Config
+	if err := json.Unmarshal(raw, &clean); err != nil {
+		return err
+	}
+	clearSecrets(&clean)
+
+	data, err := json.MarshalIndent(&clean, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -510,7 +535,35 @@ func SaveConfig(path string, cfg *Config) error {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
+	if err := writeFileAtomic(path, data, 0600); err != nil {
+		return err
+	}
+
+	return SaveSecrets(SecretsPath(path), secrets)
+}
+
+// writeFileAtomic writes data to path via temp file + rename, with the given
+// permissions, so a crash never leaves a truncated file.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".ghost-config-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func (c *Config) WorkspacePath() string {

@@ -25,6 +25,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/doctor"
+	"github.com/ianclemence/ghost/pkg/evolution"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/media"
@@ -66,6 +67,8 @@ type AgentLoop struct {
 	summarizing      sync.Map // Tracks which sessions are currently being summarized
 	curator          *tools.Curator
 	nudge            *NudgeManager
+	evolution        *evolution.EvolutionManager
+	steering         *SteeringManager
 }
 
 // processOptions configures how a message is processed
@@ -384,6 +387,15 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		SkillInterval:  cfg.Nudge.SkillInterval,
 	}, sessionsManager)
 
+	// Initialize the evolution pipeline (self-improvement / autonomous skill
+	// creation). Enabled by default; cold-path analysis runs periodically.
+	evolveCfg := evolution.DefaultEvolutionConfig()
+	evolveCfg.Enabled = true
+	evolutionMgr := evolution.NewEvolutionManager(workspace, evolveCfg)
+	if err := evolutionMgr.Load(); err != nil {
+		logger.WarnCF("agent", "Failed to load evolution state: %v", map[string]interface{}{"error": err.Error()})
+	}
+
 	return &AgentLoop{
 		bus:              msgBus,
 		provider:         provider,
@@ -410,6 +422,8 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		summarizing:      sync.Map{},
 		curator:          curator,
 		nudge:            nudgeMgr,
+		evolution:        evolutionMgr,
+		steering:         NewSteeringManager(),
 	}
 }
 
@@ -433,6 +447,13 @@ func (al *AgentLoop) Bus() *bus.MessageBus {
 	return al.bus
 }
 
+// Steering exposes the mid-turn steering manager so external callers (e.g.
+// the mobile API) can inject redirect/interrupt/abort messages into a running
+// agent turn.
+func (al *AgentLoop) Steering() *SteeringManager {
+	return al.steering
+}
+
 func (al *AgentLoop) Doctor() *doctor.Doctor {
 	return al.doctor
 }
@@ -446,6 +467,11 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 
 	// Start curator background goroutine
 	go al.curator.Start(ctx)
+
+	// Start the evolution cold path (periodic skill-draft generation).
+	if al.evolution != nil {
+		go al.evolutionColdPath(ctx)
+	}
 
 	for al.running.Load() {
 		select {
@@ -496,6 +522,36 @@ func (al *AgentLoop) Stop() {
 
 func (al *AgentLoop) RegisterTool(tool tools.Tool) {
 	al.tools.Register(tool)
+}
+
+// evolutionColdPath periodically runs the evolution pipeline's cold-path
+// analysis, which clusters successful tasks into patterns and drafts new
+// skills. Drafts are saved to state for review; ApplyDraft (or the skills
+// tooling) is what actually creates the SKILL.md.
+func (al *AgentLoop) evolutionColdPath(ctx context.Context) {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if al.evolution == nil {
+				return
+			}
+			if err := al.evolution.RunColdPath(); err != nil {
+				logger.ErrorCF("agent", "Evolution cold path failed", map[string]interface{}{"error": err.Error()})
+				continue
+			}
+			if err := al.evolution.Save(); err != nil {
+				logger.ErrorCF("agent", "Failed to save evolution state", map[string]interface{}{"error": err.Error()})
+			}
+			drafts := al.evolution.GetDrafts()
+			if len(drafts) > 0 {
+				logger.InfoCF("agent", "Evolution generated skill drafts", map[string]interface{}{"count": len(drafts)})
+			}
+		}
+	}
 }
 
 func (al *AgentLoop) CommandDefinitions() []commands.Definition {
@@ -722,6 +778,8 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 // runAgentLoop is the core message processing logic.
 // It handles context building, LLM calls, tool execution, and response handling.
 func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (string, error) {
+	startTime := time.Now()
+
 	// 0. Record last channel for heartbeat notifications (skip internal channels)
 	if opts.Channel != "" && opts.ChatID != "" {
 		// Don't record internal channels (cli, system, subagent)
@@ -852,6 +910,22 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// 10. Auto-journaling
 	if !opts.NoHistory && opts.SessionKey != "heartbeat" && !strings.HasPrefix(opts.UserMessage, "/") {
 		go al.autoJournal(opts.SessionKey)
+	}
+
+	// 11. Record turn for the evolution pipeline (autonomous skill creation)
+	if !isSlashCommand && al.evolution != nil {
+		al.evolution.RecordTurn(evolution.LearningRecord{
+			TaskKind:   classifyTaskKind(opts.UserMessage),
+			Summary:    utils.Truncate(opts.UserMessage, 300),
+			ToolsUsed:  al.collectToolsUsed(opts.SessionKey),
+			Success:    finalContent != "",
+			Duration:   time.Since(startTime),
+			SessionKey: opts.SessionKey,
+			Timestamp:  time.Now().UTC(),
+			Metadata: map[string]string{
+				"model": al.model,
+			},
+		})
 	}
 
 	telemetry.Global.Record(opts.SessionKey, opts.RequestID, "agent_completed", opts.Channel, opts.ChatID, "")
@@ -1044,6 +1118,36 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				al.nudge.OnSkillToolUsed(opts.SessionKey)
 			}
 		}
+
+		// Inject any mid-turn steering messages queued by the user (e.g. an
+		// interrupt-and-redirect while a long tool-call sequence is running).
+		if al.steering != nil {
+			pending := al.steering.DrainPending(opts.SessionKey)
+			if len(pending) > 0 {
+				steerText := FormatForPrompt(pending)
+				if steerText != "" {
+					messages = append(messages, providers.Message{
+						Role:    "system",
+						Content: steerText,
+					})
+				}
+				// A hard abort ends the iteration immediately.
+				for _, m := range pending {
+					if m.IsHardAbort {
+						if finalContent == "" {
+							finalContent = "Aborted by user."
+						}
+						return finalContent, iteration, nil
+					}
+				}
+			}
+			if al.steering.CheckInterrupt(opts.SessionKey) {
+				if finalContent == "" {
+					finalContent = "Interrupted by user."
+				}
+				return finalContent, iteration, nil
+			}
+		}
 	}
 
 	return finalContent, iteration, nil
@@ -1054,6 +1158,47 @@ func (al *AgentLoop) selectModel(opts processOptions, messages []providers.Messa
 		return al.model, 1
 	}
 	return al.router.SelectModel(opts.UserMessage, messages, len(opts.Media) > 0, al.model)
+}
+
+// classifyTaskKind produces a coarse task category for the evolution
+// pipeline, which clusters similar successful tasks into skill candidates.
+func classifyTaskKind(msg string) string {
+	m := strings.ToLower(msg)
+	switch {
+	case strings.Contains(m, "write") || strings.Contains(m, "create") || strings.Contains(m, "edit") || strings.Contains(m, "code"):
+		return "code"
+	case strings.Contains(m, "search") || strings.Contains(m, "research") || strings.Contains(m, "find"):
+		return "research"
+	case strings.Contains(m, "summarize") || strings.Contains(m, "summarise") || strings.Contains(m, "brief"):
+		return "summarize"
+	case strings.Contains(m, "schedule") || strings.Contains(m, "remind") || strings.Contains(m, "timer"):
+		return "scheduling"
+	case strings.Contains(m, "email") || strings.Contains(m, "message") || strings.Contains(m, "reply"):
+		return "communication"
+	case strings.Contains(m, "backup") || strings.Contains(m, "update") || strings.Contains(m, "install"):
+		return "system"
+	default:
+		return "general"
+	}
+}
+
+// collectToolsUsed returns the set of tool names used in a session's recent
+// assistant messages, for evolution pattern matching.
+func (al *AgentLoop) collectToolsUsed(sessionKey string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, msg := range al.sessions.GetHistory(sessionKey) {
+		if msg.Role != "assistant" {
+			continue
+		}
+		for _, tc := range msg.ToolCalls {
+			if !seen[tc.Name] {
+				seen[tc.Name] = true
+				out = append(out, tc.Name)
+			}
+		}
+	}
+	return out
 }
 
 func (al *AgentLoop) callLLM(ctx context.Context, model string, messages []providers.Message, tools []providers.ToolDefinition, opts processOptions) (*providers.LLMResponse, error) {

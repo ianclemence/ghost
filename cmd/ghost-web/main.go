@@ -795,13 +795,9 @@ TZ=UTC
 	// Enable RAG
 	cfg.RAG.Enabled = true
 
-	// Save config
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	if err := os.WriteFile(fb.ConfigPath, data, 0644); err != nil {
+	// Save config. SaveConfig splits secrets (bridge secret) into
+	// .secrets.json at 0600 and writes config.json atomically at 0600.
+	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {
 		return fmt.Errorf("failed to write config.json: %w", err)
 	}
 

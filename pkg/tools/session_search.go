@@ -64,7 +64,7 @@ func (t *SessionSearchTool) Parameters() map[string]interface{} {
 			},
 			"mode": map[string]interface{}{
 				"type":        "string",
-				"enum":        []string{"discover", "browse", "scroll", "read"},
+				"enum":        []string{"discover", "browse", "scroll", "read", "summarize"},
 				"description": "Search mode (default: discover)",
 				"default":     "discover",
 			},
@@ -114,6 +114,8 @@ func (t *SessionSearchTool) Execute(ctx context.Context, args map[string]interfa
 		return t.scroll(ctx, args)
 	case "read":
 		return t.readSession(ctx, args)
+	case "summarize":
+		return t.summarize(ctx, args)
 	case "discover":
 		return t.discover(ctx, args)
 	default:
@@ -191,6 +193,83 @@ func (t *SessionSearchTool) discover(ctx context.Context, args map[string]interf
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("session_search marshal failed: %v", err)).WithError(err)
+	}
+	return UserResult(string(raw))
+}
+
+// summarize groups FTS search results by session and returns a compact
+// digest. The LLM reads this and produces a cross-session recall summary,
+// mirroring Hermes's "search + LLM summarization for cross-session recall".
+func (t *SessionSearchTool) summarize(ctx context.Context, args map[string]interface{}) *ToolResult {
+	query, ok := args["query"].(string)
+	if !ok || query == "" {
+		return ErrorResult("query is required for summarize mode")
+	}
+
+	limit := 20
+	if raw, ok := args["limit"].(float64); ok {
+		limit = int(raw)
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	rows, err := t.db.QueryContext(ctx, `
+		SELECT m.session_id, m.id, m.role, m.content, COALESCE(unixepoch(m.created_at), 0)
+		FROM messages_fts
+		JOIN messages m ON m.rowid = messages_fts.rowid
+		WHERE messages_fts MATCH ?
+		  AND (m.archived IS NULL OR m.archived = 0)
+		ORDER BY bm25(messages_fts)
+		LIMIT ?
+	`, query, limit)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search summarize query failed: %v", err)).WithError(err)
+	}
+	defer rows.Close()
+
+	// Group matches by session, keeping the best few per session.
+	grouped := map[string][]string{}
+	order := []string{}
+	for rows.Next() {
+		var sid, id, role, content string
+		var ts int64
+		if err := rows.Scan(&sid, &id, &role, &content, &ts); err != nil {
+			return ErrorResult(fmt.Sprintf("session_search summarize scan failed: %v", err)).WithError(err)
+		}
+		if _, exists := grouped[sid]; !exists {
+			order = append(order, sid)
+		}
+		if len(grouped[sid]) < 3 {
+			grouped[sid] = append(grouped[sid], role+": "+strings.TrimSpace(content))
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return ErrorResult(fmt.Sprintf("session_search summarize failed: %v", err)).WithError(err)
+	}
+
+	type sessionDigest struct {
+		SessionID string   `json:"session_id"`
+		Messages  []string `json:"messages"`
+	}
+	digests := make([]sessionDigest, 0, len(order))
+	for _, sid := range order {
+		digests = append(digests, sessionDigest{SessionID: sid, Messages: grouped[sid]})
+	}
+
+	payload := map[string]interface{}{
+		"mode":      "summarize",
+		"query":     query,
+		"count":     len(digests),
+		"sessions":  digests,
+		"instruction": "Synthesize these matches into a concise recall summary answering the query.",
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search summarize marshal failed: %v", err)).WithError(err)
 	}
 	return UserResult(string(raw))
 }
