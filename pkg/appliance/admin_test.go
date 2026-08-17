@@ -109,3 +109,32 @@ func TestGenerateBridgeSecret(t *testing.T) {
 		t.Fatal("two generated secrets must not be identical")
 	}
 }
+
+func TestRemoveAdminPassword(t *testing.T) {
+	ghostDir := filepath.Join(t.TempDir(), "ghost")
+
+	// Removing when nothing is configured should be a no-op, not an error.
+	if err := RemoveAdminPassword(ghostDir); err != nil {
+		t.Fatalf("RemoveAdminPassword on unconfigured dir failed: %v", err)
+	}
+
+	if err := SetAdminPassword(ghostDir, "my-valid-pass-123"); err != nil {
+		t.Fatalf("SetAdminPassword failed: %v", err)
+	}
+	if !AdminConfigured(ghostDir) {
+		t.Fatal("admin should be configured after SetAdminPassword")
+	}
+
+	if err := RemoveAdminPassword(ghostDir); err != nil {
+		t.Fatalf("RemoveAdminPassword failed: %v", err)
+	}
+	if AdminConfigured(ghostDir) {
+		t.Fatal("admin should not be configured after RemoveAdminPassword")
+	}
+	if LoadAdminMeta(ghostDir) != nil {
+		t.Fatal("admin metadata should be removed too")
+	}
+	if ok, _ := VerifyAdminPassword(ghostDir, "my-valid-pass-123"); ok {
+		t.Fatal("password should no longer verify after removal")
+	}
+}

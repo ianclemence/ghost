@@ -63,6 +63,7 @@ func (rs *RecoveryServer) Start() error {
 	mux.HandleFunc("/api/logs", rs.handleLogs)
 	mux.HandleFunc("/api/config", rs.handleConfig)
 	mux.HandleFunc("/api/reset", rs.handleReset)
+	mux.HandleFunc("/api/reset-password", rs.handleResetPassword)
 	mux.HandleFunc("/api/restart", rs.handleRestart)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", rs.Port)
@@ -180,11 +181,55 @@ func (rs *RecoveryServer) handleReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove config
+	// Remove config and the admin credential so the setup wizard re-runs
+	// from scratch (no stale password demanded on next boot).
 	os.Remove(rs.ConfigPath)
+	if err := RemoveAdminPassword(rs.GhostDir); err != nil {
+		http.Error(w, `{"error":"failed to clear admin credential"}`, http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, `{"ok":true,"message":"Setup reset. Restart to begin setup wizard."}`)
+}
+
+// handleResetPassword sets a fresh admin password without requiring the
+// current one. Used from recovery mode when the password is forgotten.
+func (rs *RecoveryServer) handleResetPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Password string `json:"password"`
+		Confirm  string `json:"confirm"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"ok":false,"error":"invalid request"}`, http.StatusBadRequest)
+		return
+	}
+	if req.Password != req.Confirm {
+		http.Error(w, `{"ok":false,"error":"passwords do not match"}`, http.StatusBadRequest)
+		return
+	}
+	if err := ValidatePassword(req.Password); err != nil {
+		http.Error(w, `{"ok":false,"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		return
+	}
+	if err := SetAdminPassword(rs.GhostDir, req.Password); err != nil {
+		http.Error(w, `{"ok":false,"error":"failed to set password"}`, http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Admin password reset from recovery mode")
+	go func() {
+		time.Sleep(1 * time.Second)
+		exec.Command("systemctl", "restart", "ghost-firstboot").Run()
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, `{"ok":true,"message":"Password reset. Log in with the new password."}`)
 }
 
 func (rs *RecoveryServer) handleRestart(w http.ResponseWriter, r *http.Request) {
@@ -352,6 +397,21 @@ const recoveryHTML = `<!DOCTYPE html>
             white-space: pre-wrap; word-break: break-word;
         }
 
+        .field-input {
+            font: inherit; font-size: 15px;
+            color: var(--ink);
+            background: var(--surface-2);
+            border: 1px solid var(--line);
+            border-radius: var(--r-field);
+            padding: 11px 14px;
+            width: 100%;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+        }
+        .field-input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px rgba(255, 180, 92, 0.12); }
+        .field-input::placeholder { color: #6f6253; }
+
         .toast {
             position: fixed; left: 50%; bottom: 24px;
             transform: translateX(-50%) translateY(16px);
@@ -415,6 +475,16 @@ const recoveryHTML = `<!DOCTYPE html>
                 <button class="btn primary" id="btn-restart" type="button">Restart Ghost</button>
                 <button class="btn" id="btn-refresh" type="button">Refresh logs</button>
                 <button class="btn danger" id="btn-reset" type="button">Reset setup</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Reset admin password</h2>
+            <p class="subtitle" style="font-size:14px;margin-bottom:var(--s-4);">Forgot your admin password? Set a new one. No current password needed.</p>
+            <input class="field-input" id="rp-password" type="password" placeholder="New admin password (at least 8 characters)" autocomplete="off">
+            <input class="field-input" id="rp-confirm" type="password" placeholder="Confirm new password" autocomplete="off" style="margin-top:var(--s-3);">
+            <div class="actions" style="margin-top:var(--s-4);">
+                <button class="btn" id="btn-reset-password" type="button">Set new password</button>
             </div>
         </div>
 
@@ -531,9 +601,36 @@ const recoveryHTML = `<!DOCTYPE html>
             }
         }
 
+        async function resetPassword() {
+            var pw = document.getElementById('rp-password').value;
+            var confirm = document.getElementById('rp-confirm').value;
+            if (!pw || !confirm) { toast('Fill in both fields.'); return; }
+            if (pw !== confirm) { toast('Passwords do not match.'); return; }
+            var yes = await confirmModal('Set new admin password?', 'All current sessions will end. You will log in with the new password.', 'Set password');
+            if (!yes) return;
+            try {
+                var res = await fetch('/api/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pw, confirm: confirm })
+                });
+                var data = await res.json();
+                if (data.ok) {
+                    toast(data.message || 'Password reset.', true);
+                    document.getElementById('rp-password').value = '';
+                    document.getElementById('rp-confirm').value = '';
+                } else {
+                    toast(data.error || 'Failed to reset password.');
+                }
+            } catch (e) {
+                toast('Failed to reset password.');
+            }
+        }
+
         document.getElementById('btn-restart').addEventListener('click', restartGhost);
         document.getElementById('btn-refresh').addEventListener('click', loadLogs);
         document.getElementById('btn-reset').addEventListener('click', resetSetup);
+        document.getElementById('btn-reset-password').addEventListener('click', resetPassword);
 
         loadStatus();
         loadLogs();

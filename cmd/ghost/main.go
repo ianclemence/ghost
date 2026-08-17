@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -175,6 +176,8 @@ func main() {
 		statusCmd()
 	case "migrate":
 		migrateCmd()
+	case "reset-password":
+		resetPasswordCmd()
 	case "auth":
 		authCmd()
 	case "cron":
@@ -257,6 +260,7 @@ func printHelp() {
 	fmt.Println("  update      Pull latest changes and rebuild")
 	fmt.Println("  updater     Run auto-update daemon")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
+	fmt.Println("  reset-password  Reset the admin dashboard password (requires --force)")
 	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
@@ -935,6 +939,82 @@ func statusCmd() {
 				}
 				fmt.Printf("  %s (%s): %s\n", provider, cred.AuthMethod, status)
 			}
+		}
+	}
+}
+
+func resetPasswordCmd() {
+	force := false
+	for _, arg := range os.Args[2:] {
+		switch arg {
+		case "--force":
+			force = true
+		case "--help", "-h":
+			fmt.Println("Usage: ghost reset-password --force")
+			fmt.Println("  Reset the admin dashboard password. Requires --force.")
+			return
+		default:
+			fmt.Printf("Unknown flag: %s\n", arg)
+			return
+		}
+	}
+
+	if !force {
+		fmt.Println("This resets the admin dashboard password. Use --force to confirm.")
+		return
+	}
+
+	ghostDir := os.Getenv("GHOST_DIR")
+	if ghostDir == "" {
+		ghostDir = appliance.DefaultGhostDir
+	}
+
+	if !appliance.AdminConfigured(ghostDir) {
+		fmt.Println("No admin password is configured yet. Run the setup wizard first.")
+		return
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("New admin password: ")
+	pw1, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("Failed to read password: %v\n", err)
+		os.Exit(1)
+	}
+	pw1 = strings.TrimSpace(pw1)
+
+	fmt.Print("Confirm new admin password: ")
+	pw2, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("Failed to read password: %v\n", err)
+		os.Exit(1)
+	}
+	pw2 = strings.TrimSpace(pw2)
+
+	if pw1 != pw2 {
+		fmt.Println("Passwords do not match.")
+		os.Exit(1)
+	}
+
+	if err := appliance.ValidatePassword(pw1); err != nil {
+		fmt.Printf("Password rejected: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := appliance.SetAdminPassword(ghostDir, pw1); err != nil {
+		fmt.Printf("Failed to set password: %v\n", err)
+		os.Exit(1)
+	}
+
+	logger.InfoCF("auth", "Admin password reset via CLI", nil)
+	fmt.Println("✓ Admin password updated.")
+
+	// Restart the wizard service to invalidate all in-memory sessions.
+	if runtime.GOOS == "linux" {
+		if err := exec.Command("systemctl", "restart", "ghost-firstboot").Run(); err != nil {
+			fmt.Printf("Warning: could not restart ghost-firstboot to invalidate sessions: %v\n", err)
+		} else {
+			fmt.Println("✓ Sessions invalidated (ghost-firstboot restarted).")
 		}
 	}
 }

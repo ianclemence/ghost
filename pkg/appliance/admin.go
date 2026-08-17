@@ -178,3 +178,18 @@ func AdminConfigured(ghostDir string) bool {
 	_, err := os.Stat(AdminHashPath(ghostDir))
 	return err == nil
 }
+
+// RemoveAdminPassword deletes the admin credential and its metadata. It is
+// used to force a fresh setup (factory reset) or to clear a forgotten
+// password so the wizard can re-run. Returns nil if nothing was configured.
+func RemoveAdminPassword(ghostDir string) error {
+	errHash := os.Remove(AdminHashPath(ghostDir))
+	if errHash != nil && !os.IsNotExist(errHash) {
+		return errHash
+	}
+	errMeta := os.Remove(AdminMetaPath(ghostDir))
+	if errMeta != nil && !os.IsNotExist(errMeta) {
+		return errMeta
+	}
+	return nil
+}
