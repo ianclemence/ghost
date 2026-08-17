@@ -170,13 +170,16 @@ install-ghost: build-ghost
 	@sudo cp $(BUILD_DIR)/ghost-updater-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost-updater.new
 	@sudo mv -f /usr/local/bin/ghost-updater.new /usr/local/bin/ghost-updater
 	@sudo chmod +x /usr/local/bin/ghost-update /usr/local/bin/ghost-updater
-	@# Install web console service (alias ghost-firstboot.service for compat)
+	@# Install web console service (ghost-firstboot.service is created as an
+	@# alias symlink by systemctl enable via the Alias= directive below)
 	@sed \
 		-e "s|__GHOST_DIR__|/var/ghost|g" \
 		-e "s|__BIN_DIR__|/usr/local/bin|g" \
 		ghost-web.service.template > ghost-web.service
 	@sudo cp ghost-web.service /etc/systemd/system/ghost-web.service
-	@sudo cp ghost-web.service /etc/systemd/system/ghost-firstboot.service
+	@# Migrate any stale real unit file from the old name so the alias symlink
+	@# created by systemctl enable can take its place.
+	@if [ -e /etc/systemd/system/ghost-firstboot.service ] && [ ! -L /etc/systemd/system/ghost-firstboot.service ]; then sudo rm -f /etc/systemd/system/ghost-firstboot.service; fi
 	@# Install main ghost service
 	@sed \
 		-e "s|__USER__|$(USER)|g" \
