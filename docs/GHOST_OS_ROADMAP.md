@@ -25,14 +25,14 @@ This document outlines the progression from Ghost as a Go binary to a full opera
 
 | Current State | Ready State |
 |--------------|-----------------|
-| User clones repo, runs `setup.sh` | Image is pre-flashed. First boot runs wizard. |
+| User clones repo, runs `setup.sh` | Image is pre-flashed. On first power-on, the setup wizard runs. |
 | `.env` and `config.json` edited by hand | Web-based onboarding at `ghost.local` |
-| Ollama installed separately | Ollama bundled, models pre-cached or downloaded on first boot |
+| Ollama installed separately | Ollama bundled, models pre-cached or downloaded during setup |
 | Ghost started manually or via systemd | Ghost starts automatically, restarts on crash |
 | Updates via `git pull` | OTA updates via secure channel |
 | Storage on SD card | Managed storage with automatic backups |
 
-### First Boot Wizard
+### Setup Wizard
 
 When someone plugs in their Pi:
 
@@ -71,7 +71,7 @@ When someone plugs in their Pi:
    - Health check: if Ghost crashes 3 times in 5 minutes, enter recovery mode
    - Recovery mode: web UI at `ghost.local:8766` showing logs, option to reset config
 
-2. **First-boot wizard skeleton**
+2. **Setup wizard skeleton**
    - Go HTTP server on port 80
    - WiFi scan + connect
    - Set admin password
@@ -92,10 +92,10 @@ Base: Debian 12 (Bookworm) ARM64, minimal
   ├── Boot firmware (Pi 5 specific)
   ├── Ghost Appliance Layer
   │     ├── Ghost binary
-  │     ├── First-boot wizard
+  │     ├── Web console (setup wizard + admin dashboard)
   │     ├── Ollama (pre-installed)
-  │     ├── Web dashboard (embedded in Ghost or separate)
-  │     └── Update daemon
+  │     ├── Update daemon
+  │     └── Read-only root with overlay
   ├── Container runtime (optional, for multi-agent)
   └── Read-only root with overlay
 ```
@@ -132,13 +132,13 @@ Image-based updates using A/B partition scheme:
 2. **Create build script:**
    - Bootstrap minimal Debian ARM64 in a container
    - Install dependencies (Ollama, Go runtime, systemd services)
-   - Install Ghost binary + first-boot wizard
+   - Install Ghost binary + web console (setup wizard + admin dashboard)
    - Configure overlay filesystem
    - Generate `.img` file
 
 3. **Test cycle:**
    - Flash to SD, boot Pi 5
-   - Run through first-boot wizard
+   - Run through the setup wizard
    - Verify Ghost starts, Telegram responds
    - Verify OTA update mechanism
 
@@ -237,7 +237,7 @@ Each "agent" is an isolated Ghost instance with its own memory, skills, and chan
    - Harden existing systemd service
    - Add health check with recovery mode
 
-2. **First-boot wizard skeleton**
+2. **Setup wizard skeleton**
    - Go HTTP server on port 80
    - WiFi scan + connect
    - Set admin password
@@ -255,7 +255,7 @@ Each "agent" is an isolated Ghost instance with its own memory, skills, and chan
 
 2. **Testing**
    - Flash to SD, boot Pi 5
-   - Run first-boot wizard
+   - Run the setup wizard
    - Verify Ghost starts and responds
 
 ---

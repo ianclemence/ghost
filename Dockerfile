@@ -20,7 +20,6 @@ RUN mkdir -p /var/ghost/data /var/ghost/workspace /var/lib/ghost/workspace /etc/
 
 COPY --from=builder /ghost /usr/local/bin/ghost
 COPY --from=builder /ghost-web /usr/local/bin/ghost-web
-RUN ln -s /usr/local/bin/ghost-web /usr/local/bin/ghost-firstboot
 
 COPY config/config.example.json /etc/ghost/config.json
 

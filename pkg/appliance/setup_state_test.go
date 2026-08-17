@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-func TestIsFirstBoot_NoFlagNoConfig(t *testing.T) {
+func TestNeedsSetup_NoFlagNoConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-	fb := &FirstBoot{
+	fb := &SetupState{
 		GhostDir:   filepath.Join(tmpDir, "ghost"),
 		ConfigDir:  filepath.Join(tmpDir, "ghost", "config"),
 		DataDir:    filepath.Join(tmpDir, "ghost", "data"),
@@ -17,18 +17,18 @@ func TestIsFirstBoot_NoFlagNoConfig(t *testing.T) {
 		EnvPath:    filepath.Join(tmpDir, "ghost", ".env"),
 	}
 
-	if !fb.IsFirstBoot() {
-		t.Fatal("expected first boot when no flag and no config")
+	if !fb.NeedsSetup() {
+		t.Fatal("expected setup when no flag and no config")
 	}
 }
 
-func TestIsFirstBoot_WithFlag(t *testing.T) {
+func TestNeedsSetup_WithFlag(t *testing.T) {
 	tmpDir := t.TempDir()
 	ghostDir := filepath.Join(tmpDir, "ghost")
 	os.MkdirAll(ghostDir, 0755)
 	os.WriteFile(filepath.Join(ghostDir, SetupCompleteFlag), []byte("done"), 0644)
 
-	fb := &FirstBoot{
+	fb := &SetupState{
 		GhostDir:   ghostDir,
 		ConfigDir:  filepath.Join(ghostDir, "config"),
 		DataDir:    filepath.Join(ghostDir, "data"),
@@ -37,8 +37,8 @@ func TestIsFirstBoot_WithFlag(t *testing.T) {
 		EnvPath:    filepath.Join(ghostDir, ".env"),
 	}
 
-	if fb.IsFirstBoot() {
-		t.Fatal("expected NOT first boot when flag exists")
+	if fb.NeedsSetup() {
+		t.Fatal("expected NOT setup when flag exists")
 	}
 }
 
@@ -47,7 +47,7 @@ func TestMarkSetupComplete(t *testing.T) {
 	ghostDir := filepath.Join(tmpDir, "ghost")
 	os.MkdirAll(ghostDir, 0755)
 
-	fb := &FirstBoot{
+	fb := &SetupState{
 		GhostDir:   ghostDir,
 		ConfigDir:  filepath.Join(ghostDir, "config"),
 		DataDir:    filepath.Join(ghostDir, "data"),
@@ -65,8 +65,8 @@ func TestMarkSetupComplete(t *testing.T) {
 		t.Fatal("setup-complete flag was not created")
 	}
 
-	if fb.IsFirstBoot() {
-		t.Fatal("IsFirstBoot should return false after MarkSetupComplete")
+	if fb.NeedsSetup() {
+		t.Fatal("NeedsSetup should return false after MarkSetupComplete")
 	}
 }
 
@@ -75,7 +75,7 @@ func TestResetSetup(t *testing.T) {
 	ghostDir := filepath.Join(tmpDir, "ghost")
 	os.MkdirAll(ghostDir, 0755)
 
-	fb := &FirstBoot{
+	fb := &SetupState{
 		GhostDir:   ghostDir,
 		ConfigDir:  filepath.Join(ghostDir, "config"),
 		DataDir:    filepath.Join(ghostDir, "data"),
@@ -85,13 +85,13 @@ func TestResetSetup(t *testing.T) {
 	}
 
 	fb.MarkSetupComplete()
-	if fb.IsFirstBoot() {
-		t.Fatal("expected NOT first boot after mark")
+	if fb.NeedsSetup() {
+		t.Fatal("expected NOT setup after mark")
 	}
 
 	fb.ResetSetup()
-	if !fb.IsFirstBoot() {
-		t.Fatal("expected first boot after reset")
+	if !fb.NeedsSetup() {
+		t.Fatal("expected setup after reset")
 	}
 }
 
@@ -99,7 +99,7 @@ func TestEnsureDirectories(t *testing.T) {
 	tmpDir := t.TempDir()
 	ghostDir := filepath.Join(tmpDir, "ghost")
 
-	fb := &FirstBoot{
+	fb := &SetupState{
 		GhostDir:   ghostDir,
 		ConfigDir:  filepath.Join(ghostDir, "config"),
 		DataDir:    filepath.Join(ghostDir, "data"),
@@ -132,7 +132,7 @@ func TestSetupCompleteTransition(t *testing.T) {
 	tmpDir := t.TempDir()
 	ghostDir := filepath.Join(tmpDir, "ghost")
 
-	fb := &FirstBoot{
+	fb := &SetupState{
 		GhostDir:   ghostDir,
 		ConfigDir:  filepath.Join(ghostDir, "config"),
 		DataDir:    filepath.Join(ghostDir, "data"),
@@ -143,14 +143,14 @@ func TestSetupCompleteTransition(t *testing.T) {
 
 	fb.EnsureDirectories()
 
-	if !fb.IsFirstBoot() {
-		t.Fatal("expected first boot initially")
+	if !fb.NeedsSetup() {
+		t.Fatal("expected setup initially")
 	}
 
 	fb.MarkSetupComplete()
 
-	if fb.IsFirstBoot() {
-		t.Fatal("expected NOT first boot after setup complete")
+	if fb.NeedsSetup() {
+		t.Fatal("expected NOT setup after setup complete")
 	}
 
 	flagPath := filepath.Join(ghostDir, SetupCompleteFlag)
@@ -168,7 +168,7 @@ func TestSetupCompleteIdempotent(t *testing.T) {
 	ghostDir := filepath.Join(tmpDir, "ghost")
 	os.MkdirAll(ghostDir, 0755)
 
-	fb := &FirstBoot{
+	fb := &SetupState{
 		GhostDir:   ghostDir,
 		ConfigDir:  filepath.Join(ghostDir, "config"),
 		DataDir:    filepath.Join(ghostDir, "data"),
@@ -180,7 +180,7 @@ func TestSetupCompleteIdempotent(t *testing.T) {
 	fb.MarkSetupComplete()
 	fb.MarkSetupComplete()
 
-	if fb.IsFirstBoot() {
-		t.Fatal("expected NOT first boot after double mark")
+	if fb.NeedsSetup() {
+		t.Fatal("expected NOT setup after double mark")
 	}
 }

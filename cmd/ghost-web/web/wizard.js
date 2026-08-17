@@ -69,7 +69,7 @@
         try { status = await (await fetch('/api/status')).json(); } catch (e) {}
 
         if (!status) { goto('already'); return; }
-        if (status.first_boot || !status.admin_configured) {
+        if (status.needs_setup || !status.admin_configured) {
             goto('welcome');
         } else if (status.force) {
             goto('login');

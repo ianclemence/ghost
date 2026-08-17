@@ -114,7 +114,7 @@ After reboot, open `http://<pi-ip>` on your phone to complete setup:
 
 ### How setup works
 
-**First boot:** `ghost-web.service` starts the setup wizard on port 80 and
+**Before setup:** `ghost-web.service` starts the setup wizard on port 80 and
 opens the firewall for it. Completing the wizard:
 1. Writes `/var/ghost/.setup-complete`
 2. Starts the `ghost` service (port 8766)
@@ -239,7 +239,7 @@ chmod +x setup.sh
 | `ghost skills` | Manage skills |
 | `ghost version` | Show version info |
 
-### First Boot
+### Setup
 
 | Command | Description |
 |---------|-------------|

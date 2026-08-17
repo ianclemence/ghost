@@ -626,10 +626,10 @@ func gatewayCmd() {
 		return
 	}
 
-	// Check if first boot is needed
-	fb := appliance.NewFirstBoot()
-	if fb.IsFirstBoot() {
-		fmt.Println("👋 First boot detected. Starting setup wizard...")
+	// Check if setup is needed
+	fb := appliance.NewSetupState()
+	if fb.NeedsSetup() {
+		fmt.Println("👋 Setup needed. Starting setup wizard...")
 		// The web console should be running separately
 		// If we get here without setup, show error and exit
 		fmt.Println("Please run ghost-web to complete setup, or set GHOST_RECOVERY_MODE=1 for recovery.")

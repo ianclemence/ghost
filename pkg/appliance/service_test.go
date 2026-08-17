@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestFirstbootServiceTemplate(t *testing.T) {
+func TestWebServiceTemplate(t *testing.T) {
 	data, err := os.ReadFile("../../ghost-web.service.template")
 	if err != nil {
 		t.Fatalf("failed to read web console service template: %v", err)
@@ -44,14 +44,14 @@ func TestFirstbootServiceTemplate(t *testing.T) {
 		t.Error("web console service should be wanted by multi-user.target")
 	}
 
-	// Verify the legacy alias is preserved for compatibility
-	if !strings.Contains(content, "Alias=ghost-firstboot.service") {
-		t.Error("web console service should alias ghost-firstboot.service for compatibility")
-	}
-
 	// Verify the ExecStart points at the new binary name
 	if !strings.Contains(content, "ghost-web") {
 		t.Error("web console service ExecStart should reference ghost-web")
+	}
+
+	// Verify no legacy alias remains (fully removed)
+	if strings.Contains(content, "ghost-firstboot") {
+		t.Error("web console service should not reference the legacy ghost-firstboot alias")
 	}
 }
 

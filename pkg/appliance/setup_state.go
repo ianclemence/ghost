@@ -18,8 +18,8 @@ const (
 	DefaultWorkspace  = "/var/ghost/workspace"
 )
 
-// FirstBoot detects whether Ghost has been configured.
-type FirstBoot struct {
+// SetupState detects whether Ghost has been configured.
+type SetupState struct {
 	GhostDir   string
 	ConfigDir  string
 	DataDir    string
@@ -28,14 +28,14 @@ type FirstBoot struct {
 	EnvPath    string
 }
 
-// NewFirstBoot creates a FirstBoot with default paths.
-func NewFirstBoot() *FirstBoot {
+// NewSetupState creates a SetupState with default paths.
+func NewSetupState() *SetupState {
 	ghostDir := os.Getenv("GHOST_DIR")
 	if ghostDir == "" {
 		ghostDir = DefaultGhostDir
 	}
 
-	return &FirstBoot{
+	return &SetupState{
 		GhostDir:   ghostDir,
 		ConfigDir:  filepath.Join(ghostDir, "config"),
 		DataDir:    filepath.Join(ghostDir, "data"),
@@ -45,8 +45,8 @@ func NewFirstBoot() *FirstBoot {
 	}
 }
 
-// IsFirstBoot returns true if Ghost has not been configured yet.
-func (fb *FirstBoot) IsFirstBoot() bool {
+// NeedsSetup returns true if Ghost has not been configured yet.
+func (fb *SetupState) NeedsSetup() bool {
 	// Check 1: setup-complete flag file
 	flagPath := filepath.Join(fb.GhostDir, SetupCompleteFlag)
 	if _, err := os.Stat(flagPath); err == nil {
@@ -65,20 +65,20 @@ func (fb *FirstBoot) IsFirstBoot() bool {
 }
 
 // MarkSetupComplete writes the flag file to indicate setup is done.
-func (fb *FirstBoot) MarkSetupComplete() error {
+func (fb *SetupState) MarkSetupComplete() error {
 	flagPath := filepath.Join(fb.GhostDir, SetupCompleteFlag)
 	return os.WriteFile(flagPath, []byte("setup complete\n"), 0644)
 }
 
 // ResetSetup removes the flag file and resets config to defaults.
-func (fb *FirstBoot) ResetSetup() error {
+func (fb *SetupState) ResetSetup() error {
 	flagPath := filepath.Join(fb.GhostDir, SetupCompleteFlag)
 	os.Remove(flagPath)
 	return nil
 }
 
 // EnsureDirectories creates the required directory structure.
-func (fb *FirstBoot) EnsureDirectories() error {
+func (fb *SetupState) EnsureDirectories() error {
 	dirs := []string{
 		fb.GhostDir,
 		fb.ConfigDir,

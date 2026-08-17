@@ -10,7 +10,6 @@ build/
 /ghost
 /ghost-test
 /ghost-web
-/ghost-firstboot
 cmd/ghost/workspace
 
 # Ghost specific
@@ -21,7 +20,6 @@ build/
 tmp/
 ghost.service
 ghost-web.service
-ghost-firstboot.service
 
 # Coverage
 coverage.txt

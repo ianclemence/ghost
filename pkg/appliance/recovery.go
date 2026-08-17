@@ -174,7 +174,7 @@ func (rs *RecoveryServer) handleReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fb := NewFirstBoot()
+	fb := NewSetupState()
 	fb.GhostDir = rs.GhostDir
 	if err := fb.ResetSetup(); err != nil {
 		http.Error(w, `{"error":"failed to reset"}`, http.StatusInternalServerError)
@@ -590,7 +590,7 @@ const recoveryHTML = `<!DOCTYPE html>
         async function resetSetup() {
             var yes = await confirmModal('Reset setup?', 'This erases all configuration and memory. It cannot be undone.', 'Reset');
             if (!yes) return;
-            var sure = await confirmModal('Are you absolutely sure?', 'Every setting, channel and memory will be lost. Your Ghost returns to first boot.', 'Erase everything');
+            var sure = await confirmModal('Are you absolutely sure?', 'Every setting, channel and memory will be lost. Your Ghost returns to an unconfigured state.', 'Erase everything');
             if (!sure) return;
             try {
                 var res = await fetch('/api/reset', { method: 'POST' });

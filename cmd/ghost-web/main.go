@@ -30,7 +30,7 @@ var webFiles embed.FS
 
 var (
 	version = "dev"
-	fb      *appliance.FirstBoot
+	fb      *appliance.SetupState
 	// waitingOnSystemd is true when running in -wait mode under the
 	// ghost-web.service unit, whose ExecStartPost starts the ghost
 	// service. When false, handleConfigure must start ghost itself.
@@ -225,7 +225,7 @@ func main() {
 	flag.Parse()
 
 	forceMode = *forceFlag
-	fb = appliance.NewFirstBoot()
+	fb = appliance.NewSetupState()
 	fb.GhostDir = *ghostDir
 	fb.ConfigDir = filepath.Join(*ghostDir, "config")
 	fb.DataDir = filepath.Join(*ghostDir, "data")
@@ -233,10 +233,10 @@ func main() {
 	fb.ConfigPath = filepath.Join(*ghostDir, "config", "config.json")
 	fb.EnvPath = filepath.Join(*ghostDir, ".env")
 
-	// Check if first boot is needed
-	if !*forceFlag && !fb.IsFirstBoot() {
+	// Check if setup is needed
+	if !*forceFlag && !fb.NeedsSetup() {
 		flagPath := filepath.Join(fb.GhostDir, appliance.SetupCompleteFlag)
-		log.Println("Setup already complete. The wizard only runs on first boot.")
+		log.Println("Setup already complete. The wizard only runs before setup.")
 		log.Println("To re-open the wizard, run with -force, or remove " + flagPath + " and restart the ghost-web service.")
 		os.Exit(0)
 	}
@@ -475,7 +475,7 @@ func handleConnectWiFi(w http.ResponseWriter, r *http.Request) {
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"first_boot":        fb.IsFirstBoot(),
+		"needs_setup":       fb.NeedsSetup(),
 		"admin_configured":  appliance.AdminConfigured(fb.GhostDir),
 		"force":             forceMode,
 		"version":           version,
@@ -575,7 +575,7 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// If an admin password already exists, re-running setup requires an
-	// authenticated session AND the current password. Fresh first-boot runs
+	// authenticated session AND the current password. Fresh setup runs
 	// (or a migration with no password yet) only need the new password.
 	if appliance.AdminConfigured(fb.GhostDir) {
 		if !sessions.valid(sessionToken(r)) {

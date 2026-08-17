@@ -1,4 +1,4 @@
-.PHONY: all build install uninstall clean help test install-service build-ghost rebuild-web rebuild-firstboot
+.PHONY: all build install uninstall clean help test install-service build-ghost rebuild-web
 
 # Build variables
 BINARY_NAME=ghost
@@ -112,7 +112,6 @@ install: build
 	@# The binary cannot be overwritten while it is being executed by systemd.
 	@sudo systemctl stop ghost 2>/dev/null || true
 	@sudo systemctl stop ghost-web 2>/dev/null || true
-	@sudo systemctl stop ghost-firstboot 2>/dev/null || true
 	@rm -f $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@cp $(BINARY_PATH) $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME)
@@ -147,7 +146,6 @@ install-ghost: build-ghost
 	@# Stop services before replacing binaries
 	@sudo systemctl stop ghost 2>/dev/null || true
 	@sudo systemctl stop ghost-web 2>/dev/null || true
-	@sudo systemctl stop ghost-firstboot 2>/dev/null || true
 	@sudo mkdir -p /var/ghost/config /var/ghost/data /var/ghost/workspace
 	@sudo mkdir -p $(WORKSPACE_DIR)
 	@# Copy to temp then rename so a running 'ghost update' binary can be replaced (ETXTBSY)
@@ -156,8 +154,6 @@ install-ghost: build-ghost
 	@sudo cp $(BUILD_DIR)/$(WEB_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(WEB_NAME).new
 	@sudo mv -f /usr/local/bin/$(WEB_NAME).new /usr/local/bin/$(WEB_NAME)
 	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(WEB_NAME)
-	@# Legacy alias so existing scripts and docs keep working during the transition
-	@sudo ln -sf /usr/local/bin/$(WEB_NAME) /usr/local/bin/ghost-firstboot
 	@sudo chown -R $(USER):$(USER) /var/ghost
 	@sudo chown -R $(USER):$(USER) /var/lib/ghost
 	@# Build and deploy update tooling
@@ -170,16 +166,12 @@ install-ghost: build-ghost
 	@sudo cp $(BUILD_DIR)/ghost-updater-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost-updater.new
 	@sudo mv -f /usr/local/bin/ghost-updater.new /usr/local/bin/ghost-updater
 	@sudo chmod +x /usr/local/bin/ghost-update /usr/local/bin/ghost-updater
-	@# Install web console service (ghost-firstboot.service is created as an
-	@# alias symlink by systemctl enable via the Alias= directive below)
+	@# Install web console service
 	@sed \
 		-e "s|__GHOST_DIR__|/var/ghost|g" \
 		-e "s|__BIN_DIR__|/usr/local/bin|g" \
 		ghost-web.service.template > ghost-web.service
 	@sudo cp ghost-web.service /etc/systemd/system/ghost-web.service
-	@# Migrate any stale real unit file from the old name so the alias symlink
-	@# created by systemctl enable can take its place.
-	@if [ -e /etc/systemd/system/ghost-firstboot.service ] && [ ! -L /etc/systemd/system/ghost-firstboot.service ]; then sudo rm -f /etc/systemd/system/ghost-firstboot.service; fi
 	@# Install main ghost service
 	@sed \
 		-e "s|__USER__|$(USER)|g" \
@@ -206,14 +198,8 @@ install-ghost: build-ghost
 rebuild-web:
 	@echo "Rebuilding web console..."
 	@sudo systemctl stop ghost-web 2>/dev/null || true
-	@sudo systemctl stop ghost-firstboot 2>/dev/null || true
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(WEB_NAME)-$(PLATFORM)-$(ARCH) ./$(WEB_DIR)
 	@sudo cp $(BUILD_DIR)/$(WEB_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(WEB_NAME)
-	@sudo ln -sf /usr/local/bin/$(WEB_NAME) /usr/local/bin/ghost-firstboot
 	@sudo systemctl daemon-reload
 	@sudo systemctl restart ghost-web
 	@echo "Web console rebuilt and restarted"
-
-## rebuild-firstboot: Compatibility alias for rebuild-web
-rebuild-firstboot: rebuild-web
-	@true

@@ -61,7 +61,7 @@ func TestMaskKey(t *testing.T) {
 
 func TestUpdateEnvFile(t *testing.T) {
 	if fb == nil {
-		fb = &appliance.FirstBoot{}
+		fb = &appliance.SetupState{}
 	}
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")

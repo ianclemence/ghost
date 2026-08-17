@@ -26,4 +26,3 @@ SyslogIdentifier=ghost-web
 
 [Install]
 WantedBy=multi-user.target
-Alias=ghost-firstboot.service
