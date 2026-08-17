@@ -21,6 +21,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/skills"
 )
 
 // updateState tracks an in-flight "ghost update" run so the UI can poll it.
@@ -1173,6 +1174,7 @@ func handleSkillsList(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "skills": []map[string]string{}})
 		return
 	}
+	manifest, _ := skills.LoadManifest(skillsDir)
 	skills := []map[string]string{}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -1188,7 +1190,13 @@ func handleSkillsList(w http.ResponseWriter, r *http.Request) {
 		if len(desc) > 120 {
 			desc = desc[:120] + "..."
 		}
-		skills = append(skills, map[string]string{"name": name, "description": desc})
+		entry, bundled := manifest.Skills[name]
+		skills = append(skills, map[string]string{
+			"name":         name,
+			"description":  desc,
+			"bundled":      strconv.FormatBool(bundled),
+			"user_modified": strconv.FormatBool(bundled && entry.UserModified),
+		})
 	}
 	sort.Slice(skills, func(i, j int) bool { return skills[i]["name"] < skills[j]["name"] })
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "skills": skills})
@@ -1379,6 +1387,138 @@ func handleSkillToggle(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Skill disabled"})
 	}
+}
+
+// bundledSkillsSourceDir resolves where the bundled skills live for this
+// appliance. Overridable for testing and for setups where the bundled copy is
+// kept separately from the runtime workspace.
+func bundledSkillsSourceDir() string {
+	if d := os.Getenv("GHOST_BUNDLED_SKILLS"); d != "" {
+		return d
+	}
+	return filepath.Join(fb.GhostDir, "workspace", "skills")
+}
+
+func handleSkillsSync(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	src := bundledSkillsSourceDir()
+	if _, err := os.Stat(filepath.Join(src, "SKILL.md")); err != nil {
+		// No skill files at the root means the bundled source is either absent
+		// or (device layout) identical to the runtime dir. In the identical
+		// case a full sync still makes sense to reconcile the manifest.
+		_ = err
+	}
+	report, err := skills.SyncBundled(src, workspaceSkillsDir())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "report": report})
+}
+
+func handleSkillRead(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	name := r.URL.Query().Get("name")
+	skillsDir := workspaceSkillsDir()
+	skillDir := filepath.Join(skillsDir, name)
+	if !strings.HasPrefix(skillDir, skillsDir) || name == "" || strings.Contains(name, "..") {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid skill name"})
+		return
+	}
+	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "skill not found"})
+		return
+	}
+	manifest, _ := skills.LoadManifest(skillsDir)
+	entry, bundled := manifest.Skills[name]
+	files := []map[string]string{}
+	_ = filepath.Walk(skillDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if info.Name() == skills.BundledManifestFile {
+			return nil
+		}
+		rel, err := filepath.Rel(skillDir, path)
+		if err != nil {
+			return nil
+		}
+		b, _ := os.ReadFile(path)
+		files = append(files, map[string]string{"path": filepath.ToSlash(rel), "content": string(b)})
+		return nil
+	})
+	sort.Slice(files, func(i, j int) bool { return files[i]["path"] < files[j]["path"] })
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":            true,
+		"name":          name,
+		"bundled":       bundled,
+		"user_modified": bundled && entry.UserModified,
+		"files":         files,
+	})
+}
+
+func handleSkillSave(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Name  string `json:"name"`
+		Files []struct {
+			Path    string `json:"path"`
+			Content string `json:"content"`
+		} `json:"files"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+	skillsDir := workspaceSkillsDir()
+	skillDir := filepath.Join(skillsDir, req.Name)
+	if !strings.HasPrefix(skillDir, skillsDir) || req.Name == "" || strings.Contains(req.Name, "..") {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid skill name"})
+		return
+	}
+	for _, f := range req.Files {
+		target := filepath.Join(skillDir, filepath.FromSlash(f.Path))
+		if !strings.HasPrefix(target, skillDir) {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid file path"})
+			return
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		if err := os.WriteFile(target, []byte(f.Content), 0644); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+	}
+	// Editing marks the skill as user-modified: future bundled syncs will
+	// never overwrite it.
+	if err := skills.MarkUserModified(skillsDir, req.Name); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Skill saved"})
 }
 
 func handleClawHubSearch(w http.ResponseWriter, r *http.Request) {

@@ -68,6 +68,9 @@ workspace/knowledge/logs/errors.md
 workspace/knowledge/ops/inbox.md
 workspace/knowledge/ops/tasks.md
 
+# Bundled-skills manifest — runtime state tracking user edits vs origin
+**/.bundled_manifest
+
 # SQLite Database
 *.db
 *.db-shm

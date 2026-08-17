@@ -214,6 +214,9 @@ func main() {
 			skillsRemoveCmd(installer, os.Args[3])
 		case "install-builtin":
 			skillsInstallBuiltinCmd(workspace)
+		case "sync":
+			syncEmbeddedSkills(workspace)
+			fmt.Println("\n✓ Bundled skills synced (user-modified skills were preserved).")
 		case "list-builtin":
 			skillsListBuiltinCmd()
 		case "search":
@@ -307,6 +310,15 @@ func copyEmbeddedToTarget(targetDir string) error {
 			return nil
 		}
 
+		// Bundled skills are managed by the manifest-aware sync, never by a
+		// blind overwrite here (that would stomp user edits).
+		if strings.HasPrefix(path, "workspace/skills/") {
+			return nil
+		}
+		if d.Name() == skills.BundledManifestFile {
+			return nil
+		}
+
 		// Read embedded file
 		data, err := embeddedFiles.ReadFile(path)
 		if err != nil {
@@ -341,6 +353,33 @@ func createWorkspaceTemplates(workspace string) {
 	err := copyEmbeddedToTarget(workspace)
 	if err != nil {
 		fmt.Printf("Error copying workspace templates: %v\n", err)
+	}
+	syncEmbeddedSkills(workspace)
+}
+
+// syncEmbeddedSkills seeds or refreshes bundled skills from the embedded
+// workspace into the runtime workspace, manifest-aware: new bundled skills are
+// copied in, unchanged ones receive upstream updates, and skills the user has
+// edited are never overwritten.
+func syncEmbeddedSkills(workspace string) {
+	sub, err := fs.Sub(embeddedFiles, "workspace/skills")
+	if err != nil {
+		fmt.Printf("Error loading bundled skills: %v\n", err)
+		return
+	}
+	report, err := skills.SyncBundledFromFS(sub, filepath.Join(workspace, "skills"))
+	if err != nil {
+		fmt.Printf("Error syncing bundled skills: %v\n", err)
+		return
+	}
+	if len(report.Seeded) > 0 {
+		fmt.Printf("  • Seeded bundled skills: %s\n", strings.Join(report.Seeded, ", "))
+	}
+	if len(report.Updated) > 0 {
+		fmt.Printf("  • Updated bundled skills: %s\n", strings.Join(report.Updated, ", "))
+	}
+	if len(report.UserModified) > 0 {
+		fmt.Printf("  • Preserved user-modified skills: %s\n", strings.Join(report.UserModified, ", "))
 	}
 }
 
@@ -618,6 +657,10 @@ func gatewayCmd() {
 
 	msgBus := bus.NewMessageBus()
 	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
+
+	// Sync bundled skills before starting so devices pick up new bundled
+	// skills after updates without ever stomping user edits.
+	syncEmbeddedSkills(cfg.WorkspacePath())
 
 	// Print agent startup info
 	fmt.Println("\n📦 Agent Status:")

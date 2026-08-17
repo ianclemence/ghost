@@ -212,169 +212,315 @@ const recoveryHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#17130f">
     <title>Ghost Recovery Mode</title>
     <style>
+        :root {
+            --bg: #17130f;
+            --surface: #241e17;
+            --surface-2: #2b241b;
+            --ink: #f1e9dc;
+            --muted: #a3927f;
+            --ember: #ffb45c;
+            --sage: #86b28f;
+            --clay: #e08667;
+            --danger: #ff7b6b;
+            --line: rgba(241, 233, 220, 0.08);
+            --ring: rgba(255, 180, 92, 0.35);
+            --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+            --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+            --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px;
+            --r-card: 16px; --r-field: 10px;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
-            background: #09090b;
-            color: #e4e4e7;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background:
+                radial-gradient(80% 50% at 50% 0%, rgba(255, 180, 92, 0.06), transparent 70%),
+                var(--bg);
+            color: var(--ink);
             min-height: 100vh;
-            padding: 20px;
+            padding: var(--s-6) var(--s-4) calc(var(--s-7) + env(safe-area-inset-bottom));
         }
-        .container { max-width: 800px; margin: 0 auto; }
-        h1 {
-            font-size: 24px;
-            margin-bottom: 8px;
-            color: #ef4444;
+        .container { max-width: 720px; margin: 0 auto; }
+
+        .brand {
+            display: flex; align-items: center; gap: var(--s-3);
+            font-weight: 650; letter-spacing: -0.01em; font-size: 18px;
+            margin-bottom: var(--s-2);
         }
-        .subtitle {
-            color: #71717a;
-            margin-bottom: 24px;
-            font-size: 14px;
+        .brand .badge {
+            font-size: 12px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.06em; color: var(--ember);
+            border: 1px solid rgba(255, 180, 92, 0.4);
+            border-radius: 999px; padding: 2px 10px;
         }
+        .subtitle { color: var(--muted); font-size: 15px; margin-bottom: var(--s-5); }
+
+        .ember {
+            position: relative; width: 14px; height: 14px; border-radius: 50%;
+            background: var(--ember);
+            box-shadow: 0 0 10px rgba(255, 180, 92, 0.65), 0 0 26px rgba(255, 180, 92, 0.3);
+            animation: breathe 4.2s var(--ease-in-out) infinite;
+            flex-shrink: 0;
+        }
+        .ember.ember--off { animation: none; background: var(--danger); box-shadow: 0 0 10px rgba(255, 123, 107, 0.5); }
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.15); opacity: 0.8; }
+        }
+
         .card {
-            background: #18181b;
-            border: 1px solid #27272a;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 16px;
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: var(--r-card);
+            padding: var(--s-5);
+            margin-bottom: var(--s-4);
         }
         .card h2 {
-            font-size: 16px;
-            margin-bottom: 12px;
-            color: #a1a1aa;
+            font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
+            margin-bottom: var(--s-4); display: flex; align-items: center; gap: var(--s-2);
         }
         .status-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: var(--s-3);
         }
         .status-item {
-            background: #09090b;
-            padding: 12px;
-            border-radius: 6px;
+            background: var(--surface-2);
+            border: 1px solid var(--line);
+            border-radius: var(--r-field);
+            padding: var(--s-3);
         }
         .status-item .label {
-            font-size: 12px;
-            color: #71717a;
-            text-transform: uppercase;
+            font-size: 11px; color: var(--muted); text-transform: uppercase;
+            letter-spacing: 0.06em;
         }
         .status-item .value {
-            font-size: 18px;
-            font-weight: bold;
-            margin-top: 4px;
+            font-size: 18px; font-weight: 650; margin-top: 2px;
         }
-        .status-item .value.ok { color: #4ade80; }
-        .status-item .value.error { color: #ef4444; }
-        .status-item .value.warning { color: #fbbf24; }
+        .status-item .value.ok { color: var(--sage); }
+        .status-item .value.error { color: var(--danger); }
+        .status-item .value.warning { color: var(--ember); }
+
+        .actions { display: flex; flex-wrap: wrap; gap: var(--s-3); }
         .btn {
-            background: #27272a;
-            color: #e4e4e7;
-            border: 1px solid #3f3f46;
-            padding: 10px 20px;
-            border-radius: 6px;
+            font: inherit; font-size: 15px; font-weight: 600;
+            color: var(--ink); background: var(--surface-2);
+            border: 1px solid var(--line);
+            border-radius: var(--r-field);
+            padding: 11px 18px;
             cursor: pointer;
+            transition: transform 120ms var(--ease-out), background-color 150ms var(--ease-out), border-color 150ms var(--ease-out), color 150ms var(--ease-out);
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn.primary {
+            background: var(--ember); border-color: transparent; color: #1d1510;
+        }
+        .btn.primary:hover { background: #ffc47e; }
+        .btn.danger {
+            background: transparent; border-color: rgba(255, 123, 107, 0.5); color: var(--danger);
+        }
+        .btn.danger:hover { background: rgba(255, 123, 107, 0.12); border-color: var(--danger); }
+        .btn:hover:not(.primary):not(.danger) { background: #342c22; border-color: rgba(241, 233, 220, 0.16); }
+        .btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+        .btn:disabled { opacity: 0.5; cursor: default; }
+
+        .log-box {
+            background: #12100d;
+            border: 1px solid var(--line);
+            border-radius: var(--r-field);
+            padding: var(--s-3) var(--s-4);
+            font-family: ui-monospace, "SF Mono", "Cascadia Code", "Menlo", "Courier New", monospace;
+            font-size: 12px; line-height: 1.55;
+            max-height: 420px; overflow-y: auto;
+            color: #cdbfa8;
+            white-space: pre-wrap; word-break: break-word;
+        }
+
+        .toast {
+            position: fixed; left: 50%; bottom: 24px;
+            transform: translateX(-50%) translateY(16px);
+            background: var(--surface-2); color: var(--ink);
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 12px 20px;
             font-size: 14px;
-            margin-right: 8px;
-            margin-bottom: 8px;
+            opacity: 0;
+            transition: transform 220ms var(--ease-out), opacity 220ms var(--ease-out);
+            pointer-events: none;
+            z-index: 50;
+            max-width: min(92vw, 520px);
+            text-align: center;
         }
-        .btn:hover { background: #3f3f46; }
-        .btn.danger { border-color: #ef4444; color: #ef4444; }
-        .btn.danger:hover { background: #ef4444; color: white; }
-        .btn.primary { border-color: #4ade80; color: #4ade80; }
-        .btn.primary:hover { background: #4ade80; color: #09090b; }
-        pre {
-            background: #09090b;
-            padding: 12px;
-            border-radius: 6px;
-            overflow-x: auto;
-            font-size: 12px;
-            line-height: 1.5;
-            max-height: 400px;
-            overflow-y: auto;
-            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+        .modal-backdrop {
+            position: fixed; inset: 0; z-index: 40;
+            background: rgba(10, 8, 6, 0.6);
+            display: flex; align-items: center; justify-content: center;
+            padding: var(--s-4);
+            animation: fade-in 160ms var(--ease-out);
         }
-        .loading { color: #71717a; }
+        .modal {
+            background: var(--surface-2);
+            border: 1px solid var(--line);
+            border-radius: var(--r-card);
+            padding: var(--s-5);
+            width: 100%; max-width: 380px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            animation: modal-in 220ms var(--ease-out);
+        }
+        .modal h3 { font-size: 17px; letter-spacing: -0.01em; margin-bottom: var(--s-2); }
+        .modal p { color: var(--muted); font-size: 14px; line-height: 1.5; margin-bottom: var(--s-5); }
+        .modal .actions { display: flex; gap: var(--s-3); justify-content: flex-end; }
+        @keyframes fade-in { from { opacity: 0; } }
+        @keyframes modal-in {
+            from { opacity: 0; transform: translateY(10px) scale(0.98); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .ember, .toast, .modal, .modal-backdrop, .btn { animation: none; transition: none; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Ghost Recovery Mode</h1>
-        <p class="subtitle">Something went wrong. Use this panel to diagnose and fix the issue.</p>
+        <div class="brand"><span class="ember" id="orb" aria-hidden="true"></span>Ghost<span class="badge">Recovery</span></div>
+        <p class="subtitle">Something went wrong. Use this panel to look, then fix.</p>
 
         <div class="card">
-            <h2>System Status</h2>
+            <h2>System status</h2>
             <div class="status-grid" id="status">
-                <div class="status-item">
-                    <div class="label">Status</div>
-                    <div class="value loading">Loading...</div>
-                </div>
+                <div class="status-item"><div class="label">Checking</div><div class="value">&hellip;</div></div>
             </div>
         </div>
 
         <div class="card">
             <h2>Actions</h2>
-            <button class="btn primary" onclick="restartGhost()">Restart Ghost</button>
-            <button class="btn" onclick="loadLogs()">Refresh Logs</button>
-            <button class="btn danger" onclick="resetSetup()">Reset Setup</button>
+            <div class="actions">
+                <button class="btn primary" id="btn-restart" type="button">Restart Ghost</button>
+                <button class="btn" id="btn-refresh" type="button">Refresh logs</button>
+                <button class="btn danger" id="btn-reset" type="button">Reset setup</button>
+            </div>
         </div>
 
         <div class="card">
             <h2>Logs</h2>
-            <pre id="logs">Loading logs...</pre>
+            <div class="log-box" id="logs">Loading logs&hellip;</div>
         </div>
     </div>
 
     <script>
+        var toastTimer = null;
+        function toast(message, ok) {
+            var el = document.getElementById('toast');
+            if (!el) {
+                el = document.createElement('div');
+                el.className = 'toast';
+                el.id = 'toast';
+                document.body.appendChild(el);
+            }
+            el.textContent = message;
+            requestAnimationFrame(function () { el.classList.add('show'); });
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(function () { el.classList.remove('show'); }, ok ? 2600 : 5000);
+        }
+
+        function confirmModal(title, body, okLabel) {
+            return new Promise(function (resolve) {
+                var backdrop = document.createElement('div');
+                backdrop.className = 'modal-backdrop';
+                backdrop.innerHTML = '<div class="modal" role="alertdialog" aria-modal="true">' +
+                    '<h3>' + title + '</h3><p>' + body + '</p>' +
+                    '<div class="actions">' +
+                    '<button class="btn" data-cancel type="button">Cancel</button>' +
+                    '<button class="btn danger" data-ok type="button">' + okLabel + '</button></div></div>';
+                var close = function (val) {
+                    document.removeEventListener('keydown', onKey);
+                    backdrop.remove();
+                    resolve(val);
+                };
+                var onKey = function (e) { if (e.key === 'Escape') close(false); };
+                backdrop.addEventListener('click', function (e) { if (e.target === backdrop) close(false); });
+                backdrop.querySelector('[data-cancel]').addEventListener('click', function () { close(false); });
+                backdrop.querySelector('[data-ok]').addEventListener('click', function () { close(true); });
+                document.addEventListener('keydown', onKey);
+                document.body.appendChild(backdrop);
+                backdrop.querySelector('[data-ok]').focus();
+            });
+        }
+
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
         async function loadStatus() {
             try {
-                const res = await fetch('/api/status');
-                const data = await res.json();
-                var runningClass = data.ghost_running ? 'ok' : 'error';
-                var runningText = data.ghost_running ? 'Yes' : 'No';
-                var configClass = data.config_exists ? 'ok' : 'warning';
-                var configText = data.config_exists ? 'Yes' : 'No';
-                var version = data.version || 'unknown';
-                document.getElementById('status').innerHTML = '<div class="status-item"><div class="label">Ghost Running</div><div class="value ' + runningClass + '">' + runningText + '</div></div><div class="status-item"><div class="label">Config Exists</div><div class="value ' + configClass + '">' + configText + '</div></div><div class="status-item"><div class="label">Version</div><div class="value">' + version + '</div></div>';
+                var res = await fetch('/api/status');
+                var data = await res.json();
+                var items = '';
+                items += statusItem('Ghost running', data.ghost_running ? 'Yes' : 'No', data.ghost_running ? 'ok' : 'error');
+                items += statusItem('Config exists', data.config_exists ? 'Yes' : 'No', data.config_exists ? 'ok' : 'warning');
+                items += statusItem('Version', data.version || 'unknown', '');
+                items += statusItem('Uptime', data.uptime || '—', '');
+                if (data.error_count > 0) {
+                    items += statusItem('Errors', String(data.error_count), 'error');
+                    if (data.last_error) items += '<div class="status-item" style="grid-column:1/-1"><div class="label">Last error</div><div class="value" style="font-size:13px;font-weight:500;white-space:pre-wrap">' + esc(data.last_error) + '</div></div>';
+                }
+                document.getElementById('status').innerHTML = items;
+                document.getElementById('orb').classList.toggle('ember--off', !data.ghost_running);
             } catch (e) {
-                console.error('Failed to load status:', e);
+                document.getElementById('status').innerHTML = '<div class="status-item"><div class="label">Checking</div><div class="value error">Unreachable</div></div>';
             }
+        }
+        function statusItem(label, value, cls) {
+            return '<div class="status-item"><div class="label">' + label + '</div><div class="value ' + (cls || '') + '">' + esc(value) + '</div></div>';
         }
 
         async function loadLogs() {
+            var el = document.getElementById('logs');
             try {
-                const res = await fetch('/api/logs');
-                const text = await res.text();
-                document.getElementById('logs').textContent = text || 'No logs available.';
+                var res = await fetch('/api/logs');
+                var text = await res.text();
+                el.textContent = text || 'No logs available.';
+                el.scrollTop = el.scrollHeight;
             } catch (e) {
-                document.getElementById('logs').textContent = 'Failed to load logs.';
+                el.textContent = 'Failed to load logs.';
             }
         }
 
         async function restartGhost() {
-            if (!confirm('Restart Ghost service?')) return;
+            var yes = await confirmModal('Restart Ghost?', 'The service will restart. This page will reload shortly.', 'Restart');
+            if (!yes) return;
             try {
                 await fetch('/api/restart', { method: 'POST' });
-                alert('Restarting... The page will reload in 5 seconds.');
-                setTimeout(() => location.reload(), 5000);
+                toast('Restarting… this page will reload in a few seconds.', true);
+                setTimeout(function () { location.reload(); }, 5000);
             } catch (e) {
-                alert('Failed to restart.');
+                toast('Failed to restart.');
             }
         }
 
         async function resetSetup() {
-            if (!confirm('This will reset Ghost to factory defaults. All configuration will be lost. Continue?')) return;
-            if (!confirm('Are you absolutely sure? This cannot be undone.')) return;
+            var yes = await confirmModal('Reset setup?', 'This erases all configuration and memory. It cannot be undone.', 'Reset');
+            if (!yes) return;
+            var sure = await confirmModal('Are you absolutely sure?', 'Every setting, channel and memory will be lost. Your Ghost returns to first boot.', 'Erase everything');
+            if (!sure) return;
             try {
-                const res = await fetch('/api/reset', { method: 'POST' });
-                const data = await res.json();
-                alert(data.message || 'Setup has been reset. Restart Ghost to begin the setup wizard.');
+                var res = await fetch('/api/reset', { method: 'POST' });
+                var data = await res.json();
+                toast(data.message || 'Setup reset. Restart to begin setup.', true);
             } catch (e) {
-                alert('Failed to reset.');
+                toast('Failed to reset.');
             }
         }
+
+        document.getElementById('btn-restart').addEventListener('click', restartGhost);
+        document.getElementById('btn-refresh').addEventListener('click', loadLogs);
+        document.getElementById('btn-reset').addEventListener('click', resetSetup);
 
         loadStatus();
         loadLogs();

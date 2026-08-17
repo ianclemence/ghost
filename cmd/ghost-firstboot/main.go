@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -21,9 +22,10 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/skills"
 )
 
-//go:embed web/*
+//go:embed all:web
 var webFiles embed.FS
 
 var (
@@ -211,8 +213,31 @@ func main() {
 		log.Fatalf("Failed to create directories: %v", err)
 	}
 
+	// Reconcile bundled skills against the runtime workspace. On a fresh
+	// device this seeds the wizard's skills tab; on every start it refreshes
+	// unchanged bundled skills and always preserves user edits.
+	if report, err := skills.SyncBundled(bundledSkillsSourceDir(), filepath.Join(fb.Workspace, "skills")); err == nil {
+		if len(report.Seeded) > 0 {
+			log.Printf("Seeded bundled skills: %s", strings.Join(report.Seeded, ", "))
+		}
+		if len(report.Updated) > 0 {
+			log.Printf("Updated bundled skills: %s", strings.Join(report.Updated, ", "))
+		}
+		if len(report.UserModified) > 0 {
+			log.Printf("Preserved user-modified skills: %s", strings.Join(report.UserModified, ", "))
+		}
+	}
+
 	// Start the wizard server
 	mux := http.NewServeMux()
+
+	// Serve static assets (CSS, JS, fonts) from the embedded web directory.
+	assetsFS, err := fs.Sub(webFiles, "web")
+	if err != nil {
+		log.Fatalf("Failed to load embedded assets: %v", err)
+	}
+	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS))))
+
 	mux.HandleFunc("/", handleWizardIndex)
 	mux.HandleFunc("/api/scan-wifi", handleScanWiFi)
 	mux.HandleFunc("/api/connect-wifi", handleConnectWiFi)
@@ -243,6 +268,9 @@ func main() {
 	mux.HandleFunc("/api/admin/skills/install", handleSkillInstall)
 	mux.HandleFunc("/api/admin/skills/remove", handleSkillRemove)
 	mux.HandleFunc("/api/admin/skills/toggle", handleSkillToggle)
+	mux.HandleFunc("/api/admin/skills/sync", handleSkillsSync)
+	mux.HandleFunc("/api/admin/skills/read", handleSkillRead)
+	mux.HandleFunc("/api/admin/skills/save", handleSkillSave)
 	mux.HandleFunc("/api/admin/skills/clawhub/search", handleClawHubSearch)
 	mux.HandleFunc("/api/admin/skills/clawhub/install", handleClawHubInstall)
 	mux.HandleFunc("/api/admin/tools", handleToolsGet)

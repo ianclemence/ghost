@@ -5,2994 +5,730 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Ghost Admin</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        /* ═══════════════════════════════════════════════════
-           SHARED FOUNDATION
-           ═══════════════════════════════════════════════════ */
-        :root {
-            --space-xs: 4px;
-            --space-sm: 8px;
-            --space-md: 16px;
-            --space-lg: 24px;
-            --space-xl: 32px;
-            --space-2xl: 48px;
-            --radius-sm: 6px;
-            --radius-md: 10px;
-            --radius-lg: 14px;
-            --radius-pill: 999px;
-            --transition-fast: 100ms ease;
-            --transition-base: 180ms ease;
-            --transition-slow: 400ms cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html { -webkit-text-size-adjust: 100%; }
-        body {
-            min-height: 100vh;
-            min-height: 100dvh;
-            padding-top: env(safe-area-inset-top);
-            padding-bottom: env(safe-area-inset-bottom);
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-
-        .hidden { display: none !important; }
-
-        /* ═══════════════════════════════════════════════════
-           WIZARD WORLD — Radar Command
-           Accent: electric cyan (#00e5ff) + violet ghost (#a855f7)
-           ═══════════════════════════════════════════════════ */
-        .world-wizard {
-            font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
-            background: #06060e;
-            color: #c8d6e5;
-            overflow-x: hidden;
-        }
-
-        /* Radar background grid */
-        .world-wizard::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background:
-                repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(0, 229, 255, 0.025) 39px, rgba(0, 229, 255, 0.025) 40px),
-                repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(0, 229, 255, 0.025) 39px, rgba(0, 229, 255, 0.025) 40px);
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        /* Radar pulse rings — the signature element */
-        .world-wizard::after {
-            content: '';
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            width: 200vmax;
-            height: 200vmax;
-            transform: translate(-50%, -50%);
-            background: repeating-radial-gradient(
-                circle at center,
-                transparent 0px,
-                transparent 58px,
-                rgba(0, 229, 255, 0.04) 58px,
-                rgba(0, 229, 255, 0.04) 60px
-            );
-            animation: radarPulse 6s linear infinite;
-            pointer-events: none;
-            z-index: 0;
-        }
-        @keyframes radarPulse {
-            from { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
-            15% { opacity: 1; }
-            85% { opacity: 1; }
-            to { transform: translate(-50%, -50%) scale(1); opacity: 0; }
-        }
-
-        .world-wizard .container {
-            max-width: 520px;
-            margin: 0 auto;
-            padding: var(--space-2xl) var(--space-lg);
-            position: relative;
-            z-index: 1;
-        }
-
-        /* ── Wizard Logo ── */
-        .world-wizard .logo {
-            text-align: center;
-            margin-bottom: var(--space-2xl);
-        }
-        .world-wizard .logo-icon {
-            width: 68px; height: 68px;
-            margin: 0 auto var(--space-md);
-            background: #0d0d18;
-            border: 2px solid rgba(0, 229, 255, 0.2);
-            border-radius: 16px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 32px; color: #00e5ff; font-weight: 700;
-            font-family: 'Space Grotesk', sans-serif;
-            position: relative;
-            animation: logoAppear 800ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            opacity: 0;
-        }
-        .world-wizard .logo-icon::before {
-            content: '';
-            position: absolute;
-            inset: -6px;
-            border-radius: 20px;
-            background: conic-gradient(from 0deg, transparent 0deg, rgba(0, 229, 255, 0.15) 30deg, transparent 60deg);
-            animation: radarSweep 4s linear infinite;
-            z-index: -1;
-        }
-        @keyframes radarSweep {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        @keyframes logoAppear {
-            from { opacity: 0; transform: scale(0.85); filter: blur(6px); }
-            to { opacity: 1; transform: scale(1); filter: blur(0); }
-        }
-        .world-wizard .logo h1 {
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 28px; font-weight: 700; letter-spacing: -0.03em;
-            margin-bottom: 2px; line-height: 1.2;
-            animation: fadeSlideUp 600ms 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            opacity: 0;
-        }
-        .world-wizard .logo h1 span { color: #00e5ff; }
-        .world-wizard .logo .tagline {
-            color: #4a5568; font-size: 12px; margin-top: var(--space-xs);
-            letter-spacing: 0.06em; text-transform: uppercase;
-            font-family: 'IBM Plex Mono', monospace;
-            animation: fadeSlideUp 600ms 350ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            opacity: 0;
-        }
-
-        @keyframes fadeSlideUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* ── Wizard Step Indicator ── */
-        .world-wizard .step-indicator {
-            display: none;
-            align-items: flex-start;
-            justify-content: center;
-            gap: 0;
-            margin-bottom: var(--space-2xl);
-            padding: 0 var(--space-md);
-        }
-        .world-wizard .step-indicator.visible { display: flex; }
-        .world-wizard .step-node {
-            display: flex; flex-direction: column; align-items: center;
-            position: relative; flex: 1; max-width: 100px;
-        }
-        .world-wizard .step-circle {
-            width: 36px; height: 36px;
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 13px; font-weight: 600;
-            font-family: 'IBM Plex Mono', monospace;
-            background: rgba(0, 229, 255, 0.05);
-            border: 1.5px solid rgba(0, 229, 255, 0.15);
-            color: #4a5568;
-            transition: all 300ms cubic-bezier(0.16, 1, 0.3, 1);
-            position: relative; z-index: 2;
-        }
-        .world-wizard .step-node.active .step-circle {
-            background: rgba(0, 229, 255, 0.1);
-            border-color: #00e5ff;
-            color: #00e5ff;
-            box-shadow: 0 0 16px rgba(0, 229, 255, 0.2);
-        }
-        .world-wizard .step-node.completed .step-circle {
-            background: #00e5ff;
-            border-color: #00e5ff;
-            color: #06060e;
-        }
-        .world-wizard .step-label {
-            margin-top: 6px;
-            font-size: 10px; font-weight: 500;
-            color: #3a4a5c;
-            text-transform: uppercase; letter-spacing: 0.06em;
-            text-align: center;
-            font-family: 'IBM Plex Mono', monospace;
-            transition: color 300ms;
-        }
-        .world-wizard .step-node.active .step-label { color: #00e5ff; }
-        .world-wizard .step-node.completed .step-label { color: #5a6a7c; }
-        .world-wizard .step-connector {
-            flex: 1; height: 1.5px;
-            background: rgba(0, 229, 255, 0.1);
-            margin-top: 17px;
-            transition: background 300ms;
-            min-width: 20px;
-        }
-        .world-wizard .step-connector.filled {
-            background: #00e5ff;
-            box-shadow: 0 0 6px rgba(0, 229, 255, 0.3);
-        }
-
-        /* ── Wizard Cards ── */
-        .world-wizard .card {
-            background: rgba(10, 10, 22, 0.85);
-            border: 1px solid rgba(0, 229, 255, 0.08);
-            border-radius: var(--radius-md);
-            padding: var(--space-xl);
-            margin-bottom: var(--space-lg);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            transition: border-color 300ms;
-        }
-        .world-wizard .card-active {
-            border-color: rgba(0, 229, 255, 0.18);
-        }
-        .world-wizard .card-inner {
-            background: rgba(0, 229, 255, 0.03);
-            border: 1px solid rgba(0, 229, 255, 0.08);
-            border-radius: var(--radius-sm);
-            padding: var(--space-lg);
-        }
-
-        /* ── Wizard Typography ── */
-        .world-wizard h1 {
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 24px; font-weight: 700; letter-spacing: -0.02em;
-            margin-bottom: var(--space-sm); line-height: 1.2;
-            color: #e8edf2;
-        }
-        .world-wizard h2 {
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 20px; font-weight: 700; letter-spacing: -0.01em;
-            margin-bottom: var(--space-sm); line-height: 1.3;
-            color: #e8edf2;
-        }
-        .world-wizard h3 {
-            font-size: 10px; font-weight: 600;
-            color: #5a6a7c;
-            text-transform: uppercase; letter-spacing: 0.1em;
-            margin-bottom: var(--space-md);
-            font-family: 'IBM Plex Mono', monospace;
-        }
-        .world-wizard p { color: #6a7a8c; font-size: 13px; line-height: 1.6; }
-        .world-wizard .subtitle { color: #6a7a8c; font-size: 14px; line-height: 1.5; }
-        .world-wizard .help-text { margin-bottom: var(--space-sm); font-size: 12px; }
-
-        /* ── Wizard Forms ── */
-        .world-wizard .form-group { margin-bottom: var(--space-md); }
-        .world-wizard label {
-            display: block; margin-bottom: 5px;
-            font-size: 11px; font-weight: 500; color: #7a8a9c;
-            font-family: 'IBM Plex Mono', monospace;
-            text-transform: uppercase; letter-spacing: 0.04em;
-        }
-        .world-wizard input, .world-wizard select {
-            width: 100%;
-            padding: 10px 12px;
-            background: rgba(0, 229, 255, 0.03);
-            border: 1px solid rgba(0, 229, 255, 0.12);
-            border-radius: var(--radius-sm);
-            color: #e8edf2;
-            font-size: 13px;
-            font-family: 'IBM Plex Mono', monospace;
-            outline: none;
-            transition: border-color 200ms, box-shadow 200ms;
-        }
-        .world-wizard input:focus, .world-wizard select:focus {
-            border-color: #00e5ff;
-            box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.08), 0 0 12px rgba(0, 229, 255, 0.06);
-        }
-        .world-wizard input::placeholder { color: #2a3a4c; }
-        .world-wizard input.error-input {
-            border-color: rgba(239, 68, 68, 0.5);
-            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.06);
-        }
-        .world-wizard select {
-            cursor: pointer;
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235a6a7c' d='M6 8.5L1.5 4h9z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 12px center;
-            padding-right: 36px;
-        }
-
-        /* ── Wizard Buttons ── */
-        .world-wizard .btn-row { display: flex; gap: var(--space-md); margin-top: var(--space-xl); }
-        .world-wizard .btn {
-            flex: 1;
-            padding: 12px var(--space-lg);
-            border: none;
-            border-radius: var(--radius-sm);
-            font-size: 12px; font-weight: 600;
-            font-family: 'IBM Plex Mono', monospace;
-            cursor: pointer;
-            transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
-            min-height: 44px;
-            display: flex; align-items: center; justify-content: center; gap: var(--space-sm);
-            text-transform: uppercase; letter-spacing: 0.04em;
-        }
-        .world-wizard .btn:hover { transform: translateY(-1px); }
-        .world-wizard .btn:active { transform: translateY(0); }
-        .world-wizard .btn-primary {
-            background: #00e5ff;
-            color: #06060e;
-            box-shadow: 0 2px 12px rgba(0, 229, 255, 0.2);
-        }
-        .world-wizard .btn-primary:hover {
-            background: #33ebff;
-            box-shadow: 0 4px 20px rgba(0, 229, 255, 0.3);
-        }
-        .world-wizard .btn-secondary {
-            background: rgba(0, 229, 255, 0.06);
-            color: #7a8a9c;
-            border: 1px solid rgba(0, 229, 255, 0.12);
-        }
-        .world-wizard .btn-secondary:hover {
-            background: rgba(0, 229, 255, 0.1);
-            color: #c8d6e5;
-        }
-        .world-wizard .btn-ghost {
-            background: transparent;
-            color: #3a4a5c;
-            border: 1px solid rgba(0, 229, 255, 0.06);
-        }
-        .world-wizard .btn-ghost:hover { color: #7a8a9c; border-color: rgba(0, 229, 255, 0.15); }
-        .world-wizard .btn-danger {
-            background: #dc2626;
-            color: #fff;
-            box-shadow: 0 2px 12px rgba(220, 38, 38, 0.2);
-        }
-        .world-wizard .btn-danger:hover { background: #ef4444; }
-        .world-wizard .btn-small { flex: 0 0 auto; padding: 6px 14px; font-size: 11px; min-height: 32px; }
-        .world-wizard .btn[disabled] { opacity: 0.35; cursor: not-allowed; transform: none; }
-        .world-wizard .btn-icon {
-            width: 34px; height: 34px; padding: 0; flex: 0 0 34px;
-            border-radius: var(--radius-sm); font-size: 13px;
-        }
-
-        /* ── Wizard Messages ── */
-        .world-wizard .error { color: #f87171; font-size: 12px; margin-top: var(--space-sm); }
-        .world-wizard .success { color: #00e5ff; font-size: 12px; margin-top: var(--space-sm); }
-        .world-wizard .muted { color: #2a3a4c; font-size: 11px; }
-
-        /* ── Wizard Steps ── */
-        .world-wizard .step { display: none; }
-        .world-wizard .step.active {
-            display: block;
-            animation: wizardStepIn 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        @keyframes wizardStepIn {
-            from { opacity: 0; transform: translateY(12px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* ── Wizard WiFi ── */
-        .world-wizard .wifi-list-header {
-            display: flex; align-items: center; justify-content: space-between;
-            margin-bottom: var(--space-md);
-        }
-        .world-wizard .wifi-count {
-            font-size: 11px; color: #4a5568; font-weight: 500;
-            background: rgba(0, 229, 255, 0.04);
-            padding: 3px 8px; border-radius: var(--radius-pill);
-            border: 1px solid rgba(0, 229, 255, 0.08);
-            font-family: 'IBM Plex Mono', monospace;
-        }
-        .world-wizard .wifi-item {
-            display: flex; align-items: center; gap: var(--space-md);
-            padding: 10px var(--space-md); margin-bottom: var(--space-xs);
-            background: rgba(0, 229, 255, 0.02);
-            border: 1px solid rgba(0, 229, 255, 0.05);
-            border-radius: var(--radius-sm);
-            cursor: pointer;
-            transition: all 150ms;
-            animation: wifiSlideIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            opacity: 0;
-        }
-        .world-wizard .wifi-item:nth-child(1) { animation-delay: 0ms; }
-        .world-wizard .wifi-item:nth-child(2) { animation-delay: 40ms; }
-        .world-wizard .wifi-item:nth-child(3) { animation-delay: 80ms; }
-        .world-wizard .wifi-item:nth-child(4) { animation-delay: 120ms; }
-        .world-wizard .wifi-item:nth-child(5) { animation-delay: 160ms; }
-        .world-wizard .wifi-item:nth-child(n+6) { animation-delay: 200ms; }
-        @keyframes wifiSlideIn {
-            from { opacity: 0; transform: translateX(-6px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-        .world-wizard .wifi-item:hover {
-            border-color: rgba(0, 229, 255, 0.15);
-            background: rgba(0, 229, 255, 0.04);
-        }
-        .world-wizard .wifi-item.selected {
-            border-color: rgba(0, 229, 255, 0.35);
-            background: rgba(0, 229, 255, 0.06);
-        }
-        .world-wizard .wifi-signal {
-            display: flex; align-items: flex-end; gap: 2px; height: 14px;
-        }
-        .world-wizard .wifi-bar {
-            width: 2.5px; border-radius: 1px; background: #2a3a4c;
-            transition: background 200ms;
-        }
-        .world-wizard .wifi-bar:nth-child(1) { height: 3px; }
-        .world-wizard .wifi-bar:nth-child(2) { height: 6px; }
-        .world-wizard .wifi-bar:nth-child(3) { height: 9px; }
-        .world-wizard .wifi-bar:nth-child(4) { height: 13px; }
-        .world-wizard .wifi-item.selected .wifi-bar { background: #00e5ff; }
-        .world-wizard .wifi-ssid { flex: 1; font-size: 13px; font-weight: 500; color: #c8d6e5; }
-        .world-wizard .wifi-lock { font-size: 10px; color: #2a3a4c; }
-
-        /* ── Wizard Spinner ── */
-        .world-wizard .loading { text-align: center; padding: var(--space-xl) 0; color: #5a6a7c; font-size: 12px; }
-        .world-wizard .spinner {
-            width: 24px; height: 24px; margin: 0 auto var(--space-md);
-            border: 2px solid rgba(0, 229, 255, 0.1);
-            border-top-color: #00e5ff;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* ── Wizard Success ── */
-        .world-wizard .success-icon-wrap {
-            width: 72px; height: 72px; margin: 0 auto var(--space-lg);
-            position: relative;
-        }
-        .world-wizard .success-circle {
-            width: 72px; height: 72px;
-            background: rgba(0, 229, 255, 0.06);
-            border: 1.5px solid rgba(0, 229, 255, 0.25);
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            animation: successPulse 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        @keyframes successPulse {
-            0% { transform: scale(0); opacity: 0; }
-            60% { transform: scale(1.08); }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        .world-wizard .success-check {
-            width: 32px; height: 32px;
-            stroke: #00e5ff;
-            stroke-width: 2.5;
-            fill: none;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-        }
-        .world-wizard .success-check path {
-            stroke-dasharray: 40;
-            stroke-dashoffset: 40;
-            animation: drawCheck 400ms 200ms ease-out forwards;
-        }
-        @keyframes drawCheck { to { stroke-dashoffset: 0; } }
-
-        /* ── Wizard Pairing Code ── */
-        .world-wizard .pairing-code-wrap {
-            display: flex; align-items: center; justify-content: center; gap: var(--space-sm);
-            margin: var(--space-lg) 0;
-        }
-        .world-wizard .pairing-code {
-            font-size: 28px; font-weight: 700; letter-spacing: 3px;
-            color: #00e5ff; font-variant-numeric: tabular-nums;
-            font-family: 'IBM Plex Mono', monospace;
-        }
-        .world-wizard .copy-btn {
-            width: 36px; height: 36px; padding: 0;
-            background: rgba(0, 229, 255, 0.04);
-            border: 1px solid rgba(0, 229, 255, 0.1);
-            border-radius: var(--radius-sm); color: #5a6a7c;
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
-            transition: all 150ms;
-        }
-        .world-wizard .copy-btn:hover { border-color: #00e5ff; color: #00e5ff; }
-        .world-wizard .copy-btn.copied { border-color: #00e5ff; color: #00e5ff; background: rgba(0, 229, 255, 0.06); }
-        .world-wizard .copy-btn svg { width: 16px; height: 16px; }
-
-        /* ── Wizard Code block ── */
-        .world-wizard .code {
-            background: rgba(0, 229, 255, 0.03);
-            padding: 3px 8px; border-radius: var(--radius-sm);
-            font-size: 12px; color: #7a8a9c;
-            font-family: 'IBM Plex Mono', monospace;
-            border: 1px solid rgba(0, 229, 255, 0.06);
-        }
-
-        /* ── Wizard Toast ── */
-        .world-wizard .toast {
-            position: fixed; bottom: var(--space-xl); left: 50%; transform: translateX(-50%);
-            background: rgba(10, 10, 22, 0.92);
-            border: 1px solid rgba(0, 229, 255, 0.15);
-            border-radius: var(--radius-sm); padding: 10px 18px;
-            font-size: 12px; color: #c8d6e5;
-            box-shadow: 0 6px 24px rgba(0,0,0,0.5);
-            z-index: 1000;
-            animation: toastIn 200ms ease-out forwards;
-            max-width: calc(100vw - 48px);
-            backdrop-filter: blur(12px);
-        }
-        .world-wizard .toast.error { border-color: rgba(239, 68, 68, 0.35); }
-        .world-wizard .toast.success { border-color: rgba(0, 229, 255, 0.35); }
-
-        /* ── Wizard Focus rings ── */
-        .world-wizard input:focus-visible, .world-wizard select:focus-visible {
-            outline: 2px solid #00e5ff;
-            outline-offset: 1px;
-        }
-        .world-wizard button:focus-visible {
-            outline: 2px solid #00e5ff;
-            outline-offset: 2px;
-        }
-
-        /* ── Wizard Selection ── */
-        .world-wizard ::selection {
-            background: rgba(0, 229, 255, 0.15);
-            color: #e8edf2;
-        }
-
-        /* ── Wizard Scrollbar ── */
-        .world-wizard ::-webkit-scrollbar { width: 5px; height: 5px; }
-        .world-wizard ::-webkit-scrollbar-track { background: transparent; }
-        .world-wizard ::-webkit-scrollbar-thumb { background: rgba(0, 229, 255, 0.15); border-radius: var(--radius-pill); }
-        .world-wizard ::-webkit-scrollbar-thumb:hover { background: rgba(0, 229, 255, 0.25); }
-
-        /* ═══════════════════════════════════════════════════
-           DASHBOARD WORLD — Command Center
-           Accent: electric cyan (#00e5ff) + violet ghost (#a855f7)
-           ═══════════════════════════════════════════════════ */
-        .world-dashboard {
-            font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
-            background: #08080f;
-            color: #c8d6e5;
-        }
-
-        .world-dashboard .container { max-width: 640px; margin: 0 auto; padding: var(--space-2xl) var(--space-lg); }
-
-        /* ── Dashboard Topbar ── */
-        .world-dashboard .topbar {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 0 var(--space-lg);
-            border-bottom: 1px solid rgba(0, 229, 255, 0.1);
-            position: sticky; top: 0;
-            background: rgba(8, 8, 15, 0.95);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            z-index: 100;
-            height: 48px;
-        }
-        .world-dashboard .topbar .brand {
-            font-size: 13px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.06em;
-            font-family: 'Space Grotesk', sans-serif;
-            color: #e8edf2;
-        }
-        .world-dashboard .topbar .brand span { color: #a855f7; }
-        .world-dashboard .topbar-center {
-            display: flex; align-items: center; gap: 6px;
-            font-size: 10px; color: #5a6a7c;
-            text-transform: uppercase; letter-spacing: 0.08em;
-        }
-        .world-dashboard .status-dot {
-            width: 6px; height: 6px; border-radius: 50%;
-            background: #00e5ff;
-            box-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
-            animation: statusPulse 2s ease-in-out infinite;
-        }
-        @keyframes statusPulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .world-dashboard .nav-right { display: flex; align-items: center; gap: var(--space-md); }
-
-        /* ── Dashboard Tabs ── */
-        .world-dashboard .tab-bar {
-            display: flex; gap: 0; padding: 0 var(--space-md);
-            border-bottom: 1px solid rgba(0, 229, 255, 0.06);
-            overflow-x: auto;
-            position: sticky; top: 48px;
-            background: rgba(8, 8, 15, 0.95);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            z-index: 99;
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        .world-dashboard .tab-bar::-webkit-scrollbar { display: none; }
-        .world-dashboard .tab {
-            padding: 10px 14px;
-            font-size: 10px; font-weight: 600;
-            color: #3a4a5c; cursor: pointer; white-space: nowrap;
-            border-bottom: 1.5px solid transparent;
-            transition: color 150ms, border-color 150ms;
-            text-transform: uppercase; letter-spacing: 0.08em;
-            min-height: 40px;
-            display: flex; align-items: center;
-            margin-bottom: -1px;
-        }
-        .world-dashboard .tab:hover { color: #7a8a9c; }
-        .world-dashboard .tab.active {
-            color: #00e5ff;
-            border-bottom-color: #00e5ff;
-        }
-
-        /* ── Dashboard Tab Content ── */
-        .world-dashboard .tab-content { display: none; padding: var(--space-lg) var(--space-md); max-width: 960px; margin: 0 auto; }
-        .world-dashboard .tab-content.active { display: block; }
-
-        /* ── Dashboard Cards ── */
-        .world-dashboard .card {
-            background: rgba(10, 10, 20, 0.6);
-            border: 1px solid rgba(0, 229, 255, 0.06);
-            border-radius: var(--radius-sm);
-            padding: var(--space-lg);
-            margin-bottom: var(--space-md);
-        }
-        .world-dashboard .card h3 {
-            font-size: 10px; font-weight: 600;
-            color: #a855f7;
-            text-transform: uppercase; letter-spacing: 0.1em;
-            margin-bottom: var(--space-md);
-            padding-bottom: var(--space-sm);
-            border-bottom: 1px solid rgba(0, 229, 255, 0.05);
-            font-family: 'IBM Plex Mono', monospace;
-        }
-
-        /* ── Dashboard Grid ── */
-        .world-dashboard .dash-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1px;
-            background: rgba(0, 229, 255, 0.04);
-            border: 1px solid rgba(0, 229, 255, 0.06);
-            border-radius: var(--radius-sm);
-            overflow: hidden;
-        }
-        @media (max-width: 700px) {
-            .world-dashboard .dash-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-        .world-dashboard .stat-card {
-            background: rgba(10, 10, 20, 0.8);
-            padding: var(--space-lg);
-        }
-        .world-dashboard .stat-card .label {
-            font-size: 9px; color: #4a5568;
-            text-transform: uppercase; letter-spacing: 0.1em;
-            margin-bottom: var(--space-sm);
-            font-family: 'IBM Plex Mono', monospace;
-        }
-        .world-dashboard .stat-card .value {
-            font-size: 24px; font-weight: 700;
-            letter-spacing: -0.02em; line-height: 1.1;
-            color: #e8edf2;
-            font-family: 'Space Grotesk', sans-serif;
-        }
-        .world-dashboard .stat-card .value small {
-            font-size: 10px; color: #4a5568; font-weight: 400;
-            margin-left: var(--space-xs);
-            font-family: 'IBM Plex Mono', monospace;
-        }
-
-        .world-dashboard .dash-two-col {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: var(--space-md);
-            margin-top: var(--space-md);
-        }
-        @media (max-width: 700px) {
-            .world-dashboard .dash-two-col { grid-template-columns: 1fr; }
-        }
-
-        /* ── Dashboard Service Rows ── */
-        .world-dashboard .service-row {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(0, 229, 255, 0.04);
-            font-size: 12px;
-        }
-        .world-dashboard .service-row:last-child { border-bottom: none; }
-
-        /* ── Dashboard Badges ── */
-        .world-dashboard .badge {
-            padding: 2px 7px;
-            font-size: 9px; font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            border: 1px solid;
-            border-radius: 3px;
-            font-family: 'IBM Plex Mono', monospace;
-        }
-        .world-dashboard .badge.ok { border-color: rgba(0, 229, 255, 0.4); color: #00e5ff; }
-        .world-dashboard .badge.fail { border-color: rgba(239, 68, 68, 0.4); color: #f87171; }
-        .world-dashboard .badge.warn { border-color: rgba(251, 191, 36, 0.4); color: #fbbf24; }
-
-        /* ── Dashboard KV ── */
-        .world-dashboard .kv {
-            display: flex; justify-content: space-between;
-            padding: 6px 0; border-bottom: 1px solid rgba(0, 229, 255, 0.03);
-            font-size: 11px;
-        }
-        .world-dashboard .kv:last-child { border-bottom: none; }
-        .world-dashboard .kv .k { color: #4a5568; text-transform: uppercase; letter-spacing: 0.04em; }
-        .world-dashboard .kv .v { font-weight: 600; text-align: right; color: #c8d6e5; }
-
-        /* ── Dashboard Log Box ── */
-        .world-dashboard .log-box {
-            background: rgba(6, 6, 12, 0.8);
-            border: 1px solid rgba(0, 229, 255, 0.06);
-            padding: var(--space-md);
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 10px; line-height: 1.7;
-            white-space: pre-wrap; word-break: break-word;
-            max-height: 280px; overflow-y: auto;
-            color: #00e5ff;
-            margin-top: var(--space-md);
-            border-radius: var(--radius-sm);
-        }
-
-        /* ── Dashboard Check Rows ── */
-        .world-dashboard .check-row {
-            display: flex; align-items: center; gap: var(--space-sm);
-            padding: 6px 0; border-bottom: 1px solid rgba(0, 229, 255, 0.03); font-size: 11px;
-        }
-        .world-dashboard .check-row:last-child { border-bottom: none; }
-
-        /* ── Dashboard Forms ── */
-        .world-dashboard .form-group { margin-bottom: var(--space-md); }
-        .world-dashboard label {
-            display: block; margin-bottom: 4px;
-            font-size: 9px; font-weight: 600; color: #4a5568;
-            text-transform: uppercase; letter-spacing: 0.08em;
-            font-family: 'IBM Plex Mono', monospace;
-        }
-        .world-dashboard input, .world-dashboard select {
-            width: 100%;
-            padding: 8px 10px;
-            background: rgba(6, 6, 12, 0.6);
-            border: 1px solid rgba(0, 229, 255, 0.1);
-            border-radius: var(--radius-sm);
-            color: #c8d6e5;
-            font-size: 12px;
-            font-family: 'IBM Plex Mono', monospace;
-            outline: none;
-            transition: border-color 150ms;
-        }
-        .world-dashboard input:focus, .world-dashboard select:focus {
-            border-color: #00e5ff;
-        }
-        .world-dashboard input::placeholder { color: #2a3a4c; }
-        .world-dashboard select {
-            cursor: pointer;
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%234a5568' d='M6 8.5L1.5 4h9z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 10px center;
-            padding-right: 32px;
-        }
-
-        /* ── Dashboard Buttons ── */
-        .world-dashboard .btn-row { display: flex; gap: var(--space-md); margin-top: var(--space-lg); }
-        .world-dashboard .btn {
-            flex: 1;
-            padding: 10px var(--space-lg);
-            border: 1px solid;
-            border-radius: var(--radius-sm);
-            font-size: 11px; font-weight: 600;
-            font-family: 'IBM Plex Mono', monospace;
-            cursor: pointer;
-            transition: all 150ms;
-            text-transform: uppercase; letter-spacing: 0.06em;
-            min-height: 40px;
-            display: flex; align-items: center; justify-content: center; gap: var(--space-sm);
-        }
-        .world-dashboard .btn:hover { filter: brightness(1.15); }
-        .world-dashboard .btn:active { filter: brightness(0.9); }
-        .world-dashboard .btn-primary {
-            background: #00e5ff;
-            color: #06060e;
-            border-color: #00e5ff;
-        }
-        .world-dashboard .btn-secondary {
-            background: transparent;
-            color: #7a8a9c;
-            border-color: rgba(0, 229, 255, 0.15);
-        }
-        .world-dashboard .btn-secondary:hover { color: #c8d6e5; border-color: rgba(0, 229, 255, 0.3); }
-        .world-dashboard .btn-ghost {
-            background: transparent;
-            color: #3a4a5c;
-            border-color: rgba(0, 229, 255, 0.06);
-        }
-        .world-dashboard .btn-ghost:hover { color: #7a8a9c; border-color: rgba(0, 229, 255, 0.15); }
-        .world-dashboard .btn-danger {
-            background: rgba(239, 68, 68, 0.1);
-            color: #f87171;
-            border-color: rgba(239, 68, 68, 0.3);
-        }
-        .world-dashboard .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
-        .world-dashboard .btn-small { flex: 0 0 auto; padding: 5px 10px; font-size: 10px; min-height: 30px; }
-        .world-dashboard .btn[disabled] { opacity: 0.3; cursor: not-allowed; }
-
-        /* ── Dashboard Messages ── */
-        .world-dashboard .error { color: #f87171; font-size: 11px; margin-top: var(--space-sm); }
-        .world-dashboard .success { color: #00e5ff; font-size: 11px; margin-top: var(--space-sm); }
-        .world-dashboard .muted { color: #2a3a4c; font-size: 10px; }
-
-        /* ── Dashboard Toggle ── */
-        .world-dashboard .toggle-row {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 10px 0; border-bottom: 1px solid rgba(0, 229, 255, 0.03);
-        }
-        .world-dashboard .toggle-row:last-child { border-bottom: none; }
-        .world-dashboard .toggle-row span {
-            font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
-        }
-        .world-dashboard .toggle {
-            width: 36px; height: 20px; border-radius: 10px;
-            background: rgba(6, 6, 12, 0.6);
-            border: 1px solid rgba(0, 229, 255, 0.1);
-            position: relative; cursor: pointer; flex-shrink: 0;
-            transition: border-color 150ms, background 150ms;
-        }
-        .world-dashboard .toggle::after {
-            content: ''; position: absolute; top: 2px; left: 2px;
-            width: 14px; height: 14px; border-radius: 50%;
-            background: #3a4a5c;
-            transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), background 200ms;
-        }
-        .world-dashboard .toggle.on { border-color: #00e5ff; background: rgba(0, 229, 255, 0.1); }
-        .world-dashboard .toggle.on::after { transform: translateX(16px); background: #00e5ff; }
-        .world-dashboard .toggle:focus-visible {
-            outline: 2px solid #00e5ff;
-            outline-offset: 2px;
-        }
-
-        /* ── Dashboard Skill Cards ── */
-        .world-dashboard .skill-card {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: var(--space-md); margin-bottom: 0;
-            border-bottom: 1px solid rgba(0, 229, 255, 0.03);
-            transition: background 100ms;
-        }
-        .world-dashboard .skill-card:hover { background: rgba(0, 229, 255, 0.02); }
-        .world-dashboard .skill-card .meta { flex: 1; min-width: 0; }
-        .world-dashboard .skill-card .name { font-weight: 600; font-size: 12px; color: #c8d6e5; }
-        .world-dashboard .skill-card .desc { font-size: 10px; color: #4a5568; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-        /* ── Dashboard API Key Row ── */
-        .world-dashboard .api-key-row { display: flex; gap: var(--space-sm); align-items: center; }
-        .world-dashboard .api-key-row input { flex: 1; }
-
-        /* ── Dashboard Inline Form ── */
-        .world-dashboard .inline-form { display: flex; gap: var(--space-sm); align-items: flex-end; flex-wrap: wrap; }
-        .world-dashboard .inline-form .form-group { flex: 1; min-width: 160px; margin-bottom: 0; }
-
-        /* ── Dashboard Section Title ── */
-        .world-dashboard .section-title {
-            font-size: 12px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.08em;
-            margin: var(--space-xl) 0 var(--space-md);
-            color: #7a8a9c;
-            font-family: 'Space Grotesk', sans-serif;
-        }
-
-        /* ── Dashboard Code ── */
-        .world-dashboard .code {
-            background: rgba(0, 229, 255, 0.04); padding: 3px 8px; border-radius: 3px;
-            font-size: 11px; color: #00e5ff;
-            font-family: 'IBM Plex Mono', monospace;
-            border: 1px solid rgba(0, 229, 255, 0.06);
-        }
-
-        /* ── Dashboard Focus rings ── */
-        .world-dashboard input:focus-visible, .world-dashboard select:focus-visible {
-            outline: 2px solid #00e5ff;
-            outline-offset: 1px;
-        }
-        .world-dashboard button:focus-visible {
-            outline: 2px solid #00e5ff;
-            outline-offset: 2px;
-        }
-
-        /* ── Dashboard Selection ── */
-        .world-dashboard ::selection {
-            background: rgba(0, 229, 255, 0.15);
-            color: #e8edf2;
-        }
-
-        /* ── Dashboard Scrollbar ── */
-        .world-dashboard ::-webkit-scrollbar { width: 5px; height: 5px; }
-        .world-dashboard ::-webkit-scrollbar-track { background: transparent; }
-        .world-dashboard ::-webkit-scrollbar-thumb { background: rgba(0, 229, 255, 0.15); border-radius: var(--radius-pill); }
-        .world-dashboard ::-webkit-scrollbar-thumb:hover { background: rgba(0, 229, 255, 0.25); }
-
-        /* ── Dashboard Loading ── */
-        .world-dashboard .loading { text-align: center; padding: var(--space-xl) 0; color: #3a4a5c; font-size: 11px; }
-        .world-dashboard .spinner {
-            width: 20px; height: 20px; margin: 0 auto var(--space-md);
-            border: 1.5px solid rgba(0, 229, 255, 0.08);
-            border-top-color: #00e5ff;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-        }
-
-        /* ═══════════════════════════════════════════════════
-           RESPONSIVE — SHARED
-           ═══════════════════════════════════════════════════ */
-        @media (max-width: 480px) {
-            .world-wizard .container { padding: var(--space-xl) var(--space-md); }
-            .world-wizard .card { padding: var(--space-lg); }
-            .world-wizard h1 { font-size: 22px; }
-            .world-wizard .pairing-code { font-size: 22px; letter-spacing: 2px; }
-            .world-wizard .step-label { font-size: 9px; }
-            .world-wizard .step-circle { width: 30px; height: 30px; font-size: 12px; }
-            .world-wizard .step-connector { margin-top: 14px; }
-            .world-dashboard .stat-card .value { font-size: 20px; }
-        }
-
-        @keyframes toastIn {
-            from { opacity: 0; transform: translateX(-50%) translateY(6px); }
-            to { opacity: 1; transform: translateX(-50%) translateY(0); }
-        }
-
-        /* ── Reduced motion ── */
-        @media (prefers-reduced-motion: reduce) {
-            *, *::before, *::after {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
-        }
-    </style>
+    <meta name="theme-color" content="#17130f">
+    <title>Ghost</title>
+    <link rel="stylesheet" href="/assets/app.css">
+    <link rel="stylesheet" href="/assets/wizard.css">
+    <link rel="stylesheet" href="/assets/dashboard.css">
 </head>
-<body class="world-wizard">
-    <div class="container" id="wizard-container">
-        <div class="logo">
-            <div class="logo-icon">G</div>
-            <h1>Ghost <span>Admin</span></h1>
-            <p class="tagline">Your AI, Your Hardware</p>
-        </div>
+<body class="app">
 
-        <div class="step-indicator" id="step-indicator">
-            <div class="step-node active" data-step="1">
-                <div class="step-circle">1</div>
-                <div class="step-label">WiFi</div>
+    <!-- ════════════════════════════════════════════
+         SETUP WIZARD
+         ════════════════════════════════════════════ -->
+    <div id="wizard" class="wizard">
+
+        <div class="wizard__progress hidden" id="wizard-progress">
+            <div class="wizard__progress-track">
+                <div class="wizard__progress-fill" id="wizard-progress-fill"></div>
             </div>
-            <div class="step-connector"></div>
-            <div class="step-node" data-step="2">
-                <div class="step-circle">2</div>
-                <div class="step-label">Password</div>
-            </div>
-            <div class="step-connector"></div>
-            <div class="step-node" data-step="3">
-                <div class="step-circle">3</div>
-                <div class="step-label">AI Model</div>
-            </div>
-            <div class="step-connector"></div>
-            <div class="step-node" data-step="4">
-                <div class="step-circle">4</div>
-                <div class="step-label">Done</div>
+            <div class="wizard__progress-meta">
+                <span id="wizard-progress-label">Step 1 of 4</span>
+                <span id="wizard-progress-name"></span>
             </div>
         </div>
 
-        <!-- Step 1: Network -->
-        <div class="step active" id="step-1">
-            <div class="card card-active">
-                <h2>Connect to WiFi</h2>
-                <p class="subtitle" style="margin-bottom: var(--space-lg);">Select a network to get your device online.</p>
-                <div id="wifi-loading" class="loading">
-                    <div class="spinner"></div>
-                    <p>Scanning for networks...</p>
-                </div>
-                <div id="wifi-list" style="display: none;">
-                    <div class="wifi-list-header">
-                        <span id="wifi-count" class="wifi-count"></span>
+        <div class="wizard__wrap">
+
+            <!-- Welcome -->
+            <section class="screen screen--center active" id="screen-welcome">
+                <div class="ember ember--lg" aria-hidden="true"></div>
+                <h1 class="wizard__title">Meet your Ghost.</h1>
+                <p class="wizard__sub">A private AI that lives on your own hardware — awake in minutes, yours forever. Let&rsquo;s bring it to life.</p>
+                <button class="btn btn--primary btn--block" id="btn-welcome" type="button">Get started</button>
+            </section>
+
+            <!-- WiFi -->
+            <section class="screen" id="screen-wifi">
+                <h1 class="wizard__title">Connect to WiFi</h1>
+                <p class="wizard__sub">Choose the network your Ghost will call home.</p>
+                <div class="wifi">
+                    <div class="loading" id="wifi-loading"><span class="spinner" aria-hidden="true"></span>Scanning for networks&hellip;</div>
+                    <div class="hidden" id="wifi-list">
+                        <p class="wifi__count" id="wifi-count"></p>
+                        <div id="wifi-networks"></div>
                     </div>
-                    <div id="wifi-networks"></div>
-                </div>
-                <div id="wifi-password-form" style="display: none; margin-top: var(--space-md);">
-                    <div class="form-group">
-                        <label for="wifi-password">WiFi Password</label>
-                        <input type="password" id="wifi-password" placeholder="Enter WiFi password"
-                               onkeydown="if(event.key==='Enter')connectWifi()">
-                    </div>
-                    <div id="wifi-error" class="error"></div>
-                    <button class="btn btn-primary" style="width: 100%;" onclick="connectWifi()">Connect</button>
-                </div>
-            </div>
-            <div class="btn-row">
-                <button class="btn btn-ghost" onclick="skipWifi()">Skip for now</button>
-            </div>
-        </div>
-
-        <!-- Step 2: Admin password -->
-        <div class="step" id="step-2">
-            <div class="card card-active">
-                <h2>Set Admin Password</h2>
-                <p class="subtitle" style="margin-bottom: var(--space-lg);">This protects Ghost's settings. Keep it somewhere safe.</p>
-                <div class="form-group">
-                    <label for="admin-password">Admin Password</label>
-                    <input type="password" id="admin-password" placeholder="At least 8 characters">
-                </div>
-                <div class="form-group">
-                    <label for="admin-password-confirm">Confirm Password</label>
-                    <input type="password" id="admin-password-confirm" placeholder="Repeat password">
-                </div>
-                <div id="password-error" class="error"></div>
-            </div>
-            <div class="btn-row">
-                <button class="btn btn-secondary" onclick="prevStep()">Back</button>
-                <button class="btn btn-primary" onclick="validatePassword()">Next</button>
-            </div>
-        </div>
-
-        <!-- Step 3: Model Selection -->
-        <div class="step" id="step-3">
-            <div class="card card-active">
-                <h2>Choose Your AI</h2>
-                <p class="subtitle" style="margin-bottom: var(--space-lg);">Select a provider and model. You can change this later in settings.</p>
-                <div class="form-group">
-                    <label for="provider">Provider</label>
-                    <select id="provider" onchange="updateModels()">
-                        <option value="ollama">Ollama (Local)</option>
-                        <option value="moonshot">Moonshot (Kimi)</option>
-                        <option value="anthropic">Anthropic (Claude)</option>
-                        <option value="openai">OpenAI (GPT)</option>
-                        <option value="openrouter">OpenRouter</option>
-                        <option value="groq">Groq</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="model">Model</label>
-                    <select id="model">
-                        <option value="qwen3:0.6b">Qwen 3 0.6B (Fastest, Light)</option>
-                        <option value="qwen3:1.7b">Qwen 3 1.7B (Balanced)</option>
-                        <option value="qwen3:4b">Qwen 3 4B (Smart, Needs 8GB+)</option>
-                    </select>
-                </div>
-                <div class="form-group" id="ollama-models-section" style="display: none;">
-                    <label for="installed-models">Or select an installed model</label>
-                    <select id="installed-models">
-                        <option value="">None found</option>
-                    </select>
-                </div>
-            </div>
-            <div class="btn-row">
-                <button class="btn btn-secondary" onclick="prevStep()">Back</button>
-                <button class="btn btn-primary" onclick="nextStep()">Next</button>
-            </div>
-        </div>
-
-        <!-- Step 4: Complete -->
-        <div class="step" id="step-4">
-            <div class="card" style="text-align: center;">
-                <div class="success-icon-wrap">
-                    <div class="success-circle">
-                        <svg class="success-check" viewBox="0 0 24 24">
-                            <path d="M6 12.5L10.5 17L18 7"/>
-                        </svg>
-                    </div>
-                </div>
-                <h2 style="text-align: center; margin-bottom: var(--space-sm);">Setup Complete</h2>
-                <p class="subtitle" style="text-align: center; margin-bottom: var(--space-lg);">
-                    Ghost is configuring your AI assistant. This will take a moment.
-                </p>
-                <div id="setup-status" class="loading">
-                    <div class="spinner"></div>
-                    <p>Configuring Ghost...</p>
-                </div>
-                <div id="setup-complete" style="display: none;">
-                    <div class="card-inner" style="margin-bottom: var(--space-lg);">
-                        <h3 style="margin-bottom: var(--space-md);">Connect Your App</h3>
-                        <p style="font-size: 12px; color: #7a8a9c; margin-bottom: var(--space-md);">
-                            Open the Ghost app and enter the pairing code below, or visit
-                        </p>
-                        <div class="pairing-code-wrap">
-                            <span class="pairing-code" id="pairing-code">----</span>
-                            <button class="copy-btn" id="copy-btn" onclick="copyPairingCode()" title="Copy pairing code">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                                </svg>
-                            </button>
+                    <div class="hidden" id="wifi-password-form">
+                        <div class="field">
+                            <label for="wifi-password">Network password</label>
+                            <input class="input" type="password" id="wifi-password" placeholder="WiFi password" autocomplete="off">
                         </div>
-                        <p style="font-size: 12px; color: #3a4a5c; margin-top: var(--space-sm);">
-                            Or connect to <strong style="color: #7a8a9c;">ghost.local:8766</strong>
-                        </p>
+                        <p class="error-text hidden" id="wifi-error"></p>
+                        <button class="btn btn--primary btn--block" id="btn-wifi-connect" type="button">Connect</button>
                     </div>
-                    <button class="btn btn-primary" style="width: 100%;" onclick="finishSetup()">Done</button>
+                    <p class="wifi__skip"><button class="link-btn" id="btn-wifi-skip" type="button">Skip for now</button></p>
                 </div>
-            </div>
-        </div>
+            </section>
 
-        <!-- Login (re-running setup on a configured device) -->
-        <div class="step" id="step-login">
-            <div class="card card-active">
-                <h2>Admin Login</h2>
-                <p class="subtitle" style="margin-bottom: var(--space-lg);">Ghost is already set up. Enter the admin password to open the dashboard.</p>
-                <div class="form-group">
-                    <label for="login-password">Admin Password</label>
-                    <input type="password" id="login-password" placeholder="Admin password" onkeydown="if(event.key==='Enter')login()">
+            <!-- Admin password -->
+            <section class="screen" id="screen-password">
+                <h1 class="wizard__title">Secure your Ghost</h1>
+                <p class="wizard__sub">Set an admin password. It&rsquo;s the only key to Ghost&rsquo;s settings — keep it somewhere safe.</p>
+                <div class="field">
+                    <label for="admin-password">Admin password</label>
+                    <input class="input" type="password" id="admin-password" placeholder="At least 8 characters" autocomplete="new-password">
                 </div>
-                <div id="login-error" class="error"></div>
-            </div>
-            <div class="btn-row">
-                <button class="btn btn-secondary" onclick="location.reload()">Cancel</button>
-                <button class="btn btn-primary" onclick="login()">Login</button>
-            </div>
-        </div>
-
-        <!-- Already configured -->
-        <div class="step" id="step-already">
-            <div class="card" style="text-align: center;">
-                <div class="success-icon-wrap">
-                    <div class="success-circle">
-                        <svg class="success-check" viewBox="0 0 24 24">
-                            <path d="M6 12.5L10.5 17L18 7"/>
-                        </svg>
-                    </div>
+                <div class="field">
+                    <label for="admin-password-confirm">Repeat password</label>
+                    <input class="input" type="password" id="admin-password-confirm" placeholder="One more time" autocomplete="new-password">
                 </div>
-                <h2>Ghost is Already Set Up</h2>
-                <p class="subtitle" style="margin: var(--space-lg) 0;">
-                    This device has already been configured.<br>
-                    Open <strong style="color: #c8d6e5;">ghost.local:8766</strong> or the Ghost app to start chatting.
-                </p>
-                <p class="subtitle" style="margin: var(--space-lg) 0;">
-                    To open the admin dashboard, connect via SSH and run:
-                </p>
-                <div class="code" style="display: inline-block; margin-top: var(--space-sm);">sudo ghost-firstboot -force</div>
-            </div>
-            <button class="btn btn-secondary" style="width: 100%;" onclick="location.reload()">Refresh</button>
-        </div>
-    </div>
-
-    <!-- Admin Dashboard -->
-    <div class="hidden" id="dashboard">
-        <div class="topbar">
-            <div class="brand">Ghost <span>Admin</span></div>
-            <div class="topbar-center">
-                <div class="status-dot"></div>
-                <span id="nav-host">Online</span>
-            </div>
-            <div class="nav-right">
-                <button class="btn btn-secondary btn-small" onclick="logout()">Logout</button>
-            </div>
-        </div>
-        <div class="tab-bar">
-            <div class="tab active" data-tab="home" onclick="switchTab('home')">Home</div>
-            <div class="tab" data-tab="ai" onclick="switchTab('ai')">AI</div>
-            <div class="tab" data-tab="personality" onclick="switchTab('personality')">Personality</div>
-            <div class="tab" data-tab="channels" onclick="switchTab('channels')">Channels</div>
-            <div class="tab" data-tab="tools" onclick="switchTab('tools')">Tools</div>
-            <div class="tab" data-tab="toolsets" onclick="switchTab('toolsets')">Toolsets</div>
-            <div class="tab" data-tab="advanced" onclick="switchTab('advanced')">Advanced</div>
-            <div class="tab" data-tab="system" onclick="switchTab('system')">System</div>
-            <div class="tab" data-tab="skills" onclick="switchTab('skills')">Skills</div>
-            <div class="tab" data-tab="logs" onclick="switchTab('logs')">Logs</div>
-        </div>
-
-        <!-- Home tab -->
-        <div class="tab-content active" id="tab-home">
-            <h3>System Health</h3>
-            <div class="dash-grid" style="margin-bottom: var(--space-md);">
-                <div class="stat-card">
-                    <div class="label">CPU</div>
-                    <div class="value" id="stat-cpu">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="label">Memory</div>
-                    <div class="value" id="stat-mem">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="label">Disk</div>
-                    <div class="value" id="stat-disk">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="label">Uptime</div>
-                    <div class="value" id="stat-uptime">-</div>
-                </div>
-            </div>
-            <div class="dash-two-col">
-                <div>
-                    <div class="card">
-                        <h3>Services</h3>
-                        <div id="services"></div>
-                    </div>
-                    <div class="card">
-                        <h3>Configuration</h3>
-                        <div class="kv"><span class="k">Hostname</span><span class="v" id="cfg-host">-</span></div>
-                        <div class="kv"><span class="k">IP address</span><span class="v" id="cfg-ip">-</span></div>
-                        <div class="kv"><span class="k">Version</span><span class="v" id="cfg-ver">-</span></div>
-                        <div class="kv"><span class="k">Provider</span><span class="v" id="cfg-provider">-</span></div>
-                        <div class="kv"><span class="k">Model</span><span class="v" id="cfg-model">-</span></div>
-                        <div class="kv"><span class="k">Ollama</span><span class="v" id="cfg-ollama">-</span></div>
-                    </div>
-                </div>
-                <div>
-                    <div class="card">
-                        <h3>Diagnostics</h3>
-                        <button class="btn btn-secondary btn-small" style="margin-bottom: var(--space-md);" onclick="runDoctor()">Run checks</button>
-                        <div id="doctor-results"></div>
-                    </div>
-                    <div class="card">
-                        <h3>Software Update</h3>
-                        <p class="help-text">Pulls the latest Ghost version from GitHub and redeploys. The device stays online.</p>
-                        <button class="btn btn-primary btn-small" id="update-btn" onclick="startUpdate()">Check for updates</button>
-                        <div class="log-box hidden" id="update-log"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- AI tab -->
-        <div class="tab-content" id="tab-ai">
-            <div class="card">
-                <h3>AI Model</h3>
-                <div class="form-group">
-                    <label for="ai-provider">Provider</label>
-                    <select id="ai-provider">
-                        <option value="ollama">Ollama (Local)</option>
-                        <option value="moonshot">Moonshot (Kimi)</option>
-                        <option value="anthropic">Anthropic (Claude)</option>
-                        <option value="openai">OpenAI (GPT)</option>
-                        <option value="openrouter">OpenRouter</option>
-                        <option value="groq">Groq</option>
-                        <option value="deepseek">DeepSeek</option>
-                        <option value="gemini">Google Gemini</option>
-                        <option value="zhipu">Zhipu (GLM)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="ai-model">Model</label>
-                    <input type="text" id="ai-model" placeholder="e.g. qwen3:0.6b, kimi-k2.5, claude-sonnet-4">
-                </div>
-                <div class="form-group">
-                    <label for="ai-fallback">Fallback models (comma separated)</label>
-                    <input type="text" id="ai-fallback" placeholder="e.g. qwen3:0.6b">
-                </div>
-                <div class="form-group">
-                    <label for="ai-embedding">Embedding model</label>
-                    <input type="text" id="ai-embedding" placeholder="e.g. nomic-embed-text">
-                </div>
-                <div class="form-group">
-                    <label for="ai-ollama">Ollama URL</label>
-                    <input type="text" id="ai-ollama" placeholder="http://localhost:11434">
-                </div>
-                <div class="form-group">
-                    <label for="ai-maxtokens">Max tokens</label>
-                    <input type="number" id="ai-maxtokens" placeholder="4096">
-                </div>
-                <div id="ai-error" class="error"></div>
-                <div id="ai-success" class="success"></div>
+                <p class="error-text hidden" id="password-error"></p>
                 <div class="btn-row">
-                    <button class="btn btn-secondary btn-small" onclick="loadAIConfig()">Reload</button>
-                    <button class="btn btn-primary" onclick="saveAIConfig()">Save AI settings</button>
+                    <button class="btn btn--secondary" id="btn-pw-back" type="button">Back</button>
+                    <button class="btn btn--primary" id="btn-pw-next" type="button">Next</button>
                 </div>
-            </div>
+            </section>
 
-            <div class="card">
-                <h3>API Keys</h3>
-                <p class="help-text">Keys are stored in .env on the device and masked here. Leave blank to keep the current value.</p>
-                <div id="api-keys"></div>
-                <button class="btn btn-primary btn-small" style="margin-top: var(--space-sm);" onclick="saveAIKeys()">Save API keys</button>
-            </div>
-
-            <div class="card">
-                <h3>Ollama Models</h3>
-                <p class="help-text">Models installed locally on this device.</p>
-                <div id="ollama-models"></div>
-                <div class="inline-form" style="margin-top: var(--space-md);">
-                    <div class="form-group">
-                        <input type="text" id="ollama-new-model" placeholder="e.g. qwen3:4b">
+            <!-- Model -->
+            <section class="screen" id="screen-model">
+                <h1 class="wizard__title">Who should Ghost be?</h1>
+                <p class="wizard__sub">Pick how quick-witted your assistant is. You can change this anytime in settings.</p>
+                <div id="model-choices"></div>
+                <button class="link-btn" id="btn-advanced-model" type="button">Show advanced options</button>
+                <div class="advanced-pick hidden" id="advanced-model">
+                    <div class="field">
+                        <label for="provider">Provider</label>
+                        <select class="select" id="provider"></select>
                     </div>
-                    <button class="btn btn-primary btn-small" onclick="pullOllamaModel()">Pull model</button>
+                    <div class="field">
+                        <label for="model">Model</label>
+                        <select class="select" id="model"></select>
+                    </div>
                 </div>
-                <div id="ollama-error" class="error"></div>
-            </div>
+                <p class="model-note">By default everything runs on this device. Your data never leaves your home.</p>
+                <div class="btn-row">
+                    <button class="btn btn--secondary" id="btn-model-back" type="button">Back</button>
+                    <button class="btn btn--primary" id="btn-model-next" type="button">Next</button>
+                </div>
+            </section>
+
+            <!-- Done / pairing -->
+            <section class="screen screen--center" id="screen-done">
+                <div class="ember ember--lg" aria-hidden="true"></div>
+                <h1 class="wizard__title">Ghost is awake.</h1>
+                <p class="wizard__sub">Connect the Ghost app with this pairing code.</p>
+                <div class="pairing hidden" id="pairing-box">
+                    <button class="pairing__code" id="pairing-code" type="button">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</button>
+                    <p class="pairing__hint">Tap to copy</p>
+                </div>
+                <div class="loading hidden" id="setup-status"><span class="spinner" aria-hidden="true"></span>Bringing Ghost to life&hellip;</div>
+                <p class="error-text hidden" id="setup-error"></p>
+                <button class="btn btn--primary btn--block hidden" id="btn-done" type="button">Open the dashboard</button>
+            </section>
+
+            <!-- Login (device already configured) -->
+            <section class="screen screen--center" id="screen-login">
+                <div class="ember ember--sm" aria-hidden="true"></div>
+                <h1 class="wizard__title">Ghost is set up</h1>
+                <p class="wizard__sub">Enter the admin password to manage your Ghost.</p>
+                <div class="field field--center">
+                    <label for="login-password" class="visually-hidden">Admin password</label>
+                    <input class="input" type="password" id="login-password" placeholder="Admin password" autocomplete="current-password">
+                </div>
+                <p class="error-text hidden" id="login-error"></p>
+                <div class="btn-row btn-row--center">
+                    <button class="btn btn--secondary" id="btn-login-cancel" type="button">Cancel</button>
+                    <button class="btn btn--primary" id="btn-login" type="button">Log in</button>
+                </div>
+            </section>
+
+            <!-- Already configured -->
+            <section class="screen screen--center" id="screen-already">
+                <div class="ember ember--sm ember--offline" aria-hidden="true"></div>
+                <h1 class="wizard__title">Ghost is already set up</h1>
+                <p class="wizard__sub">This device has its assistant configured. Chat from the Ghost app or <code class="code">ghost.local:8766</code>.</p>
+                <p class="wizard__sub">To open the admin dashboard, connect over SSH and run:</p>
+                <code class="code code--block">sudo ghost-firstboot -force</code>
+                <button class="btn btn--secondary btn--block" id="btn-already" type="button">Refresh</button>
+            </section>
+
         </div>
+    </div>
 
-        <!-- Personality tab -->
-        <div class="tab-content" id="tab-personality">
-            <div class="card">
-                <h3>Active Personality</h3>
-                <p class="help-text">Choose how Ghost communicates. Built-in personalities are ready to use; create custom ones below.</p>
-                <div id="personality-list"></div>
-            </div>
-            <div class="card" style="margin-top: var(--space-md);">
-                <h3>Custom Personalities</h3>
-                <p class="help-text">Create your own personality profiles.</p>
-                <div id="custom-personalities"></div>
-                <div class="inline-form" style="margin-top: var(--space-md); flex-direction: column; align-items: stretch;">
-                    <div class="form-group">
-                        <label for="new-personality-name">Name</label>
-                        <input type="text" id="new-personality-name" placeholder="e.g. poet">
-                    </div>
-                    <div class="form-group">
-                        <label for="new-personality-desc">Description</label>
-                        <input type="text" id="new-personality-desc" placeholder="e.g. poetic and lyrical">
-                    </div>
-                    <div class="form-group">
-                        <label for="new-personality-content">System prompt</label>
-                        <textarea id="new-personality-content" rows="4" placeholder="You are Ghost in poet mode. Express ideas through verse and metaphor."></textarea>
-                    </div>
-                    <button class="btn btn-primary btn-small" onclick="createPersonality()">Create personality</button>
-                </div>
-            </div>
-        </div>
+    <!-- ════════════════════════════════════════════
+         DASHBOARD
+         ════════════════════════════════════════════ -->
+    <div id="dashboard" class="dashboard hidden">
 
-        <!-- Toolsets tab -->
-        <div class="tab-content" id="tab-toolsets">
-            <div class="card">
-                <h3>Active Toolset</h3>
-                <p class="help-text">Control which tools Ghost can use. Toolsets bundle related capabilities.</p>
-                <div id="toolsets-list"></div>
+        <header class="dash-header">
+            <div class="dash-header__inner">
+                <div class="brand">
+                    <span class="ember ember--sm" id="header-ember" aria-hidden="true"></span>
+                    Ghost
+                </div>
+                <div class="dash-header__status"><span class="status-dot" id="dash-status-dot" aria-hidden="true"></span><span id="dash-status-text">Online</span></div>
             </div>
-        </div>
+        </header>
 
-        <!-- Channels tab -->
-        <div class="tab-content" id="tab-channels">
-            <div class="card">
-                <h3>Telegram</h3>
-                <p class="help-text">Chat with Ghost from Telegram.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="tg-toggle" onclick="toggleChannel('tg')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="tg-token">Bot token</label>
-                    <input type="password" id="tg-token" placeholder="123456:ABC-DEF...">
-                </div>
-            </div>
-            <div class="card">
-                <h3>Discord</h3>
-                <p class="help-text">Chat with Ghost from Discord.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="ds-toggle" onclick="toggleChannel('ds')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="ds-token">Bot token</label>
-                    <input type="password" id="ds-token" placeholder="Discord bot token">
-                </div>
-            </div>
-            <div class="card">
-                <h3>Email</h3>
-                <p class="help-text">Send and receive email via SMTP.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="em-toggle" onclick="toggleChannel('em')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="em-host">SMTP host</label>
-                    <input type="text" id="em-host" placeholder="smtp.gmail.com">
-                </div>
-                <div class="form-group">
-                    <label for="em-port">SMTP port</label>
-                    <input type="number" id="em-port" placeholder="587">
-                </div>
-                <div class="form-group">
-                    <label for="em-user">Username</label>
-                    <input type="text" id="em-user" placeholder="you@example.com">
-                </div>
-                <div class="form-group">
-                    <label for="em-pass">Password</label>
-                    <input type="password" id="em-pass" placeholder="App password">
-                </div>
-                <div class="form-group">
-                    <label for="em-from">From address</label>
-                    <input type="text" id="em-from" placeholder="you@example.com">
-                </div>
-                <div class="form-group">
-                    <label for="em-to">To address (notifications)</label>
-                    <input type="text" id="em-to" placeholder="you@example.com">
-                </div>
-            </div>
-            <div class="card">
-                <h3>Slack</h3>
-                <p class="help-text">Chat with Ghost from Slack using Socket Mode.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="sl-toggle" onclick="toggleChannel('sl')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="sl-bot-token">Bot token</label>
-                    <input type="password" id="sl-bot-token" placeholder="xoxb-...">
-                </div>
-                <div class="form-group">
-                    <label for="sl-app-token">App token</label>
-                    <input type="password" id="sl-app-token" placeholder="xapp-...">
-                </div>
-            </div>
-            <div class="card">
-                <h3>WhatsApp</h3>
-                <p class="help-text">Chat with Ghost from WhatsApp via a bridge service.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="wa-toggle" onclick="toggleChannel('wa')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="wa-bridge-url">Bridge URL</label>
-                    <input type="text" id="wa-bridge-url" placeholder="ws://localhost:3001">
-                </div>
-            </div>
-            <div class="card">
-                <h3>Heartbeat</h3>
-                <p class="help-text">Periodic status check so Ghost notices when it goes offline.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="hb-toggle" onclick="toggleHeartbeat()"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="hb-interval">Interval (minutes, min 5)</label>
-                    <input type="number" id="hb-interval" placeholder="30">
-                </div>
-            </div>
-            <div id="channels-error" class="error"></div>
-            <div id="channels-success" class="success"></div>
-            <button class="btn btn-primary" style="margin-top: var(--space-sm); width: 100%;" onclick="saveChannels()">Save channel settings</button>
-        </div>
+        <nav class="dash-nav" aria-label="Sections">
+            <button class="dash-nav__item active" data-tab="overview" type="button">
+                <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 10.2V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9.8"/></svg>
+                Overview
+            </button>
+            <button class="dash-nav__item" data-tab="assistant" type="button">
+                <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2 5.5L19.5 11 14 12.5 12 18l-2-5.5L4.5 11 10 8.5z"/><path d="M19 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>
+                Assistant
+            </button>
+            <button class="dash-nav__item" data-tab="connections" type="button">
+                <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="5" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.5 12h7M8.5 12a2.6 2.6 0 0 1 .4-1.4L16 5.6M8.9 13.4a2.6 2.6 0 0 0 .4 1.4l7.1 5"/></svg>
+                Connections
+            </button>
+            <button class="dash-nav__item" data-tab="skills" type="button">
+                <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                Skills
+            </button>
+            <button class="dash-nav__item" data-tab="settings" type="button">
+                <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="17" r="2"/></svg>
+                Settings
+            </button>
+        </nav>
 
-        <!-- Tools tab -->
-        <div class="tab-content" id="tab-tools">
-            <div class="card">
-                <h3>Web Search</h3>
-                <p class="help-text">Configure web search providers for the agent.</p>
-                <div class="toggle-row">
-                    <span>Brave Search</span>
-                    <button class="toggle" id="brave-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="brave-key">Brave API key</label>
-                    <input type="password" id="brave-key" placeholder="BSA...">
-                </div>
-                <div class="form-group">
-                    <label for="brave-max">Max results</label>
-                    <input type="number" id="brave-max" placeholder="5">
-                </div>
-                <div class="toggle-row" style="margin-top: var(--space-md);">
-                    <span>DuckDuckGo</span>
-                    <button class="toggle" id="ddg-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="ddg-max">Max results</label>
-                    <input type="number" id="ddg-max" placeholder="5">
-                </div>
-            </div>
-            <div class="card">
-                <h3>Content Curator</h3>
-                <p class="help-text">Automatic cleanup of stale workspace content.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="curator-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="curator-stale">Stale after (days)</label>
-                    <input type="number" id="curator-stale" placeholder="30">
-                </div>
-                <div class="form-group">
-                    <label for="curator-archive">Archive after (days)</label>
-                    <input type="number" id="curator-archive" placeholder="90">
-                </div>
-                <div class="form-group">
-                    <label for="curator-interval">Check interval (mins)</label>
-                    <input type="number" id="curator-interval" placeholder="60">
-                </div>
-            </div>
-            <div class="card">
-                <h3>Task Delegation</h3>
-                <p class="help-text">Concurrent task execution limits.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="delegation-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="delegation-concurrent">Max concurrent tasks</label>
-                    <input type="number" id="delegation-concurrent" placeholder="5">
-                </div>
-                <div class="form-group">
-                    <label for="delegation-tasks">Max queued tasks</label>
-                    <input type="number" id="delegation-tasks" placeholder="5">
-                </div>
-                <div class="form-group">
-                    <label for="delegation-budget">Token budget</label>
-                    <input type="number" id="delegation-budget" placeholder="100000">
-                </div>
-            </div>
-            <div id="tools-msg" class="error"></div>
-            <div id="tools-success" class="success"></div>
-            <button class="btn btn-primary" style="margin-top: var(--space-sm); width: 100%;" onclick="saveTools()">Save tools settings</button>
-        </div>
+        <main class="dash-main">
 
-        <!-- Advanced tab -->
-        <div class="tab-content" id="tab-advanced">
-            <div class="card">
-                <h3>Retrieval-Augmented Generation</h3>
-                <p class="help-text">Vector search settings for knowledge retrieval.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="rag-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="rag-m">HNSW M (connections per layer)</label>
-                    <input type="number" id="rag-m" placeholder="16">
-                </div>
-                <div class="form-group">
-                    <label for="rag-ef-const">ef_construction</label>
-                    <input type="number" id="rag-ef-const" placeholder="200">
-                </div>
-                <div class="form-group">
-                    <label for="rag-ef-search">ef_search</label>
-                    <input type="number" id="rag-ef-search" placeholder="10">
-                </div>
-            </div>
-            <div class="card">
-                <h3>Proactive Nudges</h3>
-                <p class="help-text">Ghost periodically checks in with reminders and suggestions.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="nudge-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="nudge-memory">Memory check interval (messages)</label>
-                    <input type="number" id="nudge-memory" placeholder="20">
-                </div>
-                <div class="form-group">
-                    <label for="nudge-skill">Skill check interval (messages)</label>
-                    <input type="number" id="nudge-skill" placeholder="15">
-                </div>
-            </div>
-            <div class="card">
-                <h3>Device Monitoring</h3>
-                <p class="help-text">Monitor USB and hardware events.</p>
-                <div class="toggle-row">
-                    <span>Enabled</span>
-                    <button class="toggle" id="devices-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-                <div class="toggle-row">
-                    <span>Monitor USB</span>
-                    <button class="toggle" id="devices-usb-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-            </div>
-            <div class="card">
-                <h3>Agent Behavior</h3>
-                <div class="toggle-row">
-                    <span>Web search enabled</span>
-                    <button class="toggle" id="adv-search-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-                <div class="toggle-row">
-                    <span>Restrict to workspace</span>
-                    <button class="toggle" id="adv-workspace-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="adv-max-iter">Max tool iterations</label>
-                    <input type="number" id="adv-max-iter" placeholder="20">
-                </div>
-                <div class="form-group">
-                    <label for="adv-light-model">Light routing model (optional)</label>
-                    <input type="text" id="adv-light-model" placeholder="e.g. qwen3:0.6b">
-                </div>
-                <div class="form-group">
-                    <label for="adv-threshold">Routing threshold</label>
-                    <input type="number" id="adv-threshold" step="0.05" placeholder="0.35">
-                </div>
-            </div>
-            <div class="card" style="margin-top: var(--space-md);">
-                <h3>MCP Servers</h3>
-                <p class="help-text">Model Context Protocol servers extend Ghost with external tools. Configure servers below.</p>
-                <div class="toggle-row">
-                    <span>MCP enabled</span>
-                    <button class="toggle" id="mcp-toggle" onclick="this.classList.toggle('on')"></button>
-                </div>
-                <div id="mcp-servers-list" style="margin-top: var(--space-md);"></div>
-                <div class="inline-form" style="margin-top: var(--space-md); flex-direction: column; align-items: stretch;">
-                    <div class="form-group">
-                        <label for="mcp-new-name">Server name</label>
-                        <input type="text" id="mcp-new-name" placeholder="e.g. my-tools">
+            <!-- ── Overview ── -->
+            <section class="tab-panel active" id="tab-overview">
+                <div class="overview-hero">
+                    <div class="ember ember--md" id="overview-ember" aria-hidden="true"></div>
+                    <div class="overview-hero__text">
+                        <h1 id="overview-title">Your Ghost is online.</h1>
+                        <p id="overview-sub">Everything looks good on this device.</p>
                     </div>
-                    <div class="form-group">
-                        <label for="mcp-new-cmd">Command</label>
-                        <input type="text" id="mcp-new-cmd" placeholder="e.g. npx, python3">
-                    </div>
-                    <div class="form-group">
-                        <label for="mcp-new-args">Args (space-separated)</label>
-                        <input type="text" id="mcp-new-args" placeholder="e.g. -y @modelcontextprotocol/server-filesystem /tmp">
-                    </div>
-                    <div class="toggle-row">
-                        <span>HTTP mode</span>
-                        <button class="toggle" id="mcp-http-toggle" onclick="this.classList.toggle('on')"></button>
-                    </div>
-                    <div class="form-group" id="mcp-http-url-group" style="display: none;">
-                        <label for="mcp-new-url">HTTP URL</label>
-                        <input type="text" id="mcp-new-url" placeholder="http://localhost:3000/mcp">
-                    </div>
-                    <button class="btn btn-primary btn-small" onclick="addMCPServer()">Add server</button>
                 </div>
-            </div>
-            <div class="card" style="margin-top: var(--space-md);">
-                <h3>Voice & TTS</h3>
-                <p class="help-text">Voice transcription uses Groq or Kimi (configured in AI providers). TTS uses edge-tts.</p>
-                <div class="kv"><span class="k">Transcription</span><span class="v" id="voice-transcriber">-</span></div>
-                <div class="form-group" style="margin-top: var(--space-md);">
-                    <label for="tts-voice">Default TTS voice</label>
-                    <input type="text" id="tts-voice" placeholder="e.g. en-US-AriaNeural">
-                </div>
-            </div>
-            <div id="advanced-msg" class="error"></div>
-            <div id="advanced-success" class="success"></div>
-            <button class="btn btn-primary" style="margin-top: var(--space-sm); width: 100%;" onclick="saveAdvanced()">Save advanced settings</button>
-        </div>
 
-        <!-- System tab -->
-        <div class="tab-content" id="tab-system">
-            <div class="card">
-                <h3>Gateway</h3>
-                <div class="form-group">
-                    <label for="gw-host">Bind host</label>
-                    <input type="text" id="gw-host" placeholder="0.0.0.0">
+                <div class="stat-grid">
+                    <div class="stat"><div class="stat__label">CPU</div><div class="stat__value" id="stat-cpu">&mdash;</div></div>
+                    <div class="stat"><div class="stat__label">Memory</div><div class="stat__value" id="stat-mem">&mdash;</div></div>
+                    <div class="stat"><div class="stat__label">Disk</div><div class="stat__value" id="stat-disk">&mdash;</div></div>
+                    <div class="stat"><div class="stat__label">Uptime</div><div class="stat__value" id="stat-uptime">&mdash;</div></div>
                 </div>
-                <div class="form-group">
-                    <label for="gw-port">API port</label>
-                    <input type="number" id="gw-port" placeholder="8766">
-                </div>
-                <div id="gateway-msg" class="error"></div>
-                <button class="btn btn-primary btn-small" onclick="saveGateway()">Save gateway settings</button>
-            </div>
-            <div class="card">
-                <h3>Network</h3>
-                <div class="kv"><span class="k">Hostname</span><span class="v" id="net-host">-</span></div>
-                <div class="kv"><span class="k">IP address</span><span class="v" id="net-ip">-</span></div>
-                <div class="kv"><span class="k">WiFi</span><span class="v" id="net-wifi">-</span></div>
-            </div>
-            <div class="card">
-                <h3>Change hostname</h3>
-                <div class="inline-form">
-                    <div class="form-group">
-                        <input type="text" id="sys-hostname" placeholder="e.g. ghost">
-                    </div>
-                    <button class="btn btn-primary btn-small" onclick="setHostname()">Set hostname</button>
-                </div>
-                <div id="hostname-error" class="error"></div>
-            </div>
-            <div class="card">
-                <h3>Backup</h3>
-                <p class="help-text">Download a tar.gz archive of config, data, workspace and settings.</p>
-                <button class="btn btn-primary btn-small" onclick="downloadBackup()">Download backup</button>
-            </div>
-            <div class="card">
-                <h3>Change admin password</h3>
-                <div class="form-group">
-                    <label for="pw-current">Current password</label>
-                    <input type="password" id="pw-current" placeholder="Current admin password">
-                </div>
-                <div class="form-group">
-                    <label for="pw-new">New password</label>
-                    <input type="password" id="pw-new" placeholder="At least 8 characters">
-                </div>
-                <div id="password-msg" class="error"></div>
-                <button class="btn btn-primary btn-small" onclick="changePassword()">Change password</button>
-            </div>
-            <div class="card">
-                <h3>Bridge secret</h3>
-                <p class="help-text">Regenerating this secret invalidates the mobile app pairing. You will need to re-pair.</p>
-                <button class="btn btn-danger btn-small" onclick="regenBridge()">Regenerate bridge secret</button>
-                <div id="bridge-msg" class="error"></div>
-            </div>
-            <div class="card" style="border-color: rgba(239, 68, 68, 0.2);">
-                <h3 style="color: #f87171; border-bottom-color: rgba(239, 68, 68, 0.15);">Danger zone</h3>
-                <button class="btn btn-danger btn-small" onclick="rebootDevice()">Reboot device</button>
-            </div>
-        </div>
 
-        <!-- Skills tab -->
-        <div class="tab-content" id="tab-skills">
-            <div class="card">
-                <h3>Installed Skills</h3>
-                <p class="help-text">Skills are markdown instructions Ghost can use as tools. Toggle them on/off without removing.</p>
-                <div id="skills-list"></div>
-            </div>
-            <div class="card">
-                <h3>ClawHub Marketplace</h3>
-                <p class="help-text">Search and install skills from the community registry.</p>
-                <div class="inline-form">
-                    <div class="form-group" style="flex: 1;">
-                        <input type="text" id="clawhub-search" placeholder="Search skills..." onkeydown="if(event.key==='Enter')searchClawHub()">
+                <div class="dash-two-col">
+                    <div>
+                        <div class="card">
+                            <h2 class="card__title">Services</h2>
+                            <div id="services"></div>
+                        </div>
+                        <div class="card">
+                            <h2 class="card__title">This device</h2>
+                            <div class="kv"><span class="kv__k">Name</span><span class="kv__v" id="cfg-host">&mdash;</span></div>
+                            <div class="kv"><span class="kv__k">IP address</span><span class="kv__v" id="cfg-ip">&mdash;</span></div>
+                            <div class="kv"><span class="kv__k">Version</span><span class="kv__v" id="cfg-ver">&mdash;</span></div>
+                            <div class="kv"><span class="kv__k">Assistant</span><span class="kv__v" id="cfg-provider">&mdash;</span></div>
+                            <div class="kv"><span class="kv__k">Model</span><span class="kv__v" id="cfg-model">&mdash;</span></div>
+                            <div class="kv"><span class="kv__k">Ollama</span><span class="kv__v" id="cfg-ollama">&mdash;</span></div>
+                        </div>
                     </div>
-                    <button class="btn btn-primary btn-small" onclick="searchClawHub()">Search</button>
+                    <div>
+                        <div class="card">
+                            <h2 class="card__title">Health checks</h2>
+                            <button class="btn btn--secondary btn--sm" id="btn-doctor" type="button">Run checks</button>
+                            <div id="doctor-results" class="check-list"></div>
+                        </div>
+                        <div class="card">
+                            <h2 class="card__title">Software</h2>
+                            <p class="help-text">Pulls the latest Ghost version and redeploys. Your device stays online.</p>
+                            <button class="btn btn--primary btn--sm" id="update-btn" type="button">Check for updates</button>
+                            <div class="log-box hidden" id="update-log"></div>
+                        </div>
+                    </div>
                 </div>
-                <div id="clawhub-results" style="margin-top: var(--space-md);"></div>
-            </div>
-            <div class="card">
-                <h3>Install from GitHub</h3>
-                <p class="help-text">Install a skill from a public GitHub repo.</p>
-                <div class="form-group">
-                    <label for="sk-owner">Owner</label>
-                    <input type="text" id="sk-owner" placeholder="e.g. mattpocock">
-                </div>
-                <div class="form-group">
-                    <label for="sk-repo">Repo</label>
-                    <input type="text" id="sk-repo" placeholder="e.g. skills">
-                </div>
-                <div class="form-group">
-                    <label for="sk-path">Path to skill (within repo)</label>
-                    <input type="text" id="sk-path" placeholder="e.g. skills/productivity/grill-me">
-                </div>
-                <div class="form-group">
-                    <label for="sk-name">Name (optional, defaults to folder name)</label>
-                    <input type="text" id="sk-name" placeholder="e.g. grill-me">
-                </div>
-                <div id="skills-error" class="error"></div>
-                <button class="btn btn-primary btn-small" onclick="installSkill()">Install skill</button>
-            </div>
-        </div>
+            </section>
 
-        <!-- Logs tab -->
-        <div class="tab-content" id="tab-logs">
-            <div class="card">
-                <h3>Ghost Service Logs</h3>
-                <p class="help-text">Recent logs from the Ghost daemon. Auto-refreshes every 10 seconds.</p>
-                <div class="inline-form" style="margin-bottom: var(--space-md);">
-                    <div class="form-group">
-                        <label for="log-lines">Lines</label>
-                        <select id="log-lines" onchange="loadLogs()">
-                            <option value="50">50</option>
-                            <option value="100" selected>100</option>
-                            <option value="200">200</option>
-                            <option value="500">500</option>
-                        </select>
+            <!-- ── Assistant ── -->
+            <section class="tab-panel" id="tab-assistant">
+                <div class="card">
+                    <h2 class="card__title">Model</h2>
+                    <div class="field">
+                        <label for="ai-provider">Provider</label>
+                        <select class="select" id="ai-provider"></select>
                     </div>
-                    <button class="btn btn-small" onclick="loadLogs()">Refresh</button>
+                    <div class="field">
+                        <label for="ai-model">Model</label>
+                        <input class="input" type="text" id="ai-model" placeholder="e.g. qwen3:0.6b, claude-sonnet-4">
+                    </div>
+                    <div class="dash-two-col">
+                        <div class="field">
+                            <label for="ai-fallback">Fallback models</label>
+                            <input class="input" type="text" id="ai-fallback" placeholder="Comma separated">
+                        </div>
+                        <div class="field">
+                            <label for="ai-embedding">Embedding model</label>
+                            <input class="input" type="text" id="ai-embedding" placeholder="e.g. nomic-embed-text">
+                        </div>
+                    </div>
+                    <div class="dash-two-col">
+                        <div class="field">
+                            <label for="ai-ollama">Ollama URL</label>
+                            <input class="input" type="text" id="ai-ollama" placeholder="http://localhost:11434">
+                        </div>
+                        <div class="dash-two-col">
+                            <div class="field">
+                                <label for="ai-maxtokens">Max tokens</label>
+                                <input class="input" type="number" id="ai-maxtokens" placeholder="4096">
+                            </div>
+                            <div class="field">
+                                <label for="ai-temperature">Temperature</label>
+                                <input class="input" type="number" id="ai-temperature" step="0.1" min="0" max="2" placeholder="0.7">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn--secondary btn--sm" id="btn-ai-reload" type="button">Reload</button>
+                        <button class="btn btn--primary btn--sm" id="btn-ai-save" type="button">Save model</button>
+                    </div>
                 </div>
-                <div id="logs-output" style="background: var(--bg-dark); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-md); max-height: 500px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6; color: var(--text-secondary); white-space: pre-wrap; word-break: break-all;"></div>
+
+                <div class="card">
+                    <h2 class="card__title">Personality</h2>
+                    <p class="help-text">How Ghost talks to you.</p>
+                    <div id="personality-list" class="row-list"></div>
+                    <details class="accordion">
+                        <summary>Create a custom personality</summary>
+                        <div class="accordion__body">
+                            <div class="field">
+                                <label for="new-personality-name">Name</label>
+                                <input class="input" type="text" id="new-personality-name" placeholder="e.g. poet">
+                            </div>
+                            <div class="field">
+                                <label for="new-personality-desc">Description</label>
+                                <input class="input" type="text" id="new-personality-desc" placeholder="e.g. poetic and lyrical">
+                            </div>
+                            <div class="field">
+                                <label for="new-personality-content">System prompt</label>
+                                <textarea class="input input--area" id="new-personality-content" rows="4" placeholder="You are Ghost in poet mode&hellip;"></textarea>
+                            </div>
+                            <button class="btn btn--primary btn--sm" id="btn-create-personality" type="button">Create personality</button>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Toolset</h2>
+                    <p class="help-text">What Ghost is allowed to reach.</p>
+                    <div id="toolsets-list" class="row-list"></div>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Cloud AI</h2>
+                    <p class="help-text">Optional API keys for cloud models. Keys live on the device and are masked here &mdash; leave blank to keep the current value.</p>
+                    <div id="api-keys"></div>
+                    <div class="form-actions">
+                        <button class="btn btn--primary btn--sm" id="btn-save-keys" type="button">Save API keys</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Local models</h2>
+                    <p class="help-text">Models installed on this device via Ollama.</p>
+                    <div id="ollama-models" class="row-list"></div>
+                    <div class="inline-form">
+                        <div class="field field--grow">
+                            <input class="input" type="text" id="ollama-new-model" placeholder="e.g. qwen3:4b">
+                        </div>
+                        <button class="btn btn--primary btn--sm" id="btn-ollama-pull" type="button">Pull model</button>
+                    </div>
+                    <p class="error-text hidden" id="ollama-error"></p>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Voice</h2>
+                    <p class="help-text">Voice transcription uses your cloud provider (Groq or Kimi). Text-to-speech uses edge-tts.</p>
+                </div>
+            </section>
+
+            <!-- ── Connections ── -->
+            <section class="tab-panel" id="tab-connections">
+                <div class="channel">
+                    <div class="channel__head">
+                        <div class="channel__name"><span class="channel__icon">TG</span>Telegram</div>
+                        <button class="toggle" id="tg-toggle" role="switch" aria-checked="false" aria-label="Telegram enabled"></button>
+                    </div>
+                    <div class="field">
+                        <label for="tg-token">Bot token</label>
+                        <input class="input" type="password" id="tg-token" placeholder="123456:ABC-DEF..." autocomplete="off">
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn--secondary btn--sm" id="btn-tg-save" type="button">Save Telegram</button>
+                    </div>
+                </div>
+
+                <div class="channel">
+                    <div class="channel__head">
+                        <div class="channel__name"><span class="channel__icon">DS</span>Discord</div>
+                        <button class="toggle" id="ds-toggle" role="switch" aria-checked="false" aria-label="Discord enabled"></button>
+                    </div>
+                    <div class="field">
+                        <label for="ds-token">Bot token</label>
+                        <input class="input" type="password" id="ds-token" placeholder="Discord bot token" autocomplete="off">
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn--secondary btn--sm" id="btn-ds-save" type="button">Save Discord</button>
+                    </div>
+                </div>
+
+                <div class="channel">
+                    <div class="channel__head">
+                        <div class="channel__name"><span class="channel__icon">SL</span>Slack</div>
+                        <button class="toggle" id="sl-toggle" role="switch" aria-checked="false" aria-label="Slack enabled"></button>
+                    </div>
+                    <div class="field">
+                        <label for="sl-bot-token">Bot token</label>
+                        <input class="input" type="password" id="sl-bot-token" placeholder="xoxb-..." autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="sl-app-token">App token</label>
+                        <input class="input" type="password" id="sl-app-token" placeholder="xapp-..." autocomplete="off">
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn--secondary btn--sm" id="btn-sl-save" type="button">Save Slack</button>
+                    </div>
+                </div>
+
+                <div class="channel">
+                    <div class="channel__head">
+                        <div class="channel__name"><span class="channel__icon">WA</span>WhatsApp</div>
+                        <button class="toggle" id="wa-toggle" role="switch" aria-checked="false" aria-label="WhatsApp enabled"></button>
+                    </div>
+                    <div class="field">
+                        <label for="wa-bridge-url">Bridge URL</label>
+                        <input class="input" type="text" id="wa-bridge-url" placeholder="ws://localhost:3001">
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn--secondary btn--sm" id="btn-wa-save" type="button">Save WhatsApp</button>
+                    </div>
+                </div>
+
+                <div class="channel">
+                    <div class="channel__head">
+                        <div class="channel__name"><span class="channel__icon">@</span>Email</div>
+                        <button class="toggle" id="em-toggle" role="switch" aria-checked="false" aria-label="Email enabled"></button>
+                    </div>
+                    <div class="dash-two-col">
+                        <div class="field">
+                            <label for="em-host">SMTP host</label>
+                            <input class="input" type="text" id="em-host" placeholder="smtp.gmail.com">
+                        </div>
+                        <div class="field">
+                            <label for="em-port">Port</label>
+                            <input class="input" type="number" id="em-port" placeholder="587">
+                        </div>
+                    </div>
+                    <div class="dash-two-col">
+                        <div class="field">
+                            <label for="em-user">Username</label>
+                            <input class="input" type="text" id="em-user" placeholder="you@example.com">
+                        </div>
+                        <div class="field">
+                            <label for="em-pass">Password</label>
+                            <input class="input" type="password" id="em-pass" placeholder="App password" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="dash-two-col">
+                        <div class="field">
+                            <label for="em-from">From address</label>
+                            <input class="input" type="text" id="em-from" placeholder="you@example.com">
+                        </div>
+                        <div class="field">
+                            <label for="em-to">To address (notifications)</label>
+                            <input class="input" type="text" id="em-to" placeholder="you@example.com">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn--secondary btn--sm" id="btn-em-save" type="button">Save Email</button>
+                    </div>
+                </div>
+
+                <div class="channel">
+                    <div class="channel__head">
+                        <div class="channel__name"><span class="channel__icon">&#9829;</span>Heartbeat</div>
+                        <button class="toggle" id="hb-toggle" role="switch" aria-checked="false" aria-label="Heartbeat enabled"></button>
+                    </div>
+                    <p class="help-text">Ghost checks in periodically so it notices when something goes quiet.</p>
+                    <div class="field">
+                        <label for="hb-interval">Check every (minutes)</label>
+                        <input class="input" type="number" id="hb-interval" placeholder="30" min="5">
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn--secondary btn--sm" id="btn-hb-save" type="button">Save Heartbeat</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Skills ── -->
+            <section class="tab-panel" id="tab-skills">
+                <div class="card">
+                    <div class="card__head">
+                        <div>
+                            <h2 class="card__title">Installed</h2>
+                            <p class="help-text">Skills are little instructions Ghost can use. Edit, disable or remove them.</p>
+                        </div>
+                        <button class="btn btn--secondary btn--sm" id="btn-skills-sync" type="button">Resync bundled</button>
+                    </div>
+                    <p class="help-text hidden" id="skills-sync-note"></p>
+                    <div id="skills-list" class="row-list"></div>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Discover</h2>
+                    <p class="help-text">Search the community skill registry.</p>
+                    <div class="inline-form">
+                        <div class="field field--grow">
+                            <input class="input" type="search" id="clawhub-search" placeholder="Search skills..." autocomplete="off">
+                        </div>
+                        <button class="btn btn--primary btn--sm" id="btn-clawhub-search" type="button">Search</button>
+                    </div>
+                    <div id="clawhub-results" class="row-list"></div>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Install from GitHub</h2>
+                    <p class="help-text">Install a skill from any public repository.</p>
+                    <div class="dash-two-col">
+                        <div class="field">
+                            <label for="sk-owner">Owner</label>
+                            <input class="input" type="text" id="sk-owner" placeholder="e.g. mattpocock">
+                        </div>
+                        <div class="field">
+                            <label for="sk-repo">Repo</label>
+                            <input class="input" type="text" id="sk-repo" placeholder="e.g. skills">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="sk-path">Path to skill (within repo)</label>
+                        <input class="input" type="text" id="sk-path" placeholder="e.g. skills/productivity/grill-me">
+                    </div>
+                    <div class="field">
+                        <label for="sk-name">Name <span class="muted">(optional)</span></label>
+                        <input class="input" type="text" id="sk-name" placeholder="Defaults to folder name">
+                    </div>
+                    <p class="error-text hidden" id="skills-error"></p>
+                    <div class="form-actions">
+                        <button class="btn btn--primary btn--sm" id="btn-install-skill" type="button">Install skill</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Settings ── -->
+            <section class="tab-panel" id="tab-settings">
+                <div class="card">
+                    <h2 class="card__title">Network</h2>
+                    <div class="kv"><span class="kv__k">Name</span><span class="kv__v" id="net-host">&mdash;</span></div>
+                    <div class="kv"><span class="kv__k">IP address</span><span class="kv__v" id="net-ip">&mdash;</span></div>
+                    <div class="kv"><span class="kv__k">Connection</span><span class="kv__v" id="net-wifi">&mdash;</span></div>
+                    <div class="field" style="margin-top: var(--s-4);">
+                        <label for="sys-hostname">Change the device name</label>
+                        <div class="inline-form">
+                            <div class="field field--grow">
+                                <input class="input" type="text" id="sys-hostname" placeholder="e.g. ghost" autocomplete="off">
+                            </div>
+                            <button class="btn btn--secondary btn--sm" id="btn-set-hostname" type="button">Save</button>
+                        </div>
+                    </div>
+                    <p class="form-msg hidden" id="hostname-msg"></p>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Backup</h2>
+                    <p class="help-text">Download everything Ghost knows &mdash; config, data, memory and settings.</p>
+                    <div class="form-actions">
+                        <button class="btn btn--secondary btn--sm" id="btn-backup" type="button">Download backup</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Admin password</h2>
+                    <div class="dash-two-col">
+                        <div class="field">
+                            <label for="pw-current">Current password</label>
+                            <input class="input" type="password" id="pw-current" placeholder="Current admin password" autocomplete="off">
+                        </div>
+                        <div class="field">
+                            <label for="pw-new">New password</label>
+                            <input class="input" type="password" id="pw-new" placeholder="At least 8 characters" autocomplete="off">
+                        </div>
+                    </div>
+                    <p class="form-msg hidden" id="password-msg"></p>
+                    <div class="form-actions">
+                        <button class="btn btn--secondary btn--sm" id="btn-change-password" type="button">Change password</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Pairing</h2>
+                    <p class="help-text">This secret pairs the Ghost app with your device. Regenerating it means re-pairing every app.</p>
+                    <p class="form-msg hidden" id="bridge-msg"></p>
+                    <div class="form-actions">
+                        <button class="btn btn--danger-ghost btn--sm" id="btn-regen-bridge" type="button">Regenerate pairing secret</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Gateway</h2>
+                    <p class="help-text">The port the Ghost app talks to.</p>
+                    <div class="dash-two-col">
+                        <div class="field">
+                            <label for="gw-host">Bind host</label>
+                            <input class="input" type="text" id="gw-host" placeholder="0.0.0.0">
+                        </div>
+                        <div class="field">
+                            <label for="gw-port">API port</label>
+                            <input class="input" type="number" id="gw-port" placeholder="8766">
+                        </div>
+                    </div>
+                    <p class="form-msg hidden" id="gateway-msg"></p>
+                    <div class="form-actions">
+                        <button class="btn btn--secondary btn--sm" id="btn-save-gateway" type="button">Save gateway</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 class="card__title">Logs</h2>
+                    <p class="help-text">Recent activity from the Ghost service. Refreshes while this page is open.</p>
+                    <div class="inline-form">
+                        <div class="field field--grow">
+                            <label class="visually-hidden" for="log-lines">Lines</label>
+                            <select class="select" id="log-lines">
+                                <option value="50">50 lines</option>
+                                <option value="100" selected>100 lines</option>
+                                <option value="200">200 lines</option>
+                                <option value="500">500 lines</option>
+                            </select>
+                        </div>
+                        <button class="btn btn--secondary btn--sm" id="btn-refresh-logs" type="button">Refresh</button>
+                    </div>
+                    <div class="log-box" id="logs-output" tabindex="0"></div>
+                </div>
+
+                <details class="accordion accordion--adv">
+                    <summary>Advanced</summary>
+                    <div class="accordion__body">
+                        <div class="field">
+                            <label class="toggle-row"><span>Retrieval &mdash; vector memory</span><button class="toggle" id="rag-toggle" role="switch" aria-checked="false"></button></label>
+                        </div>
+                        <div class="dash-two-col">
+                            <div class="field">
+                                <label for="rag-m">HNSW connections (M)</label>
+                                <input class="input" type="number" id="rag-m" placeholder="16">
+                            </div>
+                            <div class="field">
+                                <label for="rag-ef-search">Search effort</label>
+                                <input class="input" type="number" id="rag-ef-search" placeholder="10">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="rag-ef-const">Build effort (ef_construction)</label>
+                            <input class="input" type="number" id="rag-ef-const" placeholder="200">
+                        </div>
+
+                        <div class="field">
+                            <label class="toggle-row"><span>Proactive nudges &mdash; check-ins &amp; reminders</span><button class="toggle" id="nudge-toggle" role="switch" aria-checked="false"></button></label>
+                        </div>
+                        <div class="dash-two-col">
+                            <div class="field">
+                                <label for="nudge-memory">Memory check (messages)</label>
+                                <input class="input" type="number" id="nudge-memory" placeholder="20">
+                            </div>
+                            <div class="field">
+                                <label for="nudge-skill">Skill check (messages)</label>
+                                <input class="input" type="number" id="nudge-skill" placeholder="15">
+                            </div>
+                        </div>
+
+                        <div class="field">
+                            <label class="toggle-row"><span>Device monitoring</span><button class="toggle" id="devices-toggle" role="switch" aria-checked="false"></button></label>
+                        </div>
+                        <div class="field">
+                            <label class="toggle-row"><span>Watch USB connections</span><button class="toggle" id="devices-usb-toggle" role="switch" aria-checked="false"></button></label>
+                        </div>
+
+                        <div class="field">
+                            <label class="toggle-row"><span>Web search</span><button class="toggle" id="adv-search-toggle" role="switch" aria-checked="false"></button></label>
+                        </div>
+                        <div class="field">
+                            <label class="toggle-row"><span>Restrict Ghost to its workspace</span><button class="toggle" id="adv-workspace-toggle" role="switch" aria-checked="false"></button></label>
+                        </div>
+                        <div class="dash-two-col">
+                            <div class="field">
+                                <label for="adv-max-iter">Max tool iterations</label>
+                                <input class="input" type="number" id="adv-max-iter" placeholder="20">
+                            </div>
+                            <div class="field">
+                                <label for="adv-threshold">Routing threshold</label>
+                                <input class="input" type="number" id="adv-threshold" step="0.05" placeholder="0.35">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="adv-light-model">Light routing model <span class="muted">(optional)</span></label>
+                            <input class="input" type="text" id="adv-light-model" placeholder="e.g. qwen3:0.6b">
+                        </div>
+
+                        <div class="field">
+                            <label class="toggle-row"><span>MCP servers &mdash; external tools</span><button class="toggle" id="mcp-toggle" role="switch" aria-checked="false"></button></label>
+                        </div>
+                        <div id="mcp-servers-list" class="row-list"></div>
+                        <div class="field">
+                            <label for="mcp-new-name">Server name</label>
+                            <input class="input" type="text" id="mcp-new-name" placeholder="e.g. my-tools">
+                        </div>
+                        <div class="field">
+                            <label for="mcp-new-cmd">Command</label>
+                            <input class="input" type="text" id="mcp-new-cmd" placeholder="e.g. npx, python3">
+                        </div>
+                        <div class="field">
+                            <label for="mcp-new-args">Args (space-separated)</label>
+                            <input class="input" type="text" id="mcp-new-args" placeholder="e.g. -y @modelcontextprotocol/server-filesystem /tmp">
+                        </div>
+                        <div class="field">
+                            <label class="toggle-row"><span>HTTP mode</span><button class="toggle" id="mcp-http-toggle" role="switch" aria-checked="false"></button></label>
+                        </div>
+                        <div class="field hidden" id="mcp-http-url-group">
+                            <label for="mcp-new-url">HTTP URL</label>
+                            <input class="input" type="text" id="mcp-new-url" placeholder="http://localhost:3000/mcp">
+                        </div>
+                        <button class="btn btn--secondary btn--sm" id="btn-add-mcp" type="button">Add server</button>
+
+                        <p class="form-msg hidden" id="advanced-msg"></p>
+                        <div class="form-actions">
+                            <button class="btn btn--primary btn--sm" id="btn-save-advanced" type="button">Save advanced settings</button>
+                        </div>
+                    </div>
+                </details>
+
+                <div class="card card--danger">
+                    <h2 class="card__title">Restart device</h2>
+                    <p class="help-text">Restarts this machine. It takes a minute to come back.</p>
+                    <div class="form-actions">
+                        <button class="btn btn--danger btn--sm" id="btn-reboot" type="button">Reboot device</button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <div id="modal-root"></div>
+    <div id="toast-root"></div>
+
+    <div id="skill-editor" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="skill-editor-title">
+        <div class="modal modal--wide skill-editor">
+            <div class="skill-editor__head">
+                <h3 class="modal__title" id="skill-editor-title"></h3>
+                <div class="skill-editor__badges">
+                    <span class="badge badge--ok hidden" id="sk-badge-bundled">Bundled</span>
+                    <span class="badge badge--warn hidden" id="sk-badge-modified">Edited by you — safe from updates</span>
+                </div>
+            </div>
+            <div class="skill-editor__files" id="sk-file-tabs" role="tablist"></div>
+            <textarea class="skill-editor__code" id="sk-editor" spellcheck="false" wrap="off" aria-label="Skill file contents"></textarea>
+            <div class="modal__actions">
+                <button class="btn btn--secondary" id="btn-sk-cancel" type="button">Cancel</button>
+                <button class="btn btn--primary" id="btn-sk-save" type="button">Save edits</button>
             </div>
         </div>
     </div>
 
-    <script>
-        let currentStep = 1;
-        let selectedWifi = null;
-        let adminPassword = '';
-        let currentPassword = '';
-        let rerunMode = false;
-        let setupData = {};
-        let loggedIn = false;
-
-        async function init() {
-            const status = await fetchStatus();
-            if (!status) {
-                showAlreadySetup();
-                return;
-            }
-
-            if (status.first_boot || !status.admin_configured) {
-                showStepIndicator();
-                scanWifi();
-            } else if (status.force) {
-                showLogin();
-            } else {
-                showAlreadySetup();
-            }
-        }
-
-        async function fetchStatus() {
-            try {
-                const res = await fetch('/api/status');
-                return await res.json();
-            } catch (e) {
-                return null;
-            }
-        }
-
-        function showStepIndicator() {
-            document.getElementById('step-indicator').classList.add('visible');
-        }
-
-        function hideStepIndicator() {
-            document.getElementById('step-indicator').classList.remove('visible');
-        }
-
-        function goToStep(n) {
-            document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
-            document.getElementById('step-' + n).classList.add('active');
-            currentStep = n;
-            updateStepIndicator();
-        }
-
-        function showLogin() {
-            hideStepIndicator();
-            document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
-            document.getElementById('step-login').classList.add('active');
-            document.getElementById('login-password').focus();
-        }
-
-        function showAlreadySetup() {
-            hideStepIndicator();
-            document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
-            document.getElementById('step-already').classList.add('active');
-        }
-
-        async function login() {
-            const pw = document.getElementById('login-password').value;
-            const errorEl = document.getElementById('login-error');
-            errorEl.textContent = '';
-
-            if (!pw) {
-                errorEl.textContent = 'Enter the admin password';
-                return;
-            }
-
-            try {
-                const res = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: pw })
-                });
-                const data = await res.json();
-
-                if (data.ok) {
-                    currentPassword = pw;
-                    loggedIn = true;
-                    showDashboard();
-                } else {
-                    if (data.retry_in) {
-                        errorEl.textContent = data.error;
-                    } else {
-                        errorEl.textContent = data.error || 'Login failed';
-                    }
-                }
-            } catch (e) {
-                errorEl.textContent = 'Login failed';
-            }
-        }
-
-        async function showDashboard() {
-            document.getElementById('wizard-container').style.display = 'none';
-            document.getElementById('dashboard').classList.remove('hidden');
-            document.body.className = 'world-dashboard';
-            document.getElementById('nav-host').textContent = 'Online';
-            switchTab('home');
-            loadHome();
-            loadAIConfig();
-            loadChannels();
-            loadTools();
-            loadAdvanced();
-            loadGateway();
-            loadSystem();
-            loadSkills();
-            loadPersonality();
-            loadToolsets();
-            loadLogs();
-            startLogsAutoRefresh();
-        }
-
-        function logout() {
-            loggedIn = false;
-            document.getElementById('dashboard').classList.add('hidden');
-            document.getElementById('wizard-container').style.display = '';
-            document.body.className = 'world-wizard';
-            showLogin();
-            document.getElementById('login-password').value = '';
-        }
-
-        function switchTab(name) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + name));
-        }
-
-        async function api(path, method, body) {
-            const opts = { method: method || 'GET', headers: {} };
-            if (body !== undefined) {
-                opts.headers['Content-Type'] = 'application/json';
-                opts.body = JSON.stringify(body);
-            }
-            const res = await fetch(path, opts);
-            if (res.status === 401) {
-                alert('Session expired, please log in again.');
-                logout();
-                throw new Error('unauthorized');
-            }
-            return res.json();
-        }
-
-        function fmtBytes(n) {
-            if (!n) return '0 B';
-            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-            let i = 0;
-            while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
-            return n.toFixed(1) + ' ' + units[i];
-        }
-
-        // ---------- Home ----------
-        async function loadHome() {
-            try {
-                const data = await api('/api/admin/status');
-                if (!data.ok) return;
-                document.getElementById('stat-cpu').textContent = (data.cpu_percent || 0).toFixed(0) + '%';
-                const memPct = data.memory.total ? (data.memory.used / data.memory.total * 100).toFixed(0) : 0;
-                document.getElementById('stat-mem').innerHTML = memPct + '% <small>' + fmtBytes(data.memory.used) + '</small>';
-                const diskPct = data.disk.total ? (data.disk.used / data.disk.total * 100).toFixed(0) : 0;
-                document.getElementById('stat-disk').innerHTML = diskPct + '% <small>' + fmtBytes(data.disk.used) + '</small>';
-                document.getElementById('stat-uptime').textContent = data.uptime || '-';
-
-                const services = document.getElementById('services');
-                services.innerHTML = (data.services || []).map(s => `
-                    <div class="service-row">
-                        <span style="font-size: 12px;">${s.name}</span>
-                        <span class="badge ${s.active ? 'ok' : 'fail'}">${s.active ? 'Running' : 'Stopped'}</span>
-                    </div>
-                `).join('');
-
-                document.getElementById('cfg-host').textContent = data.hostname;
-                document.getElementById('cfg-ip').textContent = data.ip;
-                document.getElementById('cfg-ver').textContent = data.version;
-                document.getElementById('cfg-provider').textContent = data.provider || '-';
-                document.getElementById('cfg-model').textContent = data.model || '-';
-                document.getElementById('cfg-ollama').textContent = data.ollama_url || '-';
-            } catch (e) {}
-        }
-
-        async function runDoctor() {
-            const box = document.getElementById('doctor-results');
-            box.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-            try {
-                const data = await api('/api/admin/doctor');
-                box.innerHTML = (data.checks || []).map(c => `
-                    <div class="check-row">
-                        <span class="badge ${c.status === 'ok' ? 'ok' : c.status === 'fail' ? 'fail' : 'warn'}">${c.status.toUpperCase()}</span>
-                        <span>${c.name}</span>
-                        <span class="muted" style="margin-left:auto; text-align:right;">${c.message || ''}</span>
-                    </div>
-                `).join('');
-            } catch (e) {
-                box.innerHTML = '<div class="error">Failed to run checks.</div>';
-            }
-        }
-
-        async function startUpdate() {
-            const btn = document.getElementById('update-btn');
-            const log = document.getElementById('update-log');
-            btn.disabled = true;
-            log.classList.remove('hidden');
-            log.textContent = 'Starting update...';
-
-            try {
-                await api('/api/admin/update', 'POST');
-                const poll = setInterval(async () => {
-                    const data = await api('/api/admin/update/status');
-                    log.textContent = data.log || '';
-                    log.scrollTop = log.scrollHeight;
-                    if (!data.running) {
-                        clearInterval(poll);
-                        btn.disabled = false;
-                        log.textContent = data.log + (data.success ? '\n\n✓ Update complete' : '\n\n✗ Update failed');
-                        loadHome();
-                    }
-                }, 1000);
-            } catch (e) {
-                btn.disabled = false;
-                log.textContent = 'Failed to start update.';
-            }
-        }
-
-        // ---------- AI ----------
-        let providerKeys = {};
-
-        async function loadAIConfig() {
-            try {
-                const data = await api('/api/admin/config');
-                if (!data.ok) return;
-                document.getElementById('ai-provider').value = data.provider || 'ollama';
-                document.getElementById('ai-model').value = data.model || '';
-                document.getElementById('ai-fallback').value = (data.fallback_models || []).join(', ');
-                document.getElementById('ai-embedding').value = data.embedding_model || '';
-                const p = data.providers || {};
-                if (p.ollama && p.ollama.api_base) {
-                    document.getElementById('ai-ollama').value = p.ollama.api_base;
-                } else {
-                    document.getElementById('ai-ollama').value = 'http://localhost:11434';
-                }
-                document.getElementById('ai-maxtokens').value = data.max_tokens || '';
-
-                providerKeys = {};
-                const keysBox = document.getElementById('api-keys');
-                const providerNames = {
-                    moonshot: 'Moonshot (Kimi)',
-                    anthropic: 'Anthropic (Claude)',
-                    openai: 'OpenAI',
-                    openrouter: 'OpenRouter',
-                    groq: 'Groq',
-                    deepseek: 'DeepSeek',
-                    gemini: 'Google Gemini',
-                    zhipu: 'Zhipu (GLM)'
-                };
-                keysBox.innerHTML = Object.keys(providerNames).map(name => {
-                    const current = (p[name] && p[name].api_key) || '';
-                    providerKeys[name] = current;
-                    return `
-                        <div class="form-group">
-                            <label>${providerNames[name]} ${current ? '<span class="muted">(set)</span>' : '<span class="muted">(not set)</span>'}</label>
-                            <div class="api-key-row">
-                                <input type="password" id="key-${name}" placeholder="${current ? 'Leave blank to keep current' : 'Enter API key'}" autocomplete="off">
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-                loadOllamaModels();
-            } catch (e) {}
-        }
-
-        async function saveAIConfig() {
-            const errorEl = document.getElementById('ai-error');
-            const successEl = document.getElementById('ai-success');
-            errorEl.textContent = '';
-            successEl.textContent = '';
-            const fallback = document.getElementById('ai-fallback').value
-                .split(',').map(s => s.trim()).filter(Boolean);
-            const maxTokens = parseInt(document.getElementById('ai-maxtokens').value) || 0;
-            const temp = parseFloat(document.getElementById('ai-temperature')?.value) || 0;
-            try {
-                const data = await api('/api/admin/config/save', 'POST', {
-                    provider: document.getElementById('ai-provider').value,
-                    model: document.getElementById('ai-model').value,
-                    fallback_models: fallback,
-                    embedding_model: document.getElementById('ai-embedding').value,
-                    ollama_url: document.getElementById('ai-ollama').value,
-                    max_tokens: maxTokens,
-                    temperature: temp
-                });
-                if (data.ok) {
-                    successEl.textContent = 'AI settings saved.';
-                    loadHome();
-                } else {
-                    errorEl.textContent = data.error || 'Failed to save.';
-                }
-            } catch (e) { errorEl.textContent = 'Failed to save.'; }
-        }
-
-        async function saveAIKeys() {
-            const errorEl = document.getElementById('ai-error');
-            const successEl = document.getElementById('ai-success');
-            errorEl.textContent = '';
-            successEl.textContent = '';
-            const keys = {};
-            const names = ['moonshot', 'anthropic', 'openai', 'openrouter', 'groq', 'deepseek', 'gemini', 'zhipu'];
-            names.forEach(n => {
-                const el = document.getElementById('key-' + n);
-                if (el && el.value) keys[n] = el.value;
-            });
-            if (Object.keys(keys).length === 0) {
-                errorEl.textContent = 'Enter at least one API key.';
-                return;
-            }
-            try {
-                const data = await api('/api/admin/config/save', 'POST', { api_keys: keys });
-                if (data.ok) {
-                    successEl.textContent = 'API keys saved.';
-                    document.querySelectorAll('[id^="key-"]').forEach(el => el.value = '');
-                    loadAIConfig();
-                } else {
-                    errorEl.textContent = data.error || 'Failed to save keys.';
-                }
-            } catch (e) { errorEl.textContent = 'Failed to save keys.'; }
-        }
-
-        async function loadOllamaModels() {
-            const box = document.getElementById('ollama-models');
-            try {
-                const res = await fetch('/api/ollama/models');
-                const data = await res.json();
-                if (!data.ok) {
-                    box.innerHTML = '<div class="muted">Ollama not reachable.</div>';
-                    return;
-                }
-                if (!data.models || data.models.length === 0) {
-                    box.innerHTML = '<div class="muted">No models installed yet.</div>';
-                    return;
-                }
-                box.innerHTML = data.models.map(m => `
-                    <div class="skill-card">
-                        <div class="meta">
-                            <div class="name">${m}</div>
-                        </div>
-                        <button class="btn btn-danger btn-small" onclick="deleteOllamaModel('${m}')">Delete</button>
-                    </div>
-                `).join('');
-            } catch (e) {
-                box.innerHTML = '<div class="muted">Ollama not reachable.</div>';
-            }
-        }
-
-        async function pullOllamaModel() {
-            const name = document.getElementById('ollama-new-model').value.trim();
-            const errorEl = document.getElementById('ollama-error');
-            errorEl.textContent = '';
-            if (!name) { errorEl.textContent = 'Enter a model name.'; return; }
-            try {
-                await api('/api/ollama/pull', 'POST', { model: name });
-                errorEl.style.color = '#00e5ff';
-                errorEl.textContent = 'Download started (may take a while on a Pi).';
-                document.getElementById('ollama-new-model').value = '';
-                setTimeout(loadOllamaModels, 15000);
-            } catch (e) { errorEl.textContent = 'Failed to start download.'; }
-        }
-
-        async function deleteOllamaModel(name) {
-            if (!confirm('Delete model ' + name + '?')) return;
-            try {
-                const data = await api('/api/ollama/delete', 'POST', { model: name });
-                loadOllamaModels();
-            } catch (e) {}
-        }
-
-        // ---------- Channels ----------
-        let channelsState = {};
-
-        async function loadChannels() {
-            try {
-                const data = await api('/api/admin/channels');
-                if (!data.ok) return;
-                channelsState = data.channels || {};
-                const tg = channelsState.telegram || {};
-                const ds = channelsState.discord || {};
-                const sl = channelsState.slack || {};
-                const wa = channelsState.whatsapp || {};
-                const em = channelsState.email || {};
-                const hb = data.heartbeat || {};
-
-                document.getElementById('tg-toggle').classList.toggle('on', !!tg.enabled);
-                document.getElementById('tg-token').placeholder = tg.token || 'Enter bot token';
-                document.getElementById('ds-toggle').classList.toggle('on', !!ds.enabled);
-                document.getElementById('ds-token').placeholder = ds.token || 'Enter bot token';
-                document.getElementById('sl-toggle').classList.toggle('on', !!sl.enabled);
-                document.getElementById('sl-bot-token').placeholder = sl.bot_token || 'Enter bot token';
-                document.getElementById('sl-app-token').placeholder = sl.app_token || 'Enter app token';
-                document.getElementById('wa-toggle').classList.toggle('on', !!wa.enabled);
-                document.getElementById('em-toggle').classList.toggle('on', !!em.enabled);
-                document.getElementById('em-host').value = em.smtp_host || '';
-                document.getElementById('em-port').value = em.smtp_port || '';
-                document.getElementById('em-user').value = em.username || '';
-                document.getElementById('em-pass').placeholder = em.password ? 'Keep current (masked)' : 'Enter password';
-                document.getElementById('em-from').value = em.from || '';
-                document.getElementById('em-to').value = em.to || '';
-                document.getElementById('hb-toggle').classList.toggle('on', !!hb.enabled);
-                document.getElementById('hb-interval').value = hb.interval || 30;
-            } catch (e) {}
-        }
-
-        function toggleChannel(id) {
-            document.getElementById(id + '-toggle').classList.toggle('on');
-        }
-
-        function toggleHeartbeat() {
-            document.getElementById('hb-toggle').classList.toggle('on');
-        }
-
-        async function saveChannels() {
-            const errorEl = document.getElementById('channels-error');
-            const successEl = document.getElementById('channels-success');
-            errorEl.textContent = '';
-            successEl.textContent = '';
-            const body = {
-                telegram: {
-                    enabled: document.getElementById('tg-toggle').classList.contains('on'),
-                    token: document.getElementById('tg-token').value
-                },
-                discord: {
-                    enabled: document.getElementById('ds-toggle').classList.contains('on'),
-                    token: document.getElementById('ds-token').value
-                },
-                slack: {
-                    enabled: document.getElementById('sl-toggle').classList.contains('on'),
-                    bot_token: document.getElementById('sl-bot-token').value,
-                    app_token: document.getElementById('sl-app-token').value
-                },
-                whatsapp: {
-                    enabled: document.getElementById('wa-toggle').classList.contains('on'),
-                    bridge_url: document.getElementById('wa-bridge-url').value
-                },
-                email: {
-                    enabled: document.getElementById('em-toggle').classList.contains('on'),
-                    smtp_host: document.getElementById('em-host').value,
-                    smtp_port: parseInt(document.getElementById('em-port').value) || 0,
-                    username: document.getElementById('em-user').value,
-                    password: document.getElementById('em-pass').value,
-                    from: document.getElementById('em-from').value,
-                    to: document.getElementById('em-to').value
-                },
-                heartbeat: {
-                    enabled: document.getElementById('hb-toggle').classList.contains('on'),
-                    interval: parseInt(document.getElementById('hb-interval').value) || 30
-                }
-            };
-            try {
-                const data = await api('/api/admin/channels/save', 'POST', body);
-                if (data.ok) {
-                    successEl.textContent = 'Channel settings saved.';
-                    document.getElementById('tg-token').value = '';
-                    document.getElementById('ds-token').value = '';
-                    document.getElementById('sl-bot-token').value = '';
-                    document.getElementById('sl-app-token').value = '';
-                    document.getElementById('em-pass').value = '';
-                    loadChannels();
-                } else {
-                    errorEl.textContent = data.error || 'Failed to save.';
-                }
-            } catch (e) { errorEl.textContent = 'Failed to save.'; }
-        }
-
-        // ---------- System ----------
-        async function loadSystem() {
-            try {
-                const data = await api('/api/admin/network');
-                if (!data.ok) return;
-                document.getElementById('net-host').textContent = data.hostname;
-                document.getElementById('net-ip').textContent = data.ip;
-                document.getElementById('net-wifi').textContent = (data.connected || 'wired/unknown');
-            } catch (e) {}
-        }
-
-        async function setHostname() {
-            const host = document.getElementById('sys-hostname').value.trim();
-            const errorEl = document.getElementById('hostname-error');
-            errorEl.textContent = '';
-            if (!host) { errorEl.textContent = 'Enter a hostname.'; return; }
-            try {
-                const data = await api('/api/admin/hostname', 'POST', { hostname: host });
-                if (data.ok) {
-                    errorEl.style.color = '#00e5ff';
-                    errorEl.textContent = 'Hostname updated. It applies immediately on most systems.';
-                    document.getElementById('sys-hostname').value = '';
-                    loadSystem();
-                } else {
-                    errorEl.textContent = data.error || 'Failed to set hostname.';
-                }
-            } catch (e) { errorEl.textContent = 'Failed to set hostname.'; }
-        }
-
-        function downloadBackup() {
-            const a = document.createElement('a');
-            a.href = '/api/admin/backup';
-            a.download = 'ghost-backup.tar.gz';
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        }
-
-        async function changePassword() {
-            const current = document.getElementById('pw-current').value;
-            const next = document.getElementById('pw-new').value;
-            const msg = document.getElementById('password-msg');
-            msg.textContent = '';
-            if (!current || !next) { msg.textContent = 'Fill in both fields.'; return; }
-            try {
-                const data = await api('/api/admin/password', 'POST', { current, new: next });
-                if (data.ok) {
-                    msg.style.color = '#00e5ff';
-                    msg.textContent = 'Password updated.';
-                    currentPassword = next;
-                    document.getElementById('pw-current').value = '';
-                    document.getElementById('pw-new').value = '';
-                } else {
-                    msg.textContent = data.error || 'Failed to change password.';
-                }
-            } catch (e) { msg.textContent = 'Failed to change password.'; }
-        }
-
-        async function regenBridge() {
-            if (!confirm('Regenerate bridge secret? The mobile app will need to be re-paired.')) return;
-            const msg = document.getElementById('bridge-msg');
-            msg.textContent = '';
-            try {
-                const data = await api('/api/admin/bridge', 'POST');
-                if (data.ok) {
-                    msg.style.color = '#00e5ff';
-                    msg.textContent = 'Bridge secret regenerated: ' + data.secret;
-                } else {
-                    msg.textContent = data.error || 'Failed to regenerate.';
-                }
-            } catch (e) { msg.textContent = 'Failed to regenerate.'; }
-        }
-
-        async function rebootDevice() {
-            if (!confirm('Reboot this device now?')) return;
-            if (!confirm('Are you sure? The device will restart.')) return;
-            try {
-                await api('/api/admin/reboot', 'POST');
-                alert('Rebooting... The page will stop responding. Wait a minute and reload.');
-            } catch (e) {}
-        }
-
-        // ---------- Skills ----------
-        async function loadSkills() {
-            try {
-                const data = await api('/api/admin/skills');
-                const box = document.getElementById('skills-list');
-                if (!data.skills || data.skills.length === 0) {
-                    box.innerHTML = '<div class="muted">No skills installed yet.</div>';
-                    return;
-                }
-                box.innerHTML = data.skills.map(s => `
-                    <div class="skill-card">
-                        <div class="meta">
-                            <div class="name">${s.name}</div>
-                            <div class="desc">${s.description || ''}</div>
-                        </div>
-                        <div style="display: flex; gap: var(--space-sm); align-items: center;">
-                            <button class="btn btn-small" onclick="toggleSkill('${s.name}', false)">Disable</button>
-                            <button class="btn btn-danger btn-small" onclick="removeSkill('${s.name}')">Remove</button>
-                        </div>
-                    </div>
-                `).join('');
-            } catch (e) {}
-        }
-
-        async function toggleSkill(name, enabled) {
-            try {
-                const data = await api('/api/admin/skills/toggle', 'POST', { name, enabled });
-                loadSkills();
-            } catch (e) {}
-        }
-
-        async function installSkill() {
-            const errorEl = document.getElementById('skills-error');
-            errorEl.textContent = '';
-            const owner = document.getElementById('sk-owner').value.trim();
-            const repo = document.getElementById('sk-repo').value.trim();
-            const path = document.getElementById('sk-path').value.trim();
-            const name = document.getElementById('sk-name').value.trim();
-            if (!owner || !repo || !path) {
-                errorEl.textContent = 'Owner, repo and path are required.';
-                return;
-            }
-            try {
-                const data = await api('/api/admin/skills/install', 'POST', { owner, repo, path, name });
-                if (data.ok) {
-                    errorEl.style.color = '#00e5ff';
-                    errorEl.textContent = 'Skill installed. It is available to Ghost immediately.';
-                    ['sk-owner', 'sk-repo', 'sk-path', 'sk-name'].forEach(id => document.getElementById(id).value = '');
-                    loadSkills();
-                } else {
-                    errorEl.textContent = data.error || 'Failed to install.';
-                }
-            } catch (e) { errorEl.textContent = 'Failed to install skill.'; }
-        }
-
-        async function removeSkill(name) {
-            if (!confirm('Remove skill ' + name + '?')) return;
-            try {
-                const data = await api('/api/admin/skills/remove', 'POST', { name });
-                loadSkills();
-            } catch (e) {}
-        }
-
-        // ---------- ClawHub Marketplace ----------
-        async function searchClawHub() {
-            const query = document.getElementById('clawhub-search').value.trim();
-            const resultsEl = document.getElementById('clawhub-results');
-            if (!query) { resultsEl.innerHTML = ''; return; }
-            resultsEl.innerHTML = '<p style="color: var(--text-secondary);">Searching...</p>';
-            try {
-                const data = await api('/api/admin/skills/clawhub/search?q=' + encodeURIComponent(query));
-                if (!data.ok || !data.results || data.results.length === 0) {
-                    resultsEl.innerHTML = '<p style="color: var(--text-secondary);">No results found.</p>';
-                    return;
-                }
-                resultsEl.innerHTML = data.results.map(r => `
-                    <div class="toggle-row" style="cursor: default;">
-                        <div style="flex: 1;">
-                            <strong style="color: #00e5ff;">${r.display_name || r.slug}</strong>
-                            <span style="color: var(--text-secondary); margin-left: var(--space-sm); font-size: 0.8rem;">v${r.version || '?'}</span>
-                            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 2px;">${r.summary || ''}</div>
-                        </div>
-                        <button class="btn btn-primary btn-small" onclick="installFromClawHub('${r.slug}')">Install</button>
-                    </div>
-                `).join('');
-            } catch (e) {
-                resultsEl.innerHTML = '<p class="error">Search failed.</p>';
-            }
-        }
-
-        async function installFromClawHub(slug) {
-            try {
-                const data = await api('/api/admin/skills/clawhub/install', 'POST', { slug });
-                if (data.ok) {
-                    loadSkills();
-                    searchClawHub();
-                }
-            } catch (e) {}
-        }
-
-        // ---------- Tools ----------
-        async function loadTools() {
-            try {
-                const data = await api('/api/admin/tools');
-                if (!data.ok) return;
-                const w = data.web || {};
-                const brave = w.brave || {};
-                const ddg = w.duckduckgo || {};
-                document.getElementById('brave-toggle').classList.toggle('on', !!brave.enabled);
-                document.getElementById('brave-key').placeholder = brave.api_key ? 'Keep current (masked)' : 'Enter API key';
-                document.getElementById('brave-max').value = brave.max_results || 5;
-                document.getElementById('ddg-toggle').classList.toggle('on', !!ddg.enabled);
-                document.getElementById('ddg-max').value = ddg.max_results || 5;
-
-                const cu = data.curator || {};
-                document.getElementById('curator-toggle').classList.toggle('on', !!cu.enabled);
-                document.getElementById('curator-stale').value = cu.stale_after_days || 30;
-                document.getElementById('curator-archive').value = cu.archive_after_days || 90;
-                document.getElementById('curator-interval').value = cu.check_interval_mins || 60;
-
-                const dl = data.delegation || {};
-                document.getElementById('delegation-toggle').classList.toggle('on', !!dl.enabled);
-                document.getElementById('delegation-concurrent').value = dl.max_concurrent || 5;
-                document.getElementById('delegation-tasks').value = dl.max_tasks || 5;
-                document.getElementById('delegation-budget').value = dl.budget_tokens || 100000;
-            } catch (e) {}
-        }
-
-        async function saveTools() {
-            const msgEl = document.getElementById('tools-msg');
-            const successEl = document.getElementById('tools-success');
-            msgEl.textContent = '';
-            successEl.textContent = '';
-            try {
-                const data = await api('/api/admin/tools/save', 'POST', {
-                    web: {
-                        brave: {
-                            enabled: document.getElementById('brave-toggle').classList.contains('on'),
-                            api_key: document.getElementById('brave-key').value,
-                            max_results: parseInt(document.getElementById('brave-max').value) || 5
-                        },
-                        duckduckgo: {
-                            enabled: document.getElementById('ddg-toggle').classList.contains('on'),
-                            max_results: parseInt(document.getElementById('ddg-max').value) || 5
-                        }
-                    },
-                    curator: {
-                        enabled: document.getElementById('curator-toggle').classList.contains('on'),
-                        stale_after_days: parseInt(document.getElementById('curator-stale').value) || 30,
-                        archive_after_days: parseInt(document.getElementById('curator-archive').value) || 90,
-                        check_interval_mins: parseInt(document.getElementById('curator-interval').value) || 60
-                    },
-                    delegation: {
-                        enabled: document.getElementById('delegation-toggle').classList.contains('on'),
-                        max_concurrent: parseInt(document.getElementById('delegation-concurrent').value) || 5,
-                        max_tasks: parseInt(document.getElementById('delegation-tasks').value) || 5,
-                        budget_tokens: parseInt(document.getElementById('delegation-budget').value) || 100000
-                    }
-                });
-                if (data.ok) {
-                    successEl.textContent = 'Tools settings saved.';
-                    document.getElementById('brave-key').value = '';
-                    loadTools();
-                } else {
-                    msgEl.textContent = data.error || 'Failed to save.';
-                }
-            } catch (e) { msgEl.textContent = 'Failed to save.'; }
-        }
-
-        // ---------- Advanced ----------
-        async function loadAdvanced() {
-            try {
-                const data = await api('/api/admin/advanced');
-                if (!data.ok) return;
-                const rag = data.rag || {};
-                document.getElementById('rag-toggle').classList.toggle('on', !!rag.enabled);
-                document.getElementById('rag-m').value = rag.m || 16;
-                document.getElementById('rag-ef-const').value = rag.ef_construction || 200;
-                document.getElementById('rag-ef-search').value = rag.ef_search || 10;
-
-                const nudge = data.nudge || {};
-                document.getElementById('nudge-toggle').classList.toggle('on', !!nudge.enabled);
-                document.getElementById('nudge-memory').value = nudge.memory_interval || 20;
-                document.getElementById('nudge-skill').value = nudge.skill_interval || 15;
-
-                const dev = data.devices || {};
-                document.getElementById('devices-toggle').classList.toggle('on', !!dev.enabled);
-                document.getElementById('devices-usb-toggle').classList.toggle('on', !!dev.monitor_usb);
-
-                document.getElementById('adv-search-toggle').classList.toggle('on', !!data.search_enabled);
-                document.getElementById('adv-workspace-toggle').classList.toggle('on', !!data.restrict_to_workspace);
-                document.getElementById('adv-max-iter').value = data.max_tool_iterations || 20;
-                document.getElementById('adv-light-model').value = (data.routing || {}).light_model || '';
-                document.getElementById('adv-threshold').value = (data.routing || {}).threshold || 0.35;
-
-                const mcp = data.mcp || {};
-                document.getElementById('mcp-toggle').classList.toggle('on', !!mcp.enabled);
-                mcpServers = mcp.servers || {};
-                renderMCPServers();
-                initVoiceToggle();
-                document.getElementById('voice-transcriber').textContent = 'Groq or Kimi (check AI providers)';
-            } catch (e) {}
-        }
-
-        async function saveAdvanced() {
-            const msgEl = document.getElementById('advanced-msg');
-            const successEl = document.getElementById('advanced-success');
-            msgEl.textContent = '';
-            successEl.textContent = '';
-            try {
-                const data = await api('/api/admin/advanced/save', 'POST', {
-                    rag: {
-                        enabled: document.getElementById('rag-toggle').classList.contains('on'),
-                        m: parseInt(document.getElementById('rag-m').value) || 16,
-                        ef_construction: parseInt(document.getElementById('rag-ef-const').value) || 200,
-                        ef_search: parseInt(document.getElementById('rag-ef-search').value) || 10
-                    },
-                    nudge: {
-                        enabled: document.getElementById('nudge-toggle').classList.contains('on'),
-                        memory_interval: parseInt(document.getElementById('nudge-memory').value) || 20,
-                        skill_interval: parseInt(document.getElementById('nudge-skill').value) || 15
-                    },
-                    devices: {
-                        enabled: document.getElementById('devices-toggle').classList.contains('on'),
-                        monitor_usb: document.getElementById('devices-usb-toggle').classList.contains('on')
-                    },
-                    search_enabled: document.getElementById('adv-search-toggle').classList.contains('on'),
-                    restrict_to_workspace: document.getElementById('adv-workspace-toggle').classList.contains('on'),
-                    max_tool_iterations: parseInt(document.getElementById('adv-max-iter').value) || 20,
-                    routing: {
-                        light_model: document.getElementById('adv-light-model').value,
-                        threshold: parseFloat(document.getElementById('adv-threshold').value) || 0.35
-                    }
-                });
-                if (data.ok) {
-                    successEl.textContent = 'Advanced settings saved.';
-                } else {
-                    msgEl.textContent = data.error || 'Failed to save.';
-                }
-            } catch (e) { msgEl.textContent = 'Failed to save.'; }
-        }
-
-        // ---------- Gateway ----------
-        async function loadGateway() {
-            try {
-                const data = await api('/api/admin/gateway');
-                if (!data.ok) return;
-                document.getElementById('gw-host').value = data.host || '0.0.0.0';
-                document.getElementById('gw-port').value = data.port || 8766;
-            } catch (e) {}
-        }
-
-        async function saveGateway() {
-            const msgEl = document.getElementById('gateway-msg');
-            msgEl.textContent = '';
-            try {
-                const data = await api('/api/admin/gateway/save', 'POST', {
-                    host: document.getElementById('gw-host').value,
-                    port: parseInt(document.getElementById('gw-port').value) || 8766
-                });
-                if (data.ok) {
-                    msgEl.style.color = '#00e5ff';
-                    msgEl.textContent = 'Gateway settings saved.';
-                } else {
-                    msgEl.textContent = data.error || 'Failed to save.';
-                }
-            } catch (e) { msgEl.textContent = 'Failed to save.'; }
-        }
-
-        // ---------- Personality ----------
-        async function loadPersonality() {
-            try {
-                const data = await api('/api/admin/personality');
-                if (!data.ok) return;
-                const active = data.active || 'default';
-                const all = [...(data.builtins || []), ...(data.custom || [])];
-                const listEl = document.getElementById('personality-list');
-                listEl.innerHTML = all.map(p => `
-                    <div class="toggle-row" style="cursor: pointer;" onclick="setPersonality('${p.name}')">
-                        <div>
-                            <strong style="color: ${p.name === active ? '#00e5ff' : 'var(--text-primary)'}">${p.name}</strong>
-                            <span style="color: var(--text-secondary); margin-left: var(--space-sm); font-size: 0.85rem;">${p.description || ''}</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: var(--space-sm);">
-                            ${p.name === active ? '<span style="color: #00e5ff; font-size: 0.75rem;">ACTIVE</span>' : ''}
-                            ${data.custom && data.custom.some(c => c.name === p.name) ? '<button class="btn btn-small" style="color: #f87171; background: none; border: none; cursor: pointer;" onclick="event.stopPropagation(); deletePersonality(\'' + p.name + '\')">&#10005;</button>' : ''}
-                        </div>
-                    </div>
-                `).join('');
-            } catch (e) {}
-        }
-
-        async function setPersonality(name) {
-            try {
-                const data = await api('/api/admin/personality/save', 'POST', { active: name });
-                if (data.ok) loadPersonality();
-            } catch (e) {}
-        }
-
-        async function createPersonality() {
-            const name = document.getElementById('new-personality-name').value.trim();
-            const desc = document.getElementById('new-personality-desc').value.trim();
-            const content = document.getElementById('new-personality-content').value.trim();
-            if (!name || !content) return;
-            try {
-                const data = await api('/api/admin/personality/create', 'POST', { name, description: desc, content });
-                if (data.ok) {
-                    document.getElementById('new-personality-name').value = '';
-                    document.getElementById('new-personality-desc').value = '';
-                    document.getElementById('new-personality-content').value = '';
-                    loadPersonality();
-                }
-            } catch (e) {}
-        }
-
-        async function deletePersonality(name) {
-            try {
-                const data = await api('/api/admin/personality/delete', 'POST', { name });
-                if (data.ok) loadPersonality();
-            } catch (e) {}
-        }
-
-        // ---------- Toolsets ----------
-        async function loadToolsets() {
-            try {
-                const data = await api('/api/admin/toolsets');
-                if (!data.ok) return;
-                const active = data.active || 'default';
-                const listEl = document.getElementById('toolsets-list');
-                listEl.innerHTML = (data.toolsets || []).map(t => `
-                    <div class="toggle-row" style="cursor: pointer;" onclick="setToolset('${t.name}')">
-                        <div>
-                            <strong style="color: ${t.name === active ? '#00e5ff' : 'var(--text-primary)'}">${t.name}</strong>
-                            <span style="color: var(--text-secondary); margin-left: var(--space-sm); font-size: 0.85rem;">${t.description || ''}</span>
-                        </div>
-                        ${t.name === active ? '<span style="color: #00e5ff; font-size: 0.75rem;">ACTIVE</span>' : ''}
-                    </div>
-                `).join('');
-            } catch (e) {}
-        }
-
-        async function setToolset(name) {
-            try {
-                const data = await api('/api/admin/toolsets/save', 'POST', { active: name });
-                if (data.ok) loadToolsets();
-            } catch (e) {}
-        }
-
-        // ---------- MCP Servers ----------
-        let mcpServers = {};
-
-        function renderMCPServers() {
-            const el = document.getElementById('mcp-servers-list');
-            const names = Object.keys(mcpServers);
-            if (names.length === 0) {
-                el.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.85rem;">No MCP servers configured.</p>';
-                return;
-            }
-            el.innerHTML = names.map(name => {
-                const s = mcpServers[name];
-                const cmd = s.command || s.http_url || '?';
-                const args = (s.args || []).join(' ');
-                return `<div class="toggle-row">
-                    <div>
-                        <strong style="color: #00e5ff;">${name}</strong>
-                        <span style="color: var(--text-secondary); margin-left: var(--space-sm); font-size: 0.85rem;">${cmd} ${args}</span>
-                    </div>
-                    <button class="btn btn-small" style="color: #f87171; background: none; border: none; cursor: pointer;" onclick="removeMCPServer('${name}')">&#10005;</button>
-                </div>`;
-            }).join('');
-        }
-
-        async function addMCPServer() {
-            const name = document.getElementById('mcp-new-name').value.trim();
-            const cmd = document.getElementById('mcp-new-cmd').value.trim();
-            const argsStr = document.getElementById('mcp-new-args').value.trim();
-            const httpMode = document.getElementById('mcp-http-toggle').classList.contains('on');
-            const httpUrl = document.getElementById('mcp-new-url').value.trim();
-            if (!name) return;
-            const args = argsStr ? argsStr.split(/\s+/) : [];
-            mcpServers[name] = httpMode
-                ? { enabled: true, http: true, http_url: httpUrl, command: '', args: [] }
-                : { enabled: true, command: cmd, args: args, http: false };
-            await saveMCPConfig();
-            document.getElementById('mcp-new-name').value = '';
-            document.getElementById('mcp-new-cmd').value = '';
-            document.getElementById('mcp-new-args').value = '';
-            document.getElementById('mcp-new-url').value = '';
-        }
-
-        async function removeMCPServer(name) {
-            delete mcpServers[name];
-            await saveMCPConfig();
-        }
-
-        async function saveMCPConfig() {
-            const enabled = document.getElementById('mcp-toggle').classList.contains('on');
-            try {
-                await api('/api/admin/advanced/save', 'POST', {
-                    mcp: { enabled, servers: mcpServers }
-                });
-                renderMCPServers();
-            } catch (e) {}
-        }
-
-        // ---------- Voice / TTS ----------
-        function initVoiceToggle() {
-            document.getElementById('mcp-http-toggle').onclick = function() {
-                this.classList.toggle('on');
-                document.getElementById('mcp-http-url-group').style.display =
-                    this.classList.contains('on') ? '' : 'none';
-            };
-        }
-
-        // ---------- Logs ----------
-        let logsInterval = null;
-
-        async function loadLogs() {
-            const lines = document.getElementById('log-lines').value;
-            try {
-                const data = await api('/api/admin/logs?lines=' + lines);
-                if (data.ok) {
-                    const el = document.getElementById('logs-output');
-                    el.textContent = (data.logs || []).join('\n');
-                    el.scrollTop = el.scrollHeight;
-                }
-            } catch (e) {}
-        }
-
-        function startLogsAutoRefresh() {
-            if (logsInterval) clearInterval(logsInterval);
-            logsInterval = setInterval(loadLogs, 10000);
-        }
-
-        // ---------- Wizard helpers ----------
-        async function scanWifi() {
-            try {
-                const res = await fetch('/api/scan-wifi');
-                const data = await res.json();
-                document.getElementById('wifi-loading').style.display = 'none';
-                const list = document.getElementById('wifi-list');
-                list.style.display = 'block';
-
-                if (data.networks && data.networks.length > 0) {
-                    document.getElementById('wifi-count').textContent = data.networks.length + ' network' + (data.networks.length !== 1 ? 's' : '') + ' found';
-                    document.getElementById('wifi-networks').innerHTML = data.networks.map(n => `
-                        <div class="wifi-item" onclick="selectWifi('${n.ssid}', ${n.encrypted}, this)">
-                            <div class="wifi-signal">
-                                <div class="wifi-bar" style="height: 3px; ${n.signal >= 25 ? 'background: #00e5ff' : ''}"></div>
-                                <div class="wifi-bar" style="height: 6px; ${n.signal >= 50 ? 'background: #00e5ff' : ''}"></div>
-                                <div class="wifi-bar" style="height: 9px; ${n.signal >= 75 ? 'background: #00e5ff' : ''}"></div>
-                                <div class="wifi-bar" style="height: 13px; ${n.signal >= 75 ? 'background: #00e5ff' : ''}"></div>
-                            </div>
-                            <span class="wifi-ssid">${n.ssid}</span>
-                            ${n.encrypted ? '<span class="wifi-lock">&#128274;</span>' : ''}
-                        </div>
-                    `).join('');
-                } else {
-                    document.getElementById('wifi-networks').innerHTML = '<p style="text-align: center; color: #2a3a4c; padding: var(--space-xl) 0;">No networks found</p>';
-                }
-            } catch (e) {
-                document.getElementById('wifi-loading').innerHTML = '<p class="error">Failed to scan networks</p>';
-            }
-        }
-
-        function selectWifi(ssid, encrypted, el) {
-            selectedWifi = ssid;
-            document.querySelectorAll('.wifi-item').forEach(e => e.classList.remove('selected'));
-            el.classList.add('selected');
-
-            if (encrypted) {
-                document.getElementById('wifi-password-form').style.display = 'block';
-                document.getElementById('wifi-password').focus();
-            } else {
-                connectWifi();
-            }
-        }
-
-        async function connectWifi() {
-            const password = document.getElementById('wifi-password').value;
-            const errorEl = document.getElementById('wifi-error');
-            errorEl.textContent = '';
-
-            try {
-                const res = await fetch('/api/connect-wifi', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ssid: selectedWifi, password })
-                });
-                const data = await res.json();
-
-                if (data.ok) {
-                    nextStep();
-                } else {
-                    errorEl.textContent = data.error || 'Failed to connect';
-                }
-            } catch (e) {
-                errorEl.textContent = 'Connection failed';
-            }
-        }
-
-        function skipWifi() {
-            nextStep();
-        }
-
-        function validatePassword() {
-            const pw = document.getElementById('admin-password').value;
-            const confirm = document.getElementById('admin-password-confirm').value;
-            const errorEl = document.getElementById('password-error');
-            errorEl.textContent = '';
-
-            if (pw === '' && rerunMode) {
-                adminPassword = '';
-                nextStep();
-                return;
-            }
-
-            if (pw.length < 8) {
-                errorEl.textContent = 'Password must be at least 8 characters';
-                return;
-            }
-
-            if (pw !== confirm) {
-                errorEl.textContent = 'Passwords do not match';
-                return;
-            }
-
-            adminPassword = pw;
-            nextStep();
-        }
-
-        function updateModels() {
-            const provider = document.getElementById('provider').value;
-            const modelSelect = document.getElementById('model');
-            const ollamaSection = document.getElementById('ollama-models-section');
-
-            if (provider === 'ollama') {
-                modelSelect.innerHTML = `
-                    <option value="qwen3:0.6b">Qwen 3 0.6B (Fastest, Light)</option>
-                    <option value="qwen3:1.7b">Qwen 3 1.7B (Balanced)</option>
-                    <option value="qwen3:4b">Qwen 3 4B (Smart, Needs 8GB+)</option>
-                `;
-                ollamaSection.style.display = 'block';
-                loadInstalledModels();
-            } else if (provider === 'moonshot') {
-                modelSelect.innerHTML = '<option value="kimi-k2.5">Kimi K2.5</option>';
-                ollamaSection.style.display = 'none';
-            } else if (provider === 'anthropic') {
-                modelSelect.innerHTML = `
-                    <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                    <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Fast)</option>
-                `;
-                ollamaSection.style.display = 'none';
-            } else if (provider === 'openai') {
-                modelSelect.innerHTML = `
-                    <option value="gpt-4o">GPT-4o</option>
-                    <option value="gpt-4o-mini">GPT-4o Mini (Fast)</option>
-                `;
-                ollamaSection.style.display = 'none';
-            } else if (provider === 'groq') {
-                modelSelect.innerHTML = `
-                    <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
-                    <option value="llama-3.1-8b-instant">Llama 3.1 8B (Fast)</option>
-                `;
-                ollamaSection.style.display = 'none';
-            } else {
-                modelSelect.innerHTML = '<option value="">Select a model</option>';
-                ollamaSection.style.display = 'none';
-            }
-        }
-
-        async function loadInstalledModels() {
-            try {
-                const res = await fetch('/api/ollama/models');
-                const data = await res.json();
-                const select = document.getElementById('installed-models');
-
-                if (data.ok && data.models && data.models.length > 0) {
-                    select.innerHTML = data.models.map(m =>
-                        `<option value="${m}">${m}</option>`
-                    ).join('');
-                }
-            } catch (e) {
-                console.error('Failed to load models:', e);
-            }
-        }
-
-        function nextStep() {
-            if (currentStep === 3) {
-                completeSetup();
-                return;
-            }
-            document.getElementById(`step-${currentStep}`).classList.remove('active');
-            currentStep++;
-            document.getElementById(`step-${currentStep}`).classList.add('active');
-            updateStepIndicator();
-        }
-
-        function prevStep() {
-            document.getElementById(`step-${currentStep}`).classList.remove('active');
-            currentStep--;
-            document.getElementById(`step-${currentStep}`).classList.add('active');
-            updateStepIndicator();
-        }
-
-        function updateStepIndicator() {
-            document.querySelectorAll('.step-node').forEach(node => {
-                const step = parseInt(node.dataset.step);
-                node.classList.remove('active', 'completed');
-                if (step === currentStep) node.classList.add('active');
-                if (step < currentStep) node.classList.add('completed');
-                const circle = node.querySelector('.step-circle');
-                if (step < currentStep) {
-                    circle.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5L10.5 17L18 7"/></svg>';
-                } else {
-                    circle.textContent = step;
-                }
-            });
-            document.querySelectorAll('.step-connector').forEach((conn, i) => {
-                conn.classList.toggle('filled', i < currentStep - 1);
-            });
-        }
-
-        async function completeSetup() {
-            goToStep(4);
-
-            const provider = document.getElementById('provider').value;
-            const modelSelect = document.getElementById('model');
-            const model = modelSelect.value || document.getElementById('installed-models').value;
-
-            setupData = {
-                admin_password: adminPassword,
-                current_password: currentPassword,
-                model: model,
-                provider: provider,
-                ollama_url: 'http://localhost:11434'
-            };
-
-            document.getElementById('setup-status').style.display = 'block';
-            document.getElementById('setup-complete').style.display = 'none';
-
-            try {
-                const res = await fetch('/api/configure', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(setupData)
-                });
-                const data = await res.json();
-
-                if (data.ok) {
-                    const codeRes = await fetch('/api/pairing-code');
-                    const codeData = await codeRes.json();
-                    if (codeData.ok) {
-                        document.getElementById('pairing-code').textContent = codeData.code;
-                    }
-
-                    document.getElementById('setup-status').style.display = 'none';
-                    document.getElementById('setup-complete').style.display = 'block';
-                    updateStepIndicator();
-                } else {
-                    document.getElementById('setup-status').innerHTML =
-                        `<p class="error">Error: ${data.error}</p>`;
-                }
-            } catch (e) {
-                document.getElementById('setup-status').innerHTML =
-                    '<p class="error">Failed to configure. Please try again.</p>';
-            }
-        }
-
-        function copyPairingCode() {
-            const code = document.getElementById('pairing-code').textContent;
-            const btn = document.getElementById('copy-btn');
-            navigator.clipboard.writeText(code).then(() => {
-                btn.classList.add('copied');
-                btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5L10.5 17L18 7"/></svg>';
-                setTimeout(() => {
-                    btn.classList.remove('copied');
-                    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
-                }, 1500);
-            }).catch(() => {});
-        }
-
-        function finishSetup() {
-            loggedIn = true;
-            document.getElementById('wizard-container').style.display = 'none';
-            document.getElementById('dashboard').classList.remove('hidden');
-            document.body.className = 'world-dashboard';
-            showDashboard();
-        }
-
-        init();
-    </script>
+    <script src="/assets/app.js"></script>
+    <script src="/assets/wizard.js"></script>
+    <script src="/assets/dashboard.js"></script>
 </body>
 </html>
