@@ -5,6 +5,16 @@
 
 ---
 
+## Documentation
+
+- **[Product Strategy](docs/PRODUCT.md)** — who Ghost is for, what it sells, and how it makes money.
+- **[Roadmap](docs/ROADMAP.md)** — the phased plan from appliance core to a sellable local-first product.
+- **[Implementation plans](docs/plans/)** — detailed plans for the cloud relay, install experience, OTA updates, and telemetry.
+- **[Hardware reference](docs/GHOST_HARDWARE.md)** — supported hardware and capability tiers.
+- **[Testing](docs/TESTING.md)** — how to test Ghost.
+
+---
+
 ## What is Ghost?
 
 Ghost is a **personal AI assistant** that runs on your own hardware — combining:
