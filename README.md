@@ -395,32 +395,6 @@ This starts a web UI at `http://ghost.local:8766` with:
 
 ---
 
-## Evolution
-
-### Phase 1
-* API-first assistant
-
-### Phase 2
-* Local-first routing
-* Reflex intelligence
-* Reduced cloud usage
-
-### Phase 3
-* Multi-agent system
-* Autonomous reasoning
-* Skills self-improvement
-* Trajectory compression
-* Cross-session learning graph
-
-### Phase 4
-* First-boot wizard
-* OTA updates
-* Recovery mode
-* Custom Linux distribution
-* Hardware abstraction layer
-
----
-
 ## License
 
 MIT
