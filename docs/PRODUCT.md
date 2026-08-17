@@ -10,31 +10,25 @@ This document states who Ghost is for, what it sells, and how it makes money. It
 
 Ghost is a **local-first personal AI appliance**. The software runs entirely on hardware you own. The assistant works on your network, uses your compute, and keeps your data on-device. It is private by design and available even when the internet is not.
 
-The product is **not** an image you flash and it is **not** a cloud service. The image is plumbing; the service is the product.
+The product is the **service** — updates, remote access, and support. The installable image is just how the software reaches the device; it is not the product on its own.
 
-The buyer is a **privacy-conscious mainstream user**: someone who wants a capable personal AI that does not require a cloud subscription, does not train on their conversations, and does not depend on a provider they do not control. This is the Apple-HomeKit positioning: you own the device, and Ghost owns the experience and the upkeep.
+The buyer is a **privacy-conscious mainstream user**: someone who wants a capable personal AI that does not require a cloud subscription, does not train on their conversations, and does not depend on a provider they do not control.
 
 ---
 
 ## Market position
 
-### What we are not
-
-- **Not a SaaS.** Ghost is not a multi-tenant cloud service. The architecture (single Go binary, on-device RAG, local Ollama, no external identity) is the opposite of a cloud product. Rewriting for SaaS would mean competing head-on with providers that have orders of magnitude more data and compute.
-- **Not a developer CLI.** The current form reaches only hobbyists. The setup wizard, admin console, and recovery mode already make it consumer-ready; selling raw binaries wastes that investment.
-
-### Where we fit
+Ghost is a **software product you run on hardware you own**. It is not a cloud service: the assistant works locally, keeps your data on-device, and does not depend on an external provider. This is the Apple-HomeKit positioning — you own the device, and Ghost owns the experience and the upkeep.
 
 | Option | Verdict |
 |--------|---------|
-| SaaS | Wrong. Saturated market, no moat, against our architecture. |
-| Bare binary / open project | Right for adoption, wrong as the only product. |
 | BYO-hardware appliance | **Primary market.** Software + managed service on hardware the user already owns. |
 | Full hardware device | Later expansion. Shares the same pipeline; deferred until demand is proven. |
+| Open-source core | The engine and web console are open — this wins the hobbyists who test, report, and spread the word. |
 
 ### The moat
 
-Ghost's defensible asset is the **complete lifecycle**: first-boot wizard, admin console, credential recovery, managed updates, remote access, and resilience. No competitor ships a full local-first appliance lifecycle. That lifecycle is what turns Ghost into a product rather than a library.
+Ghost's defensible asset is the **complete lifecycle**: first-boot wizard, admin console, credential recovery, managed updates, remote access, and resilience. That lifecycle is what turns Ghost into a product rather than a library.
 
 ---
 
@@ -57,11 +51,11 @@ The cloud relay is the subscription anchor. The mobile app is unusable off the h
 
 ---
 
-## Non-goals (explicit)
+## Scope boundaries
 
-- Full-device-first go-to-market. Hardware is deferred.
-- Treating the image as a product. The image is a distribution mechanism.
-- SaaS / multi-tenant cloud. This would abandon the product thesis.
+- **Hardware** is deferred: the product is software + managed service on hardware the user already owns. A physical bundle is a later expansion that shares the same pipeline.
+- **The image** is a distribution mechanism, not the product. The value is the service on top of it.
+- **Cloud is an enhancement, never a requirement.** The product stays local-first; the cloud adds remote access, updates, and support.
 
 ---
 

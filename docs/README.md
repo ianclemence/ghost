@@ -23,7 +23,6 @@ Each plan is self-contained: objective, product description, architecture, compo
 
 ## Reference
 
-- **[Hardware reference](GHOST_HARDWARE.md)** — supported hardware, capability tiers, and build guidance.
 - **[Testing](TESTING.md)** — how to test Ghost.
 
 ## Reading order
