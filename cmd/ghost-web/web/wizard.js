@@ -98,10 +98,7 @@
         $('btn-login').addEventListener('click', login);
         $('btn-login-cancel').addEventListener('click', () => location.reload());
         $('login-password').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
-        $('btn-forgot').addEventListener('click', () => {
-            const panel = $('forgot-panel');
-            panel.classList.toggle('hidden');
-        });
+        $('btn-forgot').addEventListener('click', showForgotModal);
 
         $('btn-already').addEventListener('click', () => location.reload());
     }
@@ -268,6 +265,41 @@
         } catch (e) {
             msg('login-error', 'Login failed.');
         }
+    }
+
+    /* ── forgot password modal ── */
+    function showForgotModal() {
+        const root = $('modal-root');
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop';
+        backdrop.innerHTML =
+            '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="forgot-modal-title">' +
+            '<h3 class="modal__title" id="forgot-modal-title">Forgot your password?</h3>' +
+            '<p class="forgot-modal__body">Set a new one over SSH, or from the recovery panel if Ghost won\'t start.</p>' +
+            '<div class="forgot-modal__option">' +
+            '<span class="forgot-modal__option-label">Over SSH (Ghost running)</span>' +
+            '<span class="forgot-modal__option-desc">Connect to the device and run:</span>' +
+            '<code class="code">sudo ghost reset-password --force</code>' +
+            '</div>' +
+            '<div class="forgot-modal__option">' +
+            '<span class="forgot-modal__option-label">Recovery panel (Ghost won\'t start)</span>' +
+            '<span class="forgot-modal__option-desc">Reboot the device, then open <code class="code">http://ghost.local:8766</code> within 15 minutes and choose "Reset admin password".</span>' +
+            '</div>' +
+            '<div class="modal__actions">' +
+            '<button class="btn btn--primary" id="forgot-modal-close" type="button">Close</button>' +
+            '</div>' +
+            '</div>';
+
+        const close = () => {
+            document.removeEventListener('keydown', onKey);
+            backdrop.remove();
+        };
+        const onKey = (e) => { if (e.key === 'Escape') close(); };
+        backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+        backdrop.querySelector('#forgot-modal-close').addEventListener('click', close);
+        document.addEventListener('keydown', onKey);
+        root.appendChild(backdrop);
+        backdrop.querySelector('#forgot-modal-close').focus();
     }
 
     /* ── complete ── */

@@ -92,24 +92,23 @@
     transition: color var(--d-fast) ease;
 }
 .link-btn:hover { color: var(--ember); }
-.forgot-panel {
-    margin-top: var(--s-5);
+
+.forgot-modal__body { color: var(--muted); font-size: 14px; line-height: 1.55; margin-bottom: var(--s-4); }
+.forgot-modal__option {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
     padding: var(--s-4);
+    margin-bottom: var(--s-3);
     background: var(--bg-soft);
-    border: 1px dashed var(--line-strong);
+    border: 1px solid var(--line);
     border-radius: var(--r-md);
     text-align: left;
 }
-.forgot-panel .wizard__sub { text-align: left; }
-.forgot-option { margin-bottom: var(--s-4); }
-.forgot-option:last-child { margin-bottom: 0; }
-.forgot-option__title {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--ink);
-    margin-bottom: var(--s-2);
-}
-.forgot-option .help-text { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.forgot-modal__option:last-of-type { margin-bottom: 0; }
+.forgot-modal__option-label { font-size: 13px; font-weight: 700; color: var(--ink); }
+.forgot-modal__option-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.forgot-modal__option code { display: block; margin-top: var(--s-1); }
 
 /* ── welcome ── */
 .screen--center .ember--lg { margin: 0 auto var(--s-7); }
