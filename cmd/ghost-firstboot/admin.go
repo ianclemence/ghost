@@ -362,6 +362,35 @@ func maskKey(key string) string {
 	return "••••••••" + key[len(key)-4:]
 }
 
+// ---------- Auth metadata ----------
+
+func handleAdminMeta(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	meta := appliance.LoadAdminMeta(fb.GhostDir)
+	if meta == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "configured": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":           true,
+		"configured":   true,
+		"created_at":   meta.CreatedAt,
+		"last_changed": meta.LastChanged,
+	})
+}
+
+func handleFailedLogins(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":       true,
+		"attempts": getRecentFailedLogins(),
+	})
+}
+
 func handleConfigGet(w http.ResponseWriter, r *http.Request) {
 	if !requireSession(w, r) {
 		return
@@ -851,15 +880,20 @@ func handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Current string `json:"current"`
-		New     string `json:"new"`
+		Current     string `json:"current"`
+		New         string `json:"new"`
+		Confirm     string `json:"confirm"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
 		return
 	}
-	if len(req.New) < 8 {
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "new password must be at least 8 characters"})
+	if req.New != req.Confirm {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "new passwords do not match"})
+		return
+	}
+	if err := appliance.ValidatePassword(req.New); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 	ok, err := appliance.VerifyAdminPassword(fb.GhostDir, req.Current)

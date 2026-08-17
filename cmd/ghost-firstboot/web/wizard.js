@@ -245,13 +245,14 @@
     /* ── login ── */
     async function login() {
         const pw = $('login-password').value;
+        const rememberMe = $('login-remember') && $('login-remember').checked;
         msg('login-error', '');
         if (!pw) { msg('login-error', 'Enter the admin password.'); return; }
         try {
             const res = await fetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: pw }),
+                body: JSON.stringify({ password: pw, remember_me: rememberMe }),
             });
             const data = await res.json();
             if (data.ok) {

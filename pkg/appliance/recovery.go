@@ -23,6 +23,7 @@ type RecoveryServer struct {
 	GhostDir    string
 	ConfigPath  string
 	LogsCommand string
+	Timeout     time.Duration
 }
 
 // NewRecoveryServer creates a RecoveryServer with default settings.
@@ -38,6 +39,7 @@ func NewRecoveryServer() *RecoveryServer {
 		GhostDir:    ghostDir,
 		ConfigPath:  filepath.Join(ghostDir, "config", "config.json"),
 		LogsCommand: "journalctl -u ghost --no-pager -n 100",
+		Timeout:     15 * time.Minute,
 	}
 }
 
@@ -51,7 +53,8 @@ type RecoveryStatus struct {
 	GhostRunning bool  `json:"ghost_running"`
 }
 
-// Start begins listening for recovery requests.
+// Start begins listening for recovery requests. If Timeout > 0, the server
+// automatically shuts down after that duration.
 func (rs *RecoveryServer) Start() error {
 	mux := http.NewServeMux()
 
@@ -64,6 +67,16 @@ func (rs *RecoveryServer) Start() error {
 
 	addr := fmt.Sprintf("0.0.0.0:%d", rs.Port)
 	log.Printf("Recovery mode active at http://ghost.local:%d", rs.Port)
+
+	if rs.Timeout > 0 {
+		log.Printf("Recovery server will auto-shutdown in %s", rs.Timeout)
+		go func() {
+			time.Sleep(rs.Timeout)
+			log.Printf("Recovery server timeout reached, shutting down")
+			os.Exit(0)
+		}()
+	}
+
 	return http.ListenAndServe(addr, mux)
 }
 

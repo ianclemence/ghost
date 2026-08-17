@@ -13,7 +13,7 @@ func TestSetAndVerifyAdminPassword(t *testing.T) {
 		t.Fatal("admin should not be configured before SetAdminPassword")
 	}
 
-	ok, err := VerifyAdminPassword(ghostDir, "hunter2")
+	ok, err := VerifyAdminPassword(ghostDir, "my-valid-pass-123")
 	if err != nil {
 		t.Fatalf("VerifyAdminPassword before set failed: %v", err)
 	}
@@ -21,7 +21,7 @@ func TestSetAndVerifyAdminPassword(t *testing.T) {
 		t.Fatal("VerifyAdminPassword should be false before any password is set")
 	}
 
-	if err := SetAdminPassword(ghostDir, "hunter2"); err != nil {
+	if err := SetAdminPassword(ghostDir, "my-valid-pass-123"); err != nil {
 		t.Fatalf("SetAdminPassword failed: %v", err)
 	}
 
@@ -29,7 +29,7 @@ func TestSetAndVerifyAdminPassword(t *testing.T) {
 		t.Fatal("admin should be configured after SetAdminPassword")
 	}
 
-	ok, err = VerifyAdminPassword(ghostDir, "hunter2")
+	ok, err = VerifyAdminPassword(ghostDir, "my-valid-pass-123")
 	if err != nil {
 		t.Fatalf("VerifyAdminPassword failed: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestSetAdminPasswordEmpty(t *testing.T) {
 
 func TestAdminHashFilePermissions(t *testing.T) {
 	ghostDir := filepath.Join(t.TempDir(), "ghost")
-	if err := SetAdminPassword(ghostDir, "s3cret"); err != nil {
+	if err := SetAdminPassword(ghostDir, "my-valid-pass-123"); err != nil {
 		t.Fatalf("SetAdminPassword failed: %v", err)
 	}
 

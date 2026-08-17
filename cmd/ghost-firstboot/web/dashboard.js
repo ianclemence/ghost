@@ -82,6 +82,7 @@
 
     function loadAll() {
         loadOverview();
+        loadFailedLogins();
         loadAssistant();
         loadConnections();
         loadSkills();
@@ -136,6 +137,32 @@
             if (mobileStatusText) mobileStatusText.textContent = 'Offline';
             if (mobileStatusDot) mobileStatusDot.classList.add('offline');
         }
+    }
+
+    async function loadFailedLogins() {
+        try {
+            const data = await api('/api/admin/auth/failed-logins');
+            const banner = $('failed-login-banner');
+            const text = $('failed-login-text');
+            if (data.ok && data.attempts && data.attempts.length > 0) {
+                const count = data.attempts.length;
+                const latest = data.attempts[data.attempts.length - 1];
+                const ago = timeAgo(latest.time);
+                text.textContent = count + ' failed login attempt' + (count > 1 ? 's' : '') + ' recently' + (ago ? ', last one ' + ago : '') + '.';
+                banner.classList.remove('hidden');
+            } else {
+                banner.classList.add('hidden');
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function timeAgo(ts) {
+        if (!ts) return '';
+        const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
     }
 
     function setEmber(state) {
@@ -629,7 +656,24 @@
         loadSystem();
         loadGateway();
         loadAdvanced();
+        loadAdminMeta();
         loadLogs();
+    }
+
+    async function loadAdminMeta() {
+        try {
+            const data = await api('/api/admin/auth/meta');
+            if (data.ok && data.configured) {
+                $('admin-created').textContent = formatDate(data.created_at);
+                $('admin-changed').textContent = data.last_changed ? formatDate(data.last_changed) : 'Never';
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function formatDate(ts) {
+        if (!ts) return '\u2014';
+        try { return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
+        catch (e) { return ts; }
     }
 
     async function loadSystem() {
@@ -676,12 +720,15 @@
     async function changePassword() {
         const current = $('pw-current').value;
         const next = $('pw-new').value;
+        const confirm = $('pw-confirm').value;
         if (!current || !next) { Ghost.toast.err('Fill in both fields.'); return; }
+        if (next !== confirm) { Ghost.toast.err('New passwords do not match.'); return; }
         try {
-            const data = await api('/api/admin/password', 'POST', { current, new: next });
+            const data = await api('/api/admin/password', 'POST', { current, new: next, confirm });
             if (data.ok) {
                 $('pw-current').value = '';
                 $('pw-new').value = '';
+                $('pw-confirm').value = '';
                 msg('password-msg', 'Password updated.', true);
             } else { Ghost.toast.err(data.error || 'Failed to change password.'); }
         } catch (e) { Ghost.toast.err('Failed to change password.'); }
@@ -903,6 +950,12 @@
         $('btn-set-hostname').addEventListener('click', setHostname);
         $('btn-backup').addEventListener('click', downloadBackup);
         $('btn-change-password').addEventListener('click', changePassword);
+        $('pw-show').addEventListener('change', () => {
+            const type = $('pw-show').checked ? 'text' : 'password';
+            $('pw-current').type = type;
+            $('pw-new').type = type;
+            $('pw-confirm').type = type;
+        });
         $('btn-regen-bridge').addEventListener('click', regenBridge);
         $('btn-save-gateway').addEventListener('click', saveGateway);
         $('btn-refresh-logs').addEventListener('click', loadLogs);

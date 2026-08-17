@@ -125,6 +125,12 @@
                     <label for="login-password" class="visually-hidden">Admin password</label>
                     <input class="input" type="password" id="login-password" placeholder="Admin password" autocomplete="current-password">
                 </div>
+                <div class="field field--center" style="margin-top: var(--s-3);">
+                    <label class="toggle-row" style="justify-content: center; gap: var(--s-2); font-size: 14px; color: var(--muted); cursor: pointer;">
+                        <input type="checkbox" id="login-remember" style="width: 16px; height: 16px; accent-color: var(--ember);">
+                        Remember this device for 7 days
+                    </label>
+                </div>
                 <p class="error-text hidden" id="login-error"></p>
                 <div class="btn-row btn-row--center">
                     <button class="btn btn--secondary" id="btn-login-cancel" type="button">Cancel</button>
@@ -232,6 +238,11 @@
                         <h1 id="overview-title">Your Ghost is online.</h1>
                         <p id="overview-sub">Everything looks good on this device.</p>
                     </div>
+                </div>
+
+                <div class="banner banner--warning hidden" id="failed-login-banner">
+                    <span class="banner__icon">&#9888;</span>
+                    <span class="banner__text" id="failed-login-text"></span>
                 </div>
 
                 <div class="stat-grid">
@@ -549,6 +560,12 @@
                 </div>
 
                 <div class="card">
+                    <h2 class="card__title">Admin account</h2>
+                    <div class="kv"><span class="kv__k">Created</span><span class="kv__v" id="admin-created">&mdash;</span></div>
+                    <div class="kv"><span class="kv__k">Password last changed</span><span class="kv__v" id="admin-changed">&mdash;</span></div>
+                </div>
+
+                <div class="card">
                     <h2 class="card__title">Admin password</h2>
                     <div class="dash-two-col">
                         <div class="field">
@@ -559,6 +576,16 @@
                             <label for="pw-new">New password</label>
                             <input class="input" type="password" id="pw-new" placeholder="At least 8 characters" autocomplete="off">
                         </div>
+                    </div>
+                    <div class="field">
+                        <label for="pw-confirm">Confirm new password</label>
+                        <input class="input" type="password" id="pw-confirm" placeholder="Re-enter new password" autocomplete="off">
+                    </div>
+                    <div class="field" style="margin-top: var(--s-2);">
+                        <label class="toggle-row" style="font-size: 13px; color: var(--muted); cursor: pointer;">
+                            <input type="checkbox" id="pw-show" style="width: 16px; height: 16px; accent-color: var(--ember);">
+                            Show passwords
+                        </label>
                     </div>
                     <p class="form-msg hidden" id="password-msg"></p>
                     <div class="form-actions">

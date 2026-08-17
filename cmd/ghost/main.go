@@ -603,6 +603,16 @@ func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 func gatewayCmd() {
 	// Check for recovery mode
 	if os.Getenv("GHOST_RECOVERY_MODE") == "1" {
+		// Check if recovery is disabled via flag file
+		ghostDir := os.Getenv("GHOST_DIR")
+		if ghostDir == "" {
+			ghostDir = "/var/ghost"
+		}
+		disablePath := filepath.Join(ghostDir, "data", ".recovery-disabled")
+		if _, err := os.Stat(disablePath); err == nil {
+			fmt.Println("Recovery mode is disabled. Remove data/.recovery-disabled to re-enable.")
+			os.Exit(0)
+		}
 		fmt.Println("🔧 Recovery mode active")
 		recovery := appliance.NewRecoveryServer()
 		if err := recovery.Start(); err != nil {

@@ -54,6 +54,7 @@ type sessionStore struct {
 }
 
 const sessionTTL = 30 * time.Minute
+const rememberMeTTL = 7 * 24 * time.Hour
 
 // loginThrottle limits failed login attempts per client IP to slow brute-force.
 type loginThrottler struct {
@@ -113,6 +114,41 @@ func (t *loginThrottler) attempts(ip string) int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.attemptCounts[ip]
+}
+
+// failedLogin tracks recent failed login attempts for dashboard visibility.
+type failedLogin struct {
+	IP        string    `json:"ip"`
+	Timestamp time.Time `json:"time"`
+}
+
+var (
+	recentFailedLoginsMu sync.Mutex
+	recentFailedLogins   []failedLogin
+	maxRecentLogins      = 20
+)
+
+func recordFailedLogin(ip string) {
+	recentFailedLoginsMu.Lock()
+	defer recentFailedLoginsMu.Unlock()
+	recentFailedLogins = append(recentFailedLogins, failedLogin{IP: ip, Timestamp: time.Now().UTC()})
+	if len(recentFailedLogins) > maxRecentLogins {
+		recentFailedLogins = recentFailedLogins[len(recentFailedLogins)-maxRecentLogins:]
+	}
+}
+
+func getRecentFailedLogins() []failedLogin {
+	recentFailedLoginsMu.Lock()
+	defer recentFailedLoginsMu.Unlock()
+	out := make([]failedLogin, len(recentFailedLogins))
+	copy(out, recentFailedLogins)
+	return out
+}
+
+func clearRecentFailedLogins() {
+	recentFailedLoginsMu.Lock()
+	defer recentFailedLoginsMu.Unlock()
+	recentFailedLogins = nil
 }
 
 func clientIP(r *http.Request) string {
@@ -290,6 +326,8 @@ func main() {
 	mux.HandleFunc("/api/admin/logs", handleLogs)
 	mux.HandleFunc("/api/admin/toolsets", handleToolsetsGet)
 	mux.HandleFunc("/api/admin/toolsets/save", handleToolsetsSet)
+	mux.HandleFunc("/api/admin/auth/meta", handleAdminMeta)
+	mux.HandleFunc("/api/admin/auth/failed-logins", handleFailedLogins)
 
 	// Try ports in order: 80, 8080, 8888, 9090
 	ports := []int{*port, 8080, 8888, 9090}
@@ -451,7 +489,8 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Password string `json:"password"`
+		Password   string `json:"password"`
+		RememberMe bool   `json:"remember_me"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"ok":false,"error":"invalid request"}`, http.StatusBadRequest)
@@ -478,6 +517,8 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok {
 		loginThrottle.recordFailure(ip)
+		recordFailedLogin(ip)
+		log.Printf("Failed login attempt from %s", ip)
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":    false,
@@ -487,19 +528,24 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	loginThrottle.recordSuccess(ip)
+	clearRecentFailedLogins()
 	token, err := sessions.issue()
 	if err != nil {
 		http.Error(w, `{"ok":false,"error":"failed to create session"}`, http.StatusInternalServerError)
 		return
 	}
 
+	maxAge := int(sessionTTL.Seconds())
+	if req.RememberMe {
+		maxAge = int(rememberMeTTL.Seconds())
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ghost_admin_session",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(sessionTTL.Seconds()),
+		MaxAge:   maxAge,
 	})
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
