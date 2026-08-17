@@ -102,7 +102,36 @@ The appliance core is in place and stable:
 
 **Decision gate:** only if the BYO subscription proves demand. It shares the image, OTA, and relay pipeline, so deferring it costs nothing.
 
-**Out of scope for now.**
+**Out of scope for now.** Until this phase opens, Ghost runs on hardware the user already owns.
+
+### Supported hardware
+
+Ghost is a local-first appliance built to run on always-on, modest hardware. The software runs anywhere Linux runs; the reference targets are low-power single-board computers.
+
+**Recommended:** RK1 (16 GB) — a built-in NPU for AI acceleration, strong multi-core CPU, and a lower cost than comparable systems. Best balance of performance and on-device AI capability.
+
+**Compatible:**
+- Raspberry Pi 5 / CM5 — stable ecosystem, strong community support; no built-in AI acceleration, so it suits lighter models and API-assisted workloads.
+- x86 mini-PCs — more compute and RAM for larger local models.
+
+**Minimum requirements:**
+- Raspberry Pi 5 (8 GB+) or RK1 (16 GB)
+- 32 GB microSD storage (or NVMe for the RK1)
+- A phone with the Ghost app
+
+### Capability tiers
+
+| Tier | Typical hardware | Local model scale | Role |
+|------|------------------|-------------------|------|
+| Starter | RK1 (16 GB) / Pi 5 (8 GB) | 1B–3B fast, 7B usable | Always-on assistant node |
+| Pro | x86 mini-PC (64–128 GB) | 7B–13B | Central intelligence hub |
+| Ultra | Workstation (128 GB+) | 20B–34B | Advanced AI workstation |
+
+The device runs local models via Ollama and falls back to a cloud model only when the task needs deeper reasoning. Most interactions stay on-device.
+
+### Hardware as a product
+
+When Phase 6 opens, the bundle is: a supported board, Ghost pre-flashed, and the managed subscription. The engineering pipeline (image, OTA, relay) is already built by then, so the bundle adds a supply chain, not new software.
 
 ---
 

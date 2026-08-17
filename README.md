@@ -72,12 +72,9 @@ You → Local Reflex → Local Brain → Cloud (only if needed)
 
 ## Hardware
 
-### Recommended
-**RK1 (16GB RAM)** — Built-in NPU for AI acceleration
+Ghost runs on any Linux device. Recommended: **RK1 (16 GB)** for built-in NPU acceleration. Compatible: Raspberry Pi 5 / CM5 and x86 mini-PCs.
 
-### Compatible
-- Raspberry Pi 5 / CM5
-- x86 mini-PCs
+See the [Roadmap](docs/ROADMAP.md) for supported hardware, capability tiers, and minimum requirements.
 
 ---
 
