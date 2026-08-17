@@ -132,8 +132,9 @@ reach it from your phone at any time at `http://<pi-ip>`:
     heartbeat interval
   - **System** — hostname, backup download, admin password, bridge-secret
     regeneration, and reboot
-  - **Skills** — browse installed skills and install more from any public
-    GitHub repo (including skills.sh)
+  - **Skills** — browse installed skills, edit bundled skills (edited
+    skills are marked and never overwritten by updates), resync bundled
+    skills, and install more from any public GitHub repo (including skills.sh)
 
 The wizard and `ghost` are separate: wizard on port 80, API on port 8766.
 
@@ -167,6 +168,15 @@ git clone https://github.com/ianclemence/ghost.git && cd ghost
 sudo make install-ghost
 ```
 
+These commands run as root, and git exempts root from its repository-ownership
+check, so updating a user-owned clone works with no extra configuration. If you
+ever run git in the repo as a *different* non-root user and hit git's "dubious
+ownership" error, allow the path for that user:
+
+```bash
+git config --global --add safe.directory /home/<user>/ghost   # run as <user>, not root
+```
+
 ### On a fresh Pi
 
 ```bash
@@ -184,6 +194,14 @@ After reboot, open `http://<pi-ip>` on your phone to complete setup:
 2. Create admin password
 3. Select AI model
 4. Connect the Ghost app
+
+### Auto-Update Daemon
+
+```bash
+sudo ghost updater
+```
+
+Checks for updates every 6 hours automatically (`git pull` + rebuild + redeploy + restart).
 
 ### Developer Mode
 
@@ -278,6 +296,7 @@ cp config/config.example.json config/config.json
 | `ghost skills list-builtin` | List built-ins |
 | `ghost skills search` | Search registry |
 | `ghost skills show <name>` | Show details |
+| `ghost skills sync` | Sync bundled skills — update unchanged skills, preserve user edits |
 
 ---
 
@@ -353,32 +372,6 @@ This starts a web UI at `http://ghost.local:8766` with:
 - Logs viewer
 - Config reset option
 - Restart button
-
----
-
-## Updating Ghost
-
-### Manual Update
-
-```bash
-ghost update
-```
-
-### Auto-Update Daemon
-
-```bash
-ghost updater
-```
-
-This checks for updates every 6 hours automatically.
-
-### Developer Mode
-
-```bash
-cd ~/ghost
-git pull
-make install && sudo systemctl restart ghost
-```
 
 ---
 
