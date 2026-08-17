@@ -150,40 +150,79 @@
          ════════════════════════════════════════════ -->
     <div id="dashboard" class="dashboard hidden">
 
-        <header class="dash-header">
-            <div class="dash-header__inner">
-                <div class="brand">
-                    <span class="ember ember--sm" id="header-ember" aria-hidden="true"></span>
-                    Ghost
-                </div>
-                <div class="dash-header__status"><span class="status-dot" id="dash-status-dot" aria-hidden="true"></span><span id="dash-status-text">Online</span></div>
+        <!-- Desktop sidebar (≥1024px) -->
+        <aside class="dash-side" id="dash-side">
+            <div class="dash-side__brand">
+                <span class="ember ember--sm" id="header-ember" aria-hidden="true"></span>
+                Ghost
             </div>
-        </header>
+            <nav class="dash-side__nav" aria-label="Sections">
+                <button class="dash-side__nav-item active" data-tab="overview" type="button">
+                    <svg class="dash-side__nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 10.2V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9.8"/></svg>
+                    Overview
+                </button>
+                <button class="dash-side__nav-item" data-tab="assistant" type="button">
+                    <svg class="dash-side__nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2 5.5L19.5 11 14 12.5 12 18l-2-5.5L4.5 11 10 8.5z"/><path d="M19 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>
+                    Assistant
+                </button>
+                <button class="dash-side__nav-item" data-tab="connections" type="button">
+                    <svg class="dash-side__nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="5" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.5 12h7M8.5 12a2.6 2.6 0 0 1 .4-1.4L16 5.6M8.9 13.4a2.6 2.6 0 0 0 .4 1.4l7.1 5"/></svg>
+                    Connections
+                </button>
+                <button class="dash-side__nav-item" data-tab="skills" type="button">
+                    <svg class="dash-side__nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                    Skills
+                </button>
+                <button class="dash-side__nav-item" data-tab="settings" type="button">
+                    <svg class="dash-side__nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="17" r="2"/></svg>
+                    Settings
+                </button>
+            </nav>
+            <div class="dash-side__foot">
+                <span class="status-dot" id="dash-status-dot" aria-hidden="true"></span>
+                <span id="dash-status-text">Online</span>
+            </div>
+        </aside>
 
-        <nav class="dash-nav" aria-label="Sections">
-            <button class="dash-nav__item active" data-tab="overview" type="button">
-                <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 10.2V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9.8"/></svg>
-                Overview
-            </button>
-            <button class="dash-nav__item" data-tab="assistant" type="button">
-                <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2 5.5L19.5 11 14 12.5 12 18l-2-5.5L4.5 11 10 8.5z"/><path d="M19 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>
-                Assistant
-            </button>
-            <button class="dash-nav__item" data-tab="connections" type="button">
-                <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="5" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.5 12h7M8.5 12a2.6 2.6 0 0 1 .4-1.4L16 5.6M8.9 13.4a2.6 2.6 0 0 0 .4 1.4l7.1 5"/></svg>
-                Connections
-            </button>
-            <button class="dash-nav__item" data-tab="skills" type="button">
-                <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-                Skills
-            </button>
-            <button class="dash-nav__item" data-tab="settings" type="button">
-                <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="17" r="2"/></svg>
-                Settings
-            </button>
-        </nav>
+        <div class="dash-frame">
+            <header class="dash-header">
+                <div class="dash-header__inner">
+                    <div class="dash-header__brand">
+                        <span class="ember ember--sm" id="header-ember-mobile" aria-hidden="true"></span>
+                        Ghost
+                    </div>
+                    <div class="dash-header__page" id="dash-page-title">Overview</div>
+                    <div class="dash-header__status"><span class="status-dot" id="dash-status-dot-mobile" aria-hidden="true"></span><span id="dash-status-text-mobile">Online</span></div>
+                </div>
+            </header>
 
-        <main class="dash-main">
+            <!-- Mobile/tablet bottom nav -->
+            <nav class="dash-nav" aria-label="Sections">
+                <div class="dash-nav__inner">
+                    <button class="dash-nav__item active" data-tab="overview" type="button">
+                        <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 10.2V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9.8"/></svg>
+                        <span class="dash-nav__label">Overview</span>
+                    </button>
+                    <button class="dash-nav__item" data-tab="assistant" type="button">
+                        <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2 5.5L19.5 11 14 12.5 12 18l-2-5.5L4.5 11 10 8.5z"/><path d="M19 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>
+                        <span class="dash-nav__label">Assistant</span>
+                    </button>
+                    <button class="dash-nav__item" data-tab="connections" type="button">
+                        <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="5" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.5 12h7M8.5 12a2.6 2.6 0 0 1 .4-1.4L16 5.6M8.9 13.4a2.6 2.6 0 0 0 .4 1.4l7.1 5"/></svg>
+                        <span class="dash-nav__label">Connections</span>
+                    </button>
+                    <button class="dash-nav__item" data-tab="skills" type="button">
+                        <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                        <span class="dash-nav__label">Skills</span>
+                    </button>
+                    <button class="dash-nav__item" data-tab="settings" type="button">
+                        <svg class="dash-nav__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="17" r="2"/></svg>
+                        <span class="dash-nav__label">Settings</span>
+                    </button>
+                </div>
+            </nav>
+
+            <main class="dash-main">
 
             <!-- ── Overview ── -->
             <section class="tab-panel active" id="tab-overview">
@@ -261,16 +300,17 @@
                             <label for="ai-ollama">Ollama URL</label>
                             <input class="input" type="text" id="ai-ollama" placeholder="http://localhost:11434">
                         </div>
-                        <div class="dash-two-col">
-                            <div class="field">
-                                <label for="ai-maxtokens">Max tokens</label>
-                                <input class="input" type="number" id="ai-maxtokens" placeholder="4096">
-                            </div>
-                            <div class="field">
-                                <label for="ai-temperature">Temperature</label>
-                                <input class="input" type="number" id="ai-temperature" step="0.1" min="0" max="2" placeholder="0.7">
-                            </div>
+                        <div class="field">
+                            <label for="ai-maxtokens">Max tokens</label>
+                            <input class="input" type="number" id="ai-maxtokens" placeholder="4096">
                         </div>
+                    </div>
+                    <div class="dash-two-col">
+                        <div class="field">
+                            <label for="ai-temperature">Temperature</label>
+                            <input class="input" type="number" id="ai-temperature" step="0.1" min="0" max="2" placeholder="0.7">
+                        </div>
+                        <div></div>
                     </div>
                     <div class="form-actions">
                         <button class="btn btn--secondary btn--sm" id="btn-ai-reload" type="button">Reload</button>
@@ -704,6 +744,7 @@
             </section>
 
         </main>
+        </div><!-- .dash-frame -->
     </div>
 
     <div id="modal-root"></div>

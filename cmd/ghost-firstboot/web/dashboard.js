@@ -58,14 +58,25 @@
         if (pw) pw.value = '';
     }
 
+    const PAGE_TITLES = {
+        overview: 'Overview',
+        assistant: 'Assistant',
+        connections: 'Connections',
+        skills: 'Skills',
+        settings: 'Settings',
+    };
+
     function switchTab(name) {
         currentTab = name;
-        document.querySelectorAll('.dash-nav__item').forEach((b) => {
+        document.querySelectorAll('.dash-nav__item, .dash-side__nav-item').forEach((b) => {
             b.classList.toggle('active', b.dataset.tab === name);
         });
         document.querySelectorAll('.tab-panel').forEach((p) => {
             p.classList.toggle('active', p.id === 'tab-' + name);
         });
+        var titleEl = document.getElementById('dash-page-title');
+        if (titleEl) titleEl.textContent = PAGE_TITLES[name] || name;
+        window.scrollTo(0, 0);
         if (name === 'settings') startLogs(); else stopLogs();
     }
 
@@ -84,6 +95,10 @@
             setEmber('online');
             $('dash-status-text').textContent = 'Online';
             $('dash-status-dot').classList.remove('offline', 'unknown');
+            var mobileStatusText = $('dash-status-text-mobile');
+            var mobileStatusDot = $('dash-status-dot-mobile');
+            if (mobileStatusText) mobileStatusText.textContent = 'Online';
+            if (mobileStatusDot) mobileStatusDot.classList.remove('offline', 'unknown');
 
             $('stat-cpu').textContent = (data.cpu_percent || 0).toFixed(0) + '%';
             const memPct = data.memory.total ? Math.round((data.memory.used / data.memory.total) * 100) : 0;
@@ -116,11 +131,15 @@
             setEmber('offline');
             $('dash-status-text').textContent = 'Offline';
             $('dash-status-dot').classList.add('offline');
+            var mobileStatusText = $('dash-status-text-mobile');
+            var mobileStatusDot = $('dash-status-dot-mobile');
+            if (mobileStatusText) mobileStatusText.textContent = 'Offline';
+            if (mobileStatusDot) mobileStatusDot.classList.add('offline');
         }
     }
 
     function setEmber(state) {
-        const orbs = [$('overview-ember'), $('header-ember')];
+        const orbs = [$('overview-ember'), $('header-ember'), $('header-ember-mobile')];
         orbs.forEach((o) => {
             if (!o) return;
             o.classList.remove('ember--offline', 'ember--thinking');
@@ -874,7 +893,7 @@
 
     /* ════════════════════════════════════ BIND ════════════════════════════════════ */
     function bind() {
-        document.querySelectorAll('.dash-nav__item').forEach((b) => {
+        document.querySelectorAll('.dash-nav__item, .dash-side__nav-item').forEach((b) => {
             b.addEventListener('click', () => switchTab(b.dataset.tab));
         });
 
