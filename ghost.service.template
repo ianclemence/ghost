@@ -10,7 +10,7 @@ User=__USER__
 Group=__GROUP__
 WorkingDirectory=__GHOST_DIR__
 EnvironmentFile=__GHOST_DIR__/.env
-Environment=GHOST_WORKSPACE_DIR=__GHOST_DIR__/workspace
+Environment=GHOST_WORKSPACE_DIR=/var/lib/ghost/workspace
 ExecStart=__BIN_DIR__/ghost gateway
 Restart=always
 RestartSec=5
@@ -21,7 +21,7 @@ StartLimitBurst=3
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=__GHOST_DIR__
+ReadWritePaths=__GHOST_DIR__ /var/lib/ghost
 PrivateTmp=true
 
 # Logging

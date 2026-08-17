@@ -9,7 +9,7 @@ services:
       - "8766:8766"
     volumes:
       - ghost-data:/var/ghost/data
-      - ghost-workspace:/var/ghost/workspace
+      - ghost-workspace:/var/lib/ghost/workspace
     environment:
       - GHOST_AGENTS_DEFAULTS_PROVIDER=${GHOST_PROVIDER:-moonshot}
       - GHOST_AGENTS_DEFAULTS_MODEL=${GHOST_MODEL:-kimi-k2.5}
@@ -32,7 +32,7 @@ services:
       - "80:80"
     volumes:
       - ghost-data:/var/ghost/data
-      - ghost-workspace:/var/ghost/workspace
+      - ghost-workspace:/var/lib/ghost/workspace
     environment:
       - BRIDGE_SECRET=${BRIDGE_SECRET:-}
     networks:

@@ -643,6 +643,20 @@ func gatewayCmd() {
 		}
 	}
 
+	// Self-heal the workspace layout. An interrupted or skipped update can
+	// leave the runtime workspace inside the install tree; move it to the
+	// runtime location before anything (config, .env, provider, DB) is read so
+	// this process uses the migrated paths throughout. Idempotent and safe.
+	ghostDir := os.Getenv("GHOST_DIR")
+	if ghostDir == "" {
+		ghostDir = appliance.DefaultGhostDir
+	}
+	if newWorkspace, err := appliance.MigrateWorkspaceIfNeeded(ghostDir); err != nil {
+		fmt.Printf("⚠️  Workspace migration failed: %v\n", err)
+	} else if newWorkspace != "" {
+		fmt.Printf("✅ Workspace migrated to %s\n", newWorkspace)
+	}
+
 	cfg, err := loadConfig()
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
@@ -874,7 +888,7 @@ func statusCmd() {
 		fmt.Println("Zhipu API:", status(hasZhipu))
 		fmt.Println("Moonshot/Kimi API:", status(cfg.Providers.Moonshot.APIKey != ""))
 		fmt.Println("Groq API:", status(hasGroq))
-		
+
 		fmt.Println("\nRemote Bridge:")
 		fmt.Printf("  API Port: %d\n", cfg.Gateway.Port)
 		fmt.Printf("  Bridge Key: %s\n", status(cfg.Gateway.BridgeSecret != ""))
@@ -1146,7 +1160,7 @@ func getConfigPath() string {
 		return "config.json"
 	}
 	home, _ := os.UserHomeDir()
-	
+
 	fallback := filepath.Join(home, "ghost", "config", "config.json")
 	if _, err := os.Stat(fallback); err == nil {
 		return fallback
@@ -1191,7 +1205,7 @@ func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace
 					})
 				} else {
 					logger.InfoCF("cron", "Failed to parse schedule for workflow", map[string]interface{}{
-						"name": skill.Name,
+						"name":     skill.Name,
 						"schedule": skill.Schedule,
 					})
 				}

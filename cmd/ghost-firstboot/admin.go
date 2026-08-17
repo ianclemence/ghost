@@ -757,51 +757,65 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
 
-	// Add config, data, workspace, and .env
+	// Add config, data, workspace, and .env. The runtime workspace may live
+	// outside the install tree (see the workspace migration), so walk both
+	// roots and give each its own archive prefix.
 	dirs := []string{fb.ConfigDir, fb.DataDir, fb.Workspace}
-	_ = filepath.Walk(fb.GhostDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
+	roots := []string{fb.GhostDir}
+	if fb.Workspace != filepath.Join(fb.GhostDir, "workspace") {
+		roots = append(roots, filepath.Dir(fb.Workspace))
+	}
+	for _, root := range roots {
+		if _, err := os.Stat(root); err != nil {
+			continue
 		}
-		// Skip workspace internals that change constantly.
-		rel, _ := filepath.Rel(fb.GhostDir, path)
-		if info.IsDir() {
-			for _, skip := range []string{"journal", "state", "sessions"} {
-				if filepath.Base(path) == skip {
-					return filepath.SkipDir
+		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			// Skip workspace internals that change constantly.
+			rel, _ := filepath.Rel(root, path)
+			if info.IsDir() {
+				for _, skip := range []string{"journal", "state", "sessions"} {
+					if filepath.Base(path) == skip {
+						return filepath.SkipDir
+					}
+				}
+				return nil
+			}
+			if strings.HasPrefix(rel, ".env") {
+				return nil // handled separately below
+			}
+			if strings.HasSuffix(path, ".log") {
+				return nil // transient logs
+			}
+			ok := false
+			for _, d := range dirs {
+				if path == d || strings.HasPrefix(path, d+string(filepath.Separator)) {
+					ok = true
+					break
 				}
 			}
-			return nil
-		}
-		if strings.HasPrefix(rel, ".env") {
-			return nil // handled separately below
-		}
-		ok := false
-		for _, d := range dirs {
-			if strings.HasPrefix(path, d) {
-				ok = true
-				break
+			if !ok {
+				return nil
 			}
-		}
-		if !ok {
+			hdr, err := tar.FileInfoHeader(info, "")
+			if err != nil {
+				return nil
+			}
+			hdr.Name = "ghost/" + rel
+			if err := tw.WriteHeader(hdr); err != nil {
+				return err
+			}
+			f, err := os.Open(path)
+			if err != nil {
+				return nil
+			}
+			io.Copy(tw, f)
+			f.Close()
 			return nil
-		}
-		hdr, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return nil
-		}
-		hdr.Name = "ghost/" + rel
-		if err := tw.WriteHeader(hdr); err != nil {
-			return err
-		}
-		f, err := os.Open(path)
-		if err != nil {
-			return nil
-		}
-		io.Copy(tw, f)
-		f.Close()
-		return nil
-	})
+		})
+	}
 
 	if b, err := os.ReadFile(fb.EnvPath); err == nil {
 		hdr := &tar.Header{Name: "ghost/.env", Mode: 0600, Size: int64(len(b))}
@@ -1391,12 +1405,18 @@ func handleSkillToggle(w http.ResponseWriter, r *http.Request) {
 
 // bundledSkillsSourceDir resolves where the bundled skills live for this
 // appliance. Overridable for testing and for setups where the bundled copy is
-// kept separately from the runtime workspace.
+// kept separately from the runtime workspace. On installed layouts the
+// runtime workspace lives outside the install tree (see workspace migration),
+// so there is no bundled copy here — the ghost binary embeds it and seeds the
+// runtime workspace on first start instead. Returns "" when no source exists.
 func bundledSkillsSourceDir() string {
 	if d := os.Getenv("GHOST_BUNDLED_SKILLS"); d != "" {
 		return d
 	}
-	return filepath.Join(fb.GhostDir, "workspace", "skills")
+	if _, err := os.Stat(filepath.Join(fb.GhostDir, "workspace", "skills")); err == nil {
+		return filepath.Join(fb.GhostDir, "workspace", "skills")
+	}
+	return ""
 }
 
 func handleSkillsSync(w http.ResponseWriter, r *http.Request) {
@@ -1408,11 +1428,12 @@ func handleSkillsSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	src := bundledSkillsSourceDir()
-	if _, err := os.Stat(filepath.Join(src, "SKILL.md")); err != nil {
-		// No skill files at the root means the bundled source is either absent
-		// or (device layout) identical to the runtime dir. In the identical
-		// case a full sync still makes sense to reconcile the manifest.
-		_ = err
+	if src == "" {
+		// No bundled copy on this device (installed layout). The gateway
+		// seeds bundled skills from its embedded copy on first start, so
+		// there is nothing to reconcile here yet.
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "report": "no bundled source on this device; the gateway seeds bundled skills from its embedded copy"})
+		return
 	}
 	report, err := skills.SyncBundled(src, workspaceSkillsDir())
 	if err != nil {

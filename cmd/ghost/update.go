@@ -6,11 +6,20 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/appliance"
 )
 
 func updateCmd() {
 	requireRoot()
 	ghostDir := findGhostDir()
+
+	dryRun := false
+	for _, arg := range os.Args[2:] {
+		if arg == "--dry-run" {
+			dryRun = true
+		}
+	}
 
 	fmt.Println("Updating Ghost...")
 
@@ -24,8 +33,33 @@ func updateCmd() {
 		os.Exit(1)
 	}
 
+	if dryRun {
+		fmt.Println("2. [dry-run] Migration preview (no changes made):")
+		if err := migrateApplianceWorkspace(true); err != nil {
+			fmt.Printf("Workspace migration check failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Dry run complete.")
+		return
+	}
+
+	// Quiesce the appliance before touching its runtime workspace, so the
+	// move never happens under a running gateway with the DB open.
+	fmt.Println("2. Stopping services...")
+	exec.Command("systemctl", "stop", "ghost").Run()
+	exec.Command("systemctl", "stop", "ghost-firstboot").Run()
+
+	// Migrate the workspace out of the install tree if the running install
+	// still uses the legacy layout. This must happen before install-ghost
+	// restarts services with GHOST_WORKSPACE_DIR pointing at /var/lib/ghost.
+	fmt.Println("3. Checking workspace layout...")
+	if err := migrateApplianceWorkspace(false); err != nil {
+		fmt.Printf("Workspace migration failed: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Build and deploy
-	fmt.Println("2. Building and deploying...")
+	fmt.Println("4. Building and deploying...")
 	cmd = exec.Command("make", "-C", ghostDir, "install-ghost")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -35,6 +69,33 @@ func updateCmd() {
 	}
 
 	fmt.Println("Update complete!")
+}
+
+// migrateApplianceWorkspace moves the appliance workspace from the legacy
+// <ghostDir>/workspace location to the runtime location when needed. The
+// appliance runs from DefaultGhostDir regardless of where the checkout (and
+// therefore the git pull) lives, so this always targets the appliance dir.
+func migrateApplianceWorkspace(dryRun bool) error {
+	ghostDir := appliance.DefaultGhostDir
+	plan, err := appliance.PlanWorkspaceMigrationFromDisk(ghostDir, "")
+	if err != nil {
+		return fmt.Errorf("plan workspace migration: %w", err)
+	}
+	if !plan.Needed {
+		fmt.Printf("  Workspace layout OK: %s\n", plan.Reason)
+		return nil
+	}
+	fmt.Printf("  Workspace migration: %s\n", plan.Reason)
+	if dryRun {
+		fmt.Printf("  [dry-run] would move %s -> %s\n", plan.LegacyDir, plan.TargetDir)
+		return nil
+	}
+	newWorkspace, err := appliance.MigrateWorkspaceIfNeeded(ghostDir)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  Workspace migrated to %s\n", newWorkspace)
+	return nil
 }
 
 func requireRoot() {
@@ -92,6 +153,17 @@ func checkAndUpdate() {
 	}
 
 	fmt.Println("New changes found, rebuilding...")
+
+	// Quiesce the appliance before touching its runtime workspace.
+	exec.Command("systemctl", "stop", "ghost").Run()
+	exec.Command("systemctl", "stop", "ghost-firstboot").Run()
+
+	// Migrate the workspace layout if the running install still uses the
+	// legacy location.
+	if err := migrateApplianceWorkspace(false); err != nil {
+		fmt.Printf("Error migrating workspace: %v\n", err)
+		return
+	}
 
 	// Build and deploy
 	cmd = exec.Command("make", "-C", ghostDir, "install-ghost")

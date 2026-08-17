@@ -16,20 +16,20 @@ RUN apk add --no-cache ca-certificates tzdata sqlite-libs
 
 RUN addgroup -S ghost && adduser -S -G ghost ghost
 
-RUN mkdir -p /var/ghost/data /var/ghost/workspace /etc/ghost
+RUN mkdir -p /var/ghost/data /var/ghost/workspace /var/lib/ghost/workspace /etc/ghost
 
 COPY --from=builder /ghost /usr/local/bin/ghost
 COPY --from=builder /ghost-firstboot /usr/local/bin/ghost-firstboot
 
 COPY config/config.example.json /etc/ghost/config.json
 
-RUN chown -R ghost:ghost /var/ghost /etc/ghost
+RUN chown -R ghost:ghost /var/ghost /var/lib/ghost /etc/ghost
 
 USER ghost
 
 EXPOSE 8766 80
 
-VOLUME ["/var/ghost/data", "/var/ghost/workspace"]
+VOLUME ["/var/ghost/data", "/var/ghost/workspace", "/var/lib/ghost/workspace"]
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD wget -qO- http://localhost:8766/v1/status || exit 1

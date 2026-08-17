@@ -26,11 +26,9 @@ INSTALL_PREFIX?=$(HOME)/.local
 INSTALL_BIN_DIR=$(INSTALL_PREFIX)/bin
 INSTALL_MAN_DIR=$(INSTALL_PREFIX)/share/man/man1
 
-# Workspace and Skills
-GHOST_HOME?=$(HOME)/.ghost
-WORKSPACE_DIR?=$(GHOST_HOME)/workspace
-WORKSPACE_SKILLS_DIR=$(WORKSPACE_DIR)/skills
-BUILTIN_SKILLS_DIR=$(CURDIR)/skills
+# Appliance runtime workspace (kept outside the install tree so user data
+# never mixes with the deployment or blocks git pulls in checkout layouts)
+WORKSPACE_DIR?=/var/lib/ghost/workspace
 
 # OS detection
 UNAME_S:=$(shell uname -s)
@@ -149,6 +147,7 @@ install-ghost: build-ghost
 	@sudo systemctl stop ghost 2>/dev/null || true
 	@sudo systemctl stop ghost-firstboot 2>/dev/null || true
 	@sudo mkdir -p /var/ghost/config /var/ghost/data /var/ghost/workspace
+	@sudo mkdir -p $(WORKSPACE_DIR)
 	@# Copy to temp then rename so a running 'ghost update' binary can be replaced (ETXTBSY)
 	@sudo cp $(BINARY_PATH) /usr/local/bin/ghost.new
 	@sudo mv -f /usr/local/bin/ghost.new /usr/local/bin/ghost
@@ -156,6 +155,7 @@ install-ghost: build-ghost
 	@sudo mv -f /usr/local/bin/$(FIRSTBOOT_NAME).new /usr/local/bin/$(FIRSTBOOT_NAME)
 	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(FIRSTBOOT_NAME)
 	@sudo chown -R $(USER):$(USER) /var/ghost
+	@sudo chown -R $(USER):$(USER) /var/lib/ghost
 	@# Build and deploy update tooling
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-$(PLATFORM)-$(ARCH) ./cmd/ghost-update
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-updater-$(PLATFORM)-$(ARCH) ./cmd/ghost-updater

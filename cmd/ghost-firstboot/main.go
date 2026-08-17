@@ -193,7 +193,7 @@ func main() {
 	fb.GhostDir = *ghostDir
 	fb.ConfigDir = filepath.Join(*ghostDir, "config")
 	fb.DataDir = filepath.Join(*ghostDir, "data")
-	fb.Workspace = filepath.Join(*ghostDir, "workspace")
+	fb.Workspace = appliance.ResolveWorkspaceDir(*ghostDir)
 	fb.ConfigPath = filepath.Join(*ghostDir, "config", "config.json")
 	fb.EnvPath = filepath.Join(*ghostDir, ".env")
 
@@ -214,17 +214,21 @@ func main() {
 	}
 
 	// Reconcile bundled skills against the runtime workspace. On a fresh
-	// device this seeds the wizard's skills tab; on every start it refreshes
-	// unchanged bundled skills and always preserves user edits.
-	if report, err := skills.SyncBundled(bundledSkillsSourceDir(), filepath.Join(fb.Workspace, "skills")); err == nil {
-		if len(report.Seeded) > 0 {
-			log.Printf("Seeded bundled skills: %s", strings.Join(report.Seeded, ", "))
-		}
-		if len(report.Updated) > 0 {
-			log.Printf("Updated bundled skills: %s", strings.Join(report.Updated, ", "))
-		}
-		if len(report.UserModified) > 0 {
-			log.Printf("Preserved user-modified skills: %s", strings.Join(report.UserModified, ", "))
+	// checkout layout this seeds the wizard's skills tab; on every start it
+	// refreshes unchanged bundled skills and always preserves user edits. On
+	// installed layouts there is no bundled source here — the gateway seeds
+	// from its embedded copy on first start instead.
+	if src := bundledSkillsSourceDir(); src != "" {
+		if report, err := skills.SyncBundled(src, filepath.Join(fb.Workspace, "skills")); err == nil {
+			if len(report.Seeded) > 0 {
+				log.Printf("Seeded bundled skills: %s", strings.Join(report.Seeded, ", "))
+			}
+			if len(report.Updated) > 0 {
+				log.Printf("Updated bundled skills: %s", strings.Join(report.Updated, ", "))
+			}
+			if len(report.UserModified) > 0 {
+				log.Printf("Preserved user-modified skills: %s", strings.Join(report.UserModified, ", "))
+			}
 		}
 	}
 

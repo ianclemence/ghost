@@ -37,6 +37,16 @@ config/config.json
 .vscode/
 .idea/
 
+# Editor agent state — per-machine AI tooling should stay local so it never
+# shows up in diffs or gets propagated between checkouts.
+.codex/
+.cursor/
+.gemini/
+.zed/
+.mcp.json
+opencode.json
+opencode.jsonc
+
 # Goreleaser
 dist/
 
