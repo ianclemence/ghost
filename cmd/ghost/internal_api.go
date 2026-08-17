@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
@@ -462,6 +464,19 @@ type cronPatchRequestBody struct {
 	Updates cron.JobUpdate `json:"updates"`
 }
 
+type cronCreateRequestBody struct {
+	Name     string            `json:"name"`
+	Schedule cron.CronSchedule `json:"schedule"`
+	Message  string            `json:"message"`
+	Command  string            `json:"command"`
+	Deliver  bool              `json:"deliver"`
+	Channel  string            `json:"channel"`
+	To       string            `json:"to"`
+	Target   string            `json:"target"`
+	Skills   []string          `json:"skills"`
+	NoAgent  bool              `json:"no_agent"`
+}
+
 func resolveRequestChannel(existing, clientType, userAgent string) string {
 	if strings.TrimSpace(existing) != "" {
 		return existing
@@ -504,6 +519,238 @@ func buildCronTriggerResponse(id string, now time.Time) CronTriggerResponse {
 		RunAsync:    true,
 		TriggeredAt: now,
 	}
+}
+
+// ── Skills helpers ─────────────────────────────────────────────────────────
+// These mirror the ghost-web admin console's skill management endpoints but are
+// authenticated with BRIDGE_SECRET instead of the admin dashboard password, so
+// the mobile app can manage skills directly over the unified 8766 API.
+
+// skillSummaryMD extracts a one-line description from a SKILL.md file,
+// preferring the frontmatter description field.
+func skillSummaryMD(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "---" {
+			continue
+		}
+		if strings.HasPrefix(line, "description:") {
+			desc := strings.TrimSpace(strings.TrimPrefix(line, "description:"))
+			desc = strings.Trim(desc, "\"'")
+			if desc != "" {
+				return desc
+			}
+		}
+	}
+	if strings.HasPrefix(strings.TrimSpace(text), "---") {
+		if idx := strings.Index(text[3:], "\n---"); idx != -1 {
+			text = text[3+idx+4:]
+		}
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+		line = strings.TrimSpace(strings.TrimPrefix(line, ">"))
+		if line != "" && !strings.HasPrefix(line, "-") {
+			if len(line) > 200 {
+				return line[:200]
+			}
+			return line
+		}
+	}
+	return ""
+}
+
+// validSkillName guards against path traversal in skill operations.
+func validSkillName(name string) bool {
+	return name != "" && name != "." && name != ".." &&
+		!strings.Contains(name, "/") && !strings.Contains(name, "\\") &&
+		!strings.Contains(name, "..")
+}
+
+// listWorkspaceSkills returns installed skills (enabled and disabled).
+func listWorkspaceSkills(skillsDir string) []map[string]string {
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		return []map[string]string{}
+	}
+	manifest, _ := skills.LoadManifest(skillsDir)
+	result := []map[string]string{}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		skillPath := filepath.Join(skillsDir, name)
+		enabled := false
+		desc := ""
+		if b, err := os.ReadFile(filepath.Join(skillPath, "SKILL.md")); err == nil {
+			enabled = true
+			desc = skillSummaryMD(string(b))
+		} else if b, err := os.ReadFile(filepath.Join(skillPath, "SKILL.md.disabled")); err == nil {
+			enabled = false
+			desc = skillSummaryMD(string(b))
+		} else {
+			continue
+		}
+		entry, bundled := manifest.Skills[name]
+		result = append(result, map[string]string{
+			"name":          name,
+			"description":   desc,
+			"bundled":       strconv.FormatBool(bundled),
+			"user_modified": strconv.FormatBool(bundled && entry.UserModified),
+			"enabled":       strconv.FormatBool(enabled),
+		})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i]["name"] < result[j]["name"] })
+	return result
+}
+
+// setSkillEnabled enables/disables a skill by renaming SKILL.md <-> SKILL.md.disabled.
+func setSkillEnabled(skillsDir, name string, enabled bool) error {
+	if !validSkillName(name) {
+		return fmt.Errorf("invalid skill name")
+	}
+	skillPath := filepath.Join(skillsDir, name)
+	if !strings.HasPrefix(skillPath, skillsDir+string(filepath.Separator)) {
+		return fmt.Errorf("invalid skill name")
+	}
+	src := filepath.Join(skillPath, "SKILL.md")
+	dst := filepath.Join(skillPath, "SKILL.md.disabled")
+	if enabled {
+		if _, err := os.Stat(dst); err == nil {
+			return os.Rename(dst, src)
+		}
+		return nil
+	}
+	if _, err := os.Stat(src); err == nil {
+		return os.Rename(src, dst)
+	}
+	return fmt.Errorf("skill not found")
+}
+
+// readSkillDetail returns a skill's files and metadata.
+func readSkillDetail(skillsDir, name string) (map[string]interface{}, error) {
+	if !validSkillName(name) {
+		return nil, fmt.Errorf("invalid skill name")
+	}
+	skillPath := filepath.Join(skillsDir, name)
+	if !strings.HasPrefix(skillPath, skillsDir+string(filepath.Separator)) {
+		return nil, fmt.Errorf("invalid skill name")
+	}
+	manifest, _ := skills.LoadManifest(skillsDir)
+	entry, bundled := manifest.Skills[name]
+	files := []map[string]string{}
+	_ = filepath.Walk(skillPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if info.Name() == skills.BundledManifestFile {
+			return nil
+		}
+		rel, err := filepath.Rel(skillPath, path)
+		if err != nil {
+			return nil
+		}
+		b, _ := os.ReadFile(path)
+		files = append(files, map[string]string{"path": filepath.ToSlash(rel), "content": string(b)})
+		return nil
+	})
+	sort.Slice(files, func(i, j int) bool { return files[i]["path"] < files[j]["path"] })
+	desc := ""
+	for _, f := range files {
+		if f["path"] == "SKILL.md" || f["path"] == "SKILL.md.disabled" {
+			desc = skillSummaryMD(f["content"])
+		}
+	}
+	return map[string]interface{}{
+		"name":          name,
+		"bundled":       bundled,
+		"user_modified": bundled && entry.UserModified,
+		"description":   desc,
+		"files":         files,
+	}, nil
+}
+
+// gitHubSkillTree lists blob paths under prefix for owner/repo on branch.
+func gitHubSkillTree(owner, repo, branch, prefix string) ([]string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1", owner, repo, branch)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("skills.sh: repo lookup failed (HTTP %d)", resp.StatusCode)
+	}
+	var tree struct {
+		Tree []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		} `json:"tree"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, t := range tree.Tree {
+		if t.Type == "blob" && strings.HasPrefix(t.Path, prefix) {
+			paths = append(paths, t.Path)
+		}
+	}
+	return paths, nil
+}
+
+// installSkillFromGitHub downloads a skill directory into the workspace skills dir.
+func installSkillFromGitHub(skillsDir, owner, repo, branch, prefix, destName string) error {
+	if !validSkillName(destName) {
+		return fmt.Errorf("invalid skill name")
+	}
+	paths, err := gitHubSkillTree(owner, repo, branch, prefix)
+	if err != nil {
+		return err
+	}
+	if len(paths) == 0 {
+		return fmt.Errorf("no skill files found at %s/%s", repo, prefix)
+	}
+	dest := filepath.Join(skillsDir, destName)
+	if _, err := os.Stat(dest); err == nil {
+		return fmt.Errorf("skill '%s' already exists", destName)
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	for _, p := range paths {
+		url := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", owner, repo, branch, p)
+		resp, err := client.Get(url)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode != 200 {
+			resp.Body.Close()
+			return fmt.Errorf("failed to download %s (HTTP %d)", p, resp.StatusCode)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return err
+		}
+		rel := strings.TrimPrefix(p, prefix)
+		rel = strings.TrimPrefix(rel, "/")
+		target := filepath.Join(dest, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(target, body, 0644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func handleExec(allowedCmds []string) http.HandlerFunc {
@@ -759,6 +1006,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		home := os.Getenv("HOME")
 		workspaceDir = filepath.Join(home, "ghost", "workspace")
 	}
+	skillsDir := filepath.Join(workspaceDir, "skills")
 
 	db := agentLoop.DB()
 	if channelManager != nil {
@@ -1066,6 +1314,14 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "job": status})
 			return
 		}
+		if action == "" && r.Method == http.MethodDelete {
+			if cronService.RemoveJob(jobID) {
+				jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "id": jobID})
+			} else {
+				jsonError(w, http.StatusNotFound, "not_found", "job not found")
+			}
+			return
+		}
 		if action == "" {
 			jsonError(w, http.StatusBadRequest, "invalid_action", "unsupported cron action")
 			return
@@ -1127,6 +1383,59 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			jsonResponse(w, http.StatusOK, map[string]interface{}{
 				"jobs": jobs,
 			})
+			return
+		}
+
+		if r.Method == http.MethodPost {
+			var req cronCreateRequestBody
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+				return
+			}
+			req.Name = strings.TrimSpace(req.Name)
+			if req.Name == "" {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "name is required")
+				return
+			}
+			switch req.Schedule.Kind {
+			case "every", "cron", "at":
+			case "":
+				jsonError(w, http.StatusBadRequest, "invalid_request", "schedule.kind is required (every, cron, at)")
+				return
+			default:
+				jsonError(w, http.StatusBadRequest, "invalid_request", "schedule.kind must be every, cron, or at")
+				return
+			}
+			if req.Schedule.EveryMS != nil && *req.Schedule.EveryMS < 5000 {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "every interval must be at least 5 seconds")
+				return
+			}
+			message := strings.TrimSpace(req.Message)
+			command := strings.TrimSpace(req.Command)
+			if message == "" && command == "" {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "message or command is required")
+				return
+			}
+			if message == "" {
+				message = command
+			}
+			job, err := cronService.AddJobWithOptions(
+				req.Name, req.Schedule, message, req.Deliver,
+				req.Channel, req.To, nil, req.Skills, req.NoAgent, "",
+			)
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, "create_failed", err.Error())
+				return
+			}
+			if command != "" && command != message {
+				cmd := command
+				if err := cronService.UpdateJob(job.ID, cron.JobUpdate{Command: &cmd}); err == nil {
+					if j, ok := cronService.GetJob(job.ID); ok {
+						job = j
+					}
+				}
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "job": job})
 			return
 		}
 
@@ -1529,6 +1838,86 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
 			"tools": toolsList,
 		})
+	}))
+
+	// ── 4b. Skills ───────────────────────────────────────────────────────
+	mux.HandleFunc("/v1/skills", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok":     true,
+			"skills": listWorkspaceSkills(skillsDir),
+		})
+	}))
+
+	mux.HandleFunc("/v1/skills/toggle", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			Name    string `json:"name"`
+			Enabled bool   `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "name is required")
+			return
+		}
+		if err := setSkillEnabled(skillsDir, req.Name, req.Enabled); err != nil {
+			jsonError(w, http.StatusBadRequest, "toggle_failed", err.Error())
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "name": req.Name, "enabled": req.Enabled})
+	}))
+
+	mux.HandleFunc("/v1/skills/read", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		name := r.URL.Query().Get("name")
+		detail, err := readSkillDetail(skillsDir, name)
+		if err != nil {
+			jsonError(w, http.StatusNotFound, "not_found", err.Error())
+			return
+		}
+		detail["ok"] = true
+		jsonResponse(w, http.StatusOK, detail)
+	}))
+
+	mux.HandleFunc("/v1/skills/install", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			Owner  string `json:"owner"`
+			Repo   string `json:"repo"`
+			Path   string `json:"path"`
+			Name   string `json:"name"`
+			Branch string `json:"branch"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+			return
+		}
+		if req.Owner == "" || req.Repo == "" || req.Path == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "owner, repo and path are required")
+			return
+		}
+		if req.Name == "" {
+			req.Name = filepath.Base(strings.TrimSuffix(req.Path, "/"))
+		}
+		if req.Branch == "" {
+			req.Branch = "main"
+		}
+		if err := installSkillFromGitHub(skillsDir, req.Owner, req.Repo, req.Branch, req.Path, req.Name); err != nil {
+			jsonError(w, http.StatusInternalServerError, "install_failed", err.Error())
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "name": req.Name, "message": "Skill installed"})
 	}))
 
 	// ── 5. Memory files ───────────────────────────────────────────────────
