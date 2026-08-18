@@ -279,15 +279,27 @@ cp config/config.example.json config/config.json
 {
   "agents": {
     "defaults": {
-      "model": "qwen3:0.6b",
+      "model": "ollama/qwen3:4b",
       "temperature": 0.7
-    }
+    },
+    "model_list": [
+      { "name": "local", "provider": "ollama", "model": "ollama/qwen3:4b" },
+      { "name": "claude", "provider": "anthropic", "model": "claude-sonnet-4" },
+      { "name": "gpt", "provider": "openai", "model": "gpt-4o" }
+    ]
   },
   "channels": {
     "telegram": { "enabled": true }
   }
 }
 ```
+
+**Switching models at runtime** — use `/model` in any chat (e.g. Telegram):
+- `/model` — show the current model and list saved presets
+- `/model <preset-name>` — switch to a named preset from `model_list`
+- `/model <provider:model>` — switch to an arbitrary provider/model (e.g. `anthropic:claude-sonnet-4`, `ollama:qwen3:4b`)
+
+The selection is persisted to `config.json` and takes effect immediately for new turns.
 
 ---
 

@@ -17,7 +17,24 @@
     "routing": {
       "light_model": "",
       "threshold": 0.35
-    }
+    },
+    "model_list": [
+      {
+        "name": "local",
+        "provider": "ollama",
+        "model": "ollama/qwen3:4b"
+      },
+      {
+        "name": "claude",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4"
+      },
+      {
+        "name": "gpt",
+        "provider": "openai",
+        "model": "gpt-4o"
+      }
+    ]
   },
   "gateway": {
     "host": "0.0.0.0",

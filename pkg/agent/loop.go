@@ -62,6 +62,7 @@ type AgentLoop struct {
 	installer        *skills.SkillInstaller
 	providersByModel map[string]providers.LLMProvider
 	cfg              *config.Config
+	configPath       string
 	doctor           *doctor.Doctor
 	running          atomic.Bool
 	summarizing      sync.Map // Tracks which sessions are currently being summarized
@@ -333,14 +334,6 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	cmdRegistry := commands.NewRegistry(commands.DefaultDefinitions())
 	doctorRunner := doctor.New(database.DB, provider, nil, toolsRegistry, workspace)
-	cmdRuntime := &commands.Runtime{
-		Tools:    toolsRegistry,
-		Sessions: sessionsManager,
-		Bus:      msgBus,
-		Commands: cmdRegistry,
-		Doctor:   doctorRunner,
-	}
-	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
 
 	router := routing.NewRouter(cfg.Agents.Routing.LightModel, cfg.Agents.Routing.Threshold)
 	fallback := providers.NewFallbackChain(time.Duration(cfg.Agents.Defaults.FallbackCooldown) * time.Second)
@@ -396,7 +389,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		logger.WarnCF("agent", "Failed to load evolution state: %v", map[string]interface{}{"error": err.Error()})
 	}
 
-	return &AgentLoop{
+	al := &AgentLoop{
 		bus:              msgBus,
 		provider:         provider,
 		workspace:        workspace,
@@ -411,7 +404,6 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		tools:            toolsRegistry,
 		toolProfile:      tools.ProfileFull,
 		commands:         cmdRegistry,
-		commandExec:      cmdExec,
 		router:           router,
 		fallback:         fallback,
 		fallbackModels:   fallbackCandidates,
@@ -425,6 +417,22 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		evolution:        evolutionMgr,
 		steering:         NewSteeringManager(),
 	}
+
+	cmdRuntime := &commands.Runtime{
+		Tools:         toolsRegistry,
+		Sessions:      sessionsManager,
+		Bus:           msgBus,
+		Commands:      cmdRegistry,
+		Doctor:        doctorRunner,
+		Model:         cfg.Agents.Defaults.Model,
+		ModelPresets:  al.ModelPresets(),
+		CurrentModel:  al.GetCurrentModel,
+		SetActiveModel: al.SetModel,
+	}
+	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
+	al.commandExec = cmdExec
+
+	return al
 }
 
 func (al *AgentLoop) Config() *config.Config {
@@ -1316,6 +1324,75 @@ func (al *AgentLoop) resolveProviderForModel(model string) providers.LLMProvider
 		}
 	}
 	return al.provider
+}
+
+// SetConfigPath records the config file path so /model can persist selections.
+func (al *AgentLoop) SetConfigPath(path string) {
+	al.configPath = path
+}
+
+// SetModel switches the active model at runtime and persists the selection to
+// config.json. target may be a "provider:model" string or a named preset from
+// config model_list.
+func (al *AgentLoop) SetModel(target string) error {
+	if al.cfg == nil {
+		return fmt.Errorf("config unavailable")
+	}
+	provider, model := "", target
+	if preset := al.cfg.FindModelPreset(target); preset != nil {
+		provider = preset.Provider
+		model = preset.Model
+	} else if strings.Contains(target, ":") {
+		parts := strings.SplitN(target, ":", 2)
+		if parts[0] == "" || parts[1] == "" {
+			return fmt.Errorf("invalid format, use provider:model (e.g. openai:gpt-4o)")
+		}
+		provider = parts[0]
+		model = parts[1]
+	}
+
+	// Update the live loop + config in memory.
+	al.cfg.SetActiveModel(provider, model)
+	al.model = model
+	// Ensure the provider is resolvable before committing.
+	canonical := model
+	if provider != "" {
+		canonical = provider + ":" + model
+	}
+	if _, err := providers.CreateProviderForModel(al.cfg, canonical); err != nil {
+		return err
+	}
+
+	// Persist to config.json if a path is known.
+	if al.configPath != "" {
+		if err := config.SaveConfig(al.configPath, al.cfg); err != nil {
+			return fmt.Errorf("persisted model but failed to save config: %w", err)
+		}
+	}
+	return nil
+}
+
+// GetCurrentModel returns the active model for display.
+func (al *AgentLoop) GetCurrentModel() string {
+	if al.model != "" {
+		return al.model
+	}
+	return "default"
+}
+
+// ModelPresets returns the list of named presets from config model_list,
+// rendered as "provider:model" strings.
+func (al *AgentLoop) ModelPresets() []string {
+	if al.cfg == nil {
+		return nil
+	}
+	var out []string
+	for _, p := range al.cfg.Agents.ModelList {
+		if p.Name != "" {
+			out = append(out, p.Name)
+		}
+	}
+	return out
 }
 
 // updateToolContexts updates the context for tools that need channel/chatID info.

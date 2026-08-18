@@ -245,6 +245,11 @@
             $('ai-maxtokens').value = data.max_tokens || '';
             $('ai-temperature').value = data.temperature || '';
 
+            const presetSel = $('ai-preset');
+            const presets = data.model_list || [];
+            presetSel.innerHTML = '<option value="">— Select preset —</option>' +
+                presets.map((pr) => '<option value="' + esc(pr.name) + '">' + esc(pr.name) + ' (' + esc(pr.provider + ' / ' + pr.model) + ')</option>').join('');
+
             const keysBox = $('api-keys');
             const keys = ['moonshot', 'anthropic', 'openai', 'openrouter', 'groq', 'deepseek', 'gemini', 'zhipu'];
             keysBox.innerHTML = keys.map((name) => {
@@ -257,6 +262,20 @@
                     '</div>';
             }).join('');
         } catch (e) {}
+    }
+
+    async function applyPreset() {
+        const name = $('ai-preset').value;
+        if (!name) { Ghost.toast.err('Select a preset first.'); return; }
+        try {
+            const data = await api('/api/admin/config');
+            if (!data.ok || !data.model_list) return;
+            const pr = data.model_list.find((x) => x.name === name);
+            if (!pr) { Ghost.toast.err('Preset not found.'); return; }
+            $('ai-provider').value = pr.provider || '';
+            $('ai-model').value = pr.model || '';
+            Ghost.toast.ok('Preset applied. Save to persist.');
+        } catch (e) { Ghost.toast.err('Failed to apply preset.'); }
     }
 
     async function saveAssistant() {
@@ -927,6 +946,7 @@
 
         $('btn-ai-save').addEventListener('click', saveAssistant);
         $('btn-ai-reload').addEventListener('click', loadAIConfig);
+        $('btn-ai-apply-preset').addEventListener('click', applyPreset);
         $('btn-save-keys').addEventListener('click', saveKeys);
         $('btn-ollama-pull').addEventListener('click', pullOllamaModel);
         $('btn-create-personality').addEventListener('click', createPersonality);

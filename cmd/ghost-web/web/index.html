@@ -294,6 +294,14 @@
                 <div class="card">
                     <h2 class="card__title">Model</h2>
                     <div class="field">
+                        <label for="ai-preset">Saved presets</label>
+                        <div class="dash-two-col">
+                            <select class="select" id="ai-preset"><option value="">— Select preset —</option></select>
+                            <button class="btn btn--secondary btn--sm" id="btn-ai-apply-preset" type="button">Apply</button>
+                        </div>
+                        <p class="help-text">Presets are defined in <code>model_list</code> of <code>config.json</code>.</p>
+                    </div>
+                    <div class="field">
                         <label for="ai-provider">Provider</label>
                         <select class="select" id="ai-provider"></select>
                     </div>

@@ -370,10 +370,44 @@ func personalityHandler(ctx context.Context, req Request, rt *Runtime) error {
 func modelHandler(ctx context.Context, req Request, rt *Runtime) error {
 	args := strings.Fields(req.Text)
 	if len(args) < 2 {
-		current := rt.GetCurrentModel()
-		return req.Reply(fmt.Sprintf("Current model: `%s`\n\nUsage: /model <provider:model>", current))
+		var sb strings.Builder
+		cur := "default"
+		if rt.CurrentModel != nil {
+			cur = rt.CurrentModel()
+		} else if rt.Model != "" {
+			cur = rt.Model
+		}
+		sb.WriteString(fmt.Sprintf("Current model: `%s`\n", cur))
+		if len(rt.ModelPresets) > 0 {
+			sb.WriteString("\n**Available presets:**\n")
+			for _, p := range rt.ModelPresets {
+				sb.WriteString(fmt.Sprintf("- `%s`\n", p))
+			}
+			sb.WriteString("\nUsage: `/model <preset>` or `/model <provider:model>`")
+		} else {
+			sb.WriteString("\nUsage: `/model <provider:model>`")
+		}
+		return req.Reply(sb.String())
 	}
+
 	target := args[1]
+	// If it matches a named preset, resolve it to provider:model.
+	if rt.ModelPresets != nil {
+		for _, p := range rt.ModelPresets {
+			if p == target {
+				target = p
+				break
+			}
+		}
+	}
+	// Prefer the injected setter so the change is persisted and takes effect live.
+	if rt.SetActiveModel != nil {
+		if err := rt.SetActiveModel(target); err != nil {
+			return req.Reply(fmt.Sprintf("Failed to set model: %v", err))
+		}
+		return req.Reply(fmt.Sprintf("Model set to `%s`", target))
+	}
+	// Fallback: in-memory only (legacy behaviour).
 	if err := rt.SetModel(target); err != nil {
 		return req.Reply(fmt.Sprintf("Failed to set model: %v", err))
 	}

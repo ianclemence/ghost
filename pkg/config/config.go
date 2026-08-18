@@ -88,8 +88,17 @@ type RAGConfig struct {
 }
 
 type AgentsConfig struct {
-	Defaults AgentDefaults `json:"defaults"`
-	Routing  RoutingConfig `json:"routing"`
+	Defaults  AgentDefaults  `json:"defaults"`
+	Routing   RoutingConfig  `json:"routing"`
+	ModelList []ModelPreset  `json:"model_list,omitempty"`
+}
+
+// ModelPreset is a named, user-selectable model configuration (Picoclaw-style).
+// Provider and Model follow the same conventions as AgentDefaults.
+type ModelPreset struct {
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 type AgentDefaults struct {
@@ -618,6 +627,32 @@ func (c *Config) GetAPIBase() string {
 		return c.Providers.VLLM.APIBase
 	}
 	return ""
+}
+
+// FindModelPreset returns the named model preset, or nil if not found.
+func (c *Config) FindModelPreset(name string) *ModelPreset {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for i := range c.Agents.ModelList {
+		if c.Agents.ModelList[i].Name == name {
+			p := c.Agents.ModelList[i]
+			return &p
+		}
+	}
+	return nil
+}
+
+// SetActiveModel updates the active provider/model on the defaults, and
+// returns a canonical "provider:model" string describing the selection.
+func (c *Config) SetActiveModel(provider, model string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if provider != "" {
+		c.Agents.Defaults.Provider = provider
+	}
+	if model != "" {
+		c.Agents.Defaults.Model = model
+	}
 }
 
 func expandHome(path string) string {

@@ -497,6 +497,7 @@ func agentCmd() {
 
 	msgBus := bus.NewMessageBus()
 	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
+	agentLoop.SetConfigPath(getConfigPath())
 
 	// Print agent startup info (only for interactive mode)
 	startupInfo := agentLoop.GetStartupInfo()
@@ -688,6 +689,7 @@ func gatewayCmd() {
 
 	msgBus := bus.NewMessageBus()
 	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
+	agentLoop.SetConfigPath(getConfigPath())
 
 	// Sync bundled skills before starting so devices pick up new bundled
 	// skills after updates without ever stomping user edits.

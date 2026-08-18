@@ -18,6 +18,14 @@ type Runtime struct {
 	Doctor      *doctor.Doctor
 	Personality string
 	Model       string
+	// ModelPresets lists named model presets available for switching
+	// (e.g. from config model_list). Each is "provider:model" or "ollama/model".
+	ModelPresets []string
+	// SetActiveModel is called by /model to persist a selection and update the
+	// live agent loop. It receives the canonical "provider:model" string.
+	SetActiveModel func(providerModel string) error
+	// CurrentModel resolves the active model for display. Falls back to Model.
+	CurrentModel func() string
 }
 
 func (rt *Runtime) SetPersonality(name string) error {

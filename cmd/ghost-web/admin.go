@@ -419,6 +419,7 @@ func handleConfigGet(w http.ResponseWriter, r *http.Request) {
 		"model":         cfg.Agents.Defaults.Model,
 		"fallback_models": cfg.Agents.Defaults.FallbackModels,
 		"embedding_model": cfg.Agents.Defaults.EmbeddingModel,
+		"model_list":    cfg.Agents.ModelList,
 		"max_tokens":    cfg.Agents.Defaults.MaxTokens,
 		"temperature":   cfg.Agents.Defaults.Temperature,
 		"providers":     providers,
@@ -435,14 +436,15 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Provider        string   `json:"provider"`
-		Model           string   `json:"model"`
-		FallbackModels  []string `json:"fallback_models"`
-		EmbeddingModel  string   `json:"embedding_model"`
-		OllamaURL       string   `json:"ollama_url"`
-		APIKeys         map[string]string `json:"api_keys"`
-		MaxTokens       int      `json:"max_tokens"`
-		Temperature     float64  `json:"temperature"`
+		Provider        string               `json:"provider"`
+		Model           string               `json:"model"`
+		FallbackModels  []string             `json:"fallback_models"`
+		EmbeddingModel  string               `json:"embedding_model"`
+		OllamaURL       string               `json:"ollama_url"`
+		APIKeys         map[string]string    `json:"api_keys"`
+		MaxTokens       int                  `json:"max_tokens"`
+		Temperature     float64              `json:"temperature"`
+		ModelList       []config.ModelPreset `json:"model_list"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
@@ -513,6 +515,9 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Temperature > 0 {
 		cfg.Agents.Defaults.Temperature = req.Temperature
+	}
+	if req.ModelList != nil {
+		cfg.Agents.ModelList = req.ModelList
 	}
 
 	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {
