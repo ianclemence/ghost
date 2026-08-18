@@ -55,8 +55,6 @@ You → Local Reflex → Local Brain → Cloud (only if needed)
 - Kimi / OpenAI / Anthropic
 - Used only for deep reasoning, coding, complex tasks
 
-**90% of interactions never leave your device**
-
 ---
 
 ## Core Features
@@ -82,7 +80,7 @@ See the [Roadmap](docs/ROADMAP.md) for supported hardware, capability tiers, and
 
 ### Hardware
 - Raspberry Pi 5 (8 GB+) or RK1 (16 GB)
-- 32 GB microSD storage
+- 256 GB NVMe SSD (recommended) or 32 GB microSD storage
 - Mobile phone with Ghost app
 
 ### Software: Ollama (Required for Local AI)
