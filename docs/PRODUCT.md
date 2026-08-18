@@ -36,7 +36,7 @@ Ghost's defensible asset is the **complete lifecycle**: first-boot wizard, admin
 
 **Open core, paid managed service.**
 
-- **Open source the core.** The Ghost engine, web console, and agents are open. This is how we win the hobbyists who test, report, and spread the word. They are the discovery flywheel.
+- **Open-source the core.** The Ghost engine, web console, and agents are open. This is how we win the hobbyists who test, report, and spread the word. They are the discovery flywheel.
 - **Sell the managed layer as a subscription.** Users pay for the parts that must be centralised and maintained:
   - **Cloud relay** — lets the mobile app reach Ghost from anywhere without port forwarding.
   - **Managed OTA updates** — Ghost ships and installs updates to devices we never touch.

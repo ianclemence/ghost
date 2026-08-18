@@ -22,7 +22,7 @@
       {
         "name": "local",
         "provider": "ollama",
-        "model": "ollama/qwen3:4b"
+        "model": "ollama/qwen3:0.6b"
       },
       {
         "name": "claude",

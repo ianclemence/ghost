@@ -36,7 +36,7 @@ A user opts in during setup (or later in the dashboard). Their device then repor
 
 ### Privacy controls
 
-- Opt-in by default off.
+- Opt-in only; off by default.
 - Clear, plain-language description of what is sent and why.
 - One-click disable that stops all transmission.
 - Local data is never used to train models.

@@ -5,13 +5,13 @@ import "testing"
 func TestFindModelPreset(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Agents.ModelList = []ModelPreset{
-		{Name: "local", Provider: "ollama", Model: "ollama/qwen3:4b"},
+		{Name: "local", Provider: "ollama", Model: "ollama/qwen3:0.6b"},
 		{Name: "claude", Provider: "anthropic", Model: "claude-sonnet-4"},
 	}
 
 	if p := cfg.FindModelPreset("local"); p == nil {
 		t.Fatal("expected 'local' preset to be found")
-	} else if p.Provider != "ollama" || p.Model != "ollama/qwen3:4b" {
+	} else if p.Provider != "ollama" || p.Model != "ollama/qwen3:0.6b" {
 		t.Errorf("local preset mismatch: %+v", p)
 	}
 

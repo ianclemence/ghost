@@ -81,8 +81,8 @@ See the [Roadmap](docs/ROADMAP.md) for supported hardware, capability tiers, and
 ## Requirements
 
 ### Hardware
-- Raspberry Pi 5 (8GB+) or RK1 (16GB)
-- 32GB MicroSD storage
+- Raspberry Pi 5 (8 GB+) or RK1 (16 GB)
+- 32 GB microSD storage
 - Mobile phone with Ghost app
 
 ### Software: Ollama (Required for Local AI)
@@ -279,11 +279,11 @@ cp config/config.example.json config/config.json
 {
   "agents": {
     "defaults": {
-      "model": "ollama/qwen3:4b",
+      "model": "ollama/qwen3:0.6b",
       "temperature": 0.7
     },
     "model_list": [
-      { "name": "local", "provider": "ollama", "model": "ollama/qwen3:4b" },
+      { "name": "local", "provider": "ollama", "model": "ollama/qwen3:0.6b" },
       { "name": "claude", "provider": "anthropic", "model": "claude-sonnet-4" },
       { "name": "gpt", "provider": "openai", "model": "gpt-4o" }
     ]
@@ -297,7 +297,7 @@ cp config/config.example.json config/config.json
 **Switching models at runtime** — use `/model` in any chat (e.g. Telegram):
 - `/model` — show the current model and list saved presets
 - `/model <preset-name>` — switch to a named preset from `model_list`
-- `/model <provider:model>` — switch to an arbitrary provider/model (e.g. `anthropic:claude-sonnet-4`, `ollama:qwen3:4b`)
+- `/model <provider:model>` — switch to an arbitrary provider/model (e.g. `anthropic:claude-sonnet-4`, `ollama:qwen3:0.6b`)
 
 The selection is persisted to `config.json` and takes effect immediately for new turns.
 

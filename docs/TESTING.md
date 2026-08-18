@@ -24,19 +24,19 @@ Run these from the `~/ghost` directory on your Pi.
 
 ---
 
-### 2. Slash Commands (Mobile App)
+## 2. Slash Commands (Mobile App)
 
 Type these directly into the chat input starting with `/`.
 
 - `/status`: Displays Pi system stats (CPU, Disk, Memory) using `uptime` and `df`.
-- `/skills`: Lists all 28+ installed skills from `workspace/skills`.
-- `/tools`: Shows the raw JSON schemas for all 24+ loaded tools (e.g., `exec`, `web_search`).
+- `/skills`: Lists all installed skills in `workspace/skills` (34 currently).
+- `/tools`: Shows the JSON schemas for all loaded tools (e.g., `exec`, `web_search`, `canvas`).
 - `/clear`: Archives the current chat session.
 - `/help`: Shows available commands and tool descriptions.
 
 ---
 
-### 3. Test Prompts (Aligned with Tools & Skills)
+## 3. Test Prompts (Aligned with Tools & Skills)
 
 #### Filesystem & System (Tools: `exec`, `read_file`, `write_file`, `list_dir`)
 
@@ -59,14 +59,14 @@ Type these directly into the chat input starting with `/`.
 - _"Run a speedtest on my Pi."_
 - _"Convert 100 USD to EUR."_
 
-#### Multimedia & Environment (Skills: `camera`, `screenshot`, `spotify`, `homeassistant`)
+#### Multimedia & Environment (Skills: `camera`, `mobile`, `spotify`, `homeassistant`)
 
-- _"Take a screenshot of the Pi desktop."_
 - _"Take a photo using the Pi camera."_
+- _"Take a screenshot of my Android phone."_
 - _"What's currently playing on my Spotify?"_
 - _"Check the status of my home assistant devices."_
 
-#### Productivity & Memory (Tools: `remember`, `oracle`; Skills: `calendar`, `journal`, `remind`)
+#### Productivity & Memory (Tools: `remember`, `oracle`; Skills: `calendar`, `journal`; Command: `/remind`)
 
 - _"Set a reminder to check the logs in 10 minutes."_
 - _"Add a note to my memory about my project ideas."_
@@ -81,7 +81,7 @@ Type these directly into the chat input starting with `/`.
 
 ---
 
-### 4. Prompt Ladder (Simple → Complex)
+## 4. Prompt Ladder (Simple → Complex)
 
 Use this sequence to progressively stress-test Ghost from basic response quality to deep autonomous behavior.
 
@@ -123,7 +123,7 @@ Use this sequence to progressively stress-test Ghost from basic response quality
 
 ---
 
-### 5. Troubleshooting Commands
+## 5. Troubleshooting Commands
 
 - `sudo lsof -i :8766`: Check if the Internal API port is occupied.
 - `sudo fuser -k 8766/tcp`: Force close any process hogging the API port.

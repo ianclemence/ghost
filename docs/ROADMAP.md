@@ -4,7 +4,7 @@
 
 This roadmap sequences the work needed to turn Ghost from a developer project into a sellable local-first personal AI appliance. It is aligned to the [Product Strategy](PRODUCT.md): open core, paid managed service, BYO-hardware first, hardware deferred.
 
-Each phase maps to one or more implementation plans under [`plans/`](plans/). The phases build on each other: a phase's plan is only workable once its prerequisites are met.
+Each phase maps to an implementation plan under [`plans/`](plans/) where one exists. The phases build on each other: a phase's plan is only workable once its prerequisites are met.
 
 ---
 
@@ -108,7 +108,7 @@ The appliance core is in place and stable:
 
 Ghost is a local-first appliance built to run on always-on, modest hardware. The software runs anywhere Linux runs; the reference targets are low-power single-board computers.
 
-**Recommended:** RK1 (16 GB) — a built-in NPU for AI acceleration, strong multi-core CPU, and a lower cost than comparable systems. Best balance of performance and on-device AI capability.
+**Recommended:** RK1 (16 GB) — built-in NPU for AI acceleration, strong multi-core CPU, and lower cost than comparable systems. Best balance of performance and on-device AI capability.
 
 **Compatible:**
 - Raspberry Pi 5 / CM5 — stable ecosystem, strong community support; no built-in AI acceleration, so it suits lighter models and API-assisted workloads.
