@@ -60,8 +60,8 @@ type Config struct {
 }
 
 type SkillsConfig struct {
-	ClawHub   ClawHubConfig     `json:"clawhub"`
-	Honcho    HonchoConfig      `json:"honcho"`
+	ClawHub ClawHubConfig `json:"clawhub"`
+	Honcho  HonchoConfig  `json:"honcho"`
 }
 
 type ClawHubConfig struct {
@@ -88,9 +88,9 @@ type RAGConfig struct {
 }
 
 type AgentsConfig struct {
-	Defaults  AgentDefaults  `json:"defaults"`
-	Routing   RoutingConfig  `json:"routing"`
-	ModelList []ModelPreset  `json:"model_list,omitempty"`
+	Defaults  AgentDefaults `json:"defaults"`
+	Routing   RoutingConfig `json:"routing"`
+	ModelList []ModelPreset `json:"model_list,omitempty"`
 }
 
 // ModelPreset is a named, user-selectable model configuration (Picoclaw-style).
@@ -290,10 +290,10 @@ type DelegationConfig struct {
 }
 
 type ToolsConfig struct {
-	Web        WebToolsConfig     `json:"web"`
-	MCP        MCPConfig          `json:"mcp"`
-	Curator    CuratorConfig      `json:"curator"`
-	Delegation DelegationConfig   `json:"delegation"`
+	Web        WebToolsConfig   `json:"web"`
+	MCP        MCPConfig        `json:"mcp"`
+	Curator    CuratorConfig    `json:"curator"`
+	Delegation DelegationConfig `json:"delegation"`
 }
 
 type MCPConfig struct {
@@ -511,6 +511,24 @@ func LoadConfig(path string) (*Config, error) {
 	applySecrets(cfg, secrets)
 
 	return cfg, nil
+}
+
+// MarshalSanitized serializes cfg with every secret field cleared, ready for
+// an export where credentials must never be embedded (even inside an
+// encrypted archive that will be shared between machines).
+func MarshalSanitized(cfg *Config) ([]byte, error) {
+	cfg.mu.RLock()
+	raw, err := json.Marshal(cfg)
+	cfg.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	var clean Config
+	if err := json.Unmarshal(raw, &clean); err != nil {
+		return nil, err
+	}
+	clearSecrets(&clean)
+	return json.MarshalIndent(&clean, "", "  ")
 }
 
 // SaveConfig persists config.json (0600, atomic) and splits every secret out

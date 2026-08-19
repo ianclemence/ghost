@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/chzyer/readline"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/appliance"
@@ -24,6 +25,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/devices"
+	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/heartbeat"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/mcp"
@@ -237,6 +239,8 @@ func main() {
 			fmt.Printf("Unknown skills command: %s\n", subcommand)
 			skillsHelp()
 		}
+	case "state":
+		stateCmd()
 	case "update":
 		updateCmd()
 	case "updater":
@@ -267,6 +271,7 @@ func printHelp() {
 	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
+	fmt.Println("  state       Export, import, or inspect Ghost State archives")
 	fmt.Println("  version     Show version information")
 }
 
@@ -292,6 +297,10 @@ func onboard() {
 
 	workspace := cfg.WorkspacePath()
 	createWorkspaceTemplates(workspace)
+	if _, err := ghoststate.EnsureIdentity(workspace); err != nil {
+		fmt.Printf("Error creating Ghost identity: %v\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Printf("%s ghost is ready!\n", logo)
 	fmt.Println("\nNext steps:")
@@ -694,6 +703,13 @@ func gatewayCmd() {
 	// Sync bundled skills before starting so devices pick up new bundled
 	// skills after updates without ever stomping user edits.
 	syncEmbeddedSkills(cfg.WorkspacePath())
+
+	// Mint or load the persistent, hardware-independent Ghost identity. This
+	// is idempotent: the ghost_id is created once and then preserved for the
+	// life of the Ghost, surviving upgrades and migrations.
+	if _, err := ghoststate.EnsureIdentity(cfg.WorkspacePath()); err != nil {
+		fmt.Printf("⚠️  Could not ensure Ghost identity: %v\n", err)
+	}
 
 	// Print agent startup info
 	fmt.Println("\n📦 Agent Status:")
@@ -1371,6 +1387,255 @@ func cronHelp() {
 	fmt.Println("  --channel        Channel for delivery")
 	fmt.Println("  --skills         Comma-separated skills to load (e.g. 'planning,code-review')")
 	fmt.Println("  --no-agent       Run script directly without agent (script IS the job)")
+}
+
+func stateCmd() {
+	if len(os.Args) < 3 {
+		stateHelp()
+		return
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+	switch os.Args[2] {
+	case "export":
+		stateExportCmd(cfg)
+	case "import":
+		stateImportCmd(cfg)
+	case "inspect":
+		stateInspectCmd(cfg)
+	default:
+		stateHelp()
+	}
+}
+
+func stateExportCmd(cfg *config.Config) {
+	includeSecrets := false
+	dest := ""
+	for _, arg := range os.Args[3:] {
+		switch arg {
+		case "--include-secrets":
+			includeSecrets = true
+		case "--help", "-h":
+			stateHelp()
+			return
+		default:
+			if strings.HasPrefix(arg, "-") {
+				fmt.Printf("Unknown flag: %s\n", arg)
+				stateHelp()
+				return
+			}
+			dest = arg
+		}
+	}
+	if dest == "" {
+		fmt.Println("Usage: ghost state export <archive> [--include-secrets]")
+		return
+	}
+
+	passphrase, err := readPassphrase("Passphrase (used to encrypt the archive): ", true)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	if includeSecrets {
+		fmt.Println("⚠️  Including secrets: API keys and channel tokens will be embedded in this encrypted archive.")
+		fmt.Println("    Store the archive securely. Secrets are NOT included by default.")
+		if !confirm("Continue? (y/n): ") {
+			fmt.Println("Aborted.")
+			return
+		}
+	}
+
+	manifest, err := ghoststate.Export(ghoststate.ExportOptions{
+		Workspace:      cfg.WorkspacePath(),
+		ConfigPath:     getConfigPath(),
+		Destination:    dest,
+		Passphrase:     passphrase,
+		IncludeSecrets: includeSecrets,
+	})
+	if err != nil {
+		fmt.Printf("Error exporting Ghost State: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ Exported Ghost State (%s) to %s\n", manifest.GhostID, dest)
+	if len(manifest.Rebound) > 0 {
+		fmt.Println("  Device-specific (not exported):")
+		for _, r := range manifest.Rebound {
+			fmt.Printf("    - %s\n", r)
+		}
+	}
+	if !includeSecrets {
+		fmt.Println("  Secrets excluded. Re-add them on the new machine or export with --include-secrets.")
+	}
+}
+
+func stateImportCmd(cfg *config.Config) {
+	force := false
+	src := ""
+	for _, arg := range os.Args[3:] {
+		switch arg {
+		case "--force":
+			force = true
+		case "--help", "-h":
+			stateHelp()
+			return
+		default:
+			if strings.HasPrefix(arg, "-") {
+				fmt.Printf("Unknown flag: %s\n", arg)
+				stateHelp()
+				return
+			}
+			src = arg
+		}
+	}
+	if src == "" {
+		fmt.Println("Usage: ghost state import <archive> [--force]")
+		return
+	}
+
+	if force {
+		fmt.Println("⚠️  --force set: the target workspace will be overwritten.")
+		if !confirm("Continue? (y/n): ") {
+			fmt.Println("Aborted.")
+			return
+		}
+	}
+
+	passphrase, err := readPassphrase("Passphrase (to decrypt the archive): ", false)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	manifest, err := ghoststate.Import(ghoststate.ImportOptions{
+		Workspace:  cfg.WorkspacePath(),
+		ConfigPath: getConfigPath(),
+		Source:     src,
+		Passphrase: passphrase,
+		Force:      force,
+	})
+	if err != nil {
+		fmt.Printf("Error importing Ghost State: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ Imported Ghost State (%s) into %s\n", manifest.GhostID, cfg.WorkspacePath())
+	if manifest.SecretsIncluded {
+		fmt.Println("  Secrets restored from the archive.")
+	} else {
+		fmt.Println("  Secrets were not in this archive. Re-add them if needed.")
+	}
+}
+
+func stateInspectCmd(cfg *config.Config) {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: ghost state inspect <archive>")
+		return
+	}
+	src := os.Args[3]
+	passphrase, err := readPassphrase("Passphrase (to decrypt the archive): ", false)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	manifest, err := ghoststate.Inspect(src, passphrase)
+	if err != nil {
+		fmt.Printf("Error inspecting archive: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Ghost State archive: %s\n", src)
+	fmt.Printf("  Format:        %s (schema v%d)\n", manifest.Format, manifest.SchemaVersion)
+	fmt.Printf("  Ghost ID:      %s\n", manifest.GhostID)
+	fmt.Printf("  Exported:      %s\n", manifest.ExportedAt)
+	fmt.Printf("  From:          %s\n", manifest.Origin.Hostname)
+	fmt.Printf("  Secrets:       %s\n", map[bool]string{true: "included", false: "excluded"}[manifest.SecretsIncluded])
+	fmt.Printf("  Files:         %d\n", len(manifest.Files))
+	var portable, derived int
+	for _, f := range manifest.Files {
+		if f.Category == ghoststate.CategoryPortable {
+			portable++
+		}
+		if f.Category == ghoststate.CategoryDerived {
+			derived++
+		}
+	}
+	if portable > 0 {
+		fmt.Printf("    portable: %d, derived: %d\n", portable, derived)
+	}
+	if len(manifest.Rebound) > 0 {
+		fmt.Println("  Rebound (device-specific, not restored):")
+		for _, r := range manifest.Rebound {
+			fmt.Printf("    - %s\n", r)
+		}
+	}
+	if len(manifest.SecretsExcluded) > 0 {
+		fmt.Println("  Secrets excluded:")
+		for _, s := range manifest.SecretsExcluded {
+			fmt.Printf("    - %s\n", s)
+		}
+	}
+}
+
+func stateHelp() {
+	fmt.Println("\nGhost State commands:")
+	fmt.Println("  export <archive> [--include-secrets]   Export portable Ghost State to an encrypted archive")
+	fmt.Println("  inspect <archive>                      Show what an archive contains without importing")
+	fmt.Println("  import <archive> [--force]             Restore an archive into a fresh Ghost installation")
+	fmt.Println()
+	fmt.Println("Import only runs on a fresh installation unless --force is given.")
+	fmt.Println("Rebound (device-specific) state is never exported; secrets need --include-secrets.")
+}
+
+// readPassphrase reads a passphrase from the terminal without echoing, or
+// falls back to reading a line from stdin when not attached to a terminal.
+func readPassphrase(prompt string, confirm bool) (string, error) {
+	// A single reader is shared across reads: bufio read-ahead would swallow
+	// extra piped lines into a discarded buffer otherwise.
+	var stdin *bufio.Reader
+	read := func() (string, error) {
+		fd := uintptr(os.Stdin.Fd())
+		if term.IsTerminal(fd) {
+			fmt.Fprint(os.Stderr, prompt)
+			b, err := term.ReadPassword(fd)
+			fmt.Fprintln(os.Stderr)
+			if err != nil {
+				return "", err
+			}
+			return string(b), nil
+		}
+		if stdin == nil {
+			stdin = bufio.NewReader(os.Stdin)
+		}
+		line, err := stdin.ReadString('\n')
+		return strings.TrimRight(line, "\r\n"), err
+	}
+	p1, err := read()
+	if err != nil {
+		return "", err
+	}
+	if p1 == "" {
+		return "", fmt.Errorf("passphrase must not be empty")
+	}
+	if confirm {
+		p2, err := read()
+		if err != nil {
+			return "", err
+		}
+		if p1 != p2 {
+			return "", fmt.Errorf("passphrases do not match")
+		}
+	}
+	return p1, nil
+}
+
+func confirm(prompt string) bool {
+	fmt.Fprint(os.Stderr, prompt)
+	var response string
+	fmt.Scanln(&response)
+	return strings.ToLower(strings.TrimSpace(response)) == "y"
 }
 
 func cronListCmd(storePath string) {
