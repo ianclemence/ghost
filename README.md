@@ -315,6 +315,45 @@ The selection is persisted to `config.json` and takes effect immediately for new
 
 ---
 
+## Running as a Service
+
+### Raspberry Pi
+
+```bash
+sudo make install-ghost
+```
+
+Then:
+
+```bash
+ghost-web  # Start web console (setup wizard + admin dashboard)
+ghost      # Start Ghost (after setup)
+```
+
+### Service Commands
+
+```bash
+sudo systemctl status ghost
+sudo journalctl -u ghost -f
+sudo systemctl restart ghost
+```
+
+### Recovery Mode
+
+If Ghost fails to start, enable recovery mode:
+
+```bash
+GHOST_RECOVERY_MODE=1 ghost gateway
+```
+
+This starts a web UI at `http://ghost.local:8766` with:
+- System status
+- Logs viewer
+- Config reset option
+- Restart button
+
+---
+
 ## Mobile App
 
 Ghost exposes a unified API on port **8766**:
@@ -367,54 +406,6 @@ Key HTTP endpoints the app uses on port `8766`:
 WebSocket messages on `/ws` are broadcast per channel; `mobile` receives
 `assistant_message`, `clarify_request`, `canvas_update`, `cron_update`, and
 `progress_event` payloads.
-
----
-
-## Running as a Service
-
-### Raspberry Pi
-
-```bash
-sudo make install-ghost
-```
-
-Then:
-
-```bash
-ghost-web  # Start web console (setup wizard + admin dashboard)
-ghost      # Start Ghost (after setup)
-```
-
-### Service Commands
-
-```bash
-sudo systemctl status ghost
-sudo journalctl -u ghost -f
-sudo systemctl restart ghost
-```
-
-### Recovery Mode
-
-If Ghost fails to start, enable recovery mode:
-
-```bash
-GHOST_RECOVERY_MODE=1 ghost gateway
-```
-
-This starts a web UI at `http://ghost.local:8766` with:
-- System status
-- Logs viewer
-- Config reset option
-- Restart button
-
----
-
-## Memory System
-
-* SQLite database
-* HNSW vector index
-* Episodic logs
-* Reflective summaries
 
 ---
 
