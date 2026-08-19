@@ -33,6 +33,8 @@ The foundation for Ghost's persistent identity and appliance lifecycle is in pla
 - **Self-improvement**: learning pipeline, skill drafts, mid-turn steering, recall summarization.
 - **Dashboard redesign**: responsive layout, polished cards, skill editor.
 
+**Foundational requirement from Phase 0:** identity portability is a data-model concern first. The identity must be serializable and exportable from the start — build the data model for migration now, ship the polished "Ghost Moves With You" experience later. Every phase after this builds on a Ghost that can, in principle, be lifted off its hardware. This keeps "identity first, hardware second" true as the other phases are built, rather than retrofitting portability onto a finished system.
+
 **Definition of done for Phase 0:** a clean first-boot-to-dashboard flow on a Pi, with recovery and password reset working. This is largely complete.
 
 **Exit criterion:** the mobile app can pair over LAN (in progress separately).
