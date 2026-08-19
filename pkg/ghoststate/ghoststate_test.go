@@ -102,8 +102,20 @@ func TestExportImportRoundTrip(t *testing.T) {
 	if manifest.File(configJSONLogical) == nil {
 		t.Fatal("config not exported")
 	}
+	if manifest.File(conversationsFormatLogical) == nil {
+		t.Fatal("conversations format marker not exported")
+	}
 	if len(manifest.Rebound) == 0 {
 		t.Fatal("device-specific fields should be recorded as rebound")
+	}
+	reboundDB := false
+	for _, r := range manifest.Rebound {
+		if strings.Contains(r, "ghost.db") {
+			reboundDB = true
+		}
+	}
+	if !reboundDB {
+		t.Fatalf("ghost.db should be recorded as rebound: %v", manifest.Rebound)
 	}
 	found := false
 	for _, s := range manifest.SecretsExcluded {
@@ -142,7 +154,8 @@ func TestExportImportRoundTrip(t *testing.T) {
 		t.Fatalf("target identity %q != source %q", targetID.GhostID, sourceID.GhostID)
 	}
 
-	// Portable state must match.
+	// Portable state must match: the conversation survives and the runtime
+	// database is rehydrated from the portable JSONL.
 	d, err := db.NewDB(targetWS)
 	if err != nil {
 		t.Fatalf("open target db: %v", err)
@@ -155,12 +168,21 @@ func TestExportImportRoundTrip(t *testing.T) {
 	if msgCount != 1 {
 		t.Fatalf("messages: got %d, want 1", msgCount)
 	}
+	var summary string
+	if err := d.QueryRow(`SELECT summary FROM sessions WHERE id = 'sess-1'`).Scan(&summary); err != nil {
+		t.Fatalf("read session summary: %v", err)
+	}
+	if summary != "portable conversations must survive" {
+		t.Fatalf("session summary = %q, want the portable conversation to survive", summary)
+	}
+	// Embeddings are derived state: they are deliberately not portable and are
+	// rebuilt as the agent runs on the new machine.
 	var chunkCount int
 	if err := d.QueryRow(`SELECT COUNT(*) FROM memory_chunks`).Scan(&chunkCount); err != nil {
 		t.Fatalf("count chunks: %v", err)
 	}
-	if chunkCount != 1 {
-		t.Fatalf("memory_chunks: got %d, want 1", chunkCount)
+	if chunkCount != 0 {
+		t.Fatalf("memory_chunks: got %d, want 0 (embeddings are derived, not portable)", chunkCount)
 	}
 
 	for rel, want := range map[string]string{
@@ -360,7 +382,8 @@ func TestInspect(t *testing.T) {
 
 func TestWorkspaceArtifactClassification(t *testing.T) {
 	portable := []string{
-		"ghost.db",
+		"conversations/format.json",
+		"conversations/sessions/a.jsonl",
 		"state/identity.json",
 		"sessions/2026.jsonl",
 		"memory/MEMORY.md",
@@ -370,6 +393,9 @@ func TestWorkspaceArtifactClassification(t *testing.T) {
 		"USER.md", "AGENTS.md", "SOUL.md", "GHOST.md", "README.md",
 		"kanban.json",
 		".skills-sync.json",
+	}
+	rebound := []string{
+		"ghost.db",
 	}
 	derived := []string{
 		"state/state.json",
@@ -391,6 +417,12 @@ func TestWorkspaceArtifactClassification(t *testing.T) {
 		cat, err := classifyWorkspaceFile(p)
 		if err != nil || cat != CategoryPortable {
 			t.Errorf("classifyWorkspaceFile(%q) = %q, %v; want portable", p, cat, err)
+		}
+	}
+	for _, p := range rebound {
+		cat, err := classifyWorkspaceFile(p)
+		if err != nil || cat != CategoryRebound {
+			t.Errorf("classifyWorkspaceFile(%q) = %q, %v; want rebound", p, cat, err)
 		}
 	}
 	for _, p := range derived {

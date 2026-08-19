@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ianclemence/ghost/pkg/config"
 )
@@ -64,8 +65,21 @@ func Import(opts ImportOptions) (*Manifest, error) {
 		if digestBytes(data) != f.Digest {
 			return nil, fmt.Errorf("integrity check failed for %s", f.Path)
 		}
+		if strings.HasPrefix(f.Path, conversationsDirLogical+"/") {
+			// Portable conversations are rehydrated into a fresh ghost.db below,
+			// never written as inert files the runtime would ignore.
+			continue
+		}
 		if err := writeImportedArtifact(opts, f, data); err != nil {
 			return nil, err
+		}
+	}
+
+	// Conversations are the portable record; the runtime database is rebuilt
+	// from them so the target's ghost.db is a fresh index on this machine.
+	if manifest.File(conversationsFormatLogical) != nil {
+		if err := rehydrateConversations(opts.Workspace, files); err != nil {
+			return nil, fmt.Errorf("rehydrate conversations: %w", err)
 		}
 	}
 

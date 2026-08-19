@@ -118,6 +118,12 @@ func Export(opts ExportOptions) (*Manifest, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
+		if rel == ghostDBLogical {
+			// The database is a runtime index, not portable state. Conversations
+			// are exported as versioned, deterministic JSONL; import rehydrates
+			// a fresh database from them.
+			return stageConversationsFromDB(staging, stagingDir, manifest, p)
+		}
 		cat, err := classifyWorkspaceFile(rel)
 		if err != nil {
 			return err
@@ -135,11 +141,6 @@ func Export(opts ExportOptions) (*Manifest, error) {
 			manifest.SecretsExcluded = append(manifest.SecretsExcluded, rel)
 			return nil
 		case CategoryPortable, CategoryDerived:
-			if rel == ghostDBLogical {
-				// Snapshot the WAL-mode database into a consistent single
-				// file so the archive never carries -wal/-shm fragments.
-				return stageDB(staging, stagingDir, manifest, p, d)
-			}
 			return stageFromDisk(staging, stagingDir, manifest, rel, cat, d, p)
 		}
 		return nil
@@ -215,30 +216,6 @@ func stageFromDisk(staging map[string]string, stagingDir string, m *Manifest, lo
 		return err
 	}
 	return stageEntry(staging, stagingDir, m, logical, cat, data, info.Mode().Perm())
-}
-
-func stageDB(staging map[string]string, stagingDir string, m *Manifest, abs string, d os.DirEntry) error {
-	snap := filepath.Join(stagingDir, "ghost.db")
-	if err := snapshotDB(abs, snap); err != nil {
-		return fmt.Errorf("snapshot database: %w", err)
-	}
-	info, err := d.Info()
-	if err != nil {
-		return err
-	}
-	data, err := os.ReadFile(snap)
-	if err != nil {
-		return fmt.Errorf("read database snapshot: %w", err)
-	}
-	staging[ghostDBLogical] = snap
-	m.Files = append(m.Files, FileEntry{
-		Path:     ghostDBLogical,
-		Category: CategoryPortable,
-		Digest:   digestBytes(data),
-		Size:     int64(len(data)),
-		Mode:     uint32(info.Mode().Perm()),
-	})
-	return nil
 }
 
 func writeStaged(stagingDir string, data []byte, perm os.FileMode) (string, error) {

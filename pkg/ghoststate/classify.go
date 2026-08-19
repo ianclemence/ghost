@@ -17,9 +17,16 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 
 	switch {
 	case rel == "ghost.db":
-		return CategoryPortable, nil
+		// The database is a runtime index: conversations travel as portable
+		// conversations/*.jsonl and the database is rehydrated from them on
+		// import, so the binary never crosses machines.
+		return CategoryRebound, nil
 	case rel == "ghost.db-wal" || rel == "ghost.db-shm":
 		return CategoryDisposable, nil
+	case strings.HasPrefix(rel, "conversations/"):
+		// Versioned, deterministic conversation JSONL: the portable form of a
+		// conversation, human-readable and independent of the SQLite schema.
+		return CategoryPortable, nil
 	case rel == "state/identity.json":
 		return CategoryPortable, nil
 	case strings.HasPrefix(rel, "state/"):
