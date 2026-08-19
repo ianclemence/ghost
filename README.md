@@ -1,14 +1,14 @@
 # Ghost
 
-> **Your AI, Your Hardware.**  
-> *A personal AI assistant that runs locally, responds instantly, and scales with you.*
+> **Your AI, Your Memory, Your Machine.**  
+> *A personal AI that belongs to you — it lives on your hardware, remembers you, and works for you.*
 
 ---
 
 ## Documentation
 
 - **[Product Strategy](docs/PRODUCT.md)** — who Ghost is for, what it sells, and how it makes money.
-- **[Roadmap](docs/ROADMAP.md)** — the phased plan from appliance core to a sellable local-first product.
+- **[Roadmap](docs/ROADMAP.md)** — the phased plan from the persistent identity core to a personal AI you own.
 - **[Implementation plans](docs/plans/)** — detailed plans for the cloud relay, install experience, OTA updates, and telemetry.
 - **[Testing](docs/TESTING.md)** — how to test Ghost.
 
@@ -16,13 +16,19 @@
 
 ## What is Ghost?
 
-Ghost is a **personal AI assistant** that runs on your own hardware — combining:
+Ghost is the **persistent home of your personal AI**. Plug it in, connect your
+phone, and talk to it — it remembers you, does things for you, and keeps working.
+It runs on hardware you own, works offline, and keeps your data on-device.
+
+Under the hood that combines:
 
 - **Real-time local reflexes** (instant responses)
 - **On-device reasoning** (private, fast, offline-capable)
 - **Cloud intelligence** (for deep thinking when needed)
 
-The result: An AI that feels **alive, responsive, and truly yours** — not dependent on the cloud.
+Ghost is not an appliance that happens to run an LLM. It is a personal AI that
+lives somewhere persistent: your memory, identity, skills, tools, and automations
+have a home. That is what makes it *yours* — not dependent on the cloud.
 
 ---
 
@@ -55,6 +61,10 @@ You → Local Reflex → Local Brain → Cloud (only if needed)
 - Kimi / OpenAI / Anthropic
 - Used only for deep reasoning, coding, complex tasks
 
+An **Intelligence Router** decides where each task runs — local reflex, local
+model, or cloud — based on capability, latency, privacy, cost, and available
+hardware. You don't have to think about models; Ghost handles it.
+
 ---
 
 ## Core Features
@@ -62,6 +72,7 @@ You → Local Reflex → Local Brain → Cloud (only if needed)
 - **Local-First**: Runs on your own hardware (Raspberry Pi, RK1, or x86)
 - **Persistent Memory**: Continuous context via SQLite + HNSW Vector Index
 - **Hybrid Intelligence**: Local-first routing with cloud fallback
+- **Ghost Moves With You**: Replace your hardware — your identity, memory, skills, and configuration come along
 - **Robust**: JSON Schema validation prevents hallucinated tool calls
 - **Proactive**: Briefings, reminders, scheduled automation
 - **Observable**: Diagnostics via `/doctor` and `GET /v1/doctor`
@@ -70,7 +81,14 @@ You → Local Reflex → Local Brain → Cloud (only if needed)
 
 ## Hardware
 
-Ghost runs on any Linux device. Recommended: **RK1 (16 GB)** for built-in NPU acceleration. Compatible: Raspberry Pi 5 / CM5 and x86 mini-PCs.
+Ghost runs on any Linux device and is not tied to any particular board. Think of
+it as a **control plane** (a Raspberry Pi 5, RK1, or similar always-on device that
+hosts Ghost's memory, identity, and automations) with optional **compute** attached
+(x86 mini-PC, NPU, or GPU for heavier local models). Recommended for the control
+plane: **RK1 (16 GB)** for built-in NPU acceleration.
+
+Your Ghost's identity lives in the software, not the hardware — upgrade your box
+and your Ghost moves with you.
 
 See the [Roadmap](docs/ROADMAP.md) for supported hardware, capability tiers, and minimum requirements.
 

@@ -4,11 +4,11 @@ This is the home for Ghost's product and engineering documentation.
 
 ## The product
 
-- **[Product Strategy](PRODUCT.md)** — who Ghost is for, the market position, the business model (open core, paid managed service), and the product principles.
+- **[Product Strategy](PRODUCT.md)** — who Ghost is for, the positioning (Home owns Home; Ghost owns Person), the business model (open core, Ghost Connect paid service), and the product principles.
 
 ## The plan
 
-- **[Roadmap](ROADMAP.md)** — the phases from the current appliance core to a sellable local-first product, and what must be true to move between phases.
+- **[Roadmap](ROADMAP.md)** — the phases from the persistent identity core to a personal AI you own, including Ghost moves with you (identity portability), and what must be true to move between phases.
 
 ## Implementation plans
 
@@ -16,7 +16,7 @@ Each plan is self-contained: objective, product description, architecture, compo
 
 | Plan | Goal | Phase |
 |------|------|-------|
-| [01 — Cloud relay / pairing](plans/01-cloud-relay.md) | The mobile app reaches Ghost from anywhere; the subscription anchor. | 1 |
+| [01 — Cloud relay / pairing](plans/01-cloud-relay.md) | The mobile app reaches Ghost from anywhere; the first Ghost Connect service. | 1 |
 | [02 — Install experience](plans/02-install-experience.md) | A mainstream user installs Ghost without flashing a raw image. | 2 |
 | [03 — OTA updates](plans/03-ota-updates.md) | Ghost ships and installs updates with automatic rollback. | 3 |
 | [04 — Opt-in telemetry](plans/04-telemetry.md) | We can run updates and support on devices we cannot see. | 4 |
