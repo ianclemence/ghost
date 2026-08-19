@@ -103,6 +103,17 @@ ollama pull qwen3:0.6b
 
 ### Raspberry Pi (Recommended)
 
+On a fresh device, install the prerequisites first (skip if you already have
+`git`, `make`, Go, and Ollama):
+
+```bash
+sudo apt install -y git make golang-go
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen3:0.6b
+```
+
+Then install Ghost:
+
 ```bash
 git clone https://github.com/ianclemence/ghost.git
 cd ghost
@@ -181,23 +192,11 @@ ownership" error, allow the path for that user:
 git config --global --add safe.directory /home/<user>/ghost   # run as <user>, not root
 ```
 
-### On a fresh Pi
+### On a fresh device
 
-```bash
-sudo apt install -y git make golang-go
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen3:0.6b
-git clone https://github.com/ianclemence/ghost.git
-cd ghost
-sudo make install-ghost
-sudo reboot
-```
-
-After reboot, open `http://<pi-ip>` on your phone to complete setup:
-1. Connect to WiFi
-2. Create admin password
-3. Select AI model
-4. Connect the Ghost app
+Setting up a brand-new device? Follow the
+[Quick Start](#raspberry-pi-recommended) instead — it covers prerequisites
+(dependencies, Ollama, model) and the install from zero in one place.
 
 ### Auto-Update Daemon
 
