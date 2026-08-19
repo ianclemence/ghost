@@ -33,7 +33,7 @@ The foundation for Ghost's persistent identity and appliance lifecycle is in pla
 - **Self-improvement**: learning pipeline, skill drafts, mid-turn steering, recall summarization.
 - **Dashboard redesign**: responsive layout, polished cards, skill editor.
 
-**Foundational requirement from Phase 0:** identity portability is a data-model concern first. The identity must be serializable and exportable from the start — build the data model for migration now, ship the polished "Ghost Moves With You" experience later. Every phase after this builds on a Ghost that can, in principle, be lifted off its hardware. This keeps "identity first, hardware second" true as the other phases are built, rather than retrofitting portability onto a finished system.
+**Foundational requirement from Phase 0:** identity portability is a data-model concern first. Phase 0 establishes a **canonical Ghost State schema** — the explicit definition of what is portable, what is rebound, and what is replaceable infrastructure (see [Product Strategy, "The Ghost State"](PRODUCT.md#the-ghost-state)). Every subsequent feature must answer the question *"does this become part of Ghost State?"*, so that five years of accumulated state never turns out to be unmigratable. Build the data model for migration now; ship the polished "Ghost Moves With You" experience later. This keeps "identity first, hardware second" true as the other phases are built, rather than retrofitting portability onto a finished system.
 
 **Definition of done for Phase 0:** a clean first-boot-to-dashboard flow on a Pi, with recovery and password reset working. This is largely complete.
 

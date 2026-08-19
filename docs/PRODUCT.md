@@ -21,7 +21,11 @@ The hierarchy:
 
 Users never buy "Ghost OS" and then get Ghost separately. Ghost is the product; Ghost OS is how it stays alive on a device; Ghost Connect is the optional convenience layer around it.
 
-The buyer is a **privacy-conscious mainstream user**: someone who wants a capable personal AI that does not require a cloud subscription, does not train on their conversations, and does not depend on a provider they do not control.
+Despite the name, Ghost OS is not an operating system — it runs on top of Linux. Ghost OS is the appliance management layer that gives Ghost a persistent home.
+
+The first buyer is a **privacy-conscious technical user or early adopter**: someone comfortable installing on their own hardware who wants a capable personal AI that does not require a cloud subscription, does not train on their conversations, and does not depend on a provider they do not control.
+
+The market expands over time: **technical early adopters → privacy-conscious enthusiasts → mainstream consumers**. The mainstream buyer is the destination, not the starting point.
 
 ---
 
@@ -52,6 +56,22 @@ Exportability is part of that trust. A personal AI becomes more trustworthy when
 The lifecycle (first-boot wizard, admin console, credential recovery, managed updates, remote access, resilience) matters because it makes that persistent identity *reliable*. The test:
 
 > A Ghost installation should be replaceable without replacing the user's Ghost.
+
+---
+
+## The Ghost State
+
+Ghost is not defined by the machine it runs on. Ghost is defined by its **persistent state**: the identity, memory, preferences, skills, workflows, personal knowledge, configuration, permissions, and other user-owned data required to reproduce the personal AI experience on another device. Hardware, models, operating-system components, and device-specific credentials are execution infrastructure — not part of Ghost's identity.
+
+What "I can take my Ghost with me" actually means:
+
+| Category | Contents |
+|----------|----------|
+| **Portable** | identity, memories, conversations, preferences, skills, workflows, personal knowledge, configuration |
+| **Recreated or rebound on new hardware** | hardware credentials, device keys, network configuration, certain integrations, secrets that cannot safely migrate |
+| **Replaceable infrastructure** | model, GPU/NPU, operating system, physical device |
+
+The portable part moves; the bound part is re-established; the infrastructure part is swapped. The Ghost State is the unit of portability — and therefore the unit the moat is built on.
 
 ---
 
@@ -101,7 +121,7 @@ Never sell memory, tools, or skills behind a paywall — that undermines the the
 
 ## Revenue hook
 
-The cloud relay is the first Ghost Connect service and the anchor of the Ghost Connect subscription: the mobile app cannot reach Ghost off the home network without it. Managed updates, encrypted backups, and support justify renewal.
+The cloud relay is the first monetization mechanism, not the product itself. The durable Ghost Connect value is the combination: remote access, effortless updates, backup, recovery, multi-device access, identity migration, support, and cloud compute. Connect sells *operating the boring infrastructure that makes a personal AI effortless*; the relay just happens to be the first billable piece. A user who is happy paying renews for the whole convenience layer, not for one port-forwarding workaround.
 
 ---
 
@@ -128,6 +148,8 @@ The **Intelligence Router** sits inside Ghost Core and decides where each task s
 - user preferences
 
 The user talks to Ghost, not to a model. Whether the answer came from a tiny local model, a larger local model, an NPU/GPU, or a cloud model is an implementation detail.
+
+Models are becoming commodities. Ghost's strategic position is not "a box that runs Ollama" but the **intelligence abstraction layer**: Ghost owns the identity, the Ghost State, the routing, the tools, and the workflows, while the underlying model — Phi, Qwen, Llama, an NPU or GPU model, Claude, Gemini, whatever exists in two years — is replaceable infrastructure. The router is how Ghost stops being tied to any single brain.
 
 The router also considers **where the user's data is allowed to go**, which makes the privacy promise technically meaningful rather than marketing:
 
@@ -158,6 +180,7 @@ The best model for a task is not always the cheapest. The user-facing principle 
 4. **Identity first, hardware second.** A Ghost installation should be replaceable without replacing the user's Ghost.
 5. **It just works.** Setup, updates, and remote access must be trivial for a non-technical user.
 6. **The experience is the product.** Ghost Core makes it possible, Ghost OS gives it a persistent home, and Ghost Connect provides optional managed services.
+7. **State, not storage.** The moat is the structured state Ghost builds about the person and acts on — not raw data in a database. Ghost must use its state, not merely retrieve it.
 
 ---
 
@@ -165,7 +188,7 @@ The best model for a task is not always the cheapest. The user-facing principle 
 
 The engineering priorities follow the business model. The build tracks, in order:
 
-1. **Cloud relay / pairing** — the first Ghost Connect service and the subscription anchor.
+1. **Cloud relay / pairing** — the first Ghost Connect service and the first monetization mechanism.
 2. **Simple install** — how a mainstream user gets Ghost onto hardware.
 3. **OTA updates** — the recurring value and the reason the subscription renews.
 4. **Opt-in telemetry** — how we run updates and support on devices we cannot see.
