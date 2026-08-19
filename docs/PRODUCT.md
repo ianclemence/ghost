@@ -39,11 +39,13 @@ Ghost does not try to win smart-home control, device ecosystems, or home automat
 |--------|---------|
 | BYO-hardware appliance | **Primary market.** Software + managed service on hardware the user already owns. |
 | Full hardware device | Later expansion. Shares the same pipeline; deferred until demand is proven. |
-| Open-source core | The engine and web console are open — this wins the hobbyists who test, report, and spread the word. |
+| Open-source core | Ghost Core is open — this wins the hobbyists who test, report, and spread the word. |
 
 ### The moat
 
-Ghost's defensible asset is the **persistent personal AI**: identity, memory, skills, learned workflows, data, and the appliance lifecycle that keeps it reliable. After five years Ghost holds thousands of conversations, preferences, documents, routines, and automations. Switching assistants means leaving that behind — that is the lock-in we build, and it is earned, not imposed.
+Ghost's defensible asset is the **persistent personal AI**: identity, memory, skills, learned workflows, data, and the appliance lifecycle that keeps it reliable. After five years Ghost holds thousands of conversations, preferences, documents, routines, and automations. That accumulated context creates a natural switching cost because Ghost becomes deeply useful and familiar over time. The goal is to earn that relationship through usefulness, not restrict users from leaving.
+
+Exportability is part of that trust. A personal AI becomes more trustworthy when the user knows *"I can take my Ghost with me"* — that makes the relationship feel owned rather than captive.
 
 The lifecycle (first-boot wizard, admin console, credential recovery, managed updates, remote access, resilience) matters because it makes that persistent identity *reliable*. The test:
 
@@ -53,10 +55,11 @@ The lifecycle (first-boot wizard, admin console, credential recovery, managed up
 
 ## Business model
 
-**Open core, paid managed service.**
+**Open core, paid managed experience.**
 
-- **Ghost Core and Ghost OS are open.** The engine, web console, and agents are open — this is how we win the hobbyists who test, report, and spread the word. They are the discovery flywheel.
-- **Ghost Connect is the paid subscription** for the parts that must be centralised and maintained.
+- **Ghost Core is open source.** The core agent runtime — memory, tools, skills, and local-first intelligence — is open, extensible, and can run independently. This is how we win the hobbyists who test, report, and spread the word. They are the discovery flywheel.
+- **Ghost OS is the product experience** that gives Ghost a persistent home. Its open-source components can be inspected and extended, while product-specific services and infrastructure — install, pairing, migration, update machinery, device management — may remain managed or proprietary. The exact licensing boundary stays deliberately flexible until the product is built and tested.
+- **Ghost Connect is the paid subscription** for the parts that must be centralised and maintained: remote relay, OTA management, encrypted backups, multi-device access and sync, support.
 
 The guiding principle:
 
@@ -89,7 +92,7 @@ The free tier is genuinely useful on its own. Connect sells convenience and reli
 
 ## Revenue hook
 
-The cloud relay is the first Ghost Connect service and the subscription anchor: the mobile app is unusable off the home network without it. Managed updates, encrypted backups, and support justify renewal.
+The cloud relay is the first Ghost Connect service and the anchor of the Ghost Connect subscription: the mobile app cannot reach Ghost off the home network without it. Managed updates, encrypted backups, and support justify renewal.
 
 ---
 
@@ -125,7 +128,7 @@ The best model for a task is not always the cheapest. The user-facing principle 
 
 - **Hardware** is deferred: the product is software + managed service on hardware the user already owns. A physical bundle is a later expansion that shares the same pipeline.
 - **Ghost's identity is hardware-independent.** Ghost is a persistent identity that happens to have compute attached. Replacing the device must mean moving Ghost, not reinstalling from scratch.
-- **The image is a distribution mechanism, not the product.** The value is the service on top of it.
+- **The image is a distribution mechanism, not the product.** The value is the persistent AI it hosts and the appliance experience that keeps it alive.
 - **Cloud is an enhancement, never a requirement.** The product stays local-first; Ghost Connect adds remote access, updates, backups, and support.
 
 ---
@@ -137,7 +140,7 @@ The best model for a task is not always the cheapest. The user-facing principle 
 3. **Ownership.** Users own their hardware and their data.
 4. **Identity first, hardware second.** A Ghost installation should be replaceable without replacing the user's Ghost.
 5. **It just works.** Setup, updates, and remote access must be trivial for a non-technical user.
-6. **The service is the product.** Updates, relay, backups, and support are the paid value.
+6. **The experience is the product.** Ghost Core makes it possible, Ghost OS gives it a persistent home, and Ghost Connect provides optional managed services.
 
 ---
 

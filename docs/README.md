@@ -4,7 +4,7 @@ This is the home for Ghost's product and engineering documentation.
 
 ## The product
 
-- **[Product Strategy](PRODUCT.md)** — who Ghost is for, the positioning (Home owns Home; Ghost owns Person), the business model (open core, Ghost Connect paid service), and the product principles.
+- **[Product Strategy](PRODUCT.md)** — who Ghost is for, the positioning (Home owns Home; Ghost owns Person), the business model (open core, paid managed experience), and the product principles.
 
 ## The plan
 

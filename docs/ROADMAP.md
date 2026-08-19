@@ -2,7 +2,7 @@
 
 ## Overview
 
-This roadmap sequences the work needed to turn Ghost from a developer project into a personal AI that belongs to its owner. It is aligned to the [Product Strategy](PRODUCT.md): open core, Ghost Connect as the paid managed service, BYO-hardware first, hardware deferred.
+This roadmap sequences the work needed to turn Ghost from a developer project into a personal AI that belongs to its owner. It is aligned to the [Product Strategy](PRODUCT.md): open core, Ghost Connect as the paid managed experience, BYO-hardware first, hardware deferred.
 
 Each phase maps to an implementation plan under [`plans/`](plans/) where one exists. The phases build on each other: a phase's plan is only workable once its prerequisites are met.
 
@@ -12,20 +12,20 @@ Each phase maps to an implementation plan under [`plans/`](plans/) where one exi
 
 | Phase | Goal | Build track | Plan |
 |-------|------|-------------|------|
-| **0 — Foundation** (mostly done) | The persistent identity core: web console, auth lifecycle, recovery, security. | — | — |
+| **0 — Foundation** (mostly done) | The foundation for the persistent identity core: web console, auth lifecycle, recovery, security. | — | — |
 | **1 — Remote access** | The first Ghost Connect service: the mobile app works from anywhere. | Cloud relay / pairing | [`01-cloud-relay.md`](plans/01-cloud-relay.md) |
 | **2 — Install** | A mainstream user can get Ghost onto hardware without flashing a raw image. | Simple install | [`02-install-experience.md`](plans/02-install-experience.md) |
 | **3 — Updates** | Ghost ships and installs updates to devices we never touch. | OTA updates | [`03-ota-updates.md`](plans/03-ota-updates.md) |
 | **4 — Observability** | We can run updates and support on devices we cannot see. | Opt-in telemetry | [`04-telemetry.md`](plans/04-telemetry.md) |
 | **5 — Move** | Ghost identity portability: replace the hardware, keep the Ghost. | Identity portability | (new, no plan yet) |
-| **6 — Monetization** | Turn Ghost Connect (relay, updates, backups, support) into a subscription. | Billing / account | (follows telemetry) |
+| **6 — Ghost Connect** | Launch the managed-service platform and billing once the underlying services have proven their value. | Billing / account | (follows telemetry) |
 | **7 — Hardware (optional)** | A physical Ghost bundle. Shares the pipeline; only if demand is proven. | Device bundle | (deferred) |
 
 ---
 
 ## Phase 0 — Foundation (current)
 
-The persistent identity core and appliance lifecycle are in place and stable:
+The foundation for Ghost's persistent identity and appliance lifecycle is in place:
 
 - **Web console** (`ghost-web`): setup wizard + admin dashboard on port 80.
 - **Admin credential lifecycle**: password creation, change, and reset; recovery mode; session invalidation on change.
@@ -43,7 +43,7 @@ The persistent identity core and appliance lifecycle are in place and stable:
 
 **Goal:** the mobile app reaches Ghost from anywhere without port forwarding. This is the first Ghost Connect service.
 
-**Why now:** the mobile app is the interface for a personal AI appliance, and it is useless off the home network without a relay. The relay is the first service users pay for, so it must exist before any monetization.
+**Why now:** the mobile app is one of the primary interfaces to a personal AI that lives on your hardware. Without remote access, that AI is only available when you're on the same network. The relay is the first service users pay for, so it must exist before any monetization.
 
 **Plan:** [`01-cloud-relay.md`](plans/01-cloud-relay.md)
 
@@ -111,9 +111,9 @@ The underlying capability is **Ghost identity portability**: Ghost is a persiste
 
 ---
 
-## Phase 6 — Monetization
+## Phase 6 — Ghost Connect
 
-**Goal:** turn Ghost Connect (relay, updates, backups, support) into a subscription.
+**Goal:** launch the managed-service platform and billing once the underlying services have proven their value.
 
 **Preconditions:** Phase 1 (relay) and Phase 3 (updates) shipped; Phase 4 (telemetry) gives us visibility.
 
@@ -136,14 +136,13 @@ Ghost runs on any Linux device, and its identity is **hardware-independent**. Th
 - **Control plane** — the always-on device that hosts Ghost's memory, identity, skills, and automations. Low-power single-board computers are the reference target.
 - **Compute** — hardware that runs heavier local models, attached when the control plane is not enough. Can be an x86 mini-PC, an NPU, or a GPU box — and, for deeper reasoning, a cloud model.
 
-**Control plane recommendations:**
+**Reference appliance targets** — where the image, install, and appliance experience are tuned:
 - **RK1 (16 GB)** — built-in NPU for AI acceleration, strong multi-core CPU, and lower cost than comparable systems. Best balance of performance and on-device AI capability.
 - **Raspberry Pi 5 / CM5** — stable ecosystem, strong community support; no built-in AI acceleration, so it suits lighter models and API-assisted workloads.
 
-**Compute (optional):**
-- x86 mini-PCs — more compute and RAM for larger local models.
+**Supported platforms:** any Linux device. Ghost runs on whatever hardware you own; the reference targets are where the appliance experience is guaranteed, and nothing in the software restricts it to those boards.
 
-**Minimum requirements:**
+**Minimum requirements** (reference targets):
 - Raspberry Pi 5 (8 GB+) or RK1 (16 GB)
 - 32 GB microSD storage (or NVMe for the RK1)
 - A phone with the Ghost app
@@ -166,7 +165,7 @@ When Phase 7 opens, the bundle is: a supported board, Ghost pre-flashed, and the
 
 ## Principles that govern the roadmap
 
-1. **The service is the product.** The image and hardware are distribution; the relay, updates, backups, and support are the value.
+1. **The experience is the product.** Ghost Core makes it possible, Ghost OS gives it a persistent home, and Ghost Connect provides optional managed services.
 2. **Identity first, hardware second.** A Ghost installation should be replaceable without replacing the user's Ghost.
 3. **Local-first is non-negotiable.** Nothing in Phases 1–5 makes the device dependent on the cloud. The relay and updates enhance a local-first product; they never replace it.
 4. **Build shared plumbing first.** Relay, image, and OTA are needed by both the BYO path and any future hardware bundle. No work is wasted.

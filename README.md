@@ -8,7 +8,7 @@
 ## Documentation
 
 - **[Product Strategy](docs/PRODUCT.md)** — who Ghost is for, what it sells, and how it makes money.
-- **[Roadmap](docs/ROADMAP.md)** — the phased plan from the persistent identity core to a personal AI you own.
+- **[Roadmap](docs/ROADMAP.md)** — the phased plan from the foundation for persistent identity to a personal AI you own.
 - **[Implementation plans](docs/plans/)** — detailed plans for the cloud relay, install experience, OTA updates, and telemetry.
 - **[Testing](docs/TESTING.md)** — how to test Ghost.
 
@@ -97,6 +97,7 @@ See the [Roadmap](docs/ROADMAP.md) for supported hardware, capability tiers, and
 ## Requirements
 
 ### Hardware
+Ghost runs on any Linux device. These are the reference appliance targets:
 - Raspberry Pi 5 (8 GB+) or RK1 (16 GB)
 - 256 GB NVMe SSD (recommended) or 32 GB microSD storage
 - Mobile phone with Ghost app
