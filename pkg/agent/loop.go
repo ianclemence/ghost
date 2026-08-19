@@ -462,6 +462,12 @@ func (al *AgentLoop) Steering() *SteeringManager {
 	return al.steering
 }
 
+// Tools exposes the tool registry so external callers (e.g. the mobile API)
+// can reach interactive tools such as clarify.
+func (al *AgentLoop) Tools() *tools.ToolRegistry {
+	return al.tools
+}
+
 func (al *AgentLoop) Doctor() *doctor.Doctor {
 	return al.doctor
 }

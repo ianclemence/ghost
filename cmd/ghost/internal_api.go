@@ -92,14 +92,18 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 					"message_id": messageID,
 				})
 
-				// Only forward mobile-channel messages and canvas updates to the app.
-				// Telegram and CLI responses must not appear in the mobile chat.
-				if msg.Channel != "mobile" {
-					meta, _ := msg.Metadata["type"].(string)
-					if meta != "canvas_update" && meta != "cron_update" {
-						continue // skip — wrong channel
-					}
+			// Only forward mobile-channel messages and interactive/tool events
+			// to the app. Telegram and CLI responses must not appear in the
+			// mobile chat.
+			if msg.Channel != "mobile" {
+				meta, _ := msg.Metadata["type"].(string)
+				switch meta {
+				case "canvas_update", "cron_update", "clarify_request", "progress_event":
+					// forwarded — interactive/tool events the app renders
+				default:
+					continue // skip — wrong channel
 				}
+			}
 
 				payload := map[string]interface{}{
 					"channel":  msg.Channel,
@@ -2338,6 +2342,160 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"ok":true}`)
+	}))
+
+	// ── Clarify responses ─────────────────────────────────────────────────
+	// The clarify tool blocks the agent turn waiting for the user's answer.
+	// The mobile app renders the clarify_request as an interactive card and
+	// posts the answer here.
+	mux.HandleFunc("/v1/clarify/respond", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			QuestionID string `json:"question_id"`
+			Response   string `json:"response"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+			return
+		}
+		req.QuestionID = strings.TrimSpace(req.QuestionID)
+		req.Response = strings.TrimSpace(req.Response)
+		if req.QuestionID == "" || req.Response == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "question_id and response are required")
+			return
+		}
+		registry := agentLoop.Tools()
+		if registry == nil {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "tool registry unavailable")
+			return
+		}
+		tool, ok := registry.Get("clarify")
+		if !ok {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "clarify tool unavailable")
+			return
+		}
+		ct, ok := tool.(*tools.ClarifyTool)
+		if !ok {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "clarify tool unavailable")
+			return
+		}
+		if !ct.HandleResponse(req.QuestionID, req.Response) {
+			jsonError(w, http.StatusNotFound, "not_found", "question not found, already answered, or timed out")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
+	}))
+
+	// ── Model presets / live switching ────────────────────────────────────
+	mux.HandleFunc("/v1/model", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			type presetPayload struct {
+				Name     string `json:"name"`
+				Provider string `json:"provider"`
+				Model    string `json:"model"`
+			}
+			presets := []presetPayload{}
+			if cfg := agentLoop.Config(); cfg != nil {
+				for _, p := range cfg.Agents.ModelList {
+					if p.Name == "" {
+						continue
+					}
+					presets = append(presets, presetPayload{Name: p.Name, Provider: p.Provider, Model: p.Model})
+				}
+			}
+			provider := ""
+			if cfg := agentLoop.Config(); cfg != nil {
+				provider = cfg.Agents.Defaults.Provider
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"active":  agentLoop.GetCurrentModel(),
+				"provider": provider,
+				"presets": presets,
+			})
+		case http.MethodPost:
+			var req struct {
+				Model string `json:"model"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+				return
+			}
+			req.Model = strings.TrimSpace(req.Model)
+			if req.Model == "" {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "model is required (preset name or provider:model)")
+				return
+			}
+			if err := agentLoop.SetModel(req.Model); err != nil {
+				jsonError(w, http.StatusBadRequest, "switch_failed", err.Error())
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok":     true,
+				"active": agentLoop.GetCurrentModel(),
+			})
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		}
+	}))
+
+	// ── Session list ──────────────────────────────────────────────────────
+	mux.HandleFunc("/v1/sessions", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		if db == nil {
+			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
+			return
+		}
+		rows, err := db.Query(`
+			SELECT m1.session_id,
+			       COUNT(*),
+			       COALESCE(unixepoch(MAX(m1.created_at)), 0),
+			       COALESCE((
+			           SELECT m2.content FROM messages m2
+			           WHERE m2.session_id = m1.session_id
+			             AND m2.role = 'user'
+			             AND (m2.archived IS NULL OR m2.archived = 0)
+			             AND TRIM(COALESCE(m2.content, '')) != ''
+			           ORDER BY datetime(m2.created_at) ASC, m2.rowid ASC
+			           LIMIT 1
+			       ), '') AS title
+			FROM messages m1
+			WHERE (m1.archived IS NULL OR m1.archived = 0)
+			GROUP BY m1.session_id
+			ORDER BY MAX(m1.created_at) DESC
+			LIMIT 100`)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "db_error", err.Error())
+			return
+		}
+		defer rows.Close()
+
+		type sessionEntry struct {
+			ID            string `json:"id"`
+			Title         string `json:"title"`
+			MessageCount  int    `json:"message_count"`
+			LastActivity  int64  `json:"last_activity"`
+		}
+		sessions := []sessionEntry{}
+		for rows.Next() {
+			var e sessionEntry
+			if err := rows.Scan(&e.ID, &e.MessageCount, &e.LastActivity, &e.Title); err != nil {
+				continue
+			}
+			if len(e.Title) > 80 {
+				e.Title = e.Title[:80]
+			}
+			sessions = append(sessions, e)
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"sessions": sessions,
+		})
 	}))
 
 	// ── WebSocket ─────────────────────────────────────────────────────────

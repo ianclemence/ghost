@@ -350,6 +350,25 @@ tailscale ip -4
 
 Use that IP in app settings.
 
+### Mobile API Endpoints
+
+Key HTTP endpoints the app uses on port `8766`:
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/v1/health` | GET | Connectivity + latency check |
+| `/v1/chat` | POST | Send a chat message (SSE stream) |
+| `/v1/steering` | POST | Redirect / interrupt / abort the running agent loop |
+| `/v1/clarify/respond` | POST | Answer an in-flight clarification question |
+| `/v1/model` | GET/POST | Read active model + presets, switch model |
+| `/v1/sessions` | GET | List recent sessions with titles and activity |
+| `/v1/doctor` | GET | Diagnostics and service health checks |
+| `/v1/tools` | GET | List available skills/tools |
+
+WebSocket messages on `/ws` are broadcast per channel; `mobile` receives
+`assistant_message`, `clarify_request`, `canvas_update`, `cron_update`, and
+`progress_event` payloads.
+
 ---
 
 ## Running as a Service
