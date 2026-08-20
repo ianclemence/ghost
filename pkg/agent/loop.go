@@ -29,6 +29,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/media"
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/rag"
 	"github.com/ianclemence/ghost/pkg/routing"
@@ -70,6 +71,10 @@ type AgentLoop struct {
 	nudge            *NudgeManager
 	evolution        *evolution.EvolutionManager
 	steering         *SteeringManager
+	// pcStore is the Personal Context store, opened once for the life of the
+	// agent. It is a derived-memory layer: if opening it fails, the agent still
+	// runs and extraction is skipped rather than blocking the turn.
+	pcStore *personalcontext.Store
 }
 
 // processOptions configures how a message is processed
@@ -317,6 +322,14 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// Create state manager for atomic state persistence
 	stateManager := state.NewManager(workspace)
 
+	// Open the Personal Context store once and reuse it for the life of the
+	// agent. Personal Context is a derived layer: if it cannot open, the agent
+	// still runs and extraction is skipped for this process.
+	pcStore, err := personalcontext.Open(workspace)
+	if err != nil {
+		logger.WarnCF("agent", "Personal Context unavailable", map[string]interface{}{"error": err.Error()})
+	}
+
 	// Create media store
 	mediaStore := media.NewFileMediaStoreWithCleanup(media.MediaCleanerConfig{
 		Enabled:  true,
@@ -416,6 +429,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		nudge:            nudgeMgr,
 		evolution:        evolutionMgr,
 		steering:         NewSteeringManager(),
+		pcStore:          pcStore,
 	}
 
 	cmdRuntime := &commands.Runtime{
@@ -789,6 +803,50 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 	return "", nil
 }
 
+// extractPersonalContext runs the Personal Context extractor over the user
+// message that was just persisted. It is a derived-memory layer: failures are
+// logged and never break or roll back the conversation turn.
+func (al *AgentLoop) extractPersonalContext(opts processOptions) {
+	if al.pcStore == nil {
+		return
+	}
+
+	// MessageID: the session store does not expose a persisted message id
+	// through its public API, so the turn's existing per-message request id is
+	// reused as the provenance message id rather than inventing a new one.
+	msgID := opts.RequestID
+	if msgID == "" {
+		msgID = fmt.Sprintf("msg-%d", time.Now().UnixNano())
+	}
+
+	in := personalcontext.Input{
+		SessionID:    opts.SessionKey,
+		MessageID:    msgID,
+		Text:         opts.UserMessage,
+		Timestamp:    time.Now().UTC(),
+		PreviousText: previousUserMessage(al.sessions.GetHistory(opts.SessionKey)),
+	}
+	if _, err := personalcontext.Apply(al.pcStore, in); err != nil {
+		logger.WarnCF("agent", "Personal Context extraction failed", map[string]interface{}{
+			"session_key": opts.SessionKey,
+			"error":       err.Error(),
+		})
+	}
+}
+
+// previousUserMessage returns the content of the immediately preceding USER
+// message in the session history, or "" when there is none. The just-persisted
+// current message is the last element of history, so scanning starts one
+// position before it.
+func previousUserMessage(history []providers.Message) string {
+	for i := len(history) - 2; i >= 0; i-- {
+		if history[i].Role == "user" {
+			return history[i].Content
+		}
+	}
+	return ""
+}
+
 // runAgentLoop is the core message processing logic.
 // It handles context building, LLM calls, tool execution, and response handling.
 func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (string, error) {
@@ -845,6 +903,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
 		// Track user turn for memory nudge
 		al.nudge.OnUserTurn(opts.SessionKey)
+		// Derive Personal Context from the persisted user message. Runs after
+		// persistence and before the LLM iteration, and never blocks the turn.
+		if opts.SessionKey != "heartbeat" {
+			al.extractPersonalContext(opts)
+		}
 	}
 
 	// 4. Run LLM iteration loop

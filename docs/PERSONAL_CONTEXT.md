@@ -249,6 +249,43 @@ The smallest coherent slice that proves the model:
    (user-facing), with `/forget` defaulting to retire.
 5. **Conversations portability** — the amendment in §8.
 
+### Rule-based extractor (v1): predicate mapping and grammar
+
+The v1 extractor (`pkg/personalcontext/extractor.go`) is a small explicit
+grammar, not general NLP. It is pure and deterministic: given a user message
+plus session/message metadata and the current context it returns zero or more
+actions (create / supersede), and it never requires a model. Persistence stays
+in `Store`; the extractor only builds entries.
+
+**Predicate mapping.** Namespaced predicates (`kind/name`) are stable and
+documented here:
+
+| pattern (case-insensitive)          | kind        | predicate                     | value (canonical JSON string, case preserved) |
+|-------------------------------------|-------------|-------------------------------|-----------------------------------------------|
+| `my favorite color is X`            | preference  | `preference/favorite_color`   | X                                             |
+| `my name is X`                      | identity    | `identity/name`               | X                                             |
+| `I live in X`                       | fact        | `fact/location`               | X (trailing " now" stripped)                  |
+| `I prefer <style> answers`          | preference  | `preference/communication.style` | `<style>` (concise, brief, short, detailed, thorough, elaborate, direct, casual, formal, verbose) |
+| `I like X`                          | preference  | `preference/likes`            | X (additive, low-signal captures rejected)    |
+| `my goal is to X`                   | goal        | `goal/primary`                | X                                             |
+| `I want to build X`                 | goal        | `goal/primary`                | `build X`                                     |
+
+**Grammar.** Lead-ins are stripped before matching: correction markers
+(`actually, `, `no, `, `that's wrong, `, `correction: `) and the memory command
+language (`remember that ...`, `remember: ...`). Values are cut at the first
+` and ` / ` but ` and bounded by clause punctuation so one message can declare
+several facts ("my name is Ian and I live in Bangkok"). Deictic corrections
+("actually, it's green") are resolved only from the immediately preceding user
+turn and only when it yields exactly one declaration; otherwise no candidate is
+produced.
+
+**Lifecycle.** Declarations are `user_declared` (confidence 0.95); corrections
+are `user_corrected` (confidence 1.0) and supersede the current entry for the
+same subject+predicate. A correction with no current entry becomes a new
+declaration. Restating the current value produces no action. `likes` entries
+are additive and never superseded. Contradicting declarations supersede the
+current value (supersession is primary, §5).
+
 ## 10. Implementation boundary
 
 The architecture is intentionally divided into vertical slices so each can be
@@ -258,7 +295,7 @@ built, tested, and shipped alone without changing unowned behavior:
 |-------|-------|--------|
 | **Conversation portability** | `conversations/*.jsonl` export/import replaces the binary `ghost.db` snapshot; fresh-DB rehydration on import; versioned + deterministic format with tests. Everything outside this slice keeps its current behavior. | **first** |
 | Entries store | `Entry` type + `entries.jsonl` + index + rebuild | later |
-| Rule-based extractor | conversation → entries with provenance | later |
+| Rule-based extractor | conversation → entries with provenance | **built** (`pkg/personalcontext/extractor.go`) and wired into the agent turn loop (`pkg/agent/loop.go`) |
 | Digest injector | bounded active-context digest replaces MEMORY.md injection | later |
 | Tools & commands | `context_get`, `/remember`, `/forget`, `/context` | later |
 | Retirement of Memory v1 | RAG facts migration, kv_store deprecation, machine-state split | later |
