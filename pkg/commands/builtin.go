@@ -104,6 +104,18 @@ func DefaultDefinitions() []Definition {
 			Description: "Force compress current conversation context",
 			Handler:     compressHandler,
 		},
+		{
+			Name:        "/context",
+			Description: "Show your current Personal Context — what Ghost believes about you",
+			Usage:       "/context [kind|subject|predicate] [--verbose]",
+			Handler:     contextHandler,
+		},
+		{
+			Name:        "/forget",
+			Description: "Forget Personal Context entries or delete a session's conversation evidence",
+			Usage:       "/forget <predicate | suffix | topic> | /forget everything about <topic> | /forget session <session-id>",
+			Handler:     forgetHandler,
+		},
 	}
 }
 

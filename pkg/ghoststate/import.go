@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 )
 
 // ImportOptions controls an import into a target installation.
@@ -69,6 +70,16 @@ func Import(opts ImportOptions) (*Manifest, error) {
 			// Portable conversations are rehydrated into a fresh ghost.db below,
 			// never written as inert files the runtime would ignore.
 			continue
+		}
+		if f.Path == personalContextEntriesLogical {
+			// The Personal Context entry log is the canonical artifact: it must
+			// be valid before it is written, or the imported store would fail
+			// (or worse, silently read as empty). Validation reuses the store's
+			// own parsing so malformed data fails loudly and no record is
+			// dropped. The exact bytes are then written for direct use.
+			if err := personalcontext.ValidateEntries(data); err != nil {
+				return nil, fmt.Errorf("invalid Personal Context %s: %w", f.Path, err)
+			}
 		}
 		if err := writeImportedArtifact(opts, f, data); err != nil {
 			return nil, err

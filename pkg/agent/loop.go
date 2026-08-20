@@ -330,6 +330,16 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		logger.WarnCF("agent", "Personal Context unavailable", map[string]interface{}{"error": err.Error()})
 	}
 
+	// Expose Personal Context as an on-demand query tool. The agent calls it
+	// explicitly when it needs a belief; nothing is injected automatically.
+	// Registered only when the store is available so a missing store just means
+	// the tool is absent, not a broken agent.
+	if pcStore != nil {
+		contextGetTool := tools.NewContextGetTool(pcStore)
+		toolsRegistry.Register(contextGetTool)
+		subagentTools.Register(contextGetTool)
+	}
+
 	// Create media store
 	mediaStore := media.NewFileMediaStoreWithCleanup(media.MediaCleanerConfig{
 		Enabled:  true,
@@ -341,6 +351,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// Create context builder and set tools registry
 	contextBuilder := NewContextBuilder(workspace)
 	contextBuilder.SetToolsRegistry(toolsRegistry)
+	contextBuilder.SetPersonalContext(pcStore)
 
 	// Create skill installer
 	installer := skills.NewSkillInstaller(workspace)
@@ -433,15 +444,16 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 
 	cmdRuntime := &commands.Runtime{
-		Tools:         toolsRegistry,
-		Sessions:      sessionsManager,
-		Bus:           msgBus,
-		Commands:      cmdRegistry,
-		Doctor:        doctorRunner,
-		Model:         cfg.Agents.Defaults.Model,
-		ModelPresets:  al.ModelPresets(),
-		CurrentModel:  al.GetCurrentModel,
-		SetActiveModel: al.SetModel,
+		Tools:           toolsRegistry,
+		Sessions:        sessionsManager,
+		Bus:             msgBus,
+		Commands:        cmdRegistry,
+		Doctor:          doctorRunner,
+		Model:           cfg.Agents.Defaults.Model,
+		ModelPresets:    al.ModelPresets(),
+		CurrentModel:    al.GetCurrentModel,
+		SetActiveModel:  al.SetModel,
+		PersonalContext: pcStore,
 	}
 	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
 	al.commandExec = cmdExec

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -22,7 +23,8 @@ type ContextBuilder struct {
 	workspace       string
 	skillsLoader    *skills.SkillsLoader
 	memory          *MemoryStore
-	tools           *tools.ToolRegistry // Direct reference to tool registry
+	personalContext *personalcontext.Store // source of the Active Context Digest
+	tools           *tools.ToolRegistry    // Direct reference to tool registry
 	personalityName string
 }
 
@@ -50,6 +52,12 @@ func NewContextBuilder(workspace string) *ContextBuilder {
 // SetToolsRegistry sets the tools registry for dynamic tool summary generation.
 func (cb *ContextBuilder) SetToolsRegistry(registry *tools.ToolRegistry) {
 	cb.tools = registry
+}
+
+// SetPersonalContext sets the Personal Context store the Active Context Digest
+// is rendered from. A nil store simply disables digest injection.
+func (cb *ContextBuilder) SetPersonalContext(store *personalcontext.Store) {
+	cb.personalContext = store
 }
 
 // SetPersonality sets the active personality name for system prompt injection.
@@ -145,10 +153,15 @@ The following skills extend your capabilities. To use a skill, read its SKILL.md
 %s`, skillsSummary))
 	}
 
-	// Memory context (Old RAG string method, keep if it exists)
-	memoryContext := cb.memory.GetMemoryContext()
-	if memoryContext != "" {
-		parts = append(parts, "# Memory (Search Results)\n\n"+memoryContext)
+	// Active Context Digest: the bounded, deterministic, LLM-free rendering of
+	// current Personal Context. This replaces the old unbounded MEMORY.md +
+	// daily-notes dump, which is no longer injected into every prompt (the
+	// MEMORY.md file itself is preserved as a legacy, non-authoritative store).
+	if cb.personalContext != nil {
+		digest := personalcontext.BuildDigest(cb.personalContext.Current(), personalcontext.DigestBudget)
+		if digest != "" {
+			parts = append(parts, digest)
+		}
 	}
 
 	// Curated Memory (Always injected)

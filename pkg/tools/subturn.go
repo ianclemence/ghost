@@ -341,6 +341,12 @@ func (es *EphemeralSessionStore) Save(key string) error {
 	return nil // No-op for ephemeral store
 }
 
+// DeleteSession removes all messages and the summary for a session.
+func (es *EphemeralSessionStore) DeleteSession(key string) error {
+	es.Clear(key)
+	return nil
+}
+
 // Clear removes all messages for a session.
 func (es *EphemeralSessionStore) Clear(key string) {
 	es.mu.Lock()

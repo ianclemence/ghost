@@ -157,6 +157,19 @@ func (s *JSONLStore) Save(key string) error {
 	return nil
 }
 
+// DeleteSession removes the session's transcript and summary files.
+func (s *JSONLStore) DeleteSession(key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	path := s.sessionPath(key)
+	if path == "" {
+		return nil
+	}
+	os.Remove(path)
+	os.Remove(s.summaryPath(key))
+	return nil
+}
+
 func (s *JSONLStore) sessionPath(key string) string {
 	key = sanitizeSessionKey(key)
 	if key == "" {

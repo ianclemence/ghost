@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path"
 	"strings"
+
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 )
 
 // classifyWorkspaceFile returns the category for a workspace-relative artifact.
@@ -26,6 +28,12 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 	case strings.HasPrefix(rel, "conversations/"):
 		// Versioned, deterministic conversation JSONL: the portable form of a
 		// conversation, human-readable and independent of the SQLite schema.
+		return CategoryPortable, nil
+	case strings.HasPrefix(rel, personalContextDirLogical+"/"):
+		// The append-only Personal Context entry log: user-owned, durable,
+		// structured context that must migrate between machines. The log
+		// itself is the canonical artifact, so the complete revision history
+		// travels exactly as stored.
 		return CategoryPortable, nil
 	case rel == "state/identity.json":
 		return CategoryPortable, nil
@@ -103,4 +111,10 @@ const (
 	manifestArchiveLogical = "manifest.json"
 	ghostDBLogical         = "ghost.db"
 	identityJSONLogical    = "state/identity.json"
+	// personalContextDirLogical is the workspace directory holding the
+	// append-only Personal Context entry log. It is derived from the
+	// personalcontext package so the portable artifact can never drift from
+	// the store's canonical location.
+	personalContextDirLogical     = personalcontext.EntriesDir
+	personalContextEntriesLogical = personalcontext.EntriesDir + "/" + personalcontext.EntriesFile
 )

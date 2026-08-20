@@ -96,6 +96,14 @@ func (sm *SessionManager) ClearHistory(key string) {
 	sm.store.Save(key)
 }
 
+// DeleteSession permanently removes all evidence for a session.
+func (sm *SessionManager) DeleteSession(key string) error {
+	if sm.store == nil {
+		return nil
+	}
+	return sm.store.DeleteSession(key)
+}
+
 // GetContext retrieves relevant context for the current turn (RAG)
 // This can be used by ContextBuilder to inject RAG context
 func (sm *SessionManager) Store() Store {

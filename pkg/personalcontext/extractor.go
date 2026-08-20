@@ -2,7 +2,6 @@ package personalcontext
 
 import (
 	"encoding/json"
-	"errors"
 	"regexp"
 	"strings"
 	"time"
@@ -69,6 +68,10 @@ const (
 	declaredConfidence = 0.95
 	// correctedConfidence is used for explicit user corrections.
 	correctedConfidence = 1.0
+	// likesRuleName is the name of the additive like rule. It identifies
+	// additive actions during persistence re-resolution: likes never
+	// supersede, while every other rule keeps one current entry per belief.
+	likesRuleName = "likes"
 )
 
 // declarationRule is one grammar rule. Patterns are matched case-insensitively
@@ -119,7 +122,7 @@ var declarationRules = []declarationRule{
 		re:        regexp.MustCompile(`(?i)\bi prefer\s+(concise|brief|short|detailed|thorough|elaborate|direct|casual|formal|verbose)\s+answers?\b`),
 	},
 	{
-		name:      "likes",
+		name:      likesRuleName,
 		kind:      KindPreference,
 		predicate: "preference/likes",
 		re:        regexp.MustCompile(`(?i)\bi like\s+([^;.,!?]+)`),
@@ -207,9 +210,11 @@ func Extract(in Input) ([]Action, error) {
 
 // Apply is the thin persistence wrapper for the turn loop: it extracts and
 // persists every action through the store. Persistence logic itself stays in
-// Store; Apply only dispatches. A correction whose entry disappeared between
-// extraction and persistence is written as a new declaration rather than
-// failing.
+// Store; Apply only dispatches. Decisions are re-resolved against the live
+// store under its lock (see Store.applyActions), so a correction whose entry
+// disappeared between extraction and persistence is written as a new
+// declaration, and a concurrent or same-message declaration of the same
+// predicate supersedes instead of creating a duplicate current entry.
 func Apply(store *Store, in Input) ([]Action, error) {
 	if len(in.Current) == 0 {
 		in.Current = store.Current()
@@ -218,25 +223,7 @@ func Apply(store *Store, in Input) ([]Action, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, a := range actions {
-		switch a.Mode {
-		case ActionCreate:
-			if _, err := store.Create(a.Entry); err != nil {
-				return actions, err
-			}
-		case ActionSupersede:
-			if _, err := store.Supersede(a.Entry.Subject, a.Entry.Predicate, a.Entry); err != nil {
-				if errors.Is(err, ErrNoCurrentEntry) {
-					if _, err := store.Create(a.Entry); err != nil {
-						return actions, err
-					}
-					continue
-				}
-				return actions, err
-			}
-		}
-	}
-	return actions, nil
+	return store.applyActions(actions)
 }
 
 // stripCorrection removes a leading correction marker and reports whether one

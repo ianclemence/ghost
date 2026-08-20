@@ -148,3 +148,15 @@ func (s *SQLiteStore) SetHistory(key string, messages []providers.Message) {
 func (s *SQLiteStore) Save(key string) error {
 	return nil
 }
+
+// DeleteSession removes all messages and the session row for key, including
+// archived messages and the FTS index (via the messages_ad trigger).
+func (s *SQLiteStore) DeleteSession(key string) error {
+	if _, err := s.db.Exec(`DELETE FROM messages WHERE session_id = ?`, key); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`DELETE FROM sessions WHERE id = ?`, key); err != nil {
+		return err
+	}
+	return nil
+}

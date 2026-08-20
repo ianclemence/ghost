@@ -71,6 +71,33 @@ func (s *Store) Path() string {
 	return s.path
 }
 
+// ValidateEntries checks that data is a well-formed Personal Context entries
+// log: every non-empty line must parse as an Entry, exactly as the store's
+// load step requires. It is the integrity gate Ghost State import uses so a
+// malformed portable log fails loudly instead of being silently accepted as
+// an empty context. An empty log is valid (it is an empty store), and no
+// record is ever dropped.
+func ValidateEntries(data []byte) error {
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	sc.Buffer(make([]byte, 1024*1024), 64*1024*1024)
+	line := 0
+	for sc.Scan() {
+		line++
+		raw := strings.TrimSpace(sc.Text())
+		if raw == "" {
+			continue
+		}
+		var e Entry
+		if err := json.Unmarshal([]byte(raw), &e); err != nil {
+			return fmt.Errorf("parse entries line %d: %w", line, err)
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return fmt.Errorf("scan entries: %w", err)
+	}
+	return nil
+}
+
 // load reconstructs state from the append-only log. The last record for an id
 // wins; every record is kept in order so history stays inspectable.
 func (s *Store) load() error {
@@ -159,7 +186,11 @@ func (s *Store) createLocked(e Entry) (Entry, error) {
 func (s *Store) Supersede(subject, predicate string, e Entry) (Entry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.supersedeLocked(subject, predicate, e)
+}
 
+// supersedeLocked is Supersede without taking the lock; callers must hold it.
+func (s *Store) supersedeLocked(subject, predicate string, e Entry) (Entry, error) {
 	cur := s.currentEntry(subject, predicate)
 	if cur == nil {
 		return Entry{}, fmt.Errorf("%w: %s/%s", ErrNoCurrentEntry, subject, predicate)
@@ -180,6 +211,68 @@ func (s *Store) Supersede(subject, predicate string, e Entry) (Entry, error) {
 		return Entry{}, err
 	}
 	return created, nil
+}
+
+// applyActions persists extraction actions atomically with respect to each
+// other and to concurrent writers. The caller's Extract decision was made
+// against a snapshot of the current context; by the time persistence runs,
+// another message may have already created an entry for the same subject and
+// predicate (a concurrent session, or an earlier declaration in the same
+// message resolved to the same predicate by a different grammar rule). Each
+// action is therefore re-resolved against the live state under the store lock:
+//
+//   - no current entry: the action is a create (including a correction whose
+//     entry disappeared, which becomes a new declaration as documented);
+//   - a restatement of the current value: nothing is written;
+//   - a differing non-additive value: the current entry is superseded;
+//   - additive likes: a new entry is appended (a duplicate of an existing or
+//     already-appended like value is skipped).
+//
+// This keeps the invariant that a single belief (subject + predicate) has at
+// most one current entry, while likes remain additive.
+func (s *Store) applyActions(actions []Action) ([]Action, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Action
+	for _, a := range actions {
+		e := a.Entry
+		cur := s.currentEntry(e.Subject, e.Predicate)
+
+		switch {
+		case cur == nil:
+			created, err := s.createLocked(e)
+			if err != nil {
+				return out, err
+			}
+			a.Mode = ActionCreate
+			a.Entry = created
+			out = append(out, a)
+		case a.Rule == likesRuleName:
+			// Additive: a like never supersedes. A duplicate value (existing
+			// or just appended earlier in this batch) is skipped.
+			if entryValueString(*cur) == entryValueString(e) {
+				continue
+			}
+			created, err := s.createLocked(e)
+			if err != nil {
+				return out, err
+			}
+			a.Mode = ActionCreate
+			a.Entry = created
+			out = append(out, a)
+		case entryValueString(*cur) == entryValueString(e):
+			// Restating the current belief changes nothing.
+		default:
+			created, err := s.supersedeLocked(e.Subject, e.Predicate, e)
+			if err != nil {
+				return out, err
+			}
+			a.Mode = ActionSupersede
+			a.Entry = created
+			out = append(out, a)
+		}
+	}
+	return out, nil
 }
 
 // DeclareConflict represents two unresolved values for the same belief as

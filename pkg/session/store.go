@@ -11,4 +11,5 @@ type Store interface {
 	TruncateHistory(key string, keepLast int)
 	SetHistory(key string, messages []providers.Message)
 	Save(key string) error
+	DeleteSession(key string) error
 }

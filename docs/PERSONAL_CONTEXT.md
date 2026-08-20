@@ -44,8 +44,8 @@ Ghost "knows" is forbidden; correcting a belief is done by writing a new entry
 
 ## 3. What Personal Context is
 
-A single unified entry type, persisted as append-only JSONL entries plus a
-small SQLite index (non-canonical, rebuildable):
+A single unified entry type, persisted as an append-only JSONL log plus an
+in-memory index rebuilt from the log on load (non-canonical, rebuildable):
 
 | field          | meaning                                                               |
 |----------------|-----------------------------------------------------------------------|
@@ -78,7 +78,7 @@ Every entry carries a `Source`:
 
 ```go
 type Source struct {
-    Type      string // "conversation" | "user_input" | "workflow" | "import" | "manual"
+    Type      string // "conversation" | "command" | "document" | "workflow" | "import" | "manual_edit" | "agent_inference"
     Kind      string // user_declared | user_corrected | inferred | imported | manual | workflow
     Ref       string // session_id:message_id for conversations; "" otherwise
     Timestamp string // RFC3339
@@ -134,7 +134,7 @@ Notes:
 Injection is bounded and layered. The agent does not slurp the context store
 every turn.
 
-1. **Active Context Digest** — a compact, bounded (~600 char) summary of only
+1. **Active Context Digest** — a compact, bounded (~600 byte) summary of only
    `status = current` entries, injected into every prompt. It answers the
    questions the Ghost must never get wrong (name, address, job, household,
    standing preferences).
@@ -286,7 +286,205 @@ declaration. Restating the current value produces no action. `likes` entries
 are additive and never superseded. Contradicting declarations supersede the
 current value (supersession is primary, §5).
 
-## 10. Implementation boundary
+### Active Context Digest (v1)
+
+The digest (`pkg/personalcontext/digest.go`) is a pure, deterministic,
+LLM-free function: `BuildDigest(current []Entry, budget int) string`. It renders
+only `status = current` entries in a bounded, prioritized summary that replaces
+the old unbounded MEMORY.md + daily-notes dump in the system prompt. The
+MEMORY.md file and `MemoryStore.GetMemoryContext` are preserved but no longer
+injected.
+
+**Format.** `## Personal Context` with a `<personal_context>` / `</personal_context>`
+delimiter and one `- Label: value` bullet per entry, so prompt-injection looks
+like data.
+
+**Budget.** 600 bytes hard cap (`DigestBudget`). Entries are admitted in
+priority order and dropped once the cap is hit; an individual value that alone
+exceeds the cap is byte-safe truncated with `…`. `BuildDigest` returns `""` when
+there is nothing to show, and the empty digest is not emitted.
+
+**Priority.** identity (1) → important preferences (2) → communication
+preferences (3) → goals (4) → relationships (5) → routines (6) → other facts
+(7). Ties break by predicate then entry id, so output is stable across runs and
+processes.
+
+**Labels.** A fixed label map gives human names to the common predicates
+(identity/name → Name, fact/location → Location, preference/favorite_color →
+Favorite color, preference/communication.style → Communication style, goals →
+Goal, …); unknown predicates fall back to the predicate suffix.
+
+**Injection.** The digest is injected exactly once per turn by
+`ContextBuilder.BuildSystemPrompt` (`pkg/agent/context.go`), which runs once per
+model turn before the tool loop; tool iterations reuse the same messages, so the
+digest is never duplicated. Subagents keep their own hardcoded system prompt and
+receive no digest. Heartbeat turns pass through the same prompt path and receive
+the digest; this follows the existing architecture and is accepted for v1.
+
+**Relationship to `context_get`.** The digest is the always-on floor for facts
+the Ghost must never get wrong; `context_get` is the on-demand lookup when the
+digest is insufficient. Both read the same entry store; the digest is derived
+and never mutated by tools.
+
+### `/context` command (v1)
+
+`/context` (`pkg/commands/context.go`) is the **user-facing** inspection
+interface for Personal Context: what Ghost currently believes about the user. It
+is not another retrieval mechanism. It reads `personalcontext.Store` directly
+and **never** calls an LLM, never uses RAG, never searches conversations, and
+never consults MEMORY.md.
+
+**Syntax.** `/context [kind|subject|predicate] [--verbose]`.
+
+**What it shows.** Only the current view: `Store.CurrentAt(now)` semantics
+(status current, `valid_from <= now`, `valid_until >= now`). Superseded,
+rejected/forgotten, expired, and future-valid entries never appear — they remain
+inspectable only through the store's history/provenance queries. This is the
+store's own lifecycle truth, not a second filtering layer.
+
+**Output.** Compact, grouped by kind (Identity, Preferences, Facts, Goals, …)
+with `predicate: value` lines — internal ids, timestamps, and provenance are
+hidden. Conflicting and uncertain entries are never presented as facts: they are
+listed under **Unresolved** (full predicate, one bullet per candidate value)
+with an explicit "has not resolved these conflicts" note. An empty store returns
+`Personal Context is empty.`; unresolved state with no current beliefs is shown
+with `No current beliefs.` plus the Unresolved section. A missing store degrades
+to a clear `Personal Context is unavailable.` message and never breaks the turn.
+
+**Verbose.** `--verbose` (or `-v`) is the auditability surface: for every entry
+it shows id, kind, subject, predicate, value, status, confidence, valid_from,
+valid_until, superseded_by, created_at, updated_at, and each source (type, kind,
+ref, timestamp) — exactly the fields and provenance the Entry/Source model
+carries, never invented.
+
+**Filtering.** Optional single argument: a kind (`/context preference`), an exact
+predicate containing `/` (`/context fact/location`), or a subject
+(`/context user`). Current entries come from `CurrentAt` filtered to the match;
+unresolved state comes from the status-agnostic `ByKind`/`ByPredicate`/`BySubject`
+queries. `history` is intentionally not surfaced — `/context` answers "what does
+Ghost currently believe?", not "how did it change".
+
+**Relationship to `context_get`.** `context_get` is the narrow, structured,
+model-facing tool the agent invokes on demand; `/context` is the broad,
+human-readable, user-initiated inspection command. Both read the same store; the
+command renders, the tool queries.
+
+### `/forget` command (v1)
+
+`/forget` (`pkg/commands/forget.go`) is the **user-facing control** interface for
+Personal Context. It is deterministic, never calls an LLM, never searches
+conversations, and never touches RAG or MEMORY.md.
+
+**The three operations.** Forgetting is three distinct operations (§6), and
+`/forget` implements the two that are reachable from a chat:
+
+- **Retire** (the default): `Store.Forget(id)` appends a `rejected` revision to
+  the entry's append-only log. The entry stops appearing in the digest,
+  `context_get`, and `/context` (all three read only current entries), while its
+  record and provenance remain inspectable. **Conversation evidence is never
+  touched.**
+- **Delete evidence** (explicit): `/forget session <id>` removes the session
+  transcript and summary through the session storage API (`DeleteSession` on the
+  session store, wired through `SessionManager`), then retires any active
+  Personal Context entries whose provenance references that session. Unrelated
+  entries and other sessions are untouched. This is the only irreversible
+  operation, and it is never reachable implicitly.
+
+**Syntax.**
+
+```
+/forget <predicate>                preference/favorite_color
+/forget <suffix>                   favorite_color
+/forget <topic>                    my favorite color, location, communication style
+/forget everything about <topic>   everything about my relationship with Jane
+/forget session <session-id>       delete conversation evidence for a session
+```
+
+**Resolution.** A target phrase is matched against active entries — current and
+temporally valid (the store's `CurrentAt` semantics, so expired and future-valid
+entries are never touched) plus unresolved conflicting/uncertain entries — by
+exact predicate, predicate suffix, a canonicalized phrase (lowercase, `my `
+stripped, word separators collapsed, e.g. `my favorite color` →
+`favorite_color`), or a known kind. Matching favors false negatives.
+
+**Safety.**
+
+- **Never a silent mass delete.** A bare `/forget everything` is refused.
+  Generic self-referential topics (`me`, `myself`, `user`, `personal`, …) are
+  refused. Distinct beliefs are never resolved silently: a phrase matching more
+  than one belief lists the candidates (values shown when a predicate is shared)
+  and asks the user to narrow it. A bare kind with parallel current entries
+  (e.g. two `relationship/partner` values) is ambiguous and refused.
+- **One contested belief, retired whole.** A conflicting pair for a single
+  (subject, predicate) is one belief; `/forget` retires both, and `/context`
+  then reports no unresolved state.
+- **No duplicate work.** A second `/forget` of an already-retired entry reports
+  `That Personal Context is already forgotten.` and appends no extra revision.
+  A phrase with no current match reports
+  `No current Personal Context entry matches …` and mutates nothing.
+- **`everything about <topic>` is scoped.** It matches only structured,
+  unambiguous targets: an exact subject, a named relationship partner
+  (`relationship with/to X` → relationship entries whose value is X), or a
+  predicate whose suffix contains the canonicalized topic. `everything about my
+  relationship with X` retires only X's entries.
+
+**Session deletion.** `/forget session <id>` requires the session to carry
+evidence (a transcript or summary), reports `No session found with id "…"` for a
+missing id, deletes the evidence, then retires dependent entries with
+`Deleted session "…" and retired N dependent Personal Context entries.`. Derived
+RAG chunks for a deleted session are not removed: the RAG store has no
+session-scoped deletion API, so that cleanup is reported as a limitation rather
+than silently attempted.
+
+## 10. Ghost State portability (v1)
+
+Personal Context travels through the same portable Ghost State archive as
+conversations and every other personal artifact. The canonical artifact is the
+append-only revision log itself, `personal-context/entries.jsonl` — the exact
+file the store appends to — so nothing is derived, rendered, or regenerated
+during export or import.
+
+**Classification.** The whole `personal-context/` directory is classified
+`portable` (`pkg/ghoststate/classify.go`). `ghost.db` stays `rebound`
+(conversations rehydrate from the portable `conversations/*.jsonl` format), and
+the RAG/embedding store stays `derived` — never exported, rebuilt on demand.
+Because the directory classification and the store's own constants
+(`personalcontext.EntriesDir`, `personalcontext.EntriesFile`) are the same
+source of truth, the portable path can never drift from where the store writes.
+
+**Export.** The walk stages the log byte-exact (`stageFromDisk`), records its
+digest and size in the manifest as a portable file, and the archive is encrypted
+and written atomically like any other export. Export stays deterministic: the
+log is copied, never rewritten, so no timestamps or ordering are introduced.
+
+**Import.** The archive's `personal-context/entries.jsonl` is validated with the
+store's own parser (`personalcontext.ValidateEntries`) *before* it is written.
+Every record survives or the import fails loudly with the offending line — a
+malformed log can never silently become an empty context or a context with
+dropped records. Valid bytes are then written verbatim, and
+`personalcontext.Open(workspace)` on the target reads it directly: no
+conversion, no rebuild, no LLM, no regeneration of entries from the imported
+conversations. The imported store is a first-class store — `Current()`,
+`CurrentAt(t)`, `History(id)`, `ByPredicate`, `BySubject`, `ByKind` and the
+`/context`, `context_get`, and digest surfaces all serve the imported state.
+
+**Lifecycle fidelity.** The append-only log carries the complete revision
+history, so a round-trip preserves current entries, superseded chains
+(`superseded_by`), rejected/forgotten entries, conflicting pairs, provenance
+sources, temporal validity windows, confidence, and every historical revision.
+Forgotten entries stay absent from the current surfaces (`/context`,
+`context_get`, the digest) exactly as on the source machine, while remaining
+present in `All()` and `History()`.
+
+**Optional artifact.** A workspace that never used Personal Context exports no
+`personal-context/` files and imports none; `Open` on the target creates the
+same empty store as on the source. No placeholder file is fabricated.
+
+**Determinism guarantee.** The imported log is byte-identical to the exported
+log, and exporting the same workspace twice yields byte-identical archives for
+Personal Context. The proof-of-correctness scenario holds: the same user on a
+new device, with only the portable archive, is served as if nothing changed —
+including the conversation evidence their context was extracted from.
 
 The architecture is intentionally divided into vertical slices so each can be
 built, tested, and shipped alone without changing unowned behavior:
@@ -294,11 +492,61 @@ built, tested, and shipped alone without changing unowned behavior:
 | slice | scope | status |
 |-------|-------|--------|
 | **Conversation portability** | `conversations/*.jsonl` export/import replaces the binary `ghost.db` snapshot; fresh-DB rehydration on import; versioned + deterministic format with tests. Everything outside this slice keeps its current behavior. | **first** |
-| Entries store | `Entry` type + `entries.jsonl` + index + rebuild | later |
+| **Ghost State portability of Personal Context** | `personal-context/entries.jsonl` classified Portable, exported byte-exact, imported byte-exact and directly loadable by the store — no conversion, no regeneration, no LLM during import | **built** (this slice, §10) |
+| Entries store | `Entry` type + `entries.jsonl` + index + rebuild | **built** (Slices 4–5: store, lifecycle, conflict, temporal validity, concurrency hardening) |
 | Rule-based extractor | conversation → entries with provenance | **built** (`pkg/personalcontext/extractor.go`) and wired into the agent turn loop (`pkg/agent/loop.go`) |
-| Digest injector | bounded active-context digest replaces MEMORY.md injection | later |
-| Tools & commands | `context_get`, `/remember`, `/forget`, `/context` | later |
+| Digest injector | bounded active-context digest replaces MEMORY.md injection | **built** (`pkg/personalcontext/digest.go`), injected via `ContextBuilder.BuildSystemPrompt` (`pkg/agent/context.go`) once per turn; MEMORY.md is no longer auto-injected |
+| `context_get` tool | on-demand structured Personal Context lookup — filters by kind/subject/predicate, returns current entries plus explicit unresolved (conflicting/uncertain) state, preserves provenance; never automatic, never RAG | **built** (`pkg/tools/context_get.go`), wired into the agent tool registry (`pkg/agent/loop.go`) |
+| User commands | `/context` (user-facing inspection) and `/forget` (user-facing control) | **built** (`/context` `pkg/commands/context.go`, `/forget` `pkg/commands/forget.go`), registered in `commands.DefaultDefinitions` and wired into the command runtime (`pkg/agent/loop.go`) |
 | Retirement of Memory v1 | RAG facts migration, kv_store deprecation, machine-state split | later |
 
 Each slice keeps a proof-of-correctness scenario: the same user on a new
 device, with only the portable archive, must be served as if nothing changed.
+
+## 11. Known limitations and deferred work
+
+These are deliberate v1.1 boundaries, accepted after the final review. None are
+release blockers.
+
+**Correctness-adjacent, documented:**
+
+- **Provenance refs use the turn's RequestID, not the persisted DB message id.**
+  A `Source.Ref` is `session_key:<request_id>`. It is stable for the life of the
+  store and sufficient for `/forget session` provenance matching, but it is not
+  the conversation store's own message id.
+- **JSONL appends are not fsynced.** A power loss immediately after an append
+  can lose the trailing record. The in-memory index and the log stay
+  consistent; no fsync is performed on the common path.
+- **`DeclareConflict` appends two revisions without a transaction.** Both
+  appends happen under the store lock, so no interleaving is possible, but a
+  crash between the two leaves one side conflicting and the other still
+  current.
+- **Legacy or manually imported duplicate current entries are possible outside
+  the normal paths.** The extractor/`Apply` re-resolution guarantees one current
+  entry per `(subject, predicate)` for everything it writes; hand-written logs
+  bypass that guarantee and `currentEntry` picks one deterministically.
+
+**By design / conservative:**
+
+- The rule-based extractor is deliberately conservative: it understands only
+  the documented grammar, so most natural phrasing is simply not captured.
+- Deictic corrections (`actually, it's green`) resolve only from an unambiguous
+  immediately preceding user declaration; otherwise nothing is recorded.
+- `I like X` is additive and never supersedes; only the first match per message
+  is captured, and low-signal captures are rejected.
+
+**Operational / environment:**
+
+- `/forget session <id>` cannot remove derived RAG chunks: the RAG store has no
+  session-scoped deletion API, so that cleanup is reported rather than
+  silently attempted.
+- Cron-triggered sessions are eligible for extraction except the heartbeat
+  turn; this follows the existing turn-loop architecture.
+- `/context <filter>` can report an empty match even when unrelated context
+  exists; the message says what was matched, not that the store is empty.
+- `-race` cannot run in this sandbox (TSan "unsupported VMA range"); the
+  concurrency behavior is exercised with `-count` repeats instead.
+
+**Deferred work (not started, by scope):** RAG/smarter extraction, `/remember`
+user command, history/restore of rejected entries, Memory v1 retirement
+(§9 slice table), and session-scoped RAG deletion for `/forget session`.

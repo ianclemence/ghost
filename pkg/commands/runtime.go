@@ -6,6 +6,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/doctor"
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/session"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
@@ -18,6 +19,10 @@ type Runtime struct {
 	Doctor      *doctor.Doctor
 	Personality string
 	Model       string
+	// PersonalContext is the store backing the /context command. It is
+	// optional: the agent can run without it, and a nil store makes the command
+	// report the store as unavailable instead of failing the turn.
+	PersonalContext *personalcontext.Store
 	// ModelPresets lists named model presets available for switching
 	// (e.g. from config model_list). Each is "provider:model" or "ollama/model".
 	ModelPresets []string

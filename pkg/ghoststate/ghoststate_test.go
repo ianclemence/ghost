@@ -384,6 +384,7 @@ func TestWorkspaceArtifactClassification(t *testing.T) {
 	portable := []string{
 		"conversations/format.json",
 		"conversations/sessions/a.jsonl",
+		"personal-context/entries.jsonl",
 		"state/identity.json",
 		"sessions/2026.jsonl",
 		"memory/MEMORY.md",
