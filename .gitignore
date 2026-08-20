@@ -43,6 +43,7 @@ config/config.json
 .cursor/
 .gemini/
 .zed/
+.opencode/
 .mcp.json
 opencode.json
 opencode.jsonc
