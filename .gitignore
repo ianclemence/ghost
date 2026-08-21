@@ -28,6 +28,7 @@ coverage.html
 # Secrets & Config
 .env
 config/config.json
+config/.secrets.json
 
 # OS
 .DS_Store
