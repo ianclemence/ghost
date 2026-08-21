@@ -48,6 +48,7 @@ type Config struct {
 	Channels    ChannelsConfig    `json:"channels"`
 	Providers   ProvidersConfig   `json:"providers"`
 	Gateway     GatewayConfig     `json:"gateway"`
+	Relay       RelayConfig       `json:"relay"`
 	RAG         RAGConfig         `json:"rag"`
 	Tools       ToolsConfig       `json:"tools"`
 	Heartbeat   HeartbeatConfig   `json:"heartbeat"`
@@ -238,6 +239,15 @@ type GatewayConfig struct {
 	BridgeSecret string `json:"bridge_secret" env:"BRIDGE_SECRET"`
 }
 
+type RelayConfig struct {
+	Enabled      bool   `json:"enabled" env:"GHOST_RELAY_ENABLED"`
+	Server       string `json:"server" env:"GHOST_RELAY_SERVER"`
+	GatewayURL   string `json:"gateway_url" env:"GHOST_RELAY_GATEWAY_URL"`
+	ReconnectMin int    `json:"reconnect_min_s" env:"GHOST_RELAY_RECONNECT_MIN"`
+	ReconnectMax int    `json:"reconnect_max_s" env:"GHOST_RELAY_RECONNECT_MAX"`
+	DeviceSecret string `json:"-"` // loaded from .secrets.json, never in config.json
+}
+
 type BraveConfig struct {
 	Enabled    bool   `json:"enabled" env:"GHOST_TOOLS_WEB_BRAVE_ENABLED"`
 	APIKey     string `json:"api_key" env:"GHOST_TOOLS_WEB_BRAVE_API_KEY"`
@@ -391,6 +401,13 @@ func DefaultConfig() *Config {
 		Gateway: GatewayConfig{
 			Host: "0.0.0.0",
 			Port: 8766,
+		},
+		Relay: RelayConfig{
+			Enabled:      false,
+			Server:       "",
+			GatewayURL:   "",
+			ReconnectMin: 1,
+			ReconnectMax: 60,
 		},
 		RAG: RAGConfig{
 			Enabled:        true,

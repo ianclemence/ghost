@@ -31,6 +31,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/migrate"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/relayclient"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/state"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -245,6 +246,8 @@ func main() {
 		updateCmd()
 	case "updater":
 		updaterCmd()
+	case "relay":
+		relayCmd()
 	case "version", "--version", "-v":
 		printVersion()
 	default:
@@ -272,6 +275,7 @@ func printHelp() {
 	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  state       Export, import, or inspect Ghost State archives")
+	fmt.Println("  relay       Manage relay connection (run, pair, clients)")
 	fmt.Println("  version     Show version information")
 }
 
@@ -1387,6 +1391,247 @@ func cronHelp() {
 	fmt.Println("  --channel        Channel for delivery")
 	fmt.Println("  --skills         Comma-separated skills to load (e.g. 'planning,code-review')")
 	fmt.Println("  --no-agent       Run script directly without agent (script IS the job)")
+}
+
+func relayCmd() {
+	if len(os.Args) < 3 {
+		relayHelp()
+		return
+	}
+
+	subcommand := os.Args[2]
+	switch subcommand {
+	case "run":
+		relayRunCmd()
+	case "pair":
+		relayPairCmd()
+	case "clients":
+		relayClientsCmd()
+	case "revoke":
+		relayRevokeCmd()
+	case "setup":
+		relaySetupCmd()
+	default:
+		fmt.Printf("Unknown relay command: %s\n", subcommand)
+		relayHelp()
+	}
+}
+
+func relayHelp() {
+	fmt.Println("\nRelay commands:")
+	fmt.Println("  run              Connect to relay server (runs in foreground)")
+	fmt.Println("  pair             Generate a pairing token for a new client")
+	fmt.Println("  clients          List paired clients")
+	fmt.Println("  revoke <token>   Revoke a client's access")
+	fmt.Println("  setup            Generate device secret and configure relay")
+}
+
+func relayRunCmd() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	if !cfg.Relay.Enabled {
+		fmt.Println("Relay is not enabled. Set relay.enabled=true and relay.server in config.")
+		os.Exit(1)
+	}
+	if cfg.Relay.Server == "" {
+		fmt.Println("Relay server not configured. Set relay.server in config.")
+		os.Exit(1)
+	}
+	if cfg.Relay.DeviceSecret == "" {
+		fmt.Println("Device secret not configured. Run 'ghost relay setup' first.")
+		os.Exit(1)
+	}
+
+	ghostID, err := ghoststate.EnsureIdentity(cfg.WorkspacePath())
+	if err != nil {
+		fmt.Printf("Error loading identity: %v\n", err)
+		os.Exit(1)
+	}
+
+	gatewayURL := cfg.Relay.GatewayURL
+	if gatewayURL == "" {
+		gatewayURL = fmt.Sprintf("http://127.0.0.1:%d", cfg.Gateway.Port)
+	}
+
+	client := relayclient.NewClient(relayclient.ClientConfig{
+		DeviceID:     ghostID.GhostID,
+		DeviceSecret: cfg.Relay.DeviceSecret,
+		RelayServer:  cfg.Relay.Server,
+		GatewayURL:   gatewayURL,
+		BridgeSecret: cfg.Gateway.BridgeSecret,
+		ReconnectMin: cfg.Relay.ReconnectMin,
+		ReconnectMax: cfg.Relay.ReconnectMax,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+	go func() {
+		<-sigChan
+		fmt.Println("\nRelay disconnecting...")
+		cancel()
+	}()
+
+	fmt.Printf("Relay client connecting to %s...\n", cfg.Relay.Server)
+	if err := client.Run(ctx); err != nil && err != context.Canceled {
+		fmt.Printf("Relay error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func relayPairCmd() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	ghostID, err := ghoststate.EnsureIdentity(cfg.WorkspacePath())
+	if err != nil {
+		fmt.Printf("Error loading identity: %v\n", err)
+		os.Exit(1)
+	}
+
+	name := "Phone"
+	if len(os.Args) > 3 {
+		name = os.Args[3]
+	}
+
+	token, err := relayclient.AddClient(ghostID.GhostID, name)
+	if err != nil {
+		fmt.Printf("Error generating token: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\nPairing token generated for: %s\n", name)
+	fmt.Printf("Token: %s\n\n", token)
+	fmt.Println("Add this URL to your Ghost app:")
+	fmt.Printf("  ghost://connect?transport=relay&relay=%s&ghost=%s&token=%s\n",
+		cfg.Relay.Server, ghostID.GhostID, token)
+	fmt.Println("\nNote: This token is shown once. Store it securely.")
+}
+
+func relayClientsCmd() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	ghostID, err := ghoststate.EnsureIdentity(cfg.WorkspacePath())
+	if err != nil {
+		fmt.Printf("Error loading identity: %v\n", err)
+		os.Exit(1)
+	}
+
+	clients, err := relayclient.ListClients(ghostID.GhostID)
+	if err != nil {
+		fmt.Printf("Error listing clients: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(clients) == 0 {
+		fmt.Println("No paired clients.")
+		return
+	}
+
+	fmt.Println("Paired clients:")
+	for _, c := range clients {
+		name := c.Name
+		if name == "" {
+			name = "(unnamed)"
+		}
+		prefix := c.TokenHash
+		if len(prefix) > 16 {
+			prefix = prefix[:16]
+		}
+		fmt.Printf("  %s  %s  created %s\n", prefix, name, c.CreatedAt)
+	}
+}
+
+func relayRevokeCmd() {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: ghost relay revoke <token-hash-prefix>")
+		os.Exit(1)
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	ghostID, err := ghoststate.EnsureIdentity(cfg.WorkspacePath())
+	if err != nil {
+		fmt.Printf("Error loading identity: %v\n", err)
+		os.Exit(1)
+	}
+
+	prefix := os.Args[3]
+	if err := relayclient.RemoveClient(ghostID.GhostID, prefix); err != nil {
+		fmt.Printf("Error revoking client: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Client revoked.")
+}
+
+func relaySetupCmd() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	ghostID, err := ghoststate.EnsureIdentity(cfg.WorkspacePath())
+	if err != nil {
+		fmt.Printf("Error loading identity: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Generate device secret if not set
+	if cfg.Relay.DeviceSecret == "" {
+		secret, err := relayclient.GenerateToken()
+		if err != nil {
+			fmt.Printf("Error generating device secret: %v\n", err)
+			os.Exit(1)
+		}
+		cfg.Relay.DeviceSecret = secret
+	}
+
+	// Prompt for relay server
+	if cfg.Relay.Server == "" {
+		fmt.Print("Relay server URL (e.g., ws://127.0.0.1:8080): ")
+		fmt.Scanln(&cfg.Relay.Server)
+	}
+
+	// Enable relay
+	cfg.Relay.Enabled = true
+
+	// Save config
+	configPath := getConfigPath()
+	if err := config.SaveConfig(configPath, cfg); err != nil {
+		fmt.Printf("Error saving config: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\nRelay configured:\n")
+	fmt.Printf("  Device ID:     %s\n", ghostID.GhostID)
+	fmt.Printf("  Device Secret: %s\n", cfg.Relay.DeviceSecret)
+	fmt.Printf("  Relay Server:  %s\n", cfg.Relay.Server)
+	fmt.Printf("  Enabled:       %v\n\n", cfg.Relay.Enabled)
+	fmt.Println("Next steps:")
+	fmt.Println("  1. Add this device to the relay server:")
+	fmt.Printf("     ghost-relay add-device %s --name \"My Ghost\"\n", ghostID.GhostID)
+	fmt.Println("  2. Start the relay connection:")
+	fmt.Println("     ghost relay run")
+	fmt.Println("  3. Generate pairing tokens for your phone:")
+	fmt.Println("     ghost relay pair")
 }
 
 func stateCmd() {

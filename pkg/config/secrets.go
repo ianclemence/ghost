@@ -30,11 +30,12 @@ type Secrets struct {
 	WeChatToken          string `json:"wechat_token,omitempty"`
 	WeChatEncodingAESKey string `json:"wechat_encoding_aes_key,omitempty"`
 
-	BridgeSecret     string `json:"bridge_secret,omitempty"`
-	ClawHubAuthToken string `json:"clawhub_auth_token,omitempty"`
-	HonchoAPIKey     string `json:"honcho_api_key,omitempty"`
-	FirecrawlAPIKey  string `json:"firecrawl_api_key,omitempty"`
-	BraveAPIKey      string `json:"brave_api_key,omitempty"`
+	BridgeSecret      string `json:"bridge_secret,omitempty"`
+	ClawHubAuthToken  string `json:"clawhub_auth_token,omitempty"`
+	HonchoAPIKey      string `json:"honcho_api_key,omitempty"`
+	FirecrawlAPIKey   string `json:"firecrawl_api_key,omitempty"`
+	BraveAPIKey       string `json:"brave_api_key,omitempty"`
+	RelayDeviceSecret string `json:"relay_device_secret,omitempty"`
 }
 
 // SecretsPath returns the path to the secrets file for a given config path.
@@ -133,6 +134,7 @@ func extractSecrets(cfg *Config) *Secrets {
 	s.WeChatEncodingAESKey = cfg.Channels.WeChat.EncodingAESKey
 
 	s.BridgeSecret = cfg.Gateway.BridgeSecret
+	s.RelayDeviceSecret = cfg.Relay.DeviceSecret
 	s.ClawHubAuthToken = cfg.Skills.ClawHub.AuthToken
 	s.HonchoAPIKey = cfg.Skills.Honcho.APIKey
 	s.FirecrawlAPIKey = cfg.Tools.Web.Firecrawl.APIKey
@@ -217,6 +219,9 @@ func applySecrets(cfg *Config, s *Secrets) {
 	if s.BridgeSecret != "" {
 		cfg.Gateway.BridgeSecret = s.BridgeSecret
 	}
+	if s.RelayDeviceSecret != "" {
+		cfg.Relay.DeviceSecret = s.RelayDeviceSecret
+	}
 	if s.ClawHubAuthToken != "" {
 		cfg.Skills.ClawHub.AuthToken = s.ClawHubAuthToken
 	}
@@ -259,6 +264,7 @@ func clearSecrets(cfg *Config) {
 	cfg.Channels.WeChat.Token = ""
 	cfg.Channels.WeChat.EncodingAESKey = ""
 	cfg.Gateway.BridgeSecret = ""
+	cfg.Relay.DeviceSecret = ""
 	cfg.Skills.ClawHub.AuthToken = ""
 	cfg.Skills.Honcho.APIKey = ""
 	cfg.Tools.Web.Firecrawl.APIKey = ""

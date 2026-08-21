@@ -158,3 +158,100 @@ A device credential is generated at install/setup and stored in `.secrets.json` 
 3. LAN access still works with the relay disabled or unreachable.
 4. Unbinding an app revokes its access.
 5. The relay never requires an inbound port on the home network.
+
+---
+
+## Security model (Phase 1 — implemented)
+
+### Credentials per hop
+
+| Hop | Credentials present | Notes |
+|---|---|---|
+| Phone → Relay | X-Ghost-Client-Id + X-Ghost-Client-Token | Client token only. The bridge secret is never sent by the phone in relay mode. |
+| Relay (memory) | SHA-256(client token) hashes, SHA-256(device secret) hashes | Only hashes. No conversation content is persisted. |
+| Relay → Ghost (tunnel) | X-Ghost-Device + X-Ghost-Device-Secret handshake headers | Device secret authenticates the tunnel; it stays on this connection only. |
+| Ghost relay client → local gateway | X-Ghost-Secret (bridge secret), injected locally | The bridge secret never leaves the Ghost device. |
+
+Hard guarantees enforced in code:
+
+1. **The bridge secret never leaves the Ghost device.** The phone does not send
+   it in relay mode, the relay strips X-Ghost-Secret from every forwarded
+   request even if present, and the device-side relay client injects it locally.
+2. **Credentials are never placed in URLs.** Query-parameter credential
+   fallbacks were removed; both app auth and tunnel auth are header-only, so
+   tokens cannot leak into proxy or access logs.
+3. **Device isolation.** Client token bindings are per-device. Token A can only
+   ever reach Ghost A; unknown IDs, revoked tokens, and cross-device attempts
+   are rejected before any tunnel lookup.
+4. **Single reader / single writer on tunnels.** All data frames flow through a
+   per-tunnel write pump; control frames use WebSocket control messages. This
+   eliminates frame corruption under concurrent load and heartbeat pings.
+5. **Constant-time credential comparison** for device secrets, client tokens,
+   and the enrollment admin token.
+6. **Hop-by-hop headers stripped in both directions**, including
+   Content-Length on responses (the relay re-chunks streams). Device-supplied
+   error text is JSON-encoded and truncated before passthrough.
+
+### Accepted limitations (deliberate Phase 1 scope)
+
+- **The relay sees plaintext payloads.** The relay is a forward-only transport;
+  it technically can read request/response bodies passing through it. TLS
+  (--tls-cert / --tls-key) protects against network observers but not
+  against a malicious relay operator. End-to-end encryption between phone and
+  Ghost is a future phase and would be layered on top without changing this
+  architecture.
+- **TLS is optional at the server.** Required for any internet-facing
+  deployment; plaintext is acceptable only for loopback/LAN development.
+- **No token expiry.** Tokens are valid until revoked (ghost relay revoke
+  <hash-prefix>). Lost phone → revoke its token.
+- **Revocation latency.** Revocation updates the device's local client list;
+  the change reaches the relay when the device next reconnects (or bindings are
+  re-pushed). A revoked token may remain usable for up to one reconnect cycle.
+- **No rate limiting.** Tokens carry 256 bits of entropy, making brute force
+  infeasible; abuse by a legitimate token holder is out of scope for Phase 1.
+
+### Threat model
+
+Assets: Ghost identity (ghost_id), conversation data, Personal Context,
+bridge secret, client/device tokens.
+
+| Attacker | Protected | Not protected |
+|---|---|---|
+| Random internet attacker | No unauthenticated access to any endpoint; 256-bit tokens; device registry required for tunnels | — |
+| Malicious relay *client* (has own device/token) | Cannot see or reach other devices' tunnels, tokens, or data | Can abuse their own Ghost's API (by design — it is their Ghost) |
+| Compromised phone | Nothing beyond what LAN mode already exposes: phone holds bridge secret + client token in SecureStore | Full access as the paired phone; revoke the token to cut relay access |
+| Malicious/compromised relay operator | Cannot obtain the bridge secret; cannot persist conversation data via the relay; can deny service | Can read traffic in transit (plaintext payloads), impersonate any paired phone toward its Ghost, log metadata |
+| Local network attacker | With TLS: nothing exposed. Without TLS: sees tokens and payload content on wireless segments | — |
+
+Product principle upheld: the relay stores only hash-based registries and
+in-memory routing state. It is infrastructure for reaching a Ghost, not a
+canonical location for personal data.
+
+---
+
+## Phase 1 implementation status
+
+Implemented and unit-tested in this repository:
+
+- Relay wire protocol (pkg/relay/proto) with frame round-trip tests.
+- Relay server (pkg/relay/server): device registry, tunnel management with
+  generation-based reconnect safety, per-device client-token bindings,
+  HTTP forwarding with SSE/streaming support, enrollment endpoint.
+- Device-side relay client (pkg/relayclient): outbound tunnel, local gateway
+  forwarding with bridge-secret injection, reconnect with exponential backoff,
+  persisted client token list.
+- CLI: ghost relay run|pair|clients|revoke|setup, ghost-relay
+  serve|add-device|list-devices|remove-device.
+- Mobile app: relay transport in ghostApi.ts (headers, base URL, SecureStore
+  token), relay pairing URLs in pairing.ts, relay status in settings.
+
+Automated coverage includes an end-to-end in-process test of the full
+phone → relay → Ghost → relay → phone path using an httptest relay, a mock
+device tunnel, and a mock SSE gateway, plus security regressions (cross-device
+isolation, invalid/missing credentials, bridge-secret stripping, query-string
+credential rejection, hop-by-hop filtering, JSON-safe errors, stale-tunnel
+reconnect, no conversation persistence).
+
+**Not yet verified:** the same path against a real Ghost device, a deployed
+relay, and a physical phone over cellular. That manual acceptance test is the
+release gate for Phase 1 and has NOT been performed as of this document.
