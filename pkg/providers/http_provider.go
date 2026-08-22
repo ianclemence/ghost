@@ -152,6 +152,17 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		if thinkParam != nil {
 			nativeBody["think"] = thinkParam
 		}
+		// Pass Ollama-native options (temperature, num_predict)
+		ollamaOpts := map[string]interface{}{}
+		if temp, ok := options["temperature"].(float64); ok {
+			ollamaOpts["temperature"] = temp
+		}
+		if maxTok, ok := options["max_tokens"].(int); ok {
+			ollamaOpts["num_predict"] = maxTok
+		}
+		if len(ollamaOpts) > 0 {
+			nativeBody["options"] = ollamaOpts
+		}
 		jsonData, err := json.Marshal(nativeBody)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request: %w", err)
