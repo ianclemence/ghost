@@ -14,13 +14,19 @@ import (
 // the only persistent artifact that carries the ghost_id.
 const identityFileName = "state/identity.json"
 
+// IdentitySchemaVersion is the current identity schema version.
+const IdentitySchemaVersion = 2
+
 // Identity is the persistent, hardware-independent identity of a Ghost. The
 // ghost_id is generated once at initial setup and is never reused as a device
 // identifier.
 type Identity struct {
 	SchemaVersion int    `json:"schema_version"`
 	GhostID       string `json:"ghost_id"`
-	CreatedAt     string `json:"created_at"` // RFC3339
+	PodID         string `json:"pod_id"`          // stable pod identifier for pairing
+	OwnerName     string `json:"owner_name"`       // who owns this Ghost
+	GhostName     string `json:"ghost_name"`       // what the Ghost is called
+	CreatedAt     string `json:"created_at"`       // RFC3339
 }
 
 // IdentityPath returns the location of the identity record for a workspace.
@@ -60,8 +66,9 @@ func EnsureIdentity(workspace string) (*Identity, error) {
 	}
 
 	id := &Identity{
-		SchemaVersion: CurrentSchemaVersion,
+		SchemaVersion: IdentitySchemaVersion,
 		GhostID:       uuid.NewString(),
+		PodID:         uuid.NewString()[:8], // short stable ID for pairing QR
 		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
 	}
 	data, err := json.MarshalIndent(id, "", "  ")
@@ -72,4 +79,38 @@ func EnsureIdentity(workspace string) (*Identity, error) {
 		return nil, fmt.Errorf("write identity: %w", err)
 	}
 	return id, nil
+}
+
+// SetIdentityNames updates the owner and ghost names in the identity record.
+func SetIdentityNames(workspace, ownerName, ghostName string) error {
+	id, err := EnsureIdentity(workspace)
+	if err != nil {
+		return err
+	}
+	id.OwnerName = ownerName
+	id.GhostName = ghostName
+	data, err := json.MarshalIndent(id, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal identity: %w", err)
+	}
+	return writeFileAtomic(IdentityPath(workspace), data, 0600)
+}
+
+// GetPodID returns the stable pod identifier, creating one if needed.
+func GetPodID(workspace string) (string, error) {
+	id, err := EnsureIdentity(workspace)
+	if err != nil {
+		return "", err
+	}
+	if id.PodID == "" {
+		id.PodID = uuid.NewString()[:8]
+		data, err := json.MarshalIndent(id, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("marshal identity: %w", err)
+		}
+		if err := writeFileAtomic(IdentityPath(workspace), data, 0600); err != nil {
+			return "", fmt.Errorf("write identity: %w", err)
+		}
+	}
+	return id.PodID, nil
 }

@@ -130,16 +130,27 @@ Test the secure pairing flow and per-device authentication.
 ### Pairing API
 
 ```bash
-# Generate pairing token
+# Create pairing invitation (new endpoint)
+curl -s -X POST http://localhost:8766/v1/pairing/invitations \
+  -H "X-Ghost-Secret: $BRIDGE_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"display_name": "Test Phone", "transport": "lan"}'
+
+# Legacy: Generate pairing token (still works)
 curl -s -X POST http://localhost:8766/v1/pairing/start \
   -H "X-Ghost-Secret: $BRIDGE_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"display_name": "Test Phone"}'
 
-# Redeem token (single-use, expires in 5 minutes)
+# Complete pairing (new endpoint, PUBLIC — no auth required)
+curl -s -X POST http://localhost:8766/v1/pairing/complete \
+  -H "Content-Type: application/json" \
+  -d '{"token": "<token>", "display_name": "Test Phone", "platform": "android"}'
+
+# Legacy: Redeem token (still works, PUBLIC)
 curl -s -X POST http://localhost:8766/v1/pairing/redeem \
   -H "Content-Type: application/json" \
-  -d '{"token": "<token_from_start>"}'
+  -d '{"token": "<token_from_invitation>"}'
 
 # List paired devices
 curl -s http://localhost:8766/v1/pairing/devices \
@@ -151,6 +162,29 @@ curl -s -X POST http://localhost:8766/v1/pairing/revoke \
   -H "Content-Type: application/json" \
   -d '{"device_id": "<device_id>"}'
 ```
+
+### Structured Error Responses
+
+Pairing endpoints return structured errors:
+
+```json
+{
+  "error": {
+    "code": "pairing_expired",
+    "message": "Pairing invitation expired."
+  }
+}
+```
+
+Error codes:
+- `pairing_invalid` — token not found
+- `pairing_expired` — token expired (>5 minutes)
+- `pairing_consumed` — token already used
+- `pairing_rejected` — pairing rejected by server
+- `authentication_required` — no credentials provided
+- `authentication_failed` — invalid credentials
+- `device_revoked` — device has been revoked
+- `device_not_found` — device ID not found
 
 ### Device auth (after pairing)
 

@@ -34,6 +34,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/cron"
+	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/pairing"
 	"github.com/ianclemence/ghost/pkg/skills"
@@ -2583,8 +2584,73 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		_ = pairing.CleanupExpired(db)
 	}
 
-	// POST /v1/pairing/start — generate a short-lived pairing token.
+	// Helper to return structured pairing errors.
+	pairingErrorResponse := func(w http.ResponseWriter, status int, err error) {
+		if pe, ok := err.(*pairing.PairingError); ok {
+			jsonResponse(w, status, map[string]interface{}{
+				"error": map[string]string{
+					"code":    pe.Code,
+					"message": pe.Message,
+				},
+			})
+			return
+		}
+		jsonError(w, status, "internal_error", err.Error())
+	}
+
+	// POST /v1/pairing/invitations — generate a pairing invitation.
 	// Called by Ghost Pod web UI when user wants to pair a phone.
+	mux.HandleFunc("/v1/pairing/invitations", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if db == nil {
+			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
+			return
+		}
+
+		// Get pod identity for the invitation.
+		workspace := agentLoop.Config().Agents.Defaults.Workspace
+		podID, _ := ghoststate.GetPodID(workspace)
+
+		var req struct {
+			DisplayName string `json:"display_name"`
+			Transport   string `json:"transport"`
+			Host        string `json:"host"`
+			Port        string `json:"port"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			req = struct {
+				DisplayName string `json:"display_name"`
+				Transport   string `json:"transport"`
+				Host        string `json:"host"`
+				Port        string `json:"port"`
+			}{DisplayName: "Phone", Transport: "lan", Host: "0.0.0.0", Port: "8766"}
+		}
+		if req.DisplayName == "" {
+			req.DisplayName = "Phone"
+		}
+		if req.Transport == "" {
+			req.Transport = "lan"
+		}
+		if req.Host == "" {
+			req.Host = "0.0.0.0"
+		}
+		if req.Port == "" {
+			req.Port = fmt.Sprintf("%d", agentLoop.Config().Gateway.Port)
+		}
+
+		invitation, err := pairing.CreatePairingInvitation(db, podID, req.Transport, req.Host, req.Port, req.DisplayName)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "pairing_error", err.Error())
+			return
+		}
+
+		jsonResponse(w, http.StatusOK, invitation)
+	}))
+
+	// Legacy: POST /v1/pairing/start — kept for backward compatibility.
 	mux.HandleFunc("/v1/pairing/start", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -2594,6 +2660,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
 			return
 		}
+		workspace := agentLoop.Config().Agents.Defaults.Workspace
+		podID, _ := ghoststate.GetPodID(workspace)
+		port := fmt.Sprintf("%d", agentLoop.Config().Gateway.Port)
+
 		var req struct {
 			DisplayName string `json:"display_name"`
 		}
@@ -2601,22 +2671,53 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			req.DisplayName = "Phone"
 		}
 
-		token, pairingID, err := pairing.CreatePendingPairing(db, req.DisplayName)
+		invitation, err := pairing.CreatePairingInvitation(db, podID, "lan", "0.0.0.0", port, req.DisplayName)
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, "pairing_error", err.Error())
 			return
 		}
 
-		jsonResponse(w, http.StatusOK, map[string]interface{}{
-			"pairing_id": pairingID,
-			"token":      token,
-			"expires_in": int(pairing.TokenExpiry.Seconds()),
-		})
+		jsonResponse(w, http.StatusOK, invitation)
 	}))
 
-	// POST /v1/pairing/redeem — mobile app presents token, gets device credentials.
+	// POST /v1/pairing/complete — mobile app presents token + device metadata, gets credentials.
 	// Single-use. Token expires after 5 minutes.
-	// PUBLIC endpoint — no authentication required (the token itself is the authorization).
+	// PUBLIC endpoint — no auth required (the token itself is the authorization).
+	mux.HandleFunc("/v1/pairing/complete", publicHandler(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if db == nil {
+			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
+			return
+		}
+		var req struct {
+			Token       string `json:"token"`
+			DisplayName string `json:"display_name"`
+			Platform    string `json:"platform"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Token == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "token required")
+			return
+		}
+
+		result, err := pairing.RedeemPairing(db, req.Token, req.DisplayName, req.Platform)
+		if err != nil {
+			pairingErrorResponse(w, http.StatusUnauthorized, err)
+			return
+		}
+
+		// Include Ghost name in response.
+		workspace := agentLoop.Config().Agents.Defaults.Workspace
+		if id, err := ghoststate.LoadIdentity(workspace); err == nil && id != nil {
+			result.GhostName = id.GhostName
+		}
+
+		jsonResponse(w, http.StatusOK, result)
+	}))
+
+	// Legacy: POST /v1/pairing/redeem — kept for backward compatibility.
 	mux.HandleFunc("/v1/pairing/redeem", publicHandler(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -2634,9 +2735,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			return
 		}
 
-		result, err := pairing.RedeemPairing(db, req.Token)
+		result, err := pairing.RedeemPairing(db, req.Token, "Phone", "unknown")
 		if err != nil {
-			jsonError(w, http.StatusUnauthorized, "pairing_failed", err.Error())
+			pairingErrorResponse(w, http.StatusUnauthorized, err)
 			return
 		}
 
