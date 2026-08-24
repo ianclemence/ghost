@@ -39,6 +39,8 @@ The foundation for Ghost's persistent identity and appliance lifecycle is in pla
 
 **Exit criterion:** the mobile app can pair over LAN (in progress separately).
 
+**LAN pairing implemented:** secure device pairing is now available on the internal API (`/v1/pairing/*`). Tokens are short-lived, single-use, and SHA-256 hashed. Per-device credentials authenticate WebSocket and REST connections. See [TESTING.md](TESTING.md#5-pairing--device-auth) for test procedures.
+
 ---
 
 ## Phase 1 — Remote access (cloud relay)

@@ -123,7 +123,50 @@ Use this sequence to progressively stress-test Ghost from basic response quality
 
 ---
 
-## 5. Troubleshooting Commands
+## 5. Pairing & Device Auth
+
+Test the secure pairing flow and per-device authentication.
+
+### Pairing API
+
+```bash
+# Generate pairing token
+curl -s -X POST http://localhost:8766/v1/pairing/start \
+  -H "X-Ghost-Secret: $BRIDGE_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"display_name": "Test Phone"}'
+
+# Redeem token (single-use, expires in 5 minutes)
+curl -s -X POST http://localhost:8766/v1/pairing/redeem \
+  -H "Content-Type: application/json" \
+  -d '{"token": "<token_from_start>"}'
+
+# List paired devices
+curl -s http://localhost:8766/v1/pairing/devices \
+  -H "X-Ghost-Secret: $BRIDGE_SECRET"
+
+# Revoke a device
+curl -s -X POST http://localhost:8766/v1/pairing/revoke \
+  -H "X-Ghost-Secret: $BRIDGE_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"device_id": "<device_id>"}'
+```
+
+### Device auth (after pairing)
+
+```bash
+# Health check with device credentials
+curl -s http://localhost:8766/v1/health \
+  -H "X-Ghost-Device-ID: <device_id>" \
+  -H "X-Ghost-Credential: <credential>"
+
+# WebSocket with device credentials
+wscat -c "ws://localhost:8766/v1/ws?device_id=<device_id>&credential=<credential>&session=mobile:default"
+```
+
+---
+
+## 6. Troubleshooting Commands
 
 - `sudo lsof -i :8766`: Check if the Internal API port is occupied.
 - `sudo fuser -k 8766/tcp`: Force close any process hogging the API port.

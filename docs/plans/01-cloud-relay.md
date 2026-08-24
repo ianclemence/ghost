@@ -94,6 +94,8 @@ A device credential is generated at install/setup and stored in `.secrets.json` 
 3. The relay binds the app's account to the device.
 4. The app connects through the relay.
 
+**LAN pairing (implemented):** The Ghost device internal API (`/v1/pairing/*`) now supports secure pairing for LAN mode. This uses the same token pattern (short-lived, single-use, SHA-256 hashed) but authenticates directly against the device without the relay. The mobile app supports both paths — LAN pairing uses device credentials (`X-Ghost-Device-ID` + `X-Ghost-Credential`), relay pairing uses client tokens (`X-Ghost-Client-Id` + `X-Ghost-Client-Token`).
+
 ---
 
 ## Security

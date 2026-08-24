@@ -35,6 +35,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/pairing"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -49,6 +50,9 @@ var apiStartTime = time.Now()
 func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		secret := os.Getenv("BRIDGE_SECRET")
+		authenticated := false
+
+		// Try bridge secret.
 		if secret != "" {
 			got := r.URL.Query().Get("secret")
 			if got == "" {
@@ -57,10 +61,32 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 			if got == "" {
 				got = r.Header.Get("Authorization")
 			}
-			if got != secret && got != "Bearer "+secret {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
+			if got == secret || got == "Bearer "+secret {
+				authenticated = true
 			}
+		}
+
+		// Try per-device credential.
+		if !authenticated {
+			deviceID := r.URL.Query().Get("device_id")
+			if deviceID == "" {
+				deviceID = r.Header.Get("X-Ghost-Device-ID")
+			}
+			credential := r.URL.Query().Get("credential")
+			if credential == "" {
+				credential = r.Header.Get("X-Ghost-Credential")
+			}
+			if deviceID != "" && credential != "" {
+				if valid, _ := pairing.ValidateCredential(agentLoop.DB(), deviceID, credential); valid {
+					_ = pairing.UpdateLastSeen(agentLoop.DB(), deviceID)
+					authenticated = true
+				}
+			}
+		}
+
+		if !authenticated {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
 		}
 
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -186,7 +212,7 @@ func authMiddleware(secret string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Secret, X-Ghost-Session")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Secret, X-Ghost-Session, X-Ghost-Device-ID, X-Ghost-Credential")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -203,6 +229,43 @@ func authMiddleware(secret string, next http.HandlerFunc) http.HandlerFunc {
 		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		next(w, r)
+	}
+}
+
+// deviceAuthMiddleware accepts either the bridge secret or a per-device credential.
+func deviceAuthMiddleware(secret string, db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Secret, X-Ghost-Session, X-Ghost-Device-ID, X-Ghost-Credential")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// Try bridge secret first.
+		if secret != "" {
+			got := r.Header.Get("X-Ghost-Secret")
+			if got == "" {
+				got = r.Header.Get("Authorization")
+			}
+			if got == secret || got == "Bearer "+secret {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				next(w, r)
+				return
+			}
+		}
+		// Try per-device credential.
+		deviceID := r.Header.Get("X-Ghost-Device-ID")
+		credential := r.Header.Get("X-Ghost-Credential")
+		if deviceID != "" && credential != "" && db != nil {
+			if valid, _ := pairing.ValidateCredential(db, deviceID, credential); valid {
+				_ = pairing.UpdateLastSeen(db, deviceID)
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				next(w, r)
+				return
+			}
+		}
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 	}
 }
 
@@ -1022,7 +1085,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	mux := http.NewServeMux()
 
 	// ── 1. Health ─────────────────────────────────────────────────────────
-	mux.HandleFunc("/v1/health", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/health", deviceAuthMiddleware(secret, db, func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":    "ok",
 			"timestamp": time.Now().Unix(),
@@ -2496,6 +2559,149 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
 			"sessions": sessions,
 		})
+	}))
+
+	// ── Pairing ────────────────────────────────────────────────────────────
+	// Cleanup expired tokens on startup (best-effort).
+	if db != nil {
+		_ = pairing.CleanupExpired(db)
+	}
+
+	// POST /v1/pairing/start — generate a short-lived pairing token.
+	// Called by Ghost Pod web UI when user wants to pair a phone.
+	mux.HandleFunc("/v1/pairing/start", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if db == nil {
+			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
+			return
+		}
+		var req struct {
+			DisplayName string `json:"display_name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.DisplayName == "" {
+			req.DisplayName = "Phone"
+		}
+
+		token, pairingID, err := pairing.CreatePendingPairing(db, req.DisplayName)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "pairing_error", err.Error())
+			return
+		}
+
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"pairing_id": pairingID,
+			"token":      token,
+			"expires_in": int(pairing.TokenExpiry.Seconds()),
+		})
+	}))
+
+	// POST /v1/pairing/redeem — mobile app presents token, gets device credentials.
+	// Single-use. Token expires after 5 minutes.
+	mux.HandleFunc("/v1/pairing/redeem", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if db == nil {
+			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
+			return
+		}
+		var req struct {
+			Token string `json:"token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Token == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "token required")
+			return
+		}
+
+		result, err := pairing.RedeemPairing(db, req.Token)
+		if err != nil {
+			jsonError(w, http.StatusUnauthorized, "pairing_failed", err.Error())
+			return
+		}
+
+		jsonResponse(w, http.StatusOK, result)
+	}))
+
+	// POST /v1/pairing/revoke — revoke a paired device.
+	mux.HandleFunc("/v1/pairing/revoke", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if db == nil {
+			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
+			return
+		}
+		var req struct {
+			DeviceID string `json:"device_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.DeviceID == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "device_id required")
+			return
+		}
+
+		if err := pairing.RevokeDevice(db, req.DeviceID); err != nil {
+			jsonError(w, http.StatusNotFound, "not_found", err.Error())
+			return
+		}
+
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
+	}))
+
+	// GET /v1/pairing/devices — list all paired devices.
+	mux.HandleFunc("/v1/pairing/devices", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if db == nil {
+			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
+			return
+		}
+
+		devices, err := pairing.ListDevices(db)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "db_error", err.Error())
+			return
+		}
+		if devices == nil {
+			devices = []pairing.PairedDevice{}
+		}
+
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"devices": devices,
+		})
+	}))
+
+	// POST /v1/pairing/cancel — discard a pending pairing token.
+	mux.HandleFunc("/v1/pairing/cancel", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if db == nil {
+			jsonError(w, http.StatusInternalServerError, "internal_error", "database not available")
+			return
+		}
+		var req struct {
+			PairingID string `json:"pairing_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.PairingID == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "pairing_id required")
+			return
+		}
+
+		_, err := db.Exec(`DELETE FROM pending_pairings WHERE id = ?`, req.PairingID)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "db_error", err.Error())
+			return
+		}
+
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
 	}))
 
 	// ── WebSocket ─────────────────────────────────────────────────────────

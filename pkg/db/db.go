@@ -101,6 +101,25 @@ func (db *DB) initSchema() error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			source TEXT
 		)`,
+		// ── Pairing tables ──────────────────────────────────────────────
+		`CREATE TABLE IF NOT EXISTS pending_pairings (
+			id TEXT PRIMARY KEY,
+			token_hash TEXT NOT NULL UNIQUE,
+			display_name TEXT NOT NULL DEFAULT 'Phone',
+			expires_at DATETIME NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS paired_devices (
+			id TEXT PRIMARY KEY,
+			device_id TEXT NOT NULL UNIQUE,
+			display_name TEXT NOT NULL DEFAULT 'Phone',
+			credential_hash TEXT NOT NULL,
+			paired_at DATETIME NOT NULL,
+			last_seen_at DATETIME,
+			revoked_at DATETIME
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_paired_devices_device_id ON paired_devices(device_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_pending_pairings_token_hash ON pending_pairings(token_hash)`,
 	}
 
 	for _, query := range queries {
