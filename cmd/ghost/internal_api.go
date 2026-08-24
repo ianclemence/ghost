@@ -269,6 +269,22 @@ func deviceAuthMiddleware(secret string, db *sql.DB, next http.HandlerFunc) http
 	}
 }
 
+// publicHandler wraps a handler with CORS headers but no authentication.
+// Used for endpoints that must be accessible without credentials (e.g., pairing/redeem).
+func publicHandler(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		next(w, r)
+	}
+}
+
 func jsonResponse(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -2600,7 +2616,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 
 	// POST /v1/pairing/redeem — mobile app presents token, gets device credentials.
 	// Single-use. Token expires after 5 minutes.
-	mux.HandleFunc("/v1/pairing/redeem", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	// PUBLIC endpoint — no authentication required (the token itself is the authorization).
+	mux.HandleFunc("/v1/pairing/redeem", publicHandler(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
