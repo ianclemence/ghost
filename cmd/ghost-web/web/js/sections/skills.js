@@ -11,7 +11,7 @@ async function loadSkills(container) {
   const listEl = GhostUI.h('div', { className: 'ghost-list' });
 
   try {
-    const data = await GhostAPI.get('/api/admin/skills');
+    const data = await GhostAPI.proxyGet('/v1/skills');
     const skills = data.skills || [];
 
     if (skills.length === 0) {
