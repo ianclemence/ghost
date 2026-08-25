@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -694,6 +695,11 @@ func gatewayCmd() {
 		os.Exit(1)
 	}
 
+	// Self-heal: if config.json leaked secrets, move them to .secrets.json
+	// and rewrite config.json clean.
+	configPath := getConfigPath()
+	healSecretsBoundary(configPath, cfg)
+
 	provider, err := providers.CreateProvider(cfg)
 	if err != nil {
 		fmt.Printf("Error creating provider: %v\n", err)
@@ -1333,6 +1339,38 @@ func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace
 
 func loadConfig() (*config.Config, error) {
 	return config.LoadConfig(getConfigPath())
+}
+
+// healSecretsBoundary checks if config.json contains secrets that should only
+// be in .secrets.json. If found, it saves the config (which strips secrets via
+// SaveConfig) to restore the clean boundary.
+func healSecretsBoundary(configPath string, cfg *config.Config) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return
+	}
+	gw, ok := raw["gateway"]
+	if !ok {
+		return
+	}
+	var gwCfg map[string]json.RawMessage
+	if err := json.Unmarshal(gw, &gwCfg); err != nil {
+		return
+	}
+	if _, has := gwCfg["bridge_secret"]; !has {
+		return
+	}
+	// config.json has a bridge_secret — SaveConfig will strip it and write
+	// the secret to .secrets.json.
+	if err := config.SaveConfig(configPath, cfg); err != nil {
+		fmt.Printf("⚠️  Failed to clean secrets boundary: %v\n", err)
+	} else {
+		fmt.Println("✅ Cleaned leaked secrets from config.json")
+	}
 }
 
 func cronCmd() {
