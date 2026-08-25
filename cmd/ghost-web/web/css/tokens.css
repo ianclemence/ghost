@@ -1,0 +1,111 @@
+/* Ghost Design Tokens — matches mobile design system */
+:root {
+  /* Background stack */
+  --ghost-bg-base: #FAFAF7;
+  --ghost-bg-raised: #F5F3EE;
+  --ghost-bg-sunken: #EDEBE6;
+
+  /* Text stack */
+  --ghost-text-primary: #1A1611;
+  --ghost-text-secondary: #6B6560;
+  --ghost-text-tertiary: #9C9590;
+  --ghost-text-inverse: #FAFAF7;
+
+  /* Accent — muted sage green */
+  --ghost-accent: #3D7A5F;
+  --ghost-accent-soft: rgba(61,122,95,0.08);
+  --ghost-accent-medium: rgba(61,122,95,0.15);
+
+  /* Status */
+  --ghost-success: #3D7A5F;
+  --ghost-warning: #B07C2E;
+  --ghost-error: #C24B3C;
+  --ghost-info: #5A7A9A;
+
+  /* Borders */
+  --ghost-border-subtle: rgba(26,22,17,0.06);
+  --ghost-border-default: rgba(26,22,17,0.12);
+  --ghost-border-strong: rgba(26,22,17,0.20);
+
+  /* Status card tones */
+  --ghost-error-fg: #C24B3C;
+  --ghost-error-bg: rgba(194,75,60,0.10);
+  --ghost-error-border: rgba(194,75,60,0.30);
+  --ghost-warning-fg: #B07C2E;
+  --ghost-warning-bg: rgba(176,124,46,0.10);
+  --ghost-warning-border: rgba(176,124,46,0.30);
+
+  /* Modal */
+  --ghost-modal-backdrop: rgba(26,22,17,0.4);
+
+  /* Spacing (4px base) */
+  --space-xxs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-xxl: 24px;
+  --space-xxxl: 32px;
+  --space-huge: 48px;
+  --space-section: 64px;
+
+  /* Border radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-xxl: 24px;
+  --radius-full: 999px;
+
+  /* Typography */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+
+  /* Type scale */
+  --type-display-size: 34px;
+  --type-display-height: 41px;
+  --type-display-weight: 600;
+  --type-display-spacing: -0.5px;
+
+  --type-largetitle-size: 28px;
+  --type-largetitle-height: 34px;
+  --type-largetitle-weight: 600;
+  --type-largetitle-spacing: -0.3px;
+
+  --type-title-size: 22px;
+  --type-title-height: 28px;
+  --type-title-weight: 600;
+
+  --type-headline-size: 17px;
+  --type-headline-height: 22px;
+  --type-headline-weight: 600;
+
+  --type-body-size: 16px;
+  --type-body-height: 24px;
+  --type-body-weight: 400;
+
+  --type-callout-size: 15px;
+  --type-callout-height: 21px;
+  --type-callout-weight: 400;
+
+  --type-subhead-size: 13px;
+  --type-subhead-height: 18px;
+  --type-subhead-weight: 400;
+
+  --type-footnote-size: 12px;
+  --type-footnote-height: 16px;
+  --type-footnote-weight: 400;
+
+  --type-caption-size: 11px;
+  --type-caption-height: 14px;
+  --type-caption-weight: 500;
+  --type-caption-spacing: 0.3px;
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --screen-padding: 20px;
+  --content-max-width: 720px;
+}

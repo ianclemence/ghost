@@ -1,0 +1,88 @@
+/* Ghost Wizard Styles */
+#wizard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-xxl);
+}
+
+.wizard-screen {
+  width: 100%;
+  max-width: 440px;
+  text-align: center;
+}
+
+.wizard-brand {
+  margin-bottom: var(--space-xxl);
+}
+
+.wizard-brand .ghost-mark-xl {
+  width: 64px;
+  height: 64px;
+  color: var(--ghost-text-primary);
+}
+
+.wizard-title {
+  margin-bottom: var(--space-md);
+}
+
+.wizard-tagline {
+  margin-bottom: var(--space-sm);
+}
+
+.wizard-desc {
+  max-width: 360px;
+  margin: 0 auto var(--space-xl);
+}
+
+.wizard-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-xxl);
+  align-items: center;
+}
+
+.wizard-actions .ghost-btn {
+  min-width: 200px;
+}
+
+/* Progress */
+.wizard-progress {
+  text-align: left;
+  max-width: 280px;
+  margin: var(--space-xl) auto 0;
+}
+
+.wizard-progress-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0;
+}
+
+.wizard-progress-check {
+  width: 20px;
+  text-align: center;
+  color: var(--ghost-text-tertiary);
+  font-size: 14px;
+}
+
+.wizard-progress-check.done {
+  color: var(--ghost-success);
+}
+
+/* Input styling in wizard */
+.wizard-screen .ghost-input {
+  text-align: center;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  #wizard {
+    padding: var(--space-lg);
+    align-items: flex-start;
+    padding-top: var(--space-huge);
+  }
+}

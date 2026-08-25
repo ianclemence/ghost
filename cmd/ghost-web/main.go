@@ -329,6 +329,9 @@ func main() {
 	mux.HandleFunc("/api/admin/auth/meta", handleAdminMeta)
 	mux.HandleFunc("/api/admin/auth/failed-logins", handleFailedLogins)
 
+	// Gateway API proxy — forwards requests to the Ghost gateway (port 8766)
+	mux.HandleFunc("/api/proxy/", handleGatewayProxy)
+
 	// Try ports in order: 80, 8080, 8888, 9090
 	ports := []int{*port, 8080, 8888, 9090}
 	if *port != 80 {
@@ -420,6 +423,87 @@ func handleWizardIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write(data)
+}
+
+// handleGatewayProxy forwards requests to the Ghost gateway API on localhost:8766.
+// The gateway authenticates via X-Ghost-Secret (bridge secret) which is read from
+// the local config. This keeps the bridge secret server-side, never exposed to browsers.
+func handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
+	// Load config to get bridge secret and gateway port
+	cfgPath := filepath.Join(fb.GhostDir, "config", "config.json")
+	cfg, err := config.LoadConfig(cfgPath)
+	if err != nil {
+		http.Error(w, `{"error":"failed to load config"}`, http.StatusInternalServerError)
+		return
+	}
+
+	gatewayPort := cfg.Gateway.Port
+	if gatewayPort == 0 {
+		gatewayPort = 8766
+	}
+	bridgeSecret := cfg.Gateway.BridgeSecret
+
+	// Strip /api/proxy prefix to get the gateway path
+	gatewayPath := strings.TrimPrefix(r.URL.Path, "/api/proxy")
+	if gatewayPath == "" {
+		gatewayPath = "/"
+	}
+	if r.URL.RawQuery != "" {
+		gatewayPath += "?" + r.URL.RawQuery
+	}
+
+	gatewayURL := fmt.Sprintf("http://127.0.0.1:%d%s", gatewayPort, gatewayPath)
+
+	// Create the proxied request
+	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, gatewayURL, r.Body)
+	if err != nil {
+		http.Error(w, `{"error":"failed to create proxy request"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Copy headers from original request
+	for key, values := range r.Header {
+		for _, v := range values {
+			proxyReq.Header.Add(key, v)
+		}
+	}
+
+	// Inject bridge secret for gateway authentication
+	if bridgeSecret != "" {
+		proxyReq.Header.Set("X-Ghost-Secret", bridgeSecret)
+	}
+
+	// Execute the request
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(proxyReq)
+	if err != nil {
+		http.Error(w, `{"error":"gateway unreachable"}`, http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy response headers
+	for key, values := range resp.Header {
+		for _, v := range values {
+			w.Header().Add(key, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+
+	// Stream response body (supports SSE)
+	buf := make([]byte, 4096)
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			w.Write(buf[:n])
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+		if readErr != nil {
+			break
+		}
+	}
 }
 
 func handleScanWiFi(w http.ResponseWriter, r *http.Request) {
