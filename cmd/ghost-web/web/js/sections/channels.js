@@ -12,10 +12,11 @@ async function loadChannels(container) {
 
   try {
     const data = await GhostAPI.proxyGet('/v1/channels/status');
+    const channels = data.channels || data;
     const channelNames = ['telegram', 'discord', 'slack', 'email', 'whatsapp'];
 
     for (const name of channelNames) {
-      const ch = data[name] || {};
+      const ch = channels[name] || {};
       const r = GhostUI.h('div', { className: 'ghost-row' });
       const c = GhostUI.h('div', { className: 'ghost-row-content' });
       c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, name.charAt(0).toUpperCase() + name.slice(1)));
