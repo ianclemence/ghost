@@ -54,7 +54,7 @@ function showChangePassword() {
       if (newInput.value !== confirmInput.value) { GhostUI.toast('Passwords don\'t match.'); return; }
       if (newInput.value.length < 8) { GhostUI.toast('Password must be at least 8 characters.'); return; }
       try {
-        await GhostAPI.post('/api/admin/password', { current_password: currentInput.value, new_password: newInput.value });
+        await GhostAPI.post('/api/admin/password', { current: currentInput.value, new: newInput.value, confirm: confirmInput.value });
         GhostUI.toast('Password changed.');
         e.target.closest('.ghost-modal-backdrop').remove();
       } catch (err) {

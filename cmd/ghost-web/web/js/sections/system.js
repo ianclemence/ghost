@@ -9,10 +9,9 @@ async function loadSystem(container) {
   section.appendChild(GhostUI.h('div', { className: 'page-subtitle' }, 'Your Ghost Pod.'));
 
   // Load data
-  const [healthRes, statsRes, doctorRes] = await Promise.allSettled([
-    GhostAPI.proxyGet('/v1/health'),
-    GhostAPI.proxyGet('/v1/stats'),
-    GhostAPI.proxyGet('/v1/doctor')
+  const [statsRes, doctorRes] = await Promise.allSettled([
+    GhostAPI.get('/api/admin/status'),
+    GhostAPI.get('/api/admin/doctor')
   ]);
 
   // Version and info
@@ -20,23 +19,23 @@ async function loadSystem(container) {
   infoSection.appendChild(GhostUI.h('div', { className: 'section-label' }, 'About'));
   const infoList = GhostUI.h('div', { className: 'ghost-list' });
 
-  if (healthRes.status === 'fulfilled') {
-    const h = healthRes.value;
-    infoList.appendChild(GhostUI.row('Ghost version', h.version || 'Unknown'));
-    if (h.uptime_s) {
-      const days = Math.floor(h.uptime_s / 86400);
-      const hours = Math.floor((h.uptime_s % 86400) / 3600);
-      infoList.appendChild(GhostUI.row('Uptime', days > 0 ? `${days}d ${hours}h` : `${hours}h`));
-    }
-  }
-
   if (statsRes.status === 'fulfilled') {
     const s = statsRes.value;
+    if (s.version) infoList.appendChild(GhostUI.row('Ghost version', s.version));
     if (s.hostname) infoList.appendChild(GhostUI.row('Hostname', s.hostname));
-    if (s.memory) infoList.appendChild(GhostUI.row('Memory', s.memory));
-    if (s.disk) infoList.appendChild(GhostUI.row('Disk', s.disk));
-    if (s.cpu_temp) infoList.appendChild(GhostUI.row('Temperature', s.cpu_temp));
     if (s.ip) infoList.appendChild(GhostUI.row('IP address', s.ip));
+    if (s.memory) {
+      const usedGB = (s.memory.used / (1024 * 1024 * 1024)).toFixed(1);
+      const totalGB = (s.memory.total / (1024 * 1024 * 1024)).toFixed(1);
+      infoList.appendChild(GhostUI.row('Memory', `${usedGB}GB / ${totalGB}GB`));
+    }
+    if (s.disk) {
+      const usedGB = (s.disk.used / (1024 * 1024 * 1024)).toFixed(1);
+      const totalGB = (s.disk.total / (1024 * 1024 * 1024)).toFixed(1);
+      infoList.appendChild(GhostUI.row('Disk', `${usedGB}GB / ${totalGB}GB`));
+    }
+    if (s.cpu_percent) infoList.appendChild(GhostUI.row('CPU', `${s.cpu_percent.toFixed(1)}%`));
+    if (s.load) infoList.appendChild(GhostUI.row('Load', `${s.load.one} ${s.load.five} ${s.load.fifteen}`));
   }
 
   infoSection.appendChild(infoList);
@@ -47,19 +46,28 @@ async function loadSystem(container) {
   svcSection.appendChild(GhostUI.h('div', { className: 'section-label' }, 'Services'));
   const svcList = GhostUI.h('div', { className: 'ghost-list' });
 
-  const services = [
-    { name: 'Ghost', status: statsRes.status === 'fulfilled' ? (statsRes.value.ghost_svc || 'active') : 'unknown' },
-    { name: 'Ollama', status: healthRes.status === 'fulfilled' ? 'active' : 'unknown' },
-    { name: 'Ghost Web', status: 'active' },
-  ];
-
-  for (const svc of services) {
-    const r = GhostUI.h('div', { className: 'ghost-row' });
-    r.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, svc.name));
-    const badgeText = svc.status === 'active' ? 'Running' : 'Unknown';
-    const badgeVariant = svc.status === 'active' ? 'success' : 'neutral';
-    r.appendChild(GhostUI.badge(badgeText, badgeVariant));
-    svcList.appendChild(r);
+  if (statsRes.status === 'fulfilled' && statsRes.value.services) {
+    for (const svc of statsRes.value.services) {
+      const r = GhostUI.h('div', { className: 'ghost-row' });
+      r.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, svc.name));
+      const badgeText = svc.active ? 'Running' : 'Stopped';
+      const badgeVariant = svc.active ? 'success' : 'error';
+      r.appendChild(GhostUI.badge(badgeText, badgeVariant));
+      svcList.appendChild(r);
+    }
+  } else {
+    // Fallback
+    const services = [
+      { name: 'Ghost', active: true },
+      { name: 'Ollama', active: true },
+      { name: 'Ghost Web', active: true },
+    ];
+    for (const svc of services) {
+      const r = GhostUI.h('div', { className: 'ghost-row' });
+      r.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, svc.name));
+      r.appendChild(GhostUI.badge(svc.active ? 'Running' : 'Unknown', svc.active ? 'success' : 'neutral'));
+      svcList.appendChild(r);
+    }
   }
   svcSection.appendChild(svcList);
   section.appendChild(svcSection);
@@ -76,12 +84,26 @@ async function loadSystem(container) {
       const r = GhostUI.h('div', { className: 'ghost-row' });
       r.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, check.name));
       const variant = check.status === 'ok' ? 'success' : check.status === 'warning' ? 'warning' : 'error';
-      r.appendChild(GhostUI.badge(check.status === 'ok' ? 'Healthy' : check.status, variant));
+      r.appendChild(GhostUI.badge(check.status === 'ok' ? 'Healthy' : check.status === 'fail' ? 'Error' : check.status, variant));
+      if (check.message) r.appendChild(GhostUI.h('div', { className: 'type-footnote text-tertiary', style: 'margin-left:auto' }, check.message));
       diagList.appendChild(r);
     }
     diagSection.appendChild(diagList);
     section.appendChild(diagSection);
   }
+
+  // Actions
+  const actions = GhostUI.h('div', { style: 'margin-top:var(--space-xxl);display:flex;gap:var(--space-sm)' });
+  actions.appendChild(GhostUI.btn('Reboot', 'danger', async () => {
+    if (!confirm('Reboot the system?')) return;
+    try {
+      await GhostAPI.post('/api/admin/reboot');
+      GhostUI.toast('Rebooting...');
+    } catch (e) {
+      GhostUI.toast('Failed to reboot.');
+    }
+  }));
+  section.appendChild(actions);
 
   container.appendChild(section);
 }
