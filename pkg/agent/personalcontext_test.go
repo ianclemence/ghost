@@ -31,7 +31,9 @@ func newTestAgentLoop(t *testing.T, workspace string) *AgentLoop {
 		},
 	}
 	msgBus := bus.NewMessageBus()
-	return NewAgentLoop(cfg, msgBus, &mockProvider{})
+	al := NewAgentLoop(cfg, msgBus, &mockProvider{})
+	t.Cleanup(func() { al.Stop() })
+	return al
 }
 
 func runTurn(t *testing.T, al *AgentLoop, content, sessionKey string) string {

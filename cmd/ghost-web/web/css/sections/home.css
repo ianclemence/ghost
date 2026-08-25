@@ -22,6 +22,7 @@
 
 /* Activity feed */
 .home-activity {
+  margin-top: var(--space-xxxl);
   margin-bottom: var(--space-xxxl);
 }
 

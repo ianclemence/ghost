@@ -76,6 +76,7 @@ type AgentLoop struct {
 	// agent. It is a derived-memory layer: if opening it fails, the agent still
 	// runs and extraction is skipped rather than blocking the turn.
 	pcStore *personalcontext.Store
+	db      *db.DB
 }
 
 // processOptions configures how a message is processed
@@ -443,6 +444,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		evolution:        evolutionMgr,
 		steering:         NewSteeringManager(),
 		pcStore:          pcStore,
+		db:               database,
 	}
 
 	cmdRuntime := &commands.Runtime{
@@ -560,6 +562,9 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 func (al *AgentLoop) Stop() {
 	al.running.Store(false)
 	al.curator.Stop()
+	if al.db != nil {
+		al.db.Close()
+	}
 }
 
 func (al *AgentLoop) RegisterTool(tool tools.Tool) {

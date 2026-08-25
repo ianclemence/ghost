@@ -29,6 +29,11 @@ const GhostApp = (() => {
     main.appendChild(content);
     app.appendChild(main);
     document.body.appendChild(app);
+
+    main.addEventListener('click', (e) => {
+      closeMobileSidebar();
+    });
+
     loadCurrentSection();
   }
 
@@ -66,7 +71,8 @@ const GhostApp = (() => {
         const link = GhostUI.h('a', {
           className: 'sidebar-link',
           href: '#' + item.id,
-          dataset: { section: item.id }
+          dataset: { section: item.id },
+          onClick: () => closeMobileSidebar()
         }, item.label);
         sidebar.appendChild(link);
       }
@@ -77,7 +83,7 @@ const GhostApp = (() => {
 
   function renderHeader() {
     const header = GhostUI.h('div', { id: 'ghost-header' });
-    const hamburger = GhostUI.h('button', { id: 'sidebar-toggle', className: 'ghost-btn-ghost', onClick: toggleMobileSidebar }, '\u2630');
+    const hamburger = GhostUI.h('button', { id: 'sidebar-toggle', className: 'ghost-btn-ghost', onClick: (e) => { e.stopPropagation(); toggleMobileSidebar(); } }, '\u2630');
     header.appendChild(hamburger);
     const title = GhostUI.h('div', { id: 'header-title' });
     title.appendChild(GhostUI.h('span', { className: 'type-title' }, 'Ghost'));
@@ -87,6 +93,11 @@ const GhostApp = (() => {
 
   function toggleMobileSidebar() {
     document.getElementById('ghost-sidebar').classList.toggle('open');
+  }
+
+  function closeMobileSidebar() {
+    const sidebar = document.getElementById('ghost-sidebar');
+    if (sidebar) sidebar.classList.remove('open');
   }
 
   function updateSidebarActive(section) {

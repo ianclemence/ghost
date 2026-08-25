@@ -83,7 +83,9 @@ func newTestAgentLoopWithProvider(t *testing.T, workspace string, provider provi
 		},
 	}
 	msgBus := bus.NewMessageBus()
-	return NewAgentLoop(cfg, msgBus, provider)
+	al := NewAgentLoop(cfg, msgBus, provider)
+	t.Cleanup(func() { al.Stop() })
+	return al
 }
 
 // TestContextGetToolRegistered verifies context_get is exposed through the
