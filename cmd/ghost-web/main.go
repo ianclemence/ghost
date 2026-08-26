@@ -326,6 +326,7 @@ func main() {
 	mux.HandleFunc("/api/admin/toolsets", handleToolsetsGet)
 	mux.HandleFunc("/api/admin/toolsets/save", handleToolsetsSet)
 	mux.HandleFunc("/api/admin/auth/meta", handleAdminMeta)
+	mux.HandleFunc("/api/admin/auth/check", handleAuthCheck)
 	mux.HandleFunc("/api/admin/auth/failed-logins", handleFailedLogins)
 
 	// Gateway API proxy — forwards requests to the Ghost gateway (port 8766)

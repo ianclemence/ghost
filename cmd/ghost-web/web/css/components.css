@@ -317,3 +317,25 @@ textarea.ghost-input {
   color: var(--ghost-text-tertiary);
   margin-top: var(--space-xs);
 }
+
+/* Login screen */
+.login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--ghost-bg);
+}
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  padding: var(--space-xxl);
+  text-align: center;
+}
+.login-logo {
+  margin-bottom: var(--space-md);
+}
+.login-logo svg {
+  width: 64px;
+  height: 64px;
+}

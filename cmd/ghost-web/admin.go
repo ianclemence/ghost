@@ -65,6 +65,13 @@ func systemdActive(unit string) (active, enabled bool) {
 	return
 }
 
+func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
 func cpuUsagePercent() float64 {
 	readCPU := func() (idle, total uint64) {
 		b, err := os.ReadFile("/proc/stat")

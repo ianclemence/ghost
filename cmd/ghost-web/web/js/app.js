@@ -121,6 +121,7 @@ const GhostApp = (() => {
   }
 
   function start() {
+    GhostAPI.setOnAuthExpired(() => showLoginScreen());
     window.addEventListener('hashchange', loadCurrentSection);
     renderShell();
   }
@@ -142,9 +143,65 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (status.needs_setup) {
       GhostApp.startWizard();
     } else {
-      GhostApp.start();
+      // Check if session is valid before showing dashboard
+      try {
+        await GhostAPI.get('/api/admin/auth/check');
+        GhostApp.start();
+      } catch (e) {
+        // Session invalid — show login screen
+        showLoginScreen();
+      }
     }
   } catch (e) {
     GhostApp.start();
   }
 });
+
+function showLoginScreen() {
+  document.body.innerHTML = '';
+  const container = GhostUI.h('div', { className: 'login-screen' });
+  const card = GhostUI.h('div', { className: 'login-card' });
+
+  card.appendChild(GhostUI.h('div', { className: 'login-logo' }, GhostUI.ghostMark('lg')));
+  card.appendChild(GhostUI.h('div', { className: 'type-headline', style: 'margin-bottom:var(--space-lg)' }, 'Ghost'));
+  card.appendChild(GhostUI.h('div', { className: 'type-body text-secondary', style: 'margin-bottom:var(--space-xl)' }, 'Enter your admin password to continue.'));
+
+  const input = GhostUI.input('Admin password', 'password');
+  input.style.marginBottom = 'var(--space-md)');
+  card.appendChild(input);
+
+  const errorMsg = GhostUI.h('div', { className: 'type-footnote', style: 'color:var(--color-error);margin-bottom:var(--space-md);min-height:1.2em' });
+  card.appendChild(errorMsg);
+
+  const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', style: 'width:100%' }, 'Log in');
+  card.appendChild(btn);
+
+  const doLogin = async () => {
+    errorMsg.textContent = '';
+    const pw = input.value.trim();
+    if (!pw) { errorMsg.textContent = 'Enter the admin password.'; return; }
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        location.reload();
+      } else {
+        errorMsg.textContent = data.error || 'Login failed.';
+      }
+    } catch (e) {
+      errorMsg.textContent = 'Login failed.';
+    }
+  };
+
+  btn.addEventListener('click', doLogin);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+
+  container.appendChild(card);
+  document.body.appendChild(container);
+  input.focus();
+}
