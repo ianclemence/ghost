@@ -481,7 +481,7 @@ const recoveryHTML = `<!DOCTYPE html>
         <div class="card">
             <h2>Reset admin password</h2>
             <p class="subtitle" style="font-size:14px;margin-bottom:var(--s-4);">Forgot your admin password? Set a new one. No current password needed.</p>
-            <input class="field-input" id="rp-password" type="password" placeholder="New admin password (at least 8 characters)" autocomplete="off">
+            <input class="field-input" id="rp-password" type="password" placeholder="New admin password (at least 12 characters)" autocomplete="off">
             <input class="field-input" id="rp-confirm" type="password" placeholder="Confirm new password" autocomplete="off" style="margin-top:var(--s-3);">
             <div class="actions" style="margin-top:var(--s-4);">
                 <button class="btn" id="btn-reset-password" type="button">Set new password</button>
