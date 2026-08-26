@@ -9,6 +9,7 @@
 
 - **[Product Strategy](docs/PRODUCT.md)** — who Ghost is for, what it sells, and how it makes money.
 - **[Roadmap](docs/ROADMAP.md)** — the phased plan from the foundation for persistent identity to a personal AI you own.
+- **[Connection Flow](docs/CONNECTION_FLOW.md)** — how users set up Ghost and connect devices.
 - **[Implementation plans](docs/plans/)** — detailed plans for the cloud relay, install experience, OTA updates, and telemetry.
 - **[Testing](docs/TESTING.md)** — how to test Ghost.
 
@@ -79,6 +80,58 @@ hardware. You don't have to think about models; Ghost handles it.
 
 ---
 
+## Security Architecture
+
+Ghost uses a layered security model designed for a self-hosted appliance.
+
+### Authentication
+
+| Mechanism | Purpose | Used By |
+|-----------|---------|---------|
+| Owner password | Protects the web admin dashboard | Web browser |
+| Device credential | Authenticates mobile app and API access | Mobile app, CLI tools |
+| Bridge secret | Internal credential for web proxy and relay | Web proxy, relay client (never exposed to browser) |
+
+### Secrets Storage
+
+| Secret | Location | Permissions |
+|--------|----------|-------------|
+| Admin password | `/var/ghost/data/admin.hash` | `0600` |
+| API keys, channel tokens | `/var/ghost/config/.secrets.json` | `0600` |
+| Device credentials | SQLite database | Database-level |
+| Pairing tokens | SQLite database | Database-level |
+
+### How Pairing Works
+
+1. Owner opens admin dashboard → Devices → "Connect another device"
+2. Web UI generates a QR code (`ghost://pair?v=1&pod=...&token=...`)
+3. Mobile app scans QR code (token expires in 5 minutes)
+4. Ghost validates token (atomic delete to prevent replay)
+5. Ghost issues a unique device credential (shown once, stored in SecureStore)
+6. All future requests use `X-Ghost-Device-ID` + `X-Ghost-Credential` headers
+
+After pairing, the QR token disappears from the equation. Each device gets its own unique credential.
+
+### What the Bridge Secret Is (Internal Only)
+
+The bridge secret is an **internal credential** used by:
+- Web UI proxy (server-side injection, never exposed to browser)
+- Relay client (injected locally, relay never sees it)
+- CLI tools (for local API calls)
+
+The mobile app does **NOT** use the bridge secret. It uses per-device credentials instead.
+
+### Directory Permissions
+
+| Directory | Permissions | Contents |
+|-----------|-------------|----------|
+| `/var/ghost/` | `0700` | Ghost installation root |
+| `/var/ghost/config/` | `0700` | Configuration and secrets |
+| `/var/ghost/data/` | `0700` | Admin password hash, metadata |
+| `/var/ghost/workspace/` | `0755` | Skills, memory, sessions |
+
+---
+
 ## Hardware
 
 Ghost runs on any Linux device and is not tied to any particular board. Think of
@@ -142,7 +195,7 @@ sudo reboot
 
 After reboot, open `http://<pi-ip>` on your phone to complete setup:
 1. Connect to WiFi
-2. Create admin password
+2. Create admin password (minimum 12 characters)
 3. Select AI model
 4. Connect the Ghost app
 
@@ -164,10 +217,12 @@ reach it from your phone at any time at `http://<pi-ip>`:
     management (list, pull, delete)
   - **Channels** — Telegram, Discord, and Email bot configuration plus the
     heartbeat interval
-  - **System** — hostname, backup download, admin password, and reboot
+  - **Devices** — paired mobile devices, connect new devices via QR code
+  - **Security** — admin password management
   - **Skills** — browse installed skills, edit bundled skills (edited
     skills are marked and never overwritten by updates), resync bundled
     skills, and install more from any public GitHub repo (including skills.sh)
+  - **System** — hostname, backup download, admin password, and reboot
 
 The wizard and `ghost` are separate: wizard on port 80, API on port 8766.
 
@@ -260,6 +315,15 @@ chmod +x setup.sh
 | `ghost skills` | Manage skills |
 | `ghost version` | Show version info |
 
+### Relay Commands
+
+| Command | Description |
+|---------|-------------|
+| `ghost relay run` | Connect to relay server for remote access |
+| `ghost relay pair` | Generate pairing token for phone |
+| `ghost relay clients` | List paired clients |
+| `ghost relay revoke <token>` | Revoke client access |
+
 ### Setup
 
 | Command | Description |
@@ -270,11 +334,24 @@ chmod +x setup.sh
 
 ## Configuration
 
+### Configuration Precedence
+
+Ghost uses a clear precedence model for configuration:
+
+1. **Environment variables** (highest priority) — runtime overrides
+2. **`.secrets.json`** — persistent secrets (API keys, channel tokens)
+3. **`config.json`** — persistent configuration (model, providers, channels)
+4. **Defaults** (lowest priority)
+
 ### `.secrets.json` (Secrets)
 
 Secrets (API keys, channel tokens) are stored in `.secrets.json` with `0600` permissions. They are configured through the admin dashboard, not by editing files directly.
 
+**Never edit `.secrets.json` manually** — use the admin dashboard to configure providers and channels.
+
 ### `.env` (System Overrides)
+
+The `.env` file contains only system-level configuration, not secrets:
 
 ```bash
 cp .env.example .env
@@ -366,11 +443,16 @@ If Ghost fails to start, enable recovery mode:
 GHOST_RECOVERY_MODE=1 ghost gateway
 ```
 
-This starts a web UI at `http://ghost.local:8766` with:
+This starts a web UI at `http://127.0.0.1:8766` (localhost only) with:
 - System status
 - Logs viewer
 - Config reset option
+- Password reset
 - Restart button
+
+**Security note:** Recovery mode is bound to `127.0.0.1` — it cannot be accessed from other devices on the network. This ensures only someone with physical access to the device can use recovery.
+
+The recovery server auto-shuts down after 15 minutes.
 
 ---
 
@@ -383,13 +465,27 @@ Ghost exposes a unified API on port **8766**:
 * Voice
 * Remote control
 
-### API Setup
+### Connecting the Mobile App
 
-The mobile app connects via device pairing (scan QR code from the admin dashboard). No manual API key configuration is needed.
+The mobile app connects via device pairing — no manual API key configuration is needed.
 
-```env
-GHOST_API_PORT=8766
+#### Same Network (LAN)
+
+1. Open admin dashboard at `http://<pi-ip>` on any browser
+2. Log in with your admin password
+3. Navigate to Devices → "Connect another device"
+4. Scan the QR code with the Ghost app
+5. The app is now connected
+
+#### Remote (Relay)
+
+For when you're away from home:
+
+```bash
+ghost relay pair
 ```
+
+This outputs a URI that you open on your phone. The relay tunnels traffic back to your Ghost device.
 
 ### Run Mobile App
 
@@ -424,9 +520,44 @@ Key HTTP endpoints the app uses on port `8766`:
 | `/v1/doctor` | GET | Diagnostics and service health checks |
 | `/v1/tools` | GET | List available skills/tools |
 
-WebSocket messages on `/ws` are broadcast per channel; `mobile` receives
+All mobile API endpoints require device credentials (`X-Ghost-Device-ID` + `X-Ghost-Credential` headers).
+
+WebSocket messages on `/v1/ws` are broadcast per channel; `mobile` receives
 `assistant_message`, `clarify_request`, `canvas_update`, `cron_update`, and
 `progress_event` payloads.
+
+---
+
+## API Authentication
+
+### Device Authentication (Mobile App)
+
+After pairing, the mobile app authenticates using:
+
+```
+X-Ghost-Device-ID: <device_id>
+X-Ghost-Credential: <credential>
+```
+
+These headers must be included in every request to the gateway API.
+
+### Owner Authentication (Web Dashboard)
+
+The web dashboard uses session-based authentication:
+
+1. POST to `/api/login` with admin password
+2. Receive a session cookie (`ghost_admin_session`)
+3. All subsequent requests include the cookie automatically
+
+### Internal Authentication (Web Proxy, Relay, CLI)
+
+The web proxy and relay client use the bridge secret internally:
+
+```
+X-Ghost-Secret: <bridge_secret>
+```
+
+This is **never exposed to the browser** — it's injected server-side by the web proxy.
 
 ---
 

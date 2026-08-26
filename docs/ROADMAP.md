@@ -29,7 +29,7 @@ The foundation for Ghost's persistent identity and appliance lifecycle is in pla
 
 - **Web console** (`ghost-web`): setup wizard + admin dashboard on port 80.
 - **Admin credential lifecycle**: password creation, change, and reset; recovery mode; session invalidation on change.
-- **Security hardening**: `.secrets.json` secrets boundary, atomic config writes, cron command gating.
+- **Security hardening**: `.secrets.json` secrets boundary, atomic config writes, directory permissions (`0700`), recovery bound to localhost, bridge secret not exposed to browser or mobile app.
 - **Self-improvement**: learning pipeline, skill drafts, mid-turn steering, recall summarization.
 - **Dashboard redesign**: responsive layout, polished cards, skill editor.
 
@@ -39,7 +39,7 @@ The foundation for Ghost's persistent identity and appliance lifecycle is in pla
 
 **Exit criterion:** the mobile app can pair over LAN (in progress separately).
 
-**LAN pairing implemented:** secure device pairing is now available on the internal API (`/v1/pairing/*`). Tokens are short-lived, single-use, and SHA-256 hashed. Per-device credentials authenticate WebSocket and REST connections. See [TESTING.md](TESTING.md#5-pairing--device-auth) for test procedures.
+**LAN pairing implemented:** secure device pairing is now available on the internal API (`/v1/pairing/*`). Tokens are short-lived (5-minute expiry), single-use, and SHA-256 hashed. Per-device credentials authenticate WebSocket and REST connections via headers only (query parameters not supported). Recovery mode is bound to localhost. See [TESTING.md](TESTING.md#5-pairing--device-auth) for test procedures.
 
 ---
 

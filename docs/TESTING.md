@@ -127,36 +127,35 @@ Use this sequence to progressively stress-test Ghost from basic response quality
 
 Test the secure pairing flow and per-device authentication.
 
-### Pairing API
+### Pairing Flow
+
+The recommended pairing flow is through the web admin dashboard:
+
+1. Open `http://<pi-ip>` on any browser
+2. Log in with admin password
+3. Navigate to Devices → "Connect another device"
+4. Scan the QR code with the Ghost app
+5. Verify the device appears in the Devices list
+
+### Pairing API (for testing)
 
 ```bash
-# Create pairing invitation (new endpoint)
+# Create pairing invitation (requires bridge secret)
 curl -s -X POST http://localhost:8766/v1/pairing/invitations \
   -H "X-Ghost-Secret: $BRIDGE_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"display_name": "Test Phone", "transport": "lan"}'
 
-# Legacy: Generate pairing token (still works)
-curl -s -X POST http://localhost:8766/v1/pairing/start \
-  -H "X-Ghost-Secret: $BRIDGE_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"display_name": "Test Phone"}'
-
-# Complete pairing (new endpoint, PUBLIC — no auth required)
+# Complete pairing (PUBLIC — no auth required)
 curl -s -X POST http://localhost:8766/v1/pairing/complete \
   -H "Content-Type: application/json" \
   -d '{"token": "<token>", "display_name": "Test Phone", "platform": "android"}'
 
-# Legacy: Redeem token (still works, PUBLIC)
-curl -s -X POST http://localhost:8766/v1/pairing/redeem \
-  -H "Content-Type: application/json" \
-  -d '{"token": "<token_from_invitation>"}'
-
-# List paired devices
+# List paired devices (requires bridge secret)
 curl -s http://localhost:8766/v1/pairing/devices \
   -H "X-Ghost-Secret: $BRIDGE_SECRET"
 
-# Revoke a device
+# Revoke a device (requires bridge secret)
 curl -s -X POST http://localhost:8766/v1/pairing/revoke \
   -H "X-Ghost-Secret: $BRIDGE_SECRET" \
   -H "Content-Type: application/json" \
@@ -186,7 +185,7 @@ Error codes:
 - `device_revoked` — device has been revoked
 - `device_not_found` — device ID not found
 
-### Device auth (after pairing)
+### Device Auth (after pairing)
 
 ```bash
 # Health check with device credentials
@@ -194,13 +193,69 @@ curl -s http://localhost:8766/v1/health \
   -H "X-Ghost-Device-ID: <device_id>" \
   -H "X-Ghost-Credential: <credential>"
 
-# WebSocket with device credentials
-wscat -c "ws://localhost:8766/v1/ws?device_id=<device_id>&credential=<credential>&session=mobile:default"
+# WebSocket with device credentials (headers only, no query params)
+wscat -c "ws://localhost:8766/v1/ws" \
+  -H "X-Ghost-Device-ID: <device_id>" \
+  -H "X-Ghost-Credential: <credential>" \
+  -H "X-Ghost-Session: mobile:default"
+```
+
+**Note:** WebSocket connections must use headers for authentication, not query parameters. Query parameters are not supported for security reasons.
+
+---
+
+## 6. Security Testing
+
+### Verify Secrets Are Not Exposed
+
+```bash
+# Check that config.json does NOT contain API keys
+grep -i "api_key\|token\|secret" /var/ghost/config/config.json
+
+# Check that .secrets.json exists with correct permissions
+stat -c "%a %U %G" /var/ghost/config/.secrets.json
+
+# Check that admin.hash exists with correct permissions
+stat -c "%a %U %G" /var/ghost/data/admin.hash
+```
+
+### Verify Directory Permissions
+
+```bash
+# Check directory permissions
+ls -la /var/ghost/          # Should show 0700 for config/ and data/
+ls -la /var/ghost/config/   # Should show 0700
+ls -la /var/ghost/data/     # Should show 0700
+```
+
+### Verify Recovery Mode is Localhost-Only
+
+```bash
+# Start recovery mode
+sudo GHOST_RECOVERY_MODE=1 ghost gateway &
+
+# From another device on the network (should FAIL):
+curl http://<pi-ip>:8766/api/status
+
+# From the Pi itself (should SUCCEED):
+curl http://127.0.0.1:8766/api/status
+```
+
+### Verify Password Policy
+
+```bash
+# Try to set a short password (should fail)
+curl -s -X POST http://localhost:8766/api/admin/password \
+  -H "Cookie: ghost_admin_session=<session>" \
+  -H "Content-Type: application/json" \
+  -d '{"current": "current-pass", "new": "short", "confirm": "short"}'
+
+# Should return error about minimum 12 characters
 ```
 
 ---
 
-## 6. Troubleshooting Commands
+## 7. Troubleshooting Commands
 
 - `sudo lsof -i :8766`: Check if the Internal API port is occupied.
 - `sudo fuser -k 8766/tcp`: Force close any process hogging the API port.
