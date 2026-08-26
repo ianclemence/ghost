@@ -52,7 +52,7 @@ function showChangePassword() {
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async () => {
       if (newInput.value !== confirmInput.value) { GhostUI.toast('Passwords don\'t match.'); return; }
-      if (newInput.value.length < 8) { GhostUI.toast('Password must be at least 8 characters.'); return; }
+      if (newInput.value.length < 12) { GhostUI.toast('Password must be at least 12 characters.'); return; }
       try {
         await GhostAPI.post('/api/admin/password', { current: currentInput.value, new: newInput.value, confirm: confirmInput.value });
         GhostUI.toast('Password changed.');

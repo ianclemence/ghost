@@ -97,13 +97,13 @@ const GhostWizard = (() => {
     screen.appendChild(confirmInput);
 
     screen.appendChild(GhostUI.h('div', { className: 'type-footnote text-tertiary', style: 'margin-top:var(--space-sm)' },
-      'At least 8 characters.'
+      'At least 12 characters. A longer passphrase is easier to remember and harder to guess.'
     ));
 
     screen.appendChild(GhostUI.h('div', { className: 'wizard-actions' },
       GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async () => {
         if (pwInput.value !== confirmInput.value) { GhostUI.toast('Passwords don\u2019t match.'); return; }
-        if (pwInput.value.length < 8) { GhostUI.toast('Password must be at least 8 characters.'); return; }
+        if (pwInput.value.length < 12) { GhostUI.toast('Password must be at least 12 characters.'); return; }
         _state.password = pwInput.value;
         goTo('preparing');
       }}, 'Continue')

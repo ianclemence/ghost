@@ -231,8 +231,8 @@
             goto('model');
             return;
         }
-        if (pw.length < 8) {
-            msg('password-error', 'Password must be at least 8 characters.');
+        if (pw.length < 12) {
+            msg('password-error', 'Password must be at least 12 characters.');
             return;
         }
         if (pw !== confirm) {

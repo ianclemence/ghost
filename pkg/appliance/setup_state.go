@@ -79,10 +79,20 @@ func (fb *SetupState) ResetSetup() error {
 
 // EnsureDirectories creates the required directory structure.
 func (fb *SetupState) EnsureDirectories() error {
-	dirs := []string{
+	// Sensitive directories use 0700 (owner-only access).
+	sensitiveDirs := []string{
 		fb.GhostDir,
 		fb.ConfigDir,
 		fb.DataDir,
+	}
+	for _, dir := range sensitiveDirs {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+	}
+
+	// Workspace directories use 0755 (owner full, others read/execute).
+	workspaceDirs := []string{
 		fb.Workspace,
 		filepath.Join(fb.Workspace, "skills"),
 		filepath.Join(fb.Workspace, "memory"),
@@ -92,8 +102,7 @@ func (fb *SetupState) EnsureDirectories() error {
 		filepath.Join(fb.Workspace, "journal"),
 		filepath.Join(fb.Workspace, "state"),
 	}
-
-	for _, dir := range dirs {
+	for _, dir := range workspaceDirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}

@@ -66,8 +66,8 @@ func (rs *RecoveryServer) Start() error {
 	mux.HandleFunc("/api/reset-password", rs.handleResetPassword)
 	mux.HandleFunc("/api/restart", rs.handleRestart)
 
-	addr := fmt.Sprintf("0.0.0.0:%d", rs.Port)
-	log.Printf("Recovery mode active at http://ghost.local:%d", rs.Port)
+	addr := fmt.Sprintf("127.0.0.1:%d", rs.Port)
+	log.Printf("Recovery mode active at http://127.0.0.1:%d (localhost only)", rs.Port)
 
 	if rs.Timeout > 0 {
 		log.Printf("Recovery server will auto-shutdown in %s", rs.Timeout)

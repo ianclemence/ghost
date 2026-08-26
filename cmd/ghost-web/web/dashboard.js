@@ -764,7 +764,7 @@
         try {
             const data = await api('/api/admin/bridge', 'POST');
             if (data.ok) {
-                msg('bridge-msg', 'New pairing secret: ' + (data.secret || '') + ' — re-pair your app with it.', true);
+                msg('bridge-msg', 'Bridge secret regenerated. The gateway will restart with the new secret. Re-pair your app if needed.', true);
             } else { Ghost.toast.err(data.error || 'Failed to regenerate pairing secret.'); }
         } catch (e) { Ghost.toast.err('Failed to regenerate pairing secret.'); }
     }

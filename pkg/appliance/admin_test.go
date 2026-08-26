@@ -69,22 +69,22 @@ func TestAdminHashFilePermissions(t *testing.T) {
 
 func TestSetAdminPasswordReplacesHash(t *testing.T) {
 	ghostDir := filepath.Join(t.TempDir(), "ghost")
-	if err := SetAdminPassword(ghostDir, "first-pass"); err != nil {
+	if err := SetAdminPassword(ghostDir, "first-pass-word"); err != nil {
 		t.Fatalf("SetAdminPassword failed: %v", err)
 	}
 
-	if ok, _ := VerifyAdminPassword(ghostDir, "second-pass"); ok {
+	if ok, _ := VerifyAdminPassword(ghostDir, "second-pass-word"); ok {
 		t.Fatal("old password should not verify yet")
 	}
 
-	if err := SetAdminPassword(ghostDir, "second-pass"); err != nil {
+	if err := SetAdminPassword(ghostDir, "second-pass-word"); err != nil {
 		t.Fatalf("second SetAdminPassword failed: %v", err)
 	}
 
-	if ok, _ := VerifyAdminPassword(ghostDir, "first-pass"); ok {
+	if ok, _ := VerifyAdminPassword(ghostDir, "first-pass-word"); ok {
 		t.Fatal("first password should no longer verify after replacement")
 	}
-	if ok, _ := VerifyAdminPassword(ghostDir, "second-pass"); !ok {
+	if ok, _ := VerifyAdminPassword(ghostDir, "second-pass-word"); !ok {
 		t.Fatal("replacement password should verify")
 	}
 }

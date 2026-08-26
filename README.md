@@ -164,8 +164,7 @@ reach it from your phone at any time at `http://<pi-ip>`:
     management (list, pull, delete)
   - **Channels** — Telegram, Discord, and Email bot configuration plus the
     heartbeat interval
-  - **System** — hostname, backup download, admin password, bridge-secret
-    regeneration, and reboot
+  - **System** — hostname, backup download, admin password, and reboot
   - **Skills** — browse installed skills, edit bundled skills (edited
     skills are marked and never overwritten by updates), resync bundled
     skills, and install more from any public GitHub repo (including skills.sh)
@@ -271,7 +270,11 @@ chmod +x setup.sh
 
 ## Configuration
 
-### `.env` (Secrets)
+### `.secrets.json` (Secrets)
+
+Secrets (API keys, channel tokens) are stored in `.secrets.json` with `0600` permissions. They are configured through the admin dashboard, not by editing files directly.
+
+### `.env` (System Overrides)
 
 ```bash
 cp .env.example .env
@@ -279,10 +282,8 @@ nano .env
 ```
 
 ```env
-TELEGRAM_TOKEN=your_token_here
-KIMI_API_KEY=your_key_here
-ANTHROPIC_API_KEY=your_key_here
-BRIDGE_SECRET=strong_secret_here
+GHOST_API_PORT=8766
+TZ=UTC
 ```
 
 ### `config.json` (Behavior)
@@ -384,9 +385,10 @@ Ghost exposes a unified API on port **8766**:
 
 ### API Setup
 
+The mobile app connects via device pairing (scan QR code from the admin dashboard). No manual API key configuration is needed.
+
 ```env
 GHOST_API_PORT=8766
-BRIDGE_SECRET=your_secret_here
 ```
 
 ### Run Mobile App

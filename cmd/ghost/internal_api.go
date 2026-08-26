@@ -53,12 +53,10 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 		secret := os.Getenv("BRIDGE_SECRET")
 		authenticated := false
 
-		// Try bridge secret.
+		// Try bridge secret via headers only (never via query parameters
+		// to prevent credential leakage in logs, browser history, and referer headers).
 		if secret != "" {
-			got := r.URL.Query().Get("secret")
-			if got == "" {
-				got = r.Header.Get("X-Ghost-Secret")
-			}
+			got := r.Header.Get("X-Ghost-Secret")
 			if got == "" {
 				got = r.Header.Get("Authorization")
 			}
@@ -67,16 +65,10 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 			}
 		}
 
-		// Try per-device credential.
+		// Try per-device credential via headers only.
 		if !authenticated {
-			deviceID := r.URL.Query().Get("device_id")
-			if deviceID == "" {
-				deviceID = r.Header.Get("X-Ghost-Device-ID")
-			}
-			credential := r.URL.Query().Get("credential")
-			if credential == "" {
-				credential = r.Header.Get("X-Ghost-Credential")
-			}
+			deviceID := r.Header.Get("X-Ghost-Device-ID")
+			credential := r.Header.Get("X-Ghost-Credential")
 			if deviceID != "" && credential != "" {
 				if valid, _ := pairing.ValidateCredential(agentLoop.DB(), deviceID, credential); valid {
 					_ = pairing.UpdateLastSeen(agentLoop.DB(), deviceID)

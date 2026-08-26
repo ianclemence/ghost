@@ -457,18 +457,8 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// API keys first: write to .env so LoadConfig's env overrides pick them up,
-	// and to config.json for persistence.
-	envKeys := map[string]string{
-		"moonshot":  "KIMI_API_KEY",
-		"anthropic": "ANTHROPIC_API_KEY",
-		"openai":    "OPENAI_API_KEY",
-		"openrouter": "OPENROUTER_API_KEY",
-		"groq":      "GROQ_API_KEY",
-		"deepseek":  "DEEPSEEK_API_KEY",
-		"gemini":    "GEMINI_API_KEY",
-		"zhipu":     "ZHIPU_API_KEY",
-	}
+	// API keys: write to config.json for persistence via .secrets.json.
+	// Do NOT write to .env — secrets belong in .secrets.json only.
 	cfgKeys := map[string]*config.ProviderConfig{
 		"moonshot":  &cfg.Providers.Moonshot,
 		"anthropic": &cfg.Providers.Anthropic,
@@ -483,12 +473,6 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 		trimmed := strings.TrimSpace(key)
 		if trimmed == "" {
 			continue
-		}
-		if env, ok := envKeys[name]; ok {
-			if err := updateEnvFile(env, trimmed); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "failed to save API key: " + err.Error()})
-				return
-			}
 		}
 		if pc, ok := cfgKeys[name]; ok {
 			pc.APIKey = trimmed
@@ -653,25 +637,21 @@ func handleChannelsSet(w http.ResponseWriter, r *http.Request) {
 		cfg.Channels.Telegram.Enabled = req.Telegram.Enabled
 		if req.Telegram.Token != "" && !strings.HasPrefix(req.Telegram.Token, "••") {
 			cfg.Channels.Telegram.Token = req.Telegram.Token
-			updateEnvFile("TELEGRAM_BOT_TOKEN", req.Telegram.Token)
 		}
 	}
 	if req.Discord != nil {
 		cfg.Channels.Discord.Enabled = req.Discord.Enabled
 		if req.Discord.Token != "" && !strings.HasPrefix(req.Discord.Token, "••") {
 			cfg.Channels.Discord.Token = req.Discord.Token
-			updateEnvFile("DISCORD_BOT_TOKEN", req.Discord.Token)
 		}
 	}
 	if req.Slack != nil {
 		cfg.Channels.Slack.Enabled = req.Slack.Enabled
 		if req.Slack.BotToken != "" && !strings.HasPrefix(req.Slack.BotToken, "••") {
 			cfg.Channels.Slack.BotToken = req.Slack.BotToken
-			updateEnvFile("SLACK_BOT_TOKEN", req.Slack.BotToken)
 		}
 		if req.Slack.AppToken != "" && !strings.HasPrefix(req.Slack.AppToken, "••") {
 			cfg.Channels.Slack.AppToken = req.Slack.AppToken
-			updateEnvFile("SLACK_APP_TOKEN", req.Slack.AppToken)
 		}
 	}
 	if req.WhatsApp != nil {
@@ -693,7 +673,6 @@ func handleChannelsSet(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Email.Password != "" && !strings.HasPrefix(req.Email.Password, "••") {
 			cfg.Channels.Email.Password = req.Email.Password
-			updateEnvFile("GHOST_CHANNELS_EMAIL_PASSWORD", req.Email.Password)
 		}
 		if req.Email.From != "" {
 			cfg.Channels.Email.From = req.Email.From
@@ -818,7 +797,7 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 				return nil
 			}
 			if strings.HasPrefix(rel, ".env") {
-				return nil // handled separately below
+				return nil // secrets — never included in backups
 			}
 			if strings.HasSuffix(path, ".log") {
 				return nil // transient logs
@@ -849,12 +828,6 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 			f.Close()
 			return nil
 		})
-	}
-
-	if b, err := os.ReadFile(fb.EnvPath); err == nil {
-		hdr := &tar.Header{Name: "ghost/.env", Mode: 0600, Size: int64(len(b))}
-		tw.WriteHeader(hdr)
-		tw.Write(b)
 	}
 
 	tw.Close()
@@ -940,15 +913,10 @@ func handleRegenBridge(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-	if err := updateEnvFile("BRIDGE_SECRET", secret); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
-		return
-	}
 	go restartGhostService()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":      true,
-		"message": "Bridge secret regenerated. Re-pair your app with the new secret.",
-		"secret":  secret,
+		"message": "Bridge secret regenerated. The gateway will restart with the new secret.",
 	})
 }
 
@@ -1909,7 +1877,6 @@ func handleToolsSet(w http.ResponseWriter, r *http.Request) {
 			cfg.Tools.Web.Brave.Enabled = req.Web.Brave.Enabled
 			if req.Web.Brave.APIKey != "" && !strings.HasPrefix(req.Web.Brave.APIKey, "••") {
 				cfg.Tools.Web.Brave.APIKey = req.Web.Brave.APIKey
-				updateEnvFile("BRAVE_SEARCH_API_KEY", req.Web.Brave.APIKey)
 			}
 			if req.Web.Brave.MaxResults > 0 {
 				cfg.Tools.Web.Brave.MaxResults = req.Web.Brave.MaxResults

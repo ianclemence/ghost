@@ -42,8 +42,8 @@ var commonPasswords = map[string]bool{
 // ValidatePassword checks if a password meets minimum requirements.
 // Returns an error if the password is too short or is a commonly used password.
 func ValidatePassword(password string) error {
-	if len(password) < 8 {
-		return errors.New("password must be at least 8 characters")
+	if len(password) < 12 {
+		return errors.New("password must be at least 12 characters — a longer passphrase is easier to remember and harder to guess")
 	}
 	lower := strings.ToLower(strings.TrimSpace(password))
 	if commonPasswords[lower] {
