@@ -18,6 +18,8 @@ async function loadSkills(container) {
   const dropBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary ghost-btn-sm' }, 'Install skill');
   const dropMenu = GhostUI.h('div', { className: 'skills-dropdown-menu hidden' });
 
+  dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-item', onClick: () => { dropMenu.classList.add('hidden'); showCreateSkillModal(); } }, 'Create new skill'));
+  dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-divider' }));
   dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-item', onClick: () => { dropMenu.classList.add('hidden'); showClawHubSearchModal(); } }, 'From ClawHub'));
   dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-item', onClick: () => { dropMenu.classList.add('hidden'); showGitHubInstallModal(); } }, 'From GitHub'));
   dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-divider' }));
@@ -179,6 +181,68 @@ async function showSkillReader(name) {
   const appContent = document.getElementById('ghost-content');
   appContent.innerHTML = '';
   appContent.appendChild(content);
+}
+
+function showCreateSkillModal() {
+  const body = GhostUI.h('div');
+
+  const nameGroup = GhostUI.h('div', { className: 'form-group' });
+  nameGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Skill name'));
+  const nameInput = GhostUI.input('e.g. my-custom-skill');
+  nameGroup.appendChild(nameInput);
+  nameGroup.appendChild(GhostUI.h('div', { className: 'form-hint' }, 'Lowercase letters, numbers, and hyphens only.'));
+  body.appendChild(nameGroup);
+
+  const descGroup = GhostUI.h('div', { className: 'form-group' });
+  descGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Description'));
+  const descInput = GhostUI.input('What does this skill do?');
+  descGroup.appendChild(descInput);
+  descGroup.appendChild(GhostUI.h('div', { className: 'form-hint' }, 'This tells Ghost when to use the skill.'));
+  body.appendChild(descGroup);
+
+  const bodyGroup = GhostUI.h('div', { className: 'form-group' });
+  bodyGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Instructions'));
+  const bodyInput = GhostUI.textarea('Write the skill instructions in markdown...');
+  bodyInput.style.minHeight = '200px';
+  bodyInput.style.fontFamily = 'var(--font-mono)';
+  bodyInput.style.fontSize = '13px';
+  bodyGroup.appendChild(bodyInput);
+  bodyGroup.appendChild(GhostUI.h('div', { className: 'form-hint' }, 'Markdown. Describe the steps Ghost should follow.'));
+  body.appendChild(bodyGroup);
+
+  GhostUI.modal('Create new skill', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async () => {
+      const name = nameInput.value.trim();
+      const description = descInput.value.trim();
+      const instructions = bodyInput.value;
+
+      if (!name) { GhostUI.toast('Please enter a skill name.'); return; }
+      if (!/^[a-z0-9-]+$/.test(name)) { GhostUI.toast('Name must be lowercase letters, numbers, and hyphens.'); return; }
+      if (!description) { GhostUI.toast('Please enter a description.'); return; }
+
+      // Build SKILL.md content
+      const skillMd = `---
+name: ${name}
+description: ${description}
+---
+
+${instructions || '# ' + name + '\n\nDescribe what this skill does here.'}`;
+
+      try {
+        await GhostAPI.post('/api/admin/skills/save', {
+          name: name,
+          files: [
+            { path: 'SKILL.md', content: skillMd }
+          ]
+        });
+        GhostUI.toast(`Skill "${name}" created.`);
+        e.target.closest('.ghost-modal-backdrop').remove();
+      } catch (err) {
+        GhostUI.toast('Failed to create skill.');
+      }
+    }}, 'Create')
+  ]);
 }
 
 function renderMarkdown(md) {
