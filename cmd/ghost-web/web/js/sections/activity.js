@@ -94,10 +94,6 @@ async function loadActivity(container) {
 
     // Initial render
     renderSessions(allSessions);
-
-    if (allSessions.length === 0) {
-      section.appendChild(GhostUI.emptyState('Nothing to report.', 'Activity will appear here as Ghost works.'));
-    }
   } catch (e) {
     section.appendChild(GhostUI.errorState('Couldn\'t load activity.', e.message));
   }

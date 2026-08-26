@@ -173,25 +173,15 @@ function showProviderConfigModal(provider) {
   keyGroup.appendChild(keyInput);
   body.appendChild(keyGroup);
 
-  const baseGroup = GhostUI.h('div', { className: 'form-group' });
-  baseGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'API Base URL (optional)'));
-  const baseInput = GhostUI.input('Default for provider');
-  baseGroup.appendChild(baseInput);
-  body.appendChild(baseGroup);
-
   GhostUI.modal(`Configure ${provider.name}`, body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async () => {
       const apiKey = keyInput.value.trim();
-      const apiBase = baseInput.value.trim();
       if (!apiKey) { GhostUI.toast('Please enter an API key.'); return; }
       try {
-        const payload = { api_keys: { [provider.key]: apiKey } };
-        if (apiBase) {
-          // Include base URL in provider config
-          payload.ollama_url = ''; // Not needed for cloud providers
-        }
-        await GhostAPI.post('/api/admin/config/save', payload);
+        await GhostAPI.post('/api/admin/config/save', {
+          api_keys: { [provider.key]: apiKey }
+        });
         GhostUI.toast(`${provider.name} configured.`);
         e.target.closest('.ghost-modal-backdrop').remove();
       } catch (err) {

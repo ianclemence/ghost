@@ -199,6 +199,31 @@
   margin: var(--space-xxl) 0;
 }
 
+.skill-blockquote {
+  border-left: 3px solid var(--ghost-accent);
+  padding-left: var(--space-lg);
+  margin: var(--space-lg) 0;
+  color: var(--ghost-text-secondary);
+  font-style: italic;
+}
+
+.skill-ol {
+  list-style: decimal;
+  padding-left: var(--space-xl);
+  margin-bottom: var(--space-lg);
+}
+
+.skill-ol .skill-li-ol {
+  padding-left: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+.skill-img {
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  margin: var(--space-lg) 0;
+}
+
 /* Files section */
 .skill-files-section {
   border-top: 1px solid var(--ghost-border-subtle);

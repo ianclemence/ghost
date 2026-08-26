@@ -38,7 +38,12 @@ async function loadSkills(container) {
     e.stopPropagation();
     dropMenu.classList.toggle('hidden');
   });
-  document.addEventListener('click', () => dropMenu.classList.add('hidden'));
+  // Remove previous listener to avoid leaks
+  if (GhostApp._skillsDocClickHandler) {
+    document.removeEventListener('click', GhostApp._skillsDocClickHandler);
+  }
+  GhostApp._skillsDocClickHandler = () => dropMenu.classList.add('hidden');
+  document.addEventListener('click', GhostApp._skillsDocClickHandler);
 
   dropdown.appendChild(dropBtn);
   dropdown.appendChild(dropMenu);
@@ -246,37 +251,90 @@ ${instructions || '# ' + name + '\n\nDescribe what this skill does here.'}`;
 }
 
 function renderMarkdown(md) {
-  // Simple markdown renderer for skill content
-  let html = md
-    // Code blocks
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="skill-code-block"><code>$2</code></pre>')
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code class="skill-inline-code">$1</code>')
-    // Headers
-    .replace(/^### (.+)$/gm, '<h3 class="skill-h3">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="skill-h2">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="skill-h1">$1</h1>')
-    // Bold and italic
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Lists
-    .replace(/^- (.+)$/gm, '<li class="skill-li">$1</li>')
-    .replace(/^(\d+)\. (.+)$/gm, '<li class="skill-li">$2</li>')
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    // Horizontal rules
-    .replace(/^---$/gm, '<hr class="skill-hr">')
-    // Paragraphs (double newlines)
-    .replace(/\n\n/g, '</p><p class="skill-p">')
-    // Single newlines to <br>
-    .replace(/\n/g, '<br>');
+  // Strip YAML frontmatter
+  let text = md.replace(/^---\n[\s\S]*?\n---\n/, '');
 
-  // Wrap consecutive li elements in ul
-  html = html.replace(/(<li class="skill-li">.*?<\/li>(\s*<br>)*)+/g, (match) => {
-    return '<ul class="skill-ul">' + match.replace(/<br>/g, '') + '</ul>';
+  // Protect code blocks from further processing
+  const codeBlocks = [];
+  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+    const langClass = lang ? ` class="language-${lang}"` : '';
+    codeBlocks.push(`<pre class="skill-code-block"><code${langClass}>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`);
+    return placeholder;
   });
 
-  return '<p class="skill-p">' + html + '</p>';
+  // Protect inline code
+  const inlineCodes = [];
+  text = text.replace(/`([^`]+)`/g, (match, code) => {
+    const placeholder = `__INLINE_CODE_${inlineCodes.length}__`;
+    inlineCodes.push(`<code class="skill-inline-code">${code}</code>`);
+    return placeholder;
+  });
+
+  // Headers
+  text = text.replace(/^### (.+)$/gm, '<h3 class="skill-h3">$1</h3>');
+  text = text.replace(/^## (.+)$/gm, '<h2 class="skill-h2">$1</h2>');
+  text = text.replace(/^# (.+)$/gm, '<h1 class="skill-h1">$1</h1>');
+
+  // Blockquotes
+  text = text.replace(/^&gt; (.+)$/gm, '<blockquote class="skill-blockquote">$1</blockquote>');
+  text = text.replace(/^> (.+)$/gm, '<blockquote class="skill-blockquote">$1</blockquote>');
+
+  // Bold and italic (safe now — code blocks are protected)
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Images
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="skill-img">');
+
+  // Links
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Horizontal rules
+  text = text.replace(/^---$/gm, '<hr class="skill-hr">');
+
+  // Unordered lists
+  text = text.replace(/^- (.+)$/gm, '<li class="skill-li">$1</li>');
+
+  // Ordered lists
+  text = text.replace(/^\d+\. (.+)$/gm, '<li class="skill-li-ol">$1</li>');
+
+  // Wrap consecutive unordered li elements in ul
+  text = text.replace(/(<li class="skill-li">.*?<\/li>(\s*\n?)*)+/g, (match) => {
+    return `<ul class="skill-ul">${match.replace(/\n/g, '')}</ul>`;
+  });
+
+  // Wrap consecutive ordered li elements in ol
+  text = text.replace(/(<li class="skill-li-ol">.*?<\/li>(\s*\n?)*)+/g, (match) => {
+    return `<ol class="skill-ol">${match.replace(/\n/g, '')}</ol>`;
+  });
+
+  // Merge adjacent blockquotes
+  text = text.replace(/<\/blockquote>\s*<blockquote class="skill-blockquote">/g, '<br>');
+
+  // Split into paragraphs by double newlines (but not inside HTML blocks)
+  const blocks = text.split(/\n\n+/);
+  text = blocks.map(block => {
+    const trimmed = block.trim();
+    if (!trimmed) return '';
+    // Don't wrap block-level elements in <p>
+    if (/^<(h[1-6]|ul|ol|pre|blockquote|hr|div|table)/.test(trimmed)) {
+      return trimmed;
+    }
+    return `<p class="skill-p">${trimmed.replace(/\n/g, '<br>')}</p>`;
+  }).join('\n');
+
+  // Restore code blocks
+  codeBlocks.forEach((block, i) => {
+    text = text.replace(`__CODE_BLOCK_${i}__`, block);
+  });
+
+  // Restore inline code
+  inlineCodes.forEach((code, i) => {
+    text = text.replace(`__INLINE_CODE_${i}__`, code);
+  });
+
+  return text;
 }
 
 function showClawHubSearchModal() {
