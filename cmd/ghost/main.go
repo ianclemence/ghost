@@ -936,14 +936,6 @@ func statusCmd() {
 
 		fmt.Println("\nRemote Bridge:")
 		fmt.Printf("  API Port: %d\n", cfg.Gateway.Port)
-		fmt.Printf("  Bridge Key: %s\n", status(cfg.Gateway.BridgeSecret != ""))
-		if cfg.Gateway.BridgeSecret != "" {
-			masked := cfg.Gateway.BridgeSecret
-			if len(masked) > 8 {
-				masked = masked[:4] + "..." + masked[len(masked)-4:]
-			}
-			fmt.Printf("    Secret: %s\n", masked)
-		}
 
 		fmt.Println("\nChannels:")
 		fmt.Printf("  Telegram: %s\n", status(cfg.Channels.Telegram.Enabled))
@@ -1500,7 +1492,6 @@ func relayRunCmd() {
 		DeviceSecret: cfg.Relay.DeviceSecret,
 		RelayServer:  cfg.Relay.Server,
 		GatewayURL:   gatewayURL,
-		BridgeSecret: cfg.Gateway.BridgeSecret,
 		ReconnectMin: cfg.Relay.ReconnectMin,
 		ReconnectMax: cfg.Relay.ReconnectMax,
 	})

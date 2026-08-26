@@ -110,15 +110,6 @@ func (fb *SetupState) EnsureDirectories() error {
 	return nil
 }
 
-// GenerateBridgeSecret creates a random 32-byte hex string.
-func GenerateBridgeSecret() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
-
 // isConfigCustomized checks if config has been changed from defaults.
 func isConfigCustomized(cfg *config.Config) bool {
 	// Check if provider is still default
@@ -137,11 +128,6 @@ func isConfigCustomized(cfg *config.Config) bool {
 		return true
 	}
 	if cfg.Channels.Slack.Enabled && cfg.Channels.Slack.BotToken != "" {
-		return true
-	}
-
-	// If gateway secret is set and not the default empty
-	if cfg.Gateway.BridgeSecret != "" && cfg.Gateway.BridgeSecret != defaultCfg.Gateway.BridgeSecret {
 		return true
 	}
 

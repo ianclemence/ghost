@@ -219,12 +219,7 @@ func handleDoctor(w http.ResponseWriter, r *http.Request) {
 		add("config", "fail", "config.json missing")
 	}
 
-	cfg, err := config.LoadConfig(fb.ConfigPath)
-	if err == nil && cfg.Gateway.BridgeSecret != "" {
-		add("bridge secret", "ok", "configured")
-	} else {
-		add("bridge secret", "fail", "missing")
-	}
+	cfg, _ := config.LoadConfig(fb.ConfigPath)
 
 	usedDisk, totalDisk := diskUsage(fb.GhostDir)
 	pct := float64(0)
@@ -888,36 +883,6 @@ func handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Password updated"})
-}
-
-func handleRegenBridge(w http.ResponseWriter, r *http.Request) {
-	if !requireSession(w, r) {
-		return
-	}
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	secret, err := appliance.GenerateBridgeSecret()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
-		return
-	}
-	cfg, err := config.LoadConfig(fb.ConfigPath)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
-		return
-	}
-	cfg.Gateway.BridgeSecret = secret
-	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
-		return
-	}
-	go restartGhostService()
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":      true,
-		"message": "Bridge secret regenerated. The gateway will restart with the new secret.",
-	})
 }
 
 // ---------- Personality ----------
@@ -1935,7 +1900,6 @@ func handleGatewayGet(w http.ResponseWriter, r *http.Request) {
 		"ok":             true,
 		"host":           cfg.Gateway.Host,
 		"port":           cfg.Gateway.Port,
-		"bridge_secret":  maskKey(cfg.Gateway.BridgeSecret),
 	})
 }
 

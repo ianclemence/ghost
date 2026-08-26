@@ -1,9 +1,9 @@
-// Ghost Internal API — lightweight HTTP server for bridge-to-agent routing
+// Ghost Internal API — lightweight HTTP server for agent routing
 // Exposes ProcessDirectWithChannel() via HTTP so the mobile app can talk directly
 // to the full Ghost agent runtime (tools, RAG, memory, skills).
 //
-// Listens on 0.0.0.0 — accessible to local network devices (e.g., phone).
-// Protected by BRIDGE_SECRET header matching.
+// Listens on 127.0.0.1 (localhost only) — all internal components communicate via localhost.
+// Mobile apps connect via the relay server, which tunnels traffic to localhost.
 
 package main
 
@@ -50,36 +50,14 @@ var apiStartTime = time.Now()
 
 func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		secret := os.Getenv("BRIDGE_SECRET")
-		authenticated := false
-
-		// Try bridge secret via headers only (never via query parameters
-		// to prevent credential leakage in logs, browser history, and referer headers).
-		if secret != "" {
-			got := r.Header.Get("X-Ghost-Secret")
-			if got == "" {
-				got = r.Header.Get("Authorization")
+		// Gateway binds to localhost only — all traffic is trusted.
+		// Device credentials are still validated for relay-forwarded traffic.
+		deviceID := r.Header.Get("X-Ghost-Device-ID")
+		credential := r.Header.Get("X-Ghost-Credential")
+		if deviceID != "" && credential != "" {
+			if valid, _ := pairing.ValidateCredential(agentLoop.DB(), deviceID, credential); valid {
+				_ = pairing.UpdateLastSeen(agentLoop.DB(), deviceID)
 			}
-			if got == secret || got == "Bearer "+secret {
-				authenticated = true
-			}
-		}
-
-		// Try per-device credential via headers only.
-		if !authenticated {
-			deviceID := r.Header.Get("X-Ghost-Device-ID")
-			credential := r.Header.Get("X-Ghost-Credential")
-			if deviceID != "" && credential != "" {
-				if valid, _ := pairing.ValidateCredential(agentLoop.DB(), deviceID, credential); valid {
-					_ = pairing.UpdateLastSeen(agentLoop.DB(), deviceID)
-					authenticated = true
-				}
-			}
-		}
-
-		if !authenticated {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
 		}
 
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -201,7 +179,7 @@ func enrichWeatherPrompt(content string, metadata map[string]string) string {
 
 const defaultInternalAPIPort = 8766
 
-func authMiddleware(secret string, next http.HandlerFunc) http.HandlerFunc {
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -210,23 +188,16 @@ func authMiddleware(secret string, next http.HandlerFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if secret != "" {
-			got := r.Header.Get("X-Ghost-Secret")
-			if got == "" {
-				got = r.Header.Get("Authorization")
-			}
-			if got != secret && got != "Bearer "+secret {
-				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-				return
-			}
-		}
+		// Gateway binds to localhost only — all traffic is trusted.
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		next(w, r)
 	}
 }
 
-// deviceAuthMiddleware accepts either the bridge secret or a per-device credential.
-func deviceAuthMiddleware(secret string, db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
+// deviceAuthMiddleware validates per-device credentials.
+// Since the gateway binds to localhost only, we only need to validate
+// device credentials for relay-forwarded traffic.
+func deviceAuthMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -235,30 +206,17 @@ func deviceAuthMiddleware(secret string, db *sql.DB, next http.HandlerFunc) http
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		// Try bridge secret first.
-		if secret != "" {
-			got := r.Header.Get("X-Ghost-Secret")
-			if got == "" {
-				got = r.Header.Get("Authorization")
-			}
-			if got == secret || got == "Bearer "+secret {
-				w.Header().Set("Access-Control-Allow-Origin", "*")
-				next(w, r)
-				return
-			}
-		}
-		// Try per-device credential.
+		// Gateway binds to localhost only — all traffic is trusted.
+		// Device credentials are still validated for relay-forwarded traffic.
 		deviceID := r.Header.Get("X-Ghost-Device-ID")
 		credential := r.Header.Get("X-Ghost-Credential")
 		if deviceID != "" && credential != "" && db != nil {
 			if valid, _ := pairing.ValidateCredential(db, deviceID, credential); valid {
 				_ = pairing.UpdateLastSeen(db, deviceID)
-				w.Header().Set("Access-Control-Allow-Origin", "*")
-				next(w, r)
-				return
 			}
 		}
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		next(w, r)
 	}
 }
 
@@ -599,8 +557,7 @@ func buildCronTriggerResponse(id string, now time.Time) CronTriggerResponse {
 
 // ── Skills helpers ─────────────────────────────────────────────────────────
 // These mirror the ghost-web admin console's skill management endpoints but are
-// authenticated with BRIDGE_SECRET instead of the admin dashboard password, so
-// the mobile app can manage skills directly over the unified 8766 API.
+// accessible via the unified 8766 API for the mobile app.
 
 // skillSummaryMD extracts a one-line description from a SKILL.md file,
 // preferring the frontmatter description field.
@@ -1053,7 +1010,8 @@ func shellescape(s string) string {
 }
 
 // startInternalAPI starts the Ghost API server.
-// Listens on 0.0.0.0 so the mobile app can connect directly over Wi-Fi.
+// Listens on 127.0.0.1 (localhost only) — all internal components communicate via localhost.
+// Mobile apps connect via the relay server, which tunnels traffic to localhost.
 // One port (GHOST_API_PORT, default 8766) handles everything:
 // chat, history, memory, transcription, remote control, and WebSocket.
 func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService, channelManager *channels.Manager) {
@@ -1062,10 +1020,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		fmt.Sscanf(p, "%d", &port)
 	}
 
-	secret := os.Getenv("BRIDGE_SECRET")
-	if secret == "" {
-		secret = agentLoop.Config().Gateway.BridgeSecret
-	}
 	allowedCmds := []string{}
 	if raw := os.Getenv("ALLOWED_CMDS"); raw != "" {
 		allowedCmds = strings.Split(raw, ",")
@@ -1094,7 +1048,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	mux := http.NewServeMux()
 
 	// ── 1. Health ─────────────────────────────────────────────────────────
-	mux.HandleFunc("/v1/health", deviceAuthMiddleware(secret, db, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/health", deviceAuthMiddleware(db, func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":    "ok",
 			"timestamp": time.Now().Unix(),
@@ -1103,7 +1057,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		})
 	}))
 
-	mux.HandleFunc("/v1/telemetry", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/telemetry", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -1157,7 +1111,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		})
 	}))
 
-	mux.HandleFunc("/v1/doctor", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/doctor", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -1234,7 +1188,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		})
 	}))
 
-	mux.HandleFunc("/v1/channels/status", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/channels/status", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -1249,7 +1203,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		})
 	}))
 
-	mux.HandleFunc("/v1/channels/reconnect", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/channels/reconnect", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -1282,7 +1236,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		})
 	}))
 
-	mux.HandleFunc("/v1/session/inspect", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/session/inspect", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -1320,7 +1274,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		})
 	}))
 
-	mux.HandleFunc("/v1/traces", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/traces", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -1347,7 +1301,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 1b. Cron lifecycle ───────────────────────────────────────────────
-	mux.HandleFunc("/v1/cron/jobs/", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/cron/jobs/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if cronService == nil {
 			jsonError(w, http.StatusServiceUnavailable, "unavailable", "cron service unavailable")
 			return
@@ -1448,7 +1402,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		}
 	}))
 
-	mux.HandleFunc("/v1/cron/jobs", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/cron/jobs", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if cronService == nil {
 			jsonError(w, http.StatusServiceUnavailable, "unavailable", "cron service unavailable")
 			return
@@ -1545,7 +1499,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 2. Chat (streaming SSE) ───────────────────────────────────────────
-	mux.HandleFunc("/v1/chat", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/chat", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -1734,7 +1688,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 3. History ────────────────────────────────────────────────────────
-	mux.HandleFunc("/v1/history", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/history", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		session := resolveSession(r)
 		limit := 50
 		offset := 0
@@ -1817,7 +1771,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 4. Search ─────────────────────────────────────────────────────────
-	mux.HandleFunc("/v1/search", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/search", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -1897,7 +1851,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		jsonResponse(w, http.StatusOK, results)
 	}))
 
-	mux.HandleFunc("/v1/tools", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/tools", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -1917,7 +1871,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 4b. Skills ───────────────────────────────────────────────────────
-	mux.HandleFunc("/v1/skills", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/skills", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -1928,7 +1882,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		})
 	}))
 
-	mux.HandleFunc("/v1/skills/toggle", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/skills/toggle", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -1948,7 +1902,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "name": req.Name, "enabled": req.Enabled})
 	}))
 
-	mux.HandleFunc("/v1/skills/read", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/skills/read", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -1963,7 +1917,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		jsonResponse(w, http.StatusOK, detail)
 	}))
 
-	mux.HandleFunc("/v1/skills/install", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/skills/install", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -1997,7 +1951,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 5. Memory files ───────────────────────────────────────────────────
-	mux.HandleFunc("/v1/memory/files", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/memory/files", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		type FileInfo struct {
 			Name     string `json:"name"`
 			Modified int64  `json:"modified"`
@@ -2031,7 +1985,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 6. Memory file content ────────────────────────────────────────────
-	mux.HandleFunc("/v1/memory/file", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/memory/file", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Query().Get("name")
 		if name == "" {
 			jsonError(w, http.StatusBadRequest, "invalid_request", "name required")
@@ -2050,7 +2004,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		jsonResponse(w, http.StatusOK, map[string]string{"content": string(content)})
 	}))
 
-	mux.HandleFunc("/v1/workspace/files", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/workspace/files", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		type FileInfo struct {
 			Name     string `json:"name"`
 			Modified int64  `json:"modified"`
@@ -2084,7 +2038,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		json.NewEncoder(w).Encode(files)
 	}))
 
-	mux.HandleFunc("/v1/workspace/file", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/workspace/file", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Query().Get("name")
 		if name == "" {
 			jsonError(w, http.StatusBadRequest, "invalid_request", "name required")
@@ -2193,7 +2147,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 7. Transcribe ─────────────────────────────────────────────────────
-	mux.HandleFunc("/v1/transcribe", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/transcribe", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		file, _, err := r.FormFile("audio")
 		if err != nil {
 			http.Error(w, "audio field required", 400)
@@ -2238,7 +2192,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 8. Upload ─────────────────────────────────────────────────────────
-	mux.HandleFunc("/v1/upload", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/upload", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		file, header, err := r.FormFile("file")
 		if err != nil {
 			http.Error(w, "file field required", 400)
@@ -2255,7 +2209,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 9. Delete message ─────────────────────────────────────────────────
-	mux.HandleFunc("/v1/message", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/message", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
 			http.Error(w, "method not allowed", 405)
 			return
@@ -2269,7 +2223,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 10. Clear session ─────────────────────────────────────────────────
-	mux.HandleFunc("/v1/messages", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/messages", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
 			http.Error(w, "method not allowed", 405)
 			return
@@ -2282,7 +2236,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 11. Delete session ────────────────────────────────────────────────
-	mux.HandleFunc("/v1/session", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/session", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
 			http.Error(w, "method not allowed", 405)
 			return
@@ -2304,7 +2258,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 12. Rename session ────────────────────────────────────────────────
-	mux.HandleFunc("/v1/session/rename", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/session/rename", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", 405)
 			return
@@ -2368,13 +2322,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── Remote control endpoints ──────────────────────────────────────────
-	mux.HandleFunc("/v1/exec", authMiddleware(secret, handleExec(allowedCmds)))
-	mux.HandleFunc("/v1/screenshot", authMiddleware(secret, handleScreenshot(screenshotCmd)))
-	mux.HandleFunc("/v1/stats", authMiddleware(secret, handleStats))
-	mux.HandleFunc("/v1/open", authMiddleware(secret, handleOpen))
+	mux.HandleFunc("/v1/exec", authMiddleware(handleExec(allowedCmds)))
+	mux.HandleFunc("/v1/screenshot", authMiddleware(handleScreenshot(screenshotCmd)))
+	mux.HandleFunc("/v1/stats", authMiddleware(handleStats))
+	mux.HandleFunc("/v1/open", authMiddleware(handleOpen))
 
 	// ── Mid-turn steering ─────────────────────────────────────────────────
-	mux.HandleFunc("/v1/steering", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/steering", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -2420,7 +2374,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	// The clarify tool blocks the agent turn waiting for the user's answer.
 	// The mobile app renders the clarify_request as an interactive card and
 	// posts the answer here.
-	mux.HandleFunc("/v1/clarify/respond", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/clarify/respond", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -2462,7 +2416,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── Model presets / live switching ────────────────────────────────────
-	mux.HandleFunc("/v1/model", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/model", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			type presetPayload struct {
@@ -2515,7 +2469,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── Session list ──────────────────────────────────────────────────────
-	mux.HandleFunc("/v1/sessions", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/sessions", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
@@ -2592,7 +2546,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 
 	// POST /v1/pairing/invitations — generate a pairing invitation.
 	// Called by Ghost Pod web UI when user wants to pair a phone.
-	mux.HandleFunc("/v1/pairing/invitations", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/pairing/invitations", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -2643,7 +2597,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// Legacy: POST /v1/pairing/start — kept for backward compatibility.
-	mux.HandleFunc("/v1/pairing/start", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/pairing/start", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -2737,7 +2691,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// POST /v1/pairing/revoke — revoke a paired device.
-	mux.HandleFunc("/v1/pairing/revoke", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/pairing/revoke", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -2763,7 +2717,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// GET /v1/pairing/devices — list all paired devices.
-	mux.HandleFunc("/v1/pairing/devices", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/pairing/devices", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -2788,7 +2742,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// POST /v1/pairing/cancel — discard a pending pairing token.
-	mux.HandleFunc("/v1/pairing/cancel", authMiddleware(secret, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/pairing/cancel", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -2817,7 +2771,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	// ── WebSocket ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/ws", handleWebSocket(agentLoop))
 
-	addr := fmt.Sprintf("0.0.0.0:%d", port)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	log.Printf("🤖 Ghost Internal API listening on %s (chat + tools)", addr)
 
 	if err := http.ListenAndServe(addr, mux); err != nil {

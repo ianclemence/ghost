@@ -169,19 +169,15 @@ A device credential is generated at install/setup and stored in `.secrets.json` 
 
 | Hop | Credentials present | Notes |
 |---|---|---|
-| Phone → Relay | X-Ghost-Client-Id + X-Ghost-Client-Token | Client token only. The bridge secret is never sent by the phone in relay mode. |
+| Phone → Relay | X-Ghost-Client-Id + X-Ghost-Client-Token | Client token only. |
 | Relay (memory) | SHA-256(client token) hashes, SHA-256(device secret) hashes | Only hashes. No conversation content is persisted. |
 | Relay → Ghost (tunnel) | X-Ghost-Device + X-Ghost-Device-Secret handshake headers | Device secret authenticates the tunnel; it stays on this connection only. |
-| Ghost relay client → local gateway | X-Ghost-Secret (bridge secret), injected locally | The bridge secret never leaves the Ghost device. |
+| Ghost relay client → local gateway | Localhost connection (no auth needed) | Gateway binds to localhost only. |
 
 Hard guarantees enforced in code:
 
-1. **The bridge secret never leaves the Ghost device.** The phone does not send
-   it in relay mode, the relay strips X-Ghost-Secret from every forwarded
-   request even if present, and the device-side relay client injects it locally.
-2. **Credentials are never placed in URLs.** Query-parameter credential
-   fallbacks were removed; both app auth and tunnel auth are header-only, so
-   tokens cannot leak into proxy or access logs.
+1. **The gateway binds to localhost only.** The relay client connects via localhost, so no authentication headers are needed.
+2. **Credentials are never placed in URLs.** Query-parameter credential fallbacks were removed; both app auth and tunnel auth are header-only, so tokens cannot leak into proxy or access logs.
 3. **Device isolation.** Client token bindings are per-device. Token A can only
    ever reach Ghost A; unknown IDs, revoked tokens, and cross-device attempts
    are rejected before any tunnel lookup.
@@ -221,8 +217,8 @@ bridge secret, client/device tokens.
 |---|---|---|
 | Random internet attacker | No unauthenticated access to any endpoint; 256-bit tokens; device registry required for tunnels | — |
 | Malicious relay *client* (has own device/token) | Cannot see or reach other devices' tunnels, tokens, or data | Can abuse their own Ghost's API (by design — it is their Ghost) |
-| Compromised phone | Nothing beyond what LAN mode already exposes: phone holds bridge secret + client token in SecureStore | Full access as the paired phone; revoke the token to cut relay access |
-| Malicious/compromised relay operator | Cannot obtain the bridge secret; cannot persist conversation data via the relay; can deny service | Can read traffic in transit (plaintext payloads), impersonate any paired phone toward its Ghost, log metadata |
+| Compromised phone | Nothing beyond what LAN mode already exposes: phone holds client token in SecureStore | Full access as the paired phone; revoke the token to cut relay access |
+| Malicious/compromised relay operator | Cannot persist conversation data via the relay; can deny service | Can read traffic in transit (plaintext payloads), impersonate any paired phone toward its Ghost, log metadata |
 | Local network attacker | With TLS: nothing exposed. Without TLS: sees tokens and payload content on wireless segments | — |
 
 Product principle upheld: the relay stores only hash-based registries and
@@ -240,7 +236,7 @@ Implemented and unit-tested in this repository:
   generation-based reconnect safety, per-device client-token bindings,
   HTTP forwarding with SSE/streaming support, enrollment endpoint.
 - Device-side relay client (pkg/relayclient): outbound tunnel, local gateway
-  forwarding with bridge-secret injection, reconnect with exponential backoff,
+  forwarding via localhost, reconnect with exponential backoff,
   persisted client token list.
 - CLI: ghost relay run|pair|clients|revoke|setup, ghost-relay
   serve|add-device|list-devices|remove-device.

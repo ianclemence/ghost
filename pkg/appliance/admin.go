@@ -11,8 +11,7 @@ import (
 
 const (
 	// AdminHashFile is the file that stores the bcrypt hash of the admin
-	// password. Kept separate from .env and config.json so the admin
-	// credential and the API bridge secret never share a value.
+	// password. Kept separate from .env and config.json for security.
 	AdminHashFile = "admin.hash"
 	// AdminMetaFile stores admin metadata (creation time, last password change).
 	AdminMetaFile = "admin.meta"

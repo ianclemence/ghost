@@ -32,10 +32,9 @@ How users set up Ghost for the first time and connect devices.
 
 ### Step 4: What happens behind the scenes
 
-- A 32-byte bridge secret is generated (used internally by the web proxy and relay)
 - `config.json` and `.secrets.json` are written (secrets never touch `.env`)
 - The `.setup-complete` flag is created
-- The ghost gateway service starts on port 8766
+- The ghost gateway service starts on port 8766 (bound to localhost only)
 
 ---
 
@@ -91,8 +90,7 @@ ghost://connect?transport=relay&relay=<server>&ghost=<ghostId>&token=<token>
 #### Step 3: Open this URI on the phone
 
 - The Ghost app connects to the relay server
-- The relay tunnels traffic back to your Ghost device
-- The bridge secret is injected locally — the relay never sees it
+- The relay tunnels traffic back to your Ghost device (via localhost)
 
 ---
 
@@ -125,7 +123,7 @@ ghost://connect?transport=relay&relay=<server>&ghost=<ghostId>&token=<token>
           secrets              (SHA-256 hashed)
 ```
 
-- **`.secrets.json`**: Canonical store for API keys, channel tokens, bridge secret
+- **`.secrets.json`**: Canonical store for API keys, channel tokens
 - **`admin.hash`**: bcrypt-hashed owner password
 - **SQLite**: device credentials (SHA-256 hashed), pairing tokens (SHA-256 hashed)
 
@@ -149,15 +147,6 @@ persistent trust established
 
 After pairing, the QR/token disappears from the equation.
 
-### Bridge Secret (Internal Only)
-
-The bridge secret is an **internal credential** used by:
-- Web UI proxy (server-side injection, never exposed to browser)
-- Relay client (injected locally, relay never sees it)
-- CLI tools (for local API calls)
-
-The mobile app does **NOT** use the bridge secret. It uses per-device credentials instead.
-
 ---
 
 ## What the Web UI Is Used For vs the Mobile App
@@ -176,12 +165,16 @@ The web UI is the **control center**. The mobile app is the **daily driver**.
 
 ## Authentication Layers
 
-The gateway uses two authentication mechanisms:
+The gateway binds to localhost only. All internal components communicate via localhost:
+- Web proxy forwards requests to `127.0.0.1:8766`
+- Relay client connects to `127.0.0.1:8766`
+- TUI dashboard connects to `127.0.0.1:8766`
+
+Mobile apps use device credentials:
 
 | Mechanism | Headers | Used By |
 |-----------|---------|---------|
 | Device Credentials | `X-Ghost-Device-ID` + `X-Ghost-Credential` | Mobile app after pairing |
-| Bridge Secret | `X-Ghost-Secret` or `Authorization: Bearer <secret>` | Web proxy, relay client, CLI tools |
 
 WebSocket connections use the same device credential mechanism via headers.
 

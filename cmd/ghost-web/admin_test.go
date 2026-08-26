@@ -67,7 +67,7 @@ func TestUpdateEnvFile(t *testing.T) {
 	envPath := filepath.Join(dir, ".env")
 	fb.EnvPath = envPath
 
-	if err := os.WriteFile(envPath, []byte("BRIDGE_SECRET=old\nTZ=UTC\n"), 0600); err != nil {
+	if err := os.WriteFile(envPath, []byte("TZ=UTC\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -76,7 +76,7 @@ func TestUpdateEnvFile(t *testing.T) {
 	}
 	b, _ := os.ReadFile(envPath)
 	got := string(b)
-	for _, want := range []string{"BRIDGE_SECRET=old", "TZ=UTC", "DEEPSEEK_API_KEY=newkey"} {
+	for _, want := range []string{"TZ=UTC", "DEEPSEEK_API_KEY=newkey"} {
 		if !contains(got, want) {
 			t.Errorf("env file missing %q:\n%s", want, got)
 		}

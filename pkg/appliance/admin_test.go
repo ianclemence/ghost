@@ -89,27 +89,6 @@ func TestSetAdminPasswordReplacesHash(t *testing.T) {
 	}
 }
 
-func TestGenerateBridgeSecret(t *testing.T) {
-	s1, err := GenerateBridgeSecret()
-	if err != nil {
-		t.Fatalf("GenerateBridgeSecret failed: %v", err)
-	}
-	s2, err := GenerateBridgeSecret()
-	if err != nil {
-		t.Fatalf("GenerateBridgeSecret failed: %v", err)
-	}
-
-	if s1 == "" || s2 == "" {
-		t.Fatal("generated secrets must not be empty")
-	}
-	if len(s1) != 64 || len(s2) != 64 {
-		t.Fatalf("expected 64 hex chars, got %d and %d", len(s1), len(s2))
-	}
-	if s1 == s2 {
-		t.Fatal("two generated secrets must not be identical")
-	}
-}
-
 func TestRemoveAdminPassword(t *testing.T) {
 	ghostDir := filepath.Join(t.TempDir(), "ghost")
 

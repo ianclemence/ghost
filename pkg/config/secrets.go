@@ -30,7 +30,7 @@ type Secrets struct {
 	WeChatToken          string `json:"wechat_token,omitempty"`
 	WeChatEncodingAESKey string `json:"wechat_encoding_aes_key,omitempty"`
 
-	BridgeSecret      string `json:"bridge_secret,omitempty"`
+	BridgeSecret      string `json:"bridge_secret,omitempty"` // Deprecated: kept for migration
 	ClawHubAuthToken  string `json:"clawhub_auth_token,omitempty"`
 	HonchoAPIKey      string `json:"honcho_api_key,omitempty"`
 	FirecrawlAPIKey   string `json:"firecrawl_api_key,omitempty"`
@@ -133,7 +133,6 @@ func extractSecrets(cfg *Config) *Secrets {
 	s.WeChatToken = cfg.Channels.WeChat.Token
 	s.WeChatEncodingAESKey = cfg.Channels.WeChat.EncodingAESKey
 
-	s.BridgeSecret = cfg.Gateway.BridgeSecret
 	s.RelayDeviceSecret = cfg.Relay.DeviceSecret
 	s.ClawHubAuthToken = cfg.Skills.ClawHub.AuthToken
 	s.HonchoAPIKey = cfg.Skills.Honcho.APIKey
@@ -216,9 +215,6 @@ func applySecrets(cfg *Config, s *Secrets) {
 	if s.WeChatEncodingAESKey != "" {
 		cfg.Channels.WeChat.EncodingAESKey = s.WeChatEncodingAESKey
 	}
-	if s.BridgeSecret != "" {
-		cfg.Gateway.BridgeSecret = s.BridgeSecret
-	}
 	if s.RelayDeviceSecret != "" {
 		cfg.Relay.DeviceSecret = s.RelayDeviceSecret
 	}
@@ -263,7 +259,6 @@ func clearSecrets(cfg *Config) {
 	cfg.Channels.WeChat.Secret = ""
 	cfg.Channels.WeChat.Token = ""
 	cfg.Channels.WeChat.EncodingAESKey = ""
-	cfg.Gateway.BridgeSecret = ""
 	cfg.Relay.DeviceSecret = ""
 	cfg.Skills.ClawHub.AuthToken = ""
 	cfg.Skills.Honcho.APIKey = ""

@@ -1,8 +1,7 @@
 // Package relayclient implements the Ghost device-side relay client.
 //
 // It maintains an outbound WebSocket tunnel to the relay server and forwards
-// HTTP requests from paired apps to the local Ghost gateway. The bridge secret
-// is injected locally — the relay never sees it.
+// HTTP requests from paired apps to the local Ghost gateway via localhost.
 //
 // Concurrency model: readLoop is the SOLE reader on the WebSocket. Frames for
 // individual streams are routed to per-stream handler goroutines via channels.
@@ -37,7 +36,6 @@ type ClientConfig struct {
 	DeviceSecret string // loaded from .secrets.json
 	RelayServer  string // e.g. wss://relay.example.com or ws://127.0.0.1:8080
 	GatewayURL   string // e.g. http://127.0.0.1:8766 (local gateway)
-	BridgeSecret string // from config, injected into forwarded requests
 	ReconnectMin int    // minimum reconnect delay in seconds
 	ReconnectMax int    // maximum reconnect delay in seconds
 }
@@ -390,11 +388,7 @@ loop:
 		}
 	}
 
-	// Inject bridge secret (local auth — relay never sees this) and mark
-	// the request as relay-forwarded for gateway-side auditability.
-	if c.cfg.BridgeSecret != "" {
-		req.Header.Set("X-Ghost-Secret", c.cfg.BridgeSecret)
-	}
+	// Mark the request as relay-forwarded for gateway-side auditability.
 	req.Header.Set("X-Ghost-Via", "relay")
 
 	// Execute request against local gateway

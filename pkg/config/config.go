@@ -234,9 +234,8 @@ type ProviderConfig struct {
 }
 
 type GatewayConfig struct {
-	Host         string `json:"host" env:"GHOST_GATEWAY_HOST"`
-	Port         int    `json:"port" env:"GHOST_GATEWAY_PORT"`
-	BridgeSecret string `json:"bridge_secret" env:"BRIDGE_SECRET"`
+	Host string `json:"host" env:"GHOST_GATEWAY_HOST"`
+	Port int    `json:"port" env:"GHOST_GATEWAY_PORT"`
 }
 
 type RelayConfig struct {

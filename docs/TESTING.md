@@ -140,9 +140,8 @@ The recommended pairing flow is through the web admin dashboard:
 ### Pairing API (for testing)
 
 ```bash
-# Create pairing invitation (requires bridge secret)
+# Create pairing invitation (gateway binds to localhost only)
 curl -s -X POST http://localhost:8766/v1/pairing/invitations \
-  -H "X-Ghost-Secret: $BRIDGE_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"display_name": "Test Phone", "transport": "lan"}'
 
@@ -151,13 +150,11 @@ curl -s -X POST http://localhost:8766/v1/pairing/complete \
   -H "Content-Type: application/json" \
   -d '{"token": "<token>", "display_name": "Test Phone", "platform": "android"}'
 
-# List paired devices (requires bridge secret)
-curl -s http://localhost:8766/v1/pairing/devices \
-  -H "X-Ghost-Secret: $BRIDGE_SECRET"
+# List paired devices (gateway binds to localhost only)
+curl -s http://localhost:8766/v1/pairing/devices
 
-# Revoke a device (requires bridge secret)
+# Revoke a device (gateway binds to localhost only)
 curl -s -X POST http://localhost:8766/v1/pairing/revoke \
-  -H "X-Ghost-Secret: $BRIDGE_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"device_id": "<device_id>"}'
 ```

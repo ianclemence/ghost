@@ -316,7 +316,6 @@ func TestSaveConfigSeparatesSecrets(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Providers.Moonshot.APIKey = "moonshot-secret-key"
 	cfg.Channels.Telegram.Token = "telegram-secret-token"
-	cfg.Gateway.BridgeSecret = "bridge-secret-value"
 
 	if err := SaveConfig(path, cfg); err != nil {
 		t.Fatalf("SaveConfig failed: %v", err)
@@ -327,7 +326,7 @@ func TestSaveConfigSeparatesSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read config.json: %v", err)
 	}
-	for _, secret := range []string{"moonshot-secret-key", "telegram-secret-token", "bridge-secret-value"} {
+	for _, secret := range []string{"moonshot-secret-key", "telegram-secret-token"} {
 		if containsSubstr(string(raw), secret) {
 			t.Errorf("config.json leaked secret: %s", secret)
 		}
@@ -350,9 +349,6 @@ func TestSaveConfigSeparatesSecrets(t *testing.T) {
 	}
 	if secrets.TelegramToken != "telegram-secret-token" {
 		t.Errorf("telegram token not persisted: %q", secrets.TelegramToken)
-	}
-	if secrets.BridgeSecret != "bridge-secret-value" {
-		t.Errorf("bridge secret not persisted: %q", secrets.BridgeSecret)
 	}
 	if fi, err := os.Stat(SecretsPath(path)); err == nil {
 		if perm := fi.Mode().Perm(); perm != 0600 {

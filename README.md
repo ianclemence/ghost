@@ -112,14 +112,9 @@ Ghost uses a layered security model designed for a self-hosted appliance.
 
 After pairing, the QR token disappears from the equation. Each device gets its own unique credential.
 
-### What the Bridge Secret Is (Internal Only)
+### Gateway Binding
 
-The bridge secret is an **internal credential** used by:
-- Web UI proxy (server-side injection, never exposed to browser)
-- Relay client (injected locally, relay never sees it)
-- CLI tools (for local API calls)
-
-The mobile app does **NOT** use the bridge secret. It uses per-device credentials instead.
+The gateway binds to `127.0.0.1` (localhost only). All internal components (web proxy, relay client, TUI dashboard) communicate with the gateway via localhost. The relay server forwards traffic from mobile apps to the local gateway via WebSocket tunnels.
 
 ### Directory Permissions
 
@@ -551,13 +546,12 @@ The web dashboard uses session-based authentication:
 
 ### Internal Authentication (Web Proxy, Relay, CLI)
 
-The web proxy and relay client use the bridge secret internally:
+The gateway binds to localhost only. All internal components communicate via localhost:
+- Web proxy forwards requests to `127.0.0.1:8766`
+- Relay client connects to `127.0.0.1:8766`
+- TUI dashboard connects to `127.0.0.1:8766`
 
-```
-X-Ghost-Secret: <bridge_secret>
-```
-
-This is **never exposed to the browser** — it's injected server-side by the web proxy.
+No authentication headers are needed for localhost traffic.
 
 ---
 

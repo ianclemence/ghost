@@ -753,22 +753,6 @@
         } catch (e) { Ghost.toast.err('Failed to change password.'); }
     }
 
-    async function regenBridge() {
-        const yes = await Ghost.confirm({
-            title: 'Regenerate pairing secret?',
-            body: 'Every connected app will need to be paired again.',
-            okLabel: 'Regenerate',
-            danger: true,
-        });
-        if (!yes) return;
-        try {
-            const data = await api('/api/admin/bridge', 'POST');
-            if (data.ok) {
-                msg('bridge-msg', 'Bridge secret regenerated. The gateway will restart with the new secret. Re-pair your app if needed.', true);
-            } else { Ghost.toast.err(data.error || 'Failed to regenerate pairing secret.'); }
-        } catch (e) { Ghost.toast.err('Failed to regenerate pairing secret.'); }
-    }
-
     async function loadGateway() {
         try {
             const data = await api('/api/admin/gateway');
@@ -976,7 +960,6 @@
             $('pw-new').type = type;
             $('pw-confirm').type = type;
         });
-        $('btn-regen-bridge').addEventListener('click', regenBridge);
         $('btn-save-gateway').addEventListener('click', saveGateway);
         $('btn-refresh-logs').addEventListener('click', loadLogs);
         $('btn-save-advanced').addEventListener('click', saveAdvanced);

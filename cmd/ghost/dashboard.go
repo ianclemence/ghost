@@ -78,9 +78,8 @@ type operatorClient struct {
 }
 
 type authSanity struct {
-	BridgeSecretConfigured bool `json:"bridge_secret_configured"`
-	APIReachable           bool `json:"api_reachable"`
-	Blocking               bool `json:"blocking"`
+	APIReachable bool `json:"api_reachable"`
+	Blocking     bool `json:"blocking"`
 }
 
 type doctorPayload struct {
@@ -592,7 +591,7 @@ func (m dashboardModel) renderLockScreen() string {
 
 func (m dashboardModel) renderSanityChecks() string {
 	var lines []string
-	for _, c := range []struct{ n string; v bool }{{"Bridge Key", m.sanity.BridgeSecretConfigured}, {"API Socket", m.sanity.APIReachable}} {
+	for _, c := range []struct{ n string; v bool }{{"API Socket", m.sanity.APIReachable}} {
 		icon, color := "●", themeSuccess
 		if !c.v { icon, color = "●", themeError }
 		lines = append(lines, fmt.Sprintf("%s %s", lipgloss.NewStyle().Foreground(color).Render(icon), c.n))
@@ -665,7 +664,7 @@ func (c *operatorClient) get(path string, target interface{}) error {
 func (c *operatorClient) sanityCheck() authSanity {
 	var res struct{ Status string `json:"status"` }
 	err := c.get("/v1/health", &res)
-	return authSanity{BridgeSecretConfigured: c.Secret != "", APIReachable: err == nil, Blocking: err != nil}
+	return authSanity{APIReachable: err == nil, Blocking: err != nil}
 }
 func (c *operatorClient) fetchDoctorAndChannels() (doctorPayload, map[string]channelHealth, error) {
 	var res doctorPayload
@@ -697,13 +696,7 @@ func (c *operatorClient) reconnect(channel string) error {
 func runDashboard() {
 	port := 8766
 	if p := os.Getenv("GHOST_API_PORT"); p != "" { fmt.Sscanf(p, "%d", &port) }
-	secret := os.Getenv("BRIDGE_SECRET")
-	if secret == "" {
-		if cfg, err := loadConfig(); err == nil {
-			secret = cfg.Gateway.BridgeSecret
-		}
-	}
-	client := newOperatorClient(fmt.Sprintf("http://127.0.0.1:%d", port), secret)
+	client := newOperatorClient(fmt.Sprintf("http://127.0.0.1:%d", port), "")
 	if _, err := tea.NewProgram(initialModel(client), tea.WithAltScreen()).Run(); err != nil {
 		fmt.Printf("Error: %v\n", err); os.Exit(1)
 	}
