@@ -1,110 +1,89 @@
-/* Ghost Section: Activity — what Ghost has done */
+/* Ghost Section: Activity — what Ghost has been doing. */
 'use strict';
 
 async function loadActivity(container) {
   container.innerHTML = '';
-  const section = GhostUI.h('div', { id: 'section-activity' });
+  const head = GhostUI.h('div', { className: 'page-head' });
+  head.appendChild(GhostUI.h('h1', {}, 'Activity'));
+  head.appendChild(GhostUI.h('p', {}, 'A record of what Ghost has done on your behalf.'));
+  container.appendChild(head);
 
-  section.appendChild(GhostUI.h('div', { className: 'page-title' }, 'Activity'));
-  section.appendChild(GhostUI.h('div', { className: 'page-subtitle' }, 'What Ghost has been doing.'));
+  const filters = [
+    { key: 'all', label: 'All' },
+    { key: 'messages', label: 'Messages' },
+    { key: 'automations', label: 'Automations' },
+    { key: 'memory', label: 'Memory' },
+    { key: 'errors', label: 'Errors' },
+  ];
+  let activeFilter = 'all';
+  const chips = GhostUI.h('div', { className: 'chips' });
+  filters.forEach(f => {
+    const c = GhostUI.h('button', { className: 'chip' + (f.key === activeFilter ? ' active' : ''), onClick: () => { activeFilter = f.key; chips.querySelectorAll('.chip').forEach(x => x.classList.remove('active')); c.classList.add('active'); paint(); } }, f.label);
+    c.dataset.filter = f.key;
+    chips.appendChild(c);
+  });
+  container.appendChild(chips);
 
-  // Activity list
-  const listEl = GhostUI.h('div', { className: 'ghost-list' });
+  const timeline = GhostUI.h('div', { className: 'timeline', id: 'act-timeline' });
+  timeline.appendChild(GhostUI.loading('Loading activity…'));
+  container.appendChild(timeline);
 
-  let allSessions = [];
+  const [sessions, jobs, memories, traces] = await Promise.allSettled([
+    GhostAPI.proxyGet('/v1/sessions'),
+    GhostAPI.proxyGet('/v1/cron/jobs'),
+    GhostAPI.proxyGet('/v1/memory/files'),
+    GhostAPI.proxyGet('/v1/traces'),
+  ]);
 
-  try {
-    const data = await GhostAPI.proxyGet('/v1/sessions');
-    allSessions = data.sessions || [];
-
-    // Determine session type based on ID patterns
-    const getSessionType = (id) => {
-      if (!id) return 'task';
-      const lower = id.toLowerCase();
-      if (lower === 'heartbeat' || lower.startsWith('heartbeat:')) return 'automation';
-      if (lower.startsWith('memory:') || lower.includes('memory')) return 'memory';
-      if (lower.startsWith('task:') || lower.includes('task')) return 'task';
-      return 'task'; // default
-    };
-
-    // Group by day
-    const groupSessions = (sessions) => {
-      const groups = {};
-      for (const s of sessions) {
-        const d = s.last_activity ? new Date(s.last_activity * 1000) : new Date();
-        const day = d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-        if (!groups[day]) groups[day] = [];
-        groups[day].push({ ...s, date: d, type: getSessionType(s.id) });
-      }
-      return groups;
-    };
-
-    // Render function
-    const renderSessions = (sessions) => {
-      listEl.innerHTML = '';
-      if (sessions.length === 0) {
-        listEl.appendChild(GhostUI.h('div', { className: 'empty-state', style: 'min-height:auto;padding:var(--space-xl)' },
-          GhostUI.h('div', { className: 'type-callout text-secondary' }, 'Nothing to report.')
-        ));
-        return;
-      }
-      const groups = groupSessions(sessions);
-      let firstDay = true;
-      for (const [day, items] of Object.entries(groups)) {
-        const labelStyle = firstDay
-          ? 'margin-top:var(--space-lg)'
-          : 'margin-top:var(--space-xxl)';
-        listEl.appendChild(GhostUI.h('div', { className: 'section-label', style: labelStyle }, day));
-        firstDay = false;
-        for (const item of items) {
-          const r = GhostUI.h('div', { className: 'ghost-row' });
-          const c = GhostUI.h('div', { className: 'ghost-row-content' });
-          c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, item.title || item.id || 'Session'));
-          c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, `${item.message_count || 0} messages`));
-          r.appendChild(c);
-          r.appendChild(GhostUI.h('span', { className: 'type-footnote text-tertiary' },
-            item.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          ));
-          listEl.appendChild(r);
-        }
-      }
-    };
-
-    // Filters
-    const filters = GhostUI.h('div', { style: 'display:flex;gap:var(--space-sm);margin-bottom:var(--space-xxl);flex-wrap:wrap' });
-    const filterBtns = ['All', 'Tasks', 'Memory', 'Automations'];
-    let activeFilter = 'All';
-
-    for (const f of filterBtns) {
-      const b = GhostUI.h('button', {
-        className: `ghost-btn ghost-btn-sm ${f === activeFilter ? 'ghost-btn-primary' : 'ghost-btn-ghost'}`,
-        onClick: (e) => {
-          activeFilter = f;
-          filters.querySelectorAll('button').forEach(btn => {
-            btn.className = `ghost-btn ghost-btn-sm ${btn.textContent === f ? 'ghost-btn-primary' : 'ghost-btn-ghost'}`;
-          });
-          // Apply filter
-          if (f === 'All') {
-            renderSessions(allSessions);
-          } else {
-            const typeMap = { 'Tasks': 'task', 'Memory': 'memory', 'Automations': 'automation' };
-            const filterType = typeMap[f];
-            renderSessions(allSessions.filter(s => getSessionType(s.id) === filterType));
-          }
-        }
-      }, f);
-      filters.appendChild(b);
+  const items = [];
+  if (sessions.status === 'fulfilled') {
+    for (const s of (sessions.value.sessions || [])) {
+      items.push({ kind: 'messages', ts: s.last_activity, title: (s.title && s.title.trim()) ? s.title : 'Conversation', meta: GhostUI.fmtNum(s.message_count) + ' messages' });
     }
-    section.appendChild(filters);
-
-    // Initial render
-    renderSessions(allSessions);
-  } catch (e) {
-    section.appendChild(GhostUI.errorState('Couldn\'t load activity.', e.message));
+  }
+  if (jobs.status === 'fulfilled') {
+    for (const j of (jobs.value.jobs || [])) {
+      const lr = j.state && j.state.last_run_at;
+      if (lr) items.push({ kind: 'automations', ts: Math.floor(new Date(lr).getTime() / 1000), title: j.name, meta: 'Last run' });
+    }
+  }
+  if (memories.status === 'fulfilled') {
+    for (const m of (memories.value || []).slice(0, 20)) {
+      items.push({ kind: 'memory', ts: m.modified, title: m.name.replace(/\.md$/, ''), meta: 'Remembered' });
+    }
+  }
+  if (traces.status === 'fulfilled') {
+    const incidents = (traces.value.incidents || []).slice(0, 20);
+    for (const inc of incidents) {
+      items.push({ kind: 'errors', ts: Math.floor((inc.timestamp || 0) / 1000) || 0, title: inc.message || 'Incident', meta: inc.level || 'error' });
+    }
   }
 
-  section.appendChild(listEl);
-  container.appendChild(section);
+  items.sort((a, b) => b.ts - a.ts);
+
+  function paint() {
+    const t = document.getElementById('act-timeline');
+    t.innerHTML = '';
+    const filtered = activeFilter === 'all' ? items : items.filter(i => i.kind === activeFilter);
+    if (filtered.length === 0) {
+      const labels = { all: 'Nothing here yet', messages: 'No conversations yet', automations: 'No automations have run', memory: 'Nothing remembered yet', errors: 'No errors — Ghost is healthy' };
+      t.appendChild(GhostUI.emptyState(labels[activeFilter] || 'Nothing here', 'This view will fill in as Ghost works for you.'));
+      return;
+    }
+    let lastDay = null;
+    for (const it of filtered) {
+      const day = GhostUI.dayLabel(it.ts);
+      if (day !== lastDay) { t.appendChild(GhostUI.h('div', { className: 'tl-day' }, day)); lastDay = day; }
+      const item = GhostUI.h('div', { className: 'tl-item' });
+      item.appendChild(GhostUI.h('div', { className: 'tl-time' }, GhostUI.clockTime(it.ts)));
+      const body = GhostUI.h('div', { className: 'tl-body' });
+      body.appendChild(GhostUI.h('div', { className: 'tl-title' }, it.title));
+      body.appendChild(GhostUI.h('div', { className: 'tl-meta' }, it.meta));
+      item.appendChild(body);
+      t.appendChild(item);
+    }
+  }
+  paint();
 }
 
 GhostApp.registerSection('activity', loadActivity);

@@ -1,76 +1,58 @@
-/* Ghost Section: Updates */
+/* Ghost Section: Updates — keep Ghost current. */
 'use strict';
 
 async function loadUpdates(container) {
   container.innerHTML = '';
-  const section = GhostUI.h('div', { id: 'section-updates' });
+  const head = GhostUI.h('div', { className: 'page-head' });
+  head.appendChild(GhostUI.h('h1', {}, 'Updates'));
+  head.appendChild(GhostUI.h('p', {}, 'Keep Ghost current.'));
+  container.appendChild(head);
 
-  section.appendChild(GhostUI.h('div', { className: 'page-title' }, 'Updates'));
-  section.appendChild(GhostUI.h('div', { className: 'page-subtitle' }, 'Keep your Ghost current.'));
+  const [stRes, upRes] = await Promise.allSettled([
+    GhostAPI.get('/api/admin/status'),
+    GhostAPI.get('/api/admin/update/status'),
+  ]);
+  const version = stRes.status === 'fulfilled' ? (stRes.value.version || '?') : '?';
+  const up = upRes.status === 'fulfilled' ? upRes.value : { running: false, log: '' };
 
-  try {
-    const health = await GhostAPI.proxyGet('/v1/health');
-    const version = health.version || 'Unknown';
+  const panel = GhostUI.h('div', { className: 'panel' });
+  const pk = GhostUI.h('div', { className: 'kv' });
+  pk.appendChild(kv('Current version', version));
+  panel.appendChild(pk);
+  container.appendChild(panel);
 
-    const infoSection = GhostUI.h('div', { className: 'section-group' });
-    infoSection.appendChild(GhostUI.h('div', { className: 'section-label' }, 'Current version'));
-    const infoList = GhostUI.h('div', { className: 'ghost-list' });
-    infoList.appendChild(GhostUI.row('Version', version));
-    infoSection.appendChild(infoList);
-    section.appendChild(infoSection);
+  const actions = GhostUI.h('div', { className: 'row-flex', style: 'margin-top:var(--s-4)' });
+  const updateBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => runUpdate(logBox, updateBtn) }, 'Update Ghost');
+  actions.appendChild(updateBtn);
+  container.appendChild(actions);
 
-    // Update actions
-    const actions = GhostUI.h('div', { style: 'margin-top:var(--space-xxl);display:flex;gap:var(--space-sm)' });
-    actions.appendChild(GhostUI.btn('Check for updates', 'primary', async () => {
-      try {
-        GhostUI.toast('Checking for updates...');
-        const res = await GhostAPI.post('/api/admin/update');
-        if (res.ok) {
-          // Poll for update status — show toast only once
-          let attempts = 0;
-          let shownProgress = false;
-          const poll = setInterval(async () => {
-            attempts++;
-            try {
-              const status = await GhostAPI.get('/api/admin/update/status');
-              if (status.running) {
-                if (!shownProgress) {
-                  GhostUI.toast('Update in progress...');
-                  shownProgress = true;
-                }
-              } else {
-                clearInterval(poll);
-                if (status.success) {
-                  GhostUI.toast('Update complete! Refreshing...');
-                  setTimeout(() => location.reload(), 2000);
-                } else {
-                  GhostUI.toast('Update failed. Check logs for details.');
-                }
-              }
-            } catch (e) {
-              clearInterval(poll);
-              GhostUI.toast('Ghost may have restarted. Refreshing...');
-              setTimeout(() => location.reload(), 3000);
-            }
-            if (attempts > 60) {
-              clearInterval(poll);
-              GhostUI.toast('Update is taking longer than expected.');
-            }
-          }, 500);
-        } else {
-          GhostUI.toast('Failed to start update.');
-        }
-      } catch (err) {
-        GhostUI.toast('Failed to check for updates.');
+  const logBox = GhostUI.h('div', { className: 'panel hidden', style: 'margin-top:var(--s-4)' });
+  container.appendChild(logBox);
+
+  if (up.running) runUpdate(logBox, updateBtn);
+  else if (up.log) { logBox.classList.remove('hidden'); logBox.appendChild(GhostUI.h('pre', { className: 'type-mono', style: 'white-space:pre-wrap;margin:0' }, up.log)); }
+}
+
+function kv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
+
+async function runUpdate(logBox, btn) {
+  btn.disabled = true; btn.textContent = 'Updating…';
+  logBox.classList.remove('hidden');
+  logBox.innerHTML = '';
+  logBox.appendChild(GhostUI.loading('Starting update…'));
+  try { await GhostAPI.post('/api/admin/update'); } catch (e) { GhostUI.toast('Couldn’t start update.', 'err'); btn.disabled = false; btn.textContent = 'Update Ghost'; return; }
+  const poll = setInterval(async () => {
+    try {
+      const s = await GhostAPI.get('/api/admin/update/status');
+      logBox.innerHTML = '';
+      logBox.appendChild(GhostUI.h('pre', { className: 'type-mono', style: 'white-space:pre-wrap;margin:0;max-height:300px;overflow:auto' }, s.log || ''));
+      if (!s.running) {
+        clearInterval(poll);
+        btn.disabled = false; btn.textContent = 'Update Ghost';
+        if (s.success) GhostUI.toast('Ghost is up to date');
       }
-    }));
-    section.appendChild(actions);
-
-  } catch (e) {
-    section.appendChild(GhostUI.errorState('Couldn\'t check version.', e.message));
-  }
-
-  container.appendChild(section);
+    } catch (e) { clearInterval(poll); btn.disabled = false; btn.textContent = 'Update Ghost'; }
+  }, 1500);
 }
 
 GhostApp.registerSection('updates', loadUpdates);

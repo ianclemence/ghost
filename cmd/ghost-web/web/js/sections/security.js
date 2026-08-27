@@ -1,66 +1,77 @@
-/* Ghost Section: Security */
+/* Ghost Section: Security — who can reach your Ghost. */
 'use strict';
 
 async function loadSecurity(container) {
   container.innerHTML = '';
-  const section = GhostUI.h('div', { id: 'section-security' });
+  const head = GhostUI.h('div', { className: 'page-head' });
+  head.appendChild(GhostUI.h('h1', {}, 'Security'));
+  head.appendChild(GhostUI.h('p', {}, 'Who can reach your Ghost.'));
+  container.appendChild(head);
 
-  section.appendChild(GhostUI.h('div', { className: 'page-title' }, 'Security'));
-  section.appendChild(GhostUI.h('div', { className: 'page-subtitle' }, 'Protect your Ghost.'));
+  const panel = GhostUI.h('div', { className: 'panel' });
 
   // Owner access
-  const ownerSection = GhostUI.h('div', { className: 'section-group' });
-  ownerSection.appendChild(GhostUI.h('div', { className: 'section-label' }, 'Owner access'));
-  const ownerList = GhostUI.h('div', { className: 'ghost-list' });
-  ownerList.appendChild(GhostUI.linkRow('Change password', 'Update your owner password', () => showChangePassword()));
-  ownerSection.appendChild(ownerList);
-  section.appendChild(ownerSection);
+  const ownerRow = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => showChangePassword() });
+  const oc = GhostUI.h('div', { className: 'ghost-row-content' });
+  oc.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, 'Change password'));
+  oc.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, 'The password used to open this console'));
+  ownerRow.appendChild(oc); ownerRow.appendChild(GhostUI.h('span', { className: 'chevron' }, '›'));
+  panel.appendChild(ownerRow);
 
   // Devices
-  const devSection = GhostUI.h('div', { className: 'section-group' });
-  devSection.appendChild(GhostUI.h('div', { className: 'section-label' }, 'Devices'));
-  const devList = GhostUI.h('div', { className: 'ghost-list' });
-  devList.appendChild(GhostUI.linkRow('Manage devices', 'View and revoke paired devices', () => GhostApp.navigate('devices')));
-  devSection.appendChild(devList);
-  section.appendChild(devSection);
+  const devRow = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => GhostApp.navigate('devices') });
+  const dc = GhostUI.h('div', { className: 'ghost-row-content' });
+  dc.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, 'Manage devices'));
+  dc.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, 'Connect, view, or disconnect trusted phones and tablets'));
+  devRow.appendChild(dc); devRow.appendChild(GhostUI.h('span', { className: 'chevron' }, '›'));
+  panel.appendChild(devRow);
 
-  container.appendChild(section);
+  container.appendChild(panel);
+
+  // Recent failed sign-ins (only if any)
+  const [failRes] = await Promise.allSettled([
+    GhostAPI.get('/api/admin/auth/failed-logins'),
+  ]);
+  const fails = failRes.status === 'fulfilled' ? (failRes.value.attempts || []) : [];
+  if (fails.length > 0) {
+    const sec = GhostUI.h('div', { className: 'panel' });
+    const sh = GhostUI.h('div', { className: 'panel-head' });
+    const shText = GhostUI.h('div');
+    shText.appendChild(GhostUI.h('h2', {}, 'Recent failed sign-ins'));
+    sh.appendChild(shText);
+    sec.appendChild(sh);
+    const list = GhostUI.h('div', { className: 'kv' });
+    fails.slice(0, 5).forEach(f => list.appendChild(kv(f.ip, new Date(f.time).toLocaleString())));
+    sec.appendChild(list);
+    container.appendChild(sec);
+  }
 }
+
+function kv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
 
 function showChangePassword() {
   const body = GhostUI.h('div');
-
-  const currentGroup = GhostUI.h('div', { className: 'form-group' });
-  currentGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Current password'));
-  const currentInput = GhostUI.input('Current password', 'password');
-  currentGroup.appendChild(currentInput);
-  body.appendChild(currentGroup);
-
-  const newGroup = GhostUI.h('div', { className: 'form-group' });
-  newGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'New password'));
-  const newInput = GhostUI.input('New password', 'password');
-  newGroup.appendChild(newInput);
-  body.appendChild(newGroup);
-
-  const confirmGroup = GhostUI.h('div', { className: 'form-group' });
-  confirmGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Confirm password'));
-  const confirmInput = GhostUI.input('Confirm password', 'password');
-  confirmGroup.appendChild(confirmInput);
-  body.appendChild(confirmGroup);
+  const mk = (label, ph) => {
+    const f = GhostUI.h('div', { className: 'field' });
+    f.appendChild(GhostUI.h('label', {}, label));
+    const i = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: ph || '' });
+    f.appendChild(i); body.appendChild(f); return i;
+  };
+  const cur = mk('Current password');
+  const np = mk('New password', 'At least 8 characters');
+  const cf = mk('Confirm new password');
 
   GhostUI.modal('Change password', body, [
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async () => {
-      if (newInput.value !== confirmInput.value) { GhostUI.toast('Passwords don\'t match.'); return; }
-      if (newInput.value.length < 8) { GhostUI.toast('Password must be at least 8 characters.'); return; }
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: e => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async e => {
+      if (np.value !== cf.value) { GhostUI.toast('Passwords don’t match.'); return; }
+      if (np.value.length < 8) { GhostUI.toast('At least 8 characters.'); return; }
       try {
-        await GhostAPI.post('/api/admin/password', { current: currentInput.value, new: newInput.value, confirm: confirmInput.value });
-        GhostUI.toast('Password changed.');
+        await GhostAPI.post('/api/admin/password', { current: cur.value, new: np.value, confirm: cf.value });
         e.target.closest('.ghost-modal-backdrop').remove();
-      } catch (err) {
-        GhostUI.toast('Couldn\'t change password.');
-      }
-    }}, 'Save')
+        GhostUI.toast('Password changed');
+      } catch (err) { GhostUI.toast('Couldn’t change it.', 'err'); }
+    } }, 'Save'),
   ]);
 }
 

@@ -159,5 +159,61 @@ const GhostUI = (() => {
     ]);
   }
 
-  return { el, h, ghostMark, statusDot, badge, btn, input, textarea, select, toggle, row, linkRow, sectionGroup, emptyState, loading, errorState, modal, toast, confirmModal };
+  // ── Formatting helpers ──
+  function fmtNum(n) { return (n == null ? '0' : n).toLocaleString('en-US'); }
+
+  function timeAgo(unixSec) {
+    if (!unixSec) return 'never';
+    const diff = Math.floor(Date.now() / 1000) - unixSec;
+    if (diff < 0) return 'just now';
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    const d = Math.floor(diff / 86400);
+    if (d < 30) return d + 'd ago';
+    return new Date(unixSec * 1000).toLocaleDateString();
+  }
+
+  function clockTime(unixSec) {
+    if (!unixSec) return '';
+    return new Date(unixSec * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function dayLabel(unixSec) {
+    const d = new Date(unixSec * 1000);
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  // Minimal, safe markdown → HTML (escapes input first).
+  function md(src) {
+    const esc = (s) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const lines = (src || '').replace(/\r\n/g, '\n').split('\n');
+    let html = '', i = 0, inCode = false, listOpen = false;
+    const inline = (t) => esc(t)
+      .replace(/`([^`]+)`/g, (_, c) => '<code>' + c + '</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    const closeList = () => { if (listOpen) { html += '</ul>'; listOpen = false; } };
+    while (i < lines.length) {
+      const line = lines[i];
+      if (line.startsWith('```')) { closeList(); inCode = !inCode; html += inCode ? '<pre><code>' : '</code></pre>'; i++; continue; }
+      if (inCode) { html += esc(line) + '\n'; i++; continue; }
+      if (/^### /.test(line)) { closeList(); html += '<h3>' + inline(line.slice(4)) + '</h3>'; }
+      else if (/^## /.test(line)) { closeList(); html += '<h2>' + inline(line.slice(3)) + '</h2>'; }
+      else if (/^# /.test(line)) { closeList(); html += '<h1>' + inline(line.slice(2)) + '</h1>'; }
+      else if (/^\s*[-*] /.test(line)) { if (!listOpen) { html += '<ul>'; listOpen = true; } html += '<li>' + inline(line.replace(/^\s*[-*] /, '')) + '</li>'; }
+      else if (line.trim() === '') { closeList(); }
+      else { closeList(); html += '<p>' + inline(line) + '</p>'; }
+      i++;
+    }
+    closeList();
+    if (inCode) html += '</code></pre>';
+    return html;
+  }
+
+  return { el, h, ghostMark, statusDot, badge, btn, input, textarea, select, toggle, row, linkRow, sectionGroup, emptyState, loading, errorState, modal, toast, confirmModal, fmtNum, timeAgo, clockTime, dayLabel, md };
 })();

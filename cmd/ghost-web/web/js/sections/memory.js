@@ -1,95 +1,92 @@
-/* Ghost Section: Memory — What Ghost remembers */
+/* Ghost Section: Memory — what Ghost remembers. */
 'use strict';
 
 async function loadMemory(container) {
   container.innerHTML = '';
-  const section = GhostUI.h('div', { id: 'section-memory' });
+  const head = GhostUI.h('div', { className: 'page-head' });
+  head.appendChild(GhostUI.h('h1', {}, 'Memory'));
+  const sub = GhostUI.h('p', {}, 'What Ghost remembers about you.');
+  head.appendChild(sub);
+  container.appendChild(head);
 
-  section.appendChild(GhostUI.h('div', { className: 'page-title' }, 'Memory'));
-  section.appendChild(GhostUI.h('div', { className: 'page-subtitle' }, 'What Ghost remembers about you.'));
+  const searchWrap = GhostUI.h('div', { style: 'margin-bottom:var(--s-4)' });
+  const search = GhostUI.input('Search memories…');
+  searchWrap.appendChild(search);
+  container.appendChild(searchWrap);
 
-  // Load memory files
-  const listEl = GhostUI.h('div', { className: 'ghost-list' });
-  const countEl = GhostUI.h('div', { className: 'type-subhead text-tertiary', style: 'margin-bottom:var(--space-md)' });
+  const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'mem-list' });
+  listEl.appendChild(GhostUI.loading('Loading memories…'));
+  container.appendChild(listEl);
 
-  let allFiles = [];
-
+  let files = [];
   try {
-    const files = await GhostAPI.proxyGet('/v1/memory/files');
-    allFiles = Array.isArray(files) ? files : [];
-    countEl.textContent = `${allFiles.length} memory file${allFiles.length !== 1 ? 's' : ''}`;
-    section.appendChild(countEl);
-
-    // Search
-    const searchWrap = GhostUI.h('div', { style: 'margin-bottom:var(--space-xxl)' });
-    const searchInput = GhostUI.input('Search memories\u2026');
-    searchInput.id = 'memory-search';
-    searchWrap.appendChild(searchInput);
-    section.appendChild(searchWrap);
-
-    // Render function
-    const renderFiles = (filteredList) => {
-      listEl.innerHTML = '';
-      for (const f of filteredList) {
-        const r = GhostUI.h('div', { className: 'ghost-row', style: 'cursor:pointer', onClick: () => openMemoryFile(f.name) });
-        const c = GhostUI.h('div', { className: 'ghost-row-content' });
-        const title = f.name.replace(/\.md$/, '').replace(/[-_]/g, ' ');
-        c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, title));
-        if (f.size) c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, `${Math.round(f.size / 1024)}KB`));
-        r.appendChild(c);
-        r.appendChild(GhostUI.h('span', { className: 'chevron' }, '\u203a'));
-        listEl.appendChild(r);
-      }
-    };
-
-    // Initial render
-    renderFiles(allFiles);
-
-    // Search handler
-    searchInput.addEventListener('input', () => {
-      const query = searchInput.value.toLowerCase().trim();
-      if (!query) {
-        renderFiles(allFiles);
-        countEl.textContent = `${allFiles.length} memory file${allFiles.length !== 1 ? 's' : ''}`;
-      } else {
-        const filtered = allFiles.filter(f => f.name.toLowerCase().includes(query));
-        renderFiles(filtered);
-        countEl.textContent = `${filtered.length} of ${allFiles.length} memory files`;
-      }
-    });
-
-    if (allFiles.length === 0) {
-      section.appendChild(GhostUI.emptyState('Ghost is still getting to know you.', 'Talk to Ghost, and it will remember.'));
-    }
+    files = await GhostAPI.proxyGet('/v1/memory/files');
   } catch (e) {
-    countEl.textContent = '';
-    section.appendChild(GhostUI.errorState('Ghost couldn\'t load your memories.', e.message));
+    listEl.innerHTML = '';
+    listEl.appendChild(GhostUI.errorState('Couldn’t reach memory', 'Ghost may still be starting. Try again in a moment.'));
+    return;
   }
 
-  section.appendChild(listEl);
-  container.appendChild(section);
+  function render(items) {
+    listEl.innerHTML = '';
+    if (items.length === 0) {
+      listEl.appendChild(GhostUI.emptyState('Nothing remembered yet', 'Ghost hasn’t stored any memory. As you talk, it will remember what matters.'));
+      return;
+    }
+    items.forEach(f => {
+      const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openMemory(container, f.name) });
+      const c = GhostUI.h('div', { className: 'ghost-row-content' });
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, f.name.replace(/\.md$/, '')));
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, 'Updated ' + GhostUI.timeAgo(f.modified)));
+      row.appendChild(c);
+      row.appendChild(GhostUI.h('span', { className: 'chevron' }, '›'));
+      listEl.appendChild(row);
+    });
+  }
+
+  sub.textContent = files.length ? (GhostUI.fmtNum(files.length) + ' memories stored on this device.') : 'What Ghost remembers about you.';
+  render(files);
+
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    render(files.filter(f => f.name.toLowerCase().includes(q)));
+  });
 }
 
-async function openMemoryFile(name) {
-  const content = GhostUI.h('div', { id: 'section-memory', style: 'max-width:var(--content-max-width)' });
-  const back = GhostUI.h('div', { className: 'ghost-link-row', style: 'margin-bottom:var(--space-lg)', onClick: () => GhostApp.navigate('memory') });
-  back.appendChild(GhostUI.h('span', { className: 'type-callout text-accent' }, '\u2190 Memory'));
-  content.appendChild(back);
+async function openMemory(container, name) {
+  container.innerHTML = '';
+  const back = GhostUI.h('div', { className: 'ghost-link-row', style: 'margin-bottom:var(--s-4);width:fit-content', onClick: () => loadMemory(container) });
+  back.appendChild(GhostUI.h('span', { className: 'chevron', style: 'transform:rotate(180deg)' }, '‹'));
+  back.appendChild(GhostUI.h('span', {}, 'All memories'));
+  container.appendChild(back);
 
-  try {
-    const data = await GhostAPI.proxyGet('/v1/memory/file?name=' + encodeURIComponent(name));
-    const title = name.replace(/\.md$/, '').replace(/[-_]/g, ' ');
-    content.appendChild(GhostUI.h('div', { className: 'type-title', style: 'margin-bottom:var(--space-xl)' }, title));
-    const body = GhostUI.h('div', { className: 'type-body', style: 'white-space:pre-wrap;line-height:1.7' });
-    body.textContent = data.content || 'Empty.';
-    content.appendChild(body);
-  } catch (e) {
-    content.appendChild(GhostUI.errorState('Ghost couldn\'t load this memory.', e.message));
+  const view = GhostUI.h('div', { className: 'panel' });
+  view.appendChild(GhostUI.loading('Opening memory…'));
+  container.appendChild(view);
+
+  let data;
+  try { data = await GhostAPI.proxyGet('/v1/memory/file?name=' + encodeURIComponent(name)); }
+  catch (e) {
+    view.innerHTML = '';
+    view.appendChild(GhostUI.errorState('Couldn’t open this memory', 'It may have been removed.'));
+    return;
   }
 
-  const appContent = document.getElementById('ghost-content');
-  appContent.innerHTML = '';
-  appContent.appendChild(content);
+  view.innerHTML = '';
+  const head = GhostUI.h('div', { className: 'panel-head' });
+  head.appendChild(GhostUI.h('div', {}, GhostUI.h('h2', {}, name.replace(/\.md$/, '')), GhostUI.h('p', {}, 'Stored on your Ghost')));
+  const actions = GhostUI.h('div', { className: 'ghost-row-trailing' });
+  actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: async () => {
+    if (!(await GhostUI.confirmModal('Forget this memory?', 'Ghost will delete “' + name + '” from its memory. This can’t be undone.', 'Forget'))) return;
+    try { await GhostAPI.proxyDel('/v1/memory/file?name=' + encodeURIComponent(name)); GhostUI.toast('Memory forgotten'); loadMemory(container); }
+    catch (e) { GhostUI.toast('Couldn’t forget that.', 'err'); }
+  } }, 'Forget'));
+  head.appendChild(actions);
+  view.appendChild(head);
+
+  const body = GhostUI.h('div', { className: 'markdown-body' });
+  body.innerHTML = GhostUI.md(data.content || '');
+  view.appendChild(body);
 }
 
 GhostApp.registerSection('memory', loadMemory);

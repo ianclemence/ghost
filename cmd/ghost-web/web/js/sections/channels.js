@@ -1,172 +1,132 @@
-/* Ghost Section: Channels — how Ghost reaches you */
+/* Ghost Section: Channels — how Ghost can reach you and the world. */
 'use strict';
 
 async function loadChannels(container) {
   container.innerHTML = '';
-  const section = GhostUI.h('div', { id: 'section-channels' });
+  const head = GhostUI.h('div', { className: 'page-head' });
+  head.appendChild(GhostUI.h('h1', {}, 'Channels'));
+  head.appendChild(GhostUI.h('p', {}, 'How Ghost reaches you.'));
+  container.appendChild(head);
 
-  section.appendChild(GhostUI.h('div', { className: 'page-title' }, 'Channels'));
-  section.appendChild(GhostUI.h('div', { className: 'page-subtitle' }, 'How Ghost can reach you.'));
+  const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'chan-list' });
+  listEl.appendChild(GhostUI.loading('Loading channels…'));
+  container.appendChild(listEl);
 
-  const listEl = GhostUI.h('div', { className: 'ghost-list' });
+  const [cfgRes, devRes, statusRes] = await Promise.allSettled([
+    GhostAPI.get('/api/admin/channels'),
+    GhostAPI.proxyGet('/v1/pairing/devices'),
+    GhostAPI.proxyGet('/v1/channels/status'),
+  ]);
 
-  try {
-    const data = await GhostAPI.proxyGet('/v1/channels/status');
-    const channels = data.channels || data;
-    const channelNames = ['telegram', 'discord', 'slack', 'email', 'whatsapp'];
+  const cfg = cfgRes.status === 'fulfilled' ? (cfgRes.value.channels || {}) : {};
+  const devCount = devRes.status === 'fulfilled' ? (devRes.value.devices || []).length : 0;
+  const op = statusRes.status === 'fulfilled' ? (statusRes.value.channels || {}) : {};
 
-    for (const name of channelNames) {
-      const ch = channels[name] || {};
-      const r = GhostUI.h('div', { className: 'ghost-row' });
-      const c = GhostUI.h('div', { className: 'ghost-row-content' });
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, name.charAt(0).toUpperCase() + name.slice(1)));
+  listEl.innerHTML = '';
 
-      const running = ch.running || false;
-      const enabled = ch.enabled || false;
-      let statusText = 'Not configured';
-      let dotState = 'offline';
-      if (running) { statusText = 'Connected'; dotState = 'online'; }
-      else if (enabled) { statusText = 'Configured'; dotState = 'warning'; }
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, statusText));
-      r.appendChild(c);
+  // Ghost Mobile (always present, connected if a device is paired)
+  listEl.appendChild(channelRow('Ghost Mobile', devCount > 0 ? 'connected' : 'neutral',
+    devCount > 0 ? (devCount + ' device connected') : 'No phone connected',
+    devCount > 0 ? null : () => GhostApp.navigate('devices')));
 
-      const trailing = GhostUI.h('div', { style: 'display:flex;align-items:center;gap:var(--space-sm)' });
-      trailing.appendChild(GhostUI.statusDot(dotState));
-      const configBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost ghost-btn-sm', onClick: () => showChannelConfigModal(name, ch) }, 'Configure');
-      trailing.appendChild(configBtn);
-      r.appendChild(trailing);
-      listEl.appendChild(r);
-    }
-  } catch (e) {
-    section.appendChild(GhostUI.errorState('Couldn\'t load channels.', e.message));
-  }
+  // Telegram
+  const tg = cfg.telegram || {};
+  const tgOk = isSet(tg.token);
+  listEl.appendChild(channelRow('Telegram', op.telegram ? 'connected' : (tgOk ? 'ready' : 'neutral'),
+    tgOk ? (op.telegram ? 'Connected' : 'Configured') : 'Not configured',
+    () => editTelegram(tg)));
 
-  section.appendChild(listEl);
-  container.appendChild(section);
+  // Discord
+  const dc = cfg.discord || {};
+  const dcOk = isSet(dc.token);
+  listEl.appendChild(channelRow('Discord', op.discord ? 'connected' : (dcOk ? 'ready' : 'neutral'),
+    dcOk ? (op.discord ? 'Connected' : 'Configured') : 'Not configured',
+    () => editDiscord(dc)));
+
+  // Email
+  const em = cfg.email || {};
+  const emOk = em.enabled && em.smtp_host;
+  listEl.appendChild(channelRow('Email', emOk ? 'ready' : 'neutral',
+    emOk ? (em.to ? 'Delivers to ' + em.to : 'Configured') : 'Not configured',
+    () => editEmail(em)));
+
+
 }
 
-function showChannelConfigModal(name, current) {
+function isSet(v) { return v && !String(v).startsWith('•') && String(v).length > 0; }
+
+function channelRow(name, state, sub, onClick) {
+  const row = onClick ? GhostUI.h('div', { className: 'ghost-link-row' }) : GhostUI.h('div', { className: 'ghost-row' });
+  const c = GhostUI.h('div', { className: 'ghost-row-content' });
+  c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, name));
+  c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub));
+  row.appendChild(c);
+  const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+  const label = state === 'connected' ? 'Connected' : state === 'ready' ? 'Configured' : 'Not connected';
+  tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(state), label));
+  if (onClick) tr.appendChild(GhostUI.h('span', { className: 'chevron' }, '›'));
+  row.appendChild(tr);
+  if (onClick) row.addEventListener('click', onClick);
+  return row;
+}
+
+function saveChannels(payload) {
+  return GhostAPI.post('/api/admin/channels/save', payload);
+}
+
+function secretField(label, val, ph) {
+  const f = GhostUI.h('div', { className: 'field' });
+  f.appendChild(GhostUI.h('label', {}, label));
+  const i = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: ph || (val ? 'Enter a new value to replace the current one' : 'Paste token') });
+  f.appendChild(i);
+  return f;
+}
+
+function editTelegram(cur) {
   const body = GhostUI.h('div');
+  body.appendChild(secretField('Bot token', cur.token, 'Telegram bot token'));
+  const field = body.querySelector('input');
+  GhostUI.modal('Configure Telegram', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: e => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async e => {
+      const token = field.value.trim();
+      if (!token) { GhostUI.toast('Enter a token.'); return; }
+      try { await saveChannels({ telegram: { enabled: true, token } }); e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('Telegram saved'); loadChannels(document.getElementById('view')); }
+      catch (err) { GhostUI.toast('Couldn’t save.', 'err'); }
+    } }, 'Save'),
+  ]);
+}
 
-  // Enabled toggle
-  const enableGroup = GhostUI.h('div', { className: 'form-group', style: 'display:flex;align-items:center;gap:var(--space-md)' });
-  enableGroup.appendChild(GhostUI.h('label', { className: 'form-label', style: 'margin:0' }, 'Enabled'));
-  let isEnabled = current.enabled || false;
-  const toggleEl = GhostUI.toggle(isEnabled, (val) => { isEnabled = val; });
-  enableGroup.appendChild(toggleEl);
-  body.appendChild(enableGroup);
+function editDiscord(cur) {
+  const body = GhostUI.h('div');
+  body.appendChild(secretField('Bot token', cur.token, 'Discord bot token'));
+  const field = body.querySelector('input');
+  GhostUI.modal('Configure Discord', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: e => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async e => {
+      const token = field.value.trim();
+      if (!token) { GhostUI.toast('Enter a token.'); return; }
+      try { await saveChannels({ discord: { enabled: true, token } }); e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('Discord saved'); loadChannels(document.getElementById('view')); }
+      catch (err) { GhostUI.toast('Couldn’t save.', 'err'); }
+    } }, 'Save'),
+  ]);
+}
 
-  // Channel-specific fields
-  if (name === 'telegram') {
-    const tokenGroup = GhostUI.h('div', { className: 'form-group' });
-    tokenGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Bot Token'));
-    const tokenInput = GhostUI.input('Enter Telegram bot token');
-    tokenInput.type = 'password';
-    if (current.token) tokenInput.value = current.token;
-    tokenGroup.appendChild(tokenInput);
-    body.appendChild(tokenGroup);
-  } else if (name === 'discord') {
-    const tokenGroup = GhostUI.h('div', { className: 'form-group' });
-    tokenGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Bot Token'));
-    const tokenInput = GhostUI.input('Enter Discord bot token');
-    tokenInput.type = 'password';
-    if (current.token) tokenInput.value = current.token;
-    tokenGroup.appendChild(tokenInput);
-    body.appendChild(tokenGroup);
-  } else if (name === 'slack') {
-    const botGroup = GhostUI.h('div', { className: 'form-group' });
-    botGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Bot Token'));
-    const botInput = GhostUI.input('Enter Slack bot token');
-    botInput.type = 'password';
-    if (current.bot_token) botInput.value = current.bot_token;
-    botGroup.appendChild(botInput);
-    body.appendChild(botGroup);
-
-    const appGroup = GhostUI.h('div', { className: 'form-group' });
-    appGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'App Token'));
-    const appInput = GhostUI.input('Enter Slack app token');
-    appInput.type = 'password';
-    if (current.app_token) appInput.value = current.app_token;
-    appGroup.appendChild(appInput);
-    body.appendChild(appGroup);
-  } else if (name === 'email') {
-    const smtpHostGroup = GhostUI.h('div', { className: 'form-group' });
-    smtpHostGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'SMTP Host'));
-    const smtpHostInput = GhostUI.input('smtp.example.com');
-    smtpHostInput.value = current.smtp_host || '';
-    smtpHostGroup.appendChild(smtpHostInput);
-    body.appendChild(smtpHostGroup);
-
-    const smtpPortGroup = GhostUI.h('div', { className: 'form-group' });
-    smtpPortGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'SMTP Port'));
-    const smtpPortInput = GhostUI.input('587');
-    smtpPortInput.type = 'number';
-    smtpPortInput.value = current.smtp_port || 587;
-    smtpPortGroup.appendChild(smtpPortInput);
-    body.appendChild(smtpPortGroup);
-
-    const userGroup = GhostUI.h('div', { className: 'form-group' });
-    userGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Username'));
-    const userInput = GhostUI.input('Email username');
-    userInput.value = current.username || '';
-    userGroup.appendChild(userInput);
-    body.appendChild(userGroup);
-
-    const passGroup = GhostUI.h('div', { className: 'form-group' });
-    passGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Password'));
-    const passInput = GhostUI.input('Email password');
-    passInput.type = 'password';
-    passGroup.appendChild(passInput);
-    body.appendChild(passGroup);
-
-    const fromGroup = GhostUI.h('div', { className: 'form-group' });
-    fromGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'From Address'));
-    const fromInput = GhostUI.input('ghost@example.com');
-    fromInput.value = current.from || '';
-    fromGroup.appendChild(fromInput);
-    body.appendChild(fromGroup);
-
-    const toGroup = GhostUI.h('div', { className: 'form-group' });
-    toGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'To Address'));
-    const toInput = GhostUI.input('you@example.com');
-    toInput.value = current.to || '';
-    toGroup.appendChild(toInput);
-    body.appendChild(toGroup);
-  } else if (name === 'whatsapp') {
-    body.appendChild(GhostUI.h('div', { className: 'type-callout text-secondary', style: 'margin-bottom:var(--space-md)' }, 'WhatsApp requires a bridge server. Configure the bridge URL in Advanced settings.'));
-  }
-
-  const channelPayload = { [name]: {} };
-
-  GhostUI.modal(`Configure ${name.charAt(0).toUpperCase() + name.slice(1)}`, body, [
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async () => {
+function editEmail(cur) {
+  const body = GhostUI.h('div');
+  const f1 = GhostUI.h('div', { className: 'field' }); f1.appendChild(GhostUI.h('label', {}, 'SMTP host')); const host = GhostUI.input(cur.smtp_host || 'smtp.example.com'); f1.appendChild(host); body.appendChild(f1);
+  const f2 = GhostUI.h('div', { className: 'field' }); f2.appendChild(GhostUI.h('label', {}, 'SMTP port')); const port = GhostUI.h('input', { className: 'ghost-input', type: 'number', value: cur.smtp_port || 587 }); f2.appendChild(port); body.appendChild(f2);
+  const f3 = GhostUI.h('div', { className: 'field' }); f3.appendChild(GhostUI.h('label', {}, 'From address')); const from = GhostUI.input(cur.from || ''); f3.appendChild(from); body.appendChild(f3);
+  const f4 = GhostUI.h('div', { className: 'field' }); f4.appendChild(GhostUI.h('label', {}, 'Deliver to')); const to = GhostUI.input(cur.to || ''); f4.appendChild(to); body.appendChild(f4);
+  const f5 = GhostUI.h('div', { className: 'field' }); f5.appendChild(GhostUI.h('label', {}, 'Password')); const pw = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: cur.username ? 'Enter to replace' : 'Email password / app password' }); f5.appendChild(pw); body.appendChild(f5);
+  GhostUI.modal('Configure Email', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: e => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async e => {
       try {
-        channelPayload[name].enabled = isEnabled;
-        if (name === 'telegram' && body.querySelector('input')?.value) {
-          channelPayload[name].token = body.querySelector('input').value;
-        } else if (name === 'discord' && body.querySelector('input')?.value) {
-          channelPayload[name].token = body.querySelector('input').value;
-        } else if (name === 'slack') {
-          const inputs = body.querySelectorAll('input');
-          channelPayload[name].bot_token = inputs[0]?.value || undefined;
-          channelPayload[name].app_token = inputs[1]?.value || undefined;
-        } else if (name === 'email') {
-          const inputs = body.querySelectorAll('input');
-          channelPayload[name].smtp_host = inputs[0]?.value || undefined;
-          channelPayload[name].smtp_port = parseInt(inputs[1]?.value) || undefined;
-          channelPayload[name].username = inputs[2]?.value || undefined;
-          channelPayload[name].password = inputs[3]?.value || undefined;
-          channelPayload[name].from = inputs[4]?.value || undefined;
-          channelPayload[name].to = inputs[5]?.value || undefined;
-        }
-        await GhostAPI.post('/api/admin/channels/save', channelPayload);
-        GhostUI.toast(`${name.charAt(0).toUpperCase() + name.slice(1)} saved.`);
-        e.target.closest('.ghost-modal-backdrop').remove();
-      } catch (err) {
-        GhostUI.toast('Failed to save channel settings.');
-      }
-    }}, 'Save')
+        await saveChannels({ email: { enabled: true, smtp_host: host.value.trim(), smtp_port: parseInt(port.value, 10) || 587, from: from.value.trim(), to: to.value.trim(), password: pw.value } });
+        e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('Email saved'); loadChannels(document.getElementById('view'));
+      } catch (err) { GhostUI.toast('Couldn’t save.', 'err'); }
+    } }, 'Save'),
   ]);
 }
 

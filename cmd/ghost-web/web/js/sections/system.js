@@ -1,118 +1,120 @@
-/* Ghost Section: System — technical information */
+/* Ghost Section: System — the machine Ghost lives on. */
 'use strict';
 
 async function loadSystem(container) {
   container.innerHTML = '';
-  const section = GhostUI.h('div', { id: 'section-system' });
+  const head = GhostUI.h('div', { className: 'page-head' });
+  head.appendChild(GhostUI.h('h1', {}, 'System'));
+  head.appendChild(GhostUI.h('p', {}, 'The hardware and services your Ghost runs on.'));
+  container.appendChild(head);
 
-  section.appendChild(GhostUI.h('div', { className: 'page-title' }, 'System'));
-  section.appendChild(GhostUI.h('div', { className: 'page-subtitle' }, 'Your Ghost Pod.'));
+  const statusEl = GhostUI.h('div', { className: 'loading' }, GhostUI.h('span', {}, 'Reading system…'));
+  container.appendChild(statusEl);
 
-  // Load data from proxy endpoints (no auth required)
-  const [statsRes, doctorRes, healthRes] = await Promise.allSettled([
-    GhostAPI.proxyGet('/v1/stats'),
-    GhostAPI.proxyGet('/v1/doctor'),
-    GhostAPI.proxyGet('/v1/health')
-  ]);
+  let st;
+  try { st = await GhostAPI.get('/api/admin/status'); }
+  catch (e) { statusEl.outerHTML = ''; container.appendChild(GhostUI.errorState('Couldn’t read system', 'Ghost may be starting.')); return; }
+  statusEl.remove();
 
-  // Version and info
-  const infoSection = GhostUI.h('div', { className: 'section-group' });
-  infoSection.appendChild(GhostUI.h('div', { className: 'section-label' }, 'About'));
-  const infoList = GhostUI.h('div', { className: 'ghost-list' });
-
-  // Version from health endpoint
-  if (healthRes.status === 'fulfilled' && healthRes.value.version) {
-    infoList.appendChild(GhostUI.row('Ghost version', healthRes.value.version));
-  } else if (doctorRes.status === 'fulfilled' && doctorRes.value.version) {
-    infoList.appendChild(GhostUI.row('Ghost version', doctorRes.value.version));
-  }
-
-  if (statsRes.status === 'fulfilled') {
-    const s = statsRes.value;
-    if (s.hostname) infoList.appendChild(GhostUI.row('Hostname', s.hostname));
-    if (s.ip) infoList.appendChild(GhostUI.row('IP address', s.ip));
-    if (s.memory) infoList.appendChild(GhostUI.row('Memory', s.memory));
-    if (s.disk) infoList.appendChild(GhostUI.row('Disk', s.disk));
-    if (s.cpu_temp) infoList.appendChild(GhostUI.row('Temperature', s.cpu_temp));
-    if (s.load) infoList.appendChild(GhostUI.row('Load', s.load));
-    if (s.uptime) infoList.appendChild(GhostUI.row('Uptime', s.uptime));
-  }
-
-  infoSection.appendChild(infoList);
-  section.appendChild(infoSection);
+  // Ghost + Hardware — one panel
+  const g = GhostUI.h('div', { className: 'panel' });
+  g.appendChild(panelHead('Ghost'));
+  const gk = GhostUI.h('div', { className: 'kv' });
+  gk.appendChild(kv('Version', st.version || '—'));
+  gk.appendChild(kv('Uptime', st.uptime || '—'));
+  gk.appendChild(kv('Model', (st.provider || '—') + (st.model ? ' · ' + st.model : '')));
+  gk.appendChild(kv('Address', (st.ip || '—') + (st.hostname ? '  (' + st.hostname + ')' : '')));
+  gk.appendChild(kv('CPU', (st.cpu_percent != null ? st.cpu_percent.toFixed(0) + '%' : '—')));
+  if (st.memory) gk.appendChild(kv('Memory', GhostUI.fmtNum(Math.round(st.memory.used / 1048576)) + ' MB / ' + GhostUI.fmtNum(Math.round(st.memory.total / 1048576)) + ' MB'));
+  if (st.disk) gk.appendChild(kv('Storage', GhostUI.fmtNum(Math.round(st.disk.used / 1073741824)) + ' GB / ' + GhostUI.fmtNum(Math.round(st.disk.total / 1073741824)) + ' GB'));
+  if (st.load) gk.appendChild(kv('Load', st.load.one.toFixed(2) + ' / ' + st.load.five.toFixed(2) + ' / ' + st.load.fifteen.toFixed(2)));
+  g.appendChild(gk);
+  container.appendChild(g);
 
   // Services
-  const svcSection = GhostUI.h('div', { className: 'section-group' });
-  svcSection.appendChild(GhostUI.h('div', { className: 'section-label' }, 'Services'));
-  const svcList = GhostUI.h('div', { className: 'ghost-list' });
-
-  if (statsRes.status === 'fulfilled') {
-    const s = statsRes.value;
-    // Ghost service from stats
-    const ghostActive = s.ghost_svc === 'active';
-    const ghostRow = GhostUI.h('div', { className: 'ghost-row' });
-    ghostRow.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, 'Ghost'));
-    ghostRow.appendChild(GhostUI.badge(ghostActive ? 'Running' : 'Stopped', ghostActive ? 'success' : 'error'));
-    svcList.appendChild(ghostRow);
-
-    // Ollama - check from doctor checks
-    let ollamaOk = false;
-    if (doctorRes.status === 'fulfilled') {
-      const checks = doctorRes.value.checks || [];
-      for (const c of checks) {
-        if (c.name && c.name.includes('ollama')) {
-          ollamaOk = c.status === 'ok';
-        }
-      }
-    }
-    const ollamaRow = GhostUI.h('div', { className: 'ghost-row' });
-    ollamaRow.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, 'Ollama'));
-    ollamaRow.appendChild(GhostUI.badge(ollamaOk ? 'Running' : 'Unknown', ollamaOk ? 'success' : 'neutral'));
-    svcList.appendChild(ollamaRow);
-
-    // Ghost Web - always running if we can see this page
-    const webRow = GhostUI.h('div', { className: 'ghost-row' });
-    webRow.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, 'Ghost Web'));
-    webRow.appendChild(GhostUI.badge('Running', 'success'));
-    svcList.appendChild(webRow);
-  }
-  svcSection.appendChild(svcList);
-  section.appendChild(svcSection);
+  const sv = GhostUI.h('div', { className: 'panel' });
+  sv.appendChild(panelHead('Services'));
+  const svk = GhostUI.h('div', { className: 'kv' });
+  (st.services || []).forEach(s => {
+    svk.appendChild(kvRow2(s.name, s.active ? 'Running' : 'Stopped', s.active ? 'ready' : 'bad'));
+  });
+  sv.appendChild(svk);
+  container.appendChild(sv);
 
   // Diagnostics
-  if (doctorRes.status === 'fulfilled') {
-    const doc = doctorRes.value;
-    const diagSection = GhostUI.h('div', { className: 'section-group' });
-    diagSection.appendChild(GhostUI.h('div', { className: 'section-label' }, 'System health'));
-    const diagList = GhostUI.h('div', { className: 'ghost-list' });
+  const diag = GhostUI.h('div', { className: 'panel' });
+  const dh = GhostUI.h('div', { className: 'panel-head' });
+  const dhText = GhostUI.h('div');
+  dhText.appendChild(GhostUI.h('h2', {}, 'Diagnostics'));
+  dh.appendChild(dhText);
+  const runBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary' }, 'Run diagnostics');
+  runBtn.addEventListener('click', () => runDiag(diagBody));
+  dh.appendChild(runBtn);
+  diag.appendChild(dh);
+  const diagBody = GhostUI.h('div', { id: 'diag-body', style: 'margin-top:var(--s-3)' });
+  diagBody.appendChild(GhostUI.emptyState('Not run yet', 'Run a check to see how Ghost is doing.'));
+  diag.appendChild(diagBody);
+  container.appendChild(diag);
+  runDiag(diagBody);
 
-    const checks = doc.checks || [];
-    for (const check of checks) {
-      const r = GhostUI.h('div', { className: 'ghost-row' });
-      r.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, check.name));
-      const variant = check.status === 'ok' ? 'success' : check.status === 'warning' ? 'warning' : 'error';
-      r.appendChild(GhostUI.badge(check.status === 'ok' ? 'Healthy' : check.status === 'fail' ? 'Error' : check.status, variant));
-      if (check.message) r.appendChild(GhostUI.h('div', { className: 'type-footnote text-tertiary', style: 'margin-left:auto' }, check.message));
-      diagList.appendChild(r);
-    }
-    diagSection.appendChild(diagList);
-    section.appendChild(diagSection);
-  }
-
-  // Actions
-  const actions = GhostUI.h('div', { style: 'margin-top:var(--space-xxl);display:flex;gap:var(--space-sm)' });
-  actions.appendChild(GhostUI.btn('Reboot', 'danger', async () => {
-    if (!confirm('Reboot the system?')) return;
-    try {
-      await GhostAPI.post('/api/admin/reboot');
-      GhostUI.toast('Rebooting...');
-    } catch (e) {
-      GhostUI.toast('Failed to reboot.');
-    }
+  // Danger zone
+  const danger = GhostUI.h('div', { className: 'panel', style: 'border-color:var(--bad-soft)' });
+  const dk = GhostUI.h('div', { className: 'kv' });
+  dk.appendChild(kvRowBtn('Restart this device', 'Reboots the hardware Ghost runs on. Use only if something is wrong.', 'Restart', async () => {
+    if (!(await GhostUI.confirmModal('Restart this device?', 'Your Ghost will be offline for a minute or two while the device reboots.', 'Restart device'))) return;
+    try { await GhostAPI.post('/api/admin/reboot'); GhostUI.toast('Restarting…'); }
+    catch (e) { GhostUI.toast('Couldn’t restart.', 'err'); }
   }));
-  section.appendChild(actions);
+  danger.appendChild(dk);
+  container.appendChild(danger);
+}
 
-  container.appendChild(section);
+function panelHead(title) {
+  const h = GhostUI.h('div', { className: 'panel-head' });
+  const text = GhostUI.h('div');
+  text.appendChild(GhostUI.h('h2', {}, title));
+  h.appendChild(text);
+  return h;
+}
+function kv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
+function kvRow2(k, v, state) {
+  const r = GhostUI.h('div', { className: 'kv-row' });
+  r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k));
+  const tr = GhostUI.h('div', { className: 'kv-val' });
+  tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(state), v));
+  r.appendChild(tr);
+  return r;
+}
+function kvRowBtn(k, sub, btnLabel, onClick) {
+  const r = GhostUI.h('div', { className: 'kv-row' });
+  const c = GhostUI.h('div', { className: 'ghost-row-content' });
+  c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, k));
+  c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub));
+  r.appendChild(c);
+  r.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-danger', onClick }, btnLabel));
+  return r;
+}
+
+async function runDiag(body) {
+  body.innerHTML = ''; body.appendChild(GhostUI.loading('Running diagnostics…'));
+  let res;
+  try { res = await GhostAPI.proxyGet('/v1/doctor'); }
+  catch (e) { body.innerHTML = ''; body.appendChild(GhostUI.errorState('Diagnostics unavailable', 'The gateway may be starting.')); return; }
+  body.innerHTML = '';
+  const grid = GhostUI.h('div', { className: 'diag-grid' });
+  const checks = res.checks || [];
+  if (checks.length === 0) grid.appendChild(GhostUI.emptyState('Nothing to report', 'No checks returned.'));
+  checks.forEach(ch => {
+    const row = GhostUI.h('div', { className: 'diag-row' });
+    const st = ch.status === 'ok' ? 'ready' : ch.status === 'warn' ? 'warn' : 'bad';
+    row.appendChild(GhostUI.h('span', { className: 'status-dot ' + st }));
+    row.appendChild(GhostUI.h('div', { className: 'diag-name' }, ch.name));
+    const msg = GhostUI.h('div', { className: 'diag-msg' });
+    msg.textContent = ch.message || '';
+    row.appendChild(msg);
+    grid.appendChild(row);
+  });
+  body.appendChild(grid);
 }
 
 GhostApp.registerSection('system', loadSystem);

@@ -88,9 +88,9 @@ Ghost uses a layered security model designed for a self-hosted appliance.
 
 | Mechanism | Purpose | Used By |
 |-----------|---------|---------|
-| Owner password | Protects the web admin dashboard | Web browser |
+| Owner password | Protects the Web Console | Web browser (session cookie) |
 | Device credential | Authenticates mobile app and API access | Mobile app, CLI tools |
-| Bridge secret | Internal credential for web proxy and relay | Web proxy, relay client (never exposed to browser) |
+| Bridge secret | Internal credential for relay | Relay client only (never exposed to browser or proxy) |
 
 ### Secrets Storage
 
@@ -188,40 +188,53 @@ sudo make install-ghost
 sudo reboot
 ```
 
-After reboot, open `http://<pi-ip>` on your phone to complete setup:
-1. Connect to WiFi
-2. Create admin password (minimum 8 characters)
-3. Select AI model
-4. Connect the Ghost app
+After reboot, open `http://<pi-ip>` in a browser to complete setup:
+1. Set up Ghost — name yourself, name Ghost, create an owner password
+2. Ghost prepares local AI (Ollama)
+3. Optionally configure cloud AI (OpenAI, Anthropic, etc.)
+4. Optionally connect your phone by scanning a QR code
+5. Ghost is ready — you're in the Web Console
 
 ### How setup works
 
-**Before setup:** `ghost-web.service` starts the setup wizard on port 80 and
-opens the firewall for it. Completing the wizard:
+**Before setup:** `ghost-web.service` starts the Web Console on port 80 (with
+the `-force` flag, so it stays running permanently). The first-run wizard
+appears automatically. Completing the wizard:
 1. Writes `/var/ghost/.setup-complete`
-2. Starts the `ghost` service (port 8766)
+2. Starts the `ghost` gateway service (port 8766)
+3. The Web Console transitions from wizard to login → control plane
 
-**Always-on wizard:** the wizard stays running as an always-on service, so you can
-reach it from your phone at any time at `http://<pi-ip>`:
-- **Before setup:** shows the setup screen
-- **After setup:** shows a login screen (your admin password) that opens the
-  **admin dashboard** with tabs for:
-  - **Home** — system health (CPU/memory/disk), service status, diagnostics
-    checks, and one-click software updates
-  - **AI** — provider, model, fallback models, API keys, and Ollama model
-    management (list, pull, delete)
-  - **Channels** — Telegram, Discord, and Email bot configuration plus the
-    heartbeat interval
-  - **Devices** — paired mobile devices, connect new devices via QR code
-  - **Security** — admin password management
-  - **Skills** — browse installed skills, edit bundled skills (edited
-    skills are marked and never overwritten by updates), resync bundled
-    skills, and install more from any public GitHub repo (including skills.sh)
-  - **System** — hostname, backup download, admin password, and reboot
+**Web Console:** the `ghost-web` service runs on port 80 and serves as Ghost's
+persistent control plane — the place where you own, configure, understand, and
+take care of Ghost.
+- **Before setup:** shows the first-run wizard (identity, password, AI, phone pairing)
+- **After setup:** shows a login screen (your owner password) that opens the
+  **Web Console** with sections organized around the product:
 
-The wizard and `ghost` are separate: wizard on port 80, API on port 8766.
+  **Main** — what Ghost does:
+  - **Home** — is Ghost okay, what has it been doing, does it need you
+  - **AI** — local and cloud intelligence, model management, routing
+  - **Memory** — browse, search, and manage what Ghost remembers
+  - **Activity** — timeline of conversations, automations, memory writes
+  - **Automations** — scheduled tasks (briefings, research, check-ins)
+  - **Skills** — installed capabilities, enable/disable, install from GitHub
 
-If you ever want the wizard turned off entirely:
+  **Connections** — how Ghost reaches people and services:
+  - **Devices** — paired phones, secure QR pairing flow
+  - **Channels** — Telegram, Discord, Email configuration
+
+  **System** — how Ghost itself is maintained:
+  - **System** — hardware, services, diagnostics
+  - **Updates** — keep Ghost current
+  - **Backups** — download a copy of your Ghost's identity and memory
+  - **Security** — owner password, device management, failed sign-in visibility
+  - **Help** — guidance for what Ghost actually does
+  - **About** — version and product information
+
+The Web Console and `ghost` gateway are separate services: console on port 80,
+API on port 8766. The console proxies authenticated requests to the gateway.
+
+If you ever want the Web Console turned off:
 ```bash
 sudo systemctl disable --now ghost-web
 ```
@@ -323,7 +336,7 @@ chmod +x setup.sh
 
 | Command | Description |
 |---------|-------------|
-| `ghost-web` | Web console — setup wizard + admin dashboard (always-on service on port 80; setup screen before config, login after) |
+| `ghost-web` | Web Console — setup wizard + control plane (always-on service on port 80; wizard before setup, login after) |
 
 ---
 
@@ -340,9 +353,9 @@ Ghost uses a clear precedence model for configuration:
 
 ### `.secrets.json` (Secrets)
 
-Secrets (API keys, channel tokens) are stored in `.secrets.json` with `0600` permissions. They are configured through the admin dashboard, not by editing files directly.
+Secrets (API keys, channel tokens) are stored in `.secrets.json` with `0600` permissions. They are configured through the Web Console, not by editing files directly.
 
-**Never edit `.secrets.json` manually** — use the admin dashboard to configure providers and channels.
+**Never edit `.secrets.json` manually** — use the Web Console to configure providers and channels.
 
 ### `.env` (System Overrides)
 

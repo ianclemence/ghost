@@ -1996,7 +1996,24 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			jsonError(w, http.StatusForbidden, "forbidden", "invalid path")
 			return
 		}
-		content, err := os.ReadFile(filepath.Join(memoryDir, clean))
+		full := filepath.Join(memoryDir, clean)
+		if r.Method == http.MethodDelete {
+			if err := os.Remove(full); err != nil {
+				if os.IsNotExist(err) {
+					jsonError(w, http.StatusNotFound, "not_found", "memory not found")
+					return
+				}
+				jsonError(w, http.StatusInternalServerError, "io_error", "could not forget memory")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
+			return
+		}
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		content, err := os.ReadFile(full)
 		if err != nil {
 			jsonError(w, http.StatusNotFound, "not_found", "file not found")
 			return

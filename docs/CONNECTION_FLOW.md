@@ -17,18 +17,18 @@ How users set up Ghost for the first time and connect devices.
 - Navigate to `http://ghost.local` (or the device's IP address, e.g. `http://192.168.0.104`)
 - The setup wizard loads
 
-### Step 3: Walk through the wizard (8 steps)
+### Step 3: Walk through the wizard
 
 | Step | What you do |
 |------|-------------|
 | Welcome | Click "Set up Ghost" |
 | Identity | Enter your name (what Ghost calls you) and a name for Ghost (what you call it) |
-| Password | Create an admin password (min 8 chars) — stored as a bcrypt hash, never in config |
+| Password | Create an owner password (min 8 chars) — stored as a bcrypt hash, never in config |
 | Preparing | Ghost configures itself: identity, security, local storage, Ollama AI, system checks |
 | Local AI | If Ollama has models, select one. Otherwise skip |
-| Cloud AI | Optionally configure OpenAI/Anthropic/Kimi API keys. Skip if not needed |
+| Cloud AI | Optionally configure cloud AI providers. Skip if not needed |
 | Phone | Shows a pairing code for the mobile app (optional at this stage) |
-| Done | Click to enter the admin dashboard |
+| Done | Click to enter the Web Console |
 
 ### Step 4: What happens behind the scenes
 
@@ -42,14 +42,14 @@ How users set up Ghost for the first time and connect devices.
 
 ### Option A: Same Network (LAN)
 
-#### Step 1: Open the web dashboard
+#### Step 1: Open the Web Console
 
 - Go to `http://ghost.local` on any browser
-- Log in with your admin password
+- Log in with your owner password
 
 #### Step 2: Navigate to Devices
 
-- Click "Devices" in the sidebar
+- Click "Devices" in the sidebar (under Connections)
 - Click "Connect another device"
 
 #### Step 3: Scan the QR code

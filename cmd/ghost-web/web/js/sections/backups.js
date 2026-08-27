@@ -3,36 +3,48 @@
 
 async function loadBackups(container) {
   container.innerHTML = '';
-  const section = GhostUI.h('div', { id: 'section-backups' });
+  const head = GhostUI.h('div', { className: 'page-head' });
+  head.appendChild(GhostUI.h('h1', {}, 'Backups'));
+  head.appendChild(GhostUI.h('p', {}, 'Download a copy of your Ghost’s memory, skills, and configuration.'));
+  container.appendChild(head);
 
-  section.appendChild(GhostUI.h('div', { className: 'page-title' }, 'Backups'));
-  section.appendChild(GhostUI.h('div', { className: 'page-subtitle' }, 'Your Ghost\'s identity and memory.'));
+  const panel = GhostUI.h('div', { className: 'panel' });
+  const pk = GhostUI.h('div', { className: 'kv' });
+  pk.appendChild(kv('Memory', 'Included'));
+  pk.appendChild(kv('Skills', 'Included'));
+  pk.appendChild(kv('Configuration', 'Included'));
+  pk.appendChild(kv('Automations', 'Included'));
+  pk.appendChild(kv('Secrets', 'Not included'));
+  panel.appendChild(pk);
+  container.appendChild(panel);
 
-  const infoSection = GhostUI.h('div', { className: 'section-group' });
-  infoSection.appendChild(GhostUI.h('div', { className: 'section-label' }, 'What is backed up'));
+  const actions = GhostUI.h('div', { className: 'row-flex', style: 'margin-top:var(--s-4)' });
+  const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => doBackup(btn) }, 'Download backup');
+  actions.appendChild(btn);
+  container.appendChild(actions);
 
-  const items = GhostUI.h('div', { className: 'ghost-list' });
-  const backups = ['Identity', 'Memory', 'Skills', 'Automations', 'Configuration'];
-  for (const b of backups) {
-    items.appendChild(GhostUI.row(b, 'Included in backup'));
-  }
-  infoSection.appendChild(items);
-  section.appendChild(infoSection);
+  container.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3)' },
+    'Store the file somewhere safe. Secrets like API keys and your password are not included.'));
+}
 
-  // Actions
-  const actions = GhostUI.h('div', { style: 'margin-top:var(--space-xxl);display:flex;gap:var(--space-sm)' });
-  actions.appendChild(GhostUI.btn('Create backup', 'primary', async () => {
-    try {
-      const res = await GhostAPI.request('/api/admin/backup', { method: 'POST' });
-      if (res.ok) GhostUI.toast('Backup downloaded.');
-      else GhostUI.toast('Backup failed.');
-    } catch (e) {
-      GhostUI.toast('Backup failed.');
-    }
-  }));
-  section.appendChild(actions);
+function kv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
 
-  container.appendChild(section);
+async function doBackup(btn) {
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Preparing…';
+  try {
+    const res = await fetch('/api/admin/backup');
+    if (!res.ok) throw new Error('failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ghost-backup-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.tar.gz';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    GhostUI.toast('Backup downloaded');
+  } catch (e) {
+    GhostUI.toast('Couldn’t create the backup.', 'err');
+  } finally { btn.disabled = false; btn.textContent = orig; }
 }
 
 GhostApp.registerSection('backups', loadBackups);

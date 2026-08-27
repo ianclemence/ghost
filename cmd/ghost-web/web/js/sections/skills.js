@@ -1,496 +1,135 @@
-/* Ghost Section: Skills — what Ghost knows how to do */
+/* Ghost Section: Skills — what Ghost knows how to do. */
 'use strict';
 
 async function loadSkills(container) {
   container.innerHTML = '';
-  const section = GhostUI.h('div', { id: 'section-skills' });
+  const head = GhostUI.h('div', { className: 'page-head' });
+  head.appendChild(GhostUI.h('h1', {}, 'Skills'));
+  head.appendChild(GhostUI.h('p', {}, 'What Ghost knows how to do.'));
+  container.appendChild(head);
 
-  section.appendChild(GhostUI.h('div', { className: 'page-title' }, 'Skills'));
-  section.appendChild(GhostUI.h('div', { className: 'page-subtitle' }, 'What Ghost knows how to do.'));
+  const installBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showInstall() }, 'Install skill');
+  GhostApp.setActions(installBtn);
 
-  // Header with count and actions
-  const header = GhostUI.h('div', { className: 'skills-header' });
-  const countEl = GhostUI.h('span', { className: 'type-subhead text-tertiary' });
-  header.appendChild(countEl);
+  const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'skill-list' });
+  listEl.appendChild(GhostUI.loading('Loading skills…'));
+  container.appendChild(listEl);
 
-  // Dropdown for actions
-  const dropdown = GhostUI.h('div', { className: 'skills-dropdown' });
-  const dropBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary ghost-btn-sm' }, 'Install skill');
-  const dropMenu = GhostUI.h('div', { className: 'skills-dropdown-menu hidden' });
+  let res;
+  try { res = await GhostAPI.proxyGet('/v1/skills'); }
+  catch (e) {
+    listEl.innerHTML = '';
+    listEl.appendChild(GhostUI.errorState('Couldn’t load skills', 'Ghost may still be starting.'));
+    return;
+  }
+  renderList(listEl, res.skills || []);
+}
 
-  dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-item', onClick: () => { dropMenu.classList.add('hidden'); showCreateSkillModal(); } }, 'Create new skill'));
-  dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-divider' }));
-  dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-item', onClick: () => { dropMenu.classList.add('hidden'); showClawHubSearchModal(); } }, 'From ClawHub'));
-  dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-item', onClick: () => { dropMenu.classList.add('hidden'); showGitHubInstallModal(); } }, 'From GitHub'));
-  dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-divider' }));
-  dropMenu.appendChild(GhostUI.h('div', { className: 'skills-dropdown-item', onClick: async () => {
-    dropMenu.classList.add('hidden');
-    try {
-      const res = await GhostAPI.post('/api/admin/skills/sync');
-      GhostUI.toast(res.report || 'Skills synced.');
-      loadSkills(container);
-    } catch (e) {
-      GhostUI.toast('Failed to sync skills.');
-    }
-  }}, 'Sync bundled skills'));
-
-  dropBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    dropMenu.classList.toggle('hidden');
+function renderList(listEl, skills) {
+  listEl.innerHTML = '';
+  if (skills.length === 0) {
+    listEl.appendChild(GhostUI.emptyState('No skills installed', 'Ghost comes with built-in skills. If none are present, something may be wrong.'));
+    return;
+  }
+  skills.forEach(s => {
+    const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openSkill(container, s.name) });
+    const c = GhostUI.h('div', { className: 'ghost-row-content' });
+    const titleRow = GhostUI.h('div', { className: 'ghost-row-title' }, s.name);
+    c.appendChild(titleRow);
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, s.description || 'No description'));
+    row.appendChild(c);
+    const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+    const enabled = s.enabled !== 'false' && s.enabled !== false;
+    if (!enabled) tr.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary' }, 'Off'));
+    tr.appendChild(GhostUI.h('span', { className: 'chevron' }, '›'));
+    row.appendChild(tr);
+    listEl.appendChild(row);
   });
-  // Remove previous listener to avoid leaks
-  if (GhostApp._skillsDocClickHandler) {
-    document.removeEventListener('click', GhostApp._skillsDocClickHandler);
-  }
-  GhostApp._skillsDocClickHandler = () => dropMenu.classList.add('hidden');
-  document.addEventListener('click', GhostApp._skillsDocClickHandler);
-
-  dropdown.appendChild(dropBtn);
-  dropdown.appendChild(dropMenu);
-  header.appendChild(dropdown);
-  section.appendChild(header);
-
-  // Skills list
-  const listEl = GhostUI.h('div', { className: 'skills-grid' });
-
-  try {
-    const data = await GhostAPI.proxyGet('/v1/skills');
-    const skills = data.skills || [];
-
-    countEl.textContent = `${skills.length} skill${skills.length !== 1 ? 's' : ''}`;
-
-    if (skills.length === 0) {
-      section.appendChild(GhostUI.emptyState('No skills installed.', 'Ghost can learn new skills from the community.'));
-    }
-
-    for (const skill of skills) {
-      const card = GhostUI.h('div', { className: 'skill-card' });
-
-      // Top row: name + badges
-      const topRow = GhostUI.h('div', { className: 'skill-card-top' });
-      const nameEl = GhostUI.h('div', { className: 'skill-card-name' }, skill.name);
-      topRow.appendChild(nameEl);
-
-      const badges = GhostUI.h('div', { className: 'skill-card-badges' });
-      if (skill.bundled === 'true') badges.appendChild(GhostUI.badge('Built-in', 'neutral'));
-      const isEnabled = skill.enabled !== 'false';
-      if (!isEnabled) badges.appendChild(GhostUI.badge('Disabled', 'warning'));
-      if (skill.user_modified === 'true') badges.appendChild(GhostUI.badge('Modified', 'warning'));
-      topRow.appendChild(badges);
-      card.appendChild(topRow);
-
-      // Description
-      if (skill.description) {
-        const desc = GhostUI.h('div', { className: 'skill-card-desc' }, skill.description);
-        card.appendChild(desc);
-      }
-
-      // Actions row
-      const actions = GhostUI.h('div', { className: 'skill-card-actions' });
-
-      // Read button
-      actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost ghost-btn-sm', onClick: () => showSkillReader(skill.name) }, 'Read'));
-
-      // Toggle (non-bundled only)
-      if (skill.bundled !== 'true') {
-        actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost ghost-btn-sm', onClick: async (e) => {
-          e.stopPropagation();
-          try {
-            await GhostAPI.post('/api/admin/skills/toggle', { name: skill.name, enabled: !isEnabled });
-            GhostUI.toast(`Skill ${isEnabled ? 'disabled' : 'enabled'}.`);
-            loadSkills(container);
-          } catch (e) {
-            GhostUI.toast('Failed to toggle skill.');
-          }
-        }}, isEnabled ? 'Disable' : 'Enable'));
-
-        actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost ghost-btn-sm skill-remove-btn', onClick: async (e) => {
-          e.stopPropagation();
-          if (!confirm(`Remove skill ${skill.name}?`)) return;
-          try {
-            await GhostAPI.post('/api/admin/skills/remove', { name: skill.name });
-            GhostUI.toast('Skill removed.');
-            loadSkills(container);
-          } catch (e) {
-            GhostUI.toast('Failed to remove skill.');
-          }
-        }}, 'Remove'));
-      }
-
-      card.appendChild(actions);
-
-      // Click card to read
-      card.addEventListener('click', () => showSkillReader(skill.name));
-      card.style.cursor = 'pointer';
-
-      listEl.appendChild(card);
-    }
-  } catch (e) {
-    section.appendChild(GhostUI.errorState('Couldn\'t load skills.', e.message));
-  }
-
-  section.appendChild(listEl);
-  container.appendChild(section);
-
-  // If URL has a hash (e.g. /skills#skillName), auto-open that skill
-  const hashSkill = location.hash.replace('#', '');
-  if (hashSkill) {
-    showSkillReader(decodeURIComponent(hashSkill));
-  }
 }
 
-async function showSkillReader(name) {
-  history.pushState(null, '', '/skills#' + encodeURIComponent(name));
-  const content = GhostUI.h('div', { id: 'section-skills-reader', className: 'skill-reader' });
+async function openSkill(container, name) {
+  container.innerHTML = '';
+  const back = GhostUI.h('div', { className: 'ghost-link-row', style: 'margin-bottom:var(--s-4);width:fit-content', onClick: () => loadSkills(container) });
+  back.appendChild(GhostUI.h('span', { className: 'chevron', style: 'transform:rotate(180deg)' }, '‹'));
+  back.appendChild(GhostUI.h('span', {}, 'All skills'));
+  container.appendChild(back);
 
-  // Back link
-  const back = GhostUI.h('div', { className: 'ghost-link-row', style: 'margin-bottom:var(--space-lg)', onClick: () => { history.pushState(null, '', '/skills'); loadSkills(document.getElementById('ghost-content')); } });
-  back.appendChild(GhostUI.h('span', { className: 'type-callout text-accent' }, '\u2190 Skills'));
-  content.appendChild(back);
+  const view = GhostUI.h('div', { className: 'panel' });
+  view.appendChild(GhostUI.loading('Opening skill…'));
+  container.appendChild(view);
 
-  // Title
-  content.appendChild(GhostUI.h('div', { className: 'type-title', style: 'margin-bottom:var(--space-xl)' }, name));
-
-  try {
-    const data = await GhostAPI.get(`/api/admin/skills/read?name=${encodeURIComponent(name)}`);
-    const files = data.files || [];
-
-    if (files.length === 0) {
-      content.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary' }, 'No files found.'));
-    } else {
-      // Find SKILL.md first, then show other files
-      const skillMd = files.find(f => f.path === 'SKILL.md');
-      const otherFiles = files.filter(f => f.path !== 'SKILL.md');
-
-      if (skillMd) {
-        const markdownEl = GhostUI.h('div', { className: 'skill-markdown' });
-        markdownEl.innerHTML = renderMarkdown(skillMd.content || '');
-        content.appendChild(markdownEl);
-      }
-
-      if (otherFiles.length > 0) {
-        const filesSection = GhostUI.h('div', { className: 'skill-files-section', style: 'margin-top:var(--space-xxl)' });
-        filesSection.appendChild(GhostUI.h('div', { className: 'section-label' }, 'Other files'));
-
-        for (const file of otherFiles) {
-          const fileRow = GhostUI.h('div', { className: 'ghost-row' });
-          const fileContent = GhostUI.h('div', { className: 'ghost-row-content' });
-          fileContent.appendChild(GhostUI.h('div', { className: 'ghost-row-title type-mono' }, file.path));
-          if (file.content) {
-            const preview = file.content.substring(0, 120).replace(/\n/g, ' ');
-            fileContent.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, preview + (file.content.length > 120 ? '...' : '')));
-          }
-          fileRow.appendChild(fileContent);
-          filesSection.appendChild(fileRow);
-        }
-        content.appendChild(filesSection);
-      }
-    }
-  } catch (e) {
-    content.appendChild(GhostUI.errorState('Couldn\'t load skill.', e.message));
+  let data;
+  try { data = await GhostAPI.proxyGet('/v1/skills/read?name=' + encodeURIComponent(name)); }
+  catch (e) {
+    view.innerHTML = '';
+    view.appendChild(GhostUI.errorState('Couldn’t open this skill', 'It may have been removed.'));
+    return;
   }
 
-  const appContent = document.getElementById('ghost-content');
-  appContent.innerHTML = '';
-  appContent.appendChild(content);
+  view.innerHTML = '';
+  const enabled = data.enabled !== false;
+  const head = GhostUI.h('div', { className: 'panel-head' });
+  head.appendChild(GhostUI.h('div', {}, GhostUI.h('h2', {}, name), GhostUI.h('p', {}, data.description || 'Installed skill')));
+  const actions = GhostUI.h('div', { className: 'ghost-row-trailing' });
+  const toggleBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary' }, enabled ? 'Disable' : 'Enable');
+  toggleBtn.addEventListener('click', async () => {
+    try { await GhostAPI.proxyPost('/v1/skills/toggle', { name, enabled: !enabled }); GhostUI.toast(enabled ? 'Skill disabled' : 'Skill enabled'); openSkill(container, name); }
+    catch (e) { GhostUI.toast('Couldn’t change it.', 'err'); }
+  });
+  actions.appendChild(toggleBtn);
+  if (!(data.bundled)) {
+    actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
+      if (!(await GhostUI.confirmModal('Remove this skill?', name + ' will be deleted from your Ghost. This can’t be undone.', 'Remove'))) return;
+      try { await GhostAPI.post('/api/admin/skills/remove', { name }); GhostUI.toast('Removed'); loadSkills(container); }
+      catch (e) { GhostUI.toast('Couldn’t remove it.', 'err'); }
+    } }, 'Remove'));
+  }
+  head.appendChild(actions);
+  view.appendChild(head);
+
+  const meta = GhostUI.h('div', { className: 'kv', style: 'margin-bottom:var(--s-4)' });
+  meta.appendChild(kvRow('Source', data.bundled ? 'Built into Ghost' : 'Installed by you'));
+  if (data.user_modified) meta.appendChild(kvRow('Your edits', 'Preserved across Ghost updates'));
+  view.appendChild(meta);
+
+  const body = GhostUI.h('div', { className: 'markdown-body' });
+  const sk = (data.files || []).find(f => f.path === 'SKILL.md' || f.path === 'SKILL.md.disabled');
+  body.innerHTML = GhostUI.md(sk ? sk.content : 'No documentation.');
+  view.appendChild(body);
 }
 
-function showCreateSkillModal() {
+function kvRow(k, v) {
+  const r = GhostUI.h('div', { className: 'kv-row' });
+  r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k));
+  r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v));
+  return r;
+}
+
+function showInstall() {
   const body = GhostUI.h('div');
-
-  const nameGroup = GhostUI.h('div', { className: 'form-group' });
-  nameGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Skill name'));
-  const nameInput = GhostUI.input('e.g. my-custom-skill');
-  nameGroup.appendChild(nameInput);
-  nameGroup.appendChild(GhostUI.h('div', { className: 'form-hint' }, 'Lowercase letters, numbers, and hyphens only.'));
-  body.appendChild(nameGroup);
-
-  const descGroup = GhostUI.h('div', { className: 'form-group' });
-  descGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Description'));
-  const descInput = GhostUI.input('What does this skill do?');
-  descGroup.appendChild(descInput);
-  descGroup.appendChild(GhostUI.h('div', { className: 'form-hint' }, 'This tells Ghost when to use the skill.'));
-  body.appendChild(descGroup);
-
-  const bodyGroup = GhostUI.h('div', { className: 'form-group' });
-  bodyGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Instructions'));
-  const bodyInput = GhostUI.textarea('Write the skill instructions in markdown...');
-  bodyInput.style.minHeight = '200px';
-  bodyInput.style.fontFamily = 'var(--font-mono)';
-  bodyInput.style.fontSize = '13px';
-  bodyGroup.appendChild(bodyInput);
-  bodyGroup.appendChild(GhostUI.h('div', { className: 'form-hint' }, 'Markdown. Describe the steps Ghost should follow.'));
-  body.appendChild(bodyGroup);
-
-  GhostUI.modal('Create new skill', body, [
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async () => {
-      const name = nameInput.value.trim();
-      const description = descInput.value.trim();
-      const instructions = bodyInput.value;
-
-      if (!name) { GhostUI.toast('Please enter a skill name.'); return; }
-      if (!/^[a-z0-9-]+$/.test(name)) { GhostUI.toast('Name must be lowercase letters, numbers, and hyphens.'); return; }
-      if (!description) { GhostUI.toast('Please enter a description.'); return; }
-
-      // Build SKILL.md content
-      const skillMd = `---
-name: ${name}
-description: ${description}
----
-
-${instructions || '# ' + name + '\n\nDescribe what this skill does here.'}`;
-
-      try {
-        await GhostAPI.post('/api/admin/skills/save', {
-          name: name,
-          files: [
-            { path: 'SKILL.md', content: skillMd }
-          ]
-        });
-        GhostUI.toast(`Skill "${name}" created.`);
-        e.target.closest('.ghost-modal-backdrop').remove();
-      } catch (err) {
-        GhostUI.toast('Failed to create skill.');
-      }
-    }}, 'Create')
-  ]);
-}
-
-function renderMarkdown(md) {
-  // Strip YAML frontmatter
-  let text = md.replace(/^---\n[\s\S]*?\n---\n/, '');
-
-  // Strip HTML comments
-  text = text.replace(/<!--[\s\S]*?-->/g, '');
-
-  // Protect code blocks from further processing
-  const codeBlocks = [];
-  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-    const placeholder = `<<CODEBLOCK${codeBlocks.length}>>`;
-    const langClass = lang ? ` class="language-${lang}"` : '';
-    codeBlocks.push(`<pre class="skill-code-block"><code${langClass}>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`);
-    return placeholder;
-  });
-
-  // Protect inline code
-  const inlineCodes = [];
-  text = text.replace(/`([^`]+)`/g, (match, code) => {
-    const placeholder = `<<INLINE${inlineCodes.length}>>`;
-    inlineCodes.push(`<code class="skill-inline-code">${code}</code>`);
-    return placeholder;
-  });
-
-  // Tables
-  const tables = [];
-  text = text.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)*)/gm, (match, headerRow, sepRow, bodyRows) => {
-    const placeholder = `<<TABLE${tables.length}>>`;
-    const headers = headerRow.split('|').filter(c => c.trim()).map(c => c.trim());
-    const body = bodyRows.trim().split('\n').map(row =>
-      row.split('|').filter(c => c.trim()).map(c => c.trim())
-    );
-    let html = '<table class="skill-table"><thead><tr>';
-    headers.forEach(h => { html += `<th>${h}</th>`; });
-    html += '</tr></thead><tbody>';
-    body.forEach(row => {
-      html += '<tr>';
-      row.forEach(cell => { html += `<td>${cell}</td>`; });
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
-    tables.push(html);
-    return placeholder;
-  });
-
-  // Headers
-  text = text.replace(/^##### (.+)$/gm, '<h5 class="skill-h5">$1</h5>');
-  text = text.replace(/^#### (.+)$/gm, '<h4 class="skill-h4">$1</h4>');
-  text = text.replace(/^### (.+)$/gm, '<h3 class="skill-h3">$1</h3>');
-  text = text.replace(/^## (.+)$/gm, '<h2 class="skill-h2">$1</h2>');
-  text = text.replace(/^# (.+)$/gm, '<h1 class="skill-h1">$1</h1>');
-
-  // Blockquotes
-  text = text.replace(/^&gt; (.+)$/gm, '<blockquote class="skill-blockquote">$1</blockquote>');
-  text = text.replace(/^> (.+)$/gm, '<blockquote class="skill-blockquote">$1</blockquote>');
-
-  // Bold and italic (safe now — code blocks are protected)
-  text = text.replace(/\*\*(.+?)\*\*/g, '<strong class="skill-strong">$1</strong>');
-  text = text.replace(/\*(.+?)\*/g, '<em class="skill-em">$1</em>');
-  text = text.replace(/_(.+?)_/g, '<em class="skill-em">$1</em>');
-
-  // Images
-  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="skill-img">');
-
-  // Links
-  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="skill-a" href="$2" target="_blank" rel="noopener">$1</a>');
-
-  // Horizontal rules
-  text = text.replace(/^---$/gm, '<hr class="skill-hr">');
-
-  // Task lists (- [ ] and - [x])
-  text = text.replace(/^- \[x\] (.+)$/gm, '<li class="skill-task-item"><span class="skill-task-checkbox checked">&#10003;</span><span class="skill-task-label">$1</span></li>');
-  text = text.replace(/^- \[ \] (.+)$/gm, '<li class="skill-task-item"><span class="skill-task-checkbox"></span><span class="skill-task-label">$1</span></li>');
-
-  // Unordered lists
-  text = text.replace(/^- (.+)$/gm, '<li class="skill-li">$1</li>');
-
-  // Ordered lists
-  text = text.replace(/^\d+\. (.+)$/gm, '<li class="skill-li-ol">$1</li>');
-
-  // Wrap consecutive task list items in ul
-  text = text.replace(/(<li class="skill-task-item">.*?<\/li>(\s*\n?)*)+/g, (match) => {
-    return `<ul class="skill-ul skill-task-list">${match.replace(/\n/g, '')}</ul>`;
-  });
-
-  // Wrap consecutive unordered li elements in ul
-  text = text.replace(/(<li class="skill-li">.*?<\/li>(\s*\n?)*)+/g, (match) => {
-    return `<ul class="skill-ul">${match.replace(/\n/g, '')}</ul>`;
-  });
-
-  // Wrap consecutive ordered li elements in ol
-  text = text.replace(/(<li class="skill-li-ol">.*?<\/li>(\s*\n?)*)+/g, (match) => {
-    return `<ol class="skill-ol">${match.replace(/\n/g, '')}</ol>`;
-  });
-
-  // Merge adjacent blockquotes
-  text = text.replace(/<\/blockquote>\s*<blockquote class="skill-blockquote">/g, '<br>');
-
-  // Split into paragraphs by double newlines (but not inside HTML blocks)
-  const blocks = text.split(/\n\n+/);
-  text = blocks.map(block => {
-    const trimmed = block.trim();
-    if (!trimmed) return '';
-    // Don't wrap block-level elements in <p>
-    if (/^<(h[1-6]|ul|ol|pre|blockquote|hr|div|table|<<TABLE|<<CODEBLOCK)/.test(trimmed)) {
-      return trimmed;
-    }
-    return `<p class="skill-p">${trimmed.replace(/\n/g, '<br>')}</p>`;
-  }).join('\n');
-
-  // Restore tables
-  tables.forEach((table, i) => {
-    text = text.replace(`<<TABLE${i}>>`, table);
-  });
-
-  // Restore code blocks
-  codeBlocks.forEach((block, i) => {
-    text = text.replace(`<<CODEBLOCK${i}>>`, block);
-  });
-
-  // Restore inline code
-  inlineCodes.forEach((code, i) => {
-    text = text.replace(`<<INLINE${i}>>`, code);
-  });
-
-  return text;
-}
-
-function showClawHubSearchModal() {
-  const body = GhostUI.h('div');
-  const group = GhostUI.h('div', { className: 'form-group' });
-  group.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Search skills'));
-  const input = GhostUI.input('Search ClawHub...');
-  group.appendChild(input);
-  body.appendChild(group);
-
-  const results = GhostUI.h('div', { className: 'ghost-list', style: 'margin-top:var(--space-md)' });
-  body.appendChild(results);
-
-  const doSearch = async () => {
-    const q = input.value.trim();
-    if (!q) return;
-    results.innerHTML = '';
-    results.appendChild(GhostUI.loading('Searching...'));
-    try {
-      const data = await GhostAPI.get(`/api/admin/skills/clawhub/search?q=${encodeURIComponent(q)}`);
-      results.innerHTML = '';
-      const items = data.results || [];
-      if (items.length === 0) {
-        results.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'padding:var(--space-lg)' }, 'No skills found.'));
-        return;
-      }
-      for (const item of items) {
-        const r = GhostUI.h('div', { className: 'ghost-row', style: 'cursor:pointer', onClick: async () => {
-          try {
-            const res = await GhostAPI.post('/api/admin/skills/clawhub/install', { slug: item.slug });
-            GhostUI.toast(res.message || 'Skill installed.');
-          } catch (e) {
-            GhostUI.toast('Failed to install skill.');
-          }
-        }});
-        const c = GhostUI.h('div', { className: 'ghost-row-content' });
-        c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, item.display_name || item.slug));
-        if (item.summary) c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, item.summary));
-        r.appendChild(c);
-        r.appendChild(GhostUI.h('span', { className: 'chevron' }, '\u203a'));
-        results.appendChild(r);
-      }
-    } catch (e) {
-      results.innerHTML = '';
-      results.appendChild(GhostUI.h('div', { className: 'type-callout text-error', style: 'padding:var(--space-lg)' }, 'Search failed.'));
-    }
+  body.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'margin-bottom:var(--s-4)' }, 'Install a skill from a GitHub repository. Provide the owner, repo, and the folder path.'));
+  const mk = (label, ph, key) => {
+    const f = GhostUI.h('div', { className: 'field' });
+    f.appendChild(GhostUI.h('label', {}, label));
+    const i = GhostUI.h('input', { className: 'ghost-input', placeholder: ph });
+    f.appendChild(i); body.appendChild(f); body[key] = i;
   };
+  mk('Repository owner', 'ianclemence', '_owner');
+  mk('Repository', 'ghost-skills', '_repo');
+  mk('Path to skill folder', 'skills/research', '_path');
 
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
-
-  GhostUI.modal('Install from ClawHub', body, [
+  GhostUI.modal('Install skill', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: doSearch }, 'Search')
-  ]);
-}
-
-function showGitHubInstallModal() {
-  const body = GhostUI.h('div');
-
-  const ownerGroup = GhostUI.h('div', { className: 'form-group' });
-  ownerGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'GitHub owner'));
-  const ownerInput = GhostUI.input('e.g. ianclemence');
-  ownerGroup.appendChild(ownerInput);
-  body.appendChild(ownerGroup);
-
-  const repoGroup = GhostUI.h('div', { className: 'form-group' });
-  repoGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Repository'));
-  const repoInput = GhostUI.input('e.g. ghost-skills');
-  repoGroup.appendChild(repoInput);
-  body.appendChild(repoGroup);
-
-  const pathGroup = GhostUI.h('div', { className: 'form-group' });
-  pathGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Path in repo'));
-  const pathInput = GhostUI.input('e.g. skills/my-skill');
-  pathGroup.appendChild(pathInput);
-  body.appendChild(pathGroup);
-
-  const nameGroup = GhostUI.h('div', { className: 'form-group' });
-  nameGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Skill name (optional)'));
-  const nameInput = GhostUI.input('Leave empty to use path basename');
-  nameGroup.appendChild(nameInput);
-  body.appendChild(nameGroup);
-
-  const branchGroup = GhostUI.h('div', { className: 'form-group' });
-  branchGroup.appendChild(GhostUI.h('label', { className: 'form-label' }, 'Branch'));
-  const branchInput = GhostUI.input('main');
-  branchInput.value = 'main';
-  branchGroup.appendChild(branchInput);
-  body.appendChild(branchGroup);
-
-  GhostUI.modal('Install from GitHub', body, [
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async () => {
-      const owner = ownerInput.value.trim();
-      const repo = repoInput.value.trim();
-      const path = pathInput.value.trim();
-      if (!owner || !repo || !path) { GhostUI.toast('Please fill in owner, repo, and path.'); return; }
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+      const owner = body._owner.value.trim(), repo = body._repo.value.trim(), p = body._path.value.trim();
+      if (!owner || !repo || !p) { GhostUI.toast('All three fields are required.'); return; }
       try {
-        const payload = { owner, repo, path };
-        if (nameInput.value.trim()) payload.name = nameInput.value.trim();
-        if (branchInput.value.trim()) payload.branch = branchInput.value.trim();
-        const res = await GhostAPI.post('/api/admin/skills/install', payload);
-        GhostUI.toast(res.message || 'Skill installed.');
+        await GhostAPI.post('/api/admin/skills/install', { owner, repo, path: p });
         e.target.closest('.ghost-modal-backdrop').remove();
-      } catch (err) {
-        GhostUI.toast('Failed to install skill.');
-      }
-    }}, 'Install')
+        GhostUI.toast('Skill installed');
+        loadSkills(document.getElementById('view'));
+      } catch (err) { GhostUI.toast('Install failed: ' + (err.message || ''), 'err'); }
+    } }, 'Install'),
   ]);
 }
 

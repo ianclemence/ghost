@@ -1,0 +1,90 @@
+/* Ghost — sections
+   Page-specific composition. Prefers lists, rows, and dividers over cards. */
+
+/* ── Home ── */
+.home-greet { font-size: var(--t-title); font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
+.presence { margin-top: var(--s-2); color: var(--ink-soft); font-size: var(--t-callout); }
+
+/* Timeline (Activity) */
+.timeline { display: flex; flex-direction: column; }
+.tl-day { font-size: var(--t-micro); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); margin: var(--s-5) 0 var(--s-2); font-weight: 600; }
+.tl-item { display: flex; gap: var(--s-3); padding: 8px 0; border-bottom: 1px solid var(--line); }
+.tl-item:last-child { border-bottom: 0; }
+.tl-time { width: 52px; flex: none; font-family: var(--font-mono); font-size: var(--t-foot); color: var(--ink-faint); padding-top: 1px; }
+.tl-body { flex: 1; min-width: 0; }
+.tl-title { font-weight: 520; }
+.tl-meta { font-size: var(--t-foot); color: var(--ink-faint); margin-top: 1px; }
+
+/* Filter chips — quiet text links, not pills */
+.chips { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-bottom: var(--s-4); }
+.chip {
+  font-size: var(--t-foot); font-weight: 520;
+  padding: 0; border: 0; background: none;
+  color: var(--ink-faint); cursor: pointer; transition: color .12s ease;
+}
+.chip:hover { color: var(--ink); }
+.chip.active { color: var(--ink); border-bottom: 1.5px solid var(--ink); padding-bottom: 1px; }
+
+/* ── Panel (used for detail/settings grouping) ── */
+.panel {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-5);
+}
+.panel + .panel { margin-top: var(--s-4); }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4); margin-bottom: var(--s-4); }
+.panel-head h2 { font-size: var(--t-head); font-weight: 600; letter-spacing: -0.01em; }
+.panel-head p { font-size: var(--t-foot); color: var(--ink-faint); margin-top: 2px; }
+
+/* Key-value definition rows */
+.kv { display: flex; flex-direction: column; }
+.kv-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); padding: var(--s-3) 0; border-bottom: 1px solid var(--line); }
+.kv-row:last-child { border-bottom: 0; }
+.kv-key { color: var(--ink-soft); font-size: var(--t-callout); }
+.kv-val { color: var(--ink); font-weight: 520; text-align: right; min-width: 0; }
+.kv-val.mono { font-family: var(--font-mono); font-size: 13px; }
+
+.model-row { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-2); border-bottom: 1px solid var(--line); }
+.model-row:last-child { border-bottom: 0; }
+.model-main { flex: 1; min-width: 0; }
+.model-name { font-weight: 540; }
+.model-sub { font-size: var(--t-foot); color: var(--ink-faint); margin-top: 1px; }
+
+/* ── QR connect ── */
+.qr-wrap { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-4) 0; }
+.qr-expiry { font-size: var(--t-foot); color: var(--ink-faint); font-family: var(--font-mono); }
+.qr-fallback-string {
+  font-family: var(--font-mono); font-size: 12px; word-break: break-all;
+  background: var(--paper-sunken); border-radius: var(--r-sm); padding: var(--s-3);
+  color: var(--ink-soft); max-width: 100%;
+}
+
+/* ── Skill detail ── */
+.markdown-body { font-size: var(--t-body); line-height: var(--lh-body); color: var(--ink-soft); }
+.markdown-body h1, .markdown-body h2, .markdown-body h3 { color: var(--ink); margin: var(--s-4) 0 var(--s-2); line-height: var(--lh-snug); }
+.markdown-body h1 { font-size: var(--t-head); }
+.markdown-body h2 { font-size: var(--t-callout); text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); }
+.markdown-body p { margin: var(--s-2) 0; }
+.markdown-body code { font-family: var(--font-mono); font-size: 13px; background: var(--paper-sunken); padding: 1px 5px; border-radius: 4px; }
+.markdown-body pre { background: var(--paper-sunken); padding: var(--s-3); border-radius: var(--r-sm); overflow: auto; }
+.markdown-body pre code { background: none; padding: 0; }
+.markdown-body ul { margin: var(--s-2) 0; padding-left: 20px; }
+.markdown-body li { margin: 4px 0; }
+
+/* ── Diagnostics ── */
+.diag-grid { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.diag-row { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--line); }
+.diag-row:last-child { border-bottom: 0; }
+.diag-name { flex: 1; font-weight: 520; }
+.diag-msg { font-size: var(--t-foot); color: var(--ink-faint); font-family: var(--font-mono); }
+
+/* ── Prose (Help / About) ── */
+.prose { font-size: var(--t-body); line-height: var(--lh-body); color: var(--ink-soft); }
+.prose h2 { color: var(--ink); font-size: var(--t-head); margin: var(--s-6) 0 var(--s-3); letter-spacing: -0.01em; }
+.prose h2:first-child { margin-top: 0; }
+.prose p { margin: var(--s-3) 0; }
+.prose a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.prose ul { margin: var(--s-3) 0; padding-left: 20px; }
+.prose li { margin: 6px 0; }
+.prose code { font-family: var(--font-mono); font-size: 13px; background: var(--paper-sunken); padding: 1px 5px; border-radius: 4px; }

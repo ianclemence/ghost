@@ -428,8 +428,12 @@ func handleWizardIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGatewayProxy forwards requests to the Ghost gateway API on localhost:8766.
-// The gateway binds to localhost only, so no authentication is needed for proxied requests.
+// The gateway binds to localhost only, but this proxy is a network-facing surface,
+// so every proxied call must carry a valid owner session cookie.
 func handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
 	// Load config to get gateway port
 	cfgPath := filepath.Join(fb.GhostDir, "config", "config.json")
 	cfg, err := config.LoadConfig(cfgPath)

@@ -1,111 +1,76 @@
-/* Ghost Design Tokens — matches mobile design system */
+/* Ghost — design tokens
+   Calm, restrained, premium. A single product, not a SaaS dashboard. */
+
 :root {
-  /* Background stack */
-  --ghost-bg-base: #FAFAF7;
-  --ghost-bg-raised: #F5F3EE;
-  --ghost-bg-sunken: #EDEBE6;
+  /* ── Color: ink-on-paper ── */
+  --paper: #f7f6f3;          /* app background — warm, quiet */
+  --paper-raised: #faf9f7;   /* surfaces — slightly warm, not pure white */
+  --paper-sunken: #efeae3;   /* recessed areas, code, qr */
+  --paper-hover: #f1efea;
 
-  /* Text stack */
-  --ghost-text-primary: #1A1611;
-  --ghost-text-secondary: #6B6560;
-  --ghost-text-tertiary: #9C9590;
-  --ghost-text-inverse: #FAFAF7;
+  --ink: #1c1b19;            /* primary text */
+  --ink-soft: #4a4742;       /* secondary text */
+  --ink-faint: #8a857c;      /* tertiary / labels */
+  --ink-ghost: #b7b2a8;      /* disabled / hairlines */
 
-  /* Accent — muted sage green */
-  --ghost-accent: #3D7A5F;
-  --ghost-accent-soft: rgba(61,122,95,0.08);
-  --ghost-accent-medium: rgba(61,122,95,0.15);
+  --line: #e4dfd6;           /* hairline borders */
+  --line-strong: #d6d0c5;
 
-  /* Status */
-  --ghost-success: #3D7A5F;
-  --ghost-warning: #B07C2E;
-  --ghost-error: #C24B3C;
-  --ghost-info: #5A7A9A;
+  /* Single restrained accent — a deep, quiet indigo */
+  --accent: #3a3a55;
+  --accent-ink: #2a2a3d;
+  --accent-soft: #ececf2;
+  --accent-line: #c9c9da;
 
-  /* Borders */
-  --ghost-border-subtle: rgba(26,22,17,0.06);
-  --ghost-border-default: rgba(26,22,17,0.12);
-  --ghost-border-strong: rgba(26,22,17,0.20);
+  /* Status — meaningful, not decorative */
+  --ok: #3f7d52;
+  --ok-soft: #e7f0ea;
+  --warn: #9a6b1f;
+  --warn-soft: #f6ecd9;
+  --bad: #a23b34;
+  --bad-soft: #f6e6e4;
+  --off: #8a857c;
+  --off-soft: #efeadf;
+  --info: #3a5a78;
+  --info-soft: #e6edf3;
 
-  /* Status card tones */
-  --ghost-error-fg: #C24B3C;
-  --ghost-error-bg: rgba(194,75,60,0.10);
-  --ghost-error-border: rgba(194,75,60,0.30);
-  --ghost-warning-fg: #B07C2E;
-  --ghost-warning-bg: rgba(176,124,46,0.10);
-  --ghost-warning-border: rgba(176,124,46,0.30);
+  /* ── Type ── */
+  --font-sans: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* Modal */
-  --ghost-modal-backdrop: rgba(26,22,17,0.4);
+  --t-display: 30px;
+  --t-title: 22px;
+  --t-head: 17px;
+  --t-body: 15px;
+  --t-callout: 14px;
+  --t-foot: 12.5px;
+  --t-micro: 11px;
 
-  /* Spacing (4px base) */
-  --space-xxs: 2px;
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 12px;
-  --space-lg: 16px;
-  --space-xl: 20px;
-  --space-xxl: 24px;
-  --space-xxxl: 32px;
-  --space-huge: 48px;
-  --space-section: 64px;
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-body: 1.55;
 
-  /* Border radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
-  --radius-xxl: 24px;
-  --radius-full: 999px;
+  /* ── Space ── */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
 
-  /* Typography */
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-display: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-serif: Georgia, 'Times New Roman', serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+  /* ── Radius (restrained) ── */
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 13px;
+  --r-pill: 999px;
 
-  /* Type scale */
-  --type-display-size: 34px;
-  --type-display-height: 41px;
-  --type-display-weight: 600;
-  --type-display-spacing: -0.5px;
+  --shadow-sm: 0 1px 2px rgba(28,27,25,.04), 0 1px 1px rgba(28,27,25,.03);
+  --shadow-md: 0 4px 16px rgba(28,27,25,.07), 0 1px 3px rgba(28,27,25,.05);
+  --shadow-pop: 0 12px 40px rgba(28,27,25,.16);
 
-  --type-largetitle-size: 28px;
-  --type-largetitle-height: 34px;
-  --type-largetitle-weight: 600;
-  --type-largetitle-spacing: -0.3px;
-
-  --type-title-size: 22px;
-  --type-title-height: 28px;
-  --type-title-weight: 600;
-
-  --type-headline-size: 17px;
-  --type-headline-height: 22px;
-  --type-headline-weight: 600;
-
-  --type-body-size: 16px;
-  --type-body-height: 24px;
-  --type-body-weight: 400;
-
-  --type-callout-size: 15px;
-  --type-callout-height: 21px;
-  --type-callout-weight: 400;
-
-  --type-subhead-size: 13px;
-  --type-subhead-height: 18px;
-  --type-subhead-weight: 400;
-
-  --type-footnote-size: 12px;
-  --type-footnote-height: 16px;
-  --type-footnote-weight: 400;
-
-  --type-caption-size: 11px;
-  --type-caption-height: 14px;
-  --type-caption-weight: 500;
-  --type-caption-spacing: 0.3px;
-
-  /* Layout */
-  --sidebar-width: 240px;
-  --screen-padding: 20px;
-  --content-max-width: 720px;
+  --nav-w: 248px;
+  --topbar-h: 60px;
+  --maxw: 880px;
 }
