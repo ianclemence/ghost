@@ -193,6 +193,9 @@ textarea.ghost-input {
 .ghost-list > * + * {
   border-top: 1px solid var(--ghost-border-subtle);
 }
+.ghost-list .section-label {
+  border-top: none;
+}
 
 /* Section group */
 .section-group {

@@ -247,7 +247,7 @@ curl -s -X POST http://localhost:8766/api/admin/password \
   -H "Content-Type: application/json" \
   -d '{"current": "current-pass", "new": "short", "confirm": "short"}'
 
-# Should return error about minimum 12 characters
+# Should return error about minimum 8 characters
 ```
 
 ---

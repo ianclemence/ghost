@@ -412,17 +412,19 @@ func waitForSetupComplete() {
 }
 
 func handleWizardIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
+	path := r.URL.Path
+	// Serve index.html for SPA routes (non-API, non-asset paths)
+	if path == "/" || (!strings.HasPrefix(path, "/api/") && !strings.HasPrefix(path, "/assets/")) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		data, err := webFiles.ReadFile("web/index.html")
+		if err != nil {
+			http.Error(w, "Failed to load wizard", http.StatusInternalServerError)
+			return
+		}
+		w.Write(data)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	data, err := webFiles.ReadFile("web/index.html")
-	if err != nil {
-		http.Error(w, "Failed to load wizard", http.StatusInternalServerError)
-		return
-	}
-	w.Write(data)
+	http.NotFound(w, r)
 }
 
 // handleGatewayProxy forwards requests to the Ghost gateway API on localhost:8766.

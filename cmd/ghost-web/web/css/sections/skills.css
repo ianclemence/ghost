@@ -224,6 +224,110 @@
   margin: var(--space-lg) 0;
 }
 
+/* h4 / h5 */
+.skill-h4 {
+  font-size: var(--type-callout-size);
+  font-weight: var(--type-headline-weight);
+  margin-bottom: var(--space-sm);
+  margin-top: var(--space-xl);
+}
+
+.skill-h5 {
+  font-size: var(--type-subhead-size);
+  font-weight: var(--type-headline-weight);
+  margin-bottom: var(--space-sm);
+  margin-top: var(--space-lg);
+}
+
+/* Strong / Em */
+.skill-strong {
+  font-weight: 600;
+}
+
+.skill-em {
+  font-style: italic;
+}
+
+/* Links */
+.skill-a {
+  color: var(--ghost-accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.skill-a:hover {
+  border-bottom-color: var(--ghost-accent);
+}
+
+/* Tables */
+.skill-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: var(--space-lg);
+  font-size: var(--type-callout-size);
+}
+
+.skill-table th,
+.skill-table td {
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--ghost-border-subtle);
+}
+
+.skill-table th {
+  font-weight: 600;
+  color: var(--ghost-text-primary);
+}
+
+.skill-table td {
+  color: var(--ghost-text-secondary);
+}
+
+.skill-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Task lists */
+.skill-task-list {
+  list-style: none;
+  padding-left: 0;
+  margin-bottom: var(--space-lg);
+}
+
+.skill-task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  padding-left: var(--space-xl);
+}
+
+.skill-task-checkbox {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--ghost-border-default);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--ghost-accent);
+  background: var(--ghost-bg);
+}
+
+.skill-task-checkbox.checked {
+  background: var(--ghost-accent);
+  border-color: var(--ghost-accent);
+  color: white;
+}
+
+.skill-task-label {
+  line-height: 1.5;
+}
+
 /* Files section */
 .skill-files-section {
   border-top: 1px solid var(--ghost-border-subtle);

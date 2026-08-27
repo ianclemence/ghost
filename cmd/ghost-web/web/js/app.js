@@ -11,12 +11,13 @@ const GhostApp = (() => {
   }
 
   function getSection() {
-    const hash = location.hash.replace('#', '') || 'home';
-    return _sectionLoaders[hash] ? hash : 'home';
+    const path = location.pathname.replace(/^\/+/, '').split('/')[0] || 'home';
+    return _sectionLoaders[path] ? path : 'home';
   }
 
   function navigate(section) {
-    location.hash = '#' + section;
+    history.pushState(null, '', '/' + section);
+    loadCurrentSection();
   }
 
   function renderShell() {
@@ -70,9 +71,9 @@ const GhostApp = (() => {
       for (const item of group.items) {
         const link = GhostUI.h('a', {
           className: 'sidebar-link',
-          href: '#' + item.id,
+          href: '/' + item.id,
           dataset: { section: item.id },
-          onClick: () => closeMobileSidebar()
+          onClick: (e) => { e.preventDefault(); history.pushState(null, '', '/' + item.id); loadCurrentSection(); closeMobileSidebar(); }
         }, item.label);
         sidebar.appendChild(link);
       }
@@ -122,7 +123,7 @@ const GhostApp = (() => {
 
   function start() {
     GhostAPI.setOnAuthExpired(() => showLoginScreen());
-    window.addEventListener('hashchange', loadCurrentSection);
+    window.addEventListener('popstate', loadCurrentSection);
     renderShell();
   }
 

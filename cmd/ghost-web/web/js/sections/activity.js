@@ -49,8 +49,13 @@ async function loadActivity(container) {
         return;
       }
       const groups = groupSessions(sessions);
+      let firstDay = true;
       for (const [day, items] of Object.entries(groups)) {
-        listEl.appendChild(GhostUI.h('div', { className: 'section-label', style: 'margin-top:var(--space-lg)' }, day));
+        const labelStyle = firstDay
+          ? 'margin-top:var(--space-lg)'
+          : 'margin-top:var(--space-xxl)';
+        listEl.appendChild(GhostUI.h('div', { className: 'section-label', style: labelStyle }, day));
+        firstDay = false;
         for (const item of items) {
           const r = GhostUI.h('div', { className: 'ghost-row' });
           const c = GhostUI.h('div', { className: 'ghost-row-content' });

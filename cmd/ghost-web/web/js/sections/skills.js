@@ -131,13 +131,20 @@ async function loadSkills(container) {
 
   section.appendChild(listEl);
   container.appendChild(section);
+
+  // If URL has a hash (e.g. /skills#skillName), auto-open that skill
+  const hashSkill = location.hash.replace('#', '');
+  if (hashSkill) {
+    showSkillReader(decodeURIComponent(hashSkill));
+  }
 }
 
 async function showSkillReader(name) {
+  history.pushState(null, '', '/skills#' + encodeURIComponent(name));
   const content = GhostUI.h('div', { id: 'section-skills-reader', className: 'skill-reader' });
 
   // Back link
-  const back = GhostUI.h('div', { className: 'ghost-link-row', style: 'margin-bottom:var(--space-lg)', onClick: () => GhostApp.navigate('skills') });
+  const back = GhostUI.h('div', { className: 'ghost-link-row', style: 'margin-bottom:var(--space-lg)', onClick: () => { history.pushState(null, '', '/skills'); loadSkills(document.getElementById('ghost-content')); } });
   back.appendChild(GhostUI.h('span', { className: 'type-callout text-accent' }, '\u2190 Skills'));
   content.appendChild(back);
 
@@ -254,10 +261,13 @@ function renderMarkdown(md) {
   // Strip YAML frontmatter
   let text = md.replace(/^---\n[\s\S]*?\n---\n/, '');
 
+  // Strip HTML comments
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+
   // Protect code blocks from further processing
   const codeBlocks = [];
   text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-    const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+    const placeholder = `<<CODEBLOCK${codeBlocks.length}>>`;
     const langClass = lang ? ` class="language-${lang}"` : '';
     codeBlocks.push(`<pre class="skill-code-block"><code${langClass}>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`);
     return placeholder;
@@ -266,12 +276,35 @@ function renderMarkdown(md) {
   // Protect inline code
   const inlineCodes = [];
   text = text.replace(/`([^`]+)`/g, (match, code) => {
-    const placeholder = `__INLINE_CODE_${inlineCodes.length}__`;
+    const placeholder = `<<INLINE${inlineCodes.length}>>`;
     inlineCodes.push(`<code class="skill-inline-code">${code}</code>`);
     return placeholder;
   });
 
+  // Tables
+  const tables = [];
+  text = text.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)*)/gm, (match, headerRow, sepRow, bodyRows) => {
+    const placeholder = `<<TABLE${tables.length}>>`;
+    const headers = headerRow.split('|').filter(c => c.trim()).map(c => c.trim());
+    const body = bodyRows.trim().split('\n').map(row =>
+      row.split('|').filter(c => c.trim()).map(c => c.trim())
+    );
+    let html = '<table class="skill-table"><thead><tr>';
+    headers.forEach(h => { html += `<th>${h}</th>`; });
+    html += '</tr></thead><tbody>';
+    body.forEach(row => {
+      html += '<tr>';
+      row.forEach(cell => { html += `<td>${cell}</td>`; });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    tables.push(html);
+    return placeholder;
+  });
+
   // Headers
+  text = text.replace(/^##### (.+)$/gm, '<h5 class="skill-h5">$1</h5>');
+  text = text.replace(/^#### (.+)$/gm, '<h4 class="skill-h4">$1</h4>');
   text = text.replace(/^### (.+)$/gm, '<h3 class="skill-h3">$1</h3>');
   text = text.replace(/^## (.+)$/gm, '<h2 class="skill-h2">$1</h2>');
   text = text.replace(/^# (.+)$/gm, '<h1 class="skill-h1">$1</h1>');
@@ -281,23 +314,33 @@ function renderMarkdown(md) {
   text = text.replace(/^> (.+)$/gm, '<blockquote class="skill-blockquote">$1</blockquote>');
 
   // Bold and italic (safe now — code blocks are protected)
-  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong class="skill-strong">$1</strong>');
+  text = text.replace(/\*(.+?)\*/g, '<em class="skill-em">$1</em>');
+  text = text.replace(/_(.+?)_/g, '<em class="skill-em">$1</em>');
 
   // Images
   text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="skill-img">');
 
   // Links
-  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="skill-a" href="$2" target="_blank" rel="noopener">$1</a>');
 
   // Horizontal rules
   text = text.replace(/^---$/gm, '<hr class="skill-hr">');
+
+  // Task lists (- [ ] and - [x])
+  text = text.replace(/^- \[x\] (.+)$/gm, '<li class="skill-task-item"><span class="skill-task-checkbox checked">&#10003;</span><span class="skill-task-label">$1</span></li>');
+  text = text.replace(/^- \[ \] (.+)$/gm, '<li class="skill-task-item"><span class="skill-task-checkbox"></span><span class="skill-task-label">$1</span></li>');
 
   // Unordered lists
   text = text.replace(/^- (.+)$/gm, '<li class="skill-li">$1</li>');
 
   // Ordered lists
   text = text.replace(/^\d+\. (.+)$/gm, '<li class="skill-li-ol">$1</li>');
+
+  // Wrap consecutive task list items in ul
+  text = text.replace(/(<li class="skill-task-item">.*?<\/li>(\s*\n?)*)+/g, (match) => {
+    return `<ul class="skill-ul skill-task-list">${match.replace(/\n/g, '')}</ul>`;
+  });
 
   // Wrap consecutive unordered li elements in ul
   text = text.replace(/(<li class="skill-li">.*?<\/li>(\s*\n?)*)+/g, (match) => {
@@ -318,20 +361,25 @@ function renderMarkdown(md) {
     const trimmed = block.trim();
     if (!trimmed) return '';
     // Don't wrap block-level elements in <p>
-    if (/^<(h[1-6]|ul|ol|pre|blockquote|hr|div|table)/.test(trimmed)) {
+    if (/^<(h[1-6]|ul|ol|pre|blockquote|hr|div|table|<<TABLE|<<CODEBLOCK)/.test(trimmed)) {
       return trimmed;
     }
     return `<p class="skill-p">${trimmed.replace(/\n/g, '<br>')}</p>`;
   }).join('\n');
 
+  // Restore tables
+  tables.forEach((table, i) => {
+    text = text.replace(`<<TABLE${i}>>`, table);
+  });
+
   // Restore code blocks
   codeBlocks.forEach((block, i) => {
-    text = text.replace(`__CODE_BLOCK_${i}__`, block);
+    text = text.replace(`<<CODEBLOCK${i}>>`, block);
   });
 
   // Restore inline code
   inlineCodes.forEach((code, i) => {
-    text = text.replace(`__INLINE_CODE_${i}__`, code);
+    text = text.replace(`<<INLINE${i}>>`, code);
   });
 
   return text;

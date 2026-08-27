@@ -23,7 +23,7 @@ How users set up Ghost for the first time and connect devices.
 |------|-------------|
 | Welcome | Click "Set up Ghost" |
 | Identity | Enter your name (what Ghost calls you) and a name for Ghost (what you call it) |
-| Password | Create an admin password (min 12 chars) — stored as a bcrypt hash, never in config |
+| Password | Create an admin password (min 8 chars) — stored as a bcrypt hash, never in config |
 | Preparing | Ghost configures itself: identity, security, local storage, Ollama AI, system checks |
 | Local AI | If Ollama has models, select one. Otherwise skip |
 | Cloud AI | Optionally configure OpenAI/Anthropic/Kimi API keys. Skip if not needed |

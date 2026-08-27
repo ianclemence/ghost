@@ -190,7 +190,7 @@ sudo reboot
 
 After reboot, open `http://<pi-ip>` on your phone to complete setup:
 1. Connect to WiFi
-2. Create admin password (minimum 12 characters)
+2. Create admin password (minimum 8 characters)
 3. Select AI model
 4. Connect the Ghost app
 
