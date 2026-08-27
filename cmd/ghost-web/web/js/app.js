@@ -167,7 +167,7 @@ function showLoginScreen() {
   card.appendChild(GhostUI.h('div', { className: 'type-body text-secondary', style: 'margin-bottom:var(--space-xl)' }, 'Enter your admin password to continue.'));
 
   const input = GhostUI.input('Admin password', 'password');
-  input.style.marginBottom = 'var(--space-md)');
+  input.style.marginBottom = 'var(--space-md)';
   card.appendChild(input);
 
   const errorMsg = GhostUI.h('div', { className: 'type-footnote', style: 'color:var(--color-error);margin-bottom:var(--space-md);min-height:1.2em' });
