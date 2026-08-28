@@ -94,7 +94,15 @@ function showPairingModal() {
 
   async function generate() {
     let inv;
-    try { inv = await GhostAPI.proxyPost('/v1/pairing/invitations', { display_name: 'Phone' }); }
+    try {
+      // Pass the address the admin used to reach this console so the QR
+      // carries a usable host. If the console was opened via localhost,
+      // let the gateway detect its LAN address instead.
+      const body = { display_name: 'Phone', transport: 'lan' };
+      const host = window.location.hostname;
+      if (host && host !== 'localhost' && host !== '127.0.0.1') body.host = host;
+      inv = await GhostAPI.proxyPost('/v1/pairing/invitations', body);
+    }
     catch (e) { close(); GhostUI.toast('Couldn’t create a code.', 'err'); return; }
     currentInvite = inv;
     const url = 'ghost://pair?v=1&pod=' + encodeURIComponent(inv.pod_id) + '&transport=' + encodeURIComponent(inv.transport) + '&host=' + encodeURIComponent(inv.host) + '&port=' + encodeURIComponent(inv.port) + '&token=' + encodeURIComponent(inv.token);

@@ -172,11 +172,11 @@ A device credential is generated at install/setup and stored in `.secrets.json` 
 | Phone → Relay | X-Ghost-Client-Id + X-Ghost-Client-Token | Client token only. |
 | Relay (memory) | SHA-256(client token) hashes, SHA-256(device secret) hashes | Only hashes. No conversation content is persisted. |
 | Relay → Ghost (tunnel) | X-Ghost-Device + X-Ghost-Device-Secret handshake headers | Device secret authenticates the tunnel; it stays on this connection only. |
-| Ghost relay client → local gateway | Localhost connection (no auth needed) | Gateway binds to localhost only. |
+| Ghost relay client → local gateway | Localhost connection (trusted) | Loopback peers are trusted by the gateway. |
 
 Hard guarantees enforced in code:
 
-1. **The gateway binds to localhost only.** The relay client connects via localhost, so no authentication headers are needed.
+1. **Loopback trust at the gateway.** The relay client connects via localhost, so relay-forwarded traffic needs no additional authentication headers at the gateway; LAN peers, by contrast, must present valid device credentials on every request.
 2. **Credentials are never placed in URLs.** Query-parameter credential fallbacks were removed; both app auth and tunnel auth are header-only, so tokens cannot leak into proxy or access logs.
 3. **Device isolation.** Client token bindings are per-device. Token A can only
    ever reach Ghost A; unknown IDs, revoked tokens, and cross-device attempts

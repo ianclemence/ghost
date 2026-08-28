@@ -34,7 +34,7 @@ How users set up Ghost for the first time and connect devices.
 
 - `config.json` and `.secrets.json` are written (secrets never touch `.env`)
 - The `.setup-complete` flag is created
-- The ghost gateway service starts on port 8766 (bound to localhost only)
+- The ghost gateway service starts on port 8766 (LAN-reachable; loopback trusted, LAN requires device credentials)
 
 ---
 
@@ -165,16 +165,23 @@ The web UI is the **control center**. The mobile app is the **daily driver**.
 
 ## Authentication Layers
 
-The gateway binds to localhost only. All internal components communicate via localhost:
-- Web proxy forwards requests to `127.0.0.1:8766`
-- Relay client connects to `127.0.0.1:8766`
-- TUI dashboard connects to `127.0.0.1:8766`
+The gateway listens on the LAN with a layered trust model:
+
+- **Loopback peers are trusted** — no credential headers needed:
+  - Web proxy forwards requests to `127.0.0.1:8766`
+  - Relay client connects to `127.0.0.1:8766`
+  - TUI dashboard and CLI connect to `127.0.0.1:8766`
+- **LAN peers must present device credentials** on every request:
+  - Requests without valid `X-Ghost-Device-ID` + `X-Ghost-Credential` headers are rejected with `authentication_required` / `authentication_failed` errors
+  - The WebSocket upgrade enforces the same rule (credentials in headers, never in URLs)
+- **One public door**: `POST /v1/pairing/complete` needs no credential headers — the short-lived, single-use pairing token is the authorization
 
 Mobile apps use device credentials:
 
 | Mechanism | Headers | Used By |
 |-----------|---------|---------|
-| Device Credentials | `X-Ghost-Device-ID` + `X-Ghost-Credential` | Mobile app after pairing |
+| Device Credentials | `X-Ghost-Device-ID` + `X-Ghost-Credential` | Mobile app after pairing (LAN or relay) |
+| Client Token | `X-Ghost-Client-Id` + `X-Ghost-Client-Token` | App ↔ relay server (relay-forwarded traffic arrives at the gateway via loopback) |
 
 WebSocket connections use the same device credential mechanism via headers.
 

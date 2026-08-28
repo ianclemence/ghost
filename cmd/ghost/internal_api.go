@@ -2,8 +2,11 @@
 // Exposes ProcessDirectWithChannel() via HTTP so the mobile app can talk directly
 // to the full Ghost agent runtime (tools, RAG, memory, skills).
 //
-// Listens on 127.0.0.1 (localhost only) — all internal components communicate via localhost.
-// Mobile apps connect via the relay server, which tunnels traffic to localhost.
+// Listens on the LAN (0.0.0.0) with layered trust:
+//   - Loopback peers (web console proxy, relay client, TUI, CLI) are trusted.
+//   - LAN peers must present valid per-device credentials on every request,
+//     except the public pairing redemption endpoints where the short-lived
+//     pairing token itself is the authorization.
 
 package main
 
@@ -18,6 +21,7 @@ import (
 	"log"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -48,13 +52,73 @@ var upgrader = websocket.Upgrader{
 
 var apiStartTime = time.Now()
 
+// apiDB is the agent database used by peer authorization. It is set once in
+// startInternalAPI so the auth middlewares (which have uniform signatures
+// across many call sites) can validate device credentials.
+var apiDB *sql.DB
+
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// peerAuthorized reports whether the request may proceed.
+// Loopback peers (web proxy, relay client, TUI, CLI) are trusted. LAN peers
+// must present a valid per-device credential; validation also refreshes the
+// device's last-seen timestamp.
+func peerAuthorized(r *http.Request) bool {
+	if isLoopbackRequest(r) {
+		return true
+	}
+	deviceID := r.Header.Get("X-Ghost-Device-ID")
+	credential := r.Header.Get("X-Ghost-Credential")
+	if deviceID == "" || credential == "" || apiDB == nil {
+		return false
+	}
+	valid, _ := pairing.ValidateCredential(apiDB, deviceID, credential)
+	if valid {
+		_ = pairing.UpdateLastSeen(apiDB, deviceID)
+	}
+	return valid
+}
+
+// detectLANAddress returns the IP of the interface that has a default route,
+// so pairing invitations carry a usable address instead of a placeholder.
+func detectLANAddress() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return "127.0.0.1"
+	}
+	defer conn.Close()
+	addr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok || addr.IP == nil {
+		return "127.0.0.1"
+	}
+	return addr.IP.String()
+}
+
 func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Gateway binds to localhost only — all traffic is trusted.
-		// Device credentials are still validated for relay-forwarded traffic.
+		// Loopback peers (relay client, local tools) are trusted. LAN peers
+		// must present valid device credentials — credentials are never
+		// accepted via query parameters.
 		deviceID := r.Header.Get("X-Ghost-Device-ID")
 		credential := r.Header.Get("X-Ghost-Credential")
-		if deviceID != "" && credential != "" {
+		if !isLoopbackRequest(r) {
+			if deviceID == "" || credential == "" {
+				http.Error(w, `{"error":{"code":"authentication_required","message":"Device authentication required."}}`, http.StatusUnauthorized)
+				return
+			}
+			if valid, _ := pairing.ValidateCredential(agentLoop.DB(), deviceID, credential); !valid {
+				http.Error(w, `{"error":{"code":"authentication_failed","message":"Invalid device credentials."}}`, http.StatusUnauthorized)
+				return
+			}
+			_ = pairing.UpdateLastSeen(agentLoop.DB(), deviceID)
+		} else if deviceID != "" && credential != "" {
 			if valid, _ := pairing.ValidateCredential(agentLoop.DB(), deviceID, credential); valid {
 				_ = pairing.UpdateLastSeen(agentLoop.DB(), deviceID)
 			}
@@ -183,37 +247,60 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Secret, X-Ghost-Session, X-Ghost-Device-ID, X-Ghost-Credential")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Session, X-Ghost-Device-ID, X-Ghost-Credential, X-Ghost-Client-Id, X-Ghost-Client-Token")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		// Gateway binds to localhost only — all traffic is trusted.
+		// Loopback peers are trusted; LAN peers must present device credentials.
+		if !peerAuthorized(r) {
+			jsonResponse(w, http.StatusUnauthorized, map[string]interface{}{
+				"error": map[string]string{
+					"code":    pairing.ErrCodeAuthRequired,
+					"message": "Device authentication required.",
+				},
+			})
+			return
+		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		next(w, r)
 	}
 }
 
-// deviceAuthMiddleware validates per-device credentials.
-// Since the gateway binds to localhost only, we only need to validate
-// device credentials for relay-forwarded traffic.
+// deviceAuthMiddleware is authMiddleware with an explicit database handle.
+// Used on endpoints where the database may not yet be wired into apiDB.
 func deviceAuthMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Secret, X-Ghost-Session, X-Ghost-Device-ID, X-Ghost-Credential")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Session, X-Ghost-Device-ID, X-Ghost-Credential, X-Ghost-Client-Id, X-Ghost-Client-Token")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		// Gateway binds to localhost only — all traffic is trusted.
-		// Device credentials are still validated for relay-forwarded traffic.
-		deviceID := r.Header.Get("X-Ghost-Device-ID")
-		credential := r.Header.Get("X-Ghost-Credential")
-		if deviceID != "" && credential != "" && db != nil {
-			if valid, _ := pairing.ValidateCredential(db, deviceID, credential); valid {
-				_ = pairing.UpdateLastSeen(db, deviceID)
+		if !isLoopbackRequest(r) {
+			deviceID := r.Header.Get("X-Ghost-Device-ID")
+			credential := r.Header.Get("X-Ghost-Credential")
+			if deviceID == "" || credential == "" || db == nil {
+				jsonResponse(w, http.StatusUnauthorized, map[string]interface{}{
+					"error": map[string]string{
+						"code":    pairing.ErrCodeAuthRequired,
+						"message": "Device authentication required.",
+					},
+				})
+				return
 			}
+			valid, _ := pairing.ValidateCredential(db, deviceID, credential)
+			if !valid {
+				jsonResponse(w, http.StatusUnauthorized, map[string]interface{}{
+					"error": map[string]string{
+						"code":    pairing.ErrCodeAuthFailed,
+						"message": "Invalid device credentials.",
+					},
+				})
+				return
+			}
+			_ = pairing.UpdateLastSeen(db, deviceID)
 		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		next(w, r)
@@ -1010,8 +1097,9 @@ func shellescape(s string) string {
 }
 
 // startInternalAPI starts the Ghost API server.
-// Listens on 127.0.0.1 (localhost only) — all internal components communicate via localhost.
-// Mobile apps connect via the relay server, which tunnels traffic to localhost.
+// Listens on the LAN (0.0.0.0) so paired mobile apps can connect over Wi-Fi.
+// Loopback peers (web console proxy, relay client, TUI, CLI) are trusted;
+// LAN peers must present valid per-device credentials on every request.
 // One port (GHOST_API_PORT, default 8766) handles everything:
 // chat, history, memory, transcription, remote control, and WebSocket.
 func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService, channelManager *channels.Manager) {
@@ -1039,6 +1127,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	skillsDir := filepath.Join(workspaceDir, "skills")
 
 	db := agentLoop.DB()
+	apiDB = db
 	if channelManager != nil {
 		channelManager.SetDeliveryObserver(func(msg bus.OutboundMessage, target string, ok bool, errText string) {
 			// Now handled directly in Manager using telemetry.Global
@@ -2589,7 +2678,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				Transport   string `json:"transport"`
 				Host        string `json:"host"`
 				Port        string `json:"port"`
-			}{DisplayName: "Phone", Transport: "lan", Host: "0.0.0.0", Port: "8766"}
+			}{DisplayName: "Phone", Transport: "lan", Host: detectLANAddress(), Port: "8766"}
 		}
 		if req.DisplayName == "" {
 			req.DisplayName = "Phone"
@@ -2598,7 +2687,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			req.Transport = "lan"
 		}
 		if req.Host == "" {
-			req.Host = "0.0.0.0"
+			req.Host = detectLANAddress()
 		}
 		if req.Port == "" {
 			req.Port = fmt.Sprintf("%d", agentLoop.Config().Gateway.Port)
@@ -2634,7 +2723,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			req.DisplayName = "Phone"
 		}
 
-		invitation, err := pairing.CreatePairingInvitation(db, podID, "lan", "0.0.0.0", port, req.DisplayName)
+		invitation, err := pairing.CreatePairingInvitation(db, podID, "lan", detectLANAddress(), port, req.DisplayName)
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, "pairing_error", err.Error())
 			return
@@ -2788,8 +2877,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	// ── WebSocket ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/ws", handleWebSocket(agentLoop))
 
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	log.Printf("🤖 Ghost Internal API listening on %s (chat + tools)", addr)
+	addr := fmt.Sprintf("0.0.0.0:%d", port)
+	log.Printf("🤖 Ghost Internal API listening on %s (chat + tools; loopback trusted, LAN requires device credentials)", addr)
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Printf("❌ Internal API failed: %v", err)

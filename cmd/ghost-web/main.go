@@ -428,8 +428,9 @@ func handleWizardIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGatewayProxy forwards requests to the Ghost gateway API on localhost:8766.
-// The gateway binds to localhost only, but this proxy is a network-facing surface,
-// so every proxied call must carry a valid owner session cookie.
+// The gateway is a network-facing surface on the LAN, so this proxy — like any
+// LAN client — is gated by session auth, and proxied calls carry a valid owner
+// session cookie.
 func handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 	if !requireSession(w, r) {
 		return

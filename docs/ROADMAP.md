@@ -29,7 +29,7 @@ The foundation for Ghost's persistent identity and appliance lifecycle is in pla
 
 - **Web console** (`ghost-web`): setup wizard + admin dashboard on port 80.
 - **Admin credential lifecycle**: password creation, change, and reset; recovery mode; session invalidation on change.
-- **Security hardening**: `.secrets.json` secrets boundary, atomic config writes, directory permissions (`0700`), recovery bound to localhost, gateway bound to localhost only.
+- **Security hardening**: `.secrets.json` secrets boundary, atomic config writes, directory permissions (`0700`), recovery bound to localhost, gateway enforces device credentials for LAN peers (loopback trusted).
 - **Self-improvement**: learning pipeline, skill drafts, mid-turn steering, recall summarization.
 - **Dashboard redesign**: responsive layout, polished cards, skill editor.
 

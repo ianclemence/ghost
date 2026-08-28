@@ -139,24 +139,38 @@ The recommended pairing flow is through the web admin dashboard:
 
 ### Pairing API (for testing)
 
+Requests made from the Pod itself (localhost) are trusted — no credential
+headers needed. Requests made from other machines on the LAN must include
+valid device credential headers (`X-Ghost-Device-ID` + `X-Ghost-Credential`),
+except the public pairing redemption endpoint.
+
 ```bash
-# Create pairing invitation (gateway binds to localhost only)
+# Create pairing invitation (run on the Pod, or from LAN with device creds)
 curl -s -X POST http://localhost:8766/v1/pairing/invitations \
   -H "Content-Type: application/json" \
   -d '{"display_name": "Test Phone", "transport": "lan"}'
 
-# Complete pairing (PUBLIC — no auth required)
+# Complete pairing (PUBLIC — the short-lived token is the authorization)
 curl -s -X POST http://localhost:8766/v1/pairing/complete \
   -H "Content-Type: application/json" \
   -d '{"token": "<token>", "display_name": "Test Phone", "platform": "android"}'
 
-# List paired devices (gateway binds to localhost only)
+# List paired devices (localhost — trusted)
 curl -s http://localhost:8766/v1/pairing/devices
 
-# Revoke a device (gateway binds to localhost only)
+# List paired devices from a LAN machine (device credentials required)
+curl -s http://<pi-ip>:8766/v1/pairing/devices \
+  -H "X-Ghost-Device-ID: <device_id>" \
+  -H "X-Ghost-Credential: <credential>"
+
+# Revoke a device (localhost — trusted)
 curl -s -X POST http://localhost:8766/v1/pairing/revoke \
   -H "Content-Type: application/json" \
   -d '{"device_id": "<device_id>"}'
+
+# Unauthenticated LAN request is rejected with a structured error
+curl -s http://<pi-ip>:8766/v1/pairing/devices
+# → {"error":{"code":"authentication_required","message":"Device authentication required."}}
 ```
 
 ### Structured Error Responses
@@ -184,9 +198,11 @@ Error codes:
 
 ### Device Auth (after pairing)
 
+Loopback requests are trusted; LAN requests require device credentials.
+
 ```bash
-# Health check with device credentials
-curl -s http://localhost:8766/v1/health \
+# Health check from the LAN with device credentials
+curl -s http://<pi-ip>:8766/v1/health \
   -H "X-Ghost-Device-ID: <device_id>" \
   -H "X-Ghost-Credential: <credential>"
 
