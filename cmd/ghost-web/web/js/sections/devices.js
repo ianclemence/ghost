@@ -8,8 +8,7 @@ async function loadDevices(container) {
   head.appendChild(GhostUI.h('p', {}, 'Phones and other devices that can reach Ghost.'));
   container.appendChild(head);
 
-  const connectBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showPairingModal() }, 'Connect another device');
-  GhostApp.setActions(connectBtn);
+  GhostApp.setActions(null);
 
   const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'dev-list' });
   listEl.appendChild(GhostUI.loading('Loading devices…'));
@@ -28,6 +27,14 @@ async function renderDevices(listEl) {
   }
   const devices = res.devices || [];
   listEl.innerHTML = '';
+
+  if (devices.length > 0) {
+    const connectBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showPairingModal() }, 'Connect another device');
+    GhostApp.setActions(connectBtn);
+  } else {
+    GhostApp.setActions(null);
+  }
+
   if (devices.length === 0) {
     listEl.appendChild(GhostUI.emptyState('No devices connected', 'Connect your phone to take Ghost with you. Your Ghost stays on this hardware — your phone is just how you talk to it.'));
     listEl.appendChild(GhostUI.h('div', { style: 'text-align:center' }, GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showPairingModal() }, 'Connect a device')));
