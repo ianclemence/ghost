@@ -34,7 +34,20 @@ async function loadSystem(container) {
   gk.appendChild(kv('CPU', (st.cpu_percent != null ? st.cpu_percent.toFixed(0) + '%' : '—')));
   if (st.memory) gk.appendChild(kv('Memory', fmtBytes(st.memory.used) + ' / ' + fmtBytes(st.memory.total)));
   if (st.disk) gk.appendChild(kv('Storage', GhostUI.fmtNum(Math.round(st.disk.used / 1073741824)) + ' GB / ' + GhostUI.fmtNum(Math.round(st.disk.total / 1073741824)) + ' GB'));
-  if (st.load) gk.appendChild(kv('Load', st.load.one.toFixed(2) + ' / ' + st.load.five.toFixed(2) + ' / ' + st.load.fifteen.toFixed(2)));
+  if (st.load) {
+    const cores = st.cpu_count || 1;
+    const ratio = st.load.one / cores;
+    const state = ratio < 0.5 ? 'ready' : ratio < 1 ? 'warn' : 'bad';
+    const label = ratio < 0.5 ? 'Idle' : ratio < 1 ? 'Loaded' : 'Overloaded';
+    const loadVal = GhostUI.h('div', { className: 'kv-val' });
+    loadVal.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(state), label));
+    loadVal.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:2px' },
+      st.load.one.toFixed(2) + ' / ' + st.load.five.toFixed(2) + ' / ' + st.load.fifteen.toFixed(2) + '  ·  ' + cores + ' core' + (cores > 1 ? 's' : '')));
+    const loadRow = GhostUI.h('div', { className: 'kv-row' });
+    loadRow.appendChild(GhostUI.h('div', { className: 'kv-key' }, 'Load'));
+    loadRow.appendChild(loadVal);
+    gk.appendChild(loadRow);
+  }
   g.appendChild(gk);
   g.appendChild(upLogBox);
   container.appendChild(g);

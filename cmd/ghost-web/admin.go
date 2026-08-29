@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -186,6 +187,7 @@ func handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"provider":   provider,
 		"ollama_url": ollamaURL,
 		"cpu_percent": cpuUsagePercent(),
+		"cpu_count":   runtime.NumCPU(),
 		"load": map[string]float64{
 			"one": one, "five": five, "fifteen": fifteen,
 		},
