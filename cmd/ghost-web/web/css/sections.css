@@ -1,17 +1,310 @@
 /* Ghost — sections
    Page-specific composition. Prefers lists, rows, and dividers over cards. */
 
-/* ── Home ── */
-.home-greet {
-  font-size: var(--t-title);
-  font-weight: 640;
-  letter-spacing: var(--ls-snug);
-  line-height: 1.2;
+/* ── Home ──
+   Editorial hierarchy. No card grid. Quiet, calm, intentional.
+   The page reads top-to-bottom in three questions:
+   1. Is Ghost okay?
+   2. What has Ghost been doing?
+   3. Does Ghost need anything from me?
+*/
+.home {
+  max-width: 720px;
+  padding-bottom: var(--s-9);
 }
-.presence {
+
+.home-header {
+  margin-bottom: var(--s-7);
+}
+.home-greet {
+  font-size: var(--t-display);
+  font-weight: 600;
+  letter-spacing: var(--ls-tight);
+  line-height: var(--lh-tight);
+  color: var(--ink);
+}
+.home-subline {
+  margin-top: var(--s-2);
+  font-size: var(--t-callout);
+  color: var(--ink-soft);
+  line-height: var(--lh-body);
+}
+
+.home-section {
+  margin-top: var(--s-7);
+}
+.home-section:first-of-type {
+  margin-top: var(--s-7);
+}
+
+.home-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.home-section-title {
+  font-size: var(--t-micro);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Quiet text link, used for "View all →" and similar. */
+.home-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-callout);
+  color: var(--accent);
+  transition: color var(--d-fast) var(--ease-out);
+}
+.home-link:hover { color: var(--accent-hover); }
+.home-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* Primary status — the first answer to "Is Ghost okay?" */
+.home-status-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+.home-status-title {
+  font-size: var(--t-head);
+  font-weight: 620;
+  letter-spacing: var(--ls-snug);
+  color: var(--ink);
+  margin: 0;
+}
+.home-status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--off);
+  flex: none;
+  box-shadow: 0 0 0 4px rgba(0,0,0,0.02);
+}
+.home-status-dot-ok    { background: var(--ok); }
+.home-status-dot-warn  { background: var(--warn); }
+.home-status-dot-bad   { background: var(--bad); }
+.home-status-dot-offline {
+  background: var(--off);
+  outline: 2px solid var(--bad-line);
+  outline-offset: -1px;
+}
+
+.home-status-body {
   margin-top: var(--s-3);
+}
+
+/* Ghost-level state — a single quiet line, not a card grid. */
+.home-status-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-5) var(--s-6);
+  margin: 0;
+  padding: 0;
+}
+.home-summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.home-summary-key {
+  font-size: var(--t-micro);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 600;
+  margin: 0;
+}
+.home-summary-val {
+  font-size: var(--t-callout);
+  color: var(--ink);
+  font-weight: 540;
+  margin: 0;
+  line-height: var(--lh-snug);
+}
+.home-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-callout);
+  font-weight: 540;
+  color: var(--ink);
+}
+.home-summary-pill::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--off);
+}
+.home-summary-pill-ok::before    { background: var(--ok); }
+.home-summary-pill-warn::before  { background: var(--warn); }
+.home-summary-pill-bad::before   { background: var(--bad); }
+.home-summary-pill-info::before  { background: var(--info); }
+
+/* Recent activity — a quiet timeline, no card grid. */
+.home-activity-body {
+  margin-top: var(--s-2);
+}
+.home-activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.home-activity-row {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: var(--s-5);
+  align-items: baseline;
+  padding: var(--s-3) 0;
+}
+.home-activity-row-skel {
+  padding: var(--s-3) 0;
+}
+.home-activity-when {
+  font-size: var(--t-foot);
+  font-family: var(--font-mono);
+  color: var(--ink-faint);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.home-activity-body-col {
+  min-width: 0;
+}
+.home-activity-title {
+  font-size: var(--t-body);
+  color: var(--ink);
+  font-weight: 540;
+  line-height: var(--lh-snug);
+  word-break: break-word;
+}
+.home-activity-meta {
+  font-size: var(--t-foot);
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+/* Skeleton shimmer for activity rows */
+.home-activity-title-skel,
+.home-activity-meta-skel {
+  height: 12px;
+  border-radius: var(--r-xs);
+  background: linear-gradient(90deg, var(--paper-sunken) 0%, var(--paper-hover) 50%, var(--paper-sunken) 100%);
+  background-size: 200% 100%;
+  animation: homeShimmer 1.6s ease-in-out infinite;
+}
+.home-activity-title-skel { width: 60%; margin-bottom: 6px; height: 14px; }
+.home-activity-meta-skel  { width: 30%; height: 10px; }
+@keyframes homeShimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* Needs your attention — quiet, never alarming when empty. */
+.home-attention-body {
+  margin-top: var(--s-2);
+}
+.home-attention-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
   color: var(--ink-soft);
   font-size: var(--t-callout);
+}
+.home-attention-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--off);
+  flex: none;
+}
+.home-attention-dot-ok { background: var(--ok); }
+
+.home-attention-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.home-attention-item {
+  padding: var(--s-3) 0;
+}
+.home-attention-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.home-attention-title {
+  font-size: var(--t-body);
+  font-weight: 540;
+  color: var(--ink);
+}
+.home-attention-detail {
+  margin-top: 4px;
+  font-size: var(--t-foot);
+  color: var(--ink-soft);
+  line-height: var(--lh-body);
+}
+.home-attention-cta {
+  margin-top: var(--s-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-callout);
+  color: var(--accent);
+  transition: color var(--d-fast) var(--ease-out);
+}
+.home-attention-cta:hover { color: var(--accent-hover); }
+.home-attention-cta:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* Tinted dot for attention states — color is never the only signal. */
+.home-attention-bad  .home-attention-dot { background: var(--bad); }
+.home-attention-warn .home-attention-dot { background: var(--warn); }
+.home-attention-info .home-attention-dot { background: var(--info); }
+
+/* ── Responsive ── */
+@media (max-width: 720px) {
+  .home { max-width: 100%; }
+  .home-greet { font-size: 30px; }
+  .home-status-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-4) var(--s-5);
+  }
+  .home-activity-row {
+    grid-template-columns: 96px 1fr;
+    gap: var(--s-3);
+  }
+  .home-activity-when {
+    font-size: var(--t-micro);
+  }
+}
+@media (max-width: 420px) {
+  .home-status-summary { grid-template-columns: 1fr; }
 }
 
 /* ── Timeline (Activity) ── */
@@ -430,63 +723,3 @@
   .skill-modal-actions { padding: var(--s-3) var(--s-4); }
 }
 
-/* ── Home cards ── */
-.home-cards {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--s-3);
-  margin-top: var(--s-5);
-  margin-bottom: var(--s-6);
-}
-.home-card {
-  background: var(--paper-raised);
-  border-radius: var(--r-md);
-  padding: var(--s-4) var(--s-5);
-  transition: transform var(--d-fast) var(--ease-out), box-shadow var(--d-fast) var(--ease-out);
-}
-.home-card:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-.home-card-loading {
-  min-height: 92px;
-  background: var(--paper-sunken);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 0.8; }
-}
-.home-card-label {
-  font-size: var(--t-foot);
-  color: var(--ink-faint);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  font-weight: 600;
-  margin-bottom: var(--s-2);
-}
-.home-card-value {
-  font-size: 28px;
-  font-weight: 640;
-  color: var(--ink);
-  letter-spacing: var(--ls-snug);
-  line-height: 1.1;
-}
-.home-card-sub {
-  font-size: var(--t-foot);
-  color: var(--ink-faint);
-  margin-top: 2px;
-}
-.presence-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ok);
-  margin-right: var(--s-2);
-  vertical-align: 1px;
-}
-.presence-dot-warn { background: var(--warn); }
-@media (max-width: 600px) {
-  .home-cards { grid-template-columns: 1fr; gap: var(--s-2); }
-}

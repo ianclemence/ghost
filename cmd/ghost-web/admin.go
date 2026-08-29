@@ -22,6 +22,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
 
@@ -373,13 +374,22 @@ func handleAdminMeta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := appliance.LoadAdminMeta(fb.GhostDir)
+	ownerName := ""
+	if id, err := ghoststate.LoadIdentity(fb.Workspace); err == nil && id != nil {
+		ownerName = id.OwnerName
+	}
 	if meta == nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "configured": false})
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok":         true,
+			"configured": false,
+			"owner_name": ownerName,
+		})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":           true,
 		"configured":   true,
+		"owner_name":   ownerName,
 		"created_at":   meta.CreatedAt,
 		"last_changed": meta.LastChanged,
 	})
