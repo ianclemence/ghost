@@ -2836,6 +2836,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			       ), '') AS title
 			FROM messages m1
 			WHERE (m1.archived IS NULL OR m1.archived = 0)
+			  AND m1.session_id != 'heartbeat'
 			GROUP BY m1.session_id
 			ORDER BY MAX(m1.created_at) DESC
 			LIMIT 100`)
