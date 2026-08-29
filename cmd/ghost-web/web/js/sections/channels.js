@@ -8,9 +8,11 @@ async function loadChannels(container) {
   head.appendChild(GhostUI.h('p', {}, 'How Ghost reaches you.'));
   container.appendChild(head);
 
+  const panel = GhostUI.h('div', { className: 'panel' });
   const listEl = GhostUI.h('div', { id: 'chan-list' });
   listEl.appendChild(GhostUI.loading('Loading channels…'));
-  container.appendChild(listEl);
+  panel.appendChild(listEl);
+  container.appendChild(panel);
 
   const [cfgRes, devRes, statusRes] = await Promise.allSettled([
     GhostAPI.get('/api/admin/channels'),
