@@ -56,3 +56,5 @@ function kvRow(label, value) {
   r.appendChild(GhostUI.h('div', { className: 'kv-value' }, value));
   return r;
 }
+
+GhostApp.registerSection('about', loadAbout);
