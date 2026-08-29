@@ -53,7 +53,7 @@ async function renderDevices(listEl) {
       if (now - seen < 3 * 60000) { statusText = 'Connected now'; dot = 'ready'; }
       else { statusText = 'Last seen ' + GhostUI.timeAgo(Math.floor(seen / 1000)); dot = 'neutral'; }
     } else { statusText = 'Paired'; dot = 'neutral'; }
-    title.appendChild(GhostUI.h('span', { className: 'ghost-row-subtitle', style: 'margin-left:var(--s-2);font-weight:400' }, statusText));
+    title.appendChild(GhostUI.h('span', { className: 'ghost-row-subtitle', style: 'margin-left:var(--s-2);font-weight:400' }, '\u00b7  ' + statusText));
     c.appendChild(title);
     const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
     sub.appendChild(document.createTextNode(plat.charAt(0).toUpperCase() + plat.slice(1)));
