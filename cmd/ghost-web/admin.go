@@ -156,7 +156,7 @@ func handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	hostname, _ := os.Hostname()
 
 	services := []serviceStatus{}
-	for _, name := range []string{"ghost", "ollama", "ghost-web"} {
+	for _, name := range []string{"ghost", "ghost-web", "ollama"} {
 		active, enabled := systemdActive(name)
 		services = append(services, serviceStatus{Name: name, Active: active, Enabled: enabled})
 	}
