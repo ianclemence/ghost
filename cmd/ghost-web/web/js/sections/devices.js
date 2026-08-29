@@ -163,13 +163,15 @@ function showPairingModal() {
   async function poll() {
     try {
       const res = await GhostAPI.proxyGet('/v1/pairing/devices');
-      const before = (window.__ghostDeviceCount != null) ? window.__ghostDeviceCount : (res.devices || []).length - 1;
-      if ((res.devices || []).length > before) {
-        window.__ghostDeviceCount = (res.devices || []).length;
+      const count = (res.devices || []).length;
+      if (window.__ghostDeviceCount != null && count > window.__ghostDeviceCount) {
+        window.__ghostDeviceCount = count;
         success();
         return;
       }
-      window.__ghostDeviceCount = (res.devices || []).length;
+      if (window.__ghostDeviceCount == null) {
+        window.__ghostDeviceCount = count;
+      }
     } catch (e) { /* ignore */ }
   }
 
