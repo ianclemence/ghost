@@ -56,8 +56,7 @@ async function loadChannels(container) {
 function isSet(v) { return v && !String(v).startsWith('•') && String(v).length > 0; }
 
 function channelRow(name, kind, state, sub, onClick) {
-  const row = onClick ? GhostUI.h('div', { className: 'model-row', onClick }) : GhostUI.h('div', { className: 'model-row' });
-  row.style.cursor = onClick ? 'pointer' : 'default';
+  const row = GhostUI.h('div', { className: 'model-row' });
   const main = GhostUI.h('div', { className: 'model-main' });
   main.appendChild(GhostUI.h('div', { className: 'model-name' }, name));
   main.appendChild(GhostUI.h('div', { className: 'model-sub' }, kind + '  ·  ' + sub));
@@ -65,6 +64,10 @@ function channelRow(name, kind, state, sub, onClick) {
   const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
   const label = state === 'connected' ? 'Connected' : state === 'ready' ? 'Configured' : 'Not connected';
   tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(state), label));
+  if (onClick) {
+    const btnLabel = state === 'connected' || state === 'ready' ? 'Edit' : 'Configure';
+    tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick }, btnLabel));
+  }
   row.appendChild(tr);
   return row;
 }
