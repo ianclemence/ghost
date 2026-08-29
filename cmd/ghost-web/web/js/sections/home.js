@@ -56,7 +56,7 @@ async function loadHome(container) {
   container.appendChild(view);
 
   // Independent fetches — a single failure shouldn't blank the page.
-  const [meta, doctor, health, channels, sessions, jobs, memory, devices] = await Promise.allSettled([
+  const [meta, doctor, health, channels, sessions, jobs, memory, devices, ollama, activeModel] = await Promise.allSettled([
     GhostAPI.get('/api/admin/auth/meta'),
     GhostAPI.proxyGet('/v1/doctor'),
     GhostAPI.proxyGet('/v1/health'),
@@ -65,6 +65,8 @@ async function loadHome(container) {
     GhostAPI.proxyGet('/v1/cron/jobs'),
     GhostAPI.proxyGet('/v1/memory/files'),
     GhostAPI.proxyGet('/v1/pairing/devices'),
+    GhostAPI.get('/api/ollama/models'),
+    GhostAPI.proxyGet('/v1/model'),
   ]);
 
   if (!document.body.contains(container)) return;
@@ -75,13 +77,13 @@ async function loadHome(container) {
 
   // Compose state.
   const overall = computeOverall(doctor, health);
-  renderStatus(statusTitle, statusDot, subline, statusBody, overall, doctor, memory, jobs, devices);
+  renderStatus(statusTitle, statusDot, subline, statusBody, overall, doctor, memory, jobs, devices, ollama, activeModel);
 
   // Recent activity.
   renderActivity(activityBody, sessions, jobs, memory);
 
   // Needs your attention.
-  renderAttention(attentionBody, doctor, channels, devices);
+  renderAttention(attentionBody, doctor, channels, devices, ollama);
 }
 
 function greetingFor(hour) {
@@ -118,7 +120,7 @@ function computeOverall(doctorRes, healthRes) {
   return { state: 'ok', label: 'Ghost is healthy', detail: 'Ghost is running normally.' };
 }
 
-function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, memoryRes, jobsRes, devicesRes) {
+function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, memoryRes, jobsRes, devicesRes, ollamaRes, activeModelRes) {
   dotEl.className = 'home-status-dot home-status-dot-' + overall.state;
   titleEl.textContent = overall.label;
   sublineEl.textContent = overall.detail;
@@ -126,14 +128,12 @@ function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, mem
 
   bodyEl.innerHTML = '';
 
-  const checks = doctorRes.status === 'fulfilled' ? (doctorRes.value.checks || []) : [];
-
   const memCount = memoryRes.status === 'fulfilled' ? extractMemoryCount(memoryRes.value) : null;
   const jobCount = jobsRes.status === 'fulfilled' ? extractJobCount(jobsRes.value) : null;
   const activeJobCount = jobsRes.status === 'fulfilled' ? extractActiveJobCount(jobsRes.value) : null;
   const devCount = devicesRes.status === 'fulfilled' ? extractDeviceCount(devicesRes.value) : null;
 
-  const localAI = inferLocalAI(checks);
+  const localAI = inferLocalAI(ollamaRes, activeModelRes);
   const memState = memCount == null ? 'neutral' : 'ok';
   const jobState = jobCount == null ? 'neutral' : (activeJobCount > 0 ? 'ok' : 'warn');
   const devState = devCount == null ? 'neutral' : (devCount > 0 ? 'ok' : 'info');
@@ -159,13 +159,28 @@ function appendSummary(dl, key, value, state) {
   dl.appendChild(row);
 }
 
-function inferLocalAI(checks) {
-  if (!checks || checks.length === 0) return { label: '\u2014', state: 'neutral' };
-  const ollama = checks.find(c => c.name === 'ollama_api' || c.name === 'ollama');
-  if (!ollama) return { label: 'Ready', state: 'ok' };
-  if (ollama.status === 'ok') return { label: 'Ready', state: 'ok' };
-  if (ollama.status === 'warning') return { label: 'Limited', state: 'warn' };
-  return { label: 'Unavailable', state: 'bad' };
+function inferLocalAI(ollamaRes, activeModelRes) {
+  // /api/ollama/models is the authoritative source for installed local models.
+  // /v1/model tells us whether an active local model is set.
+  if (ollamaRes.status !== 'fulfilled') return { label: 'Unavailable', state: 'bad' };
+  const v = ollamaRes.value;
+  if (!v || v.ok === false) return { label: 'Unavailable', state: 'bad' };
+  const models = Array.isArray(v.models) ? v.models : [];
+  if (models.length === 0) return { label: 'No model installed', state: 'warn' };
+  // Show the active model name when it's a local (ollama) model.
+  const active = (activeModelRes.status === 'fulfilled' && activeModelRes.value && activeModelRes.value.active) || '';
+  const isLocal = active && /ollama/i.test(active);
+  if (isLocal) {
+    return { label: shortModelName(active) + '  \u00b7  ' + models.length + ' installed', state: 'ok' };
+  }
+  return { label: models.length + ' installed', state: 'ok' };
+}
+
+function shortModelName(name) {
+  if (!name) return '';
+  // Strip common prefixes like "ollama/" so the active model reads cleanly.
+  const i = name.lastIndexOf('/');
+  return i >= 0 ? name.substring(i + 1) : name;
 }
 
 function extractMemoryCount(v) {
