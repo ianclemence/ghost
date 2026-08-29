@@ -151,7 +151,7 @@
   display: grid;
   grid-template-columns: 132px 1fr;
   gap: var(--s-5);
-  align-items: baseline;
+  align-items: start;
   padding: var(--s-3) 0;
 }
 .home-activity-row-skel {
@@ -163,6 +163,7 @@
   color: var(--ink-faint);
   letter-spacing: 0;
   white-space: nowrap;
+  padding-top: 2px;
 }
 .home-activity-body-col {
   min-width: 0;
