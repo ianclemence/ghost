@@ -9,7 +9,6 @@
    3. Does Ghost need anything from me?
 */
 .home {
-  max-width: 720px;
   padding-bottom: var(--s-9);
 }
 
