@@ -269,7 +269,9 @@ const GhostApp = (() => {
 
   GhostAPI.setOnAuthExpired(() => { showLogin(); });
 
-  return { registerSection, navigate, start, setActions, render, lock };
+  function currentSection() { return current; }
+
+  return { registerSection, navigate, start, setActions, render, lock, currentSection };
 })();
 
 window.addEventListener('DOMContentLoaded', () => GhostApp.start());

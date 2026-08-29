@@ -2,6 +2,7 @@
 'use strict';
 
 async function loadAutomations(container) {
+  if (GhostApp.currentSection() !== 'automations') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Automations'));

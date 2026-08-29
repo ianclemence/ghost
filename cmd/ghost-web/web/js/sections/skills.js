@@ -2,6 +2,7 @@
 'use strict';
 
 async function loadSkills(container) {
+  if (GhostApp.currentSection() !== 'skills') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Skills'));
@@ -28,7 +29,6 @@ async function loadSkills(container) {
   if (!document.body.contains(container)) return;
   const skills = Array.isArray(res) ? res : (res.skills || res.items || []);
   renderList(listEl, skills);
-  console.log('[skills] rendered rows:', listEl.children.length, 'expected:', skills.length);
 }
 
 function renderList(listEl, skills) {
