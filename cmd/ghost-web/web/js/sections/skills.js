@@ -22,7 +22,8 @@ async function loadSkills(container) {
     listEl.appendChild(GhostUI.errorState('Couldn’t load skills', 'Ghost may still be starting.'));
     return;
   }
-  renderList(listEl, res.skills || []);
+  const skills = Array.isArray(res) ? res : (res.skills || res.items || []);
+  renderList(listEl, skills);
 }
 
 function renderList(listEl, skills) {
@@ -32,10 +33,9 @@ function renderList(listEl, skills) {
     return;
   }
   skills.forEach(s => {
-    const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openSkill(container, s.name) });
+    const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openSkill(s.name) });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    const titleRow = GhostUI.h('div', { className: 'ghost-row-title' }, s.name);
-    c.appendChild(titleRow);
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, s.name));
     c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, s.description || 'No description'));
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
@@ -47,62 +47,62 @@ function renderList(listEl, skills) {
   });
 }
 
-async function openSkill(container, name) {
-  container.innerHTML = '';
-  const back = GhostUI.h('div', { className: 'ghost-link-row', style: 'margin-bottom:var(--s-4);width:fit-content', onClick: () => loadSkills(container) });
-  back.appendChild(GhostUI.h('span', { className: 'chevron', style: 'transform:rotate(180deg)' }, '‹'));
-  back.appendChild(GhostUI.h('span', {}, 'All skills'));
-  container.appendChild(back);
+async function openSkill(name) {
+  const backdrop = GhostUI.h('div', { className: 'ghost-modal-backdrop skill-modal-backdrop' });
+  const modal = GhostUI.h('div', { className: 'ghost-modal skill-modal' });
+  backdrop.appendChild(modal);
 
-  const view = GhostUI.h('div', { className: 'panel' });
-  view.appendChild(GhostUI.loading('Opening skill…'));
-  container.appendChild(view);
+  const header = GhostUI.h('div', { className: 'skill-modal-header' });
+  const titleArea = GhostUI.h('div');
+  titleArea.appendChild(GhostUI.h('h2', { className: 'skill-modal-title' }, name));
+  titleArea.appendChild(GhostUI.h('p', { className: 'skill-modal-sub', id: 'skill-modal-sub' }, 'Loading skill…'));
+  header.appendChild(titleArea);
+  const closeBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-icon skill-modal-close', onClick: () => backdrop.remove() }, '✕');
+  header.appendChild(closeBtn);
+  modal.appendChild(header);
+
+  const body = GhostUI.h('div', { className: 'skill-modal-body', id: 'skill-modal-body' });
+  body.appendChild(GhostUI.loading('Loading skill…'));
+  modal.appendChild(body);
+
+  const actions = GhostUI.h('div', { className: 'ghost-modal-actions skill-modal-actions', id: 'skill-modal-actions' });
+  modal.appendChild(actions);
+
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+  document.body.appendChild(backdrop);
 
   let data;
   try { data = await GhostAPI.proxyGet('/v1/skills/read?name=' + encodeURIComponent(name)); }
   catch (e) {
-    view.innerHTML = '';
-    view.appendChild(GhostUI.errorState('Couldn’t open this skill', 'It may have been removed.'));
+    body.innerHTML = '';
+    body.appendChild(GhostUI.errorState('Couldn’t open this skill', 'It may have been removed.'));
     return;
   }
 
-  view.innerHTML = '';
+  const sub = document.getElementById('skill-modal-sub');
   const enabled = data.enabled !== false;
-  const head = GhostUI.h('div', { className: 'panel-head' });
-  head.appendChild(GhostUI.h('div', {}, GhostUI.h('h2', {}, name), GhostUI.h('p', {}, data.description || 'Installed skill')));
-  const actions = GhostUI.h('div', { className: 'ghost-row-trailing' });
+  if (sub) sub.textContent = data.description || (enabled ? 'Installed skill' : 'Disabled');
+
+  body.innerHTML = '';
+  const content = GhostUI.h('div', { className: 'markdown-body' });
+  const sk = (data.files || []).find(f => f.path === 'SKILL.md' || f.path === 'SKILL.md.disabled');
+  content.innerHTML = GhostUI.md(sk ? sk.content : 'No documentation.');
+  body.appendChild(content);
+
+  actions.innerHTML = '';
   const toggleBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary' }, enabled ? 'Disable' : 'Enable');
   toggleBtn.addEventListener('click', async () => {
-    try { await GhostAPI.proxyPost('/v1/skills/toggle', { name, enabled: !enabled }); GhostUI.toast(enabled ? 'Skill disabled' : 'Skill enabled'); openSkill(container, name); }
+    try { await GhostAPI.proxyPost('/v1/skills/toggle', { name, enabled: !enabled }); GhostUI.toast(enabled ? 'Skill disabled' : 'Skill enabled'); backdrop.remove(); loadSkills(document.getElementById('view')); }
     catch (e) { GhostUI.toast('Couldn’t change it.', 'err'); }
   });
   actions.appendChild(toggleBtn);
   if (!(data.bundled)) {
     actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
       if (!(await GhostUI.confirmModal('Remove this skill?', name + ' will be deleted from your Ghost. This can’t be undone.', 'Remove'))) return;
-      try { await GhostAPI.post('/api/admin/skills/remove', { name }); GhostUI.toast('Removed'); loadSkills(container); }
+      try { await GhostAPI.post('/api/admin/skills/remove', { name }); GhostUI.toast('Removed'); backdrop.remove(); loadSkills(document.getElementById('view')); }
       catch (e) { GhostUI.toast('Couldn’t remove it.', 'err'); }
     } }, 'Remove'));
   }
-  head.appendChild(actions);
-  view.appendChild(head);
-
-  const meta = GhostUI.h('div', { className: 'kv', style: 'margin-bottom:var(--s-4)' });
-  meta.appendChild(kvRow('Source', data.bundled ? 'Built into Ghost' : 'Installed by you'));
-  if (data.user_modified) meta.appendChild(kvRow('Your edits', 'Preserved across Ghost updates'));
-  view.appendChild(meta);
-
-  const body = GhostUI.h('div', { className: 'markdown-body' });
-  const sk = (data.files || []).find(f => f.path === 'SKILL.md' || f.path === 'SKILL.md.disabled');
-  body.innerHTML = GhostUI.md(sk ? sk.content : 'No documentation.');
-  view.appendChild(body);
-}
-
-function kvRow(k, v) {
-  const r = GhostUI.h('div', { className: 'kv-row' });
-  r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k));
-  r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v));
-  return r;
 }
 
 function showInstall() {

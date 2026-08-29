@@ -8,7 +8,7 @@ async function loadChannels(container) {
   head.appendChild(GhostUI.h('p', {}, 'How Ghost reaches you.'));
   container.appendChild(head);
 
-  const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'chan-list' });
+  const listEl = GhostUI.h('div', { id: 'chan-list' });
   listEl.appendChild(GhostUI.loading('Loading channels…'));
   container.appendChild(listEl);
 
@@ -24,49 +24,48 @@ async function loadChannels(container) {
 
   listEl.innerHTML = '';
 
-  // Ghost Mobile (always present, connected if a device is paired)
-  listEl.appendChild(channelRow('Ghost Mobile', devCount > 0 ? 'connected' : 'neutral',
+  // Ghost Mobile
+  listEl.appendChild(channelRow('Ghost Mobile', 'Mobile', devCount > 0 ? 'connected' : 'neutral',
     devCount > 0 ? (devCount + ' device connected') : 'No phone connected',
     devCount > 0 ? null : () => GhostApp.navigate('devices')));
 
   // Telegram
   const tg = cfg.telegram || {};
   const tgOk = isSet(tg.token);
-  listEl.appendChild(channelRow('Telegram', op.telegram ? 'connected' : (tgOk ? 'ready' : 'neutral'),
-    tgOk ? (op.telegram ? 'Connected' : 'Configured') : 'Not configured',
+  const tgConnected = tgOk && op.telegram;
+  listEl.appendChild(channelRow('Telegram', 'Messaging', tgConnected ? 'connected' : (tgOk ? 'ready' : 'neutral'),
+    tgConnected ? 'Connected' : (tgOk ? 'Configured' : 'Not configured'),
     () => editTelegram(tg)));
 
   // Discord
   const dc = cfg.discord || {};
   const dcOk = isSet(dc.token);
-  listEl.appendChild(channelRow('Discord', op.discord ? 'connected' : (dcOk ? 'ready' : 'neutral'),
-    dcOk ? (op.discord ? 'Connected' : 'Configured') : 'Not configured',
+  const dcConnected = dcOk && op.discord;
+  listEl.appendChild(channelRow('Discord', 'Messaging', dcConnected ? 'connected' : (dcOk ? 'ready' : 'neutral'),
+    dcConnected ? 'Connected' : (dcOk ? 'Configured' : 'Not configured'),
     () => editDiscord(dc)));
 
   // Email
   const em = cfg.email || {};
   const emOk = em.enabled && em.smtp_host;
-  listEl.appendChild(channelRow('Email', emOk ? 'ready' : 'neutral',
+  listEl.appendChild(channelRow('Email', 'Email', emOk ? 'ready' : 'neutral',
     emOk ? (em.to ? 'Delivers to ' + em.to : 'Configured') : 'Not configured',
     () => editEmail(em)));
-
-
 }
 
 function isSet(v) { return v && !String(v).startsWith('•') && String(v).length > 0; }
 
-function channelRow(name, state, sub, onClick) {
-  const row = onClick ? GhostUI.h('div', { className: 'ghost-link-row' }) : GhostUI.h('div', { className: 'ghost-row' });
-  const c = GhostUI.h('div', { className: 'ghost-row-content' });
-  c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, name));
-  c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub));
-  row.appendChild(c);
+function channelRow(name, kind, state, sub, onClick) {
+  const row = onClick ? GhostUI.h('div', { className: 'model-row', onClick }) : GhostUI.h('div', { className: 'model-row' });
+  row.style.cursor = onClick ? 'pointer' : 'default';
+  const main = GhostUI.h('div', { className: 'model-main' });
+  main.appendChild(GhostUI.h('div', { className: 'model-name' }, name));
+  main.appendChild(GhostUI.h('div', { className: 'model-sub' }, kind + '  ·  ' + sub));
+  row.appendChild(main);
   const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
   const label = state === 'connected' ? 'Connected' : state === 'ready' ? 'Configured' : 'Not connected';
   tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(state), label));
-  if (onClick) tr.appendChild(GhostUI.h('span', { className: 'chevron' }, '›'));
   row.appendChild(tr);
-  if (onClick) row.addEventListener('click', onClick);
   return row;
 }
 

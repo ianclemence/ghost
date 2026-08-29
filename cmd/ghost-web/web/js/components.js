@@ -188,29 +188,100 @@ const GhostUI = (() => {
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
-  // Minimal, safe markdown → HTML (escapes input first).
+  // Markdown → HTML (escapes input first). Supports headings, paragraphs,
+  // bold, italic, inline code, fenced code blocks, ordered & unordered lists,
+  // blockquotes, horizontal rules, tables, and links.
   function md(src) {
     const esc = (s) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
     const lines = (src || '').replace(/\r\n/g, '\n').split('\n');
-    let html = '', i = 0, inCode = false, listOpen = false;
+    let html = '', i = 0, inCode = false, listKind = null, blockquoteOpen = false;
     const inline = (t) => esc(t)
       .replace(/`([^`]+)`/g, (_, c) => '<code>' + c + '</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    const closeList = () => { if (listOpen) { html += '</ul>'; listOpen = false; } };
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+      .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, (_, c, url) => '<a href="' + url + '" target="_blank" rel="noopener">' + c + '</a>');
+    const closeLists = () => { if (listKind) { html += listKind === 'ol' ? '</ol>' : '</ul>'; listKind = null; } };
+    const closeBlockquote = () => { if (blockquoteOpen) { html += '</blockquote>'; blockquoteOpen = false; } };
+
     while (i < lines.length) {
       const line = lines[i];
-      if (line.startsWith('```')) { closeList(); inCode = !inCode; html += inCode ? '<pre><code>' : '</code></pre>'; i++; continue; }
+
+      // Fenced code block
+      if (/^```/.test(line)) {
+        closeLists(); closeBlockquote();
+        if (inCode) { html += '</code></pre>'; inCode = false; }
+        else { html += '<pre><code>'; inCode = true; }
+        i++; continue;
+      }
       if (inCode) { html += esc(line) + '\n'; i++; continue; }
-      if (/^### /.test(line)) { closeList(); html += '<h3>' + inline(line.slice(4)) + '</h3>'; }
-      else if (/^## /.test(line)) { closeList(); html += '<h2>' + inline(line.slice(3)) + '</h2>'; }
-      else if (/^# /.test(line)) { closeList(); html += '<h1>' + inline(line.slice(2)) + '</h1>'; }
-      else if (/^\s*[-*] /.test(line)) { if (!listOpen) { html += '<ul>'; listOpen = true; } html += '<li>' + inline(line.replace(/^\s*[-*] /, '')) + '</li>'; }
-      else if (line.trim() === '') { closeList(); }
-      else { closeList(); html += '<p>' + inline(line) + '</p>'; }
+
+      // Horizontal rule
+      if (/^\s*(---+|\*\*\*+|___+)\s*$/.test(line)) {
+        closeLists(); closeBlockquote();
+        html += '<hr />';
+        i++; continue;
+      }
+
+      // Headings
+      if (/^#### /.test(line)) { closeLists(); closeBlockquote(); html += '<h4>' + inline(line.slice(5)) + '</h4>'; i++; continue; }
+      if (/^### /.test(line)) { closeLists(); closeBlockquote(); html += '<h3>' + inline(line.slice(4)) + '</h3>'; i++; continue; }
+      if (/^## /.test(line)) { closeLists(); closeBlockquote(); html += '<h2>' + inline(line.slice(3)) + '</h2>'; i++; continue; }
+      if (/^# /.test(line)) { closeLists(); closeBlockquote(); html += '<h1>' + inline(line.slice(2)) + '</h1>'; i++; continue; }
+
+      // Blockquote
+      if (/^>\s?/.test(line)) {
+        closeLists();
+        if (!blockquoteOpen) { html += '<blockquote>'; blockquoteOpen = true; }
+        html += '<p>' + inline(line.replace(/^>\s?/, '')) + '</p>';
+        i++; continue;
+      } else { closeBlockquote(); }
+
+      // Unordered list
+      if (/^\s*[-*] /.test(line)) {
+        if (listKind !== 'ul') { closeLists(); html += '<ul>'; listKind = 'ul'; }
+        html += '<li>' + inline(line.replace(/^\s*[-*] /, '')) + '</li>';
+        i++; continue;
+      }
+
+      // Ordered list
+      if (/^\s*\d+\.\s+/.test(line)) {
+        if (listKind !== 'ol') { closeLists(); html += '<ol>'; listKind = 'ol'; }
+        html += '<li>' + inline(line.replace(/^\s*\d+\.\s+/, '')) + '</li>';
+        i++; continue;
+      }
+
+      // Table (simple | col | col | with --- separator)
+      if (/\|/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1])) {
+        closeLists();
+        const cells = line.split('|').map(c => c.trim());
+        if (cells[0] === '') cells.shift();
+        if (cells[cells.length - 1] === '') cells.pop();
+        html += '<table><thead><tr>';
+        for (const c of cells) html += '<th>' + inline(c) + '</th>';
+        html += '</tr></thead><tbody>';
+        i += 2;
+        while (i < lines.length && /\|/.test(lines[i]) && lines[i].trim() !== '') {
+          const row = lines[i].split('|').map(c => c.trim());
+          if (row[0] === '') row.shift();
+          if (row[row.length - 1] === '') row.pop();
+          html += '<tr>';
+          for (const c of row) html += '<td>' + inline(c) + '</td>';
+          html += '</tr>';
+          i++;
+        }
+        html += '</tbody></table>';
+        continue;
+      }
+
+      // Blank line
+      if (line.trim() === '') { closeLists(); i++; continue; }
+
+      // Paragraph
+      closeLists();
+      html += '<p>' + inline(line) + '</p>';
       i++;
     }
-    closeList();
+    closeLists(); closeBlockquote();
     if (inCode) html += '</code></pre>';
     return html;
   }

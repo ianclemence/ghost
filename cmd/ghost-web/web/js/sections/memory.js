@@ -18,18 +18,19 @@ async function loadMemory(container) {
   listEl.appendChild(GhostUI.loading('Loading memories…'));
   container.appendChild(listEl);
 
-  let files = [];
+  let res = [];
   try {
-    files = await GhostAPI.proxyGet('/v1/memory/files');
+    res = await GhostAPI.proxyGet('/v1/memory/files');
   } catch (e) {
     listEl.innerHTML = '';
     listEl.appendChild(GhostUI.errorState('Couldn’t reach memory', 'Ghost may still be starting. Try again in a moment.'));
     return;
   }
+  const files = Array.isArray(res) ? res : (res.files || res.items || []);
 
   function render(items) {
     listEl.innerHTML = '';
-    if (items.length === 0) {
+    if (!Array.isArray(items) || items.length === 0) {
       listEl.appendChild(GhostUI.emptyState('Nothing remembered yet', 'Ghost hasn’t stored any memory. As you talk, it will remember what matters.'));
       return;
     }

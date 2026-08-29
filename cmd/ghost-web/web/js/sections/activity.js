@@ -16,15 +16,22 @@ async function loadActivity(container) {
     { key: 'errors', label: 'Errors' },
   ];
   let activeFilter = 'all';
-  const chips = GhostUI.h('div', { className: 'chips' });
+
+  const filterRow = GhostUI.h('div', { className: 'chips' });
   filters.forEach(f => {
-    const c = GhostUI.h('button', { className: 'chip' + (f.key === activeFilter ? ' active' : ''), onClick: () => { activeFilter = f.key; chips.querySelectorAll('.chip').forEach(x => x.classList.remove('active')); c.classList.add('active'); paint(); } }, f.label);
+    const c = GhostUI.h('button', { className: 'chip' + (f.key === activeFilter ? ' active' : ''), onClick: () => {
+      activeFilter = f.key;
+      filterRow.querySelectorAll('.chip').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      paint();
+    } }, f.label);
     c.dataset.filter = f.key;
-    chips.appendChild(c);
+    filterRow.appendChild(c);
   });
-  container.appendChild(chips);
+  container.appendChild(filterRow);
 
   const timeline = GhostUI.h('div', { className: 'timeline', id: 'act-timeline' });
+  timeline.style.minHeight = '300px';
   timeline.appendChild(GhostUI.loading('Loading activity…'));
   container.appendChild(timeline);
 
@@ -36,25 +43,39 @@ async function loadActivity(container) {
   ]);
 
   const items = [];
+
   if (sessions.status === 'fulfilled') {
-    for (const s of (sessions.value.sessions || [])) {
-      items.push({ kind: 'messages', ts: s.last_activity, title: (s.title && s.title.trim()) ? s.title : 'Conversation', meta: GhostUI.fmtNum(s.message_count) + ' messages' });
+    const sessVal = sessions.value;
+    const sessArr = Array.isArray(sessVal) ? sessVal : (sessVal.sessions || sessVal.items || []);
+    for (const s of sessArr) {
+      let title = (s.title && s.title.trim()) ? s.title.trim() : 'Conversation';
+      if (title.length > 50) title = title.substring(0, 47) + '…';
+      items.push({ kind: 'messages', ts: s.last_activity, title, meta: GhostUI.fmtNum(s.message_count) + ' messages' });
     }
   }
+
   if (jobs.status === 'fulfilled') {
-    for (const j of (jobs.value.jobs || [])) {
+    const jobVal = jobs.value;
+    const jobArr = Array.isArray(jobVal) ? jobVal : (jobVal.jobs || jobVal.items || []);
+    for (const j of jobArr) {
       const lr = j.state && j.state.last_run_at;
       if (lr) items.push({ kind: 'automations', ts: Math.floor(new Date(lr).getTime() / 1000), title: j.name, meta: 'Last run' });
     }
   }
+
   if (memories.status === 'fulfilled') {
-    for (const m of (memories.value || []).slice(0, 20)) {
+    const memVal = memories.value;
+    const memArr = Array.isArray(memVal) ? memVal : (memVal.files || memVal.items || []);
+    for (const m of memArr.slice(0, 20)) {
       items.push({ kind: 'memory', ts: m.modified, title: m.name.replace(/\.md$/, ''), meta: 'Remembered' });
     }
   }
+
   if (traces.status === 'fulfilled') {
-    const incidents = (traces.value.incidents || []).slice(0, 20);
-    for (const inc of incidents) {
+    const traceVal = traces.value;
+    const incVal = traceVal.incidents || (Array.isArray(traceVal) ? traceVal : null);
+    const incArr = Array.isArray(incVal) ? incVal : [];
+    for (const inc of incArr.slice(0, 20)) {
       items.push({ kind: 'errors', ts: Math.floor((inc.timestamp || 0) / 1000) || 0, title: inc.message || 'Incident', meta: inc.level || 'error' });
     }
   }
