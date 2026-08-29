@@ -22,11 +22,12 @@ async function loadSkills(container) {
   catch (e) {
     if (!document.body.contains(container)) return;
     listEl.innerHTML = '';
-    listEl.appendChild(GhostUI.errorState('Couldn’t load skills', 'Ghost may still be starting.'));
+    listEl.appendChild(GhostUI.errorState('Couldn\u2019t load skills', e.message || 'Ghost may still be starting.'));
     return;
   }
   if (!document.body.contains(container)) return;
   const skills = Array.isArray(res) ? res : (res.skills || res.items || []);
+  console.log('[skills] response keys:', Object.keys(res), 'parsed count:', skills.length);
   renderList(listEl, skills);
 }
 
