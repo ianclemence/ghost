@@ -30,6 +30,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -1025,29 +1026,154 @@ func handleScreenshot(screenshotCmd string) http.HandlerFunc {
 	}
 }
 
-func handleStats(w http.ResponseWriter, r *http.Request) {
-	stats := map[string]string{}
-	cmds := map[string]string{
-		"uptime":    "uptime -p",
-		"cpu_temp":  "vcgencmd measure_temp 2>/dev/null || awk '{printf \"%.1fc\", $1/1000}' /sys/class/thermal/thermal_zone0/temp 2>/dev/null",
-		"memory":    "free -h | awk '/^Mem:/ {print $3\"/\"$2}'",
-		"disk":      "df -h / | awk 'NR==2 {print $3\"/\"$2\" (\"$5\")\"}'",
-		"load":      "cut -d' ' -f1-3 /proc/loadavg",
-		"ip":        "hostname -I | awk '{print $1}'",
-		"hostname":  "hostname",
-		"ghost_svc": "systemctl is-active ghost 2>/dev/null",
-	}
-	for key, cmdStr := range cmds {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		out, err := exec.CommandContext(ctx, "bash", "-c", cmdStr).Output()
-		cancel()
-		if err == nil {
-			stats[key] = strings.TrimSpace(string(out))
-		} else {
-			stats[key] = "—"
+// localIP returns the machine's preferred outbound IPv4 address.
+func localIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err == nil {
+		defer conn.Close()
+		if udp, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+			return udp.IP.String()
 		}
 	}
-	stats["timestamp"] = fmt.Sprintf("%d", time.Now().Unix())
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		for _, a := range addrs {
+			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+				if ip4 := ipnet.IP.To4(); ip4 != nil {
+					return ip4.String()
+				}
+			}
+		}
+	}
+	return "127.0.0.1"
+}
+
+// systemUptime returns the system uptime as a short human-readable string,
+// e.g. "11h 34m", matching the web console's format.
+func systemUptime() string {
+	data, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return time.Since(apiStartTime).String()
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 1 {
+		return time.Since(apiStartTime).String()
+	}
+	uptimeSec, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return time.Since(apiStartTime).String()
+	}
+	d := time.Duration(uptimeSec * float64(time.Second))
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	mins := int(d.Minutes()) % 60
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, mins)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, mins)
+	}
+	return fmt.Sprintf("%dm", mins)
+}
+
+// cpuUsagePercent samples /proc/stat twice and returns the CPU busy
+// percentage between the two samples.
+func cpuUsagePercent() float64 {
+	readCPU := func() (idle, total uint64) {
+		b, err := os.ReadFile("/proc/stat")
+		if err != nil {
+			return 0, 0
+		}
+		fields := strings.Fields(strings.Split(string(b), "\n")[0])
+		if len(fields) < 5 || fields[0] != "cpu" {
+			return 0, 0
+		}
+		for _, f := range fields[1:] {
+			var v uint64
+			fmt.Sscanf(f, "%d", &v)
+			total += v
+		}
+		var idleU uint64
+		fmt.Sscanf(fields[4], "%d", &idleU)
+		return idleU, total
+	}
+	idle1, total1 := readCPU()
+	time.Sleep(500 * time.Millisecond)
+	idle2, total2 := readCPU()
+	dTotal := total2 - total1
+	if dTotal == 0 {
+		return 0
+	}
+	return float64(dTotal-(idle2-idle1)) / float64(dTotal) * 100
+}
+
+// memoryInfo returns used and total system memory in bytes.
+func memoryInfo() (usedBytes, totalBytes uint64) {
+	b, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, 0
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		var v uint64
+		fmt.Sscanf(fields[1], "%d", &v)
+		v *= 1024
+		switch fields[0] {
+		case "MemTotal:":
+			totalBytes = v
+		case "MemAvailable:":
+			usedBytes = totalBytes - v
+		}
+	}
+	return usedBytes, totalBytes
+}
+
+// diskUsage returns used and total bytes for the given filesystem path.
+func diskUsage(path string) (used, total uint64) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
+		return 0, 0
+	}
+	total = st.Blocks * uint64(st.Bsize)
+	free := st.Bavail * uint64(st.Bsize)
+	used = total - free
+	return used, total
+}
+
+// loadAverages reads the 1/5/15 minute load averages from /proc/loadavg.
+func loadAverages() (one, five, fifteen float64) {
+	b, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return 0, 0, 0
+	}
+	parts := strings.Fields(string(b))
+	if len(parts) >= 3 {
+		fmt.Sscanf(parts[0], "%f", &one)
+		fmt.Sscanf(parts[1], "%f", &five)
+		fmt.Sscanf(parts[2], "%f", &fifteen)
+	}
+	return
+}
+
+func handleStats(w http.ResponseWriter, r *http.Request) {
+	usedMem, totalMem := memoryInfo()
+	usedDisk, totalDisk := diskUsage("/")
+	one, five, fifteen := loadAverages()
+	hostname, _ := os.Hostname()
+	stats := map[string]interface{}{
+		"version":     version,
+		"uptime":      systemUptime(),
+		"ip":          localIP(),
+		"hostname":    hostname,
+		"cpu_percent": cpuUsagePercent(),
+		"cpu_count":   runtime.NumCPU(),
+		"load":        map[string]float64{"one": one, "five": five, "fifteen": fifteen},
+		"memory":      map[string]uint64{"used": usedMem, "total": totalMem},
+		"disk":        map[string]uint64{"used": usedDisk, "total": totalDisk},
+		"timestamp":   time.Now().Unix(),
+	}
 	_ = json.NewEncoder(w).Encode(stats)
 }
 
@@ -1360,7 +1486,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			"checks":    checks,
 			"timestamp": time.Now().Unix(),
 			"uptime":    int64(time.Since(apiStartTime).Seconds()),
-			"version":   "2.0.0",
+			"version":   version,
 			"profile": ProfileInfo{
 				Name:        string(profileName),
 				Permissions: permissions,
