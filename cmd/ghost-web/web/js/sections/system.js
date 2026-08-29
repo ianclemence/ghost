@@ -67,6 +67,46 @@ async function loadSystem(container) {
   }));
   danger.appendChild(dk);
   container.appendChild(danger);
+
+  // Updates panel
+  const upPanel = GhostUI.h('div', { className: 'panel' });
+  upPanel.appendChild(panelHead('Updates'));
+  const upKv = GhostUI.h('div', { className: 'kv' });
+  upKv.appendChild(kv('Version', st.version || '—'));
+  upPanel.appendChild(upKv);
+  const upActions = GhostUI.h('div', { className: 'row-flex', style: 'margin-top:var(--s-4)' });
+  const updateBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => runUpdate(upLogBox, updateBtn) }, 'Update Ghost');
+  upActions.appendChild(updateBtn);
+  upPanel.appendChild(upActions);
+  const upLogBox = GhostUI.h('div', { className: 'panel hidden', style: 'margin-top:var(--s-4)' });
+  upPanel.appendChild(upLogBox);
+  container.appendChild(upPanel);
+
+  try {
+    const upRes = await GhostAPI.get('/api/admin/update/status');
+    if (upRes.running) runUpdate(upLogBox, updateBtn);
+    else if (upRes.log) { upLogBox.classList.remove('hidden'); upLogBox.appendChild(GhostUI.h('pre', { className: 'type-mono', style: 'white-space:pre-wrap;margin:0' }, upRes.log)); }
+  } catch (e) { /* not running */ }
+}
+
+async function runUpdate(logBox, btn) {
+  btn.disabled = true; btn.textContent = 'Updating…';
+  logBox.classList.remove('hidden');
+  logBox.innerHTML = '';
+  logBox.appendChild(GhostUI.loading('Starting update…'));
+  try { await GhostAPI.post('/api/admin/update'); } catch (e) { GhostUI.toast('Couldn’t start update.', 'err'); btn.disabled = false; btn.textContent = 'Update Ghost'; return; }
+  const poll = setInterval(async () => {
+    try {
+      const s = await GhostAPI.get('/api/admin/update/status');
+      logBox.innerHTML = '';
+      logBox.appendChild(GhostUI.h('pre', { className: 'type-mono', style: 'white-space:pre-wrap;margin:0;max-height:300px;overflow:auto' }, s.log || ''));
+      if (!s.running) {
+        clearInterval(poll);
+        btn.disabled = false; btn.textContent = 'Update Ghost';
+        if (s.success) GhostUI.toast('Ghost is up to date');
+      }
+    } catch (e) { clearInterval(poll); btn.disabled = false; btn.textContent = 'Update Ghost'; }
+  }, 1500);
 }
 
 function panelHead(title) {

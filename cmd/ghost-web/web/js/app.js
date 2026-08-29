@@ -32,8 +32,6 @@ const GhostApp = (() => {
       label: 'System',
       items: [
         { name: 'system', title: 'System', glyph: 'system' },
-        { name: 'updates', title: 'Updates', glyph: 'update' },
-        { name: 'backups', title: 'Backups', glyph: 'backup' },
         { name: 'security', title: 'Security', glyph: 'security' },
         { name: 'help', title: 'Help', glyph: 'help' },
         { name: 'about', title: 'About', glyph: 'about' },
