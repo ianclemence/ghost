@@ -151,14 +151,16 @@ function kvRowBtn(k, sub, btnLabel, onClick) {
 }
 
 async function runDiag(body) {
-  body.innerHTML = ''; body.appendChild(GhostUI.loading('Running diagnostics…'));
+  body.innerHTML = ''; body.appendChild(GhostUI.loading('Running diagnostics\u2026'));
   let res;
   try { res = await GhostAPI.proxyGet('/v1/doctor'); }
-  catch (e) { body.innerHTML = ''; body.appendChild(GhostUI.errorState('Diagnostics unavailable', 'The gateway may be starting.')); return; }
+  catch (e) { body.innerHTML = ''; body.appendChild(GhostUI.errorState('Diagnostics unavailable', e.message || 'The gateway may be starting.')); return; }
   body.innerHTML = '';
   const grid = GhostUI.h('div', { className: 'diag-grid' });
-  const checks = res.checks || [];
-  if (checks.length === 0) grid.appendChild(GhostUI.emptyState('Nothing to report', 'No checks returned.'));
+  const checks = Array.isArray(res.checks) ? res.checks : [];
+  if (checks.length === 0) {
+    grid.appendChild(GhostUI.emptyState('Nothing to report', 'No checks returned. Response keys: ' + Object.keys(res).join(', ')));
+  }
   checks.forEach(ch => {
     const row = GhostUI.h('div', { className: 'diag-row' });
     const st = ch.status === 'ok' ? 'ready' : ch.status === 'warn' ? 'warn' : 'bad';
