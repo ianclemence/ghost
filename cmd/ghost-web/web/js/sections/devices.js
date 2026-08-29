@@ -74,6 +74,8 @@ function showPairingModal() {
   wrap.appendChild(expiry);
   const fallback = GhostUI.h('div', { className: 'qr-fallback-string hidden' });
   wrap.appendChild(fallback);
+  const manual = GhostUI.h('div', { className: 'qr-manual hidden' });
+  wrap.appendChild(manual);
   m.appendChild(wrap);
 
   const actions = GhostUI.h('div', { className: 'modal__actions' });
@@ -86,6 +88,28 @@ function showPairingModal() {
 
   let pollTimer = null, countdownTimer = null, currentInvite = null, closed = false;
   function close() { closed = true; if (pollTimer) clearInterval(pollTimer); if (countdownTimer) clearInterval(countdownTimer); backdrop.remove(); }
+
+  function copyText(text, btn) {
+    const restore = () => { btn.textContent = 'Copy token'; };
+    const done = () => { btn.textContent = 'Copied ✓'; setTimeout(restore, 1500); GhostUI.toast('Token copied'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
+
+  function fallbackCopy(text, done) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); }
+    catch (e) { GhostUI.toast('Copy failed — select and copy manually', 'err'); }
+    document.body.removeChild(ta);
+  }
 
   cancelBtn.addEventListener('click', async () => {
     if (currentInvite) { try { await GhostAPI.proxyPost('/v1/pairing/cancel', { pairing_id: currentInvite.pairing_id }); } catch (e) {} }
@@ -109,6 +133,16 @@ function showPairingModal() {
     const ok = GhostQR.draw(url, canvas, 5);
     if (!ok) { qrBox.innerHTML = ''; fallback.classList.remove('hidden'); fallback.textContent = url; }
     else fallback.classList.add('hidden');
+
+    // Manual entry: expose the bare token so it can be typed/copied on a phone
+    // without scanning the QR.
+    manual.classList.remove('hidden');
+    manual.innerHTML = '';
+    manual.appendChild(GhostUI.h('div', { className: 'qr-manual-label' }, "Can’t scan? Enter this token in the app’s manual screen:"));
+    manual.appendChild(GhostUI.h('div', { className: 'qr-manual-token' }, inv.token));
+    const copyBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost ghost-btn-sm' }, 'Copy token');
+    copyBtn.addEventListener('click', () => copyText(inv.token, copyBtn));
+    manual.appendChild(copyBtn);
     const expiresAt = new Date(inv.expires_at).getTime();
     const tick = () => {
       const left = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
