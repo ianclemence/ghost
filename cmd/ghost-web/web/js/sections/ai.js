@@ -2,6 +2,7 @@
 'use strict';
 
 async function loadAI(container) {
+  if (GhostApp.currentSection() !== 'ai') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'AI'));

@@ -2,6 +2,7 @@
 'use strict';
 
 async function loadChannels(container) {
+  if (GhostApp.currentSection() !== 'channels') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Channels'));
