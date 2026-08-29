@@ -25,7 +25,7 @@ async function loadSystem(container) {
   gk.appendChild(kv('Model', (st.provider || '—') + (st.model ? ' · ' + st.model : '')));
   gk.appendChild(kv('Address', (st.ip || '—') + (st.hostname ? '  (' + st.hostname + ')' : '')));
   gk.appendChild(kv('CPU', (st.cpu_percent != null ? st.cpu_percent.toFixed(0) + '%' : '—')));
-  if (st.memory) gk.appendChild(kv('Memory', GhostUI.fmtNum(Math.round(st.memory.used / 1048576)) + ' MB / ' + GhostUI.fmtNum(Math.round(st.memory.total / 1048576)) + ' MB'));
+  if (st.memory) gk.appendChild(kv('Memory', fmtBytes(st.memory.used) + ' / ' + fmtBytes(st.memory.total)));
   if (st.disk) gk.appendChild(kv('Storage', GhostUI.fmtNum(Math.round(st.disk.used / 1073741824)) + ' GB / ' + GhostUI.fmtNum(Math.round(st.disk.total / 1073741824)) + ' GB'));
   if (st.load) gk.appendChild(kv('Load', st.load.one.toFixed(2) + ' / ' + st.load.five.toFixed(2) + ' / ' + st.load.fifteen.toFixed(2)));
   g.appendChild(gk);
@@ -117,6 +117,14 @@ function panelHead(title) {
   return h;
 }
 function kv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
+
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  const gb = 1073741824, mb = 1048576;
+  if (n >= gb) return (n / gb).toFixed(1) + ' GB';
+  if (n >= mb) return (n / mb).toFixed(0) + ' MB';
+  return Math.round(n / 1024) + ' KB';
+}
 function kvRow2(k, v, state) {
   const r = GhostUI.h('div', { className: 'kv-row' });
   r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k));
