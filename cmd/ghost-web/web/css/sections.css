@@ -135,26 +135,6 @@
   margin: 0;
   line-height: var(--lh-snug);
 }
-.home-summary-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-size: var(--t-callout);
-  font-weight: 540;
-  color: var(--ink);
-}
-.home-summary-pill::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--off);
-}
-.home-summary-pill-ok::before    { background: var(--ok); }
-.home-summary-pill-warn::before  { background: var(--warn); }
-.home-summary-pill-bad::before   { background: var(--bad); }
-.home-summary-pill-info::before  { background: var(--info); }
 
 /* Recent activity — a quiet timeline, no card grid. */
 .home-activity-body {

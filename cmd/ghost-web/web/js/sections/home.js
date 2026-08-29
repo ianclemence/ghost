@@ -134,28 +134,19 @@ function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, mem
   const devCount = devicesRes.status === 'fulfilled' ? extractDeviceCount(devicesRes.value) : null;
 
   const localAI = inferLocalAI(ollamaRes, activeModelRes);
-  const memState = memCount == null ? 'neutral' : 'ok';
-  const jobState = jobCount == null ? 'neutral' : (activeJobCount > 0 ? 'ok' : 'warn');
-  const devState = devCount == null ? 'neutral' : (devCount > 0 ? 'ok' : 'info');
 
   const dl = GhostUI.h('dl', { className: 'home-status-summary' });
-  appendSummary(dl, 'Local AI', localAI.label, localAI.state);
-  appendSummary(dl, 'Memory', memCount == null ? '\u2014' : GhostUI.fmtNum(memCount) + (memCount === 1 ? ' memory' : ' memories'), memState);
-  appendSummary(dl, 'Devices', devCount == null ? '\u2014' : (devCount === 0 ? 'Not connected' : devCount + ' connected'), devState);
-  appendSummary(dl, 'Automations', jobCount == null ? '\u2014' : (jobCount === 0 ? 'None' : activeJobCount + ' active of ' + jobCount), jobState);
+  appendSummary(dl, 'Local AI', localAI.label);
+  appendSummary(dl, 'Memory', memCount == null ? '\u2014' : GhostUI.fmtNum(memCount) + (memCount === 1 ? ' memory' : ' memories'));
+  appendSummary(dl, 'Devices', devCount == null ? '\u2014' : (devCount === 0 ? 'Not connected' : devCount + ' connected'));
+  appendSummary(dl, 'Automations', jobCount == null ? '\u2014' : (jobCount === 0 ? 'None' : activeJobCount + ' active of ' + jobCount));
   bodyEl.appendChild(dl);
 }
 
-function appendSummary(dl, key, value, state) {
+function appendSummary(dl, key, value) {
   const row = GhostUI.h('div', { className: 'home-summary-row' });
   row.appendChild(GhostUI.h('dt', { className: 'home-summary-key' }, key));
-  const val = GhostUI.h('dd', { className: 'home-summary-val' });
-  if (state && state !== 'neutral') {
-    val.appendChild(GhostUI.h('span', { className: 'home-summary-pill home-summary-pill-' + state }, value));
-  } else {
-    val.textContent = value;
-  }
-  row.appendChild(val);
+  row.appendChild(GhostUI.h('dd', { className: 'home-summary-val' }, value));
   dl.appendChild(row);
 }
 
