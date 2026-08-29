@@ -27,13 +27,12 @@ async function loadSkills(container) {
   }
   if (!document.body.contains(container)) return;
   const skills = Array.isArray(res) ? res : (res.skills || res.items || []);
-  console.log('[skills] response keys:', Object.keys(res), 'parsed count:', skills.length);
   renderList(listEl, skills);
 }
 
 function renderList(listEl, skills) {
   listEl.innerHTML = '';
-  if (skills.length === 0) {
+  if (!skills || skills.length === 0) {
     listEl.appendChild(GhostUI.emptyState('No skills installed', 'Ghost comes with built-in skills. If none are present, something may be wrong.'));
     return;
   }
