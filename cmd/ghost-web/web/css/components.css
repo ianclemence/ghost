@@ -193,7 +193,8 @@ textarea.ghost-input {
 .status-dot.paused,
 .status-dot.not-configured { background: var(--warn); }
 .status-dot.error,
-.status-dot.offline { background: var(--bad); }
+.status-dot.offline,
+.status-dot.bad { background: var(--bad); }
 .status-dot.starting,
 .status-dot.updating { background: var(--info); }
 .status-dot.neutral { background: var(--ink-ghost); }
