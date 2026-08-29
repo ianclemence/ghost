@@ -156,8 +156,7 @@ const GhostApp = (() => {
     const main = GhostUI.h('div', { className: 'shell-main' });
     const topbar = GhostUI.h('header', { className: 'topbar' });
     const left = GhostUI.h('div', { className: 'row-flex' });
-    const toggle = GhostUI.h('button', { className: 'ghost-btn ghost-btn-icon nav-toggle', onClick: () => toggleNav() },
-      '<svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>');
+    const toggle = GhostUI.h('button', { className: 'ghost-btn ghost-btn-icon nav-toggle', onClick: () => toggleNav(), html: '<svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>' });
     left.appendChild(toggle);
     left.appendChild(GhostUI.h('div', {}, GhostUI.h('div', { className: 'topbar-title', id: 'topbar-title' }, 'Ghost'), GhostUI.h('div', { className: 'topbar-sub', id: 'topbar-sub' })));
     topbar.appendChild(left);
