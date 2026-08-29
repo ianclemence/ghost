@@ -44,7 +44,8 @@ async function renderDevices(listEl) {
   devices.forEach(d => {
     const row = GhostUI.h('div', { className: 'ghost-row' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, d.display_name || 'Device'));
+    const title = GhostUI.h('div', { className: 'ghost-row-title' });
+    title.appendChild(document.createTextNode(d.display_name || 'Device'));
     const plat = (d.platform || 'device');
     let statusText, dot;
     if (d.last_seen_at) {
@@ -52,8 +53,10 @@ async function renderDevices(listEl) {
       if (now - seen < 3 * 60000) { statusText = 'Connected now'; dot = 'ready'; }
       else { statusText = 'Last seen ' + GhostUI.timeAgo(Math.floor(seen / 1000)); dot = 'neutral'; }
     } else { statusText = 'Paired'; dot = 'neutral'; }
+    title.appendChild(GhostUI.h('span', { className: 'ghost-row-subtitle', style: 'margin-left:var(--s-2);font-weight:400' }, statusText));
+    c.appendChild(title);
     const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
-    sub.appendChild(document.createTextNode(plat.charAt(0).toUpperCase() + plat.slice(1) + '  \u00b7  ' + statusText));
+    sub.appendChild(document.createTextNode(plat.charAt(0).toUpperCase() + plat.slice(1)));
     if (d.capabilities && d.capabilities.length > 0) {
       sub.appendChild(document.createTextNode('  \u00b7  ' + d.capabilities.join(', ')));
     }
@@ -61,7 +64,6 @@ async function renderDevices(listEl) {
     c.appendChild(sub);
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
-    tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(dot), statusText));
     tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
       if (!(await GhostUI.confirmModal('Disconnect this device?', d.display_name + ' will no longer be able to reach your Ghost. Your Ghost itself is not affected.', 'Disconnect'))) return;
       try { await GhostAPI.proxyPost('/v1/pairing/revoke', { device_id: d.device_id }); GhostUI.toast('Device disconnected'); renderDevices(document.getElementById('dev-list')); }
