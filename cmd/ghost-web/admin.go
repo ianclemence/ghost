@@ -37,11 +37,14 @@ type updateState struct {
 var currentUpdate updateState
 
 // requireSession aborts the request with 401 unless a valid admin session cookie is present.
+// On success it bumps last_seen so the sessions list stays accurate.
 func requireSession(w http.ResponseWriter, r *http.Request) bool {
-	if !sessions.valid(sessionToken(r)) {
+	tok := sessionToken(r)
+	if !sessions.valid(tok) {
 		http.Error(w, `{"ok":false,"error":"session expired, please log in"}`, http.StatusUnauthorized)
 		return false
 	}
+	sessions.touch(tok)
 	return true
 }
 
@@ -395,6 +398,110 @@ func handleAdminMeta(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleAdminIdentity returns the Ghost's persistent identity: the owner
+// name, the Ghost's display name, the identity created-at timestamp, and
+// the workspace directory it lives in. Used by the About section.
+func handleAdminIdentity(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	resp := map[string]interface{}{
+		"ok":         true,
+		"configured": false,
+	}
+	if id, err := ghoststate.LoadIdentity(fb.Workspace); err == nil && id != nil && id.GhostID != "" {
+		resp["configured"] = true
+		resp["ghost_id"] = id.GhostID
+		resp["ghost_name"] = id.GhostName
+		resp["owner_name"] = id.OwnerName
+		if id.CreatedAt != "" {
+			resp["created_at"] = id.CreatedAt
+		}
+	}
+	if meta := appliance.LoadAdminMeta(fb.GhostDir); meta != nil {
+		if !meta.CreatedAt.IsZero() && resp["created_at"] == nil {
+			resp["created_at"] = meta.CreatedAt.UTC().Format(time.RFC3339)
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleAdminSessions lists active admin sessions for the Security section.
+// GET /api/admin/sessions
+func handleAdminSessions(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	currentToken := sessionToken(r)
+	records := sessions.list()
+	type sessionJSON struct {
+		Token     string `json:"token"`
+		Current   bool   `json:"current"`
+		IssuedAt  string `json:"issued_at"`
+		ExpiresAt string `json:"expires_at"`
+		LastSeen  string `json:"last_seen"`
+		IP        string `json:"ip"`
+		UserAgent string `json:"user_agent"`
+	}
+	out := make([]sessionJSON, 0, len(records))
+	for _, rec := range records {
+		out = append(out, sessionJSON{
+			Token:     rec.Token,
+			Current:   rec.Token == currentToken,
+			IssuedAt:  rec.IssuedAt.Format(time.RFC3339),
+			ExpiresAt: rec.ExpiresAt.Format(time.RFC3339),
+			LastSeen:  rec.LastSeen.Format(time.RFC3339),
+			IP:        rec.IP,
+			UserAgent: rec.UserAgent,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":       true,
+		"sessions": out,
+	})
+}
+
+// handleAdminSessionRevoke signs out a single session by token, or all
+// sessions except the current one when target=all.
+func handleAdminSessionRevoke(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Token  string `json:"token"`
+		Action string `json:"action"` // "revoke" | "revoke_all"
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+	currentToken := sessionToken(r)
+	if req.Action == "revoke_all" {
+		// Revoke every session except the current one.
+		for _, rec := range sessions.list() {
+			if rec.Token != currentToken {
+				sessions.revoke(rec.Token)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "other sessions signed out"})
+		return
+	}
+	if req.Token == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "token required"})
+		return
+	}
+	if req.Token == currentToken {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "cannot revoke your own session; use sign out"})
+		return
+	}
+	sessions.revoke(req.Token)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "session signed out"})
+}
+
 func handleFailedLogins(w http.ResponseWriter, r *http.Request) {
 	if !requireSession(w, r) {
 		return
@@ -437,6 +544,11 @@ func handleConfigGet(w http.ResponseWriter, r *http.Request) {
 		"max_tokens":    cfg.Agents.Defaults.MaxTokens,
 		"temperature":   cfg.Agents.Defaults.Temperature,
 		"providers":     providers,
+		"routing": map[string]interface{}{
+			"prefer_local":          cfg.Agents.Routing.PreferLocal,
+			"allow_cloud":           cfg.Agents.Routing.AllowCloud,
+			"cloud_when_local_fails": cfg.Agents.Routing.CloudWhenLocalFails,
+		},
 	})
 }
 
@@ -459,6 +571,11 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 		MaxTokens       int                  `json:"max_tokens"`
 		Temperature     float64              `json:"temperature"`
 		ModelList       []config.ModelPreset `json:"model_list"`
+		Routing         *struct {
+			PreferLocal         bool `json:"prefer_local"`
+			AllowCloud          bool `json:"allow_cloud"`
+			CloudWhenLocalFails bool `json:"cloud_when_local_fails"`
+		} `json:"routing"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
@@ -516,6 +633,11 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ModelList != nil {
 		cfg.Agents.ModelList = req.ModelList
+	}
+	if req.Routing != nil {
+		cfg.Agents.Routing.PreferLocal = req.Routing.PreferLocal
+		cfg.Agents.Routing.AllowCloud = req.Routing.AllowCloud
+		cfg.Agents.Routing.CloudWhenLocalFails = req.Routing.CloudWhenLocalFails
 	}
 
 	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sort"
 	"syscall"
 	"time"
 
@@ -47,10 +48,24 @@ sessions = newSessionStore()
 loginThrottle = newLoginThrottle()
 )
 
-// sessionStore keeps issued admin session tokens with an expiry.
+// sessionRecord stores everything we know about an active admin session so
+// the Security section can list them, identify "this device", and let the
+// owner sign out other sessions.
+type sessionRecord struct {
+	Token     string
+	IssuedAt  time.Time
+	ExpiresAt time.Time
+	LastSeen  time.Time
+	IP        string
+	UserAgent string
+}
+
+// sessionStore keeps issued admin session tokens with their expiry and
+// enough metadata to render a meaningful sessions list.
 type sessionStore struct {
-	mu     sync.Mutex
-	tokens map[string]time.Time
+	mu      sync.Mutex
+	tokens  map[string]time.Time
+	records map[string]*sessionRecord
 }
 
 const sessionTTL = 30 * time.Minute
@@ -160,16 +175,26 @@ func clientIP(r *http.Request) string {
 }
 
 func newSessionStore() *sessionStore {
-	return &sessionStore{tokens: make(map[string]time.Time)}
+	return &sessionStore{
+		tokens:  make(map[string]time.Time),
+		records: make(map[string]*sessionRecord),
+	}
 }
 
 // issue creates a new random session token valid for sessionTTL.
-func (s *sessionStore) issue() (string, error) {
+// rememberMe extends the lifetime to rememberMeTTL.
+func (s *sessionStore) issue(ip, userAgent string, rememberMe bool) (string, error) {
 	b := make([]byte, 24)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	token := hex.EncodeToString(b)
+
+	ttl := sessionTTL
+	if rememberMe {
+		ttl = rememberMeTTL
+	}
+	now := time.Now()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -177,10 +202,57 @@ func (s *sessionStore) issue() (string, error) {
 	for k, exp := range s.tokens {
 		if time.Now().After(exp) {
 			delete(s.tokens, k)
+			delete(s.records, k)
 		}
 	}
-	s.tokens[token] = time.Now().Add(sessionTTL)
+	s.tokens[token] = now.Add(ttl)
+	s.records[token] = &sessionRecord{
+		Token:     token,
+		IssuedAt:  now,
+		ExpiresAt: now.Add(ttl),
+		LastSeen:  now,
+		IP:        ip,
+		UserAgent: userAgent,
+	}
 	return token, nil
+}
+
+// touch updates the last-seen time for a session, keeping the metadata.
+func (s *sessionStore) touch(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if rec, ok := s.records[token]; ok {
+		rec.LastSeen = time.Now()
+	}
+}
+
+// revoke deletes a single session by token.
+func (s *sessionStore) revoke(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.tokens, token)
+	delete(s.records, token)
+}
+
+// list returns a snapshot of all active sessions, oldest last.
+func (s *sessionStore) list() []*sessionRecord {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]*sessionRecord, 0, len(s.records))
+	for k, exp := range s.tokens {
+		if time.Now().After(exp) {
+			delete(s.tokens, k)
+			delete(s.records, k)
+			continue
+		}
+		if rec, ok := s.records[k]; ok {
+			cp := *rec
+			out = append(out, &cp)
+		}
+	}
+	// Stable order: oldest first.
+	sort.Slice(out, func(i, j int) bool { return out[i].IssuedAt.Before(out[j].IssuedAt) })
+	return out
 }
 
 // valid reports whether the given token is currently valid.
@@ -196,6 +268,7 @@ func (s *sessionStore) valid(token string) bool {
 	}
 	if time.Now().After(exp) {
 		delete(s.tokens, token)
+		delete(s.records, token)
 		return false
 	}
 	return true
@@ -206,6 +279,7 @@ func (s *sessionStore) revokeAll() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.tokens = make(map[string]time.Time)
+	s.records = make(map[string]*sessionRecord)
 }
 
 // sessionToken reads the admin session token from the request cookie.
@@ -326,6 +400,9 @@ func main() {
 	mux.HandleFunc("/api/admin/toolsets", handleToolsetsGet)
 	mux.HandleFunc("/api/admin/toolsets/save", handleToolsetsSet)
 	mux.HandleFunc("/api/admin/auth/meta", handleAdminMeta)
+	mux.HandleFunc("/api/admin/identity", handleAdminIdentity)
+	mux.HandleFunc("/api/admin/sessions", handleAdminSessions)
+	mux.HandleFunc("/api/admin/sessions/revoke", handleAdminSessionRevoke)
 	mux.HandleFunc("/api/admin/auth/check", handleAuthCheck)
 	mux.HandleFunc("/api/admin/auth/failed-logins", handleFailedLogins)
 
@@ -613,7 +690,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	loginThrottle.recordSuccess(ip)
 	clearRecentFailedLogins()
-	token, err := sessions.issue()
+	token, err := sessions.issue(ip, r.UserAgent(), req.RememberMe)
 	if err != nil {
 		http.Error(w, `{"ok":false,"error":"failed to create session"}`, http.StatusInternalServerError)
 		return

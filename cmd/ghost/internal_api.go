@@ -1102,6 +1102,103 @@ func shellescape(s string) string {
 // LAN peers must present valid per-device credentials on every request.
 // One port (GHOST_API_PORT, default 8766) handles everything:
 // chat, history, memory, transcription, remote control, and WebSocket.
+
+// parseMemoryMeta extracts a human title, kind, summary, and source from
+// the first chunk of a memory markdown file. Supports simple YAML-ish
+// frontmatter delimited by --- lines, and falls back to the first H1
+// heading if no frontmatter is present. Returns empty strings when a
+// field is not present so callers can detect "unknown" without errors.
+func parseMemoryMeta(head string) (title, kind, summary, source string) {
+	// Frontmatter: ---\n key: value\n ---\n
+	if strings.HasPrefix(strings.TrimLeft(head, "\n"), "---") {
+		rest := strings.TrimLeft(head, "\n")
+		rest = strings.TrimPrefix(rest, "---")
+		// Find closing ---
+		end := strings.Index(rest, "\n---")
+		if end >= 0 {
+			block := rest[:end]
+			for _, line := range strings.Split(block, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				idx := strings.Index(line, ":")
+				if idx <= 0 {
+					continue
+				}
+				k := strings.TrimSpace(line[:idx])
+				v := strings.TrimSpace(line[idx+1:])
+				v = strings.Trim(v, "\"'`")
+				switch strings.ToLower(k) {
+				case "title":
+					title = v
+				case "kind":
+					kind = strings.ToLower(v)
+				case "summary":
+					summary = v
+				case "source":
+					source = v
+				}
+			}
+			// If no title in frontmatter, scan for first H1 after it.
+			if title == "" {
+				after := rest[end+4:]
+				for _, line := range strings.Split(after, "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "# ") {
+						title = strings.TrimSpace(strings.TrimPrefix(line, "# "))
+						break
+					}
+				}
+			}
+		}
+	}
+	// No frontmatter or no title yet — first H1 in head.
+	if title == "" {
+		for _, line := range strings.Split(head, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "# ") {
+				title = strings.TrimSpace(strings.TrimPrefix(line, "# "))
+				break
+			}
+		}
+	}
+	// First paragraph as summary fallback.
+	if summary == "" {
+		inPara := false
+		var b strings.Builder
+		for _, line := range strings.Split(head, "\n") {
+			trim := strings.TrimSpace(line)
+			if trim == "" {
+				if inPara {
+					break
+				}
+				continue
+			}
+			if strings.HasPrefix(trim, "#") {
+				continue
+			}
+			inPara = true
+			if b.Len() > 0 {
+				b.WriteString(" ")
+			}
+			b.WriteString(trim)
+			if b.Len() > 140 {
+				break
+			}
+		}
+		summary = strings.TrimSpace(b.String())
+		if len(summary) > 140 {
+			summary = summary[:137] + "…"
+		}
+	}
+	// Kind default.
+	if kind == "" {
+		kind = "fact"
+	}
+	return
+}
+
 func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService, channelManager *channels.Manager) {
 	port := agentLoop.Config().Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
@@ -2045,6 +2142,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			Name     string `json:"name"`
 			Modified int64  `json:"modified"`
 			Size     int64  `json:"size"`
+			Title    string `json:"title"`
+			Kind     string `json:"kind"`
+			Summary  string `json:"summary"`
+			Source   string `json:"source"`
 		}
 		var files []FileInfo
 
@@ -2057,14 +2158,24 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			if err != nil || info.IsDir() {
 				return nil
 			}
-			if strings.HasSuffix(info.Name(), ".md") {
-				rel, _ := filepath.Rel(memoryDir, path)
-				files = append(files, FileInfo{
-					Name:     rel,
-					Modified: info.ModTime().Unix(),
-					Size:     info.Size(),
-				})
+			if !strings.HasSuffix(info.Name(), ".md") {
+				return nil
 			}
+			rel, _ := filepath.Rel(memoryDir, path)
+			entry := FileInfo{
+				Name:     rel,
+				Modified: info.ModTime().Unix(),
+				Size:     info.Size(),
+			}
+			// Read just the first 4KB to extract metadata without scanning
+			// the whole file for every entry.
+			if f, err := os.Open(path); err == nil {
+				defer f.Close()
+				buf := make([]byte, 4096)
+				n, _ := f.Read(buf)
+				entry.Title, entry.Kind, entry.Summary, entry.Source = parseMemoryMeta(string(buf[:n]))
+			}
+			files = append(files, entry)
 			return nil
 		})
 		if files == nil {
@@ -2842,8 +2953,23 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			devices = []pairing.PairedDevice{}
 		}
 
+		// Enrich with capabilities. Ghost Mobile exposes chat, memory and
+		// voice today; the per-device capability list will be tightened once
+		// the mobile app negotiates scopes at pairing time.
+		type deviceView struct {
+			pairing.PairedDevice
+			Capabilities []string `json:"capabilities"`
+		}
+		views := make([]deviceView, 0, len(devices))
+		for _, d := range devices {
+			views = append(views, deviceView{
+				PairedDevice:  d,
+				Capabilities: []string{"chat", "memory", "voice"},
+			})
+		}
+
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
-			"devices": devices,
+			"devices": views,
 		})
 	}))
 

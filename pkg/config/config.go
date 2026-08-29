@@ -120,6 +120,12 @@ type AgentDefaults struct {
 type RoutingConfig struct {
 	LightModel string  `json:"light_model" env:"GHOST_AGENTS_ROUTING_LIGHT_MODEL"`
 	Threshold  float64 `json:"threshold" env:"GHOST_AGENTS_ROUTING_THRESHOLD"`
+	// User-facing preferences surfaced in the Web Console. These are
+	// hints; the router still falls back to local when the cloud provider
+	// is unavailable regardless of these toggles.
+	PreferLocal          bool `json:"prefer_local"`
+	AllowCloud           bool `json:"allow_cloud"`
+	CloudWhenLocalFails  bool `json:"cloud_when_local_fails"`
 }
 
 type ChannelsConfig struct {
@@ -339,8 +345,11 @@ func DefaultConfig() *Config {
 				SessionStore:        "sqlite",
 			},
 			Routing: RoutingConfig{
-				LightModel: "",
-				Threshold:  0.35,
+				LightModel:         "",
+				Threshold:          0.35,
+				PreferLocal:         true,
+				AllowCloud:          true,
+				CloudWhenLocalFails: true,
 			},
 		},
 		Channels: ChannelsConfig{
