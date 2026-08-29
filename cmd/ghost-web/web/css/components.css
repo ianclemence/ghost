@@ -240,12 +240,7 @@ textarea.ghost-input {
   align-items: center;
   gap: var(--s-3);
   padding: var(--s-3) var(--s-3);
-  border-bottom: 1px solid var(--line);
   transition: background var(--d-fast) var(--ease-out);
-}
-.ghost-list > .ghost-row:last-child,
-.ghost-list > .ghost-link-row:last-child {
-  border-bottom: 0;
 }
 .ghost-row-content { flex: 1; min-width: 0; }
 .ghost-row-title { font-weight: 560; color: var(--ink); }
