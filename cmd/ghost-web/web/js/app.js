@@ -86,19 +86,17 @@ const GhostApp = (() => {
     updateTitle(name);
 
     const sec = sections.get(name);
-    // Defer so the loading state paints first
-    setTimeout(() => {
-      view.innerHTML = '';
-      Promise.resolve()
-        .then(() => sec.loader(view))
-        .catch(err => {
-          view.innerHTML = '';
-          view.appendChild(GhostUI.errorState(
-            "Something went wrong",
-            (err && err.message) ? err.message : "This page couldn't be loaded."
-          ));
-        });
-    }, 30);
+
+    Promise.resolve()
+      .then(() => sec.loader(view))
+      .catch(err => {
+        if (current !== name) return;
+        view.innerHTML = '';
+        view.appendChild(GhostUI.errorState(
+          "Something went wrong",
+          (err && err.message) ? err.message : "This page couldn’t be loaded."
+        ));
+      });
   }
 
   function setActions(node) {
