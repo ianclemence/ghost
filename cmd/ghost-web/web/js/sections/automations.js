@@ -18,11 +18,14 @@ async function loadAutomations(container) {
   let res;
   try { res = await GhostAPI.proxyGet('/v1/cron/jobs'); }
   catch (e) {
+    if (!document.body.contains(container)) return;
     listEl.innerHTML = '';
     listEl.appendChild(GhostUI.errorState('Couldn’t load automations', 'Ghost may still be starting.'));
     return;
   }
-  renderList(listEl, res.jobs || []);
+  if (!document.body.contains(container)) return;
+  const jobs = Array.isArray(res) ? res : (res.jobs || res.items || []);
+  renderList(listEl, jobs);
 }
 
 function renderList(listEl, jobs) {

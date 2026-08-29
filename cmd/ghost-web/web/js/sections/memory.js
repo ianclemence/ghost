@@ -22,10 +22,12 @@ async function loadMemory(container) {
   try {
     res = await GhostAPI.proxyGet('/v1/memory/files');
   } catch (e) {
+    if (!document.body.contains(container)) return;
     listEl.innerHTML = '';
     listEl.appendChild(GhostUI.errorState('Couldn’t reach memory', 'Ghost may still be starting. Try again in a moment.'));
     return;
   }
+  if (!document.body.contains(container)) return;
   const files = Array.isArray(res) ? res : (res.files || res.items || []);
 
   function render(items) {

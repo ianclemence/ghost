@@ -20,10 +20,12 @@ async function loadSkills(container) {
   let res;
   try { res = await GhostAPI.proxyGet('/v1/skills'); }
   catch (e) {
+    if (!document.body.contains(container)) return;
     listEl.innerHTML = '';
     listEl.appendChild(GhostUI.errorState('Couldn’t load skills', 'Ghost may still be starting.'));
     return;
   }
+  if (!document.body.contains(container)) return;
   const skills = Array.isArray(res) ? res : (res.skills || res.items || []);
   renderList(listEl, skills);
 }

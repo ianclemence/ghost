@@ -86,11 +86,11 @@ const GhostApp = (() => {
     updateTitle(name);
 
     const sec = sections.get(name);
+    let cancelled = false;
 
-    Promise.resolve()
-      .then(() => sec.loader(view))
+    Promise.resolve(sec.loader(view))
       .catch(err => {
-        if (current !== name) return;
+        if (current !== name || cancelled) return;
         view.innerHTML = '';
         view.appendChild(GhostUI.errorState(
           "Something went wrong",
