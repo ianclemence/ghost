@@ -8,51 +8,6 @@ async function loadSecurity(container) {
   head.appendChild(GhostUI.h('p', {}, 'Who can reach your Ghost.'));
   container.appendChild(head);
 
-  // Change password panel
-  const panel = GhostUI.h('div', { className: 'panel' });
-  const panelHead = GhostUI.h('div', { className: 'panel-head' });
-  panelHead.appendChild(GhostUI.h('div', {}, GhostUI.h('h2', {}, 'Change password'), GhostUI.h('p', {}, 'The password used to open this console')));
-  panel.appendChild(panelHead);
-
-  const pwFields = GhostUI.h('div', { className: 'field' });
-  pwFields.appendChild(GhostUI.h('label', {}, 'Current password'));
-  const curPw = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password' });
-  pwFields.appendChild(curPw);
-  panel.appendChild(pwFields);
-
-  const npFields = GhostUI.h('div', { className: 'field' });
-  npFields.appendChild(GhostUI.h('label', {}, 'New password'));
-  const newPw = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: 'At least 8 characters' });
-  npFields.appendChild(newPw);
-  panel.appendChild(npFields);
-
-  const cfFields = GhostUI.h('div', { className: 'field' });
-  cfFields.appendChild(GhostUI.h('label', {}, 'Confirm new password'));
-  const cfPw = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password' });
-  cfFields.appendChild(cfPw);
-  panel.appendChild(cfFields);
-
-  const pwErr = GhostUI.h('div', { className: 'type-foot', style: 'color:var(--bad);min-height:18px;margin-bottom:var(--s-2)' });
-  panel.appendChild(pwErr);
-
-  const pwBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary' }, 'Save');
-  pwBtn.addEventListener('click', async () => {
-    pwErr.textContent = '';
-    if (newPw.value !== cfPw.value) { pwErr.textContent = 'Passwords don\u2019t match.'; return; }
-    if (newPw.value.length < 8) { pwErr.textContent = 'At least 8 characters.'; return; }
-    if (!curPw.value) { pwErr.textContent = 'Current password is required.'; return; }
-    pwBtn.disabled = true;
-    try {
-      await GhostAPI.post('/api/admin/password', { current: curPw.value, new: newPw.value, confirm: cfPw.value });
-      GhostUI.toast('Password changed');
-      curPw.value = ''; newPw.value = ''; cfPw.value = '';
-    } catch (err) {
-      pwErr.textContent = err.message || 'Couldn\u2019t change it.';
-    } finally { pwBtn.disabled = false; }
-  });
-  panel.appendChild(pwBtn);
-  container.appendChild(panel);
-
   // Active sessions
   const sessPanel = GhostUI.h('div', { className: 'panel' });
   const sessHead = GhostUI.h('div', { className: 'panel-head' });
@@ -106,6 +61,51 @@ async function loadSecurity(container) {
   bk.appendChild(bkActions);
   bk.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3)' }, 'Store the file somewhere safe. Secrets like API keys and your password are not included.'));
   container.appendChild(bk);
+
+  // Change password panel
+  const panel = GhostUI.h('div', { className: 'panel' });
+  const panelHead = GhostUI.h('div', { className: 'panel-head' });
+  panelHead.appendChild(GhostUI.h('div', {}, GhostUI.h('h2', {}, 'Change password'), GhostUI.h('p', {}, 'The password used to open this console')));
+  panel.appendChild(panelHead);
+
+  const pwFields = GhostUI.h('div', { className: 'field' });
+  pwFields.appendChild(GhostUI.h('label', {}, 'Current password'));
+  const curPw = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password' });
+  pwFields.appendChild(curPw);
+  panel.appendChild(pwFields);
+
+  const npFields = GhostUI.h('div', { className: 'field' });
+  npFields.appendChild(GhostUI.h('label', {}, 'New password'));
+  const newPw = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: 'At least 8 characters' });
+  npFields.appendChild(newPw);
+  panel.appendChild(npFields);
+
+  const cfFields = GhostUI.h('div', { className: 'field' });
+  cfFields.appendChild(GhostUI.h('label', {}, 'Confirm new password'));
+  const cfPw = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password' });
+  cfFields.appendChild(cfPw);
+  panel.appendChild(cfFields);
+
+  const pwErr = GhostUI.h('div', { className: 'type-foot', style: 'color:var(--bad);min-height:18px;margin-bottom:var(--s-2)' });
+  panel.appendChild(pwErr);
+
+  const pwBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary' }, 'Save');
+  pwBtn.addEventListener('click', async () => {
+    pwErr.textContent = '';
+    if (newPw.value !== cfPw.value) { pwErr.textContent = 'Passwords don\u2019t match.'; return; }
+    if (newPw.value.length < 8) { pwErr.textContent = 'At least 8 characters.'; return; }
+    if (!curPw.value) { pwErr.textContent = 'Current password is required.'; return; }
+    pwBtn.disabled = true;
+    try {
+      await GhostAPI.post('/api/admin/password', { current: curPw.value, new: newPw.value, confirm: cfPw.value });
+      GhostUI.toast('Password changed');
+      curPw.value = ''; newPw.value = ''; cfPw.value = '';
+    } catch (err) {
+      pwErr.textContent = err.message || 'Couldn\u2019t change it.';
+    } finally { pwBtn.disabled = false; }
+  });
+  panel.appendChild(pwBtn);
+  container.appendChild(panel);
 }
 
 async function doBackup(btn) {
