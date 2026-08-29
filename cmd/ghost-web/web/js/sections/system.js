@@ -16,9 +16,16 @@ async function loadSystem(container) {
   catch (e) { statusEl.outerHTML = ''; container.appendChild(GhostUI.errorState('Couldn’t read system', 'Ghost may be starting.')); return; }
   statusEl.remove();
 
-  // Ghost + Hardware — one panel
+  // Ghost + Hardware — one panel with Update button in the header
   const g = GhostUI.h('div', { className: 'panel' });
-  g.appendChild(panelHead('Ghost'));
+  const gHead = GhostUI.h('div', { className: 'panel-head' });
+  const gText = GhostUI.h('div');
+  gText.appendChild(GhostUI.h('h2', {}, 'Ghost'));
+  gHead.appendChild(gText);
+  const upLogBox = GhostUI.h('div', { className: 'panel hidden', style: 'margin-top:var(--s-4)' });
+  const updateBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => runUpdate(upLogBox, updateBtn) }, 'Update Ghost');
+  gHead.appendChild(updateBtn);
+  g.appendChild(gHead);
   const gk = GhostUI.h('div', { className: 'kv' });
   gk.appendChild(kv('Version', st.version || '—'));
   gk.appendChild(kv('Uptime', st.uptime || '—'));
@@ -29,7 +36,14 @@ async function loadSystem(container) {
   if (st.disk) gk.appendChild(kv('Storage', GhostUI.fmtNum(Math.round(st.disk.used / 1073741824)) + ' GB / ' + GhostUI.fmtNum(Math.round(st.disk.total / 1073741824)) + ' GB'));
   if (st.load) gk.appendChild(kv('Load', st.load.one.toFixed(2) + ' / ' + st.load.five.toFixed(2) + ' / ' + st.load.fifteen.toFixed(2)));
   g.appendChild(gk);
+  g.appendChild(upLogBox);
   container.appendChild(g);
+
+  try {
+    const upRes = await GhostAPI.get('/api/admin/update/status');
+    if (upRes.running) runUpdate(upLogBox, updateBtn);
+    else if (upRes.log) { upLogBox.classList.remove('hidden'); upLogBox.appendChild(GhostUI.h('pre', { className: 'type-mono', style: 'white-space:pre-wrap;margin:0' }, upRes.log)); }
+  } catch (e) { /* not running */ }
 
   // Services
   const sv = GhostUI.h('div', { className: 'panel' });
@@ -40,26 +54,6 @@ async function loadSystem(container) {
   });
   sv.appendChild(svk);
   container.appendChild(sv);
-
-  // Updates panel
-  const upPanel = GhostUI.h('div', { className: 'panel' });
-  upPanel.appendChild(panelHead('Updates'));
-  const upKv = GhostUI.h('div', { className: 'kv' });
-  upKv.appendChild(kv('Version', st.version || '—'));
-  upPanel.appendChild(upKv);
-  const upActions = GhostUI.h('div', { className: 'row-flex', style: 'margin-top:var(--s-4)' });
-  const updateBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => runUpdate(upLogBox, updateBtn) }, 'Update Ghost');
-  upActions.appendChild(updateBtn);
-  upPanel.appendChild(upActions);
-  const upLogBox = GhostUI.h('div', { className: 'panel hidden', style: 'margin-top:var(--s-4)' });
-  upPanel.appendChild(upLogBox);
-  container.appendChild(upPanel);
-
-  try {
-    const upRes = await GhostAPI.get('/api/admin/update/status');
-    if (upRes.running) runUpdate(upLogBox, updateBtn);
-    else if (upRes.log) { upLogBox.classList.remove('hidden'); upLogBox.appendChild(GhostUI.h('pre', { className: 'type-mono', style: 'white-space:pre-wrap;margin:0' }, upRes.log)); }
-  } catch (e) { /* not running */ }
 
   // Diagnostics
   const diag = GhostUI.h('div', { className: 'panel' });
