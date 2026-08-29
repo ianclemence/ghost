@@ -32,9 +32,26 @@ async function loadAI(container) {
 
   // ── Routing ──
   const routing = GhostUI.h('div', { className: 'panel' });
-  routing.appendChild(panelHead('Routing'));
-  routing.appendChild(GhostUI.h('p', { className: 'type-callout text-secondary' }, 'Ghost runs tasks locally when it can, and uses cloud AI only when a task needs it. You don’t need to configure this — it works automatically.'));
+  routing.appendChild(panelHead('Routing', 'Ghost runs tasks locally when it can, and uses cloud AI only when a task needs it.'));
+  const routingCfg = cfg ? (cfg.routing || {}) : {};
+  renderRouting(routing, routingCfg);
   container.appendChild(routing);
+
+  // ── Diagnose ──
+  const diagPanel = GhostUI.h('div', { className: 'panel' });
+  const diagHead = GhostUI.h('div', { className: 'panel-head' });
+  const diagTitle = GhostUI.h('div');
+  diagTitle.appendChild(GhostUI.h('h2', {}, 'AI health'));
+  diagTitle.appendChild(GhostUI.h('p', {}, 'Quick check that your local and cloud AI are reachable.'));
+  diagHead.appendChild(diagTitle);
+  const diagBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary' }, 'Run check');
+  diagBtn.addEventListener('click', () => runAIDiag(diagBody, diagBtn));
+  diagHead.appendChild(diagBtn);
+  diagPanel.appendChild(diagHead);
+  const diagBody = GhostUI.h('div', { style: 'margin-top:var(--s-3)' });
+  diagBody.appendChild(GhostUI.emptyState('Not run yet', 'Run a check to see how your AI providers are doing.'));
+  diagPanel.appendChild(diagBody);
+  container.appendChild(diagPanel);
 }
 
 function panelHead(title, sub) {
@@ -88,7 +105,38 @@ function renderLocal(panel, models, active) {
   });
   install.appendChild(input); install.appendChild(btn);
   panel.appendChild(install);
-  panel.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-2)' }, 'A small model (0.5–1B) is plenty for everyday tasks.'));
+  panel.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-2)' }, 'A small model (0.5\u20131B) is plenty for everyday tasks.'));
+}
+
+function renderRouting(panel, routing) {
+  const prefs = [
+    { key: 'prefer_local', label: 'Prefer local AI', desc: 'Always try the local model first, even for complex tasks.' },
+    { key: 'allow_cloud', label: 'Allow cloud AI', desc: 'Let Ghost use cloud providers when you have one configured.' },
+    { key: 'cloud_when_local_fails', label: 'Fall back to cloud', desc: 'If the local model fails or is unavailable, try cloud instead.' },
+  ];
+  for (const p of prefs) {
+    const row = GhostUI.h('div', { className: 'ghost-row' });
+    const c = GhostUI.h('div', { className: 'ghost-row-content' });
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, p.label));
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-sub' }, p.desc));
+    row.appendChild(c);
+    const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+    const sw = GhostUI.toggle(routing[p.key] || false, async (on) => {
+      const next = { ...routing, [p.key]: on };
+      try {
+        await GhostAPI.post('/api/admin/config/save', { routing: next });
+        Object.assign(routing, next);
+        GhostUI.toast(p.label + (on ? ' on' : ' off'));
+      } catch (err) {
+        sw.classList.toggle('on', !on);
+        GhostUI.toast('Couldn\u2019t save', 'err');
+      }
+    });
+    tr.appendChild(sw);
+    row.appendChild(tr);
+    panel.appendChild(row);
+  }
+  panel.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-2)' }, 'Defaults: prefer local, allow cloud, fall back if local fails.'));
 }
 
 function renderCloud(panel, cfg) {
@@ -142,6 +190,41 @@ function editCloud(key, name, current) {
       } catch (err) { GhostUI.toast('Couldn’t save.', 'err'); }
     } }, 'Save'),
   ]);
+}
+
+async function runAIDiag(body, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  body.innerHTML = '';
+  body.appendChild(GhostUI.loading('Running AI health check…'));
+  let res;
+  try { res = await GhostAPI.proxyGet('/v1/doctor'); }
+  catch (e) {
+    body.innerHTML = '';
+    body.appendChild(GhostUI.errorState('Diagnostics unavailable', 'The gateway may be starting.'));
+    btn.disabled = false; btn.textContent = 'Run check';
+    return;
+  }
+  body.innerHTML = '';
+  const checks = (res.checks || []).filter(c => c.name === 'provider' || c.name === 'ollama api');
+  if (checks.length === 0) {
+    body.appendChild(GhostUI.emptyState('Nothing to report', 'No AI checks returned.'));
+    btn.disabled = false; btn.textContent = 'Run check';
+    return;
+  }
+  const grid = GhostUI.h('div', { className: 'diag-grid' });
+  for (const ch of checks) {
+    const row = GhostUI.h('div', { className: 'diag-row' });
+    const st = ch.status === 'ok' ? 'ready' : ch.status === 'warn' ? 'warn' : 'bad';
+    row.appendChild(GhostUI.h('span', { className: 'status-dot ' + st }));
+    row.appendChild(GhostUI.h('div', { className: 'diag-name' }, ch.name));
+    const msg = GhostUI.h('div', { className: 'diag-msg' });
+    msg.textContent = ch.message || '';
+    row.appendChild(msg);
+    grid.appendChild(row);
+  }
+  body.appendChild(grid);
+  btn.disabled = false; btn.textContent = 'Run check';
 }
 
 GhostApp.registerSection('ai', loadAI);

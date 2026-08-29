@@ -1,4 +1,4 @@
-/* Ghost Section: Memory — what Ghost remembers. */
+/* Ghost Section: Memory \u2014 what Ghost remembers. */
 'use strict';
 
 async function loadMemory(container) {
@@ -10,12 +10,12 @@ async function loadMemory(container) {
   container.appendChild(head);
 
   const searchWrap = GhostUI.h('div', { style: 'margin-bottom:var(--s-4)' });
-  const search = GhostUI.input('Search memories…');
+  const search = GhostUI.input('Search memories\u2026');
   searchWrap.appendChild(search);
   container.appendChild(searchWrap);
 
   const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'mem-list' });
-  listEl.appendChild(GhostUI.loading('Loading memories…'));
+  listEl.appendChild(GhostUI.loading('Loading memories\u2026'));
   container.appendChild(listEl);
 
   let res = [];
@@ -24,7 +24,7 @@ async function loadMemory(container) {
   } catch (e) {
     if (!document.body.contains(container)) return;
     listEl.innerHTML = '';
-    listEl.appendChild(GhostUI.errorState('Couldn’t reach memory', 'Ghost may still be starting. Try again in a moment.'));
+    listEl.appendChild(GhostUI.errorState('Couldn\u2019t reach memory', 'Ghost may still be starting. Try again in a moment.'));
     return;
   }
   if (!document.body.contains(container)) return;
@@ -33,16 +33,25 @@ async function loadMemory(container) {
   function render(items) {
     listEl.innerHTML = '';
     if (!Array.isArray(items) || items.length === 0) {
-      listEl.appendChild(GhostUI.emptyState('Nothing remembered yet', 'Ghost hasn’t stored any memory. As you talk, it will remember what matters.'));
+      listEl.appendChild(GhostUI.emptyState('Nothing remembered yet', 'Ghost hasn\u2019t stored any memory. As you talk, it will remember what matters.'));
       return;
     }
     items.forEach(f => {
-      const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openMemory(container, f.name) });
+      const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openMemory(container, f) });
       const c = GhostUI.h('div', { className: 'ghost-row-content' });
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, f.name.replace(/\.md$/, '')));
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, 'Updated ' + GhostUI.timeAgo(f.modified)));
+      const title = f.title || f.name.replace(/\.md$/, '');
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, title));
+      const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
+      if (f.kind) sub.appendChild(GhostUI.h('span', { style: 'text-transform:capitalize' }, f.kind));
+      if (f.summary) {
+        if (f.kind) sub.appendChild(document.createTextNode(' \u00b7 '));
+        sub.appendChild(document.createTextNode(f.summary.length > 80 ? f.summary.slice(0, 80) + '\u2026' : f.summary));
+      } else {
+        sub.appendChild(document.createTextNode('Updated ' + GhostUI.timeAgo(f.modified)));
+      }
+      c.appendChild(sub);
       row.appendChild(c);
-      row.appendChild(GhostUI.h('span', { className: 'chevron' }, '›'));
+      row.appendChild(GhostUI.h('span', { className: 'chevron' }, '\u203a'));
       listEl.appendChild(row);
     });
   }
@@ -56,37 +65,51 @@ async function loadMemory(container) {
   });
 }
 
-async function openMemory(container, name) {
+async function openMemory(container, file) {
   container.innerHTML = '';
   const back = GhostUI.h('div', { className: 'ghost-link-row', style: 'margin-bottom:var(--s-4);width:fit-content', onClick: () => loadMemory(container) });
-  back.appendChild(GhostUI.h('span', { className: 'chevron', style: 'transform:rotate(180deg)' }, '‹'));
+  back.appendChild(GhostUI.h('span', { className: 'chevron', style: 'transform:rotate(180deg)' }, '\u2039'));
   back.appendChild(GhostUI.h('span', {}, 'All memories'));
   container.appendChild(back);
 
   const view = GhostUI.h('div', { className: 'panel' });
-  view.appendChild(GhostUI.loading('Opening memory…'));
+  view.appendChild(GhostUI.loading('Opening memory\u2026'));
   container.appendChild(view);
 
   let data;
-  try { data = await GhostAPI.proxyGet('/v1/memory/file?name=' + encodeURIComponent(name)); }
+  try { data = await GhostAPI.proxyGet('/v1/memory/file?name=' + encodeURIComponent(file.name)); }
   catch (e) {
     view.innerHTML = '';
-    view.appendChild(GhostUI.errorState('Couldn’t open this memory', 'It may have been removed.'));
+    view.appendChild(GhostUI.errorState('Couldn\u2019t open this memory', 'It may have been removed.'));
     return;
   }
 
   view.innerHTML = '';
   const head = GhostUI.h('div', { className: 'panel-head' });
-  head.appendChild(GhostUI.h('div', {}, GhostUI.h('h2', {}, name.replace(/\.md$/, '')), GhostUI.h('p', {}, 'Stored on your Ghost')));
+  const titleText = file.title || file.name.replace(/\.md$/, '');
+  const meta = GhostUI.h('p', {});
+  if (file.kind) meta.appendChild(GhostUI.h('span', { style: 'text-transform:capitalize;font-weight:500' }, file.kind));
+  if (file.source) {
+    if (file.kind) meta.appendChild(document.createTextNode(' \u00b7 '));
+    meta.appendChild(document.createTextNode('Source: ' + file.source));
+  }
+  if (meta.childNodes.length > 0) {
+    head.appendChild(GhostUI.h('div', {}, GhostUI.h('h2', {}, titleText), meta));
+  } else {
+    head.appendChild(GhostUI.h('div', {}, GhostUI.h('h2', {}, titleText), GhostUI.h('p', {}, 'Stored on your Ghost')));
+  }
   const actions = GhostUI.h('div', { className: 'ghost-row-trailing' });
   actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: async () => {
-    if (!(await GhostUI.confirmModal('Forget this memory?', 'Ghost will delete “' + name + '” from its memory. This can’t be undone.', 'Forget'))) return;
-    try { await GhostAPI.proxyDel('/v1/memory/file?name=' + encodeURIComponent(name)); GhostUI.toast('Memory forgotten'); loadMemory(container); }
-    catch (e) { GhostUI.toast('Couldn’t forget that.', 'err'); }
+    if (!(await GhostUI.confirmModal('Forget this memory?', 'Ghost will delete \u201c' + file.name + '\u201d from its memory. This can\u2019t be undone.', 'Forget'))) return;
+    try { await GhostAPI.proxyDel('/v1/memory/file?name=' + encodeURIComponent(file.name)); GhostUI.toast('Memory forgotten'); loadMemory(container); }
+    catch (e) { GhostUI.toast('Couldn\u2019t forget that.', 'err'); }
   } }, 'Forget'));
   head.appendChild(actions);
   view.appendChild(head);
 
+  if (file.summary) {
+    view.appendChild(GhostUI.h('div', { className: 'type-callout', style: 'margin-bottom:var(--s-4);padding:var(--s-3) var(--s-4);background:var(--ink-ghost);border-radius:var(--r-sm)' }, file.summary));
+  }
   const body = GhostUI.h('div', { className: 'markdown-body' });
   body.innerHTML = GhostUI.md(data.content || '');
   view.appendChild(body);

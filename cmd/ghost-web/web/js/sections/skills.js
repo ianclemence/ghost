@@ -85,13 +85,30 @@ async function openSkill(name) {
 
   const sub = document.getElementById('skill-modal-sub');
   const enabled = data.enabled !== false;
-  if (sub) sub.textContent = data.description || (enabled ? 'Installed skill' : 'Disabled');
+  const parts = [];
+  if (data.bundled) parts.push('Built-in');
+  if (data.files && data.files.length) parts.push(data.files.length + ' file' + (data.files.length === 1 ? '' : 's'));
+  if (data.user_modified) parts.push('Modified');
+  if (parts.length > 0 && sub) sub.textContent = parts.join('  \u00b7  ') + (enabled ? '' : '  \u00b7  Disabled');
+  else if (sub) sub.textContent = data.description || (enabled ? 'Installed skill' : 'Disabled');
 
   body.innerHTML = '';
   const content = GhostUI.h('div', { className: 'markdown-body' });
   const sk = (data.files || []).find(f => f.path === 'SKILL.md' || f.path === 'SKILL.md.disabled');
   content.innerHTML = GhostUI.md(sk ? sk.content : 'No documentation.');
   body.appendChild(content);
+
+  // Show other files in this skill (excluding SKILL.md)
+  const otherFiles = (data.files || []).filter(f => f.path !== 'SKILL.md' && f.path !== 'SKILL.md.disabled');
+  if (otherFiles.length > 0) {
+    const filesWrap = GhostUI.h('div', { style: 'margin-top:var(--s-4);border-top:1px solid var(--ink-ghost);padding-top:var(--s-3)' });
+    filesWrap.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-bottom:var(--s-2)' }, 'Files in this skill'));
+    for (const f of otherFiles) {
+      const fRow = GhostUI.h('div', { className: 'ghost-row-subtitle', style: 'padding:var(--s-1) 0;font-family:var(--font-mono);font-size:var(--t-foot)' }, f.path);
+      filesWrap.appendChild(fRow);
+    }
+    body.appendChild(filesWrap);
+  }
 
   actions.innerHTML = '';
   const toggleBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary' }, enabled ? 'Disable' : 'Enable');

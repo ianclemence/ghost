@@ -28,6 +28,20 @@ async function loadSecurity(container) {
 
   container.appendChild(panel);
 
+  // Active sessions
+  const sessPanel = GhostUI.h('div', { className: 'panel' });
+  const sessHead = GhostUI.h('div', { className: 'panel-head' });
+  const sessTitle = GhostUI.h('div');
+  sessTitle.appendChild(GhostUI.h('h2', {}, 'Active sessions'));
+  sessTitle.appendChild(GhostUI.h('p', {}, 'Signed-in browsers and devices.'));
+  sessHead.appendChild(sessTitle);
+  sessPanel.appendChild(sessHead);
+  const sessBody = GhostUI.h('div', { id: 'sess-body' });
+  sessBody.appendChild(GhostUI.loading('Loading sessions\u2026'));
+  sessPanel.appendChild(sessBody);
+  container.appendChild(sessPanel);
+  loadSessions(sessBody);
+
   // Recent failed sign-ins (only if any)
   const [failRes] = await Promise.allSettled([
     GhostAPI.get('/api/admin/auth/failed-logins'),
@@ -85,6 +99,48 @@ async function doBackup(btn) {
   } catch (e) {
     GhostUI.toast('Couldn’t create the backup.', 'err');
   } finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+async function loadSessions(body) {
+  let res;
+  try { res = await GhostAPI.get('/api/admin/sessions'); }
+  catch (e) {
+    body.innerHTML = '';
+    body.appendChild(GhostUI.errorState('Couldn\u2019t load sessions', 'Try again in a moment.'));
+    return;
+  }
+  body.innerHTML = '';
+  const sessions = res.sessions || [];
+  if (sessions.length === 0) {
+    body.appendChild(GhostUI.emptyState('No active sessions', 'No one is signed in right now.'));
+    return;
+  }
+  sessions.forEach(s => {
+    const row = GhostUI.h('div', { className: 'ghost-row' });
+    const c = GhostUI.h('div', { className: 'ghost-row-content' });
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, s.current ? 'This browser' : (s.user_agent || 'Unknown device').slice(0, 50)));
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, 'Signed in ' + GhostUI.timeAgo(Math.floor(new Date(s.issued_at).getTime() / 1000)) + (s.ip ? '  \u00b7  ' + s.ip : '')));
+    row.appendChild(c);
+    if (!s.current) {
+      const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+      tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
+        try { await GhostAPI.post('/api/admin/sessions/revoke', { token: s.token }); GhostUI.toast('Session signed out'); loadSessions(body); }
+        catch (e) { GhostUI.toast('Couldn\u2019t sign out.', 'err'); }
+      } }, 'Sign out'));
+      row.appendChild(tr);
+    } else {
+      row.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot('ready'), 'You'));
+    }
+    body.appendChild(row);
+  });
+  if (sessions.length > 1) {
+    const allBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-danger', style: 'margin-top:var(--s-3)', onClick: async () => {
+      if (!(await GhostUI.confirmModal('Sign out all other sessions?', 'You will remain signed in on this browser.', 'Sign out all'))) return;
+      try { await GhostAPI.post('/api/admin/sessions/revoke', { action: 'revoke_all' }); GhostUI.toast('Other sessions signed out'); loadSessions(body); }
+      catch (e) { GhostUI.toast('Couldn\u2019t sign out.', 'err'); }
+    } }, 'Sign out all other sessions');
+    body.appendChild(allBtn);
+  }
 }
 
 function kv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
