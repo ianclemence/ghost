@@ -474,7 +474,6 @@ textarea.ghost-input {
 /* ── QR ── */
 .ghost-qr {
   background: var(--paper-raised);
-  border: 1px solid var(--line);
   border-radius: var(--r-md);
   padding: var(--s-4);
   display: inline-flex;
