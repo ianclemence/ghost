@@ -11,9 +11,11 @@ async function loadSkills(container) {
   const installBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showInstall() }, 'Install skill');
   GhostApp.setActions(installBtn);
 
+  const panel = GhostUI.h('div', { className: 'panel' });
   const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'skill-list' });
   listEl.appendChild(GhostUI.loading('Loading skills…'));
-  container.appendChild(listEl);
+  panel.appendChild(listEl);
+  container.appendChild(panel);
 
   let res;
   try { res = await GhostAPI.proxyGet('/v1/skills'); }
