@@ -59,7 +59,7 @@ function renderLocal(panel, models, active) {
     row.appendChild(main);
     const trailing = GhostUI.h('div', { className: 'ghost-row-trailing' });
     if (m !== active) {
-      trailing.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
+      trailing.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: async () => {
         try { await GhostAPI.proxyPost('/v1/model', { model: m }); GhostUI.toast('Default model updated'); loadAI(document.getElementById('view')); }
         catch (e) { GhostUI.toast('Couldn’t set model.', 'err'); }
       } }, 'Use'));
@@ -109,10 +109,10 @@ function renderCloud(panel, cfg) {
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
     if (configured) {
       tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot('ready'), 'Configured'));
-      tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: () => editCloud(key, name, p.api_key) }, 'Edit'));
+      tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => editCloud(key, name, p.api_key) }, 'Edit'));
     } else {
       tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot('neutral'), 'Not configured'));
-      tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: () => editCloud(key, name, '') }, 'Configure'));
+      tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => editCloud(key, name, '') }, 'Configure'));
     }
     row.appendChild(tr);
     panel.appendChild(row);
