@@ -81,10 +81,11 @@ type kimiResponse struct {
 }
 
 func (p *MoonshotProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
-	// Strip provider prefix from model name (e.g., moonshot/kimi-k2.5 -> kimi-k2.5)
-	if idx := strings.Index(model, "/"); idx != -1 {
+	// Strip provider prefix from model name (e.g., moonshot/kimi-k2.5 -> kimi-k2.5,
+	// or moonshot:kimi-k3 -> kimi-k3).
+	if idx := strings.IndexAny(model, "/:"); idx != -1 {
 		prefix := model[:idx]
-		if prefix == "moonshot" || prefix == "kimi" {
+		if prefix == "moonshot" || prefix == "kimi" || prefix == "copilot" {
 			model = model[idx+1:]
 		}
 	}

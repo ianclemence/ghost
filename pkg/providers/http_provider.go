@@ -65,11 +65,13 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		return nil, fmt.Errorf("API base not configured")
 	}
 
-	// Strip provider prefix from model name (e.g., moonshot/kimi-k2.5 -> kimi-k2.5)
-	if idx := strings.Index(model, "/"); idx != -1 {
+	// Strip provider prefix from model name (e.g., moonshot/kimi-k2.5 -> kimi-k2.5,
+	// or deepseek:deepseek-v4-flash -> deepseek-v4-flash).
+	idx := strings.IndexAny(model, "/:")
+	if idx != -1 {
 		prefix := model[:idx]
 		switch prefix {
-		case "moonshot", "kimi", "nvidia", "ollama", "anthropic", "openai", "google", "groq", "deepseek", "openrouter":
+		case "moonshot", "kimi", "nvidia", "ollama", "anthropic", "openai", "google", "groq", "deepseek", "openrouter", "copilot":
 			model = model[idx+1:]
 		}
 	}
