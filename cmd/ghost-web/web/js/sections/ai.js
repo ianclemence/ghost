@@ -326,7 +326,7 @@ function renderRouting(panel, routing) {
     const row = GhostUI.h('div', { className: 'ghost-row' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
     c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, p.label));
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-sub' }, p.desc));
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, p.desc));
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
     const sw = GhostUI.toggle(routing[p.key] || false, async (on) => {
