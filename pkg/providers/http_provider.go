@@ -26,6 +26,7 @@ type HTTPProvider struct {
 	apiBase        string
 	httpClient     *http.Client
 	embeddingModel string
+	defaultModel   string
 }
 
 func NewHTTPProvider(apiKey, apiBase, proxy, embeddingModel string) *HTTPProvider {
@@ -48,6 +49,11 @@ func NewHTTPProvider(apiKey, apiBase, proxy, embeddingModel string) *HTTPProvide
 		httpClient:     client,
 		embeddingModel: embeddingModel,
 	}
+}
+
+// SetDefaultModel sets the default model for this provider.
+func (p *HTTPProvider) SetDefaultModel(model string) {
+	p.defaultModel = model
 }
 
 func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
@@ -447,7 +453,7 @@ func (p *HTTPProvider) Embed(ctx context.Context, text string) ([]float32, error
 }
 
 func (p *HTTPProvider) GetDefaultModel() string {
-	return ""
+	return p.defaultModel
 }
 
 func createClaudeAuthProvider() (LLMProvider, error) {
@@ -695,5 +701,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 		return nil, fmt.Errorf("no API base configured for provider (model: %s)", model)
 	}
 
-	return NewHTTPProvider(apiKey, apiBase, proxy, cfg.Agents.Defaults.EmbeddingModel), nil
+	p := NewHTTPProvider(apiKey, apiBase, proxy, cfg.Agents.Defaults.EmbeddingModel)
+	p.SetDefaultModel(model)
+	return p, nil
 }

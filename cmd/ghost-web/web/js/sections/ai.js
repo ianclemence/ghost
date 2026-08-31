@@ -230,13 +230,15 @@ function renderProviders(panel, cfg, providerModels, ollamaModels) {
 
 function configureProviderModal(key, name, isLocal, cfg) {
   const body = GhostUI.h('div');
+  let keyInput = null;
+  let urlInput = null;
 
   if (isLocal && key === 'ollama') {
     // Ollama setup
     body.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-bottom:var(--s-3)' }, 'Ollama runs on your device. No API key needed.'));
     const urlField = GhostUI.h('div', { className: 'field' });
     urlField.appendChild(GhostUI.h('label', {}, 'Host URL'));
-    const urlInput = GhostUI.h('input', { className: 'ghost-input', type: 'text', value: (cfg && cfg.providers && cfg.providers.ollama && cfg.providers.ollama.api_base) || 'http://localhost:11434' });
+    urlInput = GhostUI.h('input', { className: 'ghost-input', type: 'text', value: (cfg && cfg.providers && cfg.providers.ollama && cfg.providers.ollama.api_base) || 'http://localhost:11434' });
     urlField.appendChild(urlInput);
     body.appendChild(urlField);
   } else {
@@ -244,7 +246,7 @@ function configureProviderModal(key, name, isLocal, cfg) {
     const currentKey = cfg && cfg.providers && cfg.providers[key] && cfg.providers[key].api_key || '';
     const keyField = GhostUI.h('div', { className: 'field' });
     keyField.appendChild(GhostUI.h('label', {}, 'API key'));
-    const keyInput = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: currentKey ? 'Leave empty to keep current key' : 'Paste your API key' });
+    keyInput = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: currentKey ? 'Leave empty to keep current key' : 'Paste your API key' });
     keyField.appendChild(keyInput);
     body.appendChild(keyField);
     if (currentKey) {
