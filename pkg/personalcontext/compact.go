@@ -1,6 +1,9 @@
 package personalcontext
 
 import (
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -93,4 +96,65 @@ func isAdditivePreference(predicate string) bool {
 		}
 	}
 	return strings.Contains(predicate, "likes") || strings.Contains(predicate, "prefer") || strings.Contains(predicate, "favorite")
+}
+
+// durableDirs tracks the workspace-relative subdirectory layout for the
+// curated profile materialized from Personal Context.
+const curatedProfileDir = "knowledge/self"
+
+// curlCuratedKnownKinds are the kinds that are safe to materialize into the
+// human-readable curated profile (durable, identity/belief data — not
+// transient facts).
+var curatedKnownKinds = map[Kind]bool{
+	KindIdentity:     true,
+	KindPreference:   true,
+	KindFact:         true,
+	KindGoal:         true,
+	KindRelationship: true,
+	KindRoutine:      true,
+}
+
+// MaterializeCuratedProfile writes the current durable Personal Context facts
+// into the curated user-profile.md (the always-injected profile layer) so the
+// curated profile is actually populated and stays in sync with Ghost's
+// structured memory. It never invents facts — it only mirrors what Ghost
+// already believes, and it degrades to a no-op if there is nothing durable or
+// the workspace is unavailable. It returns the number of facts written.
+func MaterializeCuratedProfile(workspace string, store *Store) (int, error) {
+	if store == nil {
+		return 0, nil
+	}
+	cur := store.Current()
+	lines := make([]string, 0, len(cur))
+	for _, e := range cur {
+		if !curatedKnownKinds[e.Kind] {
+			continue
+		}
+		val := Value(e)
+		if val == "" {
+			continue
+		}
+		label := Label(e.Predicate)
+		if label == "" {
+			label = e.Predicate
+		}
+		line := label + ": " + val
+		if e.ReinforceCount > 0 {
+			line += " (reinforced " + strconv.Itoa(e.ReinforceCount) + "x)"
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return 0, nil
+	}
+
+	path := filepath.Join(workspace, curatedProfileDir, "user-profile.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return 0, err
+	}
+	content := strings.Join(lines, "\n§\n") + "\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return 0, err
+	}
+	return len(lines), nil
 }

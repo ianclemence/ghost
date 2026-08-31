@@ -2291,6 +2291,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		}
 		var files []FileInfo
 
+		// Optional query: filter by file name OR note content, so "search
+		// memories" can find a note by what it says, not just its name.
+		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+
 		if _, err := os.Stat(memoryDir); err != nil {
 			json.NewEncoder(w).Encode([]FileInfo{})
 			return
@@ -2316,6 +2320,16 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				buf := make([]byte, 4096)
 				n, _ := f.Read(buf)
 				entry.Title, entry.Kind, entry.Summary, entry.Source = parseMemoryMeta(string(buf[:n]))
+			}
+			// When searching, match against the file name or its content.
+			if q != "" {
+				content := ""
+				if b, err := os.ReadFile(path); err == nil {
+					content = string(b)
+				}
+				if !strings.Contains(strings.ToLower(entry.Name), q) && !strings.Contains(strings.ToLower(content), q) && !strings.Contains(strings.ToLower(entry.Title), q) {
+					return nil
+				}
 			}
 			files = append(files, entry)
 			return nil
@@ -2392,6 +2406,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			Kind           string     `json:"kind"`
 			Label          string     `json:"label"`
 			Value          string     `json:"value"`
+			CreatedAt      time.Time  `json:"created_at,omitempty"`
 			ReinforceCount int        `json:"reinforce_count,omitempty"`
 			ReinforcedAt   *time.Time `json:"reinforced_at,omitempty"`
 		}
@@ -2407,6 +2422,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				Kind:           string(e.Kind),
 				Label:          personalcontext.Label(e.Predicate),
 				Value:          personalcontext.Value(e),
+				CreatedAt:      e.CreatedAt,
 				ReinforceCount: e.ReinforceCount,
 				ReinforcedAt:   e.ReinforcedAt,
 			})

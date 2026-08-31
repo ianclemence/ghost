@@ -865,6 +865,13 @@ func (al *AgentLoop) consolidatePersonalContext() {
 	} else if n > 0 {
 		logger.InfoCF("agent", "Personal Context consolidated", map[string]interface{}{"rejected": n})
 	}
+	// Keep the curated (always-injected) profile in sync with Ghost's
+	// structured memory, so the curated layer is actually used.
+	if n, err := personalcontext.MaterializeCuratedProfile(al.workspace, al.pcStore); err != nil {
+		logger.WarnCF("agent", "Curated profile materialization failed", map[string]interface{}{"error": err.Error()})
+	} else if n > 0 {
+		logger.InfoCF("agent", "Curated profile updated", map[string]interface{}{"facts": n})
+	}
 }
 
 func (al *AgentLoop) extractPersonalContext(opts processOptions) {
@@ -1594,6 +1601,7 @@ func (al *AgentLoop) Recall(ctx context.Context, query string) RecallResult {
 		JOIN messages m ON m.rowid = messages_fts.rowid
 		WHERE messages_fts MATCH ?
 		  AND (m.archived IS NULL OR m.archived = 0)
+		  AND m.role IN ('user','assistant')
 		ORDER BY bm25(messages_fts)
 		LIMIT ?
 	`, query, limit)

@@ -162,6 +162,24 @@ var declarationRules = []declarationRule{
 		re:        regexp.MustCompile(`(?i)\bi want to build\s+([^;.,!?]+)`),
 		prefix:    "build ",
 	},
+	{
+		name:      "partner",
+		kind:      KindRelationship,
+		predicate: "relationship/partner",
+		re:        regexp.MustCompile(`(?i)\bmy (?:wife|husband|partner|spouse|girlfriend|boyfriend)'?s? name is\s+([^;.,!?]+)`),
+	},
+	{
+		name:      "work",
+		kind:      KindFact,
+		predicate: "fact/work",
+		re:        regexp.MustCompile(`(?i)\bi work (?:as|at|for)\s+([^;.,!?]+)`),
+	},
+	{
+		name:      "job",
+		kind:      KindFact,
+		predicate: "fact/job",
+		re:        regexp.MustCompile(`(?i)\bmy job is\s+([^;.,!?]+)`),
+	},
 }
 
 var (

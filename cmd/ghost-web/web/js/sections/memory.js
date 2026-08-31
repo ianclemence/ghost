@@ -39,26 +39,20 @@ async function loadMemory(container) {
   }
 }
 
-// renderFacts shows the structured state Ghost learns from conversation — the
-// facts it knows about you plus any notes it has saved. Each item can be
-// forgotten so memory stays yours.
+// renderFacts presents the structured state Ghost learns from conversation as a
+// calm profile hero — grouped by kind, value-first, with provenance and quiet
+// reinforcement, plus any curated notes.
 function renderFacts(container, facts, curated) {
   const panel = GhostUI.h('div', { className: 'panel' });
   const ph = GhostUI.h('div', { className: 'panel-head' });
   const t = GhostUI.h('div');
-  t.appendChild(GhostUI.h('h2', {}, 'About you'));
+  t.appendChild(GhostUI.h('h2', {}, 'What Ghost knows about you'));
   t.appendChild(GhostUI.h('p', {}, 'Learned from your conversations. Forget anything below and it won\u2019t be used anymore.'));
   ph.appendChild(t);
   panel.appendChild(ph);
   const body = GhostUI.h('div', { className: 'self-body' });
   panel.appendChild(body);
   container.appendChild(panel);
-
-  function group(label, rows, build) {
-    if (!rows.length) return;
-    body.appendChild(GhostUI.h('div', { className: 'self-group' }, label));
-    rows.forEach(row => body.appendChild(build(row)));
-  }
 
   const forgetBtn = async (payload) => {
     try {
@@ -68,14 +62,27 @@ function renderFacts(container, facts, curated) {
     } catch (e) { GhostUI.toast('Couldn\u2019t forget that.', 'err'); }
   };
 
-  group('About you', facts, (e) => {
+  const KIND_ORDER = ['identity', 'preference', 'fact', 'goal', 'relationship', 'routine'];
+  const KIND_LABEL = { identity: 'Identity', preference: 'Preferences', fact: 'About you', goal: 'Goals', relationship: 'People', routine: 'Routines' };
+  const kindOf = (k) => (KIND_LABEL[k] ? k : 'fact');
+  const byKind = {};
+  facts.forEach(e => {
+    const k = kindOf(e.kind);
+    (byKind[k] = byKind[k] || []).push(e);
+  });
+
+  function metaFor(e) {
+    const parts = [];
+    if (e.created_at) parts.push('Learned ' + GhostUI.timeAgo(Math.floor(new Date(e.created_at).getTime() / 1000)));
+    if (e.reinforce_count > 1) parts.push('confirmed ' + e.reinforce_count + '\u00d7');
+    return parts.join('  \u00b7  ');
+  }
+
+  function factRow(e) {
     const row = GhostUI.h('div', { className: 'ghost-row self-entry' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:400' }, e.value || e.label));
-    if (e.label && e.value) {
-      const subStr = e.label + (e.reinforce_count > 1 ? '  \u00b7  reinforced ' + e.reinforce_count + '\u00d7' : '');
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, subStr));
-    }
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:500' }, e.value || e.label));
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, (e.label && e.value ? e.label : '') + (metaFor(e) ? '  \u00b7  ' + metaFor(e) : '')));
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
     const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button' }, 'Forget');
@@ -83,20 +90,31 @@ function renderFacts(container, facts, curated) {
     tr.appendChild(btn);
     row.appendChild(tr);
     return row;
+  }
+
+  KIND_ORDER.forEach(k => {
+    const list = byKind[k];
+    if (!list || !list.length) return;
+    body.appendChild(GhostUI.h('div', { className: 'self-group' }, KIND_LABEL[k]));
+    list.sort((a, b) => (b.reinforce_count || 0) - (a.reinforce_count || 0));
+    list.forEach(factRow);
   });
 
-  group('What Ghost has learned', curated, (entry) => {
-    const row = GhostUI.h('div', { className: 'ghost-row self-entry' });
-    const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:400' }, entry));
-    row.appendChild(c);
-    const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
-    const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button' }, 'Forget');
-    btn.addEventListener('click', () => forgetBtn({ target: 'memory', entry: entry }));
-    tr.appendChild(btn);
-    row.appendChild(tr);
-    return row;
-  });
+  if (curated.length) {
+    body.appendChild(GhostUI.h('div', { className: 'self-group' }, 'What Ghost has learned'));
+    curated.forEach(entry => {
+      const row = GhostUI.h('div', { className: 'ghost-row self-entry' });
+      const c = GhostUI.h('div', { className: 'ghost-row-content' });
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:400' }, entry));
+      row.appendChild(c);
+      const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+      const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button' }, 'Forget');
+      btn.addEventListener('click', () => forgetBtn({ target: 'memory', entry: entry }));
+      tr.appendChild(btn);
+      row.appendChild(tr);
+      return row;
+    });
+  }
 }
 
 // renderNotes is the searchable list of memory files Ghost has written.
@@ -111,6 +129,10 @@ function renderNotes(container, files) {
 
   function render(items) {
     listEl.innerHTML = '';
+    if (!items.length) {
+      listEl.appendChild(GhostUI.emptyState('Nothing found', 'Try a different word, or use \u201CWhat did we talk about\u201D to search your conversations.'));
+      return;
+    }
     items.forEach(f => {
       const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openMemory(container, f) });
       const c = GhostUI.h('div', { className: 'ghost-row-content' });
@@ -132,9 +154,20 @@ function renderNotes(container, files) {
   }
 
   render(files);
+  let debounce;
   search.addEventListener('input', () => {
-    const q = search.value.trim().toLowerCase();
-    render(files.filter(f => f.name.toLowerCase().includes(q)));
+    const q = search.value.trim();
+    clearTimeout(debounce);
+    debounce = setTimeout(async () => {
+      if (!q) { render(files); return; }
+      listEl.innerHTML = '';
+      listEl.appendChild(GhostUI.loading('Searching\u2026'));
+      let res;
+      try { res = await GhostAPI.proxyGet('/v1/memory/files?q=' + encodeURIComponent(q)); }
+      catch (e) { listEl.innerHTML = ''; listEl.appendChild(GhostUI.errorState('Couldn\u2019t search', 'Ghost may still be starting.')); return; }
+      const hits = Array.isArray(res) ? res : (res.files || res.items || []);
+      render(hits);
+    }, 200);
   });
 }
 
