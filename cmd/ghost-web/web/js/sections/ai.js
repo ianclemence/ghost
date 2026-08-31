@@ -244,10 +244,14 @@ function configureProviderModal(key, name, isLocal, cfg) {
     const currentKey = cfg && cfg.providers && cfg.providers[key] && cfg.providers[key].api_key || '';
     const keyField = GhostUI.h('div', { className: 'field' });
     keyField.appendChild(GhostUI.h('label', {}, 'API key'));
-    const keyInput = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: currentKey ? 'Enter a new key to replace the current one' : 'Paste your API key' });
+    const keyInput = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: currentKey ? 'Leave empty to keep current key' : 'Paste your API key' });
     keyField.appendChild(keyInput);
     body.appendChild(keyField);
-    body.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, 'Stored securely in your Ghost\u2019s secrets file. Never shown back in full.'));
+    if (currentKey) {
+      body.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, 'A key is saved. Leave the field empty to keep it. Test connection uses the saved key.'));
+    } else {
+      body.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, 'Stored securely in your Ghost\u2019s secrets file. Never shown back in full.'));
+    }
   }
 
   // Test connection button
@@ -260,10 +264,10 @@ function configureProviderModal(key, name, isLocal, cfg) {
     testResult.textContent = '';
     testResult.className = '';
     try {
-      const res = await GhostAPI.post('/api/admin/providers/test', {
-        provider: key,
-        api_key: keyInput ? keyInput.value.trim() : '',
-      });
+      const payload = { provider: key };
+      const val = keyInput ? keyInput.value.trim() : '';
+      if (val) payload.api_key = val;
+      const res = await GhostAPI.post('/api/admin/providers/test', payload);
       if (res.ok) {
         testResult.textContent = '\u2713 ' + (res.message || 'Connected');
         testResult.style.color = 'var(--ok)';
