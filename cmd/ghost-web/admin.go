@@ -23,6 +23,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
+	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
 
@@ -646,6 +647,175 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "AI configuration saved"})
+}
+
+// ---------- Provider models & testing ----------
+
+// knownModels returns the recommended models for each provider.
+// These come from the factory.go validation logic and provider docs.
+var knownModels = map[string][]string{
+	"openai":    {"gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3", "o4-mini"},
+	"anthropic": {"claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-5-haiku-20241022"},
+	"moonshot":  {"kimi-k2.5", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"},
+	"groq":      {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"},
+	"deepseek":  {"deepseek-chat", "deepseek-reasoner"},
+	"gemini":    {"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"},
+	"zhipu":     {"glm-4", "glm-4-flash", "glm-4v"},
+	"openrouter": {},
+	"ollama":    {},
+}
+
+func handleProviderModels(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	// For Ollama, list actual installed models
+	ollamaModels := []string{}
+	if models, err := listOllamaModels(); err == nil {
+		ollamaModels = models
+	}
+
+	providers := map[string]interface{}{}
+	for name, models := range knownModels {
+		pc := getProviderConfig(cfg, name)
+		configured := pc != nil && pc.APIKey != ""
+		providerModels := models
+		if name == "ollama" {
+			providerModels = ollamaModels
+		}
+		providers[name] = map[string]interface{}{
+			"configured": configured,
+			"models":     providerModels,
+			"local":      name == "ollama" || name == "vllm",
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":       true,
+		"provider": cfg.Agents.Defaults.Provider,
+		"model":    cfg.Agents.Defaults.Model,
+		"providers": providers,
+	})
+}
+
+// getProviderConfig returns the ProviderConfig for a given provider name.
+func getProviderConfig(cfg *config.Config, name string) *config.ProviderConfig {
+	switch name {
+	case "openai":
+		return &cfg.Providers.OpenAI
+	case "anthropic":
+		return &cfg.Providers.Anthropic
+	case "moonshot":
+		return &cfg.Providers.Moonshot
+	case "groq":
+		return &cfg.Providers.Groq
+	case "deepseek":
+		return &cfg.Providers.DeepSeek
+	case "gemini":
+		return &cfg.Providers.Gemini
+	case "zhipu":
+		return &cfg.Providers.Zhipu
+	case "openrouter":
+		return &cfg.Providers.OpenRouter
+	case "ollama":
+		return &cfg.Providers.Ollama
+	}
+	return nil
+}
+
+// createProviderForConfig creates an LLM provider from a config.
+func createProviderForConfig(cfg *config.Config) (providers.LLMProvider, error) {
+	return providers.CreateProvider(cfg)
+}
+
+func handleProviderTest(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Provider string `json:"provider"`
+		APIKey   string `json:"api_key"`
+		Model    string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+
+	// Build a temporary config with the provided key to test
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	pc := getProviderConfig(cfg, req.Provider)
+	if pc == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "unknown provider"})
+		return
+	}
+	if req.APIKey != "" {
+		pc.APIKey = req.APIKey
+	}
+
+	// Pick a test model
+	testModel := req.Model
+	if testModel == "" {
+		if models, ok := knownModels[req.Provider]; ok && len(models) > 0 {
+			testModel = models[0]
+		}
+	}
+	if testModel == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "no model to test"})
+		return
+	}
+
+	// Create a provider and attempt a minimal chat
+	cfg.Agents.Defaults.Provider = req.Provider
+	cfg.Agents.Defaults.Model = testModel
+	p, err := createProviderForConfig(cfg)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok":      false,
+			"status":  "error",
+			"message": fmt.Sprintf("Couldn\u2019t create provider: %v", err),
+		})
+		return
+	}
+
+	// Send a minimal test message with a short timeout
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	_, err = p.Chat(ctx, []providers.Message{
+		{Role: "user", Content: "hi"},
+	}, nil, testModel, map[string]interface{}{
+		"max_tokens":  4,
+		"temperature": 0,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok":      false,
+			"status":  "error",
+			"message": fmt.Sprintf("Connection failed: %v", err),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"status":  "ok",
+		"message": "Connected successfully",
+	})
 }
 
 func handleOllamaDelete(w http.ResponseWriter, r *http.Request) {

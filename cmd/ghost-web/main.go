@@ -370,6 +370,8 @@ func main() {
 	mux.HandleFunc("/api/admin/update/status", handleUpdateStatus)
 	mux.HandleFunc("/api/admin/config", handleConfigGet)
 	mux.HandleFunc("/api/admin/config/save", handleConfigSet)
+	mux.HandleFunc("/api/admin/providers/models", handleProviderModels)
+	mux.HandleFunc("/api/admin/providers/test", handleProviderTest)
 	mux.HandleFunc("/api/admin/channels", handleChannelsGet)
 	mux.HandleFunc("/api/admin/channels/save", handleChannelsSet)
 	mux.HandleFunc("/api/admin/network", handleNetworkStatus)
