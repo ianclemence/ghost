@@ -257,7 +257,7 @@ function configureProviderModal(key, name, isLocal, cfg) {
 
   // Test connection button
   const testRow = GhostUI.h('div', { style: 'margin-top:var(--s-3);display:flex;gap:var(--s-2);align-items:center' });
-  const testBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost' }, 'Test connection');
+  const testBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary' }, 'Test connection');
   const testResult = GhostUI.h('span', { style: 'font-size:var(--t-caption)' });
   testBtn.addEventListener('click', async () => {
     testBtn.disabled = true;

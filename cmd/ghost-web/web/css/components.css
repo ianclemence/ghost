@@ -326,10 +326,12 @@ textarea.ghost-input {
 .loading {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--s-3);
   color: var(--ink-faint);
   padding: var(--s-6) 0;
   font-size: var(--t-callout);
+  text-align: center;
 }
 .spinner {
   width: 18px;
