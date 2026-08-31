@@ -184,3 +184,21 @@ func TestVisionToolIsValidImageType(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeDataURL(t *testing.T) {
+	// 1x1 transparent PNG
+	const pngB64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAFgQIAHcT8dQAAAABJRU5ErkJggg=="
+	data, mime, err := decodeDataURL("data:image/png;base64," + pngB64)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if mime != "image/png" {
+		t.Errorf("mime = %q, want image/png", mime)
+	}
+	if len(data) == 0 {
+		t.Error("expected decoded bytes")
+	}
+	if _, _, err := decodeDataURL("not-a-data-url"); err == nil {
+		t.Error("expected error for malformed data url")
+	}
+}

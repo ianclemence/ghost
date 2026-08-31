@@ -530,6 +530,7 @@ func handleConfigGet(w http.ResponseWriter, r *http.Request) {
 		"openrouter": {"api_key": maskKey(cfg.Providers.OpenRouter.APIKey), "api_base": cfg.Providers.OpenRouter.APIBase},
 		"groq":       {"api_key": maskKey(cfg.Providers.Groq.APIKey), "api_base": cfg.Providers.Groq.APIBase},
 		"deepseek":   {"api_key": maskKey(cfg.Providers.DeepSeek.APIKey), "api_base": cfg.Providers.DeepSeek.APIBase},
+		"qwen":       {"api_key": maskKey(cfg.Providers.Qwen.APIKey), "api_base": cfg.Providers.Qwen.APIBase},
 		"gemini":     {"api_key": maskKey(cfg.Providers.Gemini.APIKey), "api_base": cfg.Providers.Gemini.APIBase},
 		"zhipu":      {"api_key": maskKey(cfg.Providers.Zhipu.APIKey), "api_base": cfg.Providers.Zhipu.APIBase},
 		"ollama":     {"api_key": maskKey(cfg.Providers.Ollama.APIKey), "api_base": cfg.Providers.Ollama.APIBase},
@@ -659,6 +660,7 @@ var knownModels = map[string][]string{
 	"moonshot":     {"kimi-k3", "kimi-k2.7-code", "kimi-k2.6"},
 	"groq":         {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"},
 	"deepseek":     {"deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp"},
+	"qwen":         {"qwen3.8-max", "qwen3.7-plus", "qwen3.8-flash", "qwen3.5-omni-plus"},
 	"gemini":       {"gemini-3.6-flash", "gemini-3.1-pro", "gemini-3-flash"},
 	"zhipu":        {"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-4.7", "glm-4.7-flash"},
 	"openrouter":   {},
@@ -727,6 +729,8 @@ func getProviderConfig(cfg *config.Config, name string) *config.ProviderConfig {
 		return &cfg.Providers.OpenRouter
 	case "ollama":
 		return &cfg.Providers.Ollama
+	case "qwen":
+		return &cfg.Providers.Qwen
 	case "nvidia":
 		return &cfg.Providers.Nvidia
 	case "shengsuanyun":

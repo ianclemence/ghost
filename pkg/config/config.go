@@ -123,9 +123,9 @@ type RoutingConfig struct {
 	// User-facing preferences surfaced in the Web Console. These are
 	// hints; the router still falls back to local when the cloud provider
 	// is unavailable regardless of these toggles.
-	PreferLocal          bool `json:"prefer_local"`
-	AllowCloud           bool `json:"allow_cloud"`
-	CloudWhenLocalFails  bool `json:"cloud_when_local_fails"`
+	PreferLocal         bool `json:"prefer_local"`
+	AllowCloud          bool `json:"allow_cloud"`
+	CloudWhenLocalFails bool `json:"cloud_when_local_fails"`
 }
 
 type ChannelsConfig struct {
@@ -227,6 +227,7 @@ type ProvidersConfig struct {
 	Moonshot      ProviderConfig `json:"moonshot"`
 	ShengSuanYun  ProviderConfig `json:"shengsuanyun"`
 	DeepSeek      ProviderConfig `json:"deepseek"`
+	Qwen          ProviderConfig `json:"qwen"`
 	GitHubCopilot ProviderConfig `json:"github_copilot"`
 	Ollama        ProviderConfig `json:"ollama"`
 }
@@ -345,8 +346,8 @@ func DefaultConfig() *Config {
 				SessionStore:        "sqlite",
 			},
 			Routing: RoutingConfig{
-				LightModel:         "",
-				Threshold:          0.35,
+				LightModel:          "",
+				Threshold:           0.35,
 				PreferLocal:         true,
 				AllowCloud:          true,
 				CloudWhenLocalFails: true,
@@ -405,6 +406,7 @@ func DefaultConfig() *Config {
 			Nvidia:       ProviderConfig{},
 			Moonshot:     ProviderConfig{},
 			ShengSuanYun: ProviderConfig{},
+			Qwen:         ProviderConfig{},
 		},
 		Gateway: GatewayConfig{
 			Host: "0.0.0.0",

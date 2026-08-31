@@ -71,7 +71,7 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 	if idx != -1 {
 		prefix := model[:idx]
 		switch prefix {
-		case "moonshot", "kimi", "nvidia", "ollama", "anthropic", "openai", "google", "groq", "deepseek", "openrouter", "copilot":
+		case "moonshot", "kimi", "nvidia", "ollama", "anthropic", "openai", "google", "groq", "deepseek", "openrouter", "copilot", "qwen":
 			model = model[idx+1:]
 		}
 	}
@@ -590,6 +590,14 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 					apiBase = "https://api.deepseek.com"
 				}
 			}
+		case "qwen":
+			if cfg.Providers.Qwen.APIKey != "" {
+				apiKey = cfg.Providers.Qwen.APIKey
+				apiBase = cfg.Providers.Qwen.APIBase
+				if apiBase == "" {
+					apiBase = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+				}
+			}
 		case "github_copilot", "copilot":
 			if cfg.Providers.GitHubCopilot.APIBase != "" {
 				apiBase = cfg.Providers.GitHubCopilot.APIBase
@@ -682,8 +690,17 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			apiKey = cfg.Providers.Nvidia.APIKey
 			apiBase = cfg.Providers.Nvidia.APIBase
 			proxy = cfg.Providers.Nvidia.Proxy
+
 			if apiBase == "" {
 				apiBase = "https://integrate.api.nvidia.com/v1"
+			}
+
+		case (strings.Contains(lowerModel, "qwen") && !strings.HasPrefix(lowerModel, "qwq")) && cfg.Providers.Qwen.APIKey != "":
+			apiKey = cfg.Providers.Qwen.APIKey
+			apiBase = cfg.Providers.Qwen.APIBase
+			proxy = cfg.Providers.Qwen.Proxy
+			if apiBase == "" {
+				apiBase = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 			}
 
 		case cfg.Providers.VLLM.APIBase != "":

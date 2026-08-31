@@ -111,6 +111,7 @@ func extractSecrets(cfg *Config) *Secrets {
 		"moonshot":      &cfg.Providers.Moonshot,
 		"shengsuanyun":  &cfg.Providers.ShengSuanYun,
 		"deepseek":      &cfg.Providers.DeepSeek,
+		"qwen":          &cfg.Providers.Qwen,
 		"githubcopilot": &cfg.Providers.GitHubCopilot,
 		"ollama":        &cfg.Providers.Ollama,
 	}
@@ -172,6 +173,8 @@ func applySecrets(cfg *Config, s *Secrets) {
 			cfg.Providers.ShengSuanYun.APIKey = key
 		case "deepseek":
 			cfg.Providers.DeepSeek.APIKey = key
+		case "qwen":
+			cfg.Providers.Qwen.APIKey = key
 		case "githubcopilot":
 			cfg.Providers.GitHubCopilot.APIKey = key
 		case "ollama":
@@ -240,7 +243,8 @@ func clearSecrets(cfg *Config) {
 		&cfg.Providers.Zhipu, &cfg.Providers.VLLM,
 		&cfg.Providers.Gemini, &cfg.Providers.Nvidia,
 		&cfg.Providers.Moonshot, &cfg.Providers.ShengSuanYun,
-		&cfg.Providers.DeepSeek, &cfg.Providers.GitHubCopilot,
+		&cfg.Providers.DeepSeek, &cfg.Providers.Qwen,
+		&cfg.Providers.GitHubCopilot,
 		&cfg.Providers.Ollama,
 	}
 	for _, p := range providers {

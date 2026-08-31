@@ -32,7 +32,7 @@ func (t *VisionTool) Name() string {
 }
 
 func (t *VisionTool) Description() string {
-	return "Analyze an image from a URL or local file path. Ask questions about the image content."
+	return "Analyze an image from a URL, local file path, or an inline data URL. Ask questions about the image content. Use it for an external/local image that is not already attached to the conversation; images the user attached are already visible."
 }
 
 func (t *VisionTool) Parameters() map[string]interface{} {
@@ -67,7 +67,9 @@ func (t *VisionTool) Execute(ctx context.Context, args map[string]interface{}) *
 	var mimeType string
 	var err error
 
-	if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
+	if strings.HasPrefix(imageURL, "data:") {
+		imageData, mimeType, err = decodeDataURL(imageURL)
+	} else if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
 		imageData, mimeType, err = t.fetchFromURL(ctx, imageURL)
 	} else {
 		imageData, mimeType, err = t.loadFromFile(imageURL)
@@ -92,11 +94,11 @@ func (t *VisionTool) Execute(ctx context.Context, args map[string]interface{}) *
 	encoded := base64.StdEncoding.EncodeToString(imageData)
 
 	result := map[string]interface{}{
-		"image_url":  imageURL,
-		"question":   question,
-		"mime_type":  mimeType,
-		"size_bytes": len(imageData),
-		"base64":     encoded,
+		"image_url":   imageURL,
+		"question":    question,
+		"mime_type":   mimeType,
+		"size_bytes":  len(imageData),
+		"base64":      encoded,
 		"instruction": fmt.Sprintf("Analyze this image and answer: %s", question),
 	}
 
@@ -157,6 +159,39 @@ func (t *VisionTool) fetchFromURL(ctx context.Context, imageURL string) ([]byte,
 	}
 
 	return body, mimeType, nil
+}
+
+// decodeDataURL decodes an inline data:<mime>;base64,<payload> URL into bytes.
+func decodeDataURL(dataURL string) ([]byte, string, error) {
+	i := strings.Index(dataURL, ",")
+	if i < 0 {
+		return nil, "", fmt.Errorf("invalid data URL: missing comma")
+	}
+	header := dataURL[:i]
+	payload := dataURL[i+1:]
+
+	mime := ""
+	base64Enc := false
+	if parts := strings.SplitN(header, ":", 2); len(parts) == 2 {
+		sub := strings.Split(parts[1], ";")
+		if len(sub) > 0 {
+			mime = sub[0]
+		}
+		for _, p := range sub {
+			if p == "base64" {
+				base64Enc = true
+			}
+		}
+	}
+
+	if !base64Enc {
+		return []byte(payload), mime, nil
+	}
+	data, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to decode base64 image: %w", err)
+	}
+	return data, mime, nil
 }
 
 func (t *VisionTool) loadFromFile(filePath string) ([]byte, string, error) {

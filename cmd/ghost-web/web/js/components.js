@@ -118,8 +118,9 @@ const GhostUI = (() => {
 
     const provName = {
       openai: 'OpenAI', anthropic: 'Claude', moonshot: 'Kimi', groq: 'Groq',
-      deepseek: 'DeepSeek', gemini: 'Gemini', zhipu: 'Zhipu', openrouter: 'OpenRouter',
-      nvidia: 'Nvidia', shengsuanyun: 'ShengSuanYun', ollama: 'Local', vllm: 'Local',
+      deepseek: 'DeepSeek', qwen: 'Qwen', gemini: 'Gemini', zhipu: 'Zhipu',
+      openrouter: 'OpenRouter', nvidia: 'Nvidia', shengsuanyun: 'ShengSuanYun',
+      ollama: 'Local', vllm: 'Local',
     }[provider] || (provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : '');
 
     let name = 'Standard';

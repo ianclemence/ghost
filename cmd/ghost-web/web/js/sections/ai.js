@@ -99,7 +99,7 @@ function changeDefaultModal(currentProvider, currentModel, providerModels, ollam
   }
 
   // Cloud providers
-  const order = ['openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'gemini', 'zhipu', 'openrouter'];
+  const order = ['openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter'];
   for (const key of order) {
     const pm = providerModels[key];
     if (!pm || !pm.configured || !pm.models || pm.models.length === 0) continue;
@@ -189,7 +189,7 @@ function renderProviders(panel, cfg, providerModels, ollamaModels) {
   h.appendChild(text);
   panel.appendChild(h);
 
-  const order = ['ollama', 'openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'gemini', 'zhipu', 'openrouter'];
+  const order = ['ollama', 'openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter'];
   const currentProvider = cfg ? (cfg.provider || '') : '';
 
   for (const key of order) {
