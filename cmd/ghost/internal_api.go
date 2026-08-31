@@ -793,12 +793,17 @@ func readSkillDetail(skillsDir, name string) (map[string]interface{}, error) {
 			desc = skillSummaryMD(f["content"])
 		}
 	}
+	enabled := false
+	if _, err := os.Stat(filepath.Join(skillPath, "SKILL.md")); err == nil {
+		enabled = true
+	}
 	return map[string]interface{}{
 		"name":          name,
 		"bundled":       bundled,
 		"user_modified": bundled && entry.UserModified,
 		"description":   desc,
 		"optional":      skills.IsOptionalSkill(name),
+		"enabled":       enabled,
 		"files":         files,
 	}, nil
 }

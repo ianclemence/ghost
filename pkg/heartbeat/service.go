@@ -266,28 +266,31 @@ If there is nothing that requires attention, respond ONLY with: HEARTBEAT_OK
 func (hs *HeartbeatService) createDefaultHeartbeatTemplate() {
 	heartbeatPath := filepath.Join(hs.workspace, "HEARTBEAT.md")
 
-	defaultContent := `# Heartbeat Check List
+	defaultContent := `# Heartbeat Tasks
 
-This file contains tasks for the heartbeat service to check periodically.
+This file tells Ghost what to do periodically when it runs on its own. Only
+write here if you want Ghost to act without being asked.
 
-## Examples
+## Daily briefing (morning only)
 
-- Check for unread messages
-- Review upcoming calendar events
-- Check device status (e.g., MaixCam)
+- If it is between 07:00 and 09:00 by the device clock, run the **daily-briefing**
+  skill: read workspace/skills/daily-briefing/SKILL.md and follow it.
+- It reads your memory, captures, reminders, and weather, and saves a short,
+  calm summary of your day to Memory. It will not duplicate an existing briefing.
+- Outside that window, skip the briefing.
+
+## Reminders
+
+- Read workspace/data/reminders.md and, as part of the briefing, mention
+  anything due today. If no briefing is due, just note them quietly.
 
 ## Instructions
 
-- Execute ALL tasks listed below. Do NOT skip any task.
-- For simple tasks (e.g., report current time), respond directly.
-- For complex tasks that may take time, use the spawn tool to create a subagent.
-- The spawn tool is async - subagent results will be sent to the user automatically.
-- After spawning a subagent, CONTINUE to process remaining tasks.
-- Only respond with HEARTBEAT_OK when ALL tasks are done AND nothing needs attention.
-
----
-
-Add your heartbeat tasks below this line:
+- Available tools: read_file, session_search, exec (for weather), write_file,
+  append_file, remember.
+- If there is nothing to do, respond ONLY with: HEARTBEAT_OK
+- Never invent tasks, facts, or reminders. Keep everything short and calm.
+- Do not surface or send anything unless it genuinely needs the user's attention.
 `
 
 	if err := os.WriteFile(heartbeatPath, []byte(defaultContent), 0644); err != nil {

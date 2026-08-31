@@ -19,6 +19,9 @@ Ghost runs a small model on your hardware for everyday tasks (*Local intelligenc
 ## Memory
 Ghost remembers things that matter as plain notes on this device. Open **Memory** to browse, read, and forget them. Forgetting deletes a note from your Ghost.
 
+## Your daily briefing
+Each morning Ghost writes a short **daily briefing** — a calm look at your day from what it remembers, what you captured, your reminders, and the weather — into **Memory**. Open Memory to read it. You can also ask for one anytime: *"what should I know today?"*
+
 ## Skills
 Skills are capabilities Ghost has installed. Built-ins come with Ghost; you can add more from a GitHub repository. Disable a skill to turn it off without deleting it.
 

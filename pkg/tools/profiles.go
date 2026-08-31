@@ -26,6 +26,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 	},
 	ProfileHeartbeatSafe: {
 		"read_file", "view", "session_search", "exec",
+		"write_file", "append_file", "remember",
 	},
 	ProfileCoding: {
 		"read_file", "write_file", "list_dir", "edit_file", "append_file",

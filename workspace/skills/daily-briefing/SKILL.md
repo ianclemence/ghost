@@ -51,3 +51,21 @@ skip them.
   accordingly.
 - If nothing is known about the user yet (no memory, no captures), say so
   honestly and invite them to tell you a little.
+
+## When run automatically (heartbeat)
+
+When the heartbeat invokes this skill on its own (not on request), do this:
+
+1. Read the sources as above.
+2. Compose the briefing (same style).
+3. **Save it** so it's visible and kept: write it to
+   `workspace/memory/YYYYMM/YYYYMMDD-briefing.md` (create the folder if needed)
+   using `write_file`. Include a title line with the date. This is what shows
+   up in the user's Memory, so keep it calm and short.
+4. If a reminder or capture is due today, mention it in the briefing and check
+   `workspace/data/reminders.md` so it isn't lost.
+5. If there is genuinely nothing to say (no memory, no captures, no due
+   reminders, nothing scheduled), do **not** write a briefing — just finish
+   briefly. Don't invent content.
+6. Never duplicate: if a briefing for today already exists, update it rather
+   than writing a new file.

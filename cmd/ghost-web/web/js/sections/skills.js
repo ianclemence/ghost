@@ -39,15 +39,18 @@ function renderList(listEl, skills) {
   }
   skills.forEach(s => {
     const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openSkill(s.name) });
+    const enabled = s.enabled !== 'false' && s.enabled !== false;
+    const optional = s.optional === 'true' || s.optional === true;
+    const state = !enabled ? 'neutral' : optional ? 'warn' : 'ready';
+    row.appendChild(GhostUI.h('span', { className: 'status-dot ' + state }));
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
     c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, s.name));
     c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle skill-desc' }, s.description || 'No description'));
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
-    const enabled = s.enabled !== 'false' && s.enabled !== false;
     if (!enabled) tr.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary' }, 'Off'));
-    else if (s.optional === 'true' || s.optional === true) tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot('warn'), 'Needs setup'));
-    tr.appendChild(GhostUI.h('span', { className: 'chevron' }, '›'));
+    else if (optional) tr.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary' }, 'Needs setup'));
+    tr.appendChild(GhostUI.h('span', { className: 'chevron' }, '\u203a'));
     row.appendChild(tr);
     listEl.appendChild(row);
   });
@@ -60,10 +63,14 @@ async function openSkill(name) {
 
   const header = GhostUI.h('div', { className: 'skill-modal-header' });
   const titleArea = GhostUI.h('div');
-  titleArea.appendChild(GhostUI.h('h2', { className: 'skill-modal-title' }, name));
-  titleArea.appendChild(GhostUI.h('p', { className: 'skill-modal-sub', id: 'skill-modal-sub' }, 'Loading skill…'));
+  const titleRow = GhostUI.h('div', { className: 'row-flex', style: 'gap:var(--s-2);align-items:center' });
+  const titleDot = GhostUI.h('span', { className: 'status-dot neutral', id: 'skill-status-dot' });
+  titleRow.appendChild(titleDot);
+  titleRow.appendChild(GhostUI.h('h2', { className: 'skill-modal-title' }, name));
+  titleArea.appendChild(titleRow);
+  titleArea.appendChild(GhostUI.h('p', { className: 'skill-modal-sub', id: 'skill-modal-sub' }, 'Loading skill\u2026'));
   header.appendChild(titleArea);
-  const closeBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-icon skill-modal-close', onClick: () => backdrop.remove() }, '✕');
+  const closeBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-icon skill-modal-close', onClick: () => backdrop.remove() }, '\u2715');
   header.appendChild(closeBtn);
   modal.appendChild(header);
 
@@ -87,6 +94,9 @@ async function openSkill(name) {
 
   const sub = document.getElementById('skill-modal-sub');
   const enabled = data.enabled !== false;
+  const optional = !!data.optional;
+  const dot = document.getElementById('skill-status-dot');
+  if (dot) dot.className = 'status-dot ' + (!enabled ? 'neutral' : optional ? 'warn' : 'ready');
   const sk = (data.files || []).find(f => f.path === 'SKILL.md' || f.path === 'SKILL.md.disabled');
   const fm = GhostUI.stripFrontmatter(sk ? sk.content : '');
   const meta = fm.meta;
