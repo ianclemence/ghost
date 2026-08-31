@@ -727,6 +727,10 @@ func getProviderConfig(cfg *config.Config, name string) *config.ProviderConfig {
 		return &cfg.Providers.OpenRouter
 	case "ollama":
 		return &cfg.Providers.Ollama
+	case "nvidia":
+		return &cfg.Providers.Nvidia
+	case "shengsuanyun":
+		return &cfg.Providers.ShengSuanYun
 	}
 	return nil
 }

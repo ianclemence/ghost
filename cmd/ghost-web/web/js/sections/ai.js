@@ -276,7 +276,8 @@ function configureProviderModal(key, name, isLocal, cfg) {
         testResult.style.color = 'var(--bad)';
       }
     } catch (e) {
-      testResult.textContent = '\u2717 Couldn\u2019t reach provider';
+      const msg = e.message || 'Unknown error';
+      testResult.textContent = '\u2717 ' + (msg.includes('Session expired') ? 'Session expired \u2014 please log in again' : msg.length > 80 ? msg.substring(0, 80) + '\u2026' : msg);
       testResult.style.color = 'var(--bad)';
     }
     testBtn.disabled = false;
