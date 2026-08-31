@@ -42,6 +42,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/pairing"
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -2350,17 +2351,39 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	}))
 
 	// ── 6b. Curated personal state ("what Ghost knows about you") ─────────
-	// Surfaces the structured user-profile + curated-memory stores so a user can
-	// see and manage what Ghost has learned about them. The same stores are
-	// always injected into the system prompt (consult + apply); this makes the
-	// state visible and editable.
+	// Surfaces the structured personal-context store (auto-extracted from
+	// conversation) plus the curated-memory notes (the model's own notes) so a
+	// user can see and manage what Ghost has learned about them. The personal
+	// context is always injected into the system prompt (consult + apply); this
+	// makes it visible and editable.
 	mux.HandleFunc("/v1/memory/self", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		type entryView struct {
+			ID    string `json:"id"`
+			Kind  string `json:"kind"`
+			Label string `json:"label"`
+			Value string `json:"value"`
+		}
+		store, err := personalcontext.Open(workspaceDir)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "io_error", "could not read saved facts")
+			return
+		}
+		entries := make([]entryView, 0)
+		for _, e := range store.Current() {
+			entries = append(entries, entryView{
+				ID:    e.ID,
+				Kind:  string(e.Kind),
+				Label: personalcontext.Label(e.Predicate),
+				Value: personalcontext.Value(e),
+			})
+		}
 		curate := tools.NewMemoryCurateTool(workspaceDir)
-		you := curate.Entries("user")
 		notes := curate.Entries("memory")
+		you := curate.Entries("user")
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
-			"you":   you,
-			"notes": notes,
+			"entries": entries,
+			"notes":   notes,
+			"you":     you,
 		})
 	}))
 
@@ -2370,11 +2393,25 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			return
 		}
 		var req struct {
-			Target string `json:"target"` // "user" or "memory"
+			ID     string `json:"id"`     // auto-extracted personal-context entry
+			Target string `json:"target"` // "user" or "memory" for curated notes
 			Entry  string `json:"entry"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+			return
+		}
+		if req.ID != "" {
+			store, err := personalcontext.Open(workspaceDir)
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, "io_error", "could not read saved facts")
+				return
+			}
+			if err := store.Forget(req.ID); err != nil {
+				jsonError(w, http.StatusNotFound, "not_found", "that fact wasn't found")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
 			return
 		}
 		curate := tools.NewMemoryCurateTool(workspaceDir)

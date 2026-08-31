@@ -147,6 +147,20 @@ func digestLabel(predicate string) string {
 	return strings.TrimSpace(strings.NewReplacer(".", " ", "_", " ").Replace(predicate))
 }
 
+// Label returns a human-friendly label for a predicate, e.g. "identity/name" ->
+// "Name" and "preference/favorite_color" -> "Favorite color". It is the
+// surfaced, user-facing form used by the console's personal-context view.
+func Label(predicate string) string {
+	return digestLabel(predicate)
+}
+
+// Value renders an entry's value as readable plain text (unquoted for string
+// values, collapsed single line otherwise). It is the user-facing form of an
+// entry's value for the console.
+func Value(e Entry) string {
+	return digestValue(e)
+}
+
 // digestValue renders an entry's value compactly. String values appear
 // unquoted ("Bangkok", not `"Bangkok"`); anything else is emitted as compact
 // JSON. Newlines are collapsed so a stored value can never break the digest
