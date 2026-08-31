@@ -156,6 +156,12 @@ install-ghost: build-ghost
 	@sudo systemctl stop ghost-web 2>/dev/null || true
 	@sudo mkdir -p /var/ghost/config /var/ghost/data /var/ghost/workspace
 	@sudo mkdir -p $(WORKSPACE_DIR)
+	@# Lock down the install root and personal-data workspace to the owner.
+	@# Ghost stores memory, sessions, conversations and device credentials;
+	@# these must be root-only, not world-readable.
+	@sudo chmod 700 /var/ghost /var/ghost/config /var/ghost/data
+	@sudo chmod 700 /var/lib/ghost /var/lib/ghost/workspace
+	@sudo chmod 600 $(WORKSPACE_DIR)/ghost.db 2>/dev/null || true
 	@# Copy to temp then rename so a running 'ghost update' binary can be replaced (ETXTBSY)
 	@sudo cp $(BINARY_PATH) /usr/local/bin/ghost.new
 	@sudo mv -f /usr/local/bin/ghost.new /usr/local/bin/ghost
