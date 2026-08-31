@@ -73,10 +73,10 @@ async function loadActivity(container) {
 
   if (traces.status === 'fulfilled') {
     const traceVal = traces.value;
-    const incVal = traceVal.incidents || (Array.isArray(traceVal) ? traceVal : null);
-    const incArr = Array.isArray(incVal) ? incVal : [];
+    const incObj = traceVal.incidents || {};
+    const incArr = Array.isArray(incObj) ? incObj : Object.values(incObj);
     for (const inc of incArr.slice(0, 20)) {
-      items.push({ kind: 'errors', ts: Math.floor((inc.timestamp || 0) / 1000) || 0, title: inc.message || 'Incident', meta: inc.level || 'error' });
+      items.push({ kind: 'errors', ts: inc.last_at || 0, title: (inc.channel || 'System') + ': ' + (inc.last_error || 'Incident'), meta: inc.failure_count ? inc.failure_count + ' failures' : 'error' });
     }
   }
 

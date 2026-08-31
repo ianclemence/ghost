@@ -75,7 +75,7 @@ function showDetail(job) {
   } }, paused ? 'Resume' : 'Pause'));
   actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-danger', onClick: async () => {
     if (!(await GhostUI.confirmModal('Delete this automation?', 'This will permanently remove \u201c' + job.name + '\u201d.', 'Delete'))) return;
-    try { await GhostAPI.proxyPost('/v1/cron/jobs/' + job.id + '/remove'); GhostUI.toast('Automation deleted'); loadAutomations(container); }
+    try { await GhostAPI.proxyDel('/v1/cron/jobs/' + job.id); GhostUI.toast('Automation deleted'); loadAutomations(container); }
     catch (e) { GhostUI.toast('Couldn\u2019t delete.', 'err'); }
   } }, 'Delete'));
   ph.appendChild(actions);
@@ -217,13 +217,13 @@ function parseScheduleInput(text) {
   // If it looks like a cron expression (5 space-separated fields, all numbers/wildcards)
   const cronMatch = text.match(/^[\d\*\/\-\,\s]+$/);
   if (cronMatch && text.split(/\s+/).length === 5) {
-    return { kind: 'cron', cron: text };
+    return { kind: 'cron', expr: text };
   }
   // "every Xm" / "every Xh"
   const everyMin = text.match(/^every\s+(\d+)\s*m(?:in)?/i);
-  if (everyMin) return { kind: 'every', every_ms: parseInt(everyMin[1]) * 60000 };
+  if (everyMin) return { kind: 'every', everyMs: parseInt(everyMin[1]) * 60000 };
   const everyHr = text.match(/^every\s+(\d+\.?\d*)\s*h/i);
-  if (everyHr) return { kind: 'every', every_ms: Math.round(parseFloat(everyHr[1]) * 3600000) };
+  if (everyHr) return { kind: 'every', everyMs: Math.round(parseFloat(everyHr[1]) * 3600000) };
   // Try as at
   return { kind: 'at', at: text };
 }

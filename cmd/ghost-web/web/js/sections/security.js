@@ -111,7 +111,7 @@ async function loadSecurity(container) {
 async function doBackup(btn) {
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Preparing\u2026';
   try {
-    const res = await fetch('/api/admin/backup');
+    const res = await fetch('/api/admin/backup', { method: 'POST' });
     if (!res.ok) throw new Error('failed');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);

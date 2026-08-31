@@ -141,22 +141,36 @@ const GhostUI = (() => {
     return backdrop;
   }
 
-  function toast(msg, duration) {
+  function toast(msg, variant, duration) {
     let container = document.querySelector('.ghost-toast-container');
     if (!container) {
       container = h('div', { className: 'ghost-toast-container' });
       document.body.appendChild(container);
     }
-    const t = h('div', { className: 'ghost-toast' }, msg);
+    const cls = variant === 'err' ? 'ghost-toast ghost-toast--err' : variant === 'ok' ? 'ghost-toast ghost-toast--ok' : 'ghost-toast';
+    const t = h('div', { className: cls }, msg);
     container.appendChild(t);
     setTimeout(() => t.remove(), duration || 3000);
   }
 
-  function confirmModal(title, message, confirmLabel, onConfirm) {
-    return modal(title, message, [
-      h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => { e.target.closest('.ghost-modal-backdrop').remove(); } }, 'Cancel'),
-      h('button', { className: 'ghost-btn ghost-btn-danger', onClick: (e) => { e.target.closest('.ghost-modal-backdrop').remove(); onConfirm(); } }, confirmLabel || 'Confirm')
-    ]);
+  function confirmModal(title, message, confirmLabel) {
+    return new Promise((resolve) => {
+      const backdrop = h('div', { className: 'ghost-modal-backdrop' });
+      const box = h('div', { className: 'ghost-modal' });
+      box.appendChild(h('div', { className: 'ghost-modal-title' }, title));
+      if (typeof message === 'string') {
+        box.appendChild(h('div', { className: 'ghost-modal-body' }, message));
+      } else if (message) {
+        box.appendChild(message);
+      }
+      const footer = h('div', { className: 'ghost-modal-footer' });
+      footer.appendChild(h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: () => { backdrop.remove(); resolve(false); } }, 'Cancel'));
+      footer.appendChild(h('button', { className: 'ghost-btn ghost-btn-danger', onClick: () => { backdrop.remove(); resolve(true); } }, confirmLabel || 'Confirm'));
+      box.appendChild(footer);
+      backdrop.appendChild(box);
+      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { backdrop.remove(); resolve(false); } });
+      document.body.appendChild(backdrop);
+    });
   }
 
   // ── Formatting helpers ──

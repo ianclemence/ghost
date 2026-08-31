@@ -877,7 +877,8 @@ func handleChannelsGet(w http.ResponseWriter, r *http.Request) {
 				"to":        cfg.Channels.Email.To,
 			},
 			"whatsapp": map[string]interface{}{
-				"enabled": cfg.Channels.WhatsApp.Enabled,
+				"enabled":   cfg.Channels.WhatsApp.Enabled,
+				"bridge_url": cfg.Channels.WhatsApp.BridgeURL,
 			},
 		},
 		"heartbeat": map[string]interface{}{
@@ -1488,11 +1489,16 @@ func handleSkillsList(w http.ResponseWriter, r *http.Request) {
 			desc = desc[:120] + "..."
 		}
 		entry, bundled := manifest.Skills[name]
+		enabled := true
+		if _, err := os.Stat(filepath.Join(skillsDir, name, "SKILL.md.disabled")); err == nil {
+			enabled = false
+		}
 		skills = append(skills, map[string]string{
 			"name":         name,
 			"description":  desc,
 			"bundled":      strconv.FormatBool(bundled),
 			"user_modified": strconv.FormatBool(bundled && entry.UserModified),
+			"enabled":      strconv.FormatBool(enabled),
 		})
 	}
 	sort.Slice(skills, func(i, j int) bool { return skills[i]["name"] < skills[j]["name"] })
@@ -1745,6 +1751,10 @@ func handleSkillRead(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "skill not found"})
 		return
 	}
+	enabled := true
+	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md.disabled")); err == nil {
+		enabled = false
+	}
 	manifest, _ := skills.LoadManifest(skillsDir)
 	entry, bundled := manifest.Skills[name]
 	files := []map[string]string{}
@@ -1771,6 +1781,7 @@ func handleSkillRead(w http.ResponseWriter, r *http.Request) {
 		"ok":            true,
 		"name":          name,
 		"bundled":       bundled,
+		"enabled":       enabled,
 		"user_modified": bundled && entry.UserModified,
 		"files":         files,
 	})
