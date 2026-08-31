@@ -115,8 +115,8 @@ function showDetail(job) {
 
 function kvRow(label, value) {
   const r = GhostUI.h('div', { className: 'kv-row' });
-  r.appendChild(GhostUI.h('div', { className: 'kv-label' }, label));
-  r.appendChild(GhostUI.h('div', { className: 'kv-value' }, value));
+  r.appendChild(GhostUI.h('div', { className: 'kv-key' }, label));
+  r.appendChild(GhostUI.h('div', { className: 'kv-val' }, value));
   return r;
 }
 

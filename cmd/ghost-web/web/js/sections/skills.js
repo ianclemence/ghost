@@ -88,7 +88,10 @@ async function openSkill(name) {
   try { data = await GhostAPI.proxyGet('/v1/skills/read?name=' + encodeURIComponent(name)); }
   catch (e) {
     body.innerHTML = '';
-    body.appendChild(GhostUI.errorState('Couldn’t open this skill', 'It may have been removed.'));
+    body.appendChild(GhostUI.errorState('Couldn\u2019t open this skill', 'Ghost may still be starting.'));
+    const retry = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', type: 'button' }, 'Try again');
+    retry.addEventListener('click', () => { backdrop.remove(); openSkill(name); });
+    body.appendChild(retry);
     return;
   }
 
