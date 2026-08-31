@@ -253,6 +253,15 @@ textarea.ghost-input {
   color: var(--ink-faint);
   margin-top: 2px;
 }
+/* Subtle raw model / technical id shown under a friendly model name. */
+.model-id {
+  font-size: var(--t-foot);
+  color: var(--ink-ghost);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ghost-row-trailing {
   flex: none;
   display: flex;

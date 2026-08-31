@@ -106,6 +106,40 @@ const GhostUI = (() => {
     return e;
   }
 
+  // modelFriendly turns a raw model id like "deepseek:deepseek-v4-flash" or
+  // "ollama:qwen3:0.6b" into something a normal person understands. The friendly
+  // name is the headline; the raw id is shown as a subtle secondary line.
+  function modelFriendly(full) {
+    const raw = (full || '').trim();
+    let provider = '', model = raw;
+    const sep = raw.indexOf(':');
+    if (sep >= 0) { provider = raw.slice(0, sep); model = raw.slice(sep + 1); }
+    const m = (model || '').toLowerCase();
+
+    const provName = {
+      openai: 'OpenAI', anthropic: 'Claude', moonshot: 'Kimi', groq: 'Groq',
+      deepseek: 'DeepSeek', gemini: 'Gemini', zhipu: 'Zhipu', openrouter: 'OpenRouter',
+      nvidia: 'Nvidia', shengsuanyun: 'ShengSuanYun', ollama: 'Local', vllm: 'Local',
+    }[provider] || (provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : '');
+
+    let name = 'Standard';
+    if (provider === 'ollama' || provider === 'vllm') {
+      const size = m.match(/(\d+(?:\.\d+)?)b/);
+      if (size) {
+        const n = parseFloat(size[1]);
+        name = n <= 1 ? 'Local \u2014 small' : n <= 8 ? 'Local \u2014 medium' : 'Local \u2014 large';
+      } else {
+        name = 'Local';
+      }
+    } else if (/(flash|mini|haiku|nano|fast|lite|quick|small)/.test(m)) {
+      name = 'Fast';
+    } else if (/(pro|opus|sonnet|reason|thinking|o3|o4|large|max|ultra|extended)/.test(m)) {
+      name = 'Deep thinking';
+    }
+
+    return { name, provider, model, raw, provName };
+  }
+
   function loading(text) {
     return h('div', { className: 'loading' },
       h('div', { className: 'spinner' }),
@@ -171,6 +205,30 @@ const GhostUI = (() => {
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { backdrop.remove(); resolve(false); } });
       document.body.appendChild(backdrop);
     });
+  }
+
+  // downloadBackup triggers a backup download from the gateway. Shared by the
+  // Security section and the Home "Back up your Ghost" surface so users always
+  // have a one-click path to their copy of Ghost state.
+  async function downloadBackup(btn) {
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Preparing\u2026';
+    try {
+      const res = await fetch('/api/admin/backup', { method: 'POST' });
+      if (!res.ok) throw new Error('failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = h('a');
+      a.href = url;
+      a.download = 'ghost-backup-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.tar.gz';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast('Backup downloaded');
+    } catch (e) {
+      toast('Couldn\u2019t create the backup.', 'err');
+    } finally {
+      btn.disabled = false; btn.textContent = orig;
+    }
   }
 
   // ── Formatting helpers ──
@@ -300,5 +358,5 @@ const GhostUI = (() => {
     return html;
   }
 
-  return { el, h, ghostMark, statusDot, badge, btn, input, textarea, select, toggle, row, linkRow, sectionGroup, emptyState, loading, errorState, modal, toast, confirmModal, fmtNum, timeAgo, clockTime, dayLabel, md };
+  return { el, h, ghostMark, statusDot, badge, btn, input, textarea, select, toggle, row, linkRow, sectionGroup, emptyState, loading, errorState, modal, toast, confirmModal, downloadBackup, fmtNum, timeAgo, clockTime, dayLabel, md, modelFriendly };
 })();

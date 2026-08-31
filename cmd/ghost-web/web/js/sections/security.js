@@ -56,7 +56,7 @@ async function loadSecurity(container) {
   bkKv.appendChild(kv('Secrets', 'Not included'));
   bk.appendChild(bkKv);
   const bkActions = GhostUI.h('div', { className: 'row-flex', style: 'margin-top:var(--s-4)' });
-  const bkBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => doBackup(bkBtn) }, 'Download backup');
+  const bkBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => GhostUI.downloadBackup(bkBtn) }, 'Download backup');
   bkActions.appendChild(bkBtn);
   bk.appendChild(bkActions);
   bk.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3)' }, 'Store the file somewhere safe. Secrets like API keys and your password are not included.'));
@@ -106,24 +106,6 @@ async function loadSecurity(container) {
   });
   panel.appendChild(pwBtn);
   container.appendChild(panel);
-}
-
-async function doBackup(btn) {
-  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Preparing\u2026';
-  try {
-    const res = await fetch('/api/admin/backup', { method: 'POST' });
-    if (!res.ok) throw new Error('failed');
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'ghost-backup-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.tar.gz';
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-    GhostUI.toast('Backup downloaded');
-  } catch (e) {
-    GhostUI.toast('Couldn\u2019t create the backup.', 'err');
-  } finally { btn.disabled = false; btn.textContent = orig; }
 }
 
 function kv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }

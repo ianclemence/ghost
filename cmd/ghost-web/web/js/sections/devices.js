@@ -36,7 +36,7 @@ async function renderDevices(listEl) {
   }
 
   if (devices.length === 0) {
-    listEl.appendChild(GhostUI.emptyState('No devices connected', 'Connect your phone to take Ghost with you. Your Ghost stays on this hardware — your phone is just how you talk to it.'));
+    listEl.appendChild(GhostUI.emptyState('No devices connected', 'Connect your phone by scanning a code \u2014 then you can talk to Ghost from anywhere, while your Ghost stays on this hardware.'));
     listEl.appendChild(GhostUI.h('div', { style: 'text-align:center' }, GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showPairingModal() }, 'Connect a device')));
     return;
   }

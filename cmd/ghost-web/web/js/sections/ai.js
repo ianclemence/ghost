@@ -65,14 +65,15 @@ function renderDefaultModel(panel, currentProvider, currentModel, providerModels
   panel.appendChild(h);
 
   if (currentProvider && currentModel) {
+    const f = GhostUI.modelFriendly(currentProvider + ':' + currentModel);
     const row = GhostUI.h('div', { className: 'ghost-row' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-size:var(--t-body);font-weight:600' }, currentModel));
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-size:var(--t-body);font-weight:600' }, f.name));
     const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
-    const isLocal = currentProvider === 'ollama' || currentProvider === 'vllm';
-    sub.appendChild(document.createTextNode(currentProvider.charAt(0).toUpperCase() + currentProvider.slice(1)));
-    sub.appendChild(document.createTextNode(' \u00b7 '));
-    sub.appendChild(document.createTextNode(isLocal ? 'Local' : 'Cloud'));
+    sub.appendChild(document.createTextNode(f.provName + (f.provName ? ' \u00b7 ' : '') + f.model));
+    if (f.provider === 'ollama' || f.provider === 'vllm') {
+      sub.appendChild(document.createTextNode(' \u00b7 Local'));
+    }
     c.appendChild(sub);
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
@@ -82,7 +83,7 @@ function renderDefaultModel(panel, currentProvider, currentModel, providerModels
     row.appendChild(tr);
     panel.appendChild(row);
   } else {
-    panel.appendChild(GhostUI.emptyState('No default model set', 'Configure a provider below, then choose a default model.'));
+    panel.appendChild(GhostUI.emptyState('No model selected', 'Pick a model below so Ghost knows how to think.'));
   }
 }
 
@@ -119,22 +120,11 @@ function changeDefaultModal(currentProvider, currentModel, providerModels, ollam
     const groupLabel = GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3);margin-bottom:var(--s-1);font-weight:600;text-transform:uppercase;letter-spacing:0.05em' }, g.label);
     body.appendChild(groupLabel);
     for (const m of g.models) {
-      const val = g.provider + ':' + m;
-      const row = GhostUI.h('div', { className: 'ghost-row', style: 'cursor:pointer;padding:var(--s-2) var(--s-3)' });
-      const dot = GhostUI.h('span', { className: 'status-dot ' + (val === selected ? 'ready' : 'neutral'), style: 'flex-shrink:0' });
-      row.appendChild(dot);
-      const name = GhostUI.h('span', { style: 'margin-left:var(--s-2);font-size:var(--t-body)' + (val === selected ? ';font-weight:600' : '') }, m);
-      row.appendChild(name);
-      if (val === currentProvider + ':' + currentModel) {
-        row.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary', style: 'margin-left:auto' }, 'Current'));
-      }
-      row.addEventListener('click', () => {
+      body.appendChild(modelOptionRow(g, m, selected, currentProvider + ':' + currentModel, (val) => {
         selected = val;
-        // Re-render modal
         body.innerHTML = '';
         changeDefaultModalBody(body, groups, selected, currentProvider, currentModel);
-      });
-      body.appendChild(row);
+      }));
     }
   }
 
@@ -161,23 +151,32 @@ function changeDefaultModalBody(body, groups, selected, currentProvider, current
     const groupLabel = GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3);margin-bottom:var(--s-1);font-weight:600;text-transform:uppercase;letter-spacing:0.05em' }, g.label);
     body.appendChild(groupLabel);
     for (const m of g.models) {
-      const val = g.provider + ':' + m;
-      const row = GhostUI.h('div', { className: 'ghost-row', style: 'cursor:pointer;padding:var(--s-2) var(--s-3)' });
-      const dot = GhostUI.h('span', { className: 'status-dot ' + (val === selected ? 'ready' : 'neutral'), style: 'flex-shrink:0' });
-      row.appendChild(dot);
-      const name = GhostUI.h('span', { style: 'margin-left:var(--s-2);font-size:var(--t-body)' + (val === selected ? ';font-weight:600' : '') }, m);
-      row.appendChild(name);
-      if (val === currentProvider + ':' + currentModel) {
-        row.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary', style: 'margin-left:auto' }, 'Current'));
-      }
-      row.addEventListener('click', () => {
+      body.appendChild(modelOptionRow(g, m, selected, currentProvider + ':' + currentModel, (val) => {
         selected = val;
         body.innerHTML = '';
         changeDefaultModalBody(body, groups, selected, currentProvider, currentModel);
-      });
-      body.appendChild(row);
+      }));
     }
   }
+}
+
+// modelOptionRow renders a selectable model in the "Change default model" modal.
+// It shows a friendly name with the raw model id as a subtle secondary line.
+function modelOptionRow(g, m, selected, currentVal, onPick) {
+  const val = g.provider + ':' + m;
+  const f = GhostUI.modelFriendly(val);
+  const row = GhostUI.h('div', { className: 'ghost-row', style: 'cursor:pointer;padding:var(--s-2) var(--s-3)' });
+  const dot = GhostUI.h('span', { className: 'status-dot ' + (val === selected ? 'ready' : 'neutral'), style: 'flex-shrink:0' });
+  row.appendChild(dot);
+  const content = GhostUI.h('div', { style: 'margin-left:var(--s-2);min-width:0;flex:1' });
+  content.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-size:var(--t-body);font-weight:' + (val === selected ? '600' : '400') }, f.name));
+  content.appendChild(GhostUI.h('div', { className: 'model-id', 'aria-hidden': 'true' }, f.model));
+  row.appendChild(content);
+  if (val === currentVal) {
+    row.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary', style: 'margin-left:auto' }, 'Current'));
+  }
+  row.addEventListener('click', () => onPick(val));
+  return row;
 }
 
 // ── Providers panel ──
@@ -358,9 +357,11 @@ function renderLocal(panel, models, active) {
   panel.appendChild(h);
 
   for (const m of models) {
+    const f = GhostUI.modelFriendly('ollama:' + m);
     const row = GhostUI.h('div', { className: 'ghost-row' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, m));
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, f.name));
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle', 'aria-hidden': 'true' }, m));
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
     if (m === active) {

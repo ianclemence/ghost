@@ -53,6 +53,20 @@ async function loadHome(container) {
   attentionSection.appendChild(attentionBody);
   view.appendChild(attentionSection);
 
+  // Keep your Ghost — the ownership promise, front and centre.
+  const keepSection = GhostUI.h('section', { className: 'home-section home-keep', 'aria-labelledby': 'home-keep-title' });
+  const keepHead = GhostUI.h('div', { className: 'home-section-head' });
+  keepHead.appendChild(GhostUI.h('h2', { className: 'home-section-title', id: 'home-keep-title' }, 'Keep your Ghost'));
+  keepSection.appendChild(keepHead);
+  keepSection.appendChild(GhostUI.h('p', { className: 'type-foot text-tertiary', style: 'margin:var(--s-1) 0 var(--s-3)' }, 'Your Ghost moves with you. Back it up so you always have your memory, skills, and settings \u2014 and know how to bring it back if it ever stops.'));
+  const keepActions = GhostUI.h('div', { className: 'row-flex', style: 'gap:var(--s-3);align-items:center' });
+  const backupBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', type: 'button' }, 'Back up my Ghost');
+  backupBtn.addEventListener('click', () => GhostUI.downloadBackup(backupBtn));
+  keepActions.appendChild(backupBtn);
+  keepActions.appendChild(GhostUI.h('button', { className: 'home-link', type: 'button', onClick: () => recoveryModal() }, 'How recovery works  \u2192'));
+  keepSection.appendChild(keepActions);
+  view.appendChild(keepSection);
+
   container.appendChild(view);
 
   // Independent fetches — a single failure shouldn't blank the page.
@@ -90,6 +104,25 @@ function greetingFor(hour) {
   if (hour < 12) return 'Good morning';
   if (hour < 18) return 'Good afternoon';
   return 'Good evening';
+}
+
+// recoveryModal explains, in plain language, how to bring Ghost back if it ever
+// stops working. Recovery only ever touches the device itself.
+function recoveryModal() {
+  const body = GhostUI.h('div');
+  body.appendChild(GhostUI.h('p', {}, 'If your Ghost ever stops working, you can recover it from the device. Recovery never touches your memories, skills, or settings \u2014 those stay on the device.'));
+  const list = GhostUI.h('ol', { style: 'margin:var(--s-3) 0;padding-left:var(--s-5)' });
+  const steps = [
+    'Restart your Ghost from the System section.',
+    'Still not working? Open a terminal on the device and run:  GHOST_RECOVERY_MODE=1 ghost gateway',
+    'The device opens a small recovery page \u2014 on the device only, not the network \u2014 where you can see what\u2019s wrong, restart your Ghost, or reset its password.',
+    'If you ever need to start fresh, your backup lets you bring your Ghost back.',
+  ];
+  steps.forEach(s => list.appendChild(GhostUI.h('li', { style: 'margin-bottom:var(--s-2)' }, s)));
+  body.appendChild(list);
+  GhostUI.modal('Recovering your Ghost', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
+  ]);
 }
 
 function activitySkeleton() {
@@ -162,7 +195,8 @@ function inferLocalAI(ollamaRes, activeModelRes) {
   const active = (activeModelRes.status === 'fulfilled' && activeModelRes.value && activeModelRes.value.active) || '';
   const isLocal = active && /ollama/i.test(active);
   if (isLocal) {
-    return { label: shortModelName(active) + '  \u00b7  ' + models.length + ' installed', state: 'ok' };
+    const f = GhostUI.modelFriendly(active);
+    return { label: (f.name || shortModelName(active)) + '  \u00b7  ' + models.length + ' installed', state: 'ok' };
   }
   return { label: models.length + ' installed', state: 'ok' };
 }

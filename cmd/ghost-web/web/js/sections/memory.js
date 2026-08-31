@@ -33,7 +33,7 @@ async function loadMemory(container) {
   function render(items) {
     listEl.innerHTML = '';
     if (!Array.isArray(items) || items.length === 0) {
-      listEl.appendChild(GhostUI.emptyState('Nothing remembered yet', 'Ghost hasn\u2019t stored any memory. As you talk, it will remember what matters.'));
+      listEl.appendChild(GhostUI.emptyState('Nothing remembered yet', 'Start talking to Ghost \u2014 it keeps notes on what matters. You can read or forget them here anytime.'));
       return;
     }
     items.forEach(f => {

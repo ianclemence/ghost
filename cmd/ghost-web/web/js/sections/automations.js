@@ -32,7 +32,7 @@ async function loadAutomations(container) {
 function renderList(listEl, jobs) {
   listEl.innerHTML = '';
   if (jobs.length === 0) {
-    listEl.appendChild(GhostUI.emptyState('No automations yet', 'Schedule something Ghost should do regularly \u2014 a morning briefing, a weekly research roundup.'));
+    listEl.appendChild(GhostUI.emptyState('No automations yet', 'Create one to have Ghost do something on a schedule \u2014 a morning briefing, a weekly research roundup, a daily check-in.'));
     return;
   }
   jobs.forEach(job => {

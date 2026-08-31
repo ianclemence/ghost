@@ -34,7 +34,7 @@ async function loadSkills(container) {
 function renderList(listEl, skills) {
   listEl.innerHTML = '';
   if (!skills || skills.length === 0) {
-    listEl.appendChild(GhostUI.emptyState('No skills installed', 'Ghost comes with built-in skills. If none are present, something may be wrong.'));
+    listEl.appendChild(GhostUI.emptyState('No skills installed yet', 'Add your first skill from a GitHub repository, or Ghost comes with built-in skills ready to enable. Skills are the things Ghost can do for you.'));
     return;
   }
   skills.forEach(s => {
