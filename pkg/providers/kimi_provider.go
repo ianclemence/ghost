@@ -24,7 +24,7 @@ type KimiProvider struct {
 
 func NewKimiProvider(apiKey, apiBase string) *KimiProvider {
 	if apiBase == "" {
-		apiBase = "https://api.moonshot.ai/v1"
+		apiBase = "https://api.moonshot.cn/v1"
 	}
 	return &KimiProvider{
 		apiKey:  apiKey,

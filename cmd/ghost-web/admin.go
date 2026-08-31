@@ -654,15 +654,17 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 // knownModels returns the recommended models for each provider.
 // These come from the factory.go validation logic and provider docs.
 var knownModels = map[string][]string{
-	"openai":    {"gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3", "o4-mini"},
-	"anthropic": {"claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-5-haiku-20241022"},
-	"moonshot":  {"kimi-k2.5", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"},
-	"groq":      {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"},
+	"openai":    {"gpt-5.4", "gpt-5.4-mini", "gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini", "gpt-4o", "gpt-4o-mini"},
+	"anthropic": {"claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-5"},
+	"moonshot":  {"kimi-k3", "kimi-k2.7-code", "kimi-k2.6"},
+	"groq":      {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"},
 	"deepseek":  {"deepseek-v4-flash", "deepseek-v4-pro"},
-	"gemini":    {"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"},
-	"zhipu":     {"glm-4", "glm-4-flash", "glm-4v"},
+	"gemini":    {"gemini-3.6-flash", "gemini-3.1-pro", "gemini-3-flash"},
+	"zhipu":     {"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-4.7", "glm-4.7-flash"},
 	"openrouter": {},
 	"ollama":    {},
+	"nvidia":    {"deepseek-ai/deepseek-v4-flash", "meta/llama-3.3-70b-instruct", "qwen/qwq-32b"},
+	"shengsuanyun": {},
 }
 
 func handleProviderModels(w http.ResponseWriter, r *http.Request) {

@@ -541,7 +541,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				apiKey = cfg.Providers.Gemini.APIKey
 				apiBase = cfg.Providers.Gemini.APIBase
 				if apiBase == "" {
-					apiBase = "https://generativelanguage.googleapis.com/v1beta"
+					apiBase = "https://generativelanguage.googleapis.com/v1beta/openai"
 				}
 			}
 		case "vllm":
@@ -640,7 +640,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			apiBase = cfg.Providers.Gemini.APIBase
 			proxy = cfg.Providers.Gemini.Proxy
 			if apiBase == "" {
-				apiBase = "https://generativelanguage.googleapis.com/v1beta"
+				apiBase = "https://generativelanguage.googleapis.com/v1beta/openai"
 			}
 
 		case (strings.Contains(lowerModel, "glm") || strings.Contains(lowerModel, "zhipu") || strings.Contains(lowerModel, "zai")) && cfg.Providers.Zhipu.APIKey != "":
