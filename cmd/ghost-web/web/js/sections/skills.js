@@ -41,7 +41,7 @@ function renderList(listEl, skills) {
     const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openSkill(s.name) });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
     c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, s.name));
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, s.description || 'No description'));
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle skill-desc' }, s.description || 'No description'));
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
     const enabled = s.enabled !== 'false' && s.enabled !== false;
