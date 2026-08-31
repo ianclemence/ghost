@@ -27,7 +27,8 @@ const GhostAPI = (() => {
       }
       const ct = res.headers.get('content-type') || '';
       if (ct.includes('application/json')) return res.json();
-      return res;
+      const text = await res.text().catch(() => '');
+      try { return JSON.parse(text); } catch (_) { return text; }
     } finally {
       clearTimeout(timer);
     }
