@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -63,5 +64,42 @@ func TestHTTPProvider_GetDefaultModel(t *testing.T) {
 	p.SetDefaultModel("deepseek:deepseek-v4-flash")
 	if got := p.GetDefaultModel(); got != "deepseek:deepseek-v4-flash" {
 		t.Errorf("expected default model %q, got %q", "deepseek:deepseek-v4-flash", got)
+	}
+}
+
+func TestToOpenAIMessages_VisualContentArray(t *testing.T) {
+	msgs := []Message{
+		{Role: "user", Content: "look", MultiContent: []ContentPart{
+			{Type: "text", Text: "what color"},
+			{Type: "image_url", ImageURL: &ImageURL{URL: "data:image/png;base64,abc"}},
+		}},
+		{Role: "assistant", Content: "hi"},
+	}
+	out := toOpenAIMessages(msgs)
+	if len(out) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(out))
+	}
+	// The visual message must carry content as an array of blocks.
+	b, _ := json.Marshal(out[0])
+	s := string(b)
+	for _, want := range []string{`"type":"text"`, `"type":"image_url"`, `data:image/png;base64,abc`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("expected %q in %s", want, s)
+		}
+	}
+	// The non-visual message keeps a plain string content.
+	s2, _ := json.Marshal(out[1])
+	if !strings.Contains(string(s2), `"content":"hi"`) {
+		t.Errorf("expected plain content in non-visual message, got %s", string(s2))
+	}
+}
+
+func TestImageBase64Part(t *testing.T) {
+	got := imageBase64Part("data:image/png;base64,QUJD")
+	if got != "QUJD" {
+		t.Errorf("got %q, want QUJD", got)
+	}
+	if imageBase64Part("https://x/y.png") != "" {
+		t.Errorf("expected empty for non-data url")
 	}
 }

@@ -1250,10 +1250,54 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 }
 
 func (al *AgentLoop) selectModel(opts processOptions, messages []providers.Message) (string, float64) {
-	if al.router == nil {
-		return al.model, 1
+	model := al.model
+	conf := 1.0
+	if al.router != nil {
+		model, conf = al.router.SelectModel(opts.UserMessage, messages, len(opts.Media) > 0, al.model)
 	}
-	return al.router.SelectModel(opts.UserMessage, messages, len(opts.Media) > 0, al.model)
+	// If the turn carries an image, prefer a vision-capable model so the
+	// provider actually receives it (e.g. DeepSeek's default flash model does
+	// not accept images; the vision model does).
+	if messagesContainImages(messages) {
+		if vm := visionModelFor(model); vm != "" {
+			return vm, conf
+		}
+	}
+	return model, conf
+}
+
+// visionModelFor maps a configured provider:model to a vision-capable model of
+// the same provider, when the configured one cannot see images. Providers whose
+// models are already multimodal (OpenAI, Anthropic, Gemini, Groq, etc.) are
+// left untouched.
+func visionModelFor(model string) string {
+	p, _ := splitProviderModel(model)
+	switch p {
+	case "deepseek":
+		return "deepseek:deepseek-v4-flash-vision-exp"
+	}
+	return ""
+}
+
+// splitProviderModel separates a "provider:model" or "provider/model" id.
+func splitProviderModel(model string) (string, string) {
+	for _, sep := range []string{":", "/"} {
+		if i := strings.Index(model, sep); i >= 0 {
+			return model[:i], model[i+1:]
+		}
+	}
+	return "", model
+}
+
+func messagesContainImages(messages []providers.Message) bool {
+	for _, m := range messages {
+		for _, p := range m.MultiContent {
+			if p.ImageURL != nil && p.ImageURL.URL != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // classifyTaskKind produces a coarse task category for the evolution

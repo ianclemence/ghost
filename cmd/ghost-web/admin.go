@@ -183,14 +183,14 @@ func handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":         true,
-		"hostname":   hostname,
-		"version":    version,
-		"uptime":     systemUptime(),
-		"ip":         ip,
-		"model":      model,
-		"provider":   provider,
-		"ollama_url": ollamaURL,
+		"ok":          true,
+		"hostname":    hostname,
+		"version":     version,
+		"uptime":      systemUptime(),
+		"ip":          ip,
+		"model":       model,
+		"provider":    provider,
+		"ollama_url":  ollamaURL,
 		"cpu_percent": cpuUsagePercent(),
 		"cpu_count":   runtime.NumCPU(),
 		"load": map[string]float64{
@@ -524,30 +524,30 @@ func handleConfigGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	providers := map[string]map[string]interface{}{
-		"moonshot":  {"api_key": maskKey(cfg.Providers.Moonshot.APIKey), "api_base": cfg.Providers.Moonshot.APIBase},
-		"anthropic": {"api_key": maskKey(cfg.Providers.Anthropic.APIKey), "api_base": cfg.Providers.Anthropic.APIBase},
-		"openai":    {"api_key": maskKey(cfg.Providers.OpenAI.APIKey), "api_base": cfg.Providers.OpenAI.APIBase},
+		"moonshot":   {"api_key": maskKey(cfg.Providers.Moonshot.APIKey), "api_base": cfg.Providers.Moonshot.APIBase},
+		"anthropic":  {"api_key": maskKey(cfg.Providers.Anthropic.APIKey), "api_base": cfg.Providers.Anthropic.APIBase},
+		"openai":     {"api_key": maskKey(cfg.Providers.OpenAI.APIKey), "api_base": cfg.Providers.OpenAI.APIBase},
 		"openrouter": {"api_key": maskKey(cfg.Providers.OpenRouter.APIKey), "api_base": cfg.Providers.OpenRouter.APIBase},
-		"groq":      {"api_key": maskKey(cfg.Providers.Groq.APIKey), "api_base": cfg.Providers.Groq.APIBase},
-		"deepseek":  {"api_key": maskKey(cfg.Providers.DeepSeek.APIKey), "api_base": cfg.Providers.DeepSeek.APIBase},
-		"gemini":    {"api_key": maskKey(cfg.Providers.Gemini.APIKey), "api_base": cfg.Providers.Gemini.APIBase},
-		"zhipu":     {"api_key": maskKey(cfg.Providers.Zhipu.APIKey), "api_base": cfg.Providers.Zhipu.APIBase},
-		"ollama":    {"api_key": maskKey(cfg.Providers.Ollama.APIKey), "api_base": cfg.Providers.Ollama.APIBase},
+		"groq":       {"api_key": maskKey(cfg.Providers.Groq.APIKey), "api_base": cfg.Providers.Groq.APIBase},
+		"deepseek":   {"api_key": maskKey(cfg.Providers.DeepSeek.APIKey), "api_base": cfg.Providers.DeepSeek.APIBase},
+		"gemini":     {"api_key": maskKey(cfg.Providers.Gemini.APIKey), "api_base": cfg.Providers.Gemini.APIBase},
+		"zhipu":      {"api_key": maskKey(cfg.Providers.Zhipu.APIKey), "api_base": cfg.Providers.Zhipu.APIBase},
+		"ollama":     {"api_key": maskKey(cfg.Providers.Ollama.APIKey), "api_base": cfg.Providers.Ollama.APIBase},
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":            true,
-		"provider":      cfg.Agents.Defaults.Provider,
-		"model":         cfg.Agents.Defaults.Model,
+		"ok":              true,
+		"provider":        cfg.Agents.Defaults.Provider,
+		"model":           cfg.Agents.Defaults.Model,
 		"fallback_models": cfg.Agents.Defaults.FallbackModels,
 		"embedding_model": cfg.Agents.Defaults.EmbeddingModel,
-		"model_list":    cfg.Agents.ModelList,
-		"max_tokens":    cfg.Agents.Defaults.MaxTokens,
-		"temperature":   cfg.Agents.Defaults.Temperature,
-		"providers":     providers,
+		"model_list":      cfg.Agents.ModelList,
+		"max_tokens":      cfg.Agents.Defaults.MaxTokens,
+		"temperature":     cfg.Agents.Defaults.Temperature,
+		"providers":       providers,
 		"routing": map[string]interface{}{
-			"prefer_local":          cfg.Agents.Routing.PreferLocal,
-			"allow_cloud":           cfg.Agents.Routing.AllowCloud,
+			"prefer_local":           cfg.Agents.Routing.PreferLocal,
+			"allow_cloud":            cfg.Agents.Routing.AllowCloud,
 			"cloud_when_local_fails": cfg.Agents.Routing.CloudWhenLocalFails,
 		},
 	})
@@ -563,16 +563,16 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Provider        string               `json:"provider"`
-		Model           string               `json:"model"`
-		FallbackModels  []string             `json:"fallback_models"`
-		EmbeddingModel  string               `json:"embedding_model"`
-		OllamaURL       string               `json:"ollama_url"`
-		APIKeys         map[string]string    `json:"api_keys"`
-		MaxTokens       int                  `json:"max_tokens"`
-		Temperature     float64              `json:"temperature"`
-		ModelList       []config.ModelPreset `json:"model_list"`
-		Routing         *struct {
+		Provider       string               `json:"provider"`
+		Model          string               `json:"model"`
+		FallbackModels []string             `json:"fallback_models"`
+		EmbeddingModel string               `json:"embedding_model"`
+		OllamaURL      string               `json:"ollama_url"`
+		APIKeys        map[string]string    `json:"api_keys"`
+		MaxTokens      int                  `json:"max_tokens"`
+		Temperature    float64              `json:"temperature"`
+		ModelList      []config.ModelPreset `json:"model_list"`
+		Routing        *struct {
 			PreferLocal         bool `json:"prefer_local"`
 			AllowCloud          bool `json:"allow_cloud"`
 			CloudWhenLocalFails bool `json:"cloud_when_local_fails"`
@@ -592,14 +592,14 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 	// API keys: write to config.json for persistence via .secrets.json.
 	// Do NOT write to .env — secrets belong in .secrets.json only.
 	cfgKeys := map[string]*config.ProviderConfig{
-		"moonshot":  &cfg.Providers.Moonshot,
-		"anthropic": &cfg.Providers.Anthropic,
-		"openai":    &cfg.Providers.OpenAI,
+		"moonshot":   &cfg.Providers.Moonshot,
+		"anthropic":  &cfg.Providers.Anthropic,
+		"openai":     &cfg.Providers.OpenAI,
 		"openrouter": &cfg.Providers.OpenRouter,
-		"groq":      &cfg.Providers.Groq,
-		"deepseek":  &cfg.Providers.DeepSeek,
-		"gemini":    &cfg.Providers.Gemini,
-		"zhipu":     &cfg.Providers.Zhipu,
+		"groq":       &cfg.Providers.Groq,
+		"deepseek":   &cfg.Providers.DeepSeek,
+		"gemini":     &cfg.Providers.Gemini,
+		"zhipu":      &cfg.Providers.Zhipu,
 	}
 	for name, key := range req.APIKeys {
 		trimmed := strings.TrimSpace(key)
@@ -654,16 +654,16 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 // knownModels returns the recommended models for each provider.
 // These come from the factory.go validation logic and provider docs.
 var knownModels = map[string][]string{
-	"openai":    {"gpt-5.4", "gpt-5.4-mini", "gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini", "gpt-4o", "gpt-4o-mini"},
-	"anthropic": {"claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-5"},
-	"moonshot":  {"kimi-k3", "kimi-k2.7-code", "kimi-k2.6"},
-	"groq":      {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"},
-	"deepseek":  {"deepseek-v4-flash", "deepseek-v4-pro"},
-	"gemini":    {"gemini-3.6-flash", "gemini-3.1-pro", "gemini-3-flash"},
-	"zhipu":     {"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-4.7", "glm-4.7-flash"},
-	"openrouter": {},
-	"ollama":    {},
-	"nvidia":    {"deepseek-ai/deepseek-v4-flash", "meta/llama-3.3-70b-instruct", "qwen/qwq-32b"},
+	"openai":       {"gpt-5.4", "gpt-5.4-mini", "gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini", "gpt-4o", "gpt-4o-mini"},
+	"anthropic":    {"claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"},
+	"moonshot":     {"kimi-k3", "kimi-k2.7-code", "kimi-k2.6"},
+	"groq":         {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"},
+	"deepseek":     {"deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp"},
+	"gemini":       {"gemini-3.6-flash", "gemini-3.1-pro", "gemini-3-flash"},
+	"zhipu":        {"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-4.7", "glm-4.7-flash"},
+	"openrouter":   {},
+	"ollama":       {},
+	"nvidia":       {"deepseek-ai/deepseek-v4-flash", "meta/llama-3.3-70b-instruct", "qwen/qwq-32b"},
 	"shengsuanyun": {},
 }
 
@@ -699,9 +699,9 @@ func handleProviderModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":       true,
-		"provider": cfg.Agents.Defaults.Provider,
-		"model":    cfg.Agents.Defaults.Model,
+		"ok":        true,
+		"provider":  cfg.Agents.Defaults.Provider,
+		"model":     cfg.Agents.Defaults.Model,
 		"providers": providers,
 	})
 }
@@ -870,12 +870,12 @@ func handleChannelsGet(w http.ResponseWriter, r *http.Request) {
 				"token":   maskKey(cfg.Channels.Discord.Token),
 			},
 			"slack": map[string]interface{}{
-				"enabled":  cfg.Channels.Slack.Enabled,
+				"enabled":   cfg.Channels.Slack.Enabled,
 				"bot_token": maskKey(cfg.Channels.Slack.BotToken),
 				"app_token": maskKey(cfg.Channels.Slack.AppToken),
 			},
 			"email": map[string]interface{}{
-				"enabled":  cfg.Channels.Email.Enabled,
+				"enabled":   cfg.Channels.Email.Enabled,
 				"smtp_host": cfg.Channels.Email.SMTPHost,
 				"smtp_port": cfg.Channels.Email.SMTPPort,
 				"username":  cfg.Channels.Email.Username,
@@ -883,7 +883,7 @@ func handleChannelsGet(w http.ResponseWriter, r *http.Request) {
 				"to":        cfg.Channels.Email.To,
 			},
 			"whatsapp": map[string]interface{}{
-				"enabled":   cfg.Channels.WhatsApp.Enabled,
+				"enabled":    cfg.Channels.WhatsApp.Enabled,
 				"bridge_url": cfg.Channels.WhatsApp.BridgeURL,
 			},
 		},
@@ -1186,9 +1186,9 @@ func handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Current     string `json:"current"`
-		New         string `json:"new"`
-		Confirm     string `json:"confirm"`
+		Current string `json:"current"`
+		New     string `json:"new"`
+		Confirm string `json:"confirm"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
@@ -1261,8 +1261,8 @@ func handlePersonalityGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":      true,
-		"active":  cfg.Personality.Active,
+		"ok":       true,
+		"active":   cfg.Personality.Active,
 		"builtins": builtins,
 		"custom":   custom,
 	})
@@ -1515,11 +1515,11 @@ func handleSkillsList(w http.ResponseWriter, r *http.Request) {
 			enabled = false
 		}
 		skills = append(skills, map[string]string{
-			"name":         name,
-			"description":  desc,
-			"bundled":      strconv.FormatBool(bundled),
+			"name":          name,
+			"description":   desc,
+			"bundled":       strconv.FormatBool(bundled),
 			"user_modified": strconv.FormatBool(bundled && entry.UserModified),
-			"enabled":      strconv.FormatBool(enabled),
+			"enabled":       strconv.FormatBool(enabled),
 		})
 	}
 	sort.Slice(skills, func(i, j int) bool { return skills[i]["name"] < skills[j]["name"] })
@@ -2111,8 +2111,8 @@ func handleToolsGet(w http.ResponseWriter, r *http.Request) {
 		"ok": true,
 		"web": map[string]interface{}{
 			"brave": map[string]interface{}{
-				"enabled":    cfg.Tools.Web.Brave.Enabled,
-				"api_key":    maskKey(cfg.Tools.Web.Brave.APIKey),
+				"enabled":     cfg.Tools.Web.Brave.Enabled,
+				"api_key":     maskKey(cfg.Tools.Web.Brave.APIKey),
 				"max_results": cfg.Tools.Web.Brave.MaxResults,
 			},
 			"duckduckgo": map[string]interface{}{
@@ -2121,9 +2121,9 @@ func handleToolsGet(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		"curator": map[string]interface{}{
-			"enabled":            cfg.Tools.Curator.Enabled,
-			"stale_after_days":   cfg.Tools.Curator.StaleAfterDays,
-			"archive_after_days": cfg.Tools.Curator.ArchiveAfterDays,
+			"enabled":             cfg.Tools.Curator.Enabled,
+			"stale_after_days":    cfg.Tools.Curator.StaleAfterDays,
+			"archive_after_days":  cfg.Tools.Curator.ArchiveAfterDays,
 			"check_interval_mins": cfg.Tools.Curator.CheckIntervalMins,
 		},
 		"delegation": map[string]interface{}{
@@ -2152,21 +2152,21 @@ func handleToolsSet(w http.ResponseWriter, r *http.Request) {
 				MaxResults int    `json:"max_results"`
 			} `json:"brave"`
 			DuckDuckGo *struct {
-				Enabled     bool `json:"enabled"`
+				Enabled    bool `json:"enabled"`
 				MaxResults int  `json:"max_results"`
 			} `json:"duckduckgo"`
 		} `json:"web"`
 		Curator *struct {
-			Enabled            bool `json:"enabled"`
-			StaleAfterDays     int  `json:"stale_after_days"`
-			ArchiveAfterDays   int  `json:"archive_after_days"`
-			CheckIntervalMins  int  `json:"check_interval_mins"`
+			Enabled           bool `json:"enabled"`
+			StaleAfterDays    int  `json:"stale_after_days"`
+			ArchiveAfterDays  int  `json:"archive_after_days"`
+			CheckIntervalMins int  `json:"check_interval_mins"`
 		} `json:"curator"`
 		Delegation *struct {
-			Enabled        bool `json:"enabled"`
-			MaxConcurrent  int  `json:"max_concurrent"`
-			MaxTasks       int  `json:"max_tasks"`
-			BudgetTokens   int  `json:"budget_tokens"`
+			Enabled       bool `json:"enabled"`
+			MaxConcurrent int  `json:"max_concurrent"`
+			MaxTasks      int  `json:"max_tasks"`
+			BudgetTokens  int  `json:"budget_tokens"`
 		} `json:"delegation"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -2240,9 +2240,9 @@ func handleGatewayGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":             true,
-		"host":           cfg.Gateway.Host,
-		"port":           cfg.Gateway.Port,
+		"ok":   true,
+		"host": cfg.Gateway.Host,
+		"port": cfg.Gateway.Port,
 	})
 }
 
@@ -2308,16 +2308,16 @@ func handleAdvancedGet(w http.ResponseWriter, r *http.Request) {
 			"skill_interval":  cfg.Nudge.SkillInterval,
 		},
 		"devices": map[string]interface{}{
-			"enabled":    cfg.Devices.Enabled,
+			"enabled":     cfg.Devices.Enabled,
 			"monitor_usb": cfg.Devices.MonitorUSB,
 		},
 		"routing": map[string]interface{}{
 			"light_model": cfg.Agents.Routing.LightModel,
 			"threshold":   cfg.Agents.Routing.Threshold,
 		},
-		"search_enabled":       cfg.Agents.Defaults.SearchEnabled,
+		"search_enabled":        cfg.Agents.Defaults.SearchEnabled,
 		"restrict_to_workspace": cfg.Agents.Defaults.RestrictToWorkspace,
-		"max_tool_iterations":  cfg.Agents.Defaults.MaxToolIterations,
+		"max_tool_iterations":   cfg.Agents.Defaults.MaxToolIterations,
 		"mcp": map[string]interface{}{
 			"enabled": cfg.Tools.MCP.Enabled,
 			"servers": cfg.Tools.MCP.Servers,
@@ -2336,15 +2336,15 @@ func handleAdvancedSet(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		RAG *struct {
-			Enabled         bool `json:"enabled"`
-			M               int  `json:"m"`
-			EfConstruction  int  `json:"ef_construction"`
-			EfSearch        int  `json:"ef_search"`
+			Enabled        bool `json:"enabled"`
+			M              int  `json:"m"`
+			EfConstruction int  `json:"ef_construction"`
+			EfSearch       int  `json:"ef_search"`
 		} `json:"rag"`
 		Nudge *struct {
-			Enabled         bool `json:"enabled"`
-			MemoryInterval  int  `json:"memory_interval"`
-			SkillInterval   int  `json:"skill_interval"`
+			Enabled        bool `json:"enabled"`
+			MemoryInterval int  `json:"memory_interval"`
+			SkillInterval  int  `json:"skill_interval"`
 		} `json:"nudge"`
 		Devices *struct {
 			Enabled    bool `json:"enabled"`
@@ -2358,7 +2358,7 @@ func handleAdvancedSet(w http.ResponseWriter, r *http.Request) {
 		RestrictToWorkspace *bool `json:"restrict_to_workspace"`
 		MaxToolIterations   *int  `json:"max_tool_iterations"`
 		MCP                 *struct {
-			Enabled bool                     `json:"enabled"`
+			Enabled bool                              `json:"enabled"`
 			Servers map[string]config.MCPServerConfig `json:"servers"`
 		} `json:"mcp"`
 	}

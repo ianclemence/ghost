@@ -78,7 +78,7 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 
 	requestBody := map[string]interface{}{
 		"model":    model,
-		"messages": messages,
+		"messages": toOpenAIMessages(messages),
 	}
 
 	if len(tools) > 0 {
@@ -131,23 +131,34 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 
 	useNative := (strings.Contains(p.apiBase, "11434") || strings.Contains(p.apiBase, "ollama.com")) && !strings.Contains(p.apiBase, "/v1")
 	if useNative {
-		// Build a minimal payload for Ollama's native chat API
-		nativeMsgs := make([]map[string]string, 0, len(messages))
+		// Build a minimal payload for Ollama's native chat API. Ollama's
+		// /api/chat takes media as a top-level "images" array of base64
+		// strings, not an OpenAI content block array.
+		type nativeMsg struct {
+			Role    string   `json:"role"`
+			Content string   `json:"content"`
+			Images  []string `json:"images,omitempty"`
+		}
+		nativeMsgs := make([]nativeMsg, 0, len(messages))
 		for _, m := range messages {
 			content := m.Content
+			var images []string
 			if content == "" && len(m.MultiContent) > 0 {
 				var sb strings.Builder
 				for _, part := range m.MultiContent {
-					if part.Type == "text" && part.Text != "" {
+					switch {
+					case part.Type == "text" && part.Text != "":
 						sb.WriteString(part.Text)
+					case part.ImageURL != nil && strings.HasPrefix(part.ImageURL.URL, "data:"):
+						// data:<mime>;base64,<payload>
+						if b64 := imageBase64Part(part.ImageURL.URL); b64 != "" {
+							images = append(images, b64)
+						}
 					}
 				}
 				content = sb.String()
 			}
-			nativeMsgs = append(nativeMsgs, map[string]string{
-				"role":    m.Role,
-				"content": content,
-			})
+			nativeMsgs = append(nativeMsgs, nativeMsg{Role: m.Role, Content: content, Images: images})
 		}
 		nativeBody := map[string]interface{}{
 			"model":    model,
@@ -706,4 +717,57 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 	p := NewHTTPProvider(apiKey, apiBase, proxy, cfg.Agents.Defaults.EmbeddingModel)
 	p.SetDefaultModel(model)
 	return p, nil
+}
+
+// toOpenAIMessages renders messages in the OpenAI-compatible Chat Completions
+// shape. When a message carries visual parts (images/video), its `content`
+// becomes an array of content blocks ([{type,text}, {type,image_url,
+// image_url:{url}}]) instead of a plain string — the format DeepSeek, OpenAI
+// and other compatible providers expect for vision. Non-visual messages pass
+// through unchanged so tool-call/tool-result serialization is untouched.
+func toOpenAIMessages(messages []Message) []interface{} {
+	out := make([]interface{}, 0, len(messages))
+	for _, m := range messages {
+		if blk := visualContentBlocks(m.MultiContent); len(blk) > 0 {
+			mm := map[string]interface{}{
+				"role":    m.Role,
+				"content": blk,
+			}
+			if m.ToolCalls != nil {
+				mm["tool_calls"] = m.ToolCalls
+			}
+			if m.ToolCallID != "" {
+				mm["tool_call_id"] = m.ToolCallID
+			}
+			out = append(out, mm)
+			continue
+		}
+		// Non-visual messages keep their existing shape (content string +
+		// structured fields) so tool calls serialize exactly as before.
+		out = append(out, m)
+	}
+	return out
+}
+
+func visualContentBlocks(parts []ContentPart) []map[string]interface{} {
+	blk := []map[string]interface{}{}
+	for _, p := range parts {
+		switch {
+		case p.Type == "text" && p.Text != "":
+			blk = append(blk, map[string]interface{}{"type": "text", "text": p.Text})
+		case p.ImageURL != nil && p.ImageURL.URL != "":
+			blk = append(blk, map[string]interface{}{"type": "image_url", "image_url": map[string]interface{}{"url": p.ImageURL.URL}})
+		case p.VideoURL != nil && p.VideoURL.URL != "":
+			blk = append(blk, map[string]interface{}{"type": "video_url", "video_url": map[string]interface{}{"url": p.VideoURL.URL}})
+		}
+	}
+	return blk
+}
+
+// imageBase64Part extracts the base64 payload from a data:<mime>;base64,<b64> URL.
+func imageBase64Part(dataURL string) string {
+	if i := strings.Index(dataURL, ";base64,"); i >= 0 {
+		return dataURL[i+len(";base64,"):]
+	}
+	return ""
 }
