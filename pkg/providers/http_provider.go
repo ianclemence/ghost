@@ -568,10 +568,7 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				apiKey = cfg.Providers.DeepSeek.APIKey
 				apiBase = cfg.Providers.DeepSeek.APIBase
 				if apiBase == "" {
-					apiBase = "https://api.deepseek.com/v1"
-				}
-				if model != "deepseek-chat" && model != "deepseek-reasoner" {
-					model = "deepseek-chat"
+					apiBase = "https://api.deepseek.com"
 				}
 			}
 		case "github_copilot", "copilot":

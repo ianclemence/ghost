@@ -658,7 +658,7 @@ var knownModels = map[string][]string{
 	"anthropic": {"claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-5-haiku-20241022"},
 	"moonshot":  {"kimi-k2.5", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"},
 	"groq":      {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"},
-	"deepseek":  {"deepseek-chat", "deepseek-reasoner"},
+	"deepseek":  {"deepseek-v4-flash", "deepseek-v4-pro"},
 	"gemini":    {"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"},
 	"zhipu":     {"glm-4", "glm-4-flash", "glm-4v"},
 	"openrouter": {},
