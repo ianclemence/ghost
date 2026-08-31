@@ -20,24 +20,18 @@ type CheckResult struct {
 	Latency int64  `json:"latency_ms,omitempty"`
 }
 
-type GatewayClient interface {
-	HealthCheck(ctx context.Context) error
-}
-
 type Doctor struct {
-	db       *sql.DB
-	provider providers.LLMProvider
-	gateway  GatewayClient
-	registry *tools.ToolRegistry
+	db        *sql.DB
+	provider  providers.LLMProvider
+	registry  *tools.ToolRegistry
 	workspace string
 }
 
-func New(db *sql.DB, provider providers.LLMProvider, gateway GatewayClient, registry *tools.ToolRegistry, workspace string) *Doctor {
+func New(db *sql.DB, provider providers.LLMProvider, registry *tools.ToolRegistry, workspace string) *Doctor {
 	return &Doctor{
-		db:       db,
-		provider: provider,
-		gateway:  gateway,
-		registry: registry,
+		db:        db,
+		provider:  provider,
+		registry:  registry,
 		workspace: workspace,
 	}
 }
@@ -46,7 +40,6 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 	checks := []func(context.Context) CheckResult{
 		d.checkDatabase,
 		d.checkProvider,
-		d.checkGateway,
 		d.checkToolRegistry,
 		d.checkPython,
 		d.checkBrowser,
@@ -61,7 +54,7 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 
 func (d *Doctor) checkPython(ctx context.Context) CheckResult {
 	start := time.Now()
-	
+
 	// Check python3
 	cmd := exec.CommandContext(ctx, "python3", "--version")
 	out, err := cmd.CombinedOutput()
@@ -103,14 +96,14 @@ func (d *Doctor) checkPython(ctx context.Context) CheckResult {
 
 func (d *Doctor) checkBrowser(ctx context.Context) CheckResult {
 	start := time.Now()
-	
+
 	cmd := exec.CommandContext(ctx, "agent-browser", "--version")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return CheckResult{
 			Name:    "browser_env",
-			Status:  "warning",
-			Message: "agent-browser not found (install via: npm i -g agent-browser)",
+			Status:  "info",
+			Message: "browser automation not installed (optional)",
 			Latency: time.Since(start).Milliseconds(),
 		}
 	}
@@ -158,20 +151,6 @@ func (d *Doctor) checkProvider(ctx context.Context) CheckResult {
 	})
 	return CheckResult{
 		Name:    "provider",
-		Status:  status(err),
-		Message: errMsg(err),
-		Latency: time.Since(start).Milliseconds(),
-	}
-}
-
-func (d *Doctor) checkGateway(ctx context.Context) CheckResult {
-	start := time.Now()
-	if d.gateway == nil {
-		return CheckResult{Name: "gateway", Status: "warning", Message: "gateway check not configured"}
-	}
-	err := d.gateway.HealthCheck(ctx)
-	return CheckResult{
-		Name:    "gateway",
 		Status:  status(err),
 		Message: errMsg(err),
 		Latency: time.Since(start).Milliseconds(),

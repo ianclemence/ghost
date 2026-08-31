@@ -359,7 +359,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	installer := skills.NewSkillInstaller(workspace)
 
 	cmdRegistry := commands.NewRegistry(commands.DefaultDefinitions())
-	doctorRunner := doctor.New(database.DB, provider, nil, toolsRegistry, workspace)
+	doctorRunner := doctor.New(database.DB, provider, toolsRegistry, workspace)
 
 	router := routing.NewRouter(cfg.Agents.Routing.LightModel, cfg.Agents.Routing.Threshold)
 	fallback := providers.NewFallbackChain(time.Duration(cfg.Agents.Defaults.FallbackCooldown) * time.Second)

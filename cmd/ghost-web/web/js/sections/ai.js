@@ -427,7 +427,7 @@ function renderDiag(panel) {
     const grid = GhostUI.h('div', { className: 'diag-grid' });
     for (const ch of checks) {
       const row = GhostUI.h('div', { className: 'diag-row' });
-      const st = ch.status === 'ok' ? 'ready' : ch.status === 'warn' ? 'warn' : 'bad';
+      const st = ch.status === 'ok' ? 'ready' : ch.status === 'info' ? 'neutral' : ch.status === 'warn' ? 'warn' : 'bad';
       row.appendChild(GhostUI.h('span', { className: 'status-dot ' + st }));
       row.appendChild(GhostUI.h('div', { className: 'diag-name' }, ch.name));
       const msg = GhostUI.h('div', { className: 'diag-msg' });

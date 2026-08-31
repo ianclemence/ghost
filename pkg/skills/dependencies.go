@@ -161,21 +161,21 @@ func (r *DependencyReport) DetailedReport() string {
 	buf.WriteString("|---------|---------|\n")
 
 	installHints := map[string]string{
-		"python":     "`pip install <package>` or `apt-get install python3`",
-		"curl":       "`apt-get install curl` or `winget install curl`",
-		"git":        "`apt-get install git` or `winget install Git`",
-		"gcalcli":    "`pip install gcalcli`",
-		"adb":        "`winget install Google.PlatformTools` (Windows) or `apt-get install adb` (Linux)",
-		"nmap":       "`apt-get install nmap` or download from nmap.org",
-		"ffmpeg":     "`apt-get install ffmpeg` or `winget install ffmpeg`",
-		"tmux":       "`apt-get install tmux`",
-		"spotify":    "Spotify CLI wrapper (platform-specific)",
-		"nano-pdf":   "`uv pip install nano-pdf` or `pip install nano-pdf`",
-		"himalaya":   "See https://github.com/pimalaya/himalaya",
+		"python":        "`pip install <package>` or `apt-get install python3`",
+		"curl":          "`apt-get install curl` or `winget install curl`",
+		"git":           "`apt-get install git` or `winget install Git`",
+		"gcalcli":       "`pip install gcalcli`",
+		"adb":           "`winget install Google.PlatformTools` (Windows) or `apt-get install adb` (Linux)",
+		"nmap":          "`apt-get install nmap` or download from nmap.org",
+		"ffmpeg":        "`apt-get install ffmpeg` or `winget install ffmpeg`",
+		"tmux":          "`apt-get install tmux`",
+		"spotify":       "Spotify CLI wrapper (platform-specific)",
+		"nano-pdf":      "`uv pip install nano-pdf` or `pip install nano-pdf`",
+		"himalaya":      "See https://github.com/pimalaya/himalaya",
 		"speedtest-cli": "`pip install speedtest-cli`",
-		"ddgs":       "`pip install ddgs`",
-		"i2cdetect":  "`apt-get install i2c-tools`",
-		"i2cget":     "`apt-get install i2c-tools`",
+		"ddgs":          "`pip install ddgs`",
+		"i2cdetect":     "`apt-get install i2c-tools`",
+		"i2cget":        "`apt-get install i2c-tools`",
 	}
 
 	for _, res := range r.Results {
@@ -217,23 +217,72 @@ func parsePrerequisites(skillPath string) Prerequisites {
 func parsePrerequisitesFromYAML(content string) Prerequisites {
 	prereqs := Prerequisites{}
 
-	commandsBlock := regexp.MustCompile(`(?i)prerequisites:\s*\n((?:\s+\w+.*\n)*)`).FindStringSubmatch(content)
-	if len(commandsBlock) < 2 {
-		return prereqs
-	}
+	lines := strings.Split(content, "\n")
+	inPrereqs := false
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
 
-	lines := strings.Split(strings.TrimSpace(commandsBlock[1]), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		if !inPrereqs {
+			if strings.HasPrefix(trimmed, "prerequisites:") {
+				inPrereqs = true
+			}
 			continue
 		}
-		line = strings.TrimPrefix(line, "- ")
-		line = strings.TrimPrefix(line, "* ")
-		line = strings.TrimSpace(line)
-		line = strings.Trim(line, `"'`)
-		if line != "" {
-			prereqs.Commands = append(prereqs.Commands, line)
+
+		// Stop at the next top-level key (a line with no leading whitespace)
+		// that is not part of the prerequisites block.
+		if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+			if strings.HasPrefix(trimmed, "commands:") {
+				// commands: written without indentation — still process it.
+			} else {
+				break
+			}
+		}
+
+		if strings.HasPrefix(trimmed, "commands:") {
+			value := strings.TrimSpace(strings.TrimPrefix(trimmed, "commands:"))
+			if strings.HasPrefix(value, "[") {
+				// Inline list: commands: [curl, python]
+				value = strings.Trim(value, "[] \t")
+				for _, c := range strings.Split(value, ",") {
+					c = strings.TrimSpace(strings.Trim(c, "\"'"))
+					if c != "" {
+						prereqs.Commands = append(prereqs.Commands, c)
+					}
+				}
+			} else if value == "" {
+				// Block list:
+				//   commands:
+				//     - curl
+				//     - python
+				for j := i + 1; j < len(lines); j++ {
+					itemLine := lines[j]
+					item := strings.TrimSpace(itemLine)
+					if item == "" {
+						continue
+					}
+					// Stop when a new, non-indented key or closure appears.
+					if itemLine[0] != ' ' && itemLine[0] != '\t' {
+						break
+					}
+					if !strings.HasPrefix(item, "-") {
+						break
+					}
+					item = strings.TrimSpace(strings.Trim(strings.TrimPrefix(item, "-"), " \t\"'"))
+					if item != "" {
+						prereqs.Commands = append(prereqs.Commands, item)
+					}
+				}
+			} else {
+				// Single value or a comma-separated list after the colon.
+				for _, c := range strings.Split(value, ",") {
+					c = strings.TrimSpace(strings.Trim(c, "\"'"))
+					if c != "" {
+						prereqs.Commands = append(prereqs.Commands, c)
+					}
+				}
+			}
 		}
 	}
 

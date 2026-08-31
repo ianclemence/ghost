@@ -18,12 +18,6 @@ func (p *testProvider) GetDefaultModel() string { return "test-model" }
 func (p *testProvider) SupportsTools() bool     { return true }
 func (p *testProvider) GetContextWindow() int   { return 4096 }
 
-type testGateway struct{}
-
-func (g *testGateway) HealthCheck(ctx context.Context) error {
-	return nil
-}
-
 func TestDoctorRunAll(t *testing.T) {
 	database, err := db.NewDB(t.TempDir())
 	if err != nil {
@@ -34,10 +28,10 @@ func TestDoctorRunAll(t *testing.T) {
 	reg := tools.NewToolRegistry()
 	reg.Register(tools.NewSessionSearchTool(database.DB))
 
-	runner := New(database.DB, &testProvider{}, &testGateway{}, reg, t.TempDir())
+	runner := New(database.DB, &testProvider{}, reg, t.TempDir())
 	results := runner.RunAll(context.Background())
-	if len(results) != 7 {
-		t.Fatalf("expected 7 checks, got %d", len(results))
+	if len(results) != 6 {
+		t.Fatalf("expected 6 checks, got %d", len(results))
 	}
 	for _, check := range results {
 		if check.Status == "error" {
