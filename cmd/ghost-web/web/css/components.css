@@ -140,6 +140,7 @@ textarea.ghost-input:focus {
 .ghost-input::placeholder,
 textarea.ghost-input::placeholder {
   color: var(--ink-ghost);
+  font-size: var(--t-callout);
 }
 textarea.ghost-input {
   resize: vertical;

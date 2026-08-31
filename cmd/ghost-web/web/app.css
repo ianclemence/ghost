@@ -277,7 +277,7 @@ body.app {
     -webkit-tap-highlight-color: transparent;
     transition: border-color var(--d-base) ease, box-shadow var(--d-base) ease;
 }
-.input::placeholder { color: var(--faint); }
+.input::placeholder { color: var(--faint); font-size: 14px; }
 .input--area { padding: var(--s-3) var(--s-4); resize: vertical; min-height: 96px; }
 .input:focus, .input--area:focus, .select:focus {
     border-color: var(--ember);

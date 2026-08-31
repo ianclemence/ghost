@@ -16,17 +16,17 @@ import (
 	"github.com/ianclemence/ghost/pkg/logger"
 )
 
-type KimiProvider struct {
+type MoonshotProvider struct {
 	apiKey     string
 	apiBase    string
 	httpClient *http.Client
 }
 
-func NewKimiProvider(apiKey, apiBase string) *KimiProvider {
+func NewMoonshotProvider(apiKey, apiBase string) *MoonshotProvider {
 	if apiBase == "" {
 		apiBase = "https://api.moonshot.cn/v1"
 	}
-	return &KimiProvider{
+	return &MoonshotProvider{
 		apiKey:  apiKey,
 		apiBase: apiBase,
 		httpClient: &http.Client{
@@ -80,7 +80,7 @@ type kimiResponse struct {
 	Usage *UsageInfo `json:"usage"`
 }
 
-func (p *KimiProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
+func (p *MoonshotProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
 	// Strip provider prefix from model name (e.g., moonshot/kimi-k2.5 -> kimi-k2.5)
 	if idx := strings.Index(model, "/"); idx != -1 {
 		prefix := model[:idx]
@@ -248,11 +248,11 @@ func (p *KimiProvider) Chat(ctx context.Context, messages []Message, tools []Too
 	}, nil
 }
 
-func (p *KimiProvider) GetDefaultModel() string {
+func (p *MoonshotProvider) GetDefaultModel() string {
 	return "kimi-k2.5"
 }
 
-func (p *KimiProvider) UploadFile(ctx context.Context, filePath string, purpose string) (string, error) {
+func (p *MoonshotProvider) UploadFile(ctx context.Context, filePath string, purpose string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
@@ -324,7 +324,7 @@ type kimiEmbeddingResponse struct {
 	} `json:"data"`
 }
 
-func (p *KimiProvider) Embed(ctx context.Context, text string) ([]float32, error) {
+func (p *MoonshotProvider) Embed(ctx context.Context, text string) ([]float32, error) {
 	reqBody := kimiEmbeddingRequest{
 		Input: text,
 		Model: "text-embedding-3-small", // Standard OpenAI compatible model

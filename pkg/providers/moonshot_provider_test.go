@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestKimiProvider_Chat_ThinkingParams(t *testing.T) {
+func TestMoonshotProvider_Chat_ThinkingParams(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req kimiRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -52,7 +52,7 @@ func TestKimiProvider_Chat_ThinkingParams(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := NewKimiProvider("test-key", server.URL)
+	p := NewMoonshotProvider("test-key", server.URL)
 	options := map[string]interface{}{
 		"thinking": true,
 	}
@@ -63,7 +63,7 @@ func TestKimiProvider_Chat_ThinkingParams(t *testing.T) {
 	}
 }
 
-func TestKimiProvider_UploadFile(t *testing.T) {
+func TestMoonshotProvider_UploadFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" || r.URL.Path != "/files" {
 			t.Errorf("Expected POST /files, got %s %s", r.Method, r.URL.Path)
@@ -87,7 +87,7 @@ func TestKimiProvider_UploadFile(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := NewKimiProvider("test-key", server.URL)
+	p := NewMoonshotProvider("test-key", server.URL)
 	
 	// Create a dummy file
 	tmpDir := t.TempDir()

@@ -778,7 +778,7 @@ func gatewayCmd() {
 	var transcriber voice.Transcriber
 	if !apiOnly {
 		if cfg.Providers.Moonshot.APIKey != "" {
-			transcriber = voice.NewKimiTranscriber(cfg.Providers.Moonshot.APIKey)
+			transcriber = voice.NewMoonshotTranscriber(cfg.Providers.Moonshot.APIKey)
 			logger.InfoC("voice", "Kimi voice transcription enabled")
 		} else if cfg.Providers.Groq.APIKey != "" {
 			transcriber = voice.NewGroqTranscriber(cfg.Providers.Groq.APIKey)
