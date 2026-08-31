@@ -8,7 +8,7 @@ metadata:
   ghost:
     tags: [hardware, I2C, SPI, sensors, peripherals, embedded]
 prerequisites:
-  commands: [i2c, spi]
+  commands: [i2cget, i2cdetect]
 ---
 
 # Hardware (I2C / SPI)

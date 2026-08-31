@@ -208,15 +208,19 @@ func (d *Doctor) checkSkillDependencies(ctx context.Context) CheckResult {
 		}
 	}
 
+	missingSkills := 0
 	missingCount := 0
 	for _, res := range report.Results {
-		missingCount += len(res.Missing)
+		if len(res.Missing) > 0 {
+			missingSkills++
+			missingCount += len(res.Missing)
+		}
 	}
 
 	return CheckResult{
 		Name:    "skill_dependencies",
 		Status:  "warning",
-		Message: fmt.Sprintf("%d skill(s) missing %d command(s): %s", len(report.Results), missingCount, report.Summary()),
+		Message: fmt.Sprintf("%d skill(s) missing %d command(s): %s", missingSkills, missingCount, report.Summary()),
 		Latency: time.Since(start).Milliseconds(),
 	}
 }
