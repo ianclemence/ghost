@@ -342,7 +342,6 @@ function renderRouting(panel, routing) {
     row.appendChild(tr);
     panel.appendChild(row);
   }
-  panel.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-2)' }, 'Defaults: prefer local, allow cloud, fall back if local fails.'));
 }
 
 // ── Local models panel ──

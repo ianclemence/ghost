@@ -799,9 +799,9 @@ func handleProviderTest(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	_, err = p.Chat(ctx, []providers.Message{
-		{Role: "user", Content: "hi"},
+		{Role: "user", Content: "Reply with only the word OK"},
 	}, nil, testModel, map[string]interface{}{
-		"max_tokens":  4,
+		"max_tokens":  30,
 		"temperature": 0,
 	})
 	if err != nil {
