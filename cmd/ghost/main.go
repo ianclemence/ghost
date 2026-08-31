@@ -710,6 +710,10 @@ func gatewayCmd() {
 	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
 	agentLoop.SetConfigPath(getConfigPath())
 
+	// Start the conservative, local background memory consolidation (learn/
+	// reinforce/clean). Disposable and non-blocking.
+	agentLoop.StartLearningWorker(context.Background())
+
 	// Sync bundled skills before starting so devices pick up new bundled
 	// skills after updates without ever stomping user edits.
 	syncEmbeddedSkills(cfg.WorkspacePath())

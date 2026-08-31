@@ -148,14 +148,18 @@ func (cb *ContextBuilder) BuildSystemPrompt() string {
 	if skillsSummary != "" {
 		parts = append(parts, fmt.Sprintf(`# Skills
 
-Ghost ships skills that already know how to do common tasks. When a request matches a skill below:
+Ghost ships specialized skills. When a request matches one, PREFER it:
 
-1. PICK the single best-matching skill.
+1. PICK the single best-matching skill (by meaning, not keywords).
 2. READ its SKILL.md with the read_file tool.
 3. FOLLOW its instructions EXACTLY — run the commands and tools it gives you, use its API/endpoints, and use its output directly.
-4. Do NOT re-search, re-derive, or cross-check online. The skill is authoritative and already tested.
+4. Do NOT re-search, re-derive, cross-check, or delegate to a subagent. The skill is authoritative and already tested.
 
-Only if NO skill matches should you research on your own (web_search / web_fetch). Keep answers short and pull from the skill's result.
+Specialized skills are the PREFERRED path. Generic tools (web_search, web_fetch, session_search, exec) are FALLBACK capabilities — use them only when no skill covers the request, or the skill genuinely cannot satisfy it.
+
+- If a skill gives you an exact command (e.g. a curl call), RUN that command with exec and use its output. Do NOT substitute web_search/web_fetch to "check" the same thing — that is duplicate work.
+- session_search is ONLY for questions about a past conversation. Never use it for facts, currency, weather, recipes, or skills.
+- Do NOT wander. Once a skill gives you the answer, stop. Never chain web_search → web_fetch → subagent for something a skill already answered.
 
 %s`, skillsSummary))
 	}

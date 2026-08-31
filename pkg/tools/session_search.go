@@ -51,7 +51,7 @@ func (t *SessionSearchTool) Name() string {
 }
 
 func (t *SessionSearchTool) Description() string {
-	return "Search message history. Modes: discover (FTS search), browse (recent sessions), scroll (around a message), read (full session)."
+	return "Search Ghost's past conversation history. Use ONLY when the user asks about something from a previous conversation (\"what did I say about X\", \"what we discussed\"). Do NOT use it for general knowledge, facts, weather, currency, or skills — use a matching Ghost skill or the general search instead."
 }
 
 func (t *SessionSearchTool) Parameters() map[string]interface{} {
@@ -261,10 +261,10 @@ func (t *SessionSearchTool) summarize(ctx context.Context, args map[string]inter
 	}
 
 	payload := map[string]interface{}{
-		"mode":      "summarize",
-		"query":     query,
-		"count":     len(digests),
-		"sessions":  digests,
+		"mode":        "summarize",
+		"query":       query,
+		"count":       len(digests),
+		"sessions":    digests,
 		"instruction": "Synthesize these matches into a concise recall summary answering the query.",
 	}
 	raw, err := json.Marshal(payload)
@@ -320,8 +320,8 @@ func (t *SessionSearchTool) browse(ctx context.Context, args map[string]interfac
 	}
 
 	payload := map[string]interface{}{
-		"mode":   "browse",
-		"count":  len(results),
+		"mode":    "browse",
+		"count":   len(results),
 		"results": results,
 	}
 	raw, err := json.Marshal(payload)
@@ -415,14 +415,14 @@ func (t *SessionSearchTool) scroll(ctx context.Context, args map[string]interfac
 	results := append(before, after...)
 
 	payload := map[string]interface{}{
-		"mode":           "scroll",
-		"session_id":     sessionID,
-		"anchor_msg_id":  msgID,
-		"window":         window,
+		"mode":            "scroll",
+		"session_id":      sessionID,
+		"anchor_msg_id":   msgID,
+		"window":          window,
 		"messages_before": len(before) - 1,
 		"messages_after":  len(after),
-		"count":          len(results),
-		"results":        results,
+		"count":           len(results),
+		"results":         results,
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

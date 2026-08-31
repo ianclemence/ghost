@@ -825,6 +825,46 @@ func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMe
 // extractPersonalContext runs the Personal Context extractor over the user
 // message that was just persisted. It is a derived-memory layer: failures are
 // logged and never break or roll back the conversation turn.
+// StartLearningWorker runs a conservative, background Personal Context
+// consolidation (see personalcontext.Compact). It is local-first and
+// disposable: a low-priority goroutine that runs once shortly after start and
+// then roughly daily. It only strips exact duplicate memories (preserving
+// provenance) and never blocks a conversation or requires cloud AI. If it
+// fails, Ghost keeps working and the next run retries.
+func (al *AgentLoop) StartLearningWorker(ctx context.Context) {
+	go func() {
+		timer := time.NewTimer(5 * time.Minute)
+		defer timer.Stop()
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		al.consolidatePersonalContext()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+				al.consolidatePersonalContext()
+			case <-ticker.C:
+				al.consolidatePersonalContext()
+			}
+		}
+	}()
+}
+
+// consolidatePersonalContext runs the conservative memory consolidation. It is
+// a maintenance operation only; errors are logged and never break Ghost.
+func (al *AgentLoop) consolidatePersonalContext() {
+	if al.pcStore == nil {
+		return
+	}
+	if n, err := personalcontext.Compact(al.pcStore); err != nil {
+		logger.WarnCF("agent", "Personal Context consolidation failed", map[string]interface{}{"error": err.Error()})
+	} else if n > 0 {
+		logger.InfoCF("agent", "Personal Context consolidated", map[string]interface{}{"rejected": n})
+	}
+}
+
 func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 	if al.pcStore == nil {
 		return

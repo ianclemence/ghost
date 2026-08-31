@@ -94,9 +94,9 @@ func (p *FirecrawlSearchProvider) Search(ctx context.Context, query string, coun
 	searchURL := "https://api.firecrawl.dev/v1/search"
 
 	body, err := json.Marshal(map[string]interface{}{
-		"query":   query,
-		"limit":   count,
-		"scrape":  false,
+		"query":  query,
+		"limit":  count,
+		"scrape": false,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal request: %w", err)
@@ -300,7 +300,7 @@ func (t *WebSearchTool) Name() string {
 }
 
 func (t *WebSearchTool) Description() string {
-	return "Search the web for current information. Returns titles, URLs, and snippets from search results."
+	return "Search the web for current information when no Ghost skill covers the need. If a Ghost skill applies (weather, currency, recipe, flights, shopping, etc.), prefer reading and following that skill instead."
 }
 
 func (t *WebSearchTool) Parameters() map[string]interface{} {
@@ -347,10 +347,10 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 }
 
 type WebFetchTool struct {
-	maxChars    int
-	urlSafety   *URLSafety
-	workspace   string
-	cacheDir    string
+	maxChars  int
+	urlSafety *URLSafety
+	workspace string
+	cacheDir  string
 }
 
 func NewWebFetchTool(maxChars int) *WebFetchTool {
@@ -384,7 +384,7 @@ func (t *WebFetchTool) Name() string {
 }
 
 func (t *WebFetchTool) Description() string {
-	return "Fetch a URL and extract readable content (HTML to text). Use this to get weather info, news, articles, or any web content."
+	return "Fetch a URL and extract readable content (HTML to text). Use this only when a specific page is needed and no Ghost skill covers the request; when a skill applies, prefer that skill."
 }
 
 func (t *WebFetchTool) Parameters() map[string]interface{} {

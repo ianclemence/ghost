@@ -15,6 +15,8 @@ prerequisites:
 
 TheMealDB API. No API key required.
 
+> **Mandatory:** Run the exact `curl` command below with the `exec` tool and use its JSON output. Do NOT use `web_search` or `web_fetch` to "find" the recipe, and do NOT delegate to a subagent — that is duplicate work and TheMealDB is the authoritative source.
+
 ## Quick Reference
 
 | Task                      | Command                                                                         |

@@ -1,6 +1,6 @@
 ---
 name: currency
-description: Convert amounts between currencies using real-time exchange rates. Invoke when user asks "convert X to Y", "how much is USD in EUR", "exchange rate", or "currency conversion". No API key required.
+description: Convert amounts between currencies using real-time exchange rates. Invoke for any money-conversion or exchange-rate question, including "convert X to Y", "how much is X in Y", "$100 in euros", "500 baht to dollars", "USD to EUR", "what is X worth in Y", or "exchange rate". No API key required.
 version: 1.1.0
 author: Ghost
 license: MIT
@@ -14,6 +14,8 @@ prerequisites:
 # Currency Converter
 
 Uses open.er-api.com. No API key. Free tier covers 160+ currencies.
+
+> **Mandatory:** Run the exact `curl` command below with the `exec` tool and use its JSON output. Do NOT use `web_search` or `web_fetch` to "check" the rate — that is duplicate work and this API is the authoritative, already-tested source.
 
 ## Quick Reference
 
