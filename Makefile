@@ -143,6 +143,14 @@ build-ghost: build
 ## install-ghost: Build, install binaries and services, then restart Ghost
 install-ghost: build-ghost
 	@echo "Installing Ghost..."
+	@# Python is a runtime dependency for many skills (document conversion,
+	@# internet reading, media). Install a minimal Python + pip if missing.
+	@if ! command -v python3 >/dev/null 2>&1; then \
+		echo "Installing Python 3 + pip..."; \
+		sudo apt-get install -y python3 python3-pip; \
+	else \
+		echo "Python 3 already installed."; \
+	fi
 	@# Stop services before replacing binaries
 	@sudo systemctl stop ghost 2>/dev/null || true
 	@sudo systemctl stop ghost-web 2>/dev/null || true

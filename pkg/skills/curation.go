@@ -42,6 +42,8 @@ var curatedOptional = map[string]bool{
 	"research":             true,
 	"software-development": true,
 	"workflows":            true,
+	"internet-reading":     true,
+	"document-convert":     true,
 }
 
 // IsOptionalSkill reports whether a skill requires setup and should be treated

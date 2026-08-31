@@ -173,7 +173,7 @@ On a fresh device, install the prerequisites first (skip if you already have
 `git`, `make`, Go, and Ollama):
 
 ```bash
-sudo apt install -y git make golang-go
+sudo apt install -y git make golang-go python3 python3-pip
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen3:0.6b
 ```
