@@ -102,6 +102,11 @@ type Entry struct {
 	Sources      []Source        `json:"sources"`
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`
+	// ReinforceCount is how many times this belief was restated after creation
+	// (nudge-style reinforcement). ReinforcedAt is the last time it was restated,
+	// so a consolidated memory can answer "when was this last reinforced".
+	ReinforceCount int        `json:"reinforce_count,omitempty"`
+	ReinforcedAt   *time.Time `json:"reinforced_at,omitempty"`
 }
 
 // RawValue returns a json.RawMessage for an arbitrary Go value. It is the

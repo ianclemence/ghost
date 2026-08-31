@@ -1527,6 +1527,125 @@ func (al *AgentLoop) buildCandidates(model string) []providers.FallbackCandidate
 	return out
 }
 
+// LearningsSummary returns a small, user-facing digest of Ghost's self-
+// improvement: how many task turns were recorded, how many skill drafts the
+// evolution pipeline produced, and recently proposed skill names. It surfaces
+// the learning loop without exposing internals.
+func (al *AgentLoop) LearningsSummary() map[string]interface{} {
+	out := map[string]interface{}{
+		"records":  0,
+		"drafts":   0,
+		"profiles": 0,
+	}
+	if al.evolution == nil {
+		return out
+	}
+	records := al.evolution.GetRecords()
+	out["records"] = len(records)
+	drafts := al.evolution.GetDrafts()
+	out["drafts"] = len(drafts)
+	out["profiles"] = len(al.evolution.GetProfiles())
+
+	var recent []map[string]string
+	for _, d := range drafts {
+		if len(recent) >= 6 {
+			break
+		}
+		recent = append(recent, map[string]string{
+			"skill":       d.SkillName,
+			"change_kind": d.ChangeKind,
+			"status":      d.Status,
+		})
+	}
+	out["recent"] = recent
+	return out
+}
+
+// isLocalModel reports whether the active model is a local (Ollama/vLLM) model,
+// which is used to decide whether the cloud-dependent recalls should run.
+func (al *AgentLoop) isLocalModel() bool {
+	m := strings.ToLower(al.model)
+	return strings.Contains(m, "ollama") || strings.Contains(m, "vllm")
+}
+
+type RecallResult struct {
+	Summarized bool            `json:"summarized"`
+	Summary    string          `json:"summary,omitempty"`
+	Sessions   []RecallSession `json:"sessions"`
+}
+
+type RecallSession struct {
+	SessionID string   `json:"session_id"`
+	Messages  []string `json:"messages"`
+}
+
+// Recall answers "what did we talk about earlier?" by searching past sessions
+// for the query and, when a cloud model is available, synthesizing a concise
+// recall summary over them. Offline (local model), it returns the raw matched
+// sessions.
+func (al *AgentLoop) Recall(ctx context.Context, query string) RecallResult {
+	if al.db == nil {
+		return RecallResult{}
+	}
+	limit := 20
+	rows, err := al.db.QueryContext(ctx, `
+		SELECT m.session_id, m.role, m.content
+		FROM messages_fts
+		JOIN messages m ON m.rowid = messages_fts.rowid
+		WHERE messages_fts MATCH ?
+		  AND (m.archived IS NULL OR m.archived = 0)
+		ORDER BY bm25(messages_fts)
+		LIMIT ?
+	`, query, limit)
+	if err != nil {
+		logger.WarnCF("agent", "Recall query failed", map[string]interface{}{"error": err.Error()})
+		return RecallResult{}
+	}
+	defer rows.Close()
+
+	grouped := map[string][]string{}
+	order := []string{}
+	for rows.Next() {
+		var sid, role, content string
+		if err := rows.Scan(&sid, &role, &content); err != nil {
+			break
+		}
+		if _, exists := grouped[sid]; !exists {
+			order = append(order, sid)
+		}
+		if len(grouped[sid]) < 3 {
+			grouped[sid] = append(grouped[sid], role+": "+strings.TrimSpace(content))
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return RecallResult{}
+	}
+
+	sessions := make([]RecallSession, 0, len(order))
+	var digest strings.Builder
+	for _, sid := range order {
+		sessions = append(sessions, RecallSession{SessionID: sid, Messages: grouped[sid]})
+		digest.WriteString(fmt.Sprintf("[%s]\n%s\n", sid, strings.Join(grouped[sid], "\n")))
+	}
+	if len(sessions) == 0 {
+		return RecallResult{}
+	}
+
+	// Only synthesize with a cloud model; local models fall back to raw.
+	if al.isLocalModel() {
+		return RecallResult{Summarized: false, Sessions: sessions}
+	}
+	resp, err := al.provider.Chat(ctx, []providers.Message{{
+		Role:    "user",
+		Content: fmt.Sprintf("From Ghost's past conversations, synthesize a short, helpful recall summary answering: %q\n\nRelevant matches:\n%s", query, digest.String()),
+	}}, nil, al.model, map[string]interface{}{"max_tokens": 400, "temperature": 0})
+	if err != nil {
+		logger.WarnCF("agent", "Recall summary failed", map[string]interface{}{"error": err.Error()})
+		return RecallResult{Summarized: false, Sessions: sessions}
+	}
+	return RecallResult{Summarized: true, Summary: resp.Content, Sessions: sessions}
+}
+
 func (al *AgentLoop) resolveProviderForModel(model string) providers.LLMProvider {
 	if model == "" {
 		return al.provider

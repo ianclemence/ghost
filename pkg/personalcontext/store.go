@@ -213,6 +213,19 @@ func (s *Store) supersedeLocked(subject, predicate string, e Entry) (Entry, erro
 	return created, nil
 }
 
+// reinforceLocked records that a current belief was restated: it bumps the
+// reinforcement count and "last reinforced" time without changing the value,
+// sources, or status. Provenance is preserved (the original sources stay) and
+// no new fact is created. The caller must hold the write lock.
+func (s *Store) reinforceLocked(cur *Entry) error {
+	rev := *cur
+	rev.ReinforceCount++
+	now := time.Now().UTC()
+	rev.ReinforcedAt = &now
+	rev.UpdatedAt = now
+	return s.append(rev)
+}
+
 // applyActions persists extraction actions atomically with respect to each
 // other and to concurrent writers. The caller's Extract decision was made
 // against a snapshot of the current context; by the time persistence runs,
@@ -247,9 +260,21 @@ func (s *Store) applyActions(actions []Action) ([]Action, error) {
 			a.Mode = ActionCreate
 			a.Entry = created
 			out = append(out, a)
+		case a.Mode == ActionReinforce:
+			if err := s.reinforceLocked(cur); err != nil {
+				return out, err
+			}
+			// reflect the reinforced state (append updated byID[id])
+			if refreshed, ok := s.byID[cur.ID]; ok {
+				a.Entry = *refreshed
+			} else {
+				a.Entry = *cur
+			}
+			out = append(out, a)
 		case a.Rule == likesRuleName:
 			// Additive: a like never supersedes. A duplicate value (existing
-			// or just appended earlier in this batch) is skipped.
+			// or just appended earlier in this batch) is handled as a reinforce
+			// action above; otherwise a genuinely new like is appended.
 			if entryValueString(*cur) == entryValueString(e) {
 				continue
 			}
@@ -261,7 +286,9 @@ func (s *Store) applyActions(actions []Action) ([]Action, error) {
 			a.Entry = created
 			out = append(out, a)
 		case entryValueString(*cur) == entryValueString(e):
-			// Restating the current belief changes nothing.
+			// Restating the current belief is handled as a reinforce action
+			// above (decided before building actions), so this branch is a
+			// safety-net no-op.
 		default:
 			created, err := s.supersedeLocked(e.Subject, e.Predicate, e)
 			if err != nil {

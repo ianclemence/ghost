@@ -15,6 +15,8 @@ async function loadMemory(container) {
   ]);
   if (!document.body.contains(container)) return;
 
+  renderRecall(container);
+
   const self = selfRes.status === 'fulfilled' ? (selfRes.value || {}) : {};
   const facts = Array.isArray(self.entries) ? self.entries : [];
   const curated = (Array.isArray(self.notes) ? self.notes : []).concat(Array.isArray(self.you) ? self.you : []);
@@ -70,7 +72,10 @@ function renderFacts(container, facts, curated) {
     const row = GhostUI.h('div', { className: 'ghost-row self-entry' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
     c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:400' }, e.value || e.label));
-    if (e.label && e.value) c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, e.label));
+    if (e.label && e.value) {
+      const subStr = e.label + (e.reinforce_count > 1 ? '  \u00b7  reinforced ' + e.reinforce_count + '\u00d7' : '');
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, subStr));
+    }
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
     const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button' }, 'Forget');
@@ -130,6 +135,60 @@ function renderNotes(container, files) {
   search.addEventListener('input', () => {
     const q = search.value.trim().toLowerCase();
     render(files.filter(f => f.name.toLowerCase().includes(q)));
+  });
+}
+
+// renderRecall lets the user search Ghost's past conversations ("what did we
+// talk about earlier?"). It summarizes across sessions with a cloud model when
+// available and falls back to the raw matches offline.
+async function renderRecall(container) {
+  const panel = GhostUI.h('div', { className: 'panel' });
+  const ph = GhostUI.h('div', { className: 'panel-head' });
+  const t = GhostUI.h('div');
+  t.appendChild(GhostUI.h('h2', {}, 'Recall'));
+  t.appendChild(GhostUI.h('p', {}, 'Search what you and Ghost have talked about.'));
+  ph.appendChild(t);
+  panel.appendChild(ph);
+  const wrap = GhostUI.h('div', { className: 'row-flex', style: 'gap:var(--s-2)' });
+  const input = GhostUI.input('What did we talk about\u2026');
+  const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', type: 'button' }, 'Recall');
+  wrap.appendChild(input);
+  wrap.appendChild(btn);
+  panel.appendChild(wrap);
+  const body = GhostUI.h('div', { style: 'margin-top:var(--s-4)' });
+  panel.appendChild(body);
+  container.appendChild(panel);
+
+  btn.addEventListener('click', async () => {
+    const q = input.value.trim();
+    if (!q) return;
+    body.innerHTML = '';
+    body.appendChild(GhostUI.loading('Recalling\u2026'));
+    let res;
+    try { res = await GhostAPI.proxyGet('/v1/recall?query=' + encodeURIComponent(q)); }
+    catch (e) { body.innerHTML = ''; body.appendChild(GhostUI.errorState('Couldn\u2019t recall', 'Ghost may still be starting.')); return; }
+    body.innerHTML = '';
+    if (!res.sessions || res.sessions.length === 0) {
+      body.appendChild(GhostUI.emptyState('Nothing found', 'No past conversation matched that.'));
+      return;
+    }
+    const list = GhostUI.h('div', { className: 'ghost-list' });
+    if (res.summarized && res.summary) {
+      const sum = GhostUI.h('div', { className: 'markdown-body', style: 'padding:var(--s-3) var(--s-4);background:var(--paper-sunken);border-radius:var(--r-sm);margin-bottom:var(--s-3)' });
+      sum.innerHTML = GhostUI.md(res.summary);
+      list.appendChild(sum);
+    } else {
+      list.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-bottom:var(--s-3)' }, 'Offline recall (no cloud model) \u2014 raw matches:'));
+    }
+    res.sessions.forEach(sess => {
+      const row = GhostUI.h('div', { className: 'ghost-row' });
+      const c = GhostUI.h('div', { className: 'ghost-row-content' });
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:500' }, sess.session_id));
+      (sess.messages || []).forEach(m => c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, m)));
+      row.appendChild(c);
+      list.appendChild(row);
+    });
+    body.appendChild(list);
   });
 }
 

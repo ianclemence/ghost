@@ -46,6 +46,9 @@ const (
 	// ActionSupersede replaces the current entry for the same subject and
 	// predicate, retiring the old one.
 	ActionSupersede ActionMode = "supersede"
+	// ActionReinforce records that an existing belief was restated, bumping its
+	// reinforcement metadata without duplicating it (provenance preserved).
+	ActionReinforce ActionMode = "reinforce"
 )
 
 // Action is one extraction result: a fully-built entry plus the mode a caller
@@ -344,6 +347,8 @@ func decideActions(cands []candidate, in Input) []Action {
 
 		if c.likes {
 			if currentHasValue(in.Current, c.predicate, c.value) {
+				// Restating a like reinforces the existing belief, never duplicates.
+				actions = append(actions, buildAction(ActionReinforce, c, in, false))
 				continue
 			}
 			actions = append(actions, buildAction(ActionCreate, c, in, false))
@@ -354,7 +359,8 @@ func decideActions(cands []candidate, in Input) []Action {
 		case cur == nil:
 			actions = append(actions, buildAction(ActionCreate, c, in, false))
 		case entryValueString(*cur) == c.value:
-			// Restating the current belief changes nothing.
+			// Restating the current belief reinforces it (no new fact).
+			actions = append(actions, buildAction(ActionReinforce, c, in, false))
 		default:
 			actions = append(actions, buildAction(ActionSupersede, c, in, c.correction))
 		}

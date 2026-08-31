@@ -35,6 +35,22 @@ async function loadAbout(container) {
     container.appendChild(idPanel);
   }
 
+  // Ghost is learning — the self-improvement loop, made quietly visible.
+  const [learnRes] = await Promise.allSettled([GhostAPI.proxyGet('/v1/learnings')]);
+  const learn = learnRes.status === 'fulfilled' ? learnRes.value : {};
+  if (learn && ((learn.records || 0) > 0 || (learn.drafts || 0) > 0)) {
+    const lp = GhostUI.h('div', { className: 'panel' });
+    lp.appendChild(GhostUI.h('div', { className: 'panel-head' }, GhostUI.h('div', {}, GhostUI.h('h2', {}, 'Ghost is learning'))));
+    const d = GhostUI.h('div', { style: 'margin-top:var(--s-3)' });
+    d.appendChild(kvRow('Conversations reflected on', GhostUI.fmtNum(learn.records || 0)));
+    d.appendChild(kvRow('Skill improvements drafted', GhostUI.fmtNum(learn.drafts || 0)));
+    if (learn.recent && learn.recent.length) {
+      d.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-2)' }, 'Recently suggested: ' + learn.recent.map(r => r.skill).join(', ')));
+    }
+    lp.appendChild(d);
+    container.appendChild(lp);
+  }
+
   const prose = GhostUI.h('div', { className: 'panel prose' });
   prose.innerHTML = GhostUI.md(`
 Ghost is a personal AI that lives on your own hardware. It remembers what matters, works for you without being watched, and stays with you across your devices.
@@ -52,8 +68,8 @@ Ghost is open-source. Source, documentation, and license are in the project repo
 
 function kvRow(label, value) {
   const r = GhostUI.h('div', { className: 'kv-row' });
-  r.appendChild(GhostUI.h('div', { className: 'kv-label' }, label));
-  r.appendChild(GhostUI.h('div', { className: 'kv-value' }, value));
+  r.appendChild(GhostUI.h('div', { className: 'kv-key' }, label));
+  r.appendChild(GhostUI.h('div', { className: 'kv-val' }, value));
   return r;
 }
 

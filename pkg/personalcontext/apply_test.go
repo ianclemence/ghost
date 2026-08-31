@@ -130,8 +130,8 @@ func TestApplyLikesStillAdditive(t *testing.T) {
 		}
 	}
 
-	if actions := applyText(t, s, "I like dark chocolate"); len(actions) != 0 {
-		t.Fatalf("restated like produced %d actions, want 0", len(actions))
+	if actions := applyText(t, s, "I like dark chocolate"); len(actions) != 1 || actions[0].Mode != ActionReinforce {
+		t.Fatalf("restated like produced %d actions, want one reinforce", len(actions))
 	}
 }
 

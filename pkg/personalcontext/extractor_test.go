@@ -398,8 +398,8 @@ func TestExtractRestatementSkipped(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Extract(%q): %v", text, err)
 		}
-		if len(actions) != 0 {
-			t.Errorf("%q produced %d actions, want 0 (restatement)", text, len(actions))
+		if len(actions) != 1 || actions[0].Mode != ActionReinforce {
+			t.Errorf("%q produced %d actions, want one reinforce (restatement)", text, len(actions))
 		}
 	}
 
@@ -466,8 +466,8 @@ func TestExtractLikesAdditive(t *testing.T) {
 		t.Fatalf("second like actions = %+v, want one create", a2)
 	}
 
-	if a3 := apply("I like dark chocolate"); len(a3) != 0 {
-		t.Fatalf("restated like produced %d actions, want 0", len(a3))
+	if a3 := apply("I like dark chocolate"); len(a3) != 1 || a3[0].Mode != ActionReinforce {
+		t.Fatalf("restated like produced %d actions, want one reinforce", len(a3))
 	}
 
 	likes := s.ByPredicate("preference/likes")

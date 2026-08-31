@@ -26,3 +26,22 @@ func TestMessagesContainImages(t *testing.T) {
 		t.Error("expected true for image message")
 	}
 }
+
+func TestIsLocalModel(t *testing.T) {
+	al := &AgentLoop{model: "ollama:qwen3:0.6b"}
+	if !al.isLocalModel() {
+		t.Error("expected ollama to be local")
+	}
+	al2 := &AgentLoop{model: "deepseek:deepseek-v4-flash"}
+	if al2.isLocalModel() {
+		t.Error("expected deepseek to be cloud")
+	}
+}
+
+func TestLearningsSummaryNilEvolution(t *testing.T) {
+	al := &AgentLoop{}
+	l := al.LearningsSummary()
+	if l["records"].(int) != 0 || l["drafts"].(int) != 0 {
+		t.Fatalf("expected empty learnings summary, got %+v", l)
+	}
+}

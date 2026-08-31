@@ -2369,12 +2369,31 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	// user can see and manage what Ghost has learned about them. The personal
 	// context is always injected into the system prompt (consult + apply); this
 	// makes it visible and editable.
+	// ── Recall: cross-session "what did we talk about earlier?" ────────────
+	// Surfaces Ghost's own session history: raw matches offline, or a concise
+	// LLM summary when a cloud model is available.
+	mux.HandleFunc("/v1/recall", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("query"))
+		if q == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "query is required")
+			return
+		}
+		jsonResponse(w, http.StatusOK, agentLoop.Recall(r.Context(), q))
+	}))
+
+	// ── Learnings: a readable digest of Ghost's self-improvement ───────────
+	mux.HandleFunc("/v1/learnings", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, http.StatusOK, agentLoop.LearningsSummary())
+	}))
+
 	mux.HandleFunc("/v1/memory/self", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		type entryView struct {
-			ID    string `json:"id"`
-			Kind  string `json:"kind"`
-			Label string `json:"label"`
-			Value string `json:"value"`
+			ID             string     `json:"id"`
+			Kind           string     `json:"kind"`
+			Label          string     `json:"label"`
+			Value          string     `json:"value"`
+			ReinforceCount int        `json:"reinforce_count,omitempty"`
+			ReinforcedAt   *time.Time `json:"reinforced_at,omitempty"`
 		}
 		store, err := personalcontext.Open(workspaceDir)
 		if err != nil {
@@ -2384,10 +2403,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		entries := make([]entryView, 0)
 		for _, e := range store.Current() {
 			entries = append(entries, entryView{
-				ID:    e.ID,
-				Kind:  string(e.Kind),
-				Label: personalcontext.Label(e.Predicate),
-				Value: personalcontext.Value(e),
+				ID:             e.ID,
+				Kind:           string(e.Kind),
+				Label:          personalcontext.Label(e.Predicate),
+				Value:          personalcontext.Value(e),
+				ReinforceCount: e.ReinforceCount,
+				ReinforcedAt:   e.ReinforcedAt,
 			})
 		}
 		curate := tools.NewMemoryCurateTool(workspaceDir)
