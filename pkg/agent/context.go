@@ -148,7 +148,14 @@ func (cb *ContextBuilder) BuildSystemPrompt() string {
 	if skillsSummary != "" {
 		parts = append(parts, fmt.Sprintf(`# Skills
 
-The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
+Ghost ships skills that already know how to do common tasks. When a request matches a skill below:
+
+1. PICK the single best-matching skill.
+2. READ its SKILL.md with the read_file tool.
+3. FOLLOW its instructions EXACTLY — run the commands and tools it gives you, use its API/endpoints, and use its output directly.
+4. Do NOT re-search, re-derive, or cross-check online. The skill is authoritative and already tested.
+
+Only if NO skill matches should you research on your own (web_search / web_fetch). Keep answers short and pull from the skill's result.
 
 %s`, skillsSummary))
 	}

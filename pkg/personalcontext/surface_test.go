@@ -72,3 +72,30 @@ func TestOpenForgetCurrent(t *testing.T) {
 		t.Fatalf("expected one fewer current entry after Forget")
 	}
 }
+
+func TestExtractPrefersAndFavorite(t *testing.T) {
+	actions, err := Extract(Input{SessionID: "s", MessageID: "m", Text: "I really prefer tea over coffee", Timestamp: time.Now()})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	found := false
+	for _, a := range actions {
+		if a.Entry.Predicate == "preference/prefers" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a preference/prefers entry, got %+v", actions)
+	}
+
+	acts2, _ := Extract(Input{SessionID: "s", MessageID: "m2", Text: "my favorite food is sushi", Timestamp: time.Now()})
+	fav := false
+	for _, a := range acts2 {
+		if a.Entry.Predicate == "preference/favorite" {
+			fav = true
+		}
+	}
+	if !fav {
+		t.Fatalf("expected a preference/favorite entry, got %+v", acts2)
+	}
+}

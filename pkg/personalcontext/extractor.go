@@ -89,6 +89,9 @@ type declarationRule struct {
 	likes bool
 	// prefix is prepended to the captured value before storage.
 	prefix string
+	// rejectWords skips a capture whose first word is in this list, so a more
+	// specific rule (e.g. communication style) owns those declarations.
+	rejectWords []string
 }
 
 // declarationRules is the entire extractor grammar. Values are captured
@@ -126,6 +129,21 @@ var declarationRules = []declarationRule{
 		kind:      KindPreference,
 		predicate: "preference/likes",
 		re:        regexp.MustCompile(`(?i)\bi like\s+([^;.,!?]+)`),
+		likes:     true,
+	},
+	{
+		name:        "prefers",
+		kind:        KindPreference,
+		predicate:   "preference/prefers",
+		re:          regexp.MustCompile(`(?i)\bprefers?\s+([^;.,!?]+)`),
+		likes:       true,
+		rejectWords: []string{"concise", "brief", "short", "detailed", "thorough", "elaborate", "direct", "casual", "formal", "verbose", "answers", "answer", "responses", "response"},
+	},
+	{
+		name:      "favorite",
+		kind:      KindPreference,
+		predicate: "preference/favorite",
+		re:        regexp.MustCompile(`(?i)\bmy favorite\s+(?:food|drink|show|movie|book|song|place|thing)\s+is\s+([^;.,!?]+)`),
 		likes:     true,
 	},
 	{
@@ -264,6 +282,9 @@ func matchDeclarations(text string, correction bool) []candidate {
 			continue
 		}
 		if r.likes && rejectLikesValue(value) {
+			continue
+		}
+		if len(r.rejectWords) > 0 && rejectFirstWord(value, r.rejectWords) {
 			continue
 		}
 		if r.prefix != "" {
@@ -445,6 +466,21 @@ func cleanValue(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.Trim(s, `"'`)
 	return s
+}
+
+// rejectFirstWord reports whether the first word of a captured value is in the
+// given reject list, so a rule can defer a declaration to a more specific rule.
+func rejectFirstWord(v string, words []string) bool {
+	fields := strings.Fields(strings.ToLower(v))
+	if len(fields) == 0 {
+		return false
+	}
+	for _, w := range words {
+		if fields[0] == w {
+			return true
+		}
+	}
+	return false
 }
 
 // rejectLikesValue rejects like-captures whose first word is low-signal, so
