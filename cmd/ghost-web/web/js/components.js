@@ -251,6 +251,29 @@ const GhostUI = (() => {
     return new Date(unixSec * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
+  // stripFrontmatter splits a SKILL.md / doc string into its YAML frontmatter
+  // block (a leading "---\n ... \n---") and the body. Docs carry frontmatter
+  // that must not render as markdown, so callers render `body` and use `meta`
+  // (as key: value text) for a styled header.
+  function stripFrontmatter(src) {
+    const s = (src || '').replace(/^\uFEFF/, '').trimStart();
+    if (s.startsWith('---')) {
+      const end = s.indexOf('\n---', 3);
+      if (end >= 0) {
+        return { meta: s.slice(3, end).trim(), body: s.slice(end + 4).trim() };
+      }
+    }
+    return { meta: '', body: s };
+  }
+
+  // frontmatterValue pulls a simple "key: value" field out of a frontmatter blob.
+  function frontmatterValue(meta, key) {
+    if (!meta) return '';
+    const re = new RegExp('(?:^|\\n)' + key + '\\s*:\\s*([^\\n]+)');
+    const m = meta.match(re);
+    return m ? m[1].trim().replace(/["']/g, '') : '';
+  }
+
   function dayLabel(unixSec) {
     const d = new Date(unixSec * 1000);
     const today = new Date();
@@ -358,5 +381,5 @@ const GhostUI = (() => {
     return html;
   }
 
-  return { el, h, ghostMark, statusDot, badge, btn, input, textarea, select, toggle, row, linkRow, sectionGroup, emptyState, loading, errorState, modal, toast, confirmModal, downloadBackup, fmtNum, timeAgo, clockTime, dayLabel, md, modelFriendly };
+  return { el, h, ghostMark, statusDot, badge, btn, input, textarea, select, toggle, row, linkRow, sectionGroup, emptyState, loading, errorState, modal, toast, confirmModal, downloadBackup, fmtNum, timeAgo, clockTime, dayLabel, md, modelFriendly, stripFrontmatter, frontmatterValue };
 })();

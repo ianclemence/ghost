@@ -92,10 +92,10 @@ async function loadSystem(container) {
     try { await GhostAPI.post('/api/admin/ghost/restart'); GhostUI.toast('Ghost is restarting\u2026'); }
     catch (e) { GhostUI.toast('Couldn\u2019t restart Ghost.', 'err'); }
   }));
-  dk.appendChild(kvRowBtn('Restart this device', 'Reboots the hardware Ghost runs on. Use only if something is wrong.', 'Restart', async () => {
-    if (!(await GhostUI.confirmModal('Restart this device?', 'Your Ghost will be offline for a minute or two while the device reboots.', 'Restart device'))) return;
-    try { await GhostAPI.post('/api/admin/reboot'); GhostUI.toast('Restarting…'); }
-    catch (e) { GhostUI.toast('Couldn\u2019t restart.', 'err'); }
+  dk.appendChild(kvRowBtn('Reboot this device', 'Reboots the hardware Ghost runs on. Use only if something is wrong.', 'Reboot', async () => {
+    if (!(await GhostUI.confirmModal('Reboot this device?', 'Your Ghost will be offline for a minute or two while the device reboots.', 'Reboot device'))) return;
+    try { await GhostAPI.post('/api/admin/reboot'); GhostUI.toast('Rebooting…'); }
+    catch (e) { GhostUI.toast('Couldn\u2019t reboot.', 'err'); }
   }));
   danger.appendChild(dk);
   container.appendChild(danger);

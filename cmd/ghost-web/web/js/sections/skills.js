@@ -87,18 +87,35 @@ async function openSkill(name) {
 
   const sub = document.getElementById('skill-modal-sub');
   const enabled = data.enabled !== false;
-  const parts = [];
-  if (data.bundled) parts.push('Built-in');
-  if (data.optional) parts.push('Needs setup');
-  if (data.files && data.files.length) parts.push(data.files.length + ' file' + (data.files.length === 1 ? '' : 's'));
-  if (data.user_modified) parts.push('Modified');
-  if (parts.length > 0 && sub) sub.textContent = parts.join('  \u00b7  ') + (enabled ? '' : '  \u00b7  Disabled');
-  else if (sub) sub.textContent = data.description || (enabled ? 'Installed skill' : 'Disabled');
+  const sk = (data.files || []).find(f => f.path === 'SKILL.md' || f.path === 'SKILL.md.disabled');
+  const fm = GhostUI.stripFrontmatter(sk ? sk.content : '');
+  const meta = fm.meta;
+  const skillBody = fm.body;
+
+  const metaParts = [];
+  if (data.bundled) metaParts.push('Built-in');
+  if (data.optional) metaParts.push('Needs setup');
+  if (data.user_modified) metaParts.push('Modified');
+  const version = GhostUI.frontmatterValue(meta, 'version');
+  const author = GhostUI.frontmatterValue(meta, 'author');
+  if (version) metaParts.push('v' + version);
+  if (author) metaParts.push(author);
+  metaParts.push(enabled ? 'Enabled' : 'Disabled');
+
+  if (sub) {
+    if (data.description) {
+      sub.textContent = data.description;
+      const metaEl = GhostUI.h('span', { className: 'skill-modal-meta' }, metaParts.join('  \u00b7  '));
+      sub.appendChild(document.createElement('br'));
+      sub.appendChild(metaEl);
+    } else {
+      sub.textContent = metaParts.join('  \u00b7  ');
+    }
+  }
 
   body.innerHTML = '';
   const content = GhostUI.h('div', { className: 'markdown-body' });
-  const sk = (data.files || []).find(f => f.path === 'SKILL.md' || f.path === 'SKILL.md.disabled');
-  content.innerHTML = GhostUI.md(sk ? sk.content : 'No documentation.');
+  content.innerHTML = GhostUI.md(skillBody || 'No documentation.');
   body.appendChild(content);
 
   // Show other files in this skill (excluding SKILL.md)
