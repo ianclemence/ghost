@@ -417,6 +417,11 @@
 }
 .self-group {
   margin: var(--s-4) 0 var(--s-1);
+  font-size: var(--t-micro);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 600;
 }
 .self-body .ghost-row {
   padding: var(--s-2) 0;

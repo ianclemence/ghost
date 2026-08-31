@@ -15,9 +15,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
-	"sort"
 	"syscall"
 	"time"
 
@@ -42,10 +42,10 @@ var (
 	// boundPort is the port the wizard actually bound to (may differ from the
 	// requested -port when it fell back, e.g. 80 -> 8080).
 	boundPort int
-// sessions tracks authenticated admin sessions for wizard re-runs.
-sessions = newSessionStore()
-// loginThrottle tracks consecutive failed login attempts per client IP.
-loginThrottle = newLoginThrottle()
+	// sessions tracks authenticated admin sessions for wizard re-runs.
+	sessions = newSessionStore()
+	// loginThrottle tracks consecutive failed login attempts per client IP.
+	loginThrottle = newLoginThrottle()
 )
 
 // sessionRecord stores everything we know about an active admin session so
@@ -73,8 +73,8 @@ const rememberMeTTL = 7 * 24 * time.Hour
 
 // loginThrottle limits failed login attempts per client IP to slow brute-force.
 type loginThrottler struct {
-	mu           sync.Mutex
-	failures     map[string]time.Time
+	mu            sync.Mutex
+	failures      map[string]time.Time
 	attemptCounts map[string]int
 }
 
@@ -346,11 +346,17 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Serve static assets (CSS, JS, fonts) from the embedded web directory.
+	// Assets are revalidated every time (no-cache) so a freshly updated Ghost is
+	// always served, never a stale copy held from an old console version.
 	assetsFS, err := fs.Sub(webFiles, "web")
 	if err != nil {
 		log.Fatalf("Failed to load embedded assets: %v", err)
 	}
-	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS))))
+	assetsHandler := http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS)))
+	mux.Handle("/assets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		assetsHandler.ServeHTTP(w, r)
+	}))
 
 	mux.HandleFunc("/", handleWizardIndex)
 	mux.HandleFunc("/api/scan-wifi", handleScanWiFi)
@@ -593,8 +599,8 @@ func handleScanWiFi(w http.ResponseWriter, r *http.Request) {
 	networks, err := scanWiFiNetworks()
 	if err != nil {
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":      false,
-			"error":   err.Error(),
+			"ok":       false,
+			"error":    err.Error(),
 			"networks": []WiFiNetwork{},
 		})
 		return
@@ -639,10 +645,10 @@ func handleConnectWiFi(w http.ResponseWriter, r *http.Request) {
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"needs_setup":       fb.NeedsSetup(),
-		"admin_configured":  appliance.AdminConfigured(fb.GhostDir),
-		"force":             forceMode,
-		"version":           version,
+		"needs_setup":      fb.NeedsSetup(),
+		"admin_configured": appliance.AdminConfigured(fb.GhostDir),
+		"force":            forceMode,
+		"version":          version,
 	})
 }
 
@@ -955,9 +961,9 @@ TZ=UTC
 
 // WiFiNetwork represents a scanned WiFi network.
 type WiFiNetwork struct {
-	SSID       string `json:"ssid"`
-	Signal     int    `json:"signal"`
-	Encrypted  bool   `json:"encrypted"`
+	SSID      string `json:"ssid"`
+	Signal    int    `json:"signal"`
+	Encrypted bool   `json:"encrypted"`
 }
 
 // scanWiFiNetworks scans for available WiFi networks.
