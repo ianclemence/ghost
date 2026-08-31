@@ -59,7 +59,7 @@ async function loadHome(container) {
   keepHead.appendChild(GhostUI.h('h2', { className: 'home-section-title', id: 'home-keep-title' }, 'Keep your Ghost'));
   keepSection.appendChild(keepHead);
   keepSection.appendChild(GhostUI.h('p', { className: 'type-foot text-tertiary', style: 'margin:var(--s-1) 0 var(--s-3)' }, 'Your Ghost moves with you. Back it up so you always have your memory, skills, and settings \u2014 and know how to bring it back if it ever stops.'));
-  const keepActions = GhostUI.h('div', { className: 'row-flex', style: 'gap:var(--s-3);align-items:center' });
+  const keepActions = GhostUI.h('div', { className: 'row-flex', style: 'gap:var(--s-3);align-items:center;flex-wrap:wrap' });
   const backupBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', type: 'button' }, 'Back up my Ghost');
   backupBtn.addEventListener('click', () => GhostUI.downloadBackup(backupBtn));
   keepActions.appendChild(backupBtn);
@@ -107,20 +107,20 @@ function greetingFor(hour) {
 }
 
 // recoveryModal explains, in plain language, how to bring Ghost back if it ever
-// stops working. Recovery only ever touches the device itself.
+// stops working — using the console, not a terminal. Recovery never touches your
+// memories, skills, or settings.
 function recoveryModal() {
   const body = GhostUI.h('div');
-  body.appendChild(GhostUI.h('p', {}, 'If your Ghost ever stops working, you can recover it from the device. Recovery never touches your memories, skills, or settings \u2014 those stay on the device.'));
+  body.appendChild(GhostUI.h('p', {}, 'If your Ghost ever seems stuck, try these in order. Recovery never touches your memories, skills, or settings \u2014 those stay on the device.'));
   const list = GhostUI.h('ol', { style: 'margin:var(--s-3) 0;padding-left:var(--s-5)' });
   const steps = [
-    'Restart your Ghost from the System section.',
-    'Still not working? Open a terminal on the device and run:  GHOST_RECOVERY_MODE=1 ghost gateway',
-    'The device opens a small recovery page \u2014 on the device only, not the network \u2014 where you can see what\u2019s wrong, restart your Ghost, or reset its password.',
-    'If you ever need to start fresh, your backup lets you bring your Ghost back.',
+    'Restart Ghost  \u2014  open the System section and choose “Restart Ghost”. This fixes most hiccups and takes a few moments.',
+    'Still stuck?  Restart this device  \u2014  the hardware Ghost runs on. A minute or two of downtime is normal.',
+    'If everything else fails, your backup is the safety net  \u2014  download it from the Security section, and you can bring your Ghost back from it.',
   ];
   steps.forEach(s => list.appendChild(GhostUI.h('li', { style: 'margin-bottom:var(--s-2)' }, s)));
   body.appendChild(list);
-  GhostUI.modal('Recovering your Ghost', body, [
+  GhostUI.modal('If Ghost seems stuck', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
   ]);
 }

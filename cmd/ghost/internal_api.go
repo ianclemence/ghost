@@ -2349,6 +2349,43 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		jsonResponse(w, http.StatusOK, map[string]string{"content": string(content)})
 	}))
 
+	// ── 6b. Curated personal state ("what Ghost knows about you") ─────────
+	// Surfaces the structured user-profile + curated-memory stores so a user can
+	// see and manage what Ghost has learned about them. The same stores are
+	// always injected into the system prompt (consult + apply); this makes the
+	// state visible and editable.
+	mux.HandleFunc("/v1/memory/self", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		curate := tools.NewMemoryCurateTool(workspaceDir)
+		you := curate.Entries("user")
+		notes := curate.Entries("memory")
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"you":   you,
+			"notes": notes,
+		})
+	}))
+
+	mux.HandleFunc("/v1/memory/self/forget", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			Target string `json:"target"` // "user" or "memory"
+			Entry  string `json:"entry"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+			return
+		}
+		curate := tools.NewMemoryCurateTool(workspaceDir)
+		count, err := curate.Delete(req.Target, req.Entry)
+		if err != nil {
+			jsonError(w, http.StatusBadRequest, "not_found", err.Error())
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "remaining": count})
+	}))
+
 	mux.HandleFunc("/v1/workspace/files", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		type FileInfo struct {
 			Name     string `json:"name"`

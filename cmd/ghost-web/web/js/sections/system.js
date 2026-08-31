@@ -87,10 +87,15 @@ async function loadSystem(container) {
   // Danger zone
   const danger = GhostUI.h('div', { className: 'panel', style: 'border-color:var(--bad-soft)' });
   const dk = GhostUI.h('div', { className: 'kv' });
+  dk.appendChild(kvRowBtn('Restart Ghost', 'Restarts the Ghost service. Use this first if Ghost seems stuck — it doesn\u2019t touch your memory or devices.', 'Restart', async () => {
+    if (!(await GhostUI.confirmModal('Restart Ghost?', 'Your Ghost will be offline for a few moments while it restarts. Your memory and settings are safe.', 'Restart Ghost'))) return;
+    try { await GhostAPI.post('/api/admin/ghost/restart'); GhostUI.toast('Ghost is restarting\u2026'); }
+    catch (e) { GhostUI.toast('Couldn\u2019t restart Ghost.', 'err'); }
+  }));
   dk.appendChild(kvRowBtn('Restart this device', 'Reboots the hardware Ghost runs on. Use only if something is wrong.', 'Restart', async () => {
     if (!(await GhostUI.confirmModal('Restart this device?', 'Your Ghost will be offline for a minute or two while the device reboots.', 'Restart device'))) return;
     try { await GhostAPI.post('/api/admin/reboot'); GhostUI.toast('Restarting…'); }
-    catch (e) { GhostUI.toast('Couldn’t restart.', 'err'); }
+    catch (e) { GhostUI.toast('Couldn\u2019t restart.', 'err'); }
   }));
   danger.appendChild(dk);
   container.appendChild(danger);

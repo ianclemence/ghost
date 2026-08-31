@@ -238,12 +238,15 @@ textarea.ghost-input {
   display: flex;
   flex-direction: column;
 }
+.ghost-list > * + * {
+  border-top: 1px solid var(--line);
+}
 .ghost-row,
 .ghost-link-row {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-3) var(--s-3);
+  padding: var(--s-2) var(--s-3);
   transition: background var(--d-fast) var(--ease-out);
 }
 .ghost-row-content { flex: 1; min-width: 0; }
@@ -251,13 +254,13 @@ textarea.ghost-input {
 .ghost-row-subtitle {
   font-size: var(--t-foot);
   color: var(--ink-faint);
-  margin-top: 2px;
+  margin-top: var(--s-0);
 }
 /* Subtle raw model / technical id shown under a friendly model name. */
 .model-id {
   font-size: var(--t-foot);
   color: var(--ink-ghost);
-  margin-top: 1px;
+  margin-top: var(--s-0);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

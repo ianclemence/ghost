@@ -378,6 +378,7 @@ func main() {
 	mux.HandleFunc("/api/admin/hostname", handleSetHostname)
 	mux.HandleFunc("/api/admin/backup", handleBackup)
 	mux.HandleFunc("/api/admin/reboot", handleReboot)
+	mux.HandleFunc("/api/admin/ghost/restart", handleRestartGhost)
 	mux.HandleFunc("/api/admin/password", handleChangePassword)
 	mux.HandleFunc("/api/admin/skills", handleSkillsList)
 	mux.HandleFunc("/api/admin/skills/install", handleSkillInstall)

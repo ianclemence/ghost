@@ -79,6 +79,10 @@ const GhostApp = (() => {
     const view = document.getElementById('view');
     if (!view) return;
     view.innerHTML = '';
+    // Restart the section entrance animation (calm settle, not a bounce).
+    view.classList.remove('view-enter');
+    void view.offsetWidth;
+    view.classList.add('view-enter');
     setActions(null);
     // loading state
     view.appendChild(GhostUI.loading('Loading…'));

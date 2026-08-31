@@ -115,6 +115,15 @@ button { font-family: inherit; }
   outline-offset: 2px;
 }
 
+/* ── Section entrance — a calm settle, never a bounce ── */
+@keyframes viewEnter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.view-enter {
+  animation: viewEnter var(--d-moderate) var(--ease-out);
+}
+
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

@@ -110,7 +110,7 @@
 .home-status-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--s-5) var(--s-6);
+  gap: var(--s-4) var(--s-4);
   margin: 0;
   padding: 0;
 }
@@ -149,12 +149,12 @@
 .home-activity-row {
   display: grid;
   grid-template-columns: 132px 1fr;
-  gap: var(--s-5);
+  gap: var(--s-4);
   align-items: start;
-  padding: var(--s-3) 0;
+  padding: var(--s-2) 0;
 }
 .home-activity-row-skel {
-  padding: var(--s-3) 0;
+  padding: var(--s-2) 0;
 }
 .home-activity-when {
   font-size: var(--t-foot);
@@ -203,7 +203,7 @@
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-3) 0;
+  padding: var(--s-2) 0;
   color: var(--ink-soft);
   font-size: var(--t-callout);
 }
@@ -226,7 +226,7 @@
   gap: var(--s-3);
 }
 .home-attention-item {
-  padding: var(--s-3) 0;
+  padding: var(--s-2) 0;
 }
 .home-attention-head {
   display: flex;
@@ -302,8 +302,8 @@
 }
 .tl-item {
   display: flex;
-  gap: var(--s-4);
-  padding: var(--s-3) 0;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
 }
 .tl-time {
   width: 56px;
@@ -311,14 +311,14 @@
   font-family: var(--font-mono);
   font-size: var(--t-foot);
   color: var(--ink-faint);
-  padding-top: 1px;
+  padding-top: var(--s-0);
 }
 .tl-body { flex: 1; min-width: 0; }
 .tl-title { font-weight: 540; }
 .tl-meta {
   font-size: var(--t-foot);
   color: var(--ink-faint);
-  margin-top: 2px;
+  margin-top: var(--s-0);
 }
 
 /* ── Filter chips ── */
@@ -359,7 +359,7 @@
 .panel {
   background: var(--paper-raised);
   border-radius: var(--r-md);
-  padding: var(--s-6);
+  padding: var(--s-5);
 }
 .panel + .panel { margin-top: var(--s-4); }
 .panel-head {
@@ -367,7 +367,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--s-4);
-  margin-bottom: var(--s-5);
+  margin-bottom: var(--s-4);
 }
 .panel-head h2 {
   font-size: var(--t-head);
@@ -377,7 +377,7 @@
 .panel-head p {
   font-size: var(--t-foot);
   color: var(--ink-faint);
-  margin-top: 3px;
+  margin-top: var(--s-0);
 }
 
 /* ── Key-value rows ── */
@@ -385,12 +385,15 @@
   display: flex;
   flex-direction: column;
 }
+.kv > .kv-row + .kv-row {
+  border-top: 1px solid var(--line);
+}
 .kv-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s-4);
-  padding: var(--s-3) 0;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
 }
 .kv-key {
   color: var(--ink-soft);
@@ -407,12 +410,27 @@
   font-size: 13px;
 }
 
+/* ── Curated "what Ghost knows about you" ── */
+.self-body {
+  display: flex;
+  flex-direction: column;
+}
+.self-group {
+  margin: var(--s-4) 0 var(--s-1);
+}
+.self-body .ghost-row {
+  padding: var(--s-2) 0;
+}
+.self-body .ghost-row + .ghost-row {
+  border-top: 1px solid var(--line);
+}
+
 /* ── Model rows ── */
 .model-row {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-3) var(--s-2);
+  padding: var(--s-2) var(--s-2);
   transition: background var(--d-fast) var(--ease-out);
   border-radius: var(--r-sm);
 }
@@ -422,7 +440,7 @@
 .model-sub {
   font-size: var(--t-foot);
   color: var(--ink-faint);
-  margin-top: 1px;
+  margin-top: var(--s-0);
 }
 
 /* ── QR connect ── */
@@ -568,19 +586,21 @@
   border-radius: var(--r-md);
   overflow: hidden;
 }
+.diag-grid > .diag-row + .diag-row {
+  border-top: 1px solid var(--line);
+}
 .diag-row {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-3) var(--s-4);
+  padding: var(--s-2) var(--s-3);
 }
 .diag-name { flex: 0 0 auto; min-width: 0; font-weight: 560; }
 .diag-msg {
   flex: 1 1 auto;
   min-width: 0;
   font-size: var(--t-foot);
-  color: var(--ink-faint);
-  font-family: var(--font-mono);
+  color: var(--ink-soft);
   word-break: break-word;
   overflow-wrap: anywhere;
   text-align: right;

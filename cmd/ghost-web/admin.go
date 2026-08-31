@@ -1162,6 +1162,21 @@ func handleReboot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Rebooting..."})
 }
 
+// handleRestartGhost restarts only the Ghost (gateway) service, not the device.
+// This is the normal-user, safe way to recover from a stuck Ghost without
+// needing a terminal.
+func handleRestartGhost(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	restartGhostService()
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Ghost is restarting"})
+}
+
 func handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if !requireSession(w, r) {
 		return

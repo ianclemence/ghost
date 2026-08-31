@@ -356,6 +356,44 @@ func (t *MemoryCurateTool) removeEntry(target string, args map[string]interface{
 	return t.successResponse(target, entries, "Entry removed.")
 }
 
+// Entries returns the current entries for a target ("user" or "memory").
+func (t *MemoryCurateTool) Entries(target string) []string {
+	return t.readEntries(target)
+}
+
+// Delete removes the entry uniquely identified by oldText from a target and
+// returns the remaining entry count. It is safe for the console to call so a
+// user can forget an individual fact Ghost has learned about them.
+func (t *MemoryCurateTool) Delete(target, oldText string) (int, error) {
+	oldText = strings.TrimSpace(oldText)
+	if target != "user" && target != "memory" {
+		return 0, fmt.Errorf("target must be 'user' or 'memory'")
+	}
+	if oldText == "" {
+		return 0, fmt.Errorf("old_text is required")
+	}
+	entries := t.readEntries(target)
+	matchIdx := -1
+	matchCount := 0
+	for i, e := range entries {
+		if strings.Contains(e, oldText) {
+			matchIdx = i
+			matchCount++
+		}
+	}
+	if matchCount == 0 {
+		return 0, fmt.Errorf("no entry matched")
+	}
+	if matchCount > 1 {
+		return 0, fmt.Errorf("multiple entries matched; be more specific")
+	}
+	entries = append(entries[:matchIdx], entries[matchIdx+1:]...)
+	if err := t.writeEntries(target, entries); err != nil {
+		return len(entries), err
+	}
+	return len(entries), nil
+}
+
 // FormatForSystemPrompt returns the curated memory content formatted for system prompt injection.
 // Returns empty string if no entries exist.
 func (t *MemoryCurateTool) FormatForSystemPrompt(target string) string {

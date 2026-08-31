@@ -9,6 +9,10 @@ async function loadMemory(container) {
   head.appendChild(sub);
   container.appendChild(head);
 
+  const selfPanel = GhostUI.h('div', { className: 'panel' });
+  container.appendChild(selfPanel);
+  renderSelf(selfPanel);
+
   const searchWrap = GhostUI.h('div', { style: 'margin-bottom:var(--s-4)' });
   const search = GhostUI.input('Search memories\u2026');
   searchWrap.appendChild(search);
@@ -63,6 +67,63 @@ async function loadMemory(container) {
     const q = search.value.trim().toLowerCase();
     render(files.filter(f => f.name.toLowerCase().includes(q)));
   });
+}
+
+// renderSelf shows the structured "what Ghost knows about you" state — the same
+// profile and notes that are always injected into every conversation. Making this
+// visible and editable is what makes memory feel personal and owned.
+async function renderSelf(panel) {
+  const ph = GhostUI.h('div', { className: 'panel-head' });
+  const t = GhostUI.h('div');
+  t.appendChild(GhostUI.h('h2', {}, 'What Ghost knows about you'));
+  t.appendChild(GhostUI.h('p', {}, 'These are the things Ghost has learned and keeps in mind. You can forget anything below.'));
+  ph.appendChild(t);
+  panel.appendChild(ph);
+
+  const body = GhostUI.h('div', { className: 'self-body' });
+  body.appendChild(GhostUI.loading('Reading\u2026'));
+  panel.appendChild(body);
+
+  let res;
+  try { res = await GhostAPI.proxyGet('/v1/memory/self'); }
+  catch (e) { body.innerHTML = ''; body.appendChild(GhostUI.emptyState('Unavailable', 'Couldn\u2019t read your saved profile right now.')); return; }
+  if (!document.body.contains(panel)) return;
+  body.innerHTML = '';
+
+  const you = Array.isArray(res.you) ? res.you : [];
+  const notes = Array.isArray(res.notes) ? res.notes : [];
+
+  if (you.length === 0 && notes.length === 0) {
+    body.appendChild(GhostUI.emptyState('Still getting to know you', 'Talk to Ghost and it will remember what matters about you here.'));
+    return;
+  }
+
+  function group(title, items, target) {
+    if (!items.length) return;
+    const head = GhostUI.h('div', { className: 'self-group', style: 'font-size:var(--t-micro);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);font-weight:600' }, title);
+    body.appendChild(head);
+    items.forEach(entry => {
+      const row = GhostUI.h('div', { className: 'ghost-row self-entry' });
+      const c = GhostUI.h('div', { className: 'ghost-row-content' });
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:400' }, entry));
+      row.appendChild(c);
+      const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+      const forget = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button' }, 'Forget');
+      forget.addEventListener('click', async () => {
+        forget.disabled = true;
+        try {
+          await GhostAPI.proxyPost('/v1/memory/self/forget', { target: target, entry: entry });
+          GhostUI.toast('Forgotten');
+          renderSelf(panel);
+        } catch (e) { forget.disabled = false; GhostUI.toast('Couldn\u2019t forget that.', 'err'); }
+      });
+      tr.appendChild(forget);
+      row.appendChild(tr);
+      body.appendChild(row);
+    });
+  }
+  group('About you', you, 'user');
+  group('What Ghost has learned', notes, 'memory');
 }
 
 async function openMemory(container, file) {
