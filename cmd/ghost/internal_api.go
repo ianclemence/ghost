@@ -726,6 +726,7 @@ func listWorkspaceSkills(skillsDir string) []map[string]string {
 			"bundled":       strconv.FormatBool(bundled),
 			"user_modified": strconv.FormatBool(bundled && entry.UserModified),
 			"enabled":       strconv.FormatBool(enabled),
+			"optional":      strconv.FormatBool(skills.IsOptionalSkill(name)),
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i]["name"] < result[j]["name"] })
@@ -797,6 +798,7 @@ func readSkillDetail(skillsDir, name string) (map[string]interface{}, error) {
 		"bundled":       bundled,
 		"user_modified": bundled && entry.UserModified,
 		"description":   desc,
+		"optional":      skills.IsOptionalSkill(name),
 		"files":         files,
 	}, nil
 }

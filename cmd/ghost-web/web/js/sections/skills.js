@@ -46,6 +46,7 @@ function renderList(listEl, skills) {
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
     const enabled = s.enabled !== 'false' && s.enabled !== false;
     if (!enabled) tr.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary' }, 'Off'));
+    else if (s.optional === 'true' || s.optional === true) tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot('warn'), 'Needs setup'));
     tr.appendChild(GhostUI.h('span', { className: 'chevron' }, '›'));
     row.appendChild(tr);
     listEl.appendChild(row);
@@ -88,6 +89,7 @@ async function openSkill(name) {
   const enabled = data.enabled !== false;
   const parts = [];
   if (data.bundled) parts.push('Built-in');
+  if (data.optional) parts.push('Needs setup');
   if (data.files && data.files.length) parts.push(data.files.length + ' file' + (data.files.length === 1 ? '' : 's'));
   if (data.user_modified) parts.push('Modified');
   if (parts.length > 0 && sub) sub.textContent = parts.join('  \u00b7  ') + (enabled ? '' : '  \u00b7  Disabled');

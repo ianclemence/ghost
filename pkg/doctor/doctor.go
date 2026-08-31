@@ -227,7 +227,21 @@ func (d *Doctor) checkSkillDependencies(ctx context.Context) CheckResult {
 	}
 
 	report := skills.CheckSkillDependencies(d.workspace)
-	if !report.HasMissing() {
+
+	// Only core (zero-setup) skills count against the user. Optional skills —
+	// those that need a local binary, hardware, or an external service — are
+	// labeled "Needs setup" instead of being held against a normal install.
+	missing := map[string][]string{}
+	for _, res := range report.Results {
+		if skills.IsOptionalSkill(res.Skill) {
+			continue
+		}
+		if len(res.Missing) > 0 {
+			missing[res.Skill] = res.Missing
+		}
+	}
+
+	if len(missing) == 0 {
 		return CheckResult{
 			Name:    "skill_dependencies",
 			Label:   "Skills",
@@ -237,24 +251,11 @@ func (d *Doctor) checkSkillDependencies(ctx context.Context) CheckResult {
 		}
 	}
 
-	missingSkills := 0
-	missingCount := 0
-	missing := map[string][]string{}
-	for _, res := range report.Results {
-		if len(res.Missing) > 0 {
-			missingSkills++
-			missingCount += len(res.Missing)
-			missing[res.Skill] = res.Missing
-		}
-	}
-
-	summary := formatMissingSkills(missing)
-
 	return CheckResult{
 		Name:    "skill_dependencies",
 		Label:   "Skills",
 		Status:  "warning",
-		Message: fmt.Sprintf("%d skill(s) need extra software to run: %s", missingSkills, summary),
+		Message: fmt.Sprintf("%d skill(s) need extra software to run: %s", len(missing), formatMissingSkills(missing)),
 		Latency: time.Since(start).Milliseconds(),
 	}
 }
@@ -274,8 +275,6 @@ func formatMissingSkills(missing map[string][]string) string {
 			parts = append(parts, "the calendar skill (it needs Google Calendar access)")
 		case "hardware":
 			parts = append(parts, "the hardware skill (install i2c-tools)")
-		case "weather", "crypto", "flight", "recipe", "scraper", "homeassistant":
-			parts = append(parts, "the "+skill+" skill")
 		default:
 			parts = append(parts, "the "+skill+" skill")
 		}
