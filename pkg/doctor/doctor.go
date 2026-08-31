@@ -15,6 +15,7 @@ import (
 
 type CheckResult struct {
 	Name    string `json:"name"`
+	Label   string `json:"label,omitempty"`
 	Status  string `json:"status"`
 	Message string `json:"message,omitempty"`
 	Latency int64  `json:"latency_ms,omitempty"`
@@ -67,8 +68,9 @@ func (d *Doctor) checkPython(ctx context.Context) CheckResult {
 	if err != nil {
 		return CheckResult{
 			Name:    "python_env",
+			Label:   "Python",
 			Status:  "error",
-			Message: "python/python3 not found",
+			Message: "Python is not installed. A few skills need it to run.",
 			Latency: time.Since(start).Milliseconds(),
 		}
 	}
@@ -80,16 +82,18 @@ func (d *Doctor) checkPython(ctx context.Context) CheckResult {
 	if err := cmd.Run(); err != nil {
 		return CheckResult{
 			Name:    "python_env",
+			Label:   "Python",
 			Status:  "warning",
-			Message: fmt.Sprintf("%s (pip not found)", version),
+			Message: fmt.Sprintf("Python %s is installed, but its package manager is missing.", version),
 			Latency: time.Since(start).Milliseconds(),
 		}
 	}
 
 	return CheckResult{
 		Name:    "python_env",
+		Label:   "Python",
 		Status:  "ok",
-		Message: fmt.Sprintf("%s (pip available)", version),
+		Message: fmt.Sprintf("Python is ready (%s)", version),
 		Latency: time.Since(start).Milliseconds(),
 	}
 }
@@ -102,8 +106,9 @@ func (d *Doctor) checkBrowser(ctx context.Context) CheckResult {
 	if err != nil {
 		return CheckResult{
 			Name:    "browser_env",
+			Label:   "Web browsing",
 			Status:  "info",
-			Message: "browser automation not installed (optional)",
+			Message: "Not installed — and that's okay. Ghost can still work, it just can't browse web pages for you.",
 			Latency: time.Since(start).Milliseconds(),
 		}
 	}
@@ -111,8 +116,9 @@ func (d *Doctor) checkBrowser(ctx context.Context) CheckResult {
 	version := strings.TrimSpace(string(out))
 	return CheckResult{
 		Name:    "browser_env",
+		Label:   "Web browsing",
 		Status:  "ok",
-		Message: fmt.Sprintf("agent-browser %s", version),
+		Message: fmt.Sprintf("Web browsing is ready (%s)", version),
 		Latency: time.Since(start).Milliseconds(),
 	}
 }
@@ -120,13 +126,23 @@ func (d *Doctor) checkBrowser(ctx context.Context) CheckResult {
 func (d *Doctor) checkDatabase(ctx context.Context) CheckResult {
 	start := time.Now()
 	if d.db == nil {
-		return CheckResult{Name: "database", Status: "error", Message: "database not configured"}
+		return CheckResult{Name: "database", Label: "Memory", Status: "error", Message: "Ghost's memory isn't configured."}
 	}
 	err := d.db.PingContext(ctx)
+	if err != nil {
+		return CheckResult{
+			Name:    "database",
+			Label:   "Memory",
+			Status:  "error",
+			Message: "Ghost's memory is having trouble: " + err.Error(),
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
 	return CheckResult{
 		Name:    "database",
-		Status:  status(err),
-		Message: errMsg(err),
+		Label:   "Memory",
+		Status:  "ok",
+		Message: "Ghost's memory is healthy.",
 		Latency: time.Since(start).Milliseconds(),
 	}
 }
@@ -134,11 +150,11 @@ func (d *Doctor) checkDatabase(ctx context.Context) CheckResult {
 func (d *Doctor) checkProvider(ctx context.Context) CheckResult {
 	start := time.Now()
 	if d.provider == nil {
-		return CheckResult{Name: "provider", Status: "error", Message: "provider not configured"}
+		return CheckResult{Name: "provider", Label: "AI", Status: "error", Message: "No AI provider is set up yet."}
 	}
 	model := d.provider.GetDefaultModel()
 	if model == "" {
-		return CheckResult{Name: "provider", Status: "warning", Message: "default model is empty"}
+		return CheckResult{Name: "provider", Label: "AI", Status: "warning", Message: "No model is selected yet. Pick one in the AI section."}
 	}
 
 	checkCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
@@ -149,10 +165,20 @@ func (d *Doctor) checkProvider(ctx context.Context) CheckResult {
 		"max_tokens":  8,
 		"temperature": 0,
 	})
+	if err != nil {
+		return CheckResult{
+			Name:    "provider",
+			Label:   "AI",
+			Status:  "error",
+			Message: "Couldn't reach the AI: " + err.Error(),
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
 	return CheckResult{
 		Name:    "provider",
-		Status:  status(err),
-		Message: errMsg(err),
+		Label:   "AI",
+		Status:  "ok",
+		Message: fmt.Sprintf("AI is ready (%s).", model),
 		Latency: time.Since(start).Milliseconds(),
 	}
 }
@@ -160,29 +186,30 @@ func (d *Doctor) checkProvider(ctx context.Context) CheckResult {
 func (d *Doctor) checkToolRegistry(ctx context.Context) CheckResult {
 	start := time.Now()
 	if d.registry == nil {
-		return CheckResult{Name: "tool_registry", Status: "error", Message: "tool registry not configured"}
+		return CheckResult{Name: "tool_registry", Label: "Tools", Status: "error", Message: "Ghost's tools aren't available."}
 	}
 	names := d.registry.List()
 	if len(names) == 0 {
-		return CheckResult{Name: "tool_registry", Status: "warning", Message: "no tools registered"}
+		return CheckResult{Name: "tool_registry", Label: "Tools", Status: "warning", Message: "No tools are ready."}
 	}
 	seen := map[string]struct{}{}
 	for _, name := range names {
 		if name == "" {
-			return CheckResult{Name: "tool_registry", Status: "error", Message: "empty tool name found"}
+			return CheckResult{Name: "tool_registry", Label: "Tools", Status: "error", Message: "A tool is not set up correctly."}
 		}
 		if _, exists := seen[name]; exists {
-			return CheckResult{Name: "tool_registry", Status: "error", Message: fmt.Sprintf("duplicate tool: %s", name)}
+			return CheckResult{Name: "tool_registry", Label: "Tools", Status: "error", Message: fmt.Sprintf("A tool is registered twice: %s", name)}
 		}
 		seen[name] = struct{}{}
 		if _, ok := d.registry.Get(name); !ok {
-			return CheckResult{Name: "tool_registry", Status: "error", Message: fmt.Sprintf("tool missing: %s", name)}
+			return CheckResult{Name: "tool_registry", Label: "Tools", Status: "error", Message: fmt.Sprintf("A tool is missing: %s", name)}
 		}
 	}
 	return CheckResult{
 		Name:    "tool_registry",
+		Label:   "Tools",
 		Status:  "ok",
-		Message: fmt.Sprintf("%d tools registered", len(names)),
+		Message: fmt.Sprintf("%d tools are ready.", len(names)),
 		Latency: time.Since(start).Milliseconds(),
 	}
 }
@@ -192,8 +219,9 @@ func (d *Doctor) checkSkillDependencies(ctx context.Context) CheckResult {
 	if d.workspace == "" {
 		return CheckResult{
 			Name:    "skill_dependencies",
+			Label:   "Skills",
 			Status:  "warning",
-			Message: "workspace not configured",
+			Message: "Ghost can't find its skills.",
 			Latency: time.Since(start).Milliseconds(),
 		}
 	}
@@ -202,27 +230,57 @@ func (d *Doctor) checkSkillDependencies(ctx context.Context) CheckResult {
 	if !report.HasMissing() {
 		return CheckResult{
 			Name:    "skill_dependencies",
+			Label:   "Skills",
 			Status:  "ok",
-			Message: fmt.Sprintf("all %d skill prerequisites satisfied", len(report.Results)),
+			Message: "All skills are ready.",
 			Latency: time.Since(start).Milliseconds(),
 		}
 	}
 
 	missingSkills := 0
 	missingCount := 0
+	missing := map[string][]string{}
 	for _, res := range report.Results {
 		if len(res.Missing) > 0 {
 			missingSkills++
 			missingCount += len(res.Missing)
+			missing[res.Skill] = res.Missing
 		}
 	}
 
+	summary := formatMissingSkills(missing)
+
 	return CheckResult{
 		Name:    "skill_dependencies",
+		Label:   "Skills",
 		Status:  "warning",
-		Message: fmt.Sprintf("%d skill(s) missing %d command(s): %s", missingSkills, missingCount, report.Summary()),
+		Message: fmt.Sprintf("%d skill(s) need extra software to run: %s", missingSkills, summary),
 		Latency: time.Since(start).Milliseconds(),
 	}
+}
+
+// formatMissingSkills turns a skill → missing-commands map into a short,
+// plain-language sentence for normal users.
+func formatMissingSkills(missing map[string][]string) string {
+	parts := make([]string, 0, len(missing))
+	for skill := range missing {
+		if skill == "" {
+			continue
+		}
+		switch skill {
+		case "tmux":
+			parts = append(parts, "the terminal skill (install tmux)")
+		case "calendar":
+			parts = append(parts, "the calendar skill (it needs Google Calendar access)")
+		case "hardware":
+			parts = append(parts, "the hardware skill (install i2c-tools)")
+		case "weather", "crypto", "flight", "recipe", "scraper", "homeassistant":
+			parts = append(parts, "the "+skill+" skill")
+		default:
+			parts = append(parts, "the "+skill+" skill")
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func status(err error) string {
@@ -230,11 +288,4 @@ func status(err error) string {
 		return "error"
 	}
 	return "ok"
-}
-
-func errMsg(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }

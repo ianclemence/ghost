@@ -361,14 +361,14 @@ function collectAttentionItems(doctorRes, channelsRes, devicesRes) {
     for (const c of checks) {
       if (c.status === 'error') {
         items.push({
-          title: prettyName(c.name),
+          title: c.label || prettyName(c.name),
           detail: c.message || 'This check failed.',
           cta: ctaForCheck(c.name),
           state: 'bad',
         });
       } else if (c.status === 'warning') {
         items.push({
-          title: prettyName(c.name),
+          title: c.label || prettyName(c.name),
           detail: c.message || 'Worth a look.',
           cta: ctaForCheck(c.name),
           state: 'warn',

@@ -220,13 +220,11 @@ take care of Ghost.
 
   **Connections** — how Ghost reaches people and services:
   - **Devices** — paired phones, secure QR pairing flow
-  - **Channels** — Telegram, Discord, Email configuration
+  - **Channels** — Telegram, Discord, Slack, WhatsApp, and Email configuration
 
   **System** — how Ghost itself is maintained:
-  - **System** — hardware, services, diagnostics
-  - **Updates** — keep Ghost current
-  - **Backups** — download a copy of your Ghost's identity and memory
-  - **Security** — owner password, device management, failed sign-in visibility
+  - **System** — hardware, services, updates, diagnostics
+  - **Security** — owner password, active sessions, backups, failed sign-in visibility
   - **Help** — guidance for what Ghost actually does
   - **About** — version and product information
 

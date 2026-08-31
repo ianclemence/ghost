@@ -197,7 +197,11 @@ func doctorHandler(ctx context.Context, req Request, rt *Runtime) error {
 		if check.Status == "" {
 			status = "UNKNOWN"
 		}
-		sb.WriteString(fmt.Sprintf("- **%s**: %s", check.Name, status))
+		display := check.Label
+		if display == "" {
+			display = check.Name
+		}
+		sb.WriteString(fmt.Sprintf("- **%s**: %s", display, status))
 		if check.Latency > 0 {
 			sb.WriteString(fmt.Sprintf(" (%dms)", check.Latency))
 		}

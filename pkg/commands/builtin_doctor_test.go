@@ -31,7 +31,7 @@ func TestDoctorHandler(t *testing.T) {
 	if !strings.Contains(out, "Ghost Doctor") {
 		t.Fatalf("expected doctor output header, got: %s", out)
 	}
-	if !strings.Contains(out, "database") {
-		t.Fatalf("expected database check in output, got: %s", out)
+	if !strings.Contains(out, "Memory") {
+		t.Fatalf("expected memory check in output, got: %s", out)
 	}
 }

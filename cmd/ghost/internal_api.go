@@ -154,18 +154,18 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 					"message_id": messageID,
 				})
 
-			// Only forward mobile-channel messages and interactive/tool events
-			// to the app. Telegram and CLI responses must not appear in the
-			// mobile chat.
-			if msg.Channel != "mobile" {
-				meta, _ := msg.Metadata["type"].(string)
-				switch meta {
-				case "canvas_update", "cron_update", "clarify_request", "progress_event":
-					// forwarded — interactive/tool events the app renders
-				default:
-					continue // skip — wrong channel
+				// Only forward mobile-channel messages and interactive/tool events
+				// to the app. Telegram and CLI responses must not appear in the
+				// mobile chat.
+				if msg.Channel != "mobile" {
+					meta, _ := msg.Metadata["type"].(string)
+					switch meta {
+					case "canvas_update", "cron_update", "clarify_request", "progress_event":
+						// forwarded — interactive/tool events the app renders
+					default:
+						continue // skip — wrong channel
+					}
 				}
-			}
 
 				payload := map[string]interface{}{
 					"channel":  msg.Channel,
@@ -561,6 +561,7 @@ type ProfileInfo struct {
 
 type DoctorCheckPayload struct {
 	Name      string `json:"name"`
+	Label     string `json:"label,omitempty"`
 	Status    string `json:"status"`
 	Message   string `json:"message,omitempty"`
 	LatencyMS int64  `json:"latency_ms,omitempty"`
@@ -1439,6 +1440,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		for _, check := range results {
 			checks = append(checks, DoctorCheckPayload{
 				Name:      check.Name,
+				Label:     check.Label,
 				Status:    check.Status,
 				Message:   check.Message,
 				LatencyMS: check.Latency,
@@ -1596,7 +1598,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		if requestID == "" && session != "" {
 			requestID = telemetry.Global.GetLastRequestID(session)
 		}
-		
+
 		var traces []telemetry.TraceEvent
 		if requestID != "" {
 			traces = telemetry.Global.GetTraces(requestID)
@@ -2781,9 +2783,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				provider = cfg.Agents.Defaults.Provider
 			}
 			jsonResponse(w, http.StatusOK, map[string]interface{}{
-				"active":  agentLoop.GetCurrentModel(),
+				"active":   agentLoop.GetCurrentModel(),
 				"provider": provider,
-				"presets": presets,
+				"presets":  presets,
 			})
 		case http.MethodPost:
 			var req struct {
@@ -2847,10 +2849,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		defer rows.Close()
 
 		type sessionEntry struct {
-			ID            string `json:"id"`
-			Title         string `json:"title"`
-			MessageCount  int    `json:"message_count"`
-			LastActivity  int64  `json:"last_activity"`
+			ID           string `json:"id"`
+			Title        string `json:"title"`
+			MessageCount int    `json:"message_count"`
+			LastActivity int64  `json:"last_activity"`
 		}
 		sessions := []sessionEntry{}
 		for rows.Next() {
@@ -3090,7 +3092,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		views := make([]deviceView, 0, len(devices))
 		for _, d := range devices {
 			views = append(views, deviceView{
-				PairedDevice:  d,
+				PairedDevice: d,
 				Capabilities: []string{"chat", "memory", "voice"},
 			})
 		}
