@@ -150,7 +150,7 @@ function renderCloud(panel, cfg) {
     if (!p || key === 'ollama') continue;
     hasAny = true;
     const name = key.charAt(0).toUpperCase() + key.slice(1);
-    const configured = p.api_key && !String(p.api_key).startsWith('•') && p.api_key.length > 0;
+    const configured = p.api_key && p.api_key.length > 0;
     const row = GhostUI.h('div', { className: 'ghost-row' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
     c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, name));
