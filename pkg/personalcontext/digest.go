@@ -130,6 +130,8 @@ var digestLabels = map[string]string{
 	"preference/favorite_music":      "Favorite music",
 	"preference/communication.style": "Communication style",
 	"preference/likes":               "Likes",
+	"preference/prefers":             "Prefers",
+	"preference/favorite":            "Favorite",
 	"goal/primary":                   "Goal",
 	"relationship/partner":           "Partner",
 	"relationship/family":            "Family",

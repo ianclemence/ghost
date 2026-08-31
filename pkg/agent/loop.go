@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -866,6 +868,10 @@ func (al *AgentLoop) consolidatePersonalContext() {
 }
 
 func (al *AgentLoop) extractPersonalContext(opts processOptions) {
+	// Deterministic quick-capture for explicit "Remember/note/capture this"
+	// directives so the note persists even when the model only acknowledges it.
+	al.captureQuickNote(opts.UserMessage, opts.Channel)
+
 	if al.pcStore == nil {
 		return
 	}
@@ -897,6 +903,47 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 // message in the session history, or "" when there is none. The just-persisted
 // current message is the last element of history, so scanning starts one
 // position before it.
+// quickCaptureRE matches explicit capture directives. Task/note captures live
+// only under these; declaration-style directives ("remember that I prefer X")
+// are intentionally left to the Personal Context extractor so a preference is
+// stored once as a structured memory, not twice as raw text.
+var quickCaptureRE = regexp.MustCompile(`(?i)^\s*(?:remember this|note that|note this|capture this|save this|write (?:this|that) down|jot (?:this|that) down|keep this)\s*[:,\s]+(.+?)\s*$`)
+
+// captureQuickNote appends an explicit capture directive ("Remember this: X")
+// to workspace/data/captures.md deterministically, matching the quick-capture
+// skill's format, so a note is never lost when the model only acknowledges it.
+func (al *AgentLoop) captureQuickNote(msg, channel string) {
+	m := quickCaptureRE.FindStringSubmatch(strings.TrimSpace(msg))
+	if m == nil {
+		return
+	}
+	content := strings.TrimSpace(m[1])
+	if content == "" {
+		return
+	}
+	path := filepath.Join(al.workspace, "data", "captures.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		logger.WarnCF("agent", "Failed to create captures dir", map[string]interface{}{"error": err.Error()})
+		return
+	}
+	if channel == "" {
+		channel = "chat"
+	}
+	ts := time.Now().Format("2006-01-02 15:04")
+	line := fmt.Sprintf("## %s (from %s)\n%s\n", ts, channel, content)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		logger.WarnCF("agent", "Failed to open captures.md", map[string]interface{}{"error": err.Error()})
+		return
+	}
+	defer f.Close()
+	if _, err := f.WriteString(line); err != nil {
+		logger.WarnCF("agent", "Failed to write capture", map[string]interface{}{"error": err.Error()})
+		return
+	}
+	logger.InfoCF("agent", "Quick capture saved", map[string]interface{}{"chars": len(content)})
+}
+
 func previousUserMessage(history []providers.Message) string {
 	for i := len(history) - 2; i >= 0; i-- {
 		if history[i].Role == "user" {
