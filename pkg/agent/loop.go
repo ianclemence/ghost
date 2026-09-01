@@ -94,6 +94,9 @@ type AgentLoop struct {
 
 	// jobs is the durable task store (SQLite-backed, part of Ghost State).
 	jobs *tasks.Store
+
+	// noticer is the value gate for proactive behaviour ("proactive ≠ noisy").
+	noticer *Noticer
 }
 
 // processOptions configures how a message is processed
@@ -496,6 +499,30 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	al.shutdownCtx, al.shutdownCancel = context.WithCancel(context.Background())
 	al.events = NewEventBus()
 
+	// Value-gated proactivity: Ghost only interrupts when usefulness is high
+	// (threshold + confidence) and never spams (daily budget, per-topic
+	// cooldown, dedupe). One honest signal is wired: a failed durable task
+	// surfaces once instead of being silent.
+	al.noticer = NewNoticer(func(nt Notice) {
+		logger.InfoCF("agent", "proactive notice", map[string]interface{}{
+			"topic": nt.Topic, "priority": nt.Priority, "confidence": nt.Confidence, "message": nt.Message,
+		})
+	})
+	al.events.Subscribe(func(ev Event) {
+		if ev.Type != EventTaskFailed || al.noticer == nil {
+			return
+		}
+		kind, _ := ev.Data["kind"].(string)
+		al.noticer.ShouldNotify(Notice{
+			Topic:      "task:" + kind,
+			Priority:   7,
+			Urgency:    true,
+			Confidence: 0.85,
+			DedupeKey:  ev.Subject, // job id — suppresses duplicate alerts
+			Message:    "A background task failed. I can retry it, or you can look into it.",
+		})
+	})
+
 	// Durable task store: scheduled/background work outlives a single turn and
 	// survives a restart. Emits typed task events; jobs left "running" by a
 	// crash are flagged interrupted (resumable) on startup.
@@ -626,6 +653,22 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 // observability or future subsystems to react without coupling to the loop.
 func (al *AgentLoop) Events() *EventBus {
 	return al.events
+}
+
+// MaybeNotify offers a proactive message through the value gate. It returns the
+// gate decision and only delivers when usefulness is high and the budget/cooldown
+// allow it — the mechanism that keeps Ghost genuinely proactive without being
+// noisy.
+func (al *AgentLoop) MaybeNotify(notice Notice) Decision {
+	if al.noticer == nil {
+		return DecisionLowConfidence
+	}
+	return al.noticer.ShouldNotify(notice)
+}
+
+// Jobs returns the durable task store for observability / management.
+func (al *AgentLoop) Jobs() *tasks.Store {
+	return al.jobs
 }
 
 func (al *AgentLoop) Stop() {
