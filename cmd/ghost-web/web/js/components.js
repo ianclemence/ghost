@@ -132,10 +132,10 @@ const GhostUI = (() => {
       } else {
         name = 'Local';
       }
-    } else if (/(flash|mini|haiku|nano|fast|lite|quick|small)/.test(m)) {
-      name = 'Fast';
     } else if (/(vision|multimodal)/.test(m)) {
       name = 'Vision';
+    } else if (/(flash|mini|haiku|nano|fast|lite|quick|small)/.test(m)) {
+      name = 'Fast';
     } else if (/(pro|opus|sonnet|reason|thinking|o3|o4|large|max|ultra|extended)/.test(m)) {
       name = 'Deep thinking';
     }
