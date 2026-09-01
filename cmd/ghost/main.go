@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -179,6 +180,8 @@ func main() {
 		gatewayCmd()
 	case "status":
 		statusCmd()
+	case "model":
+		modelCmd()
 	case "migrate":
 		migrateCmd()
 	case "reset-password":
@@ -268,6 +271,7 @@ func printHelp() {
 	fmt.Println("  dashboard   Launch the operator TUI")
 	fmt.Println("  gateway     Start Ghost gateway")
 	fmt.Println("  status      Show Ghost status")
+	fmt.Println("  model       View or switch the active model (model [list|use <provider:model>])")
 	fmt.Println("  update      Pull latest changes and rebuild")
 	fmt.Println("  updater     Run auto-update daemon")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
@@ -474,10 +478,140 @@ func migrateHelp() {
 	fmt.Println("  ghost migrate --force      Migrate without confirmation")
 }
 
+// knownProviders is the set of provider names Ghost can route to, including
+// common aliases. Used to reject a misspelled provider instead of silently
+// writing a broken config.
+var knownProviders = map[string]bool{
+	"moonshot": true, "kimi": true,
+	"groq":   true,
+	"openai": true, "gpt": true,
+	"anthropic": true, "claude": true, "claude-cli": true, "claudecode": true, "claude-code": true,
+	"openrouter": true,
+	"zhipu":      true, "glm": true, "zai": true,
+	"gemini": true, "google": true,
+	"vllm":           true,
+	"shengsuanyun":   true,
+	"deepseek":       true,
+	"qwen":           true,
+	"github_copilot": true, "copilot": true,
+	"ollama": true,
+	"nvidia": true,
+}
+
+func knownProviderNames() []string {
+	var out []string
+	for k := range knownProviders {
+		if k == "kimi" || k == "gpt" || k == "claude" || k == "glm" || k == "zai" || k == "google" || k == "claudecode" || k == "claude-code" || k == "copilot" {
+			continue
+		}
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// modelCmd lets a user view or switch the active model from the CLI, mirroring
+// how coding-agent CLIs expose model selection. It reads/writes the same
+// config (honoring GHOST_CONFIG_DIR) that the gateway and agent use, so the
+// default model stays constant throughout.
+func modelCmd() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+	configPath := getConfigPath()
+
+	active := func() string {
+		m := cfg.Agents.Defaults.Model
+		p := cfg.Agents.Defaults.Provider
+		if p != "" && m != "" {
+			// Avoid a redundant "ollama:ollama/…" when the model already carries
+			// its provider prefix.
+			if strings.HasPrefix(m, p+"/") || strings.HasPrefix(m, p+":") {
+				return m
+			}
+			return p + ":" + m
+		}
+		return m
+	}
+
+	presets := func() []string {
+		var out []string
+		for _, p := range cfg.Agents.ModelList {
+			if p.Name == "" {
+				continue
+			}
+			out = append(out, fmt.Sprintf("  %-16s %s:%s", p.Name, p.Provider, p.Model))
+		}
+		return out
+	}
+
+	args := os.Args[2:]
+	if len(args) == 0 || args[0] == "list" {
+		fmt.Printf("Active: %s\n", active())
+		fmt.Println("Config:", configPath)
+		if ps := presets(); len(ps) > 0 {
+			fmt.Println("\nPresets:")
+			for _, s := range ps {
+				fmt.Println(s)
+			}
+		}
+		return
+	}
+
+	if args[0] != "use" && args[0] != "set" {
+		fmt.Println("Usage: ghost model [list|use <provider:model|preset>]")
+		return
+	}
+
+	if len(args) < 2 {
+		fmt.Println("Usage: ghost model use <provider:model|preset>")
+		return
+	}
+	target := args[1]
+
+	provider, model := "", target
+	if preset := cfg.FindModelPreset(target); preset != nil {
+		provider = preset.Provider
+		model = preset.Model
+	} else if strings.Contains(target, ":") {
+		parts := strings.SplitN(target, ":", 2)
+		if parts[0] == "" || parts[1] == "" {
+			fmt.Println("Invalid format — use provider:model (e.g. openai:gpt-4o).")
+			os.Exit(1)
+		}
+		provider, model = parts[0], parts[1]
+	}
+
+	// Guard against typos: an unknown provider would silently produce a broken
+	// config, so reject it up front.
+	if provider != "" && !knownProviders[strings.ToLower(provider)] {
+		fmt.Printf("Unknown provider %q — expected one of: %s\n", provider, strings.Join(knownProviderNames(), ", "))
+		os.Exit(1)
+	}
+
+	canonical := model
+	if provider != "" {
+		canonical = provider + ":" + model
+	}
+	// Validate the model resolves to a usable provider before committing.
+	if _, err := providers.CreateProviderForModel(cfg, canonical); err != nil {
+		fmt.Printf("Could not switch model: %s\n", err)
+		os.Exit(1)
+	}
+
+	cfg.SetActiveModel(provider, model)
+	if err := config.SaveConfig(configPath, cfg); err != nil {
+		fmt.Printf("Could not save config: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ Active model set to %s\n", canonical)
+}
+
 func agentCmd() {
 	message := ""
 	sessionKey := "cli:default"
-
 	args := os.Args[2:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
