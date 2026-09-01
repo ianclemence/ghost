@@ -8,8 +8,12 @@ package agent
 
 import (
 	"fmt"
+	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -158,4 +162,121 @@ func (ms *MemoryStore) GetMemoryContext() string {
 		result += part
 	}
 	return fmt.Sprintf("# Memory\n\n%s", result)
+}
+
+// MemoryHit is one search result over the memory notes.
+type MemoryHit struct {
+	Path     string    `json:"path"`
+	Excerpt  string    `json:"excerpt"`
+	Score    float64   `json:"score"`
+	Modified time.Time `json:"modified"`
+}
+
+// Search retrieves the most relevant memory notes (daily notes, MEMORY.md,
+// captures) for a query using keyword relevance + recency. It deliberately uses
+// the existing on-disk notes and simple scoring — no embeddings, no external
+// vector index — so it stays local, cheap, and explainable. This is the
+// targeted long-tail retrieval path: the agent calls it when the digest doesn't
+// cover what it needs.
+func (ms *MemoryStore) Search(query string, limit int) []MemoryHit {
+	if limit <= 0 {
+		limit = 5
+	}
+	words := tokenizeSearch(query)
+	if len(words) == 0 {
+		return nil
+	}
+	if _, err := os.Stat(ms.memoryDir); err != nil {
+		return nil
+	}
+	now := time.Now()
+	var out []MemoryHit
+	_ = filepath.WalkDir(ms.memoryDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		data, _ := os.ReadFile(path)
+		if len(data) > 4*1024*1024 { // skip oversized notes
+			return nil
+		}
+		lower := strings.ToLower(string(data))
+		hits := 0
+		for _, w := range words {
+			hits += strings.Count(lower, w)
+		}
+		if hits == 0 {
+			return nil
+		}
+		info, _ := d.Info()
+		score := float64(hits) + recencyBoost(now, info.ModTime())
+		out = append(out, MemoryHit{
+			Path:     path,
+			Excerpt:  excerptFor(lower, words),
+			Score:    score,
+			Modified: info.ModTime(),
+		})
+		return nil
+	})
+
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Score != out[j].Score {
+			return out[i].Score > out[j].Score
+		}
+		if !out[i].Modified.Equal(out[j].Modified) {
+			return out[i].Modified.After(out[j].Modified)
+		}
+		return out[i].Path < out[j].Path
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+// tokenizeSearch splits a query into lowercase search words (len >= 2).
+func tokenizeSearch(query string) []string {
+	fields := strings.Fields(strings.ToLower(query))
+	words := fields[:0]
+	for _, f := range fields {
+		f = strings.Trim(f, ".,;:!?\"'()[]{}-_")
+		if len([]rune(f)) >= 2 {
+			words = append(words, f)
+		}
+	}
+	return words
+}
+
+// recencyBoost favours recently-written notes, decaying over ~30 days.
+func recencyBoost(now, modified time.Time) float64 {
+	age := now.Sub(modified).Hours()
+	if age < 0 {
+		age = 0
+	}
+	return math.Exp(-age / (30 * 24))
+}
+
+// excerptFor returns a single-line excerpt around the first keyword hit.
+func excerptFor(lower string, words []string) string {
+	idx := -1
+	for _, w := range words {
+		if i := strings.Index(lower, w); i >= 0 {
+			if idx < 0 || i < idx {
+				idx = i
+			}
+		}
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	start := idx - 120
+	if start < 0 {
+		start = 0
+	}
+	end := idx + 200
+	if end > len(lower) {
+		end = len(lower)
+	}
+	s := lower[start:end]
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.TrimSpace(s)
 }

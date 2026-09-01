@@ -228,6 +228,20 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Bounded Curated Memory — agent can maintain a persistent, curated profile of the user and project
 	registry.Register(tools.NewMemoryCurateTool(workspace))
 
+	// Targeted long-tail memory retrieval: the agent searches its own notes
+	// (daily notes, MEMORY.md, captures) on demand, ranked by relevance+recency.
+	memoryRecall := tools.NewMemoryRecall(workspace)
+	memoryRecall.SetSearch(func(query string, limit int) []tools.MemoryResult {
+		store := NewMemoryStore(workspace)
+		hits := store.Search(query, limit)
+		out := make([]tools.MemoryResult, 0, len(hits))
+		for _, h := range hits {
+			out = append(out, tools.MemoryResult{Path: h.Path, Excerpt: h.Excerpt, Score: h.Score, Modified: h.Modified.Unix()})
+		}
+		return out
+	})
+	registry.Register(memoryRecall)
+
 	// Todo Tool — task decomposition and tracking
 	registry.Register(tools.NewTodoTool())
 
