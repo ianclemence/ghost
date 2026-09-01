@@ -36,7 +36,7 @@ func (t *ExecTool) Name() string {
 }
 
 func (t *ExecTool) Description() string {
-	return "Execute a shell command and return its output. Use with caution."
+	return "Run a shell command and return its output. Use when: a skill or task requires an exact command (e.g. a curl call, a CLI tool), or you need real local/OS data. Do NOT use when: a Ghost skill already does the job, or to double-check a web fact you could look up. Returns combined stdout/stderr and the exit code."
 }
 
 func (t *ExecTool) Parameters() map[string]interface{} {
@@ -45,11 +45,11 @@ func (t *ExecTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"command": map[string]interface{}{
 				"type":        "string",
-				"description": "The shell command to execute",
+				"description": "The exact shell command to run. Example: \"curl -s https://api.example.com/x\" — run a command a skill gives you verbatim.",
 			},
 			"working_dir": map[string]interface{}{
 				"type":        "string",
-				"description": "Optional working directory for the command",
+				"description": "Optional working directory. Example: \"/home/user/project\".",
 			},
 		},
 		"required": []string{"command"},

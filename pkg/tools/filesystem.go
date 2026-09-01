@@ -63,7 +63,7 @@ func (t *ReadFileTool) Name() string {
 }
 
 func (t *ReadFileTool) Description() string {
-	return "Read the contents of a file"
+	return "Read a file (or a skill SKILL.md) and return its contents. Use when: you need local file content, or you must read a skill\u2019s SKILL.md after choosing it. Do NOT use for: questions a skill already answers. Returns the file text (truncated for very large files)."
 }
 
 func (t *ReadFileTool) Parameters() map[string]interface{} {
@@ -72,7 +72,7 @@ func (t *ReadFileTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"path": map[string]interface{}{
 				"type":        "string",
-				"description": "Path to the file to read",
+				"description": "Relative or absolute path. Example: \"skills/weather/SKILL.md\" or \"memory/MEMORY.md\".",
 			},
 		},
 		"required": []string{"path"},
@@ -112,7 +112,7 @@ func (t *WriteFileTool) Name() string {
 }
 
 func (t *WriteFileTool) Description() string {
-	return "Write content to a file"
+	return "Create or overwrite a file with the given content. Use when: a skill or task asks you to save a file in the workspace. Returns confirmation with the path and byte count."
 }
 
 func (t *WriteFileTool) Parameters() map[string]interface{} {
@@ -121,11 +121,11 @@ func (t *WriteFileTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"path": map[string]interface{}{
 				"type":        "string",
-				"description": "Path to the file to write",
+				"description": "Path to write to. Example: \"notes/reminders.md\".",
 			},
 			"content": map[string]interface{}{
 				"type":        "string",
-				"description": "Content to write to the file",
+				"description": "The full file content. Use \n for newlines.",
 			},
 		},
 		"required": []string{"path", "content"},

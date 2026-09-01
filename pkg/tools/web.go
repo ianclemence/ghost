@@ -300,7 +300,7 @@ func (t *WebSearchTool) Name() string {
 }
 
 func (t *WebSearchTool) Description() string {
-	return "Search the web for current information when no Ghost skill covers the need. If a Ghost skill applies (weather, currency, recipe, flights, shopping, etc.), prefer reading and following that skill instead."
+	return "Live web search for current, external, factual information. Use when: facts/prices/dates/news that aren't in a local file or covered by a Ghost skill. Do NOT use for: weather, air quality, currency conversion, recipes, flight/crypto prices, nearby places, or anything a skill covers — use that skill instead. Returns a list of results (title, url, snippet)."
 }
 
 func (t *WebSearchTool) Parameters() map[string]interface{} {
@@ -309,11 +309,11 @@ func (t *WebSearchTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"query": map[string]interface{}{
 				"type":        "string",
-				"description": "Search query",
+				"description": "The search query. Use specific, natural-language terms. Example: \"current Bitcoin price in USD\".",
 			},
 			"count": map[string]interface{}{
 				"type":        "integer",
-				"description": "Number of results (1-10)",
+				"description": "How many results to return (1-10). Default: 5. Keep small for speed.",
 				"minimum":     1.0,
 				"maximum":     10.0,
 			},
@@ -384,7 +384,7 @@ func (t *WebFetchTool) Name() string {
 }
 
 func (t *WebFetchTool) Description() string {
-	return "Fetch a URL and extract readable content (HTML to text). Use this only when a specific page is needed and no Ghost skill covers the request; when a skill applies, prefer that skill."
+	return "Fetch a specific URL and extract its readable text (HTML→text, truncated). Use when: you already have the exact URL (e.g. from web_search or the user) and need its content. Do NOT use for: a general question, or anything a skill covers. Returns the page text (title + body), truncated to a maximum length."
 }
 
 func (t *WebFetchTool) Parameters() map[string]interface{} {
@@ -393,11 +393,11 @@ func (t *WebFetchTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"url": map[string]interface{}{
 				"type":        "string",
-				"description": "URL to fetch",
+				"description": "The exact absolute URL to fetch (https). Example: \"https://www.themealdb.com/meal/52818\".",
 			},
 			"maxChars": map[string]interface{}{
 				"type":        "integer",
-				"description": "Maximum characters to extract",
+				"description": "Maximum characters of page text to return (default 50000). Lower it to save context if you only need a summary.",
 				"minimum":     100.0,
 			},
 		},

@@ -1,6 +1,9 @@
 package tools
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 type ToolProfile string
 
@@ -122,4 +125,92 @@ func FilterRegistryByProfile(registry *ToolRegistry, profile ToolProfile) *ToolR
 		}
 	}
 	return filtered
+}
+
+// coreToolNames are always available — the generic fallback + file + memory +
+// system tools a turn can't run without. Keeping them always present means tool
+// gating never starves a turn of the essentials.
+var coreToolNames = map[string]bool{
+	"exec": true, "read_file": true, "write_file": true, "append_file": true,
+	"list_dir": true, "edit_file": true,
+	"web_search": true, "web_fetch": true, "session_search": true,
+	"remember": true, "context_get": true, "memory_curate": true,
+	"message": true, "skill_manage": true, "todo": true, "cron": true,
+	"spawn": true, "subagent": true, "clarify": true,
+}
+
+// turnIntentTools maps message keyword signals to niche tools to include so a
+// turn only pays for tools it might actually use. A tool not in coreToolNames
+// and not matched here is dropped for the turn, shrinking the surface the model
+// reasons over (higher specificity = better selection + cheaper turns).
+var turnIntentTools = []struct {
+	keywords []string
+	tools    []string
+}{
+	{[]string{"draw", "diagram", "flowchart", "mindmap", "canvas"}, []string{"canvas"}},
+	{[]string{"image", "picture", "photo", "screenshot", "draw something"}, []string{"image_generate", "vision"}},
+	{[]string{"video", "clip", "frames"}, []string{"video_frames"}},
+	{[]string{"speak", "tts", "read aloud", "say this", "audio"}, []string{"tts"}},
+	{[]string{"wake word", "voice wake", "listen"}, []string{"voicewake"}},
+	{[]string{"sandbox", "isolate", "container"}, []string{"sandbox"}},
+	{[]string{"network", "ping", "port", "dns", "wifi"}, []string{"networking"}},
+	{[]string{"i2c", "spi", "gpio", "sensor", "pins", "hardware"}, []string{"spi"}},
+	{[]string{"oracle", "ask oracle"}, []string{"oracle"}},
+	{[]string{"mcp"}, []string{"mcp"}},
+	{[]string{"lane", "template", "route"}, []string{"lanes"}},
+	{[]string{"merge", "parallel", "batch"}, []string{"delegate_batch"}},
+	{[]string{"compact", "summarize history", "context full"}, []string{"compaction"}},
+	{[]string{"update ghost", "upgrade ghost", "self-update"}, []string{"update"}},
+	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"docparser"}},
+	{[]string{"browser", "open page", "open url", "webpage"}, []string{"browser"}},
+}
+
+// FilterToolsForTurn narrows the tool surface to a core set plus any tools whose
+// intent keywords appear in the user message (media present always allows vision).
+func FilterToolsForTurn(registry *ToolRegistry, profile ToolProfile, userMsg string, hasMedia bool) *ToolRegistry {
+	base := FilterRegistryByProfile(registry, profile)
+	if base == nil {
+		return NewToolRegistry()
+	}
+	lower := strings.ToLower(userMsg)
+
+	include := func(name string) bool {
+		if coreToolNames[name] {
+			return true
+		}
+		for _, it := range turnIntentTools {
+			if !stringInSlice(it.tools, name) {
+				continue
+			}
+			for _, kw := range it.keywords {
+				if strings.Contains(lower, kw) {
+					return true
+				}
+			}
+			// Vision tools are implied by media even without a keyword.
+			if hasMedia && (name == "vision" || name == "image_generate") {
+				return true
+			}
+		}
+		return false
+	}
+
+	out := NewToolRegistry()
+	for _, name := range base.List() {
+		if include(name) {
+			if tool, ok := base.Get(name); ok {
+				out.Register(tool)
+			}
+		}
+	}
+	return out
+}
+
+func stringInSlice(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }

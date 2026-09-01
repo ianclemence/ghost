@@ -71,7 +71,7 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 					}
 					continue
 				}
-				
+
 				if dir.IsDir() {
 					skillFile := filepath.Join(sl.workspaceSkills, dir.Name(), "SKILL.md")
 					if _, err := os.Stat(skillFile); err == nil {
@@ -172,7 +172,7 @@ func (sl *SkillsLoader) LoadSkill(name string) (string, bool) {
 		if content, err := os.ReadFile(workflowFile); err == nil {
 			return sl.stripFrontmatter(string(content)), true
 		}
-		
+
 		// Then try as a directory
 		skillFile := filepath.Join(sl.workspaceSkills, name, "SKILL.md")
 		if content, err := os.ReadFile(skillFile); err == nil {
@@ -221,23 +221,62 @@ func (sl *SkillsLoader) BuildSkillsSummary() string {
 		return ""
 	}
 
+	// Compact index: name + a short intent + the trigger phrases, so the model
+	// can route quickly without reading a long description for every skill
+	// (the full SKILL.md is read only once a skill is chosen).
 	var lines []string
 	lines = append(lines, "<skills>")
 	for _, s := range allSkills {
-		escapedName := escapeXML(s.Name)
-		escapedDesc := escapeXML(s.Description)
-		escapedPath := escapeXML(s.Path)
-
-		lines = append(lines, fmt.Sprintf("  <skill>"))
-		lines = append(lines, fmt.Sprintf("    <name>%s</name>", escapedName))
-		lines = append(lines, fmt.Sprintf("    <description>%s</description>", escapedDesc))
-		lines = append(lines, fmt.Sprintf("    <location>%s</location>", escapedPath))
-		lines = append(lines, fmt.Sprintf("    <source>%s</source>", s.Source))
+		intent, triggers := compactSkill(s.Description)
+		lines = append(lines, "  <skill>")
+		lines = append(lines, fmt.Sprintf("    <name>%s</name>", escapeXML(s.Name)))
+		lines = append(lines, fmt.Sprintf("    <intent>%s</intent>", escapeXML(intent)))
+		lines = append(lines, fmt.Sprintf("    <triggers>%s</triggers>", escapeXML(triggers)))
+		lines = append(lines, fmt.Sprintf("    <location>%s</location>", escapeXML(s.Path)))
 		lines = append(lines, "  </skill>")
 	}
 	lines = append(lines, "</skills>")
 
 	return strings.Join(lines, "\n")
+}
+
+// compactSkill reduces a skill description to a short intent plus the quoted
+// trigger phrases it contains ("Invoke when the user says 'X', 'Y'"). This keeps
+// the <skills> index small while giving the model the routing signal it needs.
+func compactSkill(desc string) (intent, triggers string) {
+	desc = strings.TrimSpace(desc)
+	lower := strings.ToLower(desc)
+
+	// Collect every quoted phrase — these are the trigger/example phrases the
+	// description lists regardless of whether it says "Invoke when" or "Invoke for".
+	var phrases []string
+	seen := map[string]bool{}
+	for _, q := range quoteRe.FindAllString(desc, -1) {
+		p := strings.Trim(strings.TrimSpace(q), "\"'")
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		phrases = append(phrases, p)
+	}
+	triggers = strings.Join(phrases, ", ")
+
+	// Intent: everything before the invoke clause; otherwise the first sentence.
+	if idx := strings.Index(lower, "invoke"); idx > 0 {
+		intent = strings.TrimSpace(desc[:idx])
+	} else {
+		intent = desc
+		if pos := strings.Index(desc, "."); pos > 0 {
+			intent = strings.TrimSpace(desc[:pos])
+		}
+	}
+	if intent == "" {
+		intent = "Skill"
+	}
+
+	// Bound the intent length so a single skill can't blow up the index.
+	intent = truncateRunes(intent, 140)
+	return intent, strings.TrimSpace(triggers)
 }
 
 func (sl *SkillsLoader) getSkillMetadata(skillPath string) *SkillMetadata {
@@ -321,4 +360,17 @@ func escapeXML(s string) string {
 	s = strings.ReplaceAll(s, "<", "&lt;")
 	s = strings.ReplaceAll(s, ">", "&gt;")
 	return s
+}
+
+// quoteRe matches quoted phrases ('x' or "x") used as trigger examples in
+// skill descriptions.
+var quoteRe = regexp.MustCompile(`["'][^"']+["']`)
+
+// truncateRunes shortens s to at most n runes, appending an ellipsis if cut.
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }

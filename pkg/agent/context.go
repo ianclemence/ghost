@@ -114,21 +114,55 @@ func (cb *ContextBuilder) buildToolsSection() string {
 		return ""
 	}
 
-	summaries := cb.tools.GetSummaries()
-	if len(summaries) == 0 {
+	names := cb.tools.List()
+	if len(names) == 0 {
 		return ""
 	}
 
+	// Compact surface: just the tool names. Full descriptions + parameter
+	// schemas are already sent through the function-calling API, so repeating
+	// "name - description" here only costs tokens and adds noise (the model
+	// reasons better over a concise list).
 	var sb strings.Builder
-	sb.WriteString("## Available Tools\n\n")
-	sb.WriteString("**CRITICAL**: You MUST use tools to perform actions. Do NOT pretend to execute commands or schedule tasks.\n\n")
-	sb.WriteString("You have access to the following tools:\n\n")
-	for _, s := range summaries {
-		sb.WriteString(s)
-		sb.WriteString("\n")
-	}
-
+	sb.WriteString("## Tools\n\n")
+	sb.WriteString("You have tools available through the function-calling API. Available tools:\n\n")
+	sb.WriteString(strings.Join(names, ", "))
+	sb.WriteString("\n\nPick the ONE tool that best matches the task. Do not invent tools or claim to have run a command you didn't actually execute.")
 	return sb.String()
+}
+
+// buildBehaviorSection returns the stable "how to respond" guidance: an output
+// style guide (so recipes, research, and decisions come back consistent), a
+// grounding/citation contract (so answers are trustworthy), and a few canonical
+// tool-usage examples (models select tools far better with examples than
+// descriptions alone).
+func buildBehaviorSection() string {
+	return `## Response Style
+
+- Default: concise, clear, well-structured Markdown. Lead with the answer, not an intro.
+- Match the user's language. No filler openers ("Sure!", "Here is...") — answer directly.
+- Use headings and short paragraphs for scannability; lists for enumerable items.
+- Templates:
+  - Recipe/Food: title · category · serves · time · ingredients (bulleted) · steps (numbered) · one tip · source.
+  - Research/Explain: answer first, then key points, then cited sources.
+  - Procedure/How-to: numbered steps, each a short imperative.
+  - Recommendation/Decision: recommendation first, why, alternatives, then the concrete next step.
+- Stop when done. Offer ONE concrete next step only if it's genuinely useful (e.g. "want me to add these to your shopping list?"); otherwise end.
+
+## Grounding & Citations
+
+- Never fabricate facts, prices, dates, figures, or sources. Verify before claiming.
+- When the answer comes from a skill or web result, cite it: the source name, URL (if any), and date (e.g. "per the weather skill", "TheMealDB · themealdb.com").
+- Mark anything you can't verify as uncertain ("~", "likely", "please confirm") instead of stating it as fact.
+- If you don't know, say so plainly — do not guess.
+
+## Tool usage examples
+
+- "What's the weather in Bangkok?" → pick and run the matching skill; do not web_search the same thing.
+- "remember that I prefer lunch at noon" → remember tool / quick-capture; do not web_search.
+- "add eggs and milk to my list" → the shopping/notes tool; do not use web_search.
+- "summarize this file" → read the file or the summarize/document skill; do not web_search the file name.
+- Only use web_search / web_fetch when no skill or local file answers a live, external, factual question.`
 }
 
 func (cb *ContextBuilder) BuildSystemPrompt() string {
@@ -136,6 +170,10 @@ func (cb *ContextBuilder) BuildSystemPrompt() string {
 
 	// Core identity section
 	parts = append(parts, cb.getIdentity())
+
+	// Response Style Guide + Grounding contract + tool-usage examples. These
+	// are stable, so they sit with the cached header.
+	parts = append(parts, buildBehaviorSection())
 
 	// Bootstrap files
 	bootstrapContent := cb.LoadBootstrapFiles()
@@ -150,12 +188,24 @@ func (cb *ContextBuilder) BuildSystemPrompt() string {
 
 Ghost ships specialized skills. When a request matches one, PREFER it:
 
-1. PICK the single best-matching skill (by meaning, not keywords).
+1. PICK the single best-matching skill — by meaning and the <triggers> listed, not loose keyword overlap.
 2. READ its SKILL.md with the read_file tool.
 3. FOLLOW its instructions EXACTLY — run the commands and tools it gives you, use its API/endpoints, and use its output directly.
 4. Do NOT re-search, re-derive, cross-check, or delegate to a subagent. The skill is authoritative and already tested.
 
 Specialized skills are the PREFERRED path. Generic tools (web_search, web_fetch, session_search, exec) are FALLBACK capabilities — use them only when no skill covers the request, or the skill genuinely cannot satisfy it.
+
+Explicit anti-routing (these are covered by a skill — do NOT fall back to web_search/web_fetch/chat):
+- weather, air quality, AQI → weather / aqi skill
+- money conversion, exchange rate → currency skill
+- recipes, "what should I cook", a dish → recipe skill
+- flight status, flights → flight skill
+- crypto / coin price → crypto skill
+- nearby places, restaurants, cafes → find-nearby skill
+- morning briefing, "what should I know today" → daily-briefing skill
+- "remember that I prefer/…" → remember tool or quick-capture (a memory op, not search)
+- scheduling / reading a calendar → calendar skill
+- converting an office/PDF document to text → document-convert skill
 
 - If a skill gives you an exact command (e.g. a curl call), RUN that command with exec and use its output. Do NOT substitute web_search/web_fetch to "check" the same thing — that is duplicate work.
 - session_search is ONLY for questions about a past conversation. Never use it for facts, currency, weather, recipes, or skills.

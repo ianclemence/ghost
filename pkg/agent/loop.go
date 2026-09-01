@@ -1149,11 +1149,15 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions) (string, int, error) {
 	iteration := 0
 	var finalContent string
+	// Turn telemetry: accumulate token usage and tools chosen so quality and
+	// cost can be observed (P8), not guessed.
+	var promptTokens, completionTokens, totalTokens int
+	var usedTools []string
 	activeProfile := opts.ToolProfile
 	if activeProfile == "" {
 		activeProfile = al.toolProfile
 	}
-	activeTools := tools.FilterRegistryByProfile(al.tools, activeProfile)
+	activeTools := tools.FilterToolsForTurn(al.tools, activeProfile, opts.UserMessage, len(opts.Media) > 0)
 
 	for iteration < al.maxIterations {
 		iteration++
@@ -1188,6 +1192,11 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			})
 
 		response, err := al.callLLM(ctx, selectedModel, messages, providerToolDefs, opts)
+		if response != nil && response.Usage != nil {
+			promptTokens += response.Usage.PromptTokens
+			completionTokens += response.Usage.CompletionTokens
+			totalTokens += response.Usage.TotalTokens
+		}
 
 		if err != nil {
 			logger.ErrorCF("agent", "LLM call failed",
@@ -1213,6 +1222,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		toolNames := make([]string, 0, len(response.ToolCalls))
 		for _, tc := range response.ToolCalls {
 			toolNames = append(toolNames, tc.Name)
+			usedTools = append(usedTools, tc.Name)
 			if opts.OnToolCall != nil {
 				argsJSON, _ := json.Marshal(tc.Arguments)
 				opts.OnToolCall(tc.Name, string(argsJSON))
@@ -1360,6 +1370,20 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 		}
 	}
+
+	// Per-turn telemetry (P8): record token cost and tool choices so quality
+	// and cost can be observed and improved with data.
+	logger.InfoCF("agent", "turn telemetry",
+		map[string]interface{}{
+			"session_key":       opts.SessionKey,
+			"model":             al.model,
+			"iterations":        iteration,
+			"prompt_tokens":     promptTokens,
+			"completion_tokens": completionTokens,
+			"total_tokens":      totalTokens,
+			"tools_used":        usedTools,
+			"final_chars":       len(finalContent),
+		})
 
 	return finalContent, iteration, nil
 }

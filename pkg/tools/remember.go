@@ -27,7 +27,7 @@ func (t *RememberTool) Name() string {
 }
 
 func (t *RememberTool) Description() string {
-	return "Store a fact or memory for long-term recall. ALWAYS use this tool to remember important information."
+	return "Store a durable fact about the user for long-term recall (name, preference, life goal, etc.) in Ghost\u2019s memory. Use when the user states a lasting fact or a request that starts with \"remember that I...\". Do NOT use for: transient task context. Returns confirmation."
 }
 
 func (t *RememberTool) Parameters() map[string]interface{} {
@@ -36,11 +36,11 @@ func (t *RememberTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"content": map[string]interface{}{
 				"type":        "string",
-				"description": "The fact or memory to store",
+				"description": "The fact to remember, stated as a sentence. Example: \"I prefer tea at noon\".",
 			},
 			"category": map[string]interface{}{
 				"type":        "string",
-				"description": "Category (e.g. user_preference, project_detail, generic)",
+				"description": "Optional category: user_preference, project_detail, life_goal, generic.",
 			},
 		},
 		"required": []string{"content"},
@@ -63,13 +63,13 @@ func (t *RememberTool) Execute(ctx context.Context, args map[string]interface{})
 	os.MkdirAll(filepath.Dir(memoryPath), 0755)
 
 	entry := fmt.Sprintf("\n- [%s] (%s) %s", time.Now().Format("2006-01-02"), category, content)
-	
+
 	f, err := os.OpenFile(memoryPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("Failed to write to MEMORY.md: %v", err))
 	}
 	defer f.Close()
-	
+
 	if _, err := f.WriteString(entry); err != nil {
 		return ErrorResult(fmt.Sprintf("Failed to write to MEMORY.md: %v", err))
 	}

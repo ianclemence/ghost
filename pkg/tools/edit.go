@@ -115,7 +115,7 @@ func (t *AppendFileTool) Name() string {
 }
 
 func (t *AppendFileTool) Description() string {
-	return "Append content to the end of a file"
+	return "Append content to the end of an existing file. Use when: accumulating notes (shopping list, journaling, reminders) without overwriting. Returns the new file length."
 }
 
 func (t *AppendFileTool) Parameters() map[string]interface{} {
@@ -124,11 +124,11 @@ func (t *AppendFileTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"path": map[string]interface{}{
 				"type":        "string",
-				"description": "The file path to append to",
+				"description": "Path of the file to append to. Example: \"notes/shopping-list.md\".",
 			},
 			"content": map[string]interface{}{
 				"type":        "string",
-				"description": "The content to append",
+				"description": "Text to append (a new line is added).",
 			},
 		},
 		"required": []string{"path", "content"},
