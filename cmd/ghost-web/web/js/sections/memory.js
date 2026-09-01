@@ -19,7 +19,10 @@ async function loadMemory(container) {
 
   const self = selfRes.status === 'fulfilled' ? (selfRes.value || {}) : {};
   const facts = Array.isArray(self.entries) ? self.entries : [];
-  const curated = (Array.isArray(self.notes) ? self.notes : []).concat(Array.isArray(self.you) ? self.you : []);
+  // Show only the model's own curated notes here. The user-profile lines
+  // (self.you) are derived from the same structured facts already shown in the
+  // profile hero, so including them would just duplicate the facts above.
+  const curated = (Array.isArray(self.notes) ? self.notes : []);
   const files = filesRes.status === 'fulfilled'
     ? (Array.isArray(filesRes.value) ? filesRes.value : (filesRes.value.files || filesRes.value.items || []))
     : [];
