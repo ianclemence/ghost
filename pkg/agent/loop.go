@@ -860,10 +860,11 @@ func (al *AgentLoop) consolidatePersonalContext() {
 	if al.pcStore == nil {
 		return
 	}
-	if n, err := personalcontext.Compact(al.pcStore); err != nil {
+	rejected, decayed, err := personalcontext.Compact(al.pcStore)
+	if err != nil {
 		logger.WarnCF("agent", "Personal Context consolidation failed", map[string]interface{}{"error": err.Error()})
-	} else if n > 0 {
-		logger.InfoCF("agent", "Personal Context consolidated", map[string]interface{}{"rejected": n})
+	} else if rejected > 0 || decayed > 0 {
+		logger.InfoCF("agent", "Personal Context consolidated", map[string]interface{}{"rejected": rejected, "decayed": decayed})
 	}
 	// Keep the curated (always-injected) profile in sync with Ghost's
 	// structured memory, so the curated layer is actually used.

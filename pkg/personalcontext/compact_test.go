@@ -41,7 +41,7 @@ func TestCompactRejectsExactDuplicates(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	n, err := Compact(store)
+	n, _, err := Compact(store)
 	if err != nil {
 		t.Fatalf("compact: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestCompactKeepsDistinctPreferences(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	n, err := Compact(store)
+	n, _, err := Compact(store)
 	if err != nil {
 		t.Fatalf("compact: %v", err)
 	}
@@ -91,11 +91,89 @@ func TestCompactOnEmptyStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	n, err := Compact(store)
+	n, _, err := Compact(store)
 	if err != nil {
 		t.Fatalf("compact: %v", err)
 	}
 	if n != 0 {
 		t.Fatalf("expected 0, got %d", n)
+	}
+}
+
+func TestReinforceCountSaturates(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	now := time.Now().UTC()
+	if _, err := store.Create(compactEntry("e", "preference/prefers", "tea", now, "s:m1")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	for i := 0; i < MaxReinforceCount+50; i++ {
+		if err := store.reinforceLocked(store.currentEntry(entrySubjectUser, "preference/prefers")); err != nil {
+			t.Fatalf("reinforce %d: %v", i, err)
+		}
+	}
+	cur := store.currentEntry(entrySubjectUser, "preference/prefers")
+	if cur == nil {
+		t.Fatal("expected current entry")
+	}
+	if cur.ReinforceCount > MaxReinforceCount {
+		t.Fatalf("expected ReinforceCount to saturate at %d, got %d", MaxReinforceCount, cur.ReinforceCount)
+	}
+	if cur.ReinforceCount != MaxReinforceCount {
+		t.Fatalf("expected ReinforceCount=%d, got %d", MaxReinforceCount, cur.ReinforceCount)
+	}
+}
+
+func TestDecayReinforcementAfterWindow(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	old := time.Now().UTC().Add(-ReinforceDecayWindow - time.Hour)
+	entry := compactEntry("e", "preference/prefers", "tea", old, "s:m1")
+	entry.ReinforceCount = 8
+	entry.ReinforcedAt = &old
+	if _, err := store.Create(entry); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	decayed, err := store.DecayReinforcement()
+	if err != nil {
+		t.Fatalf("decay: %v", err)
+	}
+	if decayed != 1 {
+		t.Fatalf("expected 1 decayed, got %d", decayed)
+	}
+	cur := store.currentEntry(entrySubjectUser, "preference/prefers")
+	if cur.ReinforceCount != 4 {
+		t.Fatalf("expected ReinforceCount=4 (8/2), got %d", cur.ReinforceCount)
+	}
+	if cur.ReinforcedAt == nil {
+		t.Fatal("expected ReinforcedAt preserved while count > 0")
+	}
+}
+
+func TestDecayToZeroClearsReinforcedAt(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	old := time.Now().UTC().Add(-ReinforceDecayWindow - time.Hour)
+	entry := compactEntry("e", "preference/prefers", "tea", old, "s:m1")
+	entry.ReinforceCount = 1
+	entry.ReinforcedAt = &old
+	if _, err := store.Create(entry); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := store.DecayReinforcement(); err != nil {
+		t.Fatalf("decay: %v", err)
+	}
+	cur := store.currentEntry(entrySubjectUser, "preference/prefers")
+	if cur.ReinforceCount != 0 {
+		t.Fatalf("expected ReinforceCount=0, got %d", cur.ReinforceCount)
+	}
+	if cur.ReinforcedAt != nil {
+		t.Fatal("expected ReinforcedAt cleared when count reaches 0")
 	}
 }

@@ -354,7 +354,12 @@ func main() {
 	}
 	assetsHandler := http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS)))
 	mux.Handle("/assets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
+		// Assets never change between builds without the bundle changing, yet the
+		// embedded FS carries no modtime (and thus no ETag/Last-Modified) for the
+		// browser to revalidate against. "no-cache" without a validator lets some
+		// browsers serve a stale copy forever — the classic cause of "the UI won't
+		// update". Force an always-fresh fetch of these small local files instead.
+		w.Header().Set("Cache-Control", "no-store")
 		assetsHandler.ServeHTTP(w, r)
 	}))
 

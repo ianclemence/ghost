@@ -213,17 +213,65 @@ func (s *Store) supersedeLocked(subject, predicate string, e Entry) (Entry, erro
 	return created, nil
 }
 
+// MaxReinforceCount caps how many times a single belief can be reinforced, so
+// repeated confirmation cannot grow the counter without bound. The counter
+// saturates at this value; ReinforcedAt is still refreshed so "last confirmed"
+// stays accurate.
+const MaxReinforceCount = 20
+
+// ReinforceDecayWindow is how long since the last reinforcement before the
+// count is allowed to decay during a consolidation. ReinforcedAt is cleared
+// once the count reaches zero, so a genuinely idle fact loses its emphasis.
+const ReinforceDecayWindow = 90 * 24 * time.Hour
+
 // reinforceLocked records that a current belief was restated: it bumps the
-// reinforcement count and "last reinforced" time without changing the value,
-// sources, or status. Provenance is preserved (the original sources stay) and
-// no new fact is created. The caller must hold the write lock.
+// reinforcement count (saturating at MaxReinforceCount) and "last reinforced"
+// time without changing the value, sources, or status. Provenance is preserved
+// (the original sources stay) and no new fact is created. The caller must hold
+// the write lock.
 func (s *Store) reinforceLocked(cur *Entry) error {
 	rev := *cur
-	rev.ReinforceCount++
+	if rev.ReinforceCount < MaxReinforceCount {
+		rev.ReinforceCount++
+	} else {
+		rev.ReinforceCount = MaxReinforceCount
+	}
 	now := time.Now().UTC()
 	rev.ReinforcedAt = &now
 	rev.UpdatedAt = now
 	return s.append(rev)
+}
+
+// DecayReinforcement steps down the ReinforceCount of current entries whose
+// last reinforcement is older than ReinforceDecayWindow, clearing ReinforcedAt
+// when the count reaches zero. This keeps the reported strength reflecting
+// recent emphasis rather than a lifetime count. It only changes the
+// reinforcement bookkeeping, never the value or provenance. Returns the number
+// of entries decayed. It is safe to call concurrently.
+func (s *Store) DecayReinforcement() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	decayed := 0
+	for _, e := range s.byID {
+		if e.Status != StatusCurrent || e.ReinforceCount <= 0 || e.ReinforcedAt == nil {
+			continue
+		}
+		if now.Sub(e.ReinforcedAt.UTC()) < ReinforceDecayWindow {
+			continue
+		}
+		rev := *e
+		rev.ReinforceCount = rev.ReinforceCount / 2
+		if rev.ReinforceCount == 0 {
+			rev.ReinforcedAt = nil
+		}
+		rev.UpdatedAt = now
+		if err := s.append(rev); err != nil {
+			return decayed, err
+		}
+		decayed++
+	}
+	return decayed, nil
 }
 
 // applyActions persists extraction actions atomically with respect to each

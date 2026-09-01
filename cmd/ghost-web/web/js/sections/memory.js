@@ -31,11 +31,16 @@ async function loadMemory(container) {
   }
 
   if (facts.length || curated.length) {
-    renderFacts(container, facts, curated);
+    try { renderFacts(container, facts, curated); }
+    catch (e) {
+      console.error('renderFacts failed', e);
+      container.appendChild(GhostUI.errorState('Couldn\u2019t show these memories', String(e && e.message || e)));
+    }
   }
 
   if (files.length) {
-    renderNotes(container, files);
+    try { renderNotes(container, files); }
+    catch (e) { console.error('renderNotes failed', e); }
   }
 }
 
@@ -97,7 +102,7 @@ function renderFacts(container, facts, curated) {
     if (!list || !list.length) return;
     body.appendChild(GhostUI.h('div', { className: 'self-group' }, KIND_LABEL[k]));
     list.sort((a, b) => (b.reinforce_count || 0) - (a.reinforce_count || 0));
-    list.forEach(factRow);
+    list.forEach(e => body.appendChild(factRow(e)));
   });
 
   if (curated.length) {
@@ -112,7 +117,7 @@ function renderFacts(container, facts, curated) {
       btn.addEventListener('click', () => forgetBtn({ target: 'memory', entry: entry }));
       tr.appendChild(btn);
       row.appendChild(tr);
-      return row;
+      body.appendChild(row);
     });
   }
 }

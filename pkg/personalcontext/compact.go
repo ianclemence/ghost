@@ -13,17 +13,22 @@ import (
 // another (a coarse predicate like "preference/prefers" can legitimately hold
 // multiple distinct values — coffee and tea can both be things someone likes).
 //
-// It only removes definitive redundancy:
+// It only removes definitive redundancy and gradually forgets stale emphasis:
 //
 //  1. Exact duplicates — two or more current entries with the same
 //     (subject, predicate, value). It keeps the most recently stated entry and
 //     rejects the older ones, so provenance is never lost.
+//  2. Reinforcement decay — a belief whose reinforcement has gone idle
+//     (no restatement within ReinforceDecayWindow) steps its ReinforceCount
+//     down by half each consolidation, clearing ReinforcedAt when it reaches
+//     zero, so the reported strength reflects recent emphasis rather than a
+//     lifetime count.
 //
 // The kept entry retains its sources and timestamps (provenance). Returns the
-// number of entries rejected.
-func Compact(store *Store) (int, error) {
+// number of entries rejected and the number whose reinforcement decayed.
+func Compact(store *Store) (int, int, error) {
 	if store == nil {
-		return 0, nil
+		return 0, 0, nil
 	}
 
 	cur := store.Current()
@@ -58,13 +63,20 @@ func Compact(store *Store) (int, error) {
 				continue
 			}
 			if err := store.Forget(e.ID); err != nil {
-				return rejected, err
+				return rejected, 0, err
 			}
 			rejected++
 		}
 	}
 
-	return rejected, nil
+	// Pass 2: decay stale reinforcement (idle facts over-emphasized by a long
+	// lifetime count). This never changes the value or provenance.
+	decayed, err := store.DecayReinforcement()
+	if err != nil {
+		return rejected, decayed, err
+	}
+
+	return rejected, decayed, nil
 }
 
 // sortStrings sorts a string slice ascending (ASCII).
