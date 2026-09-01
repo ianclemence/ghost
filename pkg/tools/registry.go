@@ -202,6 +202,19 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	result := executeWithReliability(ctx, tool, args)
 	duration := time.Since(start)
 
+	// Phase 3 — Verify: a successful, non-async execution of a VerifiableTool
+	// isn't proof the outcome actually happened. Confirm it and, if verification
+	// fails, surface a real failure so the agent recovers instead of trusting a
+	// false positive. Proportional: only tools that opt in are verified.
+	if !result.IsError && !result.Async {
+		if verifiable, ok := tool.(VerifiableTool); ok {
+			if verr := verifiable.Verify(ctx, args); verr != nil {
+				result = ErrorResult(fmt.Sprintf("tool %q ran but verification failed: %s", name, verr.Error())).WithError(verr)
+				logger.WarnCF("tool", "verification failed", map[string]interface{}{"tool": name, "error": verr.Error()})
+			}
+		}
+	}
+
 	// Log based on result type
 	if result.IsError {
 		logger.ErrorCF("tool", "Tool execution failed",

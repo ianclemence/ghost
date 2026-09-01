@@ -163,3 +163,24 @@ func (t *AppendFileTool) Execute(ctx context.Context, args map[string]interface{
 
 	return SilentResult(fmt.Sprintf("Appended to %s", path))
 }
+
+// Verify confirms the append actually persisted at the end of the file (Phase 3).
+func (t *AppendFileTool) Verify(ctx context.Context, args map[string]interface{}) error {
+	path, _ := args["path"].(string)
+	content, _ := args["content"].(string)
+	if path == "" {
+		return fmt.Errorf("path is required")
+	}
+	resolved, err := validatePath(path, t.workspace, t.restrict)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return fmt.Errorf("could not read back %q: %w", path, err)
+	}
+	if !strings.HasSuffix(string(data), content) {
+		return fmt.Errorf("appended content was not found at the end of %q", path)
+	}
+	return nil
+}

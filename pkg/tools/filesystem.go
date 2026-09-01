@@ -160,6 +160,27 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 	return SilentResult(fmt.Sprintf("File written: %s", path))
 }
 
+// Verify confirms the written content actually landed on disk (Phase 3).
+func (t *WriteFileTool) Verify(ctx context.Context, args map[string]interface{}) error {
+	path, _ := args["path"].(string)
+	content, _ := args["content"].(string)
+	if path == "" {
+		return fmt.Errorf("path is required")
+	}
+	resolved, err := validatePath(path, t.workspace, t.restrict)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return fmt.Errorf("could not read back %q: %w", path, err)
+	}
+	if !strings.Contains(string(data), content) {
+		return fmt.Errorf("expected content was not found in %q", path)
+	}
+	return nil
+}
+
 type ListDirTool struct {
 	workspace string
 	restrict  bool
