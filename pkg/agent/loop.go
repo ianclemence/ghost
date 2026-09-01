@@ -38,6 +38,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/session"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/state"
+	"github.com/ianclemence/ghost/pkg/tasks"
 	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/utils"
@@ -90,6 +91,9 @@ type AgentLoop struct {
 
 	// events is the typed internal event bus (see events.go).
 	events *EventBus
+
+	// jobs is the durable task store (SQLite-backed, part of Ghost State).
+	jobs *tasks.Store
 }
 
 // processOptions configures how a message is processed
@@ -491,6 +495,35 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	al.shutdownCtx, al.shutdownCancel = context.WithCancel(context.Background())
 	al.events = NewEventBus()
+
+	// Durable task store: scheduled/background work outlives a single turn and
+	// survives a restart. Emits typed task events; jobs left "running" by a
+	// crash are flagged interrupted (resumable) on startup.
+	if database != nil {
+		al.jobs = tasks.NewStore(database.DB, func(kind string, job tasks.Job) {
+			if al.events == nil {
+				return
+			}
+			var typ EventType
+			switch kind {
+			case tasks.EventStarted:
+				typ = EventTaskStarted
+			case tasks.EventDone:
+				typ = EventTaskCompleted
+			default: // failed / cancelled / retrying / progress
+				typ = EventTaskFailed
+			}
+			al.events.emit(typ, job.ID, map[string]interface{}{
+				"kind":        job.Kind,
+				"status":      string(job.Status),
+				"session_key": job.SessionKey,
+				"error":       job.Error,
+			})
+		})
+		if n, err := al.jobs.MarkInterrupted(); err == nil && n > 0 {
+			logger.InfoCF("agent", "durable jobs interrupted by restart (resumable)", map[string]interface{}{"count": n})
+		}
+	}
 
 	return al, nil
 }

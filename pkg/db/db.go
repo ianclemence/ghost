@@ -120,6 +120,24 @@ func (db *DB) initSchema() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_paired_devices_device_id ON paired_devices(device_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_pending_pairings_token_hash ON pending_pairings(token_hash)`,
+		// ── Durable job/task store ───────────────────────────────────────
+		`CREATE TABLE IF NOT EXISTS jobs (
+			id TEXT PRIMARY KEY,
+			kind TEXT NOT NULL,
+			status TEXT NOT NULL,
+			progress REAL NOT NULL DEFAULT 0,
+			checkpoints JSON,
+			payload JSON,
+			session_key TEXT,
+			error TEXT,
+			attempts INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			started_at DATETIME,
+			finished_at DATETIME,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at)`,
 	}
 
 	for _, query := range queries {
