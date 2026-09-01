@@ -31,7 +31,7 @@ func newTestAgentLoop(t *testing.T, workspace string) *AgentLoop {
 		},
 	}
 	msgBus := bus.NewMessageBus()
-	al := NewAgentLoop(cfg, msgBus, &mockProvider{})
+	al, _ := NewAgentLoop(cfg, msgBus, &mockProvider{})
 	t.Cleanup(func() { al.Stop() })
 	return al
 }

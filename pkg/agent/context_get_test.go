@@ -83,7 +83,7 @@ func newTestAgentLoopWithProvider(t *testing.T, workspace string, provider provi
 		},
 	}
 	msgBus := bus.NewMessageBus()
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 	t.Cleanup(func() { al.Stop() })
 	return al
 }

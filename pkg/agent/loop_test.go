@@ -50,7 +50,7 @@ func TestRecordLastChannel(t *testing.T) {
 	// Create agent loop
 	msgBus := bus.NewMessageBus()
 	provider := &mockProvider{}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 
 	// Test RecordLastChannel
 	testChannel := "test-channel"
@@ -66,7 +66,7 @@ func TestRecordLastChannel(t *testing.T) {
 	}
 
 	// Verify persistence by creating a new agent loop
-	al2 := NewAgentLoop(cfg, msgBus, provider)
+	al2, _ := NewAgentLoop(cfg, msgBus, provider)
 	if al2.state.GetLastChannel() != testChannel {
 		t.Errorf("Expected persistent channel '%s', got '%s'", testChannel, al2.state.GetLastChannel())
 	}
@@ -95,7 +95,7 @@ func TestRecordLastChatID(t *testing.T) {
 	// Create agent loop
 	msgBus := bus.NewMessageBus()
 	provider := &mockProvider{}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 
 	// Test RecordLastChatID
 	testChatID := "test-chat-id-123"
@@ -111,7 +111,7 @@ func TestRecordLastChatID(t *testing.T) {
 	}
 
 	// Verify persistence by creating a new agent loop
-	al2 := NewAgentLoop(cfg, msgBus, provider)
+	al2, _ := NewAgentLoop(cfg, msgBus, provider)
 	if al2.state.GetLastChatID() != testChatID {
 		t.Errorf("Expected persistent chat ID '%s', got '%s'", testChatID, al2.state.GetLastChatID())
 	}
@@ -140,7 +140,7 @@ func TestNewAgentLoop_StateInitialized(t *testing.T) {
 	// Create agent loop
 	msgBus := bus.NewMessageBus()
 	provider := &mockProvider{}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 
 	// Verify state manager is initialized
 	if al.state == nil {
@@ -175,7 +175,7 @@ func TestToolRegistry_ToolRegistration(t *testing.T) {
 
 	msgBus := bus.NewMessageBus()
 	provider := &mockProvider{}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 
 	// Register a custom tool
 	customTool := &mockCustomTool{}
@@ -221,7 +221,7 @@ func TestToolContext_Updates(t *testing.T) {
 
 	msgBus := bus.NewMessageBus()
 	provider := &simpleMockProvider{response: "OK"}
-	_ = NewAgentLoop(cfg, msgBus, provider)
+	_, _ = NewAgentLoop(cfg, msgBus, provider)
 
 	// Verify that ContextualTool interface is defined and can be implemented
 	// This test validates the interface contract exists
@@ -252,7 +252,7 @@ func TestToolRegistry_GetDefinitions(t *testing.T) {
 
 	msgBus := bus.NewMessageBus()
 	provider := &mockProvider{}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 
 	// Register a test tool and verify it shows up in startup info
 	testTool := &mockCustomTool{}
@@ -296,7 +296,7 @@ func TestAgentLoop_GetStartupInfo(t *testing.T) {
 
 	msgBus := bus.NewMessageBus()
 	provider := &mockProvider{}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 
 	info := al.GetStartupInfo()
 
@@ -343,7 +343,7 @@ func TestAgentLoop_Stop(t *testing.T) {
 
 	msgBus := bus.NewMessageBus()
 	provider := &mockProvider{}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 
 	// Note: running is only set to true when Run() is called
 	// We can't test that without starting the event loop
@@ -465,7 +465,7 @@ func TestToolResult_SilentToolDoesNotSendUserMessage(t *testing.T) {
 
 	msgBus := bus.NewMessageBus()
 	provider := &simpleMockProvider{response: "File operation complete"}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 	helper := testHelper{al: al}
 
 	// ReadFileTool returns SilentResult, which should not send user message
@@ -507,7 +507,7 @@ func TestToolResult_UserFacingToolDoesSendMessage(t *testing.T) {
 
 	msgBus := bus.NewMessageBus()
 	provider := &simpleMockProvider{response: "Command output: hello world"}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 	helper := testHelper{al: al}
 
 	// ExecTool returns UserResult, which should send user message
@@ -585,7 +585,7 @@ func TestImagePassing(t *testing.T) {
 	// Create agent loop
 	msgBus := bus.NewMessageBus()
 	provider := &capturingMockProvider{}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 
 	// Create inbound message with media
 	ctx := context.Background()

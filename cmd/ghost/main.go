@@ -644,7 +644,11 @@ func agentCmd() {
 	}
 
 	msgBus := bus.NewMessageBus()
-	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
+	agentLoop, err := agent.NewAgentLoop(cfg, msgBus, provider)
+	if err != nil {
+		fmt.Printf("Error initializing Ghost: %v\n", err)
+		os.Exit(1)
+	}
 	agentLoop.SetConfigPath(getConfigPath())
 
 	// Print agent startup info (only for interactive mode)
@@ -841,7 +845,11 @@ func gatewayCmd() {
 	}
 
 	msgBus := bus.NewMessageBus()
-	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
+	agentLoop, err := agent.NewAgentLoop(cfg, msgBus, provider)
+	if err != nil {
+		fmt.Printf("Error initializing Ghost: %v\n", err)
+		os.Exit(1)
+	}
 	agentLoop.SetConfigPath(getConfigPath())
 
 	// Start the conservative, local background memory consolidation (learn/

@@ -61,7 +61,7 @@ func TestCronTriggeredMessagesUseHeartbeatSafeProfile(t *testing.T) {
 
 	msgBus := bus.NewMessageBus()
 	provider := &cronProfileMockProvider{}
-	al := NewAgentLoop(cfg, msgBus, provider)
+	al, _ := NewAgentLoop(cfg, msgBus, provider)
 
 	_, err = al.processMessage(context.Background(), bus.InboundMessage{
 		Channel:    "cli",

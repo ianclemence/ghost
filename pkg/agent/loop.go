@@ -252,7 +252,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	return registry
 }
 
-func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider) *AgentLoop {
+func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider) (*AgentLoop, error) {
 	workspace := cfg.WorkspacePath()
 	os.MkdirAll(workspace, 0755)
 
@@ -284,7 +284,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// Initialize DB
 	database, err := db.NewDB(workspace)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to initialize DB: %v", err))
+		return nil, fmt.Errorf("initialize db: %w", err)
 	}
 
 	if cfg.Agents.Defaults.SearchEnabled {
@@ -464,7 +464,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
 	al.commandExec = cmdExec
 
-	return al
+	return al, nil
 }
 
 func (al *AgentLoop) Config() *config.Config {
