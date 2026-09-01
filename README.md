@@ -51,27 +51,27 @@ You → Local Reflex → Local Brain → Cloud (only if needed)
 - Instant intent detection (<50ms)
 - Command routing
 - Wake-word + triggers
-- Local embeddings
+- Memory-first recall (SQLite FTS + personal-context)
 
 ### Local Brain
-- Runs small LLMs via Ollama
-- Handles memory, RAG, and tools
+- Runs small LLMs via Ollama (optional)
+- Handles memory, tools, and automations
 - Works offline
 
 ### Cloud Brain (Optional)
 - Kimi / OpenAI / Anthropic
 - Used only for deep reasoning, coding, complex tasks
 
-An **Intelligence Router** decides where each task runs — local reflex, local
-model, or cloud — based on capability, latency, privacy, cost, and available
-hardware. You don't have to think about models; Ghost handles it.
+An **Intent Triage** system decides where each task runs — fast-path (memory),
+local model, or cloud — based on capability, latency, privacy, cost, and
+available hardware. You don't have to think about models; Ghost handles it.
 
 ---
 
 ## Core Features
 
 - **Local-First**: Runs on your own hardware (Raspberry Pi, RK1, or x86)
-- **Persistent Memory**: Continuous context via SQLite + HNSW Vector Index
+- **Persistent Memory**: Continuous context via SQLite + personal-context files
 - **Hybrid Intelligence**: Local-first routing with cloud fallback
 - **Ghost Moves With You**: Replace your hardware — your identity, memory, skills, and configuration come along
 - **Robust**: JSON Schema validation prevents hallucinated tool calls
@@ -149,19 +149,16 @@ Ghost runs on any Linux device. These are the reference appliance targets:
 - 256 GB NVMe SSD (recommended) or 32 GB microSD storage
 - Mobile phone with Ghost app
 
-### Software: Ollama (Required for Local AI)
+### Software
 
-**Linux / Raspberry Pi:**
+Ghost is a single Go binary — no external runtime is required for the core
+system. For local AI, you can install Ollama (optional):
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen3:0.6b
 ```
 
-**Windows:**
-
-1. Install from https://ollama.com  
-2. Run: `ollama pull qwen3:0.6b`
+Or configure any OpenAI-compatible provider through the Web Console.
 
 ---
 
@@ -170,12 +167,10 @@ ollama pull qwen3:0.6b
 ### Raspberry Pi (Recommended)
 
 On a fresh device, install the prerequisites first (skip if you already have
-`git`, `make`, Go, and Ollama):
+`git`, `make`, and Go):
 
 ```bash
-sudo apt install -y git make golang-go python3 python3-pip
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen3:0.6b
+sudo apt install -y git make golang-go
 ```
 
 Then install Ghost:
@@ -189,10 +184,9 @@ sudo reboot
 
 After reboot, open `http://<pi-ip>` in a browser to complete setup:
 1. Set up Ghost — name yourself, name Ghost, create an owner password
-2. Ghost prepares local AI (Ollama)
-3. Optionally configure cloud AI (OpenAI, Anthropic, etc.)
+2. Ghost is ready — you're in the Web Console
+3. Optionally configure AI providers (Ollama, OpenAI, Anthropic, etc.)
 4. Optionally connect your phone by scanning a QR code
-5. Ghost is ready — you're in the Web Console
 
 ### How setup works
 
@@ -556,7 +550,7 @@ The web dashboard uses session-based authentication:
 
 ### Internal Authentication (Web Proxy, Relay, CLI)
 
-Internal components run on the Pod itself and connect via loopback, which the
+Internal components run on the device itself and connect via loopback, which the
 gateway trusts:
 - Web proxy forwards requests to `127.0.0.1:8766`
 - Relay client connects to `127.0.0.1:8766`
@@ -564,17 +558,6 @@ gateway trusts:
 
 No authentication headers are needed for loopback traffic. Requests arriving
 from other machines on the LAN require valid device credentials.
-
----
-
-## Tech Stack
-
-* Go (runtime)
-* Ollama (local LLMs)
-* SQLite + HNSW
-* JSON Schema validation
-* Mobile App API
-* Linux (systemd)
 
 ---
 
