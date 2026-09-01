@@ -87,6 +87,9 @@ type AgentLoop struct {
 	shutdownCtx    context.Context
 	shutdownCancel context.CancelFunc
 	backgroundWG   sync.WaitGroup
+
+	// events is the typed internal event bus (see events.go).
+	events *EventBus
 }
 
 // processOptions configures how a message is processed
@@ -473,6 +476,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	al.commandExec = cmdExec
 
 	al.shutdownCtx, al.shutdownCancel = context.WithCancel(context.Background())
+	al.events = NewEventBus()
 
 	return al, nil
 }
@@ -569,6 +573,12 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// Events returns the agent's typed internal event bus (see events.go), allowing
+// observability or future subsystems to react without coupling to the loop.
+func (al *AgentLoop) Events() *EventBus {
+	return al.events
 }
 
 func (al *AgentLoop) Stop() {
@@ -939,6 +949,12 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 		logger.WarnCF("agent", "Personal Context extraction failed", map[string]interface{}{
 			"session_key": opts.SessionKey,
 			"error":       err.Error(),
+		})
+	} else if al.events != nil {
+		// Typed memory event so memory/evolution/notifications can react without
+		// being coupled to the extract loop.
+		al.events.emit(EventMemoryCreated, "", map[string]interface{}{
+			"session_key": opts.SessionKey,
 		})
 	}
 }
@@ -1502,15 +1518,25 @@ func (al *AgentLoop) collectToolsUsed(sessionKey string) []string {
 
 func (al *AgentLoop) callLLM(ctx context.Context, model string, messages []providers.Message, tools []providers.ToolDefinition, opts processOptions) (*providers.LLMResponse, error) {
 	candidates := al.buildCandidates(model)
+	var resp *providers.LLMResponse
+	var err error
 	if al.fallback != nil && len(candidates) > 0 {
-		return al.fallback.Execute(ctx, candidates, func(c providers.FallbackCandidate) (*providers.LLMResponse, error) {
+		resp, err = al.fallback.Execute(ctx, candidates, func(c providers.FallbackCandidate) (*providers.LLMResponse, error) {
 			return al.invokeProvider(ctx, c.Provider, c.Model, messages, tools, opts)
 		})
+	} else if len(candidates) == 0 {
+		resp, err = al.invokeProvider(ctx, al.provider, model, messages, tools, opts)
+	} else {
+		resp, err = al.invokeProvider(ctx, candidates[0].Provider, candidates[0].Model, messages, tools, opts)
 	}
-	if len(candidates) == 0 {
-		return al.invokeProvider(ctx, al.provider, model, messages, tools, opts)
+
+	// Typed model-health events (observability + future reaction).
+	if err != nil && al.events != nil {
+		al.events.emit(EventModelFailed, model, map[string]interface{}{"error": err.Error()})
+	} else if err == nil && al.events != nil {
+		al.events.emit(EventModelRecovered, model, nil)
 	}
-	return al.invokeProvider(ctx, candidates[0].Provider, candidates[0].Model, messages, tools, opts)
+	return resp, err
 }
 
 func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMProvider, model string, messages []providers.Message, tools []providers.ToolDefinition, opts processOptions) (*providers.LLMResponse, error) {
