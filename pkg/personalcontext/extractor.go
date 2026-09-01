@@ -101,6 +101,17 @@ type declarationRule struct {
 // bounded by clause punctuation (; . , ! ?) and then cut at the first " and "
 // or " but " so a multi-clause message like "my name is Ian and I live in
 // Bangkok" yields two clean values instead of one bleeding value.
+// communicationStyleRegex captures response-style preferences (concise, brief,
+// detailed, direct…) as a single-word value.
+var communicationStyleRegex = regexp.MustCompile(`(?i)\bi prefer\s+(concise|brief|short|detailed|thorough|elaborate|direct|casual|formal|verbose)\s+answers?\b`)
+
+// communicationFormatRegex captures communication-format cues (lists, bullets,
+// no emojis, tables, options, summaries, ask-before-destructive) that Ghost
+// should follow. The first capture group is the cue value. With
+// communicationStyleRegex this is Ghost's "behavioral profile", surfaced to the
+// model each turn.
+var communicationFormatRegex = regexp.MustCompile(`(?i)\bi\s+(?:prefer|like|really like|want)\s+(no\s+emojis?|(?:a|some)?\s*lists?|bullet\s+points?|bullets?|(?:a|some)?\s*options?|(?:a|some)?\s*tables?|(?:a|some)?\s*summar(?:y|ies)|(?:a|some)?\s*examples?|to\s+be\s+(?:asked|confirmed)\s+before\s+(?:deleting|destructive|any))`)
+
 var declarationRules = []declarationRule{
 	{
 		name:      "favorite_color",
@@ -125,7 +136,18 @@ var declarationRules = []declarationRule{
 		name:      "communication_style",
 		kind:      KindPreference,
 		predicate: "preference/communication.style",
-		re:        regexp.MustCompile(`(?i)\bi prefer\s+(concise|brief|short|detailed|thorough|elaborate|direct|casual|formal|verbose)\s+answers?\b`),
+		// Captures how the user likes to be communicated with (the "behavioral
+		// profile"): response style (concise/detailed/direct…) and format cues
+		// (lists, bullets, no emojis, tables, options, examples, summaries, and
+		// asking before destructive actions). One evolving preference: the most
+		// recent explicit statement wins.
+		re: communicationStyleRegex,
+	},
+	{
+		name:      "communication_format",
+		kind:      KindPreference,
+		predicate: "preference/communication.style",
+		re:        communicationFormatRegex,
 	},
 	{
 		name:      likesRuleName,
