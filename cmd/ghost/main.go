@@ -522,16 +522,13 @@ func modelCmd() {
 	}
 	configPath := getConfigPath()
 
-	active := func() string {
-		m := cfg.Agents.Defaults.Model
-		p := cfg.Agents.Defaults.Provider
-		if p != "" && m != "" {
-			// Avoid a redundant "ollama:ollama/…" when the model already carries
-			// its provider prefix.
+	// Mirror the gateway's /v1/model shape: active is the model name and the
+	// provider is reported separately.
+	cleanModel := func(p, m string) string {
+		if p != "" {
 			if strings.HasPrefix(m, p+"/") || strings.HasPrefix(m, p+":") {
-				return m
+				return m[len(p)+1:]
 			}
-			return p + ":" + m
 		}
 		return m
 	}
@@ -542,14 +539,17 @@ func modelCmd() {
 			if p.Name == "" {
 				continue
 			}
-			out = append(out, fmt.Sprintf("  %-16s %s:%s", p.Name, p.Provider, p.Model))
+			out = append(out, fmt.Sprintf("  %-16s %s (%s)", p.Name, p.Provider, cleanModel(p.Provider, p.Model)))
 		}
 		return out
 	}
 
 	args := os.Args[2:]
 	if len(args) == 0 || args[0] == "list" {
-		fmt.Printf("Active: %s\n", active())
+		fmt.Printf("Active: %s\n", cleanModel(cfg.Agents.Defaults.Provider, cfg.Agents.Defaults.Model))
+		if cfg.Agents.Defaults.Provider != "" {
+			fmt.Printf("Provider: %s\n", cfg.Agents.Defaults.Provider)
+		}
 		fmt.Println("Config:", configPath)
 		if ps := presets(); len(ps) > 0 {
 			fmt.Println("\nPresets:")
