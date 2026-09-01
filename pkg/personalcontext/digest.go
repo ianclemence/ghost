@@ -2,8 +2,10 @@ package personalcontext
 
 import (
 	"encoding/json"
+	"math"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -101,11 +103,61 @@ func digestPriority(e Entry) int {
 	}
 }
 
-// digestLess is the deterministic total order: priority, then predicate, then
-// id. Two stores with the same entries yield byte-identical digests.
+// importanceTiebreak orders two same-kind entries deterministically by "how
+// much it matters": higher confidence, then more reinforcement, then fresher.
+// This keeps the highest-value facts in the bounded digest as the store grows,
+// without depending on wall-clock time (so BuildDigest stays byte-deterministic).
+func importanceTiebreak(a, b Entry) bool {
+	if a.Confidence != b.Confidence {
+		return a.Confidence > b.Confidence
+	}
+	if a.ReinforceCount != b.ReinforceCount {
+		return a.ReinforceCount > b.ReinforceCount
+	}
+	at := freshest(a)
+	bt := freshest(b)
+	if !at.Equal(bt) {
+		return at.After(bt)
+	}
+	return false
+}
+
+// freshest returns the most recent of UpdatedAt / ReinforcedAt for an entry.
+func freshest(e Entry) time.Time {
+	t := e.UpdatedAt
+	if e.ReinforcedAt != nil && e.ReinforcedAt.After(t) {
+		t = *e.ReinforcedAt
+	}
+	return t
+}
+
+// Importance returns a 0..1 score for an entry: confidence, reinforcement
+// (capped), and recency (30-day exponential decay). It is used for retrieval
+// ranking and observability; the digest itself uses the deterministic
+// importanceTiebreak so it stays byte-stable.
+func Importance(e Entry, now time.Time) float64 {
+	c := e.Confidence
+	r := math.Min(float64(e.ReinforceCount), 10) / 10.0
+	age := now.Sub(freshest(e)).Hours()
+	if age < 0 {
+		age = 0
+	}
+	rec := math.Exp(-age / (30 * 24)) // ~exponential decay over ~30 days
+	return 0.5*c + 0.25*r + 0.25*rec
+}
+
+// digestLess is the deterministic total order: priority, then importance
+// (confidence → reinforcement → recency) as a tiebreak, then predicate, then id.
+// Two stores with the same entries yield byte-identical digests.
 func digestLess(a, b Entry) bool {
 	if pa, pb := digestPriority(a), digestPriority(b); pa != pb {
 		return pa < pb
+	}
+	if importanceTiebreak(a, b) {
+		return true
+	}
+	if importanceTiebreak(b, a) {
+		return false
 	}
 	if a.Predicate != b.Predicate {
 		return a.Predicate < b.Predicate
