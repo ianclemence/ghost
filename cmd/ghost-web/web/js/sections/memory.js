@@ -179,6 +179,21 @@ function renderNotes(container, files) {
   });
 }
 
+// recallMsg renders a single recall message. Recall strings are "role: content";
+// we split off the role label and render the content as markdown so headings,
+// bold, lists, and links read properly instead of as raw "#" / "**" characters.
+function recallMsg(m) {
+  const idx = m.indexOf(': ');
+  const role = idx > 0 ? m.slice(0, idx) : '';
+  const content = idx > 0 ? m.slice(idx + 2) : m;
+  const el = GhostUI.h('div', { className: 'recall-msg' });
+  if (role) el.appendChild(GhostUI.h('div', { className: 'recall-msg-role' }, role));
+  const md = GhostUI.h('div', { className: 'markdown-body' });
+  md.innerHTML = GhostUI.md(content);
+  el.appendChild(md);
+  return el;
+}
+
 // renderRecall lets the user search Ghost's past conversations ("what did we
 // talk about earlier?"). It summarizes across sessions with a cloud model when
 // available and falls back to the raw matches offline.
@@ -225,7 +240,7 @@ async function renderRecall(container) {
       const row = GhostUI.h('div', { className: 'ghost-row' });
       const c = GhostUI.h('div', { className: 'ghost-row-content' });
       c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:500' }, sess.session_id));
-      (sess.messages || []).forEach(m => c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, m)));
+      (sess.messages || []).forEach(m => c.appendChild(recallMsg(m)));
       row.appendChild(c);
       list.appendChild(row);
     });

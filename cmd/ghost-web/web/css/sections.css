@@ -735,3 +735,18 @@
   border-top: 0;
 }
 
+/* Recall messages: role label + readable markdown content. */
+#recall-list .ghost-row { align-items: flex-start; }
+.recall-msg { margin-top: var(--s-2); }
+.recall-msg:first-child { margin-top: var(--s-1); }
+.recall-msg-role {
+  font-size: var(--t-foot);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 2px;
+}
+.recall-msg .markdown-body { color: var(--ink-soft); }
+
+
