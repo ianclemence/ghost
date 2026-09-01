@@ -7,6 +7,7 @@
 package providers
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -79,6 +80,10 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 	requestBody := map[string]interface{}{
 		"model":    model,
 		"messages": toOpenAIMessages(messages),
+		// True token streaming: without this the provider is called via StreamChat
+		// (which the agent always does) yet never invokes onChunk, so the console
+		// receives no content even though the response is generated.
+		"stream": onChunk != nil,
 	}
 
 	if len(tools) > 0 {
@@ -233,15 +238,125 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 			return nil, fmt.Errorf("failed to send request: %w", err)
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("API request failed:\n  Status: %d\n  Body:   %s", resp.StatusCode, string(body))
+		}
+		if onChunk != nil {
+			return p.readOpenAIStream(resp.Body, onChunk)
+		}
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read response: %w", err)
 		}
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("API request failed:\n  Status: %d\n  Body:   %s", resp.StatusCode, string(body))
-		}
 		return p.parseResponse(body)
 	}
+}
+
+// streamOpenAIChunk and readOpenAIStream parse Server-Sent-Events from an
+// OpenAI-compatible /chat/completions stream, invoking onChunk for each content
+// delta and reconstructing content + tool calls (which arrive fragmented
+// across deltas) into a single LLMResponse.
+func (p *HTTPProvider) readOpenAIStream(r io.Reader, onChunk func(string)) (*LLMResponse, error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+
+	var sb, reasoning strings.Builder
+	var toolCalls []ToolCall // accumulated by index
+	var rawArgs []string     // raw argument fragments, parallel to toolCalls
+	finishReason := "stop"
+
+	for scanner.Scan() {
+		line := strings.TrimRight(scanner.Text(), "\r")
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" {
+			continue
+		}
+		if data == "[DONE]" {
+			break
+		}
+
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"`
+					ToolCalls        []struct {
+						Index    int    `json:"index"`
+						ID       string `json:"id"`
+						Type     string `json:"type"`
+						Function *struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						} `json:"function"`
+					} `json:"tool_calls"`
+				} `json:"delta"`
+				FinishReason string `json:"finish_reason"`
+			} `json:"choices"`
+			Usage *UsageInfo `json:"usage"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			// Ignore non-JSON events (e.g. keepalive comments).
+			continue
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		choice := chunk.Choices[0]
+		if choice.Delta.ReasoningContent != "" {
+			reasoning.WriteString(choice.Delta.ReasoningContent)
+		}
+		if choice.Delta.Content != "" {
+			sb.WriteString(choice.Delta.Content)
+			onChunk(choice.Delta.Content)
+		}
+		for _, tcd := range choice.Delta.ToolCalls {
+			for len(toolCalls) <= tcd.Index {
+				toolCalls = append(toolCalls, ToolCall{})
+				rawArgs = append(rawArgs, "")
+			}
+			if tcd.ID != "" {
+				toolCalls[tcd.Index].ID = tcd.ID
+			}
+			if tcd.Function != nil {
+				if tcd.Function.Name != "" {
+					toolCalls[tcd.Index].Name += tcd.Function.Name
+				}
+				rawArgs[tcd.Index] += tcd.Function.Arguments
+			}
+		}
+		if choice.FinishReason != "" {
+			finishReason = choice.FinishReason
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("stream read failed: %w", err)
+	}
+
+	// Resolve accumulated tool-call arguments into maps, mirroring parseResponse.
+	for i := range toolCalls {
+		arguments := make(map[string]interface{})
+		if i < len(rawArgs) && rawArgs[i] != "" {
+			if err := json.Unmarshal([]byte(rawArgs[i]), &arguments); err != nil {
+				arguments["raw"] = rawArgs[i]
+			}
+		}
+		toolCalls[i].Arguments = arguments
+	}
+
+	if len(toolCalls) == 0 {
+		toolCalls = nil
+	}
+	return &LLMResponse{
+		Content:          sb.String(),
+		ReasoningContent: reasoning.String(),
+		ToolCalls:        toolCalls,
+		FinishReason:     finishReason,
+	}, nil
 }
 
 func (p *HTTPProvider) parseNativeResponse(body []byte) (*LLMResponse, error) {
