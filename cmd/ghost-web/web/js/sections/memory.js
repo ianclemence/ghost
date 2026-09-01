@@ -213,7 +213,7 @@ async function renderRecall(container) {
       body.appendChild(GhostUI.emptyState('Nothing found', 'No past conversation matched that.'));
       return;
     }
-    const list = GhostUI.h('div', { className: 'ghost-list' });
+    const list = GhostUI.h('div', { className: 'ghost-list', id: 'recall-list' });
     if (res.summarized && res.summary) {
       const sum = GhostUI.h('div', { className: 'markdown-body', style: 'padding:var(--s-3) var(--s-4);background:var(--paper-sunken);border-radius:var(--r-sm);margin-bottom:var(--s-3)' });
       sum.innerHTML = GhostUI.md(res.summary);

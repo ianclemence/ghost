@@ -93,7 +93,7 @@
   padding: var(--s-2) 0;
 }
 .self-body .ghost-row + .ghost-row {
-  border-top: 1px solid var(--line);
+  border-top: 0; /* no divider — calm, editorial profile rows */
 }
 
 /* ── Model rows ── */
@@ -725,3 +725,13 @@
   .panel + .panel { margin-top: var(--s-6); padding-top: var(--s-6); }
   .view { padding-left: var(--s-4); padding-right: var(--s-4); }
 }
+
+/* ── Memory & Skills: no divider lines ──
+   These sections read as calm, editorial lists; drop the row dividers there.
+   Scoped by id so other sections that use .ghost-list keep their dividers. */
+#mem-list > * + *,
+#skill-list > * + *,
+#recall-list > * + * {
+  border-top: 0;
+}
+
