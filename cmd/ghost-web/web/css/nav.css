@@ -1,235 +1,275 @@
-/* Ghost — app shell (navigation) */
+/* Ghost — nav
+   App shell: sidebar, topbar, responsive drawer. Vercel-inspired. */
 
+/* ── Shell grid ── */
 .shell {
   display: grid;
   grid-template-columns: var(--nav-w) 1fr;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ── Sidebar ── */
 .shell-nav {
-  background: var(--paper-raised);
-  border-right: 1px solid var(--line);
-  padding: var(--s-5) var(--s-4);
-  display: flex;
-  flex-direction: column;
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+  padding: var(--s-4) 0;
   overflow-y: auto;
-  z-index: 30;
+  z-index: 20;
 }
 
 .shell-brand {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: 0 var(--s-2) var(--s-6);
-}
-.shell-brand .ghost-mark {
-  width: 28px;
-  height: 28px;
+  padding: 0 var(--s-5);
+  margin-bottom: var(--s-5);
+  text-decoration: none;
   color: var(--ink);
 }
+.shell-brand-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
 .shell-brand-name {
-  font-size: var(--t-head);
-  font-weight: 640;
+  font-size: var(--t-callout);
+  font-weight: 500;
   letter-spacing: var(--ls-snug);
 }
 
-/* Nav groups */
+/* ── Nav groups ── */
 .nav-group {
-  margin-top: var(--s-5);
-}
-.nav-group:first-of-type {
-  margin-top: var(--s-2);
+  margin-bottom: var(--s-5);
 }
 .nav-group-label {
+  padding: 0 var(--s-5);
+  margin-bottom: var(--s-2);
   font-size: var(--t-micro);
-  color: var(--ink-faint);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  color: var(--ink-ghost);
+  letter-spacing: .04em;
   text-transform: uppercase;
-  padding: 0 var(--s-2) var(--s-2);
 }
-
-/* Nav items */
 .nav-item {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: 8px var(--s-2);
-  border-radius: var(--r-sm);
+  padding: var(--s-2) var(--s-5);
+  margin: 0 var(--s-2);
+  border-radius: var(--r-md);
+  font-size: var(--t-callout);
+  font-weight: 450;
   color: var(--ink-soft);
   cursor: pointer;
-  font-size: var(--t-callout);
-  font-weight: 520;
-  transition: background var(--d-fast) var(--ease-out),
-              color var(--d-fast) var(--ease-out);
-  border: 0;
-  background: none;
-  width: 100%;
-  text-align: left;
+  transition: all var(--d-fast) var(--ease-out);
+  text-decoration: none;
   position: relative;
 }
 .nav-item:hover {
-  background: var(--paper-hover);
+  background: var(--surface-2);
   color: var(--ink);
 }
 .nav-item.active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 580;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-weight: 500;
 }
-/* Active indicator bar */
 .nav-item.active::before {
   content: "";
   position: absolute;
-  left: -16px;
-  top: 6px;
-  bottom: 6px;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
   width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
+  height: 16px;
+  border-radius: 0 2px 2px 0;
+  background: var(--ink);
 }
-
-.nav-item .nav-glyph {
-  width: 18px;
-  height: 18px;
+.nav-item-icon {
+  width: 16px;
+  height: 16px;
   flex: none;
-  color: currentColor;
-  opacity: .75;
-  transition: opacity var(--d-fast) var(--ease-out);
+  color: var(--ink-faint);
 }
-.nav-item:hover .nav-glyph,
-.nav-item.active .nav-glyph {
-  opacity: 1;
+.nav-item.active .nav-item-icon {
+  color: var(--ink);
 }
-.nav-item .nav-glyph svg {
-  width: 100%;
-  height: 100%;
+.nav-item-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--ink-faint);
 }
 
-/* Sidebar footer */
+/* ── Sidebar footer ── */
 .shell-nav-foot {
   margin-top: auto;
-  padding-top: var(--s-5);
+  padding: var(--s-4) var(--s-2) 0;
   border-top: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
-.nav-meta {
-  font-size: var(--t-foot);
-  color: var(--ink-faint);
-  padding: 0 var(--s-2) var(--s-2);
+.shell-nav-foot .nav-item {
+  margin: 0 var(--s-2);
 }
-.nav-meta .dot { color: var(--ok); }
 
-/* ── Main ── */
+/* ── Main area ── */
 .shell-main {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
   min-width: 0;
 }
 
 /* ── Topbar ── */
 .topbar {
-  height: var(--topbar-h);
-  border-bottom: 1px solid var(--line);
-  background: var(--paper);
   position: sticky;
   top: 0;
-  z-index: 20;
+  height: var(--topbar-h);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--s-5);
+  padding: 0 var(--s-6);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  z-index: 10;
   gap: var(--s-4);
 }
-.topbar-title {
-  font-size: var(--t-head);
-  font-weight: 620;
-  letter-spacing: var(--ls-snug);
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
 }
-.topbar-sub {
+.topbar-title {
+  font-size: var(--t-callout);
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-subtitle {
   font-size: var(--t-foot);
   color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.topbar-actions {
+.topbar-right {
   display: flex;
   align-items: center;
   gap: var(--s-2);
+  flex: none;
 }
 
-.nav-toggle { display: none; }
+/* ── View (main content) ── */
+.view {
+  flex: 1;
+  padding: var(--s-6);
+  max-width: var(--maxw);
+  width: 100%;
+  margin: 0 auto;
+}
 
-/* ── Scrim for mobile drawer ── */
+/* ── Mobile hamburger ── */
+.shell-menu-btn {
+  display: none;
+  padding: var(--s-2);
+  background: transparent;
+  border: none;
+  color: var(--ink);
+  cursor: pointer;
+  border-radius: var(--r-md);
+}
+.shell-menu-btn:hover {
+  background: var(--surface-2);
+}
+
+/* ── Scrim (mobile overlay) ── */
 .scrim {
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 40;
-  background: var(--paper-overlay);
-  opacity: 0;
-  transition: opacity var(--d-drawer) var(--ease-out);
-}
-.scrim.show {
-  display: block;
-  opacity: 1;
+  z-index: 15;
+  background: rgba(0,0,0,.5);
 }
 
-/* ── Responsive ── */
+/* ── Responsive: drawer ── */
 @media (max-width: 900px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell {
+    grid-template-columns: 1fr;
+  }
 
   .shell-nav {
     position: fixed;
-    z-index: 50;
-    top: 0;
     left: 0;
-    bottom: 0;
-    width: min(82vw, var(--nav-w));
+    top: 0;
+    width: var(--nav-w);
     transform: translateX(-100%);
     transition: transform var(--d-drawer) var(--ease-drawer);
-    box-shadow: none;
+    z-index: 20;
   }
   .shell-nav.open {
     transform: translateX(0);
-    box-shadow: var(--shadow-xl);
   }
 
-  .nav-toggle { display: inline-flex; }
+  .scrim.open {
+    display: block;
+  }
 
-  .view { padding: var(--s-5) var(--s-4) var(--s-8); }
-  .topbar { padding: 0 var(--s-4); }
+  .shell-menu-btn {
+    display: flex;
+  }
+
+  .topbar {
+    padding: 0 var(--s-4);
+  }
+
+  .view {
+    padding: var(--s-4);
+  }
 }
 
-@media (max-width: 560px) {
-  .view { padding: var(--s-4) var(--s-3) var(--s-7); }
-}
-
-/* ── Locked (unauthenticated / setup) screen ── */
-.locked {
-  min-height: 100vh;
+/* ── Login / lock screen ── */
+.lock-screen {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--s-5);
-  background: var(--paper);
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--s-6);
+  background: var(--bg);
 }
-.locked-card {
+.lock-card {
   width: 100%;
   max-width: 360px;
-  padding: var(--s-7) var(--s-6);
-  background: var(--paper-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-lg);
 }
-.locked-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
+.lock-card .ghost-mark-lg {
+  margin: 0 auto var(--s-6);
+}
+.lock-card h2 {
+  text-align: center;
   margin-bottom: var(--s-6);
+}
+.lock-card .field {
+  margin-bottom: var(--s-4);
+}
+.lock-card .ghost-btn {
+  width: 100%;
+}
+.lock-error {
+  margin-top: var(--s-3);
+  font-size: var(--t-foot);
+  color: var(--bad);
+  text-align: center;
 }

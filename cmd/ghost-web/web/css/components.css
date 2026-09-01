@@ -1,6 +1,6 @@
 /* Ghost — components
    Buttons, fields, status, lists, modal, toast, toggle.
-   Every interactive element has: default, hover, focus, active, disabled. */
+   Vercel-inspired: monochrome, precise, restrained. */
 
 /* ── Brand mark ── */
 .ghost-mark { display: inline-flex; align-items: center; justify-content: center; color: var(--ink); }
@@ -13,11 +13,12 @@
 /* ── Buttons ── */
 .ghost-btn {
   appearance: none;
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  padding: 9px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  padding: 8px 16px;
+  font-family: var(--font-sans);
   font-size: var(--t-callout);
-  font-weight: 560;
+  font-weight: 500;
   letter-spacing: var(--ls-normal);
   cursor: pointer;
   transition: background var(--d-fast) var(--ease-out),
@@ -32,12 +33,12 @@
   line-height: 1;
   white-space: nowrap;
   user-select: none;
+  background: var(--bg);
+  color: var(--ink);
 }
-.ghost-btn:active {
-  transform: scale(0.97);
-}
+.ghost-btn:active { transform: scale(0.98); }
 .ghost-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--line-focus);
   outline-offset: 2px;
 }
 .ghost-btn:disabled {
@@ -48,33 +49,33 @@
 
 /* Primary */
 .ghost-btn-primary {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
 }
 .ghost-btn-primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  background: light-dark(#333, #ccc);
+  border-color: light-dark(#333, #ccc);
 }
 
 /* Secondary */
 .ghost-btn-secondary {
-  background: var(--paper-raised);
+  background: var(--bg);
   color: var(--ink);
   border-color: var(--line-strong);
 }
 .ghost-btn-secondary:hover {
-  background: var(--paper-hover);
-  border-color: var(--line);
+  background: var(--surface-2);
 }
 
 /* Ghost */
 .ghost-btn-ghost {
   background: transparent;
   color: var(--ink-soft);
+  border-color: transparent;
 }
 .ghost-btn-ghost:hover {
-  background: var(--paper-hover);
+  background: var(--surface-2);
   color: var(--ink);
 }
 
@@ -85,42 +86,40 @@
   border-color: var(--bad);
 }
 .ghost-btn-danger:hover {
-  background: #a02b2a;
-  border-color: #a02b2a;
+  background: light-dark(#cc0000, #ff6666);
+  border-color: light-dark(#cc0000, #ff6666);
 }
 
 /* Sizes */
-.ghost-btn-lg { padding: 12px 24px; font-size: var(--t-body); }
-.ghost-btn-sm { padding: 5px 12px; font-size: var(--t-foot); }
+.ghost-btn-lg { padding: 10px 20px; font-size: var(--t-body); }
+.ghost-btn-sm { padding: 4px 10px; font-size: var(--t-foot); }
 
 /* Icon-only button */
 .ghost-btn-icon {
-  padding: 8px;
+  padding: 6px;
   background: transparent;
   color: var(--ink-faint);
   border: 1px solid transparent;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
 }
 .ghost-btn-icon:hover {
-  background: var(--paper-hover);
+  background: var(--surface-2);
   color: var(--ink);
 }
-.ghost-btn-icon:active {
-  transform: scale(0.93);
-}
+.ghost-btn-icon:active { transform: scale(0.95); }
 
 /* ── Form fields ── */
 .ghost-input,
 .ghost-select,
 textarea.ghost-input {
   width: 100%;
-  font-family: inherit;
-  font-size: var(--t-body);
+  font-family: var(--font-sans);
+  font-size: var(--t-callout);
   color: var(--ink);
-  background: var(--paper-raised);
+  background: var(--bg);
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  padding: 10px 14px;
+  border-radius: var(--r-md);
+  padding: 8px 12px;
   transition: border-color var(--d-fast) var(--ease-out),
               box-shadow var(--d-fast) var(--ease-out),
               background var(--d-fast) var(--ease-out);
@@ -128,40 +127,38 @@ textarea.ghost-input {
 .ghost-input:hover,
 .ghost-select:hover,
 textarea.ghost-input:hover {
-  border-color: var(--line);
+  border-color: var(--ink-ghost);
 }
 .ghost-input:focus,
 .ghost-select:focus,
 textarea.ghost-input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
 }
 .ghost-input::placeholder,
 textarea.ghost-input::placeholder {
   color: var(--ink-ghost);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
 }
 textarea.ghost-input {
   resize: vertical;
-  min-height: 92px;
+  min-height: 80px;
   line-height: var(--lh-body);
 }
 .ghost-select {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%238a857c' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%23737373' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 14px center;
-  padding-right: 36px;
+  background-position: right 12px center;
+  padding-right: 32px;
 }
 
 .field { margin-bottom: var(--s-4); }
 .field > label {
   display: block;
   font-size: var(--t-foot);
-  font-weight: 580;
+  font-weight: 500;
   color: var(--ink-soft);
   margin-bottom: var(--s-2);
 }
@@ -208,7 +205,7 @@ textarea.ghost-input {
   gap: var(--s-2);
   font-size: var(--t-foot);
   color: var(--ink-soft);
-  font-weight: 540;
+  font-weight: 500;
 }
 .status-pill .label-ok   { color: var(--ok); }
 .status-pill .label-warn { color: var(--warn); }
@@ -220,11 +217,11 @@ textarea.ghost-input {
   display: inline-flex;
   align-items: center;
   font-size: var(--t-micro);
-  font-weight: 600;
-  letter-spacing: .04em;
-  padding: 3px 10px;
+  font-weight: 500;
+  letter-spacing: .02em;
+  padding: 2px 8px;
   border-radius: var(--r-pill);
-  background: var(--paper-sunken);
+  background: var(--surface-2);
   color: var(--ink-soft);
 }
 .ghost-badge-success { background: var(--ok-soft); color: var(--ok); }
@@ -246,21 +243,20 @@ textarea.ghost-input {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-2) var(--s-3);
+  padding: var(--s-3);
   transition: background var(--d-fast) var(--ease-out);
 }
 .ghost-row-content { flex: 1; min-width: 0; }
-.ghost-row-title { font-weight: 560; color: var(--ink); }
+.ghost-row-title { font-weight: 500; color: var(--ink); }
 .ghost-row-subtitle {
   font-size: var(--t-foot);
   color: var(--ink-faint);
-  margin-top: var(--s-0);
+  margin-top: var(--s-1);
 }
-/* Subtle raw model / technical id shown under a friendly model name. */
 .model-id {
   font-size: var(--t-foot);
   color: var(--ink-ghost);
-  margin-top: var(--s-0);
+  margin-top: var(--s-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -274,10 +270,10 @@ textarea.ghost-input {
 }
 .ghost-link-row {
   cursor: pointer;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
 }
 .ghost-link-row:hover {
-  background: var(--paper-hover);
+  background: var(--surface-2);
 }
 .ghost-link-row:hover .chevron {
   color: var(--ink-soft);
@@ -285,7 +281,7 @@ textarea.ghost-input {
 }
 .chevron {
   color: var(--ink-ghost);
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   transition: color var(--d-fast) var(--ease-out),
               transform var(--d-fast) var(--ease-out);
@@ -294,12 +290,12 @@ textarea.ghost-input {
 /* ── Empty / error / loading states ── */
 .empty-state,
 .error-state {
-  padding: var(--s-8) var(--s-5);
+  padding: var(--s-10) var(--s-6);
   text-align: center;
   color: var(--ink-soft);
 }
 .empty-state-title {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   font-size: var(--t-head);
 }
@@ -310,9 +306,9 @@ textarea.ghost-input {
   margin-inline: auto;
   line-height: var(--lh-body);
 }
-.empty-state .ghost-btn { margin-top: var(--s-5); }
+.empty-state .ghost-btn { margin-top: var(--s-6); }
 .error-state-title {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--bad);
   font-size: var(--t-head);
 }
@@ -329,24 +325,24 @@ textarea.ghost-input {
   justify-content: center;
   gap: var(--s-3);
   color: var(--ink-faint);
-  padding: var(--s-6) 0;
+  padding: var(--s-8) 0;
   font-size: var(--t-callout);
   text-align: center;
 }
 .spinner {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   border: 2px solid var(--line-strong);
-  border-top-color: var(--accent);
-  animation: spin .7s linear infinite;
+  border-top-color: var(--ink);
+  animation: spin .6s linear infinite;
   flex: none;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Skeleton ── */
 .skeleton {
-  background: linear-gradient(90deg, var(--paper-sunken) 25%, var(--paper-hover) 37%, var(--paper-sunken) 63%);
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 37%, var(--surface-2) 63%);
   background-size: 400% 100%;
   animation: sk 1.4s ease infinite;
   border-radius: var(--r-sm);
@@ -359,7 +355,7 @@ textarea.ghost-input {
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: var(--paper-overlay);
+  background: rgba(0,0,0,.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -369,7 +365,8 @@ textarea.ghost-input {
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 .ghost-modal {
-  background: var(--paper-raised);
+  background: var(--bg);
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-xl);
   width: 100%;
@@ -378,19 +375,13 @@ textarea.ghost-input {
   animation: modalIn var(--d-moderate) var(--ease-out);
 }
 @keyframes modalIn {
-  from {
-    transform: translateY(12px) scale(0.97);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .ghost-modal-title {
   font-size: var(--t-head);
-  font-weight: 620;
+  font-weight: 500;
   letter-spacing: var(--ls-snug);
 }
 .ghost-modal-body {
@@ -405,12 +396,12 @@ textarea.ghost-input {
   gap: var(--s-3);
 }
 
-/* Legacy selectors — same styles, different names */
+/* Legacy selectors */
 .modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: var(--paper-overlay);
+  background: rgba(0,0,0,.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -418,7 +409,8 @@ textarea.ghost-input {
   animation: fadeIn var(--d-base) var(--ease-out);
 }
 .modal {
-  background: var(--paper-raised);
+  background: var(--bg);
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-xl);
   width: 100%;
@@ -428,7 +420,7 @@ textarea.ghost-input {
 }
 .modal__title {
   font-size: var(--t-head);
-  font-weight: 620;
+  font-weight: 500;
   letter-spacing: var(--ls-snug);
 }
 .modal__body {
@@ -458,11 +450,11 @@ textarea.ghost-input {
 }
 .ghost-toast {
   background: var(--ink);
-  color: #fff;
-  padding: 10px 20px;
-  border-radius: var(--r-pill);
+  color: var(--bg);
+  padding: 8px 16px;
+  border-radius: var(--r-md);
   font-size: var(--t-callout);
-  font-weight: 520;
+  font-weight: 500;
   box-shadow: var(--shadow-lg);
   display: flex;
   align-items: center;
@@ -470,28 +462,23 @@ textarea.ghost-input {
   animation: toastIn var(--d-moderate) var(--ease-out);
   pointer-events: auto;
 }
-.toast--err { background: var(--bad); }
-.toast--ok  { background: var(--ok); }
+.toast--err { background: var(--bad); color: #fff; }
+.toast--ok  { background: var(--ok); color: #fff; }
 .toast__dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: rgba(255,255,255,.7);
 }
 @keyframes toastIn {
-  from {
-    transform: translateY(12px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 /* ── QR ── */
 .ghost-qr {
-  background: var(--paper-raised);
+  background: var(--bg);
+  border: 1px solid var(--line);
   border-radius: var(--r-md);
   padding: var(--s-4);
   display: inline-flex;
@@ -506,8 +493,8 @@ textarea.ghost-input {
 
 /* ── Toggle ── */
 .ghost-toggle {
-  width: 42px;
-  height: 24px;
+  width: 40px;
+  height: 22px;
   border-radius: var(--r-pill);
   background: var(--line-strong);
   position: relative;
@@ -516,23 +503,50 @@ textarea.ghost-input {
   transition: background var(--d-fast) var(--ease-out);
 }
 .ghost-toggle:hover {
-  background: var(--line);
+  background: var(--ink-ghost);
 }
 .ghost-toggle.on {
-  background: var(--ok);
+  background: var(--ink);
 }
 .ghost-toggle::after {
   content: "";
   position: absolute;
-  top: 3px;
-  left: 3px;
+  top: 2px;
+  left: 2px;
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: var(--shadow-sm);
+  background: var(--bg);
+  box-shadow: var(--shadow-xs);
   transition: transform var(--d-fast) var(--ease-out);
 }
 .ghost-toggle.on::after {
   transform: translateX(18px);
+}
+
+/* ── Chips / filters ── */
+.chips {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.chip {
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-foot);
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: all var(--d-fast) var(--ease-out);
+}
+.chip:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.chip.active {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
 }

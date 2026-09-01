@@ -1,46 +1,59 @@
-/* Ghost Wizard Styles */
+/* Ghost Wizard Styles
+   Vercel-inspired: clean, precise, monochrome. */
+
 #wizard {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  padding: var(--space-xxl);
+  min-height: 100dvh;
+  padding: var(--s-8);
+  background: var(--bg);
 }
 
 .wizard-screen {
   width: 100%;
-  max-width: 440px;
+  max-width: 400px;
   text-align: center;
 }
 
 .wizard-brand {
-  margin-bottom: var(--space-xxl);
+  margin-bottom: var(--s-8);
 }
 
 .wizard-brand .ghost-mark-xl {
-  width: 64px;
-  height: 64px;
-  color: var(--ghost-text-primary);
+  width: 48px;
+  height: 48px;
+  margin: 0 auto;
+  color: var(--ink);
 }
 
 .wizard-title {
-  margin-bottom: var(--space-md);
+  font-size: var(--t-title);
+  font-weight: 500;
+  letter-spacing: var(--ls-tight);
+  margin-bottom: var(--s-3);
 }
 
 .wizard-tagline {
-  margin-bottom: var(--space-sm);
+  font-size: var(--t-callout);
+  color: var(--ink-soft);
+  margin-bottom: var(--s-2);
 }
 
 .wizard-desc {
+  font-size: var(--t-callout);
+  color: var(--ink-faint);
   max-width: 360px;
-  margin: 0 auto var(--space-xl);
+  margin: 0 auto var(--s-6);
+  line-height: var(--lh-body);
 }
 
 .wizard-actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
-  margin-top: var(--space-xxl);
+  gap: var(--s-3);
+  margin-top: var(--s-8);
   align-items: center;
 }
 
@@ -52,25 +65,25 @@
 .wizard-progress {
   text-align: left;
   max-width: 280px;
-  margin: var(--space-xl) auto 0;
+  margin: var(--s-6) auto 0;
 }
 
 .wizard-progress-item {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) 0;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
 }
 
 .wizard-progress-check {
   width: 20px;
   text-align: center;
-  color: var(--ghost-text-tertiary);
+  color: var(--ink-ghost);
   font-size: 14px;
 }
 
 .wizard-progress-check.done {
-  color: var(--ghost-success);
+  color: var(--ok);
 }
 
 /* Input styling in wizard */
@@ -78,11 +91,49 @@
   text-align: center;
 }
 
+/* WiFi network list */
+.wizard-wifi-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: var(--s-4) 0;
+  text-align: left;
+}
+
+.wizard-wifi-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--d-fast) var(--ease-out);
+}
+
+.wizard-wifi-item:hover {
+  background: var(--surface-2);
+}
+
+.wizard-wifi-item.selected {
+  background: var(--surface-2);
+  font-weight: 500;
+}
+
+.wizard-wifi-name {
+  flex: 1;
+  font-size: var(--t-callout);
+}
+
+.wizard-wifi-signal {
+  font-size: var(--t-foot);
+  color: var(--ink-faint);
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   #wizard {
-    padding: var(--space-lg);
+    padding: var(--s-6);
     align-items: flex-start;
-    padding-top: var(--space-huge);
+    padding-top: var(--s-10);
   }
 }

@@ -1,98 +1,103 @@
 /* Ghost — design tokens
-   Warm, crafted, confident. A personal AI that belongs to you. */
+   Vercel-inspired monochrome. Precise, calm, technically literate. */
 
 :root {
-  /* ── Color: warm paper ── */
-  --paper:           #f5f3ee;
-  --paper-raised:    #faf8f5;
-  --paper-sunken:    #ece8e1;
-  --paper-hover:     #f0ede7;
-  --paper-overlay:   rgba(24,23,20,.48);
+  color-scheme: light dark;
+
+  /* ── Font stacks ── */
+  --font-sans:       "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:       "Geist Mono", "SFMono-Regular", Consolas, monospace;
+
+  /* ── Color: Vercel monochrome via light-dark() ── */
+  --bg:              light-dark(#fff, #000);
+  --bg-soft:         light-dark(#fafafa, #111);
+  --surface:         light-dark(#fafafa, #111);
+  --surface-2:       light-dark(#f5f5f5, #1a1a1a);
+  --surface-3:       light-dark(#efefef, #222);
 
   /* ── Ink ── */
-  --ink:             #1a1917;
-  --ink-soft:        #4a4742;
-  --ink-faint:       #8a857c;
-  --ink-ghost:       #b5b0a6;
+  --ink:             light-dark(#171717, #ededed);
+  --ink-soft:        light-dark(#525252, #a3a3a3);
+  --ink-faint:       light-dark(#737373, #737373);
+  --ink-ghost:       light-dark(#a3a3a3, #525252);
 
   /* ── Lines ── */
-  --line:            #e0dbd3;
-  --line-strong:     #cdc7bc;
-  --line-focus:      var(--accent);
+  --line:            light-dark(rgba(0,0,0,.08), rgba(255,255,255,.08));
+  --line-strong:     light-dark(rgba(0,0,0,.15), rgba(255,255,255,.15));
+  --line-focus:      light-dark(#0070f3, #3291ff);
 
-  /* ── Accent: deep warm indigo — restrained, never loud ── */
-  --accent:          #3d3b5c;
-  --accent-hover:    #2e2c4a;
-  --accent-soft:     #e8e7f0;
-  --accent-line:     #c4c3d6;
-  --accent-glow:     rgba(61,59,92,.12);
+  /* ── Accent: Vercel blue (restrained, for focus/links only) ── */
+  --accent:          light-dark(#0070f3, #3291ff);
+  --accent-hover:    light-dark(#005bc4, #1a7dff);
+  --accent-soft:     light-dark(#e8f4fd, #1a2a3a);
+  --accent-line:     light-dark(#b3d4f0, #1a3a5a);
+  --accent-glow:     light-dark(rgba(0,112,243,.12), rgba(50,145,255,.12));
 
   /* ── Status ── */
-  --ok:              #2d7a4a;
-  --ok-soft:         #e4f1e9;
-  --ok-line:         #b4d8c0;
-  --warn:            #8a6210;
-  --warn-soft:       #f5edd5;
-  --warn-line:       #dcc89a;
-  --bad:             #b83230;
-  --bad-soft:        #f5e3e2;
-  --bad-line:        #dea5a3;
-  --off:             #8a857c;
-  --off-soft:        #ede9e2;
-  --info:            #2e5a7a;
-  --info-soft:       #e2ecf3;
-  --info-line:       #a8c4da;
+  --ok:              light-dark(#0070f3, #3291ff);
+  --ok-soft:         light-dark(#e8f4fd, #1a2a3a);
+  --ok-line:         light-dark(#b3d4f0, #1a3a5a);
+  --warn:            light-dark(#f5a623, #f5a623);
+  --warn-soft:       light-dark(#fef3e0, #3a2a1a);
+  --warn-line:       light-dark(#f0d4a0, #3a2a1a);
+  --bad:             light-dark(#ee0000, #ff4444);
+  --bad-soft:        light-dark(#fde8e8, #3a1a1a);
+  --bad-line:        light-dark(#f0b0b0, #3a1a1a);
+  --off:             light-dark(#737373, #525252);
+  --off-soft:        light-dark(#f5f5f5, #1a1a1a);
+  --info:            light-dark(#0070f3, #3291ff);
+  --info-soft:       light-dark(#e8f4fd, #1a2a3a);
+  --info-line:       light-dark(#b3d4f0, #1a3a5a);
 
-  /* ── Type ── */
-  --font-sans:       "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono:       "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-
-  /* Display: 36/26/20/16/14/12.5/11 — clear hierarchy, not flat */
-  --t-display:       36px;
-  --t-title:         26px;
-  --t-head:          20px;
-  --t-body:          15px;
-  --t-callout:       14px;
-  --t-foot:          12.5px;
-  --t-micro:         11px;
+  /* ── Type scale (Geist, tighter ratio for product UI) ── */
+  --t-display:       3rem;
+  --t-title:         2rem;
+  --t-head:          1.25rem;
+  --t-body:          1rem;
+  --t-callout:       0.875rem;
+  --t-foot:          0.8125rem;
+  --t-micro:         0.75rem;
 
   --lh-tight:        1.15;
   --lh-snug:         1.3;
   --lh-body:         1.5;
 
-  --ls-tight:        -0.025em;
-  --ls-snug:         -0.015em;
-  --ls-normal:       -0.005em;
+  --ls-tight:        -0.04em;
+  --ls-snug:         -0.02em;
+  --ls-normal:       -0.01em;
 
-  /* ── Space ── */
+  /* ── Space (Vercel scale) ── */
   --s-0:   2px;
-  --s-1:  4px;
-  --s-2:  8px;
-  --s-3:  12px;
-  --s-4:  16px;
-  --s-5:  24px;
-  --s-6:  32px;
-  --s-7:  48px;
-  --s-8:  64px;
-  --s-9:  96px;
+  --s-1:   4px;
+  --s-2:   8px;
+  --s-3:   12px;
+  --s-4:   16px;
+  --s-5:   20px;
+  --s-6:   24px;
+  --s-7:   32px;
+  --s-8:   40px;
+  --s-9:   48px;
+  --s-10:  64px;
+  --s-11:  80px;
+  --s-12:  96px;
 
   /* ── Radius ── */
   --r-xs:  4px;
   --r-sm:  6px;
-  --r-md:  10px;
-  --r-lg:  14px;
-  --r-xl:  20px;
+  --r-md:  8px;
+  --r-lg:  12px;
+  --r-xl:  16px;
   --r-pill: 999px;
 
-  /* ── Elevation ── */
-  --shadow-xs:  0 1px 2px rgba(26,25,23,.06);
-  --shadow-sm:  0 1px 3px rgba(26,25,23,.08), 0 1px 2px rgba(26,25,23,.04);
-  --shadow-md:  0 4px 12px rgba(26,25,23,.08), 0 2px 4px rgba(26,25,23,.04);
-  --shadow-lg:  0 12px 32px rgba(26,25,23,.12), 0 4px 8px rgba(26,25,23,.06);
-  --shadow-xl:  0 20px 48px rgba(26,25,23,.16), 0 8px 16px rgba(26,25,23,.08);
+  /* ── Elevation (restrained, monochrome) ── */
+  --shadow-xs:  0 1px 2px rgba(0,0,0,.04);
+  --shadow-sm:  0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:  0 4px 12px rgba(0,0,0,.06), 0 2px 4px rgba(0,0,0,.04);
+  --shadow-lg:  0 12px 32px rgba(0,0,0,.08), 0 4px 8px rgba(0,0,0,.04);
+  --shadow-xl:  0 20px 48px rgba(0,0,0,.12), 0 8px 16px rgba(0,0,0,.06);
 
   /* ── Motion ── */
-  --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out:       cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out:    cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer:    cubic-bezier(0.32, 0.72, 0, 1);
   --ease-spring:    cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -105,7 +110,7 @@
   --d-drawer:       280ms;
 
   /* ── Layout ── */
-  --nav-w:          256px;
+  --nav-w:          240px;
   --topbar-h:       56px;
-  --maxw:           920px;
+  --maxw:           960px;
 }
