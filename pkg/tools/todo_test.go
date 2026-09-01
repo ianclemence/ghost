@@ -218,8 +218,8 @@ func TestTodoWriteEmptyItems(t *testing.T) {
 	ctx := context.Background()
 
 	result := tool.Execute(ctx, map[string]interface{}{
-		"action":  "write",
-		"items":   []interface{}{},
+		"action": "write",
+		"items":  []interface{}{},
 	})
 
 	if !result.IsError {

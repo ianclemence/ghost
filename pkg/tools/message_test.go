@@ -71,9 +71,9 @@ func TestEnhancedMessageToolSendWithTarget(t *testing.T) {
 	tool.SetContext("telegram", "12345")
 
 	result := tool.Execute(context.Background(), map[string]interface{}{
-		"content":  "Hello, World!",
-		"channel":  "whatsapp",
-		"chat_id":  "67890",
+		"content": "Hello, World!",
+		"channel": "whatsapp",
+		"chat_id": "67890",
 	})
 
 	if result.IsError {

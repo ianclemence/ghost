@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type SessionSearchTool struct {
@@ -49,6 +50,12 @@ func NewSessionSearchTool(database *sql.DB) *SessionSearchTool {
 func (t *SessionSearchTool) Name() string {
 	return "session_search"
 }
+
+// Timeout bounds a session search (an FTS query can be slow on a large history).
+func (t *SessionSearchTool) Timeout() time.Duration { return 20 * time.Second }
+
+// RetryPolicy marks the read-only search as safe to retry once.
+func (t *SessionSearchTool) RetryPolicy() (int, time.Duration) { return 1, 300 * time.Millisecond }
 
 func (t *SessionSearchTool) Description() string {
 	return "Search Ghost's past conversation history. Use ONLY when the user asks about something from a previous conversation (\"what did I say about X\", \"what we discussed\"). Do NOT use it for general knowledge, facts, weather, currency, or skills — use a matching Ghost skill or the general search instead."

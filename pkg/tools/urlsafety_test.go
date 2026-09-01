@@ -8,9 +8,9 @@ func TestURLSafetyIsSafe(t *testing.T) {
 	safety := NewURLSafety(URLSafetyConfig{AllowPrivateURLs: false})
 
 	tests := []struct {
-		url      string
-		safe     bool
-		desc     string
+		url  string
+		safe bool
+		desc string
 	}{
 		{"https://example.com", true, "public URL"},
 		{"http://google.com", true, "public HTTP URL"},

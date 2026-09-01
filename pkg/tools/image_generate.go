@@ -35,9 +35,9 @@ func NewImageGenerateTool(workspace string) *ImageGenerateTool {
 	}
 
 	return &ImageGenerateTool{
-		apiKey:  apiKey,
-		model:   defaultFALModel,
-		baseURL: defaultFALBaseURL,
+		apiKey:    apiKey,
+		model:     defaultFALModel,
+		baseURL:   defaultFALBaseURL,
 		outputDir: filepath.Join(workspace, "generated"),
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second,
@@ -118,8 +118,8 @@ func (t *ImageGenerateTool) Execute(ctx context.Context, args map[string]interfa
 
 	// Build request
 	requestBody := map[string]interface{}{
-		"prompt":      prompt,
-		"image_size":  map[string]interface{}{"width": width, "height": height},
+		"prompt":     prompt,
+		"image_size": map[string]interface{}{"width": width, "height": height},
 		"num_images": numImages,
 	}
 
@@ -138,7 +138,7 @@ func (t *ImageGenerateTool) Execute(ctx context.Context, args map[string]interfa
 	req.Header.Set("Content-Type", "application/json")
 
 	logger.InfoCF("image-gen", "Generating image", map[string]interface{}{
-		"model": model,
+		"model":  model,
 		"prompt": prompt[:min(50, len(prompt))],
 	})
 

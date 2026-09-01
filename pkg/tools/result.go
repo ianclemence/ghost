@@ -23,6 +23,10 @@ type ToolResult struct {
 	// When true, the result should be treated as an error.
 	IsError bool `json:"is_error"`
 
+	// TimedOut indicates the tool did not finish within its allowed time.
+	// A distinct state so the agent can tell "too slow" from "failed".
+	TimedOut bool `json:"timed_out,omitempty"`
+
 	// Async indicates whether the tool is running asynchronously.
 	// When true, the tool will complete later and notify via callback.
 	Async bool `json:"async"`

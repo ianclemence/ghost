@@ -100,7 +100,7 @@ func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...str
 	// but we'll let the CLI manage its own state for now.
 
 	cmdArgs := append([]string{action}, args...)
-	
+
 	// Default to non-interactive json output
 	cmdArgs = append(cmdArgs, "--json")
 
@@ -110,7 +110,7 @@ func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...str
 	})
 
 	cmd := exec.CommandContext(ctx, "agent-browser", cmdArgs...)
-	
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -155,7 +155,7 @@ func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) 
 		if ref == "" || text == "" {
 			return ErrorResult("ref and text are required")
 		}
-		
+
 		cliArgs := []string{ref, text}
 		if pressEnter, ok := args["press_enter"].(bool); ok && pressEnter {
 			cliArgs = append(cliArgs, "--enter")

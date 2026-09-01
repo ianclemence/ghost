@@ -279,7 +279,7 @@ func TestSubTurnManager_DepthExceeded(t *testing.T) {
 
 	// Create context at max depth (depth 2, maxDepth 2, so next would be 3 > 2)
 	ctx := WithSubTurnDepth(context.Background(), 1) // depth 1
-	ctx = WithSubTurnDepth(ctx, 2)                    // depth 2
+	ctx = WithSubTurnDepth(ctx, 2)                   // depth 2
 
 	// This should fail because depth would be 3 > maxDepth 2
 	config := SubTurnConfig{

@@ -91,7 +91,7 @@ func (t *VideoFramesTool) Execute(ctx context.Context, args map[string]interface
 	// -q:v 2 : quality (2-5 is good)
 	// -y : overwrite output
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-ss", timestamp, "-i", resolvedVideoPath, "-vframes", "1", "-q:v", "2", "-y", outputPath)
-	
+
 	logger.InfoCF("video_frames", "Executing ffmpeg", map[string]interface{}{
 		"video": resolvedVideoPath,
 		"out":   outputPath,

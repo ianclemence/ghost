@@ -63,7 +63,7 @@ func (t *SandboxTool) Execute(ctx context.Context, args map[string]interface{}) 
 	// Construct the command. On Linux, we can use 'timeout' and 'nice' to limit resources.
 	// We'll also wrap the command in a shell to handle redirection or complex commands.
 	// We'll use 'unshare' or similar if available, but for now, we'll focus on timeout and nice.
-	
+
 	// Check if 'timeout' is available
 	if _, err := exec.LookPath("timeout"); err != nil {
 		// Fallback to manual timeout if not available
@@ -74,10 +74,10 @@ func (t *SandboxTool) Execute(ctx context.Context, args map[string]interface{}) 
 	// We'll use sh -c to execute it.
 	timeoutSec := fmt.Sprintf("%.3f", timeoutMs/1000.0)
 	fullCmd := fmt.Sprintf("timeout %s nice -n 10 %s", timeoutSec, command)
-	
+
 	cmd := exec.CommandContext(ctx, "sh", "-c", fullCmd)
 	cmd.Dir = t.workspace
-	
+
 	// Set environment variables
 	for _, e := range env {
 		if s, ok := e.(string); ok {

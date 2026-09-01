@@ -56,15 +56,15 @@ type subTurnDepthKey struct{}
 
 // SubTurnManager manages sub-turn execution with depth limits and concurrency control.
 type SubTurnManager struct {
-	provider     providers.LLMProvider
-	mu           sync.RWMutex
-	activeCount  int64
-	nextID       int64
-	states       map[string]*SubTurnState
-	maxDepth     int
-	maxConc      int
-	timeout      time.Duration
-	maxMessages  int
+	provider    providers.LLMProvider
+	mu          sync.RWMutex
+	activeCount int64
+	nextID      int64
+	states      map[string]*SubTurnState
+	maxDepth    int
+	maxConc     int
+	timeout     time.Duration
+	maxMessages int
 }
 
 // NewSubTurnManager creates a new SubTurnManager.
@@ -252,10 +252,10 @@ func (stm *SubTurnManager) ListStates() []*SubTurnState {
 // EphemeralSessionStore is an in-memory session store for sub-turns.
 // It auto-truncates to maxMessages and never persists to disk.
 type EphemeralSessionStore struct {
-	messages     map[string][]providers.Message
-	summaries    map[string]string
-	maxMessages  int
-	mu           sync.RWMutex
+	messages    map[string][]providers.Message
+	summaries   map[string]string
+	maxMessages int
+	mu          sync.RWMutex
 }
 
 // NewEphemeralSessionStore creates a new ephemeral session store.

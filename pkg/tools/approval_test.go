@@ -10,8 +10,8 @@ func TestApprovalTool_RequestApproval(t *testing.T) {
 	ctx := context.Background()
 
 	result := tool.Execute(ctx, map[string]interface{}{
-		"action":           "request",
-		"description":      "Delete production database",
+		"action":            "request",
+		"description":       "Delete production database",
 		"action_to_approve": "DROP TABLE users",
 	})
 
@@ -29,8 +29,8 @@ func TestApprovalTool_DenyRequest(t *testing.T) {
 
 	// Create request
 	tool.Execute(ctx, map[string]interface{}{
-		"action":           "request",
-		"description":      "Test action",
+		"action":            "request",
+		"description":       "Test action",
 		"action_to_approve": "test_command",
 	})
 
@@ -67,8 +67,8 @@ func TestApprovalTool_CheckRequest(t *testing.T) {
 
 	// Create request
 	tool.Execute(ctx, map[string]interface{}{
-		"action":           "request",
-		"description":      "Test action",
+		"action":            "request",
+		"description":       "Test action",
 		"action_to_approve": "test_command",
 	})
 
@@ -97,8 +97,8 @@ func TestApprovalTool_CleanupOldRequests(t *testing.T) {
 
 	// Create request
 	tool.Execute(ctx, map[string]interface{}{
-		"action":           "request",
-		"description":      "Test action",
+		"action":            "request",
+		"description":       "Test action",
 		"action_to_approve": "test_command",
 	})
 

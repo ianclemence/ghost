@@ -11,7 +11,7 @@ import (
 
 var (
 	sensitivePattern = regexp.MustCompile(`(?i)(api[_-]?key|secret|password|token|credential|authorization)\s*[:=]\s*\S+`)
-	emailPattern    = regexp.MustCompile(`\b[\w.-]+@[\w.-]+\.\w+\b`)
+	emailPattern     = regexp.MustCompile(`\b[\w.-]+@[\w.-]+\.\w+\b`)
 )
 
 func RedactTranscript(text string) string {

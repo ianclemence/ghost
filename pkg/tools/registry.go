@@ -199,7 +199,7 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	}
 
 	start := time.Now()
-	result := tool.Execute(ctx, args)
+	result := executeWithReliability(ctx, tool, args)
 	duration := time.Since(start)
 
 	// Log based on result type

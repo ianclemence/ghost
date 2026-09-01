@@ -9,16 +9,16 @@ import (
 
 // ApprovalRequest represents a pending approval request.
 type ApprovalRequest struct {
-	ID          string    `json:"id"`
-	Action      string    `json:"action"`
-	Description string    `json:"description"`
-	Requester   string    `json:"requester"` // Tool or agent requesting
-	Channel     string    `json:"channel"`   // Channel to send approval to
-	ChatID      string    `json:"chat_id"`   // Chat ID to send approval to
-	Status      string    `json:"status"`    // "pending", "approved", "denied", "timeout"
-	CreatedAt   time.Time `json:"created_at"`
+	ID          string     `json:"id"`
+	Action      string     `json:"action"`
+	Description string     `json:"description"`
+	Requester   string     `json:"requester"` // Tool or agent requesting
+	Channel     string     `json:"channel"`   // Channel to send approval to
+	ChatID      string     `json:"chat_id"`   // Chat ID to send approval to
+	Status      string     `json:"status"`    // "pending", "approved", "denied", "timeout"
+	CreatedAt   time.Time  `json:"created_at"`
 	RespondedAt *time.Time `json:"responded_at,omitempty"`
-	Result      string    `json:"result"` // Approval result message
+	Result      string     `json:"result"` // Approval result message
 }
 
 // ApprovalStore manages pending approval requests.

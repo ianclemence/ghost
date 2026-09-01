@@ -99,13 +99,13 @@ func (t *NetworkingTool) getTailscaleInfo() *ToolResult {
 	if _, err := exec.LookPath("tailscale"); err != nil {
 		return ErrorResult("Tailscale is not installed on this system.")
 	}
-	
+
 	cmd := exec.Command("tailscale", "status")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("Failed to get tailscale status: %v\nOutput: %s", err, string(out)))
 	}
-	
+
 	return NewToolResult(fmt.Sprintf("# Tailscale Status\n\n```\n%s\n```", string(out)))
 }
 
@@ -120,6 +120,6 @@ func (t *NetworkingTool) getBonjourInfo() *ToolResult {
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("Failed to browse Bonjour services: %v\nOutput: %s", err, string(out)))
 	}
-	
+
 	return NewToolResult(fmt.Sprintf("# Bonjour Services (Local Network Discovery)\n\n```\n%s\n```", string(out)))
 }

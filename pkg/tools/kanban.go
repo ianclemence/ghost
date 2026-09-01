@@ -12,8 +12,8 @@ import (
 
 // KanbanBoard represents a kanban board with columns and tasks.
 type KanbanBoard struct {
-	Name      string        `json:"name"`
-	CreatedAt time.Time     `json:"created_at"`
+	Name      string         `json:"name"`
+	CreatedAt time.Time      `json:"created_at"`
 	Columns   []KanbanColumn `json:"columns"`
 }
 

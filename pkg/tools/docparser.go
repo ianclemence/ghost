@@ -22,9 +22,9 @@ const (
 )
 
 var (
-	pandocAvailable      *bool
-	pandocMu             sync.Mutex
-	pandocInstallFailed  bool
+	pandocAvailable       *bool
+	pandocMu              sync.Mutex
+	pandocInstallFailed   bool
 	pandocInstallFailedAt time.Time
 )
 
@@ -142,8 +142,8 @@ func (t *DocParserTool) parseDocx(filePath string) (string, error) {
 }
 
 type docxDocument struct {
-	XMLName xml.Name    `xml:"http://schemas.openxmlformats.org/wordprocessingml/2006/main document"`
-	Body    docxBody    `xml:"body"`
+	XMLName xml.Name `xml:"http://schemas.openxmlformats.org/wordprocessingml/2006/main document"`
+	Body    docxBody `xml:"body"`
 }
 
 type docxBody struct {
@@ -151,7 +151,7 @@ type docxBody struct {
 }
 
 type docxParagraph struct {
-	Runs     []docxRun `xml:"r"`
+	Runs                []docxRun                `xml:"r"`
 	ParagraphProperties *docxParagraphProperties `xml:"pPr"`
 }
 
@@ -165,14 +165,14 @@ type docxSpacing struct {
 }
 
 type docxRun struct {
-	Text         string `xml:"t"`
-	RPr          *docxRunProperties `xml:"rPr"`
+	Text string             `xml:"t"`
+	RPr  *docxRunProperties `xml:"rPr"`
 }
 
 type docxRunProperties struct {
-	B    *docxEmpty `xml:"b"`
-	I    *docxEmpty `xml:"i"`
-	U    *docxUnderline `xml:"u"`
+	B *docxEmpty     `xml:"b"`
+	I *docxEmpty     `xml:"i"`
+	U *docxUnderline `xml:"u"`
 }
 
 type docxEmpty struct{}
@@ -264,12 +264,12 @@ func (t *DocParserTool) parseXlsx(filePath string) (string, error) {
 }
 
 type sharedStrings struct {
-	XMLName xml.Name         `xml:"http://schemas.openxmlformats.org/spreadsheetml/2006/main sst"`
+	XMLName xml.Name           `xml:"http://schemas.openxmlformats.org/spreadsheetml/2006/main sst"`
 	Items   []sharedStringItem `xml:"si"`
 }
 
 type sharedStringItem struct {
-	Text string `xml:"t"`
+	Text     string `xml:"t"`
 	RichText []struct {
 		Text string `xml:"t"`
 	} `xml:"r"`
@@ -297,7 +297,7 @@ func extractSharedStrings(data []byte) ([]string, error) {
 }
 
 type worksheet struct {
-	XMLName xml.Name      `xml:"http://schemas.openxmlformats.org/spreadsheetml/2006/main worksheet"`
+	XMLName xml.Name       `xml:"http://schemas.openxmlformats.org/spreadsheetml/2006/main worksheet"`
 	Rows    []worksheetRow `xml:"sheetData>row"`
 }
 

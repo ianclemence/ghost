@@ -100,7 +100,7 @@ func (t *OracleTool) Execute(ctx context.Context, args map[string]interface{}) *
 			sb.WriteString(fmt.Sprintf("### FILE: %s\nERROR: Failed to read file: %v\n\n", path, err))
 			continue
 		}
-		
+
 		relPath, _ := filepath.Rel(t.workspace, path)
 		sb.WriteString(fmt.Sprintf("### FILE: %s\n\n```\n%s\n```\n\n", relPath, string(content)))
 	}
@@ -111,7 +111,7 @@ func (t *OracleTool) Execute(ctx context.Context, args map[string]interface{}) *
 func (t *OracleTool) resolvePattern(pattern string) ([]string, error) {
 	// Simple implementation: if it's a direct path, use it. If it's a glob, use filepath.Glob.
 	// In a real implementation, we would use a more robust globbing library like doublestar.
-	
+
 	resolvedPath, err := validatePath(pattern, t.workspace, t.restrict)
 	if err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func (t *OracleTool) resolvePattern(pattern string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return matches, nil
 }
 

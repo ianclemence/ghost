@@ -84,17 +84,17 @@ func (t *ClarifyTool) Execute(ctx context.Context, args map[string]interface{}) 
 		Channel: "clarify",
 		Content: question,
 		Metadata: map[string]interface{}{
-			"type":      "clarify_request",
+			"type":        "clarify_request",
 			"question_id": questionID,
-			"choices":   choices,
+			"choices":     choices,
 		},
 	})
 
 	select {
 	case response := <-t.pending[questionID]:
 		result := map[string]interface{}{
-			"question":     question,
-			"choices":      choices,
+			"question":      question,
+			"choices":       choices,
 			"user_response": response,
 		}
 		raw, _ := json.Marshal(result)

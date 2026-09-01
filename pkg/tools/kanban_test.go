@@ -38,10 +38,10 @@ func TestKanbanTool_AddTask(t *testing.T) {
 
 	// Add task
 	result := tool.Execute(ctx, map[string]interface{}{
-		"action":  "add_task",
-		"board":   "test-board",
-		"title":   "Test Task",
-		"column":  "To Do",
+		"action":   "add_task",
+		"board":    "test-board",
+		"title":    "Test Task",
+		"column":   "To Do",
 		"priority": "high",
 	})
 

@@ -299,6 +299,13 @@ func (t *WebSearchTool) Name() string {
 	return "web_search"
 }
 
+// Timeout bounds a web search so a slow provider can't stall the turn.
+func (t *WebSearchTool) Timeout() time.Duration { return 30 * time.Second }
+
+// RetryPolicy marks web_search as a read-only, idempotent operation that is
+// safe to retry once on a transient failure.
+func (t *WebSearchTool) RetryPolicy() (int, time.Duration) { return 1, 500 * time.Millisecond }
+
 func (t *WebSearchTool) Description() string {
 	return "Live web search for current, external, factual information. Use when: facts/prices/dates/news that aren't in a local file or covered by a Ghost skill. Do NOT use for: weather, air quality, currency conversion, recipes, flight/crypto prices, nearby places, or anything a skill covers — use that skill instead. Returns a list of results (title, url, snippet)."
 }
@@ -382,6 +389,12 @@ func NewWebFetchToolWithConfig(maxChars int, workspace string, allowPrivate bool
 func (t *WebFetchTool) Name() string {
 	return "web_fetch"
 }
+
+// Timeout bounds a fetch so a slow page can't stall the turn.
+func (t *WebFetchTool) Timeout() time.Duration { return 45 * time.Second }
+
+// RetryPolicy marks web_fetch as read-only and idempotent — safe to retry once.
+func (t *WebFetchTool) RetryPolicy() (int, time.Duration) { return 1, 500 * time.Millisecond }
 
 func (t *WebFetchTool) Description() string {
 	return "Fetch a specific URL and extract its readable text (HTML→text, truncated). Use when: you already have the exact URL (e.g. from web_search or the user) and need its content. Do NOT use for: a general question, or anything a skill covers. Returns the page text (title + body), truncated to a maximum length."

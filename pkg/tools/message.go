@@ -19,14 +19,14 @@ type TargetInfo struct {
 }
 
 type MessageTool struct {
-	sendCallback       SendCallback
-	reactionCallback   ReactionCallback
+	sendCallback        SendCallback
+	reactionCallback    ReactionCallback
 	listTargetsCallback ListTargetsCallback
-	defaultChannel     string
-	defaultChatID      string
-	sentInRound        bool
-	nameCache          map[string]TargetInfo
-	mu                 sync.RWMutex
+	defaultChannel      string
+	defaultChatID       string
+	sentInRound         bool
+	nameCache           map[string]TargetInfo
+	mu                  sync.RWMutex
 }
 
 func NewMessageTool() *MessageTool {

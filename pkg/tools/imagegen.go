@@ -96,11 +96,11 @@ func (t *ImageGenTool) Execute(ctx context.Context, args map[string]interface{})
 
 func (t *ImageGenTool) generateImage(ctx context.Context, prompt, size, quality string) (string, error) {
 	requestBody := map[string]interface{}{
-		"model":   "dall-e-3",
-		"prompt":  prompt,
-		"n":       1,
-		"size":    size,
-		"quality": quality,
+		"model":           "dall-e-3",
+		"prompt":          prompt,
+		"n":               1,
+		"size":            size,
+		"quality":         quality,
 		"response_format": "b64_json",
 	}
 
@@ -172,9 +172,9 @@ func (t *ImageGenTool) generateImage(ctx context.Context, prompt, size, quality 
 	}
 
 	result := map[string]interface{}{
-		"prompt":   prompt,
-		"size":     size,
-		"quality":  quality,
+		"prompt":    prompt,
+		"size":      size,
+		"quality":   quality,
 		"file_path": filePath,
 	}
 

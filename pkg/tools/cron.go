@@ -204,7 +204,7 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 	}
 
 	command, _ := args["command"].(string)
-	
+
 	// Read skills parameter
 	var skills []string
 	if skillsArr, ok := args["skills"].([]interface{}); ok {
@@ -251,13 +251,13 @@ func (t *CronTool) addJob(args map[string]interface{}) *ToolResult {
 	job.Payload.To = chatID
 	job.Payload.Channel = channel
 	job.Payload.OriginID = t.instanceID
-	
+
 	if command != "" {
 		job.Payload.Command = command
 		// Commands must be processed by agent/exec tool, so deliver must be false
 		job.Payload.Deliver = false
 	}
-	
+
 	// Save the updated payload with correct ChatID/Channel
 	t.cronService.SaveJob(job)
 

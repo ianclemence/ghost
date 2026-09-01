@@ -46,9 +46,9 @@ var DefaultSubagentPolicy = SubagentPolicy{
 
 // OutputSchema defines the expected structure of a subagent's output.
 type OutputSchema struct {
-	Type        string                    `json:"type"` // "text", "json", "markdown"
-	Fields      []OutputSchemaField       `json:"fields,omitempty"`
-	MaxTokens   int                       `json:"max_tokens,omitempty"`
+	Type      string              `json:"type"` // "text", "json", "markdown"
+	Fields    []OutputSchemaField `json:"fields,omitempty"`
+	MaxTokens int                 `json:"max_tokens,omitempty"`
 }
 
 type OutputSchemaField struct {
@@ -62,7 +62,7 @@ type OutputSchemaField struct {
 type SubagentLogEntry struct {
 	TaskID    string    `json:"task_id"`
 	Timestamp time.Time `json:"timestamp"`
-	Level     string    `json:"level"` // "info", "warn", "error", "tool"
+	Level     string    `json:"level"`  // "info", "warn", "error", "tool"
 	Source    string    `json:"source"` // "llm", "tool", "system"
 	Message   string    `json:"message"`
 }

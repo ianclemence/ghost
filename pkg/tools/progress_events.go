@@ -45,9 +45,9 @@ func (p *ProgressTracker) Emit(event ProgressEvent) {
 			Channel: "system",
 			Content: string(eventJSON),
 			Metadata: map[string]interface{}{
-				"type":         "progress_event",
-				"event_type":   event.Type,
-				"subagent_id":  event.SubagentID,
+				"type":        "progress_event",
+				"event_type":  event.Type,
+				"subagent_id": event.SubagentID,
 			},
 		})
 	}

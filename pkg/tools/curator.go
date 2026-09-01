@@ -33,11 +33,11 @@ type CuratorConfig struct {
 }
 
 type Curator struct {
-	db       *sql.DB
-	config   CuratorConfig
-	mu       sync.RWMutex
-	records  map[string]*ToolRecord
-	stopCh   chan struct{}
+	db      *sql.DB
+	config  CuratorConfig
+	mu      sync.RWMutex
+	records map[string]*ToolRecord
+	stopCh  chan struct{}
 }
 
 func NewCurator(database *sql.DB, cfg CuratorConfig) *Curator {

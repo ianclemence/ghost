@@ -95,10 +95,10 @@ func (t *TTSTool) Execute(ctx context.Context, args map[string]interface{}) *Too
 	}
 
 	result := map[string]interface{}{
-		"text":  text,
-		"voice": voice,
+		"text":   text,
+		"voice":  voice,
 		"format": format,
-		"file":  audioPath,
+		"file":   audioPath,
 	}
 	raw, _ := json.Marshal(result)
 
