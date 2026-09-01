@@ -39,10 +39,10 @@ const (
 type EdgeType string
 
 const (
-	EdgeRelated   EdgeType = "related"
-	EdgeUsedWith  EdgeType = "used_with"
-	EdgeDerived   EdgeType = "derived_from"
-	EdgeMentions  EdgeType = "mentions"
+	EdgeRelated  EdgeType = "related"
+	EdgeUsedWith EdgeType = "used_with"
+	EdgeDerived  EdgeType = "derived_from"
+	EdgeMentions EdgeType = "mentions"
 )
 
 // Node represents a vertex in the learning graph.
@@ -56,10 +56,10 @@ type Node struct {
 
 // Edge represents a connection between two nodes.
 type Edge struct {
-	Source string  `json:"source"`
-	Target string  `json:"target"`
+	Source string   `json:"source"`
+	Target string   `json:"target"`
 	Type   EdgeType `json:"type"`
-	Weight float64 `json:"weight"` // 0.0-1.0 strength of connection
+	Weight float64  `json:"weight"` // 0.0-1.0 strength of connection
 }
 
 // Cluster groups nodes by category.
@@ -70,9 +70,9 @@ type Cluster struct {
 
 // Graph is the full learning graph.
 type Graph struct {
-	Nodes    []Node    `json:"nodes"`
-	Edges    []Edge    `json:"edges"`
-	Clusters []Cluster `json:"clusters"`
+	Nodes    []Node     `json:"nodes"`
+	Edges    []Edge     `json:"edges"`
+	Clusters []Cluster  `json:"clusters"`
 	Stats    GraphStats `json:"stats"`
 }
 
@@ -92,8 +92,8 @@ type GraphStats struct {
 type GraphConfig struct {
 	Enabled         bool    `json:"enabled"`
 	MinEdgeWeight   float64 `json:"min_edge_weight"`   // min weight to include edge
-	MaxNodes        int     `json:"max_nodes"`          // max nodes to keep
-	TopicKeywordMin int     `json:"topic_keyword_min"`  // min keyword occurrences for topic
+	MaxNodes        int     `json:"max_nodes"`         // max nodes to keep
+	TopicKeywordMin int     `json:"topic_keyword_min"` // min keyword occurrences for topic
 }
 
 // DefaultGraphConfig returns sensible defaults.
@@ -304,6 +304,12 @@ func (lg *LearningGraph) BuildSkillSkillEdges() {
 		}
 	}
 	lg.mu.RUnlock()
+
+	// Sort by ID so edge direction between two skills is deterministic (nodes
+	// were gathered from a map, whose iteration order is random — without a
+	// stable order a "related" edge could point either way, making edges /
+	// queries flaky).
+	sort.Slice(skills, func(i, j int) bool { return skills[i].ID < skills[j].ID })
 
 	for i := 0; i < len(skills); i++ {
 		for j := i + 1; j < len(skills); j++ {

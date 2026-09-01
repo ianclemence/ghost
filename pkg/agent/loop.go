@@ -79,6 +79,14 @@ type AgentLoop struct {
 	// runs and extraction is skipped rather than blocking the turn.
 	pcStore *personalcontext.Store
 	db      *db.DB
+
+	// shutdownCtx is cancelled by Stop() so long-running background work (e.g.
+	// the auto-journal goroutine) aborts promptly; backgroundWG tracks that
+	// work so Stop() waits for it to finish instead of leaving a goroutine that
+	// writes to a torn-down workspace (the cause of flaky TempDir cleanups).
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
+	backgroundWG   sync.WaitGroup
 }
 
 // processOptions configures how a message is processed
@@ -464,6 +472,8 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
 	al.commandExec = cmdExec
 
+	al.shutdownCtx, al.shutdownCancel = context.WithCancel(context.Background())
+
 	return al, nil
 }
 
@@ -564,9 +574,15 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 func (al *AgentLoop) Stop() {
 	al.running.Store(false)
 	al.curator.Stop()
+	if al.shutdownCancel != nil {
+		al.shutdownCancel()
+	}
 	if al.db != nil {
 		al.db.Close()
 	}
+	// Drain in-flight background work (auto-journal) so it can't write to a
+	// workspace that a caller (or test) is about to tear down.
+	al.backgroundWG.Wait()
 }
 
 func (al *AgentLoop) RegisterTool(tool tools.Tool) {
@@ -1100,7 +1116,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 
 	// 10. Auto-journaling
 	if !opts.NoHistory && opts.SessionKey != "heartbeat" && !strings.HasPrefix(opts.UserMessage, "/") {
-		go al.autoJournal(opts.SessionKey)
+		al.backgroundWG.Add(1)
+		go func() {
+			defer al.backgroundWG.Done()
+			al.autoJournal(opts.SessionKey)
+		}()
 	}
 
 	// 11. Record turn for the evolution pipeline (autonomous skill creation)
@@ -1962,7 +1982,7 @@ func (al *AgentLoop) autoJournal(sessionKey string) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(al.shutdownCtx, 30*time.Second)
 	defer cancel()
 
 	summary, err := al.summarizeBatch(ctx, history, "")
