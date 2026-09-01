@@ -137,7 +137,7 @@ const GhostUI = (() => {
     } else if (/(flash|mini|haiku|nano|fast|lite|quick|small)/.test(m)) {
       name = 'Fast';
     } else if (/(pro|opus|sonnet|reason|thinking|o3|o4|large|max|ultra|extended)/.test(m)) {
-      name = 'Deep thinking';
+      name = 'Thinking';
     }
 
     return { name, provider, model, raw, provName };
