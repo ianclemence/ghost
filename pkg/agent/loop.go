@@ -752,6 +752,26 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 	if isCronTriggered {
 		profile = tools.ProfileHeartbeatSafe
 	}
+	// Phase 1 — intent/effort triage: keep trivial self-fact recall cheap and
+	// deterministic (no model, no tools) and be honest when the fact isn't
+	// stored. Only extremely clear, harmless cases; everything else falls
+	// through to the full loop unchanged.
+	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" {
+		if effort := classifyEffort(msg.Content); effort == EffortFast {
+			if ans, ok := al.fastPathAnswer(msg.Content); ok {
+				logger.InfoCF("agent", "fast path: answered from memory",
+					map[string]interface{}{"session_key": msg.SessionKey, "effort": effort.String()})
+				if onChunk != nil {
+					onChunk(ans)
+				}
+				if al.sessions != nil {
+					al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+					al.sessions.Save(msg.SessionKey)
+				}
+				return ans, nil
+			}
+		}
+	}
 	response, err := al.runAgentLoop(ctx, processOptions{
 		SessionKey:      msg.SessionKey,
 		Channel:         msg.Channel,
