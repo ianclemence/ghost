@@ -12,6 +12,7 @@ import (
 
 type Session struct {
 	Key      string              `json:"key"`
+	Title    string              `json:"title,omitempty"`
 	Messages []providers.Message `json:"messages"`
 	Summary  string              `json:"summary,omitempty"`
 	Created  time.Time           `json:"created"`
@@ -43,6 +44,15 @@ func (sm *SessionManager) AddFullMessage(sessionKey string, msg providers.Messag
 		return
 	}
 	sm.store.AddFullMessage(sessionKey, msg)
+
+	// Generate title from the first user message.
+	if msg.Role == "user" {
+		existing := sm.store.GetTitle(sessionKey)
+		if existing == "" {
+			title := GenerateTitle(msg.Content)
+			sm.store.SetTitle(sessionKey, title)
+		}
+	}
 }
 
 func (sm *SessionManager) GetHistory(key string) []providers.Message {
@@ -64,6 +74,20 @@ func (sm *SessionManager) SetSummary(key string, summary string) {
 		return
 	}
 	sm.store.SetSummary(key, summary)
+}
+
+func (sm *SessionManager) GetTitle(key string) string {
+	if sm.store == nil {
+		return ""
+	}
+	return sm.store.GetTitle(key)
+}
+
+func (sm *SessionManager) SetTitle(key string, title string) {
+	if sm.store == nil {
+		return
+	}
+	sm.store.SetTitle(key, title)
 }
 
 func (sm *SessionManager) TruncateHistory(key string, keepLast int) {
@@ -93,6 +117,7 @@ func (sm *SessionManager) ClearHistory(key string) {
 	}
 	sm.store.TruncateHistory(key, 0)
 	sm.store.SetSummary(key, "")
+	sm.store.SetTitle(key, "")
 	sm.store.Save(key)
 }
 

@@ -79,7 +79,13 @@ type AgentLoop struct {
 	// agent. It is a derived-memory layer: if opening it fails, the agent still
 	// runs and extraction is skipped rather than blocking the turn.
 	pcStore *personalcontext.Store
-	db      *db.DB
+
+	// semanticExtractor uses the LLM for memory extraction when regex fails.
+	// It falls back to LLM-based extraction for natural language that doesn't
+	// match deterministic patterns.
+	semanticExtractor *personalcontext.SemanticExtractor
+
+	db *db.DB
 
 	// shutdownCtx is cancelled by Stop() so long-running background work (e.g.
 	// the auto-journal goroutine) aborts promptly; backgroundWG tracks that
@@ -376,6 +382,12 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		subagentTools.Register(contextGetTool)
 	}
 
+	// Create semantic extractor for LLM-based memory extraction
+	semanticExtractor := personalcontext.NewSemanticExtractor(provider, cfg.Agents.Defaults.Model)
+	logger.InfoCF("agent", "Semantic extractor initialized", map[string]interface{}{
+		"model": cfg.Agents.Defaults.Model,
+	})
+
 	// Create media store
 	mediaStore := media.NewFileMediaStoreWithCleanup(media.MediaCleanerConfig{
 		Enabled:  true,
@@ -478,6 +490,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		evolution:        evolutionMgr,
 		steering:         NewSteeringManager(),
 		pcStore:          pcStore,
+		semanticExtractor: semanticExtractor,
 		db:               database,
 	}
 
@@ -1028,6 +1041,7 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 		msgID = fmt.Sprintf("msg-%d", time.Now().UnixNano())
 	}
 
+	// Try regex extraction first (fast path)
 	in := personalcontext.Input{
 		SessionID:    opts.SessionKey,
 		MessageID:    msgID,
@@ -1035,17 +1049,53 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 		Timestamp:    time.Now().UTC(),
 		PreviousText: previousUserMessage(al.sessions.GetHistory(opts.SessionKey)),
 	}
-	if _, err := personalcontext.Apply(al.pcStore, in); err != nil {
+	actions, err := personalcontext.Apply(al.pcStore, in)
+	if err != nil {
 		logger.WarnCF("agent", "Personal Context extraction failed", map[string]interface{}{
 			"session_key": opts.SessionKey,
 			"error":       err.Error(),
 		})
-	} else if al.events != nil {
-		// Typed memory event so memory/evolution/notifications can react without
-		// being coupled to the extract loop.
+	} else if al.events != nil && len(actions) > 0 {
 		al.events.emit(EventMemoryCreated, "", map[string]interface{}{
 			"session_key": opts.SessionKey,
 		})
+		return // Regex found something, no need for semantic extraction
+	}
+
+	logger.InfoCF("agent", "Regex extraction result", map[string]interface{}{
+		"actions_count":       len(actions),
+		"message":             opts.UserMessage,
+		"semantic_extractor":  al.semanticExtractor != nil,
+		"pcStore":             al.pcStore != nil,
+	})
+
+	// If regex didn't find anything, try semantic extraction (slow path)
+	if al.semanticExtractor != nil && len(actions) == 0 && al.pcStore != nil {
+		logger.InfoCF("agent", "Attempting semantic extraction", map[string]interface{}{
+			"message": opts.UserMessage,
+		})
+		existing := al.pcStore.Current()
+		result := al.semanticExtractor.Extract(context.Background(), opts.UserMessage, existing)
+		if result.ShouldRemember && len(result.Entries) > 0 {
+			// Persist semantic extraction results
+			for _, entry := range result.Entries {
+				entry.Sources[0].Ref = fmt.Sprintf("%s:%s", opts.SessionKey, msgID)
+				if _, err := al.pcStore.Create(entry); err != nil {
+					logger.WarnCF("agent", "Failed to persist semantic extraction", map[string]interface{}{
+						"error": err.Error(),
+					})
+				} else if al.events != nil {
+					al.events.emit(EventMemoryCreated, "", map[string]interface{}{
+						"session_key": opts.SessionKey,
+						"method":      "semantic",
+					})
+				}
+			}
+		} else {
+			logger.InfoCF("agent", "Semantic extraction: no memory worth remembering", map[string]interface{}{
+				"reason": result.Reason,
+			})
+		}
 	}
 }
 

@@ -8,6 +8,8 @@ type Store interface {
 	GetHistory(key string) []providers.Message
 	GetSummary(key string) string
 	SetSummary(key string, summary string)
+	GetTitle(key string) string
+	SetTitle(key string, title string)
 	TruncateHistory(key string, keepLast int)
 	SetHistory(key string, messages []providers.Message)
 	Save(key string) error

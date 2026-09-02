@@ -31,6 +31,9 @@ const (
 	KindDecision     Kind = "decision"
 	KindConsent      Kind = "consent"
 	KindRoutine      Kind = "routine"
+	KindProject      Kind = "project"
+	KindConstraint   Kind = "constraint"
+	KindInterest     Kind = "interest"
 )
 
 // Status is the lifecycle state of an entry. Only StatusCurrent entries are

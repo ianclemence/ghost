@@ -24,7 +24,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"view", "read",
 		"web_search", "web_fetch",
 		"sandbox", "exec",
-		"cron", "remember",
+		"cron", "schedule", "remember",
 		"vision", "image_generate",
 	},
 	ProfileHeartbeatSafe: {
@@ -56,7 +56,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"search_files", "grep_search",
 		"exec", "sandbox",
 		"web_search", "web_fetch",
-		"cron", "remember",
+		"cron", "schedule", "remember",
 		"session_search",
 		"spawn", "subagent", "batch_delegate",
 		"skill_manage",
@@ -136,6 +136,7 @@ var coreToolNames = map[string]bool{
 	"web_search": true, "web_fetch": true, "session_search": true,
 	"remember": true, "context_get": true, "memory_curate": true,
 	"message": true, "skill_manage": true, "todo": true, "cron": true,
+	"schedule": true,
 	"spawn": true, "subagent": true, "clarify": true,
 }
 

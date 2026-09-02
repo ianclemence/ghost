@@ -473,7 +473,7 @@ func TestSmokeScenario7TemporalValidity(t *testing.T) {
 		if strings.Contains(provider.lastSystemPrompt, "FUTURE") || strings.Contains(provider.lastSystemPrompt, "EXPIRED") {
 			t.Errorf("%s: digest shows non-current entry:\n%s", label, provider.lastSystemPrompt)
 		}
-		if !strings.Contains(provider.lastSystemPrompt, "- valid test: VALID") {
+		if !strings.Contains(provider.lastSystemPrompt, "- Valid test: VALID") {
 			t.Errorf("%s: digest missing valid entry:\n%s", label, provider.lastSystemPrompt)
 		}
 	}

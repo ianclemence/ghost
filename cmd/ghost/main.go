@@ -34,6 +34,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/migrate"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/relayclient"
+	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/state"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -888,6 +889,15 @@ func gatewayCmd() {
 	// Setup cron tool and service
 	cronService := setupCronTool(agentLoop, msgBus, cfg.WorkspacePath())
 
+	// Setup scheduled service
+	scheduledService := setupScheduledService(agentLoop, msgBus, cfg.WorkspacePath())
+
+	// Setup schedule tool (natural-language scheduling)
+	if scheduledService != nil {
+		scheduleTool := tools.NewScheduleTool(scheduledService, "UTC")
+		agentLoop.RegisterTool(scheduleTool)
+	}
+
 	heartbeatService := heartbeat.NewHeartbeatService(
 		cfg.WorkspacePath(),
 		cfg.Heartbeat.Interval,
@@ -978,6 +988,14 @@ func gatewayCmd() {
 		fmt.Println("✓ Cron service started")
 	}
 
+	if scheduledService != nil {
+		if err := scheduledService.Start(); err != nil {
+			fmt.Printf("Error starting scheduled service: %v\n", err)
+		} else {
+			fmt.Println("✓ Scheduled service started")
+		}
+	}
+
 	if !apiOnly {
 		if err := heartbeatService.Start(); err != nil {
 			fmt.Printf("Error starting heartbeat service: %v\n", err)
@@ -1004,7 +1022,7 @@ func gatewayCmd() {
 	}
 
 	go agentLoop.Run(ctx)
-	go startInternalAPI(agentLoop, cronService, channelManager)
+	go startInternalAPI(agentLoop, cronService, scheduledService, channelManager)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
@@ -1018,6 +1036,9 @@ func gatewayCmd() {
 	}
 	if !noCron {
 		cronService.Stop()
+	}
+	if scheduledService != nil {
+		scheduledService.Stop()
 	}
 	agentLoop.Stop()
 	if !apiOnly {
@@ -1473,6 +1494,41 @@ func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace
 	}
 
 	return cronService
+}
+
+func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace string) *scheduled.Service {
+	// Get the SQLite database connection
+	d := agentLoop.DB()
+
+	store := scheduled.NewStore(d)
+	if err := store.InitSchema(); err != nil {
+		fmt.Printf("Error initializing scheduled schema: %v", err)
+		return nil
+	}
+
+	// Create executor that sends messages through the agent
+	executor := func(ctx context.Context, item *scheduled.ScheduledItem) error {
+		if item.Action.Content == "" {
+			return fmt.Errorf("no message content")
+		}
+
+		// Send message through the inbound bus for agent processing
+		if msgBus != nil {
+			msgBus.PublishInbound(bus.InboundMessage{
+				Channel: item.Channel,
+				ChatID:  item.ChatID,
+				Content: item.Action.Content,
+			})
+		}
+
+		return nil
+	}
+
+	// Create simple event bus adapter
+	events := &scheduled.SimpleEventBus{}
+
+	service := scheduled.NewService(store, events, executor)
+	return service
 }
 
 func loadConfig() (*config.Config, error) {

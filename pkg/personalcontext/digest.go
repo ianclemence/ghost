@@ -198,7 +198,12 @@ func digestLabel(predicate string) string {
 	if i := strings.LastIndex(predicate, "/"); i >= 0 {
 		predicate = predicate[i+1:]
 	}
-	return strings.TrimSpace(strings.NewReplacer(".", " ", "_", " ").Replace(predicate))
+	label := strings.TrimSpace(strings.NewReplacer(".", " ", "_", " ").Replace(predicate))
+	if label == "" {
+		return label
+	}
+	// Capitalize the first letter so unknown predicates display nicely.
+	return strings.ToUpper(label[:1]) + label[1:]
 }
 
 // Label returns a human-friendly label for a predicate, e.g. "identity/name" ->

@@ -43,6 +43,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/pairing"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
+	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -1334,7 +1335,7 @@ func parseMemoryMeta(head string) (title, kind, summary, source string) {
 	return
 }
 
-func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService, channelManager *channels.Manager) {
+func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService, scheduledService *scheduled.Service, channelManager *channels.Manager) {
 	port := agentLoop.Config().Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
@@ -1818,6 +1819,269 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			return
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "job": status})
+	}))
+
+	// ── 1c. Scheduled items ──────────────────────────────────────────────
+	mux.HandleFunc("/v1/scheduled", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if scheduledService == nil {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "scheduled service unavailable")
+			return
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			// List scheduled items
+			itemType := scheduled.ItemType(r.URL.Query().Get("type"))
+			state := scheduled.ItemState(r.URL.Query().Get("state"))
+			limit := 50
+			if l := r.URL.Query().Get("limit"); l != "" {
+				fmt.Sscanf(l, "%d", &limit)
+			}
+			items, err := scheduledService.ListItems(itemType, state, limit)
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, "list_failed", err.Error())
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"items": items,
+			})
+
+		case http.MethodPost:
+			// Create new scheduled item
+			var req struct {
+				Type        string `json:"type"`
+				Title       string `json:"title"`
+				Description string `json:"description"`
+				Schedule    struct {
+					Kind  string `json:"kind"`
+					At    *string `json:"at"`
+					Every *string `json:"every"`
+					Expr  string `json:"expr"`
+					TZ    string `json:"tz"`
+				} `json:"schedule"`
+				Action struct {
+					Kind    string `json:"kind"`
+					Content string `json:"content"`
+					Command string `json:"command"`
+					Deliver bool   `json:"deliver"`
+					Skills  []string `json:"skills"`
+				} `json:"action"`
+				Channel string `json:"channel"`
+				ChatID  string `json:"chat_id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+				return
+			}
+			req.Title = strings.TrimSpace(req.Title)
+			if req.Title == "" {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "title is required")
+				return
+			}
+			itemType := scheduled.ItemType(req.Type)
+			if itemType == "" {
+				itemType = scheduled.TypeAutomation
+			}
+			item := &scheduled.ScheduledItem{
+				Type:        itemType,
+				Title:       req.Title,
+				Description: req.Description,
+				State:       scheduled.StateScheduled,
+				Timezone:    "UTC",
+				Channel:     req.Channel,
+				ChatID:      req.ChatID,
+				DeliveryMode: scheduled.DeliverySmart,
+				Source:      "user",
+				CreatedBy:   "api",
+				MaxRetries:  3,
+			}
+			// Parse schedule
+			switch req.Schedule.Kind {
+			case "at":
+				item.Schedule.Kind = scheduled.ScheduleAt
+				if req.Schedule.At != nil {
+					t, err := time.Parse(time.RFC3339, *req.Schedule.At)
+					if err != nil {
+						jsonError(w, http.StatusBadRequest, "invalid_request", "invalid at time")
+						return
+					}
+					item.Schedule.At = &t
+					item.NextRunAt = &t
+				}
+			case "every":
+				item.Schedule.Kind = scheduled.ScheduleEvery
+				if req.Schedule.Every != nil {
+					d, err := time.ParseDuration(*req.Schedule.Every)
+					if err != nil {
+						jsonError(w, http.StatusBadRequest, "invalid_request", "invalid every duration")
+						return
+					}
+					item.Schedule.Every = d
+					next := time.Now().UTC().Add(d)
+					item.NextRunAt = &next
+				}
+			case "cron":
+				item.Schedule.Kind = scheduled.ScheduleCron
+				item.Schedule.Expr = req.Schedule.Expr
+				if req.Schedule.TZ != "" {
+					item.Timezone = req.Schedule.TZ
+				}
+				// Compute next run from cron expression (simplified)
+				next := time.Now().UTC().Add(time.Hour)
+				item.NextRunAt = &next
+			default:
+				jsonError(w, http.StatusBadRequest, "invalid_request", "schedule.kind is required (at, every, cron)")
+				return
+			}
+			// Parse action
+			item.Action = scheduled.Action{
+				Kind:    scheduled.ActionKind(req.Action.Kind),
+				Content: req.Action.Content,
+				Command: req.Action.Command,
+				Deliver: req.Action.Deliver,
+				Skills:  req.Action.Skills,
+			}
+			if item.Action.Kind == "" {
+				item.Action.Kind = scheduled.ActionAgentTurn
+			}
+			if err := scheduledService.CreateItem(item); err != nil {
+				jsonError(w, http.StatusInternalServerError, "create_failed", err.Error())
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "item": item})
+
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		}
+	}))
+
+	// Scheduled item by ID
+	mux.HandleFunc("/v1/scheduled/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if scheduledService == nil {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "scheduled service unavailable")
+			return
+		}
+
+		path := strings.TrimPrefix(r.URL.Path, "/v1/scheduled/")
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) < 1 || parts[0] == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid item path")
+			return
+		}
+
+		itemID := parts[0]
+		action := ""
+		if len(parts) > 1 {
+			action = parts[1]
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			item, err := scheduledService.GetItem(itemID)
+			if err != nil {
+				jsonError(w, http.StatusNotFound, "not_found", "item not found")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"item": item})
+
+		case http.MethodPatch:
+			// Update item
+			var req struct {
+				Title       *string `json:"title"`
+				Description *string `json:"description"`
+				State       *string `json:"state"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+				return
+			}
+			item, err := scheduledService.GetItem(itemID)
+			if err != nil {
+				jsonError(w, http.StatusNotFound, "not_found", "item not found")
+				return
+			}
+			if req.Title != nil {
+				item.Title = *req.Title
+			}
+			if req.Description != nil {
+				item.Description = *req.Description
+			}
+			if req.State != nil {
+				item.State = scheduled.ItemState(*req.State)
+			}
+			if err := scheduledService.UpdateItem(item); err != nil {
+				jsonError(w, http.StatusInternalServerError, "update_failed", err.Error())
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "item": item})
+
+		case http.MethodDelete:
+			if err := scheduledService.CancelItem(itemID); err != nil {
+				jsonError(w, http.StatusNotFound, "not_found", "item not found")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "id": itemID})
+
+		default:
+			// Handle actions like pause, resume, run
+			if action != "" && r.Method == http.MethodPost {
+				switch action {
+				case "pause":
+					if err := scheduledService.PauseItem(itemID); err != nil {
+						jsonError(w, http.StatusNotFound, "not_found", err.Error())
+						return
+					}
+					jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "state": "paused"})
+				case "resume":
+					if err := scheduledService.ResumeItem(itemID); err != nil {
+						jsonError(w, http.StatusNotFound, "not_found", err.Error())
+						return
+					}
+					jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "state": "scheduled"})
+				case "run":
+					if err := scheduledService.RunNow(itemID); err != nil {
+						jsonError(w, http.StatusNotFound, "not_found", err.Error())
+						return
+					}
+					jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "triggered"})
+				default:
+					jsonError(w, http.StatusBadRequest, "invalid_action", "unsupported action")
+				}
+				return
+			}
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		}
+	}))
+
+	// Scheduled execution history
+	mux.HandleFunc("/v1/scheduled/history", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if scheduledService == nil {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "scheduled service unavailable")
+			return
+		}
+
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+
+		itemID := r.URL.Query().Get("item_id")
+		if itemID == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "item_id is required")
+			return
+		}
+		limit := 50
+		if l := r.URL.Query().Get("limit"); l != "" {
+			fmt.Sscanf(l, "%d", &limit)
+		}
+		history, err := scheduledService.GetHistory(itemID, limit)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "history_failed", err.Error())
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"history": history,
+		})
 	}))
 
 	// ── 2. Chat (streaming SSE) ───────────────────────────────────────────
@@ -2405,6 +2669,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			ID             string     `json:"id"`
 			Kind           string     `json:"kind"`
 			Label          string     `json:"label"`
+			Title          string     `json:"title"`
+			Summary        string     `json:"summary"`
+			Domain         string     `json:"domain"`
+			DomainLabel    string     `json:"domain_label"`
 			Value          string     `json:"value"`
 			CreatedAt      time.Time  `json:"created_at,omitempty"`
 			ReinforceCount int        `json:"reinforce_count,omitempty"`
@@ -2417,10 +2685,15 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		}
 		entries := make([]entryView, 0)
 		for _, e := range store.Current() {
+			domain := personalcontext.ClassifyDomain(e.Predicate)
 			entries = append(entries, entryView{
 				ID:             e.ID,
 				Kind:           string(e.Kind),
 				Label:          personalcontext.Label(e.Predicate),
+				Title:          personalcontext.Title(e),
+				Summary:        personalcontext.Summary(e),
+				Domain:         string(domain),
+				DomainLabel:    personalcontext.DomainLabel(domain),
 				Value:          personalcontext.Value(e),
 				CreatedAt:      e.CreatedAt,
 				ReinforceCount: e.ReinforceCount,
@@ -2951,7 +3224,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			SELECT m1.session_id,
 			       COUNT(*),
 			       COALESCE(unixepoch(MAX(m1.created_at)), 0),
-			       COALESCE((
+			       COALESCE(s.title, (
 			           SELECT m2.content FROM messages m2
 			           WHERE m2.session_id = m1.session_id
 			             AND m2.role = 'user'
@@ -2961,6 +3234,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			           LIMIT 1
 			       ), '') AS title
 			FROM messages m1
+			LEFT JOIN sessions s ON s.id = m1.session_id
 			WHERE (m1.archived IS NULL OR m1.archived = 0)
 			  AND m1.session_id != 'heartbeat'
 			GROUP BY m1.session_id

@@ -186,7 +186,7 @@ func TestBuildDigestLabelFallback(t *testing.T) {
 	d := BuildDigest([]Entry{
 		dEntry("1", KindFact, "fact/works_in_city", "Oslo"),
 	}, 0)
-	if !strings.Contains(d, "- works in city: Oslo") {
+	if !strings.Contains(d, "- Works in city: Oslo") {
 		t.Fatalf("digest label fallback wrong:\n%s", d)
 	}
 }

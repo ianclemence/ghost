@@ -11,7 +11,7 @@ func TestLabelAndValue(t *testing.T) {
 		"preference/favorite_color":      "Favorite color",
 		"preference/communication.style": "Communication style",
 		"goal/primary":                   "Goal",
-		"custom/some_thing":              "some thing",
+		"custom/some_thing":              "Some thing",
 	}
 	for pred, want := range cases {
 		if got := Label(pred); got != want {
@@ -91,11 +91,11 @@ func TestExtractPrefersAndFavorite(t *testing.T) {
 	acts2, _ := Extract(Input{SessionID: "s", MessageID: "m2", Text: "my favorite food is sushi", Timestamp: time.Now()})
 	fav := false
 	for _, a := range acts2 {
-		if a.Entry.Predicate == "preference/favorite" {
+		if a.Entry.Predicate == "preference/favorite_food" {
 			fav = true
 		}
 	}
 	if !fav {
-		t.Fatalf("expected a preference/favorite entry, got %+v", acts2)
+		t.Fatalf("expected a preference/favorite_food entry, got %+v", acts2)
 	}
 }

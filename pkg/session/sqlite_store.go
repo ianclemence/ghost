@@ -120,6 +120,24 @@ func (s *SQLiteStore) SetSummary(key string, summary string) {
 	s.db.Exec(`UPDATE sessions SET summary = ?, updated_at = ? WHERE id = ?`, summary, now, key)
 }
 
+func (s *SQLiteStore) GetTitle(key string) string {
+	var title sql.NullString
+	err := s.db.QueryRow(`SELECT title FROM sessions WHERE id = ?`, key).Scan(&title)
+	if err != nil {
+		return ""
+	}
+	if title.Valid {
+		return title.String
+	}
+	return ""
+}
+
+func (s *SQLiteStore) SetTitle(key string, title string) {
+	s.EnsureSession(key)
+	now := time.Now().Format(time.RFC3339Nano)
+	s.db.Exec(`UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?`, title, now, key)
+}
+
 func (s *SQLiteStore) TruncateHistory(key string, keepLast int) {
 	if keepLast <= 0 {
 		s.db.Exec(`UPDATE messages SET archived = 1 WHERE session_id = ?`, key)

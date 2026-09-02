@@ -28,10 +28,10 @@ async function loadSkills(container) {
   }
   if (!document.body.contains(container)) return;
   const skills = Array.isArray(res) ? res : (res.skills || res.items || []);
-  renderList(listEl, skills);
+  renderSkillsList(listEl, skills);
 }
 
-function renderList(listEl, skills) {
+function renderSkillsList(listEl, skills) {
   listEl.innerHTML = '';
   if (!skills || skills.length === 0) {
     listEl.appendChild(GhostUI.emptyState('No skills installed yet', 'Add your first skill from a GitHub repository, or Ghost comes with built-in skills ready to enable. Skills are the things Ghost can do for you.'));

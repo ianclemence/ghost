@@ -29,8 +29,8 @@ async function loadAbout(container) {
     const idPanel = GhostUI.h('div', { className: 'panel' });
     idPanel.appendChild(GhostUI.h('div', { className: 'panel-head' }, GhostUI.h('div', {}, GhostUI.h('h2', {}, 'Your Ghost'))));
     const details = GhostUI.h('div', { style: 'margin-top:var(--s-3)' });
-    if (identity.ghost_id) details.appendChild(kvRow('Ghost ID', identity.ghost_id.slice(0, 12) + '\u2026'));
-    if (identity.created_at) details.appendChild(kvRow('Created', GhostUI.timeAgo(Math.floor(new Date(identity.created_at).getTime() / 1000))));
+    if (identity.ghost_id) details.appendChild(aboutKvRow('Ghost ID', identity.ghost_id.slice(0, 12) + '\u2026'));
+    if (identity.created_at) details.appendChild(aboutKvRow('Created', GhostUI.timeAgo(Math.floor(new Date(identity.created_at).getTime() / 1000))));
     idPanel.appendChild(details);
     container.appendChild(idPanel);
   }
@@ -42,8 +42,8 @@ async function loadAbout(container) {
     const lp = GhostUI.h('div', { className: 'panel' });
     lp.appendChild(GhostUI.h('div', { className: 'panel-head' }, GhostUI.h('div', {}, GhostUI.h('h2', {}, 'Ghost is learning'))));
     const d = GhostUI.h('div', { style: 'margin-top:var(--s-3)' });
-    d.appendChild(kvRow('Conversations reflected on', GhostUI.fmtNum(learn.records || 0)));
-    d.appendChild(kvRow('Skill improvements drafted', GhostUI.fmtNum(learn.drafts || 0)));
+    d.appendChild(aboutKvRow('Conversations reflected on', GhostUI.fmtNum(learn.records || 0)));
+    d.appendChild(aboutKvRow('Skill improvements drafted', GhostUI.fmtNum(learn.drafts || 0)));
     if (learn.recent && learn.recent.length) {
       d.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-2)' }, 'Recently suggested: ' + learn.recent.map(r => r.skill).join(', ')));
     }
@@ -66,7 +66,7 @@ Ghost is open-source. Source, documentation, and license are in the project repo
   container.appendChild(prose);
 }
 
-function kvRow(label, value) {
+function aboutKvRow(label, value) {
   const r = GhostUI.h('div', { className: 'kv-row' });
   r.appendChild(GhostUI.h('div', { className: 'kv-key' }, label));
   r.appendChild(GhostUI.h('div', { className: 'kv-val' }, value));

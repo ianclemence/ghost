@@ -35,7 +35,7 @@ async function loadSecurity(container) {
     sh.appendChild(shText);
     sec.appendChild(sh);
     const list = GhostUI.h('div', { className: 'kv' });
-    fails.slice(0, 5).forEach(f => list.appendChild(kv(f.ip, new Date(f.time).toLocaleString())));
+    fails.slice(0, 5).forEach(f => list.appendChild(securityKv(f.ip, new Date(f.time).toLocaleString())));
     sec.appendChild(list);
     container.appendChild(sec);
   }
@@ -49,11 +49,11 @@ async function loadSecurity(container) {
   bkH.appendChild(bkText);
   bk.appendChild(bkH);
   const bkKv = GhostUI.h('div', { className: 'kv' });
-  bkKv.appendChild(kv('Memory', 'Included'));
-  bkKv.appendChild(kv('Skills', 'Included'));
-  bkKv.appendChild(kv('Configuration', 'Included'));
-  bkKv.appendChild(kv('Automations', 'Included'));
-  bkKv.appendChild(kv('Secrets', 'Not included'));
+  bkKv.appendChild(securityKv('Memory', 'Included'));
+  bkKv.appendChild(securityKv('Skills', 'Included'));
+  bkKv.appendChild(securityKv('Configuration', 'Included'));
+  bkKv.appendChild(securityKv('Automations', 'Included'));
+  bkKv.appendChild(securityKv('Secrets', 'Not included'));
   bk.appendChild(bkKv);
   const bkActions = GhostUI.h('div', { className: 'row-flex', style: 'margin-top:var(--s-4)' });
   const bkBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => GhostUI.downloadBackup(bkBtn) }, 'Download backup');
@@ -108,7 +108,7 @@ async function loadSecurity(container) {
   container.appendChild(panel);
 }
 
-function kv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
+function securityKv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
 
 async function loadSessions(body) {
   let res;

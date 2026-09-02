@@ -89,8 +89,13 @@ function renderFacts(container, facts, curated) {
   function factRow(e) {
     const row = GhostUI.h('div', { className: 'ghost-row self-entry' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:500' }, e.value || e.label));
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, (e.label && e.value ? e.label : '') + (metaFor(e) ? '  \u00b7  ' + metaFor(e) : '')));
+    const title = e.title || e.value || e.label;
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:500' }, title));
+    const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
+    if (e.domain_label) sub.appendChild(GhostUI.h('span', { className: 'tag', style: 'text-transform:capitalize;font-size:0.75rem;padding:0.1em 0.4em;border-radius:var(--r-sm);background:var(--paper-sunken);color:var(--ink-muted);margin-right:var(--s-2)' }, e.domain_label));
+    const meta = metaFor(e);
+    if (meta) sub.appendChild(document.createTextNode(meta));
+    c.appendChild(sub);
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
     const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button' }, 'Forget');

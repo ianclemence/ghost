@@ -90,6 +90,7 @@ func (db *DB) initSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)`,
 		`CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
+			title TEXT,
 			summary TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -148,6 +149,11 @@ func (db *DB) initSchema() error {
 
 	if err := db.MigrateFTS5(); err != nil {
 		return fmt.Errorf("failed to migrate FTS5 schema: %w", err)
+	}
+
+	// Add title column to sessions if missing (backward compatibility).
+	if _, err := db.Exec(`ALTER TABLE sessions ADD COLUMN title TEXT`); err != nil {
+		// Column already exists — ignore.
 	}
 
 	return nil

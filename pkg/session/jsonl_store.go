@@ -114,6 +114,29 @@ func (s *JSONLStore) SetSummary(key string, summary string) {
 	os.WriteFile(path, []byte(summary), 0644)
 }
 
+func (s *JSONLStore) GetTitle(key string) string {
+	path := s.titlePath(key)
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func (s *JSONLStore) SetTitle(key string, title string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.EnsureSession(key)
+	path := s.titlePath(key)
+	if path == "" {
+		return
+	}
+	os.WriteFile(path, []byte(title), 0644)
+}
+
 func (s *JSONLStore) TruncateHistory(key string, keepLast int) {
 	history := s.GetHistory(key)
 	if keepLast <= 0 {
@@ -157,7 +180,7 @@ func (s *JSONLStore) Save(key string) error {
 	return nil
 }
 
-// DeleteSession removes the session's transcript and summary files.
+// DeleteSession removes the session's transcript, summary, and title files.
 func (s *JSONLStore) DeleteSession(key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -167,6 +190,7 @@ func (s *JSONLStore) DeleteSession(key string) error {
 	}
 	os.Remove(path)
 	os.Remove(s.summaryPath(key))
+	os.Remove(s.titlePath(key))
 	return nil
 }
 
@@ -184,6 +208,14 @@ func (s *JSONLStore) summaryPath(key string) string {
 		return ""
 	}
 	return filepath.Join(s.baseDir, "sessions", key+".summary")
+}
+
+func (s *JSONLStore) titlePath(key string) string {
+	key = sanitizeSessionKey(key)
+	if key == "" {
+		return ""
+	}
+	return filepath.Join(s.baseDir, "sessions", key+".title")
 }
 
 func sanitizeSessionKey(key string) string {

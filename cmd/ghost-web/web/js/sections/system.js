@@ -27,13 +27,13 @@ async function loadSystem(container) {
   gHead.appendChild(updateBtn);
   g.appendChild(gHead);
   const gk = GhostUI.h('div', { className: 'kv' });
-  gk.appendChild(kv('Version', st.version || '—'));
-  gk.appendChild(kv('Uptime', st.uptime || '—'));
-  gk.appendChild(kv('Model', (st.provider || '—') + (st.model ? ' · ' + st.model : '')));
-  gk.appendChild(kv('Address', (st.ip || '—') + (st.hostname ? '  (' + st.hostname + ')' : '')));
-  gk.appendChild(kv('CPU', (st.cpu_percent != null ? st.cpu_percent.toFixed(0) + '%' : '—')));
-  if (st.memory) gk.appendChild(kv('Memory', fmtBytes(st.memory.used) + ' / ' + fmtBytes(st.memory.total)));
-  if (st.disk) gk.appendChild(kv('Storage', GhostUI.fmtNum(Math.round(st.disk.used / 1073741824)) + ' GB / ' + GhostUI.fmtNum(Math.round(st.disk.total / 1073741824)) + ' GB'));
+  gk.appendChild(systemKv('Version', st.version || '—'));
+  gk.appendChild(systemKv('Uptime', st.uptime || '—'));
+  gk.appendChild(systemKv('Model', (st.provider || '—') + (st.model ? ' · ' + st.model : '')));
+  gk.appendChild(systemKv('Address', (st.ip || '—') + (st.hostname ? '  (' + st.hostname + ')' : '')));
+  gk.appendChild(systemKv('CPU', (st.cpu_percent != null ? st.cpu_percent.toFixed(0) + '%' : '—')));
+  if (st.memory) gk.appendChild(systemKv('Memory', fmtBytes(st.memory.used) + ' / ' + fmtBytes(st.memory.total)));
+  if (st.disk) gk.appendChild(systemKv('Storage', GhostUI.fmtNum(Math.round(st.disk.used / 1073741824)) + ' GB / ' + GhostUI.fmtNum(Math.round(st.disk.total / 1073741824)) + ' GB'));
   if (st.load) {
     const cores = st.cpu_count || 1;
     const ratio = st.load.one / cores;
@@ -128,7 +128,7 @@ function panelHead(title) {
   h.appendChild(text);
   return h;
 }
-function kv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
+function systemKv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
 
 function fmtBytes(n) {
   if (!n) return '0 B';
