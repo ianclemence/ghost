@@ -42,7 +42,6 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkDatabase,
 		d.checkProvider,
 		d.checkToolRegistry,
-		d.checkPython,
 		d.checkBrowser,
 		d.checkSkillDependencies,
 	}
@@ -51,51 +50,6 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		results = append(results, check(ctx))
 	}
 	return results
-}
-
-func (d *Doctor) checkPython(ctx context.Context) CheckResult {
-	start := time.Now()
-
-	// Check python3
-	cmd := exec.CommandContext(ctx, "python3", "--version")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		// Try python
-		cmd = exec.CommandContext(ctx, "python", "--version")
-		out, err = cmd.CombinedOutput()
-	}
-
-	if err != nil {
-		return CheckResult{
-			Name:    "python_env",
-			Label:   "Python",
-			Status:  "error",
-			Message: "Python is not installed. A few skills need it to run.",
-			Latency: time.Since(start).Milliseconds(),
-		}
-	}
-
-	version := strings.TrimSpace(string(out))
-
-	// Check pip
-	cmd = exec.CommandContext(ctx, "pip", "--version")
-	if err := cmd.Run(); err != nil {
-		return CheckResult{
-			Name:    "python_env",
-			Label:   "Python",
-			Status:  "warning",
-			Message: fmt.Sprintf("Python %s is installed, but its package manager is missing.", version),
-			Latency: time.Since(start).Milliseconds(),
-		}
-	}
-
-	return CheckResult{
-		Name:    "python_env",
-		Label:   "Python",
-		Status:  "ok",
-		Message: fmt.Sprintf("Python is ready (%s)", version),
-		Latency: time.Since(start).Milliseconds(),
-	}
 }
 
 func (d *Doctor) checkBrowser(ctx context.Context) CheckResult {
