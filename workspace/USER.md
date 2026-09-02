@@ -5,8 +5,8 @@ Only update this file when information is stable over time.
 
 ## Identity
 
-- **Name**: (replace with user's name)
-- **Role**: (replace with user's role)
+- **Name**: (set by user)
+- **Role**: Founder/developer of Ghost
 
 ## Communication Preferences
 
