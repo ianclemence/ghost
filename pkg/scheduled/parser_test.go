@@ -104,6 +104,37 @@ func TestParseNaturalLanguage(t *testing.T) {
 	}
 }
 
+func TestParseNaturalLanguageExpr(t *testing.T) {
+	referenceTime := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	timezone := "UTC"
+	tests := []struct {
+		input string
+		want  string // expected cron expr (kind=cron) or "at" marker
+	}{
+		{"every day at 8 AM", "0 8 * * *"},
+		{"every day at 9 AM", "0 9 * * *"},
+		{"every monday at 9 AM", "0 9 * * 1"},
+		{"every monday at 5 PM", "0 17 * * 1"},
+		{"every week at 10 AM", "0 10 * * 1"},
+		{"every month on the 1st at 9 AM", "0 9 1 * *"},
+		{"every month on the 15th at 2:30 PM", "30 14 15 * *"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			res, err := ParseNaturalLanguage(tt.input, referenceTime, timezone)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if res.Schedule.Kind != ScheduleCron {
+				t.Fatalf("expected cron schedule, got %s", res.Schedule.Kind)
+			}
+			if res.Schedule.Expr != tt.want {
+				t.Errorf("expr = %q, want %q", res.Schedule.Expr, tt.want)
+			}
+		})
+	}
+}
+
 func TestFormatTime(t *testing.T) {
 	tests := []struct {
 		hour   int

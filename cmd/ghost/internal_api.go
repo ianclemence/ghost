@@ -23,6 +23,7 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +31,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unicode/utf8"
@@ -67,6 +69,93 @@ func isLoopbackRequest(r *http.Request) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// Trusted CORS origins. Ghost binds to 0.0.0.0 and treats loopback peers as
+// authenticated, so a browser page opened on the same host could otherwise call
+// the gateway directly (127.0.0.1) and read its responses. We therefore never
+// send a wildcard Access-Control-Allow-Origin: we only allow origins that refer
+// to this machine (loopback, this host's name, or a local interface IP). Native
+// apps ignore CORS entirely, and the Web Console talks to the gateway through
+// its own same-origin proxy, so permissive CORS was never required.
+var (
+	localHostnameOnce sync.Once
+	localHostnameVal  string
+	localIPOnce       sync.Once
+	localIPs          []net.IP
+)
+
+func localHostname() string {
+	localHostnameOnce.Do(func() {
+		if h, err := os.Hostname(); err == nil {
+			localHostnameVal = strings.ToLower(h)
+		}
+	})
+	return localHostnameVal
+}
+
+func localInterfaceIPs() []net.IP {
+	localIPOnce.Do(func() {
+		addrs, err := net.InterfaceAddrs()
+		if err != nil {
+			return
+		}
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok {
+				if ipn.IP.IsLoopback() || ipn.IP.IsPrivate() {
+					localIPs = append(localIPs, ipn.IP)
+				}
+			}
+		}
+	})
+	return localIPs
+}
+
+// isTrustedLocalOrigin reports whether a browser Origin refers to this machine.
+// Cross-site origins are rejected so a page the user opens cannot reach Ghost
+// over loopback and exfiltrate its state.
+func isTrustedLocalOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	hostname := strings.ToLower(u.Hostname())
+	if hostname == "" {
+		return false
+	}
+	if hostname == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(hostname); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	if hostname == localHostname() {
+		return true
+	}
+	if ip := net.ParseIP(hostname); ip != nil {
+		for _, l := range localInterfaceIPs() {
+			if l.Equal(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// setCORS applies CORS headers for a request. Access-Control-Allow-Origin is
+// only set when the request's Origin is a trusted local origin; otherwise it is
+// omitted so the browser blocks cross-origin reads. This is the security
+// boundary that prevents DNS-rebinding / cross-site access to the gateway.
+func setCORS(w http.ResponseWriter, r *http.Request, allowHeaders, allowMethods string) {
+	if o := r.Header.Get("Origin"); o != "" && isTrustedLocalOrigin(o) {
+		w.Header().Set("Access-Control-Allow-Origin", o)
+	}
+	if allowHeaders != "" {
+		w.Header().Set("Access-Control-Allow-Headers", allowHeaders)
+	}
+	if allowMethods != "" {
+		w.Header().Set("Access-Control-Allow-Methods", allowMethods)
+	}
 }
 
 // peerAuthorized reports whether the request may proceed.
@@ -249,9 +338,7 @@ const defaultInternalAPIPort = 8766
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Session, X-Ghost-Device-ID, X-Ghost-Credential, X-Ghost-Client-Id, X-Ghost-Client-Token")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			setCORS(w, r, "Content-Type, X-Ghost-Session, X-Ghost-Device-ID, X-Ghost-Credential, X-Ghost-Client-Id, X-Ghost-Client-Token", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -265,7 +352,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			})
 			return
 		}
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		setCORS(w, r, "", "")
 		next(w, r)
 	}
 }
@@ -275,9 +362,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func deviceAuthMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ghost-Session, X-Ghost-Device-ID, X-Ghost-Credential, X-Ghost-Client-Id, X-Ghost-Client-Token")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			setCORS(w, r, "Content-Type, X-Ghost-Session, X-Ghost-Device-ID, X-Ghost-Credential, X-Ghost-Client-Id, X-Ghost-Client-Token", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -305,7 +390,7 @@ func deviceAuthMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 			}
 			_ = pairing.UpdateLastSeen(db, deviceID)
 		}
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		setCORS(w, r, "", "")
 		next(w, r)
 	}
 }
@@ -315,13 +400,11 @@ func deviceAuthMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 func publicHandler(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			setCORS(w, r, "Content-Type", "POST, OPTIONS")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		setCORS(w, r, "", "")
 		next(w, r)
 	}
 }
@@ -1926,9 +2009,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				if req.Schedule.TZ != "" {
 					item.Timezone = req.Schedule.TZ
 				}
-				// Compute next run from cron expression (simplified)
-				next := time.Now().UTC().Add(time.Hour)
-				item.NextRunAt = &next
+				// Compute the next run from the cron expression in the item's timezone.
+				item.NextRunAt = scheduled.NextCronRun(item.Schedule.Expr, item.Timezone, time.Now())
 			default:
 				jsonError(w, http.StatusBadRequest, "invalid_request", "schedule.kind is required (at, every, cron)")
 				return

@@ -19,7 +19,7 @@ func TestHonchoStore_CreateProfile(t *testing.T) {
 		},
 	}
 
-	store := NewHonchoStore(cfg, tmpDir)
+	store := NewHonchoStore(&cfg, tmpDir)
 	ctx := context.Background()
 
 	profile, err := store.GetProfile(ctx, "user-123")
@@ -45,7 +45,7 @@ func TestHonchoStore_AddFact(t *testing.T) {
 		},
 	}
 
-	store := NewHonchoStore(cfg, tmpDir)
+	store := NewHonchoStore(&cfg, tmpDir)
 	ctx := context.Background()
 
 	err := store.AddFact(ctx, "user-123", "User prefers Python", "conversation", 0.9)
@@ -76,7 +76,7 @@ func TestHonchoStore_AddTopic(t *testing.T) {
 		},
 	}
 
-	store := NewHonchoStore(cfg, tmpDir)
+	store := NewHonchoStore(&cfg, tmpDir)
 	ctx := context.Background()
 
 	err := store.AddTopic(ctx, "user-123", "machine-learning")
@@ -115,7 +115,7 @@ func TestHonchoStore_GetContext(t *testing.T) {
 		},
 	}
 
-	store := NewHonchoStore(cfg, tmpDir)
+	store := NewHonchoStore(&cfg, tmpDir)
 	ctx := context.Background()
 
 	store.UpdateProfile(ctx, "user-123", map[string]interface{}{
@@ -145,12 +145,12 @@ func TestHonchoStore_Persistence(t *testing.T) {
 	}
 
 	// Create profile with first store
-	store1 := NewHonchoStore(cfg, tmpDir)
+	store1 := NewHonchoStore(&cfg, tmpDir)
 	ctx := context.Background()
 	store1.AddFact(ctx, "user-123", "Test fact", "test", 0.5)
 
 	// Load with second store
-	store2 := NewHonchoStore(cfg, tmpDir)
+	store2 := NewHonchoStore(&cfg, tmpDir)
 	profile, err := store2.GetProfile(ctx, "user-123")
 	if err != nil {
 		t.Fatalf("failed to get profile: %v", err)
@@ -171,7 +171,7 @@ func TestHonchoStore_Disabled(t *testing.T) {
 		},
 	}
 
-	store := NewHonchoStore(cfg, tmpDir)
+	store := NewHonchoStore(&cfg, tmpDir)
 	ctx := context.Background()
 
 	_, err := store.GetProfile(ctx, "user-123")
@@ -190,7 +190,7 @@ func TestHonchoStore_ListProfiles(t *testing.T) {
 		},
 	}
 
-	store := NewHonchoStore(cfg, tmpDir)
+	store := NewHonchoStore(&cfg, tmpDir)
 	ctx := context.Background()
 
 	store.GetProfile(ctx, "user-1")
@@ -221,7 +221,7 @@ func TestHonchoStore_UpdateProfile(t *testing.T) {
 		},
 	}
 
-	store := NewHonchoStore(cfg, tmpDir)
+	store := NewHonchoStore(&cfg, tmpDir)
 	ctx := context.Background()
 
 	// Create profile

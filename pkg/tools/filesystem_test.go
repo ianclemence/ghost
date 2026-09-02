@@ -247,3 +247,51 @@ func TestFilesystemTool_ListDir_DefaultPath(t *testing.T) {
 		t.Errorf("Expected success with default path '.', got IsError=true: %s", result.ForLLM)
 	}
 }
+
+// TestValidatePath_Containment verifies that paths cannot escape the workspace
+// via path-separator boundary tricks (e.g. a sibling whose name merely starts
+// with the workspace path, or ".." traversal).
+func TestValidatePath_Containment(t *testing.T) {
+	// Simulate /data/workspace as the sandbox root.
+	root := filepath.Join(t.TempDir(), "workspace")
+
+	t.Run("inside workspace allowed", func(t *testing.T) {
+		_, err := validatePath("memory/MEMORY.md", root, true)
+		if err != nil {
+			t.Fatalf("expected allowed, got %v", err)
+		}
+	})
+	t.Run("workspace escape with .. denied", func(t *testing.T) {
+		// A path outside the project root must be denied.
+		_, err := validatePath("../../etc/passwd", root, true)
+		if err == nil {
+			t.Fatalf("expected path outside project root to be denied")
+		}
+	})
+	t.Run("project root allowed", func(t *testing.T) {
+		// The project root (parent of workspace) is an intentional read/write
+		// exception for development (the agent maintains its own source tree).
+		_, err := validatePath("../ok.txt", root, true)
+		if err != nil {
+			t.Fatalf("expected path within project root to be allowed, got %v", err)
+		}
+	})
+	t.Run("project root sibling escape denied", func(t *testing.T) {
+		// A sibling whose NAME merely starts with the project root path must not
+		// be treated as inside it (old strings.HasPrefix bug).
+		projectRoot := filepath.Dir(root)
+		evil := filepath.Join(filepath.Dir(projectRoot), filepath.Base(projectRoot)+"-evil")
+		os.MkdirAll(evil, 0755)
+		_, err := validatePath(filepath.Join(evil, "x"), root, true)
+		if err == nil {
+			t.Fatalf("expected project-root sibling escape to be denied")
+		}
+	})
+	t.Run("absolute outside project root denied", func(t *testing.T) {
+		outside := filepath.Join(t.TempDir(), "outside.txt")
+		_, err := validatePath(outside, root, true)
+		if err == nil {
+			t.Fatalf("expected outside path to be denied")
+		}
+	})
+}

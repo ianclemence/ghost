@@ -55,7 +55,7 @@ type HonchoStore struct {
 }
 
 // NewHonchoStore creates a new HonchoStore.
-func NewHonchoStore(cfg config.Config, workspace string) *HonchoStore {
+func NewHonchoStore(cfg *config.Config, workspace string) *HonchoStore {
 	profilesDir := filepath.Join(workspace, "memory", "profiles")
 	os.MkdirAll(profilesDir, 0755)
 

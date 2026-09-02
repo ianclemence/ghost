@@ -8,6 +8,16 @@ import (
 	"strings"
 )
 
+// under reports whether p is root or a descendant of root, using clean path
+// containment on a path-separator boundary. This is the correct confinement
+// check: raw strings.HasPrefix would let a sibling whose name merely starts
+// with root's path (e.g. "workspace-evil") escape the sandbox.
+func under(root, p string) bool {
+	root = filepath.Clean(root)
+	p = filepath.Clean(p)
+	return p == root || strings.HasPrefix(p, root+string(os.PathSeparator))
+}
+
 // validatePath ensures the given path is within the workspace if restrict is true.
 func validatePath(path, workspace string, restrict bool) (string, error) {
 	if workspace == "" {
@@ -29,17 +39,25 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 		}
 	}
 
-	if restrict && !strings.HasPrefix(absPath, absWorkspace) {
-		// Allow access to temporary media files from mobile uploads
+	if restrict {
+		// Allow access to temporary media files from mobile uploads.
 		tempMediaDir := filepath.Join(os.TempDir(), "GHOST_media")
-		if strings.HasPrefix(absPath, tempMediaDir) {
+		if under(tempMediaDir, absPath) {
 			return absPath, nil
 		}
 
-		// Allow READ-ONLY access to the project root (parent of workspace)
-		// This enables the agent to analyze its own source code (pkg/tools, etc.)
+		// Allow access to the workspace and its descendants.
+		if under(absWorkspace, absPath) {
+			return absPath, nil
+		}
+
+		// Allow access to the project root (parent of workspace), so the agent
+		// can work on its own source tree during development. Confinement is
+		// still enforced on a path-separator boundary (under), so a sibling
+		// whose name merely starts with the workspace or project path cannot
+		// escape.
 		projectRoot := filepath.Dir(absWorkspace)
-		if strings.HasPrefix(absPath, projectRoot) {
+		if under(projectRoot, absPath) {
 			return absPath, nil
 		}
 

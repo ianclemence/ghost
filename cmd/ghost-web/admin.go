@@ -1116,6 +1116,9 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(rel, ".env") {
 				return nil // secrets — never included in backups
 			}
+			if strings.HasSuffix(path, ".secrets.json") {
+				return nil // credentials — never included in backups
+			}
 			if strings.HasSuffix(path, ".log") {
 				return nil // transient logs
 			}

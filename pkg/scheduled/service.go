@@ -5,6 +5,8 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"github.com/adhocore/gronx"
 )
 
 // Executor is the function signature for executing a scheduled item.
@@ -90,9 +92,10 @@ func (s *Service) tick() {
 	}
 
 	for _, item := range items {
-		// Mark as due to prevent duplicate execution
-		if err := s.store.UpdateState(item.ID, StateDue); err != nil {
-			log.Printf("[scheduled] failed to mark item due: %v", err)
+		// Transition the item to running synchronously so a subsequent tick can
+		// never re-list it and fire it a second time while execution is in flight.
+		if err := s.store.UpdateState(item.ID, StateRunning); err != nil {
+			log.Printf("[scheduled] failed to mark item running: %v", err)
 			continue
 		}
 
@@ -433,10 +436,20 @@ func generateExecutionID(item *ScheduledItem) string {
 	return item.ID + ":" + time.Now().UTC().Format("20060102T150405Z")
 }
 
-// computeCronNextRun computes the next run for a cron expression.
+// NextCronRun returns the next time the given cron expression fires after
+// `now`, in the schedule's timezone. It is the single cron next-run source used
+// both when a recurring item is first created and when it is rescheduled after
+// an execution. Returns nil if the expression is unparseable (so the item is
+// retired rather than drifting to an arbitrary "next hour").
+func NextCronRun(expr, tz string, now time.Time) *time.Time {
+	return computeCronNextRun(expr, tz, now)
+}
+
+// computeCronNextRun computes the next run for a cron expression using the
+// gronx library, interpreted in the schedule's timezone. The reference clock is
+// converted into the target timezone so "9 AM" means 9 AM there; the returned
+// time is converted back to UTC for consistent storage and comparison.
 func computeCronNextRun(expr, tz string, now time.Time) *time.Time {
-	// Simple cron computation for common patterns
-	// In production, this would use the gronx library
 	loc := time.UTC
 	if tz != "" {
 		if l, err := time.LoadLocation(tz); err == nil {
@@ -444,26 +457,14 @@ func computeCronNextRun(expr, tz string, now time.Time) *time.Time {
 		}
 	}
 
-	now = now.In(loc)
-
-	// Parse the cron expression (simplified)
-	// This is a placeholder - real implementation would use gronx
-	switch expr {
-	case "0 8 * * *": // Every day at 8 AM
-		next := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, loc)
-		if next.Before(now) {
-			next = next.AddDate(0, 0, 1)
-		}
-		return &next
-	case "0 9 * * 1-5": // Weekdays at 9 AM
-		next := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, loc)
-		for next.Before(now) || next.Weekday() == time.Saturday || next.Weekday() == time.Sunday {
-			next = next.AddDate(0, 0, 1)
-		}
-		return &next
-	default:
-		// Default: next hour
-		next := now.Truncate(time.Hour).Add(time.Hour)
-		return &next
+	localNow := now.In(loc)
+	next, err := gronx.NextTickAfter(expr, localNow, false)
+	if err != nil {
+		// Unparseable or invalid expression: don't guess. Returning nil causes
+		// the item to be retired (see handleSuccess) rather than firing at an
+		// arbitrary time.
+		return nil
 	}
+	utc := next.UTC()
+	return &utc
 }

@@ -39,7 +39,7 @@ type SkillsHub struct {
 }
 
 // NewSkillsHub creates a new SkillsHub instance.
-func NewSkillsHub(cfg config.Config, workspace string) *SkillsHub {
+func NewSkillsHub(cfg *config.Config, workspace string) *SkillsHub {
 	registry := NewClawHubRegistry(cfg.Skills.ClawHub)
 	loader := NewSkillsLoader(workspace,
 		filepath.Join(os.Getenv("HOME"), ".GHOST", "skills"),

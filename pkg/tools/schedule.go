@@ -140,8 +140,7 @@ func (t *ScheduleTool) Execute(ctx context.Context, args map[string]interface{})
 	case scheduled.ScheduleAt:
 		item.NextRunAt = parsed.Schedule.At
 	case scheduled.ScheduleCron:
-		next := time.Now().UTC().Add(time.Hour)
-		item.NextRunAt = &next
+		item.NextRunAt = scheduled.NextCronRun(parsed.Schedule.Expr, parsed.Timezone, time.Now())
 	case scheduled.ScheduleEvery:
 		next := time.Now().UTC().Add(parsed.Schedule.Every)
 		item.NextRunAt = &next

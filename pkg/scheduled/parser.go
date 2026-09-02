@@ -53,7 +53,7 @@ func parseRecurringSchedule(input string, referenceTime time.Time, timezone stri
 		return &ParsedSchedule{
 			Schedule: Schedule{
 				Kind: ScheduleCron,
-				Expr: fmt.Sprintf("0 %d %d * *", minute, hour),
+				Expr: fmt.Sprintf("%d %d * * *", minute, hour),
 			},
 			Title:       fmt.Sprintf("Every day at %s", formatTimeDisplay(hour, minute)),
 			Timezone:    timezone,
@@ -78,7 +78,7 @@ func parseRecurringSchedule(input string, referenceTime time.Time, timezone stri
 		return &ParsedSchedule{
 			Schedule: Schedule{
 				Kind: ScheduleCron,
-				Expr: fmt.Sprintf("0 %d * * %s", minute, dayNum),
+				Expr: fmt.Sprintf("%d %d * * %s", minute, hour, dayNum),
 			},
 			Title:       fmt.Sprintf("Every %s at %s", matches[1], formatTimeDisplay(hour, minute)),
 			Timezone:    timezone,
@@ -98,7 +98,7 @@ func parseRecurringSchedule(input string, referenceTime time.Time, timezone stri
 		return &ParsedSchedule{
 			Schedule: Schedule{
 				Kind: ScheduleCron,
-				Expr: fmt.Sprintf("0 %d * * 1", minute), // Monday
+				Expr: fmt.Sprintf("%d %d * * 1", minute, hour), // Monday
 			},
 			Title:       fmt.Sprintf("Every week at %s", formatTimeDisplay(hour, minute)),
 			Timezone:    timezone,
@@ -119,7 +119,7 @@ func parseRecurringSchedule(input string, referenceTime time.Time, timezone stri
 		return &ParsedSchedule{
 			Schedule: Schedule{
 				Kind: ScheduleCron,
-				Expr: fmt.Sprintf("0 %d %d * *", minute, hour),
+				Expr: fmt.Sprintf("%d %d %d * *", minute, hour, day),
 			},
 			Title:       fmt.Sprintf("Every month on the %d at %s", day, formatTimeDisplay(hour, minute)),
 			Timezone:    timezone,
