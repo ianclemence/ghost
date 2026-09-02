@@ -9,9 +9,8 @@ async function loadMemory(container) {
   head.appendChild(sub);
   container.appendChild(head);
 
-  const [selfRes, filesRes] = await Promise.allSettled([
+  const [selfRes] = await Promise.allSettled([
     GhostAPI.proxyGet('/v1/memory/self'),
-    GhostAPI.proxyGet('/v1/memory/files'),
   ]);
   if (!document.body.contains(container)) return;
 
@@ -26,12 +25,9 @@ async function loadMemory(container) {
   // (self.you) are derived from the same structured facts already shown in the
   // profile hero, so including them would just duplicate the facts above.
   const curated = (Array.isArray(self.notes) ? self.notes : []);
-  const files = filesRes.status === 'fulfilled'
-    ? (Array.isArray(filesRes.value) ? filesRes.value : (filesRes.value.files || filesRes.value.items || []))
-    : [];
 
-  // One calm empty state when there's nothing at all — never two.
-  if (facts.length === 0 && curated.length === 0 && files.length === 0) {
+  // One calm empty state when there's nothing at all.
+  if (facts.length === 0 && curated.length === 0) {
     container.appendChild(GhostUI.emptyState('Ghost is still getting to know you', 'Talk to Ghost and it will remember the things that matter about you here.'));
     return;
   }
@@ -42,11 +38,6 @@ async function loadMemory(container) {
       console.error('renderFacts failed', e);
       container.appendChild(GhostUI.errorState('Couldn\u2019t show these memories', String(e && e.message || e)));
     }
-  }
-
-  if (files.length) {
-    try { renderNotes(container, files); }
-    catch (e) { console.error('renderNotes failed', e); }
   }
 }
 
@@ -135,68 +126,6 @@ function renderFacts(container, facts, curated) {
   }
 }
 
-// renderNotes is the searchable list of memory files Ghost has written.
-function renderNotes(container, files) {
-  const searchWrap = GhostUI.h('div', { style: 'margin-bottom:var(--s-4);margin-top:var(--s-4)' });
-  const search = GhostUI.input('Search memories\u2026');
-  searchWrap.appendChild(search);
-  container.appendChild(searchWrap);
-
-  const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'mem-list' });
-  container.appendChild(listEl);
-
-  function sectionLabel(text) {
-    return GhostUI.h('div', { className: 'self-group', style: 'text-transform:none;font-weight:600' }, text);
-  }
-
-  function noteRow(f) {
-    const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openMemory(container, f) });
-    const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    const title = GhostSemantic.noteTitle(f) || 'Note';
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, title));
-    const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
-    if (f.summary) sub.appendChild(document.createTextNode(f.summary.length > 80 ? f.summary.slice(0, 80) + '\u2026' : f.summary));
-    else sub.appendChild(document.createTextNode('Updated ' + GhostUI.timeAgo(f.modified)));
-    c.appendChild(sub);
-    row.appendChild(c);
-    row.appendChild(GhostUI.h('span', { className: 'chevron' }, '\u203a'));
-    return row;
-  }
-
-  function render(items) {
-    listEl.innerHTML = '';
-    if (!items.length) {
-      listEl.appendChild(GhostUI.emptyState('Nothing found', 'Try a different word, or use \u201CWhat did we talk about\u201D to search your conversations.'));
-      return;
-    }
-    const notes = items.filter(f => !GhostSemantic.isJournalNote(f));
-    const journal = items.filter(f => GhostSemantic.isJournalNote(f));
-    if (notes.length && journal.length) listEl.appendChild(sectionLabel('Memories'));
-    notes.forEach(f => listEl.appendChild(noteRow(f)));
-    if (journal.length) {
-      listEl.appendChild(sectionLabel(journal.length ? 'Daily notes' : 'Notes'));
-      journal.forEach(f => listEl.appendChild(noteRow(f)));
-    }
-  }
-
-  render(files);
-  let debounce;
-  search.addEventListener('input', () => {
-    const q = search.value.trim();
-    clearTimeout(debounce);
-    debounce = setTimeout(async () => {
-      if (!q) { render(files); return; }
-      listEl.innerHTML = '';
-      listEl.appendChild(GhostUI.loading('Searching\u2026'));
-      let res;
-      try { res = await GhostAPI.proxyGet('/v1/memory/files?q=' + encodeURIComponent(q)); }
-      catch (e) { listEl.innerHTML = ''; listEl.appendChild(GhostUI.errorState('Couldn\u2019t search', 'Ghost may still be starting.')); return; }
-      const hits = Array.isArray(res) ? res : (res.files || res.items || []);
-      render(hits);
-    }, 200);
-  });
-}
-
 // recallMsg renders a single recall message. Recall strings are "role: content";
 // we split off the role label and render the content as markdown so headings,
 // bold, lists, and links read properly instead of as raw "#" / "**" characters.
@@ -266,54 +195,6 @@ async function renderRecall(container) {
     });
     body.appendChild(list);
   });
-}
-
-async function openMemory(container, file) {
-  container.innerHTML = '';
-  const back = GhostUI.h('div', { className: 'ghost-link-row', style: 'margin-bottom:var(--s-4);width:fit-content', onClick: () => loadMemory(container) });
-  back.appendChild(GhostUI.h('span', { className: 'chevron', style: 'transform:rotate(180deg)' }, '\u2039'));
-  back.appendChild(GhostUI.h('span', {}, 'All memories'));
-  container.appendChild(back);
-
-  const view = GhostUI.h('div', { className: 'panel' });
-  view.appendChild(GhostUI.loading('Opening memory\u2026'));
-  container.appendChild(view);
-
-  let data;
-  try { data = await GhostAPI.proxyGet('/v1/memory/file?name=' + encodeURIComponent(file.name)); }
-  catch (e) {
-    view.innerHTML = '';
-    view.appendChild(GhostUI.errorState('Couldn\u2019t open this memory', 'It may have been removed.'));
-    return;
-  }
-
-  view.innerHTML = '';
-  const head = GhostUI.h('div', { className: 'panel-head' });
-  const titleText = GhostSemantic.noteTitle(file) || file.title || 'Note';
-  const meta = GhostUI.h('p', {});
-  if (file.source) {
-    meta.appendChild(document.createTextNode('Source: ' + file.source));
-  }
-  if (meta.childNodes.length > 0) {
-    head.appendChild(GhostUI.h('div', {}, GhostUI.h('h2', {}, titleText), meta));
-  } else {
-    head.appendChild(GhostUI.h('div', {}, GhostUI.h('h2', {}, titleText), GhostUI.h('p', {}, 'Stored on your Ghost')));
-  }
-  const actions = GhostUI.h('div', { className: 'ghost-row-trailing' });
-  actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: async () => {
-    if (!(await GhostUI.confirmModal('Forget this memory?', 'Ghost will delete \u201c' + titleText + '\u201d from its memory. This can\u2019t be undone.', 'Forget'))) return;
-    try { await GhostAPI.proxyDel('/v1/memory/file?name=' + encodeURIComponent(file.name)); GhostUI.toast('Memory forgotten'); loadMemory(container); }
-    catch (e) { GhostUI.toast('Couldn\u2019t forget that.', 'err'); }
-  } }, 'Forget'));
-  head.appendChild(actions);
-  view.appendChild(head);
-
-  if (file.summary) {
-    view.appendChild(GhostUI.h('div', { className: 'type-callout', style: 'margin-bottom:var(--s-4);padding:var(--s-3) var(--s-4);background:var(--ink-ghost);border-radius:var(--r-sm)' }, file.summary));
-  }
-  const body = GhostUI.h('div', { className: 'markdown-body' });
-  body.innerHTML = GhostUI.md(data.content || '');
-  view.appendChild(body);
 }
 
 GhostApp.registerSection('memory', loadMemory);
