@@ -49,7 +49,7 @@ const GhostWizard = (() => {
   function renderWelcome(screen) {
     screen.appendChild(GhostUI.h('div', { className: 'wizard-brand' }, GhostUI.ghostMark('xl')));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-display' }, 'Ghost'));
-    screen.appendChild(GhostUI.h('div', { className: 'wizard-tagline type-body text-secondary' }, 'Your AI, Your Hardware.'));
+    screen.appendChild(GhostUI.h('div', { className: 'wizard-tagline type-body text-secondary' }, 'Your AI. Your Memory. Your Machine.'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-callout text-secondary' },
       'A personal AI that lives on your hardware, remembers what matters, and keeps working for you.'
     ));

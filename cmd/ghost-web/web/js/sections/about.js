@@ -20,7 +20,7 @@ async function loadAbout(container) {
   brand.appendChild(GhostUI.ghostMark('lg'));
   const brandText = GhostUI.h('div', {});
   brandText.appendChild(GhostUI.h('div', { className: 'type-title' }, identity.ghost_name || 'Ghost'));
-  brandText.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, identity.owner_name ? ('Owned by ' + identity.owner_name) : 'Your AI, Your Memory, Your Machine'));
+  brandText.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, identity.owner_name ? ('Owned by ' + identity.owner_name) : 'Your AI. Your Memory. Your Machine.'));
   brand.appendChild(brandText);
   container.appendChild(brand);
 

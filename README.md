@@ -1,6 +1,6 @@
 # Ghost
 
-> **Your AI, Your Memory, Your Machine.**  
+> **Your AI. Your Memory. Your Machine.**  
 > *A personal AI that belongs to you — it lives on your hardware, remembers you, and works for you.*
 
 ---
