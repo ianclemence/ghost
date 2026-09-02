@@ -48,9 +48,7 @@ async function loadActivity(container) {
     const sessVal = sessions.value;
     const sessArr = Array.isArray(sessVal) ? sessVal : (sessVal.sessions || sessVal.items || []);
     for (const s of sessArr) {
-      let title = (s.title && s.title.trim()) ? s.title.trim() : 'Conversation';
-      if (title.length > 50) title = title.substring(0, 47) + '…';
-      items.push({ kind: 'messages', ts: s.last_activity, title, meta: GhostUI.fmtNum(s.message_count) + ' messages' });
+      items.push({ kind: 'conversation', ts: s.last_activity, title: s.title, meta: GhostUI.fmtNum(s.message_count) + ' messages' });
     }
   }
 
@@ -59,15 +57,15 @@ async function loadActivity(container) {
     const jobArr = Array.isArray(jobVal) ? jobVal : (jobVal.jobs || jobVal.items || []);
     for (const j of jobArr) {
       const lr = j.state && j.state.last_run_at;
-      if (lr) items.push({ kind: 'automations', ts: Math.floor(new Date(lr).getTime() / 1000), title: j.name, meta: 'Last run' });
+      if (lr) items.push({ kind: 'automation', ts: Math.floor(new Date(lr).getTime() / 1000), job: j });
     }
   }
 
   if (memories.status === 'fulfilled') {
     const memVal = memories.value;
     const memArr = Array.isArray(memVal) ? memVal : (memVal.files || memVal.items || []);
-    for (const m of memArr.slice(0, 20)) {
-      items.push({ kind: 'memory', ts: m.modified, title: m.name.replace(/\.md$/, ''), meta: 'Remembered' });
+    for (const m of memArr) {
+      items.push({ kind: 'memory', ts: m.modified, file: m });
     }
   }
 
@@ -75,17 +73,22 @@ async function loadActivity(container) {
     const traceVal = traces.value;
     const incObj = traceVal.incidents || {};
     const incArr = Array.isArray(incObj) ? incObj : Object.values(incObj);
-    for (const inc of incArr.slice(0, 20)) {
-      items.push({ kind: 'errors', ts: inc.last_at || 0, title: (inc.channel || 'System') + ': ' + (inc.last_error || 'Incident'), meta: inc.failure_count ? inc.failure_count + ' failures' : 'error' });
+    for (const inc of incArr) {
+      items.push({ kind: 'error', ts: inc.last_at || 0, inc });
     }
   }
 
-  items.sort((a, b) => b.ts - a.ts);
+  // Central semantic interpretation + grouping so repeated activity collapses
+  // and nothing internal (paths, ids, raw event names) reaches the timeline.
+  const semantic = GhostSemantic.groupItems(items.map(i => GhostSemantic.activityItem(i)));
+
+  const FILTER_KIND = { all: null, messages: 'conversation', automations: 'automation', memory: 'memory', errors: 'error' };
 
   function paint() {
     const t = document.getElementById('act-timeline');
     t.innerHTML = '';
-    const filtered = activeFilter === 'all' ? items : items.filter(i => i.kind === activeFilter);
+    const want = FILTER_KIND[activeFilter];
+    const filtered = want ? semantic.filter(i => i.kind === want) : semantic;
     if (filtered.length === 0) {
       const labels = { all: 'Nothing here yet', messages: 'No conversations yet', automations: 'No automations have run', memory: 'Nothing remembered yet', errors: 'No errors — Ghost is healthy' };
       t.appendChild(GhostUI.emptyState(labels[activeFilter] || 'Nothing here', 'This view will fill in as Ghost works for you.'));

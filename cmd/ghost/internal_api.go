@@ -1853,17 +1853,17 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				Title       string `json:"title"`
 				Description string `json:"description"`
 				Schedule    struct {
-					Kind  string `json:"kind"`
+					Kind  string  `json:"kind"`
 					At    *string `json:"at"`
 					Every *string `json:"every"`
-					Expr  string `json:"expr"`
-					TZ    string `json:"tz"`
+					Expr  string  `json:"expr"`
+					TZ    string  `json:"tz"`
 				} `json:"schedule"`
 				Action struct {
-					Kind    string `json:"kind"`
-					Content string `json:"content"`
-					Command string `json:"command"`
-					Deliver bool   `json:"deliver"`
+					Kind    string   `json:"kind"`
+					Content string   `json:"content"`
+					Command string   `json:"command"`
+					Deliver bool     `json:"deliver"`
 					Skills  []string `json:"skills"`
 				} `json:"action"`
 				Channel string `json:"channel"`
@@ -1883,17 +1883,17 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				itemType = scheduled.TypeAutomation
 			}
 			item := &scheduled.ScheduledItem{
-				Type:        itemType,
-				Title:       req.Title,
-				Description: req.Description,
-				State:       scheduled.StateScheduled,
-				Timezone:    "UTC",
-				Channel:     req.Channel,
-				ChatID:      req.ChatID,
+				Type:         itemType,
+				Title:        req.Title,
+				Description:  req.Description,
+				State:        scheduled.StateScheduled,
+				Timezone:     "UTC",
+				Channel:      req.Channel,
+				ChatID:       req.ChatID,
 				DeliveryMode: scheduled.DeliverySmart,
-				Source:      "user",
-				CreatedBy:   "api",
-				MaxRetries:  3,
+				Source:       "user",
+				CreatedBy:    "api",
+				MaxRetries:   3,
 			}
 			// Parse schedule
 			switch req.Schedule.Kind {
@@ -2685,7 +2685,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		}
 		entries := make([]entryView, 0)
 		for _, e := range store.Current() {
-			domain := personalcontext.ClassifyDomain(e.Predicate)
+			domain := personalcontext.ClassifyEntryDomain(e)
 			entries = append(entries, entryView{
 				ID:             e.ID,
 				Kind:           string(e.Kind),

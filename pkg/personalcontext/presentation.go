@@ -2,6 +2,7 @@ package personalcontext
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 )
 
@@ -83,6 +84,31 @@ func ClassifyDomain(predicate string) Domain {
 	}
 	return DomainOther
 }
+
+// ClassifyEntryDomain classifies an entry's domain, using the value as well as
+// the predicate so generic preferences ("preference/prefers",
+// "preference/favorite", "preference/likes") are assigned the specific,
+// controlled domain that their value actually concerns rather than the
+// catch-all Lifestyle. It never invents a new domain — values it cannot place
+// fall back to the predicate-derived classification.
+func ClassifyEntryDomain(e Entry) Domain {
+	d := ClassifyDomain(e.Predicate)
+	if d != DomainLifestyle {
+		return d
+	}
+	val := strings.ToLower(entryValueString(e))
+	if val == "" {
+		return d
+	}
+	if foodDrinkRE.MatchString(val) {
+		return DomainFood
+	}
+	return d
+}
+
+// foodDrinkRE matches food- and drink-related words in a value so a generic
+// preference is placed in the Food domain rather than Lifestyle.
+var foodDrinkRE = regexp.MustCompile(`\b(sushi|pizza|coffee|tea|food|dish|meal|drink|restaurant|pasta|burger|breakfast|dinner|lunch|beer|wine|cake|dessert|cook|recipe|eat|smoothie|juice|chocolate|candy|soda|noodle|ramen|taco|salad|fruit|vegetable|steak|chicken|rice|soup|sandwich|cereal|yogurt|butter|cheese|egg|bagel|croissant|donut?|fries|potato|couscous)\b`)
 
 // DomainLabel returns a human-readable label for a domain, e.g. "Food",
 // "Location", "Work". It is the user-facing form used by the console.
@@ -211,15 +237,16 @@ func Title(e Entry) string {
 
 	// Relationship entries.
 	if e.Kind == KindRelationship {
+		name := relationshipEntity(e)
 		switch {
 		case strings.Contains(e.Predicate, "partner"):
-			return "Partner: " + val
+			return "Partner: " + name
 		case strings.Contains(e.Predicate, "family"):
-			return "Family: " + val
-		case strings.Contains(e.Predicate, "colleague"):
-			return "Colleague: " + val
+			return "Family: " + name
+		case strings.Contains(e.Predicate, "colleague") || strings.Contains(e.Predicate, "business"):
+			return "Colleague: " + name
 		default:
-			return label + ": " + val
+			return label + ": " + name
 		}
 	}
 
@@ -298,13 +325,14 @@ func Summary(e Entry) string {
 	}
 
 	if e.Kind == KindRelationship {
+		name := relationshipEntity(e)
 		if strings.Contains(e.Predicate, "partner") {
-			return "Your partner is " + val + "."
+			return "Your partner is " + name + "."
 		}
 		if strings.Contains(e.Predicate, "colleague") {
-			return "You work with " + val + "."
+			return "You work with " + name + "."
 		}
-		return "Your " + Label(e.Predicate) + " is " + val + "."
+		return "Your " + Label(e.Predicate) + " is " + name + "."
 	}
 
 	if e.Kind == KindRoutine {
@@ -321,6 +349,28 @@ func lastSegment(predicate string) string {
 		return predicate[i+1:]
 	}
 	return predicate
+}
+
+// relationshipEntity extracts just the person's name from a relationship value.
+// A relationship value should be an entity ("Sarah"), but a semantic extraction
+// occasionally leaks the whole source sentence ("Sarah and I are business
+// partners"). This reduces the value to the entity for display so the stored
+// sentence never becomes the user-facing label.
+func relationshipEntity(e Entry) string {
+	val := entryValueString(e)
+	name := val
+	low := strings.ToLower(val)
+	for _, sep := range []string{" and i are ", " and i is ", " and i were ", " is my ", " is the "} {
+		if i := strings.Index(low, sep); i > 0 {
+			name = strings.TrimSpace(val[:i])
+			break
+		}
+	}
+	name = strings.TrimRight(name, ". ,;:!?")
+	if name == "" {
+		return val
+	}
+	return name
 }
 
 // entryValueString reads a string entry value for display.

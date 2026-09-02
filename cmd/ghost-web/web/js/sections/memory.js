@@ -18,7 +18,10 @@ async function loadMemory(container) {
   renderRecall(container);
 
   const self = selfRes.status === 'fulfilled' ? (selfRes.value || {}) : {};
-  const facts = Array.isArray(self.entries) ? self.entries : [];
+  const rawFacts = Array.isArray(self.entries) ? self.entries : [];
+  // Present the canonical memory collection — duplicate extractions that
+  // represent the same fact collapse into one visible memory.
+  const facts = GhostSemantic.canonicalizeEntries(rawFacts);
   // Show only the model's own curated notes here. The user-profile lines
   // (self.you) are derived from the same structured facts already shown in the
   // profile hero, so including them would just duplicate the facts above.
@@ -89,10 +92,12 @@ function renderFacts(container, facts, curated) {
   function factRow(e) {
     const row = GhostUI.h('div', { className: 'ghost-row self-entry' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    const title = e.title || e.value || e.label;
+    const title = GhostSemantic.memoryTitleFor(e);
     c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:500' }, title));
     const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
-    if (e.domain_label) sub.appendChild(GhostUI.h('span', { className: 'tag', style: 'text-transform:capitalize;font-size:0.75rem;padding:0.1em 0.4em;border-radius:var(--r-sm);background:var(--paper-sunken);color:var(--ink-muted);margin-right:var(--s-2)' }, e.domain_label));
+    const dom = GhostSemantic.inferDomainFromValue(e.kind, e.domain, e.value) || e.domain;
+    const tag = GhostSemantic.domainTag(dom, e.kind);
+    if (tag) sub.appendChild(GhostUI.h('span', { className: 'tag', style: 'text-transform:capitalize;font-size:0.75rem;padding:0.1em 0.4em;border-radius:var(--r-sm);background:var(--paper-sunken);color:var(--ink-muted);margin-right:var(--s-2)' }, tag));
     const meta = metaFor(e);
     if (meta) sub.appendChild(document.createTextNode(meta));
     c.appendChild(sub);
@@ -140,30 +145,38 @@ function renderNotes(container, files) {
   const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'mem-list' });
   container.appendChild(listEl);
 
+  function sectionLabel(text) {
+    return GhostUI.h('div', { className: 'self-group', style: 'text-transform:none;font-weight:600' }, text);
+  }
+
+  function noteRow(f) {
+    const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openMemory(container, f) });
+    const c = GhostUI.h('div', { className: 'ghost-row-content' });
+    const title = GhostSemantic.noteTitle(f) || 'Note';
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, title));
+    const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
+    if (f.summary) sub.appendChild(document.createTextNode(f.summary.length > 80 ? f.summary.slice(0, 80) + '\u2026' : f.summary));
+    else sub.appendChild(document.createTextNode('Updated ' + GhostUI.timeAgo(f.modified)));
+    c.appendChild(sub);
+    row.appendChild(c);
+    row.appendChild(GhostUI.h('span', { className: 'chevron' }, '\u203a'));
+    return row;
+  }
+
   function render(items) {
     listEl.innerHTML = '';
     if (!items.length) {
       listEl.appendChild(GhostUI.emptyState('Nothing found', 'Try a different word, or use \u201CWhat did we talk about\u201D to search your conversations.'));
       return;
     }
-    items.forEach(f => {
-      const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openMemory(container, f) });
-      const c = GhostUI.h('div', { className: 'ghost-row-content' });
-      const title = f.title || f.name.replace(/\.md$/, '');
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, title));
-      const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
-      if (f.kind) sub.appendChild(GhostUI.h('span', { style: 'text-transform:capitalize' }, f.kind));
-      if (f.summary) {
-        if (f.kind) sub.appendChild(document.createTextNode(' \u00b7 '));
-        sub.appendChild(document.createTextNode(f.summary.length > 80 ? f.summary.slice(0, 80) + '\u2026' : f.summary));
-      } else {
-        sub.appendChild(document.createTextNode('Updated ' + GhostUI.timeAgo(f.modified)));
-      }
-      c.appendChild(sub);
-      row.appendChild(c);
-      row.appendChild(GhostUI.h('span', { className: 'chevron' }, '\u203a'));
-      listEl.appendChild(row);
-    });
+    const notes = items.filter(f => !GhostSemantic.isJournalNote(f));
+    const journal = items.filter(f => GhostSemantic.isJournalNote(f));
+    if (notes.length && journal.length) listEl.appendChild(sectionLabel('Memories'));
+    notes.forEach(f => listEl.appendChild(noteRow(f)));
+    if (journal.length) {
+      listEl.appendChild(sectionLabel(journal.length ? 'Daily notes' : 'Notes'));
+      journal.forEach(f => listEl.appendChild(noteRow(f)));
+    }
   }
 
   render(files);
@@ -244,7 +257,9 @@ async function renderRecall(container) {
     res.sessions.forEach(sess => {
       const row = GhostUI.h('div', { className: 'ghost-row' });
       const c = GhostUI.h('div', { className: 'ghost-row-content' });
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:500' }, sess.session_id));
+      const firstUser = (sess.messages || []).find(m => (m.indexOf(': ') > 0 ? m.slice(0, m.indexOf(':')) : '') === 'user');
+      const preview = firstUser ? firstUser.slice(firstUser.indexOf(': ') + 2) : '';
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-weight:500' }, GhostSemantic.conversationTitle(preview)));
       (sess.messages || []).forEach(m => c.appendChild(recallMsg(m)));
       row.appendChild(c);
       list.appendChild(row);
@@ -274,11 +289,9 @@ async function openMemory(container, file) {
 
   view.innerHTML = '';
   const head = GhostUI.h('div', { className: 'panel-head' });
-  const titleText = file.title || file.name.replace(/\.md$/, '');
+  const titleText = GhostSemantic.noteTitle(file) || file.title || 'Note';
   const meta = GhostUI.h('p', {});
-  if (file.kind) meta.appendChild(GhostUI.h('span', { style: 'text-transform:capitalize;font-weight:500' }, file.kind));
   if (file.source) {
-    if (file.kind) meta.appendChild(document.createTextNode(' \u00b7 '));
     meta.appendChild(document.createTextNode('Source: ' + file.source));
   }
   if (meta.childNodes.length > 0) {
@@ -288,7 +301,7 @@ async function openMemory(container, file) {
   }
   const actions = GhostUI.h('div', { className: 'ghost-row-trailing' });
   actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: async () => {
-    if (!(await GhostUI.confirmModal('Forget this memory?', 'Ghost will delete \u201c' + file.name + '\u201d from its memory. This can\u2019t be undone.', 'Forget'))) return;
+    if (!(await GhostUI.confirmModal('Forget this memory?', 'Ghost will delete \u201c' + titleText + '\u201d from its memory. This can\u2019t be undone.', 'Forget'))) return;
     try { await GhostAPI.proxyDel('/v1/memory/file?name=' + encodeURIComponent(file.name)); GhostUI.toast('Memory forgotten'); loadMemory(container); }
     catch (e) { GhostUI.toast('Couldn\u2019t forget that.', 'err'); }
   } }, 'Forget'));

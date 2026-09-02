@@ -70,7 +70,7 @@ async function loadHome(container) {
   container.appendChild(view);
 
   // Independent fetches — a single failure shouldn't blank the page.
-  const [meta, doctor, health, channels, sessions, jobs, memory, devices, ollama, activeModel] = await Promise.allSettled([
+  const [meta, doctor, health, channels, sessions, jobs, memory, selfMem, devices, ollama, activeModel] = await Promise.allSettled([
     GhostAPI.get('/api/admin/auth/meta'),
     GhostAPI.proxyGet('/v1/doctor'),
     GhostAPI.proxyGet('/v1/health'),
@@ -78,6 +78,7 @@ async function loadHome(container) {
     GhostAPI.proxyGet('/v1/sessions'),
     GhostAPI.proxyGet('/v1/cron/jobs'),
     GhostAPI.proxyGet('/v1/memory/files'),
+    GhostAPI.proxyGet('/v1/memory/self'),
     GhostAPI.proxyGet('/v1/pairing/devices'),
     GhostAPI.get('/api/ollama/models'),
     GhostAPI.proxyGet('/v1/model'),
@@ -91,7 +92,7 @@ async function loadHome(container) {
 
   // Compose state.
   const overall = computeOverall(doctor, health);
-  renderStatus(statusTitle, statusDot, subline, statusBody, overall, doctor, memory, jobs, devices, ollama, activeModel);
+  renderStatus(statusTitle, statusDot, subline, statusBody, overall, doctor, selfMem, jobs, devices, ollama, activeModel);
 
   // Recent activity.
   renderActivity(activityBody, sessions, jobs, memory);
@@ -209,6 +210,11 @@ function shortModelName(name) {
 }
 
 function extractMemoryCount(v) {
+  // Count the canonical, current memory collection Ghost relies on, not raw
+  // historical rows. Duplicate extractions of the same fact count once.
+  if (v && Array.isArray(v.entries)) {
+    return GhostSemantic.canonicalizeEntries(v.entries).length;
+  }
   if (Array.isArray(v)) return v.length;
   if (v && typeof v === 'object') {
     const files = v.files || v.items || [];
@@ -265,13 +271,12 @@ function collectActivityItems(sessionsRes, jobsRes, memoryRes) {
       const ts = s.last_activity || 0;
       if (!ts) continue;
       const rawTitle = (s.title || '').trim();
-      if (isImplementationLeak(rawTitle)) continue;
-      const title = humanizeTitle(rawTitle, 'Conversation');
+      if (isInternalTitle(rawTitle)) continue;
       const cnt = s.message_count || 0;
       items.push({
         kind: 'conversation',
         ts,
-        title,
+        title: rawTitle,
         meta: cnt + ' message' + (cnt === 1 ? '' : 's'),
       });
     }
@@ -283,13 +288,7 @@ function collectActivityItems(sessionsRes, jobsRes, memoryRes) {
       const lr = j.state && j.state.last_run_at;
       if (!lr) continue;
       const ts = Math.floor(new Date(lr).getTime() / 1000);
-      const name = (j.name || 'Automation').trim();
-      items.push({
-        kind: 'automation',
-        ts,
-        title: name,
-        meta: j.enabled ? 'Ran on schedule' : 'Last run',
-      });
+      items.push({ kind: 'automation', ts, job: j });
     }
   }
 
@@ -298,22 +297,18 @@ function collectActivityItems(sessionsRes, jobsRes, memoryRes) {
     for (const m of arr) {
       const ts = m.modified || 0;
       if (!ts) continue;
-      const name = String(m.name || '').replace(/\.md$/, '').trim();
-      if (!name) continue;
-      items.push({
-        kind: 'memory',
-        ts,
-        title: memoryItemTitle(name),
-        meta: 'Memory updated',
-      });
+      items.push({ kind: 'memory', ts, file: m });
     }
   }
 
-  items.sort((a, b) => b.ts - a.ts);
-  return items;
+  // Central semantic interpretation + grouping. Home shows the latest few,
+  // collapsed, so repeated test messages never flood the feed.
+  return GhostSemantic.groupItems(items.map(i => GhostSemantic.activityItem(i)));
 }
 
-function isImplementationLeak(title) {
+// isInternalTitle filters out conversation titles that are internal identifiers
+// (session ids, heartbeat, system events) rather than real user conversation.
+function isInternalTitle(title) {
   if (!title) return true;
   const t = title.toLowerCase();
   if (t.startsWith('# heartbeat')) return true;
@@ -323,21 +318,6 @@ function isImplementationLeak(title) {
   if (t.includes('ollama.generate')) return true;
   if (t.length < 3) return true;
   return false;
-}
-
-function humanizeTitle(raw, fallback) {
-  if (!raw) return fallback;
-  const t = raw.trim();
-  if (t.length > 56) return t.substring(0, 53) + '\u2026';
-  return t;
-}
-
-function memoryItemTitle(name) {
-  // Memory file names are often opaque hashes; turn those into a quiet phrase
-  // instead of leaking the internal identifier.
-  if (!name) return 'Remembered something';
-  if (/^[a-f0-9]{12,}$/i.test(name)) return 'Remembered something';
-  return 'Remembered ' + name.replace(/[-_]/g, ' ');
 }
 
 function renderActivityRow(it) {

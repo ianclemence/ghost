@@ -235,3 +235,52 @@ func TestDomainLabel(t *testing.T) {
 		})
 	}
 }
+
+func TestClassifyEntryDomain(t *testing.T) {
+	entry := func(predicate, value string) Entry {
+		return Entry{Kind: KindPreference, Predicate: predicate, Value: json.RawMessage(`"` + value + `"`)}
+	}
+	tests := []struct {
+		name string
+		e    Entry
+		want Domain
+	}{
+		{"specific predicate is preserved", entry("preference/favorite_food", "sushi"), DomainFood},
+		{"generic prefer with tea value is food", entry("preference/prefers", "tea over coffee"), DomainFood},
+		{"generic favorite with sushi value is food", entry("preference/favorite", "sushi"), DomainFood},
+		{"generic likes with games value stays lifestyle", entry("preference/likes", "board games"), DomainLifestyle},
+		{"non-food generic stays lifestyle", entry("preference/prefers", "quiet evenings"), DomainLifestyle},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ClassifyEntryDomain(tt.e)
+			if got != tt.want {
+				t.Errorf("ClassifyEntryDomain(%q/%q) = %q, want %q", tt.e.Predicate, string(tt.e.Value), got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTitleRelationshipEntity(t *testing.T) {
+	now := time.Now()
+	entry := Entry{
+		Kind:      KindRelationship,
+		Predicate: "relationship/partner",
+		Value:     json.RawMessage(`"Sarah and I are business partners."`),
+		ID:        "test",
+		Subject:   "user",
+		Status:    StatusCurrent,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if got := Title(entry); got != "Partner: Sarah" {
+		t.Errorf("Title() = %q, want %q", got, "Partner: Sarah")
+	}
+	entry.Predicate = "relationship/colleague"
+	if got := Title(entry); got != "Colleague: Sarah" {
+		t.Errorf("Title() = %q, want %q", got, "Colleague: Sarah")
+	}
+	if got := Summary(entry); got != "You work with Sarah." {
+		t.Errorf("Summary() = %q, want %q", got, "You work with Sarah.")
+	}
+}
