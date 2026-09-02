@@ -86,7 +86,6 @@ type Schedule struct {
     At      *time.Time      // For "at"
     Every   time.Duration   // For "every"
     Expr    string          // For "cron" (5-field)
-    TZ      string          // Timezone for cron expressions
 }
 
 type ActionKind string
@@ -351,15 +350,15 @@ The automations section has been redesigned as "Things Ghost Will Do":
 - [x] API endpoints (`cmd/ghost/internal_api.go`)
 - [x] Web Console redesign (`cmd/ghost-web/web/js/sections/automations.js`)
 - [x] Unit tests (`pkg/scheduled/types_test.go`, `migration_test.go`)
+- [x] Cron expression parsing (using gronx library, `pkg/scheduled/service.go`)
+- [x] Natural language schedule parsing (`pkg/scheduled/parser.go`)
+- [x] Timezone-aware cron expressions (`pkg/scheduled/service.go`)
 
 ### In Progress
-- [ ] Cron expression parsing (using gronx library)
-- [ ] Natural language schedule parsing
 - [ ] Integration with existing cron tool
 - [ ] Backward compatibility with old cron API
 
 ### Planned
-- [ ] Timezone-aware cron expressions
 - [ ] Schedule templates
 - [ ] Batch operations
 - [ ] Webhook delivery mode
