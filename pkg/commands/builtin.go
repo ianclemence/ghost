@@ -26,9 +26,17 @@ func DefaultDefinitions() []Definition {
 		},
 		{
 			Name:        "/clear",
-			Aliases:     []string{"/reset", "/new"},
-			Description: "Archive current session history",
+			Aliases:     []string{"/new"},
+			Description: "Clear current session history (or /clear all --yes for full chat history)",
+			Usage:       "/clear [all] [--yes]",
 			Handler:     clearHandler,
+		},
+		{
+			Name:        "/reset",
+			Aliases:     []string{"/factory-reset"},
+			Description: "Factory reset Ghost — clear chats, memory, automations, context (keeps secrets & paired devices by default)",
+			Usage:       "/reset [all|chats|memory|automations|context|devices] [--yes] [--include-secrets] [--include-devices]",
+			Handler:     resetHandler,
 		},
 		{
 			Name:        "/remind",
@@ -300,6 +308,22 @@ func helpHandler(ctx context.Context, req Request, rt *Runtime) error {
 }
 
 func clearHandler(ctx context.Context, req Request, rt *Runtime) error {
+	text := strings.TrimSpace(req.Text)
+	fields := strings.Fields(text)
+	// /clear all --yes clears all chat history (all sessions)
+	if len(fields) >= 2 && strings.ToLower(fields[1]) == "all" {
+		if !hasFlag(fields, "--yes") {
+			return req.Reply("This will delete ALL chat history (all sessions). Add `--yes` to confirm: `/clear all --yes`")
+		}
+		if rt == nil || rt.Sessions == nil {
+			return req.Reply("Session manager unavailable.")
+		}
+		ws := workspaceForRuntime(rt)
+		if err := clearAllChats(ws, rt); err != nil {
+			return req.Reply(fmt.Sprintf("Failed to clear chats: %v", err))
+		}
+		return req.Reply("All chat history cleared (all sessions). Ghost is ready for a fresh conversation.")
+	}
 	if rt == nil || rt.Sessions == nil {
 		return req.Reply("Session manager unavailable.")
 	}

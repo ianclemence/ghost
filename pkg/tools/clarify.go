@@ -21,8 +21,15 @@ func NewClarifyTool(bus *bus.MessageBus) *ClarifyTool {
 	return &ClarifyTool{
 		bus:     bus,
 		pending: make(map[string]chan string),
-		timeout: 5 * time.Minute,
+		timeout: 60 * time.Second,
 	}
+}
+
+// Timeout implements TimeoutTool so the reliability wrapper applies a bounded
+// per-attempt deadline matching the tool's own timeout instead of the generic
+// 5-minute default.
+func (t *ClarifyTool) Timeout() time.Duration {
+	return t.timeout
 }
 
 func (t *ClarifyTool) Name() string {

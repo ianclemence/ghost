@@ -31,6 +31,8 @@ type Runtime struct {
 	SetActiveModel func(providerModel string) error
 	// CurrentModel resolves the active model for display. Falls back to Model.
 	CurrentModel func() string
+	// Workspace is the filesystem workspace root for file-backed resets.
+	Workspace string
 }
 
 func (rt *Runtime) SetPersonality(name string) error {

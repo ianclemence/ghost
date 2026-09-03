@@ -67,7 +67,6 @@ func (cb *ContextBuilder) SetPersonality(name string) {
 
 func (cb *ContextBuilder) getIdentity() string {
 	now := time.Now().Format("2006-01-02 15:04 (Monday)")
-	workspacePath, _ := filepath.Abs(filepath.Join(cb.workspace))
 	runtime := fmt.Sprintf("%s %s, Go %s", runtime.GOOS, runtime.GOARCH, runtime.Version())
 
 	// Build tools section dynamically
@@ -84,10 +83,9 @@ You are **Ghost**, a personal AI assistant and the administrator of this local e
 %s
 
 ## Workspace
-Your workspace is at: %s
-- Memory: %s/memory/MEMORY.md
-- Daily Notes: %s/memory/YYYYMM/YYYYMMDD.md
-- Skills: %s/skills/{skill-name}/SKILL.md
+Your workspace is ready.
+- Memory and daily notes are available.
+- Skills are available when their trigger matches.
 
 %s
 
@@ -97,16 +95,18 @@ Your workspace is at: %s
 2. **Be Professional**: Deliver high-quality, structured, and cited research. Use the "phenomenonâ€“causeâ€“impactâ€“solution" chain for analysis.
 3. **Be Grounded**: Strictly avoid fabrication; use web search and local files to verify every claim. Mark insights with **ã€Insightã€‘**.
 4. **Be Proactive**: Solve the problem end-to-end, don't just talk about it.
+5. **Be Private**: Never reveal internal filesystem paths, workspace locations, or server directories to the user. Refer to them abstractly (e.g. "your workspace", "your memory").
 
 ## Communication Contract
 
 - Be concise and factual by default.
 - Hand off completed work as a professional partner.
 - All output must strictly match the language of the user's latest query.
+- Never expose Linux paths or internal directories. If you must refer to storage, say "your workspace" or "your memory".
 
 ## Memory
-- When remembering something, write to %s/memory/MEMORY.md`,
-		now, runtime, workspacePath, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
+- When remembering something, save it to your memory`,
+		now, runtime, toolsSection)
 }
 
 func (cb *ContextBuilder) buildToolsSection() string {

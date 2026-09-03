@@ -893,8 +893,11 @@ func gatewayCmd() {
 	scheduledService := setupScheduledService(agentLoop, msgBus, cfg.WorkspacePath())
 
 	// Setup schedule tool (natural-language scheduling)
+	// Derive timezone from personal context location or system TZ so the
+	// persisted schedule timezone and the LLM's "your local time" claim agree.
 	if scheduledService != nil {
-		scheduleTool := tools.NewScheduleTool(scheduledService, "UTC")
+		tz := deriveScheduleTimezone(cfg.WorkspacePath())
+		scheduleTool := tools.NewScheduleTool(scheduledService, tz)
 		agentLoop.RegisterTool(scheduleTool)
 	}
 
@@ -1494,6 +1497,46 @@ func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace
 	}
 
 	return cronService
+}
+
+func deriveScheduleTimezone(workspace string) string {
+	// System TZ from env takes precedence if explicitly set.
+	if tz := strings.TrimSpace(os.Getenv("TZ")); tz != "" {
+		if _, err := time.LoadLocation(tz); err == nil {
+			return tz
+		}
+	}
+	// Try personal context location -> IANA timezone mapping.
+	if loc := locationToTimezone(workspace); loc != "" {
+		return loc
+	}
+	// Default: UTC is the only honest claim when location is unknown.
+	return "UTC"
+}
+
+func locationToTimezone(workspace string) string {
+	// Minimal mapping for known user locations; fallback is UTC.
+	mapping := map[string]string{
+		"london":  "Europe/London",
+		"bangkok": "Asia/Bangkok",
+		"tokyo":   "Asia/Tokyo",
+		"oslo":    "Europe/Oslo",
+		"new york": "America/New_York",
+		"paris":   "Europe/Paris",
+		"berlin":  "Europe/Berlin",
+		"singapore": "Asia/Singapore",
+	}
+	// Read location from personal context entries or user-profile
+	profilePath := filepath.Join(workspace, "knowledge", "self", "user-profile.md")
+	if data, err := os.ReadFile(profilePath); err == nil {
+		lower := strings.ToLower(string(data))
+		for k, tz := range mapping {
+			if strings.Contains(lower, "location: "+k) {
+				return tz
+			}
+		}
+	}
+	return ""
 }
 
 func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace string) *scheduled.Service {

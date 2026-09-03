@@ -439,6 +439,15 @@ func isUserVisibleHistoryMessage(role, content string, metaJSON []byte) bool {
 	if trimmed == "" {
 		return false
 	}
+	// Only user and assistant messages are user-visible. Tool results,
+	// including skill SKILL.md reads, directory listings, and internal
+	// filesystem data, must never appear in the mobile history stream.
+	if role == "tool" || role == "system" {
+		return false
+	}
+	if role != "assistant" && role != "user" {
+		return false
+	}
 	if role != "assistant" {
 		return true
 	}
@@ -462,6 +471,17 @@ func isUserVisibleHistoryMessage(role, content string, metaJSON []byte) bool {
 		return false
 	}
 	if strings.HasPrefix(lower, "name:") && strings.Contains(lower, "\ndescription:") {
+		return false
+	}
+	// Manifest / filesystem leakage: DIR:/FILE: listings and .bundled
+	if strings.Contains(lower, "file: .bundled") || strings.Contains(lower, ".bundled_manifest") {
+		return false
+	}
+	if strings.Contains(lower, "dir:") && strings.Contains(lower, "file:") {
+		// Heuristic for list_dir tool output leaking as assistant message
+		return false
+	}
+	if strings.Contains(trimmed, "tool \"clarify\" timed out") {
 		return false
 	}
 	return true
@@ -2276,6 +2296,42 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		}()
 
 		ctx := r.Context()
+
+		// Subscribe to outbound bus during this request to forward
+		// clarify_request and other interactive events over SSE. Without
+		// this, the clarify tool blocks the turn for 5 minutes while the
+		// mobile app never sees the prompt (root cause of
+		// "tool clarify timed out after 5m0s").
+		clarifyCh, unsubClarify := agentLoop.Bus().SubscribeOutbound("sse-clarify:"+req.RequestID, false, 50)
+		defer unsubClarify()
+		clarifyDone := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-clarifyDone:
+					return
+				case msg, ok := <-clarifyCh:
+					if !ok {
+						return
+					}
+					if t, _ := msg.Metadata["type"].(string); t == "clarify_request" {
+						qid, _ := msg.Metadata["question_id"].(string)
+						question := msg.Content
+						choices, _ := msg.Metadata["choices"]
+						emitObject(map[string]interface{}{
+							"type":        "clarify_request",
+							"question_id": qid,
+							"question":    question,
+							"choices":     choices,
+							"request_id":  req.RequestID,
+						})
+					}
+				}
+			}
+		}()
+
 		emitObject(map[string]interface{}{
 			"type":       "lifecycle",
 			"request_id": req.RequestID,
@@ -2291,6 +2347,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			onChunk,
 			onToolCall,
 		)
+		close(clarifyDone)
 
 		// Stop keep-alive before writing [DONE] to avoid write-after-close race
 		close(keepAliveDone)

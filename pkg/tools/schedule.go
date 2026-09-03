@@ -200,10 +200,16 @@ func extractReminderContent(message string) string {
 }
 
 func buildConfirmation(item *scheduled.ScheduledItem, parsed *scheduled.ParsedSchedule) string {
-	if parsed.IsRecurring {
-		return fmt.Sprintf("Got it — I'll %s %s.", strings.ToLower(item.Title), formatScheduleForUser(parsed))
+	tzLabel := ""
+	if parsed.Timezone != "" && parsed.Timezone != "UTC" {
+		tzLabel = fmt.Sprintf(" (%s)", parsed.Timezone)
+	} else if parsed.Timezone == "UTC" {
+		tzLabel = " (UTC)"
 	}
-	return fmt.Sprintf("Got it — I'll remind you %s to %s.", formatScheduleForUser(parsed), item.Action.Content)
+	if parsed.IsRecurring {
+		return fmt.Sprintf("Got it — I'll %s %s%s.", strings.ToLower(item.Title), formatScheduleForUser(parsed), tzLabel)
+	}
+	return fmt.Sprintf("Got it — I'll remind you %s%s to %s.", formatScheduleForUser(parsed), tzLabel, item.Action.Content)
 }
 
 func formatScheduleForUser(parsed *scheduled.ParsedSchedule) string {

@@ -329,6 +329,25 @@ chmod +x setup.sh
 |---------|-------------|
 | `ghost-web` | Web Console — setup wizard + control plane (always-on service on port 80; wizard before setup, login after) |
 
+### Chat Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show help and tool list |
+| `/clear` | Clear current session history. `/clear all --yes` clears all chat history |
+| `/reset` / `/factory-reset` | Factory reset: `all` (chats+memory+automations+context), or selective `chats` `memory` `automations` `context` `devices`. Keeps secrets & paired devices by default; add `--include-secrets` / `--include-devices` to wipe them. Requires `--yes` |
+| `/context` | Show what Ghost believes about you |
+| `/forget` | Forget a belief or session (`/forget <topic>` / `/forget session <id>`) |
+| `/remind` | Set a reminder (`/remind buy milk in 10m`) |
+| `/model` | Show or switch AI model |
+| `/doctor` / `/health` | Diagnostics |
+| `/status` | System status |
+| `/skills` | List skills |
+| `/install <url>` | Install skill |
+| `/tools` | Show tool schemas |
+| `/think <msg>` | Deep reasoning mode |
+| `/compress` | Summarize and compact context |
+
 ---
 
 ## Configuration

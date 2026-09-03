@@ -505,6 +505,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		CurrentModel:    al.GetCurrentModel,
 		SetActiveModel:  al.SetModel,
 		PersonalContext: pcStore,
+		Workspace:       workspace,
 	}
 	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
 	al.commandExec = cmdExec
