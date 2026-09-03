@@ -1509,7 +1509,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		workspace := map[string]interface{}{
 			"file_count": fileCount,
 			"size_bytes": sizeBytes,
-			"path":       workspaceDir,
 		}
 
 		database := map[string]interface{}{
@@ -2717,8 +2716,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				return nil
 			}
 			rel, _ := filepath.Rel(memoryDir, path)
+			// Hide internal directory structure (202609/20260903.md) from
+			// user-visible Activity — Mobile was rendering the raw path as
+			// "202609/20260903 21.13 Saved To Memory". Expose only the file
+			// name; keep rel for internal use if needed but don't leak it.
+			displayName := filepath.Base(rel)
 			entry := FileInfo{
-				Name:     rel,
+				Name:     displayName,
 				Modified: info.ModTime().Unix(),
 				Size:     info.Size(),
 			}
@@ -2761,7 +2765,22 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			jsonError(w, http.StatusForbidden, "forbidden", "invalid path")
 			return
 		}
+		// Support both legacy rel (202609/20260903.md) and new base name
+		// (20260903.md) so the Activity fix stays backwards compatible.
 		full := filepath.Join(memoryDir, clean)
+		if _, err := os.Stat(full); os.IsNotExist(err) && !strings.Contains(clean, string(filepath.Separator)) {
+			// Try to locate by base name anywhere under memoryDir
+			var found string
+			_ = filepath.Walk(memoryDir, func(p string, info os.FileInfo, err error) error {
+				if err == nil && !info.IsDir() && info.Name() == clean {
+					found = p
+				}
+				return nil
+			})
+			if found != "" {
+				full = found
+			}
+		}
 		if r.Method == http.MethodDelete {
 			if err := os.Remove(full); err != nil {
 				if os.IsNotExist(err) {
