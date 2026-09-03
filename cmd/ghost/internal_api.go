@@ -1960,7 +1960,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 					At    *string `json:"at"`
 					Every *string `json:"every"`
 					Expr  string  `json:"expr"`
-					TZ    string  `json:"tz"`
+					Timezone string `json:"tz"`
 				} `json:"schedule"`
 				Action struct {
 					Kind    string   `json:"kind"`
@@ -2026,8 +2026,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			case "cron":
 				item.Schedule.Kind = scheduled.ScheduleCron
 				item.Schedule.Expr = req.Schedule.Expr
-				if req.Schedule.TZ != "" {
-					item.Timezone = req.Schedule.TZ
+				if req.Schedule.Timezone != "" {
+					item.Timezone = req.Schedule.Timezone
 				}
 				// Compute the next run from the cron expression in the item's timezone.
 				item.NextRunAt = scheduled.NextCronRun(item.Schedule.Expr, item.Timezone, time.Now())
@@ -2332,6 +2332,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			}
 		}()
 
+		// Carry the client's device timezone (IANA name, validated) into the
+		// agent turn so scheduling parses "9 AM" in the user's zone. Falls
+		// back to the tool default (UTC) when absent or unknown.
+		if req.Metadata != nil {
+			ctx = tools.WithRequestTimezone(ctx, strings.TrimSpace(req.Metadata["timezone"]))
+		}
 		emitObject(map[string]interface{}{
 			"type":       "lifecycle",
 			"request_id": req.RequestID,

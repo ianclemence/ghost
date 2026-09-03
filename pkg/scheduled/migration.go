@@ -34,7 +34,7 @@ type CronSchedule struct {
 	AtMS  *int64 `json:"at_ms,omitempty"`
 	EveryMS *int64 `json:"every_ms,omitempty"`
 	Expr  string `json:"expr,omitempty"`
-	TZ    string `json:"tz,omitempty"`
+	Timezone string `json:"tz,omitempty"`
 }
 
 // CronPayload is the old payload format.

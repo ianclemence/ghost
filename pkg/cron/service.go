@@ -20,8 +20,8 @@ type CronSchedule struct {
 	Kind    string `json:"kind"`
 	AtMS    *int64 `json:"atMs,omitempty"`
 	EveryMS *int64 `json:"everyMs,omitempty"`
-	Expr    string `json:"expr,omitempty"`
-	TZ      string `json:"tz,omitempty"`
+	Expr     string `json:"expr,omitempty"`
+	Timezone string `json:"tz,omitempty"`
 }
 
 type CronPayload struct {

@@ -37,7 +37,7 @@ func TestMigrateFromCronJSON(t *testing.T) {
 				Schedule: CronSchedule{
 					Kind:    "cron",
 					Expr:    "0 8 * * 1",
-					TZ:      "Asia/Bangkok",
+					Timezone: "Asia/Bangkok",
 				},
 				Payload: CronPayload{
 					Kind:    "agent_turn",

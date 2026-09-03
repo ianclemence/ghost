@@ -87,12 +87,17 @@ func (t *ScheduleTool) SetContext(channel, chatID string) {
 }
 
 // Execute runs the tool with the given arguments.
+// The timezone prefers the per-request device timezone carried on ctx (set by
+// the chat handler from client metadata) and falls back to the tool default.
 func (t *ScheduleTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	t.mu.RLock()
 	channel := t.channel
 	chatID := t.chatID
 	tz := t.tz
 	t.mu.RUnlock()
+	if reqTZ := RequestTimezone(ctx); reqTZ != "" {
+		tz = reqTZ
+	}
 
 	if channel == "" || chatID == "" {
 		return ErrorResult("no session context. Use this tool in an active conversation.")
