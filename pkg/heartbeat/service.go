@@ -274,14 +274,14 @@ write here if you want Ghost to act without being asked.
 ## Daily briefing (morning only)
 
 - If it is between 07:00 and 09:00 by the device clock, run the **daily-briefing**
-  skill: read workspace/skills/daily-briefing/SKILL.md and follow it.
+  skill: read skills/daily-briefing/SKILL.md and follow it.
 - It reads your memory, captures, reminders, and weather, and saves a short,
   calm summary of your day to Memory. It will not duplicate an existing briefing.
 - Outside that window, skip the briefing.
 
 ## Reminders
 
-- Read workspace/data/reminders.md and, as part of the briefing, mention
+- Read data/reminders.md and, as part of the briefing, mention
   anything due today. If no briefing is due, just note them quietly.
 
 ## Instructions

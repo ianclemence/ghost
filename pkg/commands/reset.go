@@ -254,7 +254,7 @@ func clearAutomations(ws string, rt *Runtime) error {
 	// Cron legacy
 	cronPath := filepath.Join(ws, "cron", "jobs.json")
 	_ = os.MkdirAll(filepath.Join(ws, "cron"), 0755)
-	_ = os.WriteFile(cronPath, []byte("[]"), 0644)
+	_ = os.WriteFile(cronPath, []byte(`{"version":1,"jobs":[]}`), 0644)
 	// State evolution/learning derived
 	_ = os.RemoveAll(filepath.Join(ws, "state"))
 	_ = os.MkdirAll(filepath.Join(ws, "state"), 0755)
