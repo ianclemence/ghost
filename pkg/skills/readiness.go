@@ -185,26 +185,7 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 }
 
 func isCalendarConfigured() bool {
-	// Check for gcalcli oauth token
-	// gcalcli stores oauth in ~/.gcalcli_oauth or similar
-	// For now, check if gcalcli is available and if oauth file exists
-	// If gcalcli not installed, CheckReadiness already returned missing_binary
-	// If installed but not oauth'd, gcalcli agenda will fail with auth error — detect via file check
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false
-	}
-	// Common locations
-	for _, p := range []string{
-		home + "/.gcalcli_oauth",
-		home + "/.config/gcalcli/oauth",
-		"/var/lib/ghost/.gcalcli_oauth",
-	} {
-		if _, err := os.Stat(p); err == nil {
-			return true
-		}
-	}
-	// If no oauth file, assume not configured — let skill attempt and fail gracefully,
-	// but we return needs_configuration to give user actionable message
-	return false
+	// Single source of truth lives in calendar_oauth.go (service-owned
+	// config dir first, legacy home paths for migration).
+	return CalendarCheck().Connected
 }

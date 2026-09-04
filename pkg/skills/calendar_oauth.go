@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -25,9 +26,15 @@ import (
 //     relay callback, only this file + readiness change; skills/SKILL.md and
 //     chat behavior are unchanged.
 //
-// Security: token lives at ~/.gcalcli_oauth (0600, outside workspace/config
-// backup roots, never in chat/SSE/logs/backups). This file never returns
-// token contents — only status and setup URLs.
+// Security: token lives in CalendarConfigDir (/var/lib/ghost/.calendar,
+// 0600, outside workspace/config backup roots, never in chat/SSE/logs/
+// backups). This file never returns token contents — only status and setup
+// URLs.
+//
+// NOTE: the ghost services run with ProtectHome=true, so ~/.config and
+// ~/.gcalcli_oauth are invisible/volatile to them. All Ghost-initiated
+// gcalcli calls must pass --config-folder CalendarConfigDir; the calendar
+// SKILL.md documents the same flag so model-driven agenda calls find it.
 
 // CalendarStatus is the product-level state.
 type CalendarStatus string
@@ -48,18 +55,37 @@ type CalendarState struct {
 	NeedsSetup bool           `json:"needs_setup"`
 }
 
-// CalendarTokenPaths returns candidate oauth token locations.
+// CalendarConfigDir is the persistent, service-writable home for gcalcli
+// oauth/config. Deliberately outside the backup-walked roots (config, data,
+// workspace) so tokens are never archived.
+const CalendarConfigDir = "/var/lib/ghost/.calendar"
+
+// CalendarTokenPaths returns candidate oauth token locations, newest first.
+// Ghost-owned dir wins; legacy user-home paths are checked for users who
+// connected before the service-owned dir existed (then migrate on next auth).
 func CalendarTokenPaths() []string {
+	paths := []string{CalendarConfigDir}
+	if entries, err := os.ReadDir(CalendarConfigDir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				paths = append(paths, filepath.Join(CalendarConfigDir, e.Name()))
+			}
+		}
+	}
 	home, _ := os.UserHomeDir()
-	paths := []string{}
 	if home != "" {
 		paths = append(paths,
 			filepath.Join(home, ".gcalcli_oauth"),
 			filepath.Join(home, ".config", "gcalcli", "oauth"),
 		)
 	}
-	paths = append(paths, "/var/lib/ghost/.gcalcli_oauth")
 	return paths
+}
+
+// CalendarConfigArgs returns the --config-folder flag slice for every
+// Ghost-initiated gcalcli invocation.
+func CalendarConfigArgs() []string {
+	return []string{"--config-folder", CalendarConfigDir}
 }
 
 // CalendarCheck returns product state. Expired/revoked is detected when
@@ -70,9 +96,23 @@ func CalendarCheck() CalendarState {
 		return CalendarState{Status: CalendarToolMissing, Message: "Calendar tool isn't installed. Install gcalcli to connect Google Calendar.", NeedsSetup: true}
 	}
 	for _, p := range CalendarTokenPaths() {
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return CalendarState{Status: CalendarReady, Connected: true, Message: "Calendar is connected."}
+		st, err := os.Stat(p)
+		if err != nil || st.IsDir() {
+			continue
 		}
+		// Inside the service-owned config dir, only token-like files prove
+		// auth (config.toml alone does not). Legacy home paths are token
+		// files by definition.
+		if p == CalendarConfigDir {
+			continue
+		}
+		if dir := filepath.Dir(p); dir == CalendarConfigDir {
+			base := strings.ToLower(filepath.Base(p))
+			if !(strings.Contains(base, "oauth") || strings.Contains(base, "token") || strings.Contains(base, "credential") || strings.Contains(base, "auth")) {
+				continue
+			}
+		}
+		return CalendarState{Status: CalendarReady, Connected: true, Message: "Calendar is connected."}
 	}
 	return CalendarState{
 		Status: CalendarNeedsSetup, NeedsSetup: true,
@@ -117,9 +157,11 @@ func CalendarDisconnect() error {
 // install guidance, not a generic 500.
 var ErrCalendarToolMissing = fmt.Errorf("gcalcli not found on service PATH")
 
-// CalendarDeviceFlow starts `gcalcli oauth --auth-device` and returns the
-// verification URL for the Web Console to display. It does NOT block waiting;
-// the caller polls CalendarCheck until the token file appears.
+// CalendarDeviceFlow starts `gcalcli --config-folder DIR init
+// --noauth_local_server` and returns the verification URL for the Web
+// Console to display. It does NOT block waiting; the caller polls
+// CalendarCheck until the token file appears. gcalcli 4.x has no
+// `oauth --auth-device` subcommand — `init` is the auth entrypoint.
 func CalendarDeviceFlow(timeout time.Duration) (string, error) {
 	if _, err := exec.LookPath("gcalcli"); err != nil {
 		return "", ErrCalendarToolMissing
@@ -127,8 +169,14 @@ func CalendarDeviceFlow(timeout time.Duration) (string, error) {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	// --auth-device prints a google.com/device URL + code; run briefly to capture it.
-	cmd := exec.Command("gcalcli", "oauth", "--auth-device")
+	if err := os.MkdirAll(CalendarConfigDir, 0700); err != nil {
+		return "", fmt.Errorf("calendar config dir: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	// --noauth_local_server prints a URL to visit plus port-forward/manual
+	// instructions for headless systems; no Pi inbound required.
+	cmd := exec.CommandContext(ctx, "gcalcli", "--config-folder", CalendarConfigDir, "init", "--noauth_local_server")
 	out, err := cmd.CombinedOutput()
 	text := string(out)
 	// Extract URL (best-effort, never fail hard — UI can fall back to manual).
@@ -144,8 +192,15 @@ func CalendarDeviceFlow(timeout time.Duration) (string, error) {
 			break
 		}
 	}
+	if ctx.Err() == context.DeadlineExceeded {
+		// init waits on user input; timeout with a captured URL is normal.
+		if url != "" {
+			return url, nil
+		}
+		return "", fmt.Errorf("calendar setup timed out waiting for authorization")
+	}
 	if err != nil && url == "" {
-		return "", fmt.Errorf("gcalcli oauth device flow failed: %s", strings.TrimSpace(text))
+		return "", fmt.Errorf("gcalcli init failed: %s", strings.TrimSpace(text))
 	}
 	return url, nil
 }

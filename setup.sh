@@ -148,8 +148,11 @@ fi
 # ── 2. Python tools ───────────────────────────────────────────────────────
 echo ""
 echo -e "${YELLOW}[2/4] Installing Python tools (Calendar & Document skills)...${NC}"
-if ! check_command "gcalcli"; then
-    pip3 install gcalcli --break-system-packages 2>/dev/null || pip3 install gcalcli
+# NOTE: ghost-web runs as root with ProtectHome=true, so a user-local
+# ~/.local/bin/gcalcli is invisible to the service. Always ensure the
+# system-wide /usr/local/bin/gcalcli exists regardless of check_command.
+if [ ! -x /usr/local/bin/gcalcli ]; then
+    sudo pip3 install gcalcli --break-system-packages 2>/dev/null || pip3 install gcalcli --break-system-packages 2>/dev/null || pip3 install gcalcli
 fi
 pip3 install pypdf python-docx --break-system-packages 2>/dev/null || pip3 install pypdf python-docx
 echo -e "${GREEN}[OK] Python tools installed.${NC}"
