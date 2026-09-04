@@ -5,10 +5,10 @@ Only update this file when information is stable over time.
 
 ## Identity
 
-- **Name**: Ian
-- **Role**: Founder/developer of Ghost
-- **Location**: Thailand
-- **Timezone**: Asia/Bangkok (device-derived; confirm if the user travels)
+- **Name**: (set by user)
+- **Role**: (set by user)
+- **Location**: (set by user)
+- **Timezone**: (device-derived; confirm if the user travels)
 
 ## Communication Preferences
 

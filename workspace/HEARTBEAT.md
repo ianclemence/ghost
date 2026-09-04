@@ -13,7 +13,7 @@ This file defines autonomous background routines. Heartbeat tasks must never deg
 
 ## Timezone
 
-- Resolve "local time" from the request/device timezone (`Asia/Bangkok` for Ian), falling back to UTC with an explicit fallback label. Never assume London, never present server UTC as local without labeling it.
+- Resolve "local time" from the request/device timezone (e.g. `Asia/Bangkok`), falling back to UTC with an explicit fallback label. Never assume a city, never present server UTC as local without labeling it.
 
 ## Priority Levels
 

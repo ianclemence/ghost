@@ -282,8 +282,29 @@ func clearPersonalContext(ws string, rt *Runtime) error {
 	prof := filepath.Join(ws, "knowledge", "self", "user-profile.md")
 	_ = os.MkdirAll(filepath.Dir(prof), 0755)
 	_ = os.WriteFile(prof, []byte(""), 0644)
+	// Workspace identity doc: USER.md is injected into every prompt, so a
+	// name left here survives all other wipes and the model greets a
+	// stranger by the old name. Restore the placeholder template.
+	userDoc := filepath.Join(ws, "USER.md")
+	_ = os.WriteFile(userDoc, []byte(userDocTemplate), 0644)
 	return nil
 }
+
+// userDocTemplate is the fresh-install USER.md: no names, no locations,
+// no timezone assumptions. Personal facts live in personal-context and the
+// knowledge profile, both cleared above.
+const userDocTemplate = `# User Profile
+
+This file stores durable, high-signal user facts and preferences.
+Only update this file when information is stable over time.
+
+## Identity
+
+- **Name**: (set by user)
+- **Role**: (set by user)
+- **Location**: (set by user)
+- **Timezone**: (device-derived; confirm if the user travels)
+`
 
 func clearDevices(ws string, rt *Runtime) error {
 	db := dbFromRuntime(rt, ws)
