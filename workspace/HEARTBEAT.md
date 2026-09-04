@@ -7,8 +7,13 @@ This file defines autonomous background routines. Heartbeat tasks must never deg
 - Maximum heartbeat runtime per cycle: 120 seconds.
 - Maximum single task runtime: 45 seconds.
 - If active user chat is in progress, defer non-critical heartbeat tasks.
-- On network failure, retry once after 5 minutes, then skip until next scheduled run.
-- Every task must be idempotent: re-running should not duplicate user-facing outputs.
+- On network or provider failure (including LLM timeouts), skip quietly until the next scheduled run — log once at INFO, never error-spam.
+- Times below are in the user's device timezone (see Timezone rule), never raw server UTC.
+- Every task must be idempotent via the scheduler's execution_history (occurrence keys): re-running must not duplicate user-facing outputs.
+
+## Timezone
+
+- Resolve "local time" from the request/device timezone (`Asia/Bangkok` for Ian), falling back to UTC with an explicit fallback label. Never assume London, never present server UTC as local without labeling it.
 
 ## Priority Levels
 
@@ -17,7 +22,7 @@ This file defines autonomous background routines. Heartbeat tasks must never deg
 - P2: Knowledge grooming and cleanup.
 - P3: Weekly optimization and suggestions.
 
-## Morning Routine (08:00, Local Time)
+## Morning Routine (08:00, device timezone)
 
 - [ ] Check system time and timezone consistency.
 - [ ] Collect top tech and world headlines (max 5 sources total).
@@ -29,16 +34,17 @@ Output constraints:
 - Max 12 lines.
 - Include timestamp and one actionable highlight.
 
-## Evening Reflection (22:00, Local Time)
+## Evening Reflection (22:00, device timezone)
 
 - [ ] Summarize significant interactions from the day.
-- [ ] Append one structured entry to `knowledge/logs/sessions.md`.
+- [ ] Append one human-titled entry to the daily memory note (timestamped, e.g. `## 22:04 — Evening reflection`). Never use raw `YYYYMM/filename` paths as user-facing titles.
 - [ ] Update `knowledge/self/context.md` with current topic and session outcome.
 - [ ] Archive obsolete `state/` files older than 7 days.
+- [ ] Groom `knowledge/notes/` overflow: archive stale reference notes (>90 days untouched) so briefings never cite dead context.
 
 Output constraints:
 - One session log entry per day.
-- No duplicate entries for the same date key.
+- No duplicate entries for the same date key (check execution_history first).
 
 ## Maintenance (Every 4 Hours)
 

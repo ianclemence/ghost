@@ -5,14 +5,16 @@ Only update this file when information is stable over time.
 
 ## Identity
 
-- **Name**: (set by user)
+- **Name**: Ian
 - **Role**: Founder/developer of Ghost
+- **Location**: Thailand
+- **Timezone**: Asia/Bangkok (device-derived; confirm if the user travels)
 
 ## Communication Preferences
 
 - **Style**: Direct, concise, technically precise
 - **Detail Level**: Actionable summary with supporting detail on request. Lead with conclusions; expand when complexity is high or user explicitly asks.
-- **Clarification Strategy**: Prefer action-first assumptions with explicit post-action notes
+- **Clarification Strategy**: Action-first for safe local ops (shopping add, captures) with explicit post-action notes; ask-first for missing required inputs (flight number, city, schedule time) and resume when the short reply arrives
 
 ## Product and System Preferences
 

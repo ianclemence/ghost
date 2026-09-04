@@ -26,14 +26,14 @@ When files conflict, precedence is:
 
 Long-term agent memory organized by month.
 
-- `MEMORY.md` — distilled summary of the most important facts and patterns. Injected into every prompt as context.
-- `YYYYMM/YYYYMMDD.md` — daily conversation logs with timestamped entries. Append-only journals of what happened each day.
+- `MEMORY.md` — legacy distilled notes. The live per-turn context is the bounded Active Context Digest from personal-context, not this file.
+- `YYYYMM/YYYYMMDD.md` — daily conversation logs with human-titled timestamped entries. Append-only journals. Never surface raw `YYYYMM/filename` paths as user-facing titles.
 
 Excluded from git tracking.
 
 ### Personal Context (`personal-context/`)
 
-Structured memory store. The primary memory system for durable facts.
+Structured memory store. The canonical memory system for durable facts.
 
 - `entries.jsonl` — JSONL file where each line is a typed memory entry (facts, preferences, relationships, goals) with confidence scores, source attribution, and status (current/rejected/archived).
 
@@ -57,7 +57,13 @@ Persistent machine state that survives restarts.
 
 ### Sessions (`sessions/`)
 
-Conversation session storage. May be stored in SQLite instead of files depending on configuration.
+Conversation session storage. Live storage is SQLite (`ghost.db` messages/sessions tables with FTS); the directory remains for file-based exports.
+
+## Architecture Docs
+
+- `docs/SKILLS.md` — skill product tiers (core / optional packs / dev-docs)
+- Capability contract, readiness states (`ready` / `needs_user_input` / `needs_configuration`), pending-resume continuations, provider resilience, and mobile metadata contract (`timezone`, `city`, `latitude`, `longitude`) live in code: `pkg/skills/capability.go`, `pkg/skills/readiness.go`, `pkg/skills/pending.go`, `pkg/skills/provider.go`, `pkg/tools/timezone.go`
+- Integrations setup (Calendar device flow, flight key, Home Assistant) lives in Web Console → Connections → Integrations
 
 ### Cron (`cron/`)
 
