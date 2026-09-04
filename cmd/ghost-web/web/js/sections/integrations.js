@@ -83,8 +83,22 @@ function intRow(name, kind, state, sub, onClick) {
 async function startCalendarConnect() {
   let res;
   try { res = await GhostAPI.post('/api/admin/integrations/calendar/start', {}); }
-  catch (e) { GhostUI.toast('Couldn’t start calendar setup.', 'err'); return; }
+  catch (e) {
+    const msg = (e && e.message) || '';
+    if (msg) GhostUI.toast(msg, 'err');
+    else GhostUI.toast('Couldn’t start calendar setup.', 'err');
+    return;
+  }
   if (res && res.status === 'ready') { GhostUI.toast('Calendar already connected'); loadIntegrations(document.getElementById('view')); return; }
+  if (res && res.status === 'needs_setup' && !res.setup_url) {
+    const body = GhostUI.h('div');
+    body.appendChild(GhostUI.h('p', {}, 'Calendar setup needs one admin step first:'));
+    body.appendChild(GhostUI.h('p', { className: 'type-mono', style: 'word-break:break-all' }, (res && res.message) || 'Install gcalcli where the Ghost service can see it, then try again.'));
+    GhostUI.modal('Calendar setup', body, [
+      GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Got it'),
+    ]);
+    return;
+  }
   const body = GhostUI.h('div');
   body.appendChild(GhostUI.h('p', {}, 'To connect Google Calendar:'));
   const ol = GhostUI.h('ol', { style: 'margin:0 0 var(--s-3) 1.2em' });

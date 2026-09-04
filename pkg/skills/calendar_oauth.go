@@ -111,10 +111,19 @@ func CalendarDisconnect() error {
 	return nil
 }
 
+// ErrCalendarToolMissing reports gcalcli is not on the service PATH.
+// The ghost-web service runs as root with a minimal PATH; a user-local
+// pip install (e.g. ~/.local/bin) is invisible to it. Callers must surface
+// install guidance, not a generic 500.
+var ErrCalendarToolMissing = fmt.Errorf("gcalcli not found on service PATH")
+
 // CalendarDeviceFlow starts `gcalcli oauth --auth-device` and returns the
 // verification URL for the Web Console to display. It does NOT block waiting;
 // the caller polls CalendarCheck until the token file appears.
 func CalendarDeviceFlow(timeout time.Duration) (string, error) {
+	if _, err := exec.LookPath("gcalcli"); err != nil {
+		return "", ErrCalendarToolMissing
+	}
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}

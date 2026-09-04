@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1119,6 +1120,9 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 			}
 			if strings.HasSuffix(path, ".secrets.json") {
 				return nil // credentials — never included in backups
+			}
+			if strings.HasSuffix(path, ".gcalcli_oauth") || strings.Contains(path, "gcalcli"+string(filepath.Separator)+"oauth") {
+				return nil // calendar OAuth tokens — never included in backups
 			}
 			if strings.HasSuffix(path, ".log") {
 				return nil // transient logs
@@ -2625,7 +2629,14 @@ func handleIntegrationsCalendarStart(w http.ResponseWriter, r *http.Request) {
 	}
 	url, err := skills.CalendarDeviceFlow(30 * time.Second)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not start calendar setup; install gcalcli and try again"})
+		if errors.Is(err, skills.ErrCalendarToolMissing) {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "status": "needs_setup",
+				"message": "gcalcli isn't available to the Ghost service yet. Install it with `pip install gcalcli` (or symlink it into /usr/local/bin), restart ghost-web, then try again.",
+			})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not start calendar setup; try again shortly"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{

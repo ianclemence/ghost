@@ -151,12 +151,53 @@ func (t *ScheduleTool) Execute(ctx context.Context, args map[string]interface{})
 		item.NextRunAt = &next
 	}
 
+	// Dedupe: an active item with the same normalized content and same
+	// schedule (cron expr or one-time title) is reused instead of doubled.
+	// This prevents the "4× Monday brief" class of duplicates when the user
+	// repeats a request or a retry re-fires the tool.
+	if lister, ok := t.service.(interface {
+		ListItems(scheduled.ItemType, scheduled.ItemState, int) ([]*scheduled.ScheduledItem, error)
+	}); ok {
+		if existing := findDuplicateSchedule(lister, item); existing != nil {
+			return SilentResult("Already set — " + buildConfirmation(existing, parsed))
+		}
+	}
+
 	if err := t.service.CreateItem(item); err != nil {
 		return ErrorResult(fmt.Sprintf("Failed to create schedule: %v", err))
 	}
 
 	confirm := buildConfirmation(item, parsed)
 	return SilentResult(confirm)
+}
+
+// findDuplicateSchedule returns an active item matching the new one by
+// normalized action content + schedule identity (cron expr for recurring,
+// title+time for one-time). Nil when no duplicate.
+func findDuplicateSchedule(lister interface {
+	ListItems(scheduled.ItemType, scheduled.ItemState, int) ([]*scheduled.ScheduledItem, error)
+}, item *scheduled.ScheduledItem) *scheduled.ScheduledItem {
+	items, err := lister.ListItems("", scheduled.StateScheduled, 100)
+	if err != nil {
+		return nil
+	}
+	normContent := strings.ToLower(strings.TrimSpace(item.Action.Content))
+	for _, it := range items {
+		if it == nil || it.State != scheduled.StateScheduled {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(it.Action.Content)) != normContent {
+			continue
+		}
+		if item.Schedule.Kind != it.Schedule.Kind {
+			continue
+		}
+		if item.Schedule.Kind == scheduled.ScheduleCron && item.Schedule.Expr != it.Schedule.Expr {
+			continue
+		}
+		return it
+	}
+	return nil
 }
 
 func extractReminderContent(message string) string {
