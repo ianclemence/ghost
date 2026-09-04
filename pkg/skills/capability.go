@@ -59,6 +59,12 @@ var capabilityRegistry = map[string]Capability{
 	"daily-briefing": {ID: "briefing.daily", Skill: "daily-briefing", AllowedTools: []string{"read_file", "exec", "write_file", "append_file"}, MaxAttempts: 3, Timeout: 15 * time.Second},
 	"hardware":     {ID: "hardware.read", Skill: "hardware", AllowedTools: []string{"read_file", "exec"}, Primary: "i2c/spi via exec", MaxAttempts: 1},
 	"homeassistant": {ID: "hass.control", Skill: "homeassistant", AllowedTools: []string{"read_file", "exec"}, Primary: "HASS API via exec curl", MaxAttempts: 2, Timeout: 10 * time.Second},
+	"unit-converter": {ID: "units.convert", Skill: "unit-converter", AllowedTools: []string{"read_file", "exec"}, Primary: "local python convert.py", Fallback: "none", MaxAttempts: 1, Timeout: 10 * time.Second},
+	"world-clock":    {ID: "time.convert", Skill: "world-clock", AllowedTools: []string{"read_file", "exec"}, Primary: "local python clock.py zoneinfo", Fallback: "none", MaxAttempts: 1, Timeout: 10 * time.Second},
+	"calculator":     {ID: "math.evaluate", Skill: "calculator", AllowedTools: []string{"read_file", "exec"}, Primary: "local python calc.py", Fallback: "none", MaxAttempts: 1, Timeout: 10 * time.Second, Deterministic: true},
+	"dictionary":     {ID: "dict.define", Skill: "dictionary", RequiredInput: []string{"word"}, AllowedTools: []string{"read_file", "exec"}, Primary: "dictionaryapi.dev via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
+	"translate":      {ID: "translate.phrase", Skill: "translate", RequiredInput: []string{"text"}, AllowedTools: []string{"read_file", "exec"}, Primary: "mymemory via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
+	"timer":          {ID: "timer.countdown", Skill: "timer", AllowedTools: []string{"read_file", "schedule"}, Primary: "schedule one-shot", Fallback: "none", MaxAttempts: 1, Deterministic: true},
 }
 
 // GetCapability returns the generic contract for a skill.
@@ -134,6 +140,18 @@ func (c Capability) CleanFailure() string {
 		return "I couldn't search nearby places right now. Please check the location and try again."
 	case "calendar":
 		return "Calendar access isn't connected yet. Connect your calendar in Ghost settings to view your schedule."
+	case "unit-converter":
+		return "I couldn't convert those units. Please check the unit names and try again."
+	case "world-clock":
+		return "I couldn't convert that time. Please check the city names and try again."
+	case "calculator":
+		return "I couldn't evaluate that. Please rephrase as plain math."
+	case "dictionary":
+		return "I couldn't find a definition for that word."
+	case "translate":
+		return "I couldn't translate that right now. Please try again with a shorter phrase."
+	case "timer":
+		return "I couldn't set that timer. Please give a duration like 10 minutes."
 	default:
 		return "I couldn't complete that right now. Please try again in a bit."
 	}
