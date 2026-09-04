@@ -8,12 +8,10 @@ async function loadAbout(container) {
   head.appendChild(GhostUI.h('p', {}, 'The product behind your AI.'));
   container.appendChild(head);
 
-  const [statusRes, identityRes] = await Promise.allSettled([
-    GhostAPI.get('/api/admin/status'),
+  const [identityRes] = await Promise.allSettled([
     GhostAPI.get('/api/admin/identity'),
   ]);
 
-  const version = statusRes.status === 'fulfilled' ? (statusRes.value.version || '?') : '?';
   const identity = identityRes.status === 'fulfilled' ? identityRes.value : {};
 
   const brand = GhostUI.h('div', { className: 'row-flex', style: 'margin-bottom:var(--s-5);gap:var(--s-3)' });
@@ -35,15 +33,13 @@ async function loadAbout(container) {
     container.appendChild(idPanel);
   }
 
-  const prose = GhostUI.h('div', { className: 'panel prose' });
+  const prose = GhostUI.h('div', { className: 'panel prose', style: 'margin-top:var(--s-3)' });
   prose.innerHTML = GhostUI.md(`
 Ghost is a personal AI that lives on your own hardware. It remembers what matters, works for you without being watched, and stays with you across your devices.
 
 - **Ghost Web** is where you own, configure, understand, and take care of Ghost.
 - **Ghost Mobile** is where you talk to Ghost and take it with you.
 - **The Ghost Pod** is the hardware Ghost lives on.
-
-This console is version **${version}**.
 
 Ghost is open-source. Source, documentation, and license are in the project repository. Configuration and secrets live only on your device \u2014 nothing here is sent to a central service unless you explicitly connect a cloud provider.
   `);
