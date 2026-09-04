@@ -156,7 +156,7 @@ if [ ! -x /usr/local/bin/gcalcli ]; then
 fi
 # Command-only skills ship ready: pyfiglet (ascii-art), yt-dlp + feedparser
 # (internet-reading). System-wide so the root services see them too.
-pip3 install pypdf python-docx pyfiglet yt-dlp feedparser --break-system-packages 2>/dev/null || pip3 install pypdf python-docx pyfiglet yt-dlp feedparser
+pip3 install pypdf python-docx pyfiglet yt-dlp feedparser firecrawl-anydoc --break-system-packages 2>/dev/null || pip3 install pypdf python-docx pyfiglet yt-dlp feedparser firecrawl-anydoc
 echo -e "${GREEN}[OK] Python tools installed.${NC}"
 
 # ── 2.5. Ollama ───────────────────────────────────────────────────────────
