@@ -70,8 +70,12 @@ function skillBadge(s, integ) {
   if (s.needs_setup === 'true' || s.needs_setup === true) {
     return { state: 'warn', label: setupLabel(s.name) };
   }
-  if (s.readiness && s.readiness !== 'ready' && s.readiness !== 'disabled') {
-    return { state: 'warn', label: setupLabel(s.name) };
+  if (s.readiness !== undefined || s.needs_setup !== undefined) {
+    // Backend-provided readiness is authoritative. Anything that isn't
+    // needs_setup/disabled here is ready — including ask-at-use states
+    // the backend already normalized to ready. Do NOT fall through to
+    // the coarse optional flag below.
+    return { state: 'ready', label: '' };
   }
   if (integ) {
     if (s.name === 'calendar' && integ.calendar) {
