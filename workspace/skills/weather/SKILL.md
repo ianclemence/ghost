@@ -28,6 +28,9 @@ Uses wttr.in (default) or open-meteo as fallback. No API key required.
 | JSON (open-meteo) | `curl -s "https://api.open-meteo.com/v1/forecast?latitude=40.71&longitude=-74.01&current_weather=true"` |
 | AQI (separate) | See `aqi` skill |
 
+## Location handling
+If user says `what's the weather` without a city, check device location context first. If none, ask `Which city should I check?` and resume when user replies.
+
 ## wttr.in
 
 ```bash
@@ -46,6 +49,9 @@ curl -s "https://api.open-meteo.com/v1/forecast?latitude=51.51&longitude=-0.13&c
 ```
 
 Two free services, no API keys needed.
+
+## Location handling
+If user says `what's the weather` without a city, check device location context first. If none, ask `Which city should I check?` and resume when user replies.
 
 ## wttr.in (primary)
 

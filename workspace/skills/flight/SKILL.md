@@ -11,7 +11,9 @@ prerequisites:
   commands: [curl]
 ---
 
-# Flight Tracker
+# Flight
+
+> **If flight number missing:** If user says `what's my flight status` without a flight number, ask `Which flight number should I check? (e.g., TG123)` and wait for the next message. When user replies with a short code like `TG123`, treat it as the answer and run `curl` with that flight. Do NOT use clarify tool for this — just ask naturally and resume. Tracker
 
 AviationStack API. Requires `AVIATION_API_KEY` in `.env`. Get a free key at https://aviationstack.com.
 

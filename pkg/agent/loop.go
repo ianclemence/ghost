@@ -860,11 +860,58 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 		}
 	}
 
+	// Natural clarification resume (first-class continuation, no blocking
+	// clarify tool): if the previous turn asked for a missing input and this
+	// message is a short answer, fold it into the original task.
+	if !strings.HasPrefix(msg.Content, "/") && msg.SessionKey != "" {
+		if resumed, ok := resolvePendingResume(msg.SessionKey, msg.Content); ok {
+			logger.InfoCF("agent", "resuming pending continuation",
+				map[string]interface{}{"session_key": msg.SessionKey})
+			msg.Content = resumed
+		}
+	}
+
 	// Process as user message
 	isCronTriggered := strings.HasPrefix(msg.SessionKey, "cron-")
 	profile := channels.DetectToolProfile(msg.Channel, "", msg.SessionKey, false)
 	if isCronTriggered {
 		profile = tools.ProfileHeartbeatSafe
+	}
+	// Deterministic local ops (shopping add/list): Intent -> Capability ->
+	// execute with zero LLM calls. Works even when the provider is
+	// rate-limited and never leaks internals.
+	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+		if ans, ok := al.tryDeterministicTurn(msg.Content, msg.SessionKey); ok {
+			logger.InfoCF("agent", "deterministic: handled locally",
+				map[string]interface{}{"session_key": msg.SessionKey})
+			if onChunk != nil && ans != "" {
+				onChunk(ans)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return ans, nil
+		}
+	}
+	// Generic readiness fast-path: Intent -> Capability -> Readiness.
+	// Missing input / not-configured returns a product message with zero
+	// LLM calls and sets a pending continuation for natural resume.
+	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+		if ans, ok := al.tryReadinessFastPath(msg.Content, msg.SessionKey, msg.Metadata); ok {
+			logger.InfoCF("agent", "readiness fast-path",
+				map[string]interface{}{"session_key": msg.SessionKey})
+			if onChunk != nil && ans != "" {
+				onChunk(ans)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return ans, nil
+		}
 	}
 	// Phase 1 — intent/effort triage: keep trivial self-fact recall cheap and
 	// deterministic (no model, no tools) and be honest when the fact isn't
@@ -1232,12 +1279,23 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		finalContent = opts.DefaultResponse
 	}
 
+	// 5b. Generic output sanitizer BEFORE persistence: if the final
+	// response dumps internals (SKILL.md frontmatter, manifests, paths),
+	// replace with a product refusal so neither SSE final nor stored
+	// history ever carries the leak.
+	if sanitized, ok := sanitizeAssistantOutput(finalContent); ok {
+		finalContent = sanitized
+	}
+
 	// 6. Save final assistant message to session (only if it's a real response, not a tool result turn or slash command)
 	// We don't save iterations that were just tool calls here because runLLMIteration
 	// already handles AddFullMessage for tool turns.
 	if !isSlashCommand {
 		al.sessions.AddMessage(opts.SessionKey, "assistant", finalContent)
 		al.sessions.Save(opts.SessionKey)
+		// If the model asked a natural follow-up for a known missing input,
+		// record a pending continuation so the next short reply resumes.
+		maybeSetPendingFromAnswer(opts.SessionKey, opts.UserMessage, finalContent)
 	}
 
 	// 7. Optional: summarization
@@ -1330,6 +1388,10 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	// cost can be observed (P8), not guessed.
 	var promptTokens, completionTokens, totalTokens int
 	var usedTools []string
+	// Generic capability attempt tracking: bounds primary -> fallback ->
+	// clean failure. No per-skill counters.
+	capViolations := map[string]int{}
+	capExecAttempts := map[string]int{}
 	activeProfile := opts.ToolProfile
 	if activeProfile == "" {
 		activeProfile = al.toolProfile
@@ -1345,6 +1407,20 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				"max":       al.maxIterations,
 			})
 
+		// Ensure capability-required tools are visible even if hidden
+		// (e.g. exec is RegisterHidden but every external capability
+		// requires it). Generic: promote whatever the committed
+		// capability allows, so the model can actually execute it.
+		if capSkill := committedSkill(messages); capSkill != "" {
+			cap := skills.GetCapability(capSkill)
+			for _, toolName := range cap.AllowedTools {
+				if _, ok := activeTools.Get(toolName); !ok {
+					if fullTool, ok := al.tools.Get(toolName); ok {
+						activeTools.Register(fullTool)
+					}
+				}
+			}
+		}
 		// Build tool definitions
 		providerToolDefs := activeTools.ToProviderDefs()
 
@@ -1472,6 +1548,31 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				continue
 			}
 
+			// Generic capability enforcement: once Ghost commits to a
+			// capability (skill SKILL.md read), only that capability's
+			// AllowedTools may run. This is generic — no per-skill branches.
+			// It bounds external-API wandering (weather never explores
+			// list_dir/memory) and forces primary -> fallback -> clean
+			// failure instead of 10+ iterations.
+			if capSkill := committedSkill(messages); capSkill != "" {
+				cap := skills.GetCapability(capSkill)
+				if !cap.Allows(tc.Name) {
+					capViolations[cap.ID]++
+					if capViolations[cap.ID] >= 3 {
+						finalContent = cap.CleanFailure()
+						break
+					}
+					toolResultMsg := providers.Message{
+						Role:       "tool",
+						Content:    fmt.Sprintf("Capability '%s' is committed for this request. Allowed tools: %s. Use the exact command from %s/SKILL.md, not %s. If the result returns data (even short), use it directly.", cap.ID, strings.Join(cap.AllowedTools, ", "), cap.Skill, tc.Name),
+						ToolCallID: tc.ID,
+					}
+					messages = append(messages, toolResultMsg)
+					al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+					continue
+				}
+			}
+
 			toolCtx := tools.WithSubagentDepth(ctx, tools.SubagentDepth(ctx))
 			toolResult := activeTools.ExecuteWithContext(toolCtx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, opts.SessionKey, asyncCallback)
 
@@ -1493,6 +1594,30 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			contentForLLM := toolResult.ForLLM
 			if contentForLLM == "" && toolResult.Err != nil {
 				contentForLLM = toolResult.Err.Error()
+			}
+
+			// Generic result validation: if committed to a capability and
+			// this was its primary tool (exec), validate. On invalid,
+			// count attempts; when MaxAttempts exhausted, fail cleanly
+			// instead of wandering.
+			if capSkill := committedSkill(messages); capSkill != "" && tc.Name == "exec" {
+				cap := skills.GetCapability(capSkill)
+				if cap.MaxAttempts > 0 && !cap.ValidateResult(contentForLLM) {
+					capExecAttempts[cap.ID]++
+					if capExecAttempts[cap.ID] >= cap.MaxAttempts {
+						finalContent = cap.CleanFailure()
+						// Persist the clean failure path as a tool result so
+						// history stays coherent, then break to response.
+						toolResultMsg := providers.Message{
+							Role:       "tool",
+							Content:    "Capability '" + cap.ID + "' exhausted primary + fallback. Respond with the clean failure.",
+							ToolCallID: tc.ID,
+						}
+						messages = append(messages, toolResultMsg)
+						al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+						break
+					}
+				}
 			}
 
 			toolResultMsg := providers.Message{
@@ -1746,6 +1871,25 @@ func shouldFilterAssistantChunk(chunk string) bool {
 		return true
 	}
 	return false
+}
+
+// sanitizeAssistantOutput detects internal dumps in the final response and
+// replaces them with a product refusal. Generic patterns only.
+func sanitizeAssistantOutput(content string) (string, bool) {
+	lower := strings.ToLower(content)
+	// SKILL.md frontmatter dump: "name: <x>" + "description:" + version/author.
+	hasFrontmatter := strings.Contains(lower, "name:") && strings.Contains(lower, "description:") &&
+		(strings.Contains(lower, "version:") || strings.Contains(lower, "author:"))
+	// Manifest / filesystem probes.
+	hasManifest := strings.Contains(lower, ".bundled") || strings.Contains(lower, "bundled manifest")
+	hasDirListing := strings.Contains(lower, "dir:") && strings.Contains(lower, "file:")
+	hasAbsPath := strings.Contains(content, "/var/lib/ghost") || strings.Contains(content, "/var/lib/ghost/workspace")
+	hasToolDump := strings.Contains(lower, "tool instructions") && strings.Contains(lower, "exec")
+	if hasFrontmatter || hasManifest || hasDirListing || hasAbsPath {
+		_ = hasToolDump
+		return "I can't share internal skill definitions or system files, but I can help with the task itself. What would you like to do?", true
+	}
+	return content, false
 }
 
 func (al *AgentLoop) buildCandidates(model string) []providers.FallbackCandidate {
@@ -2183,6 +2327,88 @@ func (al *AgentLoop) estimateTokens(messages []providers.Message) int {
 		total += utf8.RuneCountInString(m.Content) / 3
 	}
 	return total
+}
+
+// committedSkill returns the skill Ghost committed to via SKILL.md read.
+// Generic: extracts the name from any skills/<name>/SKILL.md path or from
+// frontmatter, with no per-skill branches.
+func committedSkill(messages []providers.Message) string {
+	start := len(messages) - 6
+	if start < 0 {
+		start = 0
+	}
+	for i := len(messages) - 1; i >= start; i-- {
+		msg := messages[i]
+		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+			for _, tc := range msg.ToolCalls {
+				if tc.Function != nil && tc.Function.Name == "read_file" {
+					if name := skillNameFromArgs(tc.Function.Arguments); name != "" {
+						return name
+					}
+				}
+			}
+		}
+		if msg.Role == "tool" && strings.Contains(strings.ToLower(msg.Content), "name:") {
+			if name := skillNameFromFrontmatter(msg.Content); name != "" {
+				return name
+			}
+		}
+	}
+	return ""
+}
+
+// recentSkillRead is kept for compatibility; delegates to committedSkill.
+func recentSkillRead(messages []providers.Message) string {
+	return committedSkill(messages)
+}
+
+// isSkillCovered is kept for compatibility; delegates to the generic
+// capability contract. No per-skill maps.
+func isSkillCovered(skill, toolName, args string) bool {
+	cap := skills.GetCapability(skill)
+	return !cap.Allows(toolName)
+}
+
+func skillNameFromArgs(args string) string {
+	if !strings.Contains(args, "SKILL.md") {
+		return ""
+	}
+	if idx := strings.Index(args, "skills/"); idx >= 0 {
+		rest := args[idx+7:]
+		// Cut at first / " ' } whitespace.
+		end := len(rest)
+		for j, r := range rest {
+			if r == '/' || r == '"' || r == '\'' || r == '}' || r == ' ' || r == '\\' {
+				end = j
+				break
+			}
+		}
+		name := strings.ToLower(strings.TrimSpace(rest[:end]))
+		name = strings.Trim(name, "\"'.,")
+		if name != "" && name != "skill.md" {
+			return name
+		}
+	}
+	return ""
+}
+
+func skillNameFromFrontmatter(content string) string {
+	lower := strings.ToLower(content)
+	// Look for "name: <skill>" on its own line.
+	for _, line := range strings.Split(lower, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "name:") {
+			name := strings.TrimSpace(strings.TrimPrefix(line, "name:"))
+			name = strings.Trim(name, "\"'.,")
+			if fields := strings.Fields(name); len(fields) > 0 {
+				return fields[0]
+			}
+			if name != "" {
+				return name
+			}
+		}
+	}
+	return ""
 }
 
 // autoJournal summarizes the session and appends it to the daily note.

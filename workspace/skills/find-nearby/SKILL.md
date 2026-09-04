@@ -8,7 +8,9 @@ metadata:
     related_skills: []
 ---
 
-# Find Nearby — Local Place Discovery
+# Find Nearby
+
+> **If location missing:** If user says `nearby cafes` without location, first check device location context. If unavailable, ask `Which location should I search near?` and when user replies with a place like `Bangkok`, resume the search with that location. — Local Place Discovery
 
 Find restaurants, cafes, bars, pharmacies, and other places near any location. Uses OpenStreetMap (free, no API keys). Works with:
 

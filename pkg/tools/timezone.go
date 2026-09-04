@@ -44,3 +44,48 @@ func ValidateTimezone(tz string) string {
 	}
 	return tz
 }
+
+// Mobile metadata contract for /v1/chat (same path the mobile app uses).
+//
+//	Optional request metadata (all optional, all validated, never trusted blindly):
+//	  timezone  IANA name, e.g. "Asia/Bangkok". Authoritative for scheduling
+//	            ("9 AM" means 9 AM there). Validated via ValidateTimezone;
+//	            unknown/empty falls back to tool default (UTC).
+//	  city      Free-form city, e.g. "Bangkok". Preferred for weather/aqi/
+//	            nearby when present. Trimmed, max 64 chars.
+//	  latitude  Decimal degrees as string, e.g. "13.7563".
+//	  longitude Decimal degrees as string, e.g. "100.5018".
+//	  location_source  Opaque source label, e.g. "mobile_ip", for prompting.
+//
+//	Fallback behavior:
+//	  - If location (city or lat+lon) is present, skills use it directly.
+//	  - If absent, Ghost asks once ("Which city should I check?") and resumes
+//	    when the user replies with a short value — no repeat of full request.
+//	  - Timezone absent/unknown never blocks; scheduling falls back to UTC
+//	    and labels the fallback explicitly.
+type RequestLocation struct {
+	City     string
+	Latitude string
+	Longitude string
+	Timezone string
+	Source   string
+}
+
+// RequestLocationFromMetadata extracts the validated location contract.
+func RequestLocationFromMetadata(metadata map[string]string) RequestLocation {
+	if metadata == nil {
+		return RequestLocation{}
+	}
+	loc := RequestLocation{
+		Timezone: ValidateTimezone(metadata["timezone"]),
+		Source:   metadata["location_source"],
+	}
+	if c := metadata["city"]; c != "" && len(c) <= 64 {
+		loc.City = c
+	}
+	if lat, lon := metadata["latitude"], metadata["longitude"]; lat != "" && lon != "" {
+		loc.Latitude = lat
+		loc.Longitude = lon
+	}
+	return loc
+}
