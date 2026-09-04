@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/skills"
 )
 
 // SkillManageTool allows the agent to autonomously create, update, and delete
@@ -30,9 +31,9 @@ func (t *SkillManageTool) Name() string {
 }
 
 func (t *SkillManageTool) Description() string {
-	return `Manage skills (create, update, delete). Skills are your procedural memory — reusable approaches for recurring task types. New skills go to workspace/skills/<name>/SKILL.md.
+	return `Manage skills (create, update, delete, enable, disable). Skills are your procedural memory — reusable approaches for recurring task types. New skills go to workspace/skills/<name>/SKILL.md.
 
-Actions: create (full SKILL.md with frontmatter), patch (targeted find-and-replace), delete.
+Actions: create (full SKILL.md with frontmatter), patch (targeted find-and-replace), delete, enable (rename SKILL.md.disabled back), disable (rename SKILL.md to SKILL.md.disabled).
 
 Create when: complex task succeeded (5+ tool calls), errors were overcome, user-corrected approach worked, non-trivial workflow discovered, or user asks you to remember a procedure.
 Update when: instructions are stale/wrong, missing steps or pitfalls found during use. If you used a skill and hit issues not covered by it, patch it immediately.
@@ -48,7 +49,7 @@ func (t *SkillManageTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"action": map[string]interface{}{
 				"type":        "string",
-				"enum":        []string{"create", "patch", "delete"},
+				"enum":        []string{"create", "patch", "delete", "enable", "disable"},
 				"description": "The action to perform.",
 			},
 			"name": map[string]interface{}{
@@ -175,9 +176,77 @@ func (t *SkillManageTool) Execute(ctx context.Context, args map[string]interface
 		return t.patchSkill(name, args)
 	case "delete":
 		return t.deleteSkill(name)
+	case "enable":
+		return t.setSkillEnabled(name, true)
+	case "disable":
+		return t.setSkillEnabled(name, false)
 	default:
-		return ErrorResult(fmt.Sprintf("Unknown action '%s'. Use: create, patch, delete", action))
+		return ErrorResult(fmt.Sprintf("Unknown action '%s'. Use: create, patch, delete, enable, disable", action))
 	}
+}
+
+// setSkillEnabled toggles a skill by renaming SKILL.md <-> SKILL.md.disabled,
+// mirroring the Web Console toggle so chat and UI can never disagree on state.
+// It is fully reversible and executes no skill code.
+func (t *SkillManageTool) setSkillEnabled(name string, enabled bool) *ToolResult {
+	skillDir := filepath.Join(t.skillsDir(), name)
+	// Stay inside the skills directory.
+	if !strings.HasPrefix(filepath.Clean(skillDir), filepath.Clean(t.skillsDir())+string(filepath.Separator)) {
+		return ErrorResult("Invalid skill name.")
+	}
+	src := filepath.Join(skillDir, "SKILL.md")
+	dst := filepath.Join(skillDir, "SKILL.md.disabled")
+
+	var renamed bool
+	if enabled {
+		if _, err := os.Stat(dst); err != nil {
+			if _, err := os.Stat(src); err == nil {
+				return NewToolResult(fmt.Sprintf("Skill '%s' is already enabled.", name))
+			}
+			return ErrorResult(fmt.Sprintf("Skill '%s' not found.", name))
+		}
+		if err := os.Rename(dst, src); err != nil {
+			return ErrorResult(fmt.Sprintf("Failed to enable skill: %v", err))
+		}
+		renamed = true
+	} else {
+		if _, err := os.Stat(src); err != nil {
+			if _, err := os.Stat(dst); err == nil {
+				return NewToolResult(fmt.Sprintf("Skill '%s' is already disabled.", name))
+			}
+			return ErrorResult(fmt.Sprintf("Skill '%s' not found.", name))
+		}
+		// Refuse to disable if it would leave Ghost with no visible skills?
+		// No — the user explicitly asked; honor it.
+		if err := os.Rename(src, dst); err != nil {
+			return ErrorResult(fmt.Sprintf("Failed to disable skill: %v", err))
+		}
+		renamed = true
+	}
+
+	if renamed {
+		// A toggle is an explicit user choice: record it so future bundled
+		// syncs can never flip it behind them.
+		if manifest, err := skills.LoadManifest(t.skillsDir()); err == nil {
+			if entry, ok := manifest.Skills[name]; ok {
+				entry.UserModified = true
+				manifest.Skills[name] = entry
+				_ = manifest.SaveManifest(t.skillsDir())
+			}
+		}
+	}
+
+	verb := "disabled"
+	if enabled {
+		verb = "enabled"
+	}
+	logger.InfoCF("skill_manage", "Skill "+verb, map[string]interface{}{"name": name})
+	result := map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Skill '%s' %s.", name, verb),
+	}
+	jsonResult, _ := json.Marshal(result)
+	return NewToolResult(string(jsonResult))
 }
 
 func (t *SkillManageTool) createSkill(name string, args map[string]interface{}) *ToolResult {

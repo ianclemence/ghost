@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -71,5 +72,43 @@ func TestCommittedSkillGeneric(t *testing.T) {
 	msgs := testMessagesWithSkillRead(`{"path":"skills/my-new-skill/SKILL.md"}`)
 	if got := committedSkill(msgs); got != "my-new-skill" {
 		t.Fatalf("expected my-new-skill, got %q", got)
+	}
+}
+
+func TestSkillToggleName(t *testing.T) {
+	// Uses a temp workspace with fake skills.
+	dir := t.TempDir()
+	for _, n := range []string{"ascii-art", "weather"} {
+		os.MkdirAll(dir+"/skills/"+n, 0755)
+		os.WriteFile(dir+"/skills/"+n+"/SKILL.md", []byte("x"), 0644)
+	}
+	if got := skillToggleName(dir, "ascii art"); got != "ascii-art" {
+		t.Fatalf("expected ascii-art, got %q", got)
+	}
+	if got := skillToggleName(dir, "the weather skill"); got != "weather" {
+		t.Fatalf("expected weather, got %q", got)
+	}
+	if got := skillToggleName(dir, "the lights"); got != "" {
+		t.Fatalf("must not guess, got %q", got)
+	}
+}
+
+func TestSetSkillEnabledLocal(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(dir+"/skills/demo", 0755)
+	os.WriteFile(dir+"/skills/demo/SKILL.md", []byte("x"), 0644)
+	ok, msg := setSkillEnabledLocal(dir, "demo", false)
+	if !ok || msg == "" {
+		t.Fatalf("disable failed: %v %q", ok, msg)
+	}
+	if _, err := os.Stat(dir + "/skills/demo/SKILL.md"); err == nil {
+		t.Fatalf("SKILL.md should be renamed")
+	}
+	ok, _ = setSkillEnabledLocal(dir, "demo", true)
+	if !ok {
+		t.Fatalf("re-enable failed")
+	}
+	if _, err := os.Stat(dir + "/skills/demo/SKILL.md"); err != nil {
+		t.Fatalf("SKILL.md should be back")
 	}
 }

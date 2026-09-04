@@ -895,6 +895,24 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 			return ans, nil
 		}
 	}
+	// Skill toggle fast-path: "disable X" / "enable Y" executes directly
+	// (mirrors the Web Console toggle). Before the disabled-skill check so
+	// "enable X" still works when X is currently off.
+	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+		if ans, ok := al.trySkillToggleFastPath(msg.Content); ok {
+			logger.InfoCF("agent", "skill-toggle fast-path",
+				map[string]interface{}{"session_key": msg.SessionKey})
+			if onChunk != nil && ans != "" {
+				onChunk(ans)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return ans, nil
+		}
+	}
 	// Disabled-skill fast-path first: a toggle is a promise. If the user
 	// asks for a disabled skill, say so honestly instead of improvising.
 	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {

@@ -35,6 +35,110 @@ func (al *AgentLoop) tryDeterministicTurn(msg, session string) (string, bool) {
 	return "", false
 }
 
+// trySkillToggleFastPath handles "disable X" / "enable X" deterministically
+// (zero LLM calls), mirroring the Web Console toggle exactly. Works even
+// when the provider is rate-limited.
+func (al *AgentLoop) trySkillToggleFastPath(msg string) (string, bool) {
+	lower := strings.ToLower(strings.TrimSpace(msg))
+	var enable *bool
+	var rest string
+	for _, prefix := range []string{"disable ", "turn off ", "switch off ", "deactivate "} {
+		if strings.HasPrefix(lower, prefix) {
+			b := false
+			enable = &b
+			rest = strings.TrimSpace(msg[len(prefix):])
+			break
+		}
+	}
+	if enable == nil {
+		for _, prefix := range []string{"enable ", "turn on ", "switch on ", "activate "} {
+			if strings.HasPrefix(lower, prefix) {
+				b := true
+				enable = &b
+				rest = strings.TrimSpace(msg[len(prefix):])
+				break
+			}
+		}
+	}
+	if enable == nil {
+		return "", false
+	}
+	// Strip trailing "skill" word: "disable the weather skill".
+	rest = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(rest)), " skill")
+	rest = strings.TrimPrefix(rest, "the ")
+	rest = strings.TrimSpace(strings.TrimSuffix(rest, " skill"))
+	name := skillToggleName(al.workspace, rest)
+	if name == "" {
+		return "", false
+	}
+	ok, msgOut := setSkillEnabledLocal(al.workspace, name, *enable)
+	if !ok {
+		return "", false
+	}
+	return msgOut, true
+}
+
+// skillToggleName resolves free text to an installed skill name (hyphens ≈
+// spaces, case-insensitive, leading "the" and trailing "skill" stripped).
+// Empty when no installed skill matches — the turn then falls through to
+// the normal loop instead of guessing.
+func skillToggleName(workspace, text string) string {
+	clean := strings.TrimSpace(strings.ToLower(text))
+	clean = strings.TrimSuffix(clean, " skill")
+	clean = strings.TrimPrefix(clean, "the ")
+	clean = strings.TrimSpace(strings.TrimSuffix(clean, " skill"))
+	norm := strings.NewReplacer("-", " ", "_", " ").Replace(clean)
+	dirs, err := os.ReadDir(workspace + "/skills")
+	if err != nil {
+		return ""
+	}
+	for _, e := range dirs {
+		if !e.IsDir() {
+			continue
+		}
+		n := strings.ToLower(e.Name())
+		if norm == n || norm == strings.ReplaceAll(n, "-", " ") {
+			return e.Name()
+		}
+	}
+	// Also match without the trailing "s"? No — exact only, never guess.
+	return ""
+}
+
+// setSkillEnabledLocal mirrors SkillManageTool.setSkillEnabled without a
+// tool call: rename + manifest user_modified flag.
+func setSkillEnabledLocal(workspace, name string, enabled bool) (bool, string) {
+	skillDir := workspace + "/skills/" + name
+	src := skillDir + "/SKILL.md"
+	dst := skillDir + "/SKILL.md.disabled"
+	if enabled {
+		if _, err := os.Stat(dst); err != nil {
+			return false, ""
+		}
+		if err := os.Rename(dst, src); err != nil {
+			return false, ""
+		}
+	} else {
+		if _, err := os.Stat(src); err != nil {
+			return false, ""
+		}
+		if err := os.Rename(src, dst); err != nil {
+			return false, ""
+		}
+	}
+	if manifest, err := skills.LoadManifest(workspace + "/skills"); err == nil {
+		if entry, ok := manifest.Skills[name]; ok {
+			entry.UserModified = true
+			manifest.Skills[name] = entry
+			_ = manifest.SaveManifest(workspace + "/skills")
+		}
+	}
+	if enabled {
+		return true, "Done — " + name + " is enabled."
+	}
+	return true, "Done — " + name + " is off. Say enable to bring it back."
+}
+
 // maybeSetPendingFromAnswer detects when the assistant just asked a
 // natural follow-up for a known missing input and records a pending
 // continuation so the next short reply resumes. Generic: driven by
