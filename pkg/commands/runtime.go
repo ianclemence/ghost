@@ -7,6 +7,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
+	"github.com/ianclemence/ghost/pkg/rag"
 	"github.com/ianclemence/ghost/pkg/session"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
@@ -33,6 +34,10 @@ type Runtime struct {
 	CurrentModel func() string
 	// Workspace is the filesystem workspace root for file-backed resets.
 	Workspace string
+	// RAG is the in-memory vector index. Reset clears it alongside the DB
+	// rows so deleted memories stop surfacing until restart-free operation
+	// continues. Nil when RAG is disabled — callers must nil-check.
+	RAG *rag.Store
 }
 
 func (rt *Runtime) SetPersonality(name string) error {

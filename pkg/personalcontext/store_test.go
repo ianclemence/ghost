@@ -240,3 +240,37 @@ func TestProvenancePreserved(t *testing.T) {
 		t.Fatalf("pc-green sources = %+v, want the correcting source", newEntry.Sources)
 	}
 }
+
+func TestResetClearsMemoryAndFile(t *testing.T) {
+	ws := t.TempDir()
+	store, err := Open(ws)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := store.Create(mkEntry("e1", "user", "identity/name", "Ian")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if len(store.Current()) != 1 {
+		t.Fatalf("expected 1 current entry")
+	}
+	if err := store.Reset(); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if len(store.Current()) != 0 {
+		t.Fatalf("stale beliefs visible after reset")
+	}
+	data, err := os.ReadFile(filepath.Join(ws, EntriesDir, EntriesFile))
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if len(data) != 0 {
+		t.Fatalf("log not truncated")
+	}
+	// Store stays usable after reset.
+	if _, err := store.Create(mkEntry("e2", "user", "identity/name", "Lan")); err != nil {
+		t.Fatalf("create after reset: %v", err)
+	}
+	if len(store.Current()) != 1 {
+		t.Fatalf("expected 1 current entry after re-create")
+	}
+}

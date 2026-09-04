@@ -520,6 +520,24 @@ func (s *Store) History(id string) []Entry {
 	return out
 }
 
+// Reset clears both the in-memory state and the on-disk log, returning the
+// store to a fresh-install state. Truncating the file alone is NOT enough:
+// the running process serves Current() from memory, so a file-only wipe
+// leaves stale beliefs visible until restart (ghost knew deleted facts).
+func (s *Store) Reset() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.log = nil
+	s.byID = make(map[string]*Entry)
+	if err := os.MkdirAll(filepath.Dir(s.path), 0755); err != nil {
+		return fmt.Errorf("create %s: %w", EntriesDir, err)
+	}
+	if err := os.WriteFile(s.path, []byte{}, 0644); err != nil {
+		return fmt.Errorf("truncate entries log: %w", err)
+	}
+	return nil
+}
+
 // append writes one record to the log and updates the in-memory state. The
 // caller must hold the write lock.
 func (s *Store) append(e Entry) error {

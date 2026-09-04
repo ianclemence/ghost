@@ -223,6 +223,11 @@ func clearMemory(ws string, rt *Runtime) error {
 	if db != nil {
 		_, _ = db.Exec(`DELETE FROM memory_chunks`)
 	}
+	// Drop the in-memory vector index too — otherwise Retrieve keeps
+	// serving deleted memories until the process restarts.
+	if rt != nil && rt.RAG != nil {
+		rt.RAG.Reset()
+	}
 	// Files: memory/MEMORY.md, memory/YYYYMM/*.md, knowledge, data
 	memDir := filepath.Join(ws, "memory")
 	if _, err := os.Stat(memDir); err == nil {
@@ -262,19 +267,21 @@ func clearAutomations(ws string, rt *Runtime) error {
 }
 
 func clearPersonalContext(ws string, rt *Runtime) error {
-	// Truncate personal-context log
-	pcPath := filepath.Join(ws, "personal-context", "entries.jsonl")
-	_ = os.MkdirAll(filepath.Join(ws, "personal-context"), 0755)
-	_ = os.WriteFile(pcPath, []byte(""), 0644)
+	// Reset the live store first: it clears in-memory state AND truncates
+	// the log. File-only wipes leave stale beliefs visible until restart.
+	if rt != nil && rt.PersonalContext != nil {
+		if err := rt.PersonalContext.Reset(); err != nil {
+			return err
+		}
+	} else {
+		pcPath := filepath.Join(ws, "personal-context", "entries.jsonl")
+		_ = os.MkdirAll(filepath.Join(ws, "personal-context"), 0755)
+		_ = os.WriteFile(pcPath, []byte(""), 0644)
+	}
 	// Knowledge profile
 	prof := filepath.Join(ws, "knowledge", "self", "user-profile.md")
 	_ = os.MkdirAll(filepath.Dir(prof), 0755)
 	_ = os.WriteFile(prof, []byte(""), 0644)
-	// Also clear curated memory files if any
-	_ = os.RemoveAll(filepath.Join(ws, "personal-context"))
-	_ = os.MkdirAll(filepath.Join(ws, "personal-context"), 0755)
-	_ = os.WriteFile(pcPath, []byte(""), 0644)
-	// In-memory store will be stale until restart; note in reply
 	return nil
 }
 

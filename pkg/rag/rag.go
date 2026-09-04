@@ -112,6 +112,22 @@ func (s *Store) LoadIndex(ctx context.Context) error {
 	return nil
 }
 
+// Reset drops the in-memory vector index (fresh-install state). The DB rows
+// are deleted separately; without this, Retrieve keeps serving embeddings
+// for deleted memories until restart.
+func (s *Store) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.chromemDB = chromem.NewDB()
+	collection, err := s.chromemDB.CreateCollection("memory", nil, nil)
+	if err != nil {
+		logger.ErrorCF("rag", "Failed to recreate vector collection", map[string]interface{}{"error": err.Error()})
+		return
+	}
+	s.collection = collection
+	s.ready = false
+}
+
 // Ingest chunks text and stores embeddings
 func (s *Store) Ingest(ctx context.Context, content string, source string) error {
 	// Simple chunking by paragraphs or max length
