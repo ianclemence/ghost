@@ -895,6 +895,23 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 			return ans, nil
 		}
 	}
+	// Disabled-skill fast-path first: a toggle is a promise. If the user
+	// asks for a disabled skill, say so honestly instead of improvising.
+	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+		if ans, ok := al.tryDisabledSkillFastPath(msg.Content, msg.SessionKey); ok {
+			logger.InfoCF("agent", "disabled-skill fast-path",
+				map[string]interface{}{"session_key": msg.SessionKey})
+			if onChunk != nil && ans != "" {
+				onChunk(ans)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return ans, nil
+		}
+	}
 	// Generic readiness fast-path: Intent -> Capability -> Readiness.
 	// Missing input / not-configured returns a product message with zero
 	// LLM calls and sets a pending continuation for natural resume.

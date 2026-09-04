@@ -208,6 +208,47 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 	return SkillReadiness{Status: StatusReady}
 }
 
+// ListDisabled returns names of installed skills currently disabled via
+// SKILL.md.disabled (no SKILL.md present). Used by the chat fast-path so a
+// request for a disabled skill gets an honest "it's off" answer instead of
+// the model silently improvising around the toggle.
+func ListDisabled(workspace string) []string {
+	dir := workspace + "/skills"
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		skillDir := dir + "/" + e.Name()
+		if _, err := os.Stat(skillDir + "/SKILL.md"); err == nil {
+			continue
+		}
+		if _, err := os.Stat(skillDir + "/SKILL.md.disabled"); err == nil {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
+// MatchDisabledSkill reports whether the message is asking for a disabled
+// skill, by normalized name match (hyphens ≈ spaces, case-insensitive).
+// Returns the skill name or "".
+func MatchDisabledSkill(workspace, msg string) string {
+	lower := strings.ToLower(msg)
+	norm := strings.NewReplacer("-", " ", "_", " ").Replace(lower)
+	for _, name := range ListDisabled(workspace) {
+		n := strings.ToLower(name)
+		if strings.Contains(lower, n) || strings.Contains(norm, strings.ReplaceAll(n, "-", " ")) {
+			return name
+		}
+	}
+	return ""
+}
+
 // hasCameraDevice reports whether a video capture device exists.
 // Pure glob, no exec — safe to call per request.
 func hasCameraDevice() bool {

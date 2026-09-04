@@ -184,6 +184,20 @@ func isSecurityProbe(msg string) bool {
 	return false
 }
 
+// tryDisabledSkillFastPath answers requests for a disabled skill honestly
+// (zero LLM calls) instead of letting the model improvise around the toggle.
+func (al *AgentLoop) tryDisabledSkillFastPath(msg, session string) (string, bool) {
+	_ = session
+	if name := skills.MatchDisabledSkill(al.workspace, msg); name != "" {
+		r := skills.CheckReadiness(name, al.workspace, nil)
+		if r.Message != "" {
+			return r.Message, true
+		}
+		return "The " + name + " skill is currently disabled. Enable it in Ghost's Skills settings to use it.", true
+	}
+	return "", false
+}
+
 // tryReadinessFastPath handles missing-input / not-configured cases
 // deterministically (zero LLM calls) via the generic readiness model:
 // Intent -> Capability -> Readiness -> ask / setup message + pending.

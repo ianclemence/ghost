@@ -870,16 +870,38 @@ func setSkillEnabled(skillsDir, name string, enabled bool) error {
 	}
 	src := filepath.Join(skillPath, "SKILL.md")
 	dst := filepath.Join(skillPath, "SKILL.md.disabled")
+	renamed := false
 	if enabled {
 		if _, err := os.Stat(dst); err == nil {
-			return os.Rename(dst, src)
+			if err := os.Rename(dst, src); err != nil {
+				return err
+			}
+			renamed = true
+		} else {
+			return nil
 		}
-		return nil
+	} else {
+		if _, err := os.Stat(src); err == nil {
+			if err := os.Rename(src, dst); err != nil {
+				return err
+			}
+			renamed = true
+		} else {
+			return fmt.Errorf("skill not found")
+		}
 	}
-	if _, err := os.Stat(src); err == nil {
-		return os.Rename(src, dst)
+	if renamed {
+		// A toggle is an explicit user choice: record it so future syncs
+		// can never misread intent and re-enable/re-disable behind them.
+		if manifest, err := skills.LoadManifest(skillsDir); err == nil {
+			if entry, ok := manifest.Skills[name]; ok {
+				entry.UserModified = true
+				manifest.Skills[name] = entry
+				_ = manifest.SaveManifest(skillsDir)
+			}
+		}
 	}
-	return fmt.Errorf("skill not found")
+	return nil
 }
 
 // readSkillDetail returns a skill's files and metadata.
