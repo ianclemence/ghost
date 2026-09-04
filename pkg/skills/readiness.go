@@ -71,7 +71,7 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 				Status:      StatusNeedsConfiguration,
 				Requirement: "calendar_connection",
 				Question:    "Calendar access isn't connected yet. Connect your calendar to let me check your schedule?",
-				Message:     "Calendar access isn't connected yet. Connect your calendar in Ghost settings to view your schedule.",
+				Message:     "Calendar access isn't connected yet. Connect your calendar in Ghost settings under Integrations to view your schedule.",
 				UserAction:  "connect_calendar",
 			}
 		}

@@ -15,7 +15,7 @@ prerequisites:
 
 Google Calendar via gcalcli. Requires OAuth2 authentication.
 
-> **If not configured:** If `gcalcli` reports `No OAuth token` or `oauth` required, do NOT expose the raw error. Respond: `Calendar access isn't connected yet. Connect your calendar in Ghost settings to view your schedule.` and offer to guide setup. Do not pretend calendar works.
+> **If not configured:** If `gcalcli` reports `No OAuth token` or `oauth` required, do NOT expose the raw error. Respond: `Calendar access isn't connected yet. Connect your calendar in Ghost settings under Integrations to view your schedule.` and offer to guide setup. Do not pretend calendar works.
 
 ## Quick Reference
 

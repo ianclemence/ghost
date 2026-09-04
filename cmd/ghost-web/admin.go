@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -1563,8 +1564,29 @@ func gitHubRepoTree(owner, repo, branch, prefix string) ([]string, error) {
 	return paths, nil
 }
 
+// installSkillNameRE allows letters, numbers, hyphen, underscore only.
+// It mirrors the gateway's validSkillName guard so both backends agree.
+var installSkillNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+
+func validInstallSkillName(name string) bool {
+	return installSkillNameRE.MatchString(name)
+}
+
+// blockedSkillExts are never written for custom installs (executables,
+// libraries, archives that could hide payloads outside review).
+var blockedSkillExts = map[string]bool{
+	".sh": true, ".exe": true, ".bin": true, ".so": true, ".dylib": true,
+	".dll": true, ".zip": true, ".tar": true, ".gz": true,
+}
+
 // installSkillFromGitHub downloads a skill directory into the workspace skills dir.
+// It validates the name, caps file count/size, blocks risky extensions, and
+// verifies the result contains a valid SKILL.md (name + description) before
+// reporting success — so a broken install never looks ready.
 func installSkillFromGitHub(owner, repo, branch, prefix, destName string) error {
+	if !validInstallSkillName(destName) {
+		return fmt.Errorf("invalid skill name %q: use letters, numbers, hyphen, underscore", destName)
+	}
 	paths, err := gitHubRepoTree(owner, repo, branch, prefix)
 	if err != nil {
 		return err
@@ -1572,14 +1594,30 @@ func installSkillFromGitHub(owner, repo, branch, prefix, destName string) error 
 	if len(paths) == 0 {
 		return fmt.Errorf("no skill files found at %s/%s", repo, prefix)
 	}
+	if len(paths) > 50 {
+		return fmt.Errorf("skill too large (%d files, max 50)", len(paths))
+	}
 
 	dest := filepath.Join(workspaceSkillsDir(), destName)
+	if !strings.HasPrefix(dest, workspaceSkillsDir()+string(filepath.Separator)) && dest != workspaceSkillsDir() {
+		return fmt.Errorf("invalid skill name")
+	}
 	if _, err := os.Stat(dest); err == nil {
 		return fmt.Errorf("skill '%s' already exists", destName)
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
+	var total int64
+	downloaded := map[string][]byte{}
 	for _, p := range paths {
+		rel := strings.TrimPrefix(p, prefix)
+		rel = strings.TrimPrefix(rel, "/")
+		if rel == "" || strings.Contains(rel, "..") || filepath.IsAbs(rel) {
+			return fmt.Errorf("unsafe path in skill: %q", p)
+		}
+		if ext := strings.ToLower(filepath.Ext(rel)); blockedSkillExts[ext] {
+			return fmt.Errorf("blocked file type in skill: %q", rel)
+		}
 		url := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", owner, repo, branch, p)
 		resp, err := client.Get(url)
 		if err != nil {
@@ -1589,14 +1627,31 @@ func installSkillFromGitHub(owner, repo, branch, prefix, destName string) error 
 			resp.Body.Close()
 			return fmt.Errorf("failed to download %s (HTTP %d)", p, resp.StatusCode)
 		}
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 200*1024))
 		resp.Body.Close()
 		if err != nil {
 			return err
 		}
-		rel := strings.TrimPrefix(p, prefix)
-		rel = strings.TrimPrefix(rel, "/")
+		total += int64(len(body))
+		if total > 1024*1024 {
+			return fmt.Errorf("skill too large (over 1MB)")
+		}
+		downloaded[rel] = body
+	}
+	// Verify SKILL.md with valid frontmatter before writing anything.
+	skillMD, ok := downloaded["SKILL.md"]
+	if !ok {
+		return fmt.Errorf("skill is missing SKILL.md at its folder root")
+	}
+	name, desc := parseSkillFrontmatter(string(skillMD))
+	if name == "" || desc == "" {
+		return fmt.Errorf("SKILL.md needs name and description in its frontmatter")
+	}
+	for rel, body := range downloaded {
 		target := filepath.Join(dest, filepath.FromSlash(rel))
+		if !strings.HasPrefix(target, dest+string(filepath.Separator)) && target != dest {
+			return fmt.Errorf("unsafe path in skill: %q", rel)
+		}
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return err
 		}
@@ -1605,6 +1660,29 @@ func installSkillFromGitHub(owner, repo, branch, prefix, destName string) error 
 		}
 	}
 	return nil
+}
+
+// parseSkillFrontmatter extracts name + description from SKILL.md frontmatter
+// (same --- block the gateway loader reads).
+func parseSkillFrontmatter(text string) (name, desc string) {
+	rest := strings.TrimSpace(text)
+	if !strings.HasPrefix(rest, "---") {
+		return "", ""
+	}
+	end := strings.Index(rest[3:], "\n---")
+	if end < 0 {
+		return "", ""
+	}
+	for _, line := range strings.Split(rest[3:3+end], "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "name:") {
+			name = strings.Trim(strings.TrimPrefix(line, "name:"), " \"'")
+		}
+		if strings.HasPrefix(line, "description:") {
+			desc = strings.Trim(strings.TrimPrefix(line, "description:"), " \"'")
+		}
+	}
+	return name, desc
 }
 
 func handleSkillInstall(w http.ResponseWriter, r *http.Request) {

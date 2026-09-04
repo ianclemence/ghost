@@ -144,6 +144,14 @@ async function openSkill(name) {
   }
 
   actions.innerHTML = '';
+  // When a skill needs credentials (calendar/flight/homeassistant), offer a
+  // direct path to Integrations instead of leaving the user to guess.
+  const needsSetupNames = { calendar: 1, flight: 1, homeassistant: 1, spotify: 1, email: 1 };
+  if (needsSetupNames[name]) {
+    const cfgBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary' }, 'Configure');
+    cfgBtn.addEventListener('click', () => { backdrop.remove(); GhostApp.navigate('integrations'); });
+    actions.appendChild(cfgBtn);
+  }
   const toggleBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary' }, enabled ? 'Disable' : 'Enable');
   toggleBtn.addEventListener('click', async () => {
     try { await GhostAPI.proxyPost('/v1/skills/toggle', { name, enabled: !enabled }); GhostUI.toast(enabled ? 'Skill disabled' : 'Skill enabled'); backdrop.remove(); loadSkills(document.getElementById('view')); }

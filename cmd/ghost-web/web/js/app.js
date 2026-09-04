@@ -26,6 +26,7 @@ const GhostApp = (() => {
       items: [
         { name: 'devices', title: 'Devices', glyph: 'device' },
         { name: 'channels', title: 'Channels', glyph: 'channel' },
+        { name: 'integrations', title: 'Integrations', glyph: 'channel' },
       ],
     },
     {
