@@ -48,7 +48,7 @@
   flex-direction: column;
 }
 .kv > .kv-row + .kv-row {
-  border-top: 1px solid var(--line);
+  border-top: 0; /* no divider — calm, editorial key-value rows (Diagnostics keeps its own bordered card) */
 }
 .kv-row {
   display: flex;
@@ -145,7 +145,7 @@
   width: 100%;
   margin-top: var(--s-4);
   padding-top: var(--s-5);
-  border-top: 1px solid var(--line);
+  border-top: 0;
 }
 .qr-manual-label {
   font-size: var(--t-foot);
