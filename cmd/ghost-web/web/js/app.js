@@ -26,7 +26,7 @@ const GhostApp = (() => {
       items: [
         { name: 'devices', title: 'Devices', glyph: 'device' },
         { name: 'channels', title: 'Channels', glyph: 'channel' },
-        { name: 'integrations', title: 'Integrations', glyph: 'channel' },
+        { name: 'integrations', title: 'Integrations', glyph: 'integrations' },
       ],
     },
     {
@@ -50,6 +50,7 @@ const GhostApp = (() => {
     skill: '<path d="M12 3l2.2 4.6L19 8.3l-3.5 3.4.8 4.9L12 14.8 7.7 16.6l.8-4.9L5 8.3l4.8-.7L12 3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
     device: '<rect x="7" y="3" width="10" height="18" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 18h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
     channel: '<path d="M4 6h16v9H9l-4 4V6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
+    integrations: '<path d="M9 15l6-6M7.5 10.5a4 4 0 015.7-5.7l2.3 2.3a4 4 0 01-5.7 5.7l-1.1-1.1M16.5 13.5a4 4 0 01-5.7 5.7l-2.3-2.3a4 4 0 015.7-5.7l1.1 1.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
     system: '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.5 5.5l2 2M16.5 16.5l2 2M18.5 5.5l-2 2M7.5 16.5l-2 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
     update: '<path d="M4 12a8 8 0 0113.7-5.7L20 8M20 4v4h-4M20 12a8 8 0 01-13.7 5.7L4 16M4 20v-4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
     backup: '<path d="M5 7h9l4 4v9H5zM14 7v4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.5 13.5l2.5 2.5 4-4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',

@@ -26,34 +26,101 @@ async function loadSkills(container) {
     listEl.appendChild(GhostUI.errorState('Couldn\u2019t load skills', e.message || 'Ghost may still be starting.'));
     return;
   }
+  // Real readiness (enabled != configured != ready): overlay Integrations
+  // status so calendar/flight/homeassistant show their true state instead
+  // of the coarse optional flag.
+  let integ = null;
+  try { integ = await GhostAPI.get('/api/admin/integrations/status'); } catch (e) { /* offline-safe */ }
   if (!document.body.contains(container)) return;
   const skills = Array.isArray(res) ? res : (res.skills || res.items || []);
-  renderSkillsList(listEl, skills);
+  renderSkillsList(listEl, skills, integ && integ.integrations);
 }
 
-function renderSkillsList(listEl, skills) {
+// humanizeSkillDesc turns a routing-oriented SKILL.md description into
+// user-facing copy: cut the "Invoke when user asks ..." trigger block,
+// strip workspace paths and binary names.
+function humanizeSkillDesc(desc) {
+  if (!desc) return 'No description';
+  let s = String(desc);
+  const idx = s.search(/invoke (when|for)/i);
+  if (idx > 0) s = s.slice(0, idx).trim();
+  s = s.replace(/workspace\/[\w./-]+/gi, 'your workspace');
+  s = s.replace(/\/var\/lib\/[\w./-]+/g, 'your workspace');
+  s = s.replace(/\s*[-–—]\s*$/, '').trim();
+  s = s.replace(/[.\s]+$/, '');
+  return s || 'No description';
+}
+
+// skillGroups buckets skills so everyday capabilities come first and dev
+// tools don't drown them. Unknown/custom skills land in Everyday.
+const SKILL_GROUPS = [
+  { title: 'Everyday', skills: ['weather', 'aqi', 'daily-briefing', 'calendar', 'reminders', 'shopping', 'recipe', 'currency', 'crypto', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'find-nearby', 'travel', 'flight', 'summarize', 'scraper', 'organizer', 'healthcheck'] },
+  { title: 'Smart home & media', skills: ['homeassistant', 'camera', 'mobile', 'spotify', 'internet-reading', 'document-convert'] },
+  { title: 'System & developer', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'skill-creator', 'speedtest', 'ascii-art'] },
+];
+
+// skillBadge resolves the honest state: disabled > integrations-backed
+// readiness (calendar/flight/homeassistant) > coarse optional flag.
+function skillBadge(s, integ) {
+  const enabled = s.enabled !== 'false' && s.enabled !== false;
+  if (!enabled) return { state: 'neutral', label: 'Off' };
+  if (integ) {
+    if (s.name === 'calendar' && integ.calendar) {
+      if (!integ.calendar.connected) return { state: 'warn', label: 'Connect' };
+      return { state: 'ready', label: '' };
+    }
+    if (s.name === 'flight' && integ.flight) {
+      if (!integ.flight.configured) return { state: 'warn', label: 'Connect' };
+      return { state: 'ready', label: '' };
+    }
+    if (s.name === 'homeassistant' && integ.homeassistant) {
+      if (!integ.homeassistant.configured) return { state: 'warn', label: 'Connect' };
+      return { state: 'ready', label: '' };
+    }
+  }
+  const optional = s.optional === 'true' || s.optional === true;
+  if (optional) return { state: 'warn', label: 'Needs setup' };
+  return { state: 'ready', label: '' };
+}
+
+function renderSkillsList(listEl, skills, integ) {
   listEl.innerHTML = '';
   if (!skills || skills.length === 0) {
     listEl.appendChild(GhostUI.emptyState('No skills installed yet', 'Add your first skill from a GitHub repository, or Ghost comes with built-in skills ready to enable. Skills are the things Ghost can do for you.'));
     return;
   }
-  skills.forEach(s => {
-    const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openSkill(s.name) });
-    const enabled = s.enabled !== 'false' && s.enabled !== false;
-    const optional = s.optional === 'true' || s.optional === true;
-    const state = !enabled ? 'neutral' : optional ? 'warn' : 'ready';
-    row.appendChild(GhostUI.h('span', { className: 'status-dot ' + state }));
-    const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, s.name));
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle skill-desc' }, s.description || 'No description'));
-    row.appendChild(c);
-    const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
-    if (!enabled) tr.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary' }, 'Off'));
-    else if (optional) tr.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary' }, 'Needs setup'));
-    tr.appendChild(GhostUI.h('span', { className: 'chevron' }, '\u203a'));
-    row.appendChild(tr);
-    listEl.appendChild(row);
+  const byName = {};
+  skills.forEach(s => { byName[s.name] = s; });
+  const seen = {};
+  SKILL_GROUPS.forEach(g => {
+    const inGroup = g.skills.map(n => byName[n]).filter(Boolean);
+    if (inGroup.length === 0) return;
+    listEl.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin:var(--s-3) 0 var(--s-1)' }, g.title));
+    inGroup.forEach(s => {
+      seen[s.name] = true;
+      listEl.appendChild(buildSkillRow(s, integ));
+    });
   });
+  const rest = skills.filter(s => !seen[s.name]);
+  if (rest.length > 0) {
+    listEl.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin:var(--s-3) 0 var(--s-1)' }, 'More'));
+    rest.forEach(s => { listEl.appendChild(buildSkillRow(s, integ)); });
+  }
+}
+
+function buildSkillRow(s, integ) {
+  const row = GhostUI.h('div', { className: 'ghost-link-row', onClick: () => openSkill(s.name) });
+  const badge = skillBadge(s, integ);
+  row.appendChild(GhostUI.h('span', { className: 'status-dot ' + badge.state }));
+  const c = GhostUI.h('div', { className: 'ghost-row-content' });
+  c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, s.name));
+  c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle skill-desc' }, humanizeSkillDesc(s.description)));
+  row.appendChild(c);
+  const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+  if (badge.label) tr.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary' }, badge.label));
+  tr.appendChild(GhostUI.h('span', { className: 'chevron' }, '\u203a'));
+  row.appendChild(tr);
+  return row;
 }
 
 async function openSkill(name) {
