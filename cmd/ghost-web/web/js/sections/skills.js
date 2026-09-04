@@ -12,18 +12,16 @@ async function loadSkills(container) {
   const installBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showInstall() }, 'Install skill');
   GhostApp.setActions(installBtn);
 
-  const panel = GhostUI.h('div', { className: 'panel' });
-  const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'skill-list' });
-  listEl.appendChild(GhostUI.loading('Loading skills…'));
-  panel.appendChild(listEl);
-  container.appendChild(panel);
+  const loadingPanel = GhostUI.h('div', { className: 'panel' });
+  loadingPanel.appendChild(GhostUI.loading('Loading skills…'));
+  container.appendChild(loadingPanel);
 
   let res;
   try { res = await GhostAPI.proxyGet('/v1/skills'); }
   catch (e) {
     if (!document.body.contains(container)) return;
-    listEl.innerHTML = '';
-    listEl.appendChild(GhostUI.errorState('Couldn\u2019t load skills', e.message || 'Ghost may still be starting.'));
+    loadingPanel.innerHTML = '';
+    loadingPanel.appendChild(GhostUI.errorState('Couldn\u2019t load skills', e.message || 'Ghost may still be starting.'));
     return;
   }
   // Real readiness (enabled != configured != ready): overlay Integrations
@@ -32,8 +30,9 @@ async function loadSkills(container) {
   let integ = null;
   try { integ = await GhostAPI.get('/api/admin/integrations/status'); } catch (e) { /* offline-safe */ }
   if (!document.body.contains(container)) return;
+  loadingPanel.remove();
   const skills = Array.isArray(res) ? res : (res.skills || res.items || []);
-  renderSkillsList(listEl, skills, integ && integ.integrations);
+  renderSkillsList(container, skills, integ && integ.integrations);
 }
 
 // humanizeSkillDesc turns a routing-oriented SKILL.md description into
@@ -52,11 +51,11 @@ function humanizeSkillDesc(desc) {
 }
 
 // skillGroups buckets skills so everyday capabilities come first and dev
-// tools don't drown them. Unknown/custom skills land in Everyday.
+// tools don't drown them. Unknown/custom skills land in More.
 const SKILL_GROUPS = [
-  { title: 'Everyday', skills: ['weather', 'aqi', 'daily-briefing', 'calendar', 'reminders', 'shopping', 'recipe', 'currency', 'crypto', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'find-nearby', 'travel', 'flight', 'summarize', 'scraper', 'organizer', 'healthcheck'] },
-  { title: 'Smart home & media', skills: ['homeassistant', 'camera', 'mobile', 'spotify', 'internet-reading', 'document-convert'] },
-  { title: 'System & developer', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'skill-creator', 'speedtest', 'ascii-art'] },
+  { title: 'Everyday', sub: 'Weather, schedule, notes, and daily tasks.', skills: ['weather', 'aqi', 'daily-briefing', 'calendar', 'reminders', 'shopping', 'recipe', 'currency', 'crypto', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'find-nearby', 'travel', 'flight', 'summarize', 'scraper', 'organizer', 'healthcheck'] },
+  { title: 'Smart home & media', sub: 'Devices and content that may need setup.', skills: ['homeassistant', 'camera', 'mobile', 'spotify', 'internet-reading', 'document-convert'] },
+  { title: 'System & developer', sub: 'Machine tools and skill building.', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'skill-creator', 'speedtest', 'ascii-art'] },
 ];
 
 // skillBadge resolves the honest state: disabled > integrations-backed
@@ -83,10 +82,27 @@ function skillBadge(s, integ) {
   return { state: 'ready', label: '' };
 }
 
-function renderSkillsList(listEl, skills, integ) {
-  listEl.innerHTML = '';
+// Each group renders as its own panel with a panel-head h2 — the same
+// pattern as System (Services, Diagnostics) and Security (Backups).
+function skillGroupPanel(container, title, sub, items, integ) {
+  const panel = GhostUI.h('div', { className: 'panel' });
+  const head = GhostUI.h('div', { className: 'panel-head' });
+  const text = GhostUI.h('div');
+  text.appendChild(GhostUI.h('h2', {}, title));
+  if (sub) text.appendChild(GhostUI.h('p', {}, sub));
+  head.appendChild(text);
+  panel.appendChild(head);
+  const list = GhostUI.h('div', { className: 'ghost-list' });
+  items.forEach(s => { list.appendChild(buildSkillRow(s, integ)); });
+  panel.appendChild(list);
+  container.appendChild(panel);
+}
+
+function renderSkillsList(container, skills, integ) {
   if (!skills || skills.length === 0) {
-    listEl.appendChild(GhostUI.emptyState('No skills installed yet', 'Add your first skill from a GitHub repository, or Ghost comes with built-in skills ready to enable. Skills are the things Ghost can do for you.'));
+    const panel = GhostUI.h('div', { className: 'panel' });
+    panel.appendChild(GhostUI.emptyState('No skills installed yet', 'Add your first skill from a GitHub repository, or Ghost comes with built-in skills ready to enable. Skills are the things Ghost can do for you.'));
+    container.appendChild(panel);
     return;
   }
   const byName = {};
@@ -95,16 +111,12 @@ function renderSkillsList(listEl, skills, integ) {
   SKILL_GROUPS.forEach(g => {
     const inGroup = g.skills.map(n => byName[n]).filter(Boolean);
     if (inGroup.length === 0) return;
-    listEl.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin:var(--s-3) 0 var(--s-1)' }, g.title));
-    inGroup.forEach(s => {
-      seen[s.name] = true;
-      listEl.appendChild(buildSkillRow(s, integ));
-    });
+    inGroup.forEach(s => { seen[s.name] = true; });
+    skillGroupPanel(container, g.title, g.sub, inGroup, integ);
   });
   const rest = skills.filter(s => !seen[s.name]);
   if (rest.length > 0) {
-    listEl.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin:var(--s-3) 0 var(--s-1)' }, 'More'));
-    rest.forEach(s => { listEl.appendChild(buildSkillRow(s, integ)); });
+    skillGroupPanel(container, 'More', 'Custom and newly installed skills.', rest, integ);
   }
 }
 
