@@ -102,7 +102,10 @@ function showPairingModal() {
   document.body.appendChild(backdrop);
 
   let pollTimer = null, countdownTimer = null, currentInvite = null, closed = false;
-  function close() { closed = true; if (pollTimer) clearInterval(pollTimer); if (countdownTimer) clearInterval(countdownTimer); backdrop.remove(); }
+  // Reset the pairing baseline for every dialog: a stale count from a
+  // previous session would otherwise trigger an instant false success.
+  window.__ghostDeviceCount = null;
+  function close() { closed = true; if (pollTimer) clearInterval(pollTimer); if (countdownTimer) clearInterval(countdownTimer); window.__ghostDeviceCount = null; backdrop.remove(); }
 
   function copyText(text, btn) {
     const restore = () => { btn.textContent = 'Copy token'; };

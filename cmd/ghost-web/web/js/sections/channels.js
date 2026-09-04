@@ -22,15 +22,21 @@ async function loadChannels(container) {
   ]);
 
   const cfg = cfgRes.status === 'fulfilled' ? (cfgRes.value.channels || {}) : {};
-  const devCount = devRes.status === 'fulfilled' ? (devRes.value.devices || []).length : 0;
+  const devArr = devRes.status === 'fulfilled' ? (devRes.value.devices || []) : [];
   const op = statusRes.status === 'fulfilled' ? (statusRes.value.channels || {}) : {};
 
   listEl.innerHTML = '';
 
-  // Ghost Mobile
-  listEl.appendChild(channelRow('Ghost Mobile', 'Mobile', devCount > 0 ? 'connected' : 'neutral',
-    devCount > 0 ? (devCount + ' device connected') : 'No phone connected',
-    devCount > 0 ? null : () => GhostApp.navigate('devices')));
+  // Ghost Mobile — a stored pairing is not a live connection. Only report
+  // Connected when a device was actually seen recently; otherwise show the
+  // honest Last seen state (same 3-minute recency as the Devices section).
+  const mobileSeen = mobileLastSeen(devArr);
+  const mobileState = devArr.length === 0 ? 'neutral' : mobileSeen.recent ? 'connected' : 'neutral';
+  const mobileSub = devArr.length === 0 ? 'No phone connected' :
+    mobileSeen.recent ? (devArr.length + (devArr.length === 1 ? ' device connected' : ' devices connected')) :
+    'Paired · last seen ' + mobileSeen.when;
+  listEl.appendChild(channelRow('Ghost Mobile', 'Mobile', mobileState, mobileSub,
+    devArr.length === 0 ? () => GhostApp.navigate('devices') : null));
 
   // Telegram
   const tg = cfg.telegram || {};
@@ -73,6 +79,19 @@ async function loadChannels(container) {
 }
 
 function isSet(v) { return v && !String(v).startsWith('•') && String(v).length > 0; }
+
+// mobileLastSeen returns the most recent last_seen across paired devices.
+// { recent } is true when seen within 3 minutes (matches Devices section).
+function mobileLastSeen(devices) {
+  let best = 0;
+  (devices || []).forEach(d => {
+    const t = d.last_seen_at ? new Date(d.last_seen_at).getTime() : 0;
+    if (t > best) best = t;
+  });
+  if (!best) return { recent: false, when: 'never' };
+  const recent = (Date.now() - best) < 3 * 60000;
+  return { recent, when: GhostUI.timeAgo(Math.floor(best / 1000)) };
+}
 
 function channelRow(name, kind, state, sub, onClick) {
   const row = GhostUI.h('div', { className: 'model-row' });
