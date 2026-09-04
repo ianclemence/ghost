@@ -399,7 +399,8 @@ textarea.ghost-input {
   font-size: var(--t-callout);
   line-height: var(--lh-body);
 }
-.ghost-modal-actions {
+.ghost-modal-actions,
+.ghost-modal-footer {
   display: flex;
   justify-content: flex-end;
   gap: var(--s-3);
