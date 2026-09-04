@@ -12,17 +12,24 @@ find-nearby, travel, calendar (enabled, needs OAuth), reminders/schedule,
 shopping, journal, quick-capture, knowledge-base, scraper, summarize,
 organizer, healthcheck`. All pass happy/missing/config/failure/security.
 
-## Tier 2 — Optional packs (installed, `needs_setup`, opt-in via Skills settings)
+## Tier 2 — Optional packs (amber only when they need YOUR action)
 
-Need a binary, hardware, or service: `camera, hardware, mobile/adb,
-network/nmap, system, tmux, git, homeassistant, flight, spotify, speedtest,
-document-convert, internet-reading, skill-creator, process-manager`. They
-report product messages (never `command not found`) and stay out of
-diagnostics warnings on clean installs (`IsOptionalSkill`).
+Badge rule: green when ready (binaries Ghost installs by default are
+present), amber only when the user must do something (connect an account,
+pair a device, grant access). Command-only tools never show amber for
+being developer-oriented.
 
-- *Hardware pack:* camera, hardware, mobile, network, system, tmux
-- *Media pack:* spotify, homeassistant, flight
-- *Dev pack:* git, skill-creator, process-manager
+- *Ready out of the box (green):* `git, tmux, network/nmap, system,
+  process-manager, skill-creator, speedtest, document-convert,
+  internet-reading, ascii-art` — binaries ship with setup (`setup.sh`),
+  no account needed.
+- *Needs your action (amber → Connect):* `calendar` (Google OAuth),
+  `flight` (API key), `homeassistant` (URL + token), `mobile` (pair
+  Android device), `spotify` (running app), `camera` (no camera detected),
+  `hardware` (no bus hardware), `email` (IMAP credentials).
+- *Packs:* Hardware (camera, hardware, mobile, network, system, tmux),
+  Media (spotify, homeassistant, flight), Dev (git, skill-creator,
+  process-manager). All report product messages, never `command not found`.
 
 ## Tier 3 — Dev/docs only (never live, never in prompt)
 

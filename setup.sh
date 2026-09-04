@@ -125,7 +125,7 @@ echo -e "${YELLOW}[1/4] Updating system and installing dependencies...${NC}"
 if check_command "apt-get"; then
     sudo apt-get update
 
-    DEPENDENCIES="golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc chromium avahi-utils coreutils"
+    DEPENDENCIES="golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap tmux speedtest-cli cowsay poppler-utils pandoc chromium avahi-utils coreutils"
 
     NEEDS_INSTALL=false
     for dep in $DEPENDENCIES; do
@@ -154,7 +154,9 @@ echo -e "${YELLOW}[2/4] Installing Python tools (Calendar & Document skills)...$
 if [ ! -x /usr/local/bin/gcalcli ]; then
     sudo pip3 install gcalcli --break-system-packages 2>/dev/null || pip3 install gcalcli --break-system-packages 2>/dev/null || pip3 install gcalcli
 fi
-pip3 install pypdf python-docx --break-system-packages 2>/dev/null || pip3 install pypdf python-docx
+# Command-only skills ship ready: pyfiglet (ascii-art), yt-dlp + feedparser
+# (internet-reading). System-wide so the root services see them too.
+pip3 install pypdf python-docx pyfiglet yt-dlp feedparser --break-system-packages 2>/dev/null || pip3 install pypdf python-docx pyfiglet yt-dlp feedparser
 echo -e "${GREEN}[OK] Python tools installed.${NC}"
 
 # ── 2.5. Ollama ───────────────────────────────────────────────────────────

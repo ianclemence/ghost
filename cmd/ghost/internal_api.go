@@ -824,6 +824,26 @@ func listWorkspaceSkills(skillsDir string) []map[string]string {
 			continue
 		}
 		entry, bundled := manifest.Skills[name]
+		// Real readiness (enabled != configured != ready) so the UI can
+		// show an honest badge instead of the coarse optional flag.
+		// CheckReadiness with no extra inputs: missing-input states fall
+		// back to ready here (the chat flow asks naturally when needed).
+		readiness := "ready"
+		needsSetup := "false"
+		if !enabled {
+			readiness = "disabled"
+		} else {
+			wsDir := filepath.Dir(strings.TrimSuffix(skillsDir, string(filepath.Separator)))
+			switch r := skills.CheckReadiness(name, wsDir, nil); r.Status {
+			case skills.StatusReady:
+				readiness = "ready"
+			case skills.StatusNeedsUserInput:
+				readiness = "ready" // ask-at-use, not setup
+			default:
+				readiness = string(r.Status)
+				needsSetup = "true"
+			}
+		}
 		result = append(result, map[string]string{
 			"name":          name,
 			"description":   desc,
@@ -831,6 +851,8 @@ func listWorkspaceSkills(skillsDir string) []map[string]string {
 			"user_modified": strconv.FormatBool(bundled && entry.UserModified),
 			"enabled":       strconv.FormatBool(enabled),
 			"optional":      strconv.FormatBool(skills.IsOptionalSkill(name)),
+			"readiness":     readiness,
+			"needs_setup":   needsSetup,
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i]["name"] < result[j]["name"] })

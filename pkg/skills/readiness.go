@@ -3,6 +3,7 @@ package skills
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -86,22 +87,44 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 			}
 		}
 	}
-	// Optional hardware skills get explicit product states, never
-	// "command not found".
-	if skillName == "camera" || skillName == "hardware" || skillName == "network" || skillName == "mobile" {
-		prereqs := parsePrerequisites(skillPath)
-		for _, cmd := range prereqs.Commands {
-			if !isCommandAvailable(cmd) {
-				return SkillReadiness{
-					Status:      StatusNeedsConfiguration,
-					Requirement: "missing_binary:" + cmd,
-					Message:     fmt.Sprintf("The %s feature needs setup (%s not available on this device). Check Ghost settings for setup steps.", skillName, cmd),
-					UserAction:  "install_" + cmd,
-				}
+	// User-side state skills: binaries may be present but the user's
+	// device/service still needs action. These stay amber until the user
+	// acts — never green on binaries alone.
+	if skillName == "mobile" {
+		return SkillReadiness{
+			Status:      StatusNeedsConfiguration,
+			Requirement: "android_device",
+			Message:     "To control your phone, pair an Android device with USB debugging enabled. See Ghost settings under Integrations.",
+			UserAction:  "pair_android_device",
+		}
+	}
+	if skillName == "spotify" {
+		return SkillReadiness{
+			Status:      StatusNeedsConfiguration,
+			Requirement: "spotify_app",
+			Message:     "Spotify control needs the Spotify desktop app running and logged in on a device Ghost can reach.",
+			UserAction:  "start_spotify",
+		}
+	}
+	if skillName == "camera" {
+		// ffmpeg present + a video device = ready. No user account needed,
+		// so green when the hardware is actually there.
+		if !isCommandAvailable("ffmpeg") {
+			return SkillReadiness{
+				Status:      StatusNeedsConfiguration,
+				Requirement: "missing_binary:ffmpeg",
+				Message:     "Camera needs ffmpeg installed on this device.",
+				UserAction:  "install_ffmpeg",
 			}
 		}
-		// Binaries present but hardware may still be absent; runtime
-		// execution will confirm. Fall through to ready.
+		if !hasCameraDevice() {
+			return SkillReadiness{
+				Status:      StatusNeedsConfiguration,
+				Requirement: "camera_device",
+				Message:     "No camera was detected on this Ghost device. Connect a camera to use this skill.",
+				UserAction:  "connect_camera",
+			}
+		}
 		return SkillReadiness{Status: StatusReady}
 	}
 
@@ -139,15 +162,8 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 			}
 		}
 	case "flight":
-		if flight, ok := providedInputs["flight_number"]; !ok || strings.TrimSpace(flight) == "" {
-			return SkillReadiness{
-				Status:      StatusNeedsUserInput,
-				Requirement: "flight_number",
-				Question:    "Which flight number should I check? (e.g., TG123 or AA456)",
-				UserAction:  "provide_flight_number",
-			}
-		}
-		// AviationStack key: secrets-first (product path), env fallback.
+		// Provider key first: without it no flight lookup can succeed,
+		// so the badge must say Connect even before a flight number exists.
 		// Missing key is NEEDS_CONFIGURATION handled by the fast-path;
 		// never fake live data.
 		if AviationKey(nil) == "" {
@@ -156,6 +172,14 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 				Requirement: "flight_provider",
 				Message:     "Flight tracking isn't connected yet. Add your flight data key in Ghost settings under Integrations, then try again.",
 				UserAction:  "connect_flight_provider",
+			}
+		}
+		if flight, ok := providedInputs["flight_number"]; !ok || strings.TrimSpace(flight) == "" {
+			return SkillReadiness{
+				Status:      StatusNeedsUserInput,
+				Requirement: "flight_number",
+				Question:    "Which flight number should I check? (e.g., TG123 or AA456)",
+				UserAction:  "provide_flight_number",
 			}
 		}
 	case "find-nearby", "travel":
@@ -182,6 +206,32 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 	}
 
 	return SkillReadiness{Status: StatusReady}
+}
+
+// hasCameraDevice reports whether a video capture device exists.
+// Pure glob, no exec — safe to call per request.
+func hasCameraDevice() bool {
+	matches, _ := filepath.Glob("/dev/video*")
+	return len(matches) > 0
+}
+
+// CameraCheck is the shared camera readiness used by both the Skills list
+// (via CheckReadiness) and the Integrations section, so the two screens
+// can never disagree.
+type CameraState struct {
+	Available bool
+	Detail    string
+}
+
+// CameraCheck reports ffmpeg + device presence.
+func CameraCheck() CameraState {
+	if !isCommandAvailable("ffmpeg") {
+		return CameraState{Detail: "ffmpeg not installed"}
+	}
+	if !hasCameraDevice() {
+		return CameraState{Detail: "no camera detected"}
+	}
+	return CameraState{Available: true, Detail: "camera detected"}
 }
 
 func isCalendarConfigured() bool {

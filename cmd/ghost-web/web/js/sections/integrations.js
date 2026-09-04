@@ -49,18 +49,23 @@ async function loadIntegrations(container) {
     haCfg ? 'ready' : 'neutral', haCfg ? 'Configured' : 'Not configured',
     () => editHass(haCfg)));
 
-  // Hardware note (no credentials — points to Skills readiness)
-  const hw = GhostUI.h('div', { className: 'model-row' });
-  const hwMain = GhostUI.h('div', { className: 'model-main' });
-  hwMain.appendChild(GhostUI.h('div', { className: 'model-name' }, 'Camera & hardware'));
-  hwMain.appendChild(GhostUI.h('div', { className: 'model-sub' }, 'Sensors  ·  Uses on-device tools, no account needed'));
-  hw.appendChild(hwMain);
-  const hwTr = GhostUI.h('div', { className: 'ghost-row-trailing' });
-  hwTr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot('ready'), 'On-device'));
-  const hwBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => GhostApp.navigate('skills') }, 'View skills');
-  hwTr.appendChild(hwBtn);
-  hw.appendChild(hwTr);
-  listEl.appendChild(hw);
+  // Camera mirrors the same readiness the Skills list uses — the two
+  // screens can never disagree. Status already fetched above.
+  const cam = (status && status.integrations && status.integrations.camera) || {};
+  const camAvail = !!cam.available;
+  const camRow = GhostUI.h('div', { className: 'model-row' });
+  const camMain = GhostUI.h('div', { className: 'model-main' });
+  camMain.appendChild(GhostUI.h('div', { className: 'model-name' }, 'Camera'));
+  camMain.appendChild(GhostUI.h('div', { className: 'model-sub' },
+    'On-device  ·  ' + (cam.detail || (camAvail ? 'camera detected' : 'checking…'))));
+  camRow.appendChild(camMain);
+  const camTr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+  camTr.appendChild(GhostUI.h('span', { className: 'status-pill' },
+    GhostUI.statusDot(camAvail ? 'ready' : 'neutral'), camAvail ? 'Ready' : 'No camera'));
+  const camBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => GhostApp.navigate('skills') }, 'View skills');
+  camTr.appendChild(camBtn);
+  camRow.appendChild(camTr);
+  listEl.appendChild(camRow);
 }
 
 function intRow(name, kind, state, sub, onClick) {

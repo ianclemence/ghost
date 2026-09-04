@@ -2593,6 +2593,7 @@ func handleIntegrationsStatus(w http.ResponseWriter, r *http.Request) {
 	cal := skills.CalendarCheck()
 	flightReady := skills.AviationKey(nil) != ""
 	hassReady := skills.HassConfigured()
+	camReady := skills.CameraCheck()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok": true,
 		"integrations": map[string]interface{}{
@@ -2609,6 +2610,11 @@ func handleIntegrationsStatus(w http.ResponseWriter, r *http.Request) {
 			"homeassistant": map[string]interface{}{
 				"configured": hassReady,
 				"status":     map[bool]string{true: "ready", false: "needs_configuration"}[hassReady],
+			},
+			"camera": map[string]interface{}{
+				"available": camReady.Available,
+				"detail":    camReady.Detail,
+				"status":    map[bool]string{true: "ready", false: "needs_configuration"}[camReady.Available],
 			},
 		},
 	})

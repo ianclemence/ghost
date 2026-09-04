@@ -58,11 +58,21 @@ const SKILL_GROUPS = [
   { title: 'System & developer', sub: 'Machine tools and skill building.', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'skill-creator', 'speedtest', 'ascii-art'] },
 ];
 
-// skillBadge resolves the honest state: disabled > integrations-backed
-// readiness (calendar/flight/homeassistant) > coarse optional flag.
+// skillBadge resolves the honest state. Order:
+// disabled > backend readiness (needs_setup from CheckReadiness) >
+// integrations overlay (calendar/flight/homeassistant live status) >
+// coarse optional flag (fallback for unknown skills).
+// Amber therefore means "needs YOUR action" (connect/pair/install),
+// never "this is a dev tool".
 function skillBadge(s, integ) {
   const enabled = s.enabled !== 'false' && s.enabled !== false;
   if (!enabled) return { state: 'neutral', label: 'Off' };
+  if (s.needs_setup === 'true' || s.needs_setup === true) {
+    return { state: 'warn', label: setupLabel(s.name) };
+  }
+  if (s.readiness && s.readiness !== 'ready' && s.readiness !== 'disabled') {
+    return { state: 'warn', label: setupLabel(s.name) };
+  }
   if (integ) {
     if (s.name === 'calendar' && integ.calendar) {
       if (!integ.calendar.connected) return { state: 'warn', label: 'Connect' };
@@ -76,10 +86,21 @@ function skillBadge(s, integ) {
       if (!integ.homeassistant.configured) return { state: 'warn', label: 'Connect' };
       return { state: 'ready', label: '' };
     }
+    if (s.name === 'camera' && integ.camera) {
+      if (!integ.camera.available) return { state: 'warn', label: 'No camera' };
+      return { state: 'ready', label: '' };
+    }
   }
   const optional = s.optional === 'true' || s.optional === true;
   if (optional) return { state: 'warn', label: 'Needs setup' };
   return { state: 'ready', label: '' };
+}
+
+// setupLabel gives the honest action: Connect for account pairings,
+// Needs setup for installable prerequisites.
+function setupLabel(name) {
+  if (name === 'calendar' || name === 'flight' || name === 'homeassistant' || name === 'mobile' || name === 'spotify' || name === 'email') return 'Connect';
+  return 'Needs setup';
 }
 
 // Each group renders as its own panel with a panel-head h2 — the same
