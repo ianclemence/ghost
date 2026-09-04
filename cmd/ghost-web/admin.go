@@ -2498,3 +2498,159 @@ func skillSummary(text string) string {
 	}
 	return ""
 }
+
+// ── Integrations (product setup for Calendar / Flight / Home Assistant) ──
+// These reuse the existing admin session + .secrets.json boundary. Secrets
+// are masked on read and never logged. Calendar uses gcalcli's device flow
+// (no Pi inbound needed); flight/HASS store keys in ProviderAPIKeys.
+
+func handleIntegrationsStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	cal := skills.CalendarCheck()
+	flightReady := skills.AviationKey(nil) != ""
+	hassReady := skills.HassConfigured()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true,
+		"integrations": map[string]interface{}{
+			"calendar": map[string]interface{}{
+				"status":     string(cal.Status),
+				"connected":  cal.Connected,
+				"message":    cal.Message,
+				"needsSetup": cal.NeedsSetup,
+			},
+			"flight": map[string]interface{}{
+				"configured": flightReady,
+				"status":     map[bool]string{true: "ready", false: "needs_configuration"}[flightReady],
+			},
+			"homeassistant": map[string]interface{}{
+				"configured": hassReady,
+				"status":     map[bool]string{true: "ready", false: "needs_configuration"}[hassReady],
+			},
+		},
+	})
+}
+
+func handleIntegrationsCalendarStart(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// If already connected, report ready (idempotent).
+	if st := skills.CalendarCheck(); st.Connected {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready", "message": st.Message})
+		return
+	}
+	url, err := skills.CalendarDeviceFlow(30 * time.Second)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not start calendar setup; install gcalcli and try again"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true, "status": "needs_authorization",
+		"setup_url": url,
+		"message":   "Visit the setup URL on any device, approve Google Calendar access, then poll status until connected.",
+	})
+}
+
+func handleIntegrationsCalendarDisconnect(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := skills.CalendarDisconnect(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not disconnect calendar"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "needs_setup"})
+}
+
+func handleIntegrationsFlightSave(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		APIKey string `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+	req.APIKey = strings.TrimSpace(req.APIKey)
+	if req.APIKey == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "api_key is required"})
+		return
+	}
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	// Product path: ProviderAPIKeys map -> .secrets.json (0600). Never log key.
+	secrets, err := config.LoadSecrets(config.SecretsPath(fb.ConfigPath))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	if secrets.ProviderAPIKeys == nil {
+		secrets.ProviderAPIKeys = map[string]string{}
+	}
+	secrets.ProviderAPIKeys["aviationstack"] = req.APIKey
+	if err := config.SaveSecrets(config.SecretsPath(fb.ConfigPath), secrets); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	_ = cfg
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready"})
+}
+
+func handleIntegrationsHassSave(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		URL   string `json:"url"`
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+	req.URL = strings.TrimSpace(req.URL)
+	req.Token = strings.TrimSpace(req.Token)
+	if req.URL == "" || req.Token == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "url and token are required"})
+		return
+	}
+	secrets, err := config.LoadSecrets(config.SecretsPath(fb.ConfigPath))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	if secrets.ProviderAPIKeys == nil {
+		secrets.ProviderAPIKeys = map[string]string{}
+	}
+	// Reuse generic map (no new top-level secret fields): namespaced keys.
+	secrets.ProviderAPIKeys["hass_url"] = req.URL
+	secrets.ProviderAPIKeys["hass_token"] = req.Token
+	if err := config.SaveSecrets(config.SecretsPath(fb.ConfigPath), secrets); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready"})
+}

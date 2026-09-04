@@ -216,8 +216,8 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 			return r.Message, true
 		}
 		// Aviation key check is generic (no per-skill env branches elsewhere).
-		if !hasAviationKey() {
-			return "Flight tracking needs an AviationStack API key. Add it in Ghost settings under Integrations, then try again — I won't guess flight data.", true
+		if skills.AviationKey(nil) == "" {
+			return "Flight tracking isn't connected yet. Add your flight data key in Ghost settings under Integrations, then try again — I won't guess flight data.", true
 		}
 		return "", false
 	}
@@ -328,13 +328,9 @@ func isHassIntent(lower string) bool {
 }
 
 func hasAviationKey() bool {
-	// Generic env check lives here (single place), not scattered per skill.
-	for _, k := range []string{"AVIATION_API_KEY", "AVIATIONSTACK_API_KEY"} {
-		if strings.TrimSpace(os.Getenv(k)) != "" {
-			return true
-		}
-	}
-	return false
+	// Deprecated shim: use skills.AviationKey (secrets-first). Kept for
+	// existing callers/tests; new code should call skills directly.
+	return skills.AviationKey(nil) != ""
 }
 
 // capabilityInputsFromMessage extracts known inputs for readiness checks

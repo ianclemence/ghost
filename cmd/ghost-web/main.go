@@ -419,6 +419,11 @@ func main() {
 	mux.HandleFunc("/api/admin/sessions/revoke", handleAdminSessionRevoke)
 	mux.HandleFunc("/api/admin/auth/check", handleAuthCheck)
 	mux.HandleFunc("/api/admin/auth/failed-logins", handleFailedLogins)
+	mux.HandleFunc("/api/admin/integrations/status", handleIntegrationsStatus)
+	mux.HandleFunc("/api/admin/integrations/calendar/start", handleIntegrationsCalendarStart)
+	mux.HandleFunc("/api/admin/integrations/calendar/disconnect", handleIntegrationsCalendarDisconnect)
+	mux.HandleFunc("/api/admin/integrations/flight/save", handleIntegrationsFlightSave)
+	mux.HandleFunc("/api/admin/integrations/homeassistant/save", handleIntegrationsHassSave)
 
 	// Gateway API proxy — forwards requests to the Ghost gateway (port 8766)
 	mux.HandleFunc("/api/proxy/", handleGatewayProxy)

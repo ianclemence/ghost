@@ -1,6 +1,6 @@
 ---
 name: flight
-description: Track real-time flight status by flight number or airport. Invoke when user asks "where is flight UA123", "is AA456 on time", "flight status", "arrival time for DL100", " departures from JFK", or "is my flight delayed". Requires AviationStack API key in AVIATION_API_KEY env var.
+description: Track real-time flight status by flight number or airport. Invoke when user asks "where is flight UA123", "is AA456 on time", "flight status", "arrival time for DL100", " departures from JFK", or "is my flight delayed". Requires flight data key configured in Ghost settings (Integrations).
 version: 1.1.0
 author: Ghost
 license: MIT
@@ -15,7 +15,7 @@ prerequisites:
 
 > **If flight number missing:** If user says `what's my flight status` without a flight number, ask `Which flight number should I check? (e.g., TG123)` and wait for the next message. When user replies with a short code like `TG123`, treat it as the answer and run `curl` with that flight. Do NOT use clarify tool for this — just ask naturally and resume. Tracker
 
-AviationStack API. Requires `AVIATION_API_KEY` in `.env`. Get a free key at https://aviationstack.com.
+AviationStack API (kept as Ghost's flight provider: free 100 lookups/month, global status/delay/gate coverage, simple key auth — best fit for a personal assistant; alternatives like OpenSky lack schedule/status quality). Key lives in Ghost settings (Integrations) backed by `.secrets.json`, never in chat. Get a free key at https://aviationstack.com.
 
 ## Quick Reference
 
@@ -37,13 +37,13 @@ AVIATION_API_KEY=your_key_here
 
 Verify:
 ```bash
-curl -s "http://api.aviationstack.com/v1/flights?access_key=$AVIATION_API_KEY&flight_iata=UA123&limit=1"
+curl -s "https://api.aviationstack.com/v1/flights?access_key=$AVIATION_API_KEY&flight_iata=UA123&limit=1"
 ```
 
 ## Track a Specific Flight
 
 ```bash
-curl -s "http://api.aviationstack.com/v1/flights?access_key=$AVIATION_API_KEY&flight_iata=UA123&limit=1" | python3 -c "
+curl -s "https://api.aviationstack.com/v1/flights?access_key=$AVIATION_API_KEY&flight_iata=UA123&limit=1" | python3 -c "
 import sys,json
 data = json.load(sys.stdin)
 for f in data.get('data', []):
@@ -65,7 +65,7 @@ for f in data.get('data', []):
 ## Departures from an Airport
 
 ```bash
-curl -s "http://api.aviationstack.com/v1/flights?access_key=$AVIATION_API_KEY&dep_iata=JFK&limit=20" | python3 -c "
+curl -s "https://api.aviationstack.com/v1/flights?access_key=$AVIATION_API_KEY&dep_iata=JFK&limit=20" | python3 -c "
 import sys,json
 data = json.load(sys.stdin)
 for f in data.get('data', []):
@@ -78,7 +78,7 @@ for f in data.get('data', []):
 ## Arrivals at an Airport
 
 ```bash
-curl -s "http://api.aviationstack.com/v1/flights?access_key=$AVIATION_API_KEY&arr_iata=JFK&limit=20" | python3 -c "
+curl -s "https://api.aviationstack.com/v1/flights?access_key=$AVIATION_API_KEY&arr_iata=JFK&limit=20" | python3 -c "
 import sys,json
 data = json.load(sys.stdin)
 for f in data.get('data', []):

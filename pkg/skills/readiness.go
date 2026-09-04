@@ -77,7 +77,7 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 		}
 	}
 	if skillName == "homeassistant" {
-		if os.Getenv("HASS_URL") == "" || os.Getenv("HASS_TOKEN") == "" {
+		if !HassConfigured() {
 			return SkillReadiness{
 				Status:      StatusNeedsConfiguration,
 				Requirement: "homeassistant_connection",
@@ -147,10 +147,16 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 				UserAction:  "provide_flight_number",
 			}
 		}
-		// Check API key
-		if os.Getenv("AVIATION_API_KEY") == "" {
-			// Also check workspace .env or config, but for now env only
-			// Don't fail hard — let skill try and return API error, but warn
+		// AviationStack key: secrets-first (product path), env fallback.
+		// Missing key is NEEDS_CONFIGURATION handled by the fast-path;
+		// never fake live data.
+		if AviationKey(nil) == "" {
+			return SkillReadiness{
+				Status:      StatusNeedsConfiguration,
+				Requirement: "flight_provider",
+				Message:     "Flight tracking isn't connected yet. Add your flight data key in Ghost settings under Integrations, then try again.",
+				UserAction:  "connect_flight_provider",
+			}
 		}
 	case "find-nearby", "travel":
 		if loc, ok := providedInputs["location"]; !ok || strings.TrimSpace(loc) == "" {
