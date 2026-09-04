@@ -39,6 +39,11 @@ func NewSkillsLoader(workspace string, globalSkills string, builtinSkills string
 	}
 }
 
+// ListSkills returns 1-level skills only: workspace/skills/<name>/SKILL.md
+// (plus flat workflows/*.md and global/builtin overrides). Nested containers
+// (github/*, productivity/*, research/*, software-development/*,
+// email/himalaya) have no top-level SKILL.md and are intentionally never
+// exposed — they are Tier 3 contributor docs, not live capabilities.
 func (sl *SkillsLoader) ListSkills() []SkillInfo {
 	skills := make([]SkillInfo, 0)
 

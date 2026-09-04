@@ -2,21 +2,27 @@ package skills
 
 // Curated skill classification.
 //
-// Ghost ships a broad set of bundled skills. Many simply work out of the box
-// (they only need the network or a tool Ghost already has), while others depend
-// on a local binary, hardware, or an external service the user must set up —
-// git, tmux, adb, ffmpeg, i2c-tools, a Home Assistant instance, and so on.
+// Ghost ships a broad set of bundled skills across three product tiers.
+// Only Tiers 1-2 are ever live in the model prompt; Tier 3 is contributor
+// documentation and never enters the runtime.
 //
-// For a personal, mainstream install we surface the two tiers differently:
-//   - core skills are the zero-setup, day-to-day ones. If one is missing a
-//     prerequisite, diagnostics should say so.
-//   - optional skills are "needs setup". They are never held against the user
-//     in diagnostics (a normal install doesn't ship git/adb/ffmpeg), and the
-//     console labels them so the user knows why they aren't immediately useful.
+//   Tier 1 — core (default): zero-setup, day-to-day capabilities a normal
+//     person asks for naturally (weather, shopping, reminders, recipes).
+//     If one is missing a prerequisite, diagnostics surface it.
+//   Tier 2 — optional packs (opt-in via Skills settings): need a binary,
+//     hardware, or external service (git, tmux, adb, ffmpeg, i2c-tools,
+//     Home Assistant, flight key, Spotify). They report needs_setup with a
+//     product message and never fail as "command not found". The console
+//     labels them so the user knows why they aren't immediately useful.
+//   Tier 3 — dev/docs only (never live): nested containers (github/*,
+//     productivity/*, research/*, software-development/*, email/himalaya)
+//     and flat workflows/*.md templates. The loader only scans 1-level
+//     skills/<name>/SKILL.md, so these never reach ListSkills or the model.
+//     They live in the repo as contributor reference and automation
+//     templates (workflows belong in Automations UI, not the prompt).
 //
-// The list is intentionally a curated map of bundled, tool-dependent skill
-// names. Extra skills the user installs are treated as core (unknown == core)
-// so Ghost surfaces their real needs.
+// The list below marks Tier 2. Extra skills the user installs are treated
+// as core (unknown == core) so Ghost surfaces their real needs.
 
 // curatedOptional names bundled skills that require setup (a local tool,
 // hardware, or an external service) and therefore should not produce dependency
