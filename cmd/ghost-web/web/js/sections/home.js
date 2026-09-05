@@ -53,20 +53,6 @@ async function loadHome(container) {
   attentionSection.appendChild(attentionBody);
   view.appendChild(attentionSection);
 
-  // Keep your Ghost — the ownership promise, front and centre.
-  const keepSection = GhostUI.h('section', { className: 'home-section home-keep', 'aria-labelledby': 'home-keep-title' });
-  const keepHead = GhostUI.h('div', { className: 'home-section-head' });
-  keepHead.appendChild(GhostUI.h('h2', { className: 'home-section-title', id: 'home-keep-title' }, 'Keep your Ghost'));
-  keepSection.appendChild(keepHead);
-  keepSection.appendChild(GhostUI.h('p', { className: 'type-foot text-tertiary', style: 'margin:var(--s-1) 0 var(--s-3)' }, 'Your Ghost moves with you. Back it up so you always have your memory, skills, and settings \u2014 and know how to bring it back if it ever stops.'));
-  const keepActions = GhostUI.h('div', { className: 'row-flex', style: 'gap:var(--s-3);align-items:center;flex-wrap:wrap' });
-  const backupBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', type: 'button' }, 'Back up my Ghost');
-  backupBtn.addEventListener('click', () => GhostUI.downloadBackup(backupBtn));
-  keepActions.appendChild(backupBtn);
-  keepActions.appendChild(GhostUI.h('button', { className: 'home-link', type: 'button', onClick: () => recoveryModal() }, 'How recovery works  \u2192'));
-  keepSection.appendChild(keepActions);
-  view.appendChild(keepSection);
-
   container.appendChild(view);
 
   // Independent fetches — a single failure shouldn't blank the page.
