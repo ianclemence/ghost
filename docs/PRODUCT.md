@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document states who Ghost is for, what it sells, and how it makes money. It is the reference for every product and engineering decision. Read it before reading the [Roadmap](ROADMAP.md) and the implementation plans under [`plans/`](plans/).
+This document states who Ghost is for, what it sells, and how it makes money. It is the reference for every product and engineering decision. Read it before reading the [Roadmap](ROADMAP.md).
 
 ---
 
@@ -194,4 +194,4 @@ The engineering priorities follow the business model. The build tracks, in order
 4. **Opt-in telemetry** — how we run updates and support on devices we cannot see.
 5. **Move** — identity portability: an encrypted local backup/export path and re-pairing so Ghost survives hardware changes.
 
-Each has a dedicated implementation plan under [`plans/`](plans/) where one exists. The [Roadmap](ROADMAP.md) sequences them into phases.
+The [Roadmap](ROADMAP.md) sequences this work into phases.

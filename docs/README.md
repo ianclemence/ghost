@@ -2,34 +2,21 @@
 
 This is the home for Ghost's product and engineering documentation.
 
-## Start here
+## The product
 
-1. **[Capability & Substrate Architecture](CAPABILITY_ARCHITECTURE.md)** — how Ghost actually works today: entity, agent, capabilities, permission broker, canonical events, activity, credentials, routines, contexts, channels, voice, devices.
-2. **[Reference Appliance](REFERENCE_APPLIANCE.md)** — what a correctly configured Ghost is, the memory-scope model, hardware classes, and the engineering philosophy.
-3. **[README](../README.md)** — product overview, quick start, commands, configuration, services.
-
-## Product & status
-
-- **[Roadmap & Status](ROADMAP.md)** — what is complete, current status (backend READY FOR MOBILE), and the next direction.
-- **[Product Strategy](PRODUCT.md)** — product framing (kept for history).
+- **[Product Strategy](PRODUCT.md)** — who Ghost is for, positioning, and product principles (kept for history).
+- **[Roadmap & Status](ROADMAP.md)** — what is complete, the current status (backend READY FOR MOBILE), and the next direction (mobile productization).
 
 ## Engineering references
 
-- **[Evaluation](EVALUATION.md)** — `ghost verify`, `ghost benchmark`, and the Golden Conversation Suite.
 - **[Mobile API Contract](MOBILE_API.md)** — the stable backend surface consumed by the mobile app.
-- **[Appliance Architecture](APPLIANCE_ARCHITECTURE.md)** — provisioning/setup, canonical health, provider resilience, durable requests, secrets boundaries.
-- **[Testing](TESTING.md)** — how to test Ghost.
 - **[Connection Flow](CONNECTION_FLOW.md)** — pairing and device connectivity.
-- **[Personal Context](PERSONAL_CONTEXT.md)** — the append-only personal model store.
-- **[Scheduled Intelligence](SCHEDULED_INTELLIGENCE.md)** — scheduler and routines design.
+- **[Testing](TESTING.md)** — how to test Ghost (unit/integration/API, `ghost verify`, `ghost benchmark`, `ghost golden`).
 
-## Implementation plans (historical)
+## Reading order
 
-Each plan is self-contained and describes work that has since shipped or been superseded by the reference architecture.
+New to the project?
 
-| Plan | Goal |
-|------|------|
-| [01 — Cloud relay / pairing](plans/01-cloud-relay.md) | The mobile app reaches Ghost from anywhere (relay is live). |
-| [02 — Install experience](plans/02-install-experience.md) | A mainstream user installs Ghost (appliance setup shipped). |
-| [03 — OTA updates](plans/03-ota-updates.md) | Ghost ships and installs updates with rollback. |
-| [04 — Opt-in telemetry](plans/04-telemetry.md) | Runs updates/support on devices we cannot see. |
+1. [README](../README.md) — product overview, quick start, commands, configuration.
+2. [Roadmap & Status](ROADMAP.md) — where Ghost is and where it is going.
+3. The package documentation in the source tree (for architecture depth, start with `pkg/agent`, `pkg/permissions`, `pkg/cevents`, `pkg/activity`, `pkg/golden`, `pkg/verify`, `pkg/bench`).

@@ -1,9 +1,4 @@
-> **Status note:** Ghost now also ships `ghost verify`, `ghost benchmark`, and a
-> model-agnostic **Golden Conversation Suite** (`ghost golden`) — see
-> [EVALUATION.md](EVALUATION.md). Automated coverage lives in `pkg/*` unit,
-> integration, composition, and adversarial tests; run `go test ./...` for the
-> full suite. The prompt checklists below remain useful manual smoke tests but
-> are not the primary regression surface.
+
 
 # Ghost Testing Guide
 

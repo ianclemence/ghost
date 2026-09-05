@@ -7,16 +7,17 @@
 
 ## Documentation
 
-- **[Capability & Substrate Architecture](docs/CAPABILITY_ARCHITECTURE.md)** — the canonical Ghost architecture: entity, agent, capabilities, permission broker, canonical events, activity, credentials, routines, contexts, channels, voice, devices.
-- **[Reference Appliance](docs/REFERENCE_APPLIANCE.md)** — what a correctly configured Ghost is, memory scope semantics, hardware classes, engineering philosophy.
-- **[Appliance Architecture](docs/APPLIANCE_ARCHITECTURE.md)** — appliance provisioning/setup, health model, provider resilience, durable requests, backups.
-- **[Evaluation](docs/EVALUATION.md)** — `ghost verify`, `ghost benchmark`, and the Golden Conversation Suite.
-- **[Mobile API Contract](docs/MOBILE_API.md)** — the stable backend surface the mobile app consumes.
-- **[Product Strategy](docs/PRODUCT.md)** — product framing (kept for history).
 - **[Roadmap & Status](docs/ROADMAP.md)** — what is complete, current status, and the next direction.
+- **[Product Strategy](docs/PRODUCT.md)** — product framing (kept for history).
+- **[Mobile API Contract](docs/MOBILE_API.md)** — the stable backend surface the mobile app consumes.
 - **[Testing](docs/TESTING.md)** — how to test Ghost.
 - **[Connection Flow](docs/CONNECTION_FLOW.md)** — pairing and device connectivity.
 - **[Changelog](CHANGELOG.md)** — release history.
+
+For architecture details, see the source-level package documentation (pkg/*) and
+the key entry points: `pkg/agent`, `pkg/permissions`, `pkg/cevents`,
+`pkg/activity`, `pkg/credentials`, `pkg/routines`, `pkg/contexts`,
+`pkg/providers`, `pkg/golden`, `pkg/verify`, `pkg/bench`.
 
 ---
 

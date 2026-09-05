@@ -7,8 +7,7 @@
   memory + RAG with context isolation, routines, contexts, voice and device
   interfaces, provider reliability, appliance setup/health, `ghost verify`,
   `ghost benchmark`, and the Golden Conversation Suite. See
-  [CAPABILITY_ARCHITECTURE.md](CAPABILITY_ARCHITECTURE.md) and
-  [EVALUATION.md](EVALUATION.md).
+  (package-level docs in the source tree).
 - **Backend status: READY FOR MOBILE.**
 - **Next direction: the mobile product experience** (Capacitor-based app:
   pairing, the primary Ghost conversation, voice push-to-talk, approvals,
@@ -20,7 +19,7 @@
 
 This roadmap originally sequenced the work needed to turn Ghost from a developer project into a personal AI that belongs to its owner. It is aligned to the [Product Strategy](PRODUCT.md): open core, Ghost Connect as the paid managed experience, BYO-hardware first, hardware deferred.
 
-Each phase maps to an implementation plan under [`plans/`](plans/) where one exists. The phases build on each other: a phase's plan is only workable once its prerequisites are met.
+The phases build on each other. Implementation-plan documents formerly lived in `docs/plans/` and have been retired; the shipped work is described by the current documentation and package code.
 
 ---
 
@@ -29,14 +28,14 @@ Each phase maps to an implementation plan under [`plans/`](plans/) where one exi
 | Phase | Goal | Build track | Plan |
 |-------|------|-------------|------|
 | **0 — Foundation** (done) | Web console, auth lifecycle, recovery, security. | — | — |
-| **1 — Remote access** (done) | Relay + secure device pairing; mobile works from anywhere. | Cloud relay / pairing | [`01-cloud-relay.md`](plans/01-cloud-relay.md) |
-| **2 — Install** (done) | Appliance setup/provisioning, health, self-healing skills. | Simple install | [`02-install-experience.md`](plans/02-install-experience.md) |
-| **3 — Updates** | Ghost ships and installs updates to devices it never touches. | OTA updates | [`03-ota-updates.md`](plans/03-ota-updates.md) |
-| **4 — Observability** | Runs updates/support on devices we cannot see. | Opt-in telemetry | [`04-telemetry.md`](plans/04-telemetry.md) |
+| **1 — Remote access** (done) | Relay + secure device pairing; mobile works from anywhere. | Cloud relay / pairing | — |
+| **2 — Install** (done) | Appliance setup/provisioning, health, self-healing skills. | Simple install | — |
+| **3 — Updates** | Ghost ships and installs updates to devices it never touches. | OTA updates | — |
+| **4 — Observability** | Runs updates/support on devices we cannot see. | Opt-in telemetry | — |
 | **5 — Move** | Ghost identity portability: replace the hardware, keep the Ghost. | Encrypted Ghost State export/import | (`ghost state` — implemented) |
 | **6 — Ghost Connect** | Managed-service platform + billing once services prove value. | Billing / account | (follows telemetry) |
 | **7 — Hardware (optional)** | A physical Ghost bundle. Shares the pipeline; only if demand is proven. | Device bundle | (deferred) |
-| **8 — Backend substrate & appliance** (done) | Capability/permission/event substrate, memory+RAG with context isolation, routines, contexts, voice/devices, verify/benchmark/golden. | — | CAPABILITY_ARCHITECTURE / EVALUATION |
+| **8 — Backend substrate & appliance** (done) | Capability/permission/event substrate, memory+RAG with context isolation, routines, contexts, voice/devices, verify/benchmark/golden. | — | — |
 | **9 — Mobile (next)** | Capacitor mobile app over the documented backend contract. | Mobile productization | MOBILE_API.md |
 
 ---
@@ -67,7 +66,7 @@ The foundation for Ghost's persistent identity and appliance lifecycle is in pla
 
 **Why now:** the mobile app is one of the primary interfaces to a personal AI that lives on your hardware. Without remote access, that AI is only available when you're on the same network. The relay is the first service users pay for, so it must exist before any monetization.
 
-**Plan:** [`01-cloud-relay.md`](plans/01-cloud-relay.md)
+
 
 **Definition of done:** a user on cellular data can open the app and talk to a Ghost on their home network, end-to-end, via a Ghost-hosted relay. LAN pairing still works as the fallback.
 
@@ -79,7 +78,7 @@ The foundation for Ghost's persistent identity and appliance lifecycle is in pla
 
 **Why now:** the image is plumbing, not the product. The product requires a trivial install path so the privacy-conscious mainstream — not just hobbyists — can adopt it.
 
-**Plan:** [`02-install-experience.md`](plans/02-install-experience.md)
+
 
 **Definition of done:** a user can either (a) buy a pre-flashed microSD card, or (b) follow a two-minute flow using an official installer, and reach the setup wizard without touching a terminal.
 
@@ -91,7 +90,7 @@ The foundation for Ghost's persistent identity and appliance lifecycle is in pla
 
 **Why now:** updates are the recurring value that justifies the subscription. A user who cannot update has no reason to keep paying.
 
-**Plan:** [`03-ota-updates.md`](plans/03-ota-updates.md)
+
 
 **Definition of done:** a device receives, verifies, and installs an update over the relay; if the device fails to boot after the update, it rolls back automatically.
 
@@ -103,7 +102,7 @@ The foundation for Ghost's persistent identity and appliance lifecycle is in pla
 
 **Why now:** we cannot run updates and support on devices we cannot see. Telemetry must be in place before the subscription support promise is made.
 
-**Plan:** [`04-telemetry.md`](plans/04-telemetry.md)
+
 
 **Definition of done:** opted-in devices report version, health, and error counts to the relay; the data is privacy-preserving and removable.
 
