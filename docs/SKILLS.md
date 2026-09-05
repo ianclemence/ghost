@@ -1,3 +1,10 @@
+> **Status note:** the runtime no longer relies on chat for every skill. Many
+> network capabilities run through **deterministic provider-backed tools**
+> (weather/aqi/flight) that return validated output, and skills declare
+> capabilities/risk consumed by the permission broker and readiness layer. See
+> [CAPABILITY_ARCHITECTURE.md](CAPABILITY_ARCHITECTURE.md). The tier framing
+> below is retained as guidance for authors.
+
 # Ghost Skills — Product Tiers
 
 Ghost is **“Your AI. Your Memory. Your Machine.”** — a personal assistant a

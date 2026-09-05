@@ -93,6 +93,7 @@ type HTTPMetadata struct {
 	Type    StreamType          `json:"type"`
 	Method  string              `json:"method"`
 	Path    string              `json:"path"`
+	Query   string              `json:"query,omitempty"`
 	Headers map[string][]string `json:"headers,omitempty"`
 }
 

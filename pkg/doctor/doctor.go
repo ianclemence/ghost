@@ -44,6 +44,7 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkToolRegistry,
 		d.checkBrowser,
 		d.checkSkillDependencies,
+		d.checkCalendarOAuth,
 	}
 	results := make([]CheckResult, 0, len(checks))
 	for _, check := range checks {

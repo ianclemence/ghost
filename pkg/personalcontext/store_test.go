@@ -274,3 +274,108 @@ func TestResetClearsMemoryAndFile(t *testing.T) {
 		t.Fatalf("expected 1 current entry after re-create")
 	}
 }
+
+func TestCurrentInScope(t *testing.T) {
+	s := mustOpen(t, t.TempDir())
+	mk := func(pred, val string, scopes []string) {
+		raw, err := RawValue(val)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e := Entry{ID: newEntryID(), Kind: KindFact, Subject: "user", Predicate: pred,
+			Value: raw, Status: StatusCurrent, Scopes: scopes,
+			Sources: []Source{{Type: SourceCommand, Kind: SourceUserDeclared, Ref: "t:1", Timestamp: time.Now().UTC()}}}
+		if _, err := s.Create(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("likes", "tea", nil)
+	mk("project", "Ghost", []string{"context:work"})
+	mk("hobby", "sailing", []string{"context:home"})
+	global := s.CurrentInScope(nil)
+	if len(global) != 1 {
+		t.Fatalf("scopeless sees global only, got %d", len(global))
+	}
+	work := s.CurrentInScope([]string{"context:work"})
+	if len(work) != 2 {
+		t.Fatalf("work sees global+own, got %d", len(work))
+	}
+	home := s.CurrentInScope([]string{"context:home"})
+	for _, e := range home {
+		if e.Predicate == "project" {
+			t.Fatal("home must not see work-scoped fact")
+		}
+	}
+}
+
+func TestCurrentInScopePrecedence(t *testing.T) {
+	s := mustOpen(t, t.TempDir())
+	mk := func(pred, val string, scopes []string) {
+		raw, err := RawValue(val)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e := Entry{ID: "test-" + pred + "-", Kind: KindFact, Subject: "user", Predicate: pred,
+			Value: raw, Status: StatusCurrent, Scopes: scopes,
+			Sources: []Source{{Type: SourceCommand, Kind: SourceUserDeclared, Ref: "t:1", Timestamp: time.Now().UTC()}}}
+		// unique ids per scope
+		if len(scopes) > 0 {
+			e.ID += scopes[0]
+		}
+		if _, err := s.Create(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("likes", "tea", nil)
+	mk("likes", "coffee", []string{"context:work"})
+	work := s.CurrentInScope([]string{"context:work"})
+	count, sawCoffee, sawTea := 0, false, false
+	for _, e := range work {
+		if e.Predicate == "likes" {
+			count++
+			var v string
+			json.Unmarshal(e.Value, &v)
+			if v == "coffee" {
+				sawCoffee = true
+			}
+			if v == "tea" {
+				sawTea = true
+			}
+		}
+	}
+	if count != 1 || !sawCoffee || sawTea {
+		t.Fatalf("scoped must shadow global (count=%d coffee=%v tea=%v)", count, sawCoffee, sawTea)
+	}
+	// Personal still sees the global one.
+	personal := s.CurrentInScope(nil)
+	found := false
+	for _, e := range personal {
+		if e.Predicate == "likes" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("personal must see global")
+	}
+}
+
+func TestHasCurrentDedup(t *testing.T) {
+	s := mustOpen(t, t.TempDir())
+	raw, _ := RawValue("tea")
+	raw2, _ := RawValue("coffee")
+	e1 := Entry{ID: newEntryID(), Kind: KindPreference, Subject: "user", Predicate: "likes", Value: raw,
+		Status: StatusCurrent, Sources: []Source{{Type: SourceCommand, Kind: SourceUserDeclared, Ref: "t:1", Timestamp: time.Now().UTC()}}}
+	if _, err := s.Create(e1); err != nil {
+		t.Fatal(err)
+	}
+	dup := Entry{ID: newEntryID(), Kind: KindPreference, Subject: "user", Predicate: "likes", Value: raw,
+		Status: StatusCurrent, Sources: []Source{{Type: SourceCommand, Kind: SourceUserDeclared, Ref: "t:2", Timestamp: time.Now().UTC()}}}
+	if !HasCurrent(s.Current(), dup) {
+		t.Fatal("identical restatement must be detected as duplicate")
+	}
+	diff := dup
+	diff.Value = raw2
+	if HasCurrent(s.Current(), diff) {
+		t.Fatal("different value must not be considered duplicate")
+	}
+}

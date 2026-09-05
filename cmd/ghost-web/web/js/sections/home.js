@@ -56,7 +56,7 @@ async function loadHome(container) {
   container.appendChild(view);
 
   // Independent fetches — a single failure shouldn't blank the page.
-  const [meta, doctor, health, channels, sessions, jobs, memory, selfMem, devices, ollama, activeModel] = await Promise.allSettled([
+  const [meta, doctor, health, channels, sessions, jobs, memory, selfMem, devices, ollama, activeModel, identity] = await Promise.allSettled([
     GhostAPI.get('/api/admin/auth/meta'),
     GhostAPI.proxyGet('/v1/doctor'),
     GhostAPI.proxyGet('/v1/health'),
@@ -68,6 +68,7 @@ async function loadHome(container) {
     GhostAPI.proxyGet('/v1/pairing/devices'),
     GhostAPI.get('/api/ollama/models'),
     GhostAPI.proxyGet('/v1/model'),
+    GhostAPI.proxyGet('/v1/identity'),
   ]);
 
   if (!document.body.contains(container)) return;
@@ -75,6 +76,13 @@ async function loadHome(container) {
   // Personal greeting: append owner name when known.
   const ownerName = (meta.status === 'fulfilled' && meta.value && meta.value.owner_name || '').trim();
   if (ownerName) greet.textContent = greetingFor(new Date().getHours()) + ', ' + ownerName + '.';
+
+  // Agent-as-contact: the Ghost introduces itself by name (one entity,
+  // not a model picker). Falls back silently when identity is missing.
+  const ghostInfo = (identity.status === 'fulfilled' && identity.value && identity.value.ghost) || {};
+  if (ghostInfo.name && ghostInfo.name !== 'Ghost') {
+    subline.textContent = 'You\u2019re talking to ' + ghostInfo.name + '.';
+  }
 
   // Compose state.
   const overall = computeOverall(doctor, health);

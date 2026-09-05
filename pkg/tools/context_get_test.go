@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -360,5 +361,49 @@ func TestContextGetNilStore(t *testing.T) {
 	res := tool.Execute(context.Background(), map[string]interface{}{"predicate": "fact/location"})
 	if !res.IsError {
 		t.Fatal("expected error when store is nil")
+	}
+}
+
+func TestContextGetScopedRetrieval(t *testing.T) {
+	store := newContextGetTestStore(t)
+	createTestPCEntry(t, store, "e-global", "fact", "user", "likes", "tea")
+	work := personalcontext.Entry{
+		ID: "e-work", Kind: "fact", Subject: "user", Predicate: "salary",
+		Value: createPCValue(t, "200k"), Status: personalcontext.StatusCurrent,
+		Confidence: 0.9, Scopes: []string{"context:work"},
+		Sources: []personalcontext.Source{{
+			Type: personalcontext.SourceConversation, Kind: personalcontext.SourceUserDeclared,
+			Ref: "s:m", Timestamp: time.Now().UTC(),
+		}},
+	}
+	if _, err := store.Create(work); err != nil {
+		t.Fatal(err)
+	}
+	// Scoped tool (wired runtime): work salary invisible to personal.
+	tool := NewContextGetTool(store)
+	tool.Scopes = func(session string) []string {
+		if session == "sess-work" {
+			return []string{"context:work"}
+		}
+		return nil
+	}
+	ctx := WithSessionKey(context.Background(), "sess-personal")
+	res := tool.Execute(ctx, map[string]interface{}{"kind": "fact"})
+	if res.IsError {
+		t.Fatal(res.ForLLM)
+	}
+	if strings.Contains(res.ForLLM, "200k") {
+		t.Fatal("personal session must not retrieve work-scoped fact")
+	}
+	ctxWork := WithSessionKey(context.Background(), "sess-work")
+	res2 := tool.Execute(ctxWork, map[string]interface{}{"kind": "fact"})
+	if res2.IsError || !strings.Contains(res2.ForLLM, "200k") {
+		t.Fatalf("work session must retrieve own fact: %s", res2.ForLLM)
+	}
+	// Legacy construction (no hook): unchanged global behavior.
+	legacy := NewContextGetTool(store)
+	res3 := legacy.Execute(context.Background(), map[string]interface{}{"kind": "fact"})
+	if res3.IsError || !strings.Contains(res3.ForLLM, "200k") {
+		t.Fatal("unwired tool preserves legacy reads")
 	}
 }

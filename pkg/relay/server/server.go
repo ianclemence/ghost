@@ -399,6 +399,8 @@ func (s *Server) HandleHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleEnroll(w, r)
 	case path == "/v1/tunnel" || strings.HasPrefix(path, "/v1/tunnel"):
 		s.handleDeviceTunnel(w, r)
+	case strings.HasPrefix(path, "/oauth/"):
+		s.handleOAuthCallback(w, r)
 	case strings.HasPrefix(path, "/v1/"):
 		s.handleAppRequest(w, r)
 	default:
@@ -682,6 +684,118 @@ func (s *Server) dispatchToDeviceStream(t *DeviceTunnel, f *proto.Frame) {
 	}
 }
 
+// oauthCallbackProviders allowlists the OAuth callbacks the relay will
+// forward. Only callbacks whose device side validates state (CSRF) and
+// holds its own client secret may be relayed.
+var oauthCallbackProviders = map[string]string{
+	"calendar": "/oauth/calendar/callback",
+}
+
+// oauthRateLimit bounds unauthenticated callback hits per client address.
+type oauthRateLimit struct {
+	mu     sync.Mutex
+	hits   map[string][]time.Time
+	max    int
+	window time.Duration
+}
+
+var oauthLimiter = &oauthRateLimit{hits: map[string][]time.Time{}, max: 10, window: time.Minute}
+
+func (l *oauthRateLimit) allow(addr string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	keep := l.hits[addr][:0]
+	for _, t := range l.hits[addr] {
+		if now.Sub(t) < l.window {
+			keep = append(keep, t)
+		}
+	}
+	if len(keep) >= l.max {
+		l.hits[addr] = keep
+		return false
+	}
+	l.hits[addr] = append(keep, now)
+	return true
+}
+
+// handleOAuthCallback is the relay-hosted OAuth callback for remote setup.
+//
+// A remote browser cannot reach the LAN Ghost, so Google redirects here:
+// GET /oauth/calendar/callback?ghost=<deviceID>&code=..&state=..[&error=..]
+// The relay forwards ONLY the allowlisted query params (code, state, error)
+// to the Ghost device's own callback handler over the already-authenticated
+// device tunnel. The device validates state (single-use, session-bound,
+// 10-min TTL) and exchanges the code with its own client secret.
+//
+// Security properties:
+//   - This endpoint is necessarily unauthenticated (Google redirects a
+//     plain browser GET with no auth headers). State validation on the
+//     device is the CSRF/authorization mechanism — a forged code fails
+//     closed and marks nothing ready.
+//   - The relay never sees tokens: the code is exchanged device-side, and
+//     the device's JSON response carries product status, never secrets.
+//   - Path and query are allowlisted; device ID format is validated; the
+//     endpoint is rate-limited per client address.
+//   - If the Ghost is offline, the callback fails honestly (503) and the
+//     user retries once Ghost is back — nothing is marked connected.
+func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	if !oauthLimiter.allow(r.RemoteAddr) {
+		http.Error(w, `{"error":"rate limited, try again shortly"}`, http.StatusTooManyRequests)
+		return
+	}
+	provider := strings.Trim(strings.TrimPrefix(r.URL.Path, "/oauth/"), "/")
+	// Only exactly "calendar/callback" (no nesting, no traversal).
+	parts := strings.Split(provider, "/")
+	if len(parts) != 2 || parts[1] != "callback" {
+		http.NotFound(w, r)
+		return
+	}
+	devicePath, ok := oauthCallbackProviders[parts[0]]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := r.URL.Query()
+	deviceID := q.Get("ghost")
+	if deviceID == "" || len(deviceID) > 128 || strings.ContainsAny(deviceID, "/\\?#%@ \t\n") {
+		http.Error(w, `{"error":"ghost required"}`, http.StatusBadRequest)
+		return
+	}
+	// Forward only the OAuth callback params; drop everything else so a
+	// crafted redirect cannot smuggle parameters into the device handler.
+	fwd := url.Values{}
+	if v := q.Get("code"); v != "" {
+		if len(v) > 4096 {
+			http.Error(w, `{"error":"invalid callback"}`, http.StatusBadRequest)
+			return
+		}
+		fwd.Set("code", v)
+	}
+	if v := q.Get("state"); v != "" {
+		if len(v) > 512 {
+			http.Error(w, `{"error":"invalid callback"}`, http.StatusBadRequest)
+			return
+		}
+		fwd.Set("state", v)
+	}
+	if v := q.Get("error"); v != "" {
+		fwd.Set("error", v[:min(128, len(v))])
+	}
+	s.serveViaTunnel(w, r, deviceID, http.MethodGet, devicePath, fwd.Encode(), nil)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // handleAppRequest forwards an HTTP request from the app to the device tunnel.
 // App credentials are accepted ONLY via headers — never query parameters.
 func (s *Server) handleAppRequest(w http.ResponseWriter, r *http.Request) {
@@ -697,6 +811,21 @@ func (s *Server) handleAppRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Copy headers, stripping hop-by-hop headers and relay credentials.
+	headers := make(map[string][]string)
+	for k, v := range r.Header {
+		if hopByHopRequestHeaders[strings.ToLower(k)] {
+			continue
+		}
+		headers[k] = v
+	}
+	s.serveViaTunnel(w, r, deviceID, r.Method, r.URL.Path, r.URL.RawQuery, headers)
+}
+
+// serveViaTunnel forwards one HTTP request to a device tunnel and streams
+// the device's response back. path/query are set by the caller so public
+// endpoints (OAuth callbacks) can allowlist both.
+func (s *Server) serveViaTunnel(w http.ResponseWriter, r *http.Request, deviceID, method, path, query string, headers map[string][]string) {
 	// Find device tunnel
 	tunnel := s.tunnels.GetTunnel(deviceID)
 	if tunnel == nil {
@@ -714,14 +843,8 @@ func (s *Server) handleAppRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	// Copy headers, stripping hop-by-hop headers and relay credentials.
-	headers := make(map[string][]string)
-	for k, v := range r.Header {
-		if hopByHopRequestHeaders[strings.ToLower(k)] {
-			continue
-		}
-		headers[k] = v
+	if headers == nil {
+		headers = map[string][]string{}
 	}
 
 	// Allocate stream ID
@@ -741,8 +864,9 @@ func (s *Server) handleAppRequest(w http.ResponseWriter, r *http.Request) {
 	// Send OPEN frame to device via the tunnel's single-writer pump
 	metaBytes, err := json.Marshal(&proto.HTTPMetadata{
 		Type:    proto.StreamHTTP,
-		Method:  r.Method,
-		Path:    r.URL.Path,
+		Method:  method,
+		Path:    path,
+		Query:   query,
 		Headers: headers,
 	})
 	if err != nil {

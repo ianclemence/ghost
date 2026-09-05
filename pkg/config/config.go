@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/caarlos0/env/v11"
@@ -498,6 +499,14 @@ func LoadConfig(path string) (*Config, error) {
 
 	if err := env.Parse(cfg); err != nil {
 		return nil, err
+	}
+
+	// RAG is a core memory capability and is always on for the appliance.
+	// A config that omits the "rag" block, or that was built without one,
+	// must never silently disable it. Only an explicit GHOST_RAG_ENABLED=
+	// false (advanced operator escape hatch) disables RAG.
+	if strings.ToLower(strings.TrimSpace(os.Getenv("GHOST_RAG_ENABLED"))) != "false" {
+		cfg.RAG.Enabled = true
 	}
 
 	// Manual override for providers since env tags with templates might not work

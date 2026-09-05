@@ -16,6 +16,20 @@ async function loadIntegrations(container) {
   panel.appendChild(listEl);
   container.appendChild(panel);
 
+  // Connections strip: vault lifecycle states (never secrets).
+  const connEl = GhostUI.h('div', { className: 'chips', id: 'int-connections' });
+  container.insertBefore(connEl, panel);
+  GhostAPI.proxyGet('/v1/connections').then(res => {
+    if (!document.body.contains(container)) return;
+    const conns = (res && res.connections) || [];
+    connEl.innerHTML = '';
+    const interesting = conns.filter(c => c.status && c.status !== 'connected' && c.status !== 'not_configured');
+    interesting.slice(0, 8).forEach(c => {
+      connEl.appendChild(GhostUI.h('span', { className: 'chip chip-waiting', title: c.display_name },
+        '! ' + c.display_name + ': ' + String(c.status).replace(/_/g, ' ')));
+    });
+  }).catch(() => {});
+
   let status;
   try { status = await GhostAPI.get('/api/admin/integrations/status'); }
   catch (e) {

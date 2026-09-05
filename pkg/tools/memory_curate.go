@@ -21,7 +21,11 @@ import (
 // keeping only what actually matters. This complements Ghost's existing RAG memory system.
 // Inspired by Hermes Agent's memory_tool.py.
 type MemoryCurateTool struct {
-	workspace        string
+	workspace string
+	// ContextFor resolves the calling session's context (nil = legacy
+	// global files). Set by the agent runtime; the model can never set it.
+	ContextFor func(session string) string
+
 	memoryCharLimit  int
 	profileCharLimit int
 }
@@ -106,10 +110,49 @@ func (t *MemoryCurateTool) Parameters() map[string]interface{} {
 }
 
 func (t *MemoryCurateTool) pathFor(target string) string {
+	return t.pathForContext(target, "")
+}
+
+// pathForContext resolves the note file: the legacy global file for the
+// personal context (backward compatible), per-context files otherwise.
+// A note is global only when written without a context — never by accident.
+func (t *MemoryCurateTool) pathForContext(target, contextID string) string {
+	base := "curated-memory.md"
 	if target == "user" {
-		return filepath.Join(t.workspace, "knowledge", "self", "user-profile.md")
+		base = "user-profile.md"
 	}
-	return filepath.Join(t.workspace, "knowledge", "self", "curated-memory.md")
+	if contextID == "" || contextID == "personal" {
+		return filepath.Join(t.workspace, "knowledge", "self", base)
+	}
+	safe := sanitizeContextID(contextID)
+	return filepath.Join(t.workspace, "knowledge", "self", "contexts", safe, base)
+}
+
+func sanitizeContextID(id string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(id) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "unknown"
+	}
+	return out
+}
+
+// contextOf resolves the calling session's context (personal default).
+func (t *MemoryCurateTool) contextOf(ctx context.Context) string {
+	if t.ContextFor == nil {
+		return "personal"
+	}
+	if id := t.ContextFor(SessionKeyFromContext(ctx)); id != "" {
+		return id
+	}
+	return "personal"
 }
 
 func (t *MemoryCurateTool) charLimit(target string) int {
@@ -120,7 +163,30 @@ func (t *MemoryCurateTool) charLimit(target string) int {
 }
 
 func (t *MemoryCurateTool) readEntries(target string) []string {
-	data, err := os.ReadFile(t.pathFor(target))
+	return t.readEntriesFor(target, "")
+}
+
+// readEntriesFor merges the global file with the session context's file
+// (deduped, global first). Personal sessions read the global files.
+func (t *MemoryCurateTool) readEntriesFor(target, contextID string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, path := range []string{t.pathFor(target), t.pathForContext(target, contextID)} {
+		if path == "" {
+			continue
+		}
+		for _, e := range readNoteFile(path) {
+			if !seen[e] {
+				seen[e] = true
+				out = append(out, e)
+			}
+		}
+	}
+	return out
+}
+
+func readNoteFile(path string) []string {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return []string{}
 	}
@@ -140,7 +206,13 @@ func (t *MemoryCurateTool) readEntries(target string) []string {
 }
 
 func (t *MemoryCurateTool) writeEntries(target string, entries []string) error {
-	path := t.pathFor(target)
+	return t.writeEntriesFor(target, "", entries)
+}
+
+// writeEntriesFor persists to the session context's file (non-personal)
+// or the global file (personal/legacy). Writes never cross contexts.
+func (t *MemoryCurateTool) writeEntriesFor(target, contextID string, entries []string) error {
+	path := t.pathForContext(target, contextID)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
@@ -195,19 +267,20 @@ func (t *MemoryCurateTool) Execute(ctx context.Context, args map[string]interfac
 		return ErrorResult("target must be 'memory' or 'user'.")
 	}
 
+	contextID := t.contextOf(ctx)
 	switch action {
 	case "add":
-		return t.addEntry(target, args)
+		return t.addEntry(target, args, contextID)
 	case "replace":
-		return t.replaceEntry(target, args)
+		return t.replaceEntry(target, args, contextID)
 	case "remove":
-		return t.removeEntry(target, args)
+		return t.removeEntry(target, args, contextID)
 	default:
 		return ErrorResult(fmt.Sprintf("Unknown action '%s'. Use: add, replace, remove", action))
 	}
 }
 
-func (t *MemoryCurateTool) addEntry(target string, args map[string]interface{}) *ToolResult {
+func (t *MemoryCurateTool) addEntry(target string, args map[string]interface{}, contextID string) *ToolResult {
 	content, _ := args["content"].(string)
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -219,7 +292,7 @@ func (t *MemoryCurateTool) addEntry(target string, args map[string]interface{}) 
 		return ErrorResult(errMsg)
 	}
 
-	entries := t.readEntries(target)
+	entries := t.readEntriesFor(target, contextID)
 
 	// Reject duplicates
 	for _, e := range entries {
@@ -246,8 +319,14 @@ func (t *MemoryCurateTool) addEntry(target string, args map[string]interface{}) 
 		return ErrorResult(string(jsonResult))
 	}
 
-	entries = newEntries
-	if err := t.writeEntries(target, entries); err != nil {
+	// Append to this context's own file only (never merged-then-written,
+	// which would duplicate global entries into context files).
+	own := readNoteFile(t.pathForContext(target, contextID))
+	if t.pathForContext(target, contextID) == t.pathFor(target) {
+		own = entries // personal writes the global file directly
+	}
+	own = append(own, content)
+	if err := writeNoteFile(t.pathForContext(target, contextID), own); err != nil {
 		return ErrorResult(fmt.Sprintf("Failed to write memory: %v", err))
 	}
 
@@ -259,7 +338,7 @@ func (t *MemoryCurateTool) addEntry(target string, args map[string]interface{}) 
 	return t.successResponse(target, entries, "Entry added.")
 }
 
-func (t *MemoryCurateTool) replaceEntry(target string, args map[string]interface{}) *ToolResult {
+func (t *MemoryCurateTool) replaceEntry(target string, args map[string]interface{}, contextID string) *ToolResult {
 	oldText, _ := args["old_text"].(string)
 	content, _ := args["content"].(string)
 	oldText = strings.TrimSpace(oldText)
@@ -277,14 +356,13 @@ func (t *MemoryCurateTool) replaceEntry(target string, args map[string]interface
 		return ErrorResult(errMsg)
 	}
 
-	entries := t.readEntries(target)
+	entries := t.readEntriesFor(target, contextID)
 
-	// Find matching entry
-	matchIdx := -1
+	// Find matching entry in the merged view (uniqueness across global +
+	// context), then apply per-file so files never cross-contaminate.
 	matchCount := 0
-	for i, e := range entries {
+	for _, e := range entries {
 		if strings.Contains(e, oldText) {
-			matchIdx = i
 			matchCount++
 		}
 	}
@@ -299,13 +377,25 @@ func (t *MemoryCurateTool) replaceEntry(target string, args map[string]interface
 	// Check char limit with replacement
 	testEntries := make([]string, len(entries))
 	copy(testEntries, entries)
-	testEntries[matchIdx] = content
+	for i, e := range testEntries {
+		if strings.Contains(e, oldText) {
+			testEntries[i] = content
+		}
+	}
 	if t.charCount(testEntries) > t.charLimit(target) {
 		return ErrorResult("Replacement would exceed the character limit. Shorten the new content or remove other entries first.")
 	}
 
-	entries[matchIdx] = content
-	if err := t.writeEntries(target, entries); err != nil {
+	if err := t.mutateFiles(target, contextID, func(es []string) ([]string, bool) {
+		changed := false
+		for i, e := range es {
+			if strings.Contains(e, oldText) {
+				es[i] = content
+				changed = true
+			}
+		}
+		return es, changed
+	}); err != nil {
 		return ErrorResult(fmt.Sprintf("Failed to write memory: %v", err))
 	}
 
@@ -313,10 +403,10 @@ func (t *MemoryCurateTool) replaceEntry(target string, args map[string]interface
 		"target": target,
 	})
 
-	return t.successResponse(target, entries, "Entry replaced.")
+	return t.successResponse(target, testEntries, "Entry replaced.")
 }
 
-func (t *MemoryCurateTool) removeEntry(target string, args map[string]interface{}) *ToolResult {
+func (t *MemoryCurateTool) removeEntry(target string, args map[string]interface{}, contextID string) *ToolResult {
 	oldText, _ := args["old_text"].(string)
 	oldText = strings.TrimSpace(oldText)
 
@@ -324,14 +414,12 @@ func (t *MemoryCurateTool) removeEntry(target string, args map[string]interface{
 		return ErrorResult("old_text is required for 'remove' action.")
 	}
 
-	entries := t.readEntries(target)
+	entries := t.readEntriesFor(target, contextID)
 
-	// Find matching entry
-	matchIdx := -1
+	// Find matching entry in the merged view, then remove per-file.
 	matchCount := 0
-	for i, e := range entries {
+	for _, e := range entries {
 		if strings.Contains(e, oldText) {
-			matchIdx = i
 			matchCount++
 		}
 	}
@@ -343,9 +431,19 @@ func (t *MemoryCurateTool) removeEntry(target string, args map[string]interface{
 		return ErrorResult(fmt.Sprintf("Multiple entries matched '%s'. Be more specific.", oldText))
 	}
 
-	// Remove the entry
-	entries = append(entries[:matchIdx], entries[matchIdx+1:]...)
-	if err := t.writeEntries(target, entries); err != nil {
+	// Remove the entry per-file (never merged-then-written).
+	if err := t.mutateFiles(target, contextID, func(es []string) ([]string, bool) {
+		kept := es[:0:0]
+		changed := false
+		for _, e := range es {
+			if strings.Contains(e, oldText) {
+				changed = true
+				continue
+			}
+			kept = append(kept, e)
+		}
+		return kept, changed
+	}); err != nil {
 		return ErrorResult(fmt.Sprintf("Failed to write memory: %v", err))
 	}
 
@@ -353,7 +451,29 @@ func (t *MemoryCurateTool) removeEntry(target string, args map[string]interface{
 		"target": target,
 	})
 
-	return t.successResponse(target, entries, "Entry removed.")
+	remaining := t.readEntriesFor(target, contextID)
+	return t.successResponse(target, remaining, "Entry removed.")
+}
+
+// mutateFiles applies fn to the global file and the session context's
+// file independently (deduplicated when identical). Per-file mutation
+// guarantees files never cross-contaminate through merged views.
+func (t *MemoryCurateTool) mutateFiles(target, contextID string, fn func([]string) ([]string, bool)) error {
+	paths := []string{t.pathFor(target)}
+	if cp := t.pathForContext(target, contextID); cp != paths[0] {
+		paths = append(paths, cp)
+	}
+	for _, path := range paths {
+		entries := readNoteFile(path)
+		updated, changed := fn(entries)
+		if !changed {
+			continue
+		}
+		if err := writeNoteFile(path, updated); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Entries returns the current entries for a target ("user" or "memory").
@@ -361,9 +481,9 @@ func (t *MemoryCurateTool) Entries(target string) []string {
 	return t.readEntries(target)
 }
 
-// Delete removes the entry uniquely identified by oldText from a target and
-// returns the remaining entry count. It is safe for the console to call so a
-// user can forget an individual fact Ghost has learned about them.
+// Delete removes the entry everywhere it appears (global + all context
+// files): the owner console manages the whole Ghost, so forgetting is
+// total. Returns the remaining count across all files.
 func (t *MemoryCurateTool) Delete(target, oldText string) (int, error) {
 	oldText = strings.TrimSpace(oldText)
 	if target != "user" && target != "memory" {
@@ -372,32 +492,66 @@ func (t *MemoryCurateTool) Delete(target, oldText string) (int, error) {
 	if oldText == "" {
 		return 0, fmt.Errorf("old_text is required")
 	}
-	entries := t.readEntries(target)
-	matchIdx := -1
-	matchCount := 0
-	for i, e := range entries {
-		if strings.Contains(e, oldText) {
-			matchIdx = i
-			matchCount++
+	remaining := 0
+	var firstErr error
+	// Per-file (never merged): deleting must not copy global entries
+	// into context files or vice versa.
+	paths := []string{t.pathFor(target)}
+	for _, contextID := range t.knownContexts() {
+		paths = append(paths, t.pathForContext(target, contextID))
+	}
+	for _, path := range paths {
+		entries := readNoteFile(path)
+		kept := entries[:0:0]
+		for _, e := range entries {
+			if !strings.Contains(e, oldText) {
+				kept = append(kept, e)
+			}
+		}
+		if len(kept) != len(entries) {
+			if err := writeNoteFile(path, kept); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		remaining += len(kept)
+	}
+	return remaining, firstErr
+}
+
+func writeNoteFile(path string, entries []string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(strings.Join(entries, entryDelimiter)), 0644)
+}
+
+// knownContexts lists context ids with note files on disk.
+func (t *MemoryCurateTool) knownContexts() []string {
+	dir := filepath.Join(t.workspace, "knowledge", "self", "contexts")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() {
+			out = append(out, e.Name())
 		}
 	}
-	if matchCount == 0 {
-		return 0, fmt.Errorf("no entry matched")
-	}
-	if matchCount > 1 {
-		return 0, fmt.Errorf("multiple entries matched; be more specific")
-	}
-	entries = append(entries[:matchIdx], entries[matchIdx+1:]...)
-	if err := t.writeEntries(target, entries); err != nil {
-		return len(entries), err
-	}
-	return len(entries), nil
+	return out
 }
 
 // FormatForSystemPrompt returns the curated memory content formatted for system prompt injection.
 // Returns empty string if no entries exist.
 func (t *MemoryCurateTool) FormatForSystemPrompt(target string) string {
-	entries := t.readEntries(target)
+	return t.FormatForSystemPromptFor(target, "")
+}
+
+// FormatForSystemPromptFor scopes curated notes to a context: global
+// notes plus the session context's notes. The prompt never sees
+// foreign-context notes.
+func (t *MemoryCurateTool) FormatForSystemPromptFor(target, contextID string) string {
+	entries := t.readEntriesFor(target, contextID)
 	if len(entries) == 0 {
 		return ""
 	}

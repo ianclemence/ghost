@@ -35,6 +35,27 @@ async function loadActivity(container) {
   timeline.appendChild(GhostUI.loading('Loading activity…'));
   container.appendChild(timeline);
 
+  // Canonical chips: the event stream's human narrative ("What is Ghost
+  // doing for me?"). Rendered first; the legacy timeline follows.
+  const chipsEl = GhostUI.h('div', { className: 'chips chips-live', id: 'act-chips' });
+  container.insertBefore(chipsEl, timeline);
+  const STATE_GLYPH = { running: '◌', waiting: '!', success: '✓', failed: '×', cancelled: '−', paused: '❚❚' };
+  GhostAPI.proxyGet('/v1/activity?limit=20').then(res => {
+    if (!document.body.contains(container)) return;
+    const chips = (res && res.activity) || [];
+    chipsEl.innerHTML = '';
+    if (chips.length === 0) return;
+    chips.slice(0, 12).forEach(c => {
+      const glyph = STATE_GLYPH[c.state] || '•';
+      const el = GhostUI.h('button', {
+        className: 'chip chip-' + c.state,
+        title: c.detail || c.title,
+        onClick: () => GhostUI.toast(c.detail ? c.title + ' — ' + c.detail : c.title),
+      }, glyph + ' ' + c.title);
+      chipsEl.appendChild(el);
+    });
+  }).catch(() => { /* legacy timeline still renders below */ });
+
   const [sessions, jobs, memories, traces] = await Promise.allSettled([
     GhostAPI.proxyGet('/v1/sessions'),
     GhostAPI.proxyGet('/v1/cron/jobs'),

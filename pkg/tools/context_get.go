@@ -16,6 +16,10 @@ import (
 // conversation store, and never queries RAG: facts are queried structurally.
 type ContextGetTool struct {
 	store *personalcontext.Store
+	// Scopes resolves memory scopes for the calling session. Set by the
+	// agent runtime from governance; nil preserves legacy global reads
+	// (direct unit-test construction). The model can never set this.
+	Scopes func(session string) []string
 }
 
 func NewContextGetTool(store *personalcontext.Store) *ContextGetTool {
@@ -112,7 +116,7 @@ func (t *ContextGetTool) Execute(ctx context.Context, args map[string]interface{
 		limit = maxContextGetLimit
 	}
 
-	current, unresolved := t.query(time.Now(), personalcontext.Kind(kind), subject, predicate)
+	current, unresolved := t.query(time.Now(), personalcontext.Kind(kind), subject, predicate, t.scopesFor(ctx))
 	if len(current) > limit {
 		current = current[:limit]
 	}
@@ -143,13 +147,26 @@ func (t *ContextGetTool) Execute(ctx context.Context, args map[string]interface{
 	return SilentResult(string(raw))
 }
 
+// scopesFor resolves the caller's memory scopes (nil hook = legacy).
+func (t *ContextGetTool) scopesFor(ctx context.Context) []string {
+	if t.Scopes == nil {
+		return nil
+	}
+	return t.Scopes(SessionKeyFromContext(ctx))
+}
+
 // query partitions matching entries into current facts and unresolved state.
 // Current facts reuse the store's own semantics (status current and temporal
 // validity, via CurrentAt) so validity logic is never reimplemented here.
 // Unresolved state is read from the status-agnostic store queries, which also
 // carry provenance, and surfaced explicitly instead of being silently chosen.
-func (t *ContextGetTool) query(now time.Time, kind personalcontext.Kind, subject, predicate string) (current, unresolved []personalcontext.Entry) {
+// Both lists honor scope visibility: cross-context facts never answer here.
+func (t *ContextGetTool) query(now time.Time, kind personalcontext.Kind, subject, predicate string, scopes []string) (current, unresolved []personalcontext.Entry) {
+	scoped := t.Scopes != nil
 	for _, e := range t.store.CurrentAt(now) {
+		if scoped && !personalcontext.VisibleTo(e, scopes) {
+			continue
+		}
 		if matchesQuery(e, kind, subject, predicate) {
 			current = append(current, e)
 		}
@@ -166,6 +183,9 @@ func (t *ContextGetTool) query(now time.Time, kind personalcontext.Kind, subject
 	}
 	for _, e := range all {
 		if !matchesQuery(e, kind, subject, predicate) {
+			continue
+		}
+		if scoped && !personalcontext.VisibleTo(e, scopes) {
 			continue
 		}
 		if e.Status == personalcontext.StatusConflicting || e.Status == personalcontext.StatusUncertain {

@@ -16,7 +16,7 @@ homepage: https://wttr.in/:help
 
 Uses wttr.in (default) or open-meteo as fallback. No API key required.
 
-> **Mandatory:** Run the exact `curl` command below with the `exec` tool and use its output. Do NOT use `web_search` or `web_fetch` to "check" the weather — that is duplicate work and wttr.in is the authoritative, already-tested source.
+> **Preferred path:** Call the `weather_now` tool with `location` (or `latitude`+`longitude`). It returns validated data with provider fallback built in — use its output directly. Only use the `curl` commands below if the tool reports it is unavailable.
 
 ## Quick Reference
 

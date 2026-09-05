@@ -131,20 +131,20 @@ func TestContextGetModelInvokesTool(t *testing.T) {
 			ID:   "call_context_get",
 			Name: "context_get",
 			Arguments: map[string]interface{}{
-				"predicate": "fact/location",
+				"predicate": "fact/work",
 			},
 		},
-		finalAnswer: "You live in Bangkok.",
+		finalAnswer: "You work at Acme.",
 	}
 	al := newTestAgentLoopWithProvider(t, ws, provider)
 
 	// Seed current context directly through the store the agent owns.
 	if _, err := al.pcStore.Create(personalcontext.Entry{
-		ID:         "ec_loc",
+		ID:         "ec_work",
 		Kind:       personalcontext.KindFact,
 		Subject:    "user",
-		Predicate:  "fact/location",
-		Value:      mustPCValue(t, "Bangkok"),
+		Predicate:  "fact/work",
+		Value:      mustPCValue(t, "Acme"),
 		Status:     personalcontext.StatusCurrent,
 		Confidence: 0.95,
 		Sources: []personalcontext.Source{{
@@ -157,9 +157,9 @@ func TestContextGetModelInvokesTool(t *testing.T) {
 		t.Fatalf("seed context: %v", err)
 	}
 
-	resp := runTurn(t, al, "Where do I live?", "s1")
-	if !strings.Contains(resp, "Bangkok") {
-		t.Errorf("final response = %q, want it to mention Bangkok", resp)
+	resp := runTurn(t, al, "Where do I work?", "s1")
+	if !strings.Contains(resp, "Acme") {
+		t.Errorf("final response = %q, want it to mention Acme", resp)
 	}
 
 	// The model saw the tool definition before requesting it.
@@ -180,7 +180,7 @@ func TestContextGetModelInvokesTool(t *testing.T) {
 			continue
 		}
 		sawToolResult = true
-		if !strings.Contains(m.Content, "fact/location") || !strings.Contains(m.Content, "Bangkok") {
+		if !strings.Contains(m.Content, "fact/work") || !strings.Contains(m.Content, "Acme") {
 			t.Errorf("tool result missing entry data: %q", m.Content)
 		}
 		if !strings.Contains(m.Content, "s1:m1") {

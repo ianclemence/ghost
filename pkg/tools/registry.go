@@ -189,6 +189,10 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 		contextualTool.SetContext(channel, chatID)
 	}
 
+	// Carry the calling session for session-scoped enforcement inside
+	// tools (memory visibility). Server-side value, never model input.
+	ctx = WithSessionKey(ctx, sessionKey)
+
 	// If tool implements AsyncTool and callback is provided, set callback
 	if asyncTool, ok := tool.(AsyncTool); ok && asyncCallback != nil {
 		asyncTool.SetCallback(asyncCallback)

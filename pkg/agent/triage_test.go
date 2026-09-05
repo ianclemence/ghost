@@ -32,6 +32,8 @@ func TestClassifyEffort(t *testing.T) {
 		{"find me a chicken pasta recipe", EffortDeliberate},
 		{"add milk and eggs to my shopping list", EffortDeliberate},
 		{"what is the weather in Bangkok", EffortDeliberate},
+		{"what do i prefer to drink", EffortFast},
+		{"what do i like", EffortFast},
 		{"", EffortUnknown},
 	}
 	for _, c := range cases {
@@ -65,11 +67,35 @@ func TestFastPathAnswerFromMemory(t *testing.T) {
 	}
 	al := &AgentLoop{pcStore: store}
 
-	if ans, ok := al.fastPathAnswer("what is my name"); !ok || !strings.Contains(ans, "Sam") {
+	if ans, ok := al.fastPathAnswer("what is my name", ""); !ok || !strings.Contains(ans, "Sam") {
 		t.Fatalf("name fast path: got (%q, %v), want Sam", ans, ok)
 	}
-	if ans, ok := al.fastPathAnswer("where do i live"); !ok || !strings.Contains(ans, "Bangkok") {
+	if ans, ok := al.fastPathAnswer("where do i live", ""); !ok || !strings.Contains(ans, "Bangkok") {
 		t.Fatalf("location fast path: got (%q, %v), want Bangkok", ans, ok)
+	}
+}
+
+func TestFastPathPreferenceRecall(t *testing.T) {
+	ws := t.TempDir()
+	store, err := personalcontext.Open(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	al := &AgentLoop{pcStore: store}
+	raw, _ := personalcontext.RawValue("green tea")
+	_, err = al.pcStore.Create(personalcontext.Entry{
+		ID: "fastpref", Kind: personalcontext.KindPreference,
+		Subject: "user", Predicate: "preference/prefers", Value: raw,
+		Status: personalcontext.StatusCurrent,
+		Sources: []personalcontext.Source{{Type: personalcontext.SourceCommand,
+			Kind: personalcontext.SourceUserDeclared, Ref: "t:1", Timestamp: time.Now().UTC()}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ans, ok := al.fastPathAnswer("what do i prefer to drink", "")
+	if !ok || !strings.Contains(ans, "green tea") {
+		t.Fatalf("preference recall must be local+deterministic, got ok=%v ans=%q", ok, ans)
 	}
 }
 
@@ -80,7 +106,7 @@ func TestFastPathAnswerHonestWhenAbsent(t *testing.T) {
 		t.Fatalf("open personal context: %v", err)
 	}
 	al := &AgentLoop{pcStore: store}
-	ans, ok := al.fastPathAnswer("what is my name")
+	ans, ok := al.fastPathAnswer("what is my name", "")
 	if !ok {
 		t.Fatalf("expected fast path to handle a name question even with no data")
 	}
@@ -96,10 +122,10 @@ func TestFastPathAnswerNotHandledForNonFast(t *testing.T) {
 	ws := t.TempDir()
 	store, _ := personalcontext.Open(ws)
 	al := &AgentLoop{pcStore: store}
-	if _, ok := al.fastPathAnswer("what is the weather in Bangkok"); ok {
+	if _, ok := al.fastPathAnswer("what is the weather in Bangkok", ""); ok {
 		t.Fatal("must not hand non-self-fact requests to the fast path")
 	}
-	if _, ok := al.fastPathAnswer("hello there"); ok {
+	if _, ok := al.fastPathAnswer("hello there", ""); ok {
 		t.Fatal("must not handle arbitrary messages via the fast path")
 	}
 }

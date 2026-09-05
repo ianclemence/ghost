@@ -15,6 +15,8 @@ prerequisites:
 
 Uses Open-Meteo's geocoding and air quality APIs. No API key required.
 
+> **Preferred path:** Call the `aqi_now` tool with `location` (or `latitude`+`longitude`). It returns validated data — use its output directly. Only use the `curl` commands below if the tool reports it is unavailable.
+
 ## Quick Reference
 
 | Task          | Command                                                                                                                      |

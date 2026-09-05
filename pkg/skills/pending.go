@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -12,16 +13,16 @@ import (
 // This is intentionally separate from the blocking clarify tool: natural
 // follow-ups never block for 5 minutes. The pending entry expires quickly.
 type PendingContinuation struct {
-	CapabilityID string `json:"capability_id"`
-	Skill        string `json:"skill"`
-	MissingField string `json:"missing_field"`
-	Question     string `json:"question"`
-	OriginalTask string `json:"original_task"`
+	CapabilityID string    `json:"capability_id"`
+	Skill        string    `json:"skill"`
+	MissingField string    `json:"missing_field"`
+	Question     string    `json:"question"`
+	OriginalTask string    `json:"original_task"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
 var (
-	pendingMu sync.RWMutex
+	pendingMu        sync.RWMutex
 	pendingBySession = map[string]PendingContinuation{}
 )
 
@@ -37,6 +38,51 @@ func SetPending(session string, p PendingContinuation) {
 	pendingMu.Lock()
 	pendingBySession[session] = p
 	pendingMu.Unlock()
+}
+
+// SetPendingDurable records the continuation in memory AND in the
+// workspace-backed durable store, so single-shot CLI invocations
+// (separate processes) and restarts resume short answers like "Bangkok"
+// exactly like long-lived gateway turns. Workspace empty = memory only.
+func SetPendingDurable(workspace, session string, p PendingContinuation) {
+	SetPending(session, p)
+	if strings.TrimSpace(workspace) == "" || strings.TrimSpace(session) == "" {
+		return
+	}
+	NewPendingStore(workspace).Create(session, p.CapabilityID, p.Skill,
+		p.MissingField, p.Question, p.OriginalTask, 0, nil)
+}
+
+// GetPendingDurable falls back to the durable store when memory misses
+// (fresh process). A resumed durable request is completed so one answer
+// resumes exactly once.
+func GetPendingDurable(workspace, session string) (PendingContinuation, bool) {
+	if p, ok := GetPending(session); ok {
+		return p, true
+	}
+	if strings.TrimSpace(workspace) == "" {
+		return PendingContinuation{}, false
+	}
+	req, ok := NewPendingStore(workspace).OpenForSession(session)
+	if !ok {
+		return PendingContinuation{}, false
+	}
+	return PendingContinuation{
+		CapabilityID: req.Capability, Skill: req.Skill,
+		MissingField: req.MissingField, Question: req.Question,
+		OriginalTask: req.Intent, CreatedAt: req.CreatedAt,
+	}, true
+}
+
+// CompleteDurable marks the durable request behind a resumed answer done.
+func CompleteDurable(workspace, session string) {
+	if strings.TrimSpace(workspace) == "" {
+		return
+	}
+	store := NewPendingStore(workspace)
+	if req, ok := store.OpenForSession(session); ok {
+		store.Complete(req.ID)
+	}
 }
 
 // GetPending returns the pending continuation if still fresh.

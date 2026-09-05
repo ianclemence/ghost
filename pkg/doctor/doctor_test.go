@@ -30,8 +30,8 @@ func TestDoctorRunAll(t *testing.T) {
 
 	runner := New(database.DB, &testProvider{}, reg, t.TempDir())
 	results := runner.RunAll(context.Background())
-	if len(results) != 5 {
-		t.Fatalf("expected 5 checks, got %d", len(results))
+	if len(results) != 6 {
+		t.Fatalf("expected 6 checks, got %d", len(results))
 	}
 	for _, check := range results {
 		if check.Status == "error" {

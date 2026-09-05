@@ -16,6 +16,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -37,18 +38,26 @@ import (
 	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
+	"github.com/ianclemence/ghost/pkg/activity"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
+	"github.com/ianclemence/ghost/pkg/contexts"
+	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/modes"
 	"github.com/ianclemence/ghost/pkg/pairing"
+	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
+	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/voice"
 )
 
 var upgrader = websocket.Upgrader{
@@ -61,6 +70,112 @@ var apiStartTime = time.Now()
 // startInternalAPI so the auth middlewares (which have uniform signatures
 // across many call sites) can validate device credentials.
 var apiDB *sql.DB
+
+// Substrate singletons: the permission broker, canonical event stream,
+// and routine service share apiDB (SQLite WAL), so chat turns, API
+// approvals, routines, and restarts all see one durable truth.
+var (
+	substrateOnce   sync.Once
+	substrateBroker *permissions.Broker
+	substrateEvents *cevents.Stream
+	substrateGhost  string
+	apiWorkspaceDir string
+)
+
+func permBroker() (*permissions.Broker, error) {
+	var err error
+	substrateOnce.Do(func() {
+		substrateBroker, err = permissions.Open(apiDB, permissions.ModeAsk, 0)
+		if substrateBroker != nil && substrateEvents == nil {
+			if st, serr := cevents.Open(apiDB, eventLogDir()); serr == nil {
+				substrateEvents = st
+				substrateBroker.SetEmitter(emitPermissionEvent)
+			}
+		}
+	})
+	if err != nil || substrateBroker == nil {
+		return nil, errors.New("permission broker unavailable")
+	}
+	return substrateBroker, nil
+}
+
+func eventStream() (*cevents.Stream, error) {
+	if _, err := permBroker(); err != nil {
+		return nil, err
+	}
+	if substrateEvents == nil {
+		return nil, errors.New("event stream unavailable")
+	}
+	return substrateEvents, nil
+}
+
+func emitPermissionEvent(t string, r *permissions.Request) {
+	if substrateEvents == nil {
+		return
+	}
+	typ := cevents.PermissionRequested
+	switch t {
+	case "permission.approved":
+		typ = cevents.PermissionApproved
+	case "permission.denied":
+		typ = cevents.PermissionDenied
+	case "permission.expired":
+		typ = cevents.PermissionExpired
+	}
+	substrateEvents.Publish(&cevents.Event{
+		Type: typ, RequestID: r.RequestID, GhostID: substrateGhost, AgentID: "agent-main",
+		Payload: map[string]interface{}{
+			"capability": r.Capability, "action": r.Action,
+			"target": r.Target, "summary": r.Reason,
+		},
+	})
+}
+
+func routineService() (*routines.Service, error) {
+	if apiDB == nil {
+		return nil, errors.New("database unavailable")
+	}
+	store := scheduled.NewStore(apiDB)
+	if err := store.InitSchema(); err != nil {
+		return nil, err
+	}
+	return routines.New(apiDB, store)
+}
+
+func contextStore() (*contexts.Store, error) {
+	if apiWorkspaceDir == "" {
+		return nil, errors.New("workspace unavailable")
+	}
+	return contexts.Open(apiWorkspaceDir, ghostID())
+}
+
+func ghostID() string {
+	if substrateGhost != "" {
+		return substrateGhost
+	}
+	if id, err := ghoststate.LoadIdentity(apiWorkspaceDir); err == nil && id != nil {
+		substrateGhost = id.GhostID
+		return substrateGhost
+	}
+	return "ghost-local"
+}
+
+func configDir() string {
+	if d := os.Getenv("GHOST_CONFIG_DIR"); d != "" {
+		return d
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".config", "ghost")
+	}
+	return "./config"
+}
+
+func eventLogDir() string {
+	if apiWorkspaceDir != "" {
+		return filepath.Join(apiWorkspaceDir, "events")
+	}
+	return "./events"
+}
 
 func isLoopbackRequest(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -1508,6 +1623,19 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 
 	db := agentLoop.DB()
 	apiDB = db
+	apiWorkspaceDir = workspaceDir
+	// Connect the agent loop to the substrate: canonical identity,
+	// permission broker, canonical event stream. Turns now emit events
+	// and consequential tools gate on the broker (nil-safe elsewhere).
+	if b, err := permBroker(); err == nil {
+		if st, err := eventStream(); err == nil {
+			gov := agent.NewGovernance(st, b, ghostID(), "agent-main")
+			if cs, err := contextStore(); err == nil {
+				gov.Contexts = cs
+			}
+			agentLoop.SetGovernance(gov)
+		}
+	}
 	if channelManager != nil {
 		channelManager.SetDeliveryObserver(func(msg bus.OutboundMessage, target string, ok bool, errText string) {
 			// Now handled directly in Manager using telemetry.Global
@@ -1525,6 +1653,42 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			"uptime_s":  int64(time.Since(apiStartTime).Seconds()),
 		})
 	}))
+
+	// ── OAuth callbacks ───────────────────────────────────────────────
+	// Deliberately outside authMiddleware: Google (directly or via the
+	// relay) redirects a plain browser GET carrying no Ghost credentials.
+	// The single-use, session-bound, expiring OAuth state is the
+	// authorization mechanism — a forged code fails closed and marks
+	// nothing ready. Responses carry product status only, never secrets.
+	mux.HandleFunc("/oauth/calendar/callback", func(w http.ResponseWriter, r *http.Request) {
+		cfg := skills.CalendarOAuthConfig{
+			ClientID:     strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_ID")),
+			ClientSecret: strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_SECRET")),
+			RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_CALENDAR_REDIRECT_URL")),
+		}
+		q := r.URL.Query()
+		if errStr := q.Get("error"); errStr != "" {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "status": "cancelled",
+				"message": "Calendar sign-in was cancelled. You can try again any time.",
+			})
+			return
+		}
+		pendingID, err := skills.CalendarOAuthComplete(cfg, q.Get("state"), q.Get("code"), nil, nil)
+		if err != nil {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "status": "needs_authorization",
+				"message": "That sign-in didn't complete. Please try connecting again.",
+				"action":  "connect_calendar",
+			})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "ready",
+			"message":    "Your calendar is connected.",
+			"pending_id": pendingID,
+		})
+	})
 
 	mux.HandleFunc("/v1/telemetry", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -1999,11 +2163,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				Title       string `json:"title"`
 				Description string `json:"description"`
 				Schedule    struct {
-					Kind  string  `json:"kind"`
-					At    *string `json:"at"`
-					Every *string `json:"every"`
-					Expr  string  `json:"expr"`
-					Timezone string `json:"tz"`
+					Kind     string  `json:"kind"`
+					At       *string `json:"at"`
+					Every    *string `json:"every"`
+					Expr     string  `json:"expr"`
+					Timezone string  `json:"tz"`
 				} `json:"schedule"`
 				Action struct {
 					Kind    string   `json:"kind"`
@@ -2872,6 +3036,407 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		jsonResponse(w, http.StatusOK, agentLoop.LearningsSummary())
 	}))
 
+	// ── 6c. Ghost substrate: activity, permissions, connections, routines ──
+	// One execution substrate behind chat, routines, and future channels:
+	// canonical events → activity chips; broker → approvals; vault →
+	// connections; scheduler → routines. All behind device auth.
+	mux.HandleFunc("/v1/activity", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		st, err := eventStream()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "activity is unavailable right now")
+			return
+		}
+		limit := 50
+		if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+			fmt.Sscanf(v, "%d", &limit)
+		}
+		// Resumable subscription: ?since_seq=N returns only newer events
+		// (read-only replay — never executes).
+		var events []*cevents.Event
+		f := cevents.Filter{
+			GhostID: ghostID(), ConversationID: strings.TrimSpace(r.URL.Query().Get("conversation_id")),
+			UserVisibleOnly: true,
+		}
+		if since := strings.TrimSpace(r.URL.Query().Get("since_seq")); since != "" {
+			var seq int64
+			fmt.Sscanf(since, "%d", &seq)
+			events = st.Since(seq, limit, f)
+		} else {
+			events = st.Recent(limit, f)
+		}
+		chips := make([]*activity.Chip, 0, len(events))
+		for _, e := range events {
+			if chip, ok := activity.Project(e); ok {
+				chips = append(chips, chip)
+			}
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "activity": chips})
+	}))
+
+	mux.HandleFunc("/v1/permissions/requests", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		b, err := permBroker()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "permissions are unavailable right now")
+			return
+		}
+		status := permissions.RequestStatus(strings.TrimSpace(r.URL.Query().Get("status")))
+		list := b.Requests(status, 50)
+		// Product cards ride alongside raw requests (additive — existing
+		// mobile clients ignore unknown fields). Native cards render from
+		// "card"; no raw tool arguments or secrets are included.
+		type requestView struct {
+			*permissions.Request
+			Card *permissions.ApprovalCard `json:"card,omitempty"`
+		}
+		views := make([]requestView, 0, len(list))
+		for _, req := range list {
+			v := requestView{Request: req}
+			if card, ok := req.Card(); ok {
+				c := card
+				v.Card = &c
+			}
+			views = append(views, v)
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "requests": views})
+	}))
+
+	mux.HandleFunc("/v1/permissions/resolve", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			ID    string `json:"id"`
+			Grant string `json:"grant"`
+			Scope string `json:"scope"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "id is required")
+			return
+		}
+		var grant permissions.GrantType
+		switch req.Grant {
+		case "allow_once":
+			grant = permissions.GrantOnce
+		case "allow_always", "always_allow":
+			grant = permissions.GrantAlways
+		case "deny":
+			grant = permissions.GrantDeny
+		default:
+			jsonError(w, http.StatusBadRequest, "invalid_request", "grant must be allow_once, allow_always, or deny")
+			return
+		}
+		b, err := permBroker()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "permissions are unavailable right now")
+			return
+		}
+		resolved, err := b.Resolve(req.ID, grant, strings.TrimSpace(req.Scope))
+		if err != nil {
+			jsonError(w, http.StatusBadRequest, "resolve_failed", "that approval is no longer answerable")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "request": resolved})
+	}))
+
+	mux.HandleFunc("/v1/permissions/grants", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		b, err := permBroker()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "permissions are unavailable right now")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "grants": b.Grants()})
+	}))
+
+	mux.HandleFunc("/v1/permissions/revoke", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			Capability string `json:"capability"`
+			Action     string `json:"action"`
+			Scope      string `json:"scope"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+			return
+		}
+		b, err := permBroker()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "permissions are unavailable right now")
+			return
+		}
+		if err := b.Revoke(req.Capability, req.Action, req.Scope); err != nil {
+			jsonError(w, http.StatusInternalServerError, "revoke_failed", "could not revoke that permission")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
+	}))
+
+	mux.HandleFunc("/v1/connections", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		v := credentials.New(configDir())
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "connections": v.List()})
+	}))
+
+	mux.HandleFunc("/v1/routines", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		svc, err := routineService()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "routines are unavailable right now")
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "routines": svc.List(ghostID(), 50)})
+		case http.MethodPost:
+			var req struct {
+				Name        string   `json:"name"`
+				Instruction string   `json:"instruction"`
+				Timezone    string   `json:"timezone"`
+				Kind        string   `json:"kind"`
+				Expr        string   `json:"expr"`
+				Every       int64    `json:"every_seconds"`
+				At          string   `json:"at"`
+				Allowed     []string `json:"allowed_capabilities"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+				return
+			}
+			var sched scheduled.Schedule
+			switch req.Kind {
+			case "cron":
+				sched = scheduled.Schedule{Kind: scheduled.ScheduleCron, Expr: req.Expr}
+			case "every":
+				sched = scheduled.Schedule{Kind: scheduled.ScheduleEvery, Every: time.Duration(req.Every) * time.Second}
+			case "at":
+				at, err := time.Parse(time.RFC3339, req.At)
+				if err != nil {
+					jsonError(w, http.StatusBadRequest, "invalid_request", "at must be RFC3339")
+					return
+				}
+				sched = scheduled.Schedule{Kind: scheduled.ScheduleAt, At: &at}
+			default:
+				jsonError(w, http.StatusBadRequest, "invalid_request", "kind must be cron, every, or at")
+				return
+			}
+			routine, err := svc.Create(ghostID(), "owner", req.Name, req.Instruction, req.Timezone, sched, req.Allowed)
+			if err != nil {
+				jsonError(w, http.StatusBadRequest, "create_failed", "couldn't create that routine")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "routine": routine})
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		}
+	}))
+
+	// ── 6c1. Intelligence mode: the one user-facing control ──────────────
+	// Local / hybrid / cloud. The owner chooses an outcome; Ghost derives
+	// providers, routing, and models. Governance is identical in all modes.
+	mux.HandleFunc("/v1/mode", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var req struct {
+				Mode string `json:"mode"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+				return
+			}
+			m := modes.Mode(strings.ToLower(strings.TrimSpace(req.Mode)))
+			if !modes.Valid(m) {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "mode must be local, hybrid, or cloud")
+				return
+			}
+			if err := modes.Set(apiWorkspaceDir, m); err != nil {
+				jsonError(w, http.StatusInternalServerError, "save_failed", "couldn't save that choice")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "mode": string(m), "description": modes.Describe(m)})
+			return
+		}
+		m := modes.Resolve(apiWorkspaceDir, false)
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "mode": string(m), "description": modes.Describe(m)})
+	}))
+
+	// ── 6c2. Identity: Ghost as one persistent contact ───────────────────	// Additive and mobile-safe: who this Ghost is (name, owner, status).
+	// Chat, activity, permissions, and routines all belong to this entity.
+	mux.HandleFunc("/v1/identity", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		name, owner := "Ghost", ""
+		if id, err := ghoststate.LoadIdentity(apiWorkspaceDir); err == nil && id != nil {
+			if strings.TrimSpace(id.GhostName) != "" {
+				name = id.GhostName
+			}
+			owner = id.OwnerName
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true,
+			"ghost": map[string]interface{}{
+				"ghost_id": ghostID(), "name": name,
+				"owner": owner, "agent": "agent-main",
+			},
+		})
+	}))
+
+	// ── 6d. Voice: push-to-talk into the SAME runtime ───────────────────	// Voice is a channel, not a brain: audio → transcript → canonical
+	// inbound → agent → response → optional speech. Raw audio is never
+	// stored. Unavailable providers produce honest product outcomes.
+	mux.HandleFunc("/v1/voice/turn", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			AudioBase64    string `json:"audio_base64"`
+			Mime           string `json:"mime"`
+			SessionKey     string `json:"session_key"`
+			ConversationID string `json:"conversation_id"`
+			Speak          bool   `json:"speak"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+			return
+		}
+		engine := voice.EngineFromEnv(agentLoop.Config().Providers.Groq.APIKey)
+		if !engine.InputAvailable() {
+			jsonError(w, http.StatusServiceUnavailable, "voice_unavailable", "Voice input isn't set up yet.")
+			return
+		}
+		audio, err := base64.StdEncoding.DecodeString(req.AudioBase64)
+		if err != nil || len(audio) == 0 {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "audio is required")
+			return
+		}
+		tr, err := engine.Transcribe(r.Context(), audio, req.Mime)
+		if err != nil {
+			jsonError(w, http.StatusServiceUnavailable, "transcribe_failed", "I couldn't hear that clearly. Try again?")
+			return
+		}
+		sessionKey := strings.TrimSpace(req.SessionKey)
+		if sessionKey == "" {
+			sessionKey = "voice:" + time.Now().Format("20060102-150405")
+		}
+		msg, err := voice.ToInbound(tr, "owner", req.ConversationID, sessionKey)
+		if err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "I couldn't hear anything to act on.")
+			return
+		}
+		resp, err := agentLoop.ProcessDirectWithChannel(r.Context(), msg.Content, sessionKey, "voice", msg.ChatID, nil, nil, nil)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "execution_failed", "Something went wrong handling that.")
+			return
+		}
+		out := map[string]interface{}{"ok": true, "transcript": tr.Text, "response_text": resp}
+		if req.Speak {
+			if !engine.OutputAvailable() {
+				out["audio_base64"] = nil
+				out["speech"] = "Voice replies aren't set up yet — here's the text instead."
+			} else if audioOut, mime, err := engine.Speak(r.Context(), resp); err != nil {
+				out["audio_base64"] = nil
+			} else {
+				out["audio_base64"] = base64.StdEncoding.EncodeToString(audioOut)
+				out["mime"] = mime
+			}
+		}
+		jsonResponse(w, http.StatusOK, out)
+	}))
+
+	// ── 6e. Contexts: scoped environments in one Ghost ───────────────────
+	// Personal by default; work/project contexts constrain memory,
+	// capabilities, and conversations. Sessions stick to contexts;
+	// isolation is enforced at retrieval and execution, not by prompts.
+	mux.HandleFunc("/v1/contexts", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		cs, err := contextStore()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "contexts are unavailable right now")
+			return
+		}
+		if r.Method == http.MethodGet {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "contexts": cs.List()})
+			return
+		}
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			Kind string `json:"kind"`
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+			return
+		}
+		c, err := cs.Create(contexts.Kind(req.Kind), req.Name)
+		if err != nil {
+			jsonError(w, http.StatusBadRequest, "create_failed", "couldn't create that context")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "context": c})
+	}))
+
+	mux.HandleFunc("/v1/contexts/switch", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			SessionKey string `json:"session_key"`
+			ContextID  string `json:"context_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SessionKey == "" || req.ContextID == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "session_key and context_id are required")
+			return
+		}
+		cs, err := contextStore()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "contexts are unavailable right now")
+			return
+		}
+		if err := cs.SetSessionContext(req.SessionKey, req.ContextID); err != nil {
+			jsonError(w, http.StatusBadRequest, "switch_failed", "unknown context")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "context_id": req.ContextID})
+	}))
+
+	mux.HandleFunc("/v1/routines/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		rest := strings.TrimPrefix(r.URL.Path, "/v1/routines/")
+		parts := strings.SplitN(rest, "/", 2)
+		if len(parts) != 2 {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "routine id and action required")
+			return
+		}
+		svc, err := routineService()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "routines are unavailable right now")
+			return
+		}
+		var opErr error
+		switch parts[1] {
+		case "pause":
+			opErr = svc.Pause(parts[0])
+		case "resume":
+			opErr = svc.Resume(parts[0])
+		case "cancel":
+			opErr = svc.Cancel(parts[0])
+		case "delete":
+			opErr = svc.Delete(parts[0])
+		default:
+			jsonError(w, http.StatusBadRequest, "invalid_request", "unknown routine action")
+			return
+		}
+		if opErr != nil {
+			jsonError(w, http.StatusBadRequest, "action_failed", "couldn't do that with the routine")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
+	}))
+
 	mux.HandleFunc("/v1/memory/self", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		type entryView struct {
 			ID             string     `json:"id"`
@@ -2891,8 +3456,23 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			jsonError(w, http.StatusInternalServerError, "io_error", "could not read saved facts")
 			return
 		}
+		// Owner management surface: all entries by default. Optional
+		// ?context=work filters to one context's view (global + scoped).
+		// Model retrieval paths are always scope-filtered; this endpoint
+		// is the owner, not the model.
+		all := store.Current()
+		if ctxParam := strings.TrimSpace(r.URL.Query().Get("context")); ctxParam != "" {
+			scopes := []string{"context:" + ctxParam}
+			filtered := all[:0:0]
+			for _, e := range all {
+				if personalcontext.VisibleTo(e, scopes) {
+					filtered = append(filtered, e)
+				}
+			}
+			all = filtered
+		}
 		entries := make([]entryView, 0)
-		for _, e := range store.Current() {
+		for _, e := range all {
 			domain := personalcontext.ClassifyEntryDomain(e)
 			entries = append(entries, entryView{
 				ID:             e.ID,

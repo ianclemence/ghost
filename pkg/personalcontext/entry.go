@@ -92,19 +92,23 @@ type Source struct {
 // Every change to an entry appends a new record with the same ID; the final
 // record for an ID is that entry's current state.
 type Entry struct {
-	ID           string          `json:"id"`
-	Kind         Kind            `json:"kind"`
-	Subject      string          `json:"subject"`
-	Predicate    string          `json:"predicate"`
-	Value        json.RawMessage `json:"value"`
-	Status       Status          `json:"status"`
-	Confidence   float64         `json:"confidence"`
-	ValidFrom    *time.Time      `json:"valid_from,omitempty"`
-	ValidUntil   *time.Time      `json:"valid_until,omitempty"`
-	SupersededBy *string         `json:"superseded_by,omitempty"`
-	Sources      []Source        `json:"sources"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
+	ID        string          `json:"id"`
+	Kind      Kind            `json:"kind"`
+	Subject   string          `json:"subject"`
+	Predicate string          `json:"predicate"`
+	Value     json.RawMessage `json:"value"`
+	Status    Status          `json:"status"`
+	// Scopes limits visibility to contexts (e.g. ["context:work"]).
+	// Empty = global memory, visible from every context. Additive and
+	// backward compatible: old entries without scopes stay global.
+	Scopes       []string   `json:"scopes,omitempty"`
+	Confidence   float64    `json:"confidence"`
+	ValidFrom    *time.Time `json:"valid_from,omitempty"`
+	ValidUntil   *time.Time `json:"valid_until,omitempty"`
+	SupersededBy *string    `json:"superseded_by,omitempty"`
+	Sources      []Source   `json:"sources"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 	// ReinforceCount is how many times this belief was restated after creation
 	// (nudge-style reinforcement). ReinforcedAt is the last time it was restated,
 	// so a consolidated memory can answer "when was this last reinforced".

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 )
 
@@ -166,5 +167,53 @@ func TestConfig_Complete(t *testing.T) {
 	}
 	if !cfg.Heartbeat.Enabled {
 		t.Error("Heartbeat should be enabled by default")
+	}
+}
+
+func TestRAGEnabledByDefault(t *testing.T) {
+	if !DefaultConfig().RAG.Enabled {
+		t.Fatal("RAG must be enabled by default (core memory capability)")
+	}
+}
+
+func TestRAGAlwaysEnabledOnLoad(t *testing.T) {
+	// A config file that omits the "rag" block entirely must still yield
+	// RAG enabled (it is a core capability, never silently off).
+	dir := t.TempDir()
+	path := dir + "/config.json"
+	minimal := `{"agents":{"defaults":{"workspace":"` + dir + `"}}}`
+	if err := os.WriteFile(path, []byte(minimal), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GHOST_RAG_ENABLED", "")
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.RAG.Enabled {
+		t.Fatal("a config without a rag block must load with RAG enabled")
+	}
+	// Even an explicit "enabled": false in the file is overridden (only the
+	// env escape hatch disables RAG).
+	withFalse := `{"agents":{"defaults":{"workspace":"` + dir + `"}},"rag":{"enabled":false}}`
+	path2 := dir + "/cfg2.json"
+	if err := os.WriteFile(path2, []byte(withFalse), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg2, err := LoadConfig(path2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg2.RAG.Enabled {
+		t.Fatal("RAG must remain enabled unless GHOST_RAG_ENABLED=false")
+	}
+	// Advanced escape hatch.
+	t.Setenv("GHOST_RAG_ENABLED", "false")
+	cfg3, err := LoadConfig(path2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg3.RAG.Enabled {
+		t.Fatal("GHOST_RAG_ENABLED=false must be honored as the advanced opt-out")
 	}
 }

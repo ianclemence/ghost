@@ -1,10 +1,13 @@
 package ghoststate
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/config"
@@ -18,6 +21,10 @@ type ImportOptions struct {
 	Source     string
 	Passphrase string
 	Force      bool
+	// Context tags untagged Personal Context entries on import
+	// (e.g. "work" → context:work). Tagged entries keep their scopes;
+	// empty means global (documented default for legacy archives).
+	Context string
 }
 
 // Import restores a Ghost State archive into a fresh Ghost installation. It
@@ -79,6 +86,20 @@ func Import(opts ImportOptions) (*Manifest, error) {
 			// dropped. The exact bytes are then written for direct use.
 			if err := personalcontext.ValidateEntries(data); err != nil {
 				return nil, fmt.Errorf("invalid Personal Context %s: %w", f.Path, err)
+			}
+			// Context assignment at import: untagged entries gain the
+			// requested scope so imports never silently become global.
+			// Tagged entries keep theirs; archives are never rewritten
+			// in ways validation wouldn't accept.
+			if opts.Context != "" && opts.Context != "personal" {
+				tagged, err := tagUntaggedEntries(data, opts.Context)
+				if err != nil {
+					return nil, fmt.Errorf("context tagging: %w", err)
+				}
+				data = tagged
+				if err := personalcontext.ValidateEntries(data); err != nil {
+					return nil, fmt.Errorf("invalid Personal Context after tagging: %w", err)
+				}
 			}
 		}
 		if err := writeImportedArtifact(opts, f, data); err != nil {
@@ -180,4 +201,43 @@ func withinWorkspace(workspace, dest string) bool {
 		return false
 	}
 	return rel != ".." && !hasPrefixSegment(filepath.ToSlash(rel), "..")
+}
+
+// validContextID constrains --context to safe identifiers.
+var validContextID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
+// tagUntaggedEntries adds a context scope to JSONL entry records that
+// carry none. Records with existing scopes are untouched. Invalid
+// context ids fail closed (nothing is partially tagged).
+func tagUntaggedEntries(data []byte, contextID string) ([]byte, error) {
+	if !validContextID.MatchString(contextID) {
+		return nil, fmt.Errorf("invalid context %q (lowercase letters, digits, dashes)", contextID)
+	}
+	tag := "context:" + contextID
+	var out bytes.Buffer
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	sc.Buffer(make([]byte, 1024*1024), 64*1024*1024)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var rec map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			return nil, fmt.Errorf("unparseable entry record: %w", err)
+		}
+		if scopes, ok := rec["scopes"].([]interface{}); !ok || len(scopes) == 0 {
+			rec["scopes"] = []string{tag}
+		}
+		raw, err := json.Marshal(rec)
+		if err != nil {
+			return nil, err
+		}
+		out.Write(raw)
+		out.WriteByte('\n')
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }

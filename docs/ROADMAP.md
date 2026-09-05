@@ -1,8 +1,24 @@
 # Ghost Roadmap
 
-## Overview
+## Current status (update this file: the phase table below is historical)
 
-This roadmap sequences the work needed to turn Ghost from a developer project into a personal AI that belongs to its owner. It is aligned to the [Product Strategy](PRODUCT.md): open core, Ghost Connect as the paid managed experience, BYO-hardware first, hardware deferred.
+- **Backend/appliance architecture: COMPLETE and validated.** Ghost now has the
+  capability substrate, permission broker, canonical events/activity, durable
+  memory + RAG with context isolation, routines, contexts, voice and device
+  interfaces, provider reliability, appliance setup/health, `ghost verify`,
+  `ghost benchmark`, and the Golden Conversation Suite. See
+  [CAPABILITY_ARCHITECTURE.md](CAPABILITY_ARCHITECTURE.md) and
+  [EVALUATION.md](EVALUATION.md).
+- **Backend status: READY FOR MOBILE.**
+- **Next direction: the mobile product experience** (Capacitor-based app:
+  pairing, the primary Ghost conversation, voice push-to-talk, approvals,
+  Activity, Memory, settings, offline/reconnection UX, real-device validation).
+  Mobile functionality is not yet built; the backend contract it consumes is
+  documented in [MOBILE_API.md](MOBILE_API.md).
+
+## Overview (historical planning)
+
+This roadmap originally sequenced the work needed to turn Ghost from a developer project into a personal AI that belongs to its owner. It is aligned to the [Product Strategy](PRODUCT.md): open core, Ghost Connect as the paid managed experience, BYO-hardware first, hardware deferred.
 
 Each phase maps to an implementation plan under [`plans/`](plans/) where one exists. The phases build on each other: a phase's plan is only workable once its prerequisites are met.
 
@@ -12,14 +28,16 @@ Each phase maps to an implementation plan under [`plans/`](plans/) where one exi
 
 | Phase | Goal | Build track | Plan |
 |-------|------|-------------|------|
-| **0 — Foundation** (mostly done) | The foundation for the persistent identity core: web console, auth lifecycle, recovery, security. | — | — |
-| **1 — Remote access** | The first Ghost Connect service: the mobile app works from anywhere. | Cloud relay / pairing | [`01-cloud-relay.md`](plans/01-cloud-relay.md) |
-| **2 — Install** | A mainstream user can get Ghost onto hardware without flashing a raw image. | Simple install | [`02-install-experience.md`](plans/02-install-experience.md) |
-| **3 — Updates** | Ghost ships and installs updates to devices we never touch. | OTA updates | [`03-ota-updates.md`](plans/03-ota-updates.md) |
-| **4 — Observability** | We can run updates and support on devices we cannot see. | Opt-in telemetry | [`04-telemetry.md`](plans/04-telemetry.md) |
-| **5 — Move** | Ghost identity portability: replace the hardware, keep the Ghost. | Identity portability | (new, no plan yet) |
-| **6 — Ghost Connect** | Launch the managed-service platform and billing once the underlying services have proven their value. | Billing / account | (follows telemetry) |
+| **0 — Foundation** (done) | Web console, auth lifecycle, recovery, security. | — | — |
+| **1 — Remote access** (done) | Relay + secure device pairing; mobile works from anywhere. | Cloud relay / pairing | [`01-cloud-relay.md`](plans/01-cloud-relay.md) |
+| **2 — Install** (done) | Appliance setup/provisioning, health, self-healing skills. | Simple install | [`02-install-experience.md`](plans/02-install-experience.md) |
+| **3 — Updates** | Ghost ships and installs updates to devices it never touches. | OTA updates | [`03-ota-updates.md`](plans/03-ota-updates.md) |
+| **4 — Observability** | Runs updates/support on devices we cannot see. | Opt-in telemetry | [`04-telemetry.md`](plans/04-telemetry.md) |
+| **5 — Move** | Ghost identity portability: replace the hardware, keep the Ghost. | Encrypted Ghost State export/import | (`ghost state` — implemented) |
+| **6 — Ghost Connect** | Managed-service platform + billing once services prove value. | Billing / account | (follows telemetry) |
 | **7 — Hardware (optional)** | A physical Ghost bundle. Shares the pipeline; only if demand is proven. | Device bundle | (deferred) |
+| **8 — Backend substrate & appliance** (done) | Capability/permission/event substrate, memory+RAG with context isolation, routines, contexts, voice/devices, verify/benchmark/golden. | — | CAPABILITY_ARCHITECTURE / EVALUATION |
+| **9 — Mobile (next)** | Capacitor mobile app over the documented backend contract. | Mobile productization | MOBILE_API.md |
 
 ---
 
@@ -140,15 +158,19 @@ Ghost runs on any Linux device, and its identity is **hardware-independent**. Th
 - **Control plane** — the always-on device that hosts Ghost's memory, identity, skills, and automations. Low-power single-board computers are the reference target.
 - **Compute** — hardware that runs heavier local models, attached when the control plane is not enough. Can be an x86 mini-PC, an NPU, or a GPU box — and, for deeper reasoning, a cloud model.
 
-**Reference appliance targets** — where the image, install, and appliance experience are tuned:
-- **RK1 (16 GB)** — built-in NPU for AI acceleration, strong multi-core CPU, and lower cost than comparable systems. Best balance of performance and on-device AI capability.
-- **Raspberry Pi 5 / CM5** — stable ecosystem, strong community support; no built-in AI acceleration, so it suits lighter models and API-assisted workloads.
+**Hardware-aware defaults** are implemented (`pkg/hardware`): Ghost detects the
+machine class (Raspberry Pi 5, RK1-class 12–16 GB ARM, x86 mini-PC, GPU
+workstation/server) and derives model tier, concurrency, and context sizes
+automatically — the same Ghost with appropriate defaults on each.
+
+**Current reference development appliance:** Raspberry Pi 5 · 8 GB RAM ·
+32 GB microSD. NVMe storage is a later storage migration, not a redesign.
 
 **Supported platforms:** any Linux device. Ghost runs on whatever hardware you own; the reference targets are where the appliance experience is guaranteed, and nothing in the software restricts it to those boards.
 
-**Minimum requirements** (reference targets):
-- Raspberry Pi 5 (8 GB+) or RK1 (16 GB)
-- 32 GB microSD storage (or NVMe for the RK1)
+**Minimum requirements** (reference target):
+- Raspberry Pi 5 (8 GB) or another Linux device
+- 32 GB microSD storage
 - A phone with the Ghost app
 
 ### Capability tiers

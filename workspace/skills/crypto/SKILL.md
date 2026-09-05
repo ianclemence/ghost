@@ -15,6 +15,8 @@ prerequisites:
 
 CoinGecko API. No API key. Rate limit: 50 req/min on free tier.
 
+> **Preferred path:** Call the `crypto_price` tool with `id` (e.g. `bitcoin`) and `vs` (default `USD`). It returns validated prices with provider fallback built in — use its output directly. Only use the `curl` commands below if the tool reports it is unavailable.
+
 ## Quick Reference
 
 | Task                     | Command                                                                                                          |

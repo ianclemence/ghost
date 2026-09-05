@@ -162,11 +162,10 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 			}
 		}
 	case "flight":
-		// Provider key first: without it no flight lookup can succeed,
-		// so the badge must say Connect even before a flight number exists.
-		// Missing key is NEEDS_CONFIGURATION handled by the fast-path;
-		// never fake live data.
-		if AviationKey(nil) == "" {
+		// Either credential (primary AviationStack or fallback
+		// AeroDataBox) makes the capability ready; both absent is
+		// NEEDS_CONFIGURATION handled by the fast-path; never fake data.
+		if !FlightConfigured() {
 			return SkillReadiness{
 				Status:      StatusNeedsConfiguration,
 				Requirement: "flight_provider",

@@ -13,7 +13,9 @@ prerequisites:
 
 # Smart Home Bridge (Home Assistant)
 
-Controls devices via the Home Assistant REST API. Requires `HASS_URL` and `HASS_TOKEN` in `.env`.
+Controls devices via the Home Assistant REST API. Requires `HASS_URL` and `HASS_TOKEN` in `.env` (or Ghost settings → Integrations).
+
+> **Preferred path:** Call the `hass` tool (`list`, `state`, `turn_on`, `turn_off` with `entity_id`). Device control is consequential: Ghost asks for approval first unless you've allowed it. Only use the `curl` commands below if the tool reports it is unavailable.
 
 ## Quick Reference
 

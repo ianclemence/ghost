@@ -10,6 +10,8 @@ metadata:
 
 # Find Nearby
 
+> **Preferred path:** Call the `places_nearby` tool with `near` (or `latitude`+`longitude`), `type`, and optional `radius`/`limit`. It returns validated places with provider fallback built in — use its output directly. Only run the script below if the tool reports it is unavailable.
+
 > **If location missing:** If user says `nearby cafes` without location, first check device location context. If unavailable, ask `Which location should I search near?` and when user replies with a place like `Bangkok`, resume the search with that location. — Local Place Discovery
 
 Find restaurants, cafes, bars, pharmacies, and other places near any location. Uses OpenStreetMap (free, no API keys). Works with:

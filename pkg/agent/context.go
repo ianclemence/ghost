@@ -172,7 +172,7 @@ func buildBehaviorSection() string {
 `
 }
 
-func (cb *ContextBuilder) BuildSystemPrompt() string {
+func (cb *ContextBuilder) BuildSystemPrompt(scopes []string) string {
 	parts := []string{}
 
 	// Core identity section
@@ -228,18 +228,20 @@ CRITICAL — Skill is authoritative. After you READ a SKILL.md, you MUST:
 	// daily-notes dump, which is no longer injected into every prompt (the
 	// MEMORY.md file itself is preserved as a legacy, non-authoritative store).
 	if cb.personalContext != nil {
-		digest := personalcontext.BuildDigest(cb.personalContext.Current(), personalcontext.DigestBudget)
+		digest := personalcontext.BuildDigest(cb.personalContext.CurrentInScope(scopes), personalcontext.DigestBudget)
 		if digest != "" {
 			parts = append(parts, digest)
 		}
 	}
 
-	// Curated Memory (Always injected)
+	// Curated Memory (Always injected, scope-filtered: global notes plus
+	// the session context's notes — never foreign-context notes).
 	curateTool := tools.NewMemoryCurateTool(cb.workspace)
-	if profileContext := curateTool.FormatForSystemPrompt("user"); profileContext != "" {
+	contextID := contextIDForScopes(scopes)
+	if profileContext := curateTool.FormatForSystemPromptFor("user", contextID); profileContext != "" {
 		parts = append(parts, profileContext)
 	}
-	if curateMemoryContext := curateTool.FormatForSystemPrompt("memory"); curateMemoryContext != "" {
+	if curateMemoryContext := curateTool.FormatForSystemPromptFor("memory", contextID); curateMemoryContext != "" {
 		parts = append(parts, curateMemoryContext)
 	}
 
@@ -281,10 +283,10 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	return result
 }
 
-func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string, provider providers.LLMProvider) []providers.Message {
+func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string, provider providers.LLMProvider, scopes []string) []providers.Message {
 	messages := []providers.Message{}
 
-	systemPrompt := cb.BuildSystemPrompt()
+	systemPrompt := cb.BuildSystemPrompt(scopes)
 
 	// Add Current Session info if provided
 	if channel != "" && chatID != "" {
@@ -577,4 +579,15 @@ func (cb *ContextBuilder) sanitizeHistory(history []providers.Message) []provide
 	}
 
 	return sanitized
+}
+
+// contextIDForScopes extracts the session context id from memory scope
+// tags ("context:work" → "work"). Empty = personal/global behavior.
+func contextIDForScopes(scopes []string) string {
+	for _, s := range scopes {
+		if id, ok := strings.CutPrefix(s, "context:"); ok && id != "" && id != "personal" {
+			return id
+		}
+	}
+	return "personal"
 }

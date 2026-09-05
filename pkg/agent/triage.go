@@ -67,6 +67,8 @@ var fastSelfRegex = []*regexp.Regexp{
 	regexp.MustCompile(`\bwhere (do i live|am i)\b`),
 	// "what is my email" / "what is my phone number"
 	regexp.MustCompile(`\bwhat is my (email|phone)\b`),
+	// "what do i prefer/like/enjoy" — clear questions, never declarations.
+	regexp.MustCompile(`\bwhat do i (prefer|like|enjoy)\b`),
 }
 
 // predicateForFast maps an intent to the Personal Context predicate(s) that
@@ -81,6 +83,10 @@ func predicateForFast(m string) []string {
 		return []string{"identity/phone"}
 	case regexp.MustCompile(`\bwhat is my email\b`).MatchString(m):
 		return []string{"identity/email"}
+	case regexp.MustCompile(`\bwhat do i (prefer|like|enjoy)\b`).MatchString(m):
+		return []string{"preference/prefers", "preference/likes"}
+	case regexp.MustCompile(`\bwhat(?:'s| is) my (favorite|favourite)\b`).MatchString(m):
+		return []string{"preference/likes", "preference/prefers"}
 	}
 	return nil
 }
@@ -90,17 +96,18 @@ func predicateForFast(m string) []string {
 // precisely; when it isn't, it is honest ("I don't have that yet") rather than
 // inventing one. If this isn't a fast-path request, it reports not-handled so
 // the normal loop runs.
-func (al *AgentLoop) fastPathAnswer(m string) (string, bool) {
+func (al *AgentLoop) fastPathAnswer(m, session string) (string, bool) {
 	if al.pcStore == nil {
 		return "", false
 	}
-	preds := predicateForFast(m)
+	preds := predicateForFast(strings.ToLower(m))
 	if len(preds) == 0 {
 		return "", false
 	}
-	// Collect the current values for the relevant predicates.
+	// Collect the current values for the relevant predicates, scoped to
+	// the session's context (cross-context facts never answer here).
 	var values []string
-	for _, e := range al.pcStore.Current() {
+	for _, e := range al.pcStore.CurrentInScope(al.sessionScopes(session)) {
 		for _, p := range preds {
 			if e.Predicate == p {
 				if v := personalcontext.Value(e); v != "" {

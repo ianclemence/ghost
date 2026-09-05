@@ -17,6 +17,8 @@ const GhostApp = (() => {
         { name: 'ai', title: 'AI', glyph: 'ai' },
         { name: 'memory', title: 'Memory', glyph: 'memory' },
         { name: 'activity', title: 'Activity', glyph: 'activity' },
+        { name: 'routines', title: 'Routines', glyph: 'automation' },
+        { name: 'permissions', title: 'Permissions', glyph: 'security' },
         { name: 'automations', title: 'Automations', glyph: 'automation' },
         { name: 'skills', title: 'Skills', glyph: 'skill' },
       ],

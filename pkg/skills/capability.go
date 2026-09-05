@@ -36,6 +36,10 @@ type Capability struct {
 	Timeout time.Duration `json:"timeout,omitempty"`
 	// NetworkRequired marks external API skills.
 	NetworkRequired bool `json:"network_required,omitempty"`
+	// Risk declares what the capability can do: read_only, low_risk,
+	// consequential, high_impact. The permission broker enforces it;
+	// the model never classifies risk itself.
+	Risk string `json:"risk,omitempty"`
 	// Deterministic marks local ops that should bypass the LLM when possible
 	// (e.g. shopping.add, reminder.create).
 	Deterministic bool `json:"deterministic,omitempty"`
@@ -44,27 +48,41 @@ type Capability struct {
 // capabilityRegistry is the code-defined default. Frontmatter `capability:`
 // blocks in SKILL.md override these when present (see LoadCapability).
 var capabilityRegistry = map[string]Capability{
-	"weather":      {ID: "weather.current", Skill: "weather", RequiredInput: []string{"location"}, AllowedTools: []string{"read_file", "exec"}, Primary: "wttr.in via exec curl", Fallback: "open-meteo via exec curl", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
-	"aqi":          {ID: "aqi.current", Skill: "aqi", RequiredInput: []string{"location"}, AllowedTools: []string{"read_file", "exec"}, Primary: "open-meteo air-quality via exec", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
-	"currency":     {ID: "currency.convert", Skill: "currency", AllowedTools: []string{"read_file", "exec"}, Primary: "open.er-api via exec/python", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
-	"crypto":       {ID: "crypto.price", Skill: "crypto", AllowedTools: []string{"read_file", "exec"}, Primary: "coingecko via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
-	"recipe":       {ID: "recipe.search", Skill: "recipe", AllowedTools: []string{"read_file", "exec"}, Primary: "themealdb via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
-	"flight":       {ID: "flight.status", Skill: "flight", RequiredInput: []string{"flight_number"}, AllowedTools: []string{"read_file", "exec"}, Primary: "aviationstack via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
-	"find-nearby":  {ID: "nearby.search", Skill: "find-nearby", RequiredInput: []string{"location"}, AllowedTools: []string{"read_file", "exec"}, Primary: "nominatim/overpass via exec", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
-	"travel":       {ID: "travel.route", Skill: "travel", RequiredInput: []string{"origin", "destination"}, AllowedTools: []string{"read_file", "exec"}, Primary: "osrm via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
-	"scraper":      {ID: "scraper.fetch", Skill: "scraper", RequiredInput: []string{"url"}, AllowedTools: []string{"read_file", "exec", "web_fetch"}, Primary: "jina reader", Fallback: "direct fetch", MaxAttempts: 2, Timeout: 15 * time.Second, NetworkRequired: true},
-	"calendar":     {ID: "calendar.read", Skill: "calendar", AllowedTools: []string{"read_file", "exec"}, Primary: "gcalcli agenda via exec", Fallback: "none", MaxAttempts: 1, Timeout: 15 * time.Second},
-	"shopping":     {ID: "shopping.add", Skill: "shopping", AllowedTools: []string{"read_file", "write_file", "append_file", "edit_file"}, MaxAttempts: 1, Deterministic: true},
-	"reminders":    {ID: "reminder.create", Skill: "reminders", AllowedTools: []string{"read_file", "append_file", "write_file", "schedule"}, MaxAttempts: 1, Deterministic: true},
-	"daily-briefing": {ID: "briefing.daily", Skill: "daily-briefing", AllowedTools: []string{"read_file", "exec", "write_file", "append_file"}, MaxAttempts: 3, Timeout: 15 * time.Second},
-	"hardware":     {ID: "hardware.read", Skill: "hardware", AllowedTools: []string{"read_file", "exec"}, Primary: "i2c/spi via exec", MaxAttempts: 1},
-	"homeassistant": {ID: "hass.control", Skill: "homeassistant", AllowedTools: []string{"read_file", "exec"}, Primary: "HASS API via exec curl", MaxAttempts: 2, Timeout: 10 * time.Second},
-	"unit-converter": {ID: "units.convert", Skill: "unit-converter", AllowedTools: []string{"read_file", "exec"}, Primary: "local python convert.py", Fallback: "none", MaxAttempts: 1, Timeout: 10 * time.Second},
-	"world-clock":    {ID: "time.convert", Skill: "world-clock", AllowedTools: []string{"read_file", "exec"}, Primary: "local python clock.py zoneinfo", Fallback: "none", MaxAttempts: 1, Timeout: 10 * time.Second},
-	"calculator":     {ID: "math.evaluate", Skill: "calculator", AllowedTools: []string{"read_file", "exec"}, Primary: "local python calc.py", Fallback: "none", MaxAttempts: 1, Timeout: 10 * time.Second, Deterministic: true},
-	"dictionary":     {ID: "dict.define", Skill: "dictionary", RequiredInput: []string{"word"}, AllowedTools: []string{"read_file", "exec"}, Primary: "dictionaryapi.dev via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
-	"translate":      {ID: "translate.phrase", Skill: "translate", RequiredInput: []string{"text"}, AllowedTools: []string{"read_file", "exec"}, Primary: "mymemory via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true},
-	"timer":          {ID: "timer.countdown", Skill: "timer", AllowedTools: []string{"read_file", "schedule"}, Primary: "schedule one-shot", Fallback: "none", MaxAttempts: 1, Deterministic: true},
+	// Provider-backed tools are the deterministic primary path; exec
+	// remains allowed so skill scripts stay usable as fallback. The
+	// SKILL.md of each migrated skill instructs the model to call the
+	// tool first.
+	"weather":     {ID: "weather.current", Skill: "weather", RequiredInput: []string{"location"}, AllowedTools: []string{"weather_now", "read_file", "exec"}, Primary: "weather_now tool (open-meteo, openweather fallback)", Fallback: "wttr.in via exec curl", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
+	"aqi":         {ID: "aqi.current", Skill: "aqi", RequiredInput: []string{"location"}, AllowedTools: []string{"aqi_now", "read_file", "exec"}, Primary: "aqi_now tool (open-meteo air-quality)", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
+	"currency":    {ID: "currency.convert", Skill: "currency", AllowedTools: []string{"currency_convert", "read_file", "exec"}, Primary: "currency_convert tool (er-api, frankfurter fallback)", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
+	"crypto":      {ID: "crypto.price", Skill: "crypto", AllowedTools: []string{"crypto_price", "read_file", "exec"}, Primary: "crypto_price tool (coingecko, coinbase fallback)", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
+	"recipe":      {ID: "recipe.search", Skill: "recipe", AllowedTools: []string{"read_file", "exec"}, Primary: "themealdb via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
+	"flight":      {ID: "flight.status", Skill: "flight", RequiredInput: []string{"flight_number"}, AllowedTools: []string{"flight_status", "read_file", "exec"}, Primary: "flight_status tool (aviationstack, aerodatabox fallback)", Fallback: "aviationstack via exec curl", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
+	"find-nearby": {ID: "nearby.search", Skill: "find-nearby", RequiredInput: []string{"location"}, AllowedTools: []string{"places_nearby", "read_file", "exec"}, Primary: "places_nearby tool (overpass + mirror)", Fallback: "nominatim/overpass via exec", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
+	"travel":      {ID: "travel.route", Skill: "travel", RequiredInput: []string{"origin", "destination"}, AllowedTools: []string{"read_file", "exec"}, Primary: "osrm via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
+	"scraper":     {ID: "scraper.fetch", Skill: "scraper", RequiredInput: []string{"url"}, AllowedTools: []string{"read_file", "exec", "web_fetch"}, Primary: "jina reader", Fallback: "direct fetch", MaxAttempts: 2, Timeout: 15 * time.Second, NetworkRequired: true, Risk: "read_only"},
+
+	// Declared write capabilities: narrow grant targets. Runtime gating
+	// for the calendar skill uses the read contract (same consequential
+	// risk); grants may name these IDs to scope standing permission.
+	"calendar-create": {ID: "calendar.create", Skill: "calendar", AllowedTools: []string{"read_file", "exec"}, Primary: "calendar add via exec", Fallback: "none", MaxAttempts: 1, Timeout: 15 * time.Second, Risk: "consequential"},
+	"calendar-update": {ID: "calendar.update_event", Skill: "calendar", AllowedTools: []string{"read_file", "exec"}, Primary: "calendar edit via exec", Fallback: "none", MaxAttempts: 1, Timeout: 15 * time.Second, Risk: "consequential"},
+	"calendar":        {ID: "calendar.read", Skill: "calendar", AllowedTools: []string{"read_file", "exec"}, Primary: "gcalcli agenda via exec", Fallback: "none", MaxAttempts: 1, Timeout: 15 * time.Second, Risk: "consequential"},
+	"shopping":        {ID: "shopping.add", Skill: "shopping", AllowedTools: []string{"read_file", "write_file", "append_file", "edit_file"}, MaxAttempts: 1, Deterministic: true, Risk: "low_risk"},
+	"reminders":       {ID: "reminder.create", Skill: "reminders", AllowedTools: []string{"read_file", "append_file", "write_file", "schedule"}, MaxAttempts: 1, Deterministic: true, Risk: "low_risk"},
+	"daily-briefing":  {ID: "briefing.daily", Skill: "daily-briefing", AllowedTools: []string{"read_file", "exec", "write_file", "append_file"}, MaxAttempts: 3, Timeout: 15 * time.Second, Risk: "low_risk"},
+	"hardware":        {ID: "hardware.read", Skill: "hardware", AllowedTools: []string{"read_file", "exec"}, Primary: "i2c/spi via exec", MaxAttempts: 1, Risk: "consequential"},
+	"homeassistant":   {ID: "hass.control", Skill: "homeassistant", AllowedTools: []string{"hass", "read_file", "exec"}, Primary: "hass tool (device REST API)", Fallback: "HASS API via exec curl", MaxAttempts: 2, Timeout: 10 * time.Second, Risk: "consequential"},
+	"unit-converter":  {ID: "units.convert", Skill: "unit-converter", AllowedTools: []string{"read_file", "exec"}, Primary: "local python convert.py", Fallback: "none", MaxAttempts: 1, Timeout: 10 * time.Second, Risk: "read_only"},
+	"world-clock":     {ID: "time.convert", Skill: "world-clock", AllowedTools: []string{"read_file", "exec"}, Primary: "local python clock.py zoneinfo", Fallback: "none", MaxAttempts: 1, Timeout: 10 * time.Second, Risk: "read_only"},
+	"calculator":      {ID: "math.evaluate", Skill: "calculator", AllowedTools: []string{"read_file", "exec"}, Primary: "local python calc.py", Fallback: "none", MaxAttempts: 1, Timeout: 10 * time.Second, Deterministic: true, Risk: "read_only"},
+	"dictionary":      {ID: "dict.define", Skill: "dictionary", RequiredInput: []string{"word"}, AllowedTools: []string{"read_file", "exec"}, Primary: "dictionaryapi.dev via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
+	"translate":       {ID: "translate.phrase", Skill: "translate", RequiredInput: []string{"text"}, AllowedTools: []string{"read_file", "exec"}, Primary: "mymemory via exec curl", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
+	// Standing-grant targets for core (non-skill) capabilities. Declared
+	// here so the runtime — never the model — defines what can be granted.
+	"memory":   {ID: "memory.write", Skill: "memory", AllowedTools: []string{"remember"}, Primary: "remember tool", Fallback: "none", MaxAttempts: 1, Risk: "low_risk"},
+	"telegram": {ID: "telegram.send", Skill: "telegram", AllowedTools: []string{"message"}, Primary: "message tool via channel", Fallback: "none", MaxAttempts: 1, Risk: "consequential"},
+	"timer":    {ID: "timer.countdown", Skill: "timer", AllowedTools: []string{"read_file", "schedule"}, Primary: "schedule one-shot", Fallback: "none", MaxAttempts: 1, Deterministic: true, Risk: "low_risk"},
 }
 
 // GetCapability returns the generic contract for a skill.
@@ -76,6 +94,18 @@ func GetCapability(skill string) Capability {
 		return cap
 	}
 	return Capability{ID: skill + ".default", Skill: skill, MaxAttempts: 2}
+}
+
+// HasCapability reports whether id is a runtime-declared capability.
+// Standing grants may only reference declared capabilities — the model
+// can never authorize a capability the runtime doesn't know.
+func HasCapability(id string) bool {
+	for _, cap := range capabilityRegistry {
+		if cap.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // Allows reports whether tool is on the capability's execution path.

@@ -13,6 +13,7 @@ prerequisites:
 
 # Flight
 
+> **Preferred path:** Call the `flight_status` tool with `flight_number` (e.g. `TG123`). It returns validated status with provider fallback built in — use its output directly. Only use the `curl` commands below if the tool reports it is unavailable.
 > **If flight number missing:** If user says `what's my flight status` without a flight number, ask `Which flight number should I check? (e.g., TG123)` and wait for the next message. When user replies with a short code like `TG123`, treat it as the answer and run `curl` with that flight. Do NOT use clarify tool for this — just ask naturally and resume. Tracker
 
 AviationStack API (kept as Ghost's flight provider: free 100 lookups/month, global status/delay/gate coverage, simple key auth — best fit for a personal assistant; alternatives like OpenSky lack schedule/status quality). Key lives in Ghost settings (Integrations) backed by `.secrets.json`, never in chat. Get a free key at https://aviationstack.com.
@@ -34,6 +35,15 @@ Add to `.env`:
 ```
 AVIATION_API_KEY=your_key_here
 ```
+
+Optional fallback (used automatically when AviationStack fails or is
+unconfigured): sign up at https://rapidapi.com/aerodatabox/api/aerodatabox
+(free tier: 600 units/month) and add:
+```
+AERODATABOX_API_KEY=your_key_here
+```
+Either key alone enables flight tracking; both keys may also be stored via
+Ghost settings (Integrations) instead of `.env`.
 
 Verify:
 ```bash

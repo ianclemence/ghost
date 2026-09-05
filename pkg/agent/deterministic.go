@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -142,8 +143,9 @@ func setSkillEnabledLocal(workspace, name string, enabled bool) (bool, string) {
 // maybeSetPendingFromAnswer detects when the assistant just asked a
 // natural follow-up for a known missing input and records a pending
 // continuation so the next short reply resumes. Generic: driven by
-// question patterns, not per-skill branches.
-func maybeSetPendingFromAnswer(session, userMsg, answer string) {
+// question patterns, not per-skill branches. workspace persists the
+// continuation so a fresh process (single-shot CLI) can resume it.
+func maybeSetPendingFromAnswer(workspace, session, userMsg, answer string) {
 	lowerAns := strings.ToLower(answer)
 	lowerMsg := strings.ToLower(userMsg)
 	var field, skill, capID string
@@ -160,7 +162,7 @@ func maybeSetPendingFromAnswer(session, userMsg, answer string) {
 	default:
 		return
 	}
-	skills.SetPending(session, skills.PendingContinuation{
+	skills.SetPendingDurable(workspace, session, skills.PendingContinuation{
 		CapabilityID: capID, Skill: skill,
 		MissingField: field, Question: strings.TrimSpace(answer), OriginalTask: strings.TrimSpace(userMsg),
 	})
@@ -236,24 +238,34 @@ func (al *AgentLoop) shoppingList() string {
 // resolvePendingResume checks for a natural clarification continuation.
 // If the session has a pending missing input and the message looks like a
 // short answer (not a new task), it rewrites the effective user message to
-// carry the original task forward. Returns (effectiveMessage, resumed).
-func resolvePendingResume(session, msg string) (string, bool) {
-	pending, ok := skills.GetPending(session)
+// carry the original task forward. Returns (effectiveMessage, resumed,
+// field, answer) where field/answer let the runtime dispatch the resumed
+// capability deterministically (never fabricated). workspace lets a fresh
+// process (single-shot CLI) resume a durable continuation written earlier.
+func resolvePendingResume(workspace, session, msg string) (string, bool, string, string) {
+	pending, ok := skills.GetPendingDurable(workspace, session)
 	if !ok {
-		return msg, false
+		return msg, false, "", ""
+	}
+	// Only clarify-style continuations (missing a short input) are resumable
+	// this way. Routine and standing-permission proposals also live in the
+	// durable store and must be confirmed by their own fast-paths — never
+	// hijacked into a clarification rewrite.
+	if pending.MissingField != "location" && pending.MissingField != "flight_number" {
+		return msg, false, "", ""
 	}
 	trimmed := strings.TrimSpace(msg)
 	// Only treat short, non-command replies as answers. A full new request
 	// (long, or with its own intent verbs) starts a fresh task.
 	if len(trimmed) == 0 || len(trimmed) > 80 || strings.HasPrefix(trimmed, "/") {
-		return msg, false
+		return msg, false, "", ""
 	}
 	lower := strings.ToLower(trimmed)
 	// If it looks like a brand-new task, don't hijack it.
 	newTaskMarkers := []string{"remind me", "what's the weather", "what is the weather", "find ", "add ", "schedule ", "remember "}
 	for _, m := range newTaskMarkers {
 		if strings.Contains(lower, m) && len(trimmed) > 25 {
-			return msg, false
+			return msg, false, "", ""
 		}
 	}
 	// Build resumed task.
@@ -266,8 +278,11 @@ func resolvePendingResume(session, msg string) (string, bool) {
 	default:
 		resumed = pending.OriginalTask + " Answer: " + trimmed
 	}
+	// Complete both memory and durable (if any) so one answer resumes
+	// exactly once across processes/restarts.
 	skills.ClearPending(session)
-	return resumed, true
+	skills.CompleteDurable(workspace, session)
+	return resumed, true, pending.MissingField, trimmed
 }
 
 // isSecurityProbe reports adversarial attempts to reveal internals.
@@ -324,7 +339,7 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 		r := skills.CheckReadiness("flight", al.workspace, inputs)
 		// Missing number takes precedence: ask naturally, no clarify tool.
 		if r.Status == skills.StatusNeedsUserInput && r.Requirement == "flight_number" {
-			skills.SetPending(session, skills.PendingContinuation{
+			skills.SetPendingDurable(al.workspace, session, skills.PendingContinuation{
 				CapabilityID: "flight.status", Skill: "flight",
 				MissingField: "flight_number", Question: r.Question, OriginalTask: strings.TrimSpace(msg),
 			})
@@ -351,7 +366,7 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 			r := skills.CheckReadiness(skill, al.workspace, inputs)
 			// Only fast-path the missing-input case; otherwise let LLM use device context.
 			if r.Status == skills.StatusNeedsUserInput {
-				skills.SetPending(session, skills.PendingContinuation{
+				skills.SetPendingDurable(al.workspace, session, skills.PendingContinuation{
 					CapabilityID: r.Requirement, Skill: skill,
 					MissingField: "location", Question: r.Question, OriginalTask: strings.TrimSpace(msg),
 				})
@@ -365,7 +380,7 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 	if isWeatherIntent(lower) {
 		inputs := capabilityInputsFromMessage(msg, metadata)
 		if strings.TrimSpace(inputs["location"]) == "" {
-			skills.SetPending(session, skills.PendingContinuation{
+			skills.SetPendingDurable(al.workspace, session, skills.PendingContinuation{
 				CapabilityID: "weather.current", Skill: "weather",
 				MissingField: "location", Question: "Which city should I check?",
 				OriginalTask: strings.TrimSpace(msg),
@@ -459,12 +474,19 @@ func capabilityInputsFromMessage(msg string, metadata map[string]string) map[str
 	if m := flightNumberRE.FindString(msg); m != "" {
 		out["flight_number"] = strings.ToUpper(strings.TrimSpace(m))
 	}
-	// Location: explicit device metadata wins, else "in <Place>" heuristic.
+	// Location: explicit device metadata wins, else "in <Place>" heuristic,
+	// else a structured clarification answer ("resume_answer") provided by
+	// the durable-continuation resume path.
 	if metadata != nil {
 		if city := strings.TrimSpace(metadata["city"]); city != "" {
 			out["location"] = city
 		} else if lat, lon := strings.TrimSpace(metadata["latitude"]), strings.TrimSpace(metadata["longitude"]); lat != "" && lon != "" {
 			out["location"] = lat + "," + lon
+		}
+		if out["location"] == "" && metadata["resume_field"] == "location" {
+			if ans := strings.TrimSpace(metadata["resume_answer"]); ans != "" {
+				out["location"] = ans
+			}
 		}
 	}
 	if _, ok := out["location"]; !ok {
@@ -477,6 +499,111 @@ func capabilityInputsFromMessage(msg string, metadata map[string]string) map[str
 
 var flightNumberRE = regexp.MustCompile(`(?i)\b([A-Z]{2}\s?\d{1,4})\b`)
 
+// futureIntentWords mark forecast-style asks. Ghost's provider-backed
+// capability is CURRENT conditions; a forecast ask must never be answered
+// with fabricated numbers, so it returns an honest product limitation.
+var futureIntentWords = []string{"tomorrow", "forecast", "next week", "this weekend", "weekend", "on friday", "on saturday", "on sunday", "on monday", "later today", "tonight"}
+
+// hasFutureIntent reports whether the request asks about a time the
+// current-conditions capability cannot truthfully answer.
+func hasFutureIntent(lower string) bool {
+	for _, w := range futureIntentWords {
+		if strings.Contains(lower, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// tryDeterministicNetworkDispatch enforces evidence-based answers for
+// unambiguous network capabilities with complete inputs: the runtime
+// executes the provider-backed tool (validated output) instead of letting
+// the model invent live data. Returns (answer, handled). "handled" means
+// the turn is done — either with a validated result or an honest
+// product-language failure/limitation, never a fabricated claim.
+func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metadata map[string]string) (string, bool) {
+	lower := strings.ToLower(strings.TrimSpace(msg))
+	if lower == "" || isSecurityProbe(msg) {
+		return "", false
+	}
+	inputs := capabilityInputsFromMessage(msg, metadata)
+	loc := strings.TrimSpace(inputs["location"])
+
+	// Weather / AQI current conditions with a location -> dispatch the
+	// provider tool. Missing location is handled by the readiness
+	// fast-path (it asks, durably). Forecast-style asks are out of the
+	// capability's scope: answer honestly, never fabricate.
+	if isWeatherIntent(lower) || strings.Contains(lower, "air quality") || strings.Contains(lower, " aqi") || strings.HasPrefix(lower, "aqi") {
+		isAQI := strings.Contains(lower, "air quality") || strings.Contains(lower, " aqi") || strings.HasPrefix(lower, "aqi")
+		if isAQI && hasFutureIntent(lower) {
+			return "I can check current air quality, not a forecast for it yet.", true
+		}
+		if isWeatherIntent(lower) && hasFutureIntent(lower) {
+			return "I can check the current weather where you are, but I don't have forecasts yet.", true
+		}
+		if loc == "" {
+			return "", false // readiness fast-path owns the "which city" ask
+		}
+		tool := "weather_now"
+		if isAQI {
+			tool = "aqi_now"
+		}
+		return al.execDeterministicTool(tool, map[string]interface{}{"location": loc}, session)
+	}
+
+	// Flight status with a number + configured provider -> dispatch.
+	if isFlightIntent(lower) {
+		fn := strings.TrimSpace(inputs["flight_number"])
+		if fn == "" {
+			return "", false // readiness fast-path owns the ask
+		}
+		if skills.AviationKey(nil) == "" && skills.AeroDataBoxKey() == "" {
+			return "Flight tracking isn't connected yet. Add your flight data key in Ghost settings under Integrations, then try again — I won't guess flight data.", true
+		}
+		return al.execDeterministicTool("flight_status", map[string]interface{}{"flight_number": fn}, session)
+	}
+
+	return "", false
+}
+
+// execDeterministicTool runs a registered provider-backed tool with the
+// given args and returns its ForLLM text (validated data or an honest
+// product-language error). handled=true means the runtime produced the
+// answer — never fabricated.
+func (al *AgentLoop) execDeterministicTool(name string, args map[string]interface{}, session string) (string, bool) {
+	if al.tools == nil {
+		return "", false
+	}
+	if _, ok := al.tools.Get(name); !ok {
+		return "", false
+	}
+	res := al.tools.Execute(context.Background(), name, args)
+	failed := res == nil || res.IsError
+	// Emit canonical capability events so runtime evidence matches what the
+	// user is told, exactly like the model-driven tool path does.
+	if al.governance != nil && al.governance.Events != nil {
+		capID := deterministicCapability(name)
+		al.governance.ToolRan("", session, name, failed)
+		al.governance.CapabilityDone("", session, capID, failed)
+	}
+	if res == nil {
+		return "I couldn't get that right now. Please try again in a bit.", true
+	}
+	text := strings.TrimSpace(res.ForLLM)
+	if text == "" && res.Err != nil {
+		text = res.Err.Error()
+	}
+	if text == "" {
+		return "I couldn't get that right now. Please try again in a bit.", true
+	}
+	if res.IsError {
+		// The tool returns product-language errors; never pass a raw
+		// stack through. ForLLM is already sanitized by the tool.
+		return text, true
+	}
+	return text, true
+}
+
 var locationFromTextRE = regexp.MustCompile(`(?i)\bin\s+([A-Z][a-zA-Z\s\-]{2,30})(?:\?|\.|$)`)
 
 func locationFromText(msg string) string {
@@ -485,14 +612,40 @@ func locationFromText(msg string) string {
 		return ""
 	}
 	loc := strings.TrimSpace(m[1])
-	// Trim trailing verbs that leaked in.
-	for _, stop := range []string{" today", " now", " tomorrow", " right now"} {
-		if idx := strings.Index(strings.ToLower(loc), stop); idx >= 0 {
-			loc = strings.TrimSpace(loc[:idx])
+	// Trim trailing verbs that leaked in. Longest phrases first so
+	// " right now" wins over " now", and repeat until stable.
+	stops := []string{" right now", " this afternoon", " this morning", " tomorrow", " today", " now", " later", " please"}
+	for {
+		trimmed := loc
+		for _, stop := range stops {
+			if idx := strings.Index(strings.ToLower(trimmed), stop); idx >= 0 {
+				candidate := strings.TrimSpace(trimmed[:idx])
+				if len(candidate) >= 3 {
+					trimmed = candidate
+				}
+			}
 		}
+		if trimmed == loc {
+			break
+		}
+		loc = trimmed
 	}
 	if len(loc) < 3 || len(loc) > 40 {
 		return ""
 	}
 	return loc
+}
+
+// deterministicCapability maps a deterministic tool to its capability id.
+func deterministicCapability(tool string) string {
+	switch tool {
+	case "weather_now":
+		return "weather.current"
+	case "aqi_now":
+		return "aqi.current"
+	case "flight_status":
+		return "flight.status"
+	default:
+		return tool
+	}
 }

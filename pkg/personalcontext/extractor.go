@@ -35,6 +35,11 @@ type Input struct {
 	// whether a candidate creates, supersedes, or restates an existing entry.
 	// Callers typically pass Store.Current().
 	Current []Entry
+
+	// Scopes tags created entries for context isolation (e.g.
+	// ["context:work"]). Empty = global memory. Consult the entry's own
+	// context (not Current) for dedup decisions across scopes.
+	Scopes []string
 }
 
 // ActionMode is how an extraction result should be persisted.
@@ -558,6 +563,7 @@ func buildAction(mode ActionMode, c candidate, in Input, correction bool) Action
 			Predicate:  c.predicate,
 			Value:      value,
 			Status:     StatusCurrent,
+			Scopes:     append([]string{}, in.Scopes...),
 			Confidence: conf,
 			Sources: []Source{{
 				Type:      SourceConversation,

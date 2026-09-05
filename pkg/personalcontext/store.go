@@ -463,6 +463,57 @@ func (s *Store) CurrentAt(t time.Time) []Entry {
 	return out
 }
 
+// VisibleTo reports whether an entry is visible to the given scopes:
+// global (untagged) entries are visible everywhere; scoped entries only
+// where a scope matches. Single predicate behind every retrieval path.
+func VisibleTo(e Entry, scopes []string) bool {
+	if len(e.Scopes) == 0 {
+		return true
+	}
+	for _, sc := range e.Scopes {
+		for _, mine := range scopes {
+			if sc == mine {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// CurrentInScope returns current entries visible to the given scopes:
+// global (untagged) entries plus entries tagged with any of the scopes.
+// Precedence is explicit: a scoped fact overrides the global fact for
+// the same subject+predicate (context wins, global never leaks through
+// as a competing answer). Context isolation for retrieval: a context
+// sees its own + global memories, never another context's scoped facts.
+func (s *Store) CurrentInScope(scopes []string) []Entry {
+	all := s.Current()
+	visible := make([]Entry, 0, len(all))
+	for _, e := range all {
+		if VisibleTo(e, scopes) {
+			visible = append(visible, e)
+		}
+	}
+	// Scoped entries shadow global ones on subject+predicate.
+	shadowed := map[string]bool{}
+	for _, e := range visible {
+		if len(e.Scopes) > 0 {
+			shadowed[e.Subject+"\x00"+e.Predicate] = true
+		}
+	}
+	if len(shadowed) == 0 {
+		return visible
+	}
+	result := make([]Entry, 0, len(visible))
+	for _, e := range visible {
+		if len(e.Scopes) == 0 && shadowed[e.Subject+"\x00"+e.Predicate] {
+			continue
+		}
+		result = append(result, e)
+	}
+	return result
+}
+
 // BySubject returns the final state of every entry with the given subject,
 // regardless of status, sorted by id.
 func (s *Store) BySubject(subject string) []Entry {
@@ -609,4 +660,20 @@ func compactJSON(raw json.RawMessage) (json.RawMessage, error) {
 		return nil, fmt.Errorf("value is not valid JSON: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// HasCurrent reports whether entries already contains a CURRENT entry
+// with the same kind, subject, predicate, and value as want — i.e. the
+// candidate is a restatement of a memory Ghost already holds. Used as a
+// deterministic dedup guard on semantic extraction writes.
+func HasCurrent(entries []Entry, want Entry) bool {
+	for _, e := range entries {
+		if e.Status != StatusCurrent || e.Kind != want.Kind || e.Subject != want.Subject || e.Predicate != want.Predicate {
+			continue
+		}
+		if bytes.Equal(e.Value, want.Value) {
+			return true
+		}
+	}
+	return false
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -22,7 +23,9 @@ import (
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/auth"
+	"github.com/ianclemence/ghost/pkg/bench"
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/cron"
@@ -30,14 +33,19 @@ import (
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/heartbeat"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/maintenance"
 	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/migrate"
+	"github.com/ianclemence/ghost/pkg/permissions"
+	"github.com/ianclemence/ghost/pkg/product"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/relayclient"
+	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/state"
 	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/verify"
 	"github.com/ianclemence/ghost/pkg/voice"
 	"github.com/joho/godotenv"
 )
@@ -127,16 +135,16 @@ func main() {
 	var envLoaded bool
 
 	if err := godotenv.Load(".env"); err == nil {
-		fmt.Printf("✓ Loaded .env (from current dir)\n")
+		fmt.Fprintf(os.Stderr, "✓ Loaded .env (from current dir)\n")
 		envLoaded = true
 	} else if err := godotenv.Load("../.env"); err == nil {
-		fmt.Printf("✓ Loaded .env (from parent dir)\n")
+		fmt.Fprintf(os.Stderr, "✓ Loaded .env (from parent dir)\n")
 		envLoaded = true
 	}
 
 	if configDir := os.Getenv("GHOST_CONFIG_DIR"); configDir != "" {
 		if err := godotenv.Load(filepath.Join(configDir, ".env")); err == nil {
-			fmt.Printf("✓ Loaded .env (from GHOST_CONFIG_DIR)\n")
+			fmt.Fprintf(os.Stderr, "✓ Loaded .env (from GHOST_CONFIG_DIR)\n")
 			envLoaded = true
 		}
 	}
@@ -144,9 +152,9 @@ func main() {
 	if !envLoaded {
 		if home, err := os.UserHomeDir(); err == nil {
 			if err := godotenv.Load(filepath.Join(home, ".ghost", ".env")); err == nil {
-				fmt.Printf("✓ Loaded .env (from ~/.ghost)\n")
+				fmt.Fprintf(os.Stderr, "✓ Loaded .env (from ~/.ghost)\n")
 			} else if err := godotenv.Load(filepath.Join(home, "ghost", ".env")); err == nil {
-				fmt.Printf("✓ Loaded .env (from ~/ghost)\n")
+				fmt.Fprintf(os.Stderr, "✓ Loaded .env (from ~/ghost)\n")
 			}
 		}
 	}
@@ -253,6 +261,12 @@ func main() {
 		updaterCmd()
 	case "relay":
 		relayCmd()
+	case "verify":
+		verifyCmd()
+	case "benchmark":
+		benchmarkCmd()
+	case "golden":
+		goldenCmd()
 	case "version", "--version", "-v":
 		printVersion()
 	default:
@@ -282,6 +296,9 @@ func printHelp() {
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  state       Export, import, or inspect Ghost State archives")
 	fmt.Println("  relay       Manage relay connection (run, pair, clients)")
+	fmt.Println("  verify      Run appliance verification (real product checks)")
+	fmt.Println("  benchmark   Run appliance benchmark + core score")
+	fmt.Println("  golden      Run the Golden Conversation Suite (model NL evaluation)")
 	fmt.Println("  version     Show version information")
 }
 
@@ -611,6 +628,10 @@ func modelCmd() {
 }
 
 func agentCmd() {
+	// Self-heal: a brand-new workspace has no skills yet, which would make
+	// every capability report "not installed". Seed bundled skills
+	// (manifest-aware; never overwrites user edits) so a first-run user who
+	// simply starts chatting gets working capabilities.
 	message := ""
 	sessionKey := "cli:default"
 	args := os.Args[2:]
@@ -637,6 +658,8 @@ func agentCmd() {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
 	}
+	// Seed bundled skills for a fresh workspace (idempotent, manifest-aware).
+	syncEmbeddedSkills(cfg.WorkspacePath())
 
 	provider, err := providers.CreateProvider(cfg)
 	if err != nil {
@@ -665,7 +688,7 @@ func agentCmd() {
 		ctx := context.Background()
 		response, err := agentLoop.ProcessDirect(ctx, message, sessionKey)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Printf("Error: %s\n", friendlyAgentError(err))
 			os.Exit(1)
 		}
 		fmt.Printf("\n%s %s\n", logo, response)
@@ -718,7 +741,7 @@ func interactiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 		ctx := context.Background()
 		response, err := agentLoop.ProcessDirect(ctx, input, sessionKey)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Printf("Error: %s\n", friendlyAgentError(err))
 			continue
 		}
 
@@ -753,7 +776,7 @@ func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 		ctx := context.Background()
 		response, err := agentLoop.ProcessDirect(ctx, input, sessionKey)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Printf("Error: %s\n", friendlyAgentError(err))
 			continue
 		}
 
@@ -891,6 +914,10 @@ func gatewayCmd() {
 
 	// Setup scheduled service
 	scheduledService := setupScheduledService(agentLoop, msgBus, cfg.WorkspacePath())
+
+	// Retention: keep the appliance responsible on small disks (SD card).
+	// Runs once now, then daily. Conservative oldest-first cleanup only.
+	go runMaintenanceLoop(agentLoop.DB(), cfg.WorkspacePath())
 
 	// Setup schedule tool (natural-language scheduling)
 	// Derive timezone from personal context location or system TZ so the
@@ -1517,13 +1544,13 @@ func deriveScheduleTimezone(workspace string) string {
 func locationToTimezone(workspace string) string {
 	// Minimal mapping for known user locations; fallback is UTC.
 	mapping := map[string]string{
-		"london":  "Europe/London",
-		"bangkok": "Asia/Bangkok",
-		"tokyo":   "Asia/Tokyo",
-		"oslo":    "Europe/Oslo",
-		"new york": "America/New_York",
-		"paris":   "Europe/Paris",
-		"berlin":  "Europe/Berlin",
+		"london":    "Europe/London",
+		"bangkok":   "Asia/Bangkok",
+		"tokyo":     "Asia/Tokyo",
+		"oslo":      "Europe/Oslo",
+		"new york":  "America/New_York",
+		"paris":     "Europe/Paris",
+		"berlin":    "Europe/Berlin",
 		"singapore": "Asia/Singapore",
 	}
 	// Read location from personal context entries or user-profile
@@ -1549,8 +1576,20 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 		return nil
 	}
 
-	// Create executor that sends messages through the agent
+	// Create executor that sends messages through the agent.
+	// Routine-aware: items carrying routine metadata run through the
+	// routines product layer (same pipeline as interactive requests:
+	// capability → permission → execution → event → activity) instead
+	// of raw bus injection. Non-routine items keep the legacy path.
+	routineSvc, _ := routines.New(d, store)
+	broker, _ := permissions.Open(d, permissions.ModeAsk, 0)
+	cstream, _ := cevents.Open(d, routineEventDir(workspace))
 	executor := func(ctx context.Context, item *scheduled.ScheduledItem) error {
+		if routineSvc != nil {
+			if r, err := routineSvc.Get(item.ID); err == nil {
+				return executeRoutine(ctx, agentLoop, msgBus, routineSvc, broker, cstream, r, item)
+			}
+		}
 		if item.Action.Content == "" {
 			return fmt.Errorf("no message content")
 		}
@@ -1994,6 +2033,7 @@ func stateExportCmd(cfg *config.Config) {
 func stateImportCmd(cfg *config.Config) {
 	force := false
 	src := ""
+	importContext := ""
 	for _, arg := range os.Args[3:] {
 		switch arg {
 		case "--force":
@@ -2002,6 +2042,10 @@ func stateImportCmd(cfg *config.Config) {
 			stateHelp()
 			return
 		default:
+			if strings.HasPrefix(arg, "--context=") {
+				importContext = strings.TrimPrefix(arg, "--context=")
+				continue
+			}
 			if strings.HasPrefix(arg, "-") {
 				fmt.Printf("Unknown flag: %s\n", arg)
 				stateHelp()
@@ -2011,7 +2055,7 @@ func stateImportCmd(cfg *config.Config) {
 		}
 	}
 	if src == "" {
-		fmt.Println("Usage: ghost state import <archive> [--force]")
+		fmt.Println("Usage: ghost state import <archive> [--force] [--context <id>]")
 		return
 	}
 
@@ -2035,7 +2079,16 @@ func stateImportCmd(cfg *config.Config) {
 		Source:     src,
 		Passphrase: passphrase,
 		Force:      force,
+		Context:    importContext,
 	})
+	if err != nil {
+		fmt.Printf("Error importing Ghost State: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ Imported Ghost State (%s) into %s\n", manifest.GhostID, cfg.WorkspacePath())
+	if importContext != "" {
+		fmt.Printf("  Untagged memories assigned to context %q.\n", importContext)
+	}
 	if err != nil {
 		fmt.Printf("Error importing Ghost State: %v\n", err)
 		os.Exit(1)
@@ -2747,4 +2800,184 @@ func skillsShowCmd(loader *skills.SkillsLoader, skillName string) {
 	fmt.Printf("\n📦 Skill: %s\n", skillName)
 	fmt.Println("----------------------")
 	fmt.Println(content)
+}
+
+// runMaintenanceLoop runs retention at startup and every 24h.
+func runMaintenanceLoop(db *sql.DB, workspace string) {
+	rep := maintenance.Run(workspace, db)
+	logger.InfoCF("maintenance", "retention run", map[string]interface{}{"actions": len(rep.Actions)})
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		rep := maintenance.Run(workspace, db)
+		logger.InfoCF("maintenance", "retention run", map[string]interface{}{"actions": len(rep.Actions)})
+	}
+}
+
+// routineEventDir keeps canonical routine event logs beside other state.
+func routineEventDir(workspace string) string {
+	if workspace != "" {
+		return workspace + "/events"
+	}
+	return "./events"
+}
+
+// executeRoutine runs one scheduled routine occurrence through the same
+// pipeline as an interactive request and delivers the result back to the
+// routine's origin channel. Idempotent per occurrence; permission blocks
+// park the run as waiting (never hang, never double-execute).
+func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, routineSvc *routines.Service, broker *permissions.Broker, events *cevents.Stream, r *routines.Routine, item *scheduled.ScheduledItem) error {
+	fireAt := time.Now()
+	if item.NextRunAt != nil {
+		fireAt = *item.NextRunAt
+	}
+	execKey := scheduled.ExecutionKey(item.ID, fireAt)
+	sessionKey := "routine:" + r.ID
+	channel := item.Channel
+	if channel == "" {
+		channel = "routine"
+	}
+	emit := func(typ cevents.Type, status string, summary string) {
+		if events == nil {
+			return
+		}
+		payload := map[string]interface{}{}
+		if summary != "" {
+			payload["summary"] = summary
+		}
+		events.Publish(&cevents.Event{Type: typ, GhostID: r.GhostID, AgentID: "agent-main",
+			RoutineID: r.ID, Status: status, Payload: payload})
+	}
+	emit(cevents.RoutineStarted, "running", r.Name+" started")
+	outcome, err := routineSvc.Run(ctx, r.ID, execKey, func(ctx context.Context, r *routines.Routine) routines.RunOutcome {
+		agentLoop.SetRoutineContext(sessionKey, r.ID, r.AllowedCapabilities)
+		defer agentLoop.ClearRoutineContext(sessionKey)
+		resp, err := agentLoop.ProcessDirectWithChannel(ctx, r.Instruction, sessionKey, channel, item.ChatID, nil, nil, nil)
+		if err != nil {
+			return routines.RunOutcome{Completion: product.CompletionFailed, Message: "routine execution failed"}
+		}
+		// Runtime evidence of a permission block (not text parsing): a
+		// fresh pending request for this run's session.
+		if broker != nil {
+			if pending, ok := broker.PendingForSession(sessionKey); ok && pending.Status == permissions.StatusPending {
+				return routines.RunOutcome{Completion: product.CompletionWaitingForPermission, WaitingOn: pending.ID}
+			}
+		}
+		// Deliver the result where the routine was created.
+		if strings.TrimSpace(resp) != "" && msgBus != nil && item.Channel != "" {
+			msgBus.PublishOutbound(bus.OutboundMessage{Channel: item.Channel, ChatID: item.ChatID, Content: resp})
+		}
+		return routines.RunOutcome{Completion: product.CompletionSuccess, Message: resp}
+	})
+	if err != nil {
+		emit(cevents.RoutineFailed, "failed", r.Name+" failed")
+		return err
+	}
+	switch outcome.Completion {
+	case product.CompletionSuccess:
+		emit(cevents.RoutineCompleted, "success", r.Name+" done")
+	case product.CompletionWaitingForPermission, product.CompletionWaitingForConfig,
+		product.CompletionWaitingForAuth, product.CompletionWaitingForUser:
+		emit(cevents.RoutineWaiting, "waiting", r.Name+" waiting")
+	default:
+		emit(cevents.RoutineFailed, "failed", r.Name+" failed")
+	}
+	return nil
+}
+
+// verifyCmd runs the canonical appliance verification suite: real
+// product checks (identity, memory, capabilities, governance,
+// automation, events, activity, credentials, offline, providers,
+// security) against a scratch appliance plus the live workspace.
+func verifyCmd() {
+	asJSON := false
+	live := false
+	for _, a := range os.Args[2:] {
+		if a == "--json" {
+			asJSON = true
+		}
+		if a == "--live" {
+			live = true
+		}
+	}
+	workspace := ""
+	if cfg, err := loadConfig(); err == nil {
+		workspace = cfg.WorkspacePath()
+	}
+	rep := verify.Run(verify.Options{Workspace: workspace, Live: live, Timeout: 5 * time.Minute})
+	if asJSON {
+		raw, _ := json.MarshalIndent(rep, "", "  ")
+		fmt.Println(string(raw))
+	} else {
+		fmt.Print(verify.Render(rep))
+	}
+	if rep.Overall != "PASS" {
+		os.Exit(1)
+	}
+}
+
+// benchmarkCmd runs the appliance benchmark, prints the core score,
+// and appends to local history for change→compare loops.
+func benchmarkCmd() {
+	asJSON := false
+	save := true
+	for _, a := range os.Args[2:] {
+		if a == "--json" {
+			asJSON = true
+		}
+		if a == "--no-save" {
+			save = false
+		}
+	}
+	workspace := ""
+	if cfg, err := loadConfig(); err == nil {
+		workspace = cfg.WorkspacePath()
+	}
+	if workspace == "" {
+		workspace = "./workspace"
+	}
+	rep := bench.Run(workspace, 5*time.Minute)
+	if asJSON {
+		raw, _ := json.MarshalIndent(rep, "", "  ")
+		fmt.Println(string(raw))
+	} else {
+		fmt.Print(bench.Render(rep))
+	}
+	if save {
+		hist, err := bench.SaveHistory(workspace, rep, 20)
+		if err != nil {
+			fmt.Printf("warning: history not saved: %v\n", err)
+		} else if len(hist) >= 2 {
+			fmt.Print("\nCHANGE VS PREVIOUS\n")
+			fmt.Print(bench.Compare(hist[len(hist)-2], hist[len(hist)-1]))
+		}
+	}
+	if rep.Overall != "PASS" {
+		os.Exit(1)
+	}
+}
+
+// friendlyAgentError maps a turn's transport/provider error to product
+// language the CLI user can act on, without hiding the underlying cause
+// when debugging. Provider errors may quote endpoints or timeouts, never
+// secrets — still, we surface only the category to a normal user.
+func friendlyAgentError(err error) string {
+	if err == nil {
+		return "something went wrong."
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "connection refused"), strings.Contains(msg, "no such host"),
+		strings.Contains(msg, "network is unreachable"), strings.Contains(msg, "connection reset"),
+		strings.Contains(msg, "i/o timeout"), strings.Contains(msg, "context deadline exceeded"),
+		strings.Contains(msg, "client.timeout"):
+		return "Ghost couldn't reach its thinking engine right now. Check that your local AI is running, then try again."
+	case strings.Contains(msg, "unauthorized"), strings.Contains(msg, "401"),
+		strings.Contains(msg, "api key"), strings.Contains(msg, "invalid key"):
+		return "Ghost's thinking engine rejected its credentials. Reconnect it in Ghost settings, then try again."
+	default:
+		// Fall back to the raw text only when it cannot be a transport
+		// secret; keep CLI honest but terse.
+		return err.Error()
+	}
 }

@@ -15,7 +15,7 @@ prerequisites:
 
 Uses open.er-api.com. No API key. Free tier covers 160+ currencies.
 
-> **Mandatory:** Run the exact `curl` command below with the `exec` tool and use its JSON output. Do NOT use `web_search` or `web_fetch` to "check" the rate — that is duplicate work and this API is the authoritative, already-tested source.
+> **Preferred path:** Call the `currency_convert` tool with `from`, `to` (and `amount` when converting). It returns validated rates with provider fallback built in — use its output directly. Only use the `curl` commands below if the tool reports it is unavailable.
 
 ## Quick Reference
 

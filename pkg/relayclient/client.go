@@ -375,6 +375,9 @@ loop:
 
 	// Build local HTTP request against the local gateway only.
 	reqURL := c.cfg.GatewayURL + meta.Path
+	if meta.Query != "" {
+		reqURL += "?" + meta.Query
+	}
 	req, err := http.NewRequest(meta.Method, reqURL, bytes.NewReader(body))
 	if err != nil {
 		_ = c.sendFrame(&proto.Frame{Kind: proto.KindERROR, StreamID: streamID, Payload: []byte("bad request")})

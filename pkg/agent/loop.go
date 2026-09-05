@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/config"
@@ -31,6 +32,8 @@ import (
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/media"
+	"github.com/ianclemence/ghost/pkg/modes"
+	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/rag"
@@ -98,6 +101,15 @@ type AgentLoop struct {
 	// events is the typed internal event bus (see events.go).
 	events *EventBus
 
+	// governance connects the turn to the Ghost substrate: canonical
+	// identity, permission broker, canonical event stream. Nil-safe:
+	// an unwired loop behaves exactly as before.
+	governance *Governance
+
+	// standingBrokerInst is the loop-local broker for standing grants
+	// (same SQLite file as the gateway singleton, so both see one truth).
+	standingBrokerOnce sync.Once
+	standingBrokerInst *permissions.Broker
 	// jobs is the durable task store (SQLite-backed, part of Ghost State).
 	jobs *tasks.Store
 
@@ -201,6 +213,17 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 		registry.Register(searchTool)
 	}
 	registry.Register(tools.NewWebFetchTool(50000))
+
+	// Provider-backed capability tools (deterministic strategy +
+	// validation + breaker + cache; no exec/curl needed). The capability
+	// contracts below gate the model to these per skill.
+	registry.Register(tools.NewWeatherTool(skills.OpenWeatherKey()))
+	registry.Register(tools.NewFlightTool())
+	registry.Register(tools.NewAQITool())
+	registry.Register(tools.NewCurrencyTool())
+	registry.Register(tools.NewCryptoTool())
+	registry.Register(tools.NewNearbyTool())
+	registry.Register(tools.NewHassTool())
 
 	// Vision tool - image analysis
 	registry.Register(tools.NewVisionTool(workspace))
@@ -462,36 +485,36 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 
 	al := &AgentLoop{
-		bus:              msgBus,
-		provider:         provider,
-		workspace:        workspace,
-		model:            cfg.Agents.Defaults.Model,
-		temperature:      cfg.Agents.Defaults.Temperature,
-		maxTokens:        cfg.Agents.Defaults.MaxTokens,
-		contextWindow:    cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
-		maxIterations:    cfg.Agents.Defaults.MaxToolIterations,
-		sessions:         sessionsManager,
-		state:            stateManager,
-		media:            mediaStore,
-		contextBuilder:   contextBuilder,
-		tools:            toolsRegistry,
-		toolProfile:      tools.ProfileFull,
-		commands:         cmdRegistry,
-		router:           router,
-		fallback:         fallback,
-		fallbackModels:   fallbackCandidates,
-		installer:        installer,
-		providersByModel: providersByModel,
-		cfg:              cfg,
-		doctor:           doctorRunner,
-		summarizing:      sync.Map{},
-		curator:          curator,
-		nudge:            nudgeMgr,
-		evolution:        evolutionMgr,
-		steering:         NewSteeringManager(),
-		pcStore:          pcStore,
+		bus:               msgBus,
+		provider:          provider,
+		workspace:         workspace,
+		model:             cfg.Agents.Defaults.Model,
+		temperature:       cfg.Agents.Defaults.Temperature,
+		maxTokens:         cfg.Agents.Defaults.MaxTokens,
+		contextWindow:     cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
+		maxIterations:     cfg.Agents.Defaults.MaxToolIterations,
+		sessions:          sessionsManager,
+		state:             stateManager,
+		media:             mediaStore,
+		contextBuilder:    contextBuilder,
+		tools:             toolsRegistry,
+		toolProfile:       tools.ProfileFull,
+		commands:          cmdRegistry,
+		router:            router,
+		fallback:          fallback,
+		fallbackModels:    fallbackCandidates,
+		installer:         installer,
+		providersByModel:  providersByModel,
+		cfg:               cfg,
+		doctor:            doctorRunner,
+		summarizing:       sync.Map{},
+		curator:           curator,
+		nudge:             nudgeMgr,
+		evolution:         evolutionMgr,
+		steering:          NewSteeringManager(),
+		pcStore:           pcStore,
 		semanticExtractor: semanticExtractor,
-		db:               database,
+		db:                database,
 	}
 
 	cmdRuntime := &commands.Runtime{
@@ -513,6 +536,27 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	al.shutdownCtx, al.shutdownCancel = context.WithCancel(context.Background())
 	al.events = NewEventBus()
+
+	// Session-scoped memory retrieval: context_get sees what the calling
+	// session's context may see. The closure reads governance live, so
+	// SetGovernance order doesn't matter; subagents share the instance
+	// and inherit the same boundary.
+	if tool, ok := al.tools.Get("context_get"); ok {
+		if cgt, ok := tool.(*tools.ContextGetTool); ok {
+			cgt.Scopes = func(session string) []string {
+				return al.sessionScopes(session)
+			}
+		}
+	}
+	// Session-scoped curator notes: the model reads global + own-context
+	// notes and writes to its own context file. Same live closure.
+	if tool, ok := al.tools.Get("memory_curate"); ok {
+		if mct, ok := tool.(*tools.MemoryCurateTool); ok {
+			mct.ContextFor = func(session string) string {
+				return contextIDForScopes(al.sessionScopes(session))
+			}
+		}
+	}
 
 	// Value-gated proactivity: Ghost only interrupts when usefulness is high
 	// (threshold + confidence) and never spams (daily budget, per-topic
@@ -791,6 +835,25 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 	})
 }
 
+func (al *AgentLoop) SetGovernance(g *Governance) {
+	al.governance = g
+}
+
+// SetRoutineContext scopes a session to a routine's allowed capabilities
+// for unattended runs (nil-safe; cleared with ClearRoutineContext).
+func (al *AgentLoop) SetRoutineContext(sessionKey, routineID string, allowed []string) {
+	if al.governance != nil {
+		al.governance.SetRoutineContext(sessionKey, routineID, allowed)
+	}
+}
+
+// ClearRoutineContext removes unattended scoping.
+func (al *AgentLoop) ClearRoutineContext(sessionKey string) {
+	if al.governance != nil {
+		al.governance.ClearRoutineContext(sessionKey)
+	}
+}
+
 func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage, onChunk func(string), onToolCall func(string, string)) (string, error) {
 	// Ensure request ID exists for tracing
 	if msg.Metadata == nil {
@@ -800,6 +863,16 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 	if requestID == "" {
 		requestID = fmt.Sprintf("req-%d", time.Now().UnixNano())
 		msg.Metadata["request_id"] = requestID
+	}
+	if al.governance != nil {
+		al.governance.TurnStarted(requestID, msg.SessionKey, msg.Channel)
+	}
+	// endTurn closes the canonical trace on every exit path.
+	endTurn := func(resp string, err error) (string, error) {
+		if al.governance != nil {
+			al.governance.TurnEnded(requestID, msg.SessionKey, err)
+		}
+		return resp, err
 	}
 
 	// Record initial trace
@@ -864,11 +937,25 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 	// Natural clarification resume (first-class continuation, no blocking
 	// clarify tool): if the previous turn asked for a missing input and this
 	// message is a short answer, fold it into the original task.
+	resumedTurn := false
 	if !strings.HasPrefix(msg.Content, "/") && msg.SessionKey != "" {
-		if resumed, ok := resolvePendingResume(msg.SessionKey, msg.Content); ok {
+		if resumed, ok, rField, rAnswer := resolvePendingResume(al.workspace, msg.SessionKey, msg.Content); ok {
 			logger.InfoCF("agent", "resuming pending continuation",
 				map[string]interface{}{"session_key": msg.SessionKey})
 			msg.Content = resumed
+			// The resumed message already carries the answer. It must not
+			// re-enter the deterministic/readiness fast-paths, which would
+			// re-ask the (now answered) question and mint a new pending.
+			resumedTurn = true
+			// Expose the structured answer so the runtime can dispatch the
+			// resumed capability deterministically (never fabricated).
+			if rField != "" && rAnswer != "" {
+				if msg.Metadata == nil {
+					msg.Metadata = map[string]string{}
+				}
+				msg.Metadata["resume_field"] = rField
+				msg.Metadata["resume_answer"] = rAnswer
+			}
 		}
 	}
 
@@ -881,7 +968,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 	// Deterministic local ops (shopping add/list): Intent -> Capability ->
 	// execute with zero LLM calls. Works even when the provider is
 	// rate-limited and never leaks internals.
-	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.tryDeterministicTurn(msg.Content, msg.SessionKey); ok {
 			logger.InfoCF("agent", "deterministic: handled locally",
 				map[string]interface{}{"session_key": msg.SessionKey})
@@ -893,13 +980,13 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
 				al.sessions.Save(msg.SessionKey)
 			}
-			return ans, nil
+			return endTurn(ans, nil)
 		}
 	}
 	// Skill toggle fast-path: "disable X" / "enable Y" executes directly
 	// (mirrors the Web Console toggle). Before the disabled-skill check so
 	// "enable X" still works when X is currently off.
-	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.trySkillToggleFastPath(msg.Content); ok {
 			logger.InfoCF("agent", "skill-toggle fast-path",
 				map[string]interface{}{"session_key": msg.SessionKey})
@@ -911,12 +998,12 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
 				al.sessions.Save(msg.SessionKey)
 			}
-			return ans, nil
+			return endTurn(ans, nil)
 		}
 	}
 	// Disabled-skill fast-path first: a toggle is a promise. If the user
 	// asks for a disabled skill, say so honestly instead of improvising.
-	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.tryDisabledSkillFastPath(msg.Content, msg.SessionKey); ok {
 			logger.InfoCF("agent", "disabled-skill fast-path",
 				map[string]interface{}{"session_key": msg.SessionKey})
@@ -928,13 +1015,32 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
 				al.sessions.Save(msg.SessionKey)
 			}
-			return ans, nil
+			return endTurn(ans, nil)
+		}
+	}
+	// Standing-permission fast-path: "always/never let Ghost …" proposes
+	// narrowly scoped grants through runtime validation — never the LLM.
+	// Runs BEFORE the readiness fast-path so grant-management phrases are
+	// never intercepted by a capability's "not connected" readiness reply.
+	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+		if ans, ok := al.tryStandingTurn(msg); ok {
+			logger.InfoCF("agent", "standing-permission fast-path",
+				map[string]interface{}{"session_key": msg.SessionKey})
+			if onChunk != nil && ans != "" {
+				onChunk(ans)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return endTurn(ans, nil)
 		}
 	}
 	// Generic readiness fast-path: Intent -> Capability -> Readiness.
 	// Missing input / not-configured returns a product message with zero
 	// LLM calls and sets a pending continuation for natural resume.
-	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.tryReadinessFastPath(msg.Content, msg.SessionKey, msg.Metadata); ok {
 			logger.InfoCF("agent", "readiness fast-path",
 				map[string]interface{}{"session_key": msg.SessionKey})
@@ -946,7 +1052,28 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
 				al.sessions.Save(msg.SessionKey)
 			}
-			return ans, nil
+			return endTurn(ans, nil)
+		}
+	}
+	// Deterministic network dispatch: for unambiguous current-conditions
+	// capabilities with complete inputs, the runtime executes the
+	// provider-backed tool and returns its VALIDATED output — the model
+	// never invents live data (weather/AQI/flight). Runs for direct asks
+	// and for resumed continuations (the structured answer arrives via
+	// resume_field/resume_answer metadata).
+	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+		if ans, ok := al.tryDeterministicNetworkDispatch(msg.Content, msg.SessionKey, msg.Metadata); ok {
+			logger.InfoCF("agent", "deterministic network dispatch",
+				map[string]interface{}{"session_key": msg.SessionKey})
+			if onChunk != nil && ans != "" {
+				onChunk(ans)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return endTurn(ans, nil)
 		}
 	}
 	// Phase 1 — intent/effort triage: keep trivial self-fact recall cheap and
@@ -955,7 +1082,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 	// through to the full loop unchanged.
 	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" {
 		if effort := classifyEffort(msg.Content); effort == EffortFast {
-			if ans, ok := al.fastPathAnswer(msg.Content); ok {
+			if ans, ok := al.fastPathAnswer(msg.Content, msg.SessionKey); ok {
 				logger.InfoCF("agent", "fast path: answered from memory",
 					map[string]interface{}{"session_key": msg.SessionKey, "effort": effort.String()})
 				if onChunk != nil {
@@ -965,12 +1092,55 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 					al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
 					al.sessions.Save(msg.SessionKey)
 				}
-				return ans, nil
+				return endTurn(ans, nil)
+			}
+		}
+		// Routine fast-path: recurring natural language ("every Monday at 9
+		// remind me to…") proposes/confirms durable routines through the
+		// existing routine domain — never the LLM, never scheduler internals.
+		if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+			if ans, ok := al.tryRoutineTurn(msg); ok {
+				logger.InfoCF("agent", "routine fast-path",
+					map[string]interface{}{"session_key": msg.SessionKey})
+				if onChunk != nil && ans != "" {
+					onChunk(ans)
+				}
+				if al.sessions != nil {
+					al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+					al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+					al.sessions.Save(msg.SessionKey)
+				}
+				return endTurn(ans, nil)
 			}
 		}
 	}
-	response, err := al.runAgentLoop(ctx, processOptions{
-		SessionKey:      msg.SessionKey,
+	// Approval continuation: a reply to a pending approval card resumes
+	// the EXACT paused call deterministically — no LLM restart, no
+	// repeated request. Ordinary chat passes through untouched.
+	if al.governance != nil {
+		if resume := al.governance.CheckApprovalReply(msg.SessionKey, msg.Content); resume.Resumed || resume.Denied {
+			if resume.Denied {
+				if al.sessions != nil {
+					al.sessions.AddMessage(msg.SessionKey, "assistant", resume.Message)
+					al.sessions.Save(msg.SessionKey)
+				}
+				return endTurn(resume.Message, nil)
+			}
+			toolResult := al.tools.ExecuteWithContext(ctx, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey, nil)
+			al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, toolResult.IsError)
+			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, toolResult.IsError)
+			text := toolResult.ForLLM
+			if toolResult.IsError {
+				text = "That didn't work: " + toolResult.ForLLM
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "assistant", text)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return endTurn(text, nil)
+		}
+	}
+	response, err := al.runAgentLoop(ctx, processOptions{SessionKey: msg.SessionKey,
 		Channel:         msg.Channel,
 		ChatID:          msg.ChatID,
 		ToolProfile:     profile,
@@ -1002,7 +1172,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 		}()
 	}
 
-	return response, err
+	return endTurn(response, err)
 }
 
 func (al *AgentLoop) processSystemMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
@@ -1133,6 +1303,9 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 		Timestamp:    time.Now().UTC(),
 		PreviousText: previousUserMessage(al.sessions.GetHistory(opts.SessionKey)),
 	}
+	if al.governance != nil {
+		in.Scopes = al.governance.SessionWriteScopes(opts.SessionKey)
+	}
 	actions, err := personalcontext.Apply(al.pcStore, in)
 	if err != nil {
 		logger.WarnCF("agent", "Personal Context extraction failed", map[string]interface{}{
@@ -1143,14 +1316,29 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 		al.events.emit(EventMemoryCreated, "", map[string]interface{}{
 			"session_key": opts.SessionKey,
 		})
+		if al.governance != nil && al.governance.Events != nil {
+			for _, a := range actions {
+				typ := cevents.MemoryCreated
+				if a.Mode == personalcontext.ActionSupersede {
+					typ = cevents.MemoryUpdated
+				}
+				al.governance.Events.Publish(&cevents.Event{
+					Type: typ, RequestID: opts.RequestID, SessionID: opts.SessionKey,
+					GhostID: al.governance.GhostID, AgentID: al.governance.AgentID,
+					Payload: map[string]interface{}{
+						"summary": memoryActionSummary(a),
+					},
+				})
+			}
+		}
 		return // Regex found something, no need for semantic extraction
 	}
 
 	logger.InfoCF("agent", "Regex extraction result", map[string]interface{}{
-		"actions_count":       len(actions),
-		"message":             opts.UserMessage,
-		"semantic_extractor":  al.semanticExtractor != nil,
-		"pcStore":             al.pcStore != nil,
+		"actions_count":      len(actions),
+		"message":            opts.UserMessage,
+		"semantic_extractor": al.semanticExtractor != nil,
+		"pcStore":            al.pcStore != nil,
 	})
 
 	// If regex didn't find anything, try semantic extraction (slow path)
@@ -1159,11 +1347,26 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 			"message": opts.UserMessage,
 		})
 		existing := al.pcStore.Current()
+		if al.governance != nil {
+			existing = al.pcStore.CurrentInScope(al.governance.SessionScopes(opts.SessionKey))
+		}
 		result := al.semanticExtractor.Extract(context.Background(), opts.UserMessage, existing)
 		if result.ShouldRemember && len(result.Entries) > 0 {
-			// Persist semantic extraction results
+			// Persist semantic extraction results, deduplicated: an entry
+			// identical in kind+predicate+value to one already current is a
+			// restatement, not a new memory. Deterministic guard so a weak or
+			// over-eager extractor can never accumulate duplicate rows.
+			current := al.pcStore.CurrentInScope(al.sessionScopes(opts.SessionKey))
 			for _, entry := range result.Entries {
+				if personalcontext.HasCurrent(current, entry) {
+					logger.InfoCF("agent", "semantic extraction: duplicate of current memory, skipped",
+						map[string]interface{}{"predicate": entry.Predicate})
+					continue
+				}
 				entry.Sources[0].Ref = fmt.Sprintf("%s:%s", opts.SessionKey, msgID)
+				if al.governance != nil {
+					entry.Scopes = al.governance.SessionWriteScopes(opts.SessionKey)
+				}
 				if _, err := al.pcStore.Create(entry); err != nil {
 					logger.WarnCF("agent", "Failed to persist semantic extraction", map[string]interface{}{
 						"error": err.Error(),
@@ -1181,6 +1384,25 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 			})
 		}
 	}
+}
+
+// memoryActionSummary renders the deterministic human title for a memory
+// action via personalcontext.Title (structure determines the title —
+// no LLM call is spent inventing one).
+func memoryActionSummary(a personalcontext.Action) string {
+	if t := personalcontext.Title(a.Entry); strings.TrimSpace(t) != "" {
+		return t
+	}
+	return "saved memory"
+}
+
+// sessionScopes resolves memory scopes for prompt injection (nil-safe:
+// unwired loops see global memories, preserving legacy behavior).
+func (al *AgentLoop) sessionScopes(sessionKey string) []string {
+	if al.governance != nil {
+		return al.governance.SessionScopes(sessionKey)
+	}
+	return nil
 }
 
 // previousUserMessage returns the content of the immediately preceding USER
@@ -1285,6 +1507,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		opts.Channel,
 		opts.ChatID,
 		al.provider,
+		al.sessionScopes(opts.SessionKey),
 	)
 
 	// 3. Save user message to session (only if not a slash command)
@@ -1331,7 +1554,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		al.sessions.Save(opts.SessionKey)
 		// If the model asked a natural follow-up for a known missing input,
 		// record a pending continuation so the next short reply resumes.
-		maybeSetPendingFromAnswer(opts.SessionKey, opts.UserMessage, finalContent)
+		maybeSetPendingFromAnswer(al.workspace, opts.SessionKey, opts.UserMessage, finalContent)
 	}
 
 	// 7. Optional: summarization
@@ -1596,6 +1819,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					capViolations[cap.ID]++
 					if capViolations[cap.ID] >= 3 {
 						finalContent = cap.CleanFailure()
+						if al.governance != nil {
+							al.governance.CapabilityDone(opts.RequestID, opts.SessionKey, cap.ID, true)
+						}
 						break
 					}
 					toolResultMsg := providers.Message{
@@ -1610,7 +1836,28 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 
 			toolCtx := tools.WithSubagentDepth(ctx, tools.SubagentDepth(ctx))
+			// Permission broker gate: consequential calls without a grant
+			// pause durably here. The model cannot bypass this — it sits
+			// between capability resolution and execution, not in a prompt.
+			if capSkill := committedSkill(messages); capSkill != "" && al.governance != nil {
+				cap := skills.GetCapability(capSkill)
+				al.governance.NoteCapability(opts.RequestID, cap.ID)
+				if decision := al.governance.AuthorizeTool(opts.RequestID, opts.SessionKey, cap.ID, tc.Name, tc.Arguments); !decision.Allowed {
+					toolResultMsg := providers.Message{
+						Role:       "tool",
+						Content:    decision.AskMessage,
+						ToolCallID: tc.ID,
+					}
+					messages = append(messages, toolResultMsg)
+					al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+					finalContent = decision.AskMessage
+					break
+				}
+			}
 			toolResult := activeTools.ExecuteWithContext(toolCtx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, opts.SessionKey, asyncCallback)
+			if al.governance != nil {
+				al.governance.ToolRan(opts.RequestID, opts.SessionKey, tc.Name, toolResult.IsError)
+			}
 
 			// Send ForUser content to user immediately if not Silent
 			if !toolResult.Silent && toolResult.ForUser != "" && opts.SendResponse {
@@ -1642,6 +1889,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					capExecAttempts[cap.ID]++
 					if capExecAttempts[cap.ID] >= cap.MaxAttempts {
 						finalContent = cap.CleanFailure()
+						if al.governance != nil {
+							al.governance.CapabilityDone(opts.RequestID, opts.SessionKey, cap.ID, true)
+						}
 						// Persist the clean failure path as a tool result so
 						// history stays coherent, then break to response.
 						toolResultMsg := providers.Message{
@@ -1936,14 +2186,43 @@ func (al *AgentLoop) buildCandidates(model string) []providers.FallbackCandidate
 		out = append(out, providers.FallbackCandidate{Name: model, Provider: p, Model: model})
 		seen[model] = true
 	}
+	// Intelligence mode: in local mode the cloud never runs, even as a
+	// fallback. The explicit primary model is always honored (owner's
+	// direct choice); only fallbacks are filtered.
+	mode := modes.Resolve(al.workspace, al.hasCloudKey())
 	for _, c := range al.fallbackModels {
 		if seen[c.Name] {
+			continue
+		}
+		if mode == modes.Local && modes.IsCloudProvider(c.Name) {
 			continue
 		}
 		out = append(out, c)
 		seen[c.Name] = true
 	}
 	return out
+}
+
+// hasCloudKey reports whether any cloud provider credential is present
+// (derivation input for the intelligence mode — never exposed).
+func (al *AgentLoop) hasCloudKey() bool {
+	if al.cfg == nil {
+		return false
+	}
+	for _, key := range []string{
+		al.cfg.Providers.Anthropic.APIKey,
+		al.cfg.Providers.OpenAI.APIKey,
+		al.cfg.Providers.OpenRouter.APIKey,
+		al.cfg.Providers.Groq.APIKey,
+		al.cfg.Providers.Gemini.APIKey,
+		al.cfg.Providers.DeepSeek.APIKey,
+		al.cfg.Providers.Moonshot.APIKey,
+	} {
+		if strings.TrimSpace(key) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // LearningsSummary returns a small, user-facing digest of Ghost's self-

@@ -7,82 +7,166 @@
 
 ## Documentation
 
-- **[Product Strategy](docs/PRODUCT.md)** — who Ghost is for, what it sells, and how it makes money.
-- **[Roadmap](docs/ROADMAP.md)** — the phased plan from the foundation for persistent identity to a personal AI you own.
-- **[Connection Flow](docs/CONNECTION_FLOW.md)** — how users set up Ghost and connect devices.
-- **[Implementation plans](docs/plans/)** — detailed plans for the cloud relay, install experience, OTA updates, and telemetry.
+- **[Capability & Substrate Architecture](docs/CAPABILITY_ARCHITECTURE.md)** — the canonical Ghost architecture: entity, agent, capabilities, permission broker, canonical events, activity, credentials, routines, contexts, channels, voice, devices.
+- **[Reference Appliance](docs/REFERENCE_APPLIANCE.md)** — what a correctly configured Ghost is, memory scope semantics, hardware classes, engineering philosophy.
+- **[Appliance Architecture](docs/APPLIANCE_ARCHITECTURE.md)** — appliance provisioning/setup, health model, provider resilience, durable requests, backups.
+- **[Evaluation](docs/EVALUATION.md)** — `ghost verify`, `ghost benchmark`, and the Golden Conversation Suite.
+- **[Mobile API Contract](docs/MOBILE_API.md)** — the stable backend surface the mobile app consumes.
+- **[Product Strategy](docs/PRODUCT.md)** — product framing (kept for history).
+- **[Roadmap & Status](docs/ROADMAP.md)** — what is complete, current status, and the next direction.
 - **[Testing](docs/TESTING.md)** — how to test Ghost.
+- **[Connection Flow](docs/CONNECTION_FLOW.md)** — pairing and device connectivity.
+- **[Changelog](CHANGELOG.md)** — release history.
 
 ---
 
 ## What is Ghost?
 
-Ghost is the **persistent home of your personal AI**. Plug it in, connect your
-phone, and talk to it — it remembers you, does things for you, and keeps working.
-It runs on hardware you own, works offline, and keeps your data on-device.
+> **Your AI. Your memory. Your machine.**
 
-Under the hood that combines:
+Ghost is a **local-first personal AI appliance** that gives one person a persistent
+AI entity living on hardware they own. It remembers you, understands natural
+language, acts through capabilities, asks permission before consequential
+actions, runs routines, keeps contexts separate, and reports what it actually
+did. Ghost runs on your machine — the model is an interchangeable intelligence
+engine behind it, never the owner of your data or the authority over your
+actions.
 
-- **Real-time local reflexes** (instant responses)
-- **On-device reasoning** (private, fast, offline-capable)
-- **Cloud intelligence** (for deep thinking when needed)
+The most important design principle:
 
-Ghost is not an appliance that happens to run an LLM. It is a personal AI that
-lives somewhere persistent: your memory, identity, skills, tools, and automations
-have a home. That is what makes it *yours* — not dependent on the cloud.
+> **The model is not the authority.** Runtime execution evidence decides whether
+> an action actually happened. A model saying "Done" is a claim, not proof.
 
----
+User request → Ghost → intent/memory/context → permission broker → capability
+execution → **runtime evidence** → canonical events/activity → response.
 
-## Architecture
+Ghost is **local-first**: memory, permissions, identity, routines, and control
+stay on the appliance. Cloud models are optional intelligence providers. Offline,
+local capabilities (memory recall, conversation, permissions, routines whose
+capabilities are local) keep working, and network capabilities fail honestly.
 
-Most AI apps:
+Under the hood:
 
-```
-You → Cloud → Response
-```
-
-Ghost:
-
-```
-You → Local Reflex → Local Brain → Cloud (only if needed)
-```
-
-### Local Reflex Layer
-- Instant intent detection (<50ms)
-- Command routing
-- Wake-word + triggers
-- Memory-first recall (SQLite FTS + personal-context)
-
-### Local Brain
-- Runs small LLMs via Ollama (optional)
-- Handles memory, tools, and automations
-- Works offline
-
-### Cloud Brain (Optional)
-- Kimi / OpenAI / Anthropic
-- Used only for deep reasoning, coding, complex tasks
-
-An **Intent Triage** system decides where each task runs — fast-path (memory),
-local model, or cloud — based on capability, latency, privacy, cost, and
-available hardware. You don't have to think about models; Ghost handles it.
+- **Deterministic runtime** — intent → capability → permission → execution →
+  evidence, with no bypass allowed and no fake success.
+- **One persistent entity** — identity, memory, capabilities, permissions,
+  routines, activity all belong to one Ghost, not to a chat session.
+- **Model-agnostic** — the same Ghost runs on local (Ollama) and cloud
+  (DeepSeek, Anthropic, OpenAI, and others) models; evaluation is model-agnostic.
 
 ---
 
-## Core Features
+## Runtime & governance architecture
 
-- **Local-First**: Runs on your own hardware (Raspberry Pi, RK1, or x86)
-- **Persistent Memory**: Continuous context via SQLite + personal-context files
-- **Hybrid Intelligence**: Local-first routing with cloud fallback
-- **Ghost Moves With You**: Replace your hardware — your identity, memory, skills, and configuration come along
-- **Robust**: JSON Schema validation prevents hallucinated tool calls
-- **Proactive**: Briefings, reminders, scheduled automation
-- **Observable**: Diagnostics via `/doctor` and `GET /v1/doctor`
+```
+                        GHOST (persistent entity)
+        identity · owner · primary agent (+ future kinds)
+                          │
+         ┌────────────────┼─────────────────┐
+         │                │                 │
+      BRAIN           MEMORY            PERSONAL MODEL
+  local/cloud      SQLite + RAG       append-only, temporal
+    providers          │                 supersede/confidence
+         └──────────────┼─────────────────┘
+                        │
+                  CAPABILITIES
+              runtime-registered · risk-declared
+                        │
+                PERMISSION BROKER
+              ALLOW / ASK / DENY · durable · scoped
+                        │
+                  EXECUTION
+              deterministic dispatch + tool runtime
+                        │
+               CANONICAL EVENTS   (evidence, redacted)
+                        │
+          ┌─────────────┼──────────────┐
+        ACTIVITY      CHAT/SSE      ROUTINES / VOICE / DEVICES
+```
+
+Key components, as implemented today:
+
+- **Agent runtime** — the loop that owns every turn. It selects the capability,
+  enforces readiness, gates consequential tools on the permission broker, runs
+  tools, validates results, and emits canonical events. The model explains; the
+  runtime proves.
+- **Deterministic dispatch** — unambiguous current-conditions requests
+  (weather/AQI/flight) execute the provider-backed tool directly and return
+  validated output, so the model can never invent live data. Forecasts and
+  unsupported asks are answered honestly, never fabricated.
+- **Providers** — interchangeable intelligence engines (local Ollama or cloud)
+  behind one provider abstraction, with fallback, bounded retries, circuit
+  breaking, and honest unavailability.
+- **Memory + RAG** — durable structured memory with retrieval, context scoping,
+  and RAG over the local store. Ghost retrieves what it knows rather than
+  expecting the model to remember you.
+- **Permission broker** — consequential actions are centrally authorized
+  (allow once / always allow scoped / deny / revoke). The model cannot grant
+  itself permission.
+- **Canonical events** — every meaningful action emits an event
+  (identity/correlation/order/visibility/redaction). Events are evidence and
+  history; replay never re-executes side effects.
+- **Activity** — a human-safe projection of events ("Checked your calendar",
+  "Waiting for approval") — never raw tool names or internal artifacts.
+- **Contexts** — scoped environments (personal/work/project) that isolate
+  memory and capabilities; a model can never read another context's private
+  data.
+- **Routines** — durable scheduled work through the same capability →
+  permission → execution → evidence pipeline as chat.
+- **Voice** — a channel into the same runtime (push-to-talk), never a separate
+  brain.
+- **Devices / Home Assistant** — device control is capability + permission
+  governed; no unrestricted shell.
+- **Appliance** — idempotent setup/provisioning, canonical health, backups that
+  exclude secrets, and a hardware-aware defaults model.
 
 ---
+
+## What Ghost is NOT
+
+- not merely a chatbot frontend
+- not merely Ollama (or any single model)
+- not an LLM training framework
+- not a cloud-only assistant
+- not a collection of independent agents
+- not a system where the model has unrestricted authority
+
+---
+
+## Intelligence model
+
+Ghost exposes a small user-facing control — **Local / Hybrid / Cloud** — and the
+runtime derives the details (which model, fallbacks, context sizes, retries)
+from your hardware and configuration. RAG is always enabled. You choose an
+outcome; Ghost chooses the implementation. No need to configure temperature,
+top-p, quantization, or routing tables.
+
+---
+
+## Core features
+
+- Local-first appliance (Raspberry Pi 5 8 GB reference; RK1/x86 supported)
+- Persistent memory with RAG and context isolation
+- Natural-language memory, correction, and deterministic recall
+- Consequential actions governed by the permission broker
+- Deterministic capability dispatch — no fabricated live data
+- Canonical event evidence with user-safe activity
+- Durable routines with duplicate prevention and idempotency
+- Contexts (personal/work/project) with real isolation
+- Provider fallback, bounded retries, circuit breaking, caching
+- Offline-honest behaviour
+- Credential vault: secrets-first, redacted, excluded from backups
+- `ghost verify`, `ghost benchmark`, and the Golden Conversation Suite
+- Model-agnostic; evaluated against multiple providers
 
 ## Security Architecture
 
 Ghost uses a layered security model designed for a self-hosted appliance.
+
+Consequential actions pass through the **Permission Broker**; secrets live behind
+a **credential vault** boundary (write-only from the UI, presence-only in
+events); events/activity/API/logs/backups are redacted by construction; and
+context isolation is enforced at retrieval and execution — not by prompts.
 
 ### Authentication
 
@@ -99,6 +183,14 @@ Ghost uses a layered security model designed for a self-hosted appliance.
 | API keys, channel tokens | `/var/ghost/config/.secrets.json` | `0600` |
 | Device credentials | SQLite database | Database-level |
 | Pairing tokens | SQLite database | Database-level |
+
+Credential rules enforced at runtime:
+
+- secrets are never printed, logged, serialized to events/SSE/activity/APIs, or
+  archived in backups (backup walkers use the centralized exclusion boundary)
+- OAuth credentials are stored on the appliance and only their presence/state is
+  exposed; tokens never travel to the UI or the model
+- the model cannot read, grant, or revoke permissions
 
 ### How Pairing Works
 
@@ -312,7 +404,18 @@ chmod +x setup.sh
 | `ghost auth` | Manage authentication |
 | `ghost cron` | Manage scheduled tasks |
 | `ghost skills` | Manage skills |
+| `ghost state` | Export / import / inspect Ghost State archives |
+| `ghost migrate` | Migrate an OpenClaw installation into Ghost |
+| `ghost model` | View or switch the active model |
 | `ghost version` | Show version info |
+
+### Evaluation Commands
+
+| Command | Description |
+|---------|-------------|
+| `ghost verify` | Real appliance checks: identity, memory, capabilities, governance, automation, events, activity, credentials, offline, security |
+| `ghost benchmark` | Appliance benchmark + Ghost Core Score + hard governance gates + local history |
+| `ghost golden` | Golden Conversation Suite — model-agnostic natural-language evaluation (`--model --suite --cases --offline --json --compare`) |
 
 ### Relay Commands
 

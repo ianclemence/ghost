@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/appliance"
+	"github.com/ianclemence/ghost/pkg/backup"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/providers"
@@ -1108,24 +1109,16 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 			// Skip workspace internals that change constantly.
 			rel, _ := filepath.Rel(root, path)
 			if info.IsDir() {
-				for _, skip := range []string{"journal", "state", "sessions"} {
-					if filepath.Base(path) == skip {
-						return filepath.SkipDir
-					}
+				if backup.ShouldSkipDir(filepath.Base(path)) {
+					return filepath.SkipDir
 				}
 				return nil
 			}
-			if strings.HasPrefix(rel, ".env") {
-				return nil // secrets — never included in backups
-			}
-			if strings.HasSuffix(path, ".secrets.json") {
-				return nil // credentials — never included in backups
-			}
-			if strings.HasSuffix(path, ".gcalcli_oauth") || strings.Contains(path, "gcalcli"+string(filepath.Separator)+"oauth") {
-				return nil // calendar OAuth tokens — never included in backups
-			}
-			if strings.HasSuffix(path, ".log") {
-				return nil // transient logs
+			// Centralized secrets boundary (pkg/backup): credentials,
+			// OAuth tokens, and secrets are never archived. Restore
+			// requires reconnecting integrations — by design.
+			if ok, _ := backup.ShouldExclude(filepath.ToSlash(rel)); ok {
+				return nil
 			}
 			ok := false
 			for _, d := range dirs {
@@ -2463,7 +2456,10 @@ func handleAdvancedSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.RAG != nil {
-		cfg.RAG.Enabled = req.RAG.Enabled
+		// RAG is a core memory capability and is always enabled for the
+		// appliance. The console may tune index parameters but cannot
+		// disable RAG here; only GHOST_RAG_ENABLED=false (advanced) does.
+		cfg.RAG.Enabled = true
 		if req.RAG.M > 0 {
 			cfg.RAG.M = req.RAG.M
 		}
@@ -2591,7 +2587,7 @@ func handleIntegrationsStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cal := skills.CalendarCheck()
-	flightReady := skills.AviationKey(nil) != ""
+	flightReady := skills.FlightConfigured()
 	hassReady := skills.HassConfigured()
 	camReady := skills.CameraCheck()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -2676,13 +2672,15 @@ func handleIntegrationsFlightSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		APIKey string `json:"api_key"`
+		APIKey         string `json:"api_key"`
+		FallbackAPIKey string `json:"fallback_api_key"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
 		return
 	}
 	req.APIKey = strings.TrimSpace(req.APIKey)
+	req.FallbackAPIKey = strings.TrimSpace(req.FallbackAPIKey)
 	if req.APIKey == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "api_key is required"})
 		return
@@ -2702,6 +2700,11 @@ func handleIntegrationsFlightSave(w http.ResponseWriter, r *http.Request) {
 		secrets.ProviderAPIKeys = map[string]string{}
 	}
 	secrets.ProviderAPIKeys["aviationstack"] = req.APIKey
+	// Optional fallback provider (AeroDataBox via RapidAPI). Either key
+	// alone makes flight tracking ready; both absent stays unconfigured.
+	if req.FallbackAPIKey != "" {
+		secrets.ProviderAPIKeys["aerodatabox"] = req.FallbackAPIKey
+	}
 	if err := config.SaveSecrets(config.SecretsPath(fb.ConfigPath), secrets); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return

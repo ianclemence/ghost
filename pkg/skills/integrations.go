@@ -79,6 +79,68 @@ func aviationKeyFromDisk() string {
 	return ""
 }
 
+// FlightConfigured reports whether flight tracking can run: either the
+// primary (AviationStack) or the fallback (AeroDataBox) credential makes
+// the capability READY. Both absent is NEEDS_CONFIGURATION.
+func FlightConfigured() bool {
+	return AviationKey(nil) != "" || AeroDataBoxKey() != ""
+}
+
+// AeroDataBoxKey returns the fallback flight credential from the
+// secrets-first product path (ProviderAPIKeys["aerodatabox"]) with the
+// AERODATABOX_API_KEY env developer fallback. Empty means the fallback
+// is skipped honestly (primary-only operation).
+func AeroDataBoxKey() string {
+	dirs := []string{}
+	if d := strings.TrimSpace(os.Getenv("GHOST_CONFIG_DIR")); d != "" {
+		dirs = append(dirs, d)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dirs = append(dirs, home+"/.config/ghost", home+"/.ghost")
+	}
+	dirs = append(dirs, "/var/lib/ghost/config", "./config")
+	for _, d := range dirs {
+		s, err := config.LoadSecrets(d + "/.secrets.json")
+		if err != nil || s == nil || s.ProviderAPIKeys == nil {
+			continue
+		}
+		if v := strings.TrimSpace(s.ProviderAPIKeys["aerodatabox"]); v != "" {
+			return v
+		}
+	}
+	return strings.TrimSpace(os.Getenv("AERODATABOX_API_KEY"))
+}
+// OpenWeatherKey returns the weather-fallback credential from the
+// secrets-first product path (ProviderAPIKeys["openweather"]) with the
+// OPENWEATHER_API_KEY env developer fallback. Empty means the fallback
+// is skipped honestly (primary-only operation).
+func OpenWeatherKey() string {
+	dirs := []string{}
+	if d := strings.TrimSpace(os.Getenv("GHOST_CONFIG_DIR")); d != "" {
+		dirs = append(dirs, d)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dirs = append(dirs, home+"/.config/ghost", home+"/.ghost")
+	}
+	dirs = append(dirs, "/var/lib/ghost/config", "./config")
+	for _, d := range dirs {
+		s, err := config.LoadSecrets(d + "/.secrets.json")
+		if err != nil || s == nil || s.ProviderAPIKeys == nil {
+			continue
+		}
+		if v := strings.TrimSpace(s.ProviderAPIKeys["openweather"]); v != "" {
+			return v
+		}
+	}
+	return strings.TrimSpace(os.Getenv("OPENWEATHER_API_KEY"))
+}
+
+// HassEndpoint returns the Home Assistant URL and token from the
+// secrets-first product path (empty when not connected — never fake).
+func HassEndpoint() (url, token string) {
+	return hassSecret("hass_url"), hassSecret("hass_token")
+}
+
 // HassConfigured reports whether Home Assistant credentials exist
 // (secrets-first via ProviderAPIKeys hass_url/hass_token, env fallback).
 func HassConfigured() bool {
