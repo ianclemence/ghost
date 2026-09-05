@@ -12,7 +12,6 @@
 - **[Mobile API Contract](docs/MOBILE_API.md)** — the stable backend surface the mobile app consumes.
 - **[Testing](docs/TESTING.md)** — how to test Ghost.
 - **[Connection Flow](docs/CONNECTION_FLOW.md)** — pairing and device connectivity.
-- **[Changelog](CHANGELOG.md)** — release history.
 
 For architecture details, see the source-level package documentation (pkg/*) and
 the key entry points: `pkg/agent`, `pkg/permissions`, `pkg/cevents`,
