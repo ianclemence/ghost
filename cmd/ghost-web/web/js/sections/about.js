@@ -5,7 +5,7 @@ async function loadAbout(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'About'));
-  head.appendChild(GhostUI.h('p', {}, 'The product behind your AI.'));
+  head.appendChild(GhostUI.h('p', {}, 'Your Ghost — who owns it, where it runs, and the open-source project behind it.'));
   container.appendChild(head);
 
   const [identityRes] = await Promise.allSettled([

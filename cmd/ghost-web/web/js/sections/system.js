@@ -5,7 +5,7 @@ async function loadSystem(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'System'));
-  head.appendChild(GhostUI.h('p', {}, 'The hardware and services your Ghost runs on.'));
+  head.appendChild(GhostUI.h('p', {}, 'The hardware and services your Ghost runs on — version, updates, diagnostics, and permissions.'));
   container.appendChild(head);
 
   const statusEl = GhostUI.h('div', { className: 'loading' }, GhostUI.h('span', {}, 'Reading system…'));
@@ -96,22 +96,6 @@ async function loadSystem(container) {
   perm.appendChild(permBody);
   container.appendChild(perm);
   loadPermissions(permBody, { embedded: true });
-
-  // Danger zone
-  const danger = GhostUI.h('div', { className: 'panel', style: 'border-color:var(--bad-soft)' });
-  const dk = GhostUI.h('div', { className: 'kv' });
-  dk.appendChild(kvRowBtn('Restart Ghost', 'Restarts the Ghost service. Use this first if Ghost seems stuck — it doesn\u2019t touch your memory or devices.', 'Restart', async () => {
-    if (!(await GhostUI.confirmModal('Restart Ghost?', 'Your Ghost will be offline for a few moments while it restarts. Your memory and settings are safe.', 'Restart Ghost'))) return;
-    try { await GhostAPI.post('/api/admin/ghost/restart'); GhostUI.toast('Ghost is restarting\u2026'); }
-    catch (e) { GhostUI.toast('Couldn\u2019t restart Ghost.', 'err'); }
-  }));
-  dk.appendChild(kvRowBtn('Reboot this device', 'Reboots the hardware Ghost runs on. Use only if something is wrong.', 'Reboot', async () => {
-    if (!(await GhostUI.confirmModal('Reboot this device?', 'Your Ghost will be offline for a minute or two while the device reboots.', 'Reboot device'))) return;
-    try { await GhostAPI.post('/api/admin/reboot'); GhostUI.toast('Rebooting…'); }
-    catch (e) { GhostUI.toast('Couldn\u2019t reboot.', 'err'); }
-  }));
-  danger.appendChild(dk);
-  container.appendChild(danger);
 }
 
 async function runUpdate(logBox, btn) {
@@ -156,15 +140,6 @@ function kvRow2(k, v, state) {
   const tr = GhostUI.h('div', { className: 'kv-val' });
   tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(state), v));
   r.appendChild(tr);
-  return r;
-}
-function kvRowBtn(k, sub, btnLabel, onClick) {
-  const r = GhostUI.h('div', { className: 'kv-row' });
-  const c = GhostUI.h('div', { className: 'ghost-row-content' });
-  c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, k));
-  c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub));
-  r.appendChild(c);
-  r.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-danger', onClick }, btnLabel));
   return r;
 }
 

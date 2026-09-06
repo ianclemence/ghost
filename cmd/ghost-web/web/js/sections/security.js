@@ -5,7 +5,7 @@ async function loadSecurity(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Security'));
-  head.appendChild(GhostUI.h('p', {}, 'Who can reach your Ghost.'));
+  head.appendChild(GhostUI.h('p', {}, 'Who can reach your Ghost, plus backups and recovery when something goes wrong.'));
   container.appendChild(head);
 
   // Active sessions
@@ -106,6 +106,38 @@ async function loadSecurity(container) {
   });
   panel.appendChild(pwBtn);
   container.appendChild(panel);
+
+  const rec = GhostUI.h('div', { className: 'panel' });
+  const recHead = GhostUI.h('div', { className: 'panel-head' });
+  const recTitle = GhostUI.h('div');
+  recTitle.appendChild(GhostUI.h('h2', {}, 'Recovery'));
+  recTitle.appendChild(GhostUI.h('p', {}, 'If Ghost seems stuck, restart it first \u2014 reboot the device only if it doesn\u2019t come back. Neither touches your memory or devices.'));
+  recHead.appendChild(recTitle);
+  rec.appendChild(recHead);
+  const recList = GhostUI.h('div', {});
+  recList.appendChild(recoveryRow('Restart Ghost', 'Restarts the Ghost service. Use this first if Ghost seems stuck \u2014 it doesn\u2019t touch your memory or devices.', 'Restart', async () => {
+    if (!(await GhostUI.confirmModal('Restart Ghost?', 'Your Ghost will be offline for a few moments while it restarts. Your memory and settings are safe.', 'Restart Ghost'))) return;
+    try { await GhostAPI.post('/api/admin/ghost/restart'); GhostUI.toast('Ghost is restarting\u2026'); }
+    catch (e) { GhostUI.toast('Couldn\u2019t restart Ghost.', 'err'); }
+  }));
+  recList.appendChild(recoveryRow('Reboot this device', 'Reboots the hardware Ghost runs on. Use only if something is wrong.', 'Reboot', async () => {
+    if (!(await GhostUI.confirmModal('Reboot this device?', 'Your Ghost will be offline for a minute or two while the device reboots.', 'Reboot device'))) return;
+    try { await GhostAPI.post('/api/admin/reboot'); GhostUI.toast('Rebooting\u2026'); }
+    catch (e) { GhostUI.toast('Couldn\u2019t reboot.', 'err'); }
+  }));
+  rec.appendChild(recList);
+  container.appendChild(rec);
+}
+
+function recoveryRow(k, sub, btnLabel, onClick) {
+  const r = GhostUI.h('div', { className: 'ghost-row' });
+  const c = GhostUI.h('div', { className: 'ghost-row-content' });
+  c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, k));
+  c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub));
+  r.appendChild(c);
+  r.appendChild(GhostUI.h('div', { className: 'ghost-row-trailing' },
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-danger', onClick }, btnLabel)));
+  return r;
 }
 
 function securityKv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }

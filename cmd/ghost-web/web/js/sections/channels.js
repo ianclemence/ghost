@@ -6,7 +6,7 @@ async function loadChannels(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Channels'));
-  head.appendChild(GhostUI.h('p', {}, 'How Ghost reaches you.'));
+  head.appendChild(GhostUI.h('p', {}, 'Connect the apps where Ghost reaches you — Telegram, Discord, Slack, WhatsApp, Email, or Ghost Mobile.'));
   container.appendChild(head);
 
   const panel = GhostUI.h('div', { className: 'panel' });

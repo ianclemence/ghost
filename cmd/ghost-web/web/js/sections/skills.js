@@ -6,7 +6,7 @@ async function loadSkills(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Skills'));
-  head.appendChild(GhostUI.h('p', {}, 'What Ghost knows how to do.'));
+  head.appendChild(GhostUI.h('p', {}, 'What Ghost knows how to do — enable, disable, or install skills.'));
   container.appendChild(head);
 
   const installBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showInstall() }, 'Install skill');

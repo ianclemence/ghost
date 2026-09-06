@@ -5,7 +5,7 @@ async function loadMemory(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Memory'));
-  const sub = GhostUI.h('p', {}, 'What Ghost remembers about you.');
+  const sub = GhostUI.h('p', {}, 'Facts Ghost has learned about you, plus a search over past conversations.');
   head.appendChild(sub);
   container.appendChild(head);
 

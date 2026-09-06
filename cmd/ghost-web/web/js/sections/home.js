@@ -37,7 +37,7 @@ async function loadHome(container) {
   const activitySection = GhostUI.h('section', { className: 'home-section home-activity', 'aria-labelledby': 'home-activity-title' });
   const activityHead = GhostUI.h('div', { className: 'home-section-head' });
   activityHead.appendChild(GhostUI.h('h2', { className: 'home-section-title', id: 'home-activity-title' }, 'Recent activity'));
-  const viewAll = GhostUI.h('button', { className: 'home-link', type: 'button', onClick: () => GhostApp.navigate('activity') }, 'View all  \u2192');
+  const viewAll = GhostUI.h('button', { className: 'home-link', type: 'button', onClick: () => GhostApp.navigate('conversations') }, 'View all  \u2192');
   activityHead.appendChild(viewAll);
   activitySection.appendChild(activityHead);
   const activityBody = GhostUI.h('div', { className: 'home-activity-body', 'aria-busy': 'true' });
@@ -109,7 +109,7 @@ function recoveryModal() {
   body.appendChild(GhostUI.h('p', {}, 'If your Ghost ever seems stuck, try these in order. Recovery never touches your memories, skills, or settings \u2014 those stay on the device.'));
   const list = GhostUI.h('ol', { style: 'margin:var(--s-3) 0;padding-left:var(--s-5)' });
   const steps = [
-    'Restart Ghost  \u2014  open the System section and choose “Restart Ghost”. This fixes most hiccups and takes a few moments.',
+    'Restart Ghost  \u2014  open the Security section and choose “Restart Ghost”. This fixes most hiccups and takes a few moments.',
     'Still stuck?  Restart this device  \u2014  the hardware Ghost runs on. A minute or two of downtime is normal.',
     'If everything else fails, your backup is the safety net  \u2014  download it from the Security section, and you can bring your Ghost back from it.',
   ];

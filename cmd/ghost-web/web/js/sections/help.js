@@ -5,7 +5,7 @@ async function loadHelp(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Help'));
-  head.appendChild(GhostUI.h('p', {}, 'How Ghost works.'));
+  head.appendChild(GhostUI.h('p', {}, 'Guidance on what Ghost does and how to use it.'));
   container.appendChild(head);
 
   const prose = GhostUI.h('div', { className: 'panel prose' });

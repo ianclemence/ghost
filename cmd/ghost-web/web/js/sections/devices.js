@@ -5,7 +5,7 @@ async function loadDevices(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Devices'));
-  head.appendChild(GhostUI.h('p', {}, 'Phones and other devices that can reach Ghost.'));
+  head.appendChild(GhostUI.h('p', {}, 'Phones paired with your Ghost — add a new one or remove one.'));
   container.appendChild(head);
 
   GhostApp.setActions(null);

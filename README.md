@@ -112,17 +112,19 @@ take care of Ghost.
   - **Home** — is Ghost okay, what has it been doing, does it need you
   - **AI** — local and cloud intelligence, model management, routing
   - **Memory** — browse, search, and manage what Ghost remembers
-  - **Activity** — timeline of conversations, automations, memory writes
+  - **Conversations** — past chats with Ghost
+  - **Routines** — recurring instructions you give in chat (“every Monday at 9…”) that Ghost runs like a conversation
   - **Automations** — scheduled tasks (briefings, research, check-ins)
   - **Skills** — installed capabilities, enable/disable, install from GitHub
 
   **Connections** — how Ghost reaches people and services:
   - **Devices** — paired phones, secure QR pairing flow
   - **Channels** — Telegram, Discord, Slack, WhatsApp, and Email configuration
+  - **Integrations** — optional service connections
 
   **System** — how Ghost itself is maintained:
-  - **System** — hardware, services, updates, diagnostics
-  - **Security** — owner password, active sessions, backups, failed sign-in visibility
+  - **System** — hardware, services, updates, diagnostics, permissions
+  - **Security** — owner password, active sessions, failed sign-in visibility, backups, recovery
   - **Help** — guidance for what Ghost actually does
   - **About** — version and product information
 

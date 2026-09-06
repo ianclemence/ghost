@@ -448,40 +448,6 @@
   .home-status-summary { grid-template-columns: 1fr; }
 }
 
-/* ── Timeline (Activity) ── */
-.timeline {
-  display: flex;
-  flex-direction: column;
-}
-.tl-day {
-  font-size: var(--t-micro);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  margin: var(--s-7) 0 var(--s-2);
-  font-weight: 600;
-}
-.tl-item {
-  display: flex;
-  gap: var(--s-3);
-  padding: var(--s-2) 0;
-}
-.tl-time {
-  width: 56px;
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--t-foot);
-  color: var(--ink-faint);
-  padding-top: var(--s-0);
-}
-.tl-body { flex: 1; min-width: 0; }
-.tl-title { font-weight: 540; }
-.tl-meta {
-  font-size: var(--t-foot);
-  color: var(--ink-faint);
-  margin-top: var(--s-0);
-}
-
 /* ── Filter chips ── */
 .chips {
   display: flex;
@@ -731,7 +697,8 @@
    Scoped by id so other sections that use .ghost-list keep their dividers. */
 #mem-list > * + *,
 #skill-list > * + *,
-#recall-list > * + * {
+#recall-list > * + *,
+#conv-list > * + * {
   border-top: 0;
 }
 
@@ -749,4 +716,8 @@
 }
 .recall-msg .markdown-body { color: var(--ink-soft); }
 
-
+.perm-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+#perm-grants { margin-top: var(--s-6); }

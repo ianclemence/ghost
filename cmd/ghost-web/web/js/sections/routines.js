@@ -2,10 +2,11 @@
 'use strict';
 
 async function loadRoutines(container) {
+  if (GhostApp.currentSection() !== 'routines') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Routines'));
-  head.appendChild(GhostUI.h('p', {}, 'Persistent instructions Ghost carries out on schedule — through the same runtime as chat.'));
+  head.appendChild(GhostUI.h('p', {}, 'Recurring tasks Ghost runs for you on a schedule — pause, resume, or cancel them here.'));
   container.appendChild(head);
 
   const newBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showCreateRoutine(container, refresh) }, 'New routine');
@@ -92,5 +93,4 @@ function showCreateRoutine(container, refresh) {
   ]);
 }
 
-/* Routines now live inside the Activity section; loadRoutines renders
-   into whatever container the Activity sub-tab provides. */
+GhostApp.registerSection('routines', loadRoutines);

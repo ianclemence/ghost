@@ -2,10 +2,11 @@
 'use strict';
 
 async function loadAutomations(container) {
+  if (GhostApp.currentSection() !== 'automations') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Things Ghost Will Do'));
-  head.appendChild(GhostUI.h('p', {}, 'Scheduled actions, reminders, and automations.'));
+  head.appendChild(GhostUI.h('p', {}, 'Create and manage the scheduled things Ghost does for you — reminders, briefings, and check-ins.'));
   container.appendChild(head);
 
   const newBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showCreate(container) }, 'New scheduled item');
@@ -341,5 +342,4 @@ function parseScheduleInput(text, kind) {
   return { kind: 'at', at: new Date(text).toISOString() };
 }
 
-/* Automations now live inside the Activity section; loadAutomations
-   renders into whatever container the Activity sub-tab provides. */
+GhostApp.registerSection('automations', loadAutomations);
