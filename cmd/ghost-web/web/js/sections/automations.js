@@ -5,7 +5,7 @@ async function loadAutomations(container) {
   if (GhostApp.currentSection() !== 'automations') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
-  head.appendChild(GhostUI.h('h1', {}, 'Things Ghost Will Do'));
+  head.appendChild(GhostUI.h('h1', {}, 'Automations'));
   head.appendChild(GhostUI.h('p', {}, 'Create and manage the scheduled things Ghost does for you — reminders, briefings, and check-ins.'));
   container.appendChild(head);
 
