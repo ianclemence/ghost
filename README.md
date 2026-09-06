@@ -1,235 +1,47 @@
 # Ghost
 
-> **Your AI. Your Memory. Your Machine.**  
+> **Your AI. Your Memory. Your Machine.**
 > *A personal AI that belongs to you — it lives on your hardware, remembers you, and works for you.*
-
----
-
-## Documentation
-
-- **[Roadmap & Status](docs/ROADMAP.md)** — what is complete, current status, and the next direction.
-- **[Product Strategy](docs/PRODUCT.md)** — product framing (kept for history).
-- **[Mobile API Contract](docs/MOBILE_API.md)** — the stable backend surface the mobile app consumes.
-- **[Testing](docs/TESTING.md)** — how to test Ghost.
-- **[Connection Flow](docs/CONNECTION_FLOW.md)** — pairing and device connectivity.
-
-For architecture details, see the source-level package documentation (pkg/*) and
-the key entry points: `pkg/agent`, `pkg/permissions`, `pkg/cevents`,
-`pkg/activity`, `pkg/credentials`, `pkg/routines`, `pkg/contexts`,
-`pkg/providers`, `pkg/golden`, `pkg/verify`, `pkg/bench`.
 
 ---
 
 ## What is Ghost?
 
-> **Your AI. Your memory. Your machine.**
+Ghost is a **local-first personal AI appliance**: one persistent entity on
+hardware you own. It remembers you, understands natural language, acts through
+capabilities, asks permission before consequential actions, runs routines, and
+reports what it actually did.
 
-Ghost is a **local-first personal AI appliance** that gives one person a persistent
-AI entity living on hardware they own. It remembers you, understands natural
-language, acts through capabilities, asks permission before consequential
-actions, runs routines, keeps contexts separate, and reports what it actually
-did. Ghost runs on your machine — the model is an interchangeable intelligence
-engine behind it, never the owner of your data or the authority over your
-actions.
-
-The most important design principle:
-
-> **The model is not the authority.** Runtime execution evidence decides whether
-> an action actually happened. A model saying "Done" is a claim, not proof.
-
-User request → Ghost → intent/memory/context → permission broker → capability
-execution → **runtime evidence** → canonical events/activity → response.
-
-Ghost is **local-first**: memory, permissions, identity, routines, and control
-stay on the appliance. Cloud models are optional intelligence providers. Offline,
-local capabilities (memory recall, conversation, permissions, routines whose
-capabilities are local) keep working, and network capabilities fail honestly.
-
-Under the hood:
-
-- **Deterministic runtime** — intent → capability → permission → execution →
-  evidence, with no bypass allowed and no fake success.
-- **One persistent entity** — identity, memory, capabilities, permissions,
-  routines, activity all belong to one Ghost, not to a chat session.
-- **Model-agnostic** — the same Ghost runs on local (Ollama) and cloud
-  (DeepSeek, Anthropic, OpenAI, and others) models; evaluation is model-agnostic.
-
----
-
-## Runtime & governance architecture
-
-```
-                        GHOST (persistent entity)
-        identity · owner · primary agent (+ future kinds)
-                          │
-         ┌────────────────┼─────────────────┐
-         │                │                 │
-      BRAIN           MEMORY            PERSONAL MODEL
-  local/cloud      SQLite + RAG       append-only, temporal
-    providers          │                 supersede/confidence
-         └──────────────┼─────────────────┘
-                        │
-                  CAPABILITIES
-              runtime-registered · risk-declared
-                        │
-                PERMISSION BROKER
-              ALLOW / ASK / DENY · durable · scoped
-                        │
-                  EXECUTION
-              deterministic dispatch + tool runtime
-                        │
-               CANONICAL EVENTS   (evidence, redacted)
-                        │
-          ┌─────────────┼──────────────┐
-        ACTIVITY      CHAT/SSE      ROUTINES / VOICE / DEVICES
-```
-
-Key components, as implemented today:
-
-- **Agent runtime** — the loop that owns every turn. It selects the capability,
-  enforces readiness, gates consequential tools on the permission broker, runs
-  tools, validates results, and emits canonical events. The model explains; the
-  runtime proves.
-- **Deterministic dispatch** — unambiguous current-conditions requests
-  (weather/AQI/flight) execute the provider-backed tool directly and return
-  validated output, so the model can never invent live data. Forecasts and
-  unsupported asks are answered honestly, never fabricated.
-- **Providers** — interchangeable intelligence engines (local Ollama or cloud)
-  behind one provider abstraction, with fallback, bounded retries, circuit
-  breaking, and honest unavailability.
-- **Memory + RAG** — durable structured memory with retrieval, context scoping,
-  and RAG over the local store. Ghost retrieves what it knows rather than
-  expecting the model to remember you.
-- **Permission broker** — consequential actions are centrally authorized
-  (allow once / always allow scoped / deny / revoke). The model cannot grant
-  itself permission.
-- **Canonical events** — every meaningful action emits an event
-  (identity/correlation/order/visibility/redaction). Events are evidence and
-  history; replay never re-executes side effects.
-- **Activity** — a human-safe projection of events ("Checked your calendar",
-  "Waiting for approval") — never raw tool names or internal artifacts.
-- **Contexts** — scoped environments (personal/work/project) that isolate
-  memory and capabilities; a model can never read another context's private
-  data.
-- **Routines** — durable scheduled work through the same capability →
-  permission → execution → evidence pipeline as chat.
-- **Voice** — a channel into the same runtime (push-to-talk), never a separate
-  brain.
-- **Devices / Home Assistant** — device control is capability + permission
-  governed; no unrestricted shell.
-- **Appliance** — idempotent setup/provisioning, canonical health, backups that
-  exclude secrets, and a hardware-aware defaults model.
-
----
-
-## What Ghost is NOT
-
-- not merely a chatbot frontend
-- not merely Ollama (or any single model)
-- not an LLM training framework
-- not a cloud-only assistant
-- not a collection of independent agents
-- not a system where the model has unrestricted authority
-
----
-
-## Intelligence model
-
-Ghost exposes a small user-facing control — **Local / Hybrid / Cloud** — and the
-runtime derives the details (which model, fallbacks, context sizes, retries)
-from your hardware and configuration. RAG is always enabled. You choose an
-outcome; Ghost chooses the implementation. No need to configure temperature,
-top-p, quantization, or routing tables.
+The core rule: **the model is not the authority.** Runtime execution evidence
+decides whether an action happened — a model saying "Done" is a claim, not
+proof. Memory, permissions, identity, and control stay on the appliance; cloud
+models are optional intelligence providers, and offline-local capabilities keep
+working when the network does not.
 
 ---
 
 ## Core features
 
-- Local-first appliance (Raspberry Pi 5 8 GB reference; RK1/x86 supported)
-- Persistent memory with RAG and context isolation
-- Natural-language memory, correction, and deterministic recall
-- Consequential actions governed by the permission broker
-- Deterministic capability dispatch — no fabricated live data
-- Canonical event evidence with user-safe activity
+- Persistent memory with retrieval and context isolation
+- Consequential actions governed by a permission broker (the model can't self-grant)
+- Deterministic capability execution — no fabricated live data
 - Durable routines with duplicate prevention and idempotency
-- Contexts (personal/work/project) with real isolation
-- Provider fallback, bounded retries, circuit breaking, caching
+- Canonical event evidence with user-safe activity
+- Provider fallback, retries, circuit breaking, honest unavailability
+- Credential vault with redaction and backup exclusion
 - Offline-honest behaviour
-- Credential vault: secrets-first, redacted, excluded from backups
 - `ghost verify`, `ghost benchmark`, and the Golden Conversation Suite
-- Model-agnostic; evaluated against multiple providers
-
-## Security Architecture
-
-Ghost uses a layered security model designed for a self-hosted appliance.
-
-Consequential actions pass through the **Permission Broker**; secrets live behind
-a **credential vault** boundary (write-only from the UI, presence-only in
-events); events/activity/API/logs/backups are redacted by construction; and
-context isolation is enforced at retrieval and execution — not by prompts.
-
-### Authentication
-
-| Mechanism | Purpose | Used By |
-|-----------|---------|---------|
-| Owner password | Protects the Web Console | Web browser (session cookie) |
-| Device credential | Authenticates mobile app and API access | Mobile app, CLI tools |
-
-### Secrets Storage
-
-| Secret | Location | Permissions |
-|--------|----------|-------------|
-| Admin password | `/var/ghost/data/admin.hash` | `0600` |
-| API keys, channel tokens | `/var/ghost/config/.secrets.json` | `0600` |
-| Device credentials | SQLite database | Database-level |
-| Pairing tokens | SQLite database | Database-level |
-
-Credential rules enforced at runtime:
-
-- secrets are never printed, logged, serialized to events/SSE/activity/APIs, or
-  archived in backups (backup walkers use the centralized exclusion boundary)
-- OAuth credentials are stored on the appliance and only their presence/state is
-  exposed; tokens never travel to the UI or the model
-- the model cannot read, grant, or revoke permissions
-
-### How Pairing Works
-
-1. Owner opens admin dashboard → Devices → "Connect another device"
-2. Web UI generates a QR code (`ghost://pair?v=1&pod=...&token=...`)
-3. Mobile app scans QR code (token expires in 5 minutes)
-4. Ghost validates token (atomic delete to prevent replay)
-5. Ghost issues a unique device credential (shown once, stored in SecureStore)
-6. All future requests use `X-Ghost-Device-ID` + `X-Ghost-Credential` headers
-
-After pairing, the QR token disappears from the equation. Each device gets its own unique credential.
-
-### Gateway Binding
-
-The gateway listens on the LAN (`0.0.0.0:8766`) with a layered trust model. Loopback peers (web proxy, relay client, TUI dashboard) are trusted and need no credential headers. Other machines on the network must present valid per-device credentials on every request — unauthenticated LAN requests are rejected with structured errors. The only credential-free endpoint is pairing redemption, where the short-lived single-use token is the authorization. The relay server forwards remote app traffic to the gateway via localhost on the device.
-
-### Directory Permissions
-
-| Directory | Permissions | Contents |
-|-----------|-------------|----------|
-| `/var/ghost/` | `0700` | Ghost installation root |
-| `/var/ghost/config/` | `0700` | Configuration and secrets |
-| `/var/ghost/data/` | `0700` | Admin password hash, metadata |
-| `/var/ghost/workspace/` | `0755` | Skills, memory, sessions |
 
 ---
 
-## Hardware
+## How it works
 
-Ghost runs on any Linux device and is not tied to any particular board. Think of
-it as a **control plane** (a Raspberry Pi 5, RK1, or similar always-on device that
-hosts Ghost's memory, identity, and automations) with optional **compute** attached
-(x86 mini-PC, NPU, or GPU for heavier local models). Recommended for the control
-plane: **RK1 (16 GB)** for built-in NPU acceleration.
+User request → Ghost → intent/memory/context → permission broker → capability
+execution → **runtime evidence** → events/activity → response.
 
-Your Ghost's identity lives in the software, not the hardware — upgrade your box
-and your Ghost moves with you.
-
-See the [Roadmap](docs/ROADMAP.md) for supported hardware, capability tiers, and minimum requirements.
+You choose an outcome — **Local / Hybrid / Cloud** — and the runtime derives the
+details (models, fallbacks, context sizes). RAG is always enabled. You never need
+to configure temperature, top-p, quantization, or routing tables.
 
 ---
 
@@ -574,6 +386,65 @@ This starts a web UI at `http://127.0.0.1:8766` (localhost only) with:
 **Security note:** Recovery mode is bound to `127.0.0.1` — it cannot be accessed from other devices on the network. This ensures only someone with physical access to the device can use recovery.
 
 The recovery server auto-shuts down after 15 minutes.
+
+---
+
+## Security Architecture
+
+Ghost uses a layered security model designed for a self-hosted appliance.
+
+Consequential actions pass through the **Permission Broker**; secrets live behind
+a **credential vault** boundary (write-only from the UI, presence-only in
+events); events/activity/API/logs/backups are redacted by construction; and
+context isolation is enforced at retrieval and execution — not by prompts.
+
+### Authentication
+
+| Mechanism | Purpose | Used By |
+|-----------|---------|---------|
+| Owner password | Protects the Web Console | Web browser (session cookie) |
+| Device credential | Authenticates mobile app and API access | Mobile app, CLI tools |
+
+### Secrets Storage
+
+| Secret | Location | Permissions |
+|--------|----------|-------------|
+| Admin password | `/var/ghost/data/admin.hash` | `0600` |
+| API keys, channel tokens | `/var/ghost/config/.secrets.json` | `0600` |
+| Device credentials | SQLite database | Database-level |
+| Pairing tokens | SQLite database | Database-level |
+
+Credential rules enforced at runtime:
+
+- secrets are never printed, logged, serialized to events/SSE/activity/APIs, or
+  archived in backups (backup walkers use the centralized exclusion boundary)
+- OAuth credentials are stored on the appliance and only their presence/state is
+  exposed; tokens never travel to the UI or the model
+- the model cannot read, grant, or revoke permissions
+
+### How Pairing Works
+
+1. Owner opens admin dashboard → Devices → "Connect another device"
+2. Web UI generates a QR code (`ghost://pair?v=1&pod=...&token=...`)
+3. Mobile app scans QR code (token expires in 5 minutes)
+4. Ghost validates token (atomic delete to prevent replay)
+5. Ghost issues a unique device credential (shown once, stored in SecureStore)
+6. All future requests use `X-Ghost-Device-ID` + `X-Ghost-Credential` headers
+
+After pairing, the QR token disappears from the equation. Each device gets its own unique credential.
+
+### Gateway Binding
+
+The gateway listens on the LAN (`0.0.0.0:8766`) with a layered trust model. Loopback peers (web proxy, relay client, TUI dashboard) are trusted and need no credential headers. Other machines on the network must present valid per-device credentials on every request — unauthenticated LAN requests are rejected with structured errors. The only credential-free endpoint is pairing redemption, where the short-lived single-use token is the authorization. The relay server forwards remote app traffic to the gateway via localhost on the device.
+
+### Directory Permissions
+
+| Directory | Permissions | Contents |
+|-----------|-------------|----------|
+| `/var/ghost/` | `0700` | Ghost installation root |
+| `/var/ghost/config/` | `0700` | Configuration and secrets |
+| `/var/ghost/data/` | `0700` | Admin password hash, metadata |
+| `/var/ghost/workspace/` | `0755` | Skills, memory, sessions |
 
 ---
 
