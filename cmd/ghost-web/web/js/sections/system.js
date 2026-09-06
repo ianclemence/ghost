@@ -84,6 +84,19 @@ async function loadSystem(container) {
   container.appendChild(diag);
   runDiag(diagBody);
 
+  // Permissions — what Ghost is allowed to do (embedded, same data and
+  // actions as the standalone permissions screen used to show).
+  const perm = GhostUI.h('div', { className: 'panel' });
+  const permHead = GhostUI.h('div', { className: 'panel-head' });
+  const permText = GhostUI.h('div');
+  permText.appendChild(GhostUI.h('h2', {}, 'Permissions'));
+  permHead.appendChild(permText);
+  perm.appendChild(permHead);
+  const permBody = GhostUI.h('div', {});
+  perm.appendChild(permBody);
+  container.appendChild(perm);
+  loadPermissions(permBody, { embedded: true });
+
   // Danger zone
   const danger = GhostUI.h('div', { className: 'panel', style: 'border-color:var(--bad-soft)' });
   const dk = GhostUI.h('div', { className: 'kv' });

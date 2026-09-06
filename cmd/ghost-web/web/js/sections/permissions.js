@@ -1,13 +1,15 @@
 /* Ghost Section: Permissions — what Ghost is allowed to do. */
 'use strict';
 
-async function loadPermissions(container) {
-  if (GhostApp.currentSection() !== 'permissions') return;
+async function loadPermissions(container, opts) {
+  const embedded = !!(opts && opts.embedded);
   container.innerHTML = '';
-  const head = GhostUI.h('div', { className: 'page-head' });
-  head.appendChild(GhostUI.h('h1', {}, 'Permissions'));
-  head.appendChild(GhostUI.h('p', {}, 'Consequential actions ask first. Standing permissions live here — revoke any time.'));
-  container.appendChild(head);
+  if (!embedded) {
+    const head = GhostUI.h('div', { className: 'page-head' });
+    head.appendChild(GhostUI.h('h1', {}, 'Permissions'));
+    head.appendChild(GhostUI.h('p', {}, 'Consequential actions ask first. Standing permissions live here — revoke any time.'));
+    container.appendChild(head);
+  }
 
   const pendingEl = GhostUI.h('div', { className: 'ghost-list', id: 'perm-pending' });
   pendingEl.appendChild(GhostUI.loading('Checking for approval requests…'));
@@ -90,4 +92,5 @@ function paintGrants(el, grants, refresh) {
   });
 }
 
-GhostApp.registerSection('permissions', loadPermissions);
+/* Permissions now live inside the System section; loadPermissions renders
+   into whatever container it is given (embedded skips the page head). */

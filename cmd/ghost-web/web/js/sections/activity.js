@@ -8,6 +8,41 @@ async function loadActivity(container) {
   head.appendChild(GhostUI.h('p', {}, 'A record of what Ghost has done on your behalf.'));
   container.appendChild(head);
 
+  const tabs = [
+    { key: 'timeline', label: 'Timeline' },
+    { key: 'routines', label: 'Routines' },
+    { key: 'automations', label: 'Automations' },
+  ];
+  let activeTab = 'timeline';
+
+  const tabRow = GhostUI.h('div', { className: 'chips' });
+  const bodyWrap = GhostUI.h('div', { id: 'act-body' });
+  container.appendChild(tabRow);
+  container.appendChild(bodyWrap);
+
+  function showTab(key) {
+    activeTab = key;
+    tabRow.querySelectorAll('.chip').forEach(x => x.classList.toggle('active', x.dataset.tab === key));
+    // Fresh inner div per tab so in-flight fetches from the previous tab
+    // find their elements detached and bail instead of painting stale UI.
+    bodyWrap.innerHTML = '';
+    const body = GhostUI.h('div', {});
+    bodyWrap.appendChild(body);
+    if (key === 'routines') { loadRoutines(body); return; }
+    if (key === 'automations') { loadAutomations(body); return; }
+    renderTimeline(body);
+  }
+
+  tabs.forEach(t => {
+    const c = GhostUI.h('button', { className: 'chip' + (t.key === activeTab ? ' active' : ''), onClick: () => showTab(t.key) }, t.label);
+    c.dataset.tab = t.key;
+    tabRow.appendChild(c);
+  });
+  showTab('timeline');
+}
+
+async function renderTimeline(container) {
+
   const filters = [
     { key: 'all', label: 'All' },
     { key: 'messages', label: 'Messages' },
