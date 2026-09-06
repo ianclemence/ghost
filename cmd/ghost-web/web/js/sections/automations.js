@@ -289,7 +289,7 @@ function showCreate(container) {
   // Deliver to
   const deliverField = GhostUI.h('div', { className: 'field' });
   deliverField.appendChild(GhostUI.h('label', {}, 'Deliver to (optional)'));
-  const channelInput = GhostUI.input('e.g. telegram, discord, mobile'));
+  const channelInput = GhostUI.input('e.g. telegram, discord, mobile');
   deliverField.appendChild(channelInput);
   panel.appendChild(deliverField);
 
