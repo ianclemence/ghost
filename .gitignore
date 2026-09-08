@@ -20,6 +20,7 @@ build/
 tmp/
 ghost.service
 ghost-web.service
+ghost-stt.service
 
 # Coverage
 coverage.txt

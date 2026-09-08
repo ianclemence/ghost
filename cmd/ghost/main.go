@@ -201,6 +201,8 @@ func main() {
 		cronCmd()
 	case "mcp":
 		mcpCmd()
+	case "stt":
+		sttCmd()
 	case "skills":
 		if len(os.Args) < 3 {
 			skillsHelp()
@@ -294,6 +296,7 @@ func printHelp() {
 	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
+	fmt.Println("  stt         Manage local speech-to-text (setup, status)")
 	fmt.Println("  state       Export, import, or inspect Ghost State archives")
 	fmt.Println("  relay       Manage relay connection (run, pair, clients)")
 	fmt.Println("  verify      Run appliance verification (real product checks)")
@@ -963,12 +966,14 @@ func gatewayCmd() {
 
 	var transcriber voice.Transcriber
 	if !apiOnly {
-		if cfg.Providers.Moonshot.APIKey != "" {
-			transcriber = voice.NewMoonshotTranscriber(cfg.Providers.Moonshot.APIKey)
-			logger.InfoC("voice", "Kimi voice transcription enabled")
-		} else if cfg.Providers.Groq.APIKey != "" {
-			transcriber = voice.NewGroqTranscriber(cfg.Providers.Groq.APIKey)
-			logger.InfoC("voice", "Groq voice transcription enabled")
+		transcriber = voice.SelectTranscriber(voice.SelectConfig{
+			Engine:      cfg.STT.Engine,
+			LocalURL:    voice.LocalBaseURL(cfg.STT.Port),
+			MoonshotKey: cfg.Providers.Moonshot.APIKey,
+			GroqKey:     cfg.Providers.Groq.APIKey,
+		})
+		if transcriber != nil {
+			logger.InfoC("voice", "Voice transcription enabled ("+voice.DescribeTranscriber(transcriber)+")")
 		}
 
 		if transcriber != nil {

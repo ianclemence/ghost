@@ -18,13 +18,13 @@ type Engine struct {
 	Speak      func(ctx context.Context, text string) (audio []byte, mime string, err error)
 }
 
-// EngineFromEnv builds the engine from server configuration: Groq key
-// for recognition, edge-tts binary for synthesis. Either may be absent
-// (honest unavailability per direction).
-func EngineFromEnv(groqKey string) *Engine {
+// EngineFromEnv builds the engine from server configuration: local
+// sidecar first with cloud fallback for recognition, edge-tts binary for
+// synthesis. Either may be absent (honest unavailability per direction).
+func EngineFromEnv(cfg SelectConfig) *Engine {
 	e := &Engine{}
-	if groqKey != "" {
-		e.Recognizer = NewFileTranscriberAdapter(NewGroqTranscriber(groqKey))
+	if t := SelectTranscriber(cfg); t != nil {
+		e.Recognizer = NewFileTranscriberAdapter(t)
 	}
 	if _, err := exec.LookPath("edge-tts"); err == nil {
 		e.Speak = edgeTTSSpeak

@@ -186,6 +186,16 @@ install-ghost: build-ghost
 		-e "s|__BIN_DIR__|/usr/local/bin|g" \
 		ghost-web.service.template > ghost-web.service
 	@sudo cp ghost-web.service /etc/systemd/system/ghost-web.service
+	@# Install local speech-to-text sidecar service
+	@sed \
+		-e "s|__BIN_DIR__|/usr/local/bin|g" \
+		-e "s|__MODELS_DIR__|/var/ghost/models|g" \
+		-e "s|__PORT__|11435|g" \
+		ghost-stt.service.template > ghost-stt.service
+	@sudo cp ghost-stt.service /etc/systemd/system/ghost-stt.service
+	@sudo mkdir -p /var/ghost/models
+	@# Provision the sidecar binary + speech model (best effort: cloud STT stays as fallback)
+	@$(BINARY_PATH) stt setup || echo "WARNING: local speech-to-text provisioning failed; cloud transcription remains available"
 	@# Install main ghost service
 	@sed \
 		-e "s|__USER__|$(USER)|g" \
@@ -201,10 +211,12 @@ install-ghost: build-ghost
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable ghost-web
 	@sudo systemctl enable ghost
+	@sudo systemctl enable ghost-stt
 	@sudo systemctl restart ghost 2>/dev/null || true
 	@sudo systemctl restart ghost-web 2>/dev/null || true
+	@sudo systemctl restart ghost-stt 2>/dev/null || true
 	@# Restore repo ownership to the developer user
-	@sudo chown -R $(shell stat -c '%U' .):$(shell stat -c '%G' .) $(BUILD_DIR) $(CMD_DIR)/workspace ghost.service ghost-web.service 2>/dev/null || true
+	@sudo chown -R $(shell stat -c '%U' .):$(shell stat -c '%G' .) $(BUILD_DIR) $(CMD_DIR)/workspace ghost.service ghost-web.service ghost-stt.service 2>/dev/null || true
 	@echo "Ghost installed"
 	@if [ ! -f /var/ghost/.setup-complete ]; then echo "Run 'sudo systemctl start ghost-web' to begin setup now"; echo "Or reboot to start setup automatically"; fi
 

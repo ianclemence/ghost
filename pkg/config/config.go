@@ -58,7 +58,16 @@ type Config struct {
 	Nudge       NudgeConfig       `json:"nudge"`
 	Personality PersonalityConfig `json:"personality"`
 	Toolsets    ToolsetsConfig    `json:"toolsets"`
+	STT         STTConfig         `json:"stt"`
 	mu          sync.RWMutex
+}
+
+// STTConfig controls speech-to-text engine selection. The local
+// whisper-server sidecar is tried first ("auto"); cloud keys are only
+// a fallback, and "off" disables voice input entirely.
+type STTConfig struct {
+	Engine string `json:"engine" env:"GHOST_STT_ENGINE"` // auto|local|groq|moonshot|off
+	Port   int    `json:"port" env:"GHOST_STT_PORT"`     // sidecar loopback port
 }
 
 type SkillsConfig struct {
@@ -412,6 +421,10 @@ func DefaultConfig() *Config {
 		Gateway: GatewayConfig{
 			Host: "0.0.0.0",
 			Port: 8766,
+		},
+		STT: STTConfig{
+			Engine: "auto",
+			Port:   11435,
 		},
 		Relay: RelayConfig{
 			Enabled:      false,

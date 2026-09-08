@@ -3312,7 +3312,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
 			return
 		}
-		engine := voice.EngineFromEnv(agentLoop.Config().Providers.Groq.APIKey)
+		gcfg := agentLoop.Config()
+		engine := voice.EngineFromEnv(voice.SelectConfig{
+			Engine:      gcfg.STT.Engine,
+			LocalURL:    voice.LocalBaseURL(gcfg.STT.Port),
+			MoonshotKey: gcfg.Providers.Moonshot.APIKey,
+			GroqKey:     gcfg.Providers.Groq.APIKey,
+		})
 		if !engine.InputAvailable() {
 			jsonError(w, http.StatusServiceUnavailable, "voice_unavailable", "Voice input isn't set up yet.")
 			return
