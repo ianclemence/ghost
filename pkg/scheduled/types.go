@@ -98,7 +98,7 @@ type ScheduledItem struct {
 	DeliveryMode DeliveryMode `json:"delivery_mode"`
 
 	// Metadata
-	Source    string    `json:"source"`    // "user", "system", "proactive"
+	Source    string    `json:"source"`    // "user", "routine", "system", "proactive", "migration"
 	CreatedBy string    `json:"created_by"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

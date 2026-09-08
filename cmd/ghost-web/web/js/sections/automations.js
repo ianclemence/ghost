@@ -19,7 +19,7 @@ async function loadAutomations(container) {
   container.appendChild(listEl);
 
   let res;
-  try { res = await GhostAPI.proxyGet('/v1/scheduled'); }
+  try { res = await GhostAPI.proxyGet('/v1/scheduled?exclude_source=routine'); }
   catch (e) {
     if (!document.body.contains(container)) return;
     listEl.innerHTML = '';

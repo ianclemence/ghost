@@ -2140,14 +2140,16 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 
 		switch r.Method {
 		case http.MethodGet:
-			// List scheduled items
+			// List scheduled items. exclude_source optionally omits one
+			// source (e.g. routines) so product surfaces stay disjoint.
 			itemType := scheduled.ItemType(r.URL.Query().Get("type"))
 			state := scheduled.ItemState(r.URL.Query().Get("state"))
+			excludeSource := strings.TrimSpace(r.URL.Query().Get("exclude_source"))
 			limit := 50
 			if l := r.URL.Query().Get("limit"); l != "" {
 				fmt.Sscanf(l, "%d", &limit)
 			}
-			items, err := scheduledService.ListItems(itemType, state, limit)
+			items, err := scheduledService.ListItemsExcluding(itemType, state, limit, excludeSource)
 			if err != nil {
 				jsonError(w, http.StatusInternalServerError, "list_failed", err.Error())
 				return
@@ -2328,6 +2330,19 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			if err := scheduledService.CancelItem(itemID); err != nil {
 				jsonError(w, http.StatusNotFound, "not_found", "item not found")
 				return
+			}
+			// The scheduled row is shared with routines: retiring it here
+			// must also drop the routine sidecar (plus any pre-existing
+			// orphans), or dead routines linger in the Routines list.
+			if rs, rerr := routineService(); rerr == nil {
+				if derr := rs.DeleteMeta(itemID); derr != nil {
+					log.Printf("routine sidecar cleanup failed for %s: %v", itemID, derr)
+				}
+				if n, perr := rs.PruneOrphaned(); perr != nil {
+					log.Printf("routine orphan prune failed: %v", perr)
+				} else if n > 0 {
+					log.Printf("pruned %d orphaned routine sidecars", n)
+				}
 			}
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "id": itemID})
 

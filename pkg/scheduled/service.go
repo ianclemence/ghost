@@ -361,6 +361,13 @@ func (s *Service) ListItems(itemType ItemType, state ItemState, limit int) ([]*S
 	return s.store.List(itemType, state, limit)
 }
 
+// ListItemsExcluding behaves like ListItems but omits items from one
+// source. The Automations surface uses it to hide routines, which live
+// in the same table but have their own Routines surface.
+func (s *Service) ListItemsExcluding(itemType ItemType, state ItemState, limit int, excludeSource string) ([]*ScheduledItem, error) {
+	return s.store.ListExcludingSource(itemType, state, limit, excludeSource)
+}
+
 // UpdateItem updates a scheduled item.
 func (s *Service) UpdateItem(item *ScheduledItem) error {
 	if err := s.store.Update(item); err != nil {

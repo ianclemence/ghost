@@ -163,6 +163,17 @@ func (s *Store) Get(id string) (*ScheduledItem, error) {
 
 // List retrieves ScheduledItems with optional filters.
 func (s *Store) List(itemType ItemType, state ItemState, limit int) ([]*ScheduledItem, error) {
+	return s.listFiltered(itemType, state, limit, "")
+}
+
+// ListExcludingSource lists scheduled items while omitting one source
+// (e.g. routines, which have their own product surface and must not
+// appear twice). Empty excludeSource behaves exactly like List.
+func (s *Store) ListExcludingSource(itemType ItemType, state ItemState, limit int, excludeSource string) ([]*ScheduledItem, error) {
+	return s.listFiltered(itemType, state, limit, excludeSource)
+}
+
+func (s *Store) listFiltered(itemType ItemType, state ItemState, limit int, excludeSource string) ([]*ScheduledItem, error) {
 	query := `SELECT id, type, title, description, state,
 		schedule_kind, schedule_at, schedule_every, schedule_expr,
 		timezone,
@@ -182,6 +193,10 @@ func (s *Store) List(itemType ItemType, state ItemState, limit int) ([]*Schedule
 	if state != "" {
 		query += ` AND state = ?`
 		args = append(args, state)
+	}
+	if excludeSource != "" {
+		query += ` AND source != ?`
+		args = append(args, excludeSource)
 	}
 
 	query += ` ORDER BY next_run_at ASC NULLS LAST, created_at DESC`

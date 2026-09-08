@@ -132,3 +132,37 @@ func TestRunFailure(t *testing.T) {
 		t.Fatalf("failure run wrong: %+v %v", out, err)
 	}
 }
+
+func TestDeleteMetaAndPruneOrphaned(t *testing.T) {
+	svc := openTestService(t)
+	r, _ := svc.Create("g", "o", "R", "do x", "UTC", scheduled.Schedule{Kind: scheduled.ScheduleEvery, Every: time.Hour}, nil)
+	// Scheduled-side retirement (what DELETE /v1/scheduled/:id does) plus
+	// sidecar removal must take the routine off the Routines surface.
+	if err := svc.store.UpdateState(r.ID, scheduled.StateCancelled); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteMeta(r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Get(r.ID); err == nil {
+		t.Fatal("sidecar must be gone")
+	}
+	if len(svc.List("g", 10)) != 0 {
+		t.Fatal("list must be empty")
+	}
+	// A sidecar whose scheduled row vanished entirely is an orphan.
+	r2, _ := svc.Create("g", "o", "R2", "do y", "UTC", scheduled.Schedule{Kind: scheduled.ScheduleEvery, Every: time.Hour}, nil)
+	if err := svc.store.Delete(r2.ID); err != nil {
+		t.Fatal(err)
+	}
+	n, err := svc.PruneOrphaned()
+	if err != nil || n != 1 {
+		t.Fatalf("prune must remove 1 orphan, got %d %v", n, err)
+	}
+	if len(svc.List("g", 10)) != 0 {
+		t.Fatal("list must be empty after prune")
+	}
+	if n, err := svc.PruneOrphaned(); err != nil || n != 0 {
+		t.Fatalf("second prune must be a no-op, got %d %v", n, err)
+	}
+}

@@ -236,6 +236,28 @@ func (s *Service) Delete(id string) error {
 	return s.store.Delete(id)
 }
 
+// DeleteMeta removes only the routine sidecar, leaving the scheduled row
+// untouched. Used when the shared row is retired through the scheduled
+// surface (DELETE /v1/scheduled/:id only cancels the row): without this
+// the dead routine would linger in the Routines list forever, since a
+// cancelled routine can never resume and the Routines UI offers no delete.
+func (s *Service) DeleteMeta(id string) error {
+	_, err := s.db.Exec(`DELETE FROM routine_meta WHERE item_id=?`, id)
+	return err
+}
+
+// PruneOrphaned removes sidecars whose scheduled row is gone entirely
+// (pre-existing leftovers from before sidecar cleanup existed). Returns
+// the number of rows removed.
+func (s *Service) PruneOrphaned() (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM routine_meta WHERE item_id NOT IN (SELECT id FROM scheduled_items)`)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // Run executes one routine occurrence through the standard pipeline.
 // Outcome mapping: SUCCESS→completed, NEEDS_PERMISSION/CONFIG/AUTH→
 // waiting (state preserved, run resumable), FAILED→failed, CANCELLED→
