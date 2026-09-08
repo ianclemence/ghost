@@ -3318,6 +3318,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			LocalURL:    voice.LocalBaseURL(gcfg.STT.Port),
 			MoonshotKey: gcfg.Providers.Moonshot.APIKey,
 			GroqKey:     gcfg.Providers.Groq.APIKey,
+		}, voice.SynthConfig{
+			Engine: gcfg.TTS.Engine,
+			Speed:  gcfg.TTS.Speed,
 		})
 		if !engine.InputAvailable() {
 			jsonError(w, http.StatusServiceUnavailable, "voice_unavailable", "Voice input isn't set up yet.")

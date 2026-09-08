@@ -19,15 +19,16 @@ type Engine struct {
 }
 
 // EngineFromEnv builds the engine from server configuration: local
-// sidecar first with cloud fallback for recognition, edge-tts binary for
-// synthesis. Either may be absent (honest unavailability per direction).
-func EngineFromEnv(cfg SelectConfig) *Engine {
+// sidecar first with cloud fallback for recognition, local voice first
+// with edge-tts fallback for synthesis. Either may be absent (honest
+// unavailability per direction).
+func EngineFromEnv(stt SelectConfig, tts SynthConfig) *Engine {
 	e := &Engine{}
-	if t := SelectTranscriber(cfg); t != nil {
+	if t := SelectTranscriber(stt); t != nil {
 		e.Recognizer = NewFileTranscriberAdapter(t)
 	}
-	if _, err := exec.LookPath("edge-tts"); err == nil {
-		e.Speak = edgeTTSSpeak
+	if s := SelectSynthesizer(tts); s != nil {
+		e.Speak = s.Synthesize
 	}
 	return e
 }

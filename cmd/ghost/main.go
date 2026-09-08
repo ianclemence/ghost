@@ -203,6 +203,8 @@ func main() {
 		mcpCmd()
 	case "stt":
 		sttCmd()
+	case "tts":
+		ttsCmd()
 	case "skills":
 		if len(os.Args) < 3 {
 			skillsHelp()
@@ -297,6 +299,7 @@ func printHelp() {
 	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  stt         Manage local speech-to-text (setup, status)")
+	fmt.Println("  tts         Manage local speech synthesis (setup, status)")
 	fmt.Println("  state       Export, import, or inspect Ghost State archives")
 	fmt.Println("  relay       Manage relay connection (run, pair, clients)")
 	fmt.Println("  verify      Run appliance verification (real product checks)")

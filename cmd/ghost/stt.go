@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/ianclemence/ghost/pkg/voice"
@@ -92,6 +93,12 @@ func sttStatusCmd() {
 		fmt.Printf("Active model: %s ✓\n", target)
 	} else {
 		fmt.Printf("Active model: none ✗ (run: sudo ghost stt setup)\n")
+	}
+
+	if _, err := exec.LookPath("ffmpeg"); err == nil {
+		fmt.Println("ffmpeg (voice-note conversion): ✓")
+	} else {
+		fmt.Println("ffmpeg (voice-note conversion): ✗ (install: sudo apt-get install -y ffmpeg)")
 	}
 
 	local := voice.NewLocalTranscriber(voice.LocalBaseURL(cfg.STT.Port))

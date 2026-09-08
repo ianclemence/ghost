@@ -8,7 +8,10 @@ package voice
 
 import (
 	"archive/tar"
+	"compress/bzip2"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +21,29 @@ import (
 	"strings"
 	"time"
 )
+
+// verifySHA256 confirms a file's sha256 matches an expected digest. An
+// empty expected digest means none is pinned yet and the check passes
+// (a skip is deliberate, never a silent trust of a known-bad hash).
+func verifySHA256(path, expected string) error {
+	if expected == "" {
+		return nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if !strings.EqualFold(got, expected) {
+		return fmt.Errorf("checksum mismatch for %s: got %s, want %s (re-run setup to re-download)", path, got, expected)
+	}
+	return nil
+}
 
 const (
 	// WhisperVersion pins the whisper.cpp release the sidecar comes from.
@@ -44,6 +70,35 @@ var sttModels = map[string]string{
 	"base":     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
 	"small.en": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
 	"small":    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+}
+
+// Pinned sha256 digests for the artifacts Ghost ships by default. Digests
+// are captured at provisioning time from the pinned upstream release, so a
+// fetch that is tampered with or corrupted in transit fails closed instead
+// of running an unexpected binary or model. Non-default models have no
+// pinned digest yet and pass through at the same trust level as before
+// (TLS to the pinned upstream path); add digests as the set stabilizes.
+const (
+	whisperServerSHA256ARM64 = "cc472696fddb8d9a66753c8f6b1c8a5690b4e23becabeaa17fd83e70fab9abf3"
+
+	ggmlBaseEnSHA256 = "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002"
+	ggmlTinyEnSHA256 = "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f"
+)
+
+// sttModelDigests pins the models Ghost provisions by default (base.en)
+// and documents as the low-RAM fallback (tiny.en).
+var sttModelDigests = map[string]string{
+	"base.en": ggmlBaseEnSHA256,
+	"tiny.en": ggmlTinyEnSHA256,
+}
+
+// whisperServerSHA256 returns the pinned digest for a platform, or "" when
+// none is pinned yet (verification is then skipped, never invented).
+func whisperServerSHA256(goarch string) string {
+	if goarch == "arm64" {
+		return whisperServerSHA256ARM64
+	}
+	return ""
 }
 
 // ModelFileName returns the on-disk filename for a model name.
@@ -86,7 +141,7 @@ func EnsureSidecar(binDir, version string, force bool) (string, error) {
 	dest := filepath.Join(binDir, SidecarBinary)
 	if !force {
 		if st, err := os.Stat(dest); err == nil && !st.IsDir() && st.Mode()&0111 != 0 {
-			return dest, nil
+			return dest, verifySHA256(dest, whisperServerSHA256(runtime.GOARCH))
 		}
 	}
 	if err := os.MkdirAll(binDir, 0755); err != nil {
@@ -104,7 +159,7 @@ func EnsureSidecar(binDir, version string, force bool) (string, error) {
 	if err := extractBinary(tmp, SidecarBinary, dest); err != nil {
 		return "", fmt.Errorf("install whisper-server: %w", err)
 	}
-	return dest, nil
+	return dest, verifySHA256(dest, whisperServerSHA256(runtime.GOARCH))
 }
 
 // EnsureModel downloads a ggml model into modelsDir unless present
@@ -125,7 +180,7 @@ func EnsureModel(modelsDir, model string, force bool) (string, error) {
 	dest := filepath.Join(modelsDir, file)
 	if !force {
 		if st, err := os.Stat(dest); err == nil && !st.IsDir() && st.Size() > 0 {
-			return dest, nil
+			return dest, verifySHA256(dest, sttModelDigests[name])
 		}
 	}
 	if err := os.MkdirAll(modelsDir, 0755); err != nil {
@@ -141,7 +196,7 @@ func EnsureModel(modelsDir, model string, force bool) (string, error) {
 	}
 	// tmp was created 0600; models only need to be readable.
 	_ = os.Chmod(dest, 0644)
-	return dest, nil
+	return dest, verifySHA256(dest, sttModelDigests[name])
 }
 
 // PointActiveModel repoints the stable active-model symlink at an
@@ -193,19 +248,43 @@ func downloadToTemp(url, dir string) (string, error) {
 	return tmpName, nil
 }
 
-// extractBinary pulls the single named executable out of a .tar.gz.
+// tarReader opens a .tar.gz or .tar.bz2 archive, sniffing the
+// compression from magic bytes (download temp files carry no suffix).
+func tarReader(f *os.File) (*tar.Reader, func(), error) {
+	noop := func() {}
+	var magic [3]byte
+	if _, err := io.ReadFull(f, magic[:]); err != nil {
+		return nil, noop, err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, noop, err
+	}
+	if magic[0] == 0x1f && magic[1] == 0x8b {
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			return nil, noop, err
+		}
+		return tar.NewReader(gz), func() { gz.Close() }, nil
+	}
+	if magic[0] == 'B' && magic[1] == 'Z' && magic[2] == 'h' {
+		return tar.NewReader(bzip2.NewReader(f)), noop, nil
+	}
+	return nil, noop, fmt.Errorf("unknown archive compression")
+}
+
+// extractBinary pulls the single named executable out of a .tar.gz or
+// .tar.bz2 archive.
 func extractBinary(archive, name, dest string) error {
 	f, err := os.Open(archive)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	gz, err := gzip.NewReader(f)
+	tr, closeTar, err := tarReader(f)
 	if err != nil {
 		return err
 	}
-	defer gz.Close()
-	tr := tar.NewReader(gz)
+	defer closeTar()
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {

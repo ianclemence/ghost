@@ -154,6 +154,7 @@ install-ghost: build-ghost
 	@# Stop services before replacing binaries
 	@sudo systemctl stop ghost 2>/dev/null || true
 	@sudo systemctl stop ghost-web 2>/dev/null || true
+	@sudo systemctl stop ghost-stt 2>/dev/null || true
 	@sudo mkdir -p /var/ghost/config /var/ghost/data /var/ghost/workspace
 	@sudo mkdir -p $(WORKSPACE_DIR)
 	@# Lock down the install root and personal-data workspace to the owner.
@@ -194,8 +195,22 @@ install-ghost: build-ghost
 		ghost-stt.service.template > ghost-stt.service
 	@sudo cp ghost-stt.service /etc/systemd/system/ghost-stt.service
 	@sudo mkdir -p /var/ghost/models
+	@# ffmpeg is a hard runtime dependency for the voice stack: the STT
+	@# sidecar converts ogg/m4a/mp3 voice notes with it and TTS uses it for
+	@# mp3 delivery. Install it if missing and fail loudly if it cannot be.
+	@if ! command -v ffmpeg >/dev/null 2>&1; then \
+		echo "Installing ffmpeg (required for local speech)..."; \
+		sudo apt-get update -qq 2>/dev/null || true; \
+		sudo apt-get install -y -qq ffmpeg 2>/dev/null || true; \
+	fi
+	@if ! command -v ffmpeg >/dev/null 2>&1; then \
+		echo "ERROR: ffmpeg is required for local speech but could not be installed (run: sudo apt-get install -y ffmpeg)."; \
+		exit 1; \
+	fi
 	@# Provision the sidecar binary + speech model (best effort: cloud STT stays as fallback)
 	@$(BINARY_PATH) stt setup || echo "WARNING: local speech-to-text provisioning failed; cloud transcription remains available"
+	@# Provision the TTS engine binary + default voice (best effort: edge-tts stays as fallback)
+	@$(BINARY_PATH) tts setup || echo "WARNING: local speech synthesis provisioning failed; edge-tts remains available"
 	@# Install main ghost service
 	@sed \
 		-e "s|__USER__|$(USER)|g" \

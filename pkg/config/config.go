@@ -59,6 +59,7 @@ type Config struct {
 	Personality PersonalityConfig `json:"personality"`
 	Toolsets    ToolsetsConfig    `json:"toolsets"`
 	STT         STTConfig         `json:"stt"`
+	TTS         TTSConfig         `json:"tts"`
 	mu          sync.RWMutex
 }
 
@@ -68,6 +69,14 @@ type Config struct {
 type STTConfig struct {
 	Engine string `json:"engine" env:"GHOST_STT_ENGINE"` // auto|local|groq|moonshot|off
 	Port   int    `json:"port" env:"GHOST_STT_PORT"`     // sidecar loopback port
+}
+
+// TTSConfig controls speech-synthesis engine selection. The local
+// sherpa/Piper voice is tried first ("auto"); edge-tts is only a
+// fallback, and "off" disables voice replies entirely.
+type TTSConfig struct {
+	Engine string  `json:"engine" env:"GHOST_TTS_ENGINE"` // auto|local|edge|off
+	Speed  float32 `json:"speed" env:"GHOST_TTS_SPEED"`   // 1.0 is normal
 }
 
 type SkillsConfig struct {
@@ -425,6 +434,10 @@ func DefaultConfig() *Config {
 		STT: STTConfig{
 			Engine: "auto",
 			Port:   11435,
+		},
+		TTS: TTSConfig{
+			Engine: "auto",
+			Speed:  1.0,
 		},
 		Relay: RelayConfig{
 			Enabled:      false,

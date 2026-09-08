@@ -71,11 +71,22 @@ Or configure any OpenAI-compatible provider through the Web Console.
 ### Raspberry Pi (Recommended)
 
 On a fresh device, install the prerequisites first (skip if you already have
-`git`, `make`, and Go):
+`git`, `make`, Go, and `ffmpeg`):
 
 ```bash
-sudo apt install -y git make golang-go
+sudo apt install -y git make golang-go ffmpeg
 ```
+
+`ffmpeg` is a hard dependency of the voice stack: local speech-to-text
+converts voice notes (ogg/m4a/mp3) with it, and local speech synthesis uses
+it to deliver mp3 replies. The voice engines and models are installed
+automatically by `make install-ghost` (verified against pinned checksums).
+
+**Optional cloud fallback for speech replies:** for languages without a
+local voice, Ghost can fall back to the keyless Edge TTS (an unofficial
+community client). Install it only if you want that:
+`pip install edge-tts`. Local speech does not need it and never phones home
+when the local voice is present.
 
 Then install Ghost:
 

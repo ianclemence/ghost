@@ -9,13 +9,17 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/voice"
 )
 
 type TTSConfig struct {
-	Enabled      bool   `json:"enabled"`
-	Provider     string `json:"provider"`
-	DefaultVoice string `json:"default_voice"`
-	OutputFormat string `json:"output_format"`
+	Enabled       bool   `json:"enabled"`
+	Provider      string `json:"provider"`
+	DefaultVoice  string `json:"default_voice"`
+	OutputFormat  string `json:"output_format"`
+	LocalBin      string `json:"local_bin,omitempty"`
+	LocalVoiceDir string `json:"local_voice_dir,omitempty"`
 }
 
 type TTSTool struct {
@@ -44,7 +48,7 @@ func (t *TTSTool) Name() string {
 }
 
 func (t *TTSTool) Description() string {
-	return "Convert text to speech using Edge TTS (free, no API key required). Returns an audio file."
+	return "Convert text to speech using the local Ghost voice when provisioned (offline, no network), else Edge TTS (free, no API key required). Returns an audio file."
 }
 
 func (t *TTSTool) Parameters() map[string]interface{} {
@@ -57,12 +61,12 @@ func (t *TTSTool) Parameters() map[string]interface{} {
 			},
 			"voice": map[string]interface{}{
 				"type":        "string",
-				"description": "Voice name (e.g., en-US-AriaNeural, zh-CN-XiaoxiaoNeural). Default: en-US-AriaNeural",
+				"description": "Voice name for Edge TTS (e.g., en-US-AriaNeural, zh-CN-XiaoxiaoNeural). Omit to use the local Ghost voice when available.",
 			},
 			"format": map[string]interface{}{
 				"type":        "string",
 				"enum":        []string{"mp3", "opus"},
-				"description": "Output audio format (default: mp3)",
+				"description": "Output audio format for Edge TTS (default: mp3). Local synthesis always returns mp3.",
 			},
 		},
 		"required": []string{"text"},
@@ -79,9 +83,11 @@ func (t *TTSTool) Execute(ctx context.Context, args map[string]interface{}) *Too
 		text = text[:5000]
 	}
 
-	voice := t.config.DefaultVoice
+	voiceName := t.config.DefaultVoice
+	explicitVoice := false
 	if v, ok := args["voice"].(string); ok && v != "" {
-		voice = v
+		voiceName = v
+		explicitVoice = true
 	}
 
 	format := t.config.OutputFormat
@@ -89,15 +95,15 @@ func (t *TTSTool) Execute(ctx context.Context, args map[string]interface{}) *Too
 		format = f
 	}
 
-	audioPath, err := t.synthesize(ctx, text, voice, format)
+	audioPath, usedVoice, usedFormat, err := t.synthesize(ctx, text, voiceName, format, explicitVoice)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("TTS synthesis failed: %v", err)).WithError(err)
 	}
 
 	result := map[string]interface{}{
 		"text":   text,
-		"voice":  voice,
-		"format": format,
+		"voice":  usedVoice,
+		"format": usedFormat,
 		"file":   audioPath,
 	}
 	raw, _ := json.Marshal(result)
@@ -107,7 +113,54 @@ func (t *TTSTool) Execute(ctx context.Context, args map[string]interface{}) *Too
 	return toolResult
 }
 
-func (t *TTSTool) synthesize(ctx context.Context, text, voice, format string) (string, error) {
+func (t *TTSTool) synthesize(ctx context.Context, text, voiceName, format string, explicitVoice bool) (string, string, string, error) {
+	// Local-first: the provisioned on-device voice wins unless the caller
+	// pinned "local" (then it must work) or explicitly chose a cloud voice
+	// (then their choice is honored).
+	local := voice.SelectSynthesizer(voice.SynthConfig{Engine: voice.TTSEngineLocal, BinPath: t.config.LocalBin, VoiceDir: t.config.LocalVoiceDir})
+	if t.config.Provider == "local" {
+		if local == nil {
+			return "", "", "", fmt.Errorf("local voice is not provisioned (run: sudo ghost tts setup)")
+		}
+		path, err := t.synthesizeLocal(ctx, text, local)
+		if err != nil {
+			return "", "", "", err
+		}
+		return path, "ghost", "mp3", nil
+	}
+	if !explicitVoice && local != nil {
+		if path, err := t.synthesizeLocal(ctx, text, local); err == nil {
+			return path, "ghost", "mp3", nil
+		}
+	}
+	path, err := t.synthesizeEdge(ctx, text, voiceName, format)
+	if err != nil {
+		return "", "", "", err
+	}
+	return path, voiceName, format, nil
+}
+
+func (t *TTSTool) synthesizeLocal(ctx context.Context, text string, local voice.SpeechSynthesizer) (string, error) {
+	audio, mime, err := local.Synthesize(ctx, text)
+	if err != nil {
+		return "", err
+	}
+	ext := ".mp3"
+	if mime == "audio/wav" {
+		ext = ".wav"
+	}
+	mediaDir := filepath.Join(t.workspace, "media")
+	if err := os.MkdirAll(mediaDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create media directory: %w", err)
+	}
+	outputFile := filepath.Join(mediaDir, fmt.Sprintf("tts-%d%s", time.Now().UnixMilli(), ext))
+	if err := os.WriteFile(outputFile, audio, 0644); err != nil {
+		return "", fmt.Errorf("failed to write audio file: %w", err)
+	}
+	return outputFile, nil
+}
+
+func (t *TTSTool) synthesizeEdge(ctx context.Context, text, voiceName, format string) (string, error) {
 	mediaDir := filepath.Join(t.workspace, "media")
 	if err := os.MkdirAll(mediaDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create media directory: %w", err)
@@ -117,7 +170,7 @@ func (t *TTSTool) synthesize(ctx context.Context, text, voice, format string) (s
 	outputFile := filepath.Join(mediaDir, fmt.Sprintf("tts-%d.%s", timestamp, format))
 
 	cmd := exec.CommandContext(ctx, "edge-tts",
-		"--voice", voice,
+		"--voice", voiceName,
 		"--text", text,
 		"--write-media", outputFile,
 	)
@@ -136,6 +189,7 @@ func (t *TTSTool) synthesize(ctx context.Context, text, voice, format string) (s
 
 func (t *TTSTool) ListVoices() []string {
 	return []string{
+		"ghost (local default voice)",
 		"en-US-AriaNeural",
 		"en-US-GuyNeural",
 		"en-US-JennyNeural",
