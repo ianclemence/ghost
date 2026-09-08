@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -16,15 +17,24 @@ import (
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/voice"
 )
 
 type WeChatChannel struct {
 	*BaseChannel
-	config     config.WeChatConfig
-	httpClient *http.Client
-	server     *http.Server
-	tokenCache *tokenCache
-	mu         sync.Mutex
+	config      config.WeChatConfig
+	httpClient  *http.Client
+	server      *http.Server
+	tokenCache  *tokenCache
+	mu          sync.Mutex
+	transcriber voice.Transcriber
+}
+
+// SetTranscriber attaches speech-to-text for voice messages.
+func (c *WeChatChannel) SetTranscriber(transcriber voice.Transcriber) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.transcriber = transcriber
 }
 
 type tokenCache struct {
@@ -41,6 +51,8 @@ type wechatXMLMessage struct {
 	MsgType      string   `xml:"MsgType"`
 	Content      string   `xml:"Content"`
 	MsgId        int64    `xml:"MsgId"`
+	MediaId      string   `xml:"MediaId"`
+	Format       string   `xml:"Format"`
 }
 
 type wechatXMLResponse struct {
@@ -175,8 +187,74 @@ func (c *WeChatChannel) handleCallback(w http.ResponseWriter, r *http.Request) {
 		c.HandleMessage(msg.FromUserName, msg.FromUserName, msg.Content, nil, metadata)
 	}
 
+	if msg.MsgType == "voice" {
+		content := "[voice]"
+		if msg.MediaId != "" {
+			if localPath := c.downloadVoiceMedia(msg.MediaId); localPath != "" {
+				content = transcribeVoiceFile(context.Background(), c.transcriber, "wechat", localPath, "voice")
+			}
+		}
+		metadata := map[string]string{
+			"message_id": fmt.Sprintf("%d", msg.MsgId),
+			"username":   msg.FromUserName,
+		}
+		c.HandleMessage(msg.FromUserName, msg.FromUserName, content, nil, metadata)
+	}
+
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprint(w, "success")
+}
+
+// downloadVoiceMedia fetches a WeChat Work voice message via the media/get
+// endpoint. Voice arrives as AMR (8 kHz, max 60s/2MB); errors come back as
+// JSON, which must not be mistaken for audio.
+func (c *WeChatChannel) downloadVoiceMedia(mediaID string) string {
+	token, err := c.getAccessToken()
+	if err != nil {
+		logger.ErrorCF("wechat", "Voice download failed: no access token", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return ""
+	}
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/media/get?access_token=%s&media_id=%s", token, mediaID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		logger.ErrorCF("wechat", "Voice download failed", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "application/json") {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		logger.ErrorCF("wechat", "Voice download rejected", map[string]interface{}{
+			"response": string(body),
+		})
+		return ""
+	}
+	f, err := os.CreateTemp("", "wechat-voice-*.amr")
+	if err != nil {
+		return ""
+	}
+	name := f.Name()
+	// Voice notes are at most 2MB; cap the read well above that.
+	if _, err := io.Copy(f, io.LimitReader(resp.Body, 8<<20)); err != nil {
+		f.Close()
+		os.Remove(name)
+		return ""
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(name)
+		return ""
+	}
+	return name
 }
 
 func (c *WeChatChannel) verifySignature(token, timestamp, nonce, msgSignature string) bool {

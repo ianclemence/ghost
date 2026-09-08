@@ -5,7 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,15 +19,24 @@ import (
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/utils"
+	"github.com/ianclemence/ghost/pkg/voice"
 )
 
 type WhatsAppChannel struct {
 	*BaseChannel
-	conn      *websocket.Conn
-	config    config.WhatsAppConfig
-	url       string
-	mu        sync.Mutex
-	connected bool
+	conn        *websocket.Conn
+	config      config.WhatsAppConfig
+	url         string
+	mu          sync.Mutex
+	connected   bool
+	transcriber voice.Transcriber
+}
+
+// SetTranscriber attaches speech-to-text for voice notes.
+func (c *WhatsAppChannel) SetTranscriber(transcriber voice.Transcriber) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.transcriber = transcriber
 }
 
 func NewWhatsAppChannel(cfg config.WhatsAppConfig, bus *bus.MessageBus) (*WhatsAppChannel, error) {
@@ -197,13 +211,30 @@ func (c *WhatsAppChannel) handleIncomingMessage(msg map[string]interface{}) {
 	}
 
 	var mediaPaths []string
+	var voiceTexts []string
 	if mediaData, ok := msg["media"].([]interface{}); ok {
 		mediaPaths = make([]string, 0, len(mediaData))
 		for _, m := range mediaData {
-			if path, ok := m.(string); ok {
-				mediaPaths = append(mediaPaths, path)
+			entry, ok := m.(string)
+			if !ok || entry == "" {
+				continue
+			}
+			localPath, isAudio := c.resolveMediaEntry(entry)
+			if localPath == "" {
+				mediaPaths = append(mediaPaths, entry)
+				continue
+			}
+			mediaPaths = append(mediaPaths, localPath)
+			if isAudio {
+				voiceTexts = append(voiceTexts, transcribeVoiceFile(context.Background(), c.transcriber, "whatsapp", localPath, "voice"))
 			}
 		}
+	}
+	if len(voiceTexts) > 0 {
+		if content != "" {
+			content += "\n"
+		}
+		content += strings.Join(voiceTexts, "\n")
 	}
 
 	metadata := make(map[string]string)
@@ -217,4 +248,51 @@ func (c *WhatsAppChannel) handleIncomingMessage(msg map[string]interface{}) {
 	log.Printf("WhatsApp message from %s: %s...", senderID, utils.Truncate(content, 50))
 
 	c.HandleMessage(senderID, chatID, content, mediaPaths, metadata)
+}
+
+// resolveMediaEntry turns a bridge media entry into a local file. Entries
+// are either http(s) URLs (downloaded) or paths on this host (used
+// directly). whatsapp-web.js voice notes arrive as opus-in-ogg, so only
+// audio-looking entries are flagged for transcription; anything else
+// passes through untouched.
+func (c *WhatsAppChannel) resolveMediaEntry(entry string) (string, bool) {
+	if strings.HasPrefix(entry, "http://") || strings.HasPrefix(entry, "https://") {
+		name := path.Base(strings.SplitN(entry, "?", 2)[0])
+		if name == "" || name == "." || name == "/" {
+			name = "voice-note"
+		}
+		contentType := ""
+		if filepath.Ext(name) == "" {
+			contentType = headContentType(entry)
+			if ext := audioExtensionForType(contentType); ext != "" {
+				name += ext
+			}
+		}
+		if !utils.IsAudioFile(name, contentType) {
+			return "", false
+		}
+		local := utils.DownloadFile(entry, name, utils.DownloadOptions{LoggerPrefix: "whatsapp"})
+		if local == "" {
+			return "", false
+		}
+		return local, true
+	}
+	if st, err := os.Stat(entry); err != nil || st.IsDir() {
+		return "", false
+	}
+	return entry, utils.IsAudioFile(entry, "")
+}
+
+func headContentType(rawURL string) string {
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest(http.MethodHead, rawURL, nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	return resp.Header.Get("Content-Type")
 }

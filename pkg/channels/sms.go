@@ -2,10 +2,14 @@ package channels
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"path"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,14 +17,24 @@ import (
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/utils"
+	"github.com/ianclemence/ghost/pkg/voice"
 )
 
 type SMSChannel struct {
 	*BaseChannel
-	config     config.SMSConfig
-	httpClient *http.Client
-	server     *http.Server
-	mu         sync.Mutex
+	config      config.SMSConfig
+	httpClient  *http.Client
+	server      *http.Server
+	mu          sync.Mutex
+	transcriber voice.Transcriber
+}
+
+// SetTranscriber attaches speech-to-text for MMS voice notes.
+func (c *SMSChannel) SetTranscriber(transcriber voice.Transcriber) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.transcriber = transcriber
 }
 
 func NewSMSChannel(cfg config.SMSConfig, bus *bus.MessageBus) (*SMSChannel, error) {
@@ -135,11 +149,13 @@ func (c *SMSChannel) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	to := r.FormValue("To")
 	body := r.FormValue("Body")
 	messageSID := r.FormValue("MessageSid")
+	media := parseSMSMedia(r.PostForm)
 
 	logger.InfoCF("sms", "Received SMS", map[string]interface{}{
-		"from":    from,
-		"to":      to,
-		"sid":     messageSID,
+		"from":      from,
+		"to":        to,
+		"sid":       messageSID,
+		"num_media": len(media),
 	})
 
 	metadata := map[string]string{
@@ -148,10 +164,85 @@ func (c *SMSChannel) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		"to":          to,
 	}
 
-	c.HandleMessage(from, from, body, nil, metadata)
+	if len(media) == 0 {
+		c.HandleMessage(from, from, body, nil, metadata)
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprint(w, "OK")
+		return
+	}
 
+	// Media downloads + transcription can outlast Twilio's webhook
+	// timeout (a timeout looks like a failure Twilio retries), so
+	// acknowledge first and process in the background.
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprint(w, "OK")
+	go c.handleMMS(from, body, media, metadata)
+}
+
+// smsMedia is one MMS attachment as Twilio reports it: MediaUrl{N} plus
+// its MediaContentType{N}.
+type smsMedia struct {
+	url         string
+	contentType string
+}
+
+// parseSMSMedia reads Twilio's NumMedia/MediaUrl{N}/MediaContentType{N}
+// webhook fields into a plain list.
+func parseSMSMedia(form url.Values) []smsMedia {
+	n, err := strconv.Atoi(strings.TrimSpace(form.Get("NumMedia")))
+	if err != nil || n <= 0 {
+		return nil
+	}
+	out := make([]smsMedia, 0, n)
+	for i := 0; i < n; i++ {
+		u := strings.TrimSpace(form.Get(fmt.Sprintf("MediaUrl%d", i)))
+		if u == "" {
+			continue
+		}
+		out = append(out, smsMedia{url: u, contentType: form.Get(fmt.Sprintf("MediaContentType%d", i))})
+	}
+	return out
+}
+
+func (c *SMSChannel) handleMMS(from, body string, media []smsMedia, metadata map[string]string) {
+	var mediaPaths []string
+	for _, m := range media {
+		if !strings.HasPrefix(strings.ToLower(m.contentType), "audio/") {
+			continue
+		}
+		local := c.downloadMMSAudio(m)
+		if local == "" {
+			continue
+		}
+		mediaPaths = append(mediaPaths, local)
+		if body != "" {
+			body += "\n"
+		}
+		body += transcribeVoiceFile(context.Background(), c.transcriber, "sms", local, "voice")
+	}
+	c.HandleMessage(from, from, body, mediaPaths, metadata)
+}
+
+// downloadMMSAudio fetches one MMS audio part with Twilio Basic auth.
+// Media URLs require authentication; the CDN redirect they return does
+// not, which is exactly how Go's default redirect handling behaves.
+func (c *SMSChannel) downloadMMSAudio(m smsMedia) string {
+	name := path.Base(strings.SplitN(m.url, "?", 2)[0])
+	if name == "" || name == "." || name == "/" {
+		name = "voicenote"
+	}
+	if filepath.Ext(name) == "" {
+		ext := audioExtensionForType(m.contentType)
+		if ext == "" {
+			return ""
+		}
+		name += ext
+	}
+	auth := base64.StdEncoding.EncodeToString([]byte(c.config.AccountSID + ":" + c.config.AuthToken))
+	return utils.DownloadFile(m.url, name, utils.DownloadOptions{
+		LoggerPrefix: "sms",
+		ExtraHeaders: map[string]string{"Authorization": "Basic " + auth},
+	})
 }
 
 func (c *SMSChannel) SendSMS(ctx context.Context, to, body string) error {

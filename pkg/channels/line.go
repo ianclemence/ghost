@@ -19,6 +19,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/utils"
+	"github.com/ianclemence/ghost/pkg/voice"
 )
 
 const (
@@ -51,6 +52,12 @@ type LINEChannel struct {
 	quoteTokens    sync.Map // chatID -> quoteToken (string)
 	ctx            context.Context
 	cancel         context.CancelFunc
+	transcriber    voice.Transcriber
+}
+
+// SetTranscriber attaches speech-to-text for voice messages.
+func (c *LINEChannel) SetTranscriber(transcriber voice.Transcriber) {
+	c.transcriber = transcriber
 }
 
 // NewLINEChannel creates a new LINE channel instance.
@@ -253,7 +260,8 @@ type lineMessage struct {
 		Mentionees []lineMentionee `json:"mentionees"`
 	} `json:"mention"`
 	ContentProvider struct {
-		Type string `json:"type"`
+		Type               string `json:"type"` // "line" or "external"
+		OriginalContentUrl string `json:"originalContentUrl"`
 	} `json:"contentProvider"`
 }
 
@@ -337,11 +345,18 @@ func (c *LINEChannel) processEvent(event lineEvent) {
 			content = "[image]"
 		}
 	case "audio":
-		localPath := c.downloadContent(msg.ID, "audio.m4a")
+		var localPath string
+		if msg.ContentProvider.Type == "external" && msg.ContentProvider.OriginalContentUrl != "" {
+			localPath = utils.DownloadFile(msg.ContentProvider.OriginalContentUrl, "audio.m4a", utils.DownloadOptions{LoggerPrefix: "line"})
+		} else {
+			localPath = c.downloadContent(msg.ID, "audio.m4a")
+		}
 		if localPath != "" {
 			// localFiles = append(localFiles, localPath)
 			mediaPaths = append(mediaPaths, localPath)
-			content = "[audio]"
+			content = transcribeVoiceFile(context.Background(), c.transcriber, "line", localPath, "voice")
+		} else {
+			content = "[voice]"
 		}
 	case "video":
 		localPath := c.downloadContent(msg.ID, "video.mp4")

@@ -995,6 +995,18 @@ func gatewayCmd() {
 					logger.InfoC("voice", "Voice transcription attached to Slack channel")
 				}
 			}
+			if whatsappChannel, ok := channelManager.GetChannel("whatsapp"); ok {
+				if wc, ok := whatsappChannel.(*channels.WhatsAppChannel); ok {
+					wc.SetTranscriber(transcriber)
+					logger.InfoC("voice", "Voice transcription attached to WhatsApp channel")
+				}
+			}
+			if lineChannel, ok := channelManager.GetChannel("line"); ok {
+				if lc, ok := lineChannel.(*channels.LINEChannel); ok {
+					lc.SetTranscriber(transcriber)
+					logger.InfoC("voice", "Voice transcription attached to LINE channel")
+				}
+			}
 		}
 	}
 
