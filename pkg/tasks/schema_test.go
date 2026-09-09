@@ -191,15 +191,26 @@ func TestWaitingLifecycle(t *testing.T) {
 		t.Fatalf("status=%s", e.Status)
 	}
 
-	c, err := s.CancelWithReason(j.ID, "superseded")
+	// Terminal expired wins: a late cancel cannot flip it.
+	late, err := s.CancelWithReason(j.ID, "superseded")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if late.Status != StatusExpired {
+		t.Fatalf("terminal expired must win over late cancel: %+v", late)
+	}
+
+	if _, err := s.SetWaiting(j.ID, StatusPaused, "x"); err == nil {
+		t.Fatal("SetWaiting must reject non-waiting statuses")
+	}
+
+	// Cancel-with-reason on a LIVE job records the reason.
+	j2, _ := s.Create("k", "sess2", nil)
+	c, err := s.CancelWithReason(j2.ID, "superseded")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.Status != StatusCancelled || c.Error != "superseded" {
 		t.Fatalf("cancel reason lost: %+v", c)
-	}
-
-	if _, err := s.SetWaiting(j.ID, StatusPaused, "x"); err == nil {
-		t.Fatal("SetWaiting must reject non-waiting statuses")
 	}
 }

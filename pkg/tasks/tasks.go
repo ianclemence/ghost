@@ -179,9 +179,19 @@ func (s *Store) Cancel(id string) (Job, error) {
 
 func (s *Store) finish(id string, status Status, errMsg string) (Job, error) {
 	t := now()
-	if _, err := s.db.Exec(`UPDATE jobs SET status=?, error=?, finished_at=?, updated_at=? WHERE id=?`,
-		string(status), errMsg, t, t, id); err != nil {
+	// Only LIVE jobs may finish. A terminal job (already succeeded,
+	// failed, cancelled, or expired) is never overwritten by a stale or
+	// duplicate completion — the first terminal outcome wins.
+	res, err := s.db.Exec(`UPDATE jobs SET status=?, error=?, finished_at=?, updated_at=? WHERE id=? AND status IN (?,?,?,?,?,?,?)`,
+		string(status), errMsg, t, t, id,
+		string(StatusPending), string(StatusRunning), string(StatusRetrying),
+		string(StatusWaitingPermission), string(StatusWaitingUser),
+		string(StatusPaused), string(StatusInterrupted))
+	if err != nil {
 		return Job{}, fmt.Errorf("finish job: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return s.Get(id)
 	}
 	j, _ := s.Get(id)
 	evt := map[Status]string{StatusSucceeded: EventDone, StatusFailed: EventFailed, StatusCancelled: EventCancelled}[status]
@@ -250,11 +260,16 @@ func (s *Store) Pause(id string) (Job, error) {
 	return j, err
 }
 
-// Resume returns a paused job to pending.
+// Resume returns a waiting or paused job to pending. Waiting work is live
+// but blocked on something outside itself (permission, user); once that
+// blocker clears (approval granted, user replied), Resume is how it moves
+// back to the runnable queue. A terminal job is never resurrected: Resume
+// on succeeded/failed/cancelled/expired is a no-op returning current state.
 func (s *Store) Resume(id string) (Job, error) {
 	t := now()
-	res, err := s.db.Exec(`UPDATE jobs SET status=?, updated_at=? WHERE id=? AND status=?`,
-		string(StatusPending), t, id, string(StatusPaused))
+	res, err := s.db.Exec(`UPDATE jobs SET status=?, updated_at=? WHERE id=? AND status IN (?,?,?)`,
+		string(StatusPending), t, id,
+		string(StatusPaused), string(StatusWaitingPermission), string(StatusWaitingUser))
 	if err != nil {
 		return Job{}, fmt.Errorf("resume job: %w", err)
 	}
