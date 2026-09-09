@@ -1,0 +1,43 @@
+# Security Contract
+
+## Console authentication
+
+- Owner password verified with bcrypt (cost 12); minimum 8 characters plus
+  a common-password blocklist. No usernames exist, so there is nothing to
+  enumerate; wrong passwords always return the same generic error.
+- Sessions are 24-byte random bearer tokens, HttpOnly cookies, SameSite
+  Lax, `Secure` whenever served over TLS. 30-minute TTL (7 days with
+  "remember me"), absolute expiry, no sliding renewal.
+- **Brute force:** max 5 failures per IP, then escalating cooldowns of
+  10 min → 30 min → 1 h → 2 h (cap). Counters decay after a quiet day and
+  persist on disk, so restarts don't clear an attacker's cooldown. HTTP
+  429 while locked; success resets.
+- **Lock is real:** the Lock button signs out server-side. There is a
+  `POST /api/logout` endpoint; hiding the UI without it is not locking.
+- **Password change kills everything:** changing the owner password
+  revokes all sessions including the one that made the call.
+- The session list shows IDs with masked tokens; revocation is by ID
+  (full tokens are accepted for backward compatibility). A session can
+  never revoke itself — use sign out.
+- Recovery (`POST /api/reset-password`, `ghost reset-password --force`)
+  is localhost/local-shell only by design.
+
+## Permissions
+
+- Every consequential action goes through the broker: allow / ask / deny.
+  Unknown capabilities fail closed to ask.
+- There is exactly one scope derivation (`ScopeFor`: explicit target >
+  contact > session > owner). Console "Always allow" stores the canonical
+  scope of the request it answers — never a widened one — so a grant
+  matches precisely the runtime invocation it was meant for.
+- In the console, scopes read as "this chat only", "messages to X", or
+  "everywhere on this Ghost". Denials are stored policy and win over
+  allows, including in permissive modes.
+- Approval requests expire after 15 minutes; expired approvals cannot be
+  resolved or consumed. Allow-once approvals execute exactly once.
+
+## Backup safety
+
+See [BACKUP.md](BACKUP.md). Backups are passphrase-encrypted; secrets
+never enter them unless explicitly opted in; restore validates before
+touching state and always restarts the gateway afterward.
