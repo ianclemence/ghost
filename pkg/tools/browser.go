@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
+	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/logger"
 )
 
@@ -16,12 +18,59 @@ import (
 type BrowserTool struct {
 	workspace string
 	action    string // e.g. "navigate", "click", "type", "press", "snapshot"
+
+	// Policy attaches Ghost runtime guarantees. Nil keeps the exact
+	// legacy behavior (no session binding, raw CLI output). Set it to
+	// bind every call to an isolated owner+context+task session and to
+	// label all page output untrusted before it reaches the model.
+	Policy *BrowserPolicy
+
+	// run executes the CLI. Overridable in tests; production uses executeCLI.
+	run func(ctx context.Context, action string, args ...string) *ToolResult
+}
+
+// BrowserPolicy binds a BrowserTool to Ghost's browser runtime contract:
+// one isolated session per owner+context+task (cookie jars never cross
+// contexts), redacted untrusted-labeled observations, and an evidence
+// record per state-changing op.
+//
+// Approval note: this tool's surface (click/type/press on element refs)
+// cannot see Transact-class intent — a click is a click. Consequential
+// gating therefore lives upstream in the capability broker (unknown
+// browser capabilities default to consequential, i.e. ask), and every Act
+// is evidenced here so the ledger shows exactly what ran. Purchase-class
+// flows with declared intent belong on the computer-gated path, not here.
+type BrowserPolicy struct {
+	Sessions *browser.SessionStore
+	// Owner is the device principal; ContextID selects the isolated
+	// profile ("" = default context). Both must be set by code, never by
+	// the model.
+	Owner     string
+	ContextID string
+	// Profile names the cookie jar inside the context. "" = "default".
+	Profile string
+	// SessionTTL bounds idle session lifetime. <=0 = store default.
+	SessionTTL time.Duration
+	// OnEvidence receives one record per executed op. Nil disables.
+	OnEvidence func(taskID string, ev browser.Evidence)
 }
 
 func NewBrowserTool(workspace string, action string) *BrowserTool {
-	return &BrowserTool{
-		workspace: workspace,
-		action:    action,
+	t := &BrowserTool{workspace: workspace, action: action}
+	t.run = t.executeCLI
+	return t
+}
+
+// Classify maps this tool's action to its risk class: observation (reads
+// page state, changes nothing) or act (drives the page). Exposed so the
+// capability broker can distinguish the two without trusting
+// model-supplied arguments.
+func (t *BrowserTool) Classify() string {
+	switch t.action {
+	case "navigate", "snapshot":
+		return "observe"
+	default:
+		return "act"
 	}
 }
 
@@ -131,23 +180,75 @@ func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...str
 }
 
 func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
+	if t.Policy != nil && t.Policy.Sessions != nil {
+		return t.executeGuarded(ctx, args)
+	}
+	return t.executeBare(ctx, args)
+}
+
+// executeGuarded binds the call to an isolated session, runs it, then
+// redacts and labels the observation before it reaches the model.
+func (t *BrowserTool) executeGuarded(ctx context.Context, args map[string]interface{}) *ToolResult {
+	p := t.Policy
+	taskID := SessionKeyFromContext(ctx)
+	if taskID == "" {
+		taskID = "interactive"
+	}
+	owner := p.Owner
+	if owner == "" {
+		owner = "local"
+	}
+	profile := p.Profile
+	if profile == "" {
+		profile = "default"
+	}
+	sess, err := p.Sessions.GetOrCreate(owner, p.ContextID, taskID, profile, p.SessionTTL)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("browser session unavailable: %v", err))
+	}
+	started := time.Now().UTC()
+	detail := fmt.Sprintf("%s %v", t.action, args)
+	res := t.executeBare(ctx, args)
+	if p.OnEvidence != nil {
+		outcome := "ok"
+		if res.IsError {
+			outcome = "error"
+		}
+		p.OnEvidence(taskID, browser.Evidence{
+			Operation: t.action + ":" + t.Classify(),
+			SessionID: sess.ID, TaskID: taskID, ContextID: p.ContextID,
+			Outcome: outcome, Detail: detail,
+			StartedAt: started, EndedAt: time.Now().UTC(),
+		})
+	}
+	if res.IsError || res.ForLLM == "" {
+		return res
+	}
+	// Page content is untrusted web input: redact secrets, label it, and
+	// keep the user-visible text unchanged.
+	labeled := browser.ObserveText(res.ForLLM)
+	return &ToolResult{ForLLM: labeled, ForUser: res.ForUser, Silent: res.Silent, IsError: false}
+}
+
+func (t *BrowserTool) executeBare(ctx context.Context, args map[string]interface{}) *ToolResult {
+	_ = ctx
 	switch t.action {
 	case "navigate":
 		url, _ := args["url"].(string)
 		if url == "" {
 			return ErrorResult("url is required")
 		}
-		return t.executeCLI(ctx, "navigate", url)
+		return t.run(ctx, "navigate", url)
 
 	case "snapshot":
-		return t.executeCLI(ctx, "snapshot")
+		return t.run(ctx, "snapshot")
 
 	case "click":
 		ref, _ := args["ref"].(string)
 		if ref == "" {
 			return ErrorResult("ref is required")
 		}
-		return t.executeCLI(ctx, "click", ref)
+		return t.run(ctx, "click", ref)
 
 	case "type":
 		ref, _ := args["ref"].(string)
@@ -160,14 +261,14 @@ func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) 
 		if pressEnter, ok := args["press_enter"].(bool); ok && pressEnter {
 			cliArgs = append(cliArgs, "--enter")
 		}
-		return t.executeCLI(ctx, "type", cliArgs...)
+		return t.run(ctx, "type", cliArgs...)
 
 	case "press":
 		key, _ := args["key"].(string)
 		if key == "" {
 			return ErrorResult("key is required")
 		}
-		return t.executeCLI(ctx, "press", key)
+		return t.run(ctx, "press", key)
 
 	default:
 		return ErrorResult(fmt.Sprintf("Unknown browser action: %s", t.action))
