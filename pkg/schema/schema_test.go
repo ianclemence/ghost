@@ -47,6 +47,9 @@ var requiredTables = []string{
 	"permission_grants", "permission_requests",
 	"routine_meta",
 	"canonical_events",
+	"event_consumers", "event_claims",
+	"computer_leases",
+	"browser_sessions",
 	"tool_usage",
 }
 

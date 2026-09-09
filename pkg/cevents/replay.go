@@ -1,6 +1,7 @@
 package cevents
 
 import (
+	"database/sql"
 	"time"
 )
 
@@ -22,8 +23,18 @@ import (
 // never replay — SubscribeDurable still delivers them live, but only
 // durable events advance the checkpoint.
 
-// consumerTables belong in Open's schema statements alongside
-// canonical_events: consumer checkpoints and exactly-once claims.
+// consumerTables holds the checkpoint/claim DDL. EnsureConsumerSchema is
+// the one canonical applicator: Open calls it for fresh databases and
+// migration v3 calls it for existing ones, so the two can never drift.
+func EnsureConsumerSchema(db *sql.DB) error {
+	for _, st := range consumerTables {
+		if _, err := db.Exec(st); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 var consumerTables = []string{
 	`CREATE TABLE IF NOT EXISTS event_consumers (
 		consumer TEXT PRIMARY KEY,

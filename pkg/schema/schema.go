@@ -28,7 +28,7 @@ import (
 )
 
 // CurrentVersion is the schema head this build understands.
-const CurrentVersion = 2
+const CurrentVersion = 3
 
 // baseline builds the full v1 schema through the same initializers
 // production startup has always used. Every step is CREATE-IF-NOT-EXISTS
@@ -76,7 +76,23 @@ func registry() []migrations.Migration {
 			Description: "durable work v2: job scope/generation columns, computer leases, browser sessions",
 			UpDB:        durableWorkV2,
 		},
+		{
+			Version:     3,
+			Description: "event consumers: durable checkpoints and exactly-once claims",
+			UpDB:        eventConsumersV3,
+		},
 	}
+}
+
+// eventConsumersV3 adds the checkpoint/claim tables to databases that
+// migrated before they existed. Fresh installs already get them from the
+// v1 baseline (cevents.Open); the statements are idempotent, so this is a
+// no-op there and a completion on older devices.
+func eventConsumersV3(raw *sql.DB) error {
+	if err := cevents.EnsureConsumerSchema(raw); err != nil {
+		return fmt.Errorf("event consumers: %w", err)
+	}
+	return nil
 }
 
 // durableWorkV2 converges existing databases to the durable-work shape:

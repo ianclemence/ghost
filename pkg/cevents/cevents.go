@@ -212,11 +212,13 @@ func Open(db *sql.DB, logDir string) (*Stream, error) {
 		`CREATE INDEX IF NOT EXISTS idx_cevents_ghost ON canonical_events(ghost_id, seq)`,
 		`CREATE INDEX IF NOT EXISTS idx_cevents_time ON canonical_events(timestamp)`,
 	}
-	stmts = append(stmts, consumerTables...)
 	for _, st := range stmts {
 		if _, err := db.Exec(st); err != nil {
 			return nil, err
 		}
+	}
+	if err := EnsureConsumerSchema(db); err != nil {
+		return nil, err
 	}
 	if err := os.MkdirAll(logDir, 0700); err != nil {
 		return nil, err
