@@ -15,9 +15,10 @@ import (
 //
 // Usage:
 //
-//	/reset all --yes                              (all chats, memory, automations, context)
+//	/reset all --yes                              (all chats, memory, activity, automations, context)
 //	/reset chats --yes
 //	/reset memory --yes
+//	/reset activity --yes
 //	/reset automations --yes
 //	/reset context --yes
 //	/reset devices --yes  (paired devices)
@@ -42,6 +43,7 @@ func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 	validTargets := map[string]bool{
 		"all": true, "chats": true, "sessions": true, "messages": true,
 		"memory": true, "automations": true, "cron": true, "scheduled": true,
+		"activity": true, "events": true,
 		"context": true, "personal-context": true, "personal": true,
 		"devices": true, "paired": true, "paired-devices": true,
 	}
@@ -68,6 +70,7 @@ func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 
 	doChats := target == "all" || target == "chats" || target == "sessions" || target == "messages"
 	doMemory := target == "all" || target == "memory"
+	doActivity := target == "all" || target == "activity" || target == "events"
 	doAutomations := target == "all" || target == "automations" || target == "cron" || target == "scheduled"
 	doContext := target == "all" || target == "context" || target == "personal-context" || target == "personal"
 	doDevices := target == "devices" || target == "paired" || target == "paired-devices" || (target == "all" && includeDevices)
@@ -84,6 +87,13 @@ func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 			errs = append(errs, fmt.Sprintf("memory: %v", err))
 		} else {
 			results = append(results, "Memory: MEMORY.md, daily notes, and memory_chunks cleared")
+		}
+	}
+	if doActivity {
+		if err := clearActivity(ws, rt); err != nil {
+			errs = append(errs, fmt.Sprintf("activity: %v", err))
+		} else {
+			results = append(results, "Activity: canonical events and event log cleared")
 		}
 	}
 	if doAutomations {
@@ -140,6 +150,7 @@ func resetHelp() string {
 		"  /reset all --yes                              — factory reset (keeps secrets & paired devices)\n" +
 		"  /reset chats --yes                            — clear all chat history\n" +
 		"  /reset memory --yes                           — clear MEMORY.md and daily notes\n" +
+		"  /reset activity --yes                         — clear Activity (canonical events, event log)\n" +
 		"  /reset automations --yes                      — clear automations and cron jobs\n" +
 		"  /reset context --yes                          — clear Personal Context and knowledge\n" +
 		"  /reset devices --yes                          — clear paired devices\n" +
@@ -166,6 +177,8 @@ func resetPreview(target string, includeSecrets, includeDevices bool) string {
 		what = []string{"all chats (all sessions and messages)"}
 	case "memory":
 		what = []string{"memory (MEMORY.md, daily notes, memory_chunks)"}
+	case "activity", "events":
+		what = []string{"activity (canonical events, event log)"}
 	case "automations", "cron", "scheduled":
 		what = []string{"automations (scheduled_items, cron jobs, execution history)"}
 	case "context", "personal-context", "personal":
@@ -246,6 +259,18 @@ func clearMemory(ws string, rt *Runtime) error {
 	}
 	_ = os.RemoveAll(filepath.Join(ws, "journal"))
 	_ = os.MkdirAll(filepath.Join(ws, "journal"), 0755)
+	return nil
+}
+
+func clearActivity(ws string, rt *Runtime) error {
+	// Canonical events are the audit stream behind /v1/activity. A factory
+	// reset must clear them too, or old activity (skill lifecycle, agent
+	// outcomes) survives into what should look like a new installation.
+	if db := dbFromRuntime(rt, ws); db != nil {
+		_, _ = db.Exec(`DELETE FROM canonical_events`)
+	}
+	_ = os.RemoveAll(filepath.Join(ws, "events"))
+	_ = os.MkdirAll(filepath.Join(ws, "events"), 0755)
 	return nil
 }
 
