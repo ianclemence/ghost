@@ -10,6 +10,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/redact"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
@@ -139,10 +140,14 @@ func (r *ToolRegistry) Execute(ctx context.Context, name string, args map[string
 // ExecuteWithContext executes a tool with channel/chatID context and optional async callback.
 // It also validates tool arguments against the tool's JSON schema.
 func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args map[string]interface{}, channel, chatID, sessionKey string, asyncCallback AsyncCallback) *ToolResult {
+	// The logger does not redact; args are model input that may contain
+	// secret-shaped content (typed credentials, keys), so the registry
+	// redacts before anything leaves the core. Tool execution itself uses
+	// the ORIGINAL args — redaction is log-only.
 	logger.InfoCF("tool", "Tool execution started",
 		map[string]interface{}{
 			"tool": name,
-			"args": args,
+			"args": redact.Any(args),
 		})
 
 	tool, ok := r.Get(name)
@@ -169,7 +174,7 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 		if err := schema.Validate(args); err != nil {
 			logger.WarnCF("tool", "Tool argument validation failed", map[string]interface{}{
 				"tool":  name,
-				"args":  args,
+				"args":  redact.Any(args),
 				"error": err.Error(),
 			})
 

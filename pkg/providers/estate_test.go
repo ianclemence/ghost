@@ -1,6 +1,8 @@
 package providers
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/ianclemence/ghost/pkg/config"
@@ -48,5 +50,30 @@ func TestDescribeEstateNil(t *testing.T) {
 	}
 	if len(DescribeEstate(&config.Config{})) != 0 {
 		t.Fatal("empty config must yield empty estate")
+	}
+}
+
+// The estate inventory is presence-only: marshaling it must never expose a
+// configured key, token, or secret, even when real credentials are set.
+func TestEstateNeverExposesSecrets(t *testing.T) {
+	cfg := testEstateConfig()
+	cfg.Providers.Anthropic.APIKey = "sk-live-secret-abc123"
+	cfg.Providers.OpenAI.APIKey = "sk-other-live-secret"
+	cfg.Providers.Ollama.APIKey = ""
+	estate := DescribeEstate(cfg)
+	raw, err := json.Marshal(estate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(raw)
+	for _, secret := range []string{"sk-live-secret-abc123", "sk-other-live-secret", "api_key", "APIKey"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("estate exposed %q: %s", secret, out)
+		}
+	}
+	for _, e := range estate {
+		if e.Model == "anthropic/claude-test" && !e.HasCredential {
+			t.Fatal("presence flag must reflect the configured key")
+		}
 	}
 }
