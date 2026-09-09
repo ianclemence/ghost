@@ -52,6 +52,7 @@ var (
 // the Security section can list them, identify "this device", and let the
 // owner sign out other sessions.
 type sessionRecord struct {
+	ID        string
 	Token     string
 	IssuedAt  time.Time
 	ExpiresAt time.Time
@@ -72,21 +73,36 @@ const sessionTTL = 30 * time.Minute
 const rememberMeTTL = 7 * 24 * time.Hour
 
 // loginThrottle limits failed login attempts per client IP to slow brute-force.
+// Cooldowns escalate with repeated failures (10m, 30m, 1h, 2h cap); a full
+// day without failures decays the count. State persists on disk so a service
+// restart does not clear an active attacker's cooldown.
 type loginThrottler struct {
 	mu            sync.Mutex
 	failures      map[string]time.Time
 	attemptCounts map[string]int
+	lockedUntil   map[string]time.Time
+	persistPath   string
 }
 
 const (
-	maxLoginAttempts    = 5
-	loginCooldownPeriod = 10 * time.Minute
+	maxLoginAttempts = 5
+	// staleDecayPeriod resets an IP's counter after a full quiet day.
+	staleDecayPeriod = 24 * time.Hour
 )
+
+// loginCooldownLadder escalates per 5-failure tier, capped at the last rung.
+var loginCooldownLadder = []time.Duration{
+	10 * time.Minute,
+	30 * time.Minute,
+	time.Hour,
+	2 * time.Hour,
+}
 
 func newLoginThrottle() *loginThrottler {
 	return &loginThrottler{
 		failures:      make(map[string]time.Time),
 		attemptCounts: make(map[string]int),
+		lockedUntil:   make(map[string]time.Time),
 	}
 }
 
@@ -94,15 +110,14 @@ func newLoginThrottle() *loginThrottler {
 func (t *loginThrottler) allowed(ip string) (bool, time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.attemptCounts[ip] >= maxLoginAttempts {
-		first, ok := t.failures[ip]
-		if ok {
-			wait := loginCooldownPeriod - time.Since(first)
-			if wait > 0 {
-				return false, wait
-			}
+	now := time.Now()
+	if until, ok := t.lockedUntil[ip]; ok {
+		if now.Before(until) {
+			return false, until.Sub(now)
 		}
-		// Cooldown expired: reset and allow.
+		delete(t.lockedUntil, ip)
+	}
+	if first, ok := t.failures[ip]; ok && now.Sub(first) > staleDecayPeriod {
 		delete(t.failures, ip)
 		delete(t.attemptCounts, ip)
 	}
@@ -111,18 +126,126 @@ func (t *loginThrottler) allowed(ip string) (bool, time.Duration) {
 
 func (t *loginThrottler) recordFailure(ip string) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
+	now := time.Now()
 	if _, ok := t.failures[ip]; !ok {
-		t.failures[ip] = time.Now()
+		t.failures[ip] = now
 	}
 	t.attemptCounts[ip]++
+	if t.attemptCounts[ip]%maxLoginAttempts == 0 {
+		tier := t.attemptCounts[ip]/maxLoginAttempts - 1
+		if tier >= len(loginCooldownLadder) {
+			tier = len(loginCooldownLadder) - 1
+		}
+		t.lockedUntil[ip] = now.Add(loginCooldownLadder[tier])
+	}
+	path := t.persistPath
+	t.mu.Unlock()
+	if path != "" {
+		t.persist(path)
+	}
 }
 
 func (t *loginThrottler) recordSuccess(ip string) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	delete(t.failures, ip)
 	delete(t.attemptCounts, ip)
+	delete(t.lockedUntil, ip)
+	path := t.persistPath
+	t.mu.Unlock()
+	if path != "" {
+		t.persist(path)
+	}
+}
+
+// throttleSnapshot is the on-disk form. IPs of failed logins are security
+// telemetry, stored 0600 alongside the admin hash, never logged.
+type throttleSnapshot struct {
+	Failures map[string]time.Time `json:"failures"`
+	Counts   map[string]int       `json:"counts"`
+	Locked   map[string]time.Time `json:"locked_until"`
+}
+
+func (t *loginThrottler) persist(path string) {
+	t.mu.Lock()
+	snap := throttleSnapshot{
+		Failures: make(map[string]time.Time, len(t.failures)),
+		Counts:   make(map[string]int, len(t.attemptCounts)),
+		Locked:   make(map[string]time.Time, len(t.lockedUntil)),
+	}
+	for k, v := range t.failures {
+		snap.Failures[k] = v
+	}
+	for k, v := range t.attemptCounts {
+		snap.Counts[k] = v
+	}
+	for k, v := range t.lockedUntil {
+		snap.Locked[k] = v
+	}
+	t.mu.Unlock()
+	data, err := json.Marshal(snap)
+	if err != nil {
+		return
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".throttle-*")
+	if err != nil {
+		log.Printf("throttle persist: %v", err)
+		return
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return
+	}
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		log.Printf("throttle persist: %v", err)
+	}
+}
+
+// loadThrottle restores cooldown state written by persist. Corrupt or
+// missing files fail open to an empty throttle (fail-closed would lock
+// out the owner on disk errors; the live throttle re-learns attackers).
+func (t *loginThrottler) load(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var snap throttleSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		log.Printf("throttle load: ignoring corrupt state: %v", err)
+		return
+	}
+	now := time.Now()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for ip, first := range snap.Failures {
+		if now.Sub(first) <= staleDecayPeriod {
+			t.failures[ip] = first
+		}
+	}
+	for ip, n := range snap.Counts {
+		if _, ok := t.failures[ip]; ok && n > 0 {
+			t.attemptCounts[ip] = n
+		}
+	}
+	for ip, until := range snap.Locked {
+		if now.Before(until) {
+			if _, ok := t.failures[ip]; ok {
+				t.lockedUntil[ip] = until
+			}
+		}
+	}
+	t.persistPath = path
 }
 
 func (t *loginThrottler) attempts(ip string) int {
@@ -189,6 +312,10 @@ func (s *sessionStore) issue(ip, userAgent string, rememberMe bool) (string, err
 		return "", err
 	}
 	token := hex.EncodeToString(b)
+	idb := make([]byte, 4)
+	if _, err := rand.Read(idb); err != nil {
+		return "", err
+	}
 
 	ttl := sessionTTL
 	if rememberMe {
@@ -207,6 +334,7 @@ func (s *sessionStore) issue(ip, userAgent string, rememberMe bool) (string, err
 	}
 	s.tokens[token] = now.Add(ttl)
 	s.records[token] = &sessionRecord{
+		ID:        hex.EncodeToString(idb),
 		Token:     token,
 		IssuedAt:  now,
 		ExpiresAt: now.Add(ttl),
@@ -215,6 +343,22 @@ func (s *sessionStore) issue(ip, userAgent string, rememberMe bool) (string, err
 		UserAgent: userAgent,
 	}
 	return token, nil
+}
+
+// findByID locates a session by its public ID (tokens themselves are
+// never exposed outside the owning cookie).
+func (s *sessionStore) findByID(id string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for token, rec := range s.records {
+		if rec.ID == id {
+			if exp, ok := s.tokens[token]; ok && time.Now().Before(exp) {
+				return token, true
+			}
+			return "", false
+		}
+	}
+	return "", false
 }
 
 // touch updates the last-seen time for a session, keeping the metadata.
@@ -323,6 +467,11 @@ func main() {
 		log.Fatalf("Failed to create directories: %v", err)
 	}
 
+	// Restore brute-force throttle state so a restart does not clear an
+	// attacker's cooldown. Best-effort: a corrupt file fails open and the
+	// live throttle re-learns.
+	loginThrottle.load(filepath.Join(fb.DataDir, "login-throttle.json"))
+
 	// Reconcile bundled skills against the runtime workspace. On a fresh
 	// checkout layout this seeds the wizard's skills tab; on every start it
 	// refreshes unchanged bundled skills and always preserves user edits. On
@@ -368,6 +517,7 @@ func main() {
 	mux.HandleFunc("/api/connect-wifi", handleConnectWiFi)
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/login", handleLogin)
+	mux.HandleFunc("/api/logout", handleLogout)
 	mux.HandleFunc("/api/configure", handleConfigure)
 	mux.HandleFunc("/api/pairing-code", handlePairingCode)
 	mux.HandleFunc("/api/ollama/models", handleOllamaModels)
@@ -731,6 +881,10 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
+		// Secure only over TLS: the console is plain HTTP on the LAN by
+		// design, where a Secure flag would break login entirely. When
+		// served over HTTPS the cookie is never sent in the clear.
+		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   maxAge,
 	})
@@ -738,6 +892,31 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":      true,
 		"message": "Logged in",
+	})
+}
+
+// handleLogout revokes the caller's own session server-side and clears
+// the cookie, so "Lock" actually locks instead of merely hiding the UI.
+func handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if tok := sessionToken(r); tok != "" {
+		sessions.revoke(tok)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ghost_admin_session",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"message": "Signed out",
 	})
 }
 

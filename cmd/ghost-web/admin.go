@@ -438,6 +438,7 @@ func handleAdminSessions(w http.ResponseWriter, r *http.Request) {
 	currentToken := sessionToken(r)
 	records := sessions.list()
 	type sessionJSON struct {
+		ID        string `json:"id"`
 		Token     string `json:"token"`
 		Current   bool   `json:"current"`
 		IssuedAt  string `json:"issued_at"`
@@ -449,7 +450,8 @@ func handleAdminSessions(w http.ResponseWriter, r *http.Request) {
 	out := make([]sessionJSON, 0, len(records))
 	for _, rec := range records {
 		out = append(out, sessionJSON{
-			Token:     rec.Token,
+			ID:        rec.ID,
+			Token:     maskKey(rec.Token),
 			Current:   rec.Token == currentToken,
 			IssuedAt:  rec.IssuedAt.Format(time.RFC3339),
 			ExpiresAt: rec.ExpiresAt.Format(time.RFC3339),
@@ -464,8 +466,9 @@ func handleAdminSessions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleAdminSessionRevoke signs out a single session by token, or all
-// sessions except the current one when target=all.
+// handleAdminSessionRevoke signs out a single session by ID (or full token
+// for backward compatibility), or all sessions except the current one
+// when target=all.
 func handleAdminSessionRevoke(w http.ResponseWriter, r *http.Request) {
 	if !requireSession(w, r) {
 		return
@@ -475,6 +478,7 @@ func handleAdminSessionRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
+		ID     string `json:"id"`
 		Token  string `json:"token"`
 		Action string `json:"action"` // "revoke" | "revoke_all"
 	}
@@ -493,15 +497,23 @@ func handleAdminSessionRevoke(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "other sessions signed out"})
 		return
 	}
-	if req.Token == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "token required"})
+	target := req.Token
+	if target == "" && req.ID != "" {
+		var ok bool
+		if target, ok = sessions.findByID(req.ID); !ok {
+			writeJSON(w, http.StatusNotFound, map[string]interface{}{"ok": false, "error": "session not found"})
+			return
+		}
+	}
+	if target == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "session id required"})
 		return
 	}
-	if req.Token == currentToken {
+	if target == currentToken {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "cannot revoke your own session; use sign out"})
 		return
 	}
-	sessions.revoke(req.Token)
+	sessions.revoke(target)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "session signed out"})
 }
 
@@ -1428,6 +1440,10 @@ func handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
+	// A changed password must not leave old sessions valid: revoke
+	// everything, including the session that made this call. The UI
+	// returns to the login screen on the next 401.
+	sessions.revokeAll()
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Password updated"})
 }
 

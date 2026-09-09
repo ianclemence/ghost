@@ -278,7 +278,7 @@ async function loadSessions(body) {
     if (!s.current) {
       const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
       tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
-        try { await GhostAPI.post('/api/admin/sessions/revoke', { token: s.token }); GhostUI.toast('Session signed out'); loadSessions(body); }
+        try { await GhostAPI.post('/api/admin/sessions/revoke', { id: s.id }); GhostUI.toast('Session signed out'); loadSessions(body); }
         catch (e) { GhostUI.toast('Couldn\u2019t sign out.', 'err'); }
       } }, 'Sign out'));
       row.appendChild(tr);

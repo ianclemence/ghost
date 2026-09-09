@@ -231,9 +231,9 @@ const GhostApp = (() => {
   }
 
   function lock() {
-    // Client-side lock: return to the sign-in screen. The session cookie remains,
-    // but the console is no longer visible until the password is entered again.
-    showLogin();
+    // Server-side sign-out first so the session cannot be reused; the
+    // sign-in screen follows regardless of the outcome.
+    GhostAPI.post('/api/logout', {}).catch(() => {}).finally(() => showLogin());
   }
 
   async function start() {
