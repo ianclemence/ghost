@@ -200,18 +200,24 @@ retained server-side.
 ## 11. Browser & Computer (transient surfaces)
 
 **NOT SUPPORTED as client transports today.** The runtime has real,
-proven, brokered browser and computer executors, but there is **no** mobile
-endpoint to: list a live browser/computer session, read the current
-observation/state, receive a screenshot/frame stream, learn who controls it
-(Ghost vs user), request/release takeover, or revalidate control after a
-takeover. Do not fake or synthesize these. When the product needs
-browser/computer visualization + takeover, a new, separately-designed
-transport (snapshot/observation + control-ownership plane) must be added
-below the existing Permission Broker / evidence / lease authority; mobile
-must never open a second browser or drive a raw executor. Screenshots of
-the **physical appliance display** (`/v1/screenshot`) and app launch
-(`/v1/open`) are legacy local-machine commands, not browser/computer
-transports.
+proven, brokered browser and computer executors, and now a **Live Surface
+plane** (`pkg/live`): an in-process domain primitive that tracks each active
+browser/computer surface, its safe observation, and its control owner
+(`ghost | user | none`) with expiring user takeover leases. When a plane is
+attached, the browser/computer gates consult it before executing, so a
+human takeover pauses Ghost and release does not auto-resume (revalidation
+required). This is a runtime primitive only.
+
+There is **no** mobile endpoint yet to: list a live browser/computer
+surface, read the current observation/state, receive a screenshot/frame
+stream, request/release takeover, or revalidate control. Do not fake or
+synthesize these. The mobile transport (discovery/observation/takeover/
+release endpoints + an SSE change stream) must be added on top of this
+plane, below the existing Permission Broker / evidence / lease authority;
+mobile must never open a second browser or drive a raw executor.
+Screenshots of the **physical appliance display** (`/v1/screenshot`) and
+app launch (`/v1/open`) are legacy local-machine commands, not
+browser/computer transports.
 
 ## 12. Product outcomes (authoritative)
 

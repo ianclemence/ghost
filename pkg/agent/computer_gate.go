@@ -8,6 +8,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/computer"
+	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -149,6 +150,14 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 	if owner == "" {
 		return deny("Computer is unavailable: no Ghost identity. Nothing was run.")
 	}
+	// Live Surface plane: register the appliance computer and enforce the
+	// pause. While a human owns the surface, Ghost is paused.
+	if al.livePlane != nil {
+		al.livePlane.Register("local", live.KindComputer)
+		if ok, reason := al.livePlane.GhostMayAct("local"); !ok {
+			return deny("The computer is paused: %s. Nothing was run.", reason)
+		}
+	}
 	contextID := ""
 	if g.Contexts != nil {
 		contextID = g.Contexts.SessionContext(sessionKey)
@@ -228,6 +237,9 @@ func (al *AgentLoop) bindComputer(owner, contextID, sessionKey, taskID, generati
 		_ = lease
 		call.ControlAuthority = true
 	}
+	if al.livePlane != nil {
+		al.livePlane.SetControlOwner("local", live.OwnerGhost)
+	}
 	return computerGateResult{decision: "allow", call: call}
 }
 
@@ -253,6 +265,14 @@ func (al *AgentLoop) resumeComputerCall(resume ResumeOutcome, sessionKey, reques
 	owner := g.GhostID
 	if owner == "" {
 		return refuse("Computer is unavailable: no Ghost identity. Nothing was run.")
+	}
+	// Live Surface pause must be rechecked on resume (a takeover may have
+	// happened while approval waited).
+	if al.livePlane != nil {
+		al.livePlane.Register("local", live.KindComputer)
+		if ok, reason := al.livePlane.GhostMayAct("local"); !ok {
+			return refuse("The computer is paused: %s. Nothing was run.", reason)
+		}
 	}
 	if stored, _ := resume.Args[contOwner].(string); stored != "" && stored != owner {
 		return refuse("Owner mismatch: this approval belongs to a different Ghost. Nothing was run.")

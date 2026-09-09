@@ -4,8 +4,10 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/computer"
+	"github.com/ianclemence/ghost/pkg/live"
 )
 
 // Screenshot (observation) is a broker read; control ops (click, type,
@@ -159,5 +161,94 @@ func TestComputerUnwiredLoopRefuses(t *testing.T) {
 		processOptions{SessionKey: "s", RequestID: "r"}, nil)
 	if !governed || !stop || res == nil || !strings.Contains(res.ForLLM, "not governed") {
 		t.Fatalf("unwired loop must refuse computer: governed=%v stop=%v res=%+v", governed, stop, res)
+	}
+}
+
+// Live Surface plane integration: a human takeover of the computer pauses
+// Ghost (the gate refuses further ops), release does NOT auto-resume, and
+// only a revalidating resume lets Ghost act again. This is the "takeover
+// pauses autonomous control" invariant enforced at the real gate. Uses the
+// observation path (no durable lease) so the test is hermetic; the pause
+// check runs before the observation/control branch, so it covers control
+// ops identically.
+func TestComputerGatePausedByLiveSurfaceTakeover(t *testing.T) {
+	h := newGateHarness(t)
+	al := h.loop
+	al.setTestComputer(computer.NewVirtualUI("settings"))
+	plane := live.NewRegistry("ghost-test-1")
+	plane.Register("local", live.KindComputer)
+	al.SetLivePlane(plane)
+
+	allow := func() bool {
+		d := al.authorizeComputerCall("req-live", "sess-live", "computer_screenshot",
+			map[string]interface{}{"path": "/tmp/x.png"})
+		return d.decision == "allow"
+	}
+	if !allow() {
+		t.Fatal("ghost may observe the computer before takeover")
+	}
+
+	if _, err := plane.Takeover("local", "device-mob", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if allow() {
+		t.Fatal("ghost must be paused while the user controls the computer")
+	}
+
+	if err := plane.Release("local", "device-mob", false); err != nil {
+		t.Fatal(err)
+	}
+	if allow() {
+		t.Fatal("release must NOT auto-resume Ghost; revalidation required")
+	}
+	if err := plane.Resume("local"); err != nil {
+		t.Fatal(err)
+	}
+	if !allow() {
+		t.Fatal("after revalidated resume ghost may act again")
+	}
+}
+
+// Browser gate honors the same Live Surface pause: a human takeover of the
+// browser session pauses Ghost; release requires a revalidating resume.
+func TestBrowserGatePausedByLiveSurfaceTakeover(t *testing.T) {
+	h := newGateHarness(t)
+	al := h.loop
+	plane := live.NewRegistry("ghost-test-1")
+	al.SetLivePlane(plane)
+
+	allow := func() bool {
+		d := al.authorizeBrowserCall("req-bp", "sess-bp", "browser_snapshot", map[string]interface{}{})
+		return d.decision == "allow"
+	}
+	if !allow() {
+		t.Fatal("ghost may observe the browser before takeover")
+	}
+	// The surface id is the deterministic browser session for owner+context+task.
+	ledger, err := al.browserSessionLedger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := ledger.GetOrCreate("ghost-test-1", "personal", "sess-bp", "default", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plane.Takeover(sess.ID, "device-mob", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if allow() {
+		t.Fatal("ghost must be paused while the user controls the browser")
+	}
+	if err := plane.Release(sess.ID, "device-mob", false); err != nil {
+		t.Fatal(err)
+	}
+	if allow() {
+		t.Fatal("browser release must NOT auto-resume Ghost")
+	}
+	if err := plane.Resume(sess.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !allow() {
+		t.Fatal("after revalidated resume ghost may observe the browser again")
 	}
 }

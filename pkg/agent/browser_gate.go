@@ -9,6 +9,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/cevents"
+	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/providers"
@@ -200,10 +201,29 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	if err != nil {
 		return deny("Browser is unavailable: %v. Nothing was run.", err)
 	}
+	// Live Surface plane: register the browser session for this
+	// owner+context+task and enforce the pause. While a human owns the
+	// surface, Ghost is paused. GetOrCreate is deterministic per
+	// owner/context/task, so the execution path reuses the same session.
+	var liveSessionID string
+	if al.livePlane != nil {
+		sess, serr := ledger.GetOrCreate(owner, contextID, taskID, "default", 0)
+		if serr != nil {
+			return deny("Browser is unavailable: session bind failed. Nothing was run.")
+		}
+		liveSessionID = sess.ID
+		al.livePlane.Register(sess.ID, live.KindBrowser)
+		if ok, reason := al.livePlane.GhostMayAct(sess.ID); !ok {
+			return deny("The browser is paused: %s. Nothing was run.", reason)
+		}
+	}
 	risk := browserRisk(op)
 	scope := scopeFor(sessionKey, args)
 	switch g.Broker.Evaluate(browserCapability, tool, scope, risk) {
 	case permissions.VerdictAllow:
+		if al.livePlane != nil && liveSessionID != "" {
+			al.livePlane.SetControlOwner(liveSessionID, live.OwnerGhost)
+		}
 		return browserGateResult{decision: "allow", call: tools.BrowserCall{
 			Owner: owner, ContextID: contextID, TaskID: taskID,
 			Generation: generation, Sessions: ledger, Op: op,
@@ -323,6 +343,14 @@ func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, request
 		Generation: func() string { s, _ := args[contGeneration].(string); return s }(),
 		SessionID:  func() string { s, _ := args[contBrowserSession].(string); return s }(),
 		Sessions:   ledger, Op: op, Permission: permission,
+	}
+	// A takeover may have happened while approval waited: refuse resume if
+	// the human now owns the surface.
+	if al.livePlane != nil && call.SessionID != "" {
+		al.livePlane.Register(call.SessionID, live.KindBrowser)
+		if ok, reason := al.livePlane.GhostMayAct(call.SessionID); !ok {
+			return tools.BrowserCall{}, tools.ErrorResult("The browser is paused: " + reason + " Nothing was run.")
+		}
 	}
 	return call, nil
 }

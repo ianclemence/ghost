@@ -31,6 +31,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/evolution"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/media"
 	"github.com/ianclemence/ghost/pkg/modes"
@@ -106,6 +107,12 @@ type AgentLoop struct {
 	// identity, permission broker, canonical event stream. Nil-safe:
 	// an unwired loop behaves exactly as before.
 	governance *Governance
+
+	// livePlane is the Live Surface plane (browser/computer). When set, the
+	// browser/computer gates consult it BEFORE executing so a human takeover
+	// pauses Ghost. Nil-safe: without a plane the gates behave exactly as
+	// before. Set by the gateway.
+	livePlane *live.Registry
 
 	// standingBrokerInst is the loop-local broker for standing grants
 	// (same SQLite file as the gateway singleton, so both see one truth).
@@ -888,6 +895,13 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 
 func (al *AgentLoop) SetGovernance(g *Governance) {
 	al.governance = g
+}
+
+// SetLivePlane attaches the Live Surface plane used to pause Ghost during
+// a human takeover of a browser/computer surface. Nil-safe and additive:
+// existing loops without a plane behave exactly as before.
+func (al *AgentLoop) SetLivePlane(p *live.Registry) {
+	al.livePlane = p
 }
 
 // SetRoutineContext scopes a session to a routine's allowed capabilities
