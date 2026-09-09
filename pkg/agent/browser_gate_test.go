@@ -27,6 +27,7 @@ type stubBrowserTool struct {
 	bags       []tools.BrowserCall
 	legacy     int
 	noEvidence bool
+	failWith   bool
 	output     string
 }
 
@@ -60,9 +61,28 @@ type gateHarness struct {
 	raw      *sql.DB
 }
 
+// existingContext returns the first live context of a kind, or nil.
+func existingContext(cs *contexts.Store, kind contexts.Kind) *contexts.Context {
+	for _, c := range cs.List() {
+		if c.Kind == kind {
+			return c
+		}
+	}
+	return nil
+}
+
 func newGateHarness(t *testing.T) *gateHarness {
 	t.Helper()
-	ws := t.TempDir()
+	return newGateHarnessOnWS(t, t.TempDir())
+}
+
+// newGateHarnessOnWS wires the real stores over an EXISTING workspace's
+// database, so a test can simulate a restart by building a second harness
+// on the same workspace. The workspace's ghost.db must already exist and
+// be at the schema head (newGateHarness migrates it; restart harnesses
+// reuse the file).
+func newGateHarnessOnWS(t *testing.T, ws string) *gateHarness {
+	t.Helper()
 	database, err := db.NewDB(ws)
 	if err != nil {
 		t.Fatal(err)
@@ -88,9 +108,13 @@ func newGateHarness(t *testing.T) *gateHarness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	work, err := cs.Create(contexts.KindWork, "Work")
-	if err != nil {
-		t.Fatal(err)
+	work := existingContext(cs, contexts.KindWork)
+	if work == nil {
+		var err error
+		work, err = cs.Create(contexts.KindWork, "Work")
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	jobs := tasks.NewStore(raw, nil)
 	gov := NewGovernance(events, broker, "ghost-test-1", "agent-test")
@@ -110,17 +134,29 @@ func (s *stubBrowserTool) run(ctx context.Context, args map[string]interface{}) 
 	s.calls++
 	if bag, ok := tools.BrowserCallFromContext(ctx); ok {
 		s.bags = append(s.bags, bag)
+		if s.failWith {
+			res := &tools.ToolResult{ForLLM: "boom", IsError: true}
+			if !s.noEvidence {
+				res.Evidence = stubEvidence(bag, "error")
+			}
+			return res
+		}
 		res := &tools.ToolResult{ForLLM: s.output, ForUser: s.output}
 		if !s.noEvidence {
-			res.Evidence = map[string]interface{}{
-				"op": bag.Op, "session": "sess-test", "task": bag.TaskID,
-				"permission": bag.Permission, "outcome": "ok",
-			}
+			res.Evidence = stubEvidence(bag, "ok")
 		}
 		return res
 	}
 	s.legacy++
 	return &tools.ToolResult{ForLLM: s.output, ForUser: s.output}
+}
+
+func stubEvidence(bag tools.BrowserCall, outcome string) map[string]interface{} {
+	return map[string]interface{}{
+		"op": "browser." + bag.Op, "session": "sess-test", "task": bag.TaskID,
+		"owner": bag.Owner, "context": bag.ContextID,
+		"permission": bag.Permission, "outcome": outcome,
+	}
 }
 
 func (h *gateHarness) toolCtx() context.Context { return context.Background() }
