@@ -77,3 +77,30 @@ func TestEstateNeverExposesSecrets(t *testing.T) {
 		}
 	}
 }
+
+// Defaults.Model is stored without the provider prefix, so the estate must
+// resolve the provider from the configured Defaults.Provider when the model
+// string has none. Otherwise a saved DeepSeek key is never matched and the
+// estate always reports "Missing credentials" even though the key exists.
+func TestEstateCredentialLookupUsesConfiguredProvider(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Provider = "deepseek"
+	cfg.Agents.Defaults.Model = "deepseek-v4-flash" // no provider prefix
+	cfg.Providers.DeepSeek.APIKey = "sk-live-key"
+	estate := DescribeEstate(cfg)
+	found := false
+	for _, e := range estate {
+		if e.Role == "primary" {
+			found = true
+			if e.Provider != "deepseek" {
+				t.Fatalf("expected provider deepseek, got %q", e.Provider)
+			}
+			if !e.HasCredential {
+				t.Fatal("primary deepseek must report HasCredential=true when its key is configured")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no primary entry in estate")
+	}
+}

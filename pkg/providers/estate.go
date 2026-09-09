@@ -37,6 +37,13 @@ func DescribeEstate(cfg *config.Config) []ProviderInfo {
 		}
 		seen[model+"|"+role] = true
 		name, _ := splitModelSpec(model)
+		// Defaults.Model is stored WITHOUT the provider prefix (SetModel keeps
+		// provider and model separate). Resolve the provider from the model
+		// spec OR the configured default provider so credential lookups map to
+		// the right entry (e.g. "deepseek-v4-flash" -> provider "deepseek").
+		if name == "" {
+			name = cfg.Agents.Defaults.Provider
+		}
 		if name == "" {
 			name = model
 		}
