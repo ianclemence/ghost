@@ -36,6 +36,20 @@
 - Approval requests expire after 15 minutes; expired approvals cannot be
   resolved or consumed. Allow-once approvals execute exactly once.
 
+## Browser and computer use
+
+- Browser sessions are isolated per owner + context + task: cookie jars
+  never cross contexts, and two tasks never share a session.
+- All page output is redacted (secret-shaped strings) and labeled
+  untrusted before it reaches the model. The user-visible text is
+  unchanged.
+- Computer holds are leases with TTL and heartbeat renewal; boot expires
+  every survivor, so a restarted Ghost never drives a computer on behalf
+  of a dead task. Financial, credential, and destructive operations
+  require approval, and evidence records what ran.
+- Durable work carries a generation token: completions from a rotated-out
+  worker are dropped instead of mutating live state.
+
 ## Backup safety
 
 See [BACKUP.md](BACKUP.md). Backups are passphrase-encrypted; secrets

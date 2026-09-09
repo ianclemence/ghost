@@ -23,10 +23,10 @@ const IdentitySchemaVersion = 2
 type Identity struct {
 	SchemaVersion int    `json:"schema_version"`
 	GhostID       string `json:"ghost_id"`
-	PodID         string `json:"pod_id"`          // stable pod identifier for pairing
-	OwnerName     string `json:"owner_name"`       // who owns this Ghost
-	GhostName     string `json:"ghost_name"`       // what the Ghost is called
-	CreatedAt     string `json:"created_at"`       // RFC3339
+	PodID         string `json:"pod_id"`     // stable pod identifier for pairing
+	OwnerName     string `json:"owner_name"` // who owns this Ghost
+	GhostName     string `json:"ghost_name"` // what the Ghost is called
+	CreatedAt     string `json:"created_at"` // RFC3339
 }
 
 // IdentityPath returns the location of the identity record for a workspace.

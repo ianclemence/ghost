@@ -11,6 +11,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
+	"github.com/ianclemence/ghost/pkg/schema"
 	_ "modernc.org/sqlite"
 )
 
@@ -29,6 +30,12 @@ func seedDurableRows(t *testing.T, ws string) {
 		t.Fatalf("open raw: %v", err)
 	}
 	defer raw.Close()
+	// Production shape first (migrations v1-v3); the subsystem initializers
+	// below then re-run as idempotent no-ops, exactly like gateway startup
+	// re-entering an already-migrated database.
+	if _, err := schema.MigrateToCurrent(raw); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 	store := scheduled.NewStore(raw)
 	if err := store.InitSchema(); err != nil {
 		t.Fatalf("scheduled schema: %v", err)

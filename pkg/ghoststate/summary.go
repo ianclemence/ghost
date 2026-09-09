@@ -11,17 +11,17 @@ import (
 // without applying anything. The console validate step renders exactly
 // this so the user confirms with full knowledge of what will land.
 type RestoreSummary struct {
-	GhostID          string         `json:"ghost_id"`
-	ExportedAt       string         `json:"exported_at"`
-	SecretsIncluded  bool           `json:"secrets_included"`
-	Conversations    int            `json:"conversations"`
-	Routines         int            `json:"routines"`
-	ScheduledItems   int            `json:"scheduled_items"`
-	StandingGrants   int            `json:"standing_grants"`
-	Tables           map[string]int `json:"tables"`
-	Rebound          []string       `json:"rebound"`
-	SecretsExcluded  []string       `json:"secrets_excluded"`
-	PortableFiles    int            `json:"portable_files"`
+	GhostID         string         `json:"ghost_id"`
+	ExportedAt      string         `json:"exported_at"`
+	SecretsIncluded bool           `json:"secrets_included"`
+	Conversations   int            `json:"conversations"`
+	Routines        int            `json:"routines"`
+	ScheduledItems  int            `json:"scheduled_items"`
+	StandingGrants  int            `json:"standing_grants"`
+	Tables          map[string]int `json:"tables"`
+	Rebound         []string       `json:"rebound"`
+	SecretsExcluded []string       `json:"secrets_excluded"`
+	PortableFiles   int            `json:"portable_files"`
 }
 
 // Summarize decrypts an archive and counts its restorable contents.

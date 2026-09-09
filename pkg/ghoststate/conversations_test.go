@@ -36,6 +36,7 @@ func conversationWorkspace(t *testing.T) string {
 	if err := d.Close(); err != nil {
 		t.Fatalf("close db: %v", err)
 	}
+	migrateTestDB(t, ws)
 	return ws
 }
 

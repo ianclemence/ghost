@@ -38,6 +38,15 @@ An update must never ship a migration that cannot be preceded by a
 working backup, and archives record the schema version they were taken
 at — imports refuse mismatched versions loudly instead of guessing.
 
+## Version history
+
+- v1 — baseline: full schema via each subsystem's own idempotent
+  initializer (no copied DDL).
+- v2 — durable work: owner/context/generation/evidence/resume columns on
+  jobs, plus the computer-leases and browser-sessions ledgers.
+- v3 — event consumers: durable checkpoints and exactly-once claims for
+  at-least-once subscribers.
+
 ## Adding a migration
 
 1. Append the next version to `pkg/schema`'s registry with a
@@ -47,3 +56,6 @@ at — imports refuse mismatched versions loudly instead of guessing.
 3. If it changes any table covered by backup snapshots, update the
    snapshot column lists in `pkg/ghoststate` in the same commit —
    otherwise exports will (correctly) refuse the unknown shape.
+   The export verifies live column order against the whitelist before
+   dumping: SQLite's quoted-identifier fallback would otherwise write
+   column names as values instead of failing.

@@ -87,16 +87,23 @@ var snapshotTables = []snapshotTable{
 		"id", "kind", "status", "progress", "checkpoints", "payload",
 		"session_key", "error", "attempts", "created_at", "started_at",
 		"finished_at", "updated_at",
+		"owner", "context_id", "generation", "evidence", "resume_state",
 	}, OrderBy: "id"},
+	{Name: "event_consumers", Columns: []string{
+		"consumer", "last_seq", "updated_at",
+	}, OrderBy: "consumer"},
+	{Name: "event_claims", Columns: []string{
+		"event_id", "consumer", "claimed_at",
+	}, OrderBy: "event_id, consumer"},
 }
 
 // tableSnapshotFile is the on-disk form of one table snapshot.
 type tableSnapshotFile struct {
-	Format  string            `json:"format"`
-	Version int               `json:"version"`
-	Table   string            `json:"table"`
-	Columns []string          `json:"columns"`
-	Rows    [][]interface{}   `json:"rows"`
+	Format  string          `json:"format"`
+	Version int             `json:"version"`
+	Table   string          `json:"table"`
+	Columns []string        `json:"columns"`
+	Rows    [][]interface{} `json:"rows"`
 }
 
 func snapshotLogicalPath(table string) string {
@@ -144,6 +151,9 @@ var documentedNonsnapshotTables = map[string]string{
 	"permission_requests": "ephemeral approvals (15-minute TTL)",
 	"paired_devices":      "device credentials (re-pair after restore)",
 	"pending_pairings":    "ephemeral pairing handshakes",
+	// Durable-work runtime state (migration v2/v3): never restored.
+	"computer_leases":  "lease holds die with the tasks that held them; every boot expires survivors via RecoverStale, so restoring old holds could only resurrect authority for dead tasks",
+	"browser_sessions": "session rows point at profile dirs and expire by TTL; sessions re-mint on demand after restore",
 }
 
 // stageTableSnapshots dumps every whitelisted table from the live database.
@@ -187,6 +197,9 @@ func stageTableSnapshots(staging map[string]string, stagingDir string, m *Manife
 		if !presentSet(present, t.Name) {
 			continue
 		}
+		if err := assertTableShape(conn, t); err != nil {
+			return err
+		}
 		rows, err := dumpTable(conn, t)
 		if err != nil {
 			return err
@@ -203,6 +216,48 @@ func stageTableSnapshots(staging map[string]string, stagingDir string, m *Manife
 		}
 		if err := stageEntry(staging, stagingDir, m, snapshotLogicalPath(t.Name), CategoryPortable, data, 0600); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// assertTableShape requires the live table's columns to exactly match the
+// snapshot whitelist, in order. Without this, SQLite's double-quoted
+// string fallback turns a missing column into a string literal: the
+// export would succeed while writing the column NAME as every row's
+// value — silent corruption instead of a loud failure. Schema drift must
+// fail here, at export time, naming the table.
+func assertTableShape(conn *sql.DB, t snapshotTable) error {
+	// Table names are internal whitelist constants, never user input;
+	// PRAGMA has no parameter binding so the name is interpolated after a
+	// quote check.
+	if strings.Contains(t.Name, "'") {
+		return fmt.Errorf("inspect %s: unsafe table name", t.Name)
+	}
+	rows, err := conn.Query(`SELECT name FROM pragma_table_info('` + t.Name + `')`)
+	if err != nil {
+		return fmt.Errorf("inspect %s: %w", t.Name, err)
+	}
+	defer rows.Close()
+	var have []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return fmt.Errorf("inspect %s: %w", t.Name, err)
+		}
+		have = append(have, n)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect %s: %w", t.Name, err)
+	}
+	if len(have) != len(t.Columns) {
+		return fmt.Errorf("table %q shape drift: has %d columns %v, snapshot wants %d %v; migrate the database before export",
+			t.Name, len(have), have, len(t.Columns), t.Columns)
+	}
+	for i := range have {
+		if have[i] != t.Columns[i] {
+			return fmt.Errorf("table %q shape drift at position %d: has %q, snapshot wants %q; migrate the database before export",
+				t.Name, i, have[i], t.Columns[i])
 		}
 	}
 	return nil

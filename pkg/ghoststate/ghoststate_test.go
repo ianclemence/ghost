@@ -1,6 +1,7 @@
 package ghoststate
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,9 +9,24 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/db"
+	"github.com/ianclemence/ghost/pkg/schema"
 )
 
 const testPassphrase = "correct horse battery staple"
+
+// migrateTestDB brings a test workspace database to the schema head, the
+// way gateway startup does before export or any subsystem runs.
+func migrateTestDB(t *testing.T, ws string) {
+	t.Helper()
+	raw, err := sql.Open("sqlite", "file:"+filepath.Join(ws, "ghost.db"))
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	defer raw.Close()
+	if _, err := schema.MigrateToCurrent(raw); err != nil {
+		t.Fatalf("migrate test db: %v", err)
+	}
+}
 
 func testWorkspace(t *testing.T) string {
 	t.Helper()
@@ -40,6 +56,10 @@ func testWorkspace(t *testing.T) string {
 	if err := d.Close(); err != nil {
 		t.Fatalf("close db: %v", err)
 	}
+	// Production migrates before anything else touches the database;
+	// test workspaces must carry the same shape or snapshot tests prove
+	// nothing about real exports.
+	migrateTestDB(t, ws)
 
 	files := map[string]string{
 		"memory/MEMORY.md":              "# Memory\nKey fact: portability.",
