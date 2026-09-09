@@ -412,9 +412,10 @@ events); events/activity/API/logs/backups are redacted by construction; and
 context isolation is enforced at retrieval and execution — not by prompts.
 
 Model browser calls are additionally governed by a runtime **browser gate**
-(binding + broker + session isolation + evidence), documented in
-[docs/BROWSER_GOVERNANCE.md](docs/BROWSER_GOVERNANCE.md); computer placement
-and leases are documented in [docs/COMPUTER_PLACEMENT.md](docs/COMPUTER_PLACEMENT.md).
+that enforces server-side binding, the Permission Broker, session isolation,
+and runtime evidence. Computer control follows the same authority model:
+a bounded operation taxonomy with explicit placement and durable leases, all
+enforced by the broker before any executor runs.
 
 ### Authentication
 
