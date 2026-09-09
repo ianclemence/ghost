@@ -1880,6 +1880,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			http.Error(w, `{"error":"doctor unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
+		// Re-read config + credentials from disk so health reflects a key the
+		// owner just saved (estate/credential flags are otherwise cached from
+		// startup or the last model switch).
+		agentLoop.RefreshDoctor()
 		results := doctorRunner.RunAll(r.Context())
 		overall := "ok"
 		checks := make([]DoctorCheckPayload, 0, len(results))

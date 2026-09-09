@@ -2564,6 +2564,29 @@ func (al *AgentLoop) refreshActiveProvider() error {
 	return nil
 }
 
+// RefreshDoctor re-reads the runtime config (and therefore credentials) from
+// disk and repoints the Doctor's provider + estate at it, WITHOUT disturbing
+// the loop's active provider. Health checks call this so a credential the
+// owner just saved is immediately reflected instead of being reported from a
+// startup-time snapshot ("Missing credentials for ..." after adding a key).
+func (al *AgentLoop) RefreshDoctor() {
+	if al == nil || al.doctor == nil {
+		return
+	}
+	cfg := al.cfg
+	if al.configPath != "" {
+		if c, err := config.LoadConfig(al.configPath); err == nil && c != nil {
+			cfg = c
+		}
+	}
+	if cfg == nil {
+		return
+	}
+	if p, err := providers.CreateProvider(cfg); err == nil {
+		al.doctor.Rebind(p, providers.DescribeEstate(cfg))
+	}
+}
+
 // GetCurrentModel returns the active model for display.
 func (al *AgentLoop) GetCurrentModel() string {
 	if al.model != "" {
