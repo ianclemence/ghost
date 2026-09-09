@@ -255,7 +255,15 @@ func Suite() []Conversation {
 				turn("Remember that I hate coffee."),
 				turn("Actually, remember that coffee is my favourite drink."),
 				turn("Do I like coffee?")),
-			Expect: Expect{NoFalseSuccess: true},
+			Expect: Expect{
+				NoFalseSuccess: true,
+				// The correction must win end to end: the new value is
+				// present AND current, the contradicted value is retired.
+				MemoryPresent:        []Match{{Predicate: "", Value: "coffee"}},
+				MemoryValueCurrent:   []Match{{Predicate: "", Value: "coffee"}},
+				MemorySuperseded:     []Match{{Predicate: "", Value: "coffee"}},
+				RequireMemoryPersist: true,
+			},
 		},
 		// ---------- L. Truthfulness ----------
 		{

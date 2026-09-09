@@ -27,6 +27,10 @@ var (
 	// ErrNotCurrent is returned when an operation requires an entry to be
 	// current but it is not.
 	ErrNotCurrent = errors.New("entry is not current")
+	// ErrNotConflicting is returned when ResolveConflict names an entry
+	// that is not conflicting: resolutions crown a conflicted entry, never
+	// an unrelated, current, or already-retired one.
+	ErrNotConflicting = errors.New("entry is not conflicting")
 )
 
 // EntriesDir is the workspace-relative directory that holds Personal Context.
@@ -387,6 +391,61 @@ func (s *Store) DeclareConflict(subject, predicate string, idA, idB string) erro
 		return err
 	}
 	return s.append(rb)
+}
+
+// ResolveConflict ends a declared conflict by reinstating exactly one of
+// the conflicting entries as current. Every OTHER conflicting entry for
+// the same subject/predicate is retired as superseded with superseded_by
+// pointing at the winner, so provenance shows what lost to what. The
+// winner must itself be conflicting for this subject/predicate; current,
+// retired, unknown, or foreign entries fail closed.
+//
+// This is the missing half of correction: DeclareConflict without a
+// resolution leaves a belief permanently uncurrent (Supersede requires a
+// current entry). Correcting to a brand-new value while conflicted is two
+// steps — ResolveConflict first, then Supersede — so the retirement chain
+// stays complete.
+func (s *Store) ResolveConflict(subject, predicate, winnerID string) (Entry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	w, ok := s.byID[winnerID]
+	if !ok {
+		return Entry{}, fmt.Errorf("%w: %s", ErrNotFound, winnerID)
+	}
+	if w.Subject != subject || w.Predicate != predicate {
+		return Entry{}, fmt.Errorf("entry %s does not match %s/%s", w.ID, subject, predicate)
+	}
+	if w.Status != StatusConflicting {
+		return Entry{}, fmt.Errorf("%w: %s is %s", ErrNotConflicting, w.ID, w.Status)
+	}
+
+	now := time.Now().UTC()
+	var losers []Entry
+	for _, e := range s.byID {
+		if e.ID == winnerID || e.Subject != subject || e.Predicate != predicate {
+			continue
+		}
+		if e.Status != StatusConflicting {
+			continue
+		}
+		losers = append(losers, *e)
+	}
+	for _, l := range losers {
+		l.Status = StatusSuperseded
+		l.SupersededBy = &winnerID
+		l.UpdatedAt = now
+		if err := s.append(l); err != nil {
+			return Entry{}, err
+		}
+	}
+	winner := *w
+	winner.Status = StatusCurrent
+	winner.UpdatedAt = now
+	if err := s.append(winner); err != nil {
+		return Entry{}, err
+	}
+	return winner, nil
 }
 
 // Forget retires an entry: it appends a rejected revision so the entry stops
