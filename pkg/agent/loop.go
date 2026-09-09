@@ -1895,6 +1895,26 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					finalContent = decision.AskMessage
 					break
 				}
+			} else if al.governance != nil && committedSkill(messages) == "" {
+				// Standalone consequential tools (no committed capability)
+				// still pass through the broker. The model cannot bypass
+				// authorization for an outbound side effect simply by not
+				// reading a skill file. Browser tools are excluded here:
+				// they have their own dedicated gate below.
+				if capID, ok := standaloneCapabilityID(tc.Name); ok && !isBrowserTool(tc.Name) {
+					al.governance.NoteCapability(opts.RequestID, capID)
+					if decision := al.governance.AuthorizeTool(opts.RequestID, opts.SessionKey, capID, tc.Name, tc.Arguments); !decision.Allowed {
+						toolResultMsg := providers.Message{
+							Role:       "tool",
+							Content:    decision.AskMessage,
+							ToolCallID: tc.ID,
+						}
+						messages = append(messages, toolResultMsg)
+						al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+						finalContent = decision.AskMessage
+						break
+					}
+				}
 			}
 			// Browser calls go through the browser gate (policy + broker
 			// + session binding + evidence), never straight to the
@@ -2706,6 +2726,19 @@ func (al *AgentLoop) estimateTokens(messages []providers.Message) int {
 // committedSkill returns the skill Ghost committed to via SKILL.md read.
 // Generic: extracts the name from any skills/<name>/SKILL.md path or from
 // frontmatter, with no per-skill branches.
+// standaloneCapabilityID maps free consequential tools (usable without a
+// committed capability) to the capability the broker authorizes. Only
+// side-effect-bearing outbound tools live here: the model must not reach
+// another party without a broker decision just by skipping a skill read.
+func standaloneCapabilityID(tool string) (string, bool) {
+	switch tool {
+	case "message", "message_write":
+		return "message.send", true
+	default:
+		return "", false
+	}
+}
+
 func committedSkill(messages []providers.Message) string {
 	start := len(messages) - 6
 	if start < 0 {

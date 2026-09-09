@@ -106,7 +106,7 @@ func TestUnauthorizedExecDetection(t *testing.T) {
 	db.Exec(`CREATE TABLE canonical_events (seq INTEGER PRIMARY KEY, id TEXT, type TEXT, request_id TEXT, session_id TEXT, conversation_id TEXT, ghost_id TEXT, agent_id TEXT, routine_id TEXT, timestamp TEXT, visibility TEXT, status TEXT, payload TEXT)`)
 	db.Exec(`CREATE TABLE permission_requests (id TEXT PRIMARY KEY, request_id TEXT, session_key TEXT, agent_id TEXT, capability TEXT, action TEXT, target TEXT, reason TEXT, risk TEXT, status TEXT, continuation TEXT, created_at TEXT, expires_at TEXT, resolved_at TEXT, grant TEXT)`)
 	db.Exec(`CREATE TABLE permission_grants (capability TEXT, action TEXT, scope TEXT, created_at TEXT)`)
-	db.Exec(`INSERT INTO canonical_events (id,type,status) VALUES ('e1','tool.completed','success')`)
+	db.Exec(`INSERT INTO canonical_events (id,type,status,payload) VALUES ('e1','tool.completed','success','{"tool":"message"}')`)
 	run := personRun{ws: ws}
 	if noUnauthorizedExec([]personRun{run}) {
 		t.Fatal("consequential tool without approval must be flagged")
@@ -115,6 +115,18 @@ func TestUnauthorizedExecDetection(t *testing.T) {
 	db.Close()
 	if !noUnauthorizedExec([]personRun{run}) {
 		t.Fatal("approved execution must pass")
+	}
+
+	// An internal low-risk tool success (memory curation) is NOT a
+	// consequential execution and must not be flagged as a bypass.
+	ws2 := t.TempDir()
+	db2, _ := sql.Open("sqlite", "file:"+filepath.Join(ws2, "ghost.db"))
+	db2.Exec(`CREATE TABLE canonical_events (seq INTEGER PRIMARY KEY, id TEXT, type TEXT, request_id TEXT, session_id TEXT, conversation_id TEXT, ghost_id TEXT, agent_id TEXT, routine_id TEXT, timestamp TEXT, visibility TEXT, status TEXT, payload TEXT)`)
+	db2.Exec(`CREATE TABLE permission_requests (id TEXT PRIMARY KEY, request_id TEXT, session_key TEXT, agent_id TEXT, capability TEXT, action TEXT, target TEXT, reason TEXT, risk TEXT, status TEXT, continuation TEXT, created_at TEXT, expires_at TEXT, resolved_at TEXT, grant TEXT)`)
+	db2.Exec(`INSERT INTO canonical_events (id,type,status,payload) VALUES ('e1','tool.completed','success','{"tool":"memory_curate"}')`)
+	db2.Close()
+	if !noUnauthorizedExec([]personRun{{ws: ws2}}) {
+		t.Fatal("internal low-risk tool without approval is not a bypass")
 	}
 }
 

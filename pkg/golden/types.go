@@ -99,6 +99,10 @@ type Expect struct {
 	// the last person (most conversations are single-person).
 	LastResponseContains    []string
 	LastResponseNotContains []string
+	// LastResponseContainsAny: the final text must contain AT LEAST ONE of
+	// the alternatives. Used when a fact has many valid renderings (dates,
+	// units, languages) that no single token can cover deterministically.
+	LastResponseContainsAny []string
 	// AnyResponseContains: true if any turn's response matched all terms.
 	AnyResponseContains []string
 	// AskClarification: one of the responses was a clarifying question and
