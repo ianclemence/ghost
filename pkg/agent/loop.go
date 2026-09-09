@@ -30,8 +30,8 @@ import (
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/evolution"
-	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/live"
+	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/media"
 	"github.com/ianclemence/ghost/pkg/modes"
@@ -902,6 +902,11 @@ func (al *AgentLoop) SetGovernance(g *Governance) {
 // existing loops without a plane behave exactly as before.
 func (al *AgentLoop) SetLivePlane(p *live.Registry) {
 	al.livePlane = p
+}
+
+// LivePlane returns the attached Live Surface plane (nil when unset).
+func (al *AgentLoop) LivePlane() *live.Registry {
+	return al.livePlane
 }
 
 // SetRoutineContext scopes a session to a routine's allowed capabilities

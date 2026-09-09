@@ -347,6 +347,29 @@ func (al *AgentLoop) runComputerTool(ctx context.Context, call tools.ComputerCal
 	return res
 }
 
+// recordComputerSurface publishes a safe observation to the Live Surface
+// plane after a governed computer execution. For screenshots the internal
+// file path is retained server-side so the serving layer can stream the
+// image; nothing secret or internal is placed in the observation JSON.
+func (al *AgentLoop) recordComputerSurface(call tools.ComputerCall, res *tools.ToolResult) {
+	if al.livePlane == nil || res == nil {
+		return
+	}
+	obs := live.Observation{Title: "Ghost computer"}
+	if !res.IsError {
+		obs.State = live.StateActive
+	}
+	if p, _ := res.Evidence["path"].(string); p != "" && call.Op == "screenshot" {
+		obs.Title = "Computer screen"
+		obs.ScreenshotPath = p
+	}
+	if t, _ := res.Evidence["window"].(string); t != "" && call.Op == "inspect_ui" {
+		obs.Title = t
+	}
+	al.livePlane.Register("local", live.KindComputer)
+	al.livePlane.Observe("local", obs)
+}
+
 // publishComputerEvidence records the governed outcome as a canonical
 // event carrying the evidence.
 func (al *AgentLoop) publishComputerEvidence(requestID, sessionKey, tool string, res *tools.ToolResult) {
@@ -383,6 +406,7 @@ func (al *AgentLoop) maybeRunComputerTool(toolCtx context.Context, reg *tools.To
 	case "allow":
 		res := al.runComputerTool(toolCtx, decision.call, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, opts.SessionKey)
 		al.publishComputerEvidence(opts.RequestID, opts.SessionKey, tc.Name, res)
+		al.recordComputerSurface(decision.call, res)
 		return res, true, false
 	default:
 		return &tools.ToolResult{ForLLM: decision.message}, true, true

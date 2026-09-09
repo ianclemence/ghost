@@ -226,7 +226,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 		}
 		return browserGateResult{decision: "allow", call: tools.BrowserCall{
 			Owner: owner, ContextID: contextID, TaskID: taskID,
-			Generation: generation, Sessions: ledger, Op: op,
+			Generation: generation, SessionID: liveSessionID, Sessions: ledger, Op: op,
 			Permission: "allow",
 		}}
 	case permissions.VerdictDeny:
@@ -419,6 +419,7 @@ func (al *AgentLoop) maybeRunBrowserTool(toolCtx context.Context, reg *tools.Too
 	case "allow":
 		res := al.runBrowserTool(toolCtx, decision.call, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, opts.SessionKey)
 		al.publishBrowserEvidence(opts.RequestID, opts.SessionKey, tc.Name, res)
+		al.recordBrowserSurface(decision.call, tc.Name, res)
 		return res, true, false
 	default: // wait or deny: the turn ends with the gate message.
 		return &tools.ToolResult{ForLLM: decision.message}, true, true
@@ -441,6 +442,31 @@ func (al *AgentLoop) runBrowserTool(ctx context.Context, call tools.BrowserCall,
 		}
 	}
 	return res
+}
+
+// recordBrowserSurface publishes a safe observation to the Live Surface
+// plane after a governed browser execution, keyed by the deterministic
+// browser session id. Never carries page source, credentials, or CDP data.
+func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, res *tools.ToolResult) {
+	if al.livePlane == nil || call.SessionID == "" || res == nil {
+		return
+	}
+	obs := live.Observation{Title: "Ghost browser"}
+	if !res.IsError {
+		obs.State = live.StateActive
+	}
+	if u, _ := res.Evidence["url"].(string); u != "" {
+		obs.URL = u
+	}
+	if d, _ := res.Evidence["domain"].(string); d != "" {
+		obs.Domain = d
+	}
+	if t, _ := res.Evidence["title"].(string); t != "" {
+		obs.Title = t
+	}
+	_ = tool
+	al.livePlane.Register(call.SessionID, live.KindBrowser)
+	al.livePlane.Observe(call.SessionID, obs)
 }
 
 // publishBrowserEvidence records the governed outcome as a canonical

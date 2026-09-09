@@ -76,11 +76,17 @@ Terminal `outcome` (backend-stated): `success` | `failed` |
 Activity/doctor outcomes, not chat prose; the client must not parse model
 text to decide success.
 
-Keep-alive: SSE comment `: keepalive` every 15 s. Reconnect: on a dropped
-stream the in-flight turn is not resumable (no durable turn checkpoint);
-the client should re-send the user intent as a fresh turn. Permission
-waits are durable across restart (see §6). The session history is loaded
-from the DB, so a resumed conversation continues from persisted messages.
+Keep-alive: SSE comment `: keepalive` every 15 s. **Durable turn identity:**
+send a stable `request_id`; identical `request_id` + `session` never
+re-executes. Repeating a completed turn returns
+`{ok, replay:true, status:"completed", outcome}`; a live/waiting turn returns
+`409 turn_in_progress` — reconnect is observation, never re-submission.
+`GET /v1/chat/turn?session=&request_id=` (read-only) returns the durable turn
+record (pending/running/waiting/completed/failed/interrupted). On a process
+crash mid-turn, stale turns are marked `interrupted` at boot.
+Reconnect (older behavior): on a dropped stream the in-flight turn is not
+resumable mid-stream; the client should NOT resend the same `request_id`.
+Permission waits are durable across restart (see §6).
 
 ### History / session management
 
@@ -129,7 +135,10 @@ cancelled|paused. `kind` is the safe projected event category — the client
 should not build logic on raw types. Reconnect/resume: pass the last
 received chip’s `seq` as `since_seq` (exclusive, ascending, read-only
 replay — never re-executes). Live: no activity push exists; poll, or use
-the `/v1/ws` channel for live chat/progress. Internal/tool-only events,
+the `/v1/ws` channel for live chat/progress. Live push: `GET
+/v1/activity/stream?since_seq=` (SSE, read-only) streams user-visible
+activity chips `{seq, type:"activity", title, kind, state, time, summary}`
+resuming from the cursor with no duplicates. Internal/tool-only events,
 reasoning, secrets, and raw payloads never reach this feed.
 
 ## 6. Memory — “what Ghost knows about you”
@@ -161,11 +170,13 @@ reasoning, secrets, and raw payloads never reach this feed.
 `GET /v1/connections` (read-only) → `{ok, connections:[{id, provider,
 display_name, category, type, status, capabilities, …}]}`. Statuses:
 `connected | not_configured | configuring | expired | revoked | invalid |
-error | disconnected`. Secret values are never present. Connect/OAuth
-handoff and disconnect are **NOT currently exposed on the device API**:
-connection writes happen through the web console / OAuth callbacks. Mobile
-may show status + capability summaries and route “connect/repair” to the
-console for V1.
+error | disconnected`. Secret values are never present. Connect/disconnect:
+`POST /v1/connections/{id}` `{"value":"…"}` stores an API-key/token secret
+into the existing `.secrets.json` credential boundary and never echoes it;
+`POST /v1/connections/{id}/disconnect` removes it. OAuth-only providers
+(e.g. Google Calendar) are refused on this surface
+(`oauth_required`: their secret never exists in a shareable form) and keep
+their secure browser handoff.
 
 ## 8. Routines (management, not a builder)
 
@@ -194,8 +205,15 @@ retained server-side.
 - `GET /v1/doctor` (read-only) → `{status: ok|warning|error, checks:[…],
   channels:{…}}` with per-check `status/message` and remediation copy.
   Render “needs attention” items from server-provided messages.
-- Restart / reboot / update are **NOT exposed on the device API** (they are
-  web-console `/api/admin/*` actions). Document as limitation for V1.
+- Restart / reboot / update are available on the device API:
+  `POST /v1/device/restart`, `POST /v1/device/update` (consequential,
+  durable), `GET /v1/device/operations` and
+  `GET /v1/device/operations/{id}` (read-only status). Operations survive
+  disconnect/reconnect and are reconciled at boot (a pre-restart operation
+  is marked completed once the device returns; a runner that is not
+  configured yields an honest `failed`/`restart_unavailable` state — never
+  a fake success). The web-console `/api/admin/*` remains a separate,
+  web-session-only surface.
 
 ## 11. Browser & Computer (transient surfaces)
 
@@ -208,16 +226,28 @@ attached, the browser/computer gates consult it before executing, so a
 human takeover pauses Ghost and release does not auto-resume (revalidation
 required). This is a runtime primitive only.
 
-There is **no** mobile endpoint yet to: list a live browser/computer
-surface, read the current observation/state, receive a screenshot/frame
-stream, request/release takeover, or revalidate control. Do not fake or
-synthesize these. The mobile transport (discovery/observation/takeover/
-release endpoints + an SSE change stream) must be added on top of this
-plane, below the existing Permission Broker / evidence / lease authority;
-mobile must never open a second browser or drive a raw executor.
-Screenshots of the **physical appliance display** (`/v1/screenshot`) and
-app launch (`/v1/open`) are legacy local-machine commands, not
-browser/computer transports.
+The Live Surface endpoints expose the plane to authenticated devices (all
+behind device auth):
+
+- `GET /v1/live/surfaces?kind=browser|computer` — discovery (state, control
+  owner, updated, sequence).
+- `GET /v1/live/surfaces/{kind}/{id}` — surface state.
+- `GET /v1/live/surfaces/{kind}/{id}/observation` — safe observation
+  (title/url/text) plus an internal `image_base64`/`mime_type` when a real
+  screenshot was captured by the executor.
+- `POST /v1/live/surfaces/{kind}/{id}/takeover` — acquire an expiring user
+  control lease (device-scoped); **Ghost pauses** while held.
+- `POST /v1/live/surfaces/{kind}/{id}/release` — clear user control; Ghost
+  does **not** auto-resume (surface stays `paused` until revalidated).
+- `GET /v1/live/surfaces/{kind}/{id}/stream` — SSE of surface state changes
+  (read-only).
+
+Errors use product vocabulary: `surface_not_found`, `no_observation`,
+`control_conflict` (another device holds control / cross-device release),
+`forbidden`. Observation is always read-only; control always requires an
+explicit lease. Screenshots of the **physical appliance display**
+(`/v1/screenshot`) and app launch (`/v1/open`) remain legacy local-machine
+commands, not browser/computer transports.
 
 ## 12. Product outcomes (authoritative)
 
@@ -239,8 +269,15 @@ Activity and doctor report the rest.
 
 ## Summary of known limitations (do not build against these)
 
-1. No live browser/computer observation/takeover transport (see §11).
-2. No device-API restart/reboot/update (see §10).
-3. No connected-app connect/disconnect on the device API (see §7).
-4. Chat turns are not durably resumable mid-stream (see §3 reconnect).
-5. `/v1/activity` has no push; poll with `since_seq`.
+1. Browser/computer **live pixel streaming (video) is not implemented** — the
+   transport is bounded structured observation + snapshots/SSE change events,
+   matching the V1 product (no CDP/X11 raw access, no fake streaming).
+2. `POST /v1/device/restart` and `POST /v1/device/update` require a
+   configured host runner (`GHOST_DEVICE_RESTART_CMD` /
+   `GHOST_DEVICE_UPDATE_CMD`); without one the durable operation fails
+   honestly rather than pretending.
+3. OAuth connected-app handoff (e.g. Google Calendar) is console/browser-side;
+   the device API refuses to proxy OAuth secrets (`oauth_required`).
+4. Durable turn identity prevents duplicate execution on reconnect but does
+   not replay the dropped mid-stream token deltas; resuming an in-flight
+   turn mid-stream is not supported (attach via `/v1/chat/turn` + history).

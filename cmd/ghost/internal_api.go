@@ -2467,6 +2467,34 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			req.RequestID = fmt.Sprintf("req-%d", time.Now().UnixNano())
 		}
 
+		// Durable turn identity: an identical request_id for the same
+		// conversation must never start a second execution (reconnect is
+		// observation, not re-submission). Terminal turns reply with their
+		// stored outcome; live/waiting turns are refused with 409.
+		if chatTurns != nil {
+			claim, cerr := chatTurns.Claim(req.SessionKey, req.RequestID)
+			if cerr == nil && !claim.Created {
+				switch claim.Status {
+				case "completed":
+					jsonResponse(w, http.StatusOK, map[string]interface{}{
+						"ok": true, "replay": true, "request_id": req.RequestID,
+						"status": claim.Status, "outcome": claim.Turn.Outcome,
+					})
+					return
+				case "failed":
+					jsonResponse(w, http.StatusOK, map[string]interface{}{
+						"ok": true, "replay": true, "request_id": req.RequestID,
+						"status": claim.Status,
+					})
+					return
+				default:
+					jsonError(w, http.StatusConflict, "turn_in_progress",
+						"that turn is already running or waiting; attach to it instead of resending")
+					return
+				}
+			}
+		}
+
 		logger.InfoCF("internal-api", "Processing chat request", map[string]interface{}{
 			"session_key":    req.SessionKey,
 			"channel":        req.Channel,
@@ -2658,6 +2686,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
 			flusher.Flush()
 			lifecycleCompleted("failed")
+			if chatTurns != nil {
+				_, _ = chatTurns.Set(req.SessionKey, req.RequestID, "failed", "failed")
+			}
 			return
 		}
 		// Terminal outcome (backend-stated, additive frame).
@@ -2667,6 +2698,16 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		} else if b, berr := permBroker(); berr == nil && b != nil {
 			if _, pending := b.PendingForRequest(req.RequestID); pending {
 				outcome = "waiting_for_permission"
+			}
+		}
+		if chatTurns != nil {
+			switch outcome {
+			case "success":
+				_, _ = chatTurns.Set(req.SessionKey, req.RequestID, "completed", "success")
+			case "waiting_for_user", "waiting_for_permission":
+				_, _ = chatTurns.Set(req.SessionKey, req.RequestID, "waiting", outcome)
+			default:
+				_, _ = chatTurns.Set(req.SessionKey, req.RequestID, "failed", outcome)
 			}
 		}
 		// agent_completed is recorded in AgentLoop
@@ -4432,6 +4473,17 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 
 	// ── WebSocket ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/ws", handleWebSocket(agentLoop))
+
+	// ── Live Surface plane (browser/computer control + observation) ──────
+	registerLiveSurfaceRoutes(mux, agentLoop)
+
+	// ── Device operations (restart/update) ───────────────────────────────
+	registerDeviceRoutes(mux)
+
+	// ── Durable chat turns, activity stream, connections ─────────────────
+	registerDurableTurns(mux)
+	registerActivityStream(mux)
+	registerConnectionsRoutes(mux)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	log.Printf("🤖 Ghost Internal API listening on %s (chat + tools; loopback trusted, LAN requires device credentials)", addr)
