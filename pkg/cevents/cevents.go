@@ -20,6 +20,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -286,7 +287,7 @@ func eventToLog(e *Event) map[string]interface{} {
 
 func (s *Stream) insert(e *Event) error {
 	payload, _ := json.Marshal(e.Payload)
-	res, err := s.db.Exec(`INSERT INTO canonical_events
+	res, err := s.db.Exec(`INSERT OR IGNORE INTO canonical_events
 		(id, type, request_id, session_id, conversation_id, ghost_id, agent_id, routine_id, timestamp, visibility, status, payload)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 		e.ID, string(e.Type), e.RequestID, e.SessionID, e.ConversationID,
@@ -294,6 +295,18 @@ func (s *Stream) insert(e *Event) error {
 		string(e.Visibility), e.Status, string(payload))
 	if err != nil {
 		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// Idempotent identity: the same deterministic ID already exists
+		// (a producer re-published the same logical event after a crash
+		// or resume). The warehouse keeps ONE row; we adopt its seq so
+		// live delivery and consumer claims reason about the same event.
+		var seq int64
+		if err := s.db.QueryRow(`SELECT seq FROM canonical_events WHERE id=?`, e.ID).Scan(&seq); err != nil {
+			return fmt.Errorf("re-publish of %s but no stored row: %w", e.ID, err)
+		}
+		e.Seq = seq
+		return nil
 	}
 	if seq, err := res.LastInsertId(); err == nil {
 		e.Seq = seq
