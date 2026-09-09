@@ -286,24 +286,111 @@ func memoryDomainsList() string {
 	return strings.Join(domains, ", ")
 }
 
-// ParseClassificationOutput parses JSON into a ClassificationOutput.
+// ParseClassificationOutput parses model output into a ClassificationOutput.
+//
+// Model output is not guaranteed to be a bare JSON document: it may be
+// wrapped in markdown code fences, surrounded by prose, carry a trailing
+// sentence, or contain stray braces inside string values. The parser is
+// tolerant about WHERE the JSON lives but strict about WHAT it accepts:
+// every candidate must unmarshal as a single JSON object AND carry the
+// required should_remember field. Nothing is coerced, repaired, or
+// partially parsed — a malformed response is a parse error, never a fact.
 func ParseClassificationOutput(jsonStr string) (ClassificationOutput, error) {
-	var output ClassificationOutput
+	jsonStr = stripJSONFences(jsonStr)
+	candidates := jsonObjectCandidates(jsonStr)
 
-	// Try to extract JSON from the response (in case there's surrounding text)
-	jsonStr = strings.TrimSpace(jsonStr)
-
-	// Find the first { and last } to extract JSON
-	start := strings.Index(jsonStr, "{")
-	end := strings.LastIndex(jsonStr, "}")
-	if start >= 0 && end > start {
-		jsonStr = jsonStr[start : end+1]
+	var lastErr error
+	for _, c := range candidates {
+		var output ClassificationOutput
+		if err := json.Unmarshal([]byte(c), &output); err != nil {
+			lastErr = err
+			continue
+		}
+		// json zero-value would silently accept "{}": require the boolean.
+		var probe struct {
+			ShouldRemember *bool `json:"should_remember"`
+		}
+		if err := json.Unmarshal([]byte(c), &probe); err != nil || probe.ShouldRemember == nil {
+			lastErr = fmt.Errorf("classification missing required field should_remember")
+			continue
+		}
+		return output, nil
 	}
-
-	if err := json.Unmarshal([]byte(jsonStr), &output); err != nil {
-		return output, fmt.Errorf("failed to parse classification output: %w", err)
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no JSON object found in classifier output")
 	}
-	return output, nil
+	return ClassificationOutput{}, fmt.Errorf("failed to parse classification output: %w", lastErr)
+}
+
+// stripJSONFences removes markdown code-fence lines so fenced JSON parses.
+func stripJSONFences(s string) string {
+	var out []string
+	for _, line := range strings.Split(s, "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "```") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+// jsonObjectCandidates returns candidate object strings in decreasing
+// likelihood: the trimmed text when it already is an object, the classic
+// first-{…}-last-} span, and every brace-balanced {…} substring. Braces
+// inside quoted strings (and escaped quotes) do not end a candidate, so a
+// value that itself contains JSON-like text cannot break extraction.
+func jsonObjectCandidates(s string) []string {
+	s = strings.TrimSpace(s)
+	var out []string
+	if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
+		out = append(out, s)
+	}
+	if start := strings.Index(s, "{"); start >= 0 {
+		if end := strings.LastIndex(s, "}"); end > start {
+			out = append(out, s[start:end+1])
+		}
+	}
+	// Brace-balanced scan: every top-level object that closes cleanly.
+	for i := 0; i < len(s); i++ {
+		if s[i] != '{' {
+			continue
+		}
+		depth := 0
+		inStr := false
+		esc := false
+		for j := i; j < len(s); j++ {
+			c := s[j]
+			if inStr {
+				if esc {
+					esc = false
+					continue
+				}
+				if c == '\\' {
+					esc = true
+					continue
+				}
+				if c == '"' {
+					inStr = false
+				}
+				continue
+			}
+			switch c {
+			case '"':
+				inStr = true
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					out = append(out, s[i:j+1])
+					i = j
+					break
+				}
+			}
+		}
+	}
+	return out
 }
 
 // FormatClassificationPrompt formats the classification prompt with the message.

@@ -34,25 +34,25 @@ type AdvisorConfig struct {
 
 // Config configures the MoA system.
 type Config struct {
-	Enabled          bool           `json:"enabled"`
-	Advisors         []AdvisorConfig `json:"advisors"`
-	AggregatorModel  string         `json:"aggregator_model"`
-	AggregatorProvider string       `json:"aggregator_provider"`
-	TimeoutSeconds   int            `json:"timeout_seconds"`   // per-advisor timeout
-	MaxAdvisors      int            `json:"max_advisors"`      // cap on parallel advisors
-	Temperature      float64        `json:"temperature"`
+	Enabled            bool            `json:"enabled"`
+	Advisors           []AdvisorConfig `json:"advisors"`
+	AggregatorModel    string          `json:"aggregator_model"`
+	AggregatorProvider string          `json:"aggregator_provider"`
+	TimeoutSeconds     int             `json:"timeout_seconds"` // per-advisor timeout
+	MaxAdvisors        int             `json:"max_advisors"`    // cap on parallel advisors
+	Temperature        float64         `json:"temperature"`
 }
 
 // DefaultConfig returns sensible MoA defaults.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:          false,
-		Advisors:         []AdvisorConfig{},
-		AggregatorModel:  "",
+		Enabled:            false,
+		Advisors:           []AdvisorConfig{},
+		AggregatorModel:    "",
 		AggregatorProvider: "",
-		TimeoutSeconds:   30,
-		MaxAdvisors:      5,
-		Temperature:      0.7,
+		TimeoutSeconds:     30,
+		MaxAdvisors:        5,
+		Temperature:        0.7,
 	}
 }
 

@@ -30,6 +30,11 @@ type ToolLoopConfig struct {
 	// model-controlled execution without a gate is never silently
 	// allowed.
 	BrowserAuth SubagentBrowserAuth
+	// ConsequentialAuth governs subagent standalone consequential tools
+	// (exec, device io, scheduling, updates, image generation, messaging).
+	// It returns a replacement result (an approval wait or denial) or nil
+	// to allow execution. When nil, such tools are refused outright.
+	ConsequentialAuth SubagentConsequentialAuth
 }
 
 // SubagentBrowserAuth authorizes one subagent browser call against the
@@ -39,10 +44,38 @@ type ToolLoopConfig struct {
 // wait or is denied.
 type SubagentBrowserAuth func(ctx context.Context, tool string, args map[string]interface{}) (BrowserCall, *ToolResult)
 
+// SubagentConsequentialAuth authorizes one subagent standalone
+// consequential tool. nil means "allowed to execute"; a non-nil result
+// replaces execution (approval wait or denial).
+type SubagentConsequentialAuth func(ctx context.Context, tool string, args map[string]interface{}) *ToolResult
+
 // isBrowserToolName reports whether a tool name is a governed browser
 // operation. Single predicate so every dispatch site agrees.
 func isBrowserToolName(name string) bool {
 	return len(name) > 8 && name[:8] == "browser_"
+}
+
+// toolsFreeConsequential reports whether a tool is a standalone
+// consequential operation from the audit table.
+func toolsFreeConsequential(name string) bool {
+	return IsFreeConsequentialTool(name)
+}
+
+// executeSubagentConsequential routes a subagent standalone-consequential
+// tool through the authorizing hook. Without a hook there is no broker, so
+// the call is refused — fail closed with a message the subagent can report.
+func executeSubagentConsequential(ctx context.Context, config ToolLoopConfig, tc providers.ToolCall, channel, chatID string) *ToolResult {
+	if config.ConsequentialAuth == nil {
+		return ErrorResult("That operation is not authorized for a subagent. Nothing was run.")
+	}
+	replacement := config.ConsequentialAuth(ctx, tc.Name, tc.Arguments)
+	if replacement != nil {
+		return replacement
+	}
+	if config.Tools == nil {
+		return ErrorResult("No tools available")
+	}
+	return config.Tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, channel, chatID, SessionKeyFromContext(ctx), nil)
 }
 
 // executeSubagentBrowser routes a subagent browser call through the
@@ -165,6 +198,8 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 			var toolResult *ToolResult
 			if isBrowserToolName(tc.Name) {
 				toolResult = executeSubagentBrowser(ctx, config, tc, channel, chatID)
+			} else if toolsFreeConsequential(tc.Name) {
+				toolResult = executeSubagentConsequential(ctx, config, tc, channel, chatID)
 			} else if config.Tools != nil {
 				toolResult = config.Tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, channel, chatID, "", nil)
 			} else {

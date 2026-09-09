@@ -119,8 +119,8 @@ func TestHonchoStore_GetContext(t *testing.T) {
 	ctx := context.Background()
 
 	store.UpdateProfile(ctx, "user-123", map[string]interface{}{
-		"display_name":   "John",
-		"communication":  "technical",
+		"display_name":  "John",
+		"communication": "technical",
 	})
 	store.AddFact(ctx, "user-123", "Prefers dark mode", "ui", 0.95)
 

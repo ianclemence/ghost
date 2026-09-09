@@ -46,17 +46,17 @@ const (
 type ActionKind string
 
 const (
-	ActionMessage   ActionKind = "message"   // Send a message directly
+	ActionMessage   ActionKind = "message"    // Send a message directly
 	ActionAgentTurn ActionKind = "agent_turn" // Process through agent
-	ActionCommand   ActionKind = "command"   // Run a shell command
+	ActionCommand   ActionKind = "command"    // Run a shell command
 )
 
 // DeliveryMode defines how the item is delivered to the user.
 type DeliveryMode string
 
 const (
-	DeliverySmart   DeliveryMode = "smart"   // Follow user to last active session
-	DeliveryOrigin  DeliveryMode = "origin"  // Return to originating channel
+	DeliverySmart    DeliveryMode = "smart"    // Follow user to last active session
+	DeliveryOrigin   DeliveryMode = "origin"   // Return to originating channel
 	DeliveryExplicit DeliveryMode = "explicit" // Target specific channel
 )
 
@@ -71,23 +71,23 @@ type Schedule struct {
 // Action defines what happens when a schedule triggers.
 type Action struct {
 	Kind    ActionKind `json:"kind"`
-	Content string     `json:"content"` // Message or prompt
+	Content string     `json:"content"`           // Message or prompt
 	Command string     `json:"command,omitempty"` // Shell command
-	Deliver bool       `json:"deliver"` // If true, send directly; if false, process through agent
+	Deliver bool       `json:"deliver"`           // If true, send directly; if false, process through agent
 	Skills  []string   `json:"skills,omitempty"`
 }
 
 // ScheduledItem is the core domain object for all scheduled intelligence.
 type ScheduledItem struct {
-	ID              string           `json:"id"`
-	Type            ItemType         `json:"type"`
-	Title           string           `json:"title"`
-	Description     string           `json:"description"`
-	State           ItemState        `json:"state"`
+	ID          string    `json:"id"`
+	Type        ItemType  `json:"type"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	State       ItemState `json:"state"`
 
 	// Schedule
-	Schedule  Schedule `json:"schedule"`
-	Timezone  string   `json:"timezone"` // IANA timezone
+	Schedule Schedule `json:"schedule"`
+	Timezone string   `json:"timezone"` // IANA timezone
 
 	// Action
 	Action Action `json:"action"`
@@ -98,7 +98,7 @@ type ScheduledItem struct {
 	DeliveryMode DeliveryMode `json:"delivery_mode"`
 
 	// Metadata
-	Source    string    `json:"source"`    // "user", "routine", "system", "proactive", "migration"
+	Source    string    `json:"source"` // "user", "routine", "system", "proactive", "migration"
 	CreatedBy string    `json:"created_by"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -121,17 +121,17 @@ type ScheduledItem struct {
 
 // ExecutionRecord tracks a single execution of a scheduled item.
 type ExecutionRecord struct {
-	ID              string     `json:"id"`
-	ItemID          string     `json:"item_id"`
-	ExecutionID     string     `json:"execution_id"` // Idempotency key
-	ScheduledAt     time.Time  `json:"scheduled_at"`
-	StartedAt       time.Time  `json:"started_at"`
-	CompletedAt     *time.Time `json:"completed_at,omitempty"`
-	Status          string     `json:"status"` // "ok", "error", "missed", "cancelled"
-	Error           string     `json:"error,omitempty"`
-	Channel         string     `json:"channel,omitempty"`
-	DeliveredAt     *time.Time `json:"delivered_at,omitempty"`
-	DeliveryStatus  string     `json:"delivery_status,omitempty"` // "sent", "failed", "unknown"
+	ID             string     `json:"id"`
+	ItemID         string     `json:"item_id"`
+	ExecutionID    string     `json:"execution_id"` // Idempotency key
+	ScheduledAt    time.Time  `json:"scheduled_at"`
+	StartedAt      time.Time  `json:"started_at"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	Status         string     `json:"status"` // "ok", "error", "missed", "cancelled"
+	Error          string     `json:"error,omitempty"`
+	Channel        string     `json:"channel,omitempty"`
+	DeliveredAt    *time.Time `json:"delivered_at,omitempty"`
+	DeliveryStatus string     `json:"delivery_status,omitempty"` // "sent", "failed", "unknown"
 }
 
 // ValidTypes is the set of valid item types.

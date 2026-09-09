@@ -141,30 +141,30 @@ func (c *SchemaCache) InvalidateAll() {
 
 // ServerHealth tracks the health status of a stdio MCP server.
 type ServerHealth struct {
-	Connected   bool      `json:"connected"`
-	LastError   string    `json:"last_error,omitempty"`
-	LastCheck   time.Time `json:"last_check"`
-	RestartCount int      `json:"restart_count"`
+	Connected    bool      `json:"connected"`
+	LastError    string    `json:"last_error,omitempty"`
+	LastCheck    time.Time `json:"last_check"`
+	RestartCount int       `json:"restart_count"`
 }
 
 type ServerConnection struct {
-	Name      string
-	Client    *mcp.Client
-	Session   *mcp.ClientSession
-	Tools     []*mcp.Tool
-	OAuth     *OAuthToken
-	Health    ServerHealth
-	cfg       config.MCPServerConfig
-	cancelFn  context.CancelFunc
+	Name     string
+	Client   *mcp.Client
+	Session  *mcp.ClientSession
+	Tools    []*mcp.Tool
+	OAuth    *OAuthToken
+	Health   ServerHealth
+	cfg      config.MCPServerConfig
+	cancelFn context.CancelFunc
 }
 
 type Manager struct {
-	servers    map[string]*ServerConnection
+	servers     map[string]*ServerConnection
 	schemaCache *SchemaCache
 	oauthTokens map[string]*OAuthToken // server name -> token
-	mu         sync.RWMutex
-	closed     atomic.Bool
-	wg         sync.WaitGroup
+	mu          sync.RWMutex
+	closed      atomic.Bool
+	wg          sync.WaitGroup
 }
 
 type ToolInfo struct {

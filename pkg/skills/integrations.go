@@ -110,6 +110,7 @@ func AeroDataBoxKey() string {
 	}
 	return strings.TrimSpace(os.Getenv("AERODATABOX_API_KEY"))
 }
+
 // OpenWeatherKey returns the weather-fallback credential from the
 // secrets-first product path (ProviderAPIKeys["openweather"]) with the
 // OPENWEATHER_API_KEY env developer fallback. Empty means the fallback

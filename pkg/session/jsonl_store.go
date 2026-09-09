@@ -18,12 +18,12 @@ type JSONLStore struct {
 }
 
 type jsonlEntry struct {
-	Role         string                 `json:"role"`
-	Content      string                 `json:"content"`
+	Role         string                  `json:"role"`
+	Content      string                  `json:"content"`
 	MultiContent []providers.ContentPart `json:"multi_content,omitempty"`
-	ToolCallID   string                 `json:"tool_call_id,omitempty"`
-	ToolCalls    []providers.ToolCall   `json:"tool_calls,omitempty"`
-	CreatedAt    time.Time              `json:"created_at"`
+	ToolCallID   string                  `json:"tool_call_id,omitempty"`
+	ToolCalls    []providers.ToolCall    `json:"tool_calls,omitempty"`
+	CreatedAt    time.Time               `json:"created_at"`
 }
 
 func NewJSONLStore(baseDir string) *JSONLStore {

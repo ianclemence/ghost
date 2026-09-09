@@ -41,9 +41,9 @@ type Provider struct {
 }
 
 type providerHealth struct {
-	failCount   int
+	failCount     int
 	cooldownUntil time.Time
-	lastError string
+	lastError     string
 }
 
 // ProviderManager is the generic, small resilience layer:

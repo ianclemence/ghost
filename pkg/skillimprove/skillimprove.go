@@ -27,53 +27,53 @@ import (
 type ImprovementType string
 
 const (
-	AddStep          ImprovementType = "add_step"
-	RefineDesc       ImprovementType = "refine_description"
-	AddEdgeCase      ImprovementType = "add_edge_case"
-	AddNotes         ImprovementType = "add_notes"
-	ReworkSteps      ImprovementType = "rework_steps"
+	AddStep     ImprovementType = "add_step"
+	RefineDesc  ImprovementType = "refine_description"
+	AddEdgeCase ImprovementType = "add_edge_case"
+	AddNotes    ImprovementType = "add_notes"
+	ReworkSteps ImprovementType = "rework_steps"
 )
 
 // Improvement represents a suggested change to a skill.
 type Improvement struct {
-	ID          string           `json:"id"`
-	SkillName   string           `json:"skill_name"`
-	Type        ImprovementType  `json:"type"`
-	Content     string           `json:"content"`     // the actual improvement text
-	Context     string           `json:"context"`     // what triggered this improvement
-	Confidence  float64          `json:"confidence"`  // 0.0-1.0 how confident we are
-	Status      string           `json:"status"`      // "suggested", "applied", "rejected"
-	CreatedAt   time.Time        `json:"created_at"`
-	AppliedAt   *time.Time       `json:"applied_at,omitempty"`
+	ID         string          `json:"id"`
+	SkillName  string          `json:"skill_name"`
+	Type       ImprovementType `json:"type"`
+	Content    string          `json:"content"`    // the actual improvement text
+	Context    string          `json:"context"`    // what triggered this improvement
+	Confidence float64         `json:"confidence"` // 0.0-1.0 how confident we are
+	Status     string          `json:"status"`     // "suggested", "applied", "rejected"
+	CreatedAt  time.Time       `json:"created_at"`
+	AppliedAt  *time.Time      `json:"applied_at,omitempty"`
 }
 
 // SkillPerformance tracks how a skill performs over time.
 type SkillPerformance struct {
-	SkillName      string    `json:"skill_name"`
-	TotalUses      int       `json:"total_uses"`
-	SuccessCount   int       `json:"success_count"`
-	FailureCount   int       `json:"failure_count"`
-	AvgDuration    float64   `json:"avg_duration_ms"`
-	LastUsed       time.Time `json:"last_used"`
-	Improvements   int       `json:"improvements_applied"`
-	Version        int       `json:"version"`
+	SkillName    string    `json:"skill_name"`
+	TotalUses    int       `json:"total_uses"`
+	SuccessCount int       `json:"success_count"`
+	FailureCount int       `json:"failure_count"`
+	AvgDuration  float64   `json:"avg_duration_ms"`
+	LastUsed     time.Time `json:"last_used"`
+	Improvements int       `json:"improvements_applied"`
+	Version      int       `json:"version"`
 }
 
 // ImproveConfig configures the self-improvement system.
 type ImproveConfig struct {
-	Enabled           bool    `json:"enabled"`
-	MinSuccessRatio   float64 `json:"min_success_ratio"`   // min ratio to suggest improvements
-	MinUsesBeforeImprove int  `json:"min_uses_before_improve"` // min uses before suggesting
-	MaxImprovements   int     `json:"max_improvements"`     // max pending improvements per skill
+	Enabled              bool    `json:"enabled"`
+	MinSuccessRatio      float64 `json:"min_success_ratio"`       // min ratio to suggest improvements
+	MinUsesBeforeImprove int     `json:"min_uses_before_improve"` // min uses before suggesting
+	MaxImprovements      int     `json:"max_improvements"`        // max pending improvements per skill
 }
 
 // DefaultImproveConfig returns sensible defaults.
 func DefaultImproveConfig() ImproveConfig {
 	return ImproveConfig{
-		Enabled:             true,
-		MinSuccessRatio:     0.6,
+		Enabled:              true,
+		MinSuccessRatio:      0.6,
 		MinUsesBeforeImprove: 3,
-		MaxImprovements:     5,
+		MaxImprovements:      5,
 	}
 }
 
@@ -177,9 +177,9 @@ func (si *SkillImprover) SuggestImprovement(
 	si.improvements = append(si.improvements, imp)
 
 	logger.InfoCF("skillimprove", "Improvement suggested", map[string]interface{}{
-		"skill":  skillName,
-		"type":   string(impType),
-		"conf":   confidence,
+		"skill": skillName,
+		"type":  string(impType),
+		"conf":  confidence,
 	})
 }
 

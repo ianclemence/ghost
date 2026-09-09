@@ -40,10 +40,10 @@ import (
 type CalendarStatus string
 
 const (
-	CalendarReady            CalendarStatus = "ready"
-	CalendarNeedsSetup       CalendarStatus = "needs_setup"
-	CalendarNeedsReauth      CalendarStatus = "needs_reauth"
-	CalendarToolMissing      CalendarStatus = "tool_missing"
+	CalendarReady       CalendarStatus = "ready"
+	CalendarNeedsSetup  CalendarStatus = "needs_setup"
+	CalendarNeedsReauth CalendarStatus = "needs_reauth"
+	CalendarToolMissing CalendarStatus = "tool_missing"
 )
 
 // CalendarState describes readiness for UI + chat.

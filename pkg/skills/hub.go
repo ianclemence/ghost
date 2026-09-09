@@ -15,18 +15,18 @@ import (
 
 // HubSyncState tracks the sync state of each skill with the hub.
 type HubSyncState struct {
-	Slug         string    `json:"slug"`
-	Version      string    `json:"version"`
-	LastSynced   time.Time `json:"last_synced"`
-	LocalPath    string    `json:"local_path"`
-	Source       string    `json:"source"` // "clawhub", "github", "local"
-	AutoUpdate   bool      `json:"auto_update"`
+	Slug       string    `json:"slug"`
+	Version    string    `json:"version"`
+	LastSynced time.Time `json:"last_synced"`
+	LocalPath  string    `json:"local_path"`
+	Source     string    `json:"source"` // "clawhub", "github", "local"
+	AutoUpdate bool      `json:"auto_update"`
 }
 
 // HubSyncFile is the on-disk format for sync state.
 type HubSyncFile struct {
-	Version int              `json:"version"`
-	Skills  []HubSyncState   `json:"skills"`
+	Version int            `json:"version"`
+	Skills  []HubSyncState `json:"skills"`
 }
 
 // SkillsHub manages bidirectional synchronization with the ClawHub registry.
@@ -123,7 +123,7 @@ func (h *SkillsHub) Update(ctx context.Context, slug string) (*InstallResult, er
 	}
 
 	logger.InfoCF("skills-hub", "Skill updated", map[string]interface{}{
-		"slug":     slug,
+		"slug":        slug,
 		"old_version": h.state.Skills[idx].Version,
 		"new_version": result.Version,
 	})

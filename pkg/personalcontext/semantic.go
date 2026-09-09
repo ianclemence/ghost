@@ -86,84 +86,117 @@ func (se *SemanticExtractor) Extract(ctx context.Context, text string, existing 
 	// Slow path: use LLM for semantic extraction
 	result, err := se.extractWithLLM(ctx, text, existing)
 	if err != nil {
-		logger.ErrorCF("personalcontext", "semantic extraction failed", map[string]interface{}{
-			"error": err.Error(),
+		// Malformed JSON after bounded retries is an observable extraction
+		// failure, never a silently saved memory. Keep the precise reason
+		// (parse_error) so callers can log it distinctly from a provider
+		// outage (llm_unavailable).
+		logger.WarnCF("personalcontext", "semantic extraction produced malformed output", map[string]interface{}{
+			"error":  err.Error(),
+			"reason": result.Reason,
 		})
-		return ExtractResult{
-			ShouldRemember: false,
-			Reason:         "llm_error",
+		if result.Reason == "" {
+			result.Reason = "parse_error"
 		}
+		return result
 	}
 
 	return result
 }
 
+// extractionAttempts bounds how many times the LLM classifier is asked for
+// one message. Retries are deterministic (a fixed number, no backoff loops)
+// and only triggered by a malformed JSON parse, never by content.
+const extractionAttempts = 2
+
+// retryInstruction is appended on the retry attempt when the first response
+// was not strict JSON. It steers the model back to a single object without
+// changing what is being asked.
+const retryInstruction = "\n\nYour previous response was not valid JSON. Respond with ONLY a single JSON object matching the requested schema. No markdown, no prose, no extra text."
+
 // extractWithLLM uses the LLM to extract memories from natural language.
 func (se *SemanticExtractor) extractWithLLM(ctx context.Context, text string, existing []Entry) (ExtractResult, error) {
 	prompt := se.buildExtractionPrompt(text, existing)
 
-	messages := []providers.Message{
-		{Role: "system", Content: extractionSystemPrompt},
-		{Role: "user", Content: prompt},
+	if ctx == nil {
+		ctx = context.Background()
 	}
+	callCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 
-	resp, err := se.provider.Chat(ctx, messages, nil, se.model, map[string]interface{}{
-		"temperature": 0.0,
-		"max_tokens":  200,
-	})
-	if err != nil {
-		// LLM call failed - this is expected in tests with mock providers
-		return ExtractResult{
-			ShouldRemember: false,
-			Reason:         "llm_unavailable",
-		}, nil
-	}
+	var lastErr error
+	for attempt := 1; attempt <= extractionAttempts; attempt++ {
+		user := prompt
+		if attempt > 1 {
+			user += retryInstruction
+		}
+		messages := []providers.Message{
+			{Role: "system", Content: extractionSystemPrompt},
+			{Role: "user", Content: user},
+		}
+		resp, err := se.provider.Chat(callCtx, messages, nil, se.model, map[string]interface{}{
+			"temperature": 0.0,
+			"max_tokens":  300,
+		})
+		if err != nil {
+			// LLM call failed - this is expected in tests with mock providers.
+			// A provider outage is not a parse problem; retrying the same
+			// failing endpoint is pointless, so we surface it once.
+			return ExtractResult{
+				ShouldRemember: false,
+				Reason:         "llm_unavailable",
+			}, nil
+		}
 
-	// Parse the LLM response
-	output, err := ParseClassificationOutput(resp.Content)
-	if err != nil {
-		// Parse failed - this is expected in tests with mock providers
-		return ExtractResult{
-			ShouldRemember: false,
-			Reason:         "parse_error",
-		}, nil
-	}
+		// Parse the LLM response.
+		output, perr := ParseClassificationOutput(resp.Content)
+		if perr != nil {
+			lastErr = perr
+			continue // bounded, deterministic retry on malformed JSON only
+		}
 
-	// Validate against controlled vocabulary
-	validated := ValidateClassification(output)
+		// Validate against controlled vocabulary.
+		validated := ValidateClassification(output)
+		if !validated.Valid || !validated.ShouldRemember {
+			return ExtractResult{
+				ShouldRemember: false,
+				Reason:         validated.Reason,
+			}, nil
+		}
 
-	if !validated.Valid || !validated.ShouldRemember {
-		return ExtractResult{
-			ShouldRemember: false,
-			Reason:         validated.Reason,
-		}, nil
-	}
-
-	// Build entry from validated classification
-	entry := Entry{
-		ID:          generateSemanticID(),
-		Kind:        Kind(validated.Kind),
-		Subject:     "user",
-		Predicate:   buildPredicate(string(validated.Kind), string(validated.Domain), text),
-		Value:       json.RawMessage(fmt.Sprintf("%q", extractValueFromText(text))),
-		Status:      StatusCurrent,
-		Confidence:  validated.Confidence,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
-		Sources: []Source{
-			{
-				Type:      SourceConversation,
-				Kind:      "inferred",
-				Timestamp: time.Now().UTC(),
+		// Build entry from validated classification.
+		entry := Entry{
+			ID:         generateSemanticID(),
+			Kind:       Kind(validated.Kind),
+			Subject:    "user",
+			Predicate:  buildPredicate(string(validated.Kind), string(validated.Domain), text),
+			Value:      json.RawMessage(fmt.Sprintf("%q", extractValueFromText(text))),
+			Status:     StatusCurrent,
+			Confidence: validated.Confidence,
+			CreatedAt:  time.Now().UTC(),
+			UpdatedAt:  time.Now().UTC(),
+			Sources: []Source{
+				{
+					Type:      SourceConversation,
+					Kind:      "inferred",
+					Timestamp: time.Now().UTC(),
+				},
 			},
-		},
+		}
+
+		return ExtractResult{
+			ShouldRemember: true,
+			Entries:        []Entry{entry},
+			Reason:         "semantic_extraction",
+		}, nil
 	}
 
+	// Both attempts produced malformed JSON. This is a genuine extraction
+	// failure: observable via the reason, and NEVER reported as a saved
+	// memory. Ghost does not claim persistence it does not have.
 	return ExtractResult{
-		ShouldRemember: true,
-		Entries:        []Entry{entry},
-		Reason:         "semantic_extraction",
-	}, nil
+		ShouldRemember: false,
+		Reason:         "parse_error",
+	}, lastErr
 }
 
 // buildExtractionPrompt builds the prompt for LLM extraction.
@@ -172,10 +205,15 @@ func (se *SemanticExtractor) buildExtractionPrompt(text string, existing []Entry
 	sb.WriteString(fmt.Sprintf("Message to classify: %q\n\n", text))
 
 	if len(existing) > 0 {
-		sb.WriteString("Current memories about this user:\n")
-		for _, e := range existing {
+		sb.WriteString("Current memories about this user (most recent first, capped):\n")
+		shown := 0
+		// Bound the prompt so the classifier's completion never runs out of
+		// tokens mid-object (a real truncation driver of parse_error).
+		for i := len(existing) - 1; i >= 0 && shown < 30; i-- {
+			e := existing[i]
 			if e.Status == StatusCurrent {
 				sb.WriteString(fmt.Sprintf("- %s: %s (kind: %s)\n", e.Predicate, string(e.Value), e.Kind))
+				shown++
 			}
 		}
 		sb.WriteString("\n")

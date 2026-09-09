@@ -94,14 +94,14 @@ func ParseSchedule(schedule string) string {
 // parseEvery parses statements like "every 30 min" or "every 2 hours"
 func parseEvery(schedule string) string {
 	schedule = strings.TrimPrefix(schedule, "every ")
-	
+
 	valRegex := regexp.MustCompile(`^(\d+)\s*(min|minute|minutes|hr|hour|hours)$`)
 	matches := valRegex.FindStringSubmatch(schedule)
-	
+
 	if len(matches) > 2 {
 		val := matches[1]
 		unit := matches[2]
-		
+
 		if strings.HasPrefix(unit, "min") {
 			return fmt.Sprintf("*/%s * * * *", val)
 		} else if strings.HasPrefix(unit, "h") {

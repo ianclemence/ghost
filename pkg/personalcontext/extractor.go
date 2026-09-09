@@ -122,7 +122,7 @@ var declarationRules = []declarationRule{
 		name:      "favorite_color",
 		kind:      KindPreference,
 		predicate: "preference/favorite_color",
-		re:        regexp.MustCompile(`(?i)\bmy favorite colou?r is\s+([^;.,!?]+)`),
+		re:        regexp.MustCompile(`(?i)\bmy favou?rite colou?r is\s+([^;.,!?]+)`),
 	},
 	{
 		name:      "name",
@@ -168,6 +168,17 @@ var declarationRules = []declarationRule{
 		re:          regexp.MustCompile(`(?i)\bprefers?\s+([^;.,!?]+)`),
 		likes:       true,
 		rejectWords: []string{"concise", "brief", "short", "detailed", "thorough", "elaborate", "direct", "casual", "formal", "verbose", "answers", "answer", "responses", "response"},
+	},
+	{
+		// "I prefer the colour teal." / "I prefer the color teal." — a colour
+		// preference stated with the colour noun. Owned here (the generic
+		// prefers rule defers to it via the likes stopword "the") so it is
+		// captured deterministically instead of depending on the LLM
+		// classifier, and lands on the colour predicate it actually is.
+		name:      "prefer_color",
+		kind:      KindPreference,
+		predicate: "preference/favorite_color",
+		re:        regexp.MustCompile(`(?i)\bprefer the colou?r\s+([^;.,!?]+)`),
 	},
 	{
 		name:      "favorite_food",
@@ -298,6 +309,16 @@ var declarationRules = []declarationRule{
 		kind:      KindRelationship,
 		predicate: "relationship/partner",
 		re:        regexp.MustCompile(`(?i)\b(\w+) is my (?:wife|husband|partner|spouse|girlfriend|boyfriend)\b`),
+	},
+	{
+		// "my sister's name is Ana", "remember that my brother's name is Sam".
+		// Family/relative names are core personal facts; captured
+		// deterministically (no LLM) so they can never be lost to a parser
+		// error the way the LLM classifier intermittently failed.
+		name:      "relative_name",
+		kind:      KindRelationship,
+		predicate: "relationship/family",
+		re:        regexp.MustCompile(`(?i)\bmy (?:sister|brother|mother|mom|mum|father|dad|grandmother|grandfather|grandma|grandpa|aunt|uncle|cousin|daughter|son|nephew|niece)(?:'s|s)? name is\s+([^;.,!?]+)`),
 	},
 	{
 		name:      "work_with",

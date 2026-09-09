@@ -163,7 +163,7 @@ func TestEvolutionManager_LifecycleTransitions(t *testing.T) {
 		Name:           "old_skill",
 		Status:         SkillStatusActive,
 		UsageCount:     1,
-		RetentionScore: 0.01, // Low score
+		RetentionScore: 0.01,                                  // Low score
 		LastUsed:       time.Now().Add(-24 * time.Hour * 100), // 100 days ago
 		CreatedAt:      time.Now().Add(-24 * time.Hour * 200),
 		UpdatedAt:      time.Now().Add(-24 * time.Hour * 100),

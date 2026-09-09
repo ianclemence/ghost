@@ -58,8 +58,8 @@ func TestExtractDir(t *testing.T) {
 	dir := t.TempDir()
 	archive := filepath.Join(dir, "v.tar.gz")
 	writeTestTarGz(t, archive, map[string]string{
-		"bundle/model.onnx":  "model",
-		"bundle/tokens.txt":  "tokens",
+		"bundle/model.onnx":   "model",
+		"bundle/tokens.txt":   "tokens",
 		"bundle/sub/deep.txt": "deep",
 	})
 	dest := filepath.Join(dir, "out")

@@ -18,9 +18,9 @@ type UserProfile struct {
 	UserID        string            `json:"user_id"`
 	DisplayName   string            `json:"display_name,omitempty"`
 	Preferences   map[string]string `json:"preferences"`
-	Topics        []string          `json:"topics"`           // Topics the user discusses frequently
-	Communication string            `json:"communication"`    // "formal", "casual", "technical"
-	Language      string            `json:"language"`         // Primary language
+	Topics        []string          `json:"topics"`        // Topics the user discusses frequently
+	Communication string            `json:"communication"` // "formal", "casual", "technical"
+	Language      string            `json:"language"`      // Primary language
 	FirstSeen     time.Time         `json:"first_seen"`
 	LastSeen      time.Time         `json:"last_seen"`
 	Interactions  int               `json:"interactions"`

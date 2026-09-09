@@ -73,9 +73,9 @@ func (s *SecureStore) GetPassphrase() string {
 
 // Resolver resolves credential values from various formats.
 type Resolver struct {
-	store         *SecureStore
-	configDir     string
-	override      PassphraseProvider
+	store     *SecureStore
+	configDir string
+	override  PassphraseProvider
 }
 
 // NewResolver creates a new credential Resolver.

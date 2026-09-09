@@ -9,10 +9,10 @@ func TestNextCronRun(t *testing.T) {
 	now := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC) // Wed 10:00 UTC
 
 	tests := []struct {
-		name   string
-		expr   string
-		tz     string
-		want   string
+		name string
+		expr string
+		tz   string
+		want string
 	}{
 		{"daily 9am", "0 9 * * *", "UTC", "2026-09-03 09:00:00 +0000 UTC"},
 		{"monday 9am", "0 9 * * 1", "UTC", "2026-09-07 09:00:00 +0000 UTC"},

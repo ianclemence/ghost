@@ -16,22 +16,22 @@ type EventKind string
 
 const (
 	// Agent lifecycle events
-	KindAgentTurnStart   EventKind = "agent.turn.start"
-	KindAgentTurnEnd     EventKind = "agent.turn.end"
-	KindAgentTurnError   EventKind = "agent.turn.error"
-	KindAgentMessageIn   EventKind = "agent.message.in"
-	KindAgentMessageOut  EventKind = "agent.message.out"
+	KindAgentTurnStart  EventKind = "agent.turn.start"
+	KindAgentTurnEnd    EventKind = "agent.turn.end"
+	KindAgentTurnError  EventKind = "agent.turn.error"
+	KindAgentMessageIn  EventKind = "agent.message.in"
+	KindAgentMessageOut EventKind = "agent.message.out"
 
 	// Tool events
-	KindToolBefore       EventKind = "tool.before"
-	KindToolAfter        EventKind = "tool.after"
-	KindToolError        EventKind = "tool.error"
-	KindToolDenied       EventKind = "tool.denied"
+	KindToolBefore EventKind = "tool.before"
+	KindToolAfter  EventKind = "tool.after"
+	KindToolError  EventKind = "tool.error"
+	KindToolDenied EventKind = "tool.denied"
 
 	// Channel events
-	KindChannelMessageIn  EventKind = "channel.message.in"
-	KindChannelMessageOut EventKind = "channel.message.out"
-	KindChannelError      EventKind = "channel.error"
+	KindChannelMessageIn   EventKind = "channel.message.in"
+	KindChannelMessageOut  EventKind = "channel.message.out"
+	KindChannelError       EventKind = "channel.error"
 	KindChannelStateChange EventKind = "channel.state.change"
 
 	// Session events
@@ -40,24 +40,24 @@ const (
 	KindSessionClear     EventKind = "session.clear"
 
 	// LLM events
-	KindLLMRequest       EventKind = "llm.request"
-	KindLLMResponse      EventKind = "llm.response"
-	KindLLMError         EventKind = "llm.error"
-	KindLLMFallback      EventKind = "llm.fallback"
+	KindLLMRequest  EventKind = "llm.request"
+	KindLLMResponse EventKind = "llm.response"
+	KindLLMError    EventKind = "llm.error"
+	KindLLMFallback EventKind = "llm.fallback"
 
 	// Skill events
-	KindSkillInstalled    EventKind = "skill.installed"
-	KindSkillRemoved      EventKind = "skill.removed"
-	KindSkillError        EventKind = "skill.error"
+	KindSkillInstalled EventKind = "skill.installed"
+	KindSkillRemoved   EventKind = "skill.removed"
+	KindSkillError     EventKind = "skill.error"
 
 	// Heartbeat events
-	KindHeartbeatStart   EventKind = "heartbeat.start"
-	KindHeartbeatEnd     EventKind = "heartbeat.end"
-	KindHeartbeatError   EventKind = "heartbeat.error"
+	KindHeartbeatStart EventKind = "heartbeat.start"
+	KindHeartbeatEnd   EventKind = "heartbeat.end"
+	KindHeartbeatError EventKind = "heartbeat.error"
 
 	// Bus events
-	KindBusPublish       EventKind = "bus.publish"
-	KindBusDrop          EventKind = "bus.drop"
+	KindBusPublish EventKind = "bus.publish"
+	KindBusDrop    EventKind = "bus.drop"
 )
 
 // Event is a runtime event envelope.
@@ -121,26 +121,26 @@ const (
 
 // SubscriptionOptions configures a subscription.
 type SubscriptionOptions struct {
-	Name          string
-	BufferSize    int
-	Priority      int
-	Backpressure  BackpressurePolicy
-	Timeout       time.Duration
+	Name         string
+	BufferSize   int
+	Priority     int
+	Backpressure BackpressurePolicy
+	Timeout      time.Duration
 }
 
 // subscription represents an active event subscription.
 type subscription struct {
-	name          string
-	channel       chan Event
-	filter        EventFilter
-	priority      int
-	backpressure  BackpressurePolicy
-	timeout       time.Duration
-	received      int64
-	handled       int64
-	failed        int64
-	dropped       int64
-	stop          chan struct{}
+	name         string
+	channel      chan Event
+	filter       EventFilter
+	priority     int
+	backpressure BackpressurePolicy
+	timeout      time.Duration
+	received     int64
+	handled      int64
+	failed       int64
+	dropped      int64
+	stop         chan struct{}
 }
 
 // Stats returns subscription statistics.

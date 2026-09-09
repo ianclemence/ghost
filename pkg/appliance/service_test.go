@@ -90,8 +90,8 @@ func TestGhostServiceTemplate(t *testing.T) {
 
 func TestServiceTemplatesHaveUser(t *testing.T) {
 	tests := []struct {
-		file     string
-		hasUser  bool
+		file    string
+		hasUser bool
 	}{
 		{"../../ghost-web.service.template", true},
 		{"../../ghost.service.template", true},

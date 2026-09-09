@@ -26,9 +26,9 @@ func TestTickRespectsClockGate(t *testing.T) {
 	}
 	past := time.Now().UTC().Add(-time.Minute)
 	item := &ScheduledItem{
-		Type:  TypeReminder,
-		Title: "gated",
-		State: StateScheduled,
+		Type:     TypeReminder,
+		Title:    "gated",
+		State:    StateScheduled,
 		Schedule: Schedule{Kind: ScheduleAt, At: &past},
 		Action:   Action{Kind: ActionMessage, Content: "hi"},
 		Source:   "test",

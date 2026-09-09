@@ -167,17 +167,17 @@ func TestDetermineOutcome(t *testing.T) {
 
 func TestCalculateQuality(t *testing.T) {
 	tests := []struct {
-		name   string
-		traj   *Trajectory
-		minQ   float64
-		maxQ   float64
+		name string
+		traj *Trajectory
+		minQ float64
+		maxQ float64
 	}{
 		{
 			name: "success with few actions",
 			traj: &Trajectory{
-				Outcome:    OutcomeSuccess,
-				Actions:    make([]Action, 3),
-				ToolsUsed:  []string{"a", "b"},
+				Outcome:   OutcomeSuccess,
+				Actions:   make([]Action, 3),
+				ToolsUsed: []string{"a", "b"},
 			},
 			minQ: 0.8,
 			maxQ: 1.0,
@@ -185,9 +185,9 @@ func TestCalculateQuality(t *testing.T) {
 		{
 			name: "failure with many actions",
 			traj: &Trajectory{
-				Outcome:    OutcomeFailure,
-				Actions:    make([]Action, 15),
-				ToolsUsed:  []string{"a"},
+				Outcome:   OutcomeFailure,
+				Actions:   make([]Action, 15),
+				ToolsUsed: []string{"a"},
 			},
 			minQ: 0.0,
 			maxQ: 0.3,
@@ -195,9 +195,9 @@ func TestCalculateQuality(t *testing.T) {
 		{
 			name: "partial success",
 			traj: &Trajectory{
-				Outcome:    OutcomePartial,
-				Actions:    make([]Action, 5),
-				ToolsUsed:  []string{"a"},
+				Outcome:   OutcomePartial,
+				Actions:   make([]Action, 5),
+				ToolsUsed: []string{"a"},
 			},
 			minQ: 0.5,
 			maxQ: 0.8,

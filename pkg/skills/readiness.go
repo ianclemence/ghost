@@ -11,13 +11,13 @@ import (
 type SkillStatus string
 
 const (
-	StatusReady                 SkillStatus = "ready"
-	StatusNeedsUserInput        SkillStatus = "needs_user_input"
-	StatusNeedsConfiguration    SkillStatus = "needs_configuration"
-	StatusNeedsPermission       SkillStatus = "needs_permission"
-	StatusUnavailable           SkillStatus = "unavailable"
+	StatusReady                  SkillStatus = "ready"
+	StatusNeedsUserInput         SkillStatus = "needs_user_input"
+	StatusNeedsConfiguration     SkillStatus = "needs_configuration"
+	StatusNeedsPermission        SkillStatus = "needs_permission"
+	StatusUnavailable            SkillStatus = "unavailable"
 	StatusTemporarilyUnavailable SkillStatus = "temporarily_unavailable"
-	StatusOffline               SkillStatus = "offline"
+	StatusOffline                SkillStatus = "offline"
 )
 
 // SkillReadiness describes what a skill needs before it can execute.
@@ -49,16 +49,16 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 		disabledPath := fmt.Sprintf("%s/skills/%s/SKILL.md.disabled", workspace, skillName)
 		if _, err := os.Stat(disabledPath); err == nil {
 			return SkillReadiness{
-				Status:     StatusUnavailable,
+				Status:      StatusUnavailable,
 				Requirement: "skill_disabled",
-				Message:    fmt.Sprintf("The %s skill is currently disabled. Enable it in Ghost's Skills settings to use it.", skillName),
-				UserAction: "enable_skill",
+				Message:     fmt.Sprintf("The %s skill is currently disabled. Enable it in Ghost's Skills settings to use it.", skillName),
+				UserAction:  "enable_skill",
 			}
 		}
 		return SkillReadiness{
-			Status:     StatusUnavailable,
+			Status:      StatusUnavailable,
 			Requirement: "skill_not_found",
-			Message:    fmt.Sprintf("The %s skill is not installed.", skillName),
+			Message:     fmt.Sprintf("The %s skill is not installed.", skillName),
 		}
 	}
 
@@ -134,16 +134,16 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 		if !isCommandAvailable(cmd) {
 			if IsOptionalSkill(skillName) {
 				return SkillReadiness{
-					Status:     StatusNeedsConfiguration,
+					Status:      StatusNeedsConfiguration,
 					Requirement: "missing_binary:" + cmd,
-					Message:    fmt.Sprintf("The %s skill needs `%s` installed. Run `ghost doctor` for setup instructions.", skillName, cmd),
-					UserAction: "install_" + cmd,
+					Message:     fmt.Sprintf("The %s skill needs `%s` installed. Run `ghost doctor` for setup instructions.", skillName, cmd),
+					UserAction:  "install_" + cmd,
 				}
 			}
 			return SkillReadiness{
-				Status:     StatusTemporarilyUnavailable,
+				Status:      StatusTemporarilyUnavailable,
 				Requirement: "missing_binary:" + cmd,
-				Message:    fmt.Sprintf("The %s skill is temporarily unavailable — missing `%s`.", skillName, cmd),
+				Message:     fmt.Sprintf("The %s skill is temporarily unavailable — missing `%s`.", skillName, cmd),
 			}
 		}
 	}

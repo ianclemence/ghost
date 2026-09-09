@@ -137,6 +137,18 @@ type AuthorizeResult struct {
 // never bypass this: the gate sits between capability resolution and
 // ExecuteWithContext, not in a prompt.
 func (g *Governance) AuthorizeTool(requestID, sessionKey, capabilityID, tool string, args map[string]interface{}) AuthorizeResult {
+	return g.authorize(requestID, sessionKey, capabilityID, tool, args, permissions.RiskOf(capabilityID))
+}
+
+// AuthorizeStandalone authorizes a standalone consequential tool (one not
+// tied to a committed capability) with an explicit risk class. The risk is
+// declared by the runtime table (pkg/tools.FreeConsequentialTools), never
+// by the model.
+func (g *Governance) AuthorizeStandalone(requestID, sessionKey, capabilityID, tool string, args map[string]interface{}, risk permissions.Risk) AuthorizeResult {
+	return g.authorize(requestID, sessionKey, capabilityID, tool, args, risk)
+}
+
+func (g *Governance) authorize(requestID, sessionKey, capabilityID, tool string, args map[string]interface{}, risk permissions.Risk) AuthorizeResult {
 	if !g.active() || g.Broker == nil {
 		return AuthorizeResult{Allowed: true}
 	}
@@ -154,7 +166,6 @@ func (g *Governance) AuthorizeTool(requestID, sessionKey, capabilityID, tool str
 		return AuthorizeResult{Allowed: false,
 			AskMessage: "That isn't available in this context, so I didn't run it."}
 	}
-	risk := permissions.RiskOf(capabilityID)
 	scope := scopeFor(sessionKey, args)
 	switch g.Broker.Evaluate(capabilityID, toolAction(tool, args), scope, risk) {
 	case permissions.VerdictAllow:

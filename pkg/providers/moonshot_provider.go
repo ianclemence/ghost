@@ -36,16 +36,16 @@ func NewMoonshotProvider(apiKey, apiBase string) *MoonshotProvider {
 }
 
 type kimiRequest struct {
-	Model       string                 `json:"model"`
-	Messages    []kimiMessage          `json:"messages"`
-	Thinking    *kimiThinking          `json:"thinking,omitempty"`
-	Tools       []ToolDefinition       `json:"tools,omitempty"`
-	ToolChoice  interface{}            `json:"tool_choice,omitempty"` // "auto" or "none"
-	Temperature float64                `json:"temperature,omitempty"`
-	TopP        float64                `json:"top_p,omitempty"`
-	N           int                    `json:"n,omitempty"`
-	MaxTokens   int                    `json:"max_tokens,omitempty"`
-	Stream      bool                   `json:"stream"`
+	Model       string           `json:"model"`
+	Messages    []kimiMessage    `json:"messages"`
+	Thinking    *kimiThinking    `json:"thinking,omitempty"`
+	Tools       []ToolDefinition `json:"tools,omitempty"`
+	ToolChoice  interface{}      `json:"tool_choice,omitempty"` // "auto" or "none"
+	Temperature float64          `json:"temperature,omitempty"`
+	TopP        float64          `json:"top_p,omitempty"`
+	N           int              `json:"n,omitempty"`
+	MaxTokens   int              `json:"max_tokens,omitempty"`
+	Stream      bool             `json:"stream"`
 }
 
 type kimiThinking struct {
@@ -53,17 +53,17 @@ type kimiThinking struct {
 }
 
 type kimiMessage struct {
-	Role             string            `json:"role"`
-	Content          interface{}       `json:"content"` // string or []kimiContentPart
-	ToolCalls        []ToolCall        `json:"tool_calls,omitempty"`
-	ToolCallID       string            `json:"tool_call_id,omitempty"`
+	Role       string      `json:"role"`
+	Content    interface{} `json:"content"` // string or []kimiContentPart
+	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
 }
 
 type kimiContentPart struct {
-	Type     string      `json:"type"`
-	Text     string      `json:"text,omitempty"`
-	ImageURL *kimiURL    `json:"image_url,omitempty"`
-	VideoURL *kimiURL    `json:"video_url,omitempty"`
+	Type     string   `json:"type"`
+	Text     string   `json:"text,omitempty"`
+	ImageURL *kimiURL `json:"image_url,omitempty"`
+	VideoURL *kimiURL `json:"video_url,omitempty"`
 }
 
 type kimiURL struct {
@@ -121,15 +121,15 @@ func (p *MoonshotProvider) Chat(ctx context.Context, messages []Message, tools [
 			reqBody.MaxTokens = maxTokens
 		}
 	}
-    
-    // Default to disabled if not specified, unless model implies it? 
-    // Docs say default is enabled for thinking models. But we want manual control.
-    // If user didn't specify thinking option, we might want to default to disabled to be safe with tools?
-    // User requirement: "Add a command... to enable Kimi K2.5's Thinking Mode... It is currently disabled or set to auto."
-    // So we assume default is disabled unless requested.
-    if reqBody.Thinking == nil {
-         reqBody.Thinking = &kimiThinking{Type: "disabled"}
-    }
+
+	// Default to disabled if not specified, unless model implies it?
+	// Docs say default is enabled for thinking models. But we want manual control.
+	// If user didn't specify thinking option, we might want to default to disabled to be safe with tools?
+	// User requirement: "Add a command... to enable Kimi K2.5's Thinking Mode... It is currently disabled or set to auto."
+	// So we assume default is disabled unless requested.
+	if reqBody.Thinking == nil {
+		reqBody.Thinking = &kimiThinking{Type: "disabled"}
+	}
 
 	for _, msg := range messages {
 		kMsg := kimiMessage{
@@ -232,14 +232,14 @@ func (p *MoonshotProvider) Chat(ctx context.Context, messages []Message, tools [
 
 	// Extract content string if it's mixed
 	contentStr := ""
-    // Kimi returns string content usually
-    if str, ok := choice.Message.Content.(string); ok {
-        contentStr = str
-    } else {
-        // Should not happen for assistant response usually, but handle just in case
-        jsonContent, _ := json.Marshal(choice.Message.Content)
-        contentStr = string(jsonContent)
-    }
+	// Kimi returns string content usually
+	if str, ok := choice.Message.Content.(string); ok {
+		contentStr = str
+	} else {
+		// Should not happen for assistant response usually, but handle just in case
+		jsonContent, _ := json.Marshal(choice.Message.Content)
+		contentStr = string(jsonContent)
+	}
 
 	return &LLMResponse{
 		Content:      contentStr,

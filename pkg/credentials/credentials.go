@@ -374,4 +374,3 @@ func defaultConfigDir() string {
 	}
 	return "./config"
 }
-

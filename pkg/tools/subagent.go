@@ -96,6 +96,9 @@ type SubagentManager struct {
 	// BrowserAuth, when set, governs subagent browser_* calls (see
 	// ToolLoopConfig). Set by the embedding runtime; nil fails closed.
 	BrowserAuth SubagentBrowserAuth
+	// ConsequentialAuth, when set, governs subagent standalone
+	// consequential tools. Set by the embedding runtime; nil fails closed.
+	ConsequentialAuth SubagentConsequentialAuth
 }
 
 func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace string, bus *bus.MessageBus) *SubagentManager {
@@ -218,6 +221,7 @@ func (sm *SubagentManager) runLoop(ctx context.Context, taskPrompt, originChanne
 
 	sm.mu.RLock()
 	browserAuth := sm.BrowserAuth
+	consequentialAuth := sm.ConsequentialAuth
 	sm.mu.RUnlock()
 	return RunToolLoop(ctx, ToolLoopConfig{
 		Provider:      sm.provider,
@@ -228,7 +232,8 @@ func (sm *SubagentManager) runLoop(ctx context.Context, taskPrompt, originChanne
 			"max_tokens":  4096,
 			"temperature": 0.7,
 		},
-		BrowserAuth: browserAuth,
+		BrowserAuth:       browserAuth,
+		ConsequentialAuth: consequentialAuth,
 	}, messages, originChannel, originChatID)
 }
 

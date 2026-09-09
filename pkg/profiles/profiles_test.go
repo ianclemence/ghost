@@ -45,7 +45,7 @@ func TestDuplicateProfile(t *testing.T) {
 		t.Errorf("expected name 'copy', got %s", dupe.Name)
 	}
 
- copy, _ := manager.Get("copy")
+	copy, _ := manager.Get("copy")
 	if copy.Avatar == nil || copy.Avatar.Shape != AvatarShapeCircle {
 		t.Error("avatar not copied")
 	}

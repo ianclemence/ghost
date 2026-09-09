@@ -6,7 +6,7 @@ import (
 
 func TestBuiltinPersonalities(t *testing.T) {
 	dir := t.TempDir()
-loader := NewLoader(dir)
+	loader := NewLoader(dir)
 
 	list := loader.List()
 	if len(list) < 5 {
@@ -29,7 +29,7 @@ loader := NewLoader(dir)
 
 func TestSetAndGetActive(t *testing.T) {
 	dir := t.TempDir()
-loader := NewLoader(dir)
+	loader := NewLoader(dir)
 
 	if err := loader.Set("hacker"); err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ loader := NewLoader(dir)
 
 func TestSaveAndDelete(t *testing.T) {
 	dir := t.TempDir()
-loader := NewLoader(dir)
+	loader := NewLoader(dir)
 
 	err := loader.Save("custom", "A custom personality", "Be custom.")
 	if err != nil {
@@ -66,7 +66,7 @@ loader := NewLoader(dir)
 
 func TestCannotOverwriteBuiltin(t *testing.T) {
 	dir := t.TempDir()
-loader := NewLoader(dir)
+	loader := NewLoader(dir)
 
 	err := loader.Save("hacker", "overwrite", "bad")
 	if err == nil {
@@ -76,7 +76,7 @@ loader := NewLoader(dir)
 
 func TestCannotDeleteBuiltin(t *testing.T) {
 	dir := t.TempDir()
-loader := NewLoader(dir)
+	loader := NewLoader(dir)
 
 	err := loader.Delete("default")
 	if err == nil {
@@ -86,7 +86,7 @@ loader := NewLoader(dir)
 
 func TestDefaultContent(t *testing.T) {
 	dir := t.TempDir()
-loader := NewLoader(dir)
+	loader := NewLoader(dir)
 
 	content := loader.GetActiveContent()
 	if content == "" {

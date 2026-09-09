@@ -144,7 +144,7 @@ func TestShouldUpdateTitle(t *testing.T) {
 		messageCount  int
 		want          bool
 	}{
-		{"", 0, true},                    // No title
+		{"", 0, true},                     // No title
 		{"New conversation", 0, true},     // Default title
 		{"Weather in Bangkok", 3, false},  // Too early
 		{"Weather in Bangkok", 5, true},   // First evolution
@@ -167,12 +167,12 @@ func TestIsMeaningfulTitleChange(t *testing.T) {
 		newTitle string
 		want     bool
 	}{
-		{"Weather", "Weather", false},           // Same
-		{"Weather.", "Weather", false},           // Punctuation only
-		{"Weather in Bangkok", "Weather in Bangkok.", false}, // Punctuation only
+		{"Weather", "Weather", false},                             // Same
+		{"Weather.", "Weather", false},                            // Punctuation only
+		{"Weather in Bangkok", "Weather in Bangkok.", false},      // Punctuation only
 		{"Weather in Bangkok", "Weather in Bangkok today", false}, // Minor addition
-		{"Weather in Bangkok", "Japan Trip Planning", true},     // Different topic
-		{"Weather", "Japan Trip Planning", true},                // Different topic
+		{"Weather in Bangkok", "Japan Trip Planning", true},       // Different topic
+		{"Weather", "Japan Trip Planning", true},                  // Different topic
 	}
 	for _, tc := range cases {
 		got := IsMeaningfulTitleChange(tc.oldTitle, tc.newTitle)
@@ -222,11 +222,11 @@ func TestIsTopicRelated(t *testing.T) {
 		topic string
 		want  bool
 	}{
-		{"Weather in Bangkok", "What's the weather in Bangkok?", true},  // Same topic
-		{"Weather in Bangkok", "How's the weather today?", true},         // Related
-		{"Weather in Bangkok", "Help me plan a trip to Japan", false},    // Different
-		{"Japan Trip Planning", "What to pack for October?", false},      // Different (packing vs planning)
-		{"Japan Trip Planning", "Trip to Tokyo and Osaka", true},         // Related (trip keyword)
+		{"Weather in Bangkok", "What's the weather in Bangkok?", true}, // Same topic
+		{"Weather in Bangkok", "How's the weather today?", true},       // Related
+		{"Weather in Bangkok", "Help me plan a trip to Japan", false},  // Different
+		{"Japan Trip Planning", "What to pack for October?", false},    // Different (packing vs planning)
+		{"Japan Trip Planning", "Trip to Tokyo and Osaka", true},       // Related (trip keyword)
 	}
 	for _, tc := range cases {
 		got := IsTopicRelated(tc.title, tc.topic)

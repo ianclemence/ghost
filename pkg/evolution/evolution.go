@@ -25,41 +25,41 @@ const (
 
 // LearningRecord captures data from a completed agent turn.
 type LearningRecord struct {
-	ID           string            `json:"id"`
-	TaskKind     string            `json:"task_kind"`
-	Summary      string            `json:"summary"`
-	ToolsUsed    []string          `json:"tools_used"`
-	SkillsUsed   []string          `json:"skills_used"`
-	Success      bool              `json:"success"`
-	Duration     time.Duration     `json:"duration"`
-	SessionKey   string            `json:"session_key"`
-	Workspace    string            `json:"workspace"`
-	Timestamp    time.Time         `json:"timestamp"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
+	ID         string            `json:"id"`
+	TaskKind   string            `json:"task_kind"`
+	Summary    string            `json:"summary"`
+	ToolsUsed  []string          `json:"tools_used"`
+	SkillsUsed []string          `json:"skills_used"`
+	Success    bool              `json:"success"`
+	Duration   time.Duration     `json:"duration"`
+	SessionKey string            `json:"session_key"`
+	Workspace  string            `json:"workspace"`
+	Timestamp  time.Time         `json:"timestamp"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
 }
 
 // SkillDraft represents a proposed skill modification.
 type SkillDraft struct {
-	ID          string     `json:"id"`
-	PatternID   string     `json:"pattern_id"`
-	SkillName   string     `json:"skill_name"`
-	Description string     `json:"description"`
-	ChangeKind  string     `json:"change_kind"` // "create", "patch", "replace"
-	Body        string     `json:"body"`
-	Status      string     `json:"status"` // "candidate", "quarantined", "applied"
-	CreatedAt   time.Time  `json:"created_at"`
+	ID          string    `json:"id"`
+	PatternID   string    `json:"pattern_id"`
+	SkillName   string    `json:"skill_name"`
+	Description string    `json:"description"`
+	ChangeKind  string    `json:"change_kind"` // "create", "patch", "replace"
+	Body        string    `json:"body"`
+	Status      string    `json:"status"` // "candidate", "quarantined", "applied"
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // SkillProfile tracks a skill's usage and lifecycle.
 type SkillProfile struct {
-	Name          string        `json:"name"`
-	Status        SkillStatus   `json:"status"`
-	UsageCount    int           `json:"usage_count"`
-	RetentionScore float64      `json:"retention_score"`
-	Version       int           `json:"version"`
-	LastUsed      time.Time     `json:"last_used"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
+	Name           string      `json:"name"`
+	Status         SkillStatus `json:"status"`
+	UsageCount     int         `json:"usage_count"`
+	RetentionScore float64     `json:"retention_score"`
+	Version        int         `json:"version"`
+	LastUsed       time.Time   `json:"last_used"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 // Pattern represents a cluster of similar successful tasks.
@@ -74,12 +74,12 @@ type Pattern struct {
 
 // EvolutionConfig configures the evolution pipeline.
 type EvolutionConfig struct {
-	Enabled           bool          `json:"enabled"`
-	MinSuccessRatio   float64       `json:"min_success_ratio"`
-	ColdAfterDays     int           `json:"cold_after_days"`
-	ArchiveAfterDays  int           `json:"archive_after_days"`
-	DeleteAfterDays   int           `json:"delete_after_days"`
-	MinRetentionScore float64       `json:"min_retention_score"`
+	Enabled           bool    `json:"enabled"`
+	MinSuccessRatio   float64 `json:"min_success_ratio"`
+	ColdAfterDays     int     `json:"cold_after_days"`
+	ArchiveAfterDays  int     `json:"archive_after_days"`
+	DeleteAfterDays   int     `json:"delete_after_days"`
+	MinRetentionScore float64 `json:"min_retention_score"`
 }
 
 // DefaultEvolutionConfig returns sensible defaults.
@@ -136,9 +136,9 @@ func (em *EvolutionManager) RecordTurn(record LearningRecord) {
 	em.records = append(em.records, record)
 
 	logger.DebugCF("evolution", "Recorded turn", map[string]interface{}{
-		"id":       record.ID,
-		"success":  record.Success,
-		"task":     record.TaskKind,
+		"id":      record.ID,
+		"success": record.Success,
+		"task":    record.TaskKind,
 	})
 }
 
@@ -359,9 +359,9 @@ func (em *EvolutionManager) runLifecycle() {
 				profile.Status = SkillStatusCold
 				profile.UpdatedAt = now
 				logger.InfoCF("evolution", "Skill transitioned to cold", map[string]interface{}{
-					"skill":  profile.Name,
-					"idle":   idleDays,
-					"score":  profile.RetentionScore,
+					"skill": profile.Name,
+					"idle":  idleDays,
+					"score": profile.RetentionScore,
 				})
 			}
 		case SkillStatusCold:
@@ -451,8 +451,8 @@ func (em *EvolutionManager) ApplyDraft(draftID string) error {
 	draft.Status = "applied"
 
 	logger.InfoCF("evolution", "Skill draft applied", map[string]interface{}{
-		"draft":  draftID,
-		"skill":  draft.SkillName,
+		"draft": draftID,
+		"skill": draft.SkillName,
 	})
 
 	return nil

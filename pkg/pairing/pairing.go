@@ -1,11 +1,11 @@
 // Package pairing implements secure device pairing for Ghost.
 //
 // Flow:
-//   1. Ghost Pod (web UI) calls POST /v1/pairing/invitations → gets short-lived token + pairing_id
-//   2. Ghost Pod displays token as QR code (ghost://pair?v=1&pod=...&transport=lan&host=...&port=...&token=...)
-//   3. Mobile app scans QR, calls POST /v1/pairing/complete with token + device metadata
-//   4. Backend validates token, creates paired_device, returns device credential
-//   5. Mobile stores credential in SecureStore
+//  1. Ghost Pod (web UI) calls POST /v1/pairing/invitations → gets short-lived token + pairing_id
+//  2. Ghost Pod displays token as QR code (ghost://pair?v=1&pod=...&transport=lan&host=...&port=...&token=...)
+//  3. Mobile app scans QR, calls POST /v1/pairing/complete with token + device metadata
+//  4. Backend validates token, creates paired_device, returns device credential
+//  5. Mobile stores credential in SecureStore
 //
 // Tokens are single-use, expire after 5 minutes, and are stored as SHA-256 hashes.
 // Credentials are SHA-256 hashed for storage; the plaintext is returned exactly once.
@@ -21,22 +21,22 @@ import (
 )
 
 const (
-	TokenLength    = 32 // bytes → 64 hex chars
-	TokenExpiry    = 5 * time.Minute
-	DeviceIDLength = 12 // bytes → 24 hex chars
+	TokenLength      = 32 // bytes → 64 hex chars
+	TokenExpiry      = 5 * time.Minute
+	DeviceIDLength   = 12 // bytes → 24 hex chars
 	CredentialLength = 32 // bytes → 64 hex chars
 )
 
 // Error codes for pairing/auth responses.
 const (
-	ErrCodePairingInvalid     = "pairing_invalid"
-	ErrCodePairingExpired     = "pairing_expired"
-	ErrCodePairingConsumed    = "pairing_consumed"
-	ErrCodePairingRejected    = "pairing_rejected"
-	ErrCodeAuthRequired       = "authentication_required"
-	ErrCodeAuthFailed         = "authentication_failed"
-	ErrCodeDeviceRevoked      = "device_revoked"
-	ErrCodeDeviceNotFound     = "device_not_found"
+	ErrCodePairingInvalid  = "pairing_invalid"
+	ErrCodePairingExpired  = "pairing_expired"
+	ErrCodePairingConsumed = "pairing_consumed"
+	ErrCodePairingRejected = "pairing_rejected"
+	ErrCodeAuthRequired    = "authentication_required"
+	ErrCodeAuthFailed      = "authentication_failed"
+	ErrCodeDeviceRevoked   = "device_revoked"
+	ErrCodeDeviceNotFound  = "device_not_found"
 )
 
 // PairingError is a structured error for pairing/auth responses.
@@ -55,15 +55,15 @@ func NewPairingError(code, message string) *PairingError {
 
 // PendingPairing represents an unused pairing token.
 type PendingPairing struct {
-	ID           string    `json:"id"`
-	TokenHash    string    `json:"-"` // SHA-256 hex, never sent to client
-	DisplayName  string    `json:"display_name"`
-	PodID        string    `json:"pod_id"`
-	Transport    string    `json:"transport"`
-	Host         string    `json:"host"`
-	Port         string    `json:"port"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	TokenHash   string    `json:"-"` // SHA-256 hex, never sent to client
+	DisplayName string    `json:"display_name"`
+	PodID       string    `json:"pod_id"`
+	Transport   string    `json:"transport"`
+	Host        string    `json:"host"`
+	Port        string    `json:"port"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // PairingInvitation is returned to the web UI when generating a pairing QR.
@@ -80,14 +80,14 @@ type PairingInvitation struct {
 
 // PairedDevice represents a successfully paired mobile device.
 type PairedDevice struct {
-	ID           string     `json:"id"`
-	DeviceID     string     `json:"device_id"`
-	DisplayName  string     `json:"display_name"`
-	Platform     string     `json:"platform"`      // ios, android, web
-	Credential   string     `json:"-"`              // SHA-256 hash, never sent after pairing
-	PairedAt     time.Time  `json:"paired_at"`
-	LastSeenAt   *time.Time `json:"last_seen_at,omitempty"`
-	RevokedAt    *time.Time `json:"revoked_at,omitempty"`
+	ID          string     `json:"id"`
+	DeviceID    string     `json:"device_id"`
+	DisplayName string     `json:"display_name"`
+	Platform    string     `json:"platform"` // ios, android, web
+	Credential  string     `json:"-"`        // SHA-256 hash, never sent after pairing
+	PairedAt    time.Time  `json:"paired_at"`
+	LastSeenAt  *time.Time `json:"last_seen_at,omitempty"`
+	RevokedAt   *time.Time `json:"revoked_at,omitempty"`
 }
 
 // PairingResult is returned to the mobile app after successful redemption.

@@ -28,9 +28,9 @@ import (
 type ReviewSeverity string
 
 const (
-	SeverityInfo     ReviewSeverity = "info"
-	SeveritySuggest  ReviewSeverity = "suggest"
-	SeverityWarning  ReviewSeverity = "warning"
+	SeverityInfo    ReviewSeverity = "info"
+	SeveritySuggest ReviewSeverity = "suggest"
+	SeverityWarning ReviewSeverity = "warning"
 )
 
 // ReviewCategory classifies the type of finding.
@@ -53,18 +53,18 @@ type Finding struct {
 
 // ReviewResult holds the full review output for a single turn.
 type ReviewResult struct {
-	ID            string              `json:"id"`
-	TurnIndex     int                 `json:"turn_index"`
-	SessionKey    string              `json:"session_key"`
-	UserMessage   string              `json:"user_message"`
-	AssistantMsg  string              `json:"assistant_message"`
-	ToolsUsed     []string            `json:"tools_used"`
-	ToolCount     int                 `json:"tool_count"`
-	Findings      []Finding           `json:"findings"`
-	Score         float64             `json:"score"` // 0.0 - 1.0
-	Suggestions   []string            `json:"suggestions"`
-	Timestamp     time.Time           `json:"timestamp"`
-	ReviewLatency time.Duration       `json:"review_latency"`
+	ID            string        `json:"id"`
+	TurnIndex     int           `json:"turn_index"`
+	SessionKey    string        `json:"session_key"`
+	UserMessage   string        `json:"user_message"`
+	AssistantMsg  string        `json:"assistant_message"`
+	ToolsUsed     []string      `json:"tools_used"`
+	ToolCount     int           `json:"tool_count"`
+	Findings      []Finding     `json:"findings"`
+	Score         float64       `json:"score"` // 0.0 - 1.0
+	Suggestions   []string      `json:"suggestions"`
+	Timestamp     time.Time     `json:"timestamp"`
+	ReviewLatency time.Duration `json:"review_latency"`
 }
 
 // ReviewConfig configures the self-review system.
@@ -85,10 +85,10 @@ func DefaultReviewConfig() ReviewConfig {
 
 // Reviewer performs autonomous background reviews of agent turns.
 type Reviewer struct {
-	config  ReviewConfig
+	config    ReviewConfig
 	workspace string
-	reviews []ReviewResult
-	mu      sync.RWMutex
+	reviews   []ReviewResult
+	mu        sync.RWMutex
 }
 
 // NewReviewer creates a new Reviewer.

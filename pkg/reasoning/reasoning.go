@@ -28,45 +28,45 @@ import (
 type ReasoningType string
 
 const (
-	Explicit   ReasoningType = "explicit"   // from reasoning_content field
-	Implicit   ReasoningType = "implicit"   // extracted from response text
+	Explicit   ReasoningType = "explicit"    // from reasoning_content field
+	Implicit   ReasoningType = "implicit"    // extracted from response text
 	ToolReason ReasoningType = "tool_reason" // reasoning about tool selection
 )
 
 // ChainStep represents one step in a reasoning chain.
 type ChainStep struct {
-	Step        int           `json:"step"`
-	Type        ReasoningType `json:"type"`
-	Content     string        `json:"content"`
-	Confidence  float64       `json:"confidence"` // 0.0-1.0
-	Duration    time.Duration `json:"duration_ms"`
+	Step       int           `json:"step"`
+	Type       ReasoningType `json:"type"`
+	Content    string        `json:"content"`
+	Confidence float64       `json:"confidence"` // 0.0-1.0
+	Duration   time.Duration `json:"duration_ms"`
 }
 
 // ReasoningChain is a complete reasoning trace for one response.
 type ReasoningChain struct {
-	ID            string        `json:"id"`
-	SessionKey    string        `json:"session_key"`
-	TurnIndex     int           `json:"turn_index"`
-	UserMessage   string        `json:"user_message"`
-	Response      string        `json:"response"`
-	Steps         []ChainStep   `json:"steps"`
-	TotalSteps    int           `json:"total_steps"`
-	HasExplicit   bool          `json:"has_explicit"`   // model provided reasoning_content
-	HasImplicit   bool          `json:"has_implicit"`   // extracted from response
-	HasToolReason bool          `json:"has_tool_reason"` // about tool selection
-	Model         string        `json:"model"`
-	Provider      string        `json:"provider"`
-	Timestamp     time.Time     `json:"timestamp"`
+	ID            string      `json:"id"`
+	SessionKey    string      `json:"session_key"`
+	TurnIndex     int         `json:"turn_index"`
+	UserMessage   string      `json:"user_message"`
+	Response      string      `json:"response"`
+	Steps         []ChainStep `json:"steps"`
+	TotalSteps    int         `json:"total_steps"`
+	HasExplicit   bool        `json:"has_explicit"`    // model provided reasoning_content
+	HasImplicit   bool        `json:"has_implicit"`    // extracted from response
+	HasToolReason bool        `json:"has_tool_reason"` // about tool selection
+	Model         string      `json:"model"`
+	Provider      string      `json:"provider"`
+	Timestamp     time.Time   `json:"timestamp"`
 }
 
 // ReasoningStats holds aggregate reasoning statistics.
 type ReasoningStats struct {
-	TotalChains    int     `json:"total_chains"`
-	AvgSteps       float64 `json:"avg_steps"`
-	ExplicitCount  int     `json:"explicit_count"`
-	ImplicitCount  int     `json:"implicit_count"`
-	ToolReasonCount int    `json:"tool_reason_count"`
-	AvgConfidence  float64 `json:"avg_confidence"`
+	TotalChains     int     `json:"total_chains"`
+	AvgSteps        float64 `json:"avg_steps"`
+	ExplicitCount   int     `json:"explicit_count"`
+	ImplicitCount   int     `json:"implicit_count"`
+	ToolReasonCount int     `json:"tool_reason_count"`
+	AvgConfidence   float64 `json:"avg_confidence"`
 }
 
 // ReasoningConfig configures reasoning tracking.
@@ -74,7 +74,7 @@ type ReasoningConfig struct {
 	Enabled         bool `json:"enabled"`
 	MaxChains       int  `json:"max_chains"`
 	ExtractImplicit bool `json:"extract_implicit"` // extract from response text
-	MinStepLength   int  `json:"min_step_length"`   // min chars for a reasoning step
+	MinStepLength   int  `json:"min_step_length"`  // min chars for a reasoning step
 }
 
 // DefaultReasoningConfig returns sensible defaults.
@@ -166,8 +166,8 @@ func (rt *ReasoningTracker) TrackTurn(
 	rt.mu.Unlock()
 
 	logger.DebugCF("reasoning", "Reasoning chain tracked", map[string]interface{}{
-		"id":      chain.ID,
-		"steps":   chain.TotalSteps,
+		"id":       chain.ID,
+		"steps":    chain.TotalSteps,
 		"explicit": chain.HasExplicit,
 		"implicit": chain.HasImplicit,
 	})

@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/philippgille/chromem-go"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/philippgille/chromem-go"
 )
 
 type Store struct {
@@ -194,7 +194,7 @@ func (s *Store) Retrieve(ctx context.Context, query string, limit int) ([]Search
 	if err != nil {
 		return nil, fmt.Errorf("failed to query vector index: %w", err)
 	}
-	
+
 	if len(results) == 0 {
 		return []SearchResult{}, nil
 	}

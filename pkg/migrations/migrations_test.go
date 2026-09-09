@@ -50,7 +50,7 @@ func TestFreshDBReachesHead(t *testing.T) {
 	}
 	for _, tbl := range []string{"t1", "t2", "schema_migrations"} {
 		var n int
-		if err := db.QueryRow(`SELECT COUNT(*) FROM `+tbl).Scan(&n); err != nil {
+		if err := db.QueryRow(`SELECT COUNT(*) FROM ` + tbl).Scan(&n); err != nil {
 			t.Fatalf("table %s missing: %v", tbl, err)
 		}
 	}
@@ -149,4 +149,3 @@ func TestRegistryValidation(t *testing.T) {
 		t.Fatalf("CurrentVersion = %d, %v; want 2", v, err)
 	}
 }
-

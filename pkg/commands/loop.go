@@ -160,8 +160,8 @@ func stoploopHandler(ctx context.Context, req Request, rt *Runtime) error {
 	}
 
 	res := tool.Execute(ctx, map[string]interface{}{
-		"action":  "disable",
-		"job_id":  jobID,
+		"action": "disable",
+		"job_id": jobID,
 	})
 
 	if res.IsError {

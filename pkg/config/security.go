@@ -45,18 +45,18 @@ type SecurityConfig struct {
 
 // ProvidersSecurityConfig holds sensitive provider credentials.
 type ProvidersSecurityConfig struct {
-	Anthropic      ProviderSecurityConfig `json:"anthropic"`
-	OpenAI         ProviderSecurityConfig `json:"openai"`
-	OpenRouter     ProviderSecurityConfig `json:"openrouter"`
-	Groq           ProviderSecurityConfig `json:"groq"`
-	Zhipu          ProviderSecurityConfig `json:"zhipu"`
-	Ollama         ProviderSecurityConfig `json:"ollama"`
-	Moonshot       ProviderSecurityConfig `json:"moonshot"`
-	DeepSeek       ProviderSecurityConfig `json:"deepseek"`
-	Gemini         ProviderSecurityConfig `json:"gemini"`
-	ShengSuanYun   ProviderSecurityConfig `json:"shengsuanyun"`
-	Nvidia         ProviderSecurityConfig `json:"nvidia"`
-	GitHubCopilot  ProviderSecurityConfig `json:"github_copilot"`
+	Anthropic     ProviderSecurityConfig `json:"anthropic"`
+	OpenAI        ProviderSecurityConfig `json:"openai"`
+	OpenRouter    ProviderSecurityConfig `json:"openrouter"`
+	Groq          ProviderSecurityConfig `json:"groq"`
+	Zhipu         ProviderSecurityConfig `json:"zhipu"`
+	Ollama        ProviderSecurityConfig `json:"ollama"`
+	Moonshot      ProviderSecurityConfig `json:"moonshot"`
+	DeepSeek      ProviderSecurityConfig `json:"deepseek"`
+	Gemini        ProviderSecurityConfig `json:"gemini"`
+	ShengSuanYun  ProviderSecurityConfig `json:"shengsuanyun"`
+	Nvidia        ProviderSecurityConfig `json:"nvidia"`
+	GitHubCopilot ProviderSecurityConfig `json:"github_copilot"`
 }
 
 // ProviderSecurityConfig holds sensitive fields for a provider.

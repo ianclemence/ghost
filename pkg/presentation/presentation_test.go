@@ -8,7 +8,7 @@ import (
 func TestMemory(t *testing.T) {
 	learned := time.Now().Add(-24 * time.Hour)
 	result := Memory("Prefers tea over coffee", "preference", "food", "User prefers tea over coffee", 0.95, learned)
-	
+
 	if result == "" {
 		t.Error("expected non-empty result")
 	}
@@ -26,7 +26,7 @@ func TestMemory(t *testing.T) {
 func TestSession(t *testing.T) {
 	lastActive := time.Now().Add(-2 * time.Hour)
 	result := Session("Weather in Bangkok", 15, lastActive, "User asked about weather in Bangkok")
-	
+
 	if result == "" {
 		t.Error("expected non-empty result")
 	}
@@ -44,7 +44,7 @@ func TestSession(t *testing.T) {
 func TestActivity(t *testing.T) {
 	ts := time.Now().Add(-5 * time.Minute)
 	result := Activity("web_search", "weather in Bangkok", ts)
-	
+
 	if result == "" {
 		t.Error("expected non-empty result")
 	}
@@ -59,7 +59,7 @@ func TestActivity(t *testing.T) {
 func TestAutomation(t *testing.T) {
 	lastRun := time.Now().Add(-1 * time.Hour)
 	result := Automation("Weather Check", "0 8 * * *", lastRun, true)
-	
+
 	if result == "" {
 		t.Error("expected non-empty result")
 	}
@@ -73,7 +73,7 @@ func TestAutomation(t *testing.T) {
 
 func TestSkill(t *testing.T) {
 	result := Skill("weather", "Check the weather for any location", true)
-	
+
 	if result == "" {
 		t.Error("expected non-empty result")
 	}
@@ -87,7 +87,7 @@ func TestSkill(t *testing.T) {
 
 func TestSkillDisabled(t *testing.T) {
 	result := Skill("weather", "Check the weather", false)
-	
+
 	if !contains(result, "[disabled]") {
 		t.Error("expected result to contain disabled badge")
 	}
@@ -96,7 +96,7 @@ func TestSkillDisabled(t *testing.T) {
 func TestDevice(t *testing.T) {
 	lastSeen := time.Now().Add(-3 * time.Minute)
 	result := Device("iPhone", "connected", lastSeen)
-	
+
 	if result == "" {
 		t.Error("expected non-empty result")
 	}
@@ -110,7 +110,7 @@ func TestDevice(t *testing.T) {
 
 func TestChannel(t *testing.T) {
 	result := Channel("Telegram", "connected")
-	
+
 	if result == "" {
 		t.Error("expected non-empty result")
 	}
@@ -124,7 +124,7 @@ func TestChannel(t *testing.T) {
 
 func TestSystemHealthy(t *testing.T) {
 	result := System(true, nil)
-	
+
 	if !contains(result, "Everything is running normally") {
 		t.Error("expected result to contain healthy message")
 	}
@@ -132,11 +132,11 @@ func TestSystemHealthy(t *testing.T) {
 
 func TestSystemUnhealthy(t *testing.T) {
 	details := map[string]string{
-		"cpu": "85%",
+		"cpu":    "85%",
 		"memory": "90%",
 	}
 	result := System(false, details)
-	
+
 	if !contains(result, "System needs attention") {
 		t.Error("expected result to contain unhealthy message")
 	}
@@ -147,7 +147,7 @@ func TestSystemUnhealthy(t *testing.T) {
 
 func TestError(t *testing.T) {
 	result := Error("model_unavailable", "", "Provider timeout after 30 seconds")
-	
+
 	if result == "" {
 		t.Error("expected non-empty result")
 	}
@@ -172,7 +172,7 @@ func TestTimeAgo(t *testing.T) {
 		{time.Now().Add(-24 * time.Hour), "yesterday"},
 		{time.Now().Add(-7 * 24 * time.Hour), "1 week ago"},
 	}
-	
+
 	for _, tc := range cases {
 		got := TimeAgo(tc.input)
 		if got != tc.want {
@@ -192,7 +192,7 @@ func TestFormatSchedule(t *testing.T) {
 		{"0 */2 * * *", "Every 2 hours"},
 		{"*/15 * * * *", "Every 15 minutes"},
 	}
-	
+
 	for _, tc := range cases {
 		got := FormatSchedule(tc.input)
 		if got != tc.want {
@@ -211,7 +211,7 @@ func TestTruncate(t *testing.T) {
 		{"This is a longer string that needs truncation", 20, "This is a longer..."},
 		{"Hello World", 5, "Hell..."},
 	}
-	
+
 	for _, tc := range cases {
 		got := Truncate(tc.input, tc.max)
 		if got != tc.want {

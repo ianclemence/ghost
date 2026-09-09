@@ -17,9 +17,9 @@ import (
 )
 
 type CronSchedule struct {
-	Kind    string `json:"kind"`
-	AtMS    *int64 `json:"atMs,omitempty"`
-	EveryMS *int64 `json:"everyMs,omitempty"`
+	Kind     string `json:"kind"`
+	AtMS     *int64 `json:"atMs,omitempty"`
+	EveryMS  *int64 `json:"everyMs,omitempty"`
 	Expr     string `json:"expr,omitempty"`
 	Timezone string `json:"tz,omitempty"`
 }
@@ -46,16 +46,16 @@ type CronJobState struct {
 }
 
 type CronJob struct {
-	ID             string       `json:"id"`
-	Name           string       `json:"name"`
-	Enabled        bool         `json:"enabled"`
-	LifecycleState JobState     `json:"lifecycle_state"`
-	PausedAt       *time.Time   `json:"paused_at,omitempty"`
-	RunCount       int          `json:"run_count"`
-	LastRunAt      *time.Time   `json:"last_run_at,omitempty"`
-	NextRunAt      *time.Time   `json:"next_run_at,omitempty"`
-	Schedule       CronSchedule `json:"schedule"`
-	Payload        CronPayload  `json:"payload"`
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Enabled        bool                   `json:"enabled"`
+	LifecycleState JobState               `json:"lifecycle_state"`
+	PausedAt       *time.Time             `json:"paused_at,omitempty"`
+	RunCount       int                    `json:"run_count"`
+	LastRunAt      *time.Time             `json:"last_run_at,omitempty"`
+	NextRunAt      *time.Time             `json:"next_run_at,omitempty"`
+	Schedule       CronSchedule           `json:"schedule"`
+	Payload        CronPayload            `json:"payload"`
 	State          CronJobState           `json:"state"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAtMS    int64                  `json:"createdAtMs"`

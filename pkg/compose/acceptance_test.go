@@ -99,7 +99,7 @@ func TestFinalAcceptance(t *testing.T) {
 	secRaw, _ := personalcontext.RawValue("200k")
 	pcstore.Create(personalcontext.Entry{ID: "acc-sal", Kind: personalcontext.KindFact,
 		Subject: "user", Predicate: "salary", Value: secRaw, Status: personalcontext.StatusCurrent,
-		Scopes: []string{"context:work"},
+		Scopes:  []string{"context:work"},
 		Sources: []personalcontext.Source{{Type: personalcontext.SourceConversation, Kind: personalcontext.SourceUserDeclared, Ref: "s:m", Timestamp: time.Now().UTC()}}})
 	cs.SetSessionContext("sess-1", "work")
 	leaked := false

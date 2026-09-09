@@ -2,9 +2,9 @@
 // Trajectories are structured summaries of agent conversations that capture
 // the task, actions taken, tools used, and outcomes. They serve two purposes:
 //
-// 1. Training data: compressed trajectories can be used to train future models
-// 2. Evolution feedback: trajectories feed into the evolution system to
-//    identify patterns and improve skill generation
+//  1. Training data: compressed trajectories can be used to train future models
+//  2. Evolution feedback: trajectories feed into the evolution system to
+//     identify patterns and improve skill generation
 //
 // A trajectory compresses a full conversation into a compact record:
 //   - Task: what the user wanted
@@ -38,43 +38,43 @@ const (
 
 // Action represents one step in a trajectory.
 type Action struct {
-	Step        int       `json:"step"`
-	Type        string    `json:"type"`        // "tool_call", "reasoning", "user_input", "response"
-	ToolName    string    `json:"tool_name"`   // for tool_call type
-	Summary     string    `json:"summary"`     // brief description of the action
-	Duration    float64   `json:"duration_ms"` // how long this step took
-	TokensUsed  int       `json:"tokens_used"`
-	Timestamp   time.Time `json:"timestamp"`
+	Step       int       `json:"step"`
+	Type       string    `json:"type"`        // "tool_call", "reasoning", "user_input", "response"
+	ToolName   string    `json:"tool_name"`   // for tool_call type
+	Summary    string    `json:"summary"`     // brief description of the action
+	Duration   float64   `json:"duration_ms"` // how long this step took
+	TokensUsed int       `json:"tokens_used"`
+	Timestamp  time.Time `json:"timestamp"`
 }
 
 // Trajectory is a compressed record of an agent conversation.
 type Trajectory struct {
-	ID             string            `json:"id"`
-	SessionKey     string            `json:"session_key"`
-	Task           string            `json:"task"`            // what the user wanted
-	TaskCategory   string            `json:"task_category"`   // classified task type
-	Actions        []Action          `json:"actions"`         // steps taken
-	ToolsUsed      []string          `json:"tools_used"`      // unique tools used
-	ToolSequence   []string          `json:"tool_sequence"`   // ordered tool sequence
-	Outcome        Outcome           `json:"outcome"`         // success/partial/failure
-	QualityScore   float64           `json:"quality_score"`   // 0.0-1.0
-	TotalDuration  float64           `json:"total_duration_ms"`
-	TotalTokens    int               `json:"total_tokens"`
-	Model          string            `json:"model"`
-	Provider       string            `json:"provider"`
-	UserMessage    string            `json:"user_message"`
-	ResponsePreview string           `json:"response_preview"` // first 500 chars of response
-	TurnCount      int               `json:"turn_count"`      // number of LLM turns
-	Timestamp      time.Time         `json:"timestamp"`
-	Metadata       map[string]string `json:"metadata,omitempty"`
+	ID              string            `json:"id"`
+	SessionKey      string            `json:"session_key"`
+	Task            string            `json:"task"`          // what the user wanted
+	TaskCategory    string            `json:"task_category"` // classified task type
+	Actions         []Action          `json:"actions"`       // steps taken
+	ToolsUsed       []string          `json:"tools_used"`    // unique tools used
+	ToolSequence    []string          `json:"tool_sequence"` // ordered tool sequence
+	Outcome         Outcome           `json:"outcome"`       // success/partial/failure
+	QualityScore    float64           `json:"quality_score"` // 0.0-1.0
+	TotalDuration   float64           `json:"total_duration_ms"`
+	TotalTokens     int               `json:"total_tokens"`
+	Model           string            `json:"model"`
+	Provider        string            `json:"provider"`
+	UserMessage     string            `json:"user_message"`
+	ResponsePreview string            `json:"response_preview"` // first 500 chars of response
+	TurnCount       int               `json:"turn_count"`       // number of LLM turns
+	Timestamp       time.Time         `json:"timestamp"`
+	Metadata        map[string]string `json:"metadata,omitempty"`
 }
 
 // CompressConfig configures trajectory compression.
 type CompressConfig struct {
 	Enabled            bool `json:"enabled"`
-	MaxTrajectories    int  `json:"max_trajectories"`     // max to keep
+	MaxTrajectories    int  `json:"max_trajectories"`      // max to keep
 	MinTurnsToCompress int  `json:"min_turns_to_compress"` // skip very short conversations
-	MaxActionSummary   int  `json:"max_action_summary"`   // max chars per action summary
+	MaxActionSummary   int  `json:"max_action_summary"`    // max chars per action summary
 }
 
 // DefaultCompressConfig returns sensible defaults.
@@ -89,17 +89,17 @@ func DefaultCompressConfig() CompressConfig {
 
 // Compressor compresses conversations into trajectories.
 type Compressor struct {
-	config      CompressConfig
-	workspace   string
+	config       CompressConfig
+	workspace    string
 	trajectories []Trajectory
-	mu          sync.RWMutex
+	mu           sync.RWMutex
 }
 
 // NewCompressor creates a new Compressor.
 func NewCompressor(workspace string, config CompressConfig) *Compressor {
 	return &Compressor{
-		config:      config,
-		workspace:   workspace,
+		config:       config,
+		workspace:    workspace,
 		trajectories: make([]Trajectory, 0),
 	}
 }
@@ -167,11 +167,11 @@ func (c *Compressor) CompressTurn(
 	c.mu.Unlock()
 
 	logger.DebugCF("trajectory", "Trajectory compressed", map[string]interface{}{
-		"id":       trajectory.ID,
-		"task":     trajectory.TaskCategory,
-		"outcome":  string(trajectory.Outcome),
-		"actions":  len(trajectory.Actions),
-		"quality":  trajectory.QualityScore,
+		"id":      trajectory.ID,
+		"task":    trajectory.TaskCategory,
+		"outcome": string(trajectory.Outcome),
+		"actions": len(trajectory.Actions),
+		"quality": trajectory.QualityScore,
 	})
 
 	return trajectory
@@ -238,9 +238,9 @@ func extractActions(messages []providers.Message, maxSummary int) []Action {
 		case "user":
 			step++
 			actions = append(actions, Action{
-				Step:     step,
-				Type:     "user_input",
-				Summary:  truncateStr(msg.Content, maxSummary),
+				Step:      step,
+				Type:      "user_input",
+				Summary:   truncateStr(msg.Content, maxSummary),
 				Timestamp: time.Now(),
 			})
 		case "assistant":
@@ -252,21 +252,21 @@ func extractActions(messages []providers.Message, maxSummary int) []Action {
 						toolName = tc.Function.Name
 					}
 					actions = append(actions, Action{
-						Step:     step,
-						Type:     "tool_call",
-						ToolName: toolName,
-						Summary:  truncateStr(fmt.Sprintf("Called %s", toolName), maxSummary),
+						Step:      step,
+						Type:      "tool_call",
+						ToolName:  toolName,
+						Summary:   truncateStr(fmt.Sprintf("Called %s", toolName), maxSummary),
 						Timestamp: time.Now(),
 					})
 				}
 			} else if msg.Content != "" {
 				step++
 				actions = append(actions, Action{
-					Step:     step,
-					Type:     "response",
-					Summary:  truncateStr(msg.Content, maxSummary),
+					Step:       step,
+					Type:       "response",
+					Summary:    truncateStr(msg.Content, maxSummary),
 					TokensUsed: len(msg.Content) / 4, // rough estimate
-					Timestamp: time.Now(),
+					Timestamp:  time.Now(),
 				})
 			}
 		}

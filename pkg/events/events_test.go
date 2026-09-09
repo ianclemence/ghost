@@ -240,8 +240,8 @@ func TestEventBus_PublishNonBlocking(t *testing.T) {
 	bus := NewEventBus()
 
 	ch, cancel := bus.Subscribe(AlwaysMatch, SubscriptionOptions{
-		Name:       "full-buffer",
-		BufferSize: 1,
+		Name:         "full-buffer",
+		BufferSize:   1,
 		Backpressure: DropNewest,
 	})
 	defer cancel()

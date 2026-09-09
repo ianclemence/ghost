@@ -45,12 +45,12 @@ func NewRecoveryServer() *RecoveryServer {
 
 // RecoveryStatus holds the current system status for the recovery UI.
 type RecoveryStatus struct {
-	Version     string `json:"version"`
-	Uptime      string `json:"uptime"`
-	ErrorCount  int    `json:"error_count"`
-	LastError   string `json:"last_error"`
-	ConfigExists bool  `json:"config_exists"`
-	GhostRunning bool  `json:"ghost_running"`
+	Version      string `json:"version"`
+	Uptime       string `json:"uptime"`
+	ErrorCount   int    `json:"error_count"`
+	LastError    string `json:"last_error"`
+	ConfigExists bool   `json:"config_exists"`
+	GhostRunning bool   `json:"ghost_running"`
 }
 
 // Start begins listening for recovery requests. If Timeout > 0, the server

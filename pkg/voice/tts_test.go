@@ -12,9 +12,9 @@ import (
 
 func TestPrepareSpeechText(t *testing.T) {
 	tests := []struct {
-		name  string
-		in    string
-		want  string
+		name string
+		in   string
+		want string
 	}{
 		{"plain", "Hello there.", "Hello there."},
 		{"fence dropped", "Hi.\n```go\nfmt.Println()\n```\nBye.", "Hi.\n\nBye."},

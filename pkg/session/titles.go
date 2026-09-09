@@ -219,12 +219,12 @@ func IsMeaningfulTitleChange(oldTitle, newTitle string) bool {
 	}
 	oldNorm := normalize(oldTitle)
 	newNorm := normalize(newTitle)
-	
+
 	// Same after normalization
 	if oldNorm == newNorm {
 		return false
 	}
-	
+
 	// Check if one is just a prefix of the other (allow up to 40% longer)
 	if strings.HasPrefix(newNorm, oldNorm) {
 		diff := len(newNorm) - len(oldNorm)
@@ -238,11 +238,11 @@ func IsMeaningfulTitleChange(oldTitle, newTitle string) bool {
 			return false
 		}
 	}
-	
+
 	// Check word overlap
 	oldWords := strings.Fields(oldNorm)
 	newWords := strings.Fields(newNorm)
-	
+
 	// If most words are the same, not meaningful
 	overlap := 0
 	for _, w := range oldWords {
@@ -253,7 +253,7 @@ func IsMeaningfulTitleChange(oldTitle, newTitle string) bool {
 			}
 		}
 	}
-	
+
 	// If 70%+ words overlap, not meaningful
 	maxWords := len(oldWords)
 	if len(newWords) > maxWords {
@@ -262,7 +262,7 @@ func IsMeaningfulTitleChange(oldTitle, newTitle string) bool {
 	if maxWords > 0 && float64(overlap)/float64(maxWords) > 0.7 {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -273,13 +273,13 @@ func EvolveTitle(currentTitle string, messages []messageForSummary) string {
 	if len(messages) < 3 {
 		return currentTitle
 	}
-	
+
 	// Extract key topics from recent messages
 	recentTopics := extractRecentTopics(messages)
 	if len(recentTopics) == 0 {
 		return currentTitle
 	}
-	
+
 	// Look for the main topic shift (not just the last message)
 	// Find the first user message that introduced a new topic
 	for _, topic := range recentTopics {
@@ -291,14 +291,14 @@ func EvolveTitle(currentTitle string, messages []messageForSummary) string {
 			}
 		}
 	}
-	
+
 	return currentTitle
 }
 
 // extractRecentTopics extracts key topics from recent messages.
 func extractRecentTopics(messages []messageForSummary) []string {
 	var topics []string
-	
+
 	// Look at last 3-5 user messages for topic extraction
 	userMessages := 0
 	for i := len(messages) - 1; i >= 0 && userMessages < 5; i-- {
@@ -311,7 +311,7 @@ func extractRecentTopics(messages []messageForSummary) []string {
 			userMessages++
 		}
 	}
-	
+
 	return topics
 }
 
@@ -320,7 +320,7 @@ func extractRecentTopics(messages []messageForSummary) []string {
 func IsTopicRelated(title, topic string) bool {
 	titleWords := strings.Fields(strings.ToLower(title))
 	topicWords := strings.Fields(strings.ToLower(topic))
-	
+
 	// Common words to ignore
 	commonWords := map[string]bool{
 		"the": true, "a": true, "an": true, "is": true, "are": true,
@@ -336,7 +336,7 @@ func IsTopicRelated(title, topic string) bool {
 		"who": true, "whom": true, "help": true, "please": true, "want": true,
 		"like": true, "prefer": true, "need": true, "going": true, "doing": true,
 	}
-	
+
 	// Extract meaningful words from title
 	titleMeaningful := make(map[string]bool)
 	for _, w := range titleWords {
@@ -344,7 +344,7 @@ func IsTopicRelated(title, topic string) bool {
 			titleMeaningful[w] = true
 		}
 	}
-	
+
 	// Extract meaningful words from topic
 	topicMeaningful := make(map[string]bool)
 	for _, w := range topicWords {
@@ -352,12 +352,12 @@ func IsTopicRelated(title, topic string) bool {
 			topicMeaningful[w] = true
 		}
 	}
-	
+
 	// If either has no meaningful words, consider related
 	if len(titleMeaningful) == 0 || len(topicMeaningful) == 0 {
 		return true
 	}
-	
+
 	// Check for overlap
 	overlap := 0
 	for w := range topicMeaningful {
@@ -365,7 +365,7 @@ func IsTopicRelated(title, topic string) bool {
 			overlap++
 		}
 	}
-	
+
 	// Check for semantic similarity via common prefixes/stems
 	prefixOverlap := 0
 	for tw := range titleMeaningful {
@@ -379,15 +379,15 @@ func IsTopicRelated(title, topic string) bool {
 			}
 		}
 	}
-	
+
 	totalOverlap := overlap + prefixOverlap
-	
+
 	// Calculate similarity
 	totalMeaningful := len(titleMeaningful) + len(topicMeaningful) - overlap
 	if totalMeaningful == 0 {
 		return true
 	}
-	
+
 	similarity := float64(totalOverlap) / float64(totalMeaningful)
 	return similarity > 0.15 // 15% overlap means related
 }

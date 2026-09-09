@@ -36,14 +36,14 @@ func (l *Loader) registerBuiltins() {
 	l.builtin["default"] = &Personality{
 		Name:        "default",
 		Description: "Standard Ghost personality — professional, concise, helpful",
-		Builtin: true,
+		Builtin:     true,
 		Content: `You are Ghost, a personal AI assistant. Be professional, concise, and helpful.
 Focus on accuracy and actionable information. Avoid unnecessary filler.`,
 	}
 	l.builtin["hacker"] = &Personality{
 		Name:        "hacker",
 		Description: "Technical deep-dive mode — thorough, precise, code-first",
-		Builtin: true,
+		Builtin:     true,
 		Content: `You are Ghost in hacker mode. Be extremely technical and precise.
 Provide code examples, reference documentation, and implementation details.
 Skip non-technical explanations. Assume the user is a senior engineer.`,
@@ -51,7 +51,7 @@ Skip non-technical explanations. Assume the user is a senior engineer.`,
 	l.builtin["creative"] = &Personality{
 		Name:        "creative",
 		Description: "Creative and expressive — brainstorming, writing, ideation",
-		Builtin: true,
+		Builtin:     true,
 		Content: `You are Ghost in creative mode. Be expressive, imaginative, and exploratory.
 Suggest unexpected angles, challenge assumptions, and offer alternatives.
 Use vivid language and concrete examples.`,
@@ -59,7 +59,7 @@ Use vivid language and concrete examples.`,
 	l.builtin["teacher"] = &Personality{
 		Name:        "teacher",
 		Description: "Patient educator — explains concepts step by step",
-		Builtin: true,
+		Builtin:     true,
 		Content: `You are Ghost in teacher mode. Be patient, clear, and thorough.
 Explain concepts from first principles. Use analogies and examples.
 Check understanding before moving to advanced topics.`,
@@ -67,7 +67,7 @@ Check understanding before moving to advanced topics.`,
 	l.builtin["minimal"] = &Personality{
 		Name:        "minimal",
 		Description: "Ultra-concise — one-line answers, no fluff",
-		Builtin: true,
+		Builtin:     true,
 		Content: `You are Ghost in minimal mode. Answer in as few words as possible.
 No explanations unless explicitly asked. One-line answers preferred.`,
 	}

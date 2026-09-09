@@ -12,68 +12,68 @@ import (
 // Memory formats a memory entry for human display.
 func Memory(title, kind, domain, summary string, confidence float64, learnedAt time.Time) string {
 	var sb strings.Builder
-	
+
 	// Title (primary)
 	if title != "" {
 		sb.WriteString(title)
 	} else {
 		sb.WriteString("Unknown memory")
 	}
-	
+
 	// Domain badge
 	if domain != "" && domain != "other" {
 		sb.WriteString(fmt.Sprintf(" [%s]", strings.Title(domain)))
 	}
-	
+
 	// Summary (if different from title)
 	if summary != "" && summary != title {
 		sb.WriteString("\n")
 		sb.WriteString(summary)
 	}
-	
+
 	// Metadata
 	sb.WriteString(fmt.Sprintf("\nLearned %s", TimeAgo(learnedAt)))
 	if confidence < 0.9 {
 		sb.WriteString(fmt.Sprintf(" (%.0f%% confident)", confidence*100))
 	}
-	
+
 	return sb.String()
 }
 
 // Session formats a session/conversation for human display.
 func Session(title string, messageCount int, lastActivity time.Time, summary string) string {
 	var sb strings.Builder
-	
+
 	// Title (primary)
 	if title != "" {
 		sb.WriteString(title)
 	} else {
 		sb.WriteString("New conversation")
 	}
-	
+
 	// Message count
 	if messageCount > 0 {
 		sb.WriteString(fmt.Sprintf("\n%d messages", messageCount))
 	}
-	
+
 	// Last activity
 	if !lastActivity.IsZero() {
 		sb.WriteString(fmt.Sprintf("\nLast active %s", TimeAgo(lastActivity)))
 	}
-	
+
 	// Summary (if available)
 	if summary != "" {
 		sb.WriteString("\n\n")
 		sb.WriteString(summary)
 	}
-	
+
 	return sb.String()
 }
 
 // Activity formats an activity event for human display.
 func Activity(eventType, detail string, timestamp time.Time) string {
 	var sb strings.Builder
-	
+
 	// Event description
 	switch eventType {
 	case "web_search":
@@ -97,38 +97,38 @@ func Activity(eventType, detail string, timestamp time.Time) string {
 	default:
 		sb.WriteString(strings.ReplaceAll(eventType, "_", " "))
 	}
-	
+
 	// Detail
 	if detail != "" {
 		sb.WriteString(": ")
 		sb.WriteString(detail)
 	}
-	
+
 	// Timestamp
 	if !timestamp.IsZero() {
 		sb.WriteString(fmt.Sprintf("\n%s", TimeAgo(timestamp)))
 	}
-	
+
 	return sb.String()
 }
 
 // Automation formats an automation/cron job for human display.
 func Automation(name, schedule string, lastRun time.Time, success bool) string {
 	var sb strings.Builder
-	
+
 	// Name
 	if name != "" {
 		sb.WriteString(name)
 	} else {
 		sb.WriteString("Unnamed automation")
 	}
-	
+
 	// Schedule (human-readable)
 	if schedule != "" {
 		humanSchedule := FormatSchedule(schedule)
 		sb.WriteString(fmt.Sprintf("\n%s", humanSchedule))
 	}
-	
+
 	// Last run status
 	if !lastRun.IsZero() {
 		status := "completed"
@@ -137,26 +137,26 @@ func Automation(name, schedule string, lastRun time.Time, success bool) string {
 		}
 		sb.WriteString(fmt.Sprintf("\nLast run %s (%s)", TimeAgo(lastRun), status))
 	}
-	
+
 	return sb.String()
 }
 
 // Skill formats a skill for human display.
 func Skill(name, description string, enabled bool) string {
 	var sb strings.Builder
-	
+
 	// Name
 	if name != "" {
 		sb.WriteString(name)
 	} else {
 		sb.WriteString("Unnamed skill")
 	}
-	
+
 	// Status
 	if !enabled {
 		sb.WriteString(" [disabled]")
 	}
-	
+
 	// Description
 	if description != "" {
 		sb.WriteString("\n")
@@ -166,21 +166,21 @@ func Skill(name, description string, enabled bool) string {
 			sb.WriteString(description)
 		}
 	}
-	
+
 	return sb.String()
 }
 
 // Device formats a device for human display.
 func Device(name, status string, lastSeen time.Time) string {
 	var sb strings.Builder
-	
+
 	// Name
 	if name != "" {
 		sb.WriteString(name)
 	} else {
 		sb.WriteString("Unknown device")
 	}
-	
+
 	// Status
 	switch status {
 	case "connected":
@@ -192,26 +192,26 @@ func Device(name, status string, lastSeen time.Time) string {
 	default:
 		sb.WriteString(fmt.Sprintf("\nStatus: %s", status))
 	}
-	
+
 	// Last seen
 	if !lastSeen.IsZero() {
 		sb.WriteString(fmt.Sprintf("\nLast seen %s", TimeAgo(lastSeen)))
 	}
-	
+
 	return sb.String()
 }
 
 // Channel formats a channel for human display.
 func Channel(name, status string) string {
 	var sb strings.Builder
-	
+
 	// Name
 	if name != "" {
 		sb.WriteString(name)
 	} else {
 		sb.WriteString("Unknown channel")
 	}
-	
+
 	// Status
 	switch status {
 	case "connected":
@@ -223,20 +223,20 @@ func Channel(name, status string) string {
 	default:
 		sb.WriteString(fmt.Sprintf(" — %s", status))
 	}
-	
+
 	return sb.String()
 }
 
 // System formats system status for human display.
 func System(healthy bool, details map[string]string) string {
 	var sb strings.Builder
-	
+
 	if healthy {
 		sb.WriteString("Everything is running normally.")
 	} else {
 		sb.WriteString("System needs attention.")
 	}
-	
+
 	// Details (if any)
 	if len(details) > 0 {
 		sb.WriteString("\n\nDetails:")
@@ -244,14 +244,14 @@ func System(healthy bool, details map[string]string) string {
 			sb.WriteString(fmt.Sprintf("\n- %s: %s", strings.Title(key), value))
 		}
 	}
-	
+
 	return sb.String()
 }
 
 // Error formats an error for human display.
 func Error(errType, message string, technicalDetails string) string {
 	var sb strings.Builder
-	
+
 	// User-friendly message
 	switch errType {
 	case "model_unavailable":
@@ -273,13 +273,13 @@ func Error(errType, message string, technicalDetails string) string {
 			sb.WriteString("Something went wrong.")
 		}
 	}
-	
+
 	// Technical details (for interested users)
 	if technicalDetails != "" {
 		sb.WriteString("\n\nTechnical details:\n")
 		sb.WriteString(technicalDetails)
 	}
-	
+
 	return sb.String()
 }
 
@@ -288,10 +288,10 @@ func TimeAgo(t time.Time) string {
 	if t.IsZero() {
 		return "unknown"
 	}
-	
+
 	now := time.Now()
 	diff := now.Sub(t)
-	
+
 	switch {
 	case diff < time.Minute:
 		return "just now"
@@ -335,13 +335,13 @@ func FormatSchedule(cronExpr string) string {
 	if len(parts) < 5 {
 		return cronExpr
 	}
-	
+
 	minute := parts[0]
 	hour := parts[1]
 	dom := parts[2]
 	month := parts[3]
 	dow := parts[4]
-	
+
 	// Handle common patterns
 	if cronExpr == "0 8 * * *" {
 		return "Every day at 8:00 AM"
@@ -358,10 +358,10 @@ func FormatSchedule(cronExpr string) string {
 	if cronExpr == "*/15 * * * *" {
 		return "Every 15 minutes"
 	}
-	
+
 	// Build human-readable string
 	var parts2 []string
-	
+
 	// Frequency
 	if dom == "*" && month == "*" {
 		if dow == "*" {
@@ -374,7 +374,7 @@ func FormatSchedule(cronExpr string) string {
 	} else {
 		parts2 = append(parts2, "Monthly")
 	}
-	
+
 	// Time
 	if hour == "*" && minute == "*" {
 		parts2 = append(parts2, "at every hour")
@@ -385,7 +385,7 @@ func FormatSchedule(cronExpr string) string {
 	} else {
 		parts2 = append(parts2, fmt.Sprintf("at %s:%s", hour, minute))
 	}
-	
+
 	return strings.Join(parts2, " ")
 }
 
@@ -394,12 +394,12 @@ func Truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
-	
+
 	// Find last space before maxLen
 	truncated := s[:maxLen-1]
 	if i := strings.LastIndex(truncated, " "); i > maxLen/2 {
 		truncated = truncated[:i]
 	}
-	
+
 	return truncated + "..."
 }

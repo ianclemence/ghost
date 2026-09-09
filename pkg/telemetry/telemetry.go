@@ -108,12 +108,12 @@ func (m *Manager) ClearIncidents(channel string) {
 func (m *Manager) GetTraces(reqID string) []TraceEvent {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	traces := m.traceByRequest[reqID]
 	if traces == nil {
 		return []TraceEvent{}
 	}
-	
+
 	// Return a copy to avoid data races
 	cp := make([]TraceEvent, len(traces))
 	copy(cp, traces)
@@ -146,7 +146,7 @@ func (m *Manager) GetLastRequestID(session string) string {
 func (m *Manager) GetIncidents() map[string]ChannelIncident {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	cp := make(map[string]ChannelIncident, len(m.channelIncidents))
 	for k, v := range m.channelIncidents {
 		cp[k] = v
@@ -159,10 +159,10 @@ func (m *Manager) GetTraceBySession(session string) (string, []TraceEvent) {
 	m.mu.RLock()
 	reqID := m.lastRequestBySession[session]
 	m.mu.RUnlock()
-	
+
 	if reqID == "" {
 		return "", []TraceEvent{}
 	}
-	
+
 	return reqID, m.GetTraces(reqID)
 }

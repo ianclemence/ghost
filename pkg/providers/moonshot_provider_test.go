@@ -88,7 +88,7 @@ func TestMoonshotProvider_UploadFile(t *testing.T) {
 	defer server.Close()
 
 	p := NewMoonshotProvider("test-key", server.URL)
-	
+
 	// Create a dummy file
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "test.png")

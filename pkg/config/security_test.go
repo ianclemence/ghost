@@ -193,9 +193,9 @@ func TestSecurityManager_UnknownChannel(t *testing.T) {
 
 func TestCollectSensitiveValues(t *testing.T) {
 	type TestConfig struct {
-		APIKey   SecureString `json:"api_key"`
-		Name     string       `json:"name"`
-		Nested   struct {
+		APIKey SecureString `json:"api_key"`
+		Name   string       `json:"name"`
+		Nested struct {
 			Token SecureString `json:"token"`
 		} `json:"nested"`
 	}

@@ -8,10 +8,10 @@ import (
 )
 
 type Avatar struct {
-	Shape  string `json:"shape,omitempty"`
-	Color  string `json:"color,omitempty"`
-	Image  string `json:"image,omitempty"`
-	Kind   string `json:"kind,omitempty"`
+	Shape string `json:"shape,omitempty"`
+	Color string `json:"color,omitempty"`
+	Image string `json:"image,omitempty"`
+	Kind  string `json:"kind,omitempty"`
 }
 
 type Group struct {
@@ -20,12 +20,12 @@ type Group struct {
 }
 
 type Channel struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Topic       string    `json:"topic,omitempty"`
-	CreatedBy   string    `json:"created_by"`
-	Members     []string  `json:"members"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Topic     string    `json:"topic,omitempty"`
+	CreatedBy string    `json:"created_by"`
+	Members   []string  `json:"members"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type ChannelMessage struct {
@@ -110,13 +110,13 @@ func (p *Profile) EnsureDirs() error {
 }
 
 const (
-	AvatarShapeCircle    = "circle"
-	AvatarShapeSquircle  = "squircle"
-	AvatarShapePill      = "pill"
-	AvatarShapeTriangle  = "triangle"
-	AvatarShapeHexagon   = "hexagon"
-	AvatarShapeCloud     = "cloud"
-	AvatarShapeDrop      = "drop"
+	AvatarShapeCircle   = "circle"
+	AvatarShapeSquircle = "squircle"
+	AvatarShapePill     = "pill"
+	AvatarShapeTriangle = "triangle"
+	AvatarShapeHexagon  = "hexagon"
+	AvatarShapeCloud    = "cloud"
+	AvatarShapeDrop     = "drop"
 )
 
 var AvatarShapes = []string{

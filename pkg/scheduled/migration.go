@@ -9,31 +9,31 @@ import (
 
 // CronJob represents the old cron job format for migration.
 type CronJob struct {
-	ID              string            `json:"id"`
-	Name            string            `json:"name"`
-	Enabled         bool              `json:"enabled"`
-	LifecycleState  string            `json:"lifecycle_state"`
-	PausedAt        *time.Time        `json:"paused_at"`
-	RunCount        int               `json:"run_count"`
-	LastRunAt       *time.Time        `json:"last_run_at"`
-	NextRunAt       *time.Time        `json:"next_run_at"`
-	Schedule        CronSchedule      `json:"schedule"`
-	Payload         CronPayload       `json:"payload"`
-	State           CronJobState      `json:"state"`
-	Metadata        map[string]interface{} `json:"metadata"`
-	CreatedAtMS     int64             `json:"created_at_ms"`
-	UpdatedAtMS     int64             `json:"updated_at_ms"`
-	DeleteAfterRun  bool              `json:"delete_after_run"`
-	Skills          []string          `json:"skills"`
-	NoAgent         bool              `json:"no_agent"`
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Enabled        bool                   `json:"enabled"`
+	LifecycleState string                 `json:"lifecycle_state"`
+	PausedAt       *time.Time             `json:"paused_at"`
+	RunCount       int                    `json:"run_count"`
+	LastRunAt      *time.Time             `json:"last_run_at"`
+	NextRunAt      *time.Time             `json:"next_run_at"`
+	Schedule       CronSchedule           `json:"schedule"`
+	Payload        CronPayload            `json:"payload"`
+	State          CronJobState           `json:"state"`
+	Metadata       map[string]interface{} `json:"metadata"`
+	CreatedAtMS    int64                  `json:"created_at_ms"`
+	UpdatedAtMS    int64                  `json:"updated_at_ms"`
+	DeleteAfterRun bool                   `json:"delete_after_run"`
+	Skills         []string               `json:"skills"`
+	NoAgent        bool                   `json:"no_agent"`
 }
 
 // CronSchedule is the old schedule format.
 type CronSchedule struct {
-	Kind  string `json:"kind"`
-	AtMS  *int64 `json:"at_ms,omitempty"`
-	EveryMS *int64 `json:"every_ms,omitempty"`
-	Expr  string `json:"expr,omitempty"`
+	Kind     string `json:"kind"`
+	AtMS     *int64 `json:"at_ms,omitempty"`
+	EveryMS  *int64 `json:"every_ms,omitempty"`
+	Expr     string `json:"expr,omitempty"`
 	Timezone string `json:"tz,omitempty"`
 }
 
@@ -52,16 +52,16 @@ type CronPayload struct {
 
 // CronJobState is the old state format.
 type CronJobState struct {
-	NextRunAtMS *int64  `json:"next_run_at_ms,omitempty"`
-	LastRunAtMS *int64  `json:"last_run_at_ms,omitempty"`
-	LastStatus  string  `json:"last_status,omitempty"`
-	LastError   string  `json:"last_error,omitempty"`
+	NextRunAtMS *int64 `json:"next_run_at_ms,omitempty"`
+	LastRunAtMS *int64 `json:"last_run_at_ms,omitempty"`
+	LastStatus  string `json:"last_status,omitempty"`
+	LastError   string `json:"last_error,omitempty"`
 }
 
 // CronStore is the old store format.
 type CronStore struct {
-	Version int        `json:"version"`
-	Jobs    []CronJob  `json:"jobs"`
+	Version int       `json:"version"`
+	Jobs    []CronJob `json:"jobs"`
 }
 
 // MigrateFromCronJSON reads the old cron/jobs.json file and creates
@@ -108,20 +108,20 @@ func MigrateFromCronJSON(store *Store, cronJSONPath string) (int, error) {
 // convertCronJob converts an old CronJob to a ScheduledItem.
 func convertCronJob(old *CronJob) *ScheduledItem {
 	item := &ScheduledItem{
-		ID:              old.ID,
-		Type:            TypeAutomation, // All old jobs are automations
-		Title:           old.Name,
-		Description:     old.Payload.Message,
-		State:           convertState(old.LifecycleState, old.Enabled),
-		Timezone:        "UTC",
-		Channel:         old.Payload.Channel,
-		ChatID:          old.Payload.To,
-		DeliveryMode:    DeliverySmart,
-		Source:          "migration",
-		CreatedBy:       "system",
-		RunCount:        old.RunCount,
-		DeleteAfterRun:  old.DeleteAfterRun,
-		LastError:       old.State.LastError,
+		ID:             old.ID,
+		Type:           TypeAutomation, // All old jobs are automations
+		Title:          old.Name,
+		Description:    old.Payload.Message,
+		State:          convertState(old.LifecycleState, old.Enabled),
+		Timezone:       "UTC",
+		Channel:        old.Payload.Channel,
+		ChatID:         old.Payload.To,
+		DeliveryMode:   DeliverySmart,
+		Source:         "migration",
+		CreatedBy:      "system",
+		RunCount:       old.RunCount,
+		DeleteAfterRun: old.DeleteAfterRun,
+		LastError:      old.State.LastError,
 	}
 
 	// Convert timestamps

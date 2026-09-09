@@ -10,9 +10,9 @@ import (
 
 // ParsedSchedule represents a parsed natural language schedule.
 type ParsedSchedule struct {
-	Schedule  Schedule
-	Title     string
-	Timezone  string
+	Schedule    Schedule
+	Title       string
+	Timezone    string
 	IsRecurring bool
 	IsOneTime   bool
 }

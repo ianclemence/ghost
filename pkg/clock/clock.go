@@ -15,6 +15,7 @@
 //     An unsynced-but-sane clock behaves normally in practice; blocking
 //     it would brick automation for every offline user, which is worse
 //     than seconds of drift.
+//
 // Time sync itself is left to the OS (systemd-timesyncd/chrony/NTP); this
 // package only observes.
 package clock

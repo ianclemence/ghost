@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -312,6 +313,20 @@ func (r *ToolRegistry) ToProviderDefs() []providers.ToolDefinition {
 }
 
 // List returns a list of all registered tool names.
+// RegisteredNames returns every registered tool name, including hidden
+// tools (hidden tools are still model-reachable when a committed
+// capability or profile promotes them, so governance audits must see them).
+func (r *ToolRegistry) RegisteredNames() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func (r *ToolRegistry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

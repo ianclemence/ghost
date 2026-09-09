@@ -347,6 +347,25 @@ func (al *AgentLoop) authorizeSubagentBrowser(ctx context.Context, tool string, 
 	return tools.BrowserCall{}, &tools.ToolResult{ForLLM: decision.message}
 }
 
+// authorizeSubagentStandaloneTool implements tools.SubagentConsequentialAuth:
+// a subagent standalone consequential call is authorized against the same
+// broker as a main-turn call (parent session binding). Denial or wait
+// replaces execution with a message the subagent relays; nil allows.
+func (al *AgentLoop) authorizeSubagentStandaloneTool(ctx context.Context, tool string, args map[string]interface{}) *tools.ToolResult {
+	sessionKey := tools.SessionKeyFromContext(ctx)
+	if sessionKey == "" {
+		return tools.ErrorResult("That operation is not authorized without a session binding. Nothing was run.")
+	}
+	decision, handled := al.authorizeStandaloneTool("subturn-"+sessionKey+"-"+tool, sessionKey, tool, args)
+	if !handled {
+		return nil
+	}
+	if decision.Allowed {
+		return nil
+	}
+	return &tools.ToolResult{ForLLM: decision.AskMessage}
+}
+
 // isBrowserTool reports whether a tool name is a governed browser operation.
 func isBrowserTool(name string) bool {
 	return len(name) > 8 && name[:8] == "browser_"
