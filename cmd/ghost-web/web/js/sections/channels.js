@@ -70,10 +70,10 @@ async function loadChannels(container) {
     waConnected ? 'Connected' : (waOk ? 'Configured' : 'Not configured'),
     () => editWhatsApp(wa)));
 
-  // Email
+  // Email is send-only: Ghost can send mail but does not read a mailbox.
   const em = cfg.email || {};
   const emOk = em.enabled && em.smtp_host;
-  listEl.appendChild(channelRow('Email', 'Email', emOk ? 'ready' : 'neutral',
+  listEl.appendChild(channelRow('Email', 'Send-only', emOk ? 'ready' : 'neutral',
     emOk ? (em.to ? 'Delivers to ' + em.to : 'Configured') : 'Not configured',
     () => editEmail(em)));
 }

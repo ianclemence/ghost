@@ -198,6 +198,32 @@ func (m *Manager) initChannels() error {
 		}
 	}
 
+	if m.config.Channels.SMS.Enabled && m.config.Channels.SMS.AccountSID != "" && m.config.Channels.SMS.AuthToken != "" && m.config.Channels.SMS.From != "" {
+		logger.DebugC("channels", "Attempting to initialize SMS channel")
+		smsCh, err := NewSMSChannel(m.config.Channels.SMS, m.bus)
+		if err != nil {
+			logger.ErrorCF("channels", "Failed to initialize SMS channel", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			m.channels["sms"] = smsCh
+			logger.InfoC("channels", "SMS channel enabled successfully")
+		}
+	}
+
+	if m.config.Channels.WeChat.Enabled && m.config.Channels.WeChat.CorpID != "" && m.config.Channels.WeChat.Secret != "" && m.config.Channels.WeChat.AgentID != "" {
+		logger.DebugC("channels", "Attempting to initialize WeChat channel")
+		wechat, err := NewWeChatChannel(m.config.Channels.WeChat, m.bus)
+		if err != nil {
+			logger.ErrorCF("channels", "Failed to initialize WeChat channel", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			m.channels["wechat"] = wechat
+			logger.InfoC("channels", "WeChat channel enabled successfully")
+		}
+	}
+
 	logger.InfoCF("channels", "Channel initialization completed", map[string]interface{}{
 		"enabled_channels": len(m.channels),
 	})
@@ -508,7 +534,7 @@ func (m *Manager) GetOperationalStatus() map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	known := []string{"telegram", "slack", "discord", "line", "whatsapp", "email"}
+	known := []string{"telegram", "slack", "discord", "line", "whatsapp", "email", "sms", "wechat"}
 	result := make(map[string]interface{}, len(known))
 	for _, name := range known {
 		enabled := false
@@ -525,6 +551,10 @@ func (m *Manager) GetOperationalStatus() map[string]interface{} {
 			enabled = m.config.Channels.WhatsApp.Enabled
 		case "email":
 			enabled = m.config.Channels.Email.Enabled
+		case "sms":
+			enabled = m.config.Channels.SMS.Enabled
+		case "wechat":
+			enabled = m.config.Channels.WeChat.Enabled
 		}
 		ch := m.channels[name]
 		running := false

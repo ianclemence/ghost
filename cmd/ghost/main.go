@@ -1022,6 +1022,18 @@ func gatewayCmd() {
 					logger.InfoC("voice", "Voice transcription attached to LINE channel")
 				}
 			}
+			if smsChannel, ok := channelManager.GetChannel("sms"); ok {
+				if sc, ok := smsChannel.(*channels.SMSChannel); ok {
+					sc.SetTranscriber(transcriber)
+					logger.InfoC("voice", "Voice transcription attached to SMS channel")
+				}
+			}
+			if wechatChannel, ok := channelManager.GetChannel("wechat"); ok {
+				if wc, ok := wechatChannel.(*channels.WeChatChannel); ok {
+					wc.SetTranscriber(transcriber)
+					logger.InfoC("voice", "Voice transcription attached to WeChat channel")
+				}
+			}
 		}
 	}
 
