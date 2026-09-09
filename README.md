@@ -411,6 +411,11 @@ a **credential vault** boundary (write-only from the UI, presence-only in
 events); events/activity/API/logs/backups are redacted by construction; and
 context isolation is enforced at retrieval and execution — not by prompts.
 
+Model browser calls are additionally governed by a runtime **browser gate**
+(binding + broker + session isolation + evidence), documented in
+[docs/BROWSER_GOVERNANCE.md](docs/BROWSER_GOVERNANCE.md); computer placement
+and leases are documented in [docs/COMPUTER_PLACEMENT.md](docs/COMPUTER_PLACEMENT.md).
+
 ### Authentication
 
 | Mechanism | Purpose | Used By |

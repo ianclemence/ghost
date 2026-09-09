@@ -38,17 +38,34 @@
 
 ## Browser and computer use
 
+The full execution path and its invariants are documented in
+[BROWSER_GOVERNANCE.md](BROWSER_GOVERNANCE.md) and
+[COMPUTER_PLACEMENT.md](COMPUTER_PLACEMENT.md). The boundary is the
+capability operation (never model intent), resolved by the runtime:
+
+- Model browser calls go through the **browser gate**: owner, context,
+  task/generation and the permission broker are resolved server-side from
+  the turn — never from model-supplied arguments — before any executor
+  runs. Read operations pass; state-changing operations require broker
+  authorization (allow / durable ask / deny). Forged owner/context/
+  session/operation arguments cannot widen authority.
 - Browser sessions are isolated per owner + context + task: cookie jars
-  never cross contexts, and two tasks never share a session.
+  never cross contexts, two tasks never share a session, and an approval
+  resumes the SAME pinned session or refuses.
 - All page output is redacted (secret-shaped strings) and labeled
   untrusted before it reaches the model. The user-visible text is
-  unchanged.
+  unchanged. A page can never redefine Ghost policy.
 - Computer holds are leases with TTL and heartbeat renewal; boot expires
   every survivor, so a restarted Ghost never drives a computer on behalf
   of a dead task. Financial, credential, and destructive operations
   require approval, and evidence records what ran.
 - Durable work carries a generation token: completions from a rotated-out
-  worker are dropped instead of mutating live state.
+  worker are dropped instead of mutating live state, and a terminal job
+  (cancelled/expired/failed/succeeded) is never overwritten by a stale
+  completion.
+- No runtime evidence = no successful execution claim. A state-changing
+  operation that returns no evidence is reported as unverified, never as
+  done, and never emits a success event.
 
 ## Backup safety
 
