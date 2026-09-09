@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/schema"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
@@ -40,6 +41,7 @@ func New(db *sql.DB, provider providers.LLMProvider, registry *tools.ToolRegistr
 func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 	checks := []func(context.Context) CheckResult{
 		d.checkDatabase,
+		d.checkSchema,
 		d.checkProvider,
 		d.checkToolRegistry,
 		d.checkBrowser,
@@ -98,6 +100,39 @@ func (d *Doctor) checkDatabase(ctx context.Context) CheckResult {
 		Label:   "Memory",
 		Status:  "ok",
 		Message: "Ghost's memory is healthy.",
+		Latency: time.Since(start).Milliseconds(),
+	}
+}
+
+func (d *Doctor) checkSchema(ctx context.Context) CheckResult {
+	start := time.Now()
+	if d.db == nil {
+		return CheckResult{Name: "schema", Label: "Database schema", Status: "error", Message: "Ghost's memory isn't configured."}
+	}
+	ok, at, err := schema.CheckCurrent(d.db)
+	if err != nil {
+		return CheckResult{
+			Name:    "schema",
+			Label:   "Database schema",
+			Status:  "error",
+			Message: "Could not determine schema version: " + err.Error(),
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
+	if !ok {
+		return CheckResult{
+			Name:    "schema",
+			Label:   "Database schema",
+			Status: "error",
+			Message: fmt.Sprintf("Database schema is at version %d but this Ghost needs version %d. Restart Ghost to migrate, or restore from a backup.", at, schema.CurrentVersion),
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
+	return CheckResult{
+		Name:    "schema",
+		Label:   "Database schema",
+		Status:  "ok",
+		Message: fmt.Sprintf("Database schema is current (version %d).", at),
 		Latency: time.Since(start).Milliseconds(),
 	}
 }

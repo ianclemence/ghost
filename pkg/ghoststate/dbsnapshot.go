@@ -4,18 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/db"
-	"github.com/ianclemence/ghost/pkg/permissions"
-	"github.com/ianclemence/ghost/pkg/routines"
-	"github.com/ianclemence/ghost/pkg/scheduled"
-	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/schema"
 	_ "modernc.org/sqlite"
 )
 
@@ -411,30 +406,11 @@ func snapshotDBPath(workspace string) string {
 }
 
 // ensureSnapshotSchema builds the subsystem tables a snapshot restore
-// needs, mirroring gateway startup order. Every initializer is
-// idempotent (CREATE TABLE IF NOT EXISTS), so this is safe on any
-// database state.
+// needs through the canonical migration path, so imports and gateway
+// startup can never disagree about the schema.
 func ensureSnapshotSchema(raw *sql.DB, workspace string) error {
-	store := scheduled.NewStore(raw)
-	if err := store.InitSchema(); err != nil {
-		return fmt.Errorf("scheduled schema: %w", err)
-	}
-	if _, err := permissions.Open(raw, permissions.ModeAsk, 0); err != nil {
-		return fmt.Errorf("permissions schema: %w", err)
-	}
-	if _, err := routines.New(raw, store); err != nil {
-		return fmt.Errorf("routines schema: %w", err)
-	}
-	logDir, err := os.MkdirTemp("", "ghost-import-cevents-*")
-	if err != nil {
-		return fmt.Errorf("cevents staging dir: %w", err)
-	}
-	defer os.RemoveAll(logDir)
-	if _, err := cevents.Open(raw, logDir); err != nil {
-		return fmt.Errorf("events schema: %w", err)
-	}
-	if err := tools.NewCurator(raw, tools.CuratorConfig{}).EnsureSchema(); err != nil {
-		return fmt.Errorf("tool usage schema: %w", err)
+	if _, err := schema.MigrateToCurrent(raw); err != nil {
+		return err
 	}
 	return nil
 }

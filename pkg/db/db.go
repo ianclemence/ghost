@@ -70,8 +70,11 @@ func NewDB(workspace string) (*DB, error) {
 	return db, nil
 }
 
-func (db *DB) initSchema() error {
-	queries := []string{
+// baseSchemaStatements is the single source of truth for core tables,
+// shared by initSchema and the migration baseline so the two can never
+// drift apart.
+func baseSchemaStatements() []string {
+	return []string{
 		`CREATE TABLE IF NOT EXISTS kv_store (
 			key TEXT PRIMARY KEY,
 			value JSON,
@@ -140,8 +143,10 @@ func (db *DB) initSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at)`,
 	}
+}
 
-	for _, query := range queries {
+func (db *DB) initSchema() error {
+	for _, query := range baseSchemaStatements() {
 		if _, err := db.Exec(query); err != nil {
 			return fmt.Errorf("failed to execute query %q: %w", query, err)
 		}
@@ -156,6 +161,26 @@ func (db *DB) initSchema() error {
 		// Column already exists — ignore.
 	}
 
+	return nil
+}
+
+// EnsureBaseSchema applies the core schema to an already-open database
+// handle. It runs exactly the same statements as initSchema so the
+// migration baseline and NewDB can never disagree about what "current"
+// means.
+func EnsureBaseSchema(raw *sql.DB) error {
+	for _, query := range baseSchemaStatements() {
+		if _, err := raw.Exec(query); err != nil {
+			return fmt.Errorf("failed to execute query %q: %w", query, err)
+		}
+	}
+	fts := &DB{DB: raw}
+	if err := fts.MigrateFTS5(); err != nil {
+		return fmt.Errorf("failed to migrate FTS5 schema: %w", err)
+	}
+	if _, err := raw.Exec(`ALTER TABLE sessions ADD COLUMN title TEXT`); err != nil {
+		// Column already exists — ignore.
+	}
 	return nil
 }
 

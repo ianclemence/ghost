@@ -42,6 +42,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/relayclient"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
+	"github.com/ianclemence/ghost/pkg/schema"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/state"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -895,6 +896,17 @@ func gatewayCmd() {
 	// life of the Ghost, surviving upgrades and migrations.
 	if _, err := ghoststate.EnsureIdentity(cfg.WorkspacePath()); err != nil {
 		fmt.Printf("⚠️  Could not ensure Ghost identity: %v\n", err)
+	}
+
+	// Bring the database to the current schema before any subsystem touches
+	// it. A failed migration stops startup loudly: running services against
+	// a partially migrated schema would corrupt user state silently.
+	if v, err := schema.MigrateToCurrent(agentLoop.DB()); err != nil {
+		fmt.Printf("❌ Database migration failed: %v\n", err)
+		fmt.Println("   Ghost cannot start safely. Restore from a backup with `ghost state import` and try again.")
+		os.Exit(1)
+	} else {
+		fmt.Printf("  • Database schema v%d\n", v)
 	}
 
 	// Print agent startup info

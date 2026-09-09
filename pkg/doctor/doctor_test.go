@@ -6,6 +6,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/schema"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
 
@@ -28,10 +29,15 @@ func TestDoctorRunAll(t *testing.T) {
 	reg := tools.NewToolRegistry()
 	reg.Register(tools.NewSessionSearchTool(database.DB))
 
+	// Production migrates before doctor ever runs; the test mirrors that.
+	if _, err := schema.MigrateToCurrent(database.DB); err != nil {
+		t.Fatalf("MigrateToCurrent: %v", err)
+	}
+
 	runner := New(database.DB, &testProvider{}, reg, t.TempDir())
 	results := runner.RunAll(context.Background())
-	if len(results) != 6 {
-		t.Fatalf("expected 6 checks, got %d", len(results))
+	if len(results) != 7 {
+		t.Fatalf("expected 7 checks, got %d", len(results))
 	}
 	for _, check := range results {
 		if check.Status == "error" {
