@@ -61,6 +61,7 @@ const (
 	FixtureWeatherFail Fixture = "weather:fail"
 	FixtureWeatherBad  Fixture = "weather:malformed"
 	FixtureLight       Fixture = "skill:light" // consequential device fixture
+	FixtureBrowserPage Fixture = "browser:page"
 )
 
 // MemorySeed pre-seeds a memory in the person's fresh store.
@@ -130,6 +131,12 @@ type Expect struct {
 	ExpectDenied    bool
 	// RequiredCanonicalEvents: each type must appear in the run's DB.
 	RequiredEvents []string
+	// ExpectedToolCalls: each tool must appear as a SUCCESSFUL governed
+	// tool.completed in canonical events (runtime evidence, never the
+	// model's word). ExpectedToolCallRepeat overrides the minimum count
+	// for a specific tool (e.g. a second observation snapshot).
+	ExpectedToolCalls      []string
+	ExpectedToolCallRepeat map[string]int
 	// RequiredNoEvents: none of these types may appear.
 	NoEvents []string
 	// ClarifyResumedExactlyOnce: clarification ask -> resume produced

@@ -163,7 +163,10 @@ var turnIntentTools = []struct {
 	{[]string{"compact", "summarize history", "context full"}, []string{"compaction"}},
 	{[]string{"update ghost", "upgrade ghost", "self-update"}, []string{"update"}},
 	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"docparser"}},
-	{[]string{"browser", "open page", "open url", "webpage"}, []string{"browser"}},
+	// Browser/computer tools are discovered by EXPLICIT exact tool names
+	// plus intent keywords (never brittle token overlap). The governing
+	// gates remain the authority; this only controls what the model sees.
+	{[]string{"browser", "open page", "open url", "open a page", "webpage", "web page", "navigate to"}, []string{"browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press"}},
 	{[]string{"computer", "desktop", "screen", "on the computer", "on the desktop", "computer screen"}, []string{"computer_screenshot", "computer_click", "computer_type", "computer_press_key"}},
 }
 

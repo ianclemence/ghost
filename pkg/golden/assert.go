@@ -236,6 +236,41 @@ func freeToolConsequential(tool string) bool {
 	}
 }
 
+// successToolCounts returns, per tool name, how many times it completed
+// successfully (governed executions recorded as canonical events). This is
+// runtime evidence for functional assertions — never the model's word.
+func successToolCounts(ws string) map[string]int {
+	out := map[string]int{}
+	if ws == "" {
+		return out
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(ws, "ghost.db")+"?mode=ro")
+	if err != nil {
+		return out
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	q, err := db.Query(`SELECT COALESCE(payload,'') FROM canonical_events WHERE type='tool.completed' AND status='success'`)
+	if err != nil {
+		return out
+	}
+	defer q.Close()
+	for q.Next() {
+		var payload string
+		if q.Scan(&payload) != nil {
+			continue
+		}
+		var m map[string]interface{}
+		if json.Unmarshal([]byte(payload), &m) != nil {
+			continue
+		}
+		if t, ok := m["tool"].(string); ok && t != "" {
+			out[t]++
+		}
+	}
+	return out
+}
+
 // eventConsequential classifies a completed-execution event payload:
 // consequential tools always; capabilities whose declared risk is
 // consequential or high-impact. Read-only and low-risk executions
@@ -596,6 +631,25 @@ func (r *Runner) evaluate(c Conversation, runs []personRun) (bool, []AssertionRe
 			pass("no_event_" + et)
 		} else {
 			fail("no_event_"+et, "unexpected "+et, true)
+		}
+	}
+
+	// Expected tool calls must be proven by successful governed executions
+	// (tool.completed events), not by the model's narration.
+	if len(exp.ExpectedToolCalls) > 0 {
+		counts := successToolCounts(wsOf(runs))
+		for _, tool := range exp.ExpectedToolCalls {
+			want := 1
+			if exp.ExpectedToolCallRepeat != nil {
+				if n, ok := exp.ExpectedToolCallRepeat[tool]; ok {
+					want = n
+				}
+			}
+			if counts[tool] >= want {
+				pass("tool_" + tool)
+			} else {
+				fail("tool_"+tool, fmt.Sprintf("expected %d successful %s executions, got %d", want, tool, counts[tool]), true)
+			}
 		}
 	}
 

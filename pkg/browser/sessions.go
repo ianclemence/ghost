@@ -30,8 +30,11 @@ const DefaultSessionTTL = 30 * time.Minute
 
 // safeID matches owner/context/task/profile identifiers safe for paths
 // and SQL alike. Anything else is rejected rather than sanitized into
-// something surprising.
-var safeID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+// something surprising. ':' is allowed because Ghost session keys use
+// "<conversation>::<participant>" form and are legitimate internal task
+// bindings; it is harmless on the local filesystem and in parameterized
+// SQL.
+var safeID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$`)
 
 func checkID(what, v string) error {
 	if !safeID.MatchString(v) {

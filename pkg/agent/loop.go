@@ -172,12 +172,18 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 		// The LLM can then decide to use this information.
 	}))
 
-	// Interactive Browser Automation (CDP-based)
-	registry.RegisterHidden(tools.NewBrowserTool(workspace, "navigate"), 2*time.Hour)
-	registry.RegisterHidden(tools.NewBrowserTool(workspace, "snapshot"), 2*time.Hour)
-	registry.RegisterHidden(tools.NewBrowserTool(workspace, "click"), 2*time.Hour)
-	registry.RegisterHidden(tools.NewBrowserTool(workspace, "type"), 2*time.Hour)
-	registry.RegisterHidden(tools.NewBrowserTool(workspace, "press"), 2*time.Hour)
+	// Interactive Browser Automation (CDP-based). Registered visibly (not
+	// hidden): BrowserPolicy is the security boundary, so visibility is not
+	// the control. Discoverability is deterministic — intent matching in
+	// profiles.go exposes the exact tool names to the model when a turn
+	// signals browser use, so a short-lived agent reliably sees them. The
+	// gate still denies unknown ops and enforces broker/session/binding
+	// before any executor runs.
+	registry.Register(tools.NewBrowserTool(workspace, "navigate"))
+	registry.Register(tools.NewBrowserTool(workspace, "snapshot"))
+	registry.Register(tools.NewBrowserTool(workspace, "click"))
+	registry.Register(tools.NewBrowserTool(workspace, "type"))
+	registry.Register(tools.NewBrowserTool(workspace, "press"))
 
 	// Sandbox Execution Tool (Safe code running)
 	registry.RegisterHidden(tools.NewSandboxTool(workspace), 2*time.Hour)

@@ -19,9 +19,24 @@ import (
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/schema"
 	"github.com/ianclemence/ghost/pkg/tools"
 	_ "modernc.org/sqlite"
 )
+
+// migrateGoldenDB brings a golden workspace database to the schema head,
+// exactly as gateway startup does before any subsystem runs.
+func migrateGoldenDB(path string) error {
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		return err
+	}
+	defer raw.Close()
+	if _, err := schema.MigrateToCurrent(raw); err != nil {
+		return err
+	}
+	return nil
+}
 
 // Classification of a failed conversation.
 type Classification string
@@ -260,6 +275,13 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 		if err != nil {
 			return failCase(cr, Configuration, "agent init: "+err.Error())
 		}
+		// The gateway always migrates before any subsystem runs. Golden
+		// workspaces must too, or governed paths (durable jobs, browser
+		// sessions/leases) query a stale v1 schema and fail. Migrate the
+		// loop-created DB before governance wiring and turns.
+		if err := migrateGoldenDB(filepath.Join(ws, "ghost.db")); err != nil {
+			return failCase(cr, Runtime, "migrate workspace: "+err.Error())
+		}
 		// Real-time governance wiring (broker + events + contexts) exactly
 		// like the gateway wires it.
 		gov, db, err := wireGovernance(loop, ws, c.Fixture)
@@ -446,6 +468,16 @@ func wireGovernance(loop *agent.AgentLoop, ws string, fx Fixture) (*agent.Govern
 	broker, err := permissions.Open(db, permissions.ModeAsk, 0)
 	if err != nil {
 		return nil, db, err
+	}
+	// Browser E2E: represent an owner who has pre-authorized browser use in
+	// this context. ModeFull still goes through the broker (Evaluate makes
+	// a real allow decision); it simply does not require an interactive
+	// approval card mid-conversation so the model-driven flow can complete.
+	if fx == FixtureBrowserPage {
+		broker.SetMode(permissions.ModeFull)
+		if err := ensureBrowserPage(); err != nil {
+			return nil, db, err
+		}
 	}
 	events, err := cevents.Open(db, filepath.Join(ws, "events"))
 	if err != nil {
