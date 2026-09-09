@@ -241,3 +241,146 @@ func TestApprovalCardShape(t *testing.T) {
 		t.Fatal("non-pending must not project actionable cards")
 	}
 }
+
+func TestScopeForCanonical(t *testing.T) {
+	cases := []struct {
+		session, to, contact, want string
+	}{
+		{"sess-1", "Maria@X.com ", "", "contact:maria@x.com"},
+		{"sess-1", "", "Bob", "contact:bob"},
+		{"sess-1", "", "", "session:sess-1"},
+		{"", "", "", "owner"},
+		{"sess-1", "  ", "", "session:sess-1"},
+	}
+	for _, c := range cases {
+		if got := ScopeFor(c.session, c.to, c.contact); got != c.want {
+			t.Errorf("ScopeFor(%q,%q,%q) = %q, want %q", c.session, c.to, c.contact, got, c.want)
+		}
+	}
+}
+
+// The console flow: a chat turn pauses on approval, the user picks
+// "Always allow" in the console (no scope sent), and the NEXT identical
+// turn must pass without re-prompting — while anything else still asks.
+func TestConsoleAlwaysAllowMatchesRuntime(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	req, err := b.Require("req-1", "sess-1", "agent-main", "calendar", "create", "Maria@X.com", "calendar via send", RiskConsequential, map[string]string{"to": "Maria@X.com"})
+	if err != nil {
+		t.Fatalf("Require: %v", err)
+	}
+	resolved, err := b.ResolveAuto(req.ID, GrantAlways)
+	if err != nil {
+		t.Fatalf("ResolveAuto: %v", err)
+	}
+	if resolved.Status != StatusApproved {
+		t.Fatalf("status = %v, want approved", resolved.Status)
+	}
+	// Exact runtime scope allows.
+	if v := b.Evaluate("calendar", "create", "contact:maria@x.com", RiskConsequential); v != VerdictAllow {
+		t.Fatalf("identical turn must allow, got %v", v)
+	}
+	// Narrower/different targets still ask: no broadening.
+	for _, scope := range []string{"session:sess-1", "contact:other", "owner"} {
+		if v := b.Evaluate("calendar", "create", scope, RiskConsequential); v != VerdictAsk {
+			t.Fatalf("scope %q must ask, got %v", scope, v)
+		}
+	}
+	// Different capability still asks.
+	if v := b.Evaluate("email", "send", "contact:maria@x.com", RiskConsequential); v != VerdictAsk {
+		t.Fatalf("other capability must ask, got %v", v)
+	}
+}
+
+// Session-scoped console grants stay inside their session.
+func TestConsoleAlwaysAllowSessionScope(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	req, err := b.Require("req-2", "sess-9", "agent-main", "calendar", "read", "", "calendar read", RiskConsequential, nil)
+	if err != nil {
+		t.Fatalf("Require: %v", err)
+	}
+	if _, err := b.ResolveAuto(req.ID, GrantAlways); err != nil {
+		t.Fatalf("ResolveAuto: %v", err)
+	}
+	if v := b.Evaluate("calendar", "read", "session:sess-9", RiskConsequential); v != VerdictAllow {
+		t.Fatalf("same session must allow, got %v", v)
+	}
+	if v := b.Evaluate("calendar", "read", "session:sess-10", RiskConsequential); v != VerdictAsk {
+		t.Fatalf("other session must ask, got %v", v)
+	}
+	if v := b.Evaluate("calendar", "read", "owner", RiskConsequential); v != VerdictAsk {
+		t.Fatalf("owner scope must ask, got %v", v)
+	}
+}
+
+// Denials through the console path deny exactly their scope.
+func TestConsoleDenyScope(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	req, err := b.Require("req-3", "sess-1", "agent-main", "email", "send", "", "email send", RiskConsequential, nil)
+	if err != nil {
+		t.Fatalf("Require: %v", err)
+	}
+	if _, err := b.ResolveAuto(req.ID, GrantDeny); err != nil {
+		t.Fatalf("ResolveAuto deny: %v", err)
+	}
+	if v := b.Evaluate("email", "send", "session:sess-1", RiskConsequential); v != VerdictDeny {
+		t.Fatalf("denied scope must deny, got %v", v)
+	}
+	if v := b.Evaluate("email", "send", "session:sess-2", RiskConsequential); v != VerdictAsk {
+		t.Fatalf("other scope must ask, got %v", v)
+	}
+}
+
+// Allow-once through the console path approves exactly one execution and
+// never becomes a standing grant.
+func TestConsoleAllowOnceSingleUse(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	req, err := b.Require("req-4", "sess-1", "agent-main", "calendar", "create", "", "calendar create", RiskConsequential, nil)
+	if err != nil {
+		t.Fatalf("Require: %v", err)
+	}
+	resolved, err := b.ResolveAuto(req.ID, GrantOnce)
+	if err != nil {
+		t.Fatalf("ResolveAuto: %v", err)
+	}
+	if resolved.Status != StatusApproved {
+		t.Fatalf("status = %v, want approved", resolved.Status)
+	}
+	if v := b.Evaluate("calendar", "create", "session:sess-1", RiskConsequential); v != VerdictAsk {
+		t.Fatalf("allow-once must not create a standing grant, got %v", v)
+	}
+	if _, ok := b.ConsumeApproved("req-4"); !ok {
+		t.Fatal("approved once must be consumable")
+	}
+	if _, ok := b.ConsumeApproved("req-4"); ok {
+		t.Fatal("approved once must not be consumable twice")
+	}
+}
+
+// Expired requests cannot be resolved, by any path.
+func TestConsoleResolveExpiredFails(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	b.nowFunc = func() time.Time { return time.Now().Add(-time.Hour) }
+	req, err := b.Require("req-5", "sess-1", "agent-main", "calendar", "create", "", "x", RiskConsequential, nil)
+	if err != nil {
+		t.Fatalf("Require: %v", err)
+	}
+	b.nowFunc = time.Now
+	if _, err := b.ResolveAuto(req.ID, GrantAlways); err == nil {
+		t.Fatal("expired request must fail to resolve")
+	}
+}
+
+// Owner fallback: a request with no session and no target grants owner scope.
+func TestConsoleOwnerFallback(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	req, err := b.Require("req-6", "", "agent-main", "calendar", "create", "", "x", RiskConsequential, nil)
+	if err != nil {
+		t.Fatalf("Require: %v", err)
+	}
+	if _, err := b.ResolveAuto(req.ID, GrantAlways); err != nil {
+		t.Fatalf("ResolveAuto: %v", err)
+	}
+	if v := b.Evaluate("calendar", "create", "owner", RiskConsequential); v != VerdictAllow {
+		t.Fatalf("owner grant must allow, got %v", v)
+	}
+}

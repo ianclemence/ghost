@@ -79,6 +79,37 @@ const (
 	VerdictDeny  Verdict = "deny"
 )
 
+// ScopeFor is the single authoritative scope derivation for the broker:
+// an explicit target beats a contact, which beats the session, with
+// "owner" as the fallback. Every evaluation and every stored grant must
+// go through here so console grants, chat approvals, and runtime checks
+// can never disagree about what a scope string means.
+func ScopeFor(sessionKey, to, contact string) string {
+	if t := strings.ToLower(strings.TrimSpace(to)); t != "" {
+		return "contact:" + t
+	}
+	if t := strings.ToLower(strings.TrimSpace(contact)); t != "" {
+		return "contact:" + t
+	}
+	if strings.TrimSpace(sessionKey) != "" {
+		return "session:" + sessionKey
+	}
+	return "owner"
+}
+
+// RequestScope derives the canonical grant scope for a pending request:
+// the exact scope a future identical turn will be evaluated under.
+func RequestScope(r *Request) string {
+	if r == nil {
+		return "owner"
+	}
+	var contact string
+	if r.Continuation != nil {
+		contact = r.Continuation["contact"]
+	}
+	return ScopeFor(r.SessionKey, r.Target, contact)
+}
+
 // GrantType is what the user approved.
 type GrantType string
 
@@ -315,6 +346,21 @@ func (b *Broker) Resolve(id string, grant GrantType, scope string) (*Request, er
 	}
 	_ = b.update(r)
 	return r, nil
+}
+
+// ResolveAuto resolves a pending request exactly as the runtime would
+// scope it: the stored grant matches the scope future identical turns
+// are evaluated under. Console and card approvals that carry no explicit
+// scope must use this; an explicit scope keeps working for callers that
+// already compute one (e.g. in-chat approvals).
+func (b *Broker) ResolveAuto(id string, grant GrantType) (*Request, error) {
+	b.mu.RLock()
+	r, ok := b.byID(id)
+	b.mu.RUnlock()
+	if !ok {
+		return nil, errors.New("permission request not found")
+	}
+	return b.Resolve(id, grant, RequestScope(r))
 }
 
 // Cancel marks a pending request cancelled (superseded turns, user abort).

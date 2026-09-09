@@ -194,17 +194,12 @@ func toolAction(tool string, args map[string]interface{}) string {
 }
 
 func scopeFor(sessionKey string, args map[string]interface{}) string {
-	// Narrowest stable scope: explicit target > contact > session owner.
-	if t, _ := args["to"].(string); t != "" {
-		return "contact:" + strings.ToLower(strings.TrimSpace(t))
-	}
-	if t, _ := args["contact"].(string); t != "" {
-		return "contact:" + strings.ToLower(strings.TrimSpace(t))
-	}
-	if sessionKey != "" {
-		return "session:" + sessionKey
-	}
-	return "owner"
+	// Single source of truth lives in the broker package; this adapter
+	// only extracts the untyped tool args. Narrowest stable scope:
+	// explicit target > contact > session owner.
+	to, _ := args["to"].(string)
+	contact, _ := args["contact"].(string)
+	return permissions.ScopeFor(sessionKey, to, contact)
 }
 
 func scopeTarget(args map[string]interface{}) string {

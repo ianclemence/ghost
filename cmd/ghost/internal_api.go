@@ -3146,7 +3146,17 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			jsonError(w, http.StatusInternalServerError, "unavailable", "permissions are unavailable right now")
 			return
 		}
-		resolved, err := b.Resolve(req.ID, grant, strings.TrimSpace(req.Scope))
+		// An empty scope means "the scope this request was asked under":
+		// the broker derives the canonical grant scope from the request
+		// itself, so console approvals match exactly the runtime
+		// invocation they were intended to authorize. Explicit scopes
+		// keep working for callers that compute their own.
+		var resolved *permissions.Request
+		if strings.TrimSpace(req.Scope) == "" {
+			resolved, err = b.ResolveAuto(req.ID, grant)
+		} else {
+			resolved, err = b.Resolve(req.ID, grant, strings.TrimSpace(req.Scope))
+		}
 		if err != nil {
 			jsonError(w, http.StatusBadRequest, "resolve_failed", "that approval is no longer answerable")
 			return

@@ -70,7 +70,10 @@ function paintPending(el, pending, refresh) {
       [['Allow once', 'allow_once'], ['Always allow', 'allow_always'], ['Deny', 'deny']].forEach(([label, grant]) => {
         const b = GhostUI.btn(label, grant === 'deny' ? 'danger' : grant === 'allow_always' ? 'secondary' : 'primary', async () => {
           try {
-            await GhostAPI.proxyPost('/v1/permissions/resolve', { id: p.id, grant, scope: (p.target || 'owner') });
+            // No scope is sent: the server stores the canonical scope the
+            // request was asked under, so the grant matches exactly the
+            // runtime invocation it authorizes.
+            await GhostAPI.proxyPost('/v1/permissions/resolve', { id: p.id, grant });
           } catch (e) { GhostUI.toast('Couldn\u2019t record that choice \u2014 try again.'); return; }
           refresh();
         });
@@ -83,6 +86,14 @@ function paintPending(el, pending, refresh) {
   }
   panel.appendChild(list);
   el.appendChild(panel);
+}
+
+function scopeLabel(scope) {
+  if (!scope) return 'unknown scope';
+  if (scope === 'owner') return 'everywhere on this Ghost';
+  if (scope.startsWith('contact:')) return 'messages to ' + scope.slice(8);
+  if (scope.startsWith('session:')) return 'this chat only';
+  return scope;
 }
 
 function paintGrants(el, grants, refresh) {
@@ -100,7 +111,7 @@ function paintGrants(el, grants, refresh) {
       const row = GhostUI.h('div', { className: 'ghost-row' });
       const c = GhostUI.h('div', { className: 'ghost-row-content' });
       c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, g.capability + ' \u00b7 ' + g.action));
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, 'Scope: ' + g.scope));
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, 'Applies to: ' + scopeLabel(g.scope)));
       row.appendChild(c);
       row.appendChild(GhostUI.h('div', { className: 'ghost-row-trailing' },
         GhostUI.btn('Revoke', 'secondary', async () => {
