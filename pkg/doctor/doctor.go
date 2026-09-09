@@ -43,6 +43,21 @@ func New(db *sql.DB, provider providers.LLMProvider, registry *tools.ToolRegistr
 	}
 }
 
+// Rebind points the Doctor at the CURRENT runtime provider and model estate.
+// The Doctor is created once at startup with the boot-time provider; without
+// this, switching the default AI model at runtime (e.g. ollama -> deepseek)
+// left the health/doctor AI check pinging the old provider and reporting the
+// old estate. Call it whenever the active model/provider changes.
+func (d *Doctor) Rebind(p providers.LLMProvider, estate []providers.ProviderInfo) {
+	if d == nil {
+		return
+	}
+	if p != nil {
+		d.provider = p
+	}
+	d.Estate = estate
+}
+
 func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 	checks := []func(context.Context) CheckResult{
 		d.checkDatabase,

@@ -2541,6 +2541,26 @@ func (al *AgentLoop) SetModel(target string) error {
 			return fmt.Errorf("persisted model but failed to save config: %w", err)
 		}
 	}
+	// Rebuild the runtime provider + doctor from the NEW default so live
+	// turns and health checks use the selected model, not the boot-time one.
+	_ = al.refreshActiveProvider()
+	return nil
+}
+
+// refreshActiveProvider rebuilds the loop's active provider and points the
+// Doctor at it, with a fresh model estate, after a runtime model switch.
+func (al *AgentLoop) refreshActiveProvider() error {
+	if al == nil || al.cfg == nil {
+		return nil
+	}
+	p, err := providers.CreateProvider(al.cfg)
+	if err != nil {
+		return err
+	}
+	al.provider = p
+	if al.doctor != nil {
+		al.doctor.Rebind(p, providers.DescribeEstate(al.cfg))
+	}
 	return nil
 }
 
