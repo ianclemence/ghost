@@ -217,7 +217,12 @@ function renderProviders(panel, cfg, providerModels, ollamaModels) {
 
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
     if (isDefault) {
-      tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot('ready'), 'Default'));
+      // The pill must reflect the REAL status, not just "is the default": a
+      // default provider without a working key is a setup gap, not a green
+      // ready state.
+      const state = isConfigured ? 'ready' : (isLocal ? 'neutral' : 'warn');
+      const label = isConfigured ? 'Default' : (isLocal ? 'Default \u00b7 local' : 'Default \u00b7 needs key');
+      tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(state), label));
     }
     tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => {
       configureProviderModal(key, name, isLocal, cfg);

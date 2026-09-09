@@ -7,26 +7,31 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ianclemence/ghost/pkg/config"
 )
 
 // resetHandler implements /reset — factory reset for Ghost.
 // It supports selective clearing with confirmation and never touches secrets
-// or paired devices unless explicitly flagged.
+// unless explicitly flagged. A full /reset all clears chats, memory,
+// activity, automations, personal context, paired devices, AND restores the
+// AI model/provider default to a local runtime (no cloud credentials left
+// dangling), so the result genuinely looks like a new installation.
 //
 // Usage:
 //
-//	/reset all --yes                              (all chats, memory, activity, automations, context)
+//	/reset all --yes                              (chats, memory, activity, automations, context, devices, AI default)
 //	/reset chats --yes
 //	/reset memory --yes
 //	/reset activity --yes
 //	/reset automations --yes
 //	/reset context --yes
 //	/reset devices --yes  (paired devices)
-//	/reset all --yes --include-secrets --include-devices
+//	/reset model --yes                            (restore local default AI provider/model)
+//	/reset all --yes --include-secrets
 //
 // Without --yes, it shows what would be deleted and asks for confirmation.
-// Secrets (config/.secrets.json, .env) are kept by default.
-// Paired devices are kept by default (use --include-devices to wipe them).
+// Secrets (config/.secrets.json, .env) are kept unless --include-secrets.
 func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 	text := strings.TrimSpace(req.Text)
 	fields := strings.Fields(text)
@@ -45,6 +50,7 @@ func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 		"memory": true, "automations": true, "cron": true, "scheduled": true,
 		"activity": true, "events": true,
 		"context": true, "personal-context": true, "personal": true,
+		"model": true, "ai": true,
 		"devices": true, "paired": true, "paired-devices": true,
 	}
 	if !validTargets[target] && !strings.HasPrefix(target, "--") {
@@ -58,6 +64,7 @@ func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 	hasYes := hasFlag(fields, "--yes") || hasFlag(fields, "-y") || hasFlag(fields, "--confirm")
 	includeSecrets := hasFlag(fields, "--include-secrets")
 	includeDevices := hasFlag(fields, "--include-devices")
+	_ = includeDevices // CLI-compatible flag retained; /reset all now clears devices
 
 	if !hasYes {
 		return req.Reply(resetPreview(target, includeSecrets, includeDevices))
@@ -71,9 +78,13 @@ func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 	doChats := target == "all" || target == "chats" || target == "sessions" || target == "messages"
 	doMemory := target == "all" || target == "memory"
 	doActivity := target == "all" || target == "activity" || target == "events"
+	doModel := target == "all" || target == "model" || target == "ai"
 	doAutomations := target == "all" || target == "automations" || target == "cron" || target == "scheduled"
 	doContext := target == "all" || target == "context" || target == "personal-context" || target == "personal"
-	doDevices := target == "devices" || target == "paired" || target == "paired-devices" || (target == "all" && includeDevices)
+	// A full factory reset clears paired devices too. Keeping a stale device
+	// (whose "last seen" keeps being refreshed) is what made previous resets
+	// look incomplete. Selective /reset devices also clears them.
+	doDevices := target == "all" || target == "devices" || target == "paired" || target == "paired-devices"
 
 	if doChats {
 		if err := clearAllChats(ws, rt); err != nil {
@@ -96,6 +107,14 @@ func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 			results = append(results, "Activity: canonical events and event log cleared")
 		}
 	}
+	if doModel {
+		msg, err := resetModelDefault(ws)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("model: %v", err))
+		} else {
+			results = append(results, msg)
+		}
+	}
 	if doAutomations {
 		if err := clearAutomations(ws, rt); err != nil {
 			errs = append(errs, fmt.Sprintf("automations: %v", err))
@@ -116,8 +135,6 @@ func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 		} else {
 			results = append(results, "Paired devices: cleared")
 		}
-	} else if target == "all" && !includeDevices {
-		results = append(results, "Paired devices: kept (use --include-devices to clear)")
 	}
 
 	if includeSecrets {
@@ -147,14 +164,15 @@ func doAll(t string) bool { return t == "all" }
 
 func resetHelp() string {
 	return "Usage:\n" +
-		"  /reset all --yes                              — factory reset (keeps secrets & paired devices)\n" +
+		"  /reset all --yes                              — factory reset (chats, memory, activity, automations, context, devices, AI default; secrets kept)\n" +
 		"  /reset chats --yes                            — clear all chat history\n" +
 		"  /reset memory --yes                           — clear MEMORY.md and daily notes\n" +
 		"  /reset activity --yes                         — clear Activity (canonical events, event log)\n" +
 		"  /reset automations --yes                      — clear automations and cron jobs\n" +
 		"  /reset context --yes                          — clear Personal Context and knowledge\n" +
+		"  /reset model --yes                            — restore local default AI provider/model\n" +
 		"  /reset devices --yes                          — clear paired devices\n" +
-		"  /reset all --yes --include-secrets --include-devices  — full wipe including secrets\n" +
+		"  /reset all --yes --include-secrets            — full wipe including secrets\n" +
 		"\nAdd --yes to confirm. Without it, Ghost shows a preview."
 }
 
@@ -162,12 +180,7 @@ func resetPreview(target string, includeSecrets, includeDevices bool) string {
 	var what []string
 	switch target {
 	case "all":
-		what = []string{"all chats (all sessions)", "memory (MEMORY.md, daily notes)", "automations (schedules, cron)", "personal context (beliefs, knowledge profile)"}
-		if includeDevices {
-			what = append(what, "paired devices")
-		} else {
-			what = append(what, "paired devices (kept unless --include-devices)")
-		}
+		what = []string{"all chats (all sessions)", "memory (MEMORY.md, daily notes)", "activity (canonical events)", "automations (schedules, cron)", "personal context (beliefs, knowledge profile)", "paired devices", "AI default restored to local model"}
 		if includeSecrets {
 			what = append(what, "secrets (config/.secrets.json)")
 		} else {
@@ -179,6 +192,8 @@ func resetPreview(target string, includeSecrets, includeDevices bool) string {
 		what = []string{"memory (MEMORY.md, daily notes, memory_chunks)"}
 	case "activity", "events":
 		what = []string{"activity (canonical events, event log)"}
+	case "model", "ai":
+		what = []string{"AI default provider/model reset to local (restart to apply)"}
 	case "automations", "cron", "scheduled":
 		what = []string{"automations (scheduled_items, cron jobs, execution history)"}
 	case "context", "personal-context", "personal":
@@ -272,6 +287,83 @@ func clearActivity(ws string, rt *Runtime) error {
 	_ = os.RemoveAll(filepath.Join(ws, "events"))
 	_ = os.MkdirAll(filepath.Join(ws, "events"), 0755)
 	return nil
+}
+
+// resetModelDefault restores the default AI provider/model to a LOCAL runtime
+// after a factory reset, so the appliance does not boot pointed at a cloud
+// provider whose credentials were (correctly) kept out of the reset. A local
+// default never produces a spurious "missing credentials for <cloud model>"
+// state. Best-effort: if no local preset exists, the current default is left
+// untouched rather than inventing one.
+func resetModelDefault(ws string) (string, error) {
+	path := resolveConfigFilePath(ws)
+	if path == "" {
+		return "", fmt.Errorf("config file not found")
+	}
+	cfg, err := config.LoadConfig(path)
+	if err != nil {
+		return "", err
+	}
+	var pick *config.ModelPreset
+	for i := range cfg.Agents.ModelList {
+		p := &cfg.Agents.ModelList[i]
+		if strings.EqualFold(strings.TrimSpace(p.Provider), "ollama") {
+			pick = p
+			break
+		}
+	}
+	if pick == nil {
+		return "AI: no local ollama preset found; default left unchanged", nil
+	}
+	// Canonical default model: "ollama/qwen3:0.6b". If the preset already
+	// carries the provider prefix (slash form), never double it.
+	canonical := strings.TrimSpace(pick.Model)
+	if !strings.Contains(canonical, "/") {
+		canonical = pick.Provider + "/" + canonical
+	}
+	alreadyLocal := strings.EqualFold(strings.TrimSpace(cfg.Agents.Defaults.Provider), pick.Provider) &&
+		strings.TrimSpace(cfg.Agents.Defaults.Model) == canonical
+	if alreadyLocal {
+		return "AI: default provider already local (" + canonical + ")", nil
+	}
+	cfg.Agents.Defaults.Provider = pick.Provider
+	cfg.Agents.Defaults.Model = canonical
+	cfg.Agents.Defaults.FallbackModels = []string{}
+	if err := config.SaveConfig(path, cfg); err != nil {
+		return "", err
+	}
+	return "AI: default provider reset to local (" + canonical + ") — restart Ghost to apply", nil
+}
+
+// resolveConfigFilePath finds the runtime config.json for a workspace. The
+// gateway process runs with its config directory nearby, so several standard
+// locations are tried and the first existing file wins.
+func resolveConfigFilePath(ws string) string {
+	var candidates []string
+	if d := strings.TrimSpace(os.Getenv("GHOST_CONFIG_DIR")); d != "" {
+		candidates = append(candidates, filepath.Join(d, "config.json"))
+	}
+	if ws != "" {
+		candidates = append(candidates,
+			filepath.Join(ws, "config", "config.json"),
+			filepath.Join(ws, "..", "config", "config.json"),
+		)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(cwd, "config", "config.json"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(home, "ghost", "config", "config.json"),
+			filepath.Join(home, ".ghost", "config.json"),
+		)
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return ""
 }
 
 func clearAutomations(ws string, rt *Runtime) error {
