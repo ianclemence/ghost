@@ -164,6 +164,7 @@ var turnIntentTools = []struct {
 	{[]string{"update ghost", "upgrade ghost", "self-update"}, []string{"update"}},
 	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"docparser"}},
 	{[]string{"browser", "open page", "open url", "webpage"}, []string{"browser"}},
+	{[]string{"computer", "desktop", "screen", "on the computer", "on the desktop", "computer screen"}, []string{"computer_screenshot", "computer_click", "computer_type", "computer_press_key"}},
 }
 
 // FilterToolsForTurn narrows the tool surface to a core set plus any tools whose

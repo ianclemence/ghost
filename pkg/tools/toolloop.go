@@ -55,6 +55,12 @@ func isBrowserToolName(name string) bool {
 	return len(name) > 8 && name[:8] == "browser_"
 }
 
+// isComputerToolName reports whether a tool name is a governed computer
+// operation (refused in subagents — no subagent computer authority).
+func isComputerToolName(name string) bool {
+	return len(name) > 9 && name[:9] == "computer_"
+}
+
 // toolsFreeConsequential reports whether a tool is a standalone
 // consequential operation from the audit table.
 func toolsFreeConsequential(name string) bool {
@@ -196,7 +202,13 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 
 			// Execute tool (no async callback for subagents - they run independently)
 			var toolResult *ToolResult
-			if isBrowserToolName(tc.Name) {
+			if isComputerToolName(tc.Name) {
+				// Computer control is a main-agent capability; a subagent
+				// has no computer authority. Refusing makes the path
+				// structurally impossible for the model to reach through a
+				// subagent rather than creating an ungoverned alternate.
+				toolResult = ErrorResult("Computer operations are not authorized for a subagent. Nothing was run.")
+			} else if isBrowserToolName(tc.Name) {
 				toolResult = executeSubagentBrowser(ctx, config, tc, channel, chatID)
 			} else if toolsFreeConsequential(tc.Name) {
 				toolResult = executeSubagentConsequential(ctx, config, tc, channel, chatID)

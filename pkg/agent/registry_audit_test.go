@@ -31,7 +31,7 @@ func TestRegistryGovernanceAudit(t *testing.T) {
 
 	var unclassified []string
 	for _, name := range names {
-		if isBrowserTool(name) {
+		if isBrowserTool(name) || isComputerTool(name) {
 			continue
 		}
 		if tools.IsFreeConsequentialTool(name) {

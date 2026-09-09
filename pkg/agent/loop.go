@@ -643,6 +643,17 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// without the same authorization a main-turn call would require.
 	subagentManager.ConsequentialAuth = al.authorizeSubagentStandaloneTool
 
+	// Computer becomes a first-class agent capability: register the four
+	// bounded operations as model-visible tools, each bound to the real
+	// LocalComputer executor through the computer gate. Registration is
+	// unconditional; availability is reported truthfully by the executor
+	// (none/view-only/control), never by the tool pretending to work.
+	for _, action := range []string{"screenshot", "click", "type", "press_key"} {
+		ct := tools.NewComputerTool(action)
+		ct.Exec = al.computerExecutor
+		al.RegisterTool(ct)
+	}
+
 	return al, nil
 }
 
@@ -1163,14 +1174,22 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 			// before executing. Anything drifted refuses instead of
 			// running under a stale yes.
 			var toolResult *tools.ToolResult
-			if isBrowserTool(resume.Tool) {
+			switch {
+			case isComputerTool(resume.Tool):
+				if call, refuse := al.resumeComputerCall(resume, msg.SessionKey, requestID); refuse != nil {
+					toolResult = refuse
+				} else {
+					toolResult = al.runComputerTool(ctx, call, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey)
+				}
+				al.publishComputerEvidence(requestID, msg.SessionKey, resume.Tool, toolResult)
+			case isBrowserTool(resume.Tool):
 				if call, refuse := al.resumeBrowserCall(resume, msg.SessionKey, requestID); refuse != nil {
 					toolResult = refuse
 				} else {
 					toolResult = al.runBrowserTool(ctx, call, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey)
 				}
 				al.publishBrowserEvidence(requestID, msg.SessionKey, resume.Tool, toolResult)
-			} else {
+			default:
 				toolResult = al.tools.ExecuteWithContext(ctx, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey, nil)
 				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, toolResult.IsError)
 			}
@@ -1919,14 +1938,20 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					}
 				}
 			}
-			// Browser calls go through the browser gate (policy + broker
-			// + session binding + evidence), never straight to the
-			// executor. The gate publishes its own evidence-carrying
+			// Browser and Computer calls go through their dedicated gates
+			// (policy + broker + binding + evidence), never straight to an
+			// executor. Each gate publishes its own evidence-carrying
 			// canonical event, so the generic ToolRan is skipped for
-			// gate-handled calls. Non-browser tools are untouched.
-			toolResult, browserGoverned, browserStop := al.maybeRunBrowserTool(toolCtx, activeTools, tc, opts, asyncCallback)
-			if browserGoverned {
-				if browserStop {
+			// gate-handled calls. Non-governed tools are untouched.
+			var toolResult *tools.ToolResult
+			toolGoverned, toolStop := false, false
+			if isComputerTool(tc.Name) {
+				toolResult, toolGoverned, toolStop = al.maybeRunComputerTool(toolCtx, activeTools, tc, opts, asyncCallback)
+			} else {
+				toolResult, toolGoverned, toolStop = al.maybeRunBrowserTool(toolCtx, activeTools, tc, opts, asyncCallback)
+			}
+			if toolGoverned {
+				if toolStop {
 					toolResultMsg := providers.Message{
 						Role:       "tool",
 						Content:    toolResult.ForLLM,

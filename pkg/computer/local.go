@@ -49,6 +49,13 @@ var (
 	maxScrollKey = 100
 )
 
+// LocalComputerConfigured builds an executor with explicit tool/display
+// settings (used by tests and by operators pinning a specific toolchain).
+// Paths are used verbatim.
+func LocalComputerConfigured(id, controlTool, shotTool, display string) *LocalComputer {
+	return &LocalComputer{id: id, controlTool: controlTool, shotTool: shotTool, display: display}
+}
+
 // NewLocalComputer probes the environment once and builds the executor for
 // id. It never errors: an executor with no tools/display is a truthful
 // view-only/unavailable computer, not a configuration crash.
