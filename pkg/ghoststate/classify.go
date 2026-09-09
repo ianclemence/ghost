@@ -86,6 +86,11 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 	case strings.HasPrefix(rel, "logs/"):
 		// Subagent logs; logs are not Ghost State.
 		return CategoryDerived, nil
+	case strings.HasPrefix(rel, "events/"):
+		// NDJSON event debug trail. The durable record travels via the
+		// canonical_events table snapshot; these files are transient
+		// (30-day retention) and must not abort exports on live machines.
+		return CategoryDisposable, nil
 	case strings.HasPrefix(rel, "tmp/"):
 		return CategoryDisposable, nil
 	default:

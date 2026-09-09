@@ -127,8 +127,8 @@ func Export(opts ExportOptions) (*Manifest, error) {
 			}
 			// Routines, schedules, standing grants, and execution evidence
 			// live only in SQLite (no file form), so they travel as explicit
-			// row snapshots; the binary itself is rebound.
-			manifest.Rebound = append(manifest.Rebound, "ghost.db (binary; rehydrated from portable artifacts)")
+			// row snapshots. (The ghost.db rebound entry itself is recorded
+			// by stageConversationsFromDB.)
 			return stageTableSnapshots(staging, stagingDir, manifest, p)
 		}
 		cat, err := classifyWorkspaceFile(rel)

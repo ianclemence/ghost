@@ -172,6 +172,10 @@ func stageTableSnapshots(staging map[string]string, stagingDir string, m *Manife
 		switch {
 		case whitelisted[name], conversationTables[name]:
 		case strings.HasPrefix(name, "messages_fts"), strings.HasPrefix(name, "sqlite_"):
+		case name == "schema_migrations":
+			// Migration bookkeeping is recomputed by MigrateToCurrent on
+			// import; carrying a version number across machines would be
+			// stale by design.
 		case documentedNonsnapshotTables[name] != "":
 			m.Rebound = append(m.Rebound, name+" ("+documentedNonsnapshotTables[name]+")")
 		default:
