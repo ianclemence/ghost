@@ -23,6 +23,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
 
@@ -940,6 +941,10 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
+	// Captured before any password is set: fresh setup always validates
+	// the resulting AI configuration below.
+	setupWasConfigured := appliance.AdminConfigured(fb.GhostDir)
+
 	// If an admin password already exists, re-running setup requires an
 	// authenticated session AND the current password. Fresh setup runs
 	// (or a migration with no password yet) only need the new password.
@@ -996,6 +1001,29 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 			"error": err.Error(),
 		})
 		return
+	}
+
+	// Refuse to complete setup into a configuration the gateway cannot
+	// start with: a cloud provider without a key crash-loops Ghost on
+	// every boot with no way back except a terminal. This validates with
+	// the exact constructor the gateway uses, so the two can never
+	// disagree. Only enforced on fresh setup or when AI settings are
+	// explicitly changed here; password-only re-runs pass through
+	// untouched.
+	if !setupWasConfigured || req.Model != "" || req.Provider != "" || req.OllamaURL != "" {
+		if effCfg, lerr := config.LoadConfig(fb.ConfigPath); lerr != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": "could not verify AI configuration: " + lerr.Error(),
+			})
+			return
+		} else if _, perr := providers.CreateProvider(effCfg); perr != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": "Ghost can't start with this AI setup (" + perr.Error() + "). Pick a local model or add a cloud key first.",
+			})
+			return
+		}
 	}
 
 	// Mark setup complete

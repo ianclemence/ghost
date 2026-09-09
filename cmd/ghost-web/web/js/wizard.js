@@ -155,6 +155,12 @@ const GhostWizard = (() => {
       checks[0].classList.add('done');
     } catch (e) { /* continue anyway */ }
 
+    // Sign in silently: later setup steps save provider choices through
+    // authenticated configuration calls.
+    try {
+      await GhostAPI.post('/api/login', { password: _state.password });
+    } catch (e) { /* the final sign-in screen covers this */ }
+
     // Step 2: Secure access
     items[1].done = true;
     checks[1].textContent = '\u2713';
@@ -206,8 +212,19 @@ const GhostWizard = (() => {
       screen.appendChild(card);
 
       screen.appendChild(GhostUI.h('div', { className: 'wizard-actions' },
-        GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => {
+        GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async () => {
           _state.selectedModel = _state.ollamaModels[0]?.name || '';
+          // Persist the choice now: setup completion records whatever the
+          // configuration holds, and an unrecorded choice used to vanish.
+          try {
+            await GhostAPI.post('/api/configure', {
+              current_password: _state.password,
+              model: _state.selectedModel,
+              provider: 'ollama',
+            });
+          } catch (e) {
+            GhostUI.toast('Couldn\u2019t save that model \u2014 you can pick one later in AI settings.', 'err');
+          }
           goTo('cloud-ai');
         }}, 'Use this model'),
         GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: () => goTo('cloud-ai') }, 'Skip for now')

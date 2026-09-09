@@ -422,3 +422,59 @@ func TestSessionListMaskedAndRevokeByID(t *testing.T) {
 		t.Fatal("revoked session must be invalid")
 	}
 }
+
+func TestConfigureRefusesUnstartableProvider(t *testing.T) {
+	oldFb := fb
+	dir := t.TempDir()
+	fb = &appliance.SetupState{
+		GhostDir:   dir,
+		ConfigDir:  dir + "/config",
+		DataDir:    dir + "/data",
+		Workspace:  dir + "/workspace",
+		ConfigPath: dir + "/config/config.json",
+		EnvPath:    dir + "/.env",
+	}
+	t.Cleanup(func() { fb = oldFb })
+
+	// Fresh setup with default (keyless cloud) provider must fail loudly
+	// instead of completing into a crash-looping gateway. (This handler
+	// reports application errors as 200+ok:false by convention.)
+	body := `{"admin_password":"fresh-setup-test-1"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/configure", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	handleConfigure(rec, req)
+	var j map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&j)
+	if j["ok"] != false {
+		t.Fatalf("keyless cloud default must fail, got %v", j)
+	}
+	if msg, _ := j["error"].(string); !strings.Contains(msg, "can't start") {
+		t.Fatalf("error must explain the gateway cannot start, got %v", j["error"])
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".setup-complete")); !os.IsNotExist(err) {
+		t.Fatal("setup must not be marked complete on refusal")
+	}
+}
+
+func TestConfigureAcceptsLocalProvider(t *testing.T) {
+	oldFb := fb
+	dir := t.TempDir()
+	fb = &appliance.SetupState{
+		GhostDir:   dir,
+		ConfigDir:  dir + "/config",
+		DataDir:    dir + "/data",
+		Workspace:  dir + "/workspace",
+		ConfigPath: dir + "/config/config.json",
+		EnvPath:    dir + "/.env",
+	}
+	t.Cleanup(func() { fb = oldFb })
+
+	// Explicit local provider constructs without keys or servers.
+	body := `{"admin_password":"fresh-setup-test-2","provider":"ollama","model":"qwen3:0.6b"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/configure", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	handleConfigure(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("explicit ollama config must 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
