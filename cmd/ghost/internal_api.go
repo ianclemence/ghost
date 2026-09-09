@@ -1597,6 +1597,36 @@ func parseMemoryMeta(head string) (title, kind, summary, source string) {
 	return
 }
 
+// workspaceFileProtected reports whether a workspace-relative path is part of
+// Ghost's internal memory/runtime estate and must never be exposed through the
+// generic workspace-file surface. Memory is read through the dedicated
+// sanitized endpoints (/v1/memory/self, /v1/memory/files); raw access to the
+// memory journal, runtime state, event logs, database files, or curated note
+// stores is not a product surface and must not leak scopes, provenance, or
+// internal structure to a (potentially compromised) device credential.
+func workspaceFileProtected(rel string) bool {
+	r := filepath.ToSlash(strings.TrimPrefix(filepath.Clean(rel), "./"))
+	lower := strings.ToLower(r)
+	if r == "personal-context" || strings.HasPrefix(r, "personal-context/") {
+		return true
+	}
+	if r == "state" || strings.HasPrefix(r, "state/") {
+		return true
+	}
+	if r == "events" || strings.HasPrefix(r, "events/") {
+		return true
+	}
+	if r == "knowledge/self" || strings.HasPrefix(r, "knowledge/self/") {
+		return true
+	}
+	for _, ext := range []string{".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite3"} {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService, scheduledService *scheduled.Service, channelManager *channels.Manager) {
 	port := agentLoop.Config().Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
@@ -2580,6 +2610,35 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		// Stop keep-alive before writing [DONE] to avoid write-after-close race
 		close(keepAliveDone)
 
+		// Terminal product outcome: the runtime states success/waiting/failed;
+		// the client renders it and never infers success from prose. Draining
+		// the clarify channel after the turn guarantees a clarify that raced
+		// the forwarder is still counted as waiting_for_user.
+		lifecycleCompleted := func(outcome string) {
+			emitObject(map[string]interface{}{
+				"type":       "lifecycle",
+				"request_id": req.RequestID,
+				"state":      "completed",
+				"outcome":    outcome,
+			})
+		}
+		clarifySeen := func() bool {
+			seen := false
+			for {
+				select {
+				case msg, ok := <-clarifyCh:
+					if !ok {
+						return true // channel closed mid-drain: assume interactive
+					}
+					if t, _ := msg.Metadata["type"].(string); t == "clarify_request" {
+						seen = true
+					}
+				default:
+					return seen
+				}
+			}
+		}()
+
 		if err != nil {
 			logger.ErrorCF("internal-api", "Error processing chat", map[string]interface{}{"error": err.Error()})
 
@@ -2598,46 +2657,57 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			escaped, _ := json.Marshal("Error: " + err.Error())
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
 			flusher.Flush()
-		} else {
-			// agent_completed is recorded in AgentLoop
-			meta := map[string]interface{}{
-				"type":       "assistant_message",
-				"request_id": req.RequestID,
+			lifecycleCompleted("failed")
+			return
+		}
+		// Terminal outcome (backend-stated, additive frame).
+		outcome := "success"
+		if clarifySeen {
+			outcome = "waiting_for_user"
+		} else if b, berr := permBroker(); berr == nil && b != nil {
+			if _, pending := b.PendingForRequest(req.RequestID); pending {
+				outcome = "waiting_for_permission"
 			}
-			if db != nil {
-				var messageID string
-				var timestamp int64
-				err := db.QueryRow(`
+		}
+		// agent_completed is recorded in AgentLoop
+		meta := map[string]interface{}{
+			"type":       "assistant_message",
+			"request_id": req.RequestID,
+		}
+		if db != nil {
+			var messageID string
+			var timestamp int64
+			err := db.QueryRow(`
 					SELECT id, COALESCE(unixepoch(created_at), 0)
 					FROM messages
 					WHERE session_id = ? AND role = 'assistant'
 					ORDER BY datetime(created_at) DESC, rowid DESC
 					LIMIT 1
 				`, req.SessionKey).Scan(&messageID, &timestamp)
-				if err == nil && messageID != "" {
-					meta["message_id"] = messageID
-					meta["session_id"] = req.SessionKey
-					meta["timestamp"] = timestamp
-				}
-			}
-			if _, ok := meta["session_id"]; !ok {
+			if err == nil && messageID != "" {
+				meta["message_id"] = messageID
 				meta["session_id"] = req.SessionKey
+				meta["timestamp"] = timestamp
 			}
-			agentLoop.Bus().PublishOutbound(bus.OutboundMessage{
-				Channel:  req.Channel,
-				ChatID:   req.ChatID,
-				Content:  response,
-				Metadata: meta,
-			})
-			// channel_delivery is recorded in channels.Manager
-			emitObject(map[string]interface{}{
-				"type":       "lifecycle",
-				"request_id": req.RequestID,
-				"state":      "channel_delivery",
-			})
-			fmt.Fprintf(w, "data: [DONE]\n\n")
-			flusher.Flush()
 		}
+		if _, ok := meta["session_id"]; !ok {
+			meta["session_id"] = req.SessionKey
+		}
+		agentLoop.Bus().PublishOutbound(bus.OutboundMessage{
+			Channel:  req.Channel,
+			ChatID:   req.ChatID,
+			Content:  response,
+			Metadata: meta,
+		})
+		// channel_delivery is recorded in channels.Manager
+		emitObject(map[string]interface{}{
+			"type":       "lifecycle",
+			"request_id": req.RequestID,
+			"state":      "channel_delivery",
+		})
+		lifecycleCompleted(outcome)
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		flusher.Flush()
 	}))
 
 	// ── 3. History ────────────────────────────────────────────────────────
@@ -3568,6 +3638,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "remaining": count})
 	}))
 
+	// workspaceFileProtected (package function below) filters the generic
+	// workspace-file surface so the internal memory/runtime estate never
+	// reaches a device client.
+
 	mux.HandleFunc("/v1/workspace/files", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		type FileInfo struct {
 			Name     string `json:"name"`
@@ -3587,6 +3661,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			}
 			rel, err := filepath.Rel(workspaceDir, path)
 			if err != nil {
+				return nil
+			}
+			if workspaceFileProtected(rel) {
 				return nil
 			}
 			files = append(files, FileInfo{
@@ -3618,6 +3695,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		rel, err := filepath.Rel(workspaceDir, fullPath)
 		if err != nil || strings.HasPrefix(rel, "..") {
 			jsonError(w, http.StatusForbidden, "forbidden", "invalid path")
+			return
+		}
+		if workspaceFileProtected(rel) {
+			jsonError(w, http.StatusForbidden, "forbidden", "that file is internal")
 			return
 		}
 

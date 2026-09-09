@@ -157,3 +157,36 @@ func TestSinceResume(t *testing.T) {
 		t.Fatal("cross-owner resume must be empty")
 	}
 }
+
+func TestSinceHonorsConversationFilter(t *testing.T) {
+	s := openTestStream(t)
+	mk := func(id string, conv string) {
+		s.Publish(&Event{Type: CapabilityCompleted, GhostID: "g1", ConversationID: conv,
+			Status: "success", Payload: map[string]interface{}{"capability": "weather.current"}})
+		_ = id
+	}
+	mk("1", "c1")
+	mk("2", "c1")
+	mk("3", "c2")
+	only := s.Since(0, 10, Filter{GhostID: "g1", ConversationID: "c1"})
+	if len(only) != 2 {
+		t.Fatalf("Since with conversation filter: got %d events want 2", len(only))
+	}
+	for _, e := range only {
+		if e.ConversationID != "c1" {
+			t.Fatalf("foreign conversation leaked into filtered Since: %s", e.ConversationID)
+		}
+		if e.Seq == 0 {
+			t.Fatal("Since results must carry seq")
+		}
+	}
+	all := s.Since(0, 10, Filter{GhostID: "g1"})
+	if len(all) != 3 {
+		t.Fatalf("Since without conversation filter: got %d events want 3", len(all))
+	}
+	for i := 1; i < len(all); i++ {
+		if all[i].Seq <= all[i-1].Seq {
+			t.Fatalf("Since must return ascending seq (got %d then %d)", all[i-1].Seq, all[i].Seq)
+		}
+	}
+}

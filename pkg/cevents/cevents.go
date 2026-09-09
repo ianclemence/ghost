@@ -425,6 +425,10 @@ func (s *Stream) Since(seq int64, limit int, f Filter) []*Event {
 		clauses = append(clauses, "ghost_id=?")
 		args = append(args, f.GhostID)
 	}
+	if f.ConversationID != "" {
+		clauses = append(clauses, "conversation_id=?")
+		args = append(args, f.ConversationID)
+	}
 	if f.UserVisibleOnly {
 		clauses = append(clauses, "(visibility='user_visible_message' OR visibility='user_visible_error')")
 	}

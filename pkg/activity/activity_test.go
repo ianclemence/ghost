@@ -121,3 +121,18 @@ func TestDiagnosticsSafe(t *testing.T) {
 		t.Fatal("diagnostics must not include credential fields")
 	}
 }
+
+// The mobile client resumes activity with since_seq, so every chip must
+// carry the canonical sequence number it was projected from.
+func TestChipCarriesSeq(t *testing.T) {
+	e := &cevents.Event{ID: "e9", Seq: 42, Type: cevents.CapabilityCompleted,
+		Timestamp: time.Now(), Visibility: product.VisUserMessage,
+		Payload: map[string]interface{}{"capability": "weather.current", "provider": "open-meteo"}}
+	chip, ok := Project(e)
+	if !ok {
+		t.Fatal("no chip")
+	}
+	if chip.Seq != 42 || chip.ID != "e9" {
+		t.Fatalf("chip seq/id wrong: %+v", chip)
+	}
+}

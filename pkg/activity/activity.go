@@ -37,6 +37,7 @@ const (
 type Chip struct {
 	ID        string    `json:"id"`
 	EventID   string    `json:"event_id"`
+	Seq       int64     `json:"seq"`
 	Title     string    `json:"title"`
 	Kind      string    `json:"kind"`
 	State     State     `json:"state"`
@@ -180,7 +181,7 @@ func Project(e *cevents.Event) (*Chip, bool) {
 		}
 	}
 	chip := &Chip{
-		ID: e.ID, EventID: e.ID, Title: title,
+		ID: e.ID, EventID: e.ID, Seq: e.Seq, Title: title,
 		Kind: string(e.Type), State: stateFor(e.Type, e.Status),
 		Timestamp: e.Timestamp,
 	}

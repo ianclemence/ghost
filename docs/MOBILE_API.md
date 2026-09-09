@@ -1,5 +1,11 @@
 # Ghost Mobile API Contract (backend → mobile team)
 
+> **Superseded by [`docs/mobile-contract.md`](mobile-contract.md)** — the
+> code-verified, authoritative contract for the current mobile product.
+> This document is retained for historical context and should not be used
+> as the implementation reference. Where they differ, the code and
+> `docs/mobile-contract.md` win.
+
 The backend is the authority. The mobile app is a surface: it renders
 backend semantics and never decides success, authorization, or truth.
 Base URL: `https://<ghost>:<port>` (LAN) or relay tunnel. All `/v1/*`
