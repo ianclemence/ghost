@@ -12,6 +12,7 @@ import (
 type EditFileTool struct {
 	allowedDir string
 	restrict   bool
+	guard      ScopeGuard
 }
 
 // NewEditFileTool creates a new EditFileTool with optional directory restriction.
@@ -21,6 +22,9 @@ func NewEditFileTool(allowedDir string, restrict bool) *EditFileTool {
 		restrict:   restrict,
 	}
 }
+
+// SetScopeGuard installs the memory privacy boundary (inert by default).
+func (t *EditFileTool) SetScopeGuard(g ScopeGuard) { t.guard = g }
 
 func (t *EditFileTool) Name() string {
 	return "edit_file"
@@ -71,6 +75,9 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
+	if err := t.guard.Check(SessionKeyFromContext(ctx), resolvedPath); err != nil {
+		return ErrorResult(err.Error())
+	}
 
 	if _, err := os.Stat(resolvedPath); os.IsNotExist(err) {
 		return ErrorResult(fmt.Sprintf("file not found: %s", path))
@@ -104,11 +111,15 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 type AppendFileTool struct {
 	workspace string
 	restrict  bool
+	guard     ScopeGuard
 }
 
 func NewAppendFileTool(workspace string, restrict bool) *AppendFileTool {
 	return &AppendFileTool{workspace: workspace, restrict: restrict}
 }
+
+// SetScopeGuard installs the memory privacy boundary (inert by default).
+func (t *AppendFileTool) SetScopeGuard(g ScopeGuard) { t.guard = g }
 
 func (t *AppendFileTool) Name() string {
 	return "append_file"
@@ -148,6 +159,9 @@ func (t *AppendFileTool) Execute(ctx context.Context, args map[string]interface{
 
 	resolvedPath, err := validatePath(path, t.workspace, t.restrict)
 	if err != nil {
+		return ErrorResult(err.Error())
+	}
+	if err := t.guard.Check(SessionKeyFromContext(ctx), resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 

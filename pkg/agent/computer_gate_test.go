@@ -114,6 +114,41 @@ func TestComputerUnknownOpsFailClosed(t *testing.T) {
 			t.Fatalf("forged op %q must not be recognized", tool)
 		}
 	}
+	// The taxonomy surface is exactly the bounded set; generic execution is
+	// structurally unreachable under the computer capability.
+	for _, want := range []string{"computer_inspect_ui", "computer_screenshot", "computer_click", "computer_type", "computer_press_key"} {
+		if !isComputerTool(want) {
+			t.Fatalf("governed op %q missing from taxonomy", want)
+		}
+	}
+	if isComputerTool("computer_exec") || isComputerTool("exec") || isComputerTool("computer_shell") {
+		t.Fatal("generic execution must never be a model-reachable computer op")
+	}
+}
+
+// Observation (screenshot, inspect_ui) is available under view-only
+// authority; control ops are refused until the executor has control.
+func TestComputerObservationViewOnlyControlRefused(t *testing.T) {
+	h := newGateHarness(t)
+	al := h.loop
+	// shot tool present, no input executor => view-only.
+	al.setTestComputer(computer.LocalComputerConfigured("local", "", "/bin/true", ":99"))
+
+	if d := al.authorizeComputerCall("req-v1", "sess-v", "computer_inspect_ui", map[string]interface{}{}); d.decision != "allow" {
+		t.Fatalf("inspect_ui must allow under view-only authority: %+v", d)
+	}
+	if d := al.authorizeComputerCall("req-v2", "sess-v", "computer_screenshot", map[string]interface{}{"path": "/tmp/x.png"}); d.decision != "allow" {
+		t.Fatalf("screenshot must allow under view-only authority: %+v", d)
+	}
+	for _, tool := range []string{"computer_click", "computer_type", "computer_press_key"} {
+		d := al.authorizeComputerCall("req-v-"+tool, "sess-v", tool, map[string]interface{}{"x": "1", "y": "1"})
+		if d.decision == "allow" {
+			t.Fatalf("%s must be refused under view-only authority", tool)
+		}
+		if !strings.Contains(d.message, "view-only") {
+			t.Fatalf("%s denial must cite view-only authority: %s", tool, d.message)
+		}
+	}
 }
 
 // An ungoverned loop refuses computer operations outright.

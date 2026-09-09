@@ -27,6 +27,7 @@ import (
 
 // computerToolNames are the model-visible computer operations.
 var computerToolNames = map[string]bool{
+	"computer_inspect_ui": true,
 	"computer_screenshot": true,
 	"computer_click":      true,
 	"computer_type":       true,
@@ -44,6 +45,14 @@ func computerOp(tool string) (string, bool) {
 	return strings.TrimPrefix(tool, "computer_"), true
 }
 
+// computerControlOp reports whether an operation changes state. Observation
+// (screenshot, inspect_ui) never confers control authority; control ops
+// (click/type/press_key) require the full authority state, broker decision,
+// and lease.
+func computerControlOp(op string) bool {
+	return !computer.IsObservation(computer.Op(op))
+}
+
 // computerRisk derives risk from the operation (runtime-declared), never
 // from the model.
 func computerRisk(op string) permissions.Risk {
@@ -52,7 +61,7 @@ func computerRisk(op string) permissions.Risk {
 
 func computerRiskOf(op computer.Op) permissions.Risk {
 	switch op {
-	case computer.OpScreenshot:
+	case computer.OpScreenshot, computer.OpInspectUI:
 		return permissions.RiskReadOnly
 	case computer.OpClick:
 		return permissions.RiskLow
@@ -79,11 +88,21 @@ func (al *AgentLoop) computerExecutor() (computer.Computer, error) {
 	return computerExecInst, computerExecErr
 }
 
-// setTestComputer pins the executor used by the gate (test injection).
+// setTestComputer pins the executor used by the gate (fixture/test
+// injection: golden computer cases bind the deterministic VirtualUI here;
+// the gate, broker, lease, and evidence rules still apply unchanged).
 func (al *AgentLoop) setTestComputer(c computer.Computer) {
 	computerExecOnce.Do(func() {}) // ensure singleton initialized
 	computerExecInst = c
 	computerExecErr = nil
+}
+
+// SetComputerExecutor pins the executor used by the computer gate. It is
+// the seam a golden fixture (or an operator with an explicit executor)
+// uses to bind a specific computer. It does not weaken any boundary: the
+// gate still enforces taxonomy, broker, authority, lease, and evidence.
+func (al *AgentLoop) SetComputerExecutor(c computer.Computer) {
+	al.setTestComputer(c)
 }
 
 var (
@@ -148,12 +167,13 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 	if authority == "none" {
 		return deny("Computer unavailable (%s). Nothing was run.", reason)
 	}
-	controlOp := op != "screenshot"
+	controlOp := computerControlOp(op)
 	if controlOp && authority != "control" {
 		return deny("Computer is view-only: no control authority. Nothing was run.")
 	}
-	// Screenshot observation is available but must still be authorized as a
-	// capability read; control ops require the broker (low/consequential).
+	// Screenshot/inspect observation is available but must still be
+	// authorized as a capability read; control ops require the broker
+	// (low/consequential).
 	risk := computerRisk(op)
 	if !controlOp {
 		risk = permissions.RiskReadOnly
@@ -195,7 +215,7 @@ func (al *AgentLoop) bindComputer(owner, contextID, sessionKey, taskID, generati
 		Owner: owner, ContextID: contextID, TaskID: taskID,
 		SessionKey: sessionKey, Generation: generation, Op: op, Permission: permission,
 	}
-	if op != "screenshot" {
+	if computerControlOp(op) {
 		ls, err := al.computerLeaseStore()
 		if err != nil {
 			return computerGateResult{decision: "deny", message: "Computer is unavailable: lease store failed. Nothing was run."}
@@ -266,7 +286,7 @@ func (al *AgentLoop) resumeComputerCall(resume ResumeOutcome, sessionKey, reques
 		return refuse("Computer unavailable on this Ghost. Nothing was run.")
 	}
 	authority, _ := computerAuthority(exec)
-	if op != "screenshot" && authority != "control" {
+	if computerControlOp(op) && authority != "control" {
 		return refuse("Computer no longer has control authority. Nothing was run.")
 	}
 	permission := "once"
@@ -277,7 +297,7 @@ func (al *AgentLoop) resumeComputerCall(resume ResumeOutcome, sessionKey, reques
 		Owner: owner, ContextID: contextID, TaskID: taskID,
 		SessionKey: sessionKey, Op: op, Permission: permission,
 	}
-	if op != "screenshot" {
+	if computerControlOp(op) {
 		ls, err := al.computerLeaseStore()
 		if err != nil {
 			return refuse("Computer is unavailable: lease store failed. Nothing was run.")
@@ -299,7 +319,7 @@ func (al *AgentLoop) runComputerTool(ctx context.Context, call tools.ComputerCal
 	if res == nil {
 		return tools.ErrorResult("Computer execution returned no result. Nothing was proven to run.")
 	}
-	if !res.IsError && call.Op != "screenshot" {
+	if !res.IsError && computerControlOp(call.Op) {
 		if res.Evidence == nil {
 			return tools.ErrorResult("The computer action may not have completed: no runtime evidence was recorded, so I can't claim it worked.")
 		}

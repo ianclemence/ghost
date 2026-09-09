@@ -13,6 +13,10 @@ import (
 type RememberTool struct {
 	workspace string
 	rag       *rag.Store
+	// WriteScopes resolves the scope tags for NEW memories from a session
+	// (e.g. ["context:work"]). A nil resolver or empty result stores a
+	// global (shared) memory, matching legacy behavior.
+	WriteScopes func(sessionKey string) []string
 }
 
 func NewRememberTool(workspace string, ragStore *rag.Store) *RememberTool {
@@ -21,6 +25,10 @@ func NewRememberTool(workspace string, ragStore *rag.Store) *RememberTool {
 		rag:       ragStore,
 	}
 }
+
+// SetWriteScopes installs the session→scope resolver used to tag stored
+// memories so other contexts cannot retrieve them.
+func (t *RememberTool) SetWriteScopes(fn func(sessionKey string) []string) { t.WriteScopes = fn }
 
 func (t *RememberTool) Name() string {
 	return "remember"
@@ -74,9 +82,15 @@ func (t *RememberTool) Execute(ctx context.Context, args map[string]interface{})
 		return ErrorResult(fmt.Sprintf("Failed to write to MEMORY.md: %v", err))
 	}
 
-	// 2. Ingest into RAG
+	// 2. Ingest into RAG (scope-tagged so foreign contexts can't recall it)
 	if t.rag != nil {
-		if err := t.rag.Ingest(ctx, content, "memory_tool"); err != nil {
+		scope := ""
+		if t.WriteScopes != nil {
+			if sc := t.WriteScopes(SessionKeyFromContext(ctx)); len(sc) > 0 {
+				scope = sc[0]
+			}
+		}
+		if err := t.rag.IngestScoped(ctx, content, "memory_tool", scope); err != nil {
 			return ErrorResult(fmt.Sprintf("Saved to file but failed to ingest into RAG: %v", err))
 		}
 	}

@@ -649,12 +649,14 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// without the same authorization a main-turn call would require.
 	subagentManager.ConsequentialAuth = al.authorizeSubagentStandaloneTool
 
-	// Computer becomes a first-class agent capability: register the four
-	// bounded operations as model-visible tools, each bound to the real
-	// LocalComputer executor through the computer gate. Registration is
-	// unconditional; availability is reported truthfully by the executor
-	// (none/view-only/control), never by the tool pretending to work.
-	for _, action := range []string{"screenshot", "click", "type", "press_key"} {
+	// Computer becomes a first-class agent capability: register the bounded
+	// operations as model-visible tools, each bound to the real executor
+	// through the computer gate. Registration is unconditional; availability
+	// is reported truthfully by the executor (none/view-only/control), never
+	// by the tool pretending to work. The taxonomy stays closed: inspect_ui
+	// and screenshot are observation; click/type/press_key are control.
+	// There is no generic computer_exec / computer_shell surface.
+	for _, action := range []string{"inspect_ui", "screenshot", "click", "type", "press_key"} {
 		ct := tools.NewComputerTool(action)
 		ct.Exec = al.computerExecutor
 		al.RegisterTool(ct)
@@ -1560,8 +1562,9 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		history = al.sessions.GetHistory(opts.SessionKey)
 		summary = al.sessions.GetSummary(opts.SessionKey)
 
-		// Inject RAG context into summary
-		ragContext := al.sessions.GetContext(ctx, opts.UserMessage)
+		// Inject RAG context into summary (scope-filtered: cross-context
+		// memories never reach the model's context).
+		ragContext := al.sessions.GetContext(ctx, opts.UserMessage, al.sessionScopes(opts.SessionKey))
 		if ragContext != "" {
 			if summary != "" {
 				summary += "\n\n" + ragContext
@@ -2563,6 +2566,62 @@ func (al *AgentLoop) updateToolContexts(channel, chatID string) {
 			st.SetContext(channel, chatID)
 		}
 	}
+
+	// ── Memory privacy boundary ─────────────────────────────────────────
+	// File tools are bound to a session-scope guard so raw file access can
+	// never bypass the context/scope filter that protects every memory
+	// retrieval path. Inert without a contexts store (legacy behavior).
+	guard := tools.ScopeGuard{Workspace: al.workspace}
+	if al.governance != nil && al.governance.Contexts != nil {
+		guard.ContextOf = func(session string) string {
+			return al.governance.Contexts.SessionContext(session)
+		}
+	}
+	setFileGuard := func(name string, g tools.ScopeGuard) {
+		if tool, ok := al.tools.Get(name); ok {
+			if ft, ok := tool.(interface{ SetScopeGuard(tools.ScopeGuard) }); ok {
+				ft.SetScopeGuard(g)
+			}
+		}
+	}
+	setFileGuard("read_file", guard)
+	setFileGuard("list_dir", guard)
+	setFileGuard("write_file", guard)
+	setFileGuard("edit_file", guard)
+	setFileGuard("append_file", guard)
+
+	// session_search may only discover/read sessions inside the caller's
+	// context (cross-context transcripts never surface). Nil-safe.
+	if tool, ok := al.tools.Get("session_search"); ok {
+		if st, ok := tool.(*tools.SessionSearchTool); ok {
+			if al.governance != nil && al.governance.Contexts != nil {
+				st.SetContextOf(func(session string) string {
+					return al.governance.Contexts.SessionContext(session)
+				})
+			} else {
+				st.SetContextOf(nil)
+			}
+		}
+	}
+
+	// remember stores context-scoped facts in RAG so a later context can
+	// never retrieve them (context-scoped chunks are invisible elsewhere).
+	if tool, ok := al.tools.Get("remember"); ok {
+		if rt, ok := tool.(*tools.RememberTool); ok {
+			rt.SetWriteScopes(func(session string) []string {
+				return al.sessionWriteScopes(session)
+			})
+		}
+	}
+}
+
+// sessionWriteScopes resolves the scope tags new memories from a session
+// should carry (nil-safe: unwired loops write global memories).
+func (al *AgentLoop) sessionWriteScopes(sessionKey string) []string {
+	if al.governance != nil {
+		return al.governance.SessionWriteScopes(sessionKey)
+	}
+	return nil
 }
 
 // maybeSummarize triggers summarization if the session history exceeds thresholds.

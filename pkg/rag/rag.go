@@ -128,8 +128,29 @@ func (s *Store) Reset() {
 	s.ready = false
 }
 
-// Ingest chunks text and stores embeddings
+// scopeTagSep separates a chunk's source from its scope tag. Chunks
+// written from a context other than personal carry the source followed by
+// this separator and the scope (e.g. "memory_tool@context:work"). Scope
+// tags are plain strings, never secrets.
+const scopeTagSep = "@"
+
+// Ingest chunks text and stores embeddings (global/shared memory).
 func (s *Store) Ingest(ctx context.Context, content string, source string) error {
+	return s.IngestScoped(ctx, content, source, "")
+}
+
+// IngestScoped chunks text and stores embeddings tagged with an optional
+// scope. A scoped chunk is only retrievable by callers authorized for that
+// scope; an empty scope stores a global (shared) memory.
+func (s *Store) IngestScoped(ctx context.Context, content string, source, scope string) error {
+	tagged := source
+	if scope != "" {
+		tagged = source + scopeTagSep + scope
+	}
+	return s.ingest(ctx, content, tagged)
+}
+
+func (s *Store) ingest(ctx context.Context, content string, source string) error {
 	// Simple chunking by paragraphs or max length
 	chunks := splitText(content, 500) // 500 chars approx
 
@@ -170,8 +191,18 @@ func (s *Store) Ingest(ctx context.Context, content string, source string) error
 	return nil
 }
 
-// Retrieve finds relevant chunks using vector index
+// Retrieve finds relevant chunks using vector index (global/shared
+// memory: no scope restriction, legacy behavior).
 func (s *Store) Retrieve(ctx context.Context, query string, limit int) ([]SearchResult, error) {
+	return s.RetrieveScoped(ctx, query, limit, nil)
+}
+
+// RetrieveScoped finds relevant chunks the caller is allowed to see. A nil
+// or empty scopes set means global visibility (legacy/unwired behavior);
+// otherwise a chunk is visible only when it is global (untagged) or tagged
+// with one of the caller's scopes. Cross-context facts never reach a
+// context that does not own them.
+func (s *Store) RetrieveScoped(ctx context.Context, query string, limit int, scopes []string) ([]SearchResult, error) {
 	s.mu.RLock()
 	isReady := s.ready
 	collection := s.collection
@@ -189,8 +220,17 @@ func (s *Store) Retrieve(ctx context.Context, query string, limit int) ([]Search
 		return nil, fmt.Errorf("failed to embed query: %w", err)
 	}
 
+	// Over-fetch so scope filtering cannot starve a legitimate query.
+	fetchN := limit * 5
+	if fetchN < 10 {
+		fetchN = 10
+	}
+	if fetchN > 100 {
+		fetchN = 100
+	}
+
 	// Search vector index
-	results, err := collection.QueryEmbedding(ctx, queryEmbedding, limit, nil, nil)
+	results, err := collection.QueryEmbedding(ctx, queryEmbedding, fetchN, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query vector index: %w", err)
 	}
@@ -223,6 +263,25 @@ func (s *Store) Retrieve(ctx context.Context, query string, limit int) ([]Search
 	}
 	defer rows.Close()
 
+	visible := func(source string) bool {
+		if len(scopes) == 0 {
+			return true
+		}
+		tag := ""
+		if idx := strings.Index(source, scopeTagSep); idx >= 0 {
+			tag = source[idx+len(scopeTagSep):]
+		}
+		if tag == "" {
+			return true // untagged (global/shared) memory
+		}
+		for _, sc := range scopes {
+			if tag == sc {
+				return true
+			}
+		}
+		return false
+	}
+
 	var finalResults []SearchResult
 	for rows.Next() {
 		var id string
@@ -231,6 +290,9 @@ func (s *Store) Retrieve(ctx context.Context, query string, limit int) ([]Search
 		var createdAt time.Time
 
 		if err := rows.Scan(&id, &content, &source, &createdAt); err != nil {
+			continue
+		}
+		if !visible(source) {
 			continue
 		}
 
@@ -246,6 +308,9 @@ func (s *Store) Retrieve(ctx context.Context, query string, limit int) ([]Search
 	sort.Slice(finalResults, func(i, j int) bool {
 		return finalResults[i].Score > finalResults[j].Score
 	})
+	if len(finalResults) > limit {
+		finalResults = finalResults[:limit]
+	}
 
 	return finalResults, nil
 }

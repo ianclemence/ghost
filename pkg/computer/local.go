@@ -112,7 +112,9 @@ func (c *LocalComputer) SupportedOps() []Op {
 		out = append(out, OpScreenshot)
 	}
 	if c.controlTool != "" && c.display != "" {
-		out = append(out, OpClick, OpType, OpPressKey)
+		// UI inspection needs the X window tree (xdotool); element-level
+		// accessibility data is exposed only when a backend provides it.
+		out = append(out, OpInspectUI, OpClick, OpType, OpPressKey)
 	}
 	return out
 }
@@ -124,6 +126,8 @@ func (c *LocalComputer) Do(ctx context.Context, op Op, args Args) (Result, error
 	switch op {
 	case OpScreenshot:
 		return c.doObserve(ctx, args)
+	case OpInspectUI:
+		return c.doInspectUI(ctx)
 	case OpClick, OpType, OpPressKey:
 		if c.controlTool == "" {
 			return Result{}, ErrComputerUnavailable(c.id, "no input executor present (install xdotool and run on an X display)")
@@ -141,6 +145,52 @@ func (c *LocalComputer) Do(ctx context.Context, op Op, args Args) (Result, error
 		}
 	}
 	return Result{}, ErrUnsupportedOp(c.id, op)
+}
+
+// doInspectUI reads the current UI through the X window tree and reports a
+// bounded, structured snapshot. It never dumps process/system state and
+// never exposes content it cannot honestly read: element-level
+// accessibility detail is included only when the backend provides it, and
+// the report says so otherwise.
+func (c *LocalComputer) doInspectUI(ctx context.Context) (Result, error) {
+	if c.controlTool == "" || c.display == "" {
+		return Result{}, ErrComputerUnavailable(c.id, "no UI observation backend on this display (xdotool on X required)")
+	}
+	title, err := c.activeWindowTitle(ctx)
+	if err != nil {
+		return Result{}, ErrComputerUnavailable(c.id, "could not read the focused window: "+err.Error())
+	}
+	shot := UISnapshot{
+		WindowTitle: title,
+		VisibleText: "No element-level accessibility information is exposed on this display backend. Use the visible window title to navigate.",
+	}
+	return Result{
+		Output:   FormatUISnapshot(shot),
+		Verified: true, // observed: the focused window title was read
+		Evidence: map[string]string{"op": "inspect_ui", "window": title, "elements": "0"},
+	}, nil
+}
+
+// activeWindowTitle resolves the focused window's title through xdotool.
+func (c *LocalComputer) activeWindowTitle(ctx context.Context) (string, error) {
+	if c.controlTool == "" {
+		return "", fmt.Errorf("no window tool present")
+	}
+	cmd := exec.CommandContext(ctx, c.controlTool, "getactivewindow")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	id := strings.TrimSpace(string(out))
+	if id == "" {
+		return "", fmt.Errorf("no active window")
+	}
+	cmd2 := exec.CommandContext(ctx, c.controlTool, "getwindowname", id)
+	name, err := cmd2.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(name)), nil
 }
 
 func (c *LocalComputer) doObserve(ctx context.Context, args Args) (Result, error) {

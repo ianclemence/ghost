@@ -135,11 +135,11 @@ func (sm *SessionManager) Store() Store {
 	return sm.store
 }
 
-func (sm *SessionManager) GetContext(ctx context.Context, userQuery string) string {
+func (sm *SessionManager) GetContext(ctx context.Context, userQuery string, scopes []string) string {
 	if sm.rag == nil || userQuery == "" {
 		return ""
 	}
-	results, err := sm.rag.Retrieve(ctx, userQuery, 3) // Top 3
+	results, err := sm.rag.RetrieveScoped(ctx, userQuery, 3, scopes) // Top 3
 	if err != nil || len(results) == 0 {
 		return ""
 	}

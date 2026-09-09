@@ -139,6 +139,12 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 
 func (t *ExecTool) guardCommand(command, cwd string) string {
 	// In "Operator Mode", we trust the agent completely.
+	// Memory-estate protection is a second layer behind the file-tool
+	// guard: shell must not become a raw bypass of the scoped memory
+	// store, even when the model chooses exec instead of read_file.
+	if msg, denied := execDeniedByPrivacy(command); denied {
+		return msg
+	}
 	return ""
 }
 

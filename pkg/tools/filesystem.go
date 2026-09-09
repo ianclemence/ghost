@@ -70,11 +70,16 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 type ReadFileTool struct {
 	workspace string
 	restrict  bool
+	guard     ScopeGuard
 }
 
 func NewReadFileTool(workspace string, restrict bool) *ReadFileTool {
 	return &ReadFileTool{workspace: workspace, restrict: restrict}
 }
+
+// SetScopeGuard installs the memory privacy boundary. Nil/inert guards
+// leave the tool at legacy behavior (workspace confinement only).
+func (t *ReadFileTool) SetScopeGuard(g ScopeGuard) { t.guard = g }
 
 func (t *ReadFileTool) Name() string {
 	return "read_file"
@@ -107,6 +112,9 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]interface{})
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
+	if err := t.guard.Check(SessionKeyFromContext(ctx), resolvedPath); err != nil {
+		return ErrorResult(err.Error())
+	}
 
 	content, err := os.ReadFile(resolvedPath)
 	if err != nil {
@@ -119,11 +127,15 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]interface{})
 type WriteFileTool struct {
 	workspace string
 	restrict  bool
+	guard     ScopeGuard
 }
 
 func NewWriteFileTool(workspace string, restrict bool) *WriteFileTool {
 	return &WriteFileTool{workspace: workspace, restrict: restrict}
 }
+
+// SetScopeGuard installs the memory privacy boundary (inert by default).
+func (t *WriteFileTool) SetScopeGuard(g ScopeGuard) { t.guard = g }
 
 func (t *WriteFileTool) Name() string {
 	return "write_file"
@@ -165,6 +177,9 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
+	if err := t.guard.Check(SessionKeyFromContext(ctx), resolvedPath); err != nil {
+		return ErrorResult(err.Error())
+	}
 
 	dir := filepath.Dir(resolvedPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -202,11 +217,15 @@ func (t *WriteFileTool) Verify(ctx context.Context, args map[string]interface{})
 type ListDirTool struct {
 	workspace string
 	restrict  bool
+	guard     ScopeGuard
 }
 
 func NewListDirTool(workspace string, restrict bool) *ListDirTool {
 	return &ListDirTool{workspace: workspace, restrict: restrict}
 }
+
+// SetScopeGuard installs the memory privacy boundary (inert by default).
+func (t *ListDirTool) SetScopeGuard(g ScopeGuard) { t.guard = g }
 
 func (t *ListDirTool) Name() string {
 	return "list_dir"
@@ -237,6 +256,9 @@ func (t *ListDirTool) Execute(ctx context.Context, args map[string]interface{}) 
 
 	resolvedPath, err := validatePath(path, t.workspace, t.restrict)
 	if err != nil {
+		return ErrorResult(err.Error())
+	}
+	if err := t.guard.Check(SessionKeyFromContext(ctx), resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 

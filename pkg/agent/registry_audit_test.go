@@ -53,7 +53,11 @@ func TestRegistryGovernanceAudit(t *testing.T) {
 // here requires an explicit rationale — the audit is the gate.
 //
 // Read-only / retrieval:
-//   - read_file, list_dir: bounded read of the user's own workspace.
+//   - read_file, list_dir: bounded read of the user's own workspace. The
+//     memory estate (memory journal, per-context curated notes, runtime
+//     state) is additionally protected by the session scope guard, so raw
+//     file access can never bypass context memory isolation — memory is
+//     reached only through the scope-filtered memory tools.
 //   - context_get, session_search, memory_recall, memory_curate, remember:
 //     read/write Ghost's own memory/context. Memory writes are low-risk,
 //     user-invoked, and bounded to Ghost's durable memory stores (never an

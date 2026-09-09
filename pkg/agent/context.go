@@ -162,6 +162,7 @@ func buildBehaviorSection() string {
 - "remember that I prefer lunch at noon" → remember tool / quick-capture; do not web_search.
 - "add eggs and milk to my list" → the shopping/notes tool; do not use web_search.
 - "summarize this file" → read the file or the summarize/document skill; do not web_search the file name.
+- "what's on the computer screen" → computer_inspect_ui to READ the UI as structured text before you decide what to click or type. Prefer computer_inspect_ui over computer_screenshot for understanding the screen — a screenshot returns a file, not readable content.
 - Only use web_search / web_fetch when no skill or local file answers a live, external, factual question.
 
 ## Clarification and resuming

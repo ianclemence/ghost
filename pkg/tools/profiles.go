@@ -167,7 +167,7 @@ var turnIntentTools = []struct {
 	// plus intent keywords (never brittle token overlap). The governing
 	// gates remain the authority; this only controls what the model sees.
 	{[]string{"browser", "open page", "open url", "open a page", "webpage", "web page", "navigate to"}, []string{"browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press"}},
-	{[]string{"computer", "desktop", "screen", "on the computer", "on the desktop", "computer screen"}, []string{"computer_screenshot", "computer_click", "computer_type", "computer_press_key"}},
+	{[]string{"computer", "desktop", "screen", "on the computer", "on the desktop", "computer screen", "settings window", "ui", "interface"}, []string{"computer_inspect_ui", "computer_screenshot", "computer_click", "computer_type", "computer_press_key"}},
 }
 
 // FilterToolsForTurn narrows the tool surface to a core set plus any tools whose

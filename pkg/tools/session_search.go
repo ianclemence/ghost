@@ -11,6 +11,45 @@ import (
 
 type SessionSearchTool struct {
 	db *sql.DB
+	// ContextOf resolves a session's context id (""/nil = legacy: no
+	// cross-context restriction). When set, a caller may only discover and
+	// read sessions inside its own context — session transcripts in another
+	// context (work vs personal) never surface.
+	ContextOf func(sessionKey string) string
+}
+
+// SetContextOf installs the session→context resolver used to keep
+// cross-context conversation history isolated.
+func (t *SessionSearchTool) SetContextOf(fn func(sessionKey string) string) { t.ContextOf = fn }
+
+// callerSession returns the invoking session carried in the tool context.
+func callerSession(ctx context.Context) string { return SessionKeyFromContext(ctx) }
+
+// sameContext reports whether a caller session may read a target session's
+// history. Without a resolver every session is allowed (legacy).
+func (t *SessionSearchTool) sameContext(caller, target string) bool {
+	if t.ContextOf == nil {
+		return true
+	}
+	if caller == "" || target == "" || target == caller {
+		return true
+	}
+	return t.ContextOf(caller) == t.ContextOf(target)
+}
+
+// filterSessions narrows result sessions to those the caller may read and
+// preserves order.
+func (t *SessionSearchTool) filterSessions(caller string, sessions []string) []string {
+	if t.ContextOf == nil {
+		return sessions
+	}
+	out := sessions[:0:0]
+	for _, s := range sessions {
+		if t.sameContext(caller, s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 type SessionSearchResult struct {
@@ -156,6 +195,16 @@ func (t *SessionSearchTool) discover(ctx context.Context, args map[string]interf
 	case "oldest":
 		orderClause = "ORDER BY ts ASC, rank"
 	}
+	// Explicitly-targeted foreign sessions are refused outright.
+	if sessionID != "" && !t.sameContext(callerSession(ctx), sessionID) {
+		return ErrorResult("that conversation belongs to another context and is not visible here")
+	}
+	// Fetch extra candidates so cross-context filtering cannot starve a
+	// legitimate in-context search.
+	fetchN := limit * 6
+	if fetchN > 200 {
+		fetchN = 200
+	}
 
 	sqlQuery := fmt.Sprintf(`
 		SELECT
@@ -172,19 +221,28 @@ func (t *SessionSearchTool) discover(ctx context.Context, args map[string]interf
 		LIMIT ?
 	`, orderClause)
 
-	rows, err := t.db.QueryContext(ctx, sqlQuery, query, sessionID, sessionID, limit)
+	rows, err := t.db.QueryContext(ctx, sqlQuery, query, sessionID, sessionID, fetchN)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("session_search query failed: %v", err)).WithError(err)
 	}
 	defer rows.Close()
 
+	caller := callerSession(ctx)
 	results := make([]SessionSearchResult, 0, limit)
 	for rows.Next() {
 		var r SessionSearchResult
 		if err := rows.Scan(&r.SessionID, &r.Content, &r.Timestamp, &r.Rank); err != nil {
 			return ErrorResult(fmt.Sprintf("session_search scan failed: %v", err)).WithError(err)
 		}
+		// Cross-context isolation: results from sessions outside the
+		// caller's context are dropped (never returned to the model).
+		if sessionID == "" && !t.sameContext(caller, r.SessionID) {
+			continue
+		}
 		results = append(results, r)
+		if len(results) >= limit {
+			break
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return ErrorResult(fmt.Sprintf("session_search failed: %v", err)).WithError(err)
@@ -224,6 +282,10 @@ func (t *SessionSearchTool) summarize(ctx context.Context, args map[string]inter
 		limit = 50
 	}
 
+	fetchN := limit * 6
+	if fetchN > 200 {
+		fetchN = 200
+	}
 	rows, err := t.db.QueryContext(ctx, `
 		SELECT m.session_id, m.id, m.role, m.content, COALESCE(unixepoch(m.created_at), 0)
 		FROM messages_fts
@@ -232,13 +294,15 @@ func (t *SessionSearchTool) summarize(ctx context.Context, args map[string]inter
 		  AND (m.archived IS NULL OR m.archived = 0)
 		ORDER BY bm25(messages_fts)
 		LIMIT ?
-	`, query, limit)
+	`, query, fetchN)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("session_search summarize query failed: %v", err)).WithError(err)
 	}
 	defer rows.Close()
 
-	// Group matches by session, keeping the best few per session.
+	caller := callerSession(ctx)
+	// Group matches by session (in-context only), keeping the best few per
+	// session.
 	grouped := map[string][]string{}
 	order := []string{}
 	for rows.Next() {
@@ -246,6 +310,9 @@ func (t *SessionSearchTool) summarize(ctx context.Context, args map[string]inter
 		var ts int64
 		if err := rows.Scan(&sid, &id, &role, &content, &ts); err != nil {
 			return ErrorResult(fmt.Sprintf("session_search summarize scan failed: %v", err)).WithError(err)
+		}
+		if !t.sameContext(caller, sid) {
+			continue
 		}
 		if _, exists := grouped[sid]; !exists {
 			order = append(order, sid)
@@ -293,6 +360,10 @@ func (t *SessionSearchTool) browse(ctx context.Context, args map[string]interfac
 		limit = 50
 	}
 
+	fetchN := limit * 6
+	if fetchN > 200 {
+		fetchN = 200
+	}
 	sqlQuery := `
 		SELECT
 			s.id AS session_id,
@@ -305,22 +376,29 @@ func (t *SessionSearchTool) browse(ctx context.Context, args map[string]interfac
 		LIMIT ?
 	`
 
-	rows, err := t.db.QueryContext(ctx, sqlQuery, limit)
+	rows, err := t.db.QueryContext(ctx, sqlQuery, fetchN)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("session_search browse failed: %v", err)).WithError(err)
 	}
 	defer rows.Close()
 
+	caller := callerSession(ctx)
 	results := make([]BrowseResult, 0, limit)
 	for rows.Next() {
 		var r BrowseResult
 		if err := rows.Scan(&r.SessionID, &r.Summary, &r.Preview, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return ErrorResult(fmt.Sprintf("session_search browse scan failed: %v", err)).WithError(err)
 		}
+		if !t.sameContext(caller, r.SessionID) {
+			continue
+		}
 		if len(r.Preview) > 100 {
 			r.Preview = r.Preview[:100] + "..."
 		}
 		results = append(results, r)
+		if len(results) >= limit {
+			break
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return ErrorResult(fmt.Sprintf("session_search browse failed: %v", err)).WithError(err)
@@ -342,6 +420,9 @@ func (t *SessionSearchTool) scroll(ctx context.Context, args map[string]interfac
 	sessionID, _ := args["session_id"].(string)
 	if sessionID == "" {
 		return ErrorResult("session_id is required for scroll mode")
+	}
+	if !t.sameContext(callerSession(ctx), sessionID) {
+		return ErrorResult("that conversation belongs to another context and is not visible here")
 	}
 
 	aroundMsgID, ok := args["around_message_id"].(float64)
@@ -442,6 +523,9 @@ func (t *SessionSearchTool) readSession(ctx context.Context, args map[string]int
 	sessionID, _ := args["session_id"].(string)
 	if sessionID == "" {
 		return ErrorResult("session_id is required for read mode")
+	}
+	if !t.sameContext(callerSession(ctx), sessionID) {
+		return ErrorResult("that conversation belongs to another context and is not visible here")
 	}
 
 	sqlQuery := `

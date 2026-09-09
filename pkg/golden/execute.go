@@ -13,6 +13,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/cevents"
+	"github.com/ianclemence/ghost/pkg/computer"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/contexts"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
@@ -479,6 +480,14 @@ func wireGovernance(loop *agent.AgentLoop, ws string, fx Fixture) (*agent.Govern
 			return nil, db, err
 		}
 	}
+	// Computer E2E: same owner pre-authorization posture, driving a
+	// deterministic desktop/settings executor through the REAL computer
+	// gate (taxonomy + broker + lease + evidence). The model discovers and
+	// drives it exactly as it would a physical computer.
+	if fx == FixtureComputerUI {
+		broker.SetMode(permissions.ModeFull)
+		loop.SetComputerExecutor(computer.NewVirtualUI("settings"))
+	}
 	events, err := cevents.Open(db, filepath.Join(ws, "events"))
 	if err != nil {
 		return nil, db, err
@@ -569,8 +578,9 @@ var runtimeAssertionNames = map[string]bool{
 	"memory_present": true, "memory_superseded": true, "memory_current": true,
 	"memory_absent": true, "routine_count": true, "grant_present": true,
 	"denial_recorded": true, "no_unintended_grant": true,
-	"no_unauthorized_exec": true,
-	"cross_user_isolation": true,
+	"no_unauthorized_exec":      true,
+	"cross_user_isolation":      true,
+	"privacy_context_isolation": true,
 }
 
 func classifyFailure(c Conversation, asserts []AssertionResult, runs []personRun) Classification {

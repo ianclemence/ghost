@@ -70,6 +70,8 @@ func (t *ComputerTool) Name() string { return "computer_" + t.action }
 
 func (t *ComputerTool) Description() string {
 	switch t.action {
+	case "inspect_ui":
+		return "Read the current UI as a compact structured description: the focused window, visible text, and the interactive elements a user can see (role, value, enabled, click target). Observation only — never a control action."
 	case "screenshot":
 		return "Capture the current computer screen to a file and return its path. Observation only — never a control action."
 	case "click":
@@ -87,6 +89,8 @@ func (t *ComputerTool) Parameters() map[string]interface{} {
 	props := map[string]interface{}{}
 	required := []string{}
 	switch t.action {
+	case "inspect_ui":
+		// No parameters: the current UI is observed as it is.
 	case "screenshot":
 		props["path"] = map[string]interface{}{
 			"type": "string", "description": "Destination path for the screenshot (within the workspace or temp dir).",
@@ -117,7 +121,7 @@ func (t *ComputerTool) Execute(ctx context.Context, args map[string]interface{})
 	if call.Op != "" && call.Op != t.action {
 		return ErrorResult("Computer policy: operation binding mismatch. Nothing was run.")
 	}
-	controlOp := t.action != "screenshot"
+	controlOp := computer.IsObservation(computer.Op(t.action)) == false
 	if controlOp && call.Permission == "" {
 		return ErrorResult("Computer policy: state-changing computer operation requires broker authorization. Nothing was run.")
 	}
@@ -182,6 +186,11 @@ func (t *ComputerTool) executor() (computer.Computer, error) {
 
 func describeComputerResult(action string, res computer.Result) string {
 	switch action {
+	case "inspect_ui":
+		if res.Verified {
+			return res.Output
+		}
+		return "UI inspection produced no verifiable output."
 	case "screenshot":
 		if res.Verified {
 			return fmt.Sprintf("Screenshot captured and verified: %s (%s bytes)", res.Output, res.Evidence["bytes"])

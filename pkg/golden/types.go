@@ -62,6 +62,7 @@ const (
 	FixtureWeatherBad  Fixture = "weather:malformed"
 	FixtureLight       Fixture = "skill:light" // consequential device fixture
 	FixtureBrowserPage Fixture = "browser:page"
+	FixtureComputerUI  Fixture = "computer:ui" // deterministic desktop/settings executor
 )
 
 // MemorySeed pre-seeds a memory in the person's fresh store.
@@ -154,6 +155,13 @@ type Expect struct {
 	// CrossUserAbsentValues: after all people run, the LAST person's store
 	// must not contain these seed values (stored by an earlier person).
 	CrossUserAbsentValues []string
+	// RestrictedValues (HARD, privacy invariant): a restricted-context fact
+	// must never appear in the LAST person's model-visible message stream
+	// (user/assistant/tool messages of that session) — regardless of format
+	// ("220000" vs "220,000") and regardless of whether the model repeats it.
+	// A value reaching the model's context in a session that is not
+	// authorized to know it hard-fails the run.
+	RestrictedValues []string
 }
 
 // Conversation is one canonical golden conversation.

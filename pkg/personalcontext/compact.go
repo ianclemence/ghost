@@ -132,12 +132,34 @@ var curatedKnownKinds = map[Kind]bool{
 // structured memory. It never invents facts — it only mirrors what Ghost
 // already believes, and it degrades to a no-op if there is nothing durable or
 // the workspace is unavailable. It returns the number of facts written.
+//
+// Scoping: only GLOBAL (untagged) facts are materialized into the shared
+// global profile file. Context-scoped facts are materialized into that
+// context's own profile file under knowledge/self/contexts/<id>/, which only
+// the owning context can read. A context fact is NEVER written to the global
+// profile, where it would leak into every other context's prompt.
 func MaterializeCuratedProfile(workspace string, store *Store) (int, error) {
 	if store == nil {
 		return 0, nil
 	}
 	cur := store.Current()
-	lines := make([]string, 0, len(cur))
+
+	// Group curated facts by target profile: global (no scope) or a
+	// specific "context:<id>" scope.
+	type profile struct {
+		contextID string // "" = global
+		lines     []string
+	}
+	order := []string{}
+	byProfile := map[string]*profile{}
+	ctxIDFor := func(e Entry) string {
+		for _, sc := range e.Scopes {
+			if strings.HasPrefix(sc, "context:") {
+				return strings.TrimPrefix(sc, "context:")
+			}
+		}
+		return ""
+	}
 	for _, e := range cur {
 		if !curatedKnownKinds[e.Kind] {
 			continue
@@ -154,19 +176,38 @@ func MaterializeCuratedProfile(workspace string, store *Store) (int, error) {
 		if e.ReinforceCount > 0 {
 			line += " (reinforced " + strconv.Itoa(e.ReinforceCount) + "x)"
 		}
-		lines = append(lines, line)
+		key := ctxIDFor(e)
+		p, ok := byProfile[key]
+		if !ok {
+			p = &profile{contextID: key}
+			byProfile[key] = p
+			order = append(order, key)
+		}
+		p.lines = append(p.lines, line)
 	}
-	if len(lines) == 0 {
+	if len(order) == 0 {
 		return 0, nil
 	}
 
-	path := filepath.Join(workspace, curatedProfileDir, "user-profile.md")
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return 0, err
+	total := 0
+	for _, key := range order {
+		p := byProfile[key]
+		if len(p.lines) == 0 {
+			continue
+		}
+		dir := filepath.Join(workspace, curatedProfileDir)
+		if p.contextID != "" {
+			dir = filepath.Join(dir, "contexts", p.contextID)
+		}
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return total, err
+		}
+		path := filepath.Join(dir, "user-profile.md")
+		content := strings.Join(p.lines, "\n§\n") + "\n"
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return total, err
+		}
+		total += len(p.lines)
 	}
-	content := strings.Join(lines, "\n§\n") + "\n"
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return 0, err
-	}
-	return len(lines), nil
+	return total, nil
 }

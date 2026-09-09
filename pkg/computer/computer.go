@@ -114,6 +114,15 @@ func Supports(c Computer, op Op) bool {
 	return false
 }
 
+// IsObservation reports whether an op is a pure observation. Observations
+// never confer control authority: they may be available on a view-only
+// computer, never require a lease, and never count as state-changing
+// evidence. Control ops (click/type/press_key) require the full authority
+// state and broker logic.
+func IsObservation(op Op) bool {
+	return op == OpScreenshot || op == OpInspectUI
+}
+
 // CapabilityID renders the broker capability for an op on a computer,
 // e.g. "computer.click". Risk comes from OpRisk; the broker adds
 // capability+action detail (financial, destructive, account) on top.
