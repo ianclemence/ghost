@@ -1060,7 +1060,7 @@ func readSkillDetail(skillsDir, name string) (map[string]interface{}, error) {
 	if _, err := os.Stat(filepath.Join(skillPath, "SKILL.md")); err == nil {
 		enabled = true
 	}
-	return map[string]interface{}{
+	out := map[string]interface{}{
 		"name":          name,
 		"bundled":       bundled,
 		"user_modified": bundled && entry.UserModified,
@@ -1068,7 +1068,45 @@ func readSkillDetail(skillsDir, name string) (map[string]interface{}, error) {
 		"optional":      skills.IsOptionalSkill(name),
 		"enabled":       enabled,
 		"files":         files,
-	}, nil
+	}
+	// External-skill provenance: only present for GitHub-installed skills.
+	if prov, err := skills.ReadProvenance(skillPath); err == nil && prov != nil {
+		out["source"] = map[string]interface{}{
+			"owner": prov.Owner, "repo": prov.Repo, "branch": prov.Branch,
+			"path": prov.Path, "commit_sha": prov.CommitSHA,
+			"installed_at": prov.InstalledAt,
+		}
+	}
+	return out, nil
+}
+
+// emitSkillEvent records a canonical skill-lifecycle event. Emission is
+// best-effort: a failing stream must never make a lifecycle operation look
+// failed (listeners are isolated).
+func emitSkillEvent(typ cevents.Type, name string) {
+	st, err := eventStream()
+	if err != nil || st == nil {
+		return
+	}
+	st.Publish(&cevents.Event{
+		Type: typ, GhostID: ghostID(), AgentID: "agent-main",
+		Payload: map[string]interface{}{"name": name},
+	})
+}
+
+// removeWorkspaceSkill removes an external (non-bundled) skill directory.
+// Built-in skills cannot be removed — they are part of Ghost's trusted
+// runtime — and are re-seeded by startup sync, so removal is refused.
+func removeWorkspaceSkill(skillsDir, name string) error {
+	if !validSkillName(name) {
+		return fmt.Errorf("invalid skill name")
+	}
+	if m, err := skills.LoadManifest(skillsDir); err == nil && m != nil {
+		if e, ok := m.Skills[name]; ok && !e.UserModified {
+			return fmt.Errorf("'%s' is a built-in skill; disable it instead of removing", name)
+		}
+	}
+	return os.RemoveAll(filepath.Join(skillsDir, name))
 }
 
 // gitHubSkillTree lists blob paths under prefix for owner/repo on branch.
@@ -1101,7 +1139,11 @@ func gitHubSkillTree(owner, repo, branch, prefix string) ([]string, error) {
 	return paths, nil
 }
 
-// installSkillFromGitHub downloads a skill directory into the workspace skills dir.
+// installSkillFromGitHub downloads a skill directory into the workspace
+// skills dir, bounded by the shared external-skill policy and recorded with
+// provenance. Skills are text/instructions only: binary extensions are
+// blocked, file count/size are capped, and a root SKILL.md with name +
+// description must exist before anything is written.
 func installSkillFromGitHub(skillsDir, owner, repo, branch, prefix, destName string) error {
 	if !validSkillName(destName) {
 		return fmt.Errorf("invalid skill name")
@@ -1117,8 +1159,15 @@ func installSkillFromGitHub(skillsDir, owner, repo, branch, prefix, destName str
 	if _, err := os.Stat(dest); err == nil {
 		return fmt.Errorf("skill '%s' already exists", destName)
 	}
+
 	client := &http.Client{Timeout: 30 * time.Second}
+	downloaded := map[string][]byte{}
+	relOrder := []string{}
 	for _, p := range paths {
+		rel := strings.Trim(strings.TrimPrefix(p, prefix), "/")
+		if skills.SkillFileBlocked(rel) {
+			return fmt.Errorf("skill contains a blocked file type (%s)", rel)
+		}
 		url := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", owner, repo, branch, p)
 		resp, err := client.Get(url)
 		if err != nil {
@@ -1128,22 +1177,70 @@ func installSkillFromGitHub(skillsDir, owner, repo, branch, prefix, destName str
 			resp.Body.Close()
 			return fmt.Errorf("failed to download %s (HTTP %d)", p, resp.StatusCode)
 		}
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, skills.MaxSkillFileSize+1))
 		resp.Body.Close()
 		if err != nil {
 			return err
 		}
-		rel := strings.TrimPrefix(p, prefix)
-		rel = strings.TrimPrefix(rel, "/")
+		if len(body) > skills.MaxSkillFileSize {
+			return fmt.Errorf("skill file %s exceeds %d bytes", p, skills.MaxSkillFileSize)
+		}
+		downloaded[rel] = body
+		relOrder = append(relOrder, rel)
+	}
+	// Validate the whole set before writing anything to disk.
+	if err := skills.ValidateSkillDownloadBounds(relOrder, func(rel string) ([]byte, error) {
+		b, ok := downloaded[rel]
+		if !ok {
+			return nil, fmt.Errorf("missing %s", rel)
+		}
+		return b, nil
+	}); err != nil {
+		return fmt.Errorf("refusing skill: %w", err)
+	}
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	for _, rel := range relOrder {
 		target := filepath.Join(dest, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(target, body, 0644); err != nil {
+		if err := os.WriteFile(target, downloaded[rel], 0o644); err != nil {
 			return err
 		}
 	}
+	_ = skills.WriteProvenance(dest, skills.Provenance{
+		Type: "github", Owner: owner, Repo: repo, Branch: branch, Path: prefix,
+		CommitSHA: gitHubBranchCommit(owner, repo, branch),
+	})
 	return nil
+}
+
+// gitHubBranchCommit resolves the immutable commit SHA for a branch,
+// best-effort. If GitHub cannot be reached or the ref is not found, an empty
+// SHA is returned so provenance is recorded honestly (branch only) instead of
+// fabricating a revision.
+func gitHubBranchCommit(owner, repo, branch string) string {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/ref/heads/%s", owner, repo, branch)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return ""
+	}
+	var ref struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ref); err != nil {
+		return ""
+	}
+	return ref.Object.SHA
 }
 
 func handleExec(allowedCmds []string) http.HandlerFunc {
@@ -2969,7 +3066,32 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			jsonError(w, http.StatusBadRequest, "toggle_failed", err.Error())
 			return
 		}
+		if req.Enabled {
+			emitSkillEvent(cevents.SkillEnabled, req.Name)
+		} else {
+			emitSkillEvent(cevents.SkillDisabled, req.Name)
+		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "name": req.Name, "enabled": req.Enabled})
+	}))
+
+	mux.HandleFunc("/v1/skills/remove", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "name is required")
+			return
+		}
+		if err := removeWorkspaceSkill(skillsDir, req.Name); err != nil {
+			jsonError(w, http.StatusBadRequest, "remove_failed", err.Error())
+			return
+		}
+		emitSkillEvent(cevents.SkillRemoved, req.Name)
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "name": req.Name})
 	}))
 
 	mux.HandleFunc("/v1/skills/read", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
@@ -3017,6 +3139,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			jsonError(w, http.StatusInternalServerError, "install_failed", err.Error())
 			return
 		}
+		emitSkillEvent(cevents.SkillInstalled, req.Name)
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "name": req.Name, "message": "Skill installed"})
 	}))
 

@@ -37,8 +37,6 @@ async function loadHome(container) {
   const activitySection = GhostUI.h('section', { className: 'home-section home-activity', 'aria-labelledby': 'home-activity-title' });
   const activityHead = GhostUI.h('div', { className: 'home-section-head' });
   activityHead.appendChild(GhostUI.h('h2', { className: 'home-section-title', id: 'home-activity-title' }, 'Recent activity'));
-  const viewAll = GhostUI.h('button', { className: 'home-link', type: 'button', onClick: () => GhostApp.navigate('conversations') }, 'View all  \u2192');
-  activityHead.appendChild(viewAll);
   activitySection.appendChild(activityHead);
   const activityBody = GhostUI.h('div', { className: 'home-activity-body', 'aria-busy': 'true' });
   activityBody.appendChild(activitySkeleton());
@@ -56,12 +54,12 @@ async function loadHome(container) {
   container.appendChild(view);
 
   // Independent fetches — a single failure shouldn't blank the page.
-  const [meta, doctor, health, channels, sessions, jobs, memory, selfMem, devices, ollama, activeModel, identity] = await Promise.allSettled([
+  const [meta, doctor, health, channels, activity, jobs, memory, selfMem, devices, ollama, activeModel, identity] = await Promise.allSettled([
     GhostAPI.get('/api/admin/auth/meta'),
     GhostAPI.proxyGet('/v1/doctor'),
     GhostAPI.proxyGet('/v1/health'),
     GhostAPI.proxyGet('/v1/channels/status'),
-    GhostAPI.proxyGet('/v1/sessions'),
+    GhostAPI.proxyGet('/v1/activity?limit=20'),
     GhostAPI.proxyGet('/v1/cron/jobs'),
     GhostAPI.proxyGet('/v1/memory/files'),
     GhostAPI.proxyGet('/v1/memory/self'),
@@ -88,8 +86,8 @@ async function loadHome(container) {
   const overall = computeOverall(doctor, health);
   renderStatus(statusTitle, statusDot, subline, statusBody, overall, doctor, selfMem, jobs, devices, ollama, activeModel);
 
-  // Recent activity.
-  renderActivity(activityBody, sessions, jobs, memory);
+  // Recent activity (canonical, user-safe Ghost activity — never a chat list).
+  renderActivity(activityBody, activity);
 
   // Needs your attention.
   renderAttention(attentionBody, doctor, channels, devices, ollama);
@@ -180,27 +178,15 @@ function appendSummary(dl, key, value) {
 
 function inferLocalAI(ollamaRes, activeModelRes) {
   // /api/ollama/models is the authoritative source for installed local models.
-  // /v1/model tells us whether an active local model is set.
+  // The status is product language ("local AI is ready"), never a model name:
+  // Ghost's runtime chooses the intelligence; the owner doesn't pick models.
   if (ollamaRes.status !== 'fulfilled') return { label: 'Unavailable', state: 'bad' };
   const v = ollamaRes.value;
   if (!v || v.ok === false) return { label: 'Unavailable', state: 'bad' };
   const models = Array.isArray(v.models) ? v.models : [];
-  if (models.length === 0) return { label: 'No model installed', state: 'warn' };
-  // Show the active model name when it's a local (ollama) model.
-  const active = (activeModelRes.status === 'fulfilled' && activeModelRes.value && activeModelRes.value.active) || '';
-  const isLocal = active && /ollama/i.test(active);
-  if (isLocal) {
-    const f = GhostUI.modelFriendly(active);
-    return { label: (f.name || shortModelName(active)) + '  \u00b7  ' + models.length + ' installed', state: 'ok' };
-  }
-  return { label: models.length + ' installed', state: 'ok' };
-}
-
-function shortModelName(name) {
-  if (!name) return '';
-  // Strip common prefixes like "ollama/" so the active model reads cleanly.
-  const i = name.lastIndexOf('/');
-  return i >= 0 ? name.substring(i + 1) : name;
+  if (models.length === 0) return { label: 'Not configured', state: 'warn' };
+  const _active = (activeModelRes.status === 'fulfilled' && activeModelRes.value && activeModelRes.value.active) || '';
+  return { label: 'Ready \u00b7 ' + models.length + ' installed', state: 'ok' };
 }
 
 function extractMemoryCount(v) {
@@ -233,12 +219,12 @@ function extractDeviceCount(v) {
   return Array.isArray(arr) ? arr.length : 0;
 }
 
-function renderActivity(container, sessionsRes, jobsRes, memoryRes) {
+function renderActivity(container, activityRes) {
   if (!document.body.contains(container)) return;
   container.innerHTML = '';
   container.setAttribute('aria-busy', 'false');
 
-  const items = collectActivityItems(sessionsRes, jobsRes, memoryRes);
+  const items = collectActivityItems(activityRes);
 
   if (items.length === 0) {
     container.appendChild(GhostUI.emptyState(
@@ -256,62 +242,38 @@ function renderActivity(container, sessionsRes, jobsRes, memoryRes) {
   container.appendChild(list);
 }
 
-function collectActivityItems(sessionsRes, jobsRes, memoryRes) {
+// collectActivityItems reads the canonical, user-safe activity projection
+// (/v1/activity). It is deliberately NOT built from /v1/sessions: Ghost is
+// one relationship, and this feed is "what Ghost has done", never a chat
+// list.
+function collectActivityItems(activityRes) {
+  if (activityRes.status !== 'fulfilled') return [];
+  const arr = (activityRes.value && activityRes.value.activity) || [];
   const items = [];
-
-  if (sessionsRes.status === 'fulfilled') {
-    const arr = Array.isArray(sessionsRes.value) ? sessionsRes.value : (sessionsRes.value.sessions || sessionsRes.value.items || []);
-    for (const s of arr) {
-      const ts = s.last_activity || 0;
-      if (!ts) continue;
-      const rawTitle = (s.title || '').trim();
-      if (isInternalTitle(rawTitle)) continue;
-      const cnt = s.message_count || 0;
-      items.push({
-        kind: 'conversation',
-        ts,
-        title: rawTitle,
-        meta: cnt + ' message' + (cnt === 1 ? '' : 's'),
-      });
-    }
+  for (const a of arr) {
+    const ts = unixOf(a.timestamp);
+    if (!ts) continue;
+    items.push({
+      kind: 'activity',
+      ts,
+      title: a.title || 'Activity',
+      meta: activityState(a.state) + (a.summary ? '  \u00b7  ' + a.summary : ''),
+    });
   }
-
-  if (jobsRes.status === 'fulfilled') {
-    const arr = Array.isArray(jobsRes.value) ? jobsRes.value : (jobsRes.value.jobs || jobsRes.value.items || []);
-    for (const j of arr) {
-      const lr = j.state && j.state.last_run_at;
-      if (!lr) continue;
-      const ts = Math.floor(new Date(lr).getTime() / 1000);
-      items.push({ kind: 'automation', ts, job: j });
-    }
-  }
-
-  if (memoryRes.status === 'fulfilled') {
-    const arr = Array.isArray(memoryRes.value) ? memoryRes.value : (memoryRes.value.files || memoryRes.value.items || []);
-    for (const m of arr) {
-      const ts = m.modified || 0;
-      if (!ts) continue;
-      items.push({ kind: 'memory', ts, file: m });
-    }
-  }
-
-  // Central semantic interpretation + grouping. Home shows the latest few,
-  // collapsed, so repeated test messages never flood the feed.
-  return GhostSemantic.groupItems(items.map(i => GhostSemantic.activityItem(i)));
+  // /v1/activity returns newest first and is already user-safe; no further
+  // semantic grouping is needed here.
+  return items;
 }
 
-// isInternalTitle filters out conversation titles that are internal identifiers
-// (session ids, heartbeat, system events) rather than real user conversation.
-function isInternalTitle(title) {
-  if (!title) return true;
-  const t = title.toLowerCase();
-  if (t.startsWith('# heartbeat')) return true;
-  if (t.startsWith('heartbeat')) return true;
-  if (t.includes('cron.execute')) return true;
-  if (t.includes('post /v1/chat')) return true;
-  if (t.includes('ollama.generate')) return true;
-  if (t.length < 3) return true;
-  return false;
+function unixOf(ts) {
+  if (!ts) return 0;
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? 0 : Math.floor(d.getTime() / 1000);
+}
+
+function activityState(st) {
+  const map = { running: 'Running', waiting: 'Waiting', success: 'Done', failed: 'Failed', cancelled: 'Cancelled', paused: 'Paused' };
+  return map[st] || st || '';
 }
 
 function renderActivityRow(it) {

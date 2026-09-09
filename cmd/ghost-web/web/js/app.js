@@ -9,31 +9,36 @@ const GhostApp = (() => {
   let root = null;
 
   // ── Navigation model (the product's information architecture) ──
+  // Ghost is ONE persistent personal AI. There is no chat list, no "New
+  // Chat", and no conversation switcher. Home is the relationship; Memory is
+  // what Ghost knows; Activity is what Ghost has done; Routines are what
+  // Ghost does automatically; Connected Apps are what Ghost can access;
+  // Devices are where Ghost has hands. System holds owner/appliance config.
   const NAV = [
     {
-      label: 'Main',
+      label: 'Ghost',
       items: [
         { name: 'home', title: 'Home', glyph: 'home' },
-        { name: 'ai', title: 'AI', glyph: 'ai' },
         { name: 'memory', title: 'Memory', glyph: 'memory' },
-        { name: 'conversations', title: 'Conversations', glyph: 'channel' },
+        { name: 'activity', title: 'Activity', glyph: 'activity' },
         { name: 'routines', title: 'Routines', glyph: 'automation' },
-        { name: 'automations', title: 'Automations', glyph: 'automation' },
-        { name: 'skills', title: 'Skills', glyph: 'skill' },
+        { name: 'devices', title: 'Devices', glyph: 'device' },
+        { name: 'integrations', title: 'Connected Apps', glyph: 'integrations' },
       ],
     },
     {
-      label: 'Connections',
+      label: 'Connect',
       items: [
-        { name: 'devices', title: 'Devices', glyph: 'device' },
         { name: 'channels', title: 'Channels', glyph: 'channel' },
-        { name: 'integrations', title: 'Integrations', glyph: 'integrations' },
       ],
     },
     {
       label: 'System',
       items: [
+        { name: 'skills', title: 'Skills', glyph: 'skill' },
+        { name: 'automations', title: 'Automations', glyph: 'automation' },
         { name: 'system', title: 'System', glyph: 'system' },
+        { name: 'ai', title: 'AI & providers', glyph: 'ai' },
         { name: 'security', title: 'Security', glyph: 'security' },
         { name: 'help', title: 'Help', glyph: 'help' },
         { name: 'about', title: 'About', glyph: 'about' },
@@ -46,6 +51,7 @@ const GhostApp = (() => {
     home: '<path d="M3 11l9-8 9 8M5 9.5V20h5v-5h4v5h5V9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>',
     ai: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
     memory: '<path d="M6 4h12v16H6zM9 8h2M13 8h2M9 12h2M13 12h2M9 16h2M13 16h2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
+    activity: '<path d="M3 12h4l2.5-6 4 12L16 12h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
     automation: '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 8v4l3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
     skill: '<path d="M12 3l2.2 4.6L19 8.3l-3.5 3.4.8 4.9L12 14.8 7.7 16.6l.8-4.9L5 8.3l4.8-.7L12 3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
     device: '<rect x="7" y="3" width="10" height="18" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 18h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',

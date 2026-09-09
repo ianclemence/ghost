@@ -27,6 +27,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
+	"github.com/ianclemence/ghost/pkg/utils"
 )
 
 // updateState tracks an in-flight "ghost update" run so the UI can poll it.
@@ -1880,6 +1881,11 @@ func installSkillFromGitHub(owner, repo, branch, prefix, destName string) error 
 			return err
 		}
 	}
+	// Record provenance so the owner can always see where this external
+	// skill came from (source/revision), even after a restart.
+	_ = skills.WriteProvenance(dest, skills.Provenance{
+		Type: "github", Owner: owner, Repo: repo, Branch: branch, Path: prefix,
+	})
 	return nil
 }
 
@@ -2225,6 +2231,23 @@ func handleClawHubInstall(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
+	// Apply the SAME bounded validation boundary used by every other install
+	// path: locate the extracted skill, validate entries + SKILL.md, record
+	// provenance. A failed validation rolls the extracted skill back so a
+	// malformed archive can never leave an active skill behind.
+	root, ferr := skills.FindSkillRoot(targetDir)
+	if ferr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": ferr.Error()})
+		return
+	}
+	if verr := skills.ValidateInstalledSkillDir(root); verr != nil {
+		_ = os.RemoveAll(root)
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "refusing skill: " + verr.Error()})
+		return
+	}
+	_ = skills.WriteProvenance(root, skills.Provenance{
+		Type: "clawhub", Repo: req.Slug, Branch: req.Version, InstalledAt: time.Now().UTC(),
+	})
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":      true,
@@ -2391,12 +2414,10 @@ func extractZipToDir(zipPath, targetDir string) error {
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return err
 	}
-	cmd := exec.Command("unzip", "-o", zipPath, "-d", targetDir)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("extract failed: %s", strings.TrimSpace(string(out)))
-	}
-	return nil
+	// Safe extraction (not the OS `unzip`): entry names are canonicalized and
+	// validated against path traversal, absolute paths, symlinks/hard links,
+	// special files, and size caps before any byte is written.
+	return utils.ExtractZipFile(zipPath, targetDir)
 }
 
 // startTime is recorded when the wizard process starts.

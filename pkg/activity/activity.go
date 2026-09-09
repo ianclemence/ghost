@@ -82,6 +82,21 @@ var humanTitles = map[cevents.Type]string{
 	cevents.GhostOffline:            "Ghost is offline",
 	cevents.GhostRecovering:         "Ghost is recovering",
 	cevents.OperationFailed:         "Couldn't complete that",
+	cevents.SkillInstalled:          "Installed skill",
+	cevents.SkillEnabled:            "Enabled skill",
+	cevents.SkillDisabled:           "Disabled skill",
+	cevents.SkillUpdated:            "Updated skill",
+	cevents.SkillRemoved:            "Removed skill",
+}
+
+// skillNameTitle refines skill lifecycle chips with the skill name when the
+// publisher provided one (user-safe text only; never paths).
+func skillNameTitle(e *cevents.Event, base string) string {
+	name, _ := e.Payload["name"].(string)
+	if name == "" {
+		return base
+	}
+	return base + ": " + name
 }
 
 // capabilityTitles refines capability chips from payload context.
@@ -179,6 +194,9 @@ func Project(e *cevents.Event) (*Chip, bool) {
 		if name, _ := e.Payload["integration"].(string); name != "" {
 			title = humanizeIntegration(name) + " connected"
 		}
+	case cevents.SkillInstalled, cevents.SkillEnabled, cevents.SkillDisabled,
+		cevents.SkillUpdated, cevents.SkillRemoved:
+		title = skillNameTitle(e, title)
 	}
 	chip := &Chip{
 		ID: e.ID, EventID: e.ID, Seq: e.Seq, Title: title,

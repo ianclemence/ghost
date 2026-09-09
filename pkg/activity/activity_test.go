@@ -136,3 +136,24 @@ func TestChipCarriesSeq(t *testing.T) {
 		t.Fatalf("chip seq/id wrong: %+v", chip)
 	}
 }
+
+// Skill lifecycle events project to user-safe narrative chips.
+func TestSkillLifecycleProjects(t *testing.T) {
+	cases := map[cevents.Type]string{
+		cevents.SkillInstalled: "Installed skill: weather",
+		cevents.SkillEnabled:   "Enabled skill: weather",
+		cevents.SkillDisabled:  "Disabled skill: weather",
+		cevents.SkillRemoved:   "Removed skill: weather",
+		cevents.SkillUpdated:   "Updated skill: weather",
+	}
+	for typ, want := range cases {
+		chip, ok := Project(&cevents.Event{ID: "e", Seq: 1, Type: typ, Timestamp: time.Now(),
+			Visibility: product.VisUserMessage, Payload: map[string]interface{}{"name": "weather"}})
+		if !ok {
+			t.Fatalf("%s: no chip", typ)
+		}
+		if chip.Title != want {
+			t.Fatalf("%s: got %q want %q", typ, chip.Title, want)
+		}
+	}
+}

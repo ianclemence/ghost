@@ -31,6 +31,25 @@ func TestGateReadOnlyAllows(t *testing.T) {
 	}
 }
 
+// A read-only skill must NEVER let its instructions run arbitrary shell
+// silently. exec/sandbox are always classified high_impact regardless of the
+// capability's declared risk, so they require an explicit broker decision.
+func TestGateReadOnlySkillCannotAutoAllowShell(t *testing.T) {
+	g := openTestGovernance(t)
+	res := g.AuthorizeTool("req-1", "sess-1", "weather.current", "exec",
+		map[string]interface{}{"command": "curl -s https://example.com"})
+	if res.Allowed {
+		t.Fatal("exec under a read-only skill must require a broker decision, not auto-allow")
+	}
+	if res.PendingID == "" {
+		t.Fatal("exec under a read-only skill must create a durable approval request")
+	}
+	resSandbox := g.AuthorizeTool("req-1", "sess-1", "weather.current", "sandbox", map[string]interface{}{"code": "x"})
+	if resSandbox.Allowed {
+		t.Fatal("sandbox under a read-only skill must require a broker decision")
+	}
+}
+
 func TestGateConsequentialAsksDurably(t *testing.T) {
 	g := openTestGovernance(t)
 	res := g.AuthorizeTool("req-1", "sess-1", "calendar.create", "exec", map[string]interface{}{"title": "Meet"})

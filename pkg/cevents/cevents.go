@@ -74,6 +74,13 @@ const (
 	RoutineWaiting   Type = "routine.waiting"
 	RoutineCompleted Type = "routine.completed"
 	RoutineFailed    Type = "routine.failed"
+	// Skills (owner-driven lifecycle; emitted by the trusted runtime, never
+	// by a skill or the model)
+	SkillInstalled Type = "skill.installed"
+	SkillUpdated   Type = "skill.updated"
+	SkillEnabled   Type = "skill.enabled"
+	SkillDisabled  Type = "skill.disabled"
+	SkillRemoved   Type = "skill.removed"
 	// System
 	GhostStarted    Type = "ghost.started"
 	GhostReady      Type = "ghost.ready"
@@ -114,6 +121,7 @@ func (t Type) DefaultVisibility() product.Visibility {
 		MemoryCreated, MemoryUpdated, MemoryDeleted,
 		IntegrationConnected, IntegrationDisconnected, IntegrationExpired, IntegrationFailed,
 		RoutineCreated, RoutineWaiting, RoutineCompleted, RoutineFailed,
+		SkillInstalled, SkillUpdated, SkillEnabled, SkillDisabled, SkillRemoved,
 		GhostReady, GhostDegraded, GhostOffline, GhostRecovering,
 		OperationFailed:
 		return product.VisUserMessage

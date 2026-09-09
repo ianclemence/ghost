@@ -50,6 +50,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/verify"
 	"github.com/ianclemence/ghost/pkg/voice"
 	"github.com/joho/godotenv"
+	_ "modernc.org/sqlite"
 )
 
 //go:generate cp -r ../../workspace .
@@ -233,13 +234,13 @@ func main() {
 		case "list":
 			skillsListCmd(skillsLoader)
 		case "install":
-			skillsInstallCmd(installer)
+			skillsInstallCmd(installer, workspace)
 		case "remove", "uninstall":
 			if len(os.Args) < 4 {
 				fmt.Println("Usage: ghost skills remove <skill-name>")
 				return
 			}
-			skillsRemoveCmd(installer, os.Args[3])
+			skillsRemoveCmd(installer, os.Args[3], workspace)
 		case "install-builtin":
 			skillsInstallBuiltinCmd(workspace)
 		case "sync":
@@ -2691,7 +2692,7 @@ func skillsListCmd(loader *skills.SkillsLoader) {
 	}
 }
 
-func skillsInstallCmd(installer *skills.SkillInstaller) {
+func skillsInstallCmd(installer *skills.SkillInstaller, workspace string) {
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: ghost skills install <github-repo>")
 		fmt.Println("Example: ghost skills install sipeed/ghost-skills/weather")
@@ -2710,9 +2711,10 @@ func skillsInstallCmd(installer *skills.SkillInstaller) {
 	}
 
 	fmt.Printf("✓ Skill '%s' installed successfully!\n", filepath.Base(repo))
+	cliEmitSkillEvent(workspace, cevents.SkillInstalled, filepath.Base(repo))
 }
 
-func skillsRemoveCmd(installer *skills.SkillInstaller, skillName string) {
+func skillsRemoveCmd(installer *skills.SkillInstaller, skillName, workspace string) {
 	fmt.Printf("Removing skill '%s'...\n", skillName)
 
 	if err := installer.Uninstall(skillName); err != nil {
@@ -2721,6 +2723,33 @@ func skillsRemoveCmd(installer *skills.SkillInstaller, skillName string) {
 	}
 
 	fmt.Printf("✓ Skill '%s' removed successfully!\n", skillName)
+	cliEmitSkillEvent(workspace, cevents.SkillRemoved, skillName)
+}
+
+// cliEmitSkillEvent records a skill lifecycle event from the CLI into the
+// workspace's canonical event stream so owner-driven CLI changes carry the
+// same audit trail as gateway/UI changes. Best-effort: if there is no Ghost
+// database yet, there is nothing to record and the CLI result still stands.
+func cliEmitSkillEvent(ws string, typ cevents.Type, name string) {
+	path := filepath.Join(ws, "ghost.db")
+	if _, err := os.Stat(path); err != nil {
+		return
+	}
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		return
+	}
+	defer db.Close()
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='canonical_events'`).Scan(&n); err != nil || n == 0 {
+		return
+	}
+	st, err := cevents.Open(db, filepath.Join(ws, "events"))
+	if err != nil {
+		return
+	}
+	st.Publish(&cevents.Event{Type: typ, AgentID: "cli",
+		Payload: map[string]interface{}{"name": name}})
 }
 
 func skillsInstallBuiltinCmd(workspace string) {

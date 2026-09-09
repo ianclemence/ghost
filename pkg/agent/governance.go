@@ -137,7 +137,24 @@ type AuthorizeResult struct {
 // never bypass this: the gate sits between capability resolution and
 // ExecuteWithContext, not in a prompt.
 func (g *Governance) AuthorizeTool(requestID, sessionKey, capabilityID, tool string, args map[string]interface{}) AuthorizeResult {
-	return g.authorize(requestID, sessionKey, capabilityID, tool, args, permissions.RiskOf(capabilityID))
+	return g.authorize(requestID, sessionKey, capabilityID, tool, args, authorizedToolRisk(capabilityID, tool))
+}
+
+// authorizedToolRisk returns the broker risk class for one tool call inside a
+// committed capability. The floor is the capability's declared risk, BUT
+// privileged execution primitives (exec, sandbox) are ALWAYS classified
+// high_impact, no matter how low-risk the surrounding skill declares itself.
+// Without this, a read-only skill that lists exec in its AllowedTools (for a
+// legitimate curl) would let a skill's instructions run ARBITRARY shell with
+// no broker decision. This closes that gap: shell still runs (the skill may
+// legitimately need it), but only with an explicit grant/approval and
+// evidence — never silently.
+func authorizedToolRisk(capabilityID, tool string) permissions.Risk {
+	switch tool {
+	case "exec", "sandbox":
+		return permissions.RiskHighImpact
+	}
+	return permissions.RiskOf(capabilityID)
 }
 
 // AuthorizeStandalone authorizes a standalone consequential tool (one not

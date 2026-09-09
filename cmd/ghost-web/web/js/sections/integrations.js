@@ -6,8 +6,8 @@ async function loadIntegrations(container) {
   if (GhostApp.currentSection() !== 'integrations') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
-  head.appendChild(GhostUI.h('h1', {}, 'Integrations'));
-  head.appendChild(GhostUI.h('p', {}, 'Connect the services that need credentials — Google Calendar, flight tracking, Home Assistant, and camera.'));
+  head.appendChild(GhostUI.h('h1', {}, 'Connected Apps'));
+  head.appendChild(GhostUI.h('p', {}, 'The apps and services Ghost can reach — Google Calendar, flight tracking, Home Assistant, and camera.'));
   container.appendChild(head);
 
   const panel = GhostUI.h('div', { className: 'panel' });

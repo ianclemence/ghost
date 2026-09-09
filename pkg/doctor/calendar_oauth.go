@@ -5,16 +5,44 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
+
+// calendarSkillActive reports whether the calendar skill is currently enabled
+// in the workspace (SKILL.md present; disable renames it to SKILL.md.disabled).
+// When Ghost has no workspace (nil/empty, e.g. unit tests) we cannot know, and
+// the caller keeps its default behavior.
+func (d *Doctor) calendarSkillActive() bool {
+	if d == nil || d.workspace == "" {
+		return true // unknown: don't suppress
+	}
+	fi, err := os.Stat(filepath.Join(d.workspace, "skills", "calendar", "SKILL.md"))
+	if err != nil || fi.IsDir() {
+		return false
+	}
+	return true
+}
 
 // checkCalendarOAuth validates the deployment's Google OAuth client
 // configuration before the deployer opens the Google Cloud Console.
 // Everything checkable in code is checked here; the remaining Console
 // clicks are listed (not performed) in the message.
+//
+// If the calendar skill is disabled (or not installed), the deployment check
+// is suppressed: an owner who turned the capability off should not be nagged
+// to configure sign-in for it.
 func (d *Doctor) checkCalendarOAuth(ctx context.Context) CheckResult {
 	start := time.Now()
+	if !d.calendarSkillActive() {
+		return CheckResult{
+			Name: "calendar_oauth", Label: "Calendar sign-in",
+			Status:  "ok",
+			Message: "Calendar skill is disabled; no calendar sign-in configuration is needed.",
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
 	clientID := strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_ID"))
 	secret := strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_SECRET"))
 	redirect := strings.TrimSpace(os.Getenv("GHOST_CALENDAR_REDIRECT_URL"))

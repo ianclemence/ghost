@@ -66,6 +66,14 @@ func (si *SkillInstaller) InstallFromGitHub(ctx context.Context, repo string) er
 		return fmt.Errorf("failed to read response: %w", err)
 	}
 
+	// Bounded install policy applies to every external install path: SKILL.md
+	// must exist with name + description and stay within size limits.
+	if err := ValidateSkillDownloadBounds([]string{"SKILL.md"}, func(rel string) ([]byte, error) {
+		return body, nil
+	}); err != nil {
+		return fmt.Errorf("refusing skill: %w", err)
+	}
+
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		return fmt.Errorf("failed to create skill directory: %w", err)
 	}
@@ -75,7 +83,20 @@ func (si *SkillInstaller) InstallFromGitHub(ctx context.Context, repo string) er
 		return fmt.Errorf("failed to write skill file: %w", err)
 	}
 
+	owner, reponame := splitGitHubRepo(repo)
+	_ = WriteProvenance(skillDir, Provenance{
+		Type: "github", Owner: owner, Repo: reponame, Branch: "main", Path: "",
+	})
+
 	return nil
+}
+
+func splitGitHubRepo(repo string) (string, string) {
+	parts := strings.SplitN(strings.Trim(repo, "/"), "/", 2)
+	if len(parts) != 2 {
+		return strings.Trim(repo, "/"), ""
+	}
+	return parts[0], parts[1]
 }
 
 func (si *SkillInstaller) Uninstall(skillName string) error {

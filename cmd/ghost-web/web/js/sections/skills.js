@@ -211,6 +211,8 @@ async function openSkill(name) {
 
   const metaParts = [];
   if (data.bundled) metaParts.push('Built-in');
+  else if (data.source) metaParts.push('From GitHub');
+  else metaParts.push('Installed');
   if (data.optional) metaParts.push('Needs setup');
   if (data.user_modified) metaParts.push('Modified');
   const version = GhostUI.frontmatterValue(meta, 'version');
@@ -231,6 +233,19 @@ async function openSkill(name) {
   }
 
   body.innerHTML = '';
+  // External skills carry recorded provenance so the owner always knows where
+  // a capability came from (source + revision), never hidden behind a button.
+  if (data.source && data.source.repo) {
+    const srcLine = (data.source.owner || '') + '/' + data.source.repo + (data.source.branch ? '@' + data.source.branch : '');
+    let rev = '';
+    if (data.source.commit_sha) rev = ' · revision ' + String(data.source.commit_sha).slice(0, 12);
+    else if (data.source.branch) rev = ' · revision not pinned (branch ' + data.source.branch + ')';
+    const prov = GhostUI.h('div', { className: 'skill-modal-meta', style: 'margin-bottom:var(--s-3);word-break:break-all' },
+      'Installed from ' + srcLine + rev +
+      (data.source.path ? ' · ' + data.source.path : '') +
+      (data.source.installed_at ? ' · ' + new Date(data.source.installed_at).toLocaleDateString() : ''));
+    body.appendChild(prov);
+  }
   const content = GhostUI.h('div', { className: 'markdown-body' });
   content.innerHTML = GhostUI.md(skillBody || 'No documentation.');
   body.appendChild(content);
@@ -265,7 +280,7 @@ async function openSkill(name) {
   if (!(data.bundled)) {
     actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
       if (!(await GhostUI.confirmModal('Remove this skill?', name + ' will be deleted from your Ghost. This can’t be undone.', 'Remove'))) return;
-      try { await GhostAPI.post('/api/admin/skills/remove', { name }); GhostUI.toast('Removed'); backdrop.remove(); loadSkills(document.getElementById('view')); }
+      try { await GhostAPI.proxyPost('/v1/skills/remove', { name }); GhostUI.toast('Removed'); backdrop.remove(); loadSkills(document.getElementById('view')); }
       catch (e) { GhostUI.toast('Couldn’t remove it.', 'err'); }
     } }, 'Remove'));
   }
@@ -273,24 +288,28 @@ async function openSkill(name) {
 
 function showInstall() {
   const body = GhostUI.h('div');
-  body.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'margin-bottom:var(--s-4)' }, 'Install a skill from a GitHub repository. Provide the owner, repo, and the folder path.'));
-  const mk = (label, ph, key) => {
+  body.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'margin-bottom:var(--s-4)' }, 'Install a skill from a GitHub repository (owner, repo, folder path, optional branch). Skills are instructions Ghost reads — nothing here installs or runs on its own. Anything the skill later asks Ghost to do still goes through the same approvals as everything else.'));
+  const mk = (label, ph, key, opt) => {
     const f = GhostUI.h('div', { className: 'field' });
-    f.appendChild(GhostUI.h('label', {}, label));
+    f.appendChild(GhostUI.h('label', {}, label + (opt ? '  (optional)' : '')));
     const i = GhostUI.h('input', { className: 'ghost-input', placeholder: ph });
     f.appendChild(i); body.appendChild(f); body[key] = i;
   };
   mk('Repository owner', 'ianclemence', '_owner');
   mk('Repository', 'ghost-skills', '_repo');
   mk('Path to skill folder', 'skills/research', '_path');
+  mk('Branch (optional)', 'main', '_branch', true);
 
   GhostUI.modal('Install skill', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
       const owner = body._owner.value.trim(), repo = body._repo.value.trim(), p = body._path.value.trim();
-      if (!owner || !repo || !p) { GhostUI.toast('All three fields are required.'); return; }
+      if (!owner || !repo || !p) { GhostUI.toast('Owner, repository, and path are required.'); return; }
+      const payload = { owner, repo, path: p };
+      const branch = (body._branch && body._branch.value.trim()) || '';
+      if (branch) payload.branch = branch;
       try {
-        await GhostAPI.post('/api/admin/skills/install', { owner, repo, path: p });
+        await GhostAPI.proxyPost('/v1/skills/install', payload);
         e.target.closest('.ghost-modal-backdrop').remove();
         GhostUI.toast('Skill installed');
         loadSkills(document.getElementById('view'));

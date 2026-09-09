@@ -190,3 +190,16 @@ func TestSinceHonorsConversationFilter(t *testing.T) {
 		}
 	}
 }
+
+// Skill lifecycle events are durable and user-visible so the owner has an
+// audit trail; publishers may rely on the default.
+func TestSkillLifecycleVisibility(t *testing.T) {
+	for _, typ := range []Type{SkillInstalled, SkillEnabled, SkillDisabled, SkillUpdated, SkillRemoved} {
+		if !typ.Durable() {
+			t.Fatalf("%s must be durable", typ)
+		}
+		if !typ.DefaultVisibility().UserVisible() {
+			t.Fatalf("%s must default to user-visible", typ)
+		}
+	}
+}

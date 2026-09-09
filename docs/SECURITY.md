@@ -72,3 +72,34 @@ capability operation (never model intent), resolved by the runtime:
 See [BACKUP.md](BACKUP.md). Backups are passphrase-encrypted; secrets
 never enter them unless explicitly opted in; restore validates before
 touching state and always restarts the gateway afterward.
+
+## Skills
+
+Skills are instruction sets ("what Ghost knows how to do"), not agents, chats,
+models, or plugins. They never execute on their own: Ghost reads the skill text
+and then proposes actions through the normal governed tools.
+
+Security rules:
+- `exec`/`sandbox` are always classified high-impact by the Permission Broker,
+  even inside a read-only skill. A skill can never silently run arbitrary
+  shell; it needs an explicit grant/approval and produces evidence.
+- External (GitHub/ClawHub) skills are bounded text downloads: blocked binary
+  extensions, <=50 files, <=200KB/file, <=1MB total, a root `SKILL.md` with
+  name + description, no path traversal. Install provenance is recorded in
+  `.ghost-source.json` inside the skill so the owner always sees source +
+  revision.
+- Enable/disable is a deterministic `SKILL.md` <-> `SKILL.md.disabled` rename
+  and is visible to the loader/model immediately; removal deletes the skill
+  directory. No skill lifecycle persists after disable/removal.
+- `skill_manage` (create/patch/delete/enable/disable) is broker-governed:
+  create/patch/delete are high-impact, enable/disable are consequential. A
+  skill can never modify Ghost's own skill system or grant itself
+  capabilities without an explicit owner decision.
+- Skill lifecycle operations emit canonical events (`skill.installed/enabled/
+  disabled/updated/removed`) that project to Activity; they are published only
+  by trusted runtime operations, never by the model/skills.
+- ClawHub archives are extracted with the safe Go extractor (traversal,
+  symlink, absolute-path, size and count validated), never the OS `unzip`.
+- GitHub installs record resolved commit SHA when GitHub provides it; the CLI
+  and gateway installers share the same bounded validation boundary and write
+  provenance to `.ghost-source.json`.

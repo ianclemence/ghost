@@ -2,6 +2,8 @@ package doctor
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -48,5 +50,43 @@ func TestDoctorRunAllIncludesCalendarOAuth(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("RunAll must include the calendar_oauth check")
+	}
+}
+
+// A disabled calendar skill must not nag the owner to configure sign-in.
+func TestCalendarOAuthSuppressedWhenSkillDisabled(t *testing.T) {
+	t.Setenv("GHOST_GOOGLE_CLIENT_ID", "")
+	t.Setenv("GHOST_GOOGLE_CLIENT_SECRET", "")
+	t.Setenv("GHOST_CALENDAR_REDIRECT_URL", "")
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, "skills", "calendar"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "skills", "calendar", "SKILL.md.disabled"), []byte("disabled"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := &Doctor{workspace: ws}
+	res := d.checkCalendarOAuth(context.Background())
+	if res.Status != "ok" {
+		t.Fatalf("disabled calendar skill must not warn, got %s: %s", res.Status, res.Message)
+	}
+}
+
+// When the calendar skill IS enabled but unconfigured, the warning stays.
+func TestCalendarOAuthWarnsWhenSkillEnabled(t *testing.T) {
+	t.Setenv("GHOST_GOOGLE_CLIENT_ID", "")
+	t.Setenv("GHOST_GOOGLE_CLIENT_SECRET", "")
+	t.Setenv("GHOST_CALENDAR_REDIRECT_URL", "")
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, "skills", "calendar"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "skills", "calendar", "SKILL.md"), []byte("---\nname: calendar\n---\n\nbody"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := &Doctor{workspace: ws}
+	res := d.checkCalendarOAuth(context.Background())
+	if res.Status != "warning" {
+		t.Fatalf("enabled-but-unconfigured calendar must still warn, got %s", res.Status)
 	}
 }

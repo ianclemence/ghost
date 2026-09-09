@@ -2844,6 +2844,20 @@ func (al *AgentLoop) estimateTokens(messages []providers.Message) int {
 // otherwise the broker decides allow/ask/deny with the risk the runtime
 // table declares — never the model.
 func (al *AgentLoop) authorizeStandaloneTool(requestID, sessionKey, tool string, args map[string]interface{}) (AuthorizeResult, bool) {
+	// skill_manage modifies Ghost's durable procedural behavior (its skill
+	// set). It is a consequential runtime operation and is NEVER governed by
+	// a skill's own AllowedTools or the model. Risk is derived from the
+	// runtime by action: create/patch/delete are high_impact (they can alter
+	// future instructions); enable/disable are consequential.
+	if tool == "skill_manage" {
+		if al == nil || al.governance == nil || al.governance.Broker == nil {
+			return AuthorizeResult{}, false
+		}
+		risk := skillManageRisk(args)
+		al.governance.NoteCapability(requestID, "skills.manage")
+		decision := al.governance.AuthorizeStandalone(requestID, sessionKey, "skills.manage", tool, args, risk)
+		return AuthorizeResult{Allowed: decision.Allowed, AskMessage: decision.AskMessage, PendingID: decision.PendingID}, true
+	}
 	ft, ok := tools.FreeToolCapability(tool)
 	if !ok || al == nil || al.governance == nil || al.governance.Broker == nil {
 		return AuthorizeResult{}, false
@@ -2855,6 +2869,20 @@ func (al *AgentLoop) authorizeStandaloneTool(requestID, sessionKey, tool string,
 	al.governance.NoteCapability(requestID, ft.Capability)
 	decision := al.governance.AuthorizeStandalone(requestID, sessionKey, ft.Capability, tool, args, risk)
 	return AuthorizeResult{Allowed: decision.Allowed, AskMessage: decision.AskMessage, PendingID: decision.PendingID}, true
+}
+
+// skillManageRisk classifies a skill_manage action by what it changes. The
+// model can never declare this risk — it comes from the trusted runtime.
+func skillManageRisk(args map[string]interface{}) permissions.Risk {
+	action, _ := args["action"].(string)
+	switch action {
+	case "create", "patch", "delete":
+		return permissions.RiskHighImpact
+	case "enable", "disable":
+		return permissions.RiskConsequential
+	default:
+		return permissions.RiskConsequential
+	}
 }
 
 func committedSkill(messages []providers.Message) string {

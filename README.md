@@ -181,12 +181,6 @@ ownership" error, allow the path for that user:
 git config --global --add safe.directory /home/<user>/ghost   # run as <user>, not root
 ```
 
-### On a fresh device
-
-Setting up a brand-new device? Follow the
-[Quick Start](#raspberry-pi-recommended) instead — it covers prerequisites
-(dependencies, Ollama, model) and the install from zero in one place.
-
 ### Auto-Update Daemon
 
 ```bash

@@ -49,7 +49,7 @@ async function loadSecurity(container) {
   bkH.appendChild(bkText);
   bk.appendChild(bkH);
   const bkKv = GhostUI.h('div', { className: 'kv' });
-  bkKv.appendChild(securityKv('Conversations', 'Included'));
+  bkKv.appendChild(securityKv('Conversation history', 'Included'));
   bkKv.appendChild(securityKv('Memory', 'Included'));
   bkKv.appendChild(securityKv('Routines & automations', 'Included'));
   bkKv.appendChild(securityKv('Standing permissions', 'Included'));
@@ -188,7 +188,7 @@ async function startRestore(btn) {
 function showRestoreSummary(token, passphrase, s) {
   const body = GhostUI.h('div');
   const rows = [
-    ['Conversations', String(s.conversations)],
+    ['Conversation history', String(s.conversations)],
     ['Routines', String(s.routines)],
     ['Scheduled items', String(s.scheduled_items)],
     ['Standing permissions', String(s.standing_grants)],
