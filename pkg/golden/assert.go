@@ -396,7 +396,13 @@ func claimsSuccess(text string) bool {
 		"can't confirm", "cannot confirm", "can't access", "not actually", "was not", "haven't",
 		"can't do", "cannot do", "won't do", "wouldn't", "would not", "not going to",
 		"isn't real", "not real", "would be fabricated", "fabricat", "refus", "no such page",
-		"can't verify", "cannot verify", "not authorized", "isn't authorized"} {
+		"can't verify", "cannot verify", "not authorized", "isn't authorized",
+		// Approval-wait phrasing is a WAIT, not a completed action — the
+		// model describing what it will do AFTER approval must not count
+		// as a success claim.
+		"requires your approval", "required for approval", "approval prompt", "waiting for your approval",
+		"awaiting your approval", "needs your approval", "once you approve", "after you approve",
+		"approve so i can", "please approve", "for approval before", "so i can send", "so i can deliver"} {
 		if strings.Contains(t, neg) {
 			return false
 		}
