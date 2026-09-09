@@ -45,21 +45,24 @@ async function loadSecurity(container) {
   const bkH = GhostUI.h('div', { className: 'panel-head' });
   const bkText = GhostUI.h('div');
   bkText.appendChild(GhostUI.h('h2', {}, 'Backups'));
-  bkText.appendChild(GhostUI.h('p', {}, 'Download a copy of your Ghost\u2019s memory, skills, and configuration.'));
+  bkText.appendChild(GhostUI.h('p', {}, 'An encrypted copy of your Ghost. Restoring brings back the same Ghost on this or new hardware.'));
   bkH.appendChild(bkText);
   bk.appendChild(bkH);
   const bkKv = GhostUI.h('div', { className: 'kv' });
+  bkKv.appendChild(securityKv('Conversations', 'Included'));
   bkKv.appendChild(securityKv('Memory', 'Included'));
-  bkKv.appendChild(securityKv('Skills', 'Included'));
-  bkKv.appendChild(securityKv('Configuration', 'Included'));
-  bkKv.appendChild(securityKv('Automations', 'Included'));
-  bkKv.appendChild(securityKv('Secrets', 'Not included'));
+  bkKv.appendChild(securityKv('Routines & automations', 'Included'));
+  bkKv.appendChild(securityKv('Standing permissions', 'Included'));
+  bkKv.appendChild(securityKv('Skills & configuration', 'Included'));
+  bkKv.appendChild(securityKv('Secrets & passwords', 'Never included'));
   bk.appendChild(bkKv);
   const bkActions = GhostUI.h('div', { className: 'row-flex', style: 'margin-top:var(--s-4)' });
   const bkBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => GhostUI.downloadBackup(bkBtn) }, 'Download backup');
   bkActions.appendChild(bkBtn);
+  const rsBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => startRestore(rsBtn) }, 'Restore from backup');
+  bkActions.appendChild(rsBtn);
   bk.appendChild(bkActions);
-  bk.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3)' }, 'Store the file somewhere safe. Secrets like API keys and your password are not included.'));
+  bk.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3)' }, 'Backups are encrypted with a passphrase you choose. After a restore you keep your owner password, but must re-pair devices and reconnect services that need fresh credentials.'));
   container.appendChild(bk);
 
   // Change password panel
@@ -141,6 +144,116 @@ function recoveryRow(k, sub, btnLabel, onClick) {
 }
 
 function securityKv(k, v) { const r = GhostUI.h('div', { className: 'kv-row' }); r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k)); r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v)); return r; }
+
+async function startRestore(btn) {
+  const orig = btn.textContent;
+  const body = GhostUI.h('div');
+  body.appendChild(GhostUI.h('p', { className: 'type-callout text-secondary', style: 'margin-bottom:var(--s-4)' }, 'Choose a backup file (.ghost) and enter its passphrase. Nothing changes until you review what is inside and confirm.'));
+  const fileWrap = GhostUI.h('div', { className: 'field' });
+  fileWrap.appendChild(GhostUI.h('label', {}, 'Backup file'));
+  const fileInput = GhostUI.h('input', { type: 'file', accept: '.ghost' });
+  fileWrap.appendChild(fileInput);
+  body.appendChild(fileWrap);
+  const pw = GhostUI.input('Backup passphrase', 'password');
+  pw.style.marginBottom = 'var(--s-2)';
+  const err = GhostUI.h('div', { className: 'type-foot', style: 'color:var(--bad);min-height:18px' });
+  body.appendChild(pw);
+  body.appendChild(err);
+  GhostUI.modal('Restore from backup', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+      err.textContent = '';
+      if (!fileInput.files || fileInput.files.length === 0) { err.textContent = 'Choose a backup file first.'; return; }
+      if (!pw.value) { err.textContent = 'Enter the backup passphrase.'; return; }
+      const go = e.target;
+      go.disabled = true; go.textContent = 'Checking\u2026';
+      try {
+        const form = new FormData();
+        form.append('archive', fileInput.files[0]);
+        form.append('passphrase', pw.value);
+        const res = await fetch('/api/admin/restore/validate', { method: 'POST', body: form });
+        const j = await res.json();
+        if (!res.ok || !j.ok) throw new Error((j && j.error) || 'invalid backup');
+        e.target.closest('.ghost-modal-backdrop').remove();
+        showRestoreSummary(j.token, pw.value, j.summary);
+      } catch (ex) {
+        err.textContent = ex.message || 'Couldn\u2019t read that backup.';
+        go.disabled = false; go.textContent = orig;
+      }
+    } }, 'Check backup'),
+  ]);
+  setTimeout(() => pw.focus(), 50);
+}
+
+function showRestoreSummary(token, passphrase, s) {
+  const body = GhostUI.h('div');
+  const rows = [
+    ['Conversations', String(s.conversations)],
+    ['Routines', String(s.routines)],
+    ['Scheduled items', String(s.scheduled_items)],
+    ['Standing permissions', String(s.standing_grants)],
+    ['Other files', String(s.portable_files)],
+    ['Exported', s.exported_at || 'unknown'],
+    ['Secrets in backup', s.secrets_included ? 'Yes \u2014 will be restored' : 'No \u2014 must be re-entered'],
+  ];
+  rows.forEach(([k, v]) => {
+    const r = GhostUI.h('div', { className: 'kv-row' });
+    r.appendChild(GhostUI.h('div', { className: 'kv-key' }, k));
+    r.appendChild(GhostUI.h('div', { className: 'kv-val' }, v));
+    body.appendChild(r);
+  });
+  if (s.rebound && s.rebound.length > 0) {
+    body.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3);margin-bottom:var(--s-1)' }, 'Stays on this machine / must be redone:'));
+    s.rebound.forEach(r => body.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, '\u00b7  ' + r)));
+  }
+  body.appendChild(GhostUI.h('p', { className: 'type-callout', style: 'margin-top:var(--s-4)' }, 'Restoring replaces this Ghost\u2019s conversations, memory, routines, automations, and permissions with the backup. Your owner password stays the same; paired devices must be re-paired afterwards.'));
+  GhostUI.modal('Restore this backup?', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Keep current state'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-danger', onClick: async (e) => {
+      e.target.closest('.ghost-modal-backdrop').remove();
+      if (!(await GhostUI.confirmModal('Replace this Ghost\u2019s state?', 'There is no undo. Make sure you have the right backup file.', 'Restore'))) return;
+      applyRestore(token, passphrase);
+    } }, 'Restore'),
+  ]);
+}
+
+async function applyRestore(token, passphrase) {
+  const body = GhostUI.h('div');
+  const status = GhostUI.h('p', { className: 'type-callout' }, 'Starting\u2026');
+  body.appendChild(status);
+  const log = GhostUI.h('pre', { className: 'type-mono', style: 'white-space:pre-wrap;margin:var(--s-3) 0 0;max-height:240px;overflow:auto' });
+  body.appendChild(log);
+  const backdrop = GhostUI.modal('Restoring Ghost', body, null);
+  try {
+    const res = await fetch('/api/admin/restore/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, passphrase, confirmed: true }) });
+    const j = await res.json();
+    if (!res.ok || !j.ok) throw new Error((j && j.error) || 'restore failed to start');
+    for (;;) {
+      await new Promise(r => setTimeout(r, 2000));
+      const sres = await fetch('/api/admin/restore/status');
+      const st = await sres.json();
+      if (st.stage) status.textContent = 'Stage: ' + st.stage + '\u2026';
+      if (st.log) log.textContent = st.log;
+      if (!st.running && st.done) {
+        backdrop.remove();
+        if (st.success) {
+          GhostUI.toast('Restore complete \u2014 re-pair your devices');
+          GhostUI.modal('Restore complete', 'Your Ghost\u2019s conversations, memory, routines, automations, and permissions now come from the backup.\n\nNext: re-pair your phone and any devices, and reconnect services that need fresh credentials. Your owner password is unchanged.', [
+            GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: (e) => { e.target.closest('.ghost-modal-backdrop').remove(); GhostApp.navigate('devices'); } }, 'Pair a device'),
+          ]);
+        } else {
+          GhostUI.modal('Restore did not complete', (st.log || 'The restore failed. Your Ghost was restarted and should be working as before \u2014 check the log above for details.'), [
+            GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
+          ]);
+        }
+        return;
+      }
+    }
+  } catch (ex) {
+    backdrop.remove();
+    GhostUI.toast(ex.message || 'Restore failed.', 'err');
+  }
+}
 
 async function loadSessions(body) {
   let res;

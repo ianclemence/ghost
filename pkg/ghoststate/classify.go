@@ -24,6 +24,11 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 		// import, so the binary never crosses machines.
 		return CategoryRebound, nil
 	case rel == "ghost.db-wal" || rel == "ghost.db-shm":
+		// WAL sidecars only exist while the runtime holds the database
+		// open. Snapshot reads go through SQL (which sees committed state
+		// plus WAL), so the sidecar files themselves are disposable.
+		return CategoryDisposable, nil
+	case rel == "ghost.db-wal" || rel == "ghost.db-shm":
 		return CategoryDisposable, nil
 	case strings.HasPrefix(rel, "conversations/"):
 		// Versioned, deterministic conversation JSONL: the portable form of a

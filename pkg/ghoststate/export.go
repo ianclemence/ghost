@@ -122,7 +122,14 @@ func Export(opts ExportOptions) (*Manifest, error) {
 			// The database is a runtime index, not portable state. Conversations
 			// are exported as versioned, deterministic JSONL; import rehydrates
 			// a fresh database from them.
-			return stageConversationsFromDB(staging, stagingDir, manifest, p)
+			if err := stageConversationsFromDB(staging, stagingDir, manifest, p); err != nil {
+				return err
+			}
+			// Routines, schedules, standing grants, and execution evidence
+			// live only in SQLite (no file form), so they travel as explicit
+			// row snapshots; the binary itself is rebound.
+			manifest.Rebound = append(manifest.Rebound, "ghost.db (binary; rehydrated from portable artifacts)")
+			return stageTableSnapshots(staging, stagingDir, manifest, p)
 		}
 		cat, err := classifyWorkspaceFile(rel)
 		if err != nil {

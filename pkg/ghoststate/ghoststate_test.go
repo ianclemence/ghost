@@ -175,14 +175,16 @@ func TestExportImportRoundTrip(t *testing.T) {
 	if summary != "portable conversations must survive" {
 		t.Fatalf("session summary = %q, want the portable conversation to survive", summary)
 	}
-	// Embeddings are derived state: they are deliberately not portable and are
-	// rebuilt as the agent runs on the new machine.
+	// Embeddings travel in the archive: rag.LoadIndex builds the vector
+	// index exclusively from memory_chunks rows and no code path
+	// re-embeds existing memories, so excluding them would silently kill
+	// vector search over restored memories with no signal.
 	var chunkCount int
 	if err := d.QueryRow(`SELECT COUNT(*) FROM memory_chunks`).Scan(&chunkCount); err != nil {
 		t.Fatalf("count chunks: %v", err)
 	}
-	if chunkCount != 0 {
-		t.Fatalf("memory_chunks: got %d, want 0 (embeddings are derived, not portable)", chunkCount)
+	if chunkCount != 1 {
+		t.Fatalf("memory_chunks: got %d, want 1 (embeddings must survive restore)", chunkCount)
 	}
 
 	for rel, want := range map[string]string{

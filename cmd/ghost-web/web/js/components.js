@@ -210,28 +210,52 @@ const GhostUI = (() => {
     });
   }
 
-  // downloadBackup triggers a backup download from the gateway. Shared by the
-  // Security section and the Home "Back up your Ghost" surface so users always
-  // have a one-click path to their copy of Ghost state.
+  // downloadBackup downloads an encrypted Ghost State archive. Shared by
+  // the Security section and the Home "Back up your Ghost" surface. The
+  // passphrase encrypts the archive; without it the file cannot be
+  // restored, so it is confirmed twice and never sent anywhere else.
   async function downloadBackup(btn) {
     const orig = btn.textContent;
-    btn.disabled = true; btn.textContent = 'Preparing\u2026';
-    try {
-      const res = await fetch('/api/admin/backup', { method: 'POST' });
-      if (!res.ok) throw new Error('failed');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = h('a');
-      a.href = url;
-      a.download = 'ghost-backup-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.tar.gz';
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-      toast('Backup downloaded');
-    } catch (e) {
-      toast('Couldn\u2019t create the backup.', 'err');
-    } finally {
-      btn.disabled = false; btn.textContent = orig;
-    }
+    const body = h('div');
+    body.appendChild(h('p', { className: 'type-callout text-secondary', style: 'margin-bottom:var(--s-4)' }, 'Choose a passphrase to encrypt this backup. You will need it to restore. There is no way to recover a forgotten passphrase.'));
+    const pw1 = input('Backup passphrase (at least 8 characters)', 'password');
+    pw1.style.marginBottom = 'var(--s-2)';
+    const pw2 = input('Repeat the passphrase', 'password');
+    pw2.style.marginBottom = 'var(--s-2)';
+    const err = h('div', { className: 'type-foot', style: 'color:var(--bad);min-height:18px' });
+    body.appendChild(pw1);
+    body.appendChild(pw2);
+    body.appendChild(err);
+    const backdrop = modal('Download backup', body, [
+      h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
+      h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+        err.textContent = '';
+        if (pw1.value.length < 8) { err.textContent = 'At least 8 characters.'; return; }
+        if (pw1.value !== pw2.value) { err.textContent = 'Passphrases don\u2019t match.'; return; }
+        const dl = e.target;
+        dl.disabled = true;
+        try {
+          const res = await fetch('/api/admin/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: pw1.value }) });
+          if (!res.ok) {
+            const j = await res.json().catch(() => null);
+            throw new Error((j && j.error) || 'failed');
+          }
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = h('a');
+          a.href = url;
+          a.download = 'ghost-state-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.ghost';
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+          e.target.closest('.ghost-modal-backdrop').remove();
+          toast('Backup downloaded \u2014 store it somewhere safe');
+        } catch (ex) {
+          err.textContent = ex.message || 'Couldn\u2019t create the backup.';
+          dl.disabled = false;
+        }
+      } }, 'Download'),
+    ]);
+    setTimeout(() => pw1.focus(), 50);
   }
 
   // ── Formatting helpers ──

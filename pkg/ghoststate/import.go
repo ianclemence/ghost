@@ -115,6 +115,14 @@ func Import(opts ImportOptions) (*Manifest, error) {
 		}
 	}
 
+	// Routines, schedules, standing grants, and evidence travel as row
+	// snapshots (they have no file form). Applied after conversations so
+	// the schema exists; unknown or mismatched snapshots fail the import
+	// rather than partially restoring.
+	if err := rehydrateTableSnapshots(opts.Workspace, files); err != nil {
+		return nil, fmt.Errorf("rehydrate table snapshots: %w", err)
+	}
+
 	// Identity is portable state and always restored so the migrated Ghost is
 	// the same Ghost, even on new hardware.
 	createdAt := manifest.IdentityCreatedAt

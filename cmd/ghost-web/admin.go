@@ -1,9 +1,9 @@
 package main
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/appliance"
-	"github.com/ianclemence/ghost/pkg/backup"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/providers"
@@ -1083,73 +1082,282 @@ func handleBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := fmt.Sprintf("ghost-backup-%s.tar.gz", time.Now().Format("20060102-150405"))
-	w.Header().Set("Content-Type", "application/gzip")
+	// Backups are encrypted Ghost State archives (passphrase-protected),
+	// the same format `ghost state export` produces and console restore
+	// accepts. One format, one set of guarantees, no plaintext tarballs.
+	var req struct {
+		Passphrase string `json:"passphrase"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Passphrase) < 8 {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "a passphrase of at least 8 characters is required"})
+		return
+	}
+
+	tmp, err := os.CreateTemp("", "ghost-backup-*.ghost")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not stage backup"})
+		return
+	}
+	tmpPath := tmp.Name()
+	tmp.Close()
+	defer os.Remove(tmpPath)
+
+	manifest, err := ghoststate.Export(ghoststate.ExportOptions{
+		Workspace:   fb.Workspace,
+		ConfigPath:  filepath.Join(fb.GhostDir, "config", "config.json"),
+		Destination: tmpPath,
+		Passphrase:  req.Passphrase,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "backup failed: " + err.Error()})
+		return
+	}
+	_ = manifest
+
+	filename := fmt.Sprintf("ghost-state-%s.ghost", time.Now().Format("20060102-150405"))
+	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+	http.ServeFile(w, r, tmpPath)
+}
 
-	gz := gzip.NewWriter(w)
-	tw := tar.NewWriter(gz)
+// restoreJob tracks an in-flight console restore so the UI can poll it.
+// Mirrors the update-job pattern: the HTTP handler returns fast, the work
+// runs in the background, status is polled.
+type restoreJob struct {
+	mu      sync.Mutex
+	running bool
+	done    bool
+	success bool
+	stage   string
+	log     string
+	summary map[string]interface{}
+}
 
-	// Add config, data, workspace, and .env. The runtime workspace may live
-	// outside the install tree (see the workspace migration), so walk both
-	// roots and give each its own archive prefix.
-	dirs := []string{fb.ConfigDir, fb.DataDir, fb.Workspace}
-	roots := []string{fb.GhostDir}
-	if fb.Workspace != filepath.Join(fb.GhostDir, "workspace") {
-		roots = append(roots, filepath.Dir(fb.Workspace))
-	}
-	for _, root := range roots {
-		if _, err := os.Stat(root); err != nil {
-			continue
+var currentRestore restoreJob
+
+func restoreLogf(format string, args ...interface{}) {
+	currentRestore.mu.Lock()
+	defer currentRestore.mu.Unlock()
+	currentRestore.log += fmt.Sprintf(format, args...) + "\n"
+}
+
+// restoreUploads holds validated archives awaiting confirmed apply,
+// keyed by random token. Files are 0600, pruned after an hour.
+var restoreUploads = struct {
+	mu    sync.Mutex
+	files map[string]restoreUpload
+}{files: map[string]restoreUpload{}}
+
+type restoreUpload struct {
+	path       string
+	uploadedAt time.Time
+}
+
+func pruneRestoreUploads() {
+	restoreUploads.mu.Lock()
+	defer restoreUploads.mu.Unlock()
+	for token, up := range restoreUploads.files {
+		if time.Since(up.uploadedAt) > time.Hour {
+			os.Remove(up.path)
+			delete(restoreUploads.files, token)
 		}
-		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return nil
-			}
-			// Skip workspace internals that change constantly.
-			rel, _ := filepath.Rel(root, path)
-			if info.IsDir() {
-				if backup.ShouldSkipDir(filepath.Base(path)) {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			// Centralized secrets boundary (pkg/backup): credentials,
-			// OAuth tokens, and secrets are never archived. Restore
-			// requires reconnecting integrations — by design.
-			if ok, _ := backup.ShouldExclude(filepath.ToSlash(rel)); ok {
-				return nil
-			}
-			ok := false
-			for _, d := range dirs {
-				if path == d || strings.HasPrefix(path, d+string(filepath.Separator)) {
-					ok = true
-					break
-				}
-			}
-			if !ok {
-				return nil
-			}
-			hdr, err := tar.FileInfoHeader(info, "")
-			if err != nil {
-				return nil
-			}
-			hdr.Name = "ghost/" + rel
-			if err := tw.WriteHeader(hdr); err != nil {
-				return err
-			}
-			f, err := os.Open(path)
-			if err != nil {
-				return nil
-			}
-			io.Copy(tw, f)
-			f.Close()
-			return nil
-		})
+	}
+}
+
+func handleRestoreValidate(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<30)
+	if err := r.ParseMultipartForm(1 << 30); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "could not read upload (max 1GB)"})
+		return
+	}
+	passphrase := r.FormValue("passphrase")
+	f, _, err := r.FormFile("archive")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "archive file is required"})
+		return
+	}
+	defer f.Close()
+
+	tmp, err := os.CreateTemp("", "ghost-restore-*.ghost")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not stage upload"})
+		return
+	}
+	tmpPath := tmp.Name()
+	if _, err := io.Copy(tmp, f); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "could not read upload"})
+		return
+	}
+	tmp.Close()
+	if err := os.Chmod(tmpPath, 0600); err != nil {
+		os.Remove(tmpPath)
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not secure upload"})
+		return
 	}
 
-	tw.Close()
-	gz.Close()
+	sum, err := ghoststate.Summarize(tmpPath, passphrase)
+	if err != nil {
+		os.Remove(tmpPath)
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid backup: " + err.Error()})
+		return
+	}
+
+	token := make([]byte, 16)
+	if _, err := rand.Read(token); err != nil {
+		os.Remove(tmpPath)
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not stage upload"})
+		return
+	}
+	tokenHex := hex.EncodeToString(token)
+	pruneRestoreUploads()
+	restoreUploads.mu.Lock()
+	restoreUploads.files[tokenHex] = restoreUpload{path: tmpPath, uploadedAt: time.Now()}
+	restoreUploads.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"token":   tokenHex,
+		"summary": sum,
+	})
+}
+
+func handleRestoreApply(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Token      string `json:"token"`
+		Passphrase string `json:"passphrase"`
+		Confirmed  bool   `json:"confirmed"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Token == "" || req.Passphrase == "" || !req.Confirmed {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "token, passphrase, and explicit confirmation are required"})
+		return
+	}
+	restoreUploads.mu.Lock()
+	up, ok := restoreUploads.files[req.Token]
+	if ok {
+		delete(restoreUploads.files, req.Token)
+	}
+	restoreUploads.mu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "upload expired or unknown; validate again"})
+		return
+	}
+
+	currentRestore.mu.Lock()
+	if currentRestore.running {
+		currentRestore.mu.Unlock()
+		writeJSON(w, http.StatusConflict, map[string]interface{}{"ok": false, "error": "a restore is already running"})
+		return
+	}
+	currentRestore.running = true
+	currentRestore.done = false
+	currentRestore.success = false
+	currentRestore.stage = "starting"
+	currentRestore.log = ""
+	currentRestore.summary = nil
+	currentRestore.mu.Unlock()
+
+	go runRestore(up.path, req.Passphrase)
+	writeJSON(w, http.StatusAccepted, map[string]interface{}{"ok": true, "message": "Restore started"})
+}
+
+func handleRestoreStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	currentRestore.mu.Lock()
+	defer currentRestore.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"running": currentRestore.running,
+		"done":    currentRestore.done,
+		"success": currentRestore.success,
+		"stage":   currentRestore.stage,
+		"log":     currentRestore.log,
+		"summary": currentRestore.summary,
+	})
+}
+
+func restoreSetStage(stage string) {
+	currentRestore.mu.Lock()
+	defer currentRestore.mu.Unlock()
+	currentRestore.stage = stage
+}
+
+// runRestore applies a validated archive: stop the gateway (it holds the
+// database open), import with force semantics, restart the gateway. On any
+// failure the gateway is restarted anyway so the machine is left working;
+// the error is reported, never hidden.
+func runRestore(archivePath, passphrase string) {
+	defer os.Remove(archivePath)
+	finish := func(success bool, summary map[string]interface{}) {
+		currentRestore.mu.Lock()
+		defer currentRestore.mu.Unlock()
+		currentRestore.running = false
+		currentRestore.done = true
+		currentRestore.success = success
+		currentRestore.summary = summary
+	}
+
+	restoreSetStage("stopping")
+	restoreLogf("Stopping Ghost service...")
+	if out, err := runPrivileged("systemctl", "stop", "ghost"); err != nil {
+		restoreLogf("Could not stop Ghost service: %v %s", err, strings.TrimSpace(string(out)))
+		finish(false, nil)
+		return
+	}
+
+	restoreSetStage("importing")
+	restoreLogf("Importing Ghost State (this replaces durable state)...")
+	manifest, err := ghoststate.Import(ghoststate.ImportOptions{
+		Workspace:  fb.Workspace,
+		ConfigPath: filepath.Join(fb.GhostDir, "config", "config.json"),
+		Source:     archivePath,
+		Passphrase: passphrase,
+		Force:      true,
+	})
+	if err != nil {
+		restoreLogf("Import failed: %v", err)
+		restoreSetStage("restarting")
+		if out, rerr := runPrivileged("systemctl", "start", "ghost"); rerr != nil {
+			restoreLogf("CRITICAL: Ghost service failed to restart: %v %s", rerr, strings.TrimSpace(string(out)))
+			finish(false, nil)
+			return
+		}
+		finish(false, nil)
+		return
+	}
+	restoreLogf("Imported Ghost State (%s).", manifest.GhostID)
+
+	restoreSetStage("restarting")
+	restoreLogf("Restarting Ghost service...")
+	if out, err := runPrivileged("systemctl", "start", "ghost"); err != nil {
+		restoreLogf("CRITICAL: Ghost service failed to restart: %v %s", err, strings.TrimSpace(string(out)))
+		finish(false, nil)
+		return
+	}
+	restoreSetStage("done")
+	restoreLogf("Restore complete. Re-pair your devices and reconnect integrations that need fresh credentials. Your owner password is unchanged.")
+	finish(true, map[string]interface{}{
+		"ghost_id":         manifest.GhostID,
+		"exported_at":      manifest.ExportedAt,
+		"secrets_included": manifest.SecretsIncluded,
+	})
 }
 
 func handleReboot(w http.ResponseWriter, r *http.Request) {
