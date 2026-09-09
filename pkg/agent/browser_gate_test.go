@@ -76,12 +76,21 @@ func newGateHarness(t *testing.T) *gateHarness {
 	return newGateHarnessOnWS(t, t.TempDir())
 }
 
+// hT is the minimal harness surface shared by *testing.T and benchmarks.
+type hT interface {
+	Helper()
+	TempDir() string
+	Cleanup(func())
+	Fatal(args ...interface{})
+	Fatalf(format string, args ...interface{})
+}
+
 // newGateHarnessOnWS wires the real stores over an EXISTING workspace's
 // database, so a test can simulate a restart by building a second harness
 // on the same workspace. The workspace's ghost.db must already exist and
 // be at the schema head (newGateHarness migrates it; restart harnesses
 // reuse the file).
-func newGateHarnessOnWS(t *testing.T, ws string) *gateHarness {
+func newGateHarnessOnWS(t hT, ws string) *gateHarness {
 	t.Helper()
 	database, err := db.NewDB(ws)
 	if err != nil {
