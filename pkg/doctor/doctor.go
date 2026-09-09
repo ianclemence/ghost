@@ -28,6 +28,10 @@ type Doctor struct {
 	provider  providers.LLMProvider
 	registry  *tools.ToolRegistry
 	workspace string
+	// Estate is the configured model inventory (primary + fallbacks).
+	// Optional: when set, the provider check reports the whole estate and
+	// flags cloud entries missing credentials.
+	Estate []providers.ProviderInfo
 }
 
 func New(db *sql.DB, provider providers.LLMProvider, registry *tools.ToolRegistry, workspace string) *Doctor {
@@ -125,7 +129,7 @@ func (d *Doctor) checkSchema(ctx context.Context) CheckResult {
 		return CheckResult{
 			Name:    "schema",
 			Label:   "Database schema",
-			Status: "error",
+			Status:  "error",
 			Message: fmt.Sprintf("Database schema is at version %d but this Ghost needs version %d. Restart Ghost to migrate, or restore from a backup.", at, schema.CurrentVersion),
 			Latency: time.Since(start).Milliseconds(),
 		}
@@ -196,13 +200,48 @@ func (d *Doctor) checkProvider(ctx context.Context) CheckResult {
 			Latency: time.Since(start).Milliseconds(),
 		}
 	}
+	msg := fmt.Sprintf("AI is ready (%s).", model)
+	if est := describeEstate(d.Estate); est != "" {
+		msg += " Estate: " + est
+	}
+	if missing := missingKeys(d.Estate); len(missing) > 0 {
+		return CheckResult{
+			Name:   "provider",
+			Label:  "AI",
+			Status: "warning",
+			Message: msg + " Missing credentials for: " + strings.Join(missing, ", ") +
+				". Those fallbacks will be skipped until keys are added.",
+			Latency: time.Since(start).Milliseconds(),
+		}
+	}
 	return CheckResult{
 		Name:    "provider",
 		Label:   "AI",
 		Status:  "ok",
-		Message: fmt.Sprintf("AI is ready (%s).", model),
+		Message: msg,
 		Latency: time.Since(start).Milliseconds(),
 	}
+}
+
+// describeEstate renders the inventory as "role:model(kind)" entries.
+// Key material never appears — only names and kinds.
+func describeEstate(estate []providers.ProviderInfo) string {
+	var parts []string
+	for _, e := range estate {
+		parts = append(parts, fmt.Sprintf("%s:%s(%s)", e.Role, e.Model, e.Kind))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// missingKeys lists cloud models with no credential configured.
+func missingKeys(estate []providers.ProviderInfo) []string {
+	var out []string
+	for _, e := range estate {
+		if e.Kind == "cloud" && !e.HasCredential {
+			out = append(out, e.Model)
+		}
+	}
+	return out
 }
 
 func (d *Doctor) checkToolRegistry(ctx context.Context) CheckResult {

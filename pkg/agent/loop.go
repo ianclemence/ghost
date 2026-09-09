@@ -429,6 +429,22 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	cmdRegistry := commands.NewRegistry(commands.DefaultDefinitions())
 	doctorRunner := doctor.New(database.DB, provider, toolsRegistry, workspace)
+	// Model estate inventory: what can serve turns, where it runs, and
+	// which cloud entries lack credentials. Logged once at startup (names
+	// and kinds only, never keys) and surfaced in doctor.
+	estate := providers.DescribeEstate(cfg)
+	doctorRunner.Estate = estate
+	{
+		var parts []string
+		for _, e := range estate {
+			key := "nokey"
+			if e.HasCredential {
+				key = "ready"
+			}
+			parts = append(parts, e.Role+":"+e.Model+"("+e.Kind+","+key+")")
+		}
+		logger.InfoCF("agent", "Model estate", map[string]interface{}{"estate": strings.Join(parts, ", ")})
+	}
 
 	router := routing.NewRouter(cfg.Agents.Routing.LightModel, cfg.Agents.Routing.Threshold)
 	fallback := providers.NewFallbackChain(time.Duration(cfg.Agents.Defaults.FallbackCooldown) * time.Second)
