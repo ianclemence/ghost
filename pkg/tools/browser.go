@@ -203,7 +203,9 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 	if call.Owner == "" || call.Sessions == nil {
 		return deny("no owner or session ledger bound")
 	}
-	if call.Op != "" && call.Op != t.Classify() {
+	// The gate binds one concrete operation; it must be this tool's own
+	// action. An authorize-snapshot binding can never drive a click.
+	if call.Op != "" && call.Op != t.action {
 		return deny("operation binding mismatch")
 	}
 	op := t.Classify()

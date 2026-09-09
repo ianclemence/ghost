@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/browser"
@@ -38,19 +39,14 @@ import (
 // consequential-or-higher with explicit broker handling. Unknown
 // browser_* tool names are denied outright.
 
-// browserOp maps a tool name to its capability operation.
+// browserOp maps a tool name to its concrete browser operation. The
+// operation IS the tool action: navigate, snapshot (observe), click, type,
+// press. The tool layer re-verifies this word equals its own action, so a
+// gate binding authorized for one action can never drive a different one.
 func browserOp(tool string) (string, bool) {
 	switch tool {
-	case "browser_navigate":
-		return "navigate", true
-	case "browser_snapshot":
-		return "observe", true
-	case "browser_click":
-		return "click", true
-	case "browser_type":
-		return "type", true
-	case "browser_press":
-		return "press", true
+	case "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press":
+		return strings.TrimPrefix(tool, "browser_"), true
 	default:
 		return "", false
 	}
@@ -58,10 +54,12 @@ func browserOp(tool string) (string, bool) {
 
 // browserRisk derives risk from the operation, never from what the model
 // claims it is doing. Observation changes nothing; driving the page can
-// change the world.
+// change the world. The capability vocabulary (navigate/observe/click/
+// type/press, and future download/upload/transact) declares its own risk
+// here — the runtime decides, not the model.
 func browserRisk(op string) permissions.Risk {
 	switch op {
-	case "navigate", "observe":
+	case "navigate", "snapshot":
 		return permissions.RiskReadOnly
 	default:
 		return permissions.RiskConsequential

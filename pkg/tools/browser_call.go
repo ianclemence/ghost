@@ -53,15 +53,21 @@ func WithBrowserCall(ctx context.Context, call BrowserCall) context.Context {
 	if ctx == nil {
 		return ctx
 	}
-	return context.WithValue(ctx, browserCallKey{}, call)
+	return context.WithValue(ctx, browserCallKey{}, &call)
 }
 
 // BrowserCallFromContext returns the gate-attached binding, or false when
-// the call did not pass through the gate (legacy/internal path).
+// the call did not pass through the gate (legacy/internal path). Presence
+// is carried by the pointer, independent of the bag's contents: a binding
+// that happens to be incomplete still routes to the enforced path and is
+// denied there — it never falls through to ungated execution.
 func BrowserCallFromContext(ctx context.Context) (BrowserCall, bool) {
 	if ctx == nil {
 		return BrowserCall{}, false
 	}
-	call, _ := ctx.Value(browserCallKey{}).(BrowserCall)
-	return call, call.Sessions != nil
+	call, _ := ctx.Value(browserCallKey{}).(*BrowserCall)
+	if call == nil {
+		return BrowserCall{}, false
+	}
+	return *call, true
 }
