@@ -15,17 +15,20 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/cevents"
+	"github.com/ianclemence/ghost/pkg/computer"
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/migrations"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
+	"github.com/ianclemence/ghost/pkg/tasks"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 // CurrentVersion is the schema head this build understands.
-const CurrentVersion = 1
+const CurrentVersion = 2
 
 // baseline builds the full v1 schema through the same initializers
 // production startup has always used. Every step is CREATE-IF-NOT-EXISTS
@@ -68,7 +71,30 @@ func registry() []migrations.Migration {
 			Description: "baseline: full v1 schema via subsystem initializers",
 			UpDB:        baseline,
 		},
+		{
+			Version:     2,
+			Description: "durable work v2: job scope/generation columns, computer leases, browser sessions",
+			UpDB:        durableWorkV2,
+		},
 	}
+}
+
+// durableWorkV2 converges existing databases to the durable-work shape:
+// owner/context/generation/evidence/resume columns on jobs (added only
+// where missing, checked explicitly — never swallowed), plus the lease
+// and browser-session ledgers. Every step is idempotent, so a retry after
+// a crash simply completes instead of failing on half-applied state.
+func durableWorkV2(raw *sql.DB) error {
+	if err := tasks.EnsureV2Columns(raw); err != nil {
+		return fmt.Errorf("jobs v2 columns: %w", err)
+	}
+	if err := computer.EnsureSchema(raw); err != nil {
+		return fmt.Errorf("computer leases: %w", err)
+	}
+	if err := browser.EnsureSchema(raw); err != nil {
+		return fmt.Errorf("browser sessions: %w", err)
+	}
+	return nil
 }
 
 // MigrateToCurrent brings an open database to the schema head, running

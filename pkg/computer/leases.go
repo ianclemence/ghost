@@ -40,9 +40,10 @@ type LeaseStore struct {
 	db *sql.DB
 }
 
-// NewLeaseStore creates the store, creating its table if absent.
-func NewLeaseStore(db *sql.DB) (*LeaseStore, error) {
-	s := &LeaseStore{db: db}
+// EnsureSchema creates the lease ledger table and index. It is the one
+// canonical DDL: stores, migrations, and tests all call it, so the schema
+// cannot drift between them. Idempotent.
+func EnsureSchema(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS computer_leases (
 		id TEXT PRIMARY KEY,
 		resource_id TEXT NOT NULL,
@@ -57,12 +58,20 @@ func NewLeaseStore(db *sql.DB) (*LeaseStore, error) {
 		released_at TEXT
 	)`)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("lease table: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_computer_leases_resource ON computer_leases(resource_id, state)`); err != nil {
+		return fmt.Errorf("lease index: %w", err)
+	}
+	return nil
+}
+
+// NewLeaseStore creates the store, creating its table if absent.
+func NewLeaseStore(db *sql.DB) (*LeaseStore, error) {
+	if err := EnsureSchema(db); err != nil {
 		return nil, err
 	}
-	return s, nil
+	return &LeaseStore{db: db}, nil
 }
 
 func newLeaseID() string {

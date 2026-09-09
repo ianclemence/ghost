@@ -47,10 +47,10 @@ type Driver interface {
 // optional hook inspects every operation (used to assert, e.g., that a
 // purchase never executes without approval).
 type FakeDriver struct {
-	Pages    map[string]Page
-	OnOp     func(op, sessionID, arg string)
-	Closed   []string
-	current  map[string]string
+	Pages   map[string]Page
+	OnOp    func(op, sessionID, arg string)
+	Closed  []string
+	current map[string]string
 }
 
 // NewFakeDriver creates a driver serving the given URL→page map.

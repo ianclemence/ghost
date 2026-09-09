@@ -64,9 +64,10 @@ type SessionStore struct {
 	baseDir string
 }
 
-// NewSessionStore creates the store, creating its table if absent.
-func NewSessionStore(db *sql.DB, baseDir string) (*SessionStore, error) {
-	s := &SessionStore{db: db, baseDir: baseDir}
+// EnsureSchema creates the session ledger table and index. It is the one
+// canonical DDL: stores, migrations, and tests all call it, so the schema
+// cannot drift between them. Idempotent.
+func EnsureSchema(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS browser_sessions (
 		id TEXT PRIMARY KEY,
 		profile TEXT NOT NULL DEFAULT '',
@@ -78,12 +79,20 @@ func NewSessionStore(db *sql.DB, baseDir string) (*SessionStore, error) {
 		expires_at TEXT NOT NULL DEFAULT ''
 	)`)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("browser session table: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_browser_sessions_owner ON browser_sessions(owner, context_id)`); err != nil {
+		return fmt.Errorf("browser session index: %w", err)
+	}
+	return nil
+}
+
+// NewSessionStore creates the store, creating its table if absent.
+func NewSessionStore(db *sql.DB, baseDir string) (*SessionStore, error) {
+	if err := EnsureSchema(db); err != nil {
 		return nil, err
 	}
-	return s, nil
+	return &SessionStore{db: db, baseDir: baseDir}, nil
 }
 
 func newSessionID() string {

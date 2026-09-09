@@ -65,7 +65,7 @@ func AvailabilityOf(d Descriptor, now time.Time) Availability {
 // Registry holds the computers one Ghost knows about. It is inventory,
 // not execution: driving a computer still requires a lease.
 type Registry struct {
-	mu       sync.RWMutex
+	mu        sync.RWMutex
 	computers map[string]Descriptor
 }
 

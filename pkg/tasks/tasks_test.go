@@ -13,14 +13,8 @@ func newTestStore(t *testing.T, events *[]string) *Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Schema (duplicated minimally; real Ghost uses pkg/db).
-	exec := `CREATE TABLE jobs (
-		id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL,
-		progress REAL NOT NULL DEFAULT 0, checkpoints JSON, payload JSON,
-		session_key TEXT, error TEXT, attempts INTEGER NOT NULL DEFAULT 0,
-		created_at DATETIME NOT NULL, started_at DATETIME, finished_at DATETIME,
-		updated_at DATETIME NOT NULL)`
-	if _, err := db.Exec(exec); err != nil {
+	// Canonical schema: the same DDL the migration chain converges to.
+	if err := EnsureSchema(db); err != nil {
 		t.Fatal(err)
 	}
 	s := NewStore(db, func(kind string, job Job) {

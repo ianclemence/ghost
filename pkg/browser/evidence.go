@@ -9,16 +9,16 @@ import (
 // observations are redacted before evidence is built, and Refs carry
 // identifiers (screenshot IDs, file hashes), never content.
 type Evidence struct {
-	Operation  string
-	SessionID  string
-	TaskID     string
-	ContextID  string
-	URL        string
-	StartedAt  time.Time
-	EndedAt    time.Time
-	Outcome    string
-	Detail     string
-	Refs       map[string]string
+	Operation string
+	SessionID string
+	TaskID    string
+	ContextID string
+	URL       string
+	StartedAt time.Time
+	EndedAt   time.Time
+	Outcome   string
+	Detail    string
+	Refs      map[string]string
 }
 
 // Outcomes for browser evidence.

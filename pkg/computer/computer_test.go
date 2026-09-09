@@ -32,7 +32,7 @@ func TestOpRiskMapping(t *testing.T) {
 		OpScroll: "low_risk", OpClick: "low_risk", OpClose: "low_risk",
 		OpType: "consequential", OpPressKey: "consequential",
 		OpUpload: "consequential", OpDownload: "consequential",
-		OpExecute: "high_impact",
+		OpExecute:      "high_impact",
 		Op("nonsense"): "consequential",
 	}
 	for op, want := range cases {
