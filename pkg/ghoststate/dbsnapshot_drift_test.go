@@ -62,11 +62,12 @@ func TestMigratedDBExportsDurableWork(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 	seeds := []string{
-		`INSERT INTO jobs (id, kind, status, created_at, updated_at, owner, context_id, generation, evidence) VALUES ('j1', 'test', 'waiting_for_permission', 1, 1, 'ian', 'personal', 'gen-1', 'need camera')`,
+		`INSERT INTO jobs (id, kind, status, created_at, updated_at, owner, context_id, generation, evidence, resume_state) VALUES ('j1', 'test', 'waiting_for_permission', 1, 1, 'ian', 'personal', 'gen-1', 'need camera', 'cursor:step2')`,
 		`INSERT INTO computer_leases (id, resource_id, owner, task_id, state) VALUES ('l1', 'r1', 'ian', 'j1', 'active')`,
 		`INSERT INTO browser_sessions (id, profile, owner, context_id, task_id) VALUES ('s1', 'p', 'ian', 'personal', 'j1')`,
 		`INSERT INTO event_consumers (consumer, last_seq, updated_at) VALUES ('c1', 41, 'x')`,
 		`INSERT INTO event_claims (event_id, consumer, claimed_at) VALUES ('e1', 'c1', 'x')`,
+		`INSERT INTO permission_requests (id, request_id, agent_id, capability, action, risk, status, created_at, expires_at) VALUES ('pr1', 'req-1', 'a', 'browser', 'browser_click', 'consequential', 'pending', '2026-01-01T00:00:00Z', '2026-01-01T00:15:00Z')`,
 	}
 	for _, s := range seeds {
 		if _, err := raw.Exec(s); err != nil {
@@ -108,12 +109,19 @@ func TestMigratedDBExportsDurableWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d2.Close()
-	var owner, ctx, gen, ev string
-	if err := d2.QueryRow(`SELECT owner, context_id, generation, evidence FROM jobs WHERE id='j1'`).Scan(&owner, &ctx, &gen, &ev); err != nil {
+	var owner, ctx, gen, ev, resume, status string
+	if err := d2.QueryRow(`SELECT status, owner, context_id, generation, evidence, resume_state FROM jobs WHERE id='j1'`).Scan(&status, &owner, &ctx, &gen, &ev, &resume); err != nil {
 		t.Fatalf("read restored job: %v", err)
+	}
+	if status != "waiting_for_permission" || resume != "cursor:step2" {
+		t.Fatalf("restored job lost live status/resume: %q %q", status, resume)
 	}
 	if owner != "ian" || ctx != "personal" || gen != "gen-1" || ev != "need camera" {
 		t.Fatalf("job scope lost: %q %q %q %q", owner, ctx, gen, ev)
+	}
+	// A pending approval is executable live state: it must NOT come back.
+	if n := count(t, d2, `SELECT COUNT(*) FROM permission_requests`); n != 0 {
+		t.Fatalf("permission_requests: got %d, want 0 (approvals never restore)", n)
 	}
 	var seq int64
 	if err := d2.QueryRow(`SELECT last_seq FROM event_consumers WHERE consumer='c1'`).Scan(&seq); err != nil || seq != 41 {
