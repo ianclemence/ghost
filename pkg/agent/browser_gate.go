@@ -256,9 +256,12 @@ func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, request
 	}
 	g := al.governance
 	args := resume.Args
-	tool, _ := args[contBrowserTool].(string)
-	if tool == "" {
-		tool = resume.Tool
+	// Trust order: the tool name comes from the broker-signed approval
+	// action (resume.Tool). The continuation copy is corroboration only —
+	// a tampered copy that disagrees refuses instead of redirecting.
+	tool := resume.Tool
+	if stored, _ := args[contBrowserTool].(string); stored != "" && stored != tool {
+		return refuse("Approval was for a different browser operation. Nothing was run.")
 	}
 	op, ok := browserOp(tool)
 	if !ok {
