@@ -23,6 +23,44 @@ type ToolLoopConfig struct {
 	Tools         *ToolRegistry
 	MaxIterations int
 	LLMOptions    map[string]any
+	// BrowserAuth governs subagent browser calls. When set, browser_*
+	// calls resolve through it: a returned binding executes under the
+	// gate, a returned result replaces execution (approval wait or
+	// denial). When nil, subagent browser calls are refused outright —
+	// model-controlled execution without a gate is never silently
+	// allowed.
+	BrowserAuth SubagentBrowserAuth
+}
+
+// SubagentBrowserAuth authorizes one subagent browser call against the
+// runtime (owner/context/session/task from the parent turn, permission
+// broker, session binding). It returns the server-resolved binding to
+// execute under, or a result that replaces execution when the call must
+// wait or is denied.
+type SubagentBrowserAuth func(ctx context.Context, tool string, args map[string]interface{}) (BrowserCall, *ToolResult)
+
+// isBrowserToolName reports whether a tool name is a governed browser
+// operation. Single predicate so every dispatch site agrees.
+func isBrowserToolName(name string) bool {
+	return len(name) > 8 && name[:8] == "browser_"
+}
+
+// executeSubagentBrowser routes a subagent browser call through the
+// authorizing hook when one is configured. Without a hook there is no
+// gate, and without a gate model-controlled browser execution is
+// refused — fail closed with a message the subagent can report.
+func executeSubagentBrowser(ctx context.Context, config ToolLoopConfig, tc providers.ToolCall, channel, chatID string) *ToolResult {
+	if config.BrowserAuth == nil {
+		return ErrorResult("Browser use is not authorized for this subagent. Nothing was run.")
+	}
+	bag, replacement := config.BrowserAuth(ctx, tc.Name, tc.Arguments)
+	if replacement != nil {
+		return replacement
+	}
+	if config.Tools == nil {
+		return ErrorResult("No tools available")
+	}
+	return config.Tools.ExecuteWithContext(WithBrowserCall(ctx, bag), tc.Name, tc.Arguments, channel, chatID, SessionKeyFromContext(ctx), nil)
 }
 
 // ToolLoopResult contains the result of running the tool loop.
@@ -125,7 +163,9 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 
 			// Execute tool (no async callback for subagents - they run independently)
 			var toolResult *ToolResult
-			if config.Tools != nil {
+			if isBrowserToolName(tc.Name) {
+				toolResult = executeSubagentBrowser(ctx, config, tc, channel, chatID)
+			} else if config.Tools != nil {
 				toolResult = config.Tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, channel, chatID, "", nil)
 			} else {
 				toolResult = ErrorResult("No tools available")

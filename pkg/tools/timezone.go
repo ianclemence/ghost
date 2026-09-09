@@ -64,11 +64,11 @@ func ValidateTimezone(tz string) string {
 //	  - Timezone absent/unknown never blocks; scheduling falls back to UTC
 //	    and labels the fallback explicitly.
 type RequestLocation struct {
-	City     string
-	Latitude string
+	City      string
+	Latitude  string
 	Longitude string
-	Timezone string
-	Source   string
+	Timezone  string
+	Source    string
 }
 
 // RequestLocationFromMetadata extracts the validated location contract.

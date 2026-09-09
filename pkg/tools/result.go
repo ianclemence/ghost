@@ -34,6 +34,12 @@ type ToolResult struct {
 	// Err is the underlying error (not JSON serialized).
 	// Used for internal error handling and logging.
 	Err error `json:"-"`
+
+	// Evidence is the runtime proof of what executed (operation, session,
+	// policy/permission refs, outcome). Set by governed tools; the agent
+	// loop forwards it into the canonical event. A successful state-
+	// changing result without evidence is treated as unverified.
+	Evidence map[string]interface{} `json:"-"`
 }
 
 // NewToolResult creates a basic ToolResult with content for the LLM.

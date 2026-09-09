@@ -137,7 +137,7 @@ var coreToolNames = map[string]bool{
 	"remember": true, "context_get": true, "memory_curate": true,
 	"message": true, "skill_manage": true, "todo": true, "cron": true,
 	"schedule": true,
-	"spawn": true, "subagent": true, "clarify": true,
+	"spawn":    true, "subagent": true, "clarify": true,
 }
 
 // turnIntentTools maps message keyword signals to niche tools to include so a

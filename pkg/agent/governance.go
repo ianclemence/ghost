@@ -250,13 +250,16 @@ var approvalPhrases = map[string]permissions.GrantType{
 
 // ResumeOutcome is a deterministically resumed approval: no LLM restart,
 // no repeated request — the paused call re-executes with its preserved
-// continuation and the runtime reports the verified result.
+// continuation and the runtime reports the verified result. Grant records
+// how the approval was given so the resume path can re-verify standing
+// grants (revocation) instead of treating every resume identically.
 type ResumeOutcome struct {
 	Resumed    bool
 	Denied     bool
 	Capability string
 	Tool       string
 	Args       map[string]interface{}
+	Grant      permissions.GrantType
 	Message    string
 }
 
@@ -288,19 +291,38 @@ func (g *Governance) CheckApprovalReply(sessionKey, text string) ResumeOutcome {
 		return ResumeOutcome{Denied: true,
 			Message: "Understood — I didn't run it. Nothing was changed."}
 	}
-	consumed, ok := g.Broker.ConsumeApproved(resolved.RequestID)
+	// allow_once resumes by consuming the approval (exactly one execution
+	// per approval — a second reply finds nothing to consume). allow_always
+	// stores a standing grant and resumes from the approved request; the
+	// caller re-evaluates current policy before executing so a revoked
+	// grant stops the resume.
+	if grant == permissions.GrantOnce {
+		consumed, ok := g.Broker.ConsumeApproved(resolved.RequestID)
+		if !ok {
+			return ResumeOutcome{Message: "That approval was already used or expired. Please make the request again."}
+		}
+		return resumeFrom(consumed, grant)
+	}
+	approved, ok := g.Broker.ApprovedRequest(resolved.RequestID)
 	if !ok {
 		return ResumeOutcome{Message: "That approval couldn't be applied. Please make the request again."}
 	}
+	return resumeFrom(approved, grant)
+}
+
+// resumeFrom rebuilds the paused call from an approved request's durable
+// continuation. The action field may carry a ":detail" suffix (see
+// toolAction); only the tool name resumes.
+func resumeFrom(r *permissions.Request, grant permissions.GrantType) ResumeOutcome {
 	args := map[string]interface{}{}
-	for k, v := range consumed.Continuation {
+	for k, v := range r.Continuation {
 		args[k] = v
 	}
-	tool := consumed.Action
+	tool := r.Action
 	if idx := strings.Index(tool, ":"); idx > 0 {
 		tool = tool[:idx]
 	}
-	return ResumeOutcome{Resumed: true, Capability: consumed.Capability, Tool: tool, Args: args}
+	return ResumeOutcome{Resumed: true, Capability: r.Capability, Tool: tool, Args: args, Grant: grant}
 }
 
 // NewGovernance builds the substrate handle and wires broker lifecycle

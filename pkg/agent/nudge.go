@@ -10,9 +10,9 @@ import (
 )
 
 type NudgeConfig struct {
-	Enabled         bool `json:"enabled"`
-	MemoryInterval  int  `json:"memory_interval"`
-	SkillInterval   int  `json:"skill_interval"`
+	Enabled        bool `json:"enabled"`
+	MemoryInterval int  `json:"memory_interval"`
+	SkillInterval  int  `json:"skill_interval"`
 }
 
 type NudgeManager struct {

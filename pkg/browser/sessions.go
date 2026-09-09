@@ -164,6 +164,14 @@ func (s *SessionStore) GetOrCreate(owner, contextID, taskID, profile string, ttl
 	return sess, nil
 }
 
+// Get loads a session by ID, live or expired. Callers decide whether an
+// expired row is an error (resume must fail closed) or a miss.
+func (s *SessionStore) Get(id string) (*Session, error) {
+	row := s.db.QueryRow(`SELECT id, profile, owner, context_id, task_id, created_at, last_used_at, expires_at
+		FROM browser_sessions WHERE id=?`, id)
+	return scanSession(row)
+}
+
 // Touch refreshes a session's lifetime.
 func (s *SessionStore) Touch(id string, ttl time.Duration) error {
 	if ttl <= 0 {

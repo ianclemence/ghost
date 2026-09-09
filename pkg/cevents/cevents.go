@@ -83,12 +83,18 @@ const (
 	OperationFailed Type = "operation.failed"
 )
 
-// Durable reports whether the type is persisted long-term. Transient
-// types (progress heartbeats) live in NDJSON + memory only, never the
-// warehouse.
+// Durable reports whether the type is persisted in the warehouse (crash-
+// safe, replayable, queryable). Transient types (progress heartbeats,
+// tool start markers, retrieval reads) live in NDJSON + memory only.
+//
+// tool.completed is durable: success claims are graded against warehouse
+// evidence (golden truthfulness), and governed executions must leave a
+// restart-surviving record. Durability is crash-safety, not infinite
+// retention — Prune still ages out old tool.completed rows by explicit
+// retention policy (see SD-card assessment in docs).
 func (t Type) Durable() bool {
 	switch t {
-	case AgentProgress, ToolStarted, ToolCompleted, MemoryRetrieved:
+	case AgentProgress, ToolStarted, MemoryRetrieved:
 		return false
 	default:
 		return true
@@ -420,9 +426,13 @@ func (s *Stream) Since(seq int64, limit int, f Filter) []*Event {
 	return scanAll(rows)
 }
 
-// Prune deletes transient-scope rows older than maxAge, keeping durable
-// history bounded. Durable types are never pruned by age here (explicit
-// retention policy lives with the caller).
+// Prune deletes high-volume telemetry rows older than maxAge: progress
+// heartbeats, tool start markers, retrieval reads, and tool completion
+// outcomes. Durability means surviving restarts; retention is a separate
+// caller-chosen window, and completion rows older than the window carry
+// no live authority (leases, sessions, and generations expire on their
+// own clocks). Callers needing longer outcome history export journals,
+// not the live warehouse.
 func (s *Stream) Prune(maxAge time.Duration) int {
 	cutoff := time.Now().Add(-maxAge).Format(time.RFC3339)
 	res, err := s.db.Exec(`DELETE FROM canonical_events WHERE timestamp < ? AND

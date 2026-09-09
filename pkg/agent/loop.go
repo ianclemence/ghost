@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
@@ -112,6 +113,12 @@ type AgentLoop struct {
 	standingBrokerInst *permissions.Broker
 	// jobs is the durable task store (SQLite-backed, part of Ghost State).
 	jobs *tasks.Store
+
+	// browserSessionsInst is the browser session ledger for this loop's
+	// database, opened lazily by the browser gate.
+	browserSessionsOnce sync.Once
+	browserSessionsInst *browser.SessionStore
+	browserSessionsErr  error
 
 	// noticer is the value gate for proactive behaviour ("proactive ≠ noisy").
 	noticer *Noticer
@@ -626,6 +633,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 			logger.InfoCF("agent", "durable jobs interrupted by restart (resumable)", map[string]interface{}{"count": n})
 		}
 	}
+
+	// Subagent browser calls resolve through the same gate as main-turn
+	// calls (parent session binding, broker, session ledger). The closure
+	// runs at subagent tool time, when al is fully constructed.
+	subagentManager.BrowserAuth = al.authorizeSubagentBrowser
 
 	return al, nil
 }
@@ -1142,8 +1154,22 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 				}
 				return endTurn(resume.Message, nil)
 			}
-			toolResult := al.tools.ExecuteWithContext(ctx, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey, nil)
-			al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, toolResult.IsError)
+			// Browser resumes re-verify the stored approval against live
+			// state (owner, context, session, generation, revocation)
+			// before executing. Anything drifted refuses instead of
+			// running under a stale yes.
+			var toolResult *tools.ToolResult
+			if isBrowserTool(resume.Tool) {
+				if call, refuse := al.resumeBrowserCall(resume, msg.SessionKey, requestID); refuse != nil {
+					toolResult = refuse
+				} else {
+					toolResult = al.runBrowserTool(ctx, call, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey)
+				}
+				al.publishBrowserEvidence(requestID, msg.SessionKey, resume.Tool, toolResult)
+			} else {
+				toolResult = al.tools.ExecuteWithContext(ctx, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey, nil)
+				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, toolResult.IsError)
+			}
 			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, toolResult.IsError)
 			text := toolResult.ForLLM
 			if toolResult.IsError {
@@ -1870,8 +1896,25 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					break
 				}
 			}
-			toolResult := activeTools.ExecuteWithContext(toolCtx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, opts.SessionKey, asyncCallback)
-			if al.governance != nil {
+			// Browser calls go through the browser gate (policy + broker
+			// + session binding + evidence), never straight to the
+			// executor. The gate publishes its own evidence-carrying
+			// canonical event, so the generic ToolRan is skipped for
+			// gate-handled calls. Non-browser tools are untouched.
+			toolResult, browserGoverned, browserStop := al.maybeRunBrowserTool(toolCtx, activeTools, tc, opts, asyncCallback)
+			if browserGoverned {
+				if browserStop {
+					toolResultMsg := providers.Message{
+						Role:       "tool",
+						Content:    toolResult.ForLLM,
+						ToolCallID: tc.ID,
+					}
+					messages = append(messages, toolResultMsg)
+					al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+					finalContent = toolResult.ForLLM
+					break
+				}
+			} else if al.governance != nil {
 				al.governance.ToolRan(opts.RequestID, opts.SessionKey, tc.Name, toolResult.IsError)
 			}
 

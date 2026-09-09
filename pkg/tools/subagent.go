@@ -93,6 +93,9 @@ type SubagentManager struct {
 	nextID        int
 	policy        SubagentPolicy
 	activeCount   int
+	// BrowserAuth, when set, governs subagent browser_* calls (see
+	// ToolLoopConfig). Set by the embedding runtime; nil fails closed.
+	BrowserAuth SubagentBrowserAuth
 }
 
 func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace string, bus *bus.MessageBus) *SubagentManager {
@@ -213,6 +216,9 @@ func (sm *SubagentManager) runLoop(ctx context.Context, taskPrompt, originChanne
 	maxIter := sm.maxIterations
 	sm.mu.RUnlock()
 
+	sm.mu.RLock()
+	browserAuth := sm.BrowserAuth
+	sm.mu.RUnlock()
 	return RunToolLoop(ctx, ToolLoopConfig{
 		Provider:      sm.provider,
 		Model:         sm.defaultModel,
@@ -222,6 +228,7 @@ func (sm *SubagentManager) runLoop(ctx context.Context, taskPrompt, originChanne
 			"max_tokens":  4096,
 			"temperature": 0.7,
 		},
+		BrowserAuth: browserAuth,
 	}, messages, originChannel, originChatID)
 }
 

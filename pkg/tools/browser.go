@@ -180,10 +180,106 @@ func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...str
 }
 
 func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
+	// The gate-attached binding takes precedence: model-reachable calls
+	// run enforced. The Policy path is the previous slice's guarded mode
+	// for explicitly configured callers; the bare path is legacy/internal.
+	if _, ok := BrowserCallFromContext(ctx); ok {
+		return t.executeEnforced(ctx, args)
+	}
 	if t.Policy != nil && t.Policy.Sessions != nil {
 		return t.executeGuarded(ctx, args)
 	}
 	return t.executeBare(ctx, args)
+}
+
+// executeEnforced runs one gate-bound browser operation. Every check is
+// server-side: owner/context/task come from the BrowserCall bag, never
+// from tool args, so forged arguments cannot widen authority.
+func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]interface{}) *ToolResult {
+	call, _ := BrowserCallFromContext(ctx)
+	deny := func(reason string) *ToolResult {
+		return ErrorResult("Browser policy denied this operation: " + reason)
+	}
+	if call.Owner == "" || call.Sessions == nil {
+		return deny("no owner or session ledger bound")
+	}
+	if call.Op != "" && call.Op != t.Classify() {
+		return deny("operation binding mismatch")
+	}
+	op := t.Classify()
+	if op == "act" && call.Permission == "" {
+		return deny("state-changing browser operation requires broker authorization")
+	}
+	taskID := call.TaskID
+	if taskID == "" {
+		taskID = SessionKeyFromContext(ctx)
+		if taskID == "" {
+			return deny("no work item bound")
+		}
+	}
+	started := time.Now().UTC()
+	var sess *browser.Session
+	if call.SessionID != "" {
+		// Pinned session (approval resume): the stored row must still
+		// belong to this owner/context/task and still be live. Anything
+		// else fails closed — no silent rebinding.
+		row, err := call.Sessions.Get(call.SessionID)
+		if err != nil {
+			return deny("browser session unavailable")
+		}
+		if row == nil {
+			return deny("browser session not found")
+		}
+		if row.Owner != call.Owner || row.ContextID != call.ContextID || row.TaskID != taskID {
+			return deny("browser session belongs to a different owner, context, or task")
+		}
+		if time.Now().UTC().After(row.ExpiresAt) {
+			return deny("browser session expired; ask again to start a fresh one")
+		}
+		sess = row
+		if err := call.Sessions.Touch(sess.ID, 0); err != nil {
+			return deny("browser session unavailable")
+		}
+	} else {
+		profile := call.Profile
+		if profile == "" {
+			profile = "default"
+		}
+		var err error
+		sess, err = call.Sessions.GetOrCreate(call.Owner, call.ContextID, taskID, profile, 0)
+		if err != nil {
+			return deny("browser session unavailable")
+		}
+	}
+	res := t.executeBare(ctx, args)
+	outcome := "ok"
+	if res.IsError {
+		outcome = "error"
+	}
+	ev := browser.Evidence{
+		Operation: t.action + ":" + op,
+		SessionID: sess.ID, TaskID: taskID, ContextID: call.ContextID,
+		Outcome: outcome, Detail: "browser." + t.action,
+		StartedAt: started, EndedAt: time.Now().UTC(),
+	}
+	if call.OnEvidence != nil {
+		call.OnEvidence(taskID, ev)
+	}
+	res.Evidence = map[string]interface{}{
+		"op":         "browser." + t.action,
+		"class":      op,
+		"owner":      call.Owner,
+		"context":    call.ContextID,
+		"task":       taskID,
+		"session":    sess.ID,
+		"permission": call.Permission,
+		"outcome":    outcome,
+	}
+	if res.IsError || res.ForLLM == "" {
+		return res
+	}
+	labeled := browser.ObserveText(res.ForLLM)
+	return &ToolResult{ForLLM: labeled, ForUser: res.ForUser, Silent: res.Silent, IsError: false, Evidence: res.Evidence}
 }
 
 // executeGuarded binds the call to an isolated session, runs it, then

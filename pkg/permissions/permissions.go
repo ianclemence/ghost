@@ -420,6 +420,23 @@ func (b *Broker) PendingForSession(sessionKey string) (*Request, bool) {
 	return r, true
 }
 
+// ApprovedRequest returns an approved, unexpired, unconsumed request by
+// turn id. allow_once approvals must go through ConsumeApproved (exactly
+// one execution); allow_always approvals resume from here, re-checked
+// against current grants by the caller (revocation takes effect).
+func (b *Broker) ApprovedRequest(requestID string) (*Request, bool) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	r, ok := b.byRequestID(requestID)
+	if !ok || r.Status != StatusApproved {
+		return nil, false
+	}
+	if b.now().After(r.ExpiresAt) {
+		return nil, false
+	}
+	return r, true
+}
+
 // PendingForRequest returns the live pending request for a turn, if any.
 // This is the approval-continuation lookup: restart-safe via SQLite.
 func (b *Broker) PendingForRequest(requestID string) (*Request, bool) {

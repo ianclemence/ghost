@@ -2,18 +2,44 @@ package agent
 
 import (
 	"context"
+	"database/sql"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
+	"github.com/ianclemence/ghost/pkg/schema"
 )
+
+// migrateWorkspaceDB brings a test workspace database to the schema head,
+// exactly as gateway startup does before the loop, export, or any
+// subsystem runs. Absent database file means nothing to migrate.
+func migrateWorkspaceDB(t *testing.T, ws string) {
+	t.Helper()
+	dbPath := filepath.Join(ws, "ghost.db")
+	if _, err := os.Stat(dbPath); err != nil {
+		return
+	}
+	raw, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	defer raw.Close()
+	if _, err := schema.MigrateToCurrent(raw); err != nil {
+		t.Fatalf("migrate test workspace: %v", err)
+	}
+}
 
 // exportImportWorkspace round-trips a workspace's Ghost State into a fresh
 // target workspace (passphrase-gated archive) and returns the target.
+// Production always migrates before export (gateway startup contract), so
+// the helper migrates the source database first: tests must prove
+// real-shape exports, not unmigrated-shape accidents.
 func exportImportWorkspace(t *testing.T, sourceWS string) string {
 	t.Helper()
+	migrateWorkspaceDB(t, sourceWS)
 	archive := filepath.Join(t.TempDir(), "ghost.ghost")
 	if _, err := ghoststate.Export(ghoststate.ExportOptions{
 		Workspace:   sourceWS,

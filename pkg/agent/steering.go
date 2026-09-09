@@ -24,16 +24,16 @@ type SteeringMessage struct {
 	Timestamp   time.Time `json:"timestamp"`
 	Channel     string    `json:"channel"`
 	ChatID      string    `json:"chat_id"`
-	IsInterrupt bool      `json:"is_interrupt"` // If true, requests graceful stop
+	IsInterrupt bool      `json:"is_interrupt"`  // If true, requests graceful stop
 	IsHardAbort bool      `json:"is_hard_abort"` // If true, requests immediate cancellation
 }
 
 // SteeringQueue is a thread-safe, session-scoped queue for steering messages.
 type SteeringQueue struct {
-	queues    map[string][]SteeringMessage
-	maxSize   int
-	mode      SteeringMode
-	mu        sync.Mutex
+	queues  map[string][]SteeringMessage
+	maxSize int
+	mode    SteeringMode
+	mu      sync.Mutex
 }
 
 // NewSteeringQueue creates a new SteeringQueue with the given mode and max size.
@@ -71,7 +71,7 @@ func (sq *SteeringQueue) Enqueue(msg SteeringMessage) bool {
 
 	sq.queues[scope] = append(queue, msg)
 	logger.DebugCF("steering", "Message enqueued", map[string]interface{}{
-		"scope": scope,
+		"scope":     scope,
 		"queue_len": len(sq.queues[scope]),
 	})
 	return true
