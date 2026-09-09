@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/clock"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/schema"
 	"github.com/ianclemence/ghost/pkg/skills"
@@ -42,6 +43,7 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 	checks := []func(context.Context) CheckResult{
 		d.checkDatabase,
 		d.checkSchema,
+		d.checkClock,
 		d.checkProvider,
 		d.checkToolRegistry,
 		d.checkBrowser,
@@ -134,6 +136,36 @@ func (d *Doctor) checkSchema(ctx context.Context) CheckResult {
 		Status:  "ok",
 		Message: fmt.Sprintf("Database schema is current (version %d).", at),
 		Latency: time.Since(start).Milliseconds(),
+	}
+}
+
+func (d *Doctor) checkClock(ctx context.Context) CheckResult {
+	start := time.Now()
+	switch st := clock.Assess(); st {
+	case clock.Invalid:
+		return CheckResult{
+			Name:    "clock",
+			Label:   "System clock",
+			Status:  "error",
+			Message: "System clock is not trustworthy; scheduled automations are held until time is sane. Check network time sync.",
+			Latency: time.Since(start).Milliseconds(),
+		}
+	case clock.Synced:
+		return CheckResult{
+			Name:    "clock",
+			Label:   "System clock",
+			Status:  "ok",
+			Message: "System clock is synchronized.",
+			Latency: time.Since(start).Milliseconds(),
+		}
+	default:
+		return CheckResult{
+			Name:    "clock",
+			Label:   "System clock",
+			Status:  "warning",
+			Message: "System clock looks sane but NTP sync is " + st.String() + "; automation runs normally.",
+			Latency: time.Since(start).Milliseconds(),
+		}
 	}
 }
 

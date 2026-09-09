@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/adhocore/gronx"
+	"github.com/ianclemence/ghost/pkg/clock"
 )
 
 // Executor is the function signature for executing a scheduled item.
@@ -25,6 +26,14 @@ type Service struct {
 	mu       sync.RWMutex
 	stopChan chan struct{}
 	running  bool
+	// ClockGate, when set, is consulted on every tick: a false return
+	// means wall time is untrustworthy and due items must not fire this
+	// cycle. Nil means always fire (tests, callers without a clock).
+	ClockGate func() bool
+	// clockBlocked remembers the gate state to log transitions once
+	// instead of every second.
+	clockBlocked bool
+	clockWatch   clock.Watcher
 }
 
 // NewService creates a new scheduler service.
@@ -84,6 +93,25 @@ func (s *Service) runLoop() {
 // tick checks for due items and executes them.
 func (s *Service) tick() {
 	now := time.Now().UTC()
+
+	// A stepped wall clock explains every "everything fired at once"
+	// mystery; record it loudly but keep firing semantics unchanged.
+	if s.clockWatch.Observe(now, time.Now()) {
+		log.Printf("[scheduled] wall-clock jump detected; due items evaluate against the new time")
+	}
+	if s.ClockGate != nil && !s.ClockGate() {
+		s.mu.Lock()
+		blocked := !s.clockBlocked
+		s.clockBlocked = true
+		s.mu.Unlock()
+		if blocked {
+			log.Printf("[scheduled] wall clock untrusted; holding scheduled items until time is sane")
+		}
+		return
+	}
+	s.mu.Lock()
+	s.clockBlocked = false
+	s.mu.Unlock()
 
 	items, err := s.store.ListDue(now)
 	if err != nil {

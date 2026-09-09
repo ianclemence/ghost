@@ -27,6 +27,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
+	"github.com/ianclemence/ghost/pkg/clock"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/devices"
@@ -927,11 +928,20 @@ func gatewayCmd() {
 			"skills_available": skillsInfo["available"],
 		})
 
+	// Wall-clock gate shared by both schedulers: an obviously wrong clock
+	// (Pi without RTC after power loss) holds automation until time is
+	// sane. Conversational and local functions are unaffected.
+	clockGate := clock.NewGate(30 * time.Second)
+
 	// Setup cron tool and service
 	cronService := setupCronTool(agentLoop, msgBus, cfg.WorkspacePath())
+	cronService.ClockGate = clockGate.Safe
 
 	// Setup scheduled service
 	scheduledService := setupScheduledService(agentLoop, msgBus, cfg.WorkspacePath())
+	if scheduledService != nil {
+		scheduledService.ClockGate = clockGate.Safe
+	}
 
 	// Retention: keep the appliance responsible on small disks (SD card).
 	// Runs once now, then daily. Conservative oldest-first cleanup only.

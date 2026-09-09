@@ -81,6 +81,11 @@ type CronService struct {
 	running   bool
 	stopChan  chan struct{}
 	gronx     *gronx.Gronx
+	// ClockGate, when set, is consulted on every check: a false return
+	// means wall time is untrustworthy and due jobs must not fire this
+	// cycle. Nil means always fire. clockBlocked logs transitions once.
+	ClockGate    func() bool
+	clockBlocked bool
 }
 
 type executionOptions struct {
@@ -160,6 +165,16 @@ func (cs *CronService) checkJobs() {
 		cs.mu.Unlock()
 		return
 	}
+
+	if cs.ClockGate != nil && !cs.ClockGate() {
+		if !cs.clockBlocked {
+			log.Printf("[cron] wall clock untrusted; holding cron jobs until time is sane")
+		}
+		cs.clockBlocked = true
+		cs.mu.Unlock()
+		return
+	}
+	cs.clockBlocked = false
 
 	now := time.Now().UnixMilli()
 	var dueJobIDs []string
