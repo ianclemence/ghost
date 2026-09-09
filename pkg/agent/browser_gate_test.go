@@ -265,6 +265,30 @@ func TestGateApprovalWaits(t *testing.T) {
 	}
 }
 
+// An UNWIRED loop (no governance) refuses browser calls outright rather
+// than executing them through the ungated legacy path.
+func TestUnwiredLoopRefusesBrowser(t *testing.T) {
+	database, err := db.NewDB(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	reg := tools.NewToolRegistry()
+	st := &stubBrowserTool{name: "browser_navigate", output: "page"}
+	stubs := []*stubBrowserTool{st}
+	reg.Register(st)
+	al := &AgentLoop{db: database, tools: reg, workspace: t.TempDir()}
+	res, governed, stop := al.maybeRunBrowserTool(context.Background(), reg,
+		fakeToolCall("browser_navigate", map[string]interface{}{"url": "https://example.com"}),
+		processOptions{SessionKey: "s", RequestID: "r"}, nil)
+	if !governed || !stop || res == nil || !strings.Contains(res.ForLLM, "not governed") {
+		t.Fatalf("unwired loop must refuse browser: governed=%v stop=%v res=%+v", governed, stop, res)
+	}
+	if len(stubs) != 1 || stubs[0].calls != 0 {
+		t.Fatal("refused browser call must not reach the executor")
+	}
+}
+
 // Unknown browser operations fail closed.
 func TestGateUnknownOpDenied(t *testing.T) {
 	h := newGateHarness(t)

@@ -352,15 +352,20 @@ func isBrowserTool(name string) bool {
 	return len(name) > 8 && name[:8] == "browser_"
 }
 
-// maybeRunBrowserTool routes one model tool call. Browser operations with
-// wired governance go through the gate; everything else (including
-// browser calls on an unwired loop) executes exactly as before. Returns
-// the result, whether the gate handled it, and whether the turn must stop
-// (approval wait or denial ends the turn with the message).
+// maybeRunBrowserTool routes one model tool call. Browser operations go
+// through the gate whenever the loop is governed. A browser call on an
+// UNWIRED loop (no governance) is refused outright, never executed through
+// the ungated legacy path: model-controlled browser execution without a
+// runtime authority boundary is a silent downgrade. Non-browser tools are
+// untouched. Returns the result, whether the gate handled it, and whether
+// the turn must stop.
 func (al *AgentLoop) maybeRunBrowserTool(toolCtx context.Context, reg *tools.ToolRegistry, tc providers.ToolCall, opts processOptions, asyncCallback tools.AsyncCallback) (*tools.ToolResult, bool, bool) {
-	if !isBrowserTool(tc.Name) || al == nil || al.governance == nil || al.governance.Broker == nil {
+	if !isBrowserTool(tc.Name) {
 		res := reg.ExecuteWithContext(toolCtx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, opts.SessionKey, asyncCallback)
 		return res, false, false
+	}
+	if al == nil || al.governance == nil || al.governance.Broker == nil {
+		return &tools.ToolResult{ForLLM: "Browser use is unavailable because this runtime is not governed. Nothing was run."}, true, true
 	}
 	decision := al.authorizeBrowserCall(opts.RequestID, opts.SessionKey, tc.Name, tc.Arguments)
 	switch decision.decision {
