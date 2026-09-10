@@ -223,6 +223,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	case permissions.VerdictAllow:
 		if al.livePlane != nil && liveSessionID != "" {
 			al.livePlane.SetControlOwner(liveSessionID, live.OwnerGhost)
+			al.livePlane.SetTask(liveSessionID, taskID)
 			al.announceSurface(sessionKey, liveSessionID, live.KindBrowser)
 		}
 		return browserGateResult{decision: "allow", call: tools.BrowserCall{
@@ -261,6 +262,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	if al.livePlane != nil {
 		al.livePlane.Register(sess.ID, live.KindBrowser)
 		al.livePlane.SetState(sess.ID, live.StateWaiting)
+		al.livePlane.SetTask(sess.ID, taskID)
 		al.announceSurface(sessionKey, sess.ID, live.KindBrowser)
 	}
 	return browserGateResult{decision: "wait", pendingID: req.ID,
@@ -476,8 +478,14 @@ func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, r
 	if t, _ := res.Evidence["text"].(string); t != "" {
 		obs.Text = t
 	}
+	// Server-local screenshot path only: the serving layer streams bytes
+	// on demand, and the path itself never serializes (json:"-").
+	if res.ScreenshotPath != "" {
+		obs.ScreenshotPath = res.ScreenshotPath
+	}
 	_ = tool
 	al.livePlane.Register(call.SessionID, live.KindBrowser)
+	al.livePlane.SetTask(call.SessionID, call.TaskID)
 	al.livePlane.Observe(call.SessionID, obs)
 	al.announceSurface(sessionKey, call.SessionID, live.KindBrowser)
 }

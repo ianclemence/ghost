@@ -195,3 +195,44 @@ func TestRegistryBoundsGrowth(t *testing.T) {
 		t.Fatalf("registry must stay bounded, got %d", n)
 	}
 }
+
+func TestCompleteTaskSettlesOnlyGhostOwned(t *testing.T) {
+	r := NewRegistry("owner-1")
+	r.Register("a", KindBrowser)
+	r.SetTask("a", "task-1")
+	r.SetState("a", StateActive)
+	r.Register("b", KindBrowser)
+	r.SetTask("b", "task-1")
+	r.SetState("b", StateWaiting)
+	r.Register("held", KindBrowser)
+	r.SetTask("held", "task-1")
+	r.SetState("held", StateActive)
+	if _, err := r.Takeover("held", "dev-1", 0); err != nil {
+		t.Fatalf("takeover: %v", err)
+	}
+	r.Register("other", KindBrowser)
+	r.SetTask("other", "task-2")
+	r.SetState("other", StateActive)
+	if n := r.CompleteTask("task-1", false); n != 2 {
+		t.Fatalf("expected 2 settled, got %d", n)
+	}
+	states := map[string]State{}
+	for _, s := range r.List() {
+		states[s.ID] = s.State
+	}
+	if states["a"] != StateCompleted || states["b"] != StateCompleted {
+		t.Fatalf("task surfaces must complete: %v", states)
+	}
+	if states["held"] != StateUserControl {
+		t.Fatalf("user-held surface must be untouched: %v", states)
+	}
+	if states["other"] != StateActive {
+		t.Fatalf("other task must be untouched: %v", states)
+	}
+	if n := r.CompleteTask("task-1", true); n != 0 {
+		t.Fatalf("completed surfaces must not re-settle, got %d", n)
+	}
+	if n := r.CompleteTask("", false); n != 0 {
+		t.Fatalf("empty task must settle nothing, got %d", n)
+	}
+}

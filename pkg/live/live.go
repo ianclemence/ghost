@@ -99,6 +99,10 @@ type Surface struct {
 	Obs      Observation `json:"observation"`
 	Updated  time.Time   `json:"updated"`
 	Sequence int64       `json:"sequence"` // monotonic per-surface change counter
+	// Task binds the surface to the unit of work that created it. It is
+	// internal-only (never serialized): completion is settled per task,
+	// and task ids must not become a client-addressable namespace.
+	Task string `json:"-"`
 }
 
 // Registry tracks the live surfaces the runtime is (or was just) acting on.
@@ -385,6 +389,62 @@ func (r *Registry) Reconcile(now time.Time) int {
 			s.Control = OwnerNone
 			s.State = StatePaused
 			s.bump(now)
+			n++
+		}
+		if s.Kind == KindComputer && s.ID == "local" {
+			continue // the appliance surface is presence-governed elsewhere
+		}
+		if s.Control != OwnerUser && s.State != StateCompleted && s.State != StateFailed &&
+			s.State != StateExpired && now.Sub(s.Updated) > surfaceIdleTTL {
+			s.State = StateExpired
+			s.bump(now)
+			n++
+		}
+	}
+	return n
+}
+
+// surfaceIdleTTL is the backstop against orphaned surfaces: a surface no
+// turn has touched recently cannot still be live work. Explicit
+// completion (CompleteTask) retires task surfaces promptly; this catches
+// everything else, including routine and background turns.
+const surfaceIdleTTL = 30 * time.Minute
+
+// SetTask binds a surface to its creating unit of work. Internal only.
+func (r *Registry) SetTask(id, task string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.byID[id]
+	if !ok || task == "" {
+		return
+	}
+	s.Task = task
+	s.bump(time.Now())
+}
+
+// CompleteTask settles every surface of one finished task that Ghost
+// still owns. User-held and already-terminal surfaces are never touched:
+// a human holding control, a paused surface awaiting revalidation, and
+// finished work all keep their truthful state.
+func (r *Registry) CompleteTask(task string, failed bool) int {
+	if task == "" {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, s := range r.byID {
+		if s.Task != task || s.Control == OwnerUser {
+			continue
+		}
+		switch s.State {
+		case StateActive, StateStarting, StateCreated, StateWaiting, StateDisconnected:
+			if failed {
+				s.State = StateFailed
+			} else {
+				s.State = StateCompleted
+			}
+			s.bump(time.Now())
 			n++
 		}
 	}

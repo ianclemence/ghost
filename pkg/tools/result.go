@@ -40,6 +40,11 @@ type ToolResult struct {
 	// loop forwards it into the canonical event. A successful state-
 	// changing result without evidence is treated as unverified.
 	Evidence map[string]interface{} `json:"-"`
+
+	// ScreenshotPath is a server-local observation artifact (never
+	// serialized, never part of evidence). The serving layer streams the
+	// bytes on demand; paths never leave the runtime.
+	ScreenshotPath string `json:"-"`
 }
 
 // NewToolResult creates a basic ToolResult with content for the LLM.

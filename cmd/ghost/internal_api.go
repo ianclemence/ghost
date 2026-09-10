@@ -2790,6 +2790,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			if chatTurns != nil {
 				_, _ = chatTurns.Set(req.SessionKey, req.RequestID, "failed", "failed")
 			}
+			agentLoop.SettleSessionSurfaces(req.SessionKey, "failed")
 			return
 		}
 		// Terminal outcome (backend-stated, additive frame).
@@ -2811,6 +2812,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				_, _ = chatTurns.Set(req.SessionKey, req.RequestID, "failed", outcome)
 			}
 		}
+		// Retire this turn's live surfaces with the same terminal outcome:
+		// success completes them, failure fails them, waiting leaves them.
+		agentLoop.SettleSessionSurfaces(req.SessionKey, outcome)
 		// agent_completed is recorded in AgentLoop
 		meta := map[string]interface{}{
 			"type":       "assistant_message",

@@ -234,7 +234,11 @@ behind device auth):
 - `GET /v1/live/surfaces/{kind}/{id}` — surface state.
 - `GET /v1/live/surfaces/{kind}/{id}/observation` — safe observation
   (title/url/text) plus an internal `image_base64`/`mime_type` when a real
-  screenshot was captured by the executor.
+  screenshot was captured by the executor. Browser screenshots are captured
+  event-driven (after navigation and state-changing interactions, never on
+  plain snapshots, never streamed): strictly accepted as fresh PNG files
+  (2 MiB bound, latest-per-session transient files, pruned directory).
+  Computer screenshots come from the existing screenshot operation.
 - `POST /v1/live/surfaces/{kind}/{id}/takeover` — acquire an expiring user
   control lease (device-scoped); **Ghost pauses** while held.
 - `POST /v1/live/surfaces/{kind}/{id}/release` — clear user control; Ghost
@@ -258,6 +262,13 @@ runtime publishes a mobile-channel `surface_update`
 `{surface_id, kind, session_id}` frame (identity only - clients fetch
 authoritative state). The same frame is emitted on takeover, release,
 and resume.
+
+Completion: conversation outcome describes the request, surface
+lifecycle describes the execution surface. Chat completion retires the
+turn's task surfaces (success completes, terminal failure fails,
+waiting parks), never touching user-held or finished work. Idle
+surfaces expire after 30 minutes as a backstop (the appliance computer
+surface is presence-governed, not expiry-governed).
 
 Errors use product vocabulary: `surface_not_found`, `no_observation`,
 `control_conflict` (another device holds control / cross-device release),

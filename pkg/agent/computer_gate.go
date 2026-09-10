@@ -216,6 +216,7 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 	if al.livePlane != nil {
 		al.livePlane.Register("local", live.KindComputer)
 		al.livePlane.SetState("local", live.StateWaiting)
+		al.livePlane.SetTask("local", taskID)
 		al.announceSurface(sessionKey, "local", live.KindComputer)
 	}
 	return computerGateResult{decision: "wait", pending: req.ID,
@@ -244,6 +245,7 @@ func (al *AgentLoop) bindComputer(owner, contextID, sessionKey, taskID, generati
 	}
 	if al.livePlane != nil {
 		al.livePlane.SetControlOwner("local", live.OwnerGhost)
+		al.livePlane.SetTask("local", taskID)
 		al.announceSurface(sessionKey, "local", live.KindComputer)
 	}
 	return computerGateResult{decision: "allow", call: call}
@@ -376,6 +378,7 @@ func (al *AgentLoop) recordComputerSurface(call tools.ComputerCall, res *tools.T
 		obs.Title = t
 	}
 	al.livePlane.Register("local", live.KindComputer)
+	al.livePlane.SetTask("local", call.TaskID)
 	al.livePlane.Observe("local", obs)
 	al.announceSurface(sessionKey, "local", live.KindComputer)
 }

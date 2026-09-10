@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -290,12 +292,152 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 	if res.IsError || res.ForLLM == "" {
 		return res
 	}
+	// Bounded visual capture on meaningful state changes only: navigation
+	// and interactions that change the page. Snapshots already return full
+	// state (capturing there too would double executor cost per observe
+	// cycle); typing captures only when it submits (press_enter).
+	if t.action == "navigate" || t.action == "click" || (t.action == "type" && submitsOnType(args)) {
+		if path, ok := captureBrowserShot(ctx, sess.ID); ok {
+			res.ScreenshotPath = path
+		}
+	}
 	labeled := browser.ObserveText(res.ForLLM)
 	return &ToolResult{ForLLM: labeled, ForUser: res.ForUser, Silent: res.Silent, IsError: false, Evidence: res.Evidence}
 }
 
+// submitsOnType reports whether a type call submits its input.
+func submitsOnType(args map[string]interface{}) bool {
+	enter, _ := args["press_enter"].(bool)
+	return enter
+}
+
 // pageEvidenceBound caps page text carried in evidence/observations.
 const pageEvidenceBound = 4000
+
+// browserShotBound caps screenshot bytes (Pi 5 + mobile bandwidth).
+const browserShotBound = 2 << 20
+
+// browserShotKeep bounds retained screenshots per appliance.
+const browserShotKeep = 20
+
+// captureBrowserShot attempts one bounded screenshot of the browser's
+// current page after a meaningful visual state change (navigation or a
+// state-changing interaction). Best-effort by contract: the CLI may not
+// support capture, and any failure — non-zero exit, missing file,
+// oversize, non-PNG bytes — silently yields no screenshot while the
+// structured text observation stands. Accepted output is strictly a
+// fresh PNG at the requested path. Files are latest-per-session
+// transient observations, never persisted artifacts: the directory is
+// pruned to a small bound on every capture.
+func captureBrowserShot(ctx context.Context, sessionID string) (string, bool) {
+	return captureBrowserShotWith(ctx, sessionID, defaultBrowserShotDir(), runBrowserScreenshot)
+}
+
+// runBrowserScreenshot invokes the browser CLI's capture command. The
+// exact command surface belongs to the CLI; strict output acceptance in
+// captureBrowserShotWith keeps unknown CLIs harmless.
+func runBrowserScreenshot(ctx context.Context, path string) error {
+	cmd := exec.CommandContext(ctx, "agent-browser", "screenshot", path)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	return cmd.Run()
+}
+
+func defaultBrowserShotDir() string {
+	return filepath.Join(os.TempDir(), "ghost-browser-shots")
+}
+
+func captureBrowserShotWith(
+	ctx context.Context,
+	sessionID, dir string,
+	run func(ctx context.Context, path string) error,
+) (string, bool) {
+	safe := sanitizeShotSession(sessionID)
+	if safe == "" || dir == "" || run == nil {
+		return "", false
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", false
+	}
+	path := filepath.Join(dir, "shot-"+safe+".png")
+	// Remove any stale file first so a failed capture can never serve
+	// a previous page as the current observation.
+	_ = os.Remove(path)
+	if err := run(ctx, path); err != nil {
+		return "", false
+	}
+	fi, err := os.Stat(path)
+	if err != nil || fi.Size() <= 0 || fi.Size() > browserShotBound {
+		_ = os.Remove(path)
+		return "", false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		_ = os.Remove(path)
+		return "", false
+	}
+	magic := make([]byte, 8)
+	_, err = f.Read(magic)
+	_ = f.Close()
+	if err != nil || string(magic) != "\x89PNG\r\n\x1a\n" {
+		_ = os.Remove(path)
+		return "", false
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		_ = os.Remove(path)
+		return "", false
+	}
+	pruneBrowserShots(dir)
+	return path, true
+}
+
+// sanitizeShotSession keeps only filename-safe characters so session ids
+// can never escape the shot directory.
+func sanitizeShotSession(sessionID string) string {
+	var b strings.Builder
+	for _, r := range sessionID {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		}
+		if b.Len() >= 64 {
+			break
+		}
+	}
+	return b.String()
+}
+
+// pruneBrowserShots keeps the shot directory bounded by recency.
+func pruneBrowserShots(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) <= browserShotKeep {
+		return
+	}
+	type named struct {
+		name string
+		mod  time.Time
+	}
+	var pngs []named
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".png") {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		pngs = append(pngs, named{e.Name(), fi.ModTime()})
+	}
+	for i := 0; i < len(pngs); i++ {
+		for j := i + 1; j < len(pngs); j++ {
+			if pngs[j].mod.Before(pngs[i].mod) {
+				pngs[i], pngs[j] = pngs[j], pngs[i]
+			}
+		}
+	}
+	for _, p := range pngs[:len(pngs)-browserShotKeep] {
+		_ = os.Remove(filepath.Join(dir, p.name))
+	}
+}
 
 // attachPageEvidence extracts url/title/text from raw agent-browser page
 // JSON into the result evidence map. Defensive by design: unparseable or
