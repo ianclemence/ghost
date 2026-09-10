@@ -185,3 +185,13 @@ func TestObservationClaimsIgnored(t *testing.T) {
 		t.Fatal("observation must not expose internal paths")
 	}
 }
+
+func TestRegistryBoundsGrowth(t *testing.T) {
+	r := NewRegistry("owner-1")
+	for i := 0; i < maxSurfaces+72; i++ {
+		r.Register("sess-"+string(rune('a'+i%26))+string(rune('0'+(i/26)%10)), KindBrowser)
+	}
+	if n := len(r.List()); n > maxSurfaces {
+		t.Fatalf("registry must stay bounded, got %d", n)
+	}
+}

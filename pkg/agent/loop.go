@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ianclemence/ghost/pkg/artifacts"
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/cevents"
@@ -372,6 +373,15 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		searchTool := tools.NewSessionSearchTool(database.DB)
 		toolsRegistry.Register(searchTool)
 		subagentTools.Register(searchTool)
+	}
+
+	// Artifact publishing: the model proposes handoffs, the artifacts
+	// package validates them. A store failure refuses publishes rather
+	// than running unwired.
+	if artifactStore, err := artifacts.NewStore(database.DB, workspace); err == nil {
+		toolsRegistry.Register(tools.NewPublishArtifactTool(artifactStore, workspace))
+	} else {
+		logger.WarnC("agent", "Artifact store unavailable, publish_artifact disabled")
 	}
 
 	// Initialize RAG

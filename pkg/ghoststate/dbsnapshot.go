@@ -45,6 +45,11 @@ type snapshotTable struct {
 }
 
 var snapshotTables = []snapshotTable{
+	{Name: "artifacts", Columns: []string{
+		"id", "session_key", "kind", "title", "summary",
+		"path", "text", "url", "state", "reason", "actions",
+		"evidence_request_id", "created_at",
+	}, OrderBy: "created_at, rowid"},
 	{Name: "scheduled_items", Columns: []string{
 		"id", "type", "title", "description", "state",
 		"schedule_kind", "schedule_at", "schedule_every", "schedule_expr",

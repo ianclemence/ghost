@@ -4604,6 +4604,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 	// ── Live Surface plane (browser/computer control + observation) ──────
 	registerLiveSurfaceRoutes(mux, agentLoop)
 
+	// ── Artifacts (runtime-validated handoffs) ────────────────────────────
+	registerArtifactRoutes(mux)
+
 	// ── Device operations (restart/update) ───────────────────────────────
 	registerDeviceRoutes(mux)
 

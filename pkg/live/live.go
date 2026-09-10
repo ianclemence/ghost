@@ -114,6 +114,12 @@ func NewRegistry(owner string) *Registry {
 	return &Registry{owner: owner, byID: map[string]*Surface{}}
 }
 
+// maxSurfaces bounds registry growth: every browser task mints a session
+// id, so without eviction a long-lived runtime would accumulate them.
+// Eviction drops the stalest surface no human controls; user-held control
+// is never evicted out from under a lease.
+const maxSurfaces = 128
+
 // Register adds or refreshes a surface for the owner. Re-registering an
 // existing id preserves control state (idempotent) unless kind differs.
 func (r *Registry) Register(id string, kind Kind) {
@@ -125,6 +131,22 @@ func (r *Registry) Register(id string, kind Kind) {
 		}
 		s.bump(time.Now())
 		return
+	}
+	if len(r.byID) >= maxSurfaces {
+		var oldestID string
+		var oldest time.Time
+		first := true
+		for sid, s := range r.byID {
+			if s.Control == OwnerUser {
+				continue
+			}
+			if first || s.Updated.Before(oldest) {
+				oldestID, oldest, first = sid, s.Updated, false
+			}
+		}
+		if oldestID != "" {
+			delete(r.byID, oldestID)
+		}
 	}
 	r.seq++
 	s := &Surface{ID: id, Kind: kind, State: StateCreated, Control: OwnerNone,

@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/agent"
+	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/live"
 )
 
@@ -25,7 +27,12 @@ import (
 //	GET  /v1/live/surfaces/{kind}/{id}/observation  latest safe observation
 //	POST /v1/live/surfaces/{kind}/{id}/takeover  acquire a user control lease
 //	POST /v1/live/surfaces/{kind}/{id}/release   release user control (no auto-resume)
+//	POST /v1/live/surfaces/{kind}/{id}/resume    return a paused surface to Ghost
 //	GET  /v1/live/surfaces/{kind}/{id}/stream    SSE of surface state changes
+//
+// Resume fails closed unless the surface is paused with no user in
+// control; the agent gates revalidate ownership and permission on the
+// next real operation.
 func registerLiveSurfaceRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 	plane := al.LivePlane()
 	if plane == nil {
@@ -34,6 +41,7 @@ func registerLiveSurfaceRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 	}
 	// The appliance computer always exists as a surface for discovery.
 	plane.Register("local", live.KindComputer)
+	reconcileLivePlaneOnce(plane)
 
 	mux.HandleFunc("/v1/live/surfaces", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -138,6 +146,7 @@ func registerLiveSurfaceRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 				return
 			}
 			s, _ := plane.Snapshot(id)
+			announceLiveSurface(al, kind, id)
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "lease": lease, "surface": s})
 		case "release":
 			if r.Method != http.MethodPost {
@@ -151,6 +160,23 @@ func registerLiveSurfaceRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 				return
 			}
 			s, _ := plane.Snapshot(id)
+			announceLiveSurface(al, kind, id)
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "surface": s})
+		case "resume":
+			if r.Method != http.MethodPost {
+				jsonError(w, http.StatusMethodNotAllowed, "invalid_request", "use POST")
+				return
+			}
+			if !surfaceExists(plane, kind, id) {
+				jsonError(w, http.StatusNotFound, "surface_not_found", "that surface does not exist")
+				return
+			}
+			if err := plane.Resume(id); err != nil {
+				jsonError(w, http.StatusConflict, "resume_refused", err.Error())
+				return
+			}
+			s, _ := plane.Snapshot(id)
+			announceLiveSurface(al, kind, id)
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "surface": s})
 		case "stream":
 			if r.Method != http.MethodGet {
@@ -162,6 +188,40 @@ func registerLiveSurfaceRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 			jsonError(w, http.StatusNotFound, "not_found", "unknown surface action")
 		}
 	}))
+}
+
+// announceLiveSurface tells owner devices a surface changed outside the
+// turn flow (takeover, release, resume). Identity only; clients fetch
+// authoritative state. Session linkage is unavailable here, so no
+// session_id is attached — watching clients learn it from the stream.
+func announceLiveSurface(al *agent.AgentLoop, kind live.Kind, id string) {
+	if al == nil || al.Bus() == nil {
+		return
+	}
+	al.Bus().PublishOutbound(bus.OutboundMessage{
+		Channel: "mobile",
+		Content: "",
+		Metadata: map[string]interface{}{
+			"type":       "surface_update",
+			"surface_id": id,
+			"kind":       string(kind),
+		},
+	})
+}
+
+var liveReconcileOnce sync.Once
+
+// reconcileLivePlaneOnce expires dead user leases on a ticker so a dead
+// mobile connection can never leave permanent human control.
+func reconcileLivePlaneOnce(plane *live.Registry) {
+	liveReconcileOnce.Do(func() {
+		ticker := time.NewTicker(time.Minute)
+		go func() {
+			for range ticker.C {
+				plane.Reconcile(time.Now())
+			}
+		}()
+	})
 }
 
 func splitPath(s string) []string {

@@ -42,6 +42,10 @@ var FreeConsequentialTools = []FreeTool{
 	// Durable scheduling creates future external side effects.
 	{Name: "schedule", Capability: "schedule.create", Risk: RiskLow},
 	{Name: "cron", Capability: "schedule.create", Risk: RiskLow},
+	// Artifact publishing writes only Ghost's own validated handoff store
+	// (existence, bounds, and estate membership are enforced by the
+	// artifacts package, not the model). Same class as scheduling.
+	{Name: "publish_artifact", Capability: "artifact.publish", Risk: RiskLow},
 	// Self-update replaces the running binary.
 	{Name: "update", Capability: "system.update", Risk: RiskHighImpact},
 	// Image generation spends an external (paid) capability.

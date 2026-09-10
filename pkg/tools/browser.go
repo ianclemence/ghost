@@ -3,13 +3,16 @@ package tools
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/redact"
 )
 
 // BrowserTool uses the 'agent-browser' CLI (a Node.js CDP wrapper) to provide
@@ -277,11 +280,54 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 		"permission": call.Permission,
 		"outcome":    outcome,
 	}
+	// Page summary for safe observation: navigate/snapshot emit the page
+	// as JSON. Parsed defensively, bounded, and redacted — the same
+	// material the Live Surface plane may show the owner. Anything
+	// unparseable is simply absent, never an error.
+	if !res.IsError && (t.action == "navigate" || t.action == "snapshot") {
+		attachPageEvidence(res)
+	}
 	if res.IsError || res.ForLLM == "" {
 		return res
 	}
 	labeled := browser.ObserveText(res.ForLLM)
 	return &ToolResult{ForLLM: labeled, ForUser: res.ForUser, Silent: res.Silent, IsError: false, Evidence: res.Evidence}
+}
+
+// pageEvidenceBound caps page text carried in evidence/observations.
+const pageEvidenceBound = 4000
+
+// attachPageEvidence extracts url/title/text from raw agent-browser page
+// JSON into the result evidence map. Defensive by design: unparseable or
+// empty output leaves evidence untouched.
+func attachPageEvidence(res *ToolResult) {
+	if res == nil || res.Evidence == nil {
+		return
+	}
+	var page struct {
+		URL   string `json:"url"`
+		Title string `json:"title"`
+		Text  string `json:"text"`
+	}
+	if err := json.Unmarshal([]byte(res.ForLLM), &page); err != nil {
+		return
+	}
+	if page.URL != "" {
+		res.Evidence["url"] = page.URL
+		if u, err := url.Parse(page.URL); err == nil && u.Host != "" {
+			res.Evidence["domain"] = u.Host
+		}
+	}
+	if page.Title != "" {
+		res.Evidence["title"] = page.Title
+	}
+	if text := strings.TrimSpace(page.Text); text != "" {
+		runes := []rune(text)
+		if len(runes) > pageEvidenceBound {
+			runes = runes[:pageEvidenceBound]
+		}
+		res.Evidence["text"] = redact.Any(string(runes))
+	}
 }
 
 // executeGuarded binds the call to an isolated session, runs it, then

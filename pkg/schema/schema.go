@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ianclemence/ghost/pkg/artifacts"
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/computer"
@@ -109,6 +110,9 @@ func durableWorkV2(raw *sql.DB) error {
 	}
 	if err := browser.EnsureSchema(raw); err != nil {
 		return fmt.Errorf("browser sessions: %w", err)
+	}
+	if err := artifacts.EnsureSchema(raw); err != nil {
+		return fmt.Errorf("artifacts: %w", err)
 	}
 	return nil
 }

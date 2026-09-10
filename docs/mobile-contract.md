@@ -240,16 +240,61 @@ behind device auth):
 - `POST /v1/live/surfaces/{kind}/{id}/release` — clear user control; Ghost
   does **not** auto-resume (surface stays `paused` until revalidated).
 - `GET /v1/live/surfaces/{kind}/{id}/stream` — SSE of surface state changes
-  (read-only).
+  (read-only, 500ms poll, `surface_closed` terminal).
+- `POST /v1/live/surfaces/{kind}/{id}/resume` - return a paused surface to
+  Ghost. Fails closed (`resume_refused`) unless paused with no user in
+  control; the agent gates revalidate ownership, permission, and lease on
+  the next real operation.
+
+Surface lifecycle vocabulary (server-set): `created | starting | active |
+waiting | user_control | paused | completed | failed | disconnected |
+expired`, control `ghost | user | none`. Gates set `waiting` while an
+approval pends and `failed` when execution errors; `user_control` pauses
+Ghost; expiry and reconcile fail closed to `paused`/`none`. Dead user
+leases are reaped every minute, so a dead phone can never hold control.
+
+Conversation linkage: when a surface becomes relevant to a turn, the
+runtime publishes a mobile-channel `surface_update`
+`{surface_id, kind, session_id}` frame (identity only - clients fetch
+authoritative state). The same frame is emitted on takeover, release,
+and resume.
 
 Errors use product vocabulary: `surface_not_found`, `no_observation`,
 `control_conflict` (another device holds control / cross-device release),
-`forbidden`. Observation is always read-only; control always requires an
+`resume_refused`, `forbidden`. Observation is always read-only; control always requires an
 explicit lease. Screenshots of the **physical appliance display**
 (`/v1/screenshot`) and app launch (`/v1/open`) remain legacy local-machine
 commands, not browser/computer transports.
 
-## 12. Product outcomes (authoritative)
+## 12. Artifacts (runtime-validated handoffs)
+
+Artifacts are things Ghost hands you: a workspace file, a short text
+result, or a link. The model proposes; the runtime disposes. An artifact
+exists only after server-side validation, so mobile never infers success
+from prose.
+
+- `GET /v1/artifacts?conversation_id=&limit=` - a conversation's
+  artifacts, newest first (conversation isolation by session key, the
+  same unit as history/activity).
+- `GET /v1/artifacts/{id}` - one artifact, revalidated on read (a
+  deleted file surfaces as `unavailable` with a reason, never a break).
+
+Artifact shape: `{id, kind: file|text|link, title, summary, state:
+available|unavailable, reason?, actions[], evidence_request_id?,
+created_at}` plus the payload (`path` for files, inline bounded `text`,
+`url` for links). File references are workspace-confined, existence- and
+size-checked, and blocked from the protected estate
+(`personal-context/`, `state/`, event logs, knowledge stores,
+databases); secret-shaped text is redacted before persistence.
+
+Actions are backend-declared render hints (`preview | open |
+download` applicability computed server-side). They grant no execution:
+consequential follow-ups ("book it") travel as new conversation turns
+through the normal capability + Permission Broker path. File bytes are
+served by the existing bounded `/v1/workspace/file` preview, not by the
+artifact endpoints.
+
+## 13. Product outcomes (authoritative)
 
 Shared vocabulary (server-set): `success | failed | partially_completed |
 waiting_for_user | waiting_for_configuration | waiting_for_authorization |
@@ -258,7 +303,7 @@ Waiting and unavailable states are not failures and not errors. Chat turns
 report the terminal subset via the `completed` lifecycle outcome (§3);
 Activity and doctor report the rest.
 
-## 13. Security invariants for mobile integration
+## 14. Security invariants for mobile integration
 
 - Mobile gains no bypass: permissions, credentials, evidence, execution,
   and identity stay server-authoritative. Assume the client is

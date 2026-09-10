@@ -223,6 +223,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	case permissions.VerdictAllow:
 		if al.livePlane != nil && liveSessionID != "" {
 			al.livePlane.SetControlOwner(liveSessionID, live.OwnerGhost)
+			al.announceSurface(sessionKey, liveSessionID, live.KindBrowser)
 		}
 		return browserGateResult{decision: "allow", call: tools.BrowserCall{
 			Owner: owner, ContextID: contextID, TaskID: taskID,
@@ -257,6 +258,11 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 		return deny("I couldn't prepare the approval request. Nothing was run.")
 	}
 	g.NoteCapability(requestID, browserCapability)
+	if al.livePlane != nil {
+		al.livePlane.Register(sess.ID, live.KindBrowser)
+		al.livePlane.SetState(sess.ID, live.StateWaiting)
+		al.announceSurface(sessionKey, sess.ID, live.KindBrowser)
+	}
 	return browserGateResult{decision: "wait", pendingID: req.ID,
 		message: approvalAskText(browserCapability, tool, args, req.ID)}
 }
@@ -419,7 +425,7 @@ func (al *AgentLoop) maybeRunBrowserTool(toolCtx context.Context, reg *tools.Too
 	case "allow":
 		res := al.runBrowserTool(toolCtx, decision.call, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, opts.SessionKey)
 		al.publishBrowserEvidence(opts.RequestID, opts.SessionKey, tc.Name, res)
-		al.recordBrowserSurface(decision.call, tc.Name, res)
+		al.recordBrowserSurface(decision.call, tc.Name, res, opts.SessionKey)
 		return res, true, false
 	default: // wait or deny: the turn ends with the gate message.
 		return &tools.ToolResult{ForLLM: decision.message}, true, true
@@ -447,12 +453,15 @@ func (al *AgentLoop) runBrowserTool(ctx context.Context, call tools.BrowserCall,
 // recordBrowserSurface publishes a safe observation to the Live Surface
 // plane after a governed browser execution, keyed by the deterministic
 // browser session id. Never carries page source, credentials, or CDP data.
-func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, res *tools.ToolResult) {
+func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, res *tools.ToolResult, sessionKey string) {
 	if al.livePlane == nil || call.SessionID == "" || res == nil {
 		return
 	}
 	obs := live.Observation{Title: "Ghost browser"}
-	if !res.IsError {
+	if res.IsError {
+		al.livePlane.SetState(call.SessionID, live.StateFailed)
+	} else {
+		al.livePlane.SetState(call.SessionID, live.StateActive)
 		obs.State = live.StateActive
 	}
 	if u, _ := res.Evidence["url"].(string); u != "" {
@@ -464,9 +473,13 @@ func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, r
 	if t, _ := res.Evidence["title"].(string); t != "" {
 		obs.Title = t
 	}
+	if t, _ := res.Evidence["text"].(string); t != "" {
+		obs.Text = t
+	}
 	_ = tool
 	al.livePlane.Register(call.SessionID, live.KindBrowser)
 	al.livePlane.Observe(call.SessionID, obs)
+	al.announceSurface(sessionKey, call.SessionID, live.KindBrowser)
 }
 
 // publishBrowserEvidence records the governed outcome as a canonical
