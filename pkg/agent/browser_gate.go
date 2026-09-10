@@ -258,7 +258,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	if err != nil {
 		return deny("I couldn't prepare the approval request. Nothing was run.")
 	}
-	g.NoteCapability(requestID, browserCapability)
+	g.NoteCapability(requestID, browserCapability, "")
 	if al.livePlane != nil {
 		al.livePlane.Register(sess.ID, live.KindBrowser)
 		al.livePlane.SetState(sess.ID, live.StateWaiting)

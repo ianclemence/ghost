@@ -40,20 +40,22 @@ type Governance struct {
 
 func (g *Governance) active() bool { return g != nil }
 
-// TurnStarted opens the canonical trace for a request.
-func (g *Governance) TurnStarted(requestID, sessionKey, channel string) {
+// TurnStarted opens the canonical trace for a request. trajectoryID links
+// every event of this execution (model calls, tools, verification,
+// fallback); empty when the entry path minted no trajectory.
+func (g *Governance) TurnStarted(requestID, sessionKey, channel, trajectoryID string) {
 	if !g.active() || g.Events == nil {
 		return
 	}
 	g.Events.Publish(&cevents.Event{
 		Type: cevents.AgentStarted, RequestID: requestID, SessionID: sessionKey,
-		GhostID: g.GhostID, AgentID: g.AgentID,
+		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID,
 		Payload: map[string]interface{}{"channel": channel},
 	})
 }
 
 // TurnEnded closes the trace with the canonical outcome.
-func (g *Governance) TurnEnded(requestID, sessionKey string, err error) {
+func (g *Governance) TurnEnded(requestID, sessionKey, trajectoryID string, err error) {
 	if !g.active() || g.Events == nil {
 		return
 	}
@@ -65,25 +67,25 @@ func (g *Governance) TurnEnded(requestID, sessionKey string, err error) {
 	}
 	g.Events.Publish(&cevents.Event{
 		Type: typ, RequestID: requestID, SessionID: sessionKey,
-		GhostID: g.GhostID, AgentID: g.AgentID, Status: status,
+		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID, Status: status,
 	})
 }
 
 // CapabilityCommitted records capability.started once per turn.
-func (g *Governance) CapabilityCommitted(requestID, sessionKey, capabilityID string) {
+func (g *Governance) CapabilityCommitted(requestID, sessionKey, capabilityID, trajectoryID string) {
 	if !g.active() || g.Events == nil {
 		return
 	}
 	g.Events.Publish(&cevents.Event{
 		Type: cevents.CapabilityStarted, RequestID: requestID, SessionID: sessionKey,
-		GhostID: g.GhostID, AgentID: g.AgentID,
+		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID,
 		Payload: map[string]interface{}{"capability": capabilityID},
 	})
 }
 
 // ToolRan records tool completion/failure (user-safe summaries only;
 // raw outputs never enter payloads).
-func (g *Governance) ToolRan(requestID, sessionKey, tool string, failed bool) {
+func (g *Governance) ToolRan(requestID, sessionKey, tool, trajectoryID string, failed bool) {
 	if !g.active() || g.Events == nil {
 		return
 	}
@@ -97,13 +99,13 @@ func (g *Governance) ToolRan(requestID, sessionKey, tool string, failed bool) {
 	// and failed are durable outcomes.
 	g.Events.Publish(&cevents.Event{
 		Type: typ, RequestID: requestID, SessionID: sessionKey,
-		GhostID: g.GhostID, AgentID: g.AgentID, Status: status,
+		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID, Status: status,
 		Payload: map[string]interface{}{"tool": tool},
 	})
 }
 
 // CapabilityDone records the terminal capability outcome.
-func (g *Governance) CapabilityDone(requestID, sessionKey, capabilityID string, failed bool) {
+func (g *Governance) CapabilityDone(requestID, sessionKey, capabilityID, trajectoryID string, failed bool) {
 	if !g.active() || g.Events == nil {
 		return
 	}
@@ -115,8 +117,52 @@ func (g *Governance) CapabilityDone(requestID, sessionKey, capabilityID string, 
 	}
 	g.Events.Publish(&cevents.Event{
 		Type: typ, RequestID: requestID, SessionID: sessionKey,
-		GhostID: g.GhostID, AgentID: g.AgentID, Status: status,
+		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID, Status: status,
 		Payload: map[string]interface{}{"capability": capabilityID},
+	})
+}
+
+// VerificationRan records a world-state verification outcome for a
+// VerifiableTool: the tool ran, then the runtime independently confirmed
+// (or refuted) the claimed outcome. A failed verification is durable
+// evidence — it is what lets Doctor distinguish "tool errored" from
+// "tool lied".
+func (g *Governance) VerificationRan(sessionKey, tool, trajectoryID string, latencyMs int64, failed bool, detail string) {
+	if !g.active() || g.Events == nil {
+		return
+	}
+	typ := cevents.VerificationCompleted
+	status := "success"
+	if failed {
+		typ = cevents.VerificationFailed
+		status = "failed"
+	}
+	payload := map[string]interface{}{"tool": tool, "latency_ms": latencyMs}
+	if detail != "" {
+		payload["detail"] = detail
+	}
+	g.Events.Publish(&cevents.Event{
+		Type: typ, SessionID: sessionKey,
+		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID, Status: status,
+		Payload: payload,
+	})
+}
+
+// FallbackRan records engaging a non-primary model candidate after the
+// primary failed or was unavailable. from/to are "provider/model" specs;
+// escalated is true when the switch crosses local→cloud.
+func (g *Governance) FallbackRan(requestID, sessionKey, trajectoryID, from, to string, escalated bool) {
+	if !g.active() || g.Events == nil {
+		return
+	}
+	typ := cevents.FallbackStarted
+	if escalated {
+		typ = cevents.ModelEscalated
+	}
+	g.Events.Publish(&cevents.Event{
+		Type: typ, RequestID: requestID, SessionID: sessionKey,
+		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID, Status: "success",
+		Payload: map[string]interface{}{"from": from, "to": to, "escalated": escalated},
 	})
 }
 
@@ -383,7 +429,7 @@ func NewGovernance(events *cevents.Stream, broker *permissions.Broker, ghostID, 
 
 // NoteCapability records first sighting of a capability per request
 // (drives capability.started exactly once per turn).
-func (g *Governance) NoteCapability(requestID, capabilityID string) bool {
+func (g *Governance) NoteCapability(requestID, capabilityID, trajectoryID string) bool {
 	if !g.active() {
 		return false
 	}
@@ -395,7 +441,7 @@ func (g *Governance) NoteCapability(requestID, capabilityID string) bool {
 	}
 	g.seenCaps[key] = true
 	g.capMu.Unlock()
-	g.CapabilityCommitted(requestID, "", capabilityID)
+	g.CapabilityCommitted(requestID, "", capabilityID, trajectoryID)
 	return true
 }
 

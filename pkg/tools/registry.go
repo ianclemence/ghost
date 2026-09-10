@@ -21,7 +21,12 @@ type ToolRegistry struct {
 	hiddenTools       map[string]time.Time
 	channelToolPolicy map[string]map[string]bool
 	sessionToolPolicy map[string]map[string]bool
-	mu                sync.RWMutex
+	// verifySink observes world-state verification outcomes (tool name,
+	// latency, verification error or nil). The context carries the calling
+	// session and trajectory for correlation. Set by the agent runtime;
+	// nil = no observation.
+	verifySink func(ctx context.Context, tool string, latencyMs int64, verifyErr error)
+	mu         sync.RWMutex
 }
 
 func NewToolRegistry() *ToolRegistry {
@@ -32,6 +37,15 @@ func NewToolRegistry() *ToolRegistry {
 		channelToolPolicy: make(map[string]map[string]bool),
 		sessionToolPolicy: make(map[string]map[string]bool),
 	}
+}
+
+// SetVerifySink installs an observer for VerifiableTool world-state
+// verification outcomes. The runtime bridges these to the canonical event
+// stream (verification.completed/failed on the turn's trajectory).
+func (r *ToolRegistry) SetVerifySink(fn func(ctx context.Context, tool string, latencyMs int64, verifyErr error)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.verifySink = fn
 }
 
 func (r *ToolRegistry) Register(tool Tool) {
@@ -218,7 +232,15 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	// false positive. Proportional: only tools that opt in are verified.
 	if !result.IsError && !result.Async {
 		if verifiable, ok := tool.(VerifiableTool); ok {
-			if verr := verifiable.Verify(ctx, args); verr != nil {
+			vStart := time.Now()
+			verr := verifiable.Verify(ctx, args)
+			r.mu.RLock()
+			sink := r.verifySink
+			r.mu.RUnlock()
+			if sink != nil {
+				sink(ctx, name, time.Since(vStart).Milliseconds(), verr)
+			}
+			if verr != nil {
 				result = ErrorResult(fmt.Sprintf("tool %q ran but verification failed: %s", name, verr.Error())).WithError(verr)
 				logger.WarnCF("tool", "verification failed", map[string]interface{}{"tool": name, "error": verr.Error()})
 			}

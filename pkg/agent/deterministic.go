@@ -583,8 +583,8 @@ func (al *AgentLoop) execDeterministicTool(name string, args map[string]interfac
 	// user is told, exactly like the model-driven tool path does.
 	if al.governance != nil && al.governance.Events != nil {
 		capID := deterministicCapability(name)
-		al.governance.ToolRan("", session, name, failed)
-		al.governance.CapabilityDone("", session, capID, failed)
+		al.governance.ToolRan("", session, name, "", failed)
+		al.governance.CapabilityDone("", session, capID, "", failed)
 	}
 	if res == nil {
 		return "I couldn't get that right now. Please try again in a bit.", true

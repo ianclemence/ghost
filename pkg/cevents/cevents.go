@@ -89,6 +89,14 @@ const (
 	GhostRecovering Type = "ghost.recovering"
 	// Errors
 	OperationFailed Type = "operation.failed"
+	// Verification (world-state confirmation of mutating tool calls;
+	// never the tool's own success claim)
+	VerificationStarted   Type = "verification.started"
+	VerificationCompleted Type = "verification.completed"
+	VerificationFailed    Type = "verification.failed"
+	// Recovery (fallback routing and model escalation decisions)
+	FallbackStarted Type = "fallback.started"
+	ModelEscalated  Type = "model.escalated"
 )
 
 // Durable reports whether the type is persisted in the warehouse (crash-
@@ -102,7 +110,7 @@ const (
 // retention policy (see SD-card assessment in docs).
 func (t Type) Durable() bool {
 	switch t {
-	case AgentProgress, ToolStarted, MemoryRetrieved:
+	case AgentProgress, ToolStarted, MemoryRetrieved, VerificationStarted:
 		return false
 	default:
 		return true

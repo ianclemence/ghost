@@ -47,6 +47,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/tasks"
 	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/turnlog"
 	"github.com/ianclemence/ghost/pkg/utils"
 )
 
@@ -954,12 +955,12 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 		msg.Metadata["request_id"] = requestID
 	}
 	if al.governance != nil {
-		al.governance.TurnStarted(requestID, msg.SessionKey, msg.Channel)
+		al.governance.TurnStarted(requestID, msg.SessionKey, msg.Channel, turnlog.TrajectoryIDFromContext(ctx))
 	}
 	// endTurn closes the canonical trace on every exit path.
 	endTurn := func(resp string, err error) (string, error) {
 		if al.governance != nil {
-			al.governance.TurnEnded(requestID, msg.SessionKey, err)
+			al.governance.TurnEnded(requestID, msg.SessionKey, turnlog.TrajectoryIDFromContext(ctx), err)
 		}
 		return resp, err
 	}
@@ -1237,9 +1238,9 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 				al.publishBrowserEvidence(requestID, msg.SessionKey, resume.Tool, toolResult)
 			default:
 				toolResult = al.tools.ExecuteWithContext(ctx, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey, nil)
-				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, toolResult.IsError)
+				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
 			}
-			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, toolResult.IsError)
+			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
 			text := toolResult.ForLLM
 			if toolResult.IsError {
 				text = "That didn't work: " + toolResult.ForLLM
@@ -1932,7 +1933,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					if capViolations[cap.ID] >= 3 {
 						finalContent = cap.CleanFailure()
 						if al.governance != nil {
-							al.governance.CapabilityDone(opts.RequestID, opts.SessionKey, cap.ID, true)
+							al.governance.CapabilityDone(opts.RequestID, opts.SessionKey, cap.ID, turnlog.TrajectoryIDFromContext(ctx), true)
 						}
 						break
 					}
@@ -1953,7 +1954,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			// between capability resolution and execution, not in a prompt.
 			if capSkill := committedSkill(messages); capSkill != "" && al.governance != nil {
 				cap := skills.GetCapability(capSkill)
-				al.governance.NoteCapability(opts.RequestID, cap.ID)
+				al.governance.NoteCapability(opts.RequestID, cap.ID, turnlog.TrajectoryIDFromContext(ctx))
 				if decision := al.governance.AuthorizeTool(opts.RequestID, opts.SessionKey, cap.ID, tc.Name, tc.Arguments); !decision.Allowed {
 					toolResultMsg := providers.Message{
 						Role:       "tool",
@@ -2010,7 +2011,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					break
 				}
 			} else if al.governance != nil {
-				al.governance.ToolRan(opts.RequestID, opts.SessionKey, tc.Name, toolResult.IsError)
+				al.governance.ToolRan(opts.RequestID, opts.SessionKey, tc.Name, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
 			}
 
 			// Send ForUser content to user immediately if not Silent
@@ -2044,7 +2045,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					if capExecAttempts[cap.ID] >= cap.MaxAttempts {
 						finalContent = cap.CleanFailure()
 						if al.governance != nil {
-							al.governance.CapabilityDone(opts.RequestID, opts.SessionKey, cap.ID, true)
+							al.governance.CapabilityDone(opts.RequestID, opts.SessionKey, cap.ID, turnlog.TrajectoryIDFromContext(ctx), true)
 						}
 						// Persist the clean failure path as a tool result so
 						// history stays coherent, then break to response.
@@ -2227,7 +2228,18 @@ func (al *AgentLoop) callLLM(ctx context.Context, model string, messages []provi
 	var resp *providers.LLMResponse
 	var err error
 	if al.fallback != nil && len(candidates) > 0 {
+		attempted := 0
 		resp, err = al.fallback.Execute(ctx, candidates, func(c providers.FallbackCandidate) (*providers.LLMResponse, error) {
+			if attempted > 0 && al.governance != nil && len(candidates) > 0 {
+				// Primary didn't serve: record the routing decision on
+				// the turn's trajectory (escalated when crossing
+				// local→cloud).
+				from := candidates[0].Name
+				escalated := !modes.IsCloudProvider(from) && modes.IsCloudProvider(c.Name)
+				al.governance.FallbackRan(opts.RequestID, opts.SessionKey,
+					turnlog.TrajectoryIDFromContext(ctx), from, c.Name, escalated)
+			}
+			attempted++
 			return al.invokeProvider(ctx, c.Provider, c.Model, messages, tools, opts)
 		})
 	} else if len(candidates) == 0 {
@@ -2709,6 +2721,27 @@ func (al *AgentLoop) updateToolContexts(channel, chatID string) {
 			}
 		}
 	}
+
+	// World-state verification outcomes join the turn's trajectory: the
+	// registry observes them where they happen, governance records them.
+	// Session and trajectory resolve from the tool context (server-set,
+	// never model input); request correlation rides the trajectory.
+	al.tools.SetVerifySink(func(ctx context.Context, tool string, latencyMs int64, verr error) {
+		if al.governance == nil {
+			return
+		}
+		detail := ""
+		if verr != nil {
+			detail = verr.Error()
+			if len(detail) > 240 {
+				detail = detail[:240] + "…"
+			}
+		}
+		al.governance.VerificationRan(
+			tools.SessionKeyFromContext(ctx), tool,
+			turnlog.TrajectoryIDFromContext(ctx), latencyMs, verr != nil, detail,
+		)
+	})
 }
 
 // sessionWriteScopes resolves the scope tags new memories from a session
@@ -2931,7 +2964,7 @@ func (al *AgentLoop) authorizeStandaloneTool(requestID, sessionKey, tool string,
 			return AuthorizeResult{}, false
 		}
 		risk := skillManageRisk(args)
-		al.governance.NoteCapability(requestID, "skills.manage")
+		al.governance.NoteCapability(requestID, "skills.manage", "")
 		decision := al.governance.AuthorizeStandalone(requestID, sessionKey, "skills.manage", tool, args, risk)
 		return AuthorizeResult{Allowed: decision.Allowed, AskMessage: decision.AskMessage, PendingID: decision.PendingID}, true
 	}
@@ -2943,7 +2976,7 @@ func (al *AgentLoop) authorizeStandaloneTool(requestID, sessionKey, tool string,
 	if risk == "" {
 		risk = permissions.RiskConsequential
 	}
-	al.governance.NoteCapability(requestID, ft.Capability)
+	al.governance.NoteCapability(requestID, ft.Capability, "")
 	decision := al.governance.AuthorizeStandalone(requestID, sessionKey, ft.Capability, tool, args, risk)
 	return AuthorizeResult{Allowed: decision.Allowed, AskMessage: decision.AskMessage, PendingID: decision.PendingID}, true
 }

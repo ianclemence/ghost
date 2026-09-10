@@ -212,7 +212,7 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 	if err != nil {
 		return deny("I couldn't prepare the approval request. Nothing was run.")
 	}
-	g.NoteCapability(requestID, computerCapability)
+	g.NoteCapability(requestID, computerCapability, "")
 	if al.livePlane != nil {
 		al.livePlane.Register("local", live.KindComputer)
 		al.livePlane.SetState("local", live.StateWaiting)
