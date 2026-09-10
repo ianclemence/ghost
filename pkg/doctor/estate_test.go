@@ -23,9 +23,15 @@ func TestCheckProviderFlagsMissingKeys(t *testing.T) {
 	if res.Status != "warning" {
 		t.Fatalf("expected warning, got %s: %s", res.Status, res.Message)
 	}
-	for _, want := range []string{"openai/gpt-x", "anthropic/claude-x", "ollama/llama3"} {
+	for _, want := range []string{"test-model", "openai/gpt-x"} {
 		if !contains(res.Message, want) {
 			t.Fatalf("message must mention %q: %s", want, res.Message)
+		}
+	}
+	// Owner-facing inventory wording must NOT leak into the message.
+	for _, banned := range []string{"Estate", "primary:", "fallback:"} {
+		if contains(res.Message, banned) {
+			t.Fatalf("message must not contain %q: %s", banned, res.Message)
 		}
 	}
 }
@@ -38,8 +44,8 @@ func TestCheckProviderEstateOk(t *testing.T) {
 	if res.Status != "ok" {
 		t.Fatalf("expected ok, got %s: %s", res.Status, res.Message)
 	}
-	if !contains(res.Message, "primary:ollama/llama3(local)") {
-		t.Fatalf("message must list estate: %s", res.Message)
+	if contains(res.Message, "Estate") || contains(res.Message, "primary:") {
+		t.Fatalf("message must stay simple, got: %s", res.Message)
 	}
 }
 

@@ -216,9 +216,10 @@ func (d *Doctor) checkProvider(ctx context.Context) CheckResult {
 		}
 	}
 	msg := fmt.Sprintf("AI is ready (%s).", model)
-	if est := describeEstate(d.Estate); est != "" {
-		msg += " Estate: " + est
-	}
+	// Keep the message simple for the owner: which model is ready and which
+	// credentials are missing. The full model inventory (primary/fallback
+	// roles, local vs cloud) is server-side detail (providers.DescribeEstate),
+	// not user-facing copy.
 	if missing := missingKeys(d.Estate); len(missing) > 0 {
 		return CheckResult{
 			Name:   "provider",
@@ -236,16 +237,6 @@ func (d *Doctor) checkProvider(ctx context.Context) CheckResult {
 		Message: msg,
 		Latency: time.Since(start).Milliseconds(),
 	}
-}
-
-// describeEstate renders the inventory as "role:model(kind)" entries.
-// Key material never appears — only names and kinds.
-func describeEstate(estate []providers.ProviderInfo) string {
-	var parts []string
-	for _, e := range estate {
-		parts = append(parts, fmt.Sprintf("%s:%s(%s)", e.Role, e.Model, e.Kind))
-	}
-	return strings.Join(parts, ", ")
 }
 
 // missingKeys lists cloud models with no credential configured.
