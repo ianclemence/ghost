@@ -82,6 +82,10 @@ type CaseResult struct {
 	Turns          int               `json:"turns"`
 	DurationMs     int64             `json:"duration_ms"`
 	Error          string            `json:"error,omitempty"`
+	// Workspace is set when the case workspace was kept on disk (kept
+	// automatically on failure for post-mortem forensics, or always when
+	// GHOST_GOLDEN_KEEP is set). Empty when the workspace was removed.
+	Workspace string `json:"workspace,omitempty"`
 }
 
 // personRun is one person's executed conversation within a case.
@@ -229,10 +233,26 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 	if err != nil {
 		return failCase(cr, TestHarness, err.Error())
 	}
-	if os.Getenv("GHOST_GOLDEN_KEEP") != "" {
+	// Failing workspaces are kept automatically: a deleted workspace makes
+	// a failure (especially a privacy hard-fail) impossible to diagnose
+	// after the fact. GHOST_GOLDEN_KEEP keeps passing workspaces too.
+	keep := os.Getenv("GHOST_GOLDEN_KEEP") != ""
+	if keep {
+		cr.Workspace = root
+	}
+	defer func() {
+		if !keep {
+			os.RemoveAll(root)
+			return
+		}
 		fmt.Fprintf(os.Stderr, "golden: keeping workspace %s for %s\n", root, c.ID)
-	} else {
-		defer os.RemoveAll(root)
+	}()
+	// Setup/runtime failures are failures too — keep their workspaces.
+	failOut := func(cls Classification, msg string) CaseResult {
+		keep = true
+		out := failCase(cr, cls, msg)
+		out.Workspace = root
+		return out
 	}
 
 	// Shared or per-person workspaces.
@@ -251,43 +271,43 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 			ws = filepath.Join(root, "ws_"+p.Name)
 		}
 		if err := os.MkdirAll(ws, 0755); err != nil {
-			return failCase(cr, TestHarness, err.Error())
+			return failOut(TestHarness, err.Error())
 		}
 		// Pre-seed context mapping + memories (files), so the loop's own
 		// store and the governance context store load them.
 		sessionKey := caseSession(c, p)
 		if err := seedContextAndMemory(ws, p, sessionKey, r.Target); err != nil {
-			return failCase(cr, TestHarness, "seed: "+err.Error())
+			return failOut(TestHarness, "seed: "+err.Error())
 		}
 
 		cfg, err := r.configFor(ws)
 		if err != nil {
-			return failCase(cr, Configuration, err.Error())
+			return failOut(Configuration, err.Error())
 		}
 		if c.Offline && !r.Offline {
 			setProviderUnreachable(cfg, r.Target.Provider)
 		}
 		provider, err := providers.CreateProvider(cfg)
 		if err != nil {
-			return failCase(cr, Configuration, "provider: "+err.Error())
+			return failOut(Configuration, "provider: "+err.Error())
 		}
 		msgBus := bus.NewMessageBus()
 		loop, err := agent.NewAgentLoop(cfg, msgBus, provider)
 		if err != nil {
-			return failCase(cr, Configuration, "agent init: "+err.Error())
+			return failOut(Configuration, "agent init: "+err.Error())
 		}
 		// The gateway always migrates before any subsystem runs. Golden
 		// workspaces must too, or governed paths (durable jobs, browser
 		// sessions/leases) query a stale v1 schema and fail. Migrate the
 		// loop-created DB before governance wiring and turns.
 		if err := migrateGoldenDB(filepath.Join(ws, "ghost.db")); err != nil {
-			return failCase(cr, Runtime, "migrate workspace: "+err.Error())
+			return failOut(Runtime, "migrate workspace: "+err.Error())
 		}
 		// Real-time governance wiring (broker + events + contexts) exactly
 		// like the gateway wires it.
 		gov, db, err := wireGovernance(loop, ws, c.Fixture)
 		if err != nil {
-			return failCase(cr, Runtime, "governance: "+err.Error())
+			return failOut(Runtime, "governance: "+err.Error())
 		}
 		_ = gov
 		dbs = append(dbs, db)
@@ -323,6 +343,11 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 	cr.Assertions = asserts
 	if !ok {
 		cr.Verdict = VerdictFail
+		// Keep the evidence: without the workspace a failure cannot be
+		// diagnosed after the fact. The path is recorded on the result
+		// (visible in --json output) and printed to stderr.
+		keep = true
+		cr.Workspace = root
 		if cr.Classification == "" || cr.Classification == Passed {
 			cr.Classification = classifyFailure(c, asserts, runs)
 		}

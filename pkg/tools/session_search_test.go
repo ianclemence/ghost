@@ -69,3 +69,93 @@ func TestSessionSearchToolRequiresQuery(t *testing.T) {
 		t.Fatalf("expected error when db and query are missing")
 	}
 }
+
+// A caller in one context must never see another context's transcripts:
+// discover matches confined to a foreign session are dropped, an explicit
+// foreign session_id is refused, and in-context search still works.
+func TestSessionSearchCrossContextIsolation(t *testing.T) {
+	workspace := t.TempDir()
+	database, err := db.NewDB(workspace)
+	if err != nil {
+		t.Fatalf("NewDB failed: %v", err)
+	}
+	defer database.Close()
+
+	_, err = database.Exec(`
+		INSERT INTO messages (id, session_id, role, content) VALUES
+		('w1', 'ctx::work-sess', 'assistant', 'Your salary is quasar 200,000 per year'),
+		('h1', 'ctx::home-sess', 'user', 'remind me to buy milk tomorrow')
+	`)
+	if err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	tool := NewSessionSearchTool(database.DB)
+	tool.SetContextOf(func(sessionKey string) string {
+		if sessionKey == "ctx::work-sess" {
+			return "ctx:work"
+		}
+		return "ctx:personal"
+	})
+	homeCtx := WithSessionKey(context.Background(), "ctx::home-sess")
+
+	// Query matching only the foreign transcript returns nothing.
+	res := tool.Execute(homeCtx, map[string]interface{}{"query": "quasar", "limit": 10})
+	if res.IsError {
+		t.Fatalf("discover returned error: %s", res.ForLLM)
+	}
+	var payload struct {
+		Count   int                   `json:"count"`
+		Results []SessionSearchResult `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(res.ForLLM), &payload); err != nil {
+		t.Fatalf("invalid json output: %v", err)
+	}
+	if payload.Count != 0 {
+		t.Fatalf("cross-context discover leaked %d foreign result(s): %s", payload.Count, res.ForLLM)
+	}
+
+	// Explicitly targeting the foreign session is refused outright.
+	res = tool.Execute(homeCtx, map[string]interface{}{"query": "quasar", "session_id": "ctx::work-sess"})
+	if !res.IsError {
+		t.Fatalf("expected refusal for foreign session_id, got: %s", res.ForLLM)
+	}
+
+	// In-context search still works.
+	res = tool.Execute(homeCtx, map[string]interface{}{"query": "milk", "limit": 10})
+	if res.IsError {
+		t.Fatalf("in-context discover returned error: %s", res.ForLLM)
+	}
+	payload = struct {
+		Count   int                   `json:"count"`
+		Results []SessionSearchResult `json:"results"`
+	}{}
+	if err := json.Unmarshal([]byte(res.ForLLM), &payload); err != nil {
+		t.Fatalf("invalid json output: %v", err)
+	}
+	if payload.Count == 0 {
+		t.Fatalf("expected in-context match, got none")
+	}
+	for _, item := range payload.Results {
+		if item.SessionID != "ctx::home-sess" {
+			t.Fatalf("expected only home session results, got %s", item.SessionID)
+		}
+	}
+
+	// Same-context callers keep full visibility (work caller reads work).
+	workCtx := WithSessionKey(context.Background(), "ctx::work-sess")
+	res = tool.Execute(workCtx, map[string]interface{}{"query": "quasar", "limit": 10})
+	if res.IsError {
+		t.Fatalf("same-context discover returned error: %s", res.ForLLM)
+	}
+	payload = struct {
+		Count   int                   `json:"count"`
+		Results []SessionSearchResult `json:"results"`
+	}{}
+	if err := json.Unmarshal([]byte(res.ForLLM), &payload); err != nil {
+		t.Fatalf("invalid json output: %v", err)
+	}
+	if payload.Count == 0 {
+		t.Fatalf("expected same-context match, got none")
+	}
+}

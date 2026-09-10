@@ -371,6 +371,12 @@ func (r *Registry) Resume(id string) error {
 	if s.Control == OwnerUser {
 		return fmt.Errorf("the user still controls this surface")
 	}
+	// Only a paused surface may resume: reviving a completed, failed,
+	// expired, or already-active surface would fabricate liveness the
+	// runtime never earned. Fresh work re-registers through the gates.
+	if s.State != StatePaused {
+		return fmt.Errorf("only a paused surface can resume (state %s)", s.State)
+	}
 	s.Control = OwnerGhost
 	s.State = StateActive
 	s.bump(time.Now())

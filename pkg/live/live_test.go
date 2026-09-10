@@ -236,3 +236,25 @@ func TestCompleteTaskSettlesOnlyGhostOwned(t *testing.T) {
 		t.Fatalf("empty task must settle nothing, got %d", n)
 	}
 }
+
+// Resume must fail closed from any state other than paused: reviving a
+// completed/failed/active surface would fabricate liveness. Only paused
+// (post-release) surfaces return to Ghost, after the caller's revalidation.
+func TestResumeOnlyFromPaused(t *testing.T) {
+	r := NewRegistry("owner-1")
+	r.Register("s1", KindBrowser)
+	for _, st := range []State{StateCreated, StateActive, StateWaiting, StateCompleted, StateFailed, StateExpired, StateDisconnected} {
+		r.SetState("s1", st)
+		if err := r.Resume("s1"); err == nil {
+			t.Fatalf("resume from %s must fail", st)
+		}
+	}
+	r.SetState("s1", StatePaused)
+	if err := r.Resume("s1"); err != nil {
+		t.Fatalf("resume from paused must succeed: %v", err)
+	}
+	s, _ := r.Get("s1")
+	if s.Control != OwnerGhost || s.State != StateActive {
+		t.Fatalf("resumed surface must be ghost/active, got %+v", s)
+	}
+}
