@@ -13,7 +13,7 @@
   pairing, the primary Ghost conversation, voice push-to-talk, approvals,
   Activity, Memory, settings, offline/reconnection UX, real-device validation).
   Mobile functionality is not yet built; the backend contract it consumes is
-  documented in [MOBILE_API.md](MOBILE_API.md).
+  the existing HTTP/SSE/WS API surface (see the `cmd/ghost` and `pkg/` package docs).
 
 ## Overview (historical planning)
 
@@ -36,7 +36,7 @@ The phases build on each other. Implementation-plan documents formerly lived in 
 | **6 — Ghost Connect** | Managed-service platform + billing once services prove value. | Billing / account | (follows telemetry) |
 | **7 — Hardware (optional)** | A physical Ghost bundle. Shares the pipeline; only if demand is proven. | Device bundle | (deferred) |
 | **8 — Backend substrate & appliance** (done) | Capability/permission/event substrate, memory+RAG with context isolation, routines, contexts, voice/devices, verify/benchmark/golden. | — | — |
-| **9 — Mobile (next)** | Capacitor mobile app over the documented backend contract. | Mobile productization | MOBILE_API.md |
+| **9 — Mobile (next)** | Capacitor mobile app over the documented backend contract. | Mobile productization | — |
 
 ---
 

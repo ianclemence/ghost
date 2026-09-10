@@ -4,6 +4,13 @@
 
 This document contains useful commands and prompts to test the Ghost system based on currently loaded **Tools** and **Skills**.
 
+## Automated validation
+
+- `ghost verify` — product/security checks (identity, permissions, evidence, privacy, offline).
+- `ghost benchmark` — deterministic core score (responsiveness, capability, governance, memory).
+- `ghost golden` — the capability/security conversation suite against a real model (`--model=provider/model`, `--cases=`, `--json`).
+- `ghost golden behavioral` — the Behavioral Golden 100: realistic conversations graded on understanding, authority, execution, evidence, recovery, and experience (`--family=`, `--style=`, `--tier=`, `--cases=`, `--json`).
+
 ## 1. System Commands (Pi Terminal)
 
 Run these from the `~/ghost` directory on your Pi.

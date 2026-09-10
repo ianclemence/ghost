@@ -9,9 +9,8 @@ This is the home for Ghost's product and engineering documentation.
 
 ## Engineering references
 
-- **[Mobile API Contract](MOBILE_API.md)** — the stable backend surface consumed by the mobile app.
 - **[Connection Flow](CONNECTION_FLOW.md)** — pairing and device connectivity.
-- **[Testing](TESTING.md)** — how to test Ghost (unit/integration/API, `ghost verify`, `ghost benchmark`, `ghost golden`).
+- **[Testing](TESTING.md)** — how to test Ghost: automated validation (`ghost verify`, `ghost benchmark`, `ghost golden`), slash commands, test prompts, pairing, and security checks.
 
 ## Reading order
 
