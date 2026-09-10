@@ -1776,7 +1776,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":    "ok",
 			"timestamp": time.Now().Unix(),
-			"version":   "2.0.0",
+			"version":   version,
 			"uptime_s":  int64(time.Since(apiStartTime).Seconds()),
 		})
 	}))

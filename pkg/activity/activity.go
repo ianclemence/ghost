@@ -152,7 +152,9 @@ func stateFor(t cevents.Type, status string) State {
 	case cevents.AgentCompleted, cevents.MessageCreated, cevents.CapabilityCompleted,
 		cevents.ToolCompleted, cevents.PermissionApproved, cevents.MemoryCreated,
 		cevents.MemoryUpdated, cevents.IntegrationConnected, cevents.RoutineCreated,
-		cevents.RoutineCompleted, cevents.GhostReady:
+		cevents.RoutineCompleted, cevents.GhostReady,
+		cevents.SkillInstalled, cevents.SkillUpdated, cevents.SkillEnabled,
+		cevents.SkillDisabled, cevents.SkillRemoved:
 		return StateSuccess
 	case cevents.AgentFailed, cevents.CapabilityFailed, cevents.ToolFailed,
 		cevents.PermissionDenied, cevents.IntegrationFailed, cevents.RoutineFailed,

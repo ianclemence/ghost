@@ -157,3 +157,21 @@ func TestSkillLifecycleProjects(t *testing.T) {
 		}
 	}
 }
+
+// A settled lifecycle change must never project as "running": showing an
+// in-progress state for a completed fact is a false claim by omission.
+func TestSkillLifecycleProjectsSuccessNotRunning(t *testing.T) {
+	for _, typ := range []cevents.Type{
+		cevents.SkillInstalled, cevents.SkillUpdated, cevents.SkillEnabled,
+		cevents.SkillDisabled, cevents.SkillRemoved,
+	} {
+		chip, ok := Project(&cevents.Event{ID: "e", Seq: 7, Type: typ, Timestamp: time.Now(),
+			Visibility: product.VisUserMessage, Payload: map[string]interface{}{"name": "weather"}})
+		if !ok {
+			t.Fatalf("%s: no chip", typ)
+		}
+		if chip.State != StateSuccess {
+			t.Fatalf("%s: got state %q, want success", typ, chip.State)
+		}
+	}
+}

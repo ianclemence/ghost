@@ -23,7 +23,19 @@ import (
 // Monitoring station aesthetic: electric cyan + violet ghost
 // ═════════════════════════════════════════════════════════════════════════════
 
-const dashboardVersion = "1.0.0"
+// displayVersion reports the version shown in the dashboard header: the
+// gateway's own reported version when connected, otherwise this binary's
+// build version. A hardcoded constant would silently drift from both.
+func (m dashboardModel) displayVersion() string {
+	v := m.doctor.Version
+	if v == "" {
+		v = version
+	}
+	if v == "" {
+		return "dev"
+	}
+	return strings.TrimPrefix(v, "v")
+}
 
 const ghostASCII = `
    ╭━━━━━━╮
@@ -281,6 +293,20 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
+		// A pasted or fast-typed burst can arrive as a single multi-rune key
+		// message (e.g. "/hello" typed without pause). A bare switch on
+		// single keys would silently drop the whole burst, so a leading "/"
+		// always enters chat and seeds the remainder into the composer.
+		if s := msg.String(); strings.HasPrefix(s, "/") {
+			m.mode = ModeChat
+			m.textInput.Focus()
+			if rest := strings.TrimPrefix(s, "/"); rest != "" {
+				m.textInput.SetValue(m.textInput.Value() + rest)
+				m.textInput.SetCursor(len([]rune(m.textInput.Value())))
+			}
+			return m, textinput.Blink
+		}
+
 		switch strings.ToLower(msg.String()) {
 		case "q":
 			return m, tea.Quit
@@ -306,10 +332,6 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d":
 			m.isRefreshing = true
 			cmds = append(cmds, fetchDataCmd(m.client))
-		case "/":
-			m.mode = ModeChat
-			m.textInput.Focus()
-			return m, textinput.Blink
 		case "w":
 			if m.mode == ModeWorkspace {
 				m.mode = ModeDashboard
@@ -404,7 +426,7 @@ func (m dashboardModel) View() string {
 func (m dashboardModel) renderHeader() string {
 	art := lipgloss.NewStyle().Foreground(themeAccent).PaddingRight(2).Render(ghostASCII)
 	brand := lipgloss.NewStyle().Foreground(themeGhost).Bold(true).Render("◉ GHOST")
-	versionStr := lipgloss.NewStyle().Foreground(cTextMuted).Render("v" + dashboardVersion)
+	versionStr := lipgloss.NewStyle().Foreground(cTextMuted).Render("v" + m.displayVersion())
 	uptimeStr := lipgloss.NewStyle().Foreground(cTextSecondary).Render("Up " + formatDuration(time.Since(m.programStart)))
 
 	statusColor := themeSuccess
@@ -684,7 +706,7 @@ func (m dashboardModel) renderSanityChecks() string {
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 func (m dashboardModel) renderCompactView() string {
-	return lipgloss.NewStyle().Padding(2, 4).Foreground(themeGhost).Render("GHOST v" + dashboardVersion + " • Expand Terminal required")
+	return lipgloss.NewStyle().Padding(2, 4).Foreground(themeGhost).Render("GHOST v" + m.displayVersion() + " • Expand Terminal required")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/adhocore/gronx"
 	"github.com/charmbracelet/x/term"
 	"github.com/chzyer/readline"
 	"github.com/ianclemence/ghost/pkg/agent"
@@ -249,7 +250,11 @@ func main() {
 		case "list-builtin":
 			skillsListBuiltinCmd()
 		case "search":
-			skillsSearchCmd(installer)
+			query := ""
+			if len(os.Args) > 3 {
+				query = os.Args[3]
+			}
+			skillsSearchCmd(cfg, query)
 		case "show":
 			if len(os.Args) < 4 {
 				fmt.Println("Usage: ghost skills show <skill-name>")
@@ -299,6 +304,7 @@ func printHelp() {
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  reset-password  Reset the admin dashboard password (requires --force)")
 	fmt.Println("  cron        Manage scheduled tasks")
+	fmt.Println("  mcp         Manage MCP servers (list, add, edit, remove, test)")
 	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  stt         Manage local speech-to-text (setup, status)")
@@ -1791,7 +1797,7 @@ func relayHelp() {
 	fmt.Println("  run              Connect to relay server (runs in foreground)")
 	fmt.Println("  pair             Generate a pairing token for a new client")
 	fmt.Println("  clients          List paired clients")
-	fmt.Println("  revoke <token>   Revoke a client's access")
+	fmt.Println("  revoke <token-hash-prefix>   Revoke a client (use the ID shown by clients)")
 	fmt.Println("  setup            Generate device secret and configure relay")
 }
 
@@ -2289,7 +2295,18 @@ func cronListCmd(storePath string) {
 		nextRun := "scheduled"
 		if job.State.NextRunAtMS != nil {
 			nextTime := time.UnixMilli(*job.State.NextRunAtMS)
-			nextRun = nextTime.Format("2006-01-02 15:04")
+			if nextTime.After(time.Now()) {
+				nextRun = nextTime.Format("2006-01-02 15:04")
+			} else if fresh := cronNextRunForDisplay(&job.Schedule, time.Now()); fresh != nil {
+				// Stored next-run is stale (e.g. the scheduler hasn't
+				// recomputed since the service last ran). Show the live
+				// value; stored state is left untouched.
+				nextRun = fresh.Format("2006-01-02 15:04")
+			} else if job.Schedule.Kind == "at" {
+				nextRun = "elapsed"
+			} else {
+				nextRun = "overdue"
+			}
 		}
 
 		status := "enabled"
@@ -2308,6 +2325,33 @@ func cronListCmd(storePath string) {
 		if job.NoAgent {
 			fmt.Printf("    Mode: no-agent (script execution)\n")
 		}
+	}
+}
+
+// cronNextRunForDisplay recomputes a job's next run from its schedule for
+// display purposes only (stored scheduler state is untouched).
+func cronNextRunForDisplay(schedule *cron.CronSchedule, now time.Time) *time.Time {
+	if schedule == nil {
+		return nil
+	}
+	switch schedule.Kind {
+	case "cron":
+		if schedule.Expr == "" {
+			return nil
+		}
+		next, err := gronx.NextTickAfter(schedule.Expr, now, false)
+		if err != nil {
+			return nil
+		}
+		return &next
+	case "every":
+		if schedule.EveryMS == nil || *schedule.EveryMS <= 0 {
+			return nil
+		}
+		next := now.Add(time.Duration(*schedule.EveryMS) * time.Millisecond)
+		return &next
+	default:
+		return nil
 	}
 }
 
@@ -2659,16 +2703,17 @@ func saveConfigFromCLI(cfg *config.Config) error {
 func skillsHelp() {
 	fmt.Println("\nSkills commands:")
 	fmt.Println("  list                    List installed skills")
-	fmt.Println("  install <repo>          Install skill from GitHub")
+	fmt.Println("  install <owner>/<repo>  Install skill from GitHub (root SKILL.md)")
 	fmt.Println("  install-builtin          Install all builtin skills to workspace")
 	fmt.Println("  list-builtin             List available builtin skills")
-	fmt.Println("  remove <name>           Remove installed skill")
-	fmt.Println("  search                  Search available skills")
+	fmt.Println("  remove <name>            Remove installed skill (alias: uninstall)")
+	fmt.Println("  search [query]           Search available skills in the registry")
 	fmt.Println("  show <name>             Show skill details")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  ghost skills list")
-	fmt.Println("  ghost skills install sipeed/ghost-skills/weather")
+	fmt.Println("  ghost skills install sipeed/GHOST-skills")
+	fmt.Println("  ghost skills search weather")
 	fmt.Println("  ghost skills install-builtin")
 	fmt.Println("  ghost skills list-builtin")
 	fmt.Println("  ghost skills remove weather")
@@ -2753,121 +2798,102 @@ func cliEmitSkillEvent(ws string, typ cevents.Type, name string) {
 }
 
 func skillsInstallBuiltinCmd(workspace string) {
-	builtinSkillsDir := "./ghost/skills"
-	workspaceSkillsDir := filepath.Join(workspace, "skills")
-
-	fmt.Printf("Copying builtin skills to workspace...\n")
-
-	skillsToInstall := []string{
-		"weather",
-		"news",
-		"stock",
-		"calculator",
-	}
-
-	for _, skillName := range skillsToInstall {
-		builtinPath := filepath.Join(builtinSkillsDir, skillName)
-		workspacePath := filepath.Join(workspaceSkillsDir, skillName)
-
-		if _, err := os.Stat(builtinPath); err != nil {
-			fmt.Printf("⊘ Builtin skill '%s' not found: %v\n", skillName, err)
-			continue
-		}
-
-		if err := os.MkdirAll(workspacePath, 0755); err != nil {
-			fmt.Printf("✗ Failed to create directory for %s: %v\n", skillName, err)
-			continue
-		}
-
-		if err := copyDirectory(builtinPath, workspacePath); err != nil {
-			fmt.Printf("✗ Failed to copy %s: %v\n", skillName, err)
-		}
-	}
-
-	fmt.Println("\n✓ All builtin skills installed!")
-	fmt.Println("Now you can use them in your workspace.")
+	// Builtin skills live in the embedded workspace FS; install through the
+	// same manifest-aware sync as `skills sync` so user edits are preserved
+	// and the result is reported honestly (no blind overwrites, no fake
+	// per-skill success lines).
+	fmt.Println("Installing builtin skills to workspace...")
+	syncEmbeddedSkills(workspace)
+	fmt.Println("\n✓ Builtin skills installed (user-modified skills were preserved).")
 }
 
 func skillsListBuiltinCmd() {
-	cfg, err := loadConfig()
+	// Builtin skills live in the embedded workspace FS (the same source
+	// `skills sync` seeds from). Never resolve them from a hand-built
+	// filesystem path: those pointed at layouts that no longer exist.
+	sub, err := fs.Sub(embeddedFiles, "workspace/skills")
 	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
+		fmt.Printf("Error loading bundled skills: %v\n", err)
 		return
 	}
-	builtinSkillsDir := filepath.Join(filepath.Dir(cfg.WorkspacePath()), "ghost", "skills")
 
 	fmt.Println("\nAvailable Builtin Skills:")
 	fmt.Println("-----------------------")
 
-	entries, err := os.ReadDir(builtinSkillsDir)
-	if err != nil {
-		fmt.Printf("Error reading builtin skills: %v\n", err)
+	type builtinSkill struct{ name, description string }
+	var found []builtinSkill
+	walkErr := fs.WalkDir(sub, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Base(path) != "SKILL.md" {
+			return nil
+		}
+		// Top-level skill directories only (nested containers are not skills).
+		if dir := filepath.Dir(path); dir == "." || strings.Contains(dir, "/") {
+			return nil
+		}
+		data, err := fs.ReadFile(sub, path)
+		if err != nil {
+			return nil
+		}
+		name := filepath.Dir(path)
+		description := "No description"
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if rest, ok := strings.CutPrefix(line, "description:"); ok {
+				if desc := strings.Trim(strings.TrimSpace(rest), `"'`); desc != "" {
+					description = desc
+				}
+				break
+			}
+		}
+		found = append(found, builtinSkill{name: name, description: description})
+		return nil
+	})
+	if walkErr != nil {
+		fmt.Printf("Error reading bundled skills: %v\n", walkErr)
 		return
 	}
-
-	if len(entries) == 0 {
+	if len(found) == 0 {
 		fmt.Println("No builtin skills available.")
 		return
 	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			skillName := entry.Name()
-			skillFile := filepath.Join(builtinSkillsDir, skillName, "SKILL.md")
-
-			description := "No description"
-			if _, err := os.Stat(skillFile); err == nil {
-				data, err := os.ReadFile(skillFile)
-				if err == nil {
-					content := string(data)
-					if idx := strings.Index(content, "\n"); idx > 0 {
-						firstLine := content[:idx]
-						if strings.Contains(firstLine, "description:") {
-							descLine := strings.Index(content[idx:], "\n")
-							if descLine > 0 {
-								description = strings.TrimSpace(content[idx+descLine : idx+descLine])
-							}
-						}
-					}
-				}
-			}
-			status := "✓"
-			fmt.Printf("  %s  %s\n", status, entry.Name())
-			if description != "" {
-				fmt.Printf("     %s\n", description)
-			}
-		}
+	sort.Slice(found, func(i, j int) bool { return found[i].name < found[j].name })
+	for _, s := range found {
+		fmt.Printf("  ✓  %s\n", s.name)
+		fmt.Printf("     %s\n", s.description)
 	}
 }
 
-func skillsSearchCmd(installer *skills.SkillInstaller) {
+func skillsSearchCmd(cfg *config.Config, query string) {
 	fmt.Println("Searching for available skills...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	availableSkills, err := installer.ListAvailableSkills(ctx)
+	// Search the live ClawHub registry (the source of truth). A previous
+	// implementation queried a static skills.json snapshot that no longer
+	// exists upstream, so search always failed.
+	registry := skills.NewClawHubRegistry(cfg.Skills.ClawHub)
+	results, err := registry.Search(ctx, query, 20)
 	if err != nil {
-		fmt.Printf("✗ Failed to fetch skills list: %v\n", err)
+		fmt.Printf("✗ Skill search failed: %v\n", err)
+		return
+	}
+	if len(results) == 0 {
+		fmt.Println("No skills found.")
 		return
 	}
 
-	if len(availableSkills) == 0 {
-		fmt.Println("No skills available.")
-		return
-	}
-
-	fmt.Printf("\nAvailable Skills (%d):\n", len(availableSkills))
+	fmt.Printf("\nAvailable Skills (%d):\n", len(results))
 	fmt.Println("--------------------")
-	for _, skill := range availableSkills {
-		fmt.Printf("  📦 %s\n", skill.Name)
-		fmt.Printf("     %s\n", skill.Description)
-		fmt.Printf("     Repo: %s\n", skill.Repository)
-		if skill.Author != "" {
-			fmt.Printf("     Author: %s\n", skill.Author)
+	for _, skill := range results {
+		fmt.Printf("  📦 %s\n", skill.DisplayName)
+		if skill.Summary != "" {
+			fmt.Printf("     %s\n", skill.Summary)
 		}
-		if len(skill.Tags) > 0 {
-			fmt.Printf("     Tags: %v\n", skill.Tags)
+		if skill.Version != "" {
+			fmt.Printf("     Slug: %s (version %s)\n", skill.Slug, skill.Version)
+		} else {
+			fmt.Printf("     Slug: %s\n", skill.Slug)
 		}
 		fmt.Println()
 	}

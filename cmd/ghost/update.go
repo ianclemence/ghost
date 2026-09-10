@@ -23,6 +23,16 @@ func updateCmd() {
 
 	fmt.Println("Updating Ghost...")
 
+	if dryRun {
+		fmt.Println("[dry-run] Migration preview (no changes made):")
+		if err := migrateApplianceWorkspace(true); err != nil {
+			fmt.Printf("Workspace migration check failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Dry run complete.")
+		return
+	}
+
 	// Git pull
 	fmt.Println("1. Pulling latest changes...")
 	cmd := exec.Command("git", "-C", ghostDir, "pull")
@@ -31,16 +41,6 @@ func updateCmd() {
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Error pulling changes: %v\n", err)
 		os.Exit(1)
-	}
-
-	if dryRun {
-		fmt.Println("2. [dry-run] Migration preview (no changes made):")
-		if err := migrateApplianceWorkspace(true); err != nil {
-			fmt.Printf("Workspace migration check failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Dry run complete.")
-		return
 	}
 
 	// Quiesce the appliance before touching its runtime workspace, so the
