@@ -111,6 +111,8 @@ const (
 	TaskCancelled    Type = "task.cancelled"
 	TaskExpired      Type = "task.expired"
 	TaskInterrupted  Type = "task.interrupted"
+	// Effort / routing decisions (observability for why a turn was cheap or deep)
+	EffortSelected Type = "effort.selected"
 )
 
 // Durable reports whether the type is persisted in the warehouse (crash-

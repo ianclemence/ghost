@@ -31,6 +31,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/contextcache"
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/doctor"
+	"github.com/ianclemence/ghost/pkg/effort"
 	"github.com/ianclemence/ghost/pkg/evolution"
 	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -1806,6 +1807,29 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 // Returns the final content, iteration count, and any error.
 func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions) (string, int, error) {
 	iteration := 0
+
+	// Effort controller: choose an execution budget for this turn and record
+	// it on the trajectory. Quick is a hard small tool-call cap; Normal/Deep
+	// never exceed the configured ceiling. Cheap work first: trivial requests
+	// do not pay for a deep loop.
+	budget := effort.Policy(effort.Classify(opts.UserMessage))
+	maxIter := al.maxIterations
+	if budget.MaxToolCalls > 0 && budget.MaxToolCalls < maxIter {
+		maxIter = budget.MaxToolCalls
+	}
+	if maxIter < 1 {
+		maxIter = 1
+	}
+	if al.governance != nil {
+		al.governance.EffortSelected(opts.RequestID, opts.SessionKey, turnlog.TrajectoryIDFromContext(ctx),
+			map[string]interface{}{
+				"level":          string(budget.Level),
+				"max_tool_calls": maxIter,
+				"verification":   string(budget.Verification),
+				"memory_depth":   budget.MemoryDepth,
+				"cloud":          budget.AllowCloudEscalation,
+			})
+	}
 	var finalContent string
 	// Turn telemetry: accumulate token usage and tools chosen so quality and
 	// cost can be observed (P8), not guessed.
@@ -1821,13 +1845,13 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	}
 	activeTools := tools.FilterToolsForTurn(al.tools, activeProfile, opts.UserMessage, len(opts.Media) > 0)
 
-	for iteration < al.maxIterations {
+	for iteration < maxIter {
 		iteration++
 
 		logger.DebugCF("agent", "LLM iteration",
 			map[string]interface{}{
 				"iteration": iteration,
-				"max":       al.maxIterations,
+				"max":       maxIter,
 			})
 
 		// Ensure capability-required tools are visible even if hidden

@@ -166,6 +166,19 @@ func (g *Governance) FallbackRan(requestID, sessionKey, trajectoryID, from, to s
 	})
 }
 
+// EffortSelected records the execution budget chosen for a turn, so Doctor
+// and trajectories can explain why a turn was cheap or deep.
+func (g *Governance) EffortSelected(requestID, sessionKey, trajectoryID string, payload map[string]interface{}) {
+	if !g.active() || g.Events == nil {
+		return
+	}
+	g.Events.Publish(&cevents.Event{
+		Type: cevents.EffortSelected, RequestID: requestID, SessionID: sessionKey,
+		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID, Status: "success",
+		Payload: payload,
+	})
+}
+
 // AuthorizeResult is the gate decision for one tool call.
 type AuthorizeResult struct {
 	// Allowed: the call may execute.
