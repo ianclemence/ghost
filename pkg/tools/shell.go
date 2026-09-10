@@ -90,6 +90,9 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
+	// Never let a model-initiated command inherit Ghost's credentials:
+	// start from a minimal allowlist and confine HOME to the workspace.
+	HardenCommand(cmd, t.workingDir, nil)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

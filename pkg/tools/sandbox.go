@@ -78,12 +78,16 @@ func (t *SandboxTool) Execute(ctx context.Context, args map[string]interface{}) 
 	cmd := exec.CommandContext(ctx, "sh", "-c", fullCmd)
 	cmd.Dir = t.workspace
 
-	// Set environment variables
+	// Set environment variables from the request, but through the guard so a
+	// secret-shaped variable can never be introduced, and the parent
+	// environment is never inherited wholesale.
+	var extra []string
 	for _, e := range env {
 		if s, ok := e.(string); ok {
-			cmd.Env = append(cmd.Env, s)
+			extra = append(extra, s)
 		}
 	}
+	HardenCommand(cmd, t.workspace, extra)
 
 	logger.InfoCF("sandbox", "Executing sandboxed command", map[string]interface{}{
 		"command": fullCmd,
@@ -111,11 +115,13 @@ func (t *SandboxTool) executeWithManualTimeout(ctx context.Context, command stri
 
 	cmd := exec.CommandContext(timeoutCtx, "sh", "-c", command)
 	cmd.Dir = t.workspace
+	var extra []string
 	for _, e := range env {
 		if s, ok := e.(string); ok {
-			cmd.Env = append(cmd.Env, s)
+			extra = append(extra, s)
 		}
 	}
+	HardenCommand(cmd, t.workspace, extra)
 
 	out, err := cmd.CombinedOutput()
 	if timeoutCtx.Err() == context.DeadlineExceeded {
