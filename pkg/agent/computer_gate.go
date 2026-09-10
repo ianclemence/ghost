@@ -207,7 +207,7 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 	continuation[contGeneration] = generation
 	continuation[contComputerOp] = op
 	continuation[contComputerTool] = tool
-	req, err := g.Broker.Require(requestID, sessionKey, g.AgentID, computerCapability, tool,
+	req, err := g.Broker.RequireWithTrajectory(requestID, sessionKey, g.AgentID, g.trajectoryFor(requestID), computerCapability, tool,
 		scopeTarget(args), humanReason(computerCapability, tool, args), risk, continuation)
 	if err != nil {
 		return deny("I couldn't prepare the approval request. Nothing was run.")

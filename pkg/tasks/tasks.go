@@ -76,6 +76,9 @@ type Job struct {
 	// secrets); ResumeState is the durable cursor a restart resumes from.
 	Evidence    string `json:"evidence,omitempty"`
 	ResumeState string `json:"resume_state,omitempty"`
+	// TrajectoryID links the job's lifecycle events to the execution trace
+	// that created it (empty for jobs with no originating turn).
+	TrajectoryID string `json:"trajectory_id,omitempty"`
 }
 
 // TransitionError reports a rejected state-machine move. Moves that would
@@ -140,25 +143,32 @@ func (s *Store) Create(kind, sessionKey string, payload map[string]interface{}) 
 // CreateWithScope registers a new pending job bound to one owner and
 // context from birth. Unscoped legacy callers keep using Create.
 func (s *Store) CreateWithScope(kind, sessionKey, owner, contextID string, payload map[string]interface{}) (Job, error) {
+	return s.CreateWithTrajectory(kind, sessionKey, owner, contextID, "", payload)
+}
+
+// CreateWithTrajectory is CreateWithScope plus the originating turn's
+// trajectory, so the job's lifecycle events join that execution trace.
+func (s *Store) CreateWithTrajectory(kind, sessionKey, owner, contextID, trajectoryID string, payload map[string]interface{}) (Job, error) {
 	j := Job{
-		ID:         newID(),
-		Kind:       kind,
-		Status:     StatusPending,
-		Progress:   0,
-		Payload:    payload,
-		SessionKey: sessionKey,
-		Owner:      owner,
-		ContextID:  contextID,
-		Generation: newGeneration(),
-		CreatedAt:  now(),
-		UpdatedAt:  now(),
+		ID:           newID(),
+		Kind:         kind,
+		Status:       StatusPending,
+		Progress:     0,
+		Payload:      payload,
+		SessionKey:   sessionKey,
+		Owner:        owner,
+		ContextID:    contextID,
+		Generation:   newGeneration(),
+		TrajectoryID: trajectoryID,
+		CreatedAt:    now(),
+		UpdatedAt:    now(),
 	}
 	cp, _ := json.Marshal(j.Checkpoints)
 	pl, _ := json.Marshal(j.Payload)
-	_, err := s.db.Exec(`INSERT INTO jobs (id, kind, status, progress, checkpoints, payload, session_key, error, attempts, created_at, updated_at, owner, context_id, generation, evidence, resume_state)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err := s.db.Exec(`INSERT INTO jobs (id, kind, status, progress, checkpoints, payload, session_key, error, attempts, created_at, updated_at, owner, context_id, generation, evidence, resume_state, trajectory_id)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		j.ID, j.Kind, string(j.Status), j.Progress, string(cp), string(pl), j.SessionKey, "", 0, j.CreatedAt, j.UpdatedAt,
-		j.Owner, j.ContextID, j.Generation, "", "")
+		j.Owner, j.ContextID, j.Generation, "", "", j.TrajectoryID)
 	if err != nil {
 		return Job{}, fmt.Errorf("create job: %w", err)
 	}
@@ -480,7 +490,7 @@ func (s *Store) MarkInterrupted() (int, error) {
 
 // jobColumns is the single column list every read and write uses, so a
 // schema change fails loudly in one place instead of silently shifting.
-const jobColumns = `id, kind, status, progress, checkpoints, payload, session_key, error, attempts, created_at, started_at, finished_at, updated_at, owner, context_id, generation, evidence, resume_state`
+const jobColumns = `id, kind, status, progress, checkpoints, payload, session_key, error, attempts, created_at, started_at, finished_at, updated_at, owner, context_id, generation, evidence, resume_state, trajectory_id`
 
 // Get returns a job by id.
 func (s *Store) Get(id string) (Job, error) {
@@ -563,7 +573,7 @@ func (s *Store) publishTaskEvent(kind string, job Job) {
 		return
 	}
 	s.stream.Publish(&cevents.Event{
-		Type: typ, SessionID: job.SessionKey,
+		Type: typ, SessionID: job.SessionKey, TrajectoryID: job.TrajectoryID,
 		Status: string(job.Status),
 		Payload: map[string]interface{}{
 			"job_id":   job.ID,
@@ -581,9 +591,9 @@ func scanJob(rs interface{ Scan(...interface{}) error }) (Job, error) {
 	var j Job
 	var status, checkpoints, payload string
 	var startedAt, finishedAt sql.NullInt64
-	var sessionKey, jobErr, owner, contextID, generation, evidence, resumeState sql.NullString
+	var sessionKey, jobErr, owner, contextID, generation, evidence, resumeState, trajectoryID sql.NullString
 	if err := rs.Scan(&j.ID, &j.Kind, &status, &j.Progress, &checkpoints, &payload, &sessionKey, &jobErr, &j.Attempts, &j.CreatedAt, &startedAt, &finishedAt, &j.UpdatedAt,
-		&owner, &contextID, &generation, &evidence, &resumeState); err != nil {
+		&owner, &contextID, &generation, &evidence, &resumeState, &trajectoryID); err != nil {
 		return Job{}, fmt.Errorf("scan job: %w", err)
 	}
 	j.Status = Status(status)
@@ -594,6 +604,7 @@ func scanJob(rs interface{ Scan(...interface{}) error }) (Job, error) {
 	j.Generation = generation.String
 	j.Evidence = evidence.String
 	j.ResumeState = resumeState.String
+	j.TrajectoryID = trajectoryID.String
 	_ = json.Unmarshal([]byte(checkpoints), &j.Checkpoints)
 	if len(j.Checkpoints) == 0 {
 		j.Checkpoints = nil

@@ -48,6 +48,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/state"
 	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/turnlog"
 	"github.com/ianclemence/ghost/pkg/verify"
 	"github.com/ianclemence/ghost/pkg/voice"
 	"github.com/joho/godotenv"
@@ -2948,6 +2949,10 @@ func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus
 	if channel == "" {
 		channel = "routine"
 	}
+	// One trajectory for the whole routine run: the routine events and the
+	// agent turn it drives share it, so a scheduled failure is replayable.
+	trajectoryID := turnlog.NewTrajectoryID()
+	ctx = turnlog.WithTrajectoryID(ctx, trajectoryID)
 	emit := func(typ cevents.Type, status string, summary string) {
 		if events == nil {
 			return
@@ -2957,7 +2962,7 @@ func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus
 			payload["summary"] = summary
 		}
 		events.Publish(&cevents.Event{Type: typ, GhostID: r.GhostID, AgentID: "agent-main",
-			RoutineID: r.ID, Status: status, Payload: payload})
+			RoutineID: r.ID, TrajectoryID: trajectoryID, Status: status, Payload: payload})
 	}
 	emit(cevents.RoutineStarted, "running", r.Name+" started")
 	outcome, err := routineSvc.Run(ctx, r.ID, execKey, func(ctx context.Context, r *routines.Routine) routines.RunOutcome {

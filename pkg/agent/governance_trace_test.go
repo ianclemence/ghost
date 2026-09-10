@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ianclemence/ghost/pkg/cevents"
+	"github.com/ianclemence/ghost/pkg/permissions"
 	_ "modernc.org/sqlite"
 )
 
@@ -83,4 +84,54 @@ func TestGovernanceTraceNilSafe(t *testing.T) {
 	g.VerificationRan("s", "t", "trj", 1, false, "")
 	g.FallbackRan("r", "s", "trj", "a", "b", false)
 	g.TurnEnded("r", "s", "trj", nil)
+}
+
+// Permission lifecycle events must join the turn's trajectory, and the
+// trajectory must survive on the persisted request so a late approval still
+// carries it.
+func TestPermissionEventsCarryTrajectory(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	broker, err := permissions.Open(db, permissions.ModeAsk, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := cevents.Open(db, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := NewGovernance(st, broker, "g1", "agent-main")
+	g.TurnStarted("req-perm", "sess-1", "mobile", "trj_perm")
+
+	if _, err := broker.RequireWithTrajectory("req-perm", "sess-1", "agent-main",
+		g.trajectoryFor("req-perm"), "calendar", "create", "", "create event",
+		permissions.RiskConsequential, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Resolve AFTER the turn ends: the persisted trajectory must survive.
+	g.TurnEnded("req-perm", "sess-1", "trj_perm", nil)
+	reqs := broker.Requests(permissions.StatusPending, 10)
+	if len(reqs) != 1 {
+		t.Fatalf("expected one pending request, got %d", len(reqs))
+	}
+	if _, err := broker.Resolve(reqs[0].ID, permissions.GrantOnce, "owner"); err != nil {
+		t.Fatal(err)
+	}
+
+	got := st.ByTrajectory("trj_perm")
+	types := map[cevents.Type]bool{}
+	for _, e := range got {
+		types[e.Type] = true
+		if e.Type == cevents.PermissionRequested || e.Type == cevents.PermissionApproved {
+			if e.TrajectoryID != "trj_perm" {
+				t.Fatalf("%s missing trajectory", e.Type)
+			}
+		}
+	}
+	if !types[cevents.PermissionRequested] || !types[cevents.PermissionApproved] {
+		t.Fatalf("expected requested+approved on the trajectory, got %v", types)
+	}
 }

@@ -75,7 +75,15 @@ func (t *SandboxTool) Execute(ctx context.Context, args map[string]interface{}) 
 	timeoutSec := fmt.Sprintf("%.3f", timeoutMs/1000.0)
 	fullCmd := fmt.Sprintf("timeout %s nice -n 10 %s", timeoutSec, command)
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", fullCmd)
+	argv := []string{"sh", "-c", fullCmd}
+	// Sandboxed code is the untrusted case: isolate it at the OS level when
+	// available (read-only root, private /tmp, namespaces, config hidden).
+	if wrapped, ok, werr := WrapArgv(argv, t.workspace, t.workspace, true); werr != nil {
+		return ErrorResult(werr.Error())
+	} else if ok {
+		argv = wrapped
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = t.workspace
 
 	// Set environment variables from the request, but through the guard so a
@@ -113,7 +121,13 @@ func (t *SandboxTool) executeWithManualTimeout(ctx context.Context, command stri
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 	defer cancel()
 
-	cmd := exec.CommandContext(timeoutCtx, "sh", "-c", command)
+	argv := []string{"sh", "-c", command}
+	if wrapped, ok, werr := WrapArgv(argv, t.workspace, t.workspace, true); werr != nil {
+		return ErrorResult(werr.Error())
+	} else if ok {
+		argv = wrapped
+	}
+	cmd := exec.CommandContext(timeoutCtx, argv[0], argv[1:]...)
 	cmd.Dir = t.workspace
 	var extra []string
 	for _, e := range env {

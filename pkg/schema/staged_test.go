@@ -109,8 +109,8 @@ func TestV3ToV4TrajectoryUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migrate to head: %v", err)
 	}
-	if head != CurrentVersion || CurrentVersion != 4 {
-		t.Fatalf("head = %d, want 4", head)
+	if head != CurrentVersion || CurrentVersion < 4 {
+		t.Fatalf("head = %d, want >= 4", head)
 	}
 	var has bool
 	if err := db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('canonical_events') WHERE name='trajectory_id'`).Scan(&has); err != nil || !has {

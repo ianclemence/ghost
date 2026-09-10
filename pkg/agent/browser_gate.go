@@ -253,7 +253,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	continuation[contBrowserOp] = op
 	continuation[contBrowserSession] = sess.ID
 	continuation[contBrowserTool] = tool
-	req, err := g.Broker.Require(requestID, sessionKey, g.AgentID, browserCapability, tool,
+	req, err := g.Broker.RequireWithTrajectory(requestID, sessionKey, g.AgentID, g.trajectoryFor(requestID), browserCapability, tool,
 		scopeTarget(args), humanReason(browserCapability, tool, args), risk, continuation)
 	if err != nil {
 		return deny("I couldn't prepare the approval request. Nothing was run.")

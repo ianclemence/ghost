@@ -75,6 +75,9 @@ func TestV2ConvergesToCurrentSchema(t *testing.T) {
 	if err := EnsureV2Columns(upgraded); err != nil {
 		t.Fatalf("upgrade: %v", err)
 	}
+	if err := EnsureTrajectoryColumn(upgraded); err != nil {
+		t.Fatalf("upgrade trajectory: %v", err)
+	}
 
 	fresh := openMem(t)
 	if err := EnsureSchema(fresh); err != nil {
@@ -96,6 +99,9 @@ func TestV2IsIdempotent(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		if err := EnsureV2Columns(db); err != nil {
 			t.Fatalf("run %d: %v", i, err)
+		}
+		if err := EnsureTrajectoryColumn(db); err != nil {
+			t.Fatalf("run %d trajectory: %v", i, err)
 		}
 	}
 	s := NewStore(db, nil)

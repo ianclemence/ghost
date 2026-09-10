@@ -94,6 +94,7 @@ var snapshotTables = []snapshotTable{
 		"session_key", "error", "attempts", "created_at", "started_at",
 		"finished_at", "updated_at",
 		"owner", "context_id", "generation", "evidence", "resume_state",
+		"trajectory_id",
 	}, OrderBy: "id"},
 	{Name: "event_consumers", Columns: []string{
 		"consumer", "last_seq", "updated_at",

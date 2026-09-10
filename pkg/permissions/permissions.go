@@ -133,9 +133,12 @@ const (
 
 // Request is a first-class durable permission request.
 type Request struct {
-	ID           string            `json:"id"`
-	RequestID    string            `json:"request_id"`
-	SessionKey   string            `json:"session_key,omitempty"`
+	ID         string `json:"id"`
+	RequestID  string `json:"request_id"`
+	SessionKey string `json:"session_key,omitempty"`
+	// TrajectoryID links the permission decision to the execution trace it
+	// belongs to (empty for background work with no turn).
+	TrajectoryID string            `json:"trajectory_id,omitempty"`
 	AgentID      string            `json:"agent_id"`
 	Capability   string            `json:"capability"`
 	Action       string            `json:"action"`
@@ -195,7 +198,7 @@ func Open(db *sql.DB, mode Mode, ttl time.Duration) (*Broker, error) {
 			capability TEXT, action TEXT, target TEXT, reason TEXT,
 			risk TEXT, status TEXT, continuation TEXT,
 			created_at TEXT, expires_at TEXT, resolved_at TEXT,
-			grant TEXT
+			grant TEXT, session_key TEXT, trajectory_id TEXT
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_perm_req_status ON permission_requests(status)`,
 		`CREATE TABLE IF NOT EXISTS permission_grants (
@@ -212,6 +215,8 @@ func Open(db *sql.DB, mode Mode, ttl time.Duration) (*Broker, error) {
 	// Migration for databases created before session linkage existed
 	// (must precede the session index below).
 	_, _ = db.Exec(`ALTER TABLE permission_requests ADD COLUMN session_key TEXT`)
+	// Migration for databases created before trajectory linkage existed.
+	_, _ = db.Exec(`ALTER TABLE permission_requests ADD COLUMN trajectory_id TEXT`)
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_perm_req_session ON permission_requests(session_key)`); err != nil {
 		return nil, err
 	}
@@ -284,6 +289,13 @@ func (b *Broker) Evaluate(capability, action, scope string, risk Risk) Verdict {
 // verdict and returns it. Idempotent per request_id: the same interrupted
 // turn resumes the same request instead of duplicating approval cards.
 func (b *Broker) Require(requestID, sessionKey, agentID, capability, action, target, reason string, risk Risk, continuation map[string]string) (*Request, error) {
+	return b.RequireWithTrajectory(requestID, sessionKey, agentID, "", capability, action, target, reason, risk, continuation)
+}
+
+// RequireWithTrajectory is Require plus the execution-trajectory identity, so
+// the permission lifecycle events join the turn's trace. An empty trajectory
+// (background work with no turn) is honest, not fabricated.
+func (b *Broker) RequireWithTrajectory(requestID, sessionKey, agentID, trajectoryID, capability, action, target, reason string, risk Risk, continuation map[string]string) (*Request, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	now := b.now()
@@ -295,7 +307,8 @@ func (b *Broker) Require(requestID, sessionKey, agentID, capability, action, tar
 	}
 	r := &Request{
 		ID: newID(), RequestID: requestID, SessionKey: sessionKey, AgentID: agentID,
-		Capability: capability, Action: action, Target: target, Reason: reason,
+		TrajectoryID: trajectoryID,
+		Capability:   capability, Action: action, Target: target, Reason: reason,
 		Risk: risk, Status: StatusPending, Continuation: continuation,
 		CreatedAt: now, ExpiresAt: now.Add(b.ttl),
 	}
@@ -410,7 +423,7 @@ func (b *Broker) PendingForSession(sessionKey string) (*Request, bool) {
 	}
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	r, ok := scanRequest(b.db.QueryRow(`SELECT id, request_id, session_key, agent_id, capability, action, target, reason, risk, status, continuation, created_at, expires_at, resolved_at, grant FROM permission_requests WHERE session_key=? AND status=? ORDER BY created_at DESC LIMIT 1`, sessionKey, StatusPending))
+	r, ok := scanRequest(b.db.QueryRow(`SELECT id, request_id, session_key, agent_id, capability, action, target, reason, risk, status, continuation, created_at, expires_at, resolved_at, grant, trajectory_id FROM permission_requests WHERE session_key=? AND status=? ORDER BY created_at DESC LIMIT 1`, sessionKey, StatusPending))
 	if !ok {
 		return nil, false
 	}
@@ -458,7 +471,7 @@ func (b *Broker) Requests(status RequestStatus, limit int) []*Request {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	q := `SELECT id, request_id, session_key, agent_id, capability, action, target, reason, risk, status, continuation, created_at, expires_at, resolved_at, grant FROM permission_requests`
+	q := `SELECT id, request_id, session_key, agent_id, capability, action, target, reason, risk, status, continuation, created_at, expires_at, resolved_at, grant, trajectory_id FROM permission_requests`
 	args := []interface{}{}
 	if status != "" {
 		q += ` WHERE status=?`
@@ -475,14 +488,17 @@ func (b *Broker) Requests(status RequestStatus, limit int) []*Request {
 	for rows.Next() {
 		var r Request
 		var risk, st, cont, created, expires string
-		var session sql.NullString
+		var session, trajectory sql.NullString
 		var resolved, grant sql.NullString
 		if err := rows.Scan(&r.ID, &r.RequestID, &session, &r.AgentID, &r.Capability, &r.Action,
-			&r.Target, &r.Reason, &risk, &st, &cont, &created, &expires, &resolved, &grant); err != nil {
+			&r.Target, &r.Reason, &risk, &st, &cont, &created, &expires, &resolved, &grant, &trajectory); err != nil {
 			continue
 		}
 		if session.Valid {
 			r.SessionKey = session.String
+		}
+		if trajectory.Valid {
+			r.TrajectoryID = trajectory.String
 		}
 		r.Risk = Risk(risk)
 		r.Status = RequestStatus(st)
@@ -607,11 +623,11 @@ func (b *Broker) insert(r *Request) error {
 	r.Continuation = stripSecretValues(r.Continuation)
 	cont, _ := json.Marshal(r.Continuation)
 	_, err := b.db.Exec(`INSERT INTO permission_requests
-		(id, request_id, session_key, agent_id, capability, action, target, reason, risk, status, continuation, created_at, expires_at, resolved_at, grant)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		(id, request_id, session_key, agent_id, capability, action, target, reason, risk, status, continuation, created_at, expires_at, resolved_at, grant, trajectory_id)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.ID, r.RequestID, r.SessionKey, r.AgentID, r.Capability, r.Action, r.Target, r.Reason,
 		string(r.Risk), string(r.Status), string(cont),
-		r.CreatedAt.Format(time.RFC3339), r.ExpiresAt.Format(time.RFC3339), nil, "")
+		r.CreatedAt.Format(time.RFC3339), r.ExpiresAt.Format(time.RFC3339), nil, "", r.TrajectoryID)
 	return err
 }
 
@@ -655,14 +671,17 @@ func scanRequest(row *sql.Row) (*Request, bool) {
 	var r Request
 	var risk, status, cont, created, expires string
 	var resolved, grant sql.NullString
-	var session sql.NullString
+	var session, trajectory sql.NullString
 	if err := row.Scan(&r.ID, &r.RequestID, &session, &r.AgentID, &r.Capability, &r.Action,
-		&r.Target, &r.Reason, &risk, &status, &cont, &created, &expires, &resolved, &grant); err != nil {
+		&r.Target, &r.Reason, &risk, &status, &cont, &created, &expires, &resolved, &grant, &trajectory); err != nil {
 		return nil, false
 	}
 	r.Risk = Risk(risk)
 	if session.Valid {
 		r.SessionKey = session.String
+	}
+	if trajectory.Valid {
+		r.TrajectoryID = trajectory.String
 	}
 	r.Status = RequestStatus(status)
 	_ = json.Unmarshal([]byte(cont), &r.Continuation)
@@ -684,11 +703,11 @@ func scanRequest(row *sql.Row) (*Request, bool) {
 }
 
 func (b *Broker) byID(id string) (*Request, bool) {
-	return scanRequest(b.db.QueryRow(`SELECT id, request_id, session_key, agent_id, capability, action, target, reason, risk, status, continuation, created_at, expires_at, resolved_at, grant FROM permission_requests WHERE id=?`, id))
+	return scanRequest(b.db.QueryRow(`SELECT id, request_id, session_key, agent_id, capability, action, target, reason, risk, status, continuation, created_at, expires_at, resolved_at, grant, trajectory_id FROM permission_requests WHERE id=?`, id))
 }
 
 func (b *Broker) byRequestID(requestID string) (*Request, bool) {
-	return scanRequest(b.db.QueryRow(`SELECT id, request_id, session_key, agent_id, capability, action, target, reason, risk, status, continuation, created_at, expires_at, resolved_at, grant FROM permission_requests WHERE request_id=? ORDER BY created_at DESC LIMIT 1`, requestID))
+	return scanRequest(b.db.QueryRow(`SELECT id, request_id, session_key, agent_id, capability, action, target, reason, risk, status, continuation, created_at, expires_at, resolved_at, grant, trajectory_id FROM permission_requests WHERE request_id=? ORDER BY created_at DESC LIMIT 1`, requestID))
 }
 
 // CardAction is one native approval action.

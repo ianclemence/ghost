@@ -81,12 +81,22 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	cmdCtx, cancel := context.WithTimeout(ctx, t.timeout)
 	defer cancel()
 
-	var cmd *exec.Cmd
+	var argv []string
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(cmdCtx, "powershell", "-NoProfile", "-NonInteractive", "-Command", command)
+		argv = []string{"powershell", "-NoProfile", "-NonInteractive", "-Command", command}
 	} else {
-		cmd = exec.CommandContext(cmdCtx, "sh", "-c", command)
+		argv = []string{"sh", "-c", command}
 	}
+	// OS-level isolation when available (bubblewrap on Linux): read-only
+	// root, private /tmp, namespaces, and no access to the config dir. The
+	// command legitimately needs network (skills use curl), so network is
+	// shared; filesystem and secret boundaries are the isolation here.
+	if wrapped, ok, werr := WrapArgv(argv, cwd, t.workingDir, true); werr != nil {
+		return ErrorResult(werr.Error())
+	} else if ok {
+		argv = wrapped
+	}
+	cmd := exec.CommandContext(cmdCtx, argv[0], argv[1:]...)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}

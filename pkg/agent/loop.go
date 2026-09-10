@@ -33,6 +33,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/effort"
 	"github.com/ianclemence/ghost/pkg/evolution"
+	"github.com/ianclemence/ghost/pkg/failurecorpus"
 	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -125,6 +126,10 @@ type AgentLoop struct {
 	standingBrokerInst *permissions.Broker
 	// jobs is the durable task store (SQLite-backed, part of Ghost State).
 	jobs *tasks.Store
+
+	// failureCorpus records runtime failures (verification, etc.) locally
+	// for regression conversion. Nil when the workspace is unavailable.
+	failureCorpus *failurecorpus.Store
 
 	// retrieval aggregates observed retrieval latencies (RAG assembly,
 	// memory-note search) for Doctor and future cost-aware scoring.
@@ -431,22 +436,6 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		store = session.NewSQLiteStore(database)
 	}
 	sessionsManager := session.NewSessionManager(store, ragStore)
-	// Adaptive retrieval under resource pressure. The snapshot is cached
-	// briefly so a burst of turns doesn't re-read /proc and statfs each time.
-	{
-		var mu sync.Mutex
-		var last time.Time
-		var scale float64 = 1
-		sessionsManager.SetResourceScale(func() float64 {
-			mu.Lock()
-			defer mu.Unlock()
-			if time.Since(last) > 30*time.Second {
-				scale = hardware.Snapshot(workspace).ContextScale()
-				last = time.Now()
-			}
-			return scale
-		})
-	}
 
 	// Create state manager for atomic state persistence
 	stateManager := state.NewManager(workspace)
@@ -633,6 +622,9 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	al.shutdownCtx, al.shutdownCancel = context.WithCancel(context.Background())
 	al.events = NewEventBus()
+	if fc, err := failurecorpus.New(workspace); err == nil {
+		al.failureCorpus = fc
+	}
 
 	// Retrieval observability: the two model-facing retrieval paths (RAG
 	// semantic context, memory-note search) record their latency so Doctor
@@ -643,6 +635,65 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		}
 	}
 	doctorRunner.SetRetrievalSource(al.retrieval.snapshot)
+
+	// World-state verification outcomes join the turn's trajectory: the
+	// registry observes them where they happen, governance records them.
+	// Session and trajectory resolve from the tool context (server-set,
+	// never model input). Installed once here so verification is observed
+	// even outside a full turn.
+	al.tools.SetVerifySink(func(ctx context.Context, tool string, latencyMs int64, verr error) {
+		if al.governance == nil {
+			return
+		}
+		detail := ""
+		if verr != nil {
+			detail = verr.Error()
+			if len(detail) > 240 {
+				detail = detail[:240] + "…"
+			}
+		}
+		al.governance.VerificationRan(
+			tools.SessionKeyFromContext(ctx), tool,
+			turnlog.TrajectoryIDFromContext(ctx), latencyMs, verr != nil, detail,
+		)
+		// A failed world-state check is exactly the kind of failure worth
+		// turning into a regression test. Capture it locally (redacted).
+		if verr != nil && al.failureCorpus != nil {
+			_ = al.failureCorpus.Append(failurecorpus.Record{
+				Category:     failurecorpus.CatVerification,
+				Task:         tool,
+				Environment:  "runtime",
+				Expected:     "tool effect confirmed by verifier",
+				Observed:     detail,
+				TrajectoryID: turnlog.TrajectoryIDFromContext(ctx),
+				Regression:   true,
+			})
+		}
+	})
+
+	// Adaptive retrieval: combine live resource pressure with observed
+	// retrieval latency. If semantic retrieval is slow, fetch less context
+	// (the scorer keeps the best items), so a constrained or busy device
+	// spends less. The resource snapshot is cached briefly so a burst of
+	// turns doesn't re-read /proc and statfs each time.
+	{
+		var mu sync.Mutex
+		var last time.Time
+		var resScale float64 = 1
+		sessionsManager.SetResourceScale(func() float64 {
+			mu.Lock()
+			defer mu.Unlock()
+			if time.Since(last) > 30*time.Second {
+				resScale = hardware.Snapshot(workspace).ContextScale()
+				last = time.Now()
+			}
+			s := resScale
+			if ls := al.retrieval.latencyScale(); ls < s {
+				s = ls
+			}
+			return s
+		})
+	}
 
 	// Session-scoped memory retrieval: context_get sees what the calling
 	// session's context may see. The closure reads governance live, so
@@ -1012,6 +1063,12 @@ func (al *AgentLoop) ClearRoutineContext(sessionKey string) {
 }
 
 func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage, onChunk func(string), onToolCall func(string, string)) (string, error) {
+	// Background/cron turns arrive without a turn claim, so mint a
+	// trajectory here when the caller did not supply one. Interactive turns
+	// already carry the claim's trajectory; this is a no-op for them.
+	if turnlog.TrajectoryIDFromContext(ctx) == "" {
+		ctx = turnlog.WithTrajectoryID(ctx, turnlog.NewTrajectoryID())
+	}
 	// Ensure request ID exists for tracing
 	if msg.Metadata == nil {
 		msg.Metadata = make(map[string]string)
@@ -1642,6 +1699,11 @@ func previousUserMessage(history []providers.Message) string {
 // It handles context building, LLM calls, tool execution, and response handling.
 func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (string, error) {
 	startTime := time.Now()
+	// Heartbeat/background callers bypass processMessage; give them a
+	// trajectory too so their events are attributable.
+	if turnlog.TrajectoryIDFromContext(ctx) == "" {
+		ctx = turnlog.WithTrajectoryID(ctx, turnlog.NewTrajectoryID())
+	}
 
 	// 0. Record last channel for heartbeat notifications (skip internal channels)
 	if opts.Channel != "" && opts.ChatID != "" {
@@ -2454,6 +2516,11 @@ func (al *AgentLoop) buildCandidates(model string) []providers.FallbackCandidate
 	// fallback. The explicit primary model is always honored (owner's
 	// direct choice); only fallbacks are filtered.
 	mode := modes.Resolve(al.workspace, al.hasCloudKey())
+	// Hardware-aware scheduling: never route a fallback to a local model
+	// whose estimated resident memory exceeds current headroom. Loading a
+	// model that doesn't fit would swap/thrash or OOM the Pi. The primary
+	// is always honored; unknown sizes are allowed (conservative default).
+	availMB := hardware.Snapshot(al.workspace).MemAvailableMB
 	for _, c := range al.fallbackModels {
 		if seen[c.Name] {
 			continue
@@ -2461,10 +2528,28 @@ func (al *AgentLoop) buildCandidates(model string) []providers.FallbackCandidate
 		if mode == modes.Local && modes.IsCloudProvider(c.Name) {
 			continue
 		}
+		if !localModelFits(c.Name, availMB) {
+			logger.DebugCF("agent", "skipping local fallback: insufficient memory",
+				map[string]interface{}{"model": c.Name, "available_mb": availMB})
+			continue
+		}
 		out = append(out, c)
 		seen[c.Name] = true
 	}
 	return out
+}
+
+// localModelFits reports whether a candidate may run given available memory.
+// Cloud models and models with no size estimate always fit (we do not block
+// what we cannot measure); a measured local model needs its estimate plus a
+// fixed working margin to fit.
+func localModelFits(model string, availableMB int) bool {
+	c := providers.Describe(model)
+	if !c.Local || c.EstimatedRAMMB == 0 || availableMB <= 0 {
+		return true
+	}
+	const workingMarginMB = 512
+	return c.EstimatedRAMMB+workingMarginMB <= availableMB
 }
 
 // hasCloudKey reports whether any cloud provider credential is present
@@ -2819,27 +2904,6 @@ func (al *AgentLoop) updateToolContexts(channel, chatID string) {
 			}
 		}
 	}
-
-	// World-state verification outcomes join the turn's trajectory: the
-	// registry observes them where they happen, governance records them.
-	// Session and trajectory resolve from the tool context (server-set,
-	// never model input); request correlation rides the trajectory.
-	al.tools.SetVerifySink(func(ctx context.Context, tool string, latencyMs int64, verr error) {
-		if al.governance == nil {
-			return
-		}
-		detail := ""
-		if verr != nil {
-			detail = verr.Error()
-			if len(detail) > 240 {
-				detail = detail[:240] + "…"
-			}
-		}
-		al.governance.VerificationRan(
-			tools.SessionKeyFromContext(ctx), tool,
-			turnlog.TrajectoryIDFromContext(ctx), latencyMs, verr != nil, detail,
-		)
-	})
 }
 
 // sessionWriteScopes resolves the scope tags new memories from a session

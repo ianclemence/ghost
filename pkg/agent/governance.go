@@ -37,6 +37,11 @@ type Governance struct {
 	seenCaps map[string]bool
 	// routineCtx scopes unattended routine turns (session → scope).
 	routineCtx map[string]routineScope
+	// trajMu guards trajectories: requestID → trajectoryID for the live turn.
+	// It lets the permission broker stamp its lifecycle events with the
+	// trajectory without threading the id through every gate signature.
+	trajMu       sync.Mutex
+	trajectories map[string]string
 }
 
 func (g *Governance) active() bool { return g != nil }
@@ -48,11 +53,30 @@ func (g *Governance) TurnStarted(requestID, sessionKey, channel, trajectoryID st
 	if !g.active() || g.Events == nil {
 		return
 	}
+	if trajectoryID != "" {
+		g.trajMu.Lock()
+		if g.trajectories == nil {
+			g.trajectories = map[string]string{}
+		}
+		g.trajectories[requestID] = trajectoryID
+		g.trajMu.Unlock()
+	}
 	g.Events.Publish(&cevents.Event{
 		Type: cevents.AgentStarted, RequestID: requestID, SessionID: sessionKey,
 		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID,
 		Payload: map[string]interface{}{"channel": channel},
 	})
+}
+
+// trajectoryFor resolves the live turn's trajectory for a request, or "" when
+// the work has no turn (background). Safe for concurrent use.
+func (g *Governance) trajectoryFor(requestID string) string {
+	if !g.active() || requestID == "" {
+		return ""
+	}
+	g.trajMu.Lock()
+	defer g.trajMu.Unlock()
+	return g.trajectories[requestID]
 }
 
 // TurnEnded closes the trace with the canonical outcome.
@@ -70,6 +94,9 @@ func (g *Governance) TurnEnded(requestID, sessionKey, trajectoryID string, err e
 		Type: typ, RequestID: requestID, SessionID: sessionKey,
 		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID, Status: status,
 	})
+	g.trajMu.Lock()
+	delete(g.trajectories, requestID)
+	g.trajMu.Unlock()
 }
 
 // CapabilityCommitted records capability.started once per turn.
@@ -262,7 +289,7 @@ func (g *Governance) authorize(requestID, sessionKey, capabilityID, tool string,
 		return AuthorizeResult{Allowed: false,
 			AskMessage: "That action isn't allowed. It was declined by permission policy, so I didn't run it."}
 	default:
-		req, err := g.Broker.Require(requestID, sessionKey, g.AgentID, capabilityID,
+		req, err := g.Broker.RequireWithTrajectory(requestID, sessionKey, g.AgentID, g.trajectoryFor(requestID), capabilityID,
 			toolAction(tool, args), scopeTarget(args), humanReason(capabilityID, tool, args),
 			risk, continuationOf(args))
 		if err != nil {
@@ -428,7 +455,8 @@ func resumeFrom(r *permissions.Request, grant permissions.GrantType) ResumeOutco
 // events into the canonical stream (permission.requested/approved/
 // denied/expired become first-class events automatically).
 func NewGovernance(events *cevents.Stream, broker *permissions.Broker, ghostID, agentID string) *Governance {
-	g := &Governance{Events: events, Broker: broker, GhostID: ghostID, AgentID: agentID, seenCaps: map[string]bool{}}
+	g := &Governance{Events: events, Broker: broker, GhostID: ghostID, AgentID: agentID,
+		seenCaps: map[string]bool{}, trajectories: map[string]string{}}
 	if broker != nil && events != nil {
 		broker.SetEmitter(func(t string, r *permissions.Request) {
 			typ := cevents.PermissionRequested
@@ -442,6 +470,7 @@ func NewGovernance(events *cevents.Stream, broker *permissions.Broker, ghostID, 
 			}
 			events.Publish(&cevents.Event{
 				Type: typ, RequestID: r.RequestID, GhostID: ghostID, AgentID: agentID,
+				TrajectoryID: r.TrajectoryID,
 				Payload: map[string]interface{}{
 					"capability": r.Capability, "action": r.Action,
 					"target": r.Target, "summary": r.Reason,

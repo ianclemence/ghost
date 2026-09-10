@@ -28,7 +28,8 @@ const jobsTableDDL = `CREATE TABLE IF NOT EXISTS jobs (
 	context_id TEXT NOT NULL DEFAULT '',
 	generation TEXT NOT NULL DEFAULT '',
 	evidence TEXT NOT NULL DEFAULT '',
-	resume_state TEXT NOT NULL DEFAULT ''
+	resume_state TEXT NOT NULL DEFAULT '',
+	trajectory_id TEXT NOT NULL DEFAULT ''
 )`
 
 const jobsIndexesDDL = `CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
@@ -91,6 +92,22 @@ func EnsureV2Columns(ex queryExecer) error {
 	}
 	if _, err := ex.Exec(`CREATE INDEX IF NOT EXISTS idx_jobs_owner ON jobs(owner)`); err != nil {
 		return fmt.Errorf("jobs owner index: %w", err)
+	}
+	return nil
+}
+
+// EnsureTrajectoryColumn adds the trajectory_id column to a jobs table that
+// predates it. Idempotent via an explicit PRAGMA check.
+func EnsureTrajectoryColumn(ex queryExecer) error {
+	existing, err := tableColumns(ex, "jobs")
+	if err != nil {
+		return err
+	}
+	if existing["trajectory_id"] {
+		return nil
+	}
+	if _, err := ex.Exec(`ALTER TABLE jobs ADD COLUMN trajectory_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add jobs.trajectory_id: %w", err)
 	}
 	return nil
 }

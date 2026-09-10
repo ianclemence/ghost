@@ -29,7 +29,7 @@ import (
 )
 
 // CurrentVersion is the schema head this build understands.
-const CurrentVersion = 4
+const CurrentVersion = 5
 
 // baseline builds the full v1 schema through the same initializers
 // production startup has always used. Every step is CREATE-IF-NOT-EXISTS
@@ -87,7 +87,22 @@ func registry() []migrations.Migration {
 			Description: "trajectory identity: trajectory_id column on canonical_events",
 			UpDB:        trajectoryV4,
 		},
+		{
+			Version:     5,
+			Description: "job trajectory: trajectory_id column on jobs",
+			UpDB:        jobTrajectoryV5,
+		},
 	}
+}
+
+// jobTrajectoryV5 adds trajectory_id to jobs on databases that predate it.
+// The PRAGMA-guarded ALTER makes it idempotent; fresh installs carry it from
+// the v1 baseline DDL.
+func jobTrajectoryV5(raw *sql.DB) error {
+	if err := tasks.EnsureTrajectoryColumn(raw); err != nil {
+		return fmt.Errorf("jobs trajectory column: %w", err)
+	}
+	return nil
 }
 
 // trajectoryV4 converges existing databases to the trajectory shape. The

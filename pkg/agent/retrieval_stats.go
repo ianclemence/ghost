@@ -62,3 +62,30 @@ func (r *retrievalRecorder) snapshot() doctor.RetrievalStats {
 	}
 	return doctor.RetrievalStats{RAG: path("rag"), Memo: path("memo")}
 }
+
+// latencyScale turns observed retrieval latency into a depth multiplier. Slow
+// retrieval means the device is busy or the index is large, so Ghost fetches
+// less context rather than stalling: 1.0 under 250ms, 0.5 under 1s, 0.25
+// beyond. No observations = 1.0 (never penalize an unmeasured path).
+func (r *retrievalRecorder) latencyScale() float64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	worst := 0.0
+	for _, name := range []string{"rag", "memo"} {
+		if st := r.paths[name]; st != nil && st.Queries > 0 {
+			if avg := st.avg(); avg > worst {
+				worst = avg
+			}
+		}
+	}
+	switch {
+	case worst == 0:
+		return 1
+	case worst < 250:
+		return 1
+	case worst < 1000:
+		return 0.5
+	default:
+		return 0.25
+	}
+}

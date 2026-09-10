@@ -36,6 +36,53 @@ func (m *toolThenDoneProvider) Chat(ctx context.Context, messages []providers.Me
 
 func (m *toolThenDoneProvider) GetDefaultModel() string { return "mock-model" }
 
+// A background/cron turn that arrives without a trajectory (no turn claim)
+// must still be stamped with one, so its events are attributable.
+func TestBackgroundTurnMintsTrajectory(t *testing.T) {
+	ws := t.TempDir()
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace: ws, Model: "mock-model", MaxTokens: 1024, MaxToolIterations: 5,
+			},
+		},
+	}
+	al, err := NewAgentLoop(cfg, bus.NewMessageBus(), &toolThenDoneProvider{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { al.Stop() })
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	st, err := cevents.Open(db, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	al.SetGovernance(NewGovernance(st, nil, "g1", "agent-main"))
+
+	// Plain context: no trajectory supplied (cron/background path).
+	msg := bus.InboundMessage{
+		Channel: "routine", SenderID: "s", ChatID: "chat",
+		Content: "run the routine", SessionKey: "routine:r1",
+		Metadata: map[string]string{"request_id": "req-bg-1"},
+	}
+	if _, err := al.processMessage(context.Background(), msg, nil, nil); err != nil {
+		t.Fatalf("processMessage: %v", err)
+	}
+	events := st.ByRequest("req-bg-1")
+	if len(events) == 0 {
+		t.Fatal("background turn produced no events")
+	}
+	for _, e := range events {
+		if e.Type == cevents.AgentStarted && e.TrajectoryID == "" {
+			t.Fatal("background turn must mint a trajectory")
+		}
+	}
+}
+
 // A full turn through processMessage must land its trace on ONE trajectory:
 // agent.started → tool.completed → agent.completed, all carrying the turn's
 // trajectory ID. This is the live-wiring proof for the emission path (no
