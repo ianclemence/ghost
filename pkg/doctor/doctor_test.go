@@ -36,8 +36,10 @@ func TestDoctorRunAll(t *testing.T) {
 
 	runner := New(database.DB, &testProvider{}, reg, t.TempDir())
 	results := runner.RunAll(context.Background())
-	if len(results) != 8 {
-		t.Fatalf("expected 8 checks, got %d", len(results))
+	// 8 registered checks minus calendar_oauth: a bare temp workspace has no
+	// calendar skill, and a skill that isn't active contributes no check.
+	if len(results) != 7 {
+		t.Fatalf("expected 7 checks, got %d", len(results))
 	}
 	for _, check := range results {
 		if check.Status == "error" {

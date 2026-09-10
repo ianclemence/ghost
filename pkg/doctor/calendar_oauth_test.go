@@ -90,3 +90,42 @@ func TestCalendarOAuthWarnsWhenSkillEnabled(t *testing.T) {
 		t.Fatalf("enabled-but-unconfigured calendar must still warn, got %s", res.Status)
 	}
 }
+
+// The aggregate must not contain a calendar row at all when the skill is
+// off — a disabled capability has nothing to diagnose.
+func TestRunAllOmitsCalendarCheckWhenSkillDisabled(t *testing.T) {
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, "skills", "calendar"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "skills", "calendar", "SKILL.md.disabled"), []byte("disabled"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := &Doctor{workspace: ws}
+	for _, r := range d.RunAll(context.Background()) {
+		if r.Name == "calendar_oauth" {
+			t.Fatal("disabled skill must not appear in diagnostics")
+		}
+	}
+}
+
+// ...but the check is present when the skill is enabled.
+func TestRunAllIncludesCalendarCheckWhenSkillEnabled(t *testing.T) {
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, "skills", "calendar"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "skills", "calendar", "SKILL.md"), []byte("---\nname: calendar\n---\n\nbody"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := &Doctor{workspace: ws}
+	found := false
+	for _, r := range d.RunAll(context.Background()) {
+		if r.Name == "calendar_oauth" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("enabled skill must appear in diagnostics")
+	}
+}

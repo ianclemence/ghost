@@ -73,6 +73,19 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 	for _, check := range checks {
 		results = append(results, check(ctx))
 	}
+	// A disabled calendar skill has nothing to diagnose: drop its check from
+	// the aggregate instead of nagging the owner about sign-in for a
+	// capability that is off. (checkCalendarOAuth itself stays truthful for
+	// direct/programmatic callers.)
+	if !d.calendarSkillActive() {
+		kept := results[:0]
+		for _, r := range results {
+			if r.Name != "calendar_oauth" {
+				kept = append(kept, r)
+			}
+		}
+		results = kept
+	}
 	return results
 }
 
