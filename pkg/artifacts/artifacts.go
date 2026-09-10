@@ -371,3 +371,32 @@ func newID() string {
 	}
 	return "art-" + hex.EncodeToString(b[:])
 }
+
+// PruneDangling deletes file artifacts whose referenced file no longer exists
+// in the workspace. Text and link artifacts have no file and are never pruned
+// here. This bounds the table without ever discarding a live handoff.
+func (s *Store) PruneDangling() (int, error) {
+	rows, err := s.db.Query(`SELECT id, path FROM artifacts WHERE kind='file' AND path != ''`)
+	if err != nil {
+		return 0, fmt.Errorf("artifacts: prune scan: %w", err)
+	}
+	type ref struct{ id, path string }
+	var dangling []ref
+	for rows.Next() {
+		var r ref
+		if rows.Scan(&r.id, &r.path) == nil {
+			full := filepath.Join(s.workspace, filepath.FromSlash(r.path))
+			if _, err := os.Stat(full); os.IsNotExist(err) {
+				dangling = append(dangling, r)
+			}
+		}
+	}
+	rows.Close()
+	removed := 0
+	for _, r := range dangling {
+		if _, err := s.db.Exec(`DELETE FROM artifacts WHERE id=?`, r.id); err == nil {
+			removed++
+		}
+	}
+	return removed, nil
+}

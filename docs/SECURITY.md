@@ -103,3 +103,18 @@ Security rules:
 - GitHub installs record resolved commit SHA when GitHub provides it; the CLI
   and gateway installers share the same bounded validation boundary and write
   provenance to `.ghost-source.json`.
+
+## Authorization is monotonic
+
+The Permission Broker is the single authorization authority. Authorization
+decisions are ordered `allow < ask < deny`, and any composition keeps the most
+restrictive result (`permissions.Combine`). A downstream layer — routine scope,
+context scope, or a registered deny-only guard (`Governance.AddGuard`) — may
+reduce authority but may never turn a denial into an allow. There is no allow
+override below the broker. The model, providers, skills, integrations, and UI
+can only be subject to this policy; none of them can grant authority.
+
+Guards are deny-only by construction: returning a non-empty reason denies,
+returning empty abstains, and there is no allow result, so guard order cannot
+change the outcome. Approval can never grant more than was requested, and
+resume revalidates authorization instead of inheriting a stale approval.

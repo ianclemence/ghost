@@ -31,7 +31,14 @@ func (al *AgentLoop) completeSessionTask(sessionKey string, failed bool) int {
 	if err != nil || taskID == "" {
 		return 0
 	}
-	return al.livePlane.CompleteTask(taskID, failed)
+	n := al.livePlane.CompleteTask(taskID, failed)
+	// The task is terminal: release its browser session now rather than
+	// waiting for the TTL. A waiting task never reaches here (SettleSession
+	// leaves it alone), so an active user-controlled session is not closed.
+	if ledger, lerr := al.browserSessionLedger(); lerr == nil && ledger != nil {
+		_, _ = ledger.CloseForTask(taskID)
+	}
+	return n
 }
 
 // announceSurface tells the owner's devices that a live surface changed.

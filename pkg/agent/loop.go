@@ -1007,8 +1007,15 @@ func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sess
 }
 
 // ProcessHeartbeat processes a heartbeat request without session history.
-// Each heartbeat is independent and doesn't accumulate context.
-func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, chatID string) (string, error) {
+// Each heartbeat is independent and doesn't accumulate context. It is its
+// own panic boundary because it bypasses processMessage.
+func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, chatID string) (resp string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.ErrorCF("agent", "recovered panic in heartbeat", map[string]interface{}{"panic": fmt.Sprint(r)})
+			resp, err = "", fmt.Errorf("internal error handling the heartbeat")
+		}
+	}()
 	return al.runAgentLoop(ctx, processOptions{
 		SessionKey:      "heartbeat",
 		Channel:         channel,
@@ -1062,7 +1069,30 @@ func (al *AgentLoop) ClearRoutineContext(sessionKey string) {
 	}
 }
 
-func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage, onChunk func(string), onToolCall func(string, string)) (string, error) {
+// processMessage is the panic boundary for one turn. A panic anywhere in
+// turn processing (tool executor, provider call, browser/computer driver)
+// is contained here, converted into a deterministic failed turn, and never
+// allowed to crash the appliance. The inner implementation does the work.
+func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage, onChunk func(string), onToolCall func(string, string)) (resp string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.ErrorCF("agent", "recovered panic in turn", map[string]interface{}{
+				"session_key": msg.SessionKey, "panic": fmt.Sprint(r),
+			})
+			if al.governance != nil {
+				if rid := msg.Metadata["request_id"]; rid != "" {
+					al.governance.TurnEnded(rid, msg.SessionKey,
+						turnlog.TrajectoryIDFromContext(ctx), fmt.Errorf("internal error handling the request"))
+				}
+			}
+			resp = ""
+			err = fmt.Errorf("internal error handling the request")
+		}
+	}()
+	return al.processMessageInner(ctx, msg, onChunk, onToolCall)
+}
+
+func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMessage, onChunk func(string), onToolCall func(string, string)) (string, error) {
 	// Background/cron turns arrive without a turn claim, so mint a
 	// trajectory here when the caller did not supply one. Interactive turns
 	// already carry the claim's trajectory; this is a no-op for them.

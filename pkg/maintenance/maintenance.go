@@ -11,6 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/artifacts"
+	"github.com/ianclemence/ghost/pkg/tasks"
+	"github.com/ianclemence/ghost/pkg/turnlog"
 )
 
 // Policy bounds. Generous for user history, tight for telemetry.
@@ -21,6 +25,12 @@ const (
 	HeartbeatLogLines = 2000
 	HeartbeatLogMax   = 1 << 20 // 1MB hard cap
 	TmpAge            = 7 * 24 * time.Hour
+	// TerminalTurnAge bounds reconnect-replay turn records; a turn outcome is
+	// only needed for a short reconnect window.
+	TerminalTurnAge = 7 * 24 * time.Hour
+	// FinishedJobAge bounds durable job history. Live and interrupted jobs
+	// are never pruned.
+	FinishedJobAge = 30 * 24 * time.Hour
 )
 
 // Action describes one cleanup step and its effect.
@@ -45,8 +55,56 @@ func Run(workspace string, db *sql.DB) Report {
 		pruneNDJSON(filepath.Join(workspace, "events")),
 		capFile(filepath.Join(workspace, "heartbeat.log"), HeartbeatLogLines, HeartbeatLogMax),
 		pruneTmp(filepath.Join(workspace, "tmp")),
+		pruneTurns(workspace),
+		pruneJobs(db),
+		pruneArtifacts(workspace, db),
 	)
 	return rep
+}
+
+// pruneTurns removes terminal turn records past the replay window. Live turns
+// are never touched.
+func pruneTurns(workspace string) Action {
+	store, err := turnlog.New(filepath.Join(workspace, "state", "turns"))
+	if err != nil {
+		return Action{Name: "turns", Detail: err.Error()}
+	}
+	n, err := store.PruneTerminal(time.Now().Add(-TerminalTurnAge))
+	if err != nil {
+		return Action{Name: "turns", Detail: err.Error()}
+	}
+	return Action{Name: "turns", Removed: n}
+}
+
+// pruneJobs removes finished durable jobs past the retention window. Live and
+// interrupted (restartable) jobs are never touched.
+func pruneJobs(db *sql.DB) Action {
+	if db == nil {
+		return Action{Name: "jobs", Detail: "no database handle"}
+	}
+	store := tasks.NewStore(db, nil)
+	n, err := store.PruneFinished(time.Now().Add(-FinishedJobAge))
+	if err != nil {
+		return Action{Name: "jobs", Detail: err.Error()}
+	}
+	return Action{Name: "jobs", Removed: n}
+}
+
+// pruneArtifacts removes file artifacts whose backing file is gone. Live
+// text/link artifacts are never touched.
+func pruneArtifacts(workspace string, db *sql.DB) Action {
+	if db == nil {
+		return Action{Name: "artifacts", Detail: "no database handle"}
+	}
+	store, err := artifacts.NewStore(db, workspace)
+	if err != nil {
+		return Action{Name: "artifacts", Detail: err.Error()}
+	}
+	n, err := store.PruneDangling()
+	if err != nil {
+		return Action{Name: "artifacts", Detail: err.Error()}
+	}
+	return Action{Name: "artifacts", Removed: n}
 }
 
 func pruneEvents(db *sql.DB) Action {

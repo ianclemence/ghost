@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/cevents"
 )
@@ -619,4 +620,17 @@ func scanJob(rs interface{ Scan(...interface{}) error }) (Job, error) {
 		j.FinishedAt = &finishedAt.Int64
 	}
 	return j, nil
+}
+
+// PruneFinished deletes jobs that reached a terminal outcome before the
+// cutoff. Interrupted jobs are restartable and are never pruned, nor are
+// live jobs. Returns the number removed.
+func (s *Store) PruneFinished(before time.Time) (int, error) {
+	res, err := s.db.Exec(`DELETE FROM jobs WHERE status IN (?,?,?,?) AND finished_at IS NOT NULL AND finished_at < ?`,
+		string(StatusSucceeded), string(StatusFailed), string(StatusCancelled), string(StatusExpired), before.Unix())
+	if err != nil {
+		return 0, fmt.Errorf("prune jobs: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }

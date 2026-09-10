@@ -194,6 +194,22 @@ func (s *SessionStore) Close(id string) error {
 	return err
 }
 
+// CloseForTask ends every session bound to a task now. Called when the task
+// reaches a terminal outcome (completed, failed, or cancelled) so a finished
+// task does not leave a live browser session (and its profile) behind. A task
+// that is merely waiting is not terminal and keeps its session.
+func (s *SessionStore) CloseForTask(taskID string) (int64, error) {
+	if taskID == "" {
+		return 0, nil
+	}
+	res, err := s.db.Exec(`UPDATE browser_sessions SET expires_at=? WHERE task_id=?`,
+		time.Now().UTC().Format(time.RFC3339), taskID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // ExpireSweep removes long-dead sessions so the table stays bounded.
 // Only rows expired well past their TTL are deleted; live ones stay.
 func (s *SessionStore) ExpireSweep(olderThan time.Duration) (int64, error) {

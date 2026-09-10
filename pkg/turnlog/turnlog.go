@@ -238,3 +238,45 @@ func (s *Store) writeLocked(t *Turn) error {
 	}
 	return os.Rename(tmp, p)
 }
+
+// PruneTerminal deletes turn records that reached a terminal state before the
+// cutoff. Terminal turns exist only so a reconnecting client can observe the
+// outcome; after the retention window they carry no authority. Live turns
+// (pending/running/waiting) are never pruned. Returns the number removed.
+func (s *Store) PruneTerminal(before time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	removed := 0
+	for _, de := range entries {
+		if de.IsDir() || filepath.Ext(de.Name()) != ".json" {
+			continue
+		}
+		p := filepath.Join(s.dir, de.Name())
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var t Turn
+		if json.Unmarshal(data, &t) != nil {
+			continue
+		}
+		switch t.Status {
+		case StatusCompleted, StatusFailed, StatusInterrupted:
+		default:
+			continue // live turn: never prune
+		}
+		if t.UpdatedAt.Before(before) {
+			if os.Remove(p) == nil {
+				removed++
+			}
+		}
+	}
+	return removed, nil
+}

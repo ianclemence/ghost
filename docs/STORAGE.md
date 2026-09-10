@@ -46,3 +46,27 @@ ephemeral paths are already capped.
 - Keep journald on defaults (bounded); keep Ghost logs inside the
   workspace caps above.
 - Re-measure if message volume grows 10× or new always-on writers land.
+
+## Persistence invariants
+
+Ghost uses SQLite (WAL, `synchronous=FULL`) as its durable store and does not
+require a separate flush barrier: a `Publish`/`Exec` that returns committed is
+durable. The invariants Ghost guarantees:
+
+- **Append-only history.** Committed canonical events are never rewritten in
+  place; `canonical_events.seq` is monotonic (`AUTOINCREMENT`). Redaction
+  happens before persistence.
+- **Committed-prefix immutability.** Once an event or state transition is
+  committed and visible, later operations never change its historical meaning.
+- **Replay is read-only.** `cevents` replay and `ghost replay` observe history
+  and never re-execute side effects.
+- **Fail-closed compatibility.** Migrations are forward-only and
+  version-tracked (`schema_migrations` + `PRAGMA user_version`); a database
+  from a newer schema is refused, not silently downgraded.
+- **Atomicity.** Secret and config writes use temp-file + rename; snapshots
+  validate before restore. SQLite transactions/WAL provide event atomicity.
+
+Retention (daily `maintenance.Run`): transient events 7d, durable events 180d,
+NDJSON 30d, temp files 7d, terminal turns 7d, finished jobs 30d, dangling file
+artifacts. Live, waiting, interrupted, and canonical user data are never
+pruned.
