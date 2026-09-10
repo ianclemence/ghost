@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/contextcache"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
@@ -26,6 +27,20 @@ type ContextBuilder struct {
 	personalContext *personalcontext.Store // source of the Active Context Digest
 	tools           *tools.ToolRegistry    // Direct reference to tool registry
 	personalityName string
+
+	// promptCache caches the compiled system prompt; promptVersion returns a
+	// value that changes whenever an injected input changes (memory version,
+	// bootstrap file mtime, tools). Nil disables caching (legacy behavior).
+	promptCache   *contextcache.Cache
+	promptVersion func() string
+}
+
+// SetPromptCache installs a bounded, versioned cache for the compiled system
+// prompt. version must change whenever any injected input changes; a nil
+// version or cache disables caching.
+func (cb *ContextBuilder) SetPromptCache(c *contextcache.Cache, version func() string) {
+	cb.promptCache = c
+	cb.promptVersion = version
 }
 
 func getGlobalConfigDir() string {
@@ -174,6 +189,16 @@ func buildBehaviorSection() string {
 }
 
 func (cb *ContextBuilder) BuildSystemPrompt(scopes []string) string {
+	// Bounded, versioned cache: the compiled prompt is stable across turns
+	// until an injected input changes. The version callback folds memory
+	// state and bootstrap-file mtimes, so a stale prompt is never served.
+	cacheKey := ""
+	if cb.promptCache != nil && cb.promptVersion != nil {
+		cacheKey = contextcache.Key("system", cb.personalityName, strings.Join(scopes, ","), cb.promptVersion())
+		if v, ok := cb.promptCache.Get(cacheKey); ok {
+			return v
+		}
+	}
 	parts := []string{}
 
 	// Core identity section
@@ -255,7 +280,11 @@ CRITICAL — Skill is authoritative. After you READ a SKILL.md, you MUST:
 	}
 
 	// Join with "---" separator
-	return strings.Join(parts, "\n\n---\n\n")
+	out := strings.Join(parts, "\n\n---\n\n")
+	if cacheKey != "" {
+		cb.promptCache.Put(cacheKey, out)
+	}
+	return out
 }
 
 func (cb *ContextBuilder) LoadBootstrapFiles() string {

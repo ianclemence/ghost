@@ -482,6 +482,16 @@ func (s *Store) Get(id string) (Entry, bool) {
 	return *e, true
 }
 
+// Version returns a monotonically increasing counter of appended records. It
+// changes on every create, supersede, reinforce, forget, or conflict, so a
+// derived artifact (a compiled context, a cache entry) can key itself on it
+// and know when to rebuild. Cheap: a length read under the lock.
+func (s *Store) Version() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return int64(len(s.log))
+}
+
 // All returns the final state of every entry, including superseded,
 // conflicting, uncertain, and rejected ones, sorted by id. It is the explicit
 // escape hatch for inspecting the full context store.

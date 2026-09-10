@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/retrieval"
 	"github.com/philippgille/chromem-go"
 )
 
@@ -304,15 +304,44 @@ func (s *Store) RetrieveScoped(ctx context.Context, query string, limit int, sco
 		})
 	}
 
-	// Sort results by score (descending)
-	sort.Slice(finalResults, func(i, j int) bool {
-		return finalResults[i].Score > finalResults[j].Score
-	})
-	if len(finalResults) > limit {
-		finalResults = finalResults[:limit]
-	}
+	// Hierarchical second stage: the vector index produced a coarse candidate
+	// pool; a deterministic weighted score (semantic + lexical + recency +
+	// source quality, minus staleness/contradiction) narrows it to the final
+	// context. This keeps ranking inspectable rather than purely embedding-
+	// similarity ordered.
+	finalResults = rankResults(finalResults, query, limit)
 
 	return finalResults, nil
+}
+
+// rankResults re-orders a coarse candidate pool with the deterministic
+// retrieval scorer and truncates to limit. It never drops a candidate's
+// provenance; it only orders and bounds.
+func rankResults(results []SearchResult, query string, limit int) []SearchResult {
+	if len(results) == 0 {
+		return results
+	}
+	now := time.Now()
+	cands := make([]retrieval.Candidate, 0, len(results))
+	byID := make(map[string]SearchResult, len(results))
+	for i, r := range results {
+		id := fmt.Sprintf("r%d", i)
+		byID[id] = r
+		cands = append(cands, retrieval.Candidate{
+			ID:         id,
+			Content:    r.Content,
+			Source:     r.Source,
+			CreatedAt:  r.CreatedAt,
+			Similarity: float64(r.Score),
+			Trust:      "unknown",
+		})
+	}
+	ranked := retrieval.Rank(cands, query, now, retrieval.DefaultWeights(), limit)
+	out := make([]SearchResult, 0, len(ranked))
+	for _, r := range ranked {
+		out = append(out, byID[r.Candidate.ID])
+	}
+	return out
 }
 
 func splitText(text string, chunkSize int) []string {

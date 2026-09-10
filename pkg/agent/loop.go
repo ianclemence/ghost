@@ -28,6 +28,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/constants"
+	"github.com/ianclemence/ghost/pkg/contextcache"
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/evolution"
@@ -468,6 +469,23 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	contextBuilder := NewContextBuilder(workspace)
 	contextBuilder.SetToolsRegistry(toolsRegistry)
 	contextBuilder.SetPersonalContext(pcStore)
+	// Versioned system-prompt cache: rebuilds only when memory or a bootstrap
+	// file changes, not on every internal turn. The version is a cheap string
+	// of counters/mtimes; caching is disabled if pcStore is nil and no files
+	// change (still correct, just less reuse).
+	contextBuilder.SetPromptCache(contextcache.New(10*time.Minute, 64), func() string {
+		var b strings.Builder
+		if pcStore != nil {
+			fmt.Fprintf(&b, "pc:%d;", pcStore.Version())
+		}
+		for _, f := range []string{"GHOST.md", "USER.md", "HEARTBEAT.md", "SOUL.md", "AGENTS.md"} {
+			if fi, err := os.Stat(filepath.Join(workspace, f)); err == nil {
+				fmt.Fprintf(&b, "%s:%d;", f, fi.ModTime().UnixNano())
+			}
+		}
+		fmt.Fprintf(&b, "tools:%d;persona:%s", len(toolsRegistry.List()), contextBuilder.personalityName)
+		return b.String()
+	})
 
 	// Create skill installer
 	installer := skills.NewSkillInstaller(workspace)

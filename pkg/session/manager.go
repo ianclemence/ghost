@@ -8,6 +8,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/rag"
+	"github.com/ianclemence/ghost/pkg/retrieval"
 )
 
 type Session struct {
@@ -139,15 +140,21 @@ func (sm *SessionManager) GetContext(ctx context.Context, userQuery string, scop
 	if sm.rag == nil || userQuery == "" {
 		return ""
 	}
-	results, err := sm.rag.RetrieveScoped(ctx, userQuery, 3, scopes) // Top 3
+	results, err := sm.rag.RetrieveScoped(ctx, userQuery, 5, scopes) // over-fetch, then budget
 	if err != nil || len(results) == 0 {
 		return ""
 	}
 
-	var sb strings.Builder
-	sb.WriteString("Relevant Context from Memory:\n")
+	// Context budget: the retrieved items are already ranked; keep only what
+	// fits the memory-context budget so a long tail of weak matches cannot
+	// crowd out the model's actual task.
+	items := make([]string, 0, len(results))
 	for _, r := range results {
-		sb.WriteString("- " + r.Content + " (Source: " + r.Source + ")\n")
+		items = append(items, "- "+r.Content+" (Source: "+r.Source+")")
 	}
-	return sb.String()
+	items = retrieval.DefaultBudget().Fit(items)
+	if len(items) == 0 {
+		return ""
+	}
+	return "Relevant Context from Memory:\n" + strings.Join(items, "\n")
 }
