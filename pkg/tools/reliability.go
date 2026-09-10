@@ -76,6 +76,14 @@ func executeWithReliability(ctx context.Context, tool Tool, args map[string]inte
 		if !result.IsError || attempt >= maxRetries {
 			break
 		}
+		// Retry classification: only genuinely retryable failures are retried,
+		// even when a tool opts in. A validation/permission/not-found error is
+		// deterministic — retrying it wastes budget and can duplicate intent.
+		if !ClassifyError(result).Retryable() {
+			logger.DebugCF("tool", "not retrying non-retryable failure",
+				map[string]interface{}{"tool": tool.Name(), "class": string(ClassifyError(result))})
+			break
+		}
 		logger.WarnCF("tool", "tool failed, retrying",
 			map[string]interface{}{"tool": tool.Name(), "attempt": attempt + 1, "max_retries": maxRetries, "wait_ms": wait.Milliseconds()})
 		select {

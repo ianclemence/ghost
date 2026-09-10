@@ -21,6 +21,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/contexts"
 	"github.com/ianclemence/ghost/pkg/permissions"
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 // Governance carries the substrate handles for one AgentLoop.
@@ -84,8 +85,10 @@ func (g *Governance) CapabilityCommitted(requestID, sessionKey, capabilityID, tr
 }
 
 // ToolRan records tool completion/failure (user-safe summaries only;
-// raw outputs never enter payloads).
-func (g *Governance) ToolRan(requestID, sessionKey, tool, trajectoryID string, failed bool) {
+// raw outputs never enter payloads). obs, when present, adds the normalized
+// status/error-class/retryability so a trajectory records the failure
+// structurally.
+func (g *Governance) ToolRan(requestID, sessionKey, tool, trajectoryID string, failed bool, obs *tools.Observation) {
 	if !g.active() || g.Events == nil {
 		return
 	}
@@ -95,12 +98,21 @@ func (g *Governance) ToolRan(requestID, sessionKey, tool, trajectoryID string, f
 		typ = cevents.ToolFailed
 		status = "failed"
 	}
+	payload := map[string]interface{}{"tool": tool}
+	if obs != nil {
+		payload["status"] = obs.Status
+		if obs.ErrorClass != "" {
+			payload["error_class"] = obs.ErrorClass
+		}
+		payload["retryable"] = obs.Retryable
+		payload["reconstructable"] = obs.Reconstructable
+	}
 	// ToolStarted is transient by taxonomy (never persisted); completed
 	// and failed are durable outcomes.
 	g.Events.Publish(&cevents.Event{
 		Type: typ, RequestID: requestID, SessionID: sessionKey,
 		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID, Status: status,
-		Payload: map[string]interface{}{"tool": tool},
+		Payload: payload,
 	})
 }
 

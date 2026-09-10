@@ -17,6 +17,8 @@ type stubTool struct {
 	hang       time.Duration // if > 0, sleep ignoring context (simulates a stuck tool)
 	retryable  bool
 	timeout    time.Duration
+	// errMsg overrides the failure message; empty = retryable-shaped default.
+	errMsg string
 }
 
 func (s *stubTool) Name() string { return s.name }
@@ -33,7 +35,13 @@ func (s *stubTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		time.Sleep(s.hang) // deliberately ignores ctx cancellation
 	}
 	if n <= s.errsBefore {
-		return ErrorResult("boom").WithError(errors.New("boom"))
+		// A retryable-shaped failure so retry policy is exercised; the
+		// classification gate is tested separately.
+		msg := s.errMsg
+		if msg == "" {
+			msg = "service temporarily unavailable"
+		}
+		return ErrorResult(msg).WithError(errors.New(msg))
 	}
 	return NewToolResult("ok")
 }
@@ -88,6 +96,20 @@ func TestExecuteReliabilityGivesUpAfterMaxRetries(t *testing.T) {
 	}
 	if got := tool.callCount.Load(); got != 2 {
 		t.Fatalf("expected 2 attempts (1 retry), got %d", got)
+	}
+}
+
+func TestExecuteReliabilityNoRetryForNonRetryableClass(t *testing.T) {
+	// Even when a tool opts in to retries, a deterministic failure class
+	// (validation/permission) must not be retried.
+	tool := &stubTool{name: "search", errsBefore: 100, retryable: true, timeout: time.Second,
+		errMsg: "invalid arguments: missing query"}
+	res := executeWithReliability(context.Background(), tool, nil)
+	if !res.IsError {
+		t.Fatal("expected error")
+	}
+	if got := tool.callCount.Load(); got != 1 {
+		t.Fatalf("non-retryable class must not retry, got %d attempts", got)
 	}
 }
 

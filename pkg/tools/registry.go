@@ -247,6 +247,14 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 		}
 	}
 
+	// Normalize the outcome into a structured observation before returning:
+	// callers (agent loop → trajectory) record status/error-class/retryability
+	// without parsing prose.
+	if result != nil {
+		obs := NewObservation(name, result)
+		result.Obs = &obs
+	}
+
 	// Log based on result type
 	if result.IsError {
 		logger.ErrorCF("tool", "Tool execution failed",

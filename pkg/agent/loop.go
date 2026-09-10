@@ -1288,7 +1288,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 				al.publishBrowserEvidence(requestID, msg.SessionKey, resume.Tool, toolResult)
 			default:
 				toolResult = al.tools.ExecuteWithContext(ctx, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey, nil)
-				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
+				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError, toolResult.Obs)
 			}
 			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
 			text := toolResult.ForLLM
@@ -2086,7 +2086,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					break
 				}
 			} else if al.governance != nil {
-				al.governance.ToolRan(opts.RequestID, opts.SessionKey, tc.Name, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
+				al.governance.ToolRan(opts.RequestID, opts.SessionKey, tc.Name, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError, toolResult.Obs)
 			}
 
 			// Send ForUser content to user immediately if not Silent

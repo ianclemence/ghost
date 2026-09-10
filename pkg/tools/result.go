@@ -45,6 +45,11 @@ type ToolResult struct {
 	// serialized, never part of evidence). The serving layer streams the
 	// bytes on demand; paths never leave the runtime.
 	ScreenshotPath string `json:"-"`
+
+	// Obs is the normalized observation of this execution, set by the
+	// registry. The agent loop forwards it into the canonical event so a
+	// trajectory records status/error-class/retryability structurally.
+	Obs *Observation `json:"-"`
 }
 
 // NewToolResult creates a basic ToolResult with content for the LLM.

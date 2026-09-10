@@ -29,7 +29,7 @@ func TestGovernanceEventsCarryTrajectory(t *testing.T) {
 	trj := "trj_trace1"
 	g.TurnStarted("req-1", "sess-1", "mobile", trj)
 	g.NoteCapability("req-1", "weather.current", trj)
-	g.ToolRan("req-1", "sess-1", "weather_now", trj, false)
+	g.ToolRan("req-1", "sess-1", "weather_now", trj, false, nil)
 	g.VerificationRan("sess-1", "write_file", trj, 12, false, "")
 	g.FallbackRan("req-1", "sess-1", trj, "ollama/qwen", "deepseek/chat", true)
 	g.TurnEnded("req-1", "sess-1", trj, nil)
