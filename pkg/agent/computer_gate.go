@@ -127,6 +127,18 @@ func (al *AgentLoop) computerLeaseStore() (*computer.LeaseStore, error) {
 	return computerLeaseInst, computerLeaseErr
 }
 
+// RecoverStaleLeases expires any computer lease left active by a crash.
+// Call once at startup: after a restart no pre-restart task is alive, so a
+// surviving hold is stale by definition and must not block new work until
+// its TTL lapses. Nil-safe.
+func (al *AgentLoop) RecoverStaleLeases() (int64, error) {
+	s, err := al.computerLeaseStore()
+	if err != nil {
+		return 0, err
+	}
+	return s.RecoverStale()
+}
+
 type computerGateResult struct {
 	decision string // allow | wait | deny
 	message  string

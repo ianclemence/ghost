@@ -894,6 +894,19 @@ func gatewayCmd() {
 	}
 	agentLoop.SetConfigPath(getConfigPath())
 
+	// Boot-time lifecycle recovery. After a restart no pre-restart task is
+	// alive, so any surviving computer lease or pending permission request
+	// is stale. Expiring them here prevents a crashed task from blocking
+	// new work until a TTL lapses.
+	if n, err := agentLoop.RecoverStaleLeases(); err == nil && n > 0 {
+		logger.InfoCF("lifecycle", "expired stale computer leases", map[string]interface{}{"count": n})
+	}
+	if b, err := permBroker(); err == nil {
+		if n := b.SweepExpires(); n > 0 {
+			logger.InfoCF("lifecycle", "expired stale permission requests", map[string]interface{}{"count": n})
+		}
+	}
+
 	// Start the conservative, local background memory consolidation (learn/
 	// reinforce/clean). Disposable and non-blocking.
 	agentLoop.StartLearningWorker(context.Background())
@@ -2914,15 +2927,30 @@ func skillsShowCmd(loader *skills.SkillsLoader, skillName string) {
 	fmt.Println(content)
 }
 
-// runMaintenanceLoop runs retention at startup and every 24h.
+// runMaintenanceLoop runs retention at startup and every 24h, and sweeps
+// expired permission requests every 15 minutes. Conservative oldest-first
+// cleanup only; canonical memory and active task state are never touched.
 func runMaintenanceLoop(db *sql.DB, workspace string) {
 	rep := maintenance.Run(workspace, db)
 	logger.InfoCF("maintenance", "retention run", map[string]interface{}{"actions": len(rep.Actions)})
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
-	for range ticker.C {
-		rep := maintenance.Run(workspace, db)
-		logger.InfoCF("maintenance", "retention run", map[string]interface{}{"actions": len(rep.Actions)})
+	sweep := time.NewTicker(15 * time.Minute)
+	defer sweep.Stop()
+	daily := time.NewTicker(24 * time.Hour)
+	defer daily.Stop()
+	for {
+		select {
+		case <-sweep.C:
+			// Expired approvals linger as rows until read; sweep them so the
+			// request table reflects reality and the UI stops showing them.
+			if b, err := permBroker(); err == nil {
+				if n := b.SweepExpires(); n > 0 {
+					logger.InfoCF("maintenance", "expired permission requests", map[string]interface{}{"count": n})
+				}
+			}
+		case <-daily.C:
+			rep := maintenance.Run(workspace, db)
+			logger.InfoCF("maintenance", "retention run", map[string]interface{}{"actions": len(rep.Actions)})
+		}
 	}
 }
 

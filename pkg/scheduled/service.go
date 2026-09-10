@@ -128,8 +128,20 @@ func (s *Service) tick() {
 		}
 
 		// Execute asynchronously
-		go s.executeItem(item)
+		go s.runItemSafely(item)
 	}
+}
+
+// runItemSafely runs one scheduled item in its own goroutine and contains a
+// panic so a single failing executor cannot crash the whole appliance. The
+// item's execution state is left for the store's own retry/expiry handling.
+func (s *Service) runItemSafely(item *ScheduledItem) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[scheduled] panic executing item %s: %v", item.ID, r)
+		}
+	}()
+	s.executeItem(item)
 }
 
 // executeItem runs a scheduled item.
@@ -327,10 +339,10 @@ func (s *Service) handleMissedOneTime(item *ScheduledItem, missedDuration time.D
 	switch {
 	case missedDuration < time.Hour:
 		// Fire immediately with note
-		go s.executeItem(item)
+		go s.runItemSafely(item)
 	case missedDuration < 24*time.Hour:
 		// Fire with "late" note
-		go s.executeItem(item)
+		go s.runItemSafely(item)
 	default:
 		// Mark as missed, don't fire
 		if err := s.store.UpdateState(item.ID, StateMissed); err != nil {
@@ -457,7 +469,7 @@ func (s *Service) RunNow(id string) error {
 	if err != nil {
 		return err
 	}
-	go s.executeItem(item)
+	go s.runItemSafely(item)
 	return nil
 }
 

@@ -42,6 +42,41 @@ type Governance struct {
 	// trajectory without threading the id through every gate signature.
 	trajMu       sync.Mutex
 	trajectories map[string]string
+
+	// guardMu guards the deny-only authorization guards. Guards run after
+	// broker policy and may only reduce authority, so their order cannot
+	// turn a denial into an allow.
+	guardMu sync.Mutex
+	guards  []Guard
+}
+
+// Guard is a deny-only authorization check evaluated after broker policy.
+// Returning a non-empty reason denies the call; returning "" abstains.
+// Guards have no allow result, so no composition or ordering of guards can
+// overturn a stronger denial. This is the Ghost form of the monotonic guard
+// invariant: the Permission Broker remains authoritative, and a guard can
+// only make the outcome more restrictive.
+type Guard func(requestID, sessionKey, capabilityID, tool string, args map[string]interface{}) string
+
+// AddGuard registers a deny-only authorization guard. It is safe for
+// concurrent use. There is intentionally no RemoveGuard: authorization
+// restrictions should not be silently unwound at runtime.
+func (g *Governance) AddGuard(gr Guard) {
+	if !g.active() || gr == nil {
+		return
+	}
+	g.guardMu.Lock()
+	defer g.guardMu.Unlock()
+	g.guards = append(g.guards, gr)
+}
+
+// guardsSnapshot returns a copy of the registered guards for evaluation.
+func (g *Governance) guardsSnapshot() []Guard {
+	g.guardMu.Lock()
+	defer g.guardMu.Unlock()
+	out := make([]Guard, len(g.guards))
+	copy(out, g.guards)
+	return out
 }
 
 func (g *Governance) active() bool { return g != nil }
@@ -267,28 +302,37 @@ func (g *Governance) authorize(requestID, sessionKey, capabilityID, tool string,
 	if !g.active() || g.Broker == nil {
 		return AuthorizeResult{Allowed: true}
 	}
-	// Routine scope: unattended runs stay inside their allowed
-	// capabilities. This cannot escalate: scope is set by the scheduler
-	// executor (code), never by model output.
-	if !g.routineAllows(sessionKey, capabilityID) {
-		return AuthorizeResult{Allowed: false,
-			AskMessage: "That isn't part of this routine, so I didn't run it."}
-	}
-	// Context scope: a session inside a scoped context cannot use
-	// capabilities outside its allowlist (set by explicit user action
-	// through the contexts API, never by the model).
-	if !g.contextAllows(sessionKey, capabilityID) {
-		return AuthorizeResult{Allowed: false,
-			AskMessage: "That isn't available in this context, so I didn't run it."}
-	}
+	// Authoritative broker policy.
 	scope := scopeFor(sessionKey, args)
-	switch g.Broker.Evaluate(capabilityID, toolAction(tool, args), scope, risk) {
-	case permissions.VerdictAllow:
-		return AuthorizeResult{Allowed: true}
-	case permissions.VerdictDeny:
-		return AuthorizeResult{Allowed: false,
-			AskMessage: "That action isn't allowed. It was declined by permission policy, so I didn't run it."}
-	default:
+	decision := permissions.VerdictDecision(g.Broker.Evaluate(capabilityID, toolAction(tool, args), scope, risk))
+	denyMessage := "That action isn't allowed. It was declined by permission policy, so I didn't run it."
+
+	// Deny-only layers, combined monotonically. None of these can turn a
+	// broker denial into an allow; each can only make the outcome stricter.
+	// Routine scope: unattended runs stay inside their allowed capabilities
+	// (scope is set by the scheduler executor in code, never by model output).
+	if !g.routineAllows(sessionKey, capabilityID) {
+		decision = permissions.Combine(decision, permissions.DecisionDeny)
+		denyMessage = "That isn't part of this routine, so I didn't run it."
+	}
+	// Context scope: a scoped context cannot use capabilities outside its
+	// allowlist (set by explicit user action, never by the model).
+	if !g.contextAllows(sessionKey, capabilityID) {
+		decision = permissions.Combine(decision, permissions.DecisionDeny)
+		denyMessage = "That isn't available in this context, so I didn't run it."
+	}
+	// Registered runtime guards (deny-only).
+	for _, guard := range g.guardsSnapshot() {
+		if reason := guard(requestID, sessionKey, capabilityID, tool, args); reason != "" {
+			decision = permissions.Combine(decision, permissions.DecisionDeny)
+			denyMessage = reason
+		}
+	}
+
+	switch decision {
+	case permissions.DecisionDeny:
+		return AuthorizeResult{Allowed: false, AskMessage: denyMessage}
+	case permissions.DecisionAsk:
 		req, err := g.Broker.RequireWithTrajectory(requestID, sessionKey, g.AgentID, g.trajectoryFor(requestID), capabilityID,
 			toolAction(tool, args), scopeTarget(args), humanReason(capabilityID, tool, args),
 			risk, continuationOf(args))
@@ -298,6 +342,8 @@ func (g *Governance) authorize(requestID, sessionKey, capabilityID, tool string,
 		}
 		return AuthorizeResult{Allowed: false, PendingID: req.ID,
 			AskMessage: approvalAskText(capabilityID, tool, args, req.ID)}
+	default:
+		return AuthorizeResult{Allowed: true}
 	}
 }
 
