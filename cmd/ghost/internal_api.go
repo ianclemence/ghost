@@ -84,6 +84,11 @@ var (
 )
 
 func permBroker() (*permissions.Broker, error) {
+	// The state store is assigned when the API starts. Calling this before
+	// then must fail closed, not panic on a nil handle.
+	if apiDB == nil {
+		return nil, errors.New("permission broker unavailable: state store not ready")
+	}
 	var err error
 	substrateOnce.Do(func() {
 		substrateBroker, err = permissions.Open(apiDB, permissions.ModeAsk, 0)
@@ -1751,6 +1756,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 
 	db := agentLoop.DB()
 	apiDB = db
+	// Boot-time sweep of expired authorization state, now that the state
+	// store is ready. Safe to call here; permBroker fails closed if not.
+	if b, err := permBroker(); err == nil {
+		if n := b.SweepExpires(); n > 0 {
+			logger.InfoCF("lifecycle", "expired stale permission requests", map[string]interface{}{"count": n})
+		}
+	}
 	apiWorkspaceDir = workspaceDir
 	// Connect the agent loop to the substrate: canonical identity,
 	// permission broker, canonical event stream. Turns now emit events

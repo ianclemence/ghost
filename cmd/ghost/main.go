@@ -895,16 +895,12 @@ func gatewayCmd() {
 	agentLoop.SetConfigPath(getConfigPath())
 
 	// Boot-time lifecycle recovery. After a restart no pre-restart task is
-	// alive, so any surviving computer lease or pending permission request
-	// is stale. Expiring them here prevents a crashed task from blocking
-	// new work until a TTL lapses.
+	// alive, so any surviving computer lease is stale. Expiring it here
+	// prevents a crashed task from blocking new work until a TTL lapses.
+	// (Expired permission requests are swept once the state store is ready,
+	// inside startInternalAPI.)
 	if n, err := agentLoop.RecoverStaleLeases(); err == nil && n > 0 {
 		logger.InfoCF("lifecycle", "expired stale computer leases", map[string]interface{}{"count": n})
-	}
-	if b, err := permBroker(); err == nil {
-		if n := b.SweepExpires(); n > 0 {
-			logger.InfoCF("lifecycle", "expired stale permission requests", map[string]interface{}{"count": n})
-		}
 	}
 
 	// Start the conservative, local background memory consolidation (learn/
