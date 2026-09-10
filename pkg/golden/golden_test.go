@@ -58,7 +58,7 @@ func TestNormaliseContains(t *testing.T) {
 }
 
 func TestSelectTarget(t *testing.T) {
-	if got := Select("deepseek/deepseek-v4-flash"); got.Provider != "deepseek" || got.Model != "deepseek-v4-flash" {
+	if got := Select("deepseek/deepseek-flash"); got.Provider != "deepseek" || got.Model != "deepseek-flash" {
 		t.Fatalf("bad select: %+v", got)
 	}
 	if got := Select("deepseek"); got.Provider != "deepseek" {

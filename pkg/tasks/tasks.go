@@ -8,6 +8,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+
+	"github.com/ianclemence/ghost/pkg/cevents"
 )
 
 // Status is a job's lifecycle state.
@@ -32,16 +34,20 @@ const (
 
 // Event kinds emitted by the store (the agent maps these to typed events).
 const (
-	EventStarted   = "task.started"
-	EventProgress  = "task.progress"
-	EventDone      = "task.completed"
-	EventFailed    = "task.failed"
-	EventCancelled = "task.cancelled"
-	EventRetrying  = "task.retrying"
-	EventWaiting   = "task.waiting"
-	EventPaused    = "task.paused"
-	EventResumed   = "task.resumed"
-	EventExpired   = "task.expired"
+	EventStarted     = "task.started"
+	EventProgress    = "task.progress"
+	EventDone        = "task.completed"
+	EventFailed      = "task.failed"
+	EventCancelled   = "task.cancelled"
+	EventRetrying    = "task.retrying"
+	EventWaiting     = "task.waiting"
+	EventPaused      = "task.paused"
+	EventResumed     = "task.resumed"
+	EventExpired     = "task.expired"
+	EventInterrupted = "task.interrupted"
+	// EventCheckpointed marks a Progress call that actually recorded a
+	// checkpoint (as opposed to a bare progress heartbeat).
+	EventCheckpointed = "task.checkpointed"
 )
 
 // Job is one durable unit of work.
@@ -72,11 +78,54 @@ type Job struct {
 	ResumeState string `json:"resume_state,omitempty"`
 }
 
+// TransitionError reports a rejected state-machine move. Moves that would
+// make dead work live again (start/resume/retry/pause/wait/expire out of a
+// terminal state) fail loudly instead of silently no-op-ing: a caller that
+// thinks it restarted a finished job must find out, not proceed on a stale
+// assumption. Same-outcome completions (succeeding an already-succeeded job)
+// stay idempotent — first terminal outcome wins, duplicates acknowledge it.
+type TransitionError struct {
+	JobID string
+	From  Status
+	Op    string
+}
+
+func (e *TransitionError) Error() string {
+	return fmt.Sprintf("invalid task transition: %s on job %s in terminal state %s (create a new job or Retry an explicit failure instead)", e.Op, e.JobID, e.From)
+}
+
+// terminal reports whether no further transition may leave the state
+// (interrupted is restartable via Retry, so it is not terminal here).
+func terminal(s Status) bool {
+	switch s {
+	case StatusSucceeded, StatusFailed, StatusCancelled, StatusExpired:
+		return true
+	}
+	return false
+}
+
+// rejectIfTerminal returns a TransitionError when the job sits in a true
+// terminal state that op may not leave. Same-state completion callers
+// handle their own idempotency; everything else funnels through here.
+func rejectIfTerminal(cur Job, op string) error {
+	if terminal(cur.Status) {
+		return &TransitionError{JobID: cur.ID, From: cur.Status, Op: op}
+	}
+	return nil
+}
+
 // Store persists jobs in SQLite.
 type Store struct {
 	db      *sql.DB
 	onEvent func(kind string, job Job)
+	// stream receives durable task-lifecycle events (restart-surviving
+	// evidence). Nil = disabled; set by the runtime that owns a stream.
+	stream *cevents.Stream
 }
+
+// SetEventStream installs the canonical stream for durable task events.
+// Nil-safe: a nil stream disables durable emission.
+func (s *Store) SetEventStream(st *cevents.Stream) { s.stream = st }
 
 // NewStore creates a Store. onEvent is optional and receives lifecycle events.
 func NewStore(db *sql.DB, onEvent func(kind string, job Job)) *Store {
@@ -126,13 +175,28 @@ func (s *Store) Start(id string) (Job, error) {
 		return Job{}, fmt.Errorf("start job: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return s.Get(id) // already running or otherwise; return current
+		return s.noopOrReject(id, "start")
 	}
 	j, err := s.Get(id)
 	if err == nil {
 		s.emit(EventStarted, j)
 	}
 	return j, err
+}
+
+// noopOrReject resolves a guarded UPDATE that matched zero rows: same-state
+// re-entry returns the current job silently (idempotent), but a move out of
+// a terminal state is an explicit error — the caller must not proceed as if
+// dead work restarted.
+func (s *Store) noopOrReject(id, op string) (Job, error) {
+	cur, err := s.Get(id)
+	if err != nil {
+		return Job{}, err
+	}
+	if rerr := rejectIfTerminal(cur, op); rerr != nil {
+		return cur, rerr
+	}
+	return cur, nil
 }
 
 // Progress records progress and appends an optional checkpoint.
@@ -147,6 +211,9 @@ func (s *Store) Progress(id string, p float64, checkpoint string) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
+	if rerr := rejectIfTerminal(cur, "progress"); rerr != nil {
+		return cur, rerr
+	}
 	if checkpoint != "" {
 		cur.Checkpoints = append(cur.Checkpoints, checkpoint)
 	}
@@ -158,6 +225,9 @@ func (s *Store) Progress(id string, p float64, checkpoint string) (Job, error) {
 	j, err := s.Get(id)
 	if err == nil {
 		s.emit(EventProgress, j)
+		if checkpoint != "" {
+			s.emit(EventCheckpointed, j)
+		}
 	}
 	return j, err
 }
@@ -181,7 +251,19 @@ func (s *Store) finish(id string, status Status, errMsg string) (Job, error) {
 	t := now()
 	// Only LIVE jobs may finish. A terminal job (already succeeded,
 	// failed, cancelled, or expired) is never overwritten by a stale or
-	// duplicate completion — the first terminal outcome wins.
+	// duplicate completion — the first terminal outcome wins. Repeating
+	// the SAME outcome stays silent (idempotent completion); claiming a
+	// DIFFERENT outcome for dead work is an explicit error.
+	cur, err := s.Get(id)
+	if err != nil {
+		return Job{}, err
+	}
+	if terminal(cur.Status) {
+		if cur.Status == status {
+			return cur, nil
+		}
+		return cur, &TransitionError{JobID: id, From: cur.Status, Op: "finish:" + string(status)}
+	}
 	res, err := s.db.Exec(`UPDATE jobs SET status=?, error=?, finished_at=?, updated_at=? WHERE id=? AND status IN (?,?,?,?,?,?,?)`,
 		string(status), errMsg, t, t, id,
 		string(StatusPending), string(StatusRunning), string(StatusRetrying),
@@ -191,6 +273,8 @@ func (s *Store) finish(id string, status Status, errMsg string) (Job, error) {
 		return Job{}, fmt.Errorf("finish job: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
+		// Lost a race with a concurrent transition after the pre-check;
+		// report current state without claiming the finish.
 		return s.Get(id)
 	}
 	j, _ := s.Get(id)
@@ -208,7 +292,7 @@ func (s *Store) Retry(id string) (Job, error) {
 		return Job{}, fmt.Errorf("retry job: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return s.Get(id)
+		return s.noopOrReject(id, "retry")
 	}
 	j, _ := s.Get(id)
 	s.emit(EventRetrying, j)
@@ -230,7 +314,7 @@ func (s *Store) SetWaiting(id string, waiting Status, reason string) (Job, error
 		return Job{}, fmt.Errorf("wait job: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return s.Get(id)
+		return s.noopOrReject(id, "wait")
 	}
 	j, err := s.Get(id)
 	if err == nil {
@@ -251,7 +335,7 @@ func (s *Store) Pause(id string) (Job, error) {
 		return Job{}, fmt.Errorf("pause job: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return s.Get(id)
+		return s.noopOrReject(id, "pause")
 	}
 	j, err := s.Get(id)
 	if err == nil {
@@ -263,8 +347,9 @@ func (s *Store) Pause(id string) (Job, error) {
 // Resume returns a waiting or paused job to pending. Waiting work is live
 // but blocked on something outside itself (permission, user); once that
 // blocker clears (approval granted, user replied), Resume is how it moves
-// back to the runnable queue. A terminal job is never resurrected: Resume
-// on succeeded/failed/cancelled/expired is a no-op returning current state.
+// back to the runnable queue. Resuming dead work is an explicit error:
+// a terminal job never comes back — Retry an explicit failure or create a
+// new job instead.
 func (s *Store) Resume(id string) (Job, error) {
 	t := now()
 	res, err := s.db.Exec(`UPDATE jobs SET status=?, updated_at=? WHERE id=? AND status IN (?,?,?)`,
@@ -274,7 +359,7 @@ func (s *Store) Resume(id string) (Job, error) {
 		return Job{}, fmt.Errorf("resume job: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return s.Get(id)
+		return s.noopOrReject(id, "resume")
 	}
 	j, err := s.Get(id)
 	if err == nil {
@@ -294,7 +379,7 @@ func (s *Store) Expire(id string) (Job, error) {
 		return Job{}, fmt.Errorf("expire job: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return s.Get(id)
+		return s.noopOrReject(id, "expire")
 	}
 	j, err := s.Get(id)
 	if err == nil {
@@ -356,16 +441,41 @@ func (s *Store) CheckGeneration(id, gen string) bool {
 }
 
 // MarkInterrupted flags any job left in "running" (e.g. from a crash) as
-// interrupted, making them resumable via Retry. Called at startup.
+// interrupted, making them resumable via Retry. Called at startup. Each
+// recovered job also rotates its generation: a zombie worker from before
+// the crash still holds the old generation, and CheckGeneration will now
+// refuse its late completions instead of letting them land on the resumed
+// execution. Emits task.interrupted per recovered job.
 func (s *Store) MarkInterrupted() (int, error) {
-	t := now()
-	res, err := s.db.Exec(`UPDATE jobs SET status=?, error=?, finished_at=?, updated_at=? WHERE status=?`,
-		string(StatusInterrupted), "interrupted by restart", t, t, string(StatusRunning))
+	rows, err := s.db.Query(`SELECT id FROM jobs WHERE status=?`, string(StatusRunning))
 	if err != nil {
 		return 0, fmt.Errorf("mark interrupted: %w", err)
 	}
-	n, _ := res.RowsAffected()
-	return int(n), nil
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("mark interrupted: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("mark interrupted: %w", err)
+	}
+	t := now()
+	for _, id := range ids {
+		gen := newGeneration()
+		if _, err := s.db.Exec(`UPDATE jobs SET status=?, error=?, finished_at=?, generation=?, updated_at=? WHERE id=? AND status=?`,
+			string(StatusInterrupted), "interrupted by restart", t, gen, t, id, string(StatusRunning)); err != nil {
+			return 0, fmt.Errorf("mark interrupted: %w", err)
+		}
+		if j, err := s.Get(id); err == nil {
+			s.emit(EventInterrupted, j)
+		}
+	}
+	return len(ids), nil
 }
 
 // jobColumns is the single column list every read and write uses, so a
@@ -407,6 +517,64 @@ func (s *Store) emit(kind string, job Job) {
 	if s.onEvent != nil && kind != "" {
 		s.onEvent(kind, job)
 	}
+	s.publishTaskEvent(kind, job)
+}
+
+// publishTaskEvent mirrors a lifecycle transition onto the canonical
+// stream as restart-surviving evidence. Registration (pending) records
+// task.created; only a running job records task.started. Bare progress
+// heartbeats stay out of the warehouse — only real checkpoints land.
+// Background-originated jobs carry no trajectory (honest empty); the
+// turn-driven executor (Phase 5) will stamp the originating trajectory.
+func (s *Store) publishTaskEvent(kind string, job Job) {
+	if s.stream == nil || kind == "" {
+		return
+	}
+	var typ cevents.Type
+	switch kind {
+	case EventStarted:
+		typ = cevents.TaskCreated
+		if job.Status == StatusRunning {
+			typ = cevents.TaskStarted
+		}
+	case EventProgress:
+		return // heartbeat; checkpoints publish via EventCheckpointed
+	case EventCheckpointed:
+		typ = cevents.TaskCheckpointed
+	case EventDone:
+		typ = cevents.TaskCompleted
+	case EventFailed:
+		typ = cevents.TaskFailed
+	case EventCancelled:
+		typ = cevents.TaskCancelled
+	case EventRetrying:
+		typ = cevents.TaskRetrying
+	case EventWaiting:
+		typ = cevents.TaskWaiting
+	case EventPaused:
+		typ = cevents.TaskPaused
+	case EventResumed:
+		typ = cevents.TaskResumed
+	case EventExpired:
+		typ = cevents.TaskExpired
+	case EventInterrupted:
+		typ = cevents.TaskInterrupted
+	default:
+		return
+	}
+	s.stream.Publish(&cevents.Event{
+		Type: typ, SessionID: job.SessionKey,
+		Status: string(job.Status),
+		Payload: map[string]interface{}{
+			"job_id":   job.ID,
+			"kind":     job.Kind,
+			"owner":    job.Owner,
+			"context":  job.ContextID,
+			"attempts": job.Attempts,
+			"progress": job.Progress,
+			"error":    job.Error,
+		},
+	})
 }
 
 func scanJob(rs interface{ Scan(...interface{}) error }) (Job, error) {

@@ -123,6 +123,11 @@ type AgentLoop struct {
 	// jobs is the durable task store (SQLite-backed, part of Ghost State).
 	jobs *tasks.Store
 
+	// retrieval aggregates observed retrieval latencies (RAG assembly,
+	// memory-note search) for Doctor and future cost-aware scoring.
+	// Zero value ready; safe for concurrent turns.
+	retrieval retrievalRecorder
+
 	// browserSessionsInst is the browser session ledger for this loop's
 	// database, opened lazily by the browser gate.
 	browserSessionsOnce sync.Once
@@ -593,6 +598,16 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	al.shutdownCtx, al.shutdownCancel = context.WithCancel(context.Background())
 	al.events = NewEventBus()
 
+	// Retrieval observability: the two model-facing retrieval paths (RAG
+	// semantic context, memory-note search) record their latency so Doctor
+	// can report real cost instead of a guess. Counts only, never queries.
+	if tool, ok := al.tools.Get("memory_recall"); ok {
+		if mr, ok := tool.(*tools.MemoryRecall); ok {
+			mr.LatencyObserver = func(ms int64) { al.retrieval.observe("memo", ms) }
+		}
+	}
+	doctorRunner.SetRetrievalSource(al.retrieval.snapshot)
+
 	// Session-scoped memory retrieval: context_get sees what the calling
 	// session's context may see. The closure reads governance live, so
 	// SetGovernance order doesn't matter; subagents share the instance
@@ -652,6 +667,13 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 				typ = EventTaskStarted
 			case tasks.EventDone:
 				typ = EventTaskCompleted
+			case tasks.EventInterrupted:
+				// Crash recovery is routine, not a failure: the job is
+				// resumable with a rotated generation. No owner notify.
+				return
+			case tasks.EventCheckpointed:
+				// Routine progress marker. No owner notify.
+				return
 			default: // failed / cancelled / retrying / progress
 				typ = EventTaskFailed
 			}
@@ -915,6 +937,15 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 
 func (al *AgentLoop) SetGovernance(g *Governance) {
 	al.governance = g
+	// Durable task evidence joins the canonical stream wherever the
+	// runtime owns one. Nil-safe: unwired loops keep transient events only.
+	if al.jobs != nil {
+		if g != nil {
+			al.jobs.SetEventStream(g.Events)
+		} else {
+			al.jobs.SetEventStream(nil)
+		}
+	}
 }
 
 // SetLivePlane attaches the Live Surface plane used to pause Ghost during
@@ -1603,7 +1634,9 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 
 		// Inject RAG context into summary (scope-filtered: cross-context
 		// memories never reach the model's context).
+		ragStart := time.Now()
 		ragContext := al.sessions.GetContext(ctx, opts.UserMessage, al.sessionScopes(opts.SessionKey))
+		al.retrieval.observe("rag", time.Since(ragStart).Milliseconds())
 		if ragContext != "" {
 			if summary != "" {
 				summary += "\n\n" + ragContext
@@ -2153,10 +2186,16 @@ func (al *AgentLoop) selectModel(opts processOptions, messages []providers.Messa
 // models are already multimodal (OpenAI, Anthropic, Gemini, Groq, etc.) are
 // left untouched.
 func visionModelFor(model string) string {
-	p, _ := splitProviderModel(model)
+	p, m := splitProviderModel(model)
 	switch p {
 	case "deepseek":
-		return "deepseek:deepseek-v4-flash-vision-exp"
+		// DeepSeek-V4.1-Flash (deepseek-flash) is multimodal. The retired
+		// "vision-exp" alias is gone; route any other DeepSeek model
+		// (e.g. the non-vision deepseek-v4-pro) to the Flash.
+		if m == "deepseek-flash" {
+			return ""
+		}
+		return "deepseek:deepseek-flash"
 	}
 	return ""
 }

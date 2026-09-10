@@ -59,7 +59,7 @@ func TestPrivacyRestrictedValuesHardFailOnStream(t *testing.T) {
 		People: []Person{{Name: "maya", Session: "home"}},
 		Expect: Expect{RestrictedValues: []string{"220000", "220k"}},
 	}
-	r := &Runner{Target: Target{Provider: "deepseek", Model: "deepseek-v4-flash"}}
+	r := &Runner{Target: Target{Provider: "deepseek", Model: "deepseek-flash"}}
 	run := personRun{responses: []string{"I don't see anything relevant here."}, ws: ws}
 	ok, asserts := r.evaluate(c, []personRun{run})
 	if ok {

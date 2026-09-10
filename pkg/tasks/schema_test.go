@@ -191,10 +191,11 @@ func TestWaitingLifecycle(t *testing.T) {
 		t.Fatalf("status=%s", e.Status)
 	}
 
-	// Terminal expired wins: a late cancel cannot flip it.
+	// Terminal expired wins: a late cancel cannot flip it, and the
+	// rejection is explicit (not a silent no-op).
 	late, err := s.CancelWithReason(j.ID, "superseded")
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("late cancel of an expired job must fail loudly")
 	}
 	if late.Status != StatusExpired {
 		t.Fatalf("terminal expired must win over late cancel: %+v", late)

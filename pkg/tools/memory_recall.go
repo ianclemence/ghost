@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // MemoryResult is one memory-note search result, shaped so the agent (which owns
@@ -32,6 +33,9 @@ type MemoryRecall struct {
 	// ScopesOf resolves a session's read scopes for note filtering.
 	// Nil = unwired: unfiltered (legacy single-context behavior).
 	ScopesOf func(sessionKey string) []string
+	// LatencyObserver receives the duration of one search call in
+	// milliseconds. Optional observability hook (Doctor); nil = no-op.
+	LatencyObserver func(ms int64)
 }
 
 func NewMemoryRecall(workspace string) *MemoryRecall {
@@ -84,7 +88,11 @@ func (t *MemoryRecall) Execute(ctx context.Context, args map[string]interface{})
 	if t.search == nil {
 		return ErrorResult("memory recall unavailable")
 	}
+	start := time.Now()
 	hits := t.search(ctx, query, limit)
+	if t.LatencyObserver != nil {
+		t.LatencyObserver(time.Since(start).Milliseconds())
+	}
 	if len(hits) == 0 {
 		return NewToolResult("No memory notes matched that.")
 	}

@@ -11,15 +11,15 @@ import (
 
 // TestHTTPProvider_ModelPrefixStripping verifies that the provider prefix is
 // stripped from model names regardless of whether the separator is a slash
-// (moonshot/kimi-k2.5) or a colon (deepseek:deepseek-v4-flash).
+// (moonshot/kimi-k2.5) or a colon (deepseek:deepseek-flash).
 func TestHTTPProvider_ModelPrefixStripping(t *testing.T) {
 	cases := []struct {
 		name     string
 		inModel  string
 		wantBody string
 	}{
-		{"slash separator", "deepseek/deepseek-v4-flash", "deepseek-v4-flash"},
-		{"colon separator", "deepseek:deepseek-v4-flash", "deepseek-v4-flash"},
+		{"slash separator", "deepseek/deepseek-flash", "deepseek-flash"},
+		{"colon separator", "deepseek:deepseek-flash", "deepseek-flash"},
 		{"no prefix", "deepseek-v4-pro", "deepseek-v4-pro"},
 		{"unknown prefix left intact", "custom/x-model", "custom/x-model"},
 		{"copilot prefix", "copilot/gpt-4.1", "gpt-4.1"},
@@ -61,9 +61,9 @@ func TestHTTPProvider_ModelPrefixStripping(t *testing.T) {
 // was configured with, so the doctor health check can validate it.
 func TestHTTPProvider_GetDefaultModel(t *testing.T) {
 	p := NewHTTPProvider("test-key", "https://example.com", "", "")
-	p.SetDefaultModel("deepseek:deepseek-v4-flash")
-	if got := p.GetDefaultModel(); got != "deepseek:deepseek-v4-flash" {
-		t.Errorf("expected default model %q, got %q", "deepseek:deepseek-v4-flash", got)
+	p.SetDefaultModel("deepseek:deepseek-flash")
+	if got := p.GetDefaultModel(); got != "deepseek:deepseek-flash" {
+		t.Errorf("expected default model %q, got %q", "deepseek:deepseek-flash", got)
 	}
 }
 

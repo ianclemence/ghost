@@ -7,8 +7,13 @@ import (
 )
 
 func TestVisionModelFor(t *testing.T) {
-	if vm := visionModelFor("deepseek:deepseek-v4-flash"); vm != "deepseek:deepseek-v4-flash-vision-exp" {
-		t.Errorf("got %q", vm)
+	// deepseek-flash (V4.1-Flash) is multimodal: no remap needed.
+	if vm := visionModelFor("deepseek:deepseek-flash"); vm != "" {
+		t.Errorf("multimodal deepseek-flash should be left as-is, got %q", vm)
+	}
+	// A non-vision DeepSeek model routes to the vision-capable Flash.
+	if vm := visionModelFor("deepseek:deepseek-v4-pro"); vm != "deepseek:deepseek-flash" {
+		t.Errorf("got %q, want deepseek:deepseek-flash", vm)
 	}
 	if vm := visionModelFor("openai:gpt-4o"); vm != "" {
 		t.Errorf("openai should be left as-is, got %q", vm)
@@ -32,7 +37,7 @@ func TestIsLocalModel(t *testing.T) {
 	if !al.isLocalModel() {
 		t.Error("expected ollama to be local")
 	}
-	al2 := &AgentLoop{model: "deepseek:deepseek-v4-flash"}
+	al2 := &AgentLoop{model: "deepseek:deepseek-flash"}
 	if al2.isLocalModel() {
 		t.Error("expected deepseek to be cloud")
 	}

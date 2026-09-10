@@ -203,9 +203,10 @@ func TestCrashWhileWaitingUserDuplicateResume(t *testing.T) {
 	if late.Status != StatusSucceeded {
 		t.Fatalf("late resume must not resurrect a finished job, got %s", late.Status)
 	}
-	// Retry of a terminal job is a no-op: it must not resurrect it.
-	if _, err := s2.Retry(j.ID); err != nil {
-		t.Fatalf("retry finished job: %v", err)
+	// Retry of a finished job fails loudly instead of silently no-op-ing:
+	// either way it must not resurrect it.
+	if _, err := s2.Retry(j.ID); err == nil {
+		t.Fatal("retry of a finished job must be rejected")
 	}
 	again, _ := s2.Get(j.ID)
 	if again.Status != StatusSucceeded {

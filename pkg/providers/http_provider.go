@@ -67,7 +67,7 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 	}
 
 	// Strip provider prefix from model name (e.g., moonshot/kimi-k2.5 -> kimi-k2.5,
-	// or deepseek:deepseek-v4-flash -> deepseek-v4-flash).
+	// or deepseek:deepseek-flash -> deepseek-flash).
 	idx := strings.IndexAny(model, "/:")
 	if idx != -1 {
 		prefix := model[:idx]

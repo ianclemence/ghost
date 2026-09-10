@@ -85,7 +85,7 @@ func TestEstateNeverExposesSecrets(t *testing.T) {
 func TestEstateCredentialLookupUsesConfiguredProvider(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Agents.Defaults.Provider = "deepseek"
-	cfg.Agents.Defaults.Model = "deepseek-v4-flash" // no provider prefix
+	cfg.Agents.Defaults.Model = "deepseek-flash" // no provider prefix
 	cfg.Providers.DeepSeek.APIKey = "sk-live-key"
 	estate := DescribeEstate(cfg)
 	found := false

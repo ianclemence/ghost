@@ -1,6 +1,6 @@
 # Ghost Intelligence Runtime — Phase 0: Audit, Baseline, Architecture Map
 
-Date: 2026-09-10. Head: `b860efe`. Model-test target: `deepseek/deepseek-v4-flash`
+Date: 2026-09-10. Head: `b860efe`. Model-test target: `deepseek/deepseek-flash`
 (stored key via `GHOST_CONFIG_DIR`). Hardware target: Raspberry Pi 5, 8 GB RAM.
 
 This note is the Phase 0 deliverable (§0, §131): where responsibilities live
@@ -73,7 +73,7 @@ multimodal, multi-agent (abstraction only when Phase 4+ needs it).
 - `go build ./...` — PASS. `go vet ./...` — PASS.
 - `gofmt -l` — one pre-existing offender: `cmd/ghost-updater/main.go` (untouched).
 - `go test ./...` — ALL PASS, zero failures at HEAD.
-- Golden (deepseek/deepseek-v4-flash, stored key): **52/52 PASS, 0 hard fails**,
+- Golden (deepseek/deepseek-flash, stored key): **52/52 PASS, 0 hard fails**,
   ~288 s. Artifact: `/tmp/golden_baseline_head.json`.
 - Pre-existing risks noted, not caused by us: systemd traps SIGINT only
   (SIGTERM relies on Restart=always); `pkg/schema` is DB migrations, not

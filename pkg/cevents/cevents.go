@@ -97,6 +97,20 @@ const (
 	// Recovery (fallback routing and model escalation decisions)
 	FallbackStarted Type = "fallback.started"
 	ModelEscalated  Type = "model.escalated"
+	// Tasks (durable work lifecycle; every transition is restart-surviving
+	// evidence for forensics and Doctor recovery counts)
+	TaskCreated      Type = "task.created"
+	TaskStarted      Type = "task.started"
+	TaskCheckpointed Type = "task.checkpointed"
+	TaskResumed      Type = "task.resumed"
+	TaskRetrying     Type = "task.retrying"
+	TaskWaiting      Type = "task.waiting"
+	TaskPaused       Type = "task.paused"
+	TaskCompleted    Type = "task.completed"
+	TaskFailed       Type = "task.failed"
+	TaskCancelled    Type = "task.cancelled"
+	TaskExpired      Type = "task.expired"
+	TaskInterrupted  Type = "task.interrupted"
 )
 
 // Durable reports whether the type is persisted in the warehouse (crash-

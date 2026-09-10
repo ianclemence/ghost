@@ -1,10 +1,14 @@
 package doctor
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -32,6 +36,33 @@ type Doctor struct {
 	// Optional: when set, the provider check reports the whole estate and
 	// flags cloud entries missing credentials.
 	Estate []providers.ProviderInfo
+	// RetrievalSource reports observed retrieval latency aggregates
+	// (populated by the agent runtime; nil = nothing observed yet).
+	RetrievalSource func() RetrievalStats
+}
+
+// RetrievalStats carries per-path retrieval observations for the
+// intelligence check. Counts and milliseconds only — never query content.
+type RetrievalStats struct {
+	RAG  RetrievalPath
+	Memo RetrievalPath
+}
+
+// RetrievalPath aggregates one retrieval path ("rag", "memo").
+type RetrievalPath struct {
+	Queries int64
+	AvgMs   float64
+	LastMs  int64
+}
+
+// SetRetrievalSource installs the agent runtime's retrieval observer.
+// Nil-safe and optional: without it the intelligence check reports counts
+// only and marks retrieval latency unobserved.
+func (d *Doctor) SetRetrievalSource(fn func() RetrievalStats) {
+	if d == nil {
+		return
+	}
+	d.RetrievalSource = fn
 }
 
 func New(db *sql.DB, provider providers.LLMProvider, registry *tools.ToolRegistry, workspace string) *Doctor {
@@ -65,6 +96,7 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkClock,
 		d.checkProvider,
 		d.checkToolRegistry,
+		d.checkIntelligence,
 		d.checkBrowser,
 		d.checkSkillDependencies,
 		d.checkCalendarOAuth,
@@ -292,6 +324,92 @@ func (d *Doctor) checkToolRegistry(ctx context.Context) CheckResult {
 		Message: fmt.Sprintf("%d tools are ready.", len(names)),
 		Latency: time.Since(start).Milliseconds(),
 	}
+}
+
+// checkIntelligence reports the runtime's durable state at a glance:
+// memory (durable facts + embeddings), tasks (active/completed/recovered),
+// verification failures, and observed retrieval latency. It is operational
+// and count-based — never query content, never hidden reasoning.
+func (d *Doctor) checkIntelligence(ctx context.Context) CheckResult {
+	start := time.Now()
+	if d.db == nil {
+		return CheckResult{Name: "intelligence", Label: "Ghost Intelligence", Status: "info",
+			Message: "State store isn't available yet."}
+	}
+
+	durable := countCurrentMemoryEntries(d.workspace)
+	var chunks int
+	_ = d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM memory_chunks`).Scan(&chunks)
+
+	// A job is "active" while it can still make progress.
+	var active int
+	_ = d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN
+		('pending','running','waiting_for_permission','waiting_for_user','paused','retrying','interrupted')`).Scan(&active)
+
+	since := time.Now().Add(-24 * time.Hour)
+	var completed, recovered, verifyFailed int
+	_ = d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status='succeeded' AND finished_at >= ?`,
+		since.Unix()).Scan(&completed)
+	_ = d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM canonical_events WHERE type='task.interrupted' AND timestamp >= ?`,
+		since.Format(time.RFC3339)).Scan(&recovered)
+	_ = d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM canonical_events WHERE type='verification.failed' AND timestamp >= ?`,
+		since.Format(time.RFC3339)).Scan(&verifyFailed)
+
+	parts := []string{
+		fmt.Sprintf("Memory: %d durable, %d embedded", durable, chunks),
+		fmt.Sprintf("Tasks: %d active, %d done in 24h, %d recovered", active, completed, recovered),
+	}
+	if d.RetrievalSource != nil {
+		rs := d.RetrievalSource()
+		if rs.RAG.Queries > 0 {
+			parts = append(parts, fmt.Sprintf("Semantic retrieval: %.0fms avg over %d", rs.RAG.AvgMs, rs.RAG.Queries))
+		}
+		if rs.Memo.Queries > 0 {
+			parts = append(parts, fmt.Sprintf("Note search: %.0fms avg over %d", rs.Memo.AvgMs, rs.Memo.Queries))
+		}
+	}
+	if verifyFailed > 0 {
+		parts = append(parts, fmt.Sprintf("%d verification failure(s) in 24h", verifyFailed))
+	}
+
+	status := "ok"
+	if verifyFailed > 0 {
+		// A failed world-state check is worth surfacing, not hiding.
+		status = "warning"
+	}
+	return CheckResult{
+		Name:    "intelligence",
+		Label:   "Ghost Intelligence",
+		Status:  status,
+		Message: strings.Join(parts, ". ") + ".",
+		Latency: time.Since(start).Milliseconds(),
+	}
+}
+
+// countCurrentMemoryEntries counts durable personal-context facts
+// (status=current) by scanning the append-only log. Best-effort: a missing
+// or unreadable store reports zero rather than failing the check.
+func countCurrentMemoryEntries(workspace string) int {
+	if workspace == "" {
+		return 0
+	}
+	f, err := os.Open(filepath.Join(workspace, "personal-context", "entries.jsonl"))
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	n := 0
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		var e struct {
+			Status string `json:"status"`
+		}
+		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Status == "current" {
+			n++
+		}
+	}
+	return n
 }
 
 func (d *Doctor) checkSkillDependencies(ctx context.Context) CheckResult {

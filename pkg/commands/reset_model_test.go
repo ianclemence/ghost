@@ -16,8 +16,8 @@ func TestResetModelDefaultRestoresLocal(t *testing.T) {
 	ws := dir // ws/config/config.json will be our candidate
 	cfg := config.DefaultConfig()
 	cfg.Agents.Defaults.Provider = "deepseek"
-	cfg.Agents.Defaults.Model = "deepseek/deepseek-v4-flash"
-	cfg.Agents.Defaults.FallbackModels = []string{"deepseek/deepseek-v4-flash"}
+	cfg.Agents.Defaults.Model = "deepseek/deepseek-flash"
+	cfg.Agents.Defaults.FallbackModels = []string{"deepseek/deepseek-flash"}
 	cfg.Agents.ModelList = []config.ModelPreset{{Name: "target", Provider: "ollama", Model: "qwen3:0.6b"}}
 	if err := config.SaveConfig(filepath.Join(ws, "config", "config.json"), cfg); err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestResetModelDefaultLeavesUnknownProviderAlone(t *testing.T) {
 	ws := dir
 	cfg := config.DefaultConfig()
 	cfg.Agents.Defaults.Provider = "deepseek"
-	cfg.Agents.Defaults.Model = "deepseek/deepseek-v4-flash"
+	cfg.Agents.Defaults.Model = "deepseek/deepseek-flash"
 	cfg.Agents.ModelList = nil
 	if err := config.SaveConfig(filepath.Join(ws, "config", "config.json"), cfg); err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestResetModelDefaultNoDoublePrefix(t *testing.T) {
 	ws := dir
 	cfg := config.DefaultConfig()
 	cfg.Agents.Defaults.Provider = "deepseek"
-	cfg.Agents.Defaults.Model = "deepseek/deepseek-v4-flash"
+	cfg.Agents.Defaults.Model = "deepseek/deepseek-flash"
 	cfg.Agents.ModelList = []config.ModelPreset{{Name: "target", Provider: "ollama", Model: "ollama/qwen3:0.6b"}}
 	if err := config.SaveConfig(filepath.Join(ws, "config", "config.json"), cfg); err != nil {
 		t.Fatal(err)
