@@ -33,6 +33,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/effort"
 	"github.com/ianclemence/ghost/pkg/evolution"
+	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/mcp"
@@ -430,6 +431,22 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		store = session.NewSQLiteStore(database)
 	}
 	sessionsManager := session.NewSessionManager(store, ragStore)
+	// Adaptive retrieval under resource pressure. The snapshot is cached
+	// briefly so a burst of turns doesn't re-read /proc and statfs each time.
+	{
+		var mu sync.Mutex
+		var last time.Time
+		var scale float64 = 1
+		sessionsManager.SetResourceScale(func() float64 {
+			mu.Lock()
+			defer mu.Unlock()
+			if time.Since(last) > 30*time.Second {
+				scale = hardware.Snapshot(workspace).ContextScale()
+				last = time.Now()
+			}
+			return scale
+		})
+	}
 
 	// Create state manager for atomic state persistence
 	stateManager := state.NewManager(workspace)

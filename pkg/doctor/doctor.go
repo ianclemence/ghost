@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/clock"
+	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/schema"
 	"github.com/ianclemence/ghost/pkg/skills"
@@ -97,6 +98,7 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkProvider,
 		d.checkToolRegistry,
 		d.checkIntelligence,
+		d.checkResources,
 		d.checkBrowser,
 		d.checkSkillDependencies,
 		d.checkCalendarOAuth,
@@ -382,6 +384,31 @@ func (d *Doctor) checkIntelligence(ctx context.Context) CheckResult {
 		Label:   "Ghost Intelligence",
 		Status:  status,
 		Message: strings.Join(parts, ". ") + ".",
+		Latency: time.Since(start).Milliseconds(),
+	}
+}
+
+// checkResources reports live memory and disk headroom so the owner can see
+// pressure before it becomes a failure. It never alarms on missing inputs.
+func (d *Doctor) checkResources(ctx context.Context) CheckResult {
+	start := time.Now()
+	s := hardware.Snapshot(d.workspace)
+	msg := fmt.Sprintf("RAM %d/%d MB free; disk %d GB free (%d%%)",
+		s.MemAvailableMB, s.MemTotalMB, s.DiskFreeGB, s.DiskFreePct)
+	status := "ok"
+	switch s.Worst() {
+	case hardware.PressureCritical:
+		status = "error"
+		msg += " — critical: Ghost will reduce context and retrieval to keep running."
+	case hardware.PressureWarning:
+		status = "warning"
+		msg += " — running low: Ghost is trimming derived caches and context."
+	}
+	return CheckResult{
+		Name:    "resources",
+		Label:   "Resources",
+		Status:  status,
+		Message: msg,
 		Latency: time.Since(start).Milliseconds(),
 	}
 }

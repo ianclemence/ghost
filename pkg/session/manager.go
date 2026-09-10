@@ -24,6 +24,26 @@ type SessionManager struct {
 	store Store
 	rag   *rag.Store
 	mu    sync.RWMutex
+	// resourceScale returns a retrieval-budget multiplier (1.0 normal,
+	// lower under memory/disk pressure). Nil = 1.0.
+	resourceScale func() float64
+}
+
+// SetResourceScale installs the adaptive budget multiplier used to reduce
+// retrieval under resource pressure. Nil-safe.
+func (sm *SessionManager) SetResourceScale(fn func() float64) {
+	sm.resourceScale = fn
+}
+
+func (sm *SessionManager) scale() float64 {
+	if sm.resourceScale == nil {
+		return 1
+	}
+	s := sm.resourceScale()
+	if s <= 0 {
+		return 1
+	}
+	return s
 }
 
 func NewSessionManager(store Store, ragStore *rag.Store) *SessionManager {
@@ -155,6 +175,17 @@ func (sm *SessionManager) GetContext(ctx context.Context, userQuery string, scop
 	items = retrieval.DefaultBudget().Fit(items)
 	if len(items) == 0 {
 		return ""
+	}
+	// Under resource pressure, keep only the highest-ranked items so a
+	// constrained device spends less on context it cannot afford.
+	if scale := sm.scale(); scale < 1 {
+		keep := int(float64(len(items))*scale + 0.5)
+		if keep < 1 {
+			keep = 1
+		}
+		if keep < len(items) {
+			items = items[:keep]
+		}
 	}
 	return "Relevant Context from Memory:\n" + strings.Join(items, "\n")
 }
