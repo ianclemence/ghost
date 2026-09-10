@@ -163,7 +163,9 @@ func (se *SemanticExtractor) extractWithLLM(ctx context.Context, text string, ex
 			}, nil
 		}
 
-		// Build entry from validated classification.
+		// Build entry from validated classification. This is model
+		// inference, not user testimony: the promotion policy decides
+		// whether it may become current or must be held as a candidate.
 		entry := Entry{
 			ID:         generateSemanticID(),
 			Kind:       Kind(validated.Kind),
@@ -181,6 +183,9 @@ func (se *SemanticExtractor) extractWithLLM(ctx context.Context, text string, ex
 					Timestamp: time.Now().UTC(),
 				},
 			},
+		}
+		if d := DefaultPromotionPolicy().Evaluate(entry); !d.Promote {
+			entry.Status = d.Status
 		}
 
 		return ExtractResult{

@@ -127,6 +127,9 @@ func (s *Store) load() error {
 		if err := json.Unmarshal([]byte(raw), &e); err != nil {
 			return fmt.Errorf("parse %s line %d: %w", s.path, line, err)
 		}
+		// Migration: fill lifetime (and future defaults) for records
+		// written before the field existed, without rewriting the log.
+		e.normalize()
 		s.apply(e)
 	}
 	if err := sc.Err(); err != nil {
@@ -169,6 +172,7 @@ func (s *Store) createLocked(e Entry) (Entry, error) {
 	if e.Sources == nil {
 		e.Sources = []Source{}
 	}
+	e.normalize()
 	value, err := compactJSON(e.Value)
 	if err != nil {
 		return Entry{}, fmt.Errorf("entry %s: %w", e.ID, err)

@@ -98,6 +98,12 @@ type Entry struct {
 	Predicate string          `json:"predicate"`
 	Value     json.RawMessage `json:"value"`
 	Status    Status          `json:"status"`
+	// Lifetime is the memory tier this belief belongs to. Personal Context
+	// is durable by design; the field exists so a derived/reconstructable
+	// belief (e.g. a model summary) can be marked and reclaimed without
+	// touching canonical facts. Empty is normalized to durable on load and
+	// create, so old logs migrate without rewriting the file.
+	Lifetime Lifetime `json:"lifetime,omitempty"`
 	// Scopes limits visibility to contexts (e.g. ["context:work"]).
 	// Empty = global memory, visible from every context. Additive and
 	// backward compatible: old entries without scopes stay global.
@@ -196,6 +202,9 @@ func (e Entry) Validate() error {
 	}
 	if !ValidStatus(e.Status) {
 		return fmt.Errorf("invalid status %q", e.Status)
+	}
+	if e.Lifetime != "" && !ValidLifetime(e.Lifetime) {
+		return fmt.Errorf("invalid lifetime %q", e.Lifetime)
 	}
 	if e.Confidence < 0 || e.Confidence > 1 {
 		return fmt.Errorf("confidence %v must be within 0..1", e.Confidence)
