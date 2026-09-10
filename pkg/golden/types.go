@@ -162,6 +162,13 @@ type Expect struct {
 	// A value reaching the model's context in a session that is not
 	// authorized to know it hard-fails the run.
 	RestrictedValues []string
+	// Fixture is a transport field for the Behavioral suite: bc copies it
+	// onto Conversation.Fixture. The runner reads Conversation.Fixture.
+	Fixture Fixture
+	// Skip is a transport field for the Behavioral suite: bc copies it onto
+	// Behavioral.Skip. A non-empty reason means the scenario cannot be
+	// exercised on this appliance and is reported honestly, not passed.
+	Skip string
 }
 
 // Conversation is one canonical golden conversation.
@@ -177,6 +184,9 @@ type Conversation struct {
 	SharedWorkspace bool
 	People          []Person
 	Expect          Expect
+	// Behavioral tags a conversation as a Behavioral Golden scenario. Nil
+	// for the original capability/security suite.
+	Behavioral *BehavioralMeta
 }
 
 // DefaultPerson returns a single-person conversation scaffold.

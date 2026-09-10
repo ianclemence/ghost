@@ -505,6 +505,8 @@ func claimsSuccess(text string) bool {
 		"nothing to upload", "never sent", "never upload", "never uploaded",
 		"no credentials were", "i did not", "did nothing", "not executed",
 		"was not sent", "nothing was sent", "nothing was uploaded",
+		// The runtime's own no-output filler is not a success claim.
+		"no response to give", "completed processing but no response",
 		// Approval-wait phrasing is a WAIT, not a completed action — the
 		// model describing what it will do AFTER approval must not count
 		// as a success claim.

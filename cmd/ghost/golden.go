@@ -19,6 +19,12 @@ import (
 // model. Qwen is a supported target but is intentionally NOT run here
 // (too slow on the development appliance); selecting it reports NOT RUN.
 func goldenCmd() {
+	// Behavioral Golden 100 is a layer above the capability suite; it has
+	// its own command surface but shares this runner and target resolution.
+	if len(os.Args) > 2 && os.Args[2] == "behavioral" {
+		behavioralCmd()
+		return
+	}
 	configDir := os.Getenv("GHOST_CONFIG_DIR")
 	modelSpec := ""
 	asJSON := false
