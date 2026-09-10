@@ -279,6 +279,8 @@ func main() {
 		benchmarkCmd()
 	case "golden":
 		goldenCmd()
+	case "replay":
+		replayCmd()
 	case "version", "--version", "-v":
 		printVersion()
 	default:

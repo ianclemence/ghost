@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/failurecorpus"
 	"github.com/ianclemence/ghost/pkg/golden"
 )
 
@@ -103,6 +104,32 @@ func goldenCmd() {
 		if _, err := golden.SaveHistory(stateDir, sum, 50); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: golden history not saved: %v\n", err)
 		}
+		// Capture failures locally so they can become regression tests.
+		// Nothing leaves the device.
+		if corpus, err := failurecorpus.New(stateDir); err == nil {
+			for _, res := range sum.Results {
+				if res.Verdict != golden.VerdictFail {
+					continue
+				}
+				observed := ""
+				for _, a := range res.Assertions {
+					if !a.Pass {
+						observed = a.Name + ": " + a.Detail
+						break
+					}
+				}
+				_ = corpus.Append(failurecorpus.Record{
+					Category:    failureCategory(res.Classification),
+					Task:        res.Title,
+					Environment: "golden",
+					Expected:    "case assertions pass",
+					Observed:    observed,
+					Model:       target.Model,
+					GoldenCase:  res.ID,
+					Regression:  true,
+				})
+			}
+		}
 	}
 
 	if asJSON {
@@ -122,6 +149,20 @@ func goldenCmd() {
 
 	if sum.Failed > 0 {
 		os.Exit(1)
+	}
+}
+
+// failureCategory maps a golden failure classification to a corpus category.
+func failureCategory(c golden.Classification) failurecorpus.Category {
+	switch c {
+	case golden.ModelBehavior:
+		return failurecorpus.CatModel
+	case golden.Runtime:
+		return failurecorpus.CatRecovery
+	case golden.Provider:
+		return failurecorpus.CatModel
+	default:
+		return failurecorpus.CatOther
 	}
 }
 
