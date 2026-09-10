@@ -75,7 +75,8 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	if err := t.guard.Check(SessionKeyFromContext(ctx), resolvedPath); err != nil {
+	// Editing reads the current content first: gate as a read.
+	if err := t.guard.Check(SessionKeyFromContext(ctx), OpRead, resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 
@@ -161,7 +162,7 @@ func (t *AppendFileTool) Execute(ctx context.Context, args map[string]interface{
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	if err := t.guard.Check(SessionKeyFromContext(ctx), resolvedPath); err != nil {
+	if err := t.guard.Check(SessionKeyFromContext(ctx), OpWrite, resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 

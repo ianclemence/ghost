@@ -90,3 +90,46 @@ func TestMalformedDBFailsLoudly(t *testing.T) {
 		t.Fatal("corrupt database must fail migration loudly")
 	}
 }
+
+// A v3 device (no trajectory_id anywhere) upgrades to head: the column
+// appears, old event rows keep NULL trajectories and stay readable, and
+// the migration is idempotent.
+func TestV3ToV4TrajectoryUpgrade(t *testing.T) {
+	db, _ := openRaw(t)
+
+	if v3, err := migrations.Migrate(db, registry()[:3]); err != nil || v3 != 3 {
+		t.Fatalf("migrate to v3: v=%d err=%v", v3, err)
+	}
+	if _, err := db.Exec(`INSERT INTO canonical_events (id, type, request_id, timestamp, status)
+		VALUES ('e-v3', 'message.received', 'req-3', '2026-01-01T00:00:00Z', '')`); err != nil {
+		t.Fatalf("seed v3 event: %v", err)
+	}
+
+	head, err := MigrateToCurrent(db)
+	if err != nil {
+		t.Fatalf("migrate to head: %v", err)
+	}
+	if head != CurrentVersion || CurrentVersion != 4 {
+		t.Fatalf("head = %d, want 4", head)
+	}
+	var has bool
+	if err := db.QueryRow(`SELECT COUNT(*) > 0 FROM pragma_table_info('canonical_events') WHERE name='trajectory_id'`).Scan(&has); err != nil || !has {
+		t.Fatalf("trajectory_id column missing after v4: %v", err)
+	}
+	// Old row survived with a NULL trajectory.
+	var trj interface{}
+	if err := db.QueryRow(`SELECT trajectory_id FROM canonical_events WHERE id='e-v3'`).Scan(&trj); err != nil {
+		t.Fatalf("old event unreadable: %v", err)
+	}
+	if trj != nil {
+		t.Fatalf("old event trajectory must be NULL, got %v", trj)
+	}
+	// New writes land on the column.
+	if _, err := db.Exec(`INSERT INTO canonical_events (id, type, trajectory_id) VALUES ('e-v4', 'tool.completed', 'trj_1')`); err != nil {
+		t.Fatalf("write with trajectory: %v", err)
+	}
+	// Idempotent: second run is a no-op success.
+	if v, err := MigrateToCurrent(db); err != nil || v != CurrentVersion {
+		t.Fatalf("second migrate: v=%d err=%v", v, err)
+	}
+}

@@ -130,7 +130,9 @@ func (t Type) DefaultVisibility() product.Visibility {
 	}
 }
 
-// Event is the canonical runtime event.
+// Event is the canonical runtime event. TrajectoryID links the event to
+// one execution trace (turn → model → tools → verification); empty for
+// events that predate trajectories or originate outside any turn.
 type Event struct {
 	ID             string                 `json:"id"`
 	Type           Type                   `json:"type"`
@@ -140,6 +142,7 @@ type Event struct {
 	GhostID        string                 `json:"ghost_id,omitempty"`
 	AgentID        string                 `json:"agent_id,omitempty"`
 	RoutineID      string                 `json:"routine_id,omitempty"`
+	TrajectoryID   string                 `json:"trajectory_id,omitempty"`
 	Timestamp      time.Time              `json:"timestamp"`
 	Seq            int64                  `json:"seq"`
 	Visibility     product.Visibility     `json:"visibility"`
@@ -162,6 +165,7 @@ type Filter struct {
 	SessionID       string
 	ConversationID  string
 	RoutineID       string
+	TrajectoryID    string
 	Types           []Type
 	UserVisibleOnly bool
 }
@@ -180,6 +184,9 @@ func (f Filter) matches(e *Event) bool {
 		return false
 	}
 	if f.RoutineID != "" && e.RoutineID != f.RoutineID {
+		return false
+	}
+	if f.TrajectoryID != "" && e.TrajectoryID != f.TrajectoryID {
 		return false
 	}
 	if f.UserVisibleOnly && !e.Visibility.UserVisible() {
@@ -220,17 +227,22 @@ func Open(db *sql.DB, logDir string) (*Stream, error) {
 			seq INTEGER PRIMARY KEY AUTOINCREMENT,
 			id TEXT UNIQUE, type TEXT, request_id TEXT, session_id TEXT,
 			conversation_id TEXT, ghost_id TEXT, agent_id TEXT, routine_id TEXT,
-			timestamp TEXT, visibility TEXT, status TEXT, payload TEXT
+			timestamp TEXT, visibility TEXT, status TEXT, payload TEXT,
+			trajectory_id TEXT
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_cevents_request ON canonical_events(request_id, seq)`,
 		`CREATE INDEX IF NOT EXISTS idx_cevents_conversation ON canonical_events(conversation_id, seq)`,
 		`CREATE INDEX IF NOT EXISTS idx_cevents_ghost ON canonical_events(ghost_id, seq)`,
+		`CREATE INDEX IF NOT EXISTS idx_cevents_trajectory ON canonical_events(trajectory_id, seq)`,
 		`CREATE INDEX IF NOT EXISTS idx_cevents_time ON canonical_events(timestamp)`,
 	}
 	for _, st := range stmts {
 		if _, err := db.Exec(st); err != nil {
 			return nil, err
 		}
+	}
+	if err := EnsureTrajectoryColumn(db); err != nil {
+		return nil, err
 	}
 	if err := EnsureConsumerSchema(db); err != nil {
 		return nil, err
@@ -239,6 +251,41 @@ func Open(db *sql.DB, logDir string) (*Stream, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// EnsureTrajectoryColumn converges pre-trajectory databases to the current
+// canonical_events shape. The ALTER is preceded by an explicit PRAGMA
+// column check (never error-swallowing), so the function is idempotent and
+// safe to retry after a crash. Called from Open (self-converging) and from
+// the v4 schema migration (version-tracked startup path).
+func EnsureTrajectoryColumn(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(canonical_events)`)
+	if err != nil {
+		return fmt.Errorf("pragma table_info(canonical_events): %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notnull, pk int
+		var dflt interface{}
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return fmt.Errorf("pragma scan: %w", err)
+		}
+		if name == "trajectory_id" {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE canonical_events ADD COLUMN trajectory_id TEXT`); err != nil {
+		return fmt.Errorf("add canonical_events.trajectory_id: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_cevents_trajectory ON canonical_events(trajectory_id, seq)`); err != nil {
+		return fmt.Errorf("trajectory index: %w", err)
+	}
+	return nil
 }
 
 // Publish redacts, persists (durable types), appends NDJSON, and fans out.
@@ -282,6 +329,7 @@ func eventToLog(e *Event) map[string]interface{} {
 		"request_id": e.RequestID, "session_id": e.SessionID,
 		"conversation_id": e.ConversationID, "ghost_id": e.GhostID,
 		"agent_id": e.AgentID, "routine_id": e.RoutineID, "status": e.Status,
+		"trajectory_id": e.TrajectoryID,
 	} {
 		if v != "" {
 			m[k] = v
@@ -296,11 +344,11 @@ func eventToLog(e *Event) map[string]interface{} {
 func (s *Stream) insert(e *Event) error {
 	payload, _ := json.Marshal(e.Payload)
 	res, err := s.db.Exec(`INSERT OR IGNORE INTO canonical_events
-		(id, type, request_id, session_id, conversation_id, ghost_id, agent_id, routine_id, timestamp, visibility, status, payload)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		(id, type, request_id, session_id, conversation_id, ghost_id, agent_id, routine_id, timestamp, visibility, status, payload, trajectory_id)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		e.ID, string(e.Type), e.RequestID, e.SessionID, e.ConversationID,
 		e.GhostID, e.AgentID, e.RoutineID, e.Timestamp.Format(time.RFC3339),
-		string(e.Visibility), e.Status, string(payload))
+		string(e.Visibility), e.Status, string(payload), e.TrajectoryID)
 	if err != nil {
 		return err
 	}
@@ -371,10 +419,23 @@ func (s *Stream) Subscribe(f Filter, fn func(*Event)) func() {
 	}
 }
 
+// ByTrajectory returns one execution trace in deterministic order — the
+// turn → model → tool → verification record that lets Doctor answer why a
+// task failed instead of reporting that something went wrong.
+func (s *Stream) ByTrajectory(trajectoryID string) []*Event {
+	rows, err := s.db.Query(`SELECT seq, id, type, request_id, session_id, conversation_id, ghost_id, agent_id, routine_id, timestamp, visibility, status, payload, trajectory_id
+		FROM canonical_events WHERE trajectory_id=? ORDER BY seq`, trajectoryID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	return scanAll(rows)
+}
+
 // ByRequest returns a request's events in deterministic order — the full
 // message→capability→permission→execution→result trace without guessing.
 func (s *Stream) ByRequest(requestID string) []*Event {
-	rows, err := s.db.Query(`SELECT seq, id, type, request_id, session_id, conversation_id, ghost_id, agent_id, routine_id, timestamp, visibility, status, payload
+	rows, err := s.db.Query(`SELECT seq, id, type, request_id, session_id, conversation_id, ghost_id, agent_id, routine_id, timestamp, visibility, status, payload, trajectory_id
 		FROM canonical_events WHERE request_id=? ORDER BY seq`, requestID)
 	if err != nil {
 		return nil
@@ -398,10 +459,14 @@ func (s *Stream) Recent(limit int, f Filter) []*Event {
 		clauses = append(clauses, "conversation_id=?")
 		args = append(args, f.ConversationID)
 	}
+	if f.TrajectoryID != "" {
+		clauses = append(clauses, "trajectory_id=?")
+		args = append(args, f.TrajectoryID)
+	}
 	if f.UserVisibleOnly {
 		clauses = append(clauses, "(visibility='user_visible_message' OR visibility='user_visible_error')")
 	}
-	q := `SELECT seq, id, type, request_id, session_id, conversation_id, ghost_id, agent_id, routine_id, timestamp, visibility, status, payload FROM canonical_events`
+	q := `SELECT seq, id, type, request_id, session_id, conversation_id, ghost_id, agent_id, routine_id, timestamp, visibility, status, payload, trajectory_id FROM canonical_events`
 	if len(clauses) > 0 {
 		q += " WHERE " + strings.Join(clauses, " AND ")
 	}
@@ -437,10 +502,14 @@ func (s *Stream) Since(seq int64, limit int, f Filter) []*Event {
 		clauses = append(clauses, "conversation_id=?")
 		args = append(args, f.ConversationID)
 	}
+	if f.TrajectoryID != "" {
+		clauses = append(clauses, "trajectory_id=?")
+		args = append(args, f.TrajectoryID)
+	}
 	if f.UserVisibleOnly {
 		clauses = append(clauses, "(visibility='user_visible_message' OR visibility='user_visible_error')")
 	}
-	q := `SELECT seq, id, type, request_id, session_id, conversation_id, ghost_id, agent_id, routine_id, timestamp, visibility, status, payload FROM canonical_events WHERE ` +
+	q := `SELECT seq, id, type, request_id, session_id, conversation_id, ghost_id, agent_id, routine_id, timestamp, visibility, status, payload, trajectory_id FROM canonical_events WHERE ` +
 		strings.Join(clauses, " AND ") + ` ORDER BY seq ASC LIMIT ?`
 	args = append(args, limit)
 	rows, err := s.db.Query(q, args...)
@@ -474,10 +543,12 @@ func scanAll(rows *sql.Rows) []*Event {
 	for rows.Next() {
 		var e Event
 		var typ, vis, ts, payload string
+		var trj sql.NullString
 		if err := rows.Scan(&e.Seq, &e.ID, &typ, &e.RequestID, &e.SessionID,
-			&e.ConversationID, &e.GhostID, &e.AgentID, &e.RoutineID, &ts, &vis, &e.Status, &payload); err != nil {
+			&e.ConversationID, &e.GhostID, &e.AgentID, &e.RoutineID, &ts, &vis, &e.Status, &payload, &trj); err != nil {
 			continue
 		}
+		e.TrajectoryID = trj.String
 		e.Type = Type(typ)
 		e.Visibility = product.Visibility(vis)
 		if t, err := time.Parse(time.RFC3339, ts); err == nil {

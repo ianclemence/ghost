@@ -78,6 +78,7 @@ var snapshotTables = []snapshotTable{
 		"seq", "id", "type", "request_id", "session_id",
 		"conversation_id", "ghost_id", "agent_id", "routine_id",
 		"timestamp", "visibility", "status", "payload",
+		"trajectory_id",
 	}, OrderBy: "seq"},
 	{Name: "memory_chunks", Columns: []string{
 		"id", "content", "embedding", "created_at", "source",
@@ -421,7 +422,20 @@ func rehydrateTableSnapshot(database *db.DB, name string, data []byte) error {
 		return fmt.Errorf("snapshot for unknown table %q in %s", sf.Table, name)
 	}
 	if len(sf.Columns) != len(want.Columns) {
-		return fmt.Errorf("column count mismatch for %s: archive has %d, schema has %d", sf.Table, len(sf.Columns), len(want.Columns))
+		// Backward tolerance: archives written before a trailing column
+		// existed (e.g. pre-trajectory canonical_events) restore with NULLs
+		// for the missing tail instead of refusing the whole archive.
+		// Anything else (reordered, renamed, or removed columns) still fails
+		// closed — silent shape drift is how canonical data gets lost.
+		if len(sf.Columns) >= len(want.Columns) {
+			return fmt.Errorf("column count mismatch for %s: archive has %d, schema has %d", sf.Table, len(sf.Columns), len(want.Columns))
+		}
+		for i := range sf.Columns {
+			if sf.Columns[i] != want.Columns[i] {
+				return fmt.Errorf("column mismatch for %s at position %d: archive has %q, schema has %q", sf.Table, i, sf.Columns[i], want.Columns[i])
+			}
+		}
+		return rehydrateWithNullTail(database, want, sf)
 	}
 	for i := range sf.Columns {
 		if sf.Columns[i] != want.Columns[i] {
@@ -454,6 +468,48 @@ func rehydrateTableSnapshot(database *db.DB, name string, data []byte) error {
 			return fmt.Errorf("row %d of %s has %d values, want %d", ri, want.Name, len(row), len(want.Columns))
 		}
 		if _, err := stmt.Exec(row...); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("insert %s row %d: %w", want.Name, ri, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit %s: %w", want.Name, err)
+	}
+	return nil
+}
+
+// rehydrateWithNullTail restores an archive whose columns are a strict
+// prefix of the current schema (old backup, new code): present values are
+// inserted, missing trailing columns become NULL. The caller has already
+// verified the prefix matches positionally.
+func rehydrateWithNullTail(database *db.DB, want *snapshotTable, sf tableSnapshotFile) error {
+	tx, err := database.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM " + quoteIdent(want.Name)); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("clear %s: %w", want.Name, err)
+	}
+	placeholders := make([]string, len(want.Columns))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	stmt, err := tx.Prepare(fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		quoteIdent(want.Name), strings.Join(quoteColumns(want.Columns), ", "), strings.Join(placeholders, ", ")))
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("prepare %s: %w", want.Name, err)
+	}
+	defer stmt.Close()
+	for ri, row := range sf.Rows {
+		if len(row) != len(sf.Columns) {
+			tx.Rollback()
+			return fmt.Errorf("row %d of %s has %d values, want %d", ri, want.Name, len(row), len(sf.Columns))
+		}
+		padded := make([]interface{}, len(want.Columns))
+		copy(padded, row)
+		if _, err := stmt.Exec(padded...); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("insert %s row %d: %w", want.Name, ri, err)
 		}

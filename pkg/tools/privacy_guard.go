@@ -35,10 +35,24 @@ func (g ScopeGuard) active() bool {
 	return g.ContextOf != nil && g.Workspace != ""
 }
 
+// Op describes what a file tool wants to do: "read" (read_file, edit_file
+// which reads before replacing), "write" (write_file, append_file), or
+// "list" (list_dir).
+type Op string
+
+const (
+	OpRead  Op = "read"
+	OpWrite Op = "write"
+	OpList  Op = "list"
+)
+
 // Check returns an error when the resolved path lives inside a protected
 // part of the memory estate that the calling session is not allowed to
-// read. A nil return means the access is permitted.
-func (g ScopeGuard) Check(sessionKey, resolvedPath string) error {
+// touch in the requested way. A nil return means the access is permitted.
+// Reads of mixed-scope journals are denied (use the scope-filtered memory
+// tools); writes stay permitted so journaling and user note-taking keep
+// working, and listings reveal only names.
+func (g ScopeGuard) Check(sessionKey string, op Op, resolvedPath string) error {
 	if !g.active() {
 		return nil
 	}
@@ -68,6 +82,15 @@ func (g ScopeGuard) Check(sessionKey, resolvedPath string) error {
 	// it through scope-filtered memory tools, never by raw file reads.
 	case rel == "personal-context" || strings.HasPrefix(rel, "personal-context/"):
 		return fmt.Errorf("your memory store is protected: use your memory tools rather than reading it directly")
+	// Dated daily notes are the same kind of mixed-scope journal: the
+	// auto-journal appends every context's turn summaries to one shared
+	// file, so no single session may read it raw. memory_recall serves
+	// the same content scope-filtered. MEMORY.md (the user's own
+	// long-term file, never machine-journaled) stays directly readable.
+	case rel == "memory" || strings.HasPrefix(rel, "memory/"):
+		if rel != "memory/MEMORY.md" && op == OpRead {
+			return fmt.Errorf("dated memory notes hold every context's journal mixed together: use memory_recall to search them instead of reading files directly")
+		}
 	// Runtime state (identity, context/session bindings, browser profiles)
 	// is never model content.
 	case rel == "state" || strings.HasPrefix(rel, "state/"):

@@ -135,6 +135,7 @@ var coreToolNames = map[string]bool{
 	"list_dir": true, "edit_file": true,
 	"web_search": true, "web_fetch": true, "session_search": true,
 	"remember": true, "context_get": true, "memory_curate": true,
+	"memory_recall": true,
 	"message": true, "skill_manage": true, "todo": true, "cron": true,
 	"schedule": true,
 	"spawn":    true, "subagent": true, "clarify": true,

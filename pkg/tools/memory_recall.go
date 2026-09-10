@@ -18,7 +18,9 @@ type MemoryResult struct {
 
 // SearchMemo returns relevant memory-note hits for a query. It is injected by
 // the agent so this tool stays decoupled from the storage implementation.
-type SearchMemo func(query string, limit int) []MemoryResult
+// The context carries the calling session (SessionKeyFromContext) so the
+// implementation can scope-filter to what the caller may see.
+type SearchMemo func(ctx context.Context, query string, limit int) []MemoryResult
 
 // MemoryRecall searches the on-disk memory notes (daily notes, MEMORY.md,
 // captures) for relevant past content. It is the targeted long-tail retrieval
@@ -27,6 +29,9 @@ type SearchMemo func(query string, limit int) []MemoryResult
 type MemoryRecall struct {
 	workspace string
 	search    SearchMemo
+	// ScopesOf resolves a session's read scopes for note filtering.
+	// Nil = unwired: unfiltered (legacy single-context behavior).
+	ScopesOf func(sessionKey string) []string
 }
 
 func NewMemoryRecall(workspace string) *MemoryRecall {
@@ -35,6 +40,11 @@ func NewMemoryRecall(workspace string) *MemoryRecall {
 
 // SetSearch wires the memory-note retrieval implementation.
 func (t *MemoryRecall) SetSearch(fn SearchMemo) { t.search = fn }
+
+// SetScopesOf installs the session→read-scopes resolver used to keep
+// cross-context journal facts out of sessions that may not see them.
+// A nil resolver disables filtering (legacy behavior).
+func (t *MemoryRecall) SetScopesOf(fn func(sessionKey string) []string) { t.ScopesOf = fn }
 
 func (t *MemoryRecall) Name() string { return "memory_recall" }
 
@@ -74,7 +84,7 @@ func (t *MemoryRecall) Execute(ctx context.Context, args map[string]interface{})
 	if t.search == nil {
 		return ErrorResult("memory recall unavailable")
 	}
-	hits := t.search(query, limit)
+	hits := t.search(ctx, query, limit)
 	if len(hits) == 0 {
 		return NewToolResult("No memory notes matched that.")
 	}

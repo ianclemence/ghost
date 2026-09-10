@@ -112,7 +112,7 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]interface{})
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	if err := t.guard.Check(SessionKeyFromContext(ctx), resolvedPath); err != nil {
+	if err := t.guard.Check(SessionKeyFromContext(ctx), OpRead, resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 
@@ -177,7 +177,7 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	if err := t.guard.Check(SessionKeyFromContext(ctx), resolvedPath); err != nil {
+	if err := t.guard.Check(SessionKeyFromContext(ctx), OpWrite, resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 
@@ -258,7 +258,7 @@ func (t *ListDirTool) Execute(ctx context.Context, args map[string]interface{}) 
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	if err := t.guard.Check(SessionKeyFromContext(ctx), resolvedPath); err != nil {
+	if err := t.guard.Check(SessionKeyFromContext(ctx), OpList, resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 

@@ -1,6 +1,8 @@
 package turnlog
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -98,5 +100,82 @@ func TestRecoverInterruptsStaleTurns(t *testing.T) {
 	}
 	if res.Status != StatusInterrupted {
 		t.Fatalf("repeat claim after recovery must report interrupted, got %s", res.Status)
+	}
+}
+
+// Every claimed turn mints one trajectory ID, and a repeat claim (mobile
+// reconnect) observes the SAME trajectory — it must never fork a new trace.
+func TestClaimMintsStableTrajectoryID(t *testing.T) {
+	s := newStore(t)
+	first, err := s.Claim("c", "r")
+	if err != nil || !first.Created {
+		t.Fatalf("claim: %v", err)
+	}
+	if first.Turn.TrajectoryID == "" {
+		t.Fatal("claim must mint a trajectory ID")
+	}
+	second, err := s.Claim("c", "r")
+	if err != nil || second.Created {
+		t.Fatalf("repeat claim must attach, got %v %+v", err, second)
+	}
+	if second.Turn.TrajectoryID != first.Turn.TrajectoryID {
+		t.Fatalf("reconnect forked a trajectory: %q vs %q",
+			first.Turn.TrajectoryID, second.Turn.TrajectoryID)
+	}
+	got, err := s.Get("c", "r")
+	if err != nil || got.TrajectoryID != first.Turn.TrajectoryID {
+		t.Fatalf("persisted trajectory mismatch: %+v", got)
+	}
+}
+
+// Trajectory IDs are unique per turn, not per process.
+func TestTrajectoryIDsUnique(t *testing.T) {
+	s := newStore(t)
+	seen := map[string]bool{}
+	for i := 0; i < 25; i++ {
+		res, err := s.Claim("c", string(rune('a'+i)))
+		if err != nil || !res.Created {
+			t.Fatalf("claim %d: %v", i, err)
+		}
+		if seen[res.Turn.TrajectoryID] {
+			t.Fatalf("duplicate trajectory ID %q", res.Turn.TrajectoryID)
+		}
+		seen[res.Turn.TrajectoryID] = true
+	}
+}
+
+// Context propagation round-trips; empty IDs leave the context untouched.
+func TestTrajectoryContext(t *testing.T) {
+	ctx := WithTrajectoryID(context.Background(), "trj_abc")
+	if got := TrajectoryIDFromContext(ctx); got != "trj_abc" {
+		t.Fatalf("round-trip = %q", got)
+	}
+	if got := TrajectoryIDFromContext(WithTrajectoryID(context.Background(), "")); got != "" {
+		t.Fatalf("empty ID must stay empty, got %q", got)
+	}
+	if got := TrajectoryIDFromContext(nil); got != "" {
+		t.Fatalf("nil context must yield empty, got %q", got)
+	}
+}
+
+// Pre-trajectory turn files (no trajectory_id key) load honestly empty —
+// provenance is never manufactured for old records.
+func TestLegacyTurnLoadsWithoutTrajectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "turns")
+	s, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Bypass Claim: write a legacy-shaped record directly.
+	legacy := `{"session_id":"c","request_id":"r","status":"running","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`
+	if err := os.WriteFile(filepath.Join(dir, key("c", "r")+".json"), []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get("c", "r")
+	if err != nil || got == nil {
+		t.Fatalf("legacy turn must load: %v", err)
+	}
+	if got.TrajectoryID != "" {
+		t.Fatalf("legacy turn must have empty trajectory, got %q", got.TrajectoryID)
 	}
 }

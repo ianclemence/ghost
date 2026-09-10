@@ -2,6 +2,7 @@ package ghoststate
 
 import (
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -215,5 +216,58 @@ func TestImportRejectsColumnDrift(t *testing.T) {
 	unknown := `{"format":"ghost-db-snapshot","version":1,"table":"evil","columns":[],"rows":[]}`
 	if err := rehydrateTableSnapshot(d, "db/evil.json", []byte(unknown)); err == nil {
 		t.Fatal("unknown table must fail import")
+	}
+}
+
+// An archive written before trajectory_id existed (13 canonical_events
+// columns) must restore into the current schema with NULL trajectories —
+// old backups stay usable after the v4 upgrade instead of failing the
+// whole import.
+func TestRehydrateToleratesMissingTrailingColumn(t *testing.T) {
+	ws := t.TempDir()
+	d, err := db.NewDB(ws)
+	if err != nil {
+		t.Fatalf("NewDB: %v", err)
+	}
+	defer d.Close()
+	raw, err := sql.Open("sqlite", "file:"+filepath.Join(ws, "ghost.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := schema.MigrateToCurrent(raw); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if _, err := cevents.Open(raw, t.TempDir()); err != nil {
+		t.Fatalf("cevents schema: %v", err)
+	}
+
+	old := tableSnapshotFile{
+		Format:  dbSnapshotFormat,
+		Version: dbSnapshotVersion,
+		Table:   "canonical_events",
+		Columns: []string{
+			"seq", "id", "type", "request_id", "session_id",
+			"conversation_id", "ghost_id", "agent_id", "routine_id",
+			"timestamp", "visibility", "status", "payload",
+		},
+		Rows: [][]interface{}{
+			{1, "ev-old", "message.received", "req-9", "s-1", "", "", "", "", "2026-01-01T00:00:00Z", "internal_trace", "", "{}"},
+		},
+	}
+	data, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rehydrateTableSnapshot(d, "db/canonical_events.json", data); err != nil {
+		t.Fatalf("old archive must restore: %v", err)
+	}
+	var typ string
+	var trj interface{}
+	if err := d.QueryRow(`SELECT type, trajectory_id FROM canonical_events WHERE id='ev-old'`).Scan(&typ, &trj); err != nil {
+		t.Fatalf("restored row unreadable: %v", err)
+	}
+	if typ != "message.received" || trj != nil {
+		t.Fatalf("restored row wrong: %q %v", typ, trj)
 	}
 }

@@ -29,7 +29,7 @@ import (
 )
 
 // CurrentVersion is the schema head this build understands.
-const CurrentVersion = 3
+const CurrentVersion = 4
 
 // baseline builds the full v1 schema through the same initializers
 // production startup has always used. Every step is CREATE-IF-NOT-EXISTS
@@ -82,7 +82,22 @@ func registry() []migrations.Migration {
 			Description: "event consumers: durable checkpoints and exactly-once claims",
 			UpDB:        eventConsumersV3,
 		},
+		{
+			Version:     4,
+			Description: "trajectory identity: trajectory_id column on canonical_events",
+			UpDB:        trajectoryV4,
+		},
 	}
+}
+
+// trajectoryV4 converges existing databases to the trajectory shape. The
+// column check inside cevents keeps this idempotent; fresh installs already
+// carry the column from the v1 baseline (cevents.Open).
+func trajectoryV4(raw *sql.DB) error {
+	if err := cevents.EnsureTrajectoryColumn(raw); err != nil {
+		return fmt.Errorf("trajectory column: %w", err)
+	}
+	return nil
 }
 
 // eventConsumersV3 adds the checkpoint/claim tables to databases that

@@ -57,6 +57,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/turnlog"
 	"github.com/ianclemence/ghost/pkg/voice"
 )
 
@@ -2572,8 +2573,16 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		// conversation must never start a second execution (reconnect is
 		// observation, not re-submission). Terminal turns reply with their
 		// stored outcome; live/waiting turns are refused with 409.
+		// One trajectory per turn: the claim mints the execution-trace ID
+		// that links this turn's model calls, tools, and verification.
+		// A repeat claim returns the existing turn (handled above), so a
+		// reconnect observes the same trajectory instead of forking one.
+		trajectoryID := ""
 		if chatTurns != nil {
 			claim, cerr := chatTurns.Claim(req.SessionKey, req.RequestID)
+			if cerr == nil && claim.Turn != nil {
+				trajectoryID = claim.Turn.TrajectoryID
+			}
 			if cerr == nil && !claim.Created {
 				switch claim.Status {
 				case "completed":
@@ -2677,6 +2686,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		}()
 
 		ctx := r.Context()
+		// Carry the turn's trajectory ID into the agent loop, tool
+		// execution, and verification so every event for this turn lands
+		// on one trace (ghost replay <trajectory-id>).
+		ctx = turnlog.WithTrajectoryID(ctx, trajectoryID)
 
 		// Subscribe to outbound bus during this request to forward
 		// clarify_request and other interactive events over SSE. Without

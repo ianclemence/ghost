@@ -288,9 +288,18 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Targeted long-tail memory retrieval: the agent searches its own notes
 	// (daily notes, MEMORY.md, captures) on demand, ranked by relevance+recency.
 	memoryRecall := tools.NewMemoryRecall(workspace)
-	memoryRecall.SetSearch(func(query string, limit int) []tools.MemoryResult {
+	memoryRecall.SetSearch(func(ctx context.Context, query string, limit int) []tools.MemoryResult {
 		store := NewMemoryStore(workspace)
-		hits := store.Search(query, limit)
+		var allowed []string // nil = unwired, unfiltered (legacy)
+		if memoryRecall.ScopesOf != nil {
+			allowed = memoryRecall.ScopesOf(tools.SessionKeyFromContext(ctx))
+			if allowed == nil {
+				// Wired but unknown session: shared (untagged) blocks only,
+				// never another context's tagged facts.
+				allowed = []string{}
+			}
+		}
+		hits := store.Search(query, limit, allowed)
 		out := make([]tools.MemoryResult, 0, len(hits))
 		for _, h := range hits {
 			out = append(out, tools.MemoryResult{Path: h.Path, Excerpt: h.Excerpt, Score: h.Score, Modified: h.Modified.Unix()})
@@ -2685,6 +2694,21 @@ func (al *AgentLoop) updateToolContexts(channel, chatID string) {
 			})
 		}
 	}
+
+	// memory_recall searches the shared daily-note journal: filter to the
+	// caller's read scopes so one context's journaled facts never surface
+	// in another context. Nil-safe.
+	if tool, ok := al.tools.Get("memory_recall"); ok {
+		if mr, ok := tool.(*tools.MemoryRecall); ok {
+			if al.governance != nil && al.governance.Contexts != nil {
+				mr.SetScopesOf(func(session string) []string {
+					return al.governance.Contexts.ScopesForSession(session)
+				})
+			} else {
+				mr.SetScopesOf(nil)
+			}
+		}
+	}
 }
 
 // sessionWriteScopes resolves the scope tags new memories from a session
@@ -3017,6 +3041,19 @@ func skillNameFromFrontmatter(content string) string {
 	return ""
 }
 
+// scopeTag renders write scopes as journal entry tags (" [context:work]").
+// Personal/global writes carry no tag and stay visible everywhere — the
+// same vocabulary personal-context entries use.
+func scopeTag(scopes []string) string {
+	var b strings.Builder
+	for _, s := range scopes {
+		if s = strings.TrimSpace(s); s != "" {
+			b.WriteString(" [" + s + "]")
+		}
+	}
+	return b.String()
+}
+
 // autoJournal summarizes the session and appends it to the daily note.
 func (al *AgentLoop) autoJournal(sessionKey string) {
 	// Only journal if there's enough history
@@ -3033,8 +3070,14 @@ func (al *AgentLoop) autoJournal(sessionKey string) {
 		return
 	}
 
-	// Append to daily note via memory store
-	entry := fmt.Sprintf("\n- [%s] (journal) %s", time.Now().Format("15:04"), summary)
+	// Append to daily note via memory store. The entry carries the turn's
+	// write scopes so the shared journal stays readable per-context:
+	// memory-note search only surfaces entries whose scope tag is empty
+	// (personal/global) or within the reader's scopes, and raw file reads
+	// of dated notes are denied by ScopeGuard. Without the tag, a
+	// work-context fact journaled here would leak to personal sessions
+	// through the daily note.
+	entry := fmt.Sprintf("\n- [%s] (journal)%s %s", time.Now().Format("15:04"), scopeTag(al.sessionWriteScopes(sessionKey)), summary)
 	if al.contextBuilder != nil && al.contextBuilder.memory != nil {
 		al.contextBuilder.memory.AppendToday(entry)
 	}

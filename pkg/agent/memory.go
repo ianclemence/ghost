@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -172,13 +173,27 @@ type MemoryHit struct {
 	Modified time.Time `json:"modified"`
 }
 
+// scopeTagRE matches journal scope tags ("[context:work]") written by
+// autoJournal. Entries without a tag predate scoping (or were written in a
+// personal/global session) and stay visible everywhere.
+var scopeTagRE = regexp.MustCompile(`\[context:([A-Za-z0-9_-]+)\]`)
+
+// journalBlockRE starts a new journal block at each dated "- [HH:MM]" line.
+// Text before the first marker (headers, user prose) is one shared block.
+var journalBlockRE = regexp.MustCompile(`(?m)^- \[\d{2}:\d{2}\]`)
+
 // Search retrieves the most relevant memory notes (daily notes, MEMORY.md,
 // captures) for a query using keyword relevance + recency. It deliberately uses
 // the existing on-disk notes and simple scoring — no embeddings, no external
 // vector index — so it stays local, cheap, and explainable. This is the
 // targeted long-tail retrieval path: the agent calls it when the digest doesn't
 // cover what it needs.
-func (ms *MemoryStore) Search(query string, limit int) []MemoryHit {
+//
+// allowed carries the reader's scopes (nil = unwired/legacy: unfiltered).
+// Journal blocks tagged with a scope outside allowed are never matched — a
+// work-context fact journaled to the shared daily note stays invisible to
+// personal sessions, mirroring personal-context scoping.
+func (ms *MemoryStore) Search(query string, limit int, allowed []string) []MemoryHit {
 	if limit <= 0 {
 		limit = 5
 	}
@@ -199,22 +214,26 @@ func (ms *MemoryStore) Search(query string, limit int) []MemoryHit {
 		if len(data) > 4*1024*1024 { // skip oversized notes
 			return nil
 		}
-		lower := strings.ToLower(string(data))
-		hits := 0
-		for _, w := range words {
-			hits += strings.Count(lower, w)
-		}
-		if hits == 0 {
-			return nil
-		}
 		info, _ := d.Info()
-		score := float64(hits) + recencyBoost(now, info.ModTime())
-		out = append(out, MemoryHit{
-			Path:     path,
-			Excerpt:  excerptFor(lower, words),
-			Score:    score,
-			Modified: info.ModTime(),
-		})
+		for _, block := range visibleBlocks(string(data), allowed) {
+			// Scope tags are matching metadata, not content: strip them
+			// for scoring so a query for "work" doesn't hit "[context:work]".
+			lower := strings.ToLower(scopeTagRE.ReplaceAllString(block, ""))
+			hits := 0
+			for _, w := range words {
+				hits += strings.Count(lower, w)
+			}
+			if hits == 0 {
+				continue
+			}
+			score := float64(hits) + recencyBoost(now, info.ModTime())
+			out = append(out, MemoryHit{
+				Path:     path,
+				Excerpt:  excerptFor(lower, words),
+				Score:    score,
+				Modified: info.ModTime(),
+			})
+		}
 		return nil
 	})
 
@@ -229,6 +248,45 @@ func (ms *MemoryStore) Search(query string, limit int) []MemoryHit {
 	})
 	if len(out) > limit {
 		out = out[:limit]
+	}
+	return out
+}
+
+// visibleBlocks splits note content into journal blocks and returns only
+// the blocks the reader's scopes may see. A block carrying a scope tag is
+// visible only when the tag is within allowed; untagged blocks (headers,
+// user prose, pre-scoping entries, MEMORY.md) are shared. allowed == nil
+// means the caller is unwired (legacy): everything is visible.
+func visibleBlocks(content string, allowed []string) []string {
+	if allowed == nil {
+		return []string{content}
+	}
+	set := map[string]bool{}
+	for _, s := range allowed {
+		set[s] = true
+	}
+	locs := journalBlockRE.FindAllStringIndex(content, -1)
+	if len(locs) == 0 {
+		return []string{content}
+	}
+	var out []string
+	// Header before the first journal line is shared.
+	if head := strings.TrimSpace(content[:locs[0][0]]); head != "" {
+		out = append(out, head)
+	}
+	for i, loc := range locs {
+		end := len(content)
+		if i+1 < len(locs) {
+			end = locs[i+1][0]
+		}
+		block := content[loc[0]:end]
+		tag := ""
+		if m := scopeTagRE.FindStringSubmatch(block); m != nil {
+			tag = "context:" + m[1]
+		}
+		if tag == "" || set[tag] {
+			out = append(out, block)
+		}
 	}
 	return out
 }

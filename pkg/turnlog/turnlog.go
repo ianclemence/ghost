@@ -9,6 +9,8 @@
 package turnlog
 
 import (
+	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -31,14 +33,54 @@ const (
 	StatusInterrupted Status = "interrupted" // process died mid-turn
 )
 
-// Turn is one durable user turn record.
+// Turn is one durable user turn record. TrajectoryID is the execution
+// trace identity for the turn: one ID connects the session turn, model
+// calls, memory retrieval, tool execution, verification, and recovery.
+// A repeat claim (mobile reconnect) returns the SAME trajectory ID —
+// reconnect observes the existing execution, it never forks a new trace.
 type Turn struct {
-	SessionID string    `json:"session_id"`
-	RequestID string    `json:"request_id"`
-	Status    Status    `json:"status"`
-	Outcome   string    `json:"outcome,omitempty"` // product outcome when terminal
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	SessionID    string    `json:"session_id"`
+	RequestID    string    `json:"request_id"`
+	TrajectoryID string    `json:"trajectory_id,omitempty"`
+	Status       Status    `json:"status"`
+	Outcome      string    `json:"outcome,omitempty"` // product outcome when terminal
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// trajectoryIDContextKey carries a turn's trajectory ID through the agent
+// loop, tool execution, and verification without threading it through every
+// function signature (same pattern as tools.WithSessionKey).
+type trajectoryIDContextKey struct{}
+
+// NewTrajectoryID mints a trajectory identity: "trj_" + 16 hex chars from
+// crypto entropy. Collisions are not retried — 64 bits per turn is enough
+// that a birthday collision is not a planning input.
+func NewTrajectoryID() string {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return fmt.Sprintf("trj-%d", time.Now().UTC().UnixNano())
+	}
+	return "trj_" + hex.EncodeToString(buf[:])
+}
+
+// WithTrajectoryID attaches the turn's trajectory ID to ctx. Empty IDs are
+// ignored so background work without a turn keeps a clean context.
+func WithTrajectoryID(ctx context.Context, trajectoryID string) context.Context {
+	if ctx == nil || trajectoryID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, trajectoryIDContextKey{}, trajectoryID)
+}
+
+// TrajectoryIDFromContext returns the turn's trajectory ID, or "" when the
+// work has no turn (startup, cron without a turn, tests).
+func TrajectoryIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	id, _ := ctx.Value(trajectoryIDContextKey{}).(string)
+	return id
 }
 
 // ClaimResult reports the outcome of attempting to claim a turn.
@@ -79,7 +121,7 @@ func (s *Store) Claim(sessionID, requestID string) (ClaimResult, error) {
 	p := s.path(key(sessionID, requestID))
 	now := time.Now().UTC()
 	rec := &Turn{SessionID: sessionID, RequestID: requestID, Status: StatusPending,
-		CreatedAt: now, UpdatedAt: now}
+		TrajectoryID: NewTrajectoryID(), CreatedAt: now, UpdatedAt: now}
 	data, _ := json.Marshal(rec)
 	// create-once: O_EXCL makes two racing identical requests resolve to one
 	// winner deterministically.
