@@ -1884,6 +1884,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		}
 	}
 	messages := al.contextBuilder.BuildMessages(
+		ctx,
 		history,
 		summary,
 		opts.UserMessage,

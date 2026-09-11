@@ -434,46 +434,6 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 	}
 }
 
-func enrichWeatherPrompt(content string, metadata map[string]string) string {
-	lc := strings.ToLower(content)
-	if !strings.Contains(lc, "weather") && !strings.Contains(lc, "forecast") && !strings.Contains(lc, "temperature") {
-		return content
-	}
-	if strings.Contains(lc, " in ") || strings.Contains(lc, " at ") || strings.Contains(lc, " for ") {
-		return content
-	}
-	city := strings.TrimSpace(metadata["city"])
-	region := strings.TrimSpace(metadata["region"])
-	country := strings.TrimSpace(metadata["country"])
-	lat := strings.TrimSpace(metadata["latitude"])
-	lon := strings.TrimSpace(metadata["longitude"])
-	tz := strings.TrimSpace(metadata["timezone"])
-	source := strings.TrimSpace(metadata["location_source"])
-	details := []string{}
-	if city != "" {
-		details = append(details, "city="+city)
-	}
-	if region != "" {
-		details = append(details, "region="+region)
-	}
-	if country != "" {
-		details = append(details, "country="+country)
-	}
-	if lat != "" && lon != "" {
-		details = append(details, "lat="+lat)
-		details = append(details, "lon="+lon)
-	}
-	if tz != "" {
-		details = append(details, "timezone="+tz)
-	}
-	if source != "" {
-		details = append(details, "source="+source)
-	}
-	if len(details) == 0 {
-		return content + "\n\nIf location is unknown, ask a short clarification or clearly label fallback location source."
-	}
-	return content + "\n\nUser weather location context: " + strings.Join(details, ", ") + ". Use this location unless user explicitly asked another place. If falling back, state the fallback source explicitly."
-}
 
 const defaultInternalAPIPort = 8766
 
@@ -2486,6 +2446,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		// back to the tool default (UTC) when absent or unknown.
 		if req.Metadata != nil {
 			ctx = tools.WithRequestTimezone(ctx, strings.TrimSpace(req.Metadata["timezone"]))
+			// Carry the device location on the turn context so the runtime
+			// resolves it directly (weather/aqi/nearby) instead of appending
+			// location prose to the user message, which the model could echo.
+			ctx = tools.WithRequestLocation(ctx, tools.RequestLocationFromMetadata(req.Metadata))
 		}
 		emitObject(map[string]interface{}{
 			"type":       "lifecycle",
@@ -2494,7 +2458,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		})
 		response, err := agentLoop.ProcessDirectWithChannel(
 			ctx,
-			enrichWeatherPrompt(req.Content, req.Metadata),
+			req.Content,
 			req.SessionKey,
 			req.Channel,
 			req.ChatID,

@@ -1,8 +1,9 @@
 package main
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 func TestResolveRequestChannel(t *testing.T) {
@@ -20,26 +21,17 @@ func TestResolveRequestChannel(t *testing.T) {
 	}
 }
 
-func TestEnrichWeatherPrompt(t *testing.T) {
-	base := "what is the weather today"
-	out := enrichWeatherPrompt(base, map[string]string{
-		"city":            "Bangkok",
-		"country":         "Thailand",
-		"timezone":        "Asia/Bangkok",
-		"location_source": "mobile_ip",
+func TestRequestLocationMetadata(t *testing.T) {
+	loc := tools.RequestLocationFromMetadata(map[string]string{
+		"city": "Bangkok", "latitude": "13.75", "longitude": "100.5",
+		"timezone": "Asia/Bangkok", "location_source": "mobile_ip",
 	})
-	if out == base {
-		t.Fatalf("expected enriched prompt with location context")
+	if loc.City != "Bangkok" || !loc.HasCoordinates() || loc.Timezone != "Asia/Bangkok" {
+		t.Fatalf("location metadata not parsed: %+v", loc)
 	}
-	if !strings.Contains(out, "Bangkok") {
-		t.Fatalf("expected city in enriched prompt, got %q", out)
-	}
-
-	explicit := enrichWeatherPrompt("weather in London", map[string]string{
-		"city": "Bangkok",
-	})
-	if explicit != "weather in London" {
-		t.Fatalf("expected explicit city prompt unchanged")
+	empty := tools.RequestLocationFromMetadata(nil)
+	if empty.City != "" || empty.HasCoordinates() {
+		t.Fatalf("nil metadata must be empty: %+v", empty)
 	}
 }
 

@@ -89,3 +89,33 @@ func RequestLocationFromMetadata(metadata map[string]string) RequestLocation {
 	}
 	return loc
 }
+
+// requestLocationKey carries the per-request device location through the
+// agent turn into tools that need it (weather, aqi, nearby). It avoids
+// appending location prose to the user message — the runtime resolves the
+// location directly, so it never leaks into the model's reply.
+type requestLocationKey struct{}
+
+// WithRequestLocation returns a context carrying the device location for the
+// current turn. An empty location is a no-op.
+func WithRequestLocation(ctx context.Context, loc RequestLocation) context.Context {
+	if loc.City == "" && (loc.Latitude == "" || loc.Longitude == "") {
+		return ctx
+	}
+	return context.WithValue(ctx, requestLocationKey{}, loc)
+}
+
+// RequestLocationFrom returns the per-request device location, or a zero
+// value when none was set.
+func RequestLocationFrom(ctx context.Context) RequestLocation {
+	if ctx == nil {
+		return RequestLocation{}
+	}
+	loc, _ := ctx.Value(requestLocationKey{}).(RequestLocation)
+	return loc
+}
+
+// HasCoordinates reports whether the location carries usable lat/lon.
+func (l RequestLocation) HasCoordinates() bool {
+	return l.Latitude != "" && l.Longitude != ""
+}

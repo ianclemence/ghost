@@ -18,6 +18,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -117,6 +118,26 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]interface{}) 
 		}
 	}
 	loc := sarg(args, "location")
+	// Fall back to the device's per-request location (carried on the turn
+	// context), so the runtime resolves it without leaking location prose
+	// into the model's reply.
+	if loc == "" {
+		rl := RequestLocationFrom(ctx)
+		if rl.HasCoordinates() {
+			latF, err1 := strconv.ParseFloat(rl.Latitude, 64)
+			lonF, err2 := strconv.ParseFloat(rl.Longitude, 64)
+			if err1 == nil && err2 == nil {
+				cur, r := svc.CurrentByCoords(ctx, latF, lonF, false)
+				if r.Err == nil {
+					return NewToolResult(fmt.Sprintf("Weather: %.1f°C%s (via %s, observed %s).",
+						cur.TemperatureC, descSuffix(cur.Description), r.Provider, cur.ObservedAt.Format("15:04")))
+				}
+			}
+		}
+		if rl.City != "" {
+			loc = rl.City
+		}
+	}
 	if loc == "" {
 		return ErrorResult("weather_now needs location or latitude+longitude. Ask: Which location should I check?")
 	}
@@ -233,6 +254,23 @@ func (t *AQITool) Execute(ctx context.Context, args map[string]interface{}) *Too
 		nsvc := nearby.New(ncfg)
 		var err error
 		if lat, lon, err = nsvc.Geocode(ctx, loc); err != nil {
+			return ErrorResult("I couldn't find that location. Ask the user to clarify it.")
+		}
+	} else if rl := RequestLocationFrom(ctx); rl.HasCoordinates() {
+		// Device location carried on the turn context (no prompt leak).
+		if la, e1 := strconv.ParseFloat(rl.Latitude, 64); e1 == nil {
+			if lo, e2 := strconv.ParseFloat(rl.Longitude, 64); e2 == nil {
+				lat, lon = la, lo
+			}
+		}
+	} else if rl := RequestLocationFrom(ctx); rl.City != "" {
+		ncfg := nearby.Config{}
+		if t.geo != nil {
+			ncfg = *t.geo
+		}
+		nsvc := nearby.New(ncfg)
+		var err error
+		if lat, lon, err = nsvc.Geocode(ctx, rl.City); err != nil {
 			return ErrorResult("I couldn't find that location. Ask the user to clarify it.")
 		}
 	} else {

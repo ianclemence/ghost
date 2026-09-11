@@ -13,8 +13,8 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/contextcache"
 	"github.com/ianclemence/ghost/pkg/logger"
-	"github.com/ianclemence/ghost/pkg/personality"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
+	"github.com/ianclemence/ghost/pkg/personality"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -33,7 +33,7 @@ type ContextBuilder struct {
 	// affectRender grounds expressed affect in measured state: when set,
 	// the one-line relational render is injected so the model speaks
 	// from the numbers, never from vibes.
-	affectRender func() string
+	affectRender    func() string
 	personalityName string
 
 	// promptCache caches the compiled system prompt; promptVersion returns a
@@ -56,6 +56,7 @@ func (cb *ContextBuilder) SetPromptCache(c *contextcache.Cache, version func() s
 func (cb *ContextBuilder) SetAffectRender(fn func() string) {
 	cb.affectRender = fn
 }
+
 // SkillsVersion fingerprints the installed skill set for the system-prompt
 // cache key: skill installs/edits/removals rebuild the prompt exactly once
 // instead of serving stale indexes or churning the cache every turn.
@@ -108,7 +109,6 @@ func (cb *ContextBuilder) SetPersonality(name string) {
 }
 
 func (cb *ContextBuilder) getIdentity() string {
-	now := time.Now().Format("2006-01-02 15:04 (Monday)")
 	runtime := fmt.Sprintf("%s %s, Go %s", runtime.GOOS, runtime.GOARCH, runtime.Version())
 
 	// Build tools section dynamically
@@ -117,9 +117,6 @@ func (cb *ContextBuilder) getIdentity() string {
 	return fmt.Sprintf(`# Ghost ðŸ‘»
 
 You are **Ghost**, a personal AI assistant and the administrator of this local environment.
-
-## Current Time
-%s
 
 ## Runtime
 %s
@@ -148,7 +145,7 @@ Your workspace is ready.
 
 ## Memory
 - When remembering something, save it to your memory`,
-		now, runtime, toolsSection)
+		runtime, toolsSection)
 }
 
 func (cb *ContextBuilder) buildToolsSection() string {
@@ -353,10 +350,22 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	return result
 }
 
-func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string, provider providers.LLMProvider, scopes []string) []providers.Message {
+func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string, provider providers.LLMProvider, scopes []string) []providers.Message {
 	messages := []providers.Message{}
 
 	systemPrompt := cb.BuildSystemPrompt(scopes)
+
+	// Fresh per-turn time in the user's timezone. The cached system prompt
+	// deliberately omits absolute time (it would be stale); here we compute
+	// it once per turn from the request timezone so dates are correct for
+	// the user, not for the server's TZ.
+	loc := time.Local
+	if tz := tools.RequestTimezone(ctx); tz != "" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			loc = l
+		}
+	}
+	systemPrompt += fmt.Sprintf("\n\n## Current Time\n%s (%s)", time.Now().In(loc).Format("2006-01-02 15:04 Monday"), loc.String())
 
 	// Add Current Session info if provided
 	if channel != "" && chatID != "" {

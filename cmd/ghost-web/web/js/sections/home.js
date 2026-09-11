@@ -60,6 +60,7 @@ async function loadHome(container) {
     GhostAPI.proxyGet('/v1/health'),
     GhostAPI.proxyGet('/v1/channels/status'),
     GhostAPI.proxyGet('/v1/activity?limit=20'),
+    GhostAPI.proxyGet('/v1/scheduled'),
     GhostAPI.proxyGet('/v1/memory/files'),
     GhostAPI.proxyGet('/v1/memory/self'),
     GhostAPI.proxyGet('/v1/pairing/devices'),
@@ -210,7 +211,9 @@ function extractJobCount(v) {
 function extractActiveJobCount(v) {
   const arr = Array.isArray(v) ? v : (v && (v.jobs || v.items)) || [];
   if (!Array.isArray(arr)) return 0;
-  return arr.filter(j => j.enabled).length;
+  // Scheduled items are active when scheduled/running; paused/terminal items
+  // are not. (The legacy cron "enabled" field no longer exists.)
+  return arr.filter(j => j.state === 'scheduled' || j.state === 'running' || j.enabled === true).length;
 }
 
 function extractDeviceCount(v) {
