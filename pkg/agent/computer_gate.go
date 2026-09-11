@@ -348,7 +348,7 @@ func (al *AgentLoop) resumeComputerCall(resume ResumeOutcome, sessionKey, reques
 // registry with the server binding attached, enforcing the evidence rule
 // for control ops (success requires runtime evidence).
 func (al *AgentLoop) runComputerTool(ctx context.Context, call tools.ComputerCall, tool string, args map[string]interface{}, channel, chatID, sessionKey string) *tools.ToolResult {
-	bound := tools.WithComputerCall(ctx, call)
+	bound := tools.GrantExec(tools.WithComputerCall(ctx, call), tool)
 	res := al.tools.ExecuteWithContext(bound, tool, args, channel, chatID, sessionKey, nil)
 	if res == nil {
 		return tools.ErrorResult("Computer execution returned no result. Nothing was proven to run.")

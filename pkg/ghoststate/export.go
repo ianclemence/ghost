@@ -97,6 +97,21 @@ func Export(opts ExportOptions) (*Manifest, error) {
 			return nil, fmt.Errorf("read %s: %w", sc.path, err)
 		}
 		if opts.IncludeSecrets {
+			// The archive itself is passphrase-encrypted, so secrets travel
+			// inside it decrypted and are re-sealed to the destination's
+			// key on import. Staging source-sealed bytes verbatim would
+			// strand them under a key the new machine doesn't have.
+			if sc.logical == configSecretsLogical && config.IsSealed(data) {
+				key, err := config.MasterKeyFor(sc.path)
+				if err != nil {
+					return nil, fmt.Errorf("unlock secrets for export: %w", err)
+				}
+				plain, err := config.Unseal(key, data)
+				if err != nil {
+					return nil, fmt.Errorf("unlock secrets for export: %w", err)
+				}
+				data = plain
+			}
 			if err := stageEntry(staging, stagingDir, manifest, sc.logical, CategorySecret, data, 0600); err != nil {
 				return nil, err
 			}

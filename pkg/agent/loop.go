@@ -1383,6 +1383,10 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 			// state (owner, context, session, generation, revocation)
 			// before executing. Anything drifted refuses instead of
 			// running under a stale yes.
+			// Approved resume: the stored approval was re-verified against
+			// live state above, so carry the execution grant the registry
+			// requires for primitives.
+			ctx = tools.GrantExec(ctx, resume.Tool)
 			var toolResult *tools.ToolResult
 			switch {
 			case isComputerTool(resume.Tool):
@@ -2202,6 +2206,17 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			// executor. Each gate publishes its own evidence-carrying
 			// canonical event, so the generic ToolRan is skipped for
 			// gate-handled calls. Non-governed tools are untouched.
+			//
+			// Execution grant: reaching here on a governed loop means the
+			// broker allowed the call (denials break out above), so stamp
+			// the turn-scoped grant the registry's default-deny policy
+			// requires for primitives. The grant covers exactly this tool,
+			// this turn. Unwired loops mint no grants: without a runtime
+			// authority boundary, primitives stay denied (same fail-closed
+			// rule as the browser/computer gates).
+			if al.governance != nil {
+				toolCtx = tools.GrantExec(toolCtx, tc.Name)
+			}
 			var toolResult *tools.ToolResult
 			toolGoverned, toolStop := false, false
 			if isComputerTool(tc.Name) {

@@ -439,7 +439,7 @@ func (al *AgentLoop) maybeRunBrowserTool(toolCtx context.Context, reg *tools.Too
 // rule: a successful state-changing operation without runtime evidence is
 // reported as unverified, never as done.
 func (al *AgentLoop) runBrowserTool(ctx context.Context, call tools.BrowserCall, tool string, args map[string]interface{}, channel, chatID, sessionKey string) *tools.ToolResult {
-	bound := tools.WithBrowserCall(ctx, call)
+	bound := tools.GrantExec(tools.WithBrowserCall(ctx, call), tool)
 	res := al.tools.ExecuteWithContext(bound, tool, args, channel, chatID, sessionKey, nil)
 	if res == nil {
 		return tools.ErrorResult("Browser execution returned no result. Nothing was proven to run.")

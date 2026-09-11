@@ -19,17 +19,20 @@ const (
 	IsolationRequire IsolationMode = "require"
 )
 
-// isolationMode reads GHOST_EXEC_ISOLATION (default auto). Auto is the safe
-// default: it isolates where possible without breaking systems that lack
-// bubblewrap.
+// isolationMode reads GHOST_EXEC_ISOLATION (default require). Require is
+// the fail-closed default: model-initiated subprocesses refuse to run
+// without OS-level isolation rather than silently downgrading to
+// unsandboxed execution. Operators on machines without bubblewrap opt out
+// explicitly with GHOST_EXEC_ISOLATION=auto (isolate when possible) or
+// =off (env sanitization only).
 func isolationMode() IsolationMode {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("GHOST_EXEC_ISOLATION"))) {
 	case "off":
 		return IsolationOff
-	case "require":
-		return IsolationRequire
-	default:
+	case "auto":
 		return IsolationAuto
+	default:
+		return IsolationRequire
 	}
 }
 

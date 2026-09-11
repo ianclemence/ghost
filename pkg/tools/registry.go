@@ -180,6 +180,20 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 		return ErrorResult(fmt.Sprintf("tool %q is disabled for this channel/session", name))
 	}
 
+	// Default-deny execution policy for primitives: exec, sandbox, update,
+	// hardware actuators, browser/computer families, and third-party MCP
+	// servers run only with a turn-scoped grant stamped by an authorization
+	// boundary (broker approval, computer/browser gate, approved resume, or
+	// a durable-automation executor). Anything else is refused loudly —
+	// never executed, never silently skipped.
+	if GrantRequired(name) && !execGranted(ctx, name) {
+		logger.ErrorCF("tool", "Execution denied: no grant",
+			map[string]interface{}{
+				"tool": name,
+			})
+		return ErrorResult(fmt.Sprintf("tool %q is denied by execution policy: no execution grant for this turn (authorization boundary bypass suspected)", name))
+	}
+
 	// Validate arguments
 	r.mu.RLock()
 	schema, hasSchema := r.schemas[name]

@@ -1566,6 +1566,9 @@ func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace
 
 	// Create and register CronTool
 	cronTool := tools.NewCronTool(cronService, agentLoop, msgBus, workspace)
+	// Wire the registry so scheduled commands execute under the
+	// default-deny execution policy with a job-scoped grant.
+	cronTool.SetRegistry(agentLoop.Tools())
 	agentLoop.RegisterTool(cronTool)
 
 	// Set the onJob handler

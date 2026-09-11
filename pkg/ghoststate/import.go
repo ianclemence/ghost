@@ -147,7 +147,18 @@ func writeImportedArtifact(opts ImportOptions, f FileEntry, data []byte) error {
 	case configJSONLogical:
 		return writeImportedConfig(opts, data)
 	case configSecretsLogical:
-		return writeFileAtomic(config.SecretsPath(opts.ConfigPath), data, 0600)
+		// Secrets arrive decrypted inside the passphrase-encrypted
+		// archive; seal them to this machine's key before writing.
+		dest := config.SecretsPath(opts.ConfigPath)
+		key, err := config.MasterKeyFor(dest)
+		if err != nil {
+			return fmt.Errorf("secrets vault key: %w", err)
+		}
+		sealed, err := config.Seal(key, data)
+		if err != nil {
+			return fmt.Errorf("seal imported secrets: %w", err)
+		}
+		return writeFileAtomic(dest, sealed, 0600)
 	case configEnvLogical:
 		return writeFileAtomic(filepath.Join(filepath.Dir(opts.ConfigPath), ".env"), data, 0600)
 	case identityJSONLogical:

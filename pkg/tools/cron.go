@@ -24,11 +24,22 @@ type CronTool struct {
 	executor    JobExecutor
 	msgBus      *bus.MessageBus
 	execTool    *ExecTool
-	instanceID  string
-	channel     string
-	chatID      string
-	profile     string
-	mu          sync.RWMutex
+	// registry routes scheduled command execution through the default-deny
+	// execution policy. Nil = legacy direct execution (tests, unwired use).
+	registry   *ToolRegistry
+	instanceID string
+	channel    string
+	chatID     string
+	profile    string
+	mu         sync.RWMutex
+}
+
+// SetRegistry wires the tool registry so scheduled commands execute under
+// the execution policy with a grant scoped to the approved job.
+func (t *CronTool) SetRegistry(r *ToolRegistry) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.registry = r
 }
 
 // NewCronTool creates a new CronTool
@@ -368,7 +379,18 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) (string, e
 			"command": job.Payload.Command,
 		}
 
-		result := t.execTool.Execute(ctx, args)
+		// Scheduled commands run under the execution policy: the grant is
+		// scoped to this approved job's exec call. Without a wired
+		// registry (tests), fall back to direct execution.
+		t.mu.RLock()
+		reg := t.registry
+		t.mu.RUnlock()
+		var result *ToolResult
+		if reg != nil {
+			result = reg.ExecuteWithContext(GrantExec(ctx, "exec"), "exec", args, channel, chatID, "", nil)
+		} else {
+			result = t.execTool.Execute(ctx, args)
+		}
 		var output string
 		if result.IsError {
 			output = fmt.Sprintf("Error executing scheduled command: %s", result.ForLLM)

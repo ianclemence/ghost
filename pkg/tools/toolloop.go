@@ -81,7 +81,9 @@ func executeSubagentConsequential(ctx context.Context, config ToolLoopConfig, tc
 	if config.Tools == nil {
 		return ErrorResult("No tools available")
 	}
-	return config.Tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, channel, chatID, SessionKeyFromContext(ctx), nil)
+	// Hook allowed: stamp the execution grant the registry requires for
+	// primitives. The grant covers exactly this approved tool call.
+	return config.Tools.ExecuteWithContext(GrantExec(ctx, tc.Name), tc.Name, tc.Arguments, channel, chatID, SessionKeyFromContext(ctx), nil)
 }
 
 // executeSubagentBrowser routes a subagent browser call through the
@@ -99,7 +101,7 @@ func executeSubagentBrowser(ctx context.Context, config ToolLoopConfig, tc provi
 	if config.Tools == nil {
 		return ErrorResult("No tools available")
 	}
-	return config.Tools.ExecuteWithContext(WithBrowserCall(ctx, bag), tc.Name, tc.Arguments, channel, chatID, SessionKeyFromContext(ctx), nil)
+	return config.Tools.ExecuteWithContext(GrantExec(WithBrowserCall(ctx, bag), tc.Name), tc.Name, tc.Arguments, channel, chatID, SessionKeyFromContext(ctx), nil)
 }
 
 // ToolLoopResult contains the result of running the tool loop.

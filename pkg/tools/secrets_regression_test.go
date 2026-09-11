@@ -25,7 +25,7 @@ func TestRegistryLogsRedactArgs(t *testing.T) {
 	bt.run = fakeRun("typed")
 	reg.Register(bt)
 
-	res := reg.ExecuteWithContext(context.Background(), "browser_type", map[string]interface{}{
+	res := reg.ExecuteWithContext(WithSystemGrant(context.Background()), "browser_type", map[string]interface{}{
 		"ref": "@e1", "text": "my password is sk-0123456789abcdef0123456789abcdef",
 		"api_token": "SECRETVALUE123", "url": "https://example.com",
 	}, "test", "chat", "sess", nil)
