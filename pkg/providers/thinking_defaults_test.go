@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -143,5 +144,111 @@ func TestCodexDefaultsOff(t *testing.T) {
 	got := codexReasoning("gpt-5.2", loopDefaultOptions())
 	if got.Effort != shared.ReasoningEffortNone && got != (shared.ReasoningParam{}) {
 		t.Fatalf("codex off must be none-or-absent, got %+v", got)
+	}
+}
+
+// Claude Sonnet 5 / Opus 5 think by server default: off-by-default needs
+// explicit disabled. Fable/Mythos reject disabled and are left alone.
+func TestAnthropicSonnet5ExplicitDisabled(t *testing.T) {
+	params, err := buildAnthropicParams([]Message{{Role: "user", Content: "hi"}}, nil, "claude-sonnet-5", 1024, loopDefaultOptions())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if typ := params.Thinking.GetType(); typ == nil || *typ != "disabled" {
+		t.Fatalf("sonnet-5 must send explicit disabled, got %+v", params.Thinking)
+	}
+	params, err = buildAnthropicParams([]Message{{Role: "user", Content: "hi"}}, nil, "claude-opus-4-6", 1024, loopDefaultOptions())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if typ := params.Thinking.GetType(); typ != nil {
+		t.Fatalf("4.6 server-default is off; param must stay absent, got %q", *typ)
+	}
+	for _, m := range []string{"claude-fable-5", "claude-mythos-5", "mystery-model"} {
+		params, err := buildAnthropicParams([]Message{{Role: "user", Content: "hi"}}, nil, m, 1024, loopDefaultOptions())
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", m, err)
+		}
+		if typ := params.Thinking.GetType(); typ != nil {
+			t.Fatalf("%s: param must stay absent, got %q", m, *typ)
+		}
+	}
+}
+
+// kimi-k2.7-code rejects disabled: the param must be omitted there.
+func TestMoonshotK27CodeOmitsThinking(t *testing.T) {
+	var got *kimiThinking
+	seen := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req kimiRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode: %v", err)
+		}
+		got, seen = req.Thinking, true
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(kimiResponse{ID: "t", Choices: []struct {
+			Index        int         `json:"index"`
+			Message      kimiMessage `json:"message"`
+			FinishReason string      `json:"finish_reason"`
+		}{{Index: 0, Message: kimiMessage{Role: "assistant", Content: "OK"}, FinishReason: "stop"}}})
+	}))
+	defer server.Close()
+	p := NewMoonshotProvider("test-key", server.URL)
+	if _, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil, "kimi-k2.7-code", loopDefaultOptions()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !seen || got != nil {
+		t.Fatalf("k2.7-code must omit thinking (got %+v)", got)
+	}
+	if !isKimiAlwaysThinking("kimi-k2.7-code") || isKimiAlwaysThinking("kimi-k2.5") {
+		t.Fatal("always-thinking detection wrong")
+	}
+}
+
+// Disabled DeepSeek requests must not carry historical reasoning_content
+// (documented 400); enabled requests keep the passback contract.
+func TestDeepSeekReasoningStripOnDisabled(t *testing.T) {
+	history := []Message{
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", Content: "hello", ReasoningContent: "internal chain of thought"},
+		{Role: "user", Content: "again"},
+	}
+	bodies := map[string]map[string]interface{}{}
+	run := func(name string, opts map[string]interface{}) {
+		t.Helper()
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body := openAIChatReply(t, w, r)
+			msgs, _ := body["messages"].([]interface{})
+			flat := map[string]interface{}{}
+			for i, m := range msgs {
+				if mm, ok := m.(map[string]interface{}); ok {
+					for k, v := range mm {
+						flat[string(rune('a'+i))+k] = v
+					}
+				}
+			}
+			bodies[name] = flat
+		}))
+		defer server.Close()
+		p := NewHTTPProvider("test-key", server.URL, "", "")
+		if _, err := p.Chat(context.Background(), history, nil, "deepseek/deepseek-flash", opts); err != nil {
+			t.Fatalf("%s: unexpected error: %v", name, err)
+		}
+	}
+	run("disabled", loopDefaultOptions())
+	run("enabled", map[string]interface{}{"thinking": true})
+	for k, v := range bodies["disabled"] {
+		if strings.Contains(k, "reasoning_content") && v != "" {
+			t.Fatalf("disabled request must not carry reasoning_content: %v", v)
+		}
+	}
+	found := false
+	for k, v := range bodies["enabled"] {
+		if strings.Contains(k, "reasoning_content") && v == "internal chain of thought" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("enabled request must preserve the reasoning passback contract")
 	}
 }

@@ -57,6 +57,19 @@ func (p *HTTPProvider) SetDefaultModel(model string) {
 	p.defaultModel = model
 }
 
+// stripReasoningContent returns copies of messages without reasoning
+// traces. Used when thinking is disabled: providers that enforce the
+// passback contract (DeepSeek) reject disabled requests carrying
+// historical reasoning_content with a 400.
+func stripReasoningContent(messages []Message) []Message {
+	out := make([]Message, len(messages))
+	for i, m := range messages {
+		m.ReasoningContent = ""
+		out[i] = m
+	}
+	return out
+}
+
 // ollamaThinkParam maps generic thinking options onto Ollama's native
 // "think" parameter. Absent options mean false: thinking stays off unless
 // explicitly opted in.
@@ -156,6 +169,12 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 			thinkingType = "enabled"
 		}
 		requestBody["thinking"] = map[string]interface{}{"type": thinkingType}
+		// A disabled request carrying historical reasoning_content is
+		// rejected (400): strip it from the wire copy. Durable history is
+		// untouched — this only shapes the outbound request.
+		if !thinkingEnabled {
+			requestBody["messages"] = toOpenAIMessages(stripReasoningContent(messages))
+		}
 	} else if _, ok := options["thinking"].(bool); ok {
 		requestBody["thinking"] = options["thinking"]
 	}

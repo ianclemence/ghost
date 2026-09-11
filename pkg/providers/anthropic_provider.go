@@ -174,9 +174,16 @@ func buildAnthropicParams(messages []Message, tools []ToolDefinition, model stri
 	}
 
 	// Handle Thinking/Reasoning. Absent or "off" means no thinking param at
-	// all (the API default), so thinking stays off unless opted in.
+	// all on models whose server default is off (4.x and earlier), so
+	// thinking stays off unless opted in. On 5.x (Sonnet 5, Opus 5) the
+	// server default is adaptive-ON, so off-by-default requires explicit
+	// {"type":"disabled"}; Fable/Mythos models reject disabled and are
+	// left alone (their thinking cannot be turned off at all).
 	if level, ok := options["thinking_level"].(string); ok && level != "" && level != "off" {
 		applyThinkingConfig(&params, model, level)
+	} else if anthropicDefaultDisabled(model) {
+		disabled := anthropic.NewThinkingConfigDisabledParam()
+		params.Thinking = anthropic.ThinkingConfigParamUnion{OfDisabled: &disabled}
 	}
 
 	if len(tools) > 0 {
@@ -327,6 +334,20 @@ func applyThinkingConfig(params *anthropic.MessageNewParams, model, level string
 		budget = params.MaxTokens - 1
 	}
 	params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
+}
+
+// anthropicDefaultDisabled reports whether the model needs an explicit
+// disabled thinking param to honor off-by-default: Claude 5 generation
+// with a server-side adaptive-ON default. Fable/Mythos reject disabled;
+// 4.x and unknown models keep the parameter absent (server default off,
+// or unknown support — absent never 400s).
+func anthropicDefaultDisabled(model string) bool {
+	major, _, ok := anthropicModelGeneration(model)
+	if !ok || major != 5 {
+		return false
+	}
+	m := strings.ToLower(model)
+	return !strings.Contains(m, "fable") && !strings.Contains(m, "mythos")
 }
 
 // anthropicPrefersAdaptive reports whether the model requires adaptive

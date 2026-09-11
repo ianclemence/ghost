@@ -22,6 +22,13 @@ type MoonshotProvider struct {
 	httpClient *http.Client
 }
 
+// isKimiAlwaysThinking reports whether the model cannot turn thinking
+// off at all (kimi-k2.7-code: only "enabled" is accepted). Callers must
+// omit the thinking param there instead of sending disabled.
+func isKimiAlwaysThinking(model string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "k2.7-code")
+}
+
 func NewMoonshotProvider(apiKey, apiBase string) *MoonshotProvider {
 	if apiBase == "" {
 		apiBase = "https://api.moonshot.cn/v1"
@@ -127,7 +134,10 @@ func (p *MoonshotProvider) Chat(ctx context.Context, messages []Message, tools [
 	// If user didn't specify thinking option, we might want to default to disabled to be safe with tools?
 	// User requirement: "Add a command... to enable Kimi K2.5's Thinking Mode... It is currently disabled or set to auto."
 	// So we assume default is disabled unless requested.
-	if reqBody.Thinking == nil {
+	// Exception: kimi-k2.7-code only accepts enabled (always thinks) —
+	// sending disabled errors, so the param is omitted and the server
+	// default stands (thinking cannot be turned off there at all).
+	if reqBody.Thinking == nil && !isKimiAlwaysThinking(model) {
 		reqBody.Thinking = &kimiThinking{Type: "disabled"}
 	}
 
