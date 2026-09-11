@@ -450,29 +450,20 @@ func clearDevices(ws string, rt *Runtime) error {
 }
 
 func clearSecrets(ws string) error {
-	// Secrets live in the config dir, whose location depends on the layout
-	// (appliance, repo checkout, or GHOST_CONFIG_DIR override). Sweep every
-	// candidate so /reset all cannot leave keys behind in one layout while
-	// wiping them in another.
-	var candidates []string
+	// Wipe ONLY the secrets colocated with the active config. Never sweep
+	// global or adjacent dirs: a reset (or a test run) in one checkout
+	// must be structurally unable to destroy another installation's keys.
+	// (A previous version swept every candidate config dir and deleted a
+	// live appliance's keys from a unit test. Never again.)
+	var dirs []string
+	if path := resolveConfigFilePath(ws); path != "" {
+		dirs = append(dirs, filepath.Dir(path))
+	}
 	if d := strings.TrimSpace(os.Getenv("GHOST_CONFIG_DIR")); d != "" {
-		candidates = append(candidates, d)
+		dirs = append(dirs, d)
 	}
-	if ws != "" {
-		candidates = append(candidates,
-			filepath.Join(ws, "config"),
-			filepath.Join(ws, "..", "config"),
-		)
-	}
-	if cwd, err := os.Getwd(); err == nil {
-		candidates = append(candidates, filepath.Join(cwd, "config"))
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		candidates = append(candidates, filepath.Join(home, ".config", "ghost"))
-	}
-	candidates = append(candidates, "/var/ghost/config")
 	seen := map[string]bool{}
-	for _, dir := range candidates {
+	for _, dir := range dirs {
 		abs, err := filepath.Abs(dir)
 		if err != nil {
 			continue

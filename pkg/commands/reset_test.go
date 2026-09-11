@@ -205,3 +205,25 @@ func TestEnsureUserDoc(t *testing.T) {
 		t.Fatal("existing USER.md must never be overwritten")
 	}
 }
+
+// A reset must be structurally unable to touch another installation's
+// keys (regression: the old directory sweep deleted a live appliance's
+// secrets from a unit test run).
+func TestResetSecretsNeverLeavesActiveConfig(t *testing.T) {
+	ws, _ := resetFixture(t)
+	decoy := t.TempDir()
+	for _, name := range []string{".secrets.json", ".env", ".master-key"} {
+		if err := os.WriteFile(filepath.Join(decoy, name), []byte("decoy"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := runResetHandler(t, ws, "/reset all")
+	if !strings.Contains(out, "Reset complete:") {
+		t.Fatalf("expected completion, got %q", out)
+	}
+	for _, name := range []string{".secrets.json", ".env", ".master-key"} {
+		if _, err := os.Stat(filepath.Join(decoy, name)); err != nil {
+			t.Errorf("decoy installation file %q must survive: %v", name, err)
+		}
+	}
+}
