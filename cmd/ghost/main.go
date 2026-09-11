@@ -29,6 +29,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/clock"
+	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/devices"
@@ -414,6 +415,11 @@ func createWorkspaceTemplates(workspace string) {
 	err := copyEmbeddedToTarget(workspace)
 	if err != nil {
 		fmt.Printf("Error copying workspace templates: %v\n", err)
+	}
+	// USER.md is per-installation state (not tracked in git), so a fresh
+	// clone has no template on disk to copy — seed it when missing.
+	if err := commands.EnsureUserDoc(workspace); err != nil {
+		fmt.Printf("Error seeding USER.md template: %v\n", err)
 	}
 	syncEmbeddedSkills(workspace)
 }

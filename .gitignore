@@ -68,10 +68,14 @@ workspace/*
 !workspace/data/README.md
 !workspace/GHOST.md
 !workspace/HEARTBEAT.md
-!workspace/USER.md
+
+# Per-installation identity docs — personalized at runtime, never commit.
+# (Tracking these is what made every release build report -dirty.)
+workspace/USER.md
 
 # Knowledge — operational state (never commit — changes every session)
 # Block individual files within the already-negated knowledge/ directory
+workspace/knowledge/self/user-profile.md
 workspace/knowledge/self/context.md
 workspace/knowledge/self/recent-errors.md
 workspace/knowledge/self/skills-state.md

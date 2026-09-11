@@ -407,10 +407,10 @@ func clearPersonalContext(ws string, rt *Runtime) error {
 	return nil
 }
 
-// userDocTemplate is the fresh-install USER.md: no names, no locations,
+// UserDocTemplate is the fresh-install USER.md: no names, no locations,
 // no timezone assumptions. Personal facts live in personal-context and the
 // knowledge profile, both cleared above.
-const userDocTemplate = `# User Profile
+const UserDocTemplate = `# User Profile
 
 This file stores durable, high-signal user facts and preferences.
 Only update this file when information is stable over time.
@@ -422,6 +422,21 @@ Only update this file when information is stable over time.
 - **Location**: (set by user)
 - **Timezone**: (device-derived; confirm if the user travels)
 `
+
+// userDocTemplate is kept as an alias for existing internal callers.
+const userDocTemplate = UserDocTemplate
+
+// EnsureUserDoc writes the fresh-install USER.md template when the workspace
+// has none (e.g. a fresh clone: USER.md is per-installation state and is not
+// tracked in git). Never touches an existing file.
+func EnsureUserDoc(ws string) error {
+	userDoc := filepath.Join(ws, "USER.md")
+	if _, err := os.Stat(userDoc); err == nil {
+		return nil
+	}
+	_ = os.MkdirAll(ws, 0755)
+	return os.WriteFile(userDoc, []byte(UserDocTemplate), 0644)
+}
 
 func clearDevices(ws string, rt *Runtime) error {
 	db := dbFromRuntime(rt, ws)
