@@ -173,14 +173,14 @@ install-ghost: build-ghost
 	@sudo chown -R $(USER):$(USER) /var/lib/ghost
 	@# Build and deploy update tooling
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-$(PLATFORM)-$(ARCH) ./cmd/ghost-update
-	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-updater-$(PLATFORM)-$(ARCH) ./cmd/ghost-updater
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-daemon-$(PLATFORM)-$(ARCH) ./cmd/ghost-update-daemon
 	@ln -sf ghost-update-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/ghost-update
-	@ln -sf ghost-updater-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/ghost-updater
+	@ln -sf ghost-update-daemon-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/ghost-update-daemon
 	@sudo cp $(BUILD_DIR)/ghost-update-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost-update.new
 	@sudo mv -f /usr/local/bin/ghost-update.new /usr/local/bin/ghost-update
-	@sudo cp $(BUILD_DIR)/ghost-updater-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost-updater.new
-	@sudo mv -f /usr/local/bin/ghost-updater.new /usr/local/bin/ghost-updater
-	@sudo chmod +x /usr/local/bin/ghost-update /usr/local/bin/ghost-updater
+	@sudo cp $(BUILD_DIR)/ghost-update-daemon-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost-update-daemon.new
+	@sudo mv -f /usr/local/bin/ghost-update-daemon.new /usr/local/bin/ghost-update-daemon
+	@sudo chmod +x /usr/local/bin/ghost-update /usr/local/bin/ghost-update-daemon
 	@# Install web console service
 	@sed \
 		-e "s|__GHOST_DIR__|/var/ghost|g" \

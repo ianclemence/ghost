@@ -1,4 +1,4 @@
-// ghost-relay is the Ghost relay server.
+// ghost-relay-server is the Ghost relay server.
 //
 // It accepts persistent outbound WebSocket connections from Ghost devices
 // and HTTP/WebSocket connections from paired mobile apps, routing traffic
@@ -6,10 +6,10 @@
 //
 // Usage:
 //
-//	ghost-relay serve [--listen :8080] [--registry registry.json] [--tls-cert cert.pem --tls-key key.pem]
-//	ghost-relay add-device <device_id> [--name "My Ghost"]
-//	ghost-relay list-devices
-//	ghost-relay remove-device <device_id>
+//	ghost-relay-server serve [--listen :8080] [--registry registry.json] [--tls-cert cert.pem --tls-key key.pem]
+//	ghost-relay-server add-device <device_id> [--name "My Ghost"]
+//	ghost-relay-server list-devices
+//	ghost-relay-server remove-device <device_id>
 package main
 
 import (
@@ -46,13 +46,13 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, `ghost-relay — Ghost relay server
+	fmt.Fprintln(os.Stderr, `ghost-relay-server — Ghost relay server
 
 Usage:
-  ghost-relay serve [flags]
-  ghost-relay add-device <device_id> [--name "My Ghost"] [--registry registry.json]
-  ghost-relay list-devices [--registry registry.json]
-  ghost-relay remove-device <device_id> [--registry registry.json]`)
+  ghost-relay-server serve [flags]
+  ghost-relay-server add-device <device_id> [--name "My Ghost"] [--registry registry.json]
+  ghost-relay-server list-devices [--registry registry.json]
+  ghost-relay-server remove-device <device_id> [--registry registry.json]`)
 }
 
 func cmdServe() {
@@ -89,7 +89,7 @@ func cmdAddDevice() {
 	fs.Parse(os.Args[2:])
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ghost-relay add-device <device_id> [--name \"My Ghost\"]")
+		fmt.Fprintln(os.Stderr, "usage: ghost-relay-server add-device <device_id> [--name \"My Ghost\"]")
 		os.Exit(1)
 	}
 	deviceID := fs.Arg(0)
@@ -140,7 +140,7 @@ func cmdRemoveDevice() {
 	fs.Parse(os.Args[2:])
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ghost-relay remove-device <device_id>")
+		fmt.Fprintln(os.Stderr, "usage: ghost-relay-server remove-device <device_id>")
 		os.Exit(1)
 	}
 	deviceID := fs.Arg(0)

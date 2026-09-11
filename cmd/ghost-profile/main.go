@@ -51,7 +51,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println("Usage: ghost-profiles <command> [args]")
+	fmt.Println("Usage: ghost-profile <command> [args]")
 	fmt.Println()
 	fmt.Println("Profile Commands:")
 	fmt.Println("  list                        List all profiles")
@@ -127,7 +127,7 @@ func cmdCurrent(manager *profiles.Manager) {
 
 func cmdSwitch(manager *profiles.Manager, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: ghost-profiles switch <name>\n")
+		fmt.Fprintf(os.Stderr, "Usage: ghost-profile switch <name>\n")
 		os.Exit(1)
 	}
 
@@ -148,7 +148,7 @@ func cmdSwitch(manager *profiles.Manager, args []string) {
 
 func cmdCreate(manager *profiles.Manager, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: ghost-profiles create <name> [description]\n")
+		fmt.Fprintf(os.Stderr, "Usage: ghost-profile create <name> [description]\n")
 		os.Exit(1)
 	}
 
@@ -169,7 +169,7 @@ func cmdCreate(manager *profiles.Manager, args []string) {
 
 func cmdDuplicate(manager *profiles.Manager, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: ghost-profiles duplicate <name>\n")
+		fmt.Fprintf(os.Stderr, "Usage: ghost-profile duplicate <name>\n")
 		os.Exit(1)
 	}
 
@@ -186,7 +186,7 @@ func cmdDuplicate(manager *profiles.Manager, args []string) {
 
 func cmdDelete(manager *profiles.Manager, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: ghost-profiles delete <name>\n")
+		fmt.Fprintf(os.Stderr, "Usage: ghost-profile delete <name>\n")
 		os.Exit(1)
 	}
 
@@ -201,7 +201,7 @@ func cmdDelete(manager *profiles.Manager, args []string) {
 
 func cmdEnv(manager *profiles.Manager, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: ghost-profiles env <name>\n")
+		fmt.Fprintf(os.Stderr, "Usage: ghost-profile env <name>\n")
 		os.Exit(1)
 	}
 
@@ -219,14 +219,14 @@ func cmdEnv(manager *profiles.Manager, args []string) {
 
 func cmdGroup(manager *profiles.Manager, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: ghost-profiles group <set|roster> [args]\n")
+		fmt.Fprintf(os.Stderr, "Usage: ghost-profile group <set|roster> [args]\n")
 		os.Exit(1)
 	}
 
 	switch args[0] {
 	case "set":
 		if len(args) < 3 {
-			fmt.Fprintf(os.Stderr, "Usage: ghost-profiles group set <name> <group>\n")
+			fmt.Fprintf(os.Stderr, "Usage: ghost-profile group set <name> <group>\n")
 			os.Exit(1)
 		}
 		if err := manager.SetGroup(args[1], args[2]); err != nil {
@@ -280,14 +280,14 @@ func cmdGroups(manager *profiles.Manager) {
 
 func cmdAvatar(manager *profiles.Manager, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: ghost-profiles avatar set <name> <shape> <color>\n")
+		fmt.Fprintf(os.Stderr, "Usage: ghost-profile avatar set <name> <shape> <color>\n")
 		os.Exit(1)
 	}
 
 	switch args[0] {
 	case "set":
 		if len(args) < 4 {
-			fmt.Fprintf(os.Stderr, "Usage: ghost-profiles avatar set <name> <shape> <color>\n")
+			fmt.Fprintf(os.Stderr, "Usage: ghost-profile avatar set <name> <shape> <color>\n")
 			fmt.Fprintf(os.Stderr, "Shapes: circle, squircle, pill, triangle, hexagon, cloud, drop\n")
 			fmt.Fprintf(os.Stderr, "Colors: #f5f5f4, #8d6748, #ef4444, #f97316, #22c55e, #3b82f6, #8b5cf6, #ec4899\n")
 			os.Exit(1)
@@ -309,14 +309,14 @@ func cmdAvatar(manager *profiles.Manager, args []string) {
 
 func cmdChannel(manager *profiles.Manager, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Usage: ghost-profiles channel <create|list|send|history> [args]\n")
+		fmt.Fprintf(os.Stderr, "Usage: ghost-profile channel <create|list|send|history> [args]\n")
 		os.Exit(1)
 	}
 
 	switch args[0] {
 	case "create":
 		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "Usage: ghost-profiles channel create <name> --members <m1,m2>\n")
+			fmt.Fprintf(os.Stderr, "Usage: ghost-profile channel create <name> --members <m1,m2>\n")
 			os.Exit(1)
 		}
 		name := args[1]
@@ -360,7 +360,7 @@ func cmdChannel(manager *profiles.Manager, args []string) {
 
 	case "list":
 		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "Usage: ghost-profiles channel list <profile>\n")
+			fmt.Fprintf(os.Stderr, "Usage: ghost-profile channel list <profile>\n")
 			os.Exit(1)
 		}
 		channels, err := manager.ListChannels(args[1])
@@ -378,7 +378,7 @@ func cmdChannel(manager *profiles.Manager, args []string) {
 
 	case "send":
 		if len(args) < 4 {
-			fmt.Fprintf(os.Stderr, "Usage: ghost-profiles channel send <channel_id> <sender> <message>\n")
+			fmt.Fprintf(os.Stderr, "Usage: ghost-profile channel send <channel_id> <sender> <message>\n")
 			os.Exit(1)
 		}
 		if err := manager.SendChannelMessage(args[1], args[2], strings.Join(args[3:], " ")); err != nil {
@@ -389,7 +389,7 @@ func cmdChannel(manager *profiles.Manager, args []string) {
 
 	case "history":
 		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "Usage: ghost-profiles channel history <channel_id>\n")
+			fmt.Fprintf(os.Stderr, "Usage: ghost-profile channel history <channel_id>\n")
 			os.Exit(1)
 		}
 		messages, err := manager.ReadChannelHistory(args[1], 50)

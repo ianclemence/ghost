@@ -2019,7 +2019,7 @@ func relaySetupCmd() {
 	fmt.Printf("  Enabled:       %v\n\n", cfg.Relay.Enabled)
 	fmt.Println("Next steps:")
 	fmt.Println("  1. Add this device to the relay server:")
-	fmt.Printf("     ghost-relay add-device %s --name \"My Ghost\"\n", ghostID.GhostID)
+	fmt.Printf("     ghost-relay-server add-device %s --name \"My Ghost\"\n", ghostID.GhostID)
 	fmt.Println("  2. Start the relay connection:")
 	fmt.Println("     ghost relay run")
 	fmt.Println("  3. Generate pairing tokens for your phone:")
