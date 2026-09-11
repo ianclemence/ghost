@@ -359,7 +359,7 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 	// deliberately omits absolute time (it would be stale); here we compute
 	// it once per turn from the request timezone so dates are correct for
 	// the user, not for the server's TZ.
-	loc := time.Local
+	loc := tools.DeviceLocation()
 	if tz := tools.RequestTimezone(ctx); tz != "" {
 		if l, err := time.LoadLocation(tz); err == nil {
 			loc = l

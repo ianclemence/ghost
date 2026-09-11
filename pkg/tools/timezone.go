@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -43,6 +45,47 @@ func ValidateTimezone(tz string) string {
 		return ""
 	}
 	return tz
+}
+
+// DeviceTimezone returns the host device's configured IANA timezone, the same
+// way a smart speaker uses its device's configured region. It is Ghost's
+// default for user-facing dates/times and scheduling when the client does not
+// provide one.
+//
+// Precedence: /etc/localtime symlink, then /etc/timezone, then the TZ env,
+// then the Go process local zone, then UTC. Reading the system configuration
+// first means a stray TZ=UTC in an env file cannot make Ghost report the
+// wrong day for the owner.
+func DeviceTimezone() string {
+	if link, err := os.Readlink("/etc/localtime"); err == nil {
+		if i := strings.Index(link, "zoneinfo/"); i >= 0 {
+			if tz := ValidateTimezone(link[i+len("zoneinfo/"):]); tz != "" {
+				return tz
+			}
+		}
+	}
+	if b, err := os.ReadFile("/etc/timezone"); err == nil {
+		if tz := ValidateTimezone(strings.TrimSpace(string(b))); tz != "" {
+			return tz
+		}
+	}
+	if tz := ValidateTimezone(strings.TrimSpace(os.Getenv("TZ"))); tz != "" {
+		return tz
+	}
+	if time.Local != nil {
+		if tz := ValidateTimezone(time.Local.String()); tz != "" {
+			return tz
+		}
+	}
+	return "UTC"
+}
+
+// DeviceLocation returns the time.Location for the device timezone.
+func DeviceLocation() *time.Location {
+	if l, err := time.LoadLocation(DeviceTimezone()); err == nil {
+		return l
+	}
+	return time.UTC
 }
 
 // Mobile metadata contract for /v1/chat (same path the mobile app uses).

@@ -1602,18 +1602,13 @@ func migrateLegacyCron(workspace string, svc *scheduled.Service) {
 }
 
 func deriveScheduleTimezone(workspace string) string {
-	// System TZ from env takes precedence if explicitly set.
-	if tz := strings.TrimSpace(os.Getenv("TZ")); tz != "" {
-		if _, err := time.LoadLocation(tz); err == nil {
-			return tz
-		}
-	}
-	// Try personal context location -> IANA timezone mapping.
+	// The owner's stated location wins if known.
 	if loc := locationToTimezone(workspace); loc != "" {
 		return loc
 	}
-	// Default: UTC is the only honest claim when location is unknown.
-	return "UTC"
+	// Otherwise use the device's configured timezone (the same default a
+	// smart speaker uses), not a hardcoded UTC.
+	return tools.DeviceTimezone()
 }
 
 func locationToTimezone(workspace string) string {
