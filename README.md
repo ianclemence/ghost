@@ -256,8 +256,8 @@ chmod +x setup.sh
 | Command | Description |
 |---------|-------------|
 | `/help` | Show help and tool list |
-| `/clear` | Clear current session history. `/clear all --yes` clears all chat history |
-| `/reset` / `/factory-reset` | Factory reset: `all` (chats+memory+automations+context), or selective `chats` `memory` `automations` `context` `devices`. Keeps secrets & paired devices by default; add `--include-secrets` / `--include-devices` to wipe them. Requires `--yes` |
+| `/clear` | Clear current session history. `/clear all` clears all chat history |
+| `/reset` | Factory reset: `/reset all` wipes everything including secrets and paired devices. `/reset all --exclude=devices,secrets` spares scopes. Selective: `/reset <scope> [<scope>...]` with scopes `chats` `memory` `activity` `automations` `context` `devices` `secrets` `model` |
 | `/context` | Show what Ghost believes about you |
 | `/forget` | Forget a belief or session (`/forget <topic>` / `/forget session <id>`) |
 | `/remind` | Set a reminder (`/remind buy milk in 10m`) |

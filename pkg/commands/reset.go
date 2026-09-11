@@ -6,108 +6,70 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/config"
 )
 
 // resetHandler implements /reset — factory reset for Ghost.
-// It supports selective clearing with confirmation and never touches secrets
-// unless explicitly flagged. A full /reset all clears chats, memory,
-// activity, automations, personal context, paired devices, AND restores the
-// AI model/provider default to a local runtime (no cloud credentials left
-// dangling), so the result genuinely looks like a new installation.
 //
-// Usage:
+//	/reset all                        wipes EVERYTHING, no flags, no confirmation:
+//	                                  chats, memory, activity, automations,
+//	                                  personal context, paired devices, secrets,
+//	                                  and the AI default (restored to local).
+//	/reset all --exclude=devices,secrets
+//	                                  wipes everything except the named scopes.
+//	/reset <scope> [<scope>...]       wipes only the named scopes, e.g.
+//	                                  /reset chats   or   /reset chats memory
+//	/reset                            shows this help.
 //
-//	/reset all --yes                              (chats, memory, activity, automations, context, devices, AI default)
-//	/reset chats --yes
-//	/reset memory --yes
-//	/reset activity --yes
-//	/reset automations --yes
-//	/reset context --yes
-//	/reset devices --yes  (paired devices)
-//	/reset model --yes                            (restore local default AI provider/model)
-//	/reset all --yes --include-secrets
-//
-// Without --yes, it shows what would be deleted and asks for confirmation.
-// Secrets (config/.secrets.json, .env) are kept unless --include-secrets.
+// Scopes: chats, memory, activity, automations, context, devices, secrets,
+// model. A few common aliases are accepted (sessions, events, cron,
+// personal, paired, ai) and canonicalized before anything runs.
 func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
-	text := strings.TrimSpace(req.Text)
-	fields := strings.Fields(text)
+	fields := strings.Fields(strings.TrimSpace(req.Text))
 
 	if len(fields) < 2 {
 		return req.Reply(resetHelp())
 	}
 
-	target := strings.ToLower(fields[1])
-	// allow /reset --all --yes form
-	if target == "--all" {
-		target = "all"
+	scopes, excludes, err := parseResetArgs(fields[1:])
+	if err != nil {
+		return req.Reply(fmt.Sprintf("%v\n\n%s", err, resetHelp()))
 	}
-	validTargets := map[string]bool{
-		"all": true, "chats": true, "sessions": true, "messages": true,
-		"memory": true, "automations": true, "cron": true, "scheduled": true,
-		"activity": true, "events": true,
-		"context": true, "personal-context": true, "personal": true,
-		"model": true, "ai": true,
-		"devices": true, "paired": true, "paired-devices": true,
-	}
-	if !validTargets[target] && !strings.HasPrefix(target, "--") {
-		return req.Reply(fmt.Sprintf("Unknown target %q.\n\n%s", target, resetHelp()))
-	}
-	// if target is a flag like --yes alone, treat as all
-	if strings.HasPrefix(target, "--") {
-		target = "all"
-	}
-
-	hasYes := hasFlag(fields, "--yes") || hasFlag(fields, "-y") || hasFlag(fields, "--confirm")
-	includeSecrets := hasFlag(fields, "--include-secrets")
-	includeDevices := hasFlag(fields, "--include-devices")
-	_ = includeDevices // CLI-compatible flag retained; /reset all now clears devices
-
-	if !hasYes {
-		return req.Reply(resetPreview(target, includeSecrets, includeDevices))
+	if len(scopes) == 0 {
+		return req.Reply(resetHelp())
 	}
 
 	ws := workspaceForRuntime(rt)
 
 	var results []string
 	var errs []string
+	run := func(name, okMsg string, fn func() error) {
+		if err := fn(); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", name, err))
+		} else {
+			results = append(results, okMsg)
+		}
+	}
 
-	doChats := target == "all" || target == "chats" || target == "sessions" || target == "messages"
-	doMemory := target == "all" || target == "memory"
-	doActivity := target == "all" || target == "activity" || target == "events"
-	doModel := target == "all" || target == "model" || target == "ai"
-	doAutomations := target == "all" || target == "automations" || target == "cron" || target == "scheduled"
-	doContext := target == "all" || target == "context" || target == "personal-context" || target == "personal"
-	// A full factory reset clears paired devices too. Keeping a stale device
-	// (whose "last seen" keeps being refreshed) is what made previous resets
-	// look incomplete. Selective /reset devices also clears them.
-	doDevices := target == "all" || target == "devices" || target == "paired" || target == "paired-devices"
-
-	if doChats {
-		if err := clearAllChats(ws, rt); err != nil {
-			errs = append(errs, fmt.Sprintf("chats: %v", err))
-		} else {
-			results = append(results, "Chats: all sessions and messages cleared")
-		}
+	if scopes["chats"] {
+		run("chats", "Chats: all sessions and messages cleared", func() error {
+			return clearAllChats(ws, rt)
+		})
 	}
-	if doMemory {
-		if err := clearMemory(ws, rt); err != nil {
-			errs = append(errs, fmt.Sprintf("memory: %v", err))
-		} else {
-			results = append(results, "Memory: MEMORY.md, daily notes, and memory_chunks cleared")
-		}
+	if scopes["memory"] {
+		run("memory", "Memory: MEMORY.md, daily notes, and memory_chunks cleared", func() error {
+			return clearMemory(ws, rt)
+		})
 	}
-	if doActivity {
-		if err := clearActivity(ws, rt); err != nil {
-			errs = append(errs, fmt.Sprintf("activity: %v", err))
-		} else {
-			results = append(results, "Activity: canonical events and event log cleared")
-		}
+	if scopes["activity"] {
+		run("activity", "Activity: canonical events and event log cleared", func() error {
+			return clearActivity(ws, rt)
+		})
 	}
-	if doModel {
+	if scopes["model"] {
 		msg, err := resetModelDefault(ws)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("model: %v", err))
@@ -115,42 +77,39 @@ func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 			results = append(results, msg)
 		}
 	}
-	if doAutomations {
-		if err := clearAutomations(ws, rt); err != nil {
-			errs = append(errs, fmt.Sprintf("automations: %v", err))
-		} else {
-			results = append(results, "Automations: scheduled items, cron jobs, and execution history cleared")
-		}
+	if scopes["automations"] {
+		run("automations", "Automations: scheduled items, cron jobs, and execution history cleared", func() error {
+			return clearAutomations(ws, rt)
+		})
 	}
-	if doContext {
-		if err := clearPersonalContext(ws, rt); err != nil {
-			errs = append(errs, fmt.Sprintf("context: %v", err))
-		} else {
-			results = append(results, "Personal Context: entries and knowledge profile cleared")
-		}
+	if scopes["context"] {
+		run("context", "Personal Context: entries and knowledge profile cleared", func() error {
+			return clearPersonalContext(ws, rt)
+		})
 	}
-	if doDevices {
-		if err := clearDevices(ws, rt); err != nil {
-			errs = append(errs, fmt.Sprintf("devices: %v", err))
-		} else {
-			results = append(results, "Paired devices: cleared")
-		}
+	if scopes["devices"] {
+		run("devices", "Paired devices: cleared", func() error {
+			return clearDevices(ws, rt)
+		})
 	}
-
-	if includeSecrets {
-		if err := clearSecrets(ws); err != nil {
-			errs = append(errs, fmt.Sprintf("secrets: %v", err))
-		} else {
-			results = append(results, "Secrets: cleared (config/.secrets.json)")
-		}
-	} else {
-		if doAll(target) {
-			results = append(results, "Secrets: kept (use --include-secrets to clear)")
-		}
+	if scopes["secrets"] {
+		run("secrets", "Secrets: API keys and device credentials cleared", func() error {
+			return clearSecrets(ws)
+		})
 	}
 
-	// On full reset, set a clean slate for new user
-	if target == "all" {
+	if len(excludes) > 0 {
+		kept := make([]string, 0, len(excludes))
+		for _, e := range excludes {
+			kept = append(kept, e)
+		}
+		sort.Strings(kept)
+		results = append(results, "Kept (--exclude): "+strings.Join(kept, ", "))
+	}
+
+	if scopes["chats"] && scopes["memory"] && scopes["activity"] &&
+		scopes["automations"] && scopes["context"] && scopes["devices"] &&
+		scopes["secrets"] && scopes["model"] {
 		results = append(results, "Ghost is now fresh — like a new installation. Say hello to start.")
 	}
 
@@ -160,57 +119,97 @@ func resetHandler(ctx context.Context, req Request, rt *Runtime) error {
 	return req.Reply(fmt.Sprintf("Reset complete:\n- %s", strings.Join(results, "\n- ")))
 }
 
-func doAll(t string) bool { return t == "all" }
+// resetScopeAlias canonicalizes a scope name or alias. It reports whether
+// the token is a known scope.
+func resetScopeAlias(token string) (string, bool) {
+	switch strings.ToLower(token) {
+	case "all":
+		return "all", true
+	case "chats", "sessions", "messages":
+		return "chats", true
+	case "memory":
+		return "memory", true
+	case "activity", "events":
+		return "activity", true
+	case "automations", "automation", "cron", "scheduled":
+		return "automations", true
+	case "context", "personal-context", "personal":
+		return "context", true
+	case "model", "ai":
+		return "model", true
+	case "devices", "paired", "paired-devices":
+		return "devices", true
+	case "secrets", "secret", "keys":
+		return "secrets", true
+	}
+	return "", false
+}
+
+var resetAllScopes = []string{
+	"chats", "memory", "activity", "model",
+	"automations", "context", "devices", "secrets",
+}
+
+// parseResetArgs resolves the scope set for a /reset invocation. It returns
+// the active scopes plus the canonical exclude list (for reporting).
+func parseResetArgs(args []string) (map[string]bool, []string, error) {
+	scopes := map[string]bool{}
+	var excludes []string
+	sawScope := false
+	for _, a := range args {
+		if strings.HasPrefix(a, "--exclude=") {
+			raw := strings.TrimPrefix(a, "--exclude=")
+			if strings.TrimSpace(raw) == "" {
+				return nil, nil, fmt.Errorf("--exclude needs a value, e.g. --exclude=devices,secrets")
+			}
+			for _, part := range strings.Split(raw, ",") {
+				name, ok := resetScopeAlias(strings.TrimSpace(part))
+				if !ok || name == "all" {
+					return nil, nil, fmt.Errorf("cannot exclude %q: not a reset scope", strings.TrimSpace(part))
+				}
+				excludes = append(excludes, name)
+			}
+			continue
+		}
+		if strings.HasPrefix(a, "--") {
+			return nil, nil, fmt.Errorf("unknown option %q", a)
+		}
+		name, ok := resetScopeAlias(a)
+		if !ok {
+			return nil, nil, fmt.Errorf("unknown reset scope %q", a)
+		}
+		if name == "all" {
+			for _, s := range resetAllScopes {
+				scopes[s] = true
+			}
+		} else {
+			scopes[name] = true
+		}
+		sawScope = true
+	}
+	for _, e := range excludes {
+		delete(scopes, e)
+	}
+	if !sawScope && len(excludes) > 0 {
+		return nil, nil, fmt.Errorf("--exclude needs a scope to apply to, e.g. /reset all --exclude=devices")
+	}
+	return scopes, excludes, nil
+}
 
 func resetHelp() string {
 	return "Usage:\n" +
-		"  /reset all --yes                              — factory reset (chats, memory, activity, automations, context, devices, AI default; secrets kept)\n" +
-		"  /reset chats --yes                            — clear all chat history\n" +
-		"  /reset memory --yes                           — clear MEMORY.md and daily notes\n" +
-		"  /reset activity --yes                         — clear Activity (canonical events, event log)\n" +
-		"  /reset automations --yes                      — clear automations and cron jobs\n" +
-		"  /reset context --yes                          — clear Personal Context and knowledge\n" +
-		"  /reset model --yes                            — restore local default AI provider/model\n" +
-		"  /reset devices --yes                          — clear paired devices\n" +
-		"  /reset all --yes --include-secrets            — full wipe including secrets\n" +
-		"\nAdd --yes to confirm. Without it, Ghost shows a preview."
-}
-
-func resetPreview(target string, includeSecrets, includeDevices bool) string {
-	var what []string
-	switch target {
-	case "all":
-		what = []string{"all chats (all sessions)", "memory (MEMORY.md, daily notes)", "activity (canonical events)", "automations (schedules, cron)", "personal context (beliefs, knowledge profile)", "paired devices", "AI default restored to local model"}
-		if includeSecrets {
-			what = append(what, "secrets (config/.secrets.json)")
-		} else {
-			what = append(what, "secrets (kept unless --include-secrets)")
-		}
-	case "chats", "sessions", "messages":
-		what = []string{"all chats (all sessions and messages)"}
-	case "memory":
-		what = []string{"memory (MEMORY.md, daily notes, memory_chunks)"}
-	case "activity", "events":
-		what = []string{"activity (canonical events, event log)"}
-	case "model", "ai":
-		what = []string{"AI default provider/model reset to local (restart to apply)"}
-	case "automations", "cron", "scheduled":
-		what = []string{"automations (scheduled_items, cron jobs, execution history)"}
-	case "context", "personal-context", "personal":
-		what = []string{"personal context (entries.jsonl, knowledge profile)"}
-	case "devices", "paired", "paired-devices":
-		what = []string{"paired devices"}
-	}
-	return fmt.Sprintf("This will delete:\n- %s\n\nAdd `--yes` to confirm: `/reset %s --yes`", strings.Join(what, "\n- "), target)
-}
-
-func hasFlag(fields []string, flag string) bool {
-	for _, f := range fields {
-		if strings.EqualFold(f, flag) {
-			return true
-		}
-	}
-	return false
+		"  /reset all                                — wipe EVERYTHING (chats, memory, activity, automations, context, devices, secrets, AI default)\n" +
+		"  /reset all --exclude=devices,secrets      — wipe everything except the named scopes\n" +
+		"  /reset chats                              — clear all chat history\n" +
+		"  /reset memory                             — clear MEMORY.md and daily notes\n" +
+		"  /reset activity                           — clear Activity (canonical events, event log)\n" +
+		"  /reset automations                        — clear automations and cron jobs\n" +
+		"  /reset context                            — clear Personal Context and knowledge\n" +
+		"  /reset devices                            — clear paired devices\n" +
+		"  /reset secrets                            — clear API keys and device credentials\n" +
+		"  /reset model                              — restore local default AI provider/model\n" +
+		"\nScopes: chats, memory, activity, automations, context, devices, secrets, model.\n" +
+		"Multiple scopes allowed: /reset chats memory"
 }
 
 func workspaceForRuntime(rt *Runtime) string {
@@ -448,20 +447,42 @@ func clearDevices(ws string, rt *Runtime) error {
 }
 
 func clearSecrets(ws string) error {
-	// Config secrets live outside workspace: config dir
-	cfgDir := os.Getenv("GHOST_CONFIG_DIR")
-	if cfgDir == "" {
-		// Try workspace-adjacent config
-		home, _ := os.UserHomeDir()
-		cfgDir = filepath.Join(home, ".config", "ghost")
-		if _, err := os.Stat(cfgDir); os.IsNotExist(err) {
-			cfgDir = "/var/ghost/config"
-		}
+	// Secrets live in the config dir, whose location depends on the layout
+	// (appliance, repo checkout, or GHOST_CONFIG_DIR override). Sweep every
+	// candidate so /reset all cannot leave keys behind in one layout while
+	// wiping them in another.
+	var candidates []string
+	if d := strings.TrimSpace(os.Getenv("GHOST_CONFIG_DIR")); d != "" {
+		candidates = append(candidates, d)
 	}
-	for _, name := range []string{".secrets.json", ".env"} {
-		p := filepath.Join(cfgDir, name)
-		if _, err := os.Stat(p); err == nil {
-			_ = os.Remove(p)
+	if ws != "" {
+		candidates = append(candidates,
+			filepath.Join(ws, "config"),
+			filepath.Join(ws, "..", "config"),
+		)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(cwd, "config"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates, filepath.Join(home, ".config", "ghost"))
+	}
+	candidates = append(candidates, "/var/ghost/config")
+	seen := map[string]bool{}
+	for _, dir := range candidates {
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			continue
+		}
+		if seen[abs] {
+			continue
+		}
+		seen[abs] = true
+		for _, name := range []string{".secrets.json", ".env"} {
+			p := filepath.Join(abs, name)
+			if _, err := os.Stat(p); err == nil {
+				_ = os.Remove(p)
+			}
 		}
 	}
 	return nil
