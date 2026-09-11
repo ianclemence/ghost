@@ -905,6 +905,16 @@ func gatewayCmd() {
 	}
 	agentLoop.SetConfigPath(getConfigPath())
 
+	// One authoritative Permission Broker for the whole runtime. Every
+	// subsystem (HTTP API, scheduler, MCP, browser/computer, routines,
+	// subagents) shares this instance rather than opening its own.
+	apiWorkspaceDir = cfg.WorkspacePath()
+	authBroker, err := InitAuthoritativeBroker(agentLoop.DB())
+	if err != nil {
+		fmt.Printf("❌ Could not open the permission broker: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Boot-time lifecycle recovery. After a restart no pre-restart task is
 	// alive, so any surviving computer lease is stale. Expiring it here
 	// prevents a crashed task from blocking new work until a TTL lapses.
@@ -968,7 +978,7 @@ func gatewayCmd() {
 	cronService.ClockGate = clockGate.Safe
 
 	// Setup scheduled service
-	scheduledService := setupScheduledService(agentLoop, msgBus, cfg.WorkspacePath())
+	scheduledService := setupScheduledService(agentLoop, msgBus, cfg.WorkspacePath(), authBroker)
 	if scheduledService != nil {
 		scheduledService.ClockGate = clockGate.Safe
 	}
@@ -1660,7 +1670,7 @@ func locationToTimezone(workspace string) string {
 	return ""
 }
 
-func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace string) *scheduled.Service {
+func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace string, broker *permissions.Broker) *scheduled.Service {
 	// Get the SQLite database connection
 	d := agentLoop.DB()
 
@@ -1676,7 +1686,8 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 	// capability → permission → execution → event → activity) instead
 	// of raw bus injection. Non-routine items keep the legacy path.
 	routineSvc, _ := routines.New(d, store)
-	broker, _ := permissions.Open(d, permissions.ModeAsk, 0)
+	// The single runtime-owned broker is passed in; the scheduler does not
+	// open its own authority over the same database.
 	cstream, _ := cevents.Open(d, routineEventDir(workspace))
 	executor := func(ctx context.Context, item *scheduled.ScheduledItem) error {
 		if routineSvc != nil {

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/contexts"
 	"github.com/ianclemence/ghost/pkg/permissions"
@@ -30,6 +31,9 @@ type Governance struct {
 	Broker *permissions.Broker
 	// Contexts scopes sessions (nil = single personal context behavior).
 	Contexts *contexts.Store
+	// Resolver maps capabilities to their runtime-selected implementation
+	// (provider/tool). Nil disables provider annotation on events.
+	Resolver *capability.Resolver
 	GhostID  string
 	AgentID  string
 
@@ -161,6 +165,17 @@ func (g *Governance) ToolRan(requestID, sessionKey, tool, trajectoryID string, f
 		status = "failed"
 	}
 	payload := map[string]interface{}{"tool": tool}
+	// Canonical capability identity + the runtime-resolved implementation.
+	// The model never chose the provider; the runtime did, and the event
+	// records what actually served.
+	if spec, ok := capability.ForTool(tool); ok {
+		payload["capability"] = spec.ID
+		if g.Resolver != nil {
+			if impl, ok := g.Resolver.Resolve(spec.ID, false); ok {
+				payload["provider"] = impl.Provider
+			}
+		}
+	}
 	if obs != nil {
 		payload["status"] = obs.Status
 		if obs.ErrorClass != "" {

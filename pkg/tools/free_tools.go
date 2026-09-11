@@ -1,6 +1,10 @@
 package tools
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/ianclemence/ghost/pkg/capability"
+)
 
 // Free consequential tools are model-invokable without a committed
 // capability (no skill read required) yet can cause external, durable,
@@ -38,8 +42,15 @@ var FreeConsequentialTools = []FreeTool{
 	// Physical/device register access can actuate hardware.
 	{Name: "i2c", Capability: "device.io", Risk: RiskConsequential},
 	{Name: "spi", Capability: "device.io", Risk: RiskConsequential},
-	// Home Assistant control turns real-world devices on/off.
-	{Name: "hass", Capability: "hass.control", Risk: RiskConsequential},
+	// Home Assistant control turns real-world devices on/off. The model
+	// sees the semantic "device" surface; "hass" remains a governed alias.
+	{Name: "device", Capability: "device.control", Risk: RiskConsequential},
+	{Name: "hass", Capability: "device.control", Risk: RiskConsequential},
+	// Calendar is one semantic surface whose risk is action-dependent
+	// (read vs modify); the agent loop authorizes the specific capability.
+	// The table entry governs it for paths that cannot see the action
+	// (e.g. subagents) at the conservative consequential level.
+	{Name: "calendar", Capability: "calendar.modify", Risk: RiskConsequential},
 	// Durable scheduling creates future external side effects.
 	{Name: "schedule", Capability: "schedule.create", Risk: RiskLow},
 	{Name: "cron", Capability: "schedule.create", Risk: RiskLow},
@@ -62,11 +73,14 @@ func freeToolByName(name string) (FreeTool, bool) {
 		}
 	}
 	// Third-party MCP tools are dynamically named (mcp_<server>_<tool>) and
-	// cannot be enumerated ahead of time. They are arbitrary out-of-process
-	// code and must pass the same broker boundary as any other
-	// consequential primitive, so the whole prefix is governed under one
-	// capability identity with high_impact risk.
+	// cannot be enumerated ahead of time. A well-known read-oriented tool
+	// resolves to its semantic capability; everything else is governed as
+	// mcp.execute with high_impact risk, so an unknown third-party tool can
+	// never inherit a low-risk classification.
 	if strings.HasPrefix(name, "mcp_") {
+		if spec, ok := capability.ForTool(name); ok && spec.ID != "mcp.execute" {
+			return FreeTool{Name: name, Capability: spec.ID, Risk: string(spec.Risk)}, true
+		}
 		return FreeTool{Name: name, Capability: "mcp.execute", Risk: RiskHighImpact}, true
 	}
 	return FreeTool{}, false

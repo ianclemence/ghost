@@ -74,8 +74,8 @@ func (s Spec) RequiresEvidence() bool { return s.Evidence != EvidenceNone }
 
 // Registry is the process-wide capability registry.
 type Registry struct {
-	byID    map[string]Spec
-	byTool  map[string]string // tool name -> capability ID
+	byID   map[string]Spec
+	byTool map[string]string // tool name -> capability ID
 }
 
 // NewRegistry returns an empty registry.
@@ -109,9 +109,54 @@ func (r *Registry) ForTool(tool string) (Spec, bool) {
 		return r.Get(id)
 	}
 	if strings.HasPrefix(tool, "mcp_") {
+		// Conservative semantic mapping: only well-known, read-oriented
+		// shapes map to a first-class capability. Anything uncertain stays
+		// mcp.execute (high impact) so an unknown third-party tool can
+		// never inherit a low-risk classification.
+		if id := mcpCapabilityFor(tool); id != "" {
+			if spec, ok := r.Get(id); ok {
+				return spec, true
+			}
+		}
 		return r.Get("mcp.execute")
 	}
 	return Spec{}, false
+}
+
+// ForToolAction resolves the capability for a tool call whose capability
+// depends on the operation (e.g. the calendar tool reads vs modifies). It
+// falls back to ForTool. This keeps one semantic tool surface without
+// flattening read and modify authority into one identity.
+func (r *Registry) ForToolAction(tool string, args map[string]interface{}) (Spec, bool) {
+	if tool == "calendar" {
+		if a, _ := args["action"].(string); a == "create" || a == "delete" || a == "add" || a == "remove" {
+			return r.Get("calendar.modify")
+		}
+		return r.Get("calendar.read")
+	}
+	return r.ForTool(tool)
+}
+
+// ForToolAction resolves against the default registry.
+func ForToolAction(tool string, args map[string]interface{}) (Spec, bool) {
+	return defaultRegistry.ForToolAction(tool, args)
+}
+
+// mcpCapabilityFor maps a small, well-understood set of MCP tool name shapes
+// to a Ghost capability. It is deliberately conservative: an unmatched tool
+// returns "" and is governed as mcp.execute. It never maps a write-shaped
+// tool onto a read capability.
+func mcpCapabilityFor(tool string) string {
+	t := strings.ToLower(tool)
+	switch {
+	case strings.Contains(t, "weather"):
+		return "weather.get"
+	case strings.Contains(t, "github") && (strings.Contains(t, "search") || strings.Contains(t, "repo")):
+		return "repository.search"
+	case strings.Contains(t, "web") && (strings.Contains(t, "search") || strings.Contains(t, "fetch")):
+		return "web.search"
+	}
+	return ""
 }
 
 // IDs returns all registered capability IDs, sorted.
@@ -148,6 +193,8 @@ func buildDefault() *Registry {
 			Description: "Search the web."},
 		{ID: "web.fetch", Title: "Web fetch", Risk: RiskReadOnly, Tools: []string{"web_fetch"},
 			Description: "Fetch a web page."},
+		{ID: "repository.search", Title: "Search repository", Risk: RiskReadOnly,
+			Description: "Search a connected source repository."},
 		{ID: "weather.get", Title: "Weather", Risk: RiskReadOnly, Tools: []string{"weather_now"},
 			Description: "Current weather for a location."},
 		{ID: "aqi.get", Title: "Air quality", Risk: RiskReadOnly, Tools: []string{"aqi_now"},
@@ -168,17 +215,17 @@ func buildDefault() *Registry {
 
 		// --- Calendar (consequential, evidence required) ---
 		{ID: "calendar.read", Title: "Read calendar", Risk: RiskReadOnly,
-			Tools:       []string{"calendar_read"},
+			Tools:       []string{"calendar"},
 			Description: "Read calendar events."},
 		{ID: "calendar.modify", Title: "Modify calendar", Risk: RiskConsequential, Evidence: EvidenceAcknowledgement,
-			Tools:       []string{"calendar_modify", "gcalcli_update"},
+			Tools:       []string{"calendar"},
 			Description: "Create, change, or delete calendar events."},
 
 		// --- Devices (consequential, evidence required) ---
-		{ID: "device.read", Title: "Read device state", Risk: RiskReadOnly, Tools: []string{"hass"},
+		{ID: "device.read", Title: "Read device state", Risk: RiskReadOnly, Tools: []string{"device", "hass"},
 			Description: "Read smart-home device state."},
 		{ID: "device.control", Title: "Control device", Risk: RiskConsequential, Evidence: EvidenceStateTransition,
-			Tools:       []string{"hass"},
+			Tools:       []string{"device", "hass"},
 			Description: "Change smart-home device state."},
 
 		// --- Browser / computer (gated; evidence enforced by their gates) ---

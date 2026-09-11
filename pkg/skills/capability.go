@@ -3,6 +3,8 @@ package skills
 import (
 	"strings"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/capability"
 )
 
 // Capability declares the generic execution contract for a skill.
@@ -100,6 +102,12 @@ func GetCapability(skill string) Capability {
 // Standing grants may only reference declared capabilities — the model
 // can never authorize a capability the runtime doesn't know.
 func HasCapability(id string) bool {
+	// The canonical capability registry is authoritative. The skill-level
+	// registry is a legacy narrowing layer retained for compatibility, so a
+	// canonical capability id (e.g. calendar.modify) is always recognized.
+	if _, ok := capability.Get(id); ok {
+		return true
+	}
 	for _, cap := range capabilityRegistry {
 		if cap.ID == id {
 			return true

@@ -37,7 +37,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"memory_recall", "context_get", "clarify", "todo",
 		// Device control and handoff are legitimate mobile actions; the
 		// broker still governs the consequential ones.
-		"hass", "publish_artifact", "doc_parser",
+		"device", "calendar", "publish_artifact", "doc_parser",
 	},
 	ProfileHeartbeatSafe: {
 		"read_file", "view", "session_search", "exec",
@@ -73,7 +73,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"spawn", "subagent", "batch_delegate",
 		"skill_manage",
 		"vision", "image_generate",
-		"i2c", "spi", "hass", "publish_artifact",
+		"i2c", "spi", "device", "publish_artifact",
 		"compaction", "compact_context", "todo", "doc_parser",
 	},
 	ProfileFull: nil,
@@ -181,7 +181,7 @@ var turnIntentTools = []struct {
 	{[]string{"update ghost", "upgrade ghost", "self-update"}, []string{"update"}},
 	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"doc_parser"}},
 	// Home Assistant device control (broker-gated, consequential).
-	{[]string{"light", "lights", "thermostat", "home assistant", "smart home", "turn on", "turn off", "turn the", "device", "scene"}, []string{"hass"}},
+	{[]string{"light", "lights", "thermostat", "home assistant", "smart home", "turn on", "turn off", "turn the", "device", "scene"}, []string{"device"}},
 	// Durable handoff artifacts (low risk, evidence-backed).
 	{[]string{"artifact", "hand off", "handoff", "publish", "report", "deliverable"}, []string{"publish_artifact"}},
 	// Browser/computer tools are discovered by EXPLICIT exact tool names

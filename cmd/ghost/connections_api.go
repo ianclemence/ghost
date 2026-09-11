@@ -3,10 +3,11 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/config"
-	"github.com/ianclemence/ghost/pkg/skills"
+	"github.com/ianclemence/ghost/pkg/credentials"
 )
 
 // registerConnectionsRoutes moves safe connect/disconnect onto the
@@ -77,30 +78,25 @@ func secretsPathFor() string {
 	return config.SecretsPath(getConfigPath())
 }
 
+// connectionVault returns the single credential boundary for this gateway.
+// All connection writes and disconnects go through it; nothing writes the
+// secrets file directly.
+func connectionVault() *credentials.Vault {
+	return credentials.New(filepath.Dir(secretsPathFor()))
+}
+
 func connectionStore(id, value string) error {
 	if id == "google-calendar" {
 		return errOAuthOnly(id)
 	}
-	s, err := config.LoadSecrets(secretsPathFor())
-	if err != nil {
-		return err
-	}
-	if s.ProviderAPIKeys == nil {
-		s.ProviderAPIKeys = map[string]string{}
-	}
-	s.ProviderAPIKeys[id] = strings.TrimSpace(value)
-	return config.SaveSecrets(secretsPathFor(), s)
+	return connectionVault().Store(id, value)
 }
 
 func connectionDisconnect(id string) error {
-	// Google Calendar is an OAuth connected app: disconnecting must remove
-	// the actual credential, not just a config key. A "disconnected" app
-	// must not keep a usable token on disk.
+	// Google Calendar is an OAuth connected app: the vault removes the
+	// actual credential (both calendar stacks), not just a config key.
 	if id == "google-calendar" {
-		if err := skills.CalendarDisconnect(); err != nil {
-			return err
-		}
-		return nil
+		return connectionVault().Disconnect(id)
 	}
 	s, err := config.LoadSecrets(secretsPathFor())
 	if err != nil {
@@ -109,8 +105,7 @@ func connectionDisconnect(id string) error {
 	if _, ok := s.ProviderAPIKeys[id]; !ok {
 		return errNotConnected(id)
 	}
-	delete(s.ProviderAPIKeys, id)
-	return config.SaveSecrets(secretsPathFor(), s)
+	return connectionVault().Disconnect(id)
 }
 
 func errOAuthOnly(id string) error {

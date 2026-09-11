@@ -65,3 +65,30 @@ func TestCanonicalIDsPresent(t *testing.T) {
 		}
 	}
 }
+
+// The calendar surface resolves to read vs modify by action, so authority
+// and evidence are operation-specific.
+func TestForToolActionCalendar(t *testing.T) {
+	read, ok := ForToolAction("calendar", map[string]interface{}{"action": "list"})
+	if !ok || read.ID != "calendar.read" || read.RequiresEvidence() {
+		t.Fatalf("list must resolve to calendar.read with no evidence: %+v ok=%v", read, ok)
+	}
+	mod, ok := ForToolAction("calendar", map[string]interface{}{"action": "create"})
+	if !ok || mod.ID != "calendar.modify" || !mod.RequiresEvidence() {
+		t.Fatalf("create must resolve to calendar.modify with evidence: %+v ok=%v", mod, ok)
+	}
+	del, ok := ForToolAction("calendar", map[string]interface{}{"action": "delete"})
+	if !ok || del.ID != "calendar.modify" {
+		t.Fatalf("delete must resolve to calendar.modify: %+v ok=%v", del, ok)
+	}
+}
+
+// MCP semantic mapping is conservative.
+func TestMCPMapping(t *testing.T) {
+	if spec, ok := ForTool("mcp_github_search"); !ok || spec.ID != "repository.search" {
+		t.Fatalf("known MCP tool must map semantically: %+v ok=%v", spec, ok)
+	}
+	if spec, ok := ForTool("mcp_calendar_delete"); !ok || spec.ID != "mcp.execute" {
+		t.Fatalf("write-shaped/unknown MCP tool must stay mcp.execute: %+v ok=%v", spec, ok)
+	}
+}

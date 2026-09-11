@@ -291,7 +291,7 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	// evidence rule, extended to every capability whose contract requires
 	// proof. Read-only and evidence-free capabilities are unaffected.
 	if !result.IsError && !result.Async {
-		if spec, ok := capability.ForTool(name); ok && spec.RequiresEvidence() && len(result.Evidence) == 0 {
+		if spec, ok := capability.ForToolAction(name, args); ok && spec.RequiresEvidence() && len(result.Evidence) == 0 {
 			logger.WarnCF("tool", "success without required evidence",
 				map[string]interface{}{"tool": name, "capability": spec.ID, "evidence": string(spec.Evidence)})
 			result = ErrorResult(fmt.Sprintf(

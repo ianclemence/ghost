@@ -10,7 +10,7 @@ func TestProposeCalendarAdd(t *testing.T) {
 	if !ok || len(p.Grants) == 0 {
 		t.Fatalf("must propose: %+v %+v", p, rej)
 	}
-	if p.Grants[0].Capability != "calendar.create" || p.Grants[0].Scope != "owner" {
+	if p.Grants[0].Capability != "calendar.modify" || p.Grants[0].Scope != "owner" {
 		t.Fatalf("narrow grant wrong: %+v", p.Grants)
 	}
 	if !strings.Contains(p.Summary, "Nothing else changes") {
@@ -66,7 +66,7 @@ func TestValidatedGrantsUnknownRejected(t *testing.T) {
 	if out := validatedGrants([]StandingGrant{{"evil.cap", "x", "owner"}}); len(out) != 0 {
 		t.Fatal("undeclared capability must fail closed")
 	}
-	if out := validatedGrants([]StandingGrant{{"calendar.create", "create", "context:work"}}); len(out) != 0 {
+	if out := validatedGrants([]StandingGrant{{"calendar.modify", "calendar:create", "context:work"}}); len(out) != 0 {
 		t.Fatal("context scopes not expressible here")
 	}
 }
@@ -87,8 +87,8 @@ func TestNaturalGrantPhrases(t *testing.T) {
 		}
 	}
 	p, _, ok := ProposeStanding("You can always add calendar events for me")
-	if !ok || len(p.Grants) != 1 || p.Grants[0].Capability != "calendar.create" {
-		t.Fatalf("natural grant must propose narrow calendar.create: %+v", p)
+	if !ok || len(p.Grants) != 1 || p.Grants[0].Capability != "calendar.modify" {
+		t.Fatalf("natural grant must propose narrow calendar.modify: %+v", p)
 	}
 }
 

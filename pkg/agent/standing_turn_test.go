@@ -37,9 +37,9 @@ func TestStandingProposeConfirm(t *testing.T) {
 	if !ok || !strings.Contains(ans2, "Done.") {
 		t.Fatalf("must store: %q", ans2)
 	}
-	// Grant effective: consequential calendar.create now allows in scope.
+	// Grant effective: consequential calendar.modify now allows in scope.
 	broker, _ := al.standingBroker()
-	if broker.Evaluate("calendar.create", "create", "owner", "consequential") != "allow" {
+	if broker.Evaluate("calendar.modify", "calendar:create", "owner", "consequential") != "allow" {
 		t.Fatal("stored grant must authorize in scope")
 	}
 	// Consumed: further yes is ordinary chat.

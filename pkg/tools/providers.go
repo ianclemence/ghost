@@ -427,7 +427,7 @@ type HassTool struct {
 }
 
 func NewHassTool() *HassTool     { return &HassTool{} }
-func (t *HassTool) Name() string { return "hass" }
+func (t *HassTool) Name() string { return "device" }
 func (t *HassTool) Description() string {
 	return "Read Home Assistant device states or control a device (light.turn_off etc.). Prefer this over shell curl for Home Assistant."
 }

@@ -20,10 +20,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/ianclemence/ghost/pkg/artifacts"
 	"github.com/ianclemence/ghost/pkg/affect"
+	"github.com/ianclemence/ghost/pkg/artifacts"
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/commands"
@@ -60,30 +61,30 @@ import (
 )
 
 type AgentLoop struct {
-	bus              *bus.MessageBus
-	provider         providers.LLMProvider
-	workspace        string
-	model            string
-	temperature      float64
-	maxTokens        int // Maximum output tokens for the LLM
-	contextWindow    int // Maximum context window size in tokens
-	maxIterations    int
-	sessions         *session.SessionManager
-	state            *state.Manager
-	media            media.MediaStore
-	contextBuilder   *ContextBuilder
-	tools            *tools.ToolRegistry
-	toolProfile      tools.ToolProfile
-	commands         *commands.Registry
-	commandExec      *commands.Executor
-	router           *routing.Router
-	fallback         *providers.FallbackChain
-	fallbackModels   []providers.FallbackCandidate
+	bus            *bus.MessageBus
+	provider       providers.LLMProvider
+	workspace      string
+	model          string
+	temperature    float64
+	maxTokens      int // Maximum output tokens for the LLM
+	contextWindow  int // Maximum context window size in tokens
+	maxIterations  int
+	sessions       *session.SessionManager
+	state          *state.Manager
+	media          media.MediaStore
+	contextBuilder *ContextBuilder
+	tools          *tools.ToolRegistry
+	toolProfile    tools.ToolProfile
+	commands       *commands.Registry
+	commandExec    *commands.Executor
+	router         *routing.Router
+	fallback       *providers.FallbackChain
+	fallbackModels []providers.FallbackCandidate
 	// affect holds the relational aggregate (valence/arousal/affinity).
 	// Updated once per turn from scored user text, decayed with time,
 	// persisted as aggregates only. It grounds expressed affect and
 	// gates proactivity — never capability.
-	affect affect.State
+	affect           affect.State
 	installer        *skills.SkillInstaller
 	providersByModel map[string]providers.LLMProvider
 	cfg              *config.Config
@@ -280,6 +281,9 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewCryptoTool())
 	registry.Register(tools.NewNearbyTool())
 	registry.Register(tools.NewHassTool())
+	// Semantic calendar surface: the model asks for calendar operations,
+	// never for gcalcli/provider details.
+	registry.Register(tools.NewCalendarTool(workspace))
 
 	// Vision tool - image analysis
 	registry.Register(tools.NewVisionTool(workspace))
@@ -628,15 +632,15 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 
 	cmdRuntime := &commands.Runtime{
-		Tools:           toolsRegistry,
-		Sessions:        sessionsManager,
-		Bus:             msgBus,
-		Commands:        cmdRegistry,
-		Doctor:          doctorRunner,
-		Model:           cfg.Agents.Defaults.Model,
-		ModelPresets:    al.ModelPresets(),
-		CurrentModel:    al.GetCurrentModel,
-		SetActiveModel:  al.SetModel,
+		Tools:          toolsRegistry,
+		Sessions:       sessionsManager,
+		Bus:            msgBus,
+		Commands:       cmdRegistry,
+		Doctor:         doctorRunner,
+		Model:          cfg.Agents.Defaults.Model,
+		ModelPresets:   al.ModelPresets(),
+		CurrentModel:   al.GetCurrentModel,
+		SetActiveModel: al.SetModel,
 		ModelPresetStatus: func(name string) (bool, string) {
 			provider, model := name, name
 			if preset := cfg.FindModelPreset(name); preset != nil {
@@ -3323,6 +3327,27 @@ func (al *AgentLoop) authorizeStandaloneTool(requestID, sessionKey, tool string,
 		decision := al.governance.AuthorizeStandalone(requestID, sessionKey, "skills.manage", tool, args, risk)
 		return AuthorizeResult{Allowed: decision.Allowed, AskMessage: decision.AskMessage, PendingID: decision.PendingID}, true
 	}
+	// Calendar is one semantic surface whose capability (and therefore risk)
+	// depends on the operation: reading is read-only; create/delete are
+	// consequential. Authorization uses the action-specific capability
+	// identity, never the raw tool name.
+	if tool == "calendar" {
+		if al == nil || al.governance == nil || al.governance.Broker == nil {
+			return AuthorizeResult{}, false
+		}
+		spec, _ := capability.ForToolAction("calendar", args)
+		capID := spec.ID
+		if capID == "" {
+			capID = "calendar.read"
+		}
+		risk := permissions.Risk(spec.Risk)
+		if risk == "" {
+			risk = permissions.RiskConsequential
+		}
+		al.governance.NoteCapability(requestID, capID, "")
+		decision := al.governance.AuthorizeStandalone(requestID, sessionKey, capID, tool, args, risk)
+		return AuthorizeResult{Allowed: decision.Allowed, AskMessage: decision.AskMessage, PendingID: decision.PendingID}, true
+	}
 	ft, ok := tools.FreeToolCapability(tool)
 	if !ok || al == nil || al.governance == nil || al.governance.Broker == nil {
 		return AuthorizeResult{}, false
@@ -3350,11 +3375,15 @@ func skillManageRisk(args map[string]interface{}) permissions.Risk {
 	}
 }
 
+// committedSkill returns the skill Ghost committed to via SKILL.md read.
+// Commitment is TURN-SCOPED: it scans back to the start of the current user
+// turn, not a fixed message count. A fixed window let a long tool chain
+// scroll the commitment out and silently drop the capability's restrictions
+// mid-turn — a security boundary must not expire while the turn is live.
+// Generic: extracts the name from any skills/<name>/SKILL.md path or from
+// frontmatter, with no per-skill branches.
 func committedSkill(messages []providers.Message) string {
-	start := len(messages) - 6
-	if start < 0 {
-		start = 0
-	}
+	start := turnStart(messages)
 	for i := len(messages) - 1; i >= start; i-- {
 		msg := messages[i]
 		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
@@ -3373,6 +3402,18 @@ func committedSkill(messages []providers.Message) string {
 		}
 	}
 	return ""
+}
+
+// turnStart returns the index of the current turn's first message: the last
+// user message in the slice, or 0 when there is none. This bounds
+// turn-scoped state (skill commitment) to the live turn.
+func turnStart(messages []providers.Message) int {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			return i
+		}
+	}
+	return 0
 }
 
 // recentSkillRead is kept for compatibility; delegates to committedSkill.

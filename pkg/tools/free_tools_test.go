@@ -82,7 +82,8 @@ func TestSubagentConsequentialAuthAllowsRun(t *testing.T) {
 // MCP tools are dynamic third-party code and must resolve to a governed
 // capability identity with high_impact risk (broker bypass regression).
 func TestMCPToolsAreGoverned(t *testing.T) {
-	for _, name := range []string{"mcp_github_search", "mcp_filesystem_read", "mcp_x"} {
+	// Unknown/unmapped MCP tools are governed as high-impact mcp.execute.
+	for _, name := range []string{"mcp_filesystem_read", "mcp_x", "mcp_calendar_delete"} {
 		if !IsFreeConsequentialTool(name) {
 			t.Errorf("%s must be a governed free consequential tool", name)
 		}
@@ -90,6 +91,11 @@ func TestMCPToolsAreGoverned(t *testing.T) {
 		if !ok || ft.Capability != "mcp.execute" || ft.Risk != RiskHighImpact {
 			t.Errorf("%s must map to mcp.execute/high_impact, got %+v ok=%v", name, ft, ok)
 		}
+	}
+	// A well-known read-oriented MCP tool maps to its semantic capability.
+	ft, ok := FreeToolCapability("mcp_github_search")
+	if !ok || ft.Capability != "repository.search" {
+		t.Errorf("known MCP tool must map to repository.search, got %+v ok=%v", ft, ok)
 	}
 	if IsFreeConsequentialTool("mcp") {
 		t.Error("bare 'mcp' is not a tool")

@@ -143,8 +143,8 @@ func Suite() []Conversation {
 				turn("You can always add calendar events for me."),
 				turn("yes")),
 			Expect: Expect{
-				ExpectGrant: true, GrantCapability: "calendar.create",
-				GrantAction: "create", GrantScope: "owner",
+				ExpectGrant: true, GrantCapability: "calendar.modify",
+				GrantAction: "calendar:create", GrantScope: "owner",
 			},
 		},
 		{

@@ -42,10 +42,10 @@ var scopePhraseTable = []struct {
 	match []string
 	gives []StandingGrant
 }{
-	{[]string{"add", "calendar", "event"}, []StandingGrant{{"calendar.create", "create", "owner"}}},
-	{[]string{"calendar", "event"}, []StandingGrant{{"calendar.create", "create", "owner"}}},
-	{[]string{"read", "calendar"}, []StandingGrant{{"calendar.read", "read", "owner"}}},
-	{[]string{"calendar"}, []StandingGrant{{"calendar.read", "read", "owner"}}},
+	{[]string{"add", "calendar", "event"}, []StandingGrant{{"calendar.modify", "calendar:create", "owner"}}},
+	{[]string{"calendar", "event"}, []StandingGrant{{"calendar.modify", "calendar:create", "owner"}}},
+	{[]string{"read", "calendar"}, []StandingGrant{{"calendar.read", "calendar:list", "owner"}}},
+	{[]string{"calendar"}, []StandingGrant{{"calendar.read", "calendar:list", "owner"}}},
 	{[]string{"reminder"}, []StandingGrant{{"reminder.create", "create", "owner"}}},
 	{[]string{"weather"}, []StandingGrant{{"weather.current", "read", "owner"}}},
 	{[]string{"remember", "things"}, []StandingGrant{{"memory.write", "write", "owner"}}},
@@ -163,7 +163,7 @@ func summarizeGrants(grants []StandingGrant, deny bool) string {
 
 func describeGrant(g StandingGrant) string {
 	switch g.Capability {
-	case "calendar.create":
+	case "calendar.modify":
 		return "add calendar events for you"
 	case "calendar.read":
 		return "read your calendar"

@@ -41,8 +41,11 @@ import (
 	"github.com/ianclemence/ghost/pkg/activity"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
+	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/connectedapp"
 	"github.com/ianclemence/ghost/pkg/contexts"
 	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/cron"
@@ -84,26 +87,44 @@ var (
 	apiWorkspaceDir string
 )
 
+// InitAuthoritativeBroker opens the single runtime-owned Permission Broker
+// over db and wires its canonical-event emitter. Idempotent: called once at
+// runtime startup so the HTTP API, agent loop, scheduler, MCP, browser,
+// computer, routines, and subagents all converge on ONE authority. Prefer
+// this over letting each subsystem open its own broker over the same DB.
+func InitAuthoritativeBroker(db *sql.DB) (*permissions.Broker, error) {
+	if db == nil {
+		return nil, errors.New("permission broker unavailable: no state store")
+	}
+	apiDB = db
+	var initErr error
+	substrateOnce.Do(func() {
+		substrateBroker, initErr = permissions.Open(db, permissions.ModeAsk, 0)
+		if substrateBroker != nil {
+			if st, serr := cevents.Open(db, eventLogDir()); serr == nil {
+				substrateEvents = st
+				substrateBroker.SetEmitter(emitPermissionEvent)
+			}
+		}
+	})
+	if initErr != nil {
+		return nil, initErr
+	}
+	if substrateBroker == nil {
+		return nil, errors.New("permission broker unavailable")
+	}
+	return substrateBroker, nil
+}
+
 func permBroker() (*permissions.Broker, error) {
 	// The state store is assigned when the API starts. Calling this before
 	// then must fail closed, not panic on a nil handle.
 	if apiDB == nil {
 		return nil, errors.New("permission broker unavailable: state store not ready")
 	}
-	var err error
-	substrateOnce.Do(func() {
-		substrateBroker, err = permissions.Open(apiDB, permissions.ModeAsk, 0)
-		if substrateBroker != nil && substrateEvents == nil {
-			if st, serr := cevents.Open(apiDB, eventLogDir()); serr == nil {
-				substrateEvents = st
-				substrateBroker.SetEmitter(emitPermissionEvent)
-			}
-		}
-	})
-	if err != nil || substrateBroker == nil {
-		return nil, errors.New("permission broker unavailable")
-	}
-	return substrateBroker, nil
+	// One authoritative broker per runtime: InitAuthoritativeBroker is
+	// idempotent, so callers that reach here share the same instance.
+	return InitAuthoritativeBroker(apiDB)
 }
 
 func eventStream() (*cevents.Stream, error) {
@@ -1762,6 +1783,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 			if cs, err := contextStore(); err == nil {
 				gov.Contexts = cs
 			}
+			// Capability resolver: runtime-owned capability→implementation
+			// mapping with credential-aware availability. The model never
+			// selects a provider; the resolver does.
+			gov.Resolver = buildCapabilityResolver(agentLoop.Config())
 			agentLoop.SetGovernance(gov)
 		}
 	}
@@ -4662,4 +4687,52 @@ func saveBase64ToTemp(b64 string) (string, error) {
 	defer tmp.Close()
 	tmp.Write(data)
 	return tmp.Name(), nil
+}
+
+// buildCapabilityResolver constructs the runtime-owned capability→
+// implementation resolver with credential/connection-aware availability.
+// Providers are selected here, never by the model. The connected-app
+// registry is the declarative model of which authenticated external systems
+// can fulfil which capabilities; the resolver consults it live.
+func buildCapabilityResolver(cfg *config.Config) *capability.Resolver {
+	apps := connectedapp.NewRegistry()
+	apps.Register(connectedapp.App{ID: "openweather", Provider: "openweather", DisplayName: "OpenWeather",
+		CredentialID: "openweather", Capabilities: []string{"weather.get"}, Status: connectedapp.StatusDisconnected})
+	apps.Register(connectedapp.App{ID: "aviationstack", Provider: "aviationstack", DisplayName: "AviationStack",
+		CredentialID: "aviationstack", Capabilities: []string{"flight.status"}, Status: connectedapp.StatusDisconnected})
+	apps.Register(connectedapp.App{ID: "aerodatabox", Provider: "aerodatabox", DisplayName: "AeroDataBox",
+		CredentialID: "aerodatabox", Capabilities: []string{"flight.status"}, Status: connectedapp.StatusDisconnected})
+	apps.Register(connectedapp.App{ID: "home-assistant", Provider: "home-assistant", DisplayName: "Home Assistant",
+		CredentialID: "home-assistant", Capabilities: []string{"device.read", "device.control"}, Status: connectedapp.StatusDisconnected})
+	apps.Register(connectedapp.App{ID: "google-calendar", Provider: "google-calendar", DisplayName: "Google Calendar",
+		CredentialID: "google-calendar", Capabilities: []string{"calendar.read", "calendar.modify"}, Status: connectedapp.StatusDisconnected})
+
+	// connStatus reports the live connection state for one app.
+	connStatus := func(connected bool) connectedapp.Status {
+		if connected {
+			return connectedapp.StatusConnected
+		}
+		return connectedapp.StatusDisconnected
+	}
+	usable := func(id string, live func() bool) bool {
+		apps.SetStatus(id, connStatus(live()))
+		return apps.Usable(id)
+	}
+
+	r := capability.NewResolver()
+	capability.RegisterDefaults(r, capability.Availability{
+		OpenWeather:   func() bool { return usable("openweather", func() bool { return skills.OpenWeatherKey() != "" }) },
+		AviationStack: func() bool { return usable("aviationstack", func() bool { return skills.AviationKey(cfg) != "" }) },
+		AeroDataBox:   func() bool { return usable("aerodatabox", func() bool { return skills.AeroDataBoxKey() != "" }) },
+		HomeAssistant: func() bool {
+			u, t := skills.HassEndpoint()
+			return usable("home-assistant", func() bool { return u != "" && t != "" })
+		},
+		Calendar: func() bool {
+			return usable("google-calendar", func() bool {
+				return skills.CalendarWebStatus().Connected || skills.CalendarCheck().Connected
+			})
+		},
+	})
+	return r
 }
