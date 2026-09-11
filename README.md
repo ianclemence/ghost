@@ -269,6 +269,8 @@ chmod +x setup.sh
 | `/tools` | Show tool schemas |
 | `/think <msg>` | Deep reasoning mode |
 | `/compress` | Summarize and compact context |
+| `/personality` | List or switch personality (`default` `hacker` `creative` `teacher` `minimal` `adaptive` — adaptive learns your style) |
+| `/affect` | Show relational state (affinity, mood) — aggregates only, cleared by `/reset context` |
 
 ---
 
@@ -279,7 +281,7 @@ chmod +x setup.sh
 Ghost uses a clear precedence model for configuration:
 
 1. **Environment variables** (highest priority) — runtime overrides
-2. **`.secrets.json`** — persistent secrets (API keys, channel tokens)
+2. **`.secrets.json`** — sealed secrets (AES-256-GCM; API keys, channel tokens)
 3. **`config.json`** — persistent configuration (model, providers, channels)
 4. **Defaults** (lowest priority)
 
