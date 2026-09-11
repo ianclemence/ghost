@@ -478,7 +478,7 @@ func clearSecrets(ws string) error {
 			continue
 		}
 		seen[abs] = true
-		for _, name := range []string{".secrets.json", ".env"} {
+		for _, name := range []string{".secrets.json", ".env", config.MasterKeyFileName} {
 			p := filepath.Join(abs, name)
 			if _, err := os.Stat(p); err == nil {
 				_ = os.Remove(p)

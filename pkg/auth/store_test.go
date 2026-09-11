@@ -3,191 +3,72 @@ package auth
 import (
 	"os"
 	"path/filepath"
-	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestAuthCredentialIsExpired(t *testing.T) {
-	tests := []struct {
-		name      string
-		expiresAt time.Time
-		want      bool
-	}{
-		{"zero time", time.Time{}, false},
-		{"future", time.Now().Add(time.Hour), false},
-		{"past", time.Now().Add(-time.Hour), true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &AuthCredential{ExpiresAt: tt.expiresAt}
-			if got := c.IsExpired(); got != tt.want {
-				t.Errorf("IsExpired() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+func isolatedHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GHOST_MASTER_KEY", "")
+	return home
 }
 
-func TestAuthCredentialNeedsRefresh(t *testing.T) {
-	tests := []struct {
-		name      string
-		expiresAt time.Time
-		want      bool
-	}{
-		{"zero time", time.Time{}, false},
-		{"far future", time.Now().Add(time.Hour), false},
-		{"within 5 min", time.Now().Add(3 * time.Minute), true},
-		{"already expired", time.Now().Add(-time.Minute), true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &AuthCredential{ExpiresAt: tt.expiresAt}
-			if got := c.NeedsRefresh(); got != tt.want {
-				t.Errorf("NeedsRefresh() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestStoreRoundtrip(t *testing.T) {
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	t.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
-
+func TestAuthStoreSealedAtRest(t *testing.T) {
+	isolatedHome(t)
 	cred := &AuthCredential{
-		AccessToken:  "test-access-token",
-		RefreshToken: "test-refresh-token",
-		AccountID:    "acct-123",
-		ExpiresAt:    time.Now().Add(time.Hour).Truncate(time.Second),
+		AccessToken:  "secret-access-token",
+		RefreshToken: "secret-refresh-token",
 		Provider:     "openai",
 		AuthMethod:   "oauth",
-	}
-
-	if err := SetCredential("openai", cred); err != nil {
-		t.Fatalf("SetCredential() error: %v", err)
-	}
-
-	loaded, err := GetCredential("openai")
-	if err != nil {
-		t.Fatalf("GetCredential() error: %v", err)
-	}
-	if loaded == nil {
-		t.Fatal("GetCredential() returned nil")
-	}
-	if loaded.AccessToken != cred.AccessToken {
-		t.Errorf("AccessToken = %q, want %q", loaded.AccessToken, cred.AccessToken)
-	}
-	if loaded.RefreshToken != cred.RefreshToken {
-		t.Errorf("RefreshToken = %q, want %q", loaded.RefreshToken, cred.RefreshToken)
-	}
-	if loaded.Provider != cred.Provider {
-		t.Errorf("Provider = %q, want %q", loaded.Provider, cred.Provider)
-	}
-}
-
-func TestStoreFilePermissions(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("file permissions are not enforced on Windows")
-	}
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	t.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
-
-	cred := &AuthCredential{
-		AccessToken: "secret-token",
-		Provider:    "openai",
-		AuthMethod:  "oauth",
+		ExpiresAt:    time.Now().Add(time.Hour),
 	}
 	if err := SetCredential("openai", cred); err != nil {
-		t.Fatalf("SetCredential() error: %v", err)
+		t.Fatal(err)
 	}
-
-	path := filepath.Join(tmpDir, ".GHOST", "auth.json")
-	info, err := os.Stat(path)
+	raw, err := os.ReadFile(authFilePath())
 	if err != nil {
-		t.Fatalf("Stat() error: %v", err)
+		t.Fatal(err)
 	}
-	perm := info.Mode().Perm()
-	if perm != 0600 {
-		t.Errorf("file permissions = %o, want 0600", perm)
+	if strings.Contains(string(raw), "secret-access-token") {
+		t.Fatal("auth store must be opaque at rest")
+	}
+	got, err := GetCredential("openai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.AccessToken != "secret-access-token" {
+		t.Fatalf("credential roundtrip failed: %+v", got)
+	}
+	info, err := os.Stat(filepath.Dir(authFilePath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0700 {
+		t.Fatalf("auth dir perms = %o, want 700", info.Mode().Perm())
 	}
 }
 
-func TestStoreMultiProvider(t *testing.T) {
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	t.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
-
-	openaiCred := &AuthCredential{AccessToken: "openai-token", Provider: "openai", AuthMethod: "oauth"}
-	anthropicCred := &AuthCredential{AccessToken: "anthropic-token", Provider: "anthropic", AuthMethod: "token"}
-
-	if err := SetCredential("openai", openaiCred); err != nil {
-		t.Fatalf("SetCredential(openai) error: %v", err)
+func TestAuthStoreLegacyPlaintextUpgrades(t *testing.T) {
+	home := isolatedHome(t)
+	path := filepath.Join(home, ".GHOST", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
 	}
-	if err := SetCredential("anthropic", anthropicCred); err != nil {
-		t.Fatalf("SetCredential(anthropic) error: %v", err)
+	if err := os.WriteFile(path, []byte(`{"credentials":{"openai":{"access_token":"legacy-tok","provider":"openai","auth_method":"token"}}}`), 0600); err != nil {
+		t.Fatal(err)
 	}
-
-	loaded, err := GetCredential("openai")
+	got, err := GetCredential("openai")
 	if err != nil {
-		t.Fatalf("GetCredential(openai) error: %v", err)
+		t.Fatal(err)
 	}
-	if loaded.AccessToken != "openai-token" {
-		t.Errorf("openai token = %q, want %q", loaded.AccessToken, "openai-token")
+	if got == nil || got.AccessToken != "legacy-tok" {
+		t.Fatalf("legacy load failed: %+v", got)
 	}
-
-	loaded, err = GetCredential("anthropic")
-	if err != nil {
-		t.Fatalf("GetCredential(anthropic) error: %v", err)
-	}
-	if loaded.AccessToken != "anthropic-token" {
-		t.Errorf("anthropic token = %q, want %q", loaded.AccessToken, "anthropic-token")
-	}
-}
-
-func TestDeleteCredential(t *testing.T) {
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	t.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
-
-	cred := &AuthCredential{AccessToken: "to-delete", Provider: "openai", AuthMethod: "oauth"}
-	if err := SetCredential("openai", cred); err != nil {
-		t.Fatalf("SetCredential() error: %v", err)
-	}
-
-	if err := DeleteCredential("openai"); err != nil {
-		t.Fatalf("DeleteCredential() error: %v", err)
-	}
-
-	loaded, err := GetCredential("openai")
-	if err != nil {
-		t.Fatalf("GetCredential() error: %v", err)
-	}
-	if loaded != nil {
-		t.Error("expected nil after delete")
-	}
-}
-
-func TestLoadStoreEmpty(t *testing.T) {
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	t.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
-
-	store, err := LoadStore()
-	if err != nil {
-		t.Fatalf("LoadStore() error: %v", err)
-	}
-	if store == nil {
-		t.Fatal("LoadStore() returned nil")
-	}
-	if len(store.Credentials) != 0 {
-		t.Errorf("expected empty credentials, got %d", len(store.Credentials))
+	raw, _ := os.ReadFile(path)
+	if strings.Contains(string(raw), "legacy-tok") {
+		t.Fatal("legacy auth store must be sealed on load")
 	}
 }

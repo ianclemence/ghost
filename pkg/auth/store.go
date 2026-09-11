@@ -2,9 +2,12 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/config"
 )
 
 type AuthCredential struct {
@@ -52,6 +55,25 @@ func LoadStore() (*AuthStore, error) {
 		return nil, err
 	}
 
+	if config.IsSealed(data) {
+		key, err := config.MasterKeyFor(path)
+		if err != nil {
+			return nil, err
+		}
+		plain, err := config.Unseal(key, data)
+		if err != nil {
+			return nil, err
+		}
+		var store AuthStore
+		if err := json.Unmarshal(plain, &store); err != nil {
+			return nil, err
+		}
+		if store.Credentials == nil {
+			store.Credentials = make(map[string]*AuthCredential)
+		}
+		return &store, nil
+	}
+
 	var store AuthStore
 	if err := json.Unmarshal(data, &store); err != nil {
 		return nil, err
@@ -59,13 +81,17 @@ func LoadStore() (*AuthStore, error) {
 	if store.Credentials == nil {
 		store.Credentials = make(map[string]*AuthCredential)
 	}
+	if len(store.Credentials) > 0 {
+		// Legacy plaintext store: upgrade to sealed form now.
+		_ = SaveStore(&store)
+	}
 	return &store, nil
 }
 
 func SaveStore(store *AuthStore) error {
 	path := authFilePath()
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 
@@ -73,7 +99,32 @@ func SaveStore(store *AuthStore) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0600)
+	key, err := config.MasterKeyFor(path)
+	if err != nil {
+		return err
+	}
+	sealed, err := config.Seal(key, data)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".auth-*")
+	if err != nil {
+		return fmt.Errorf("create temp auth file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(sealed); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func GetCredential(provider string) (*AuthCredential, error) {

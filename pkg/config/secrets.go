@@ -8,8 +8,9 @@ import (
 )
 
 // Secrets holds sensitive values that must never live in config.json.
-// It is persisted to .secrets.json next to the config file with 0600
-// permissions, using atomic temp-file + rename writes.
+// It is persisted sealed (AES-256-GCM, see vault.go) to .secrets.json next
+// to the config file with 0600 permissions, using atomic temp-file + rename
+// writes. Legacy plaintext files are upgraded to sealed form on load.
 //
 // This is the strict secrets boundary: config.json stores configuration,
 // .secrets.json stores credentials. Mirrors the admin.hash pattern used
@@ -45,7 +46,8 @@ func SecretsPath(configPath string) string {
 }
 
 // LoadSecrets reads secrets from disk. A missing file returns an empty
-// Secrets (no error) so the boundary works on first boot.
+// Secrets (no error) so the boundary works on first boot. Sealed files are
+// decrypted; legacy plaintext files are upgraded to sealed form on load.
 func LoadSecrets(path string) (*Secrets, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -54,6 +56,24 @@ func LoadSecrets(path string) (*Secrets, error) {
 		}
 		return nil, err
 	}
+	if IsSealed(data) {
+		key, err := MasterKeyFor(path)
+		if err != nil {
+			return nil, err
+		}
+		plain, err := Unseal(key, data)
+		if err != nil {
+			return nil, err
+		}
+		var s Secrets
+		if err := json.Unmarshal(plain, &s); err != nil {
+			return nil, err
+		}
+		if s.ProviderAPIKeys == nil {
+			s.ProviderAPIKeys = map[string]string{}
+		}
+		return &s, nil
+	}
 	var s Secrets
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, err
@@ -61,14 +81,47 @@ func LoadSecrets(path string) (*Secrets, error) {
 	if s.ProviderAPIKeys == nil {
 		s.ProviderAPIKeys = map[string]string{}
 	}
+	if !secretsEmpty(&s) {
+		// Legacy plaintext file: upgrade to sealed form now. A failed
+		// upgrade is non-fatal — the next save retries it.
+		_ = SaveSecrets(path, &s)
+	}
 	return &s, nil
 }
 
-// SaveSecrets writes secrets atomically with 0600 permissions.
+// secretsEmpty reports whether a Secrets carries nothing worth sealing.
+func secretsEmpty(s *Secrets) bool {
+	if len(s.ProviderAPIKeys) > 0 {
+		return false
+	}
+	flat := []string{
+		s.TelegramToken, s.DiscordToken, s.SlackBotToken, s.SlackAppToken,
+		s.LINEChannelSecret, s.LINEChannelAccessTok, s.EmailPassword,
+		s.SMSAccountSID, s.SMSAuthToken, s.WeChatSecret, s.WeChatToken,
+		s.WeChatEncodingAESKey, s.BridgeSecret, s.ClawHubAuthToken,
+		s.HonchoAPIKey, s.FirecrawlAPIKey, s.BraveAPIKey, s.RelayDeviceSecret,
+	}
+	for _, v := range flat {
+		if v != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// SaveSecrets seals and writes secrets atomically with 0600 permissions.
 func SaveSecrets(path string, s *Secrets) error {
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal secrets: %w", err)
+	}
+	key, err := MasterKeyFor(path)
+	if err != nil {
+		return err
+	}
+	sealed, err := Seal(key, data)
+	if err != nil {
+		return err
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -80,7 +133,7 @@ func SaveSecrets(path string, s *Secrets) error {
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-	if _, err := tmp.Write(data); err != nil {
+	if _, err := tmp.Write(sealed); err != nil {
 		tmp.Close()
 		return fmt.Errorf("write secrets: %w", err)
 	}
