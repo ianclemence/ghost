@@ -500,6 +500,8 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 			}
 		}
 		fmt.Fprintf(&b, "tools:%d;persona:%s", len(toolsRegistry.List()), contextBuilder.personalityName)
+		// Skill installs/edits/removals rebuild the prompt exactly once.
+		fmt.Fprintf(&b, ";skills:%s", contextBuilder.SkillsVersion())
 		return b.String()
 	})
 
@@ -2010,7 +2012,11 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		// Ensure capability-required tools are visible even if hidden
 		// (e.g. exec is RegisterHidden but every external capability
 		// requires it). Generic: promote whatever the committed
-		// capability allows, so the model can actually execute it.
+		// capability allows, so the model can actually execute it — then
+		// narrow the offered set to exactly the closed execution path.
+		// The execution gate already refuses anything outside it, so
+		// shipping the full core set would be pure token tax (and a wider
+		// confusion surface) with zero additional authority.
 		if capSkill := committedSkill(messages); capSkill != "" {
 			cap := skills.GetCapability(capSkill)
 			for _, toolName := range cap.AllowedTools {
@@ -2020,6 +2026,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					}
 				}
 			}
+			activeTools.RestrictTo(cap.AllowedTools)
 		}
 		// Build tool definitions
 		providerToolDefs := activeTools.ToProviderDefs()

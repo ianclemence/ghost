@@ -89,6 +89,29 @@ func (r *ToolRegistry) Promote(name string) {
 	delete(r.hiddenTools, name)
 }
 
+// RestrictTo narrows the registry to exactly the named tools (footprint
+// ladder: a committed capability ships only its closed execution path on
+// the LLM call instead of the full core+intent set). Unknown names are
+// ignored; policies and schemas for kept tools are preserved. read_file is
+// always retained: the execution gate unconditionally allows it (skill
+// reads are the commitment mechanism itself), so offering must match
+// enforcement exactly.
+func (r *ToolRegistry) RestrictTo(names []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	keep := map[string]bool{"read_file": true}
+	for _, n := range names {
+		keep[n] = true
+	}
+	for name := range r.tools {
+		if !keep[name] {
+			delete(r.tools, name)
+			delete(r.schemas, name)
+			delete(r.hiddenTools, name)
+		}
+	}
+}
+
 func (r *ToolRegistry) SetToolEnabledForChannel(channel, tool string, enabled bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

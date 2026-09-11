@@ -80,3 +80,24 @@ func (s *stubGrantTool) Parameters() map[string]interface{} {
 func (s *stubGrantTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	return &ToolResult{ForLLM: "ok"}
 }
+
+func TestRestrictToKeepsClosedPath(t *testing.T) {
+	r := NewToolRegistry()
+	for _, n := range []string{"read_file", "exec", "web_search", "memory"} {
+		r.Register(&stubGrantTool{name: n})
+	}
+	r.RestrictTo([]string{"exec"})
+	for _, n := range []string{"read_file", "exec"} {
+		if _, ok := r.Get(n); !ok {
+			t.Errorf("RestrictTo must keep %q", n)
+		}
+	}
+	for _, n := range []string{"web_search", "memory"} {
+		if _, ok := r.Get(n); ok {
+			t.Errorf("RestrictTo must drop %q", n)
+		}
+	}
+	if defs := r.ToProviderDefs(); len(defs) != 2 {
+		t.Fatalf("provider defs must shrink to the closed path, got %d", len(defs))
+	}
+}

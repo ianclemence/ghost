@@ -173,6 +173,7 @@ type ClientBinding struct {
 	TokenHash string `json:"token_hash"`
 	Name      string `json:"name,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
+	Scope     string `json:"scope,omitempty"`
 }
 
 // TunnelManager manages active device tunnels.
@@ -286,20 +287,79 @@ func (tm *TunnelManager) GetClients(deviceID string) []ClientBinding {
 // token presented by the app; we hash it and compare against stored hashes
 // using a constant-time comparison.
 func (tm *TunnelManager) AuthClient(deviceID, tokenHex string) bool {
+	_, ok := tm.AuthClientScope(deviceID, tokenHex)
+	return ok
+}
+
+// AuthClientScope authenticates like AuthClient and additionally reports
+// the client's scope for path enforcement. Legacy bindings without a scope
+// authenticate as full.
+func (tm *TunnelManager) AuthClientScope(deviceID, tokenHex string) (string, bool) {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	clients, ok := tm.clients[deviceID]
 	if !ok {
-		return false
+		return "", false
 	}
 	hash := sha256.Sum256([]byte(tokenHex))
 	hashHex := hex.EncodeToString(hash[:])
 	for _, c := range clients {
 		if subtle.ConstantTimeCompare([]byte(c.TokenHash), []byte(hashHex)) == 1 {
-			return true
+			if c.Scope == "" {
+				return proto.ScopeFull, true
+			}
+			return c.Scope, true
 		}
 	}
-	return false
+	return "", false
+}
+
+// scopeChatPaths is the conversational core a chat-scoped app may reach:
+// talk, read history/recall, answer clarifications, and read-only
+// self/model/health introspection. Everything else (exec, pairing,
+// permissions, schedules, config) needs a full-scope token.
+var scopeChatPaths = map[string]map[string]bool{
+	"/v1/chat":             {"GET": true, "POST": true},
+	"/v1/message":          {"GET": true, "POST": true},
+	"/v1/messages":         {"GET": true, "POST": true},
+	"/v1/history":          {"GET": true},
+	"/v1/recall":           {"GET": true, "POST": true},
+	"/v1/clarify/respond":  {"POST": true},
+	"/v1/health":           {"GET": true},
+	"/v1/identity":         {"GET": true},
+	"/v1/model":            {"GET": true},
+	"/v1/activity":         {"GET": true},
+}
+
+// scopeSensitivePrefixes are credential-adjacent paths even readonly
+// clients must not reach over the relay.
+var scopeSensitivePrefixes = []string{
+	"/v1/pairing/",
+	"/v1/permissions/",
+}
+
+// ScopeAllows reports whether a client scope may call method+path.
+// Unknown scopes deny — fail closed.
+func ScopeAllows(scope, method, path string) bool {
+	switch scope {
+	case "", proto.ScopeFull:
+		return true
+	case proto.ScopeReadonly:
+		if method != http.MethodGet {
+			return false
+		}
+		for _, p := range scopeSensitivePrefixes {
+			if strings.HasPrefix(path, p) {
+				return false
+			}
+		}
+		return true
+	case proto.ScopeChat:
+		methods, ok := scopeChatPaths[path]
+		return ok && methods[method]
+	default:
+		return false
+	}
 }
 
 // Config holds relay server configuration.
@@ -559,7 +619,7 @@ func (s *Server) handleDeviceControl(t *DeviceTunnel, f *proto.Frame) {
 	case proto.OpAddClients:
 		bindings := make([]ClientBinding, len(ctrl.Clients))
 		for i, c := range ctrl.Clients {
-			bindings[i] = ClientBinding{TokenHash: c.TokenHash, Name: c.Name}
+			bindings[i] = ClientBinding{TokenHash: c.TokenHash, Name: c.Name, Scope: c.Scope}
 		}
 		s.tunnels.SetClients(t.DeviceID, bindings)
 		_ = proto.WriteCTLWS(t.Conn, 0, &proto.Control{
@@ -806,8 +866,13 @@ func (s *Server) handleAppRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"ghost and token required"}`, http.StatusUnauthorized)
 		return
 	}
-	if !s.tunnels.AuthClient(deviceID, clientToken) {
+	scope, ok := s.tunnels.AuthClientScope(deviceID, clientToken)
+	if !ok {
 		http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+		return
+	}
+	if !ScopeAllows(scope, r.Method, r.URL.Path) {
+		http.Error(w, `{"error":"scope denied"}`, http.StatusForbidden)
 		return
 	}
 

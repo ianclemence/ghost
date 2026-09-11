@@ -995,3 +995,55 @@ func TestErrorResponseJSONSafe(t *testing.T) {
 
 // Ensure strings import is used
 var _ = strings.Contains
+
+func TestScopeAllows(t *testing.T) {
+	cases := []struct {
+		scope, method, path string
+		want                bool
+	}{
+		// Legacy and full: everything.
+		{"", "POST", "/v1/exec", true},
+		{"full", "DELETE", "/v1/pairing/revoke", true},
+		// Chat: conversation only.
+		{"chat", "POST", "/v1/chat", true},
+		{"chat", "POST", "/v1/message", true},
+		{"chat", "GET", "/v1/history", true},
+		{"chat", "POST", "/v1/recall", true},
+		{"chat", "POST", "/v1/clarify/respond", true},
+		{"chat", "GET", "/v1/model", true},
+		{"chat", "POST", "/v1/model", false},
+		{"chat", "POST", "/v1/exec", false},
+		{"chat", "GET", "/v1/exec", false},
+		{"chat", "POST", "/v1/pairing/complete", false},
+		{"chat", "POST", "/v1/permissions/resolve", false},
+		{"chat", "POST", "/v1/cron/jobs", false},
+		// Readonly: GET minus credential-adjacent paths.
+		{"readonly", "GET", "/v1/history", true},
+		{"readonly", "GET", "/v1/model", true},
+		{"readonly", "POST", "/v1/chat", false},
+		{"readonly", "DELETE", "/v1/pairing/revoke", false},
+		{"readonly", "GET", "/v1/pairing/devices", false},
+		{"readonly", "GET", "/v1/permissions/requests", false},
+		// Unknown scopes fail closed.
+		{"admin", "GET", "/v1/health", false},
+		{"CHAT", "POST", "/v1/chat", false},
+	}
+	for _, c := range cases {
+		if got := ScopeAllows(c.scope, c.method, c.path); got != c.want {
+			t.Errorf("ScopeAllows(%q,%q,%q) = %v, want %v", c.scope, c.method, c.path, got, c.want)
+		}
+	}
+}
+
+func TestAuthClientScopeDefaultsFull(t *testing.T) {
+	tm := NewTunnelManager()
+	hash := sha256.Sum256([]byte("legacy-token"))
+	hashHex := hex.EncodeToString(hash[:])
+	tm.SetClients("device-1", []ClientBinding{
+		{TokenHash: hashHex, Name: "old-phone"},
+		{TokenHash: hashHex, Name: "scoped", Scope: "chat"},
+	})
+	if scope, ok := tm.AuthClientScope("device-1", "legacy-token"); !ok || scope != "full" {
+		t.Errorf("legacy binding must authenticate as full, got %q,%v", scope, ok)
+	}
+}

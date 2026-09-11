@@ -202,7 +202,7 @@ func (c *Client) connectAndRun(ctx context.Context) error {
 	} else if len(clients) > 0 {
 		entries := make([]proto.ClientEntry, len(clients))
 		for i, cl := range clients {
-			entries[i] = proto.ClientEntry{TokenHash: cl.TokenHash, Name: cl.Name}
+			entries[i] = proto.ClientEntry{TokenHash: cl.TokenHash, Name: cl.Name, Scope: cl.Scope}
 		}
 		_ = proto.WriteCTLWS(conn, 0, &proto.Control{
 			Op:      proto.OpAddClients,
@@ -495,6 +495,9 @@ type StoredClient struct {
 	Token     string `json:"token,omitempty"` // raw token, shown once during pairing
 	Name      string `json:"name,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
+	// Scope bounds the device API the app may reach via relay
+	// (full|chat|readonly; empty = full legacy behavior).
+	Scope string `json:"scope,omitempty"`
 }
 
 func clientsPath(deviceID string) string {
@@ -554,8 +557,22 @@ func SaveClients(deviceID string, clients []StoredClient) error {
 	return os.Rename(tmpName, path)
 }
 
-// AddClient generates a new client token, stores it, and returns the raw token.
+// AddClient generates a new full-scope client token, stores it, and
+// returns the raw token.
 func AddClient(deviceID, name string) (string, error) {
+	return AddClientScoped(deviceID, name, proto.ScopeFull)
+}
+
+// AddClientScoped generates a new client token with the given scope,
+// stores it, and returns the raw token.
+func AddClientScoped(deviceID, name, scope string) (string, error) {
+	switch scope {
+	case "", proto.ScopeFull:
+		scope = proto.ScopeFull
+	case proto.ScopeChat, proto.ScopeReadonly:
+	default:
+		return "", fmt.Errorf("unknown client scope %q (full|chat|readonly)", scope)
+	}
 	clients, err := loadClients(deviceID)
 	if err != nil {
 		return "", err
@@ -573,6 +590,7 @@ func AddClient(deviceID, name string) (string, error) {
 		Token:     tokenHex,
 		Name:      name,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		Scope:     scope,
 	})
 
 	if err := SaveClients(deviceID, clients); err != nil {

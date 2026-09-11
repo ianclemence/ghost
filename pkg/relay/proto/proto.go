@@ -72,10 +72,21 @@ type Control struct {
 	Message      string        `json:"message,omitempty"`
 }
 
+// Client scopes bound how much of the device API a relayed app may touch.
+// full is the legacy default (everything); chat covers conversation;
+// readonly is GET-only minus credential-adjacent paths. Unknown scope
+// strings are denied — fail closed.
+const (
+	ScopeFull     = "full"
+	ScopeChat     = "chat"
+	ScopeReadonly = "readonly"
+)
+
 // ClientEntry is a allowed client token entry.
 type ClientEntry struct {
 	TokenHash string `json:"token_hash"`
 	Name      string `json:"name,omitempty"`
+	Scope     string `json:"scope,omitempty"`
 }
 
 // Stream metadata for OPEN frames.

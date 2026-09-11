@@ -3,9 +3,11 @@ package skills
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -221,28 +223,86 @@ func (sl *SkillsLoader) LoadSkillsForContext(skillNames []string) string {
 }
 
 func (sl *SkillsLoader) BuildSkillsSummary() string {
+	return sl.BuildSkillsSummaryBudget(SkillsSummaryBudgetChars)
+}
+
+// SkillsSummaryBudgetChars caps the <skills> prompt index (~4 chars/token,
+// so 12000 chars ≈ 3000 tokens). Capability discovery must not grow
+// without bound as skills accumulate: every skill ships on every prompt.
+const SkillsSummaryBudgetChars = 12000
+
+// BuildSkillsSummaryBudget renders the compact skill index in stable
+// (name-sorted) order, truncated to maxChars. Overflow is reported with a
+// recovery path (list_dir on workspace/skills), never silently dropped.
+func (sl *SkillsLoader) BuildSkillsSummaryBudget(maxChars int) string {
 	allSkills := sl.ListSkills()
 	if len(allSkills) == 0 {
 		return ""
 	}
+	sort.Slice(allSkills, func(i, j int) bool { return allSkills[i].Name < allSkills[j].Name })
 
 	// Compact index: name + a short intent + the trigger phrases, so the model
 	// can route quickly without reading a long description for every skill
 	// (the full SKILL.md is read only once a skill is chosen).
 	var lines []string
 	lines = append(lines, "<skills>")
+	included := 0
 	for _, s := range allSkills {
 		intent, triggers := compactSkill(s.Description)
-		lines = append(lines, "  <skill>")
-		lines = append(lines, fmt.Sprintf("    <name>%s</name>", escapeXML(s.Name)))
-		lines = append(lines, fmt.Sprintf("    <intent>%s</intent>", escapeXML(intent)))
-		lines = append(lines, fmt.Sprintf("    <triggers>%s</triggers>", escapeXML(triggers)))
-		lines = append(lines, fmt.Sprintf("    <location>%s</location>", escapeXML(s.Path)))
-		lines = append(lines, "  </skill>")
+		block := []string{
+			"  <skill>",
+			fmt.Sprintf("    <name>%s</name>", escapeXML(s.Name)),
+			fmt.Sprintf("    <intent>%s</intent>", escapeXML(intent)),
+			fmt.Sprintf("    <triggers>%s</triggers>", escapeXML(triggers)),
+			fmt.Sprintf("    <location>%s</location>", escapeXML(s.Path)),
+			"  </skill>",
+		}
+		if maxChars > 0 && included > 0 {
+			proj := 0
+			for _, l := range lines {
+				proj += len(l) + 1
+			}
+			for _, l := range block {
+				proj += len(l) + 1
+			}
+			if proj > maxChars {
+				break
+			}
+		}
+		lines = append(lines, block...)
+		included++
+	}
+	if included < len(allSkills) {
+		lines = append(lines, fmt.Sprintf("  <!-- +%d more skills installed (index budget %d chars). Browse workspace/skills with list_dir to discover the rest. -->", len(allSkills)-included, maxChars))
 	}
 	lines = append(lines, "</skills>")
 
 	return strings.Join(lines, "\n")
+}
+
+// Version returns a cheap fingerprint of the installed skill set (names +
+// SKILL.md mtimes). It feeds the system-prompt cache key so skill installs,
+// removals, and edits rebuild the prompt exactly once — stable across
+// turns, correct across changes.
+func (sl *SkillsLoader) Version() string {
+	skills := sl.ListSkills()
+	h := fnv.New64a()
+	fmt.Fprintf(h, "n=%d;", len(skills))
+	names := make([]string, 0, len(skills))
+	byName := make(map[string]SkillInfo, len(skills))
+	for _, s := range skills {
+		names = append(names, s.Name)
+		byName[s.Name] = s
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		var mtime int64
+		if fi, err := os.Stat(byName[n].Path); err == nil {
+			mtime = fi.ModTime().UnixNano()
+		}
+		fmt.Fprintf(h, "%s:%d;", n, mtime)
+	}
+	return fmt.Sprintf("%x", h.Sum64())
 }
 
 // compactSkill reduces a skill description to a short intent plus the quoted

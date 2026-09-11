@@ -43,6 +43,16 @@ func (cb *ContextBuilder) SetPromptCache(c *contextcache.Cache, version func() s
 	cb.promptVersion = version
 }
 
+// SkillsVersion fingerprints the installed skill set for the system-prompt
+// cache key: skill installs/edits/removals rebuild the prompt exactly once
+// instead of serving stale indexes or churning the cache every turn.
+func (cb *ContextBuilder) SkillsVersion() string {
+	if cb.skillsLoader == nil {
+		return "noskills"
+	}
+	return cb.skillsLoader.Version()
+}
+
 func getGlobalConfigDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
