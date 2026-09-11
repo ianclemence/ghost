@@ -347,3 +347,83 @@ func TestLocationFallbackFillsHere(t *testing.T) {
 		t.Fatalf("must not invent a location, got %q", got["location"])
 	}
 }
+
+func TestSupersedeSemanticCorrection(t *testing.T) {
+	ws := t.TempDir()
+	store, err := personalcontext.Open(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	al := &AgentLoop{pcStore: store}
+	now := time.Now().UTC()
+	mkEntry := func(id, val, status string) personalcontext.Entry {
+		raw, _ := personalcontext.RawValue(val)
+		return personalcontext.Entry{ID: id, Kind: personalcontext.KindFact,
+			Subject: "user", Predicate: "fact/work", Value: raw,
+			Status: personalcontext.Status(status), Confidence: 0.9,
+			Sources: []personalcontext.Source{{Type: personalcontext.SourceConversation,
+				Kind: personalcontext.SourceUserDeclared, Ref: "t:1", Timestamp: now}},
+			CreatedAt: now, UpdatedAt: now}
+	}
+	if _, err := store.Create(mkEntry("old", "I work remotely", "current")); err != nil {
+		t.Fatal(err)
+	}
+	current := store.Current()
+
+	// Same value: restatement, not a correction.
+	if al.supersedeSemanticCorrection(current, mkEntry("new1", "I work remotely", "current")) {
+		t.Fatal("identical value must not supersede")
+	}
+	// Uncertain candidate: must never evict a belief.
+	if al.supersedeSemanticCorrection(current, mkEntry("new2", "I do not work remotely", "uncertain")) {
+		t.Fatal("uncertain extraction must not supersede")
+	}
+	// Genuine correction: retires the old row, single current survives.
+	if !al.supersedeSemanticCorrection(current, mkEntry("new3", "I do not work remotely", "current")) {
+		t.Fatal("contradicting current extraction must supersede")
+	}
+	got, ok := store.Get("old")
+	if !ok || got.Status != personalcontext.StatusSuperseded {
+		t.Fatalf("old entry must be superseded, got %+v", got)
+	}
+	n := 0
+	for _, e := range store.Current() {
+		if e.Subject == "user" && e.Predicate == "fact/work" && e.Status == personalcontext.StatusCurrent {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("exactly one current fact/work must survive, got %d", n)
+	}
+}
+
+func TestSupersedeRefusesAmbiguousStore(t *testing.T) {
+	ws := t.TempDir()
+	store, err := personalcontext.Open(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	al := &AgentLoop{pcStore: store}
+	now := time.Now().UTC()
+	mkEntry := func(id, val string) personalcontext.Entry {
+		raw, _ := personalcontext.RawValue(val)
+		return personalcontext.Entry{ID: id, Kind: personalcontext.KindFact,
+			Subject: "user", Predicate: "fact/work", Value: raw,
+			Status: personalcontext.StatusCurrent, Confidence: 0.9,
+			Sources: []personalcontext.Source{{Type: personalcontext.SourceConversation,
+				Kind: personalcontext.SourceUserDeclared, Ref: "t:1", Timestamp: now}},
+			CreatedAt: now, UpdatedAt: now}
+	}
+	// Two currents for one belief (pre-existing inconsistency): refuse to
+	// pick a winner blindly.
+	if _, err := store.Create(mkEntry("a", "I work remotely")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(mkEntry("b", "I work on-site")); err != nil {
+		t.Fatal(err)
+	}
+	current := store.Current()
+	if al.supersedeSemanticCorrection(current, mkEntry("c", "I do not work remotely")) {
+		t.Fatal("ambiguous store-wide current must not be superseded")
+	}
+}

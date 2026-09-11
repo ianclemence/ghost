@@ -106,25 +106,19 @@ func (al *AgentLoop) SetComputerExecutor(c computer.Computer) {
 	al.setTestComputer(c)
 }
 
-var (
-	computerLeaseOnce sync.Once
-	computerLeaseInst *computer.LeaseStore
-	computerLeaseErr  error
-)
-
 func (al *AgentLoop) computerLeaseStore() (*computer.LeaseStore, error) {
 	if al == nil || al.db == nil || al.db.DB == nil {
 		return nil, fmt.Errorf("no database")
 	}
-	computerLeaseOnce.Do(func() {
+	al.computerLeaseOnce.Do(func() {
 		s, err := computer.NewLeaseStore(al.db.DB)
 		if err != nil {
-			computerLeaseErr = err
+			al.computerLeaseErr = err
 			return
 		}
-		computerLeaseInst = s
+		al.computerLeaseInst = s
 	})
-	return computerLeaseInst, computerLeaseErr
+	return al.computerLeaseInst, al.computerLeaseErr
 }
 
 // RecoverStaleLeases expires any computer lease left active by a crash.

@@ -26,6 +26,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/commands"
+	"github.com/ianclemence/ghost/pkg/computer"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/contextcache"
@@ -141,6 +142,14 @@ type AgentLoop struct {
 	browserSessionsOnce sync.Once
 	browserSessionsInst *browser.SessionStore
 	browserSessionsErr  error
+
+	// computerLeaseInst is the computer lease ledger for this loop's
+	// database, opened lazily by the computer gate. Per-loop (like browser
+	// sessions): a package-level singleton would leak leases across loops
+	// sharing one process, so one golden case could lock out the next.
+	computerLeaseOnce sync.Once
+	computerLeaseInst *computer.LeaseStore
+	computerLeaseErr  error
 
 	// noticer is the value gate for proactive behaviour ("proactive ≠ noisy").
 	noticer *Noticer
@@ -1632,6 +1641,24 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 				entry.Sources[0].Ref = fmt.Sprintf("%s:%s", opts.SessionKey, msgID)
 				if al.governance != nil {
 					entry.Scopes = al.governance.SessionWriteScopes(opts.SessionKey)
+				}
+				// Correction, not accumulation: a current entry for the same
+				// belief with a different value means the user changed their
+				// mind. Retire it via supersede so exactly one current row
+				// survives — the same rule the deterministic extractor
+				// enforces. Only current-status extractions supersede, and
+				// only when the conflicting row is the unambiguous
+				// store-wide current (never retire a fact from a context we
+				// cannot see).
+				if entry.Status == personalcontext.StatusCurrent &&
+					al.supersedeSemanticCorrection(current, entry) {
+					if al.events != nil {
+						al.events.emit(EventMemoryUpdated, "", map[string]interface{}{
+							"session_key": opts.SessionKey,
+							"method":      "semantic",
+						})
+					}
+					continue
 				}
 				if _, err := al.pcStore.Create(entry); err != nil {
 					logger.WarnCF("agent", "Failed to persist semantic extraction", map[string]interface{}{

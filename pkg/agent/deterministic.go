@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
@@ -544,6 +545,47 @@ func (al *AgentLoop) knownLocation(session string) string {
 		}
 	}
 	return ""
+}
+
+// supersedeSemanticCorrection retires a same-belief current entry when a new
+// current-status semantic extraction contradicts it, returning true when it
+// did. Guards: the conflicting row must be visible in the caller's scopes
+// AND be the unambiguous store-wide current, so a personal turn can never
+// retire a work-scoped fact it cannot see. Uncertain extractions never
+// supersede — a candidate must not evict a belief.
+func (al *AgentLoop) supersedeSemanticCorrection(current []personalcontext.Entry, entry personalcontext.Entry) bool {
+	if al == nil || al.pcStore == nil {
+		return false
+	}
+	var conflict *personalcontext.Entry
+	for i := range current {
+		ce := &current[i]
+		if ce.Status == personalcontext.StatusCurrent && ce.Subject == entry.Subject &&
+			ce.Predicate == entry.Predicate &&
+			personalcontext.Value(*ce) != personalcontext.Value(entry) {
+			conflict = ce
+			break
+		}
+	}
+	if conflict == nil {
+		return false
+	}
+	for _, ce := range al.pcStore.Current() {
+		if ce.Subject == entry.Subject && ce.Predicate == entry.Predicate &&
+			ce.Status == personalcontext.StatusCurrent && ce.ID != conflict.ID {
+			return false
+		}
+	}
+	if _, err := al.pcStore.Supersede(entry.Subject, entry.Predicate, entry); err != nil {
+		logger.WarnCF("agent", "semantic correction supersede failed", map[string]interface{}{
+			"predicate": entry.Predicate, "error": err.Error(),
+		})
+		return false
+	}
+	logger.InfoCF("agent", "semantic correction superseded prior belief", map[string]interface{}{
+		"predicate": entry.Predicate, "retired": conflict.ID,
+	})
+	return true
 }
 
 // locationWithMemoryFallback fills a missing location from a "here"-style

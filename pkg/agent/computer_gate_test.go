@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/computer"
+	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/live"
 )
 
@@ -250,5 +251,40 @@ func TestBrowserGatePausedByLiveSurfaceTakeover(t *testing.T) {
 	}
 	if !allow() {
 		t.Fatal("after revalidated resume ghost may observe the browser again")
+	}
+}
+
+// TestComputerLeaseStorePerLoop proves lease ledgers are memoized per
+// AgentLoop, not shared process-wide: a lease acquired through one loop's
+// store must never block an unrelated loop (this leaked golden computer
+// cases into each other, failing G062 with "locked by another task").
+func TestComputerLeaseStorePerLoop(t *testing.T) {
+	mkLoop := func() *AgentLoop {
+		t.Helper()
+		database, err := db.NewDB(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { database.Close() })
+		return &AgentLoop{db: database}
+	}
+	al1, al2 := mkLoop(), mkLoop()
+	s1, err := al1.computerLeaseStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, err := al2.computerLeaseStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s1 == s2 {
+		t.Fatal("loops must not share a lease store instance")
+	}
+	if _, err := s1.Acquire("res-1", "o1", "task-1", "sess-1", "ctx", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	// Same resource through the other loop's store must be free.
+	if _, err := s2.Acquire("res-1", "o2", "task-2", "sess-2", "ctx", time.Minute); err != nil {
+		t.Fatalf("second loop must not see the first loop's lease: %v", err)
 	}
 }

@@ -109,7 +109,10 @@ func behavioralMemory() []Conversation {
 				turn("Remember that I work remotely."),
 				turn("Actually, I don't work remotely anymore. Remember that."),
 				turn("Do I work remotely?")),
-			Expect{MemoryValueCurrent: []Match{{Value: "no longer"}}}),
+			// The stale belief must be retired (superseded), not left active
+			// beside the correction. This matches the old row's wording,
+			// which is stable regardless of how the correction is phrased.
+			Expect{MemorySuperseded: []Match{{Value: "work remotely"}}}),
 		bc("G014", FamilyMemory, "Multi-turn fact accumulation", TierL3,
 			[]Style{StyleCasual}, memDims,
 			onePerson("maya", "maya",
