@@ -314,6 +314,26 @@ func (s *Store) RetrieveScoped(ctx context.Context, query string, limit int, sco
 	return finalResults, nil
 }
 
+// trustForSource maps a chunk's ingest source to retrieval trust.
+// Model-written memory is inference; web-derived content is untrusted;
+// anything else keeps the conservative unknown. The mapping is prefix
+// based so scope tags (source@scope) never affect it.
+func trustForSource(source string) string {
+	base := source
+	if idx := strings.Index(source, scopeTagSep); idx >= 0 {
+		base = source[:idx]
+	}
+	if strings.Contains(base, "+web") || strings.HasPrefix(base, "web") ||
+		strings.HasPrefix(base, "fetch") || strings.HasPrefix(base, "scrape") {
+		return "untrusted"
+	}
+	switch base {
+	case "memory_tool", "journal", "curate", "auto_journal":
+		return "inferred"
+	}
+	return "unknown"
+}
+
 // rankResults re-orders a coarse candidate pool with the deterministic
 // retrieval scorer and truncates to limit. It never drops a candidate's
 // provenance; it only orders and bounds.
@@ -333,7 +353,7 @@ func rankResults(results []SearchResult, query string, limit int) []SearchResult
 			Source:     r.Source,
 			CreatedAt:  r.CreatedAt,
 			Similarity: float64(r.Score),
-			Trust:      "unknown",
+			Trust:      trustForSource(r.Source),
 		})
 	}
 	ranked := retrieval.Rank(cands, query, now, retrieval.DefaultWeights(), limit)

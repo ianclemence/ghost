@@ -23,7 +23,7 @@ type Candidate struct {
 	CreatedAt  time.Time
 	Similarity float64 // semantic similarity, 0..1
 	Confidence float64 // belief confidence, 0..1 (0 = unknown)
-	Trust      string  // canonical | observed | inferred | unknown
+	Trust      string  // canonical | observed | inferred | untrusted | unknown
 	Superseded bool    // retired belief: strong negative signal
 }
 
@@ -75,7 +75,8 @@ type Components struct {
 // SourceQuality maps provenance trust to a [0,1] quality score. Canonical user
 // statements outrank observations, which outrank model inference. Unknown
 // (legacy, no provenance) sits between observed and inferred: not fabricated,
-// not dismissed.
+// not dismissed. Untrusted (network-origin, no user confirmation) ranks
+// below everything: retrievable, but never winning ties.
 func SourceQuality(trust string) float64 {
 	switch strings.ToLower(strings.TrimSpace(trust)) {
 	case "canonical":
@@ -84,6 +85,8 @@ func SourceQuality(trust string) float64 {
 		return 0.7
 	case "inferred":
 		return 0.3
+	case "untrusted":
+		return 0.1
 	default:
 		return 0.4
 	}

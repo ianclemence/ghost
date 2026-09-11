@@ -60,6 +60,10 @@ const (
 	SourceImport         SourceType = "import"
 	SourceManualEdit     SourceType = "manual_edit"
 	SourceAgentInference SourceType = "agent_inference"
+	// SourceWeb is network-fetched content (web search/fetch, scraper).
+	// Adversary-controlled bytes until a user confirms them: always
+	// tainted, never authority.
+	SourceWeb SourceType = "web"
 )
 
 // SourceKind describes how the evidence established the entry.

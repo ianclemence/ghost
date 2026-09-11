@@ -39,16 +39,30 @@ const (
 	// TrustInferred: produced by model inference/summary — evidence, not
 	// authority, until confirmed.
 	TrustInferred Trust = "inferred"
+	// TrustUntrusted: network-origin content no user confirmed. Retrievable,
+	// rankable, but never promotable: a poisoned page must not become truth
+	// by confidence score. Only a stronger (canonical/observed) source on
+	// the same entry lifts it.
+	TrustUntrusted Trust = "untrusted"
 	// TrustUnknown: legacy record with no provenance. Treated conservatively;
 	// provenance is never manufactured to fill the gap.
 	TrustUnknown Trust = "unknown"
 )
 
 // ProvenanceClass derives the trust class from an entry's strongest source.
-// A single canonical source outranks any number of inferred ones.
+// A single canonical source outranks any number of inferred ones. A web
+// source taints only when nothing stronger exists: user confirmation of a
+// web fact upgrades the entry normally.
 func ProvenanceClass(e Entry) Trust {
 	best := TrustUnknown
+	tainted := false
 	for _, src := range e.Sources {
+		// Origin dominates the kind label: a web source taints even when
+		// described as inferred. Only explicit user authority or
+		// non-model evidence outranks the taint.
+		if src.Type == SourceWeb {
+			tainted = true
+		}
 		switch {
 		case src.Kind == SourceUserDeclared || src.Kind == SourceUserCorrected ||
 			src.Kind == SourceManual || src.Type == SourceManualEdit:
@@ -63,6 +77,9 @@ func ProvenanceClass(e Entry) Trust {
 				best = TrustInferred
 			}
 		}
+	}
+	if tainted && (best == TrustUnknown || best == TrustInferred) {
+		return TrustUntrusted
 	}
 	return best
 }
@@ -98,6 +115,8 @@ type PromotionDecision struct {
 // the entry. Trust classes:
 //   - canonical/observed: promoted as current.
 //   - inferred: promoted only at or above MinInferredConfidence, else uncertain.
+//   - untrusted (network origin, unconfirmed): NEVER promoted, at any
+//     confidence — held as a candidate until the user confirms it.
 //   - unknown (no provenance): held as uncertain; provenance is not invented.
 func (p PromotionPolicy) Evaluate(e Entry) PromotionDecision {
 	threshold := p.MinInferredConfidence
@@ -109,6 +128,8 @@ func (p PromotionPolicy) Evaluate(e Entry) PromotionDecision {
 		return PromotionDecision{Promote: true, Status: StatusCurrent, Reason: "explicit user or manual provenance"}
 	case TrustObserved:
 		return PromotionDecision{Promote: true, Status: StatusCurrent, Reason: "non-model evidence"}
+	case TrustUntrusted:
+		return PromotionDecision{Promote: false, Status: StatusUncertain, Reason: "untrusted network origin; held until user-confirmed"}
 	case TrustInferred:
 		if e.Confidence >= threshold {
 			return PromotionDecision{Promote: true, Status: StatusCurrent, Reason: fmt.Sprintf("inference at confidence %.2f >= %.2f", e.Confidence, threshold)}

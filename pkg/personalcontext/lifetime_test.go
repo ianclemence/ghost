@@ -22,6 +22,15 @@ func TestProvenanceClass(t *testing.T) {
 		{"document", []Source{{Type: SourceDocument, Kind: SourceImported}}, TrustObserved},
 		{"import", []Source{{Type: SourceImport, Kind: SourceImported}}, TrustObserved},
 		{"inferred", []Source{{Type: SourceAgentInference, Kind: SourceInferred}}, TrustInferred},
+		{"web fetch alone is untrusted", []Source{{Type: SourceWeb, Kind: SourceInferred}}, TrustUntrusted},
+		{"web plus inference is still untrusted", []Source{
+			{Type: SourceWeb, Kind: SourceInferred},
+			{Type: SourceAgentInference, Kind: SourceInferred},
+		}, TrustUntrusted},
+		{"user confirming a web fact lifts it", []Source{
+			{Type: SourceWeb, Kind: SourceInferred},
+			{Type: SourceConversation, Kind: SourceUserDeclared},
+		}, TrustCanonical},
 		{"no provenance", nil, TrustUnknown},
 		{"inferred plus declared is canonical", []Source{
 			{Type: SourceAgentInference, Kind: SourceInferred},
@@ -49,6 +58,11 @@ func TestPromotionPolicy(t *testing.T) {
 		{"observed evidence", Entry{Confidence: 0.4, Sources: []Source{{Type: SourceDocument, Kind: SourceImported}}}, true, StatusCurrent},
 		{"confident inference", Entry{Confidence: 0.9, Sources: []Source{inferredSource()}}, true, StatusCurrent},
 		{"weak inference held back", Entry{Confidence: 0.2, Sources: []Source{inferredSource()}}, false, StatusUncertain},
+		{"web fact never promotes, even at full confidence", Entry{Confidence: 1, Sources: []Source{{Type: SourceWeb, Kind: SourceInferred}}}, false, StatusUncertain},
+		{"user-confirmed web fact promotes", Entry{Confidence: 0.9, Sources: []Source{
+			{Type: SourceWeb, Kind: SourceInferred},
+			{Type: SourceConversation, Kind: SourceUserDeclared},
+		}}, true, StatusCurrent},
 		{"no provenance held back", Entry{Confidence: 1}, false, StatusUncertain},
 	}
 	for _, c := range cases {

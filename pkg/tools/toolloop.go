@@ -115,6 +115,9 @@ type ToolLoopResult struct {
 func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []providers.Message, channel, chatID string) (*ToolLoopResult, error) {
 	iteration := 0
 	var finalContent string
+	// turnTouchedWeb taints downstream memory writes once the turn has
+	// touched the network (same rule as the main agent loop).
+	turnTouchedWeb := false
 
 	for iteration < config.MaxIterations {
 		iteration++
@@ -203,6 +206,14 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 				})
 
 			// Execute tool (no async callback for subagents - they run independently)
+			// Web-derived taint applies here exactly as in the main loop.
+			callCtx := ctx
+			if turnTouchedWeb {
+				callCtx = WithWebDerived(ctx)
+			}
+			if IsWebTool(tc.Name) {
+				turnTouchedWeb = true
+			}
 			var toolResult *ToolResult
 			if isComputerToolName(tc.Name) {
 				// Computer control is a main-agent capability; a subagent
@@ -211,11 +222,11 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 				// subagent rather than creating an ungoverned alternate.
 				toolResult = ErrorResult("Computer operations are not authorized for a subagent. Nothing was run.")
 			} else if isBrowserToolName(tc.Name) {
-				toolResult = executeSubagentBrowser(ctx, config, tc, channel, chatID)
+				toolResult = executeSubagentBrowser(callCtx, config, tc, channel, chatID)
 			} else if toolsFreeConsequential(tc.Name) {
-				toolResult = executeSubagentConsequential(ctx, config, tc, channel, chatID)
+				toolResult = executeSubagentConsequential(callCtx, config, tc, channel, chatID)
 			} else if config.Tools != nil {
-				toolResult = config.Tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, channel, chatID, "", nil)
+				toolResult = config.Tools.ExecuteWithContext(callCtx, tc.Name, tc.Arguments, channel, chatID, "", nil)
 			} else {
 				toolResult = ErrorResult("No tools available")
 			}

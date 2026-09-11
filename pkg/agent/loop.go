@@ -1984,6 +1984,10 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	// cost can be observed (P8), not guessed.
 	var promptTokens, completionTokens, totalTokens int
 	var usedTools []string
+	// turnTouchedWeb tracks whether this turn has executed a network tool.
+	// Memory written after that point is web-derived (tainted): the model
+	// may be laundering adversary-controlled bytes into recall.
+	turnTouchedWeb := false
 	// Generic capability attempt tracking: bounds primary -> fallback ->
 	// clean failure. No per-skill counters.
 	capViolations := map[string]int{}
@@ -2225,6 +2229,14 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			// rule as the browser/computer gates).
 			if al.governance != nil {
 				toolCtx = tools.GrantExec(toolCtx, tc.Name)
+			}
+			// Web-derived taint: once the turn touches the network,
+			// downstream memory writes carry the taint.
+			if turnTouchedWeb {
+				toolCtx = tools.WithWebDerived(toolCtx)
+			}
+			if tools.IsWebTool(tc.Name) {
+				turnTouchedWeb = true
 			}
 			var toolResult *tools.ToolResult
 			toolGoverned, toolStop := false, false

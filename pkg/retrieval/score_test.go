@@ -12,6 +12,12 @@ func TestSourceQualityOrdering(t *testing.T) {
 	if SourceQuality("observed") <= SourceQuality("inferred") {
 		t.Fatal("observed must outrank inferred")
 	}
+	if SourceQuality("inferred") <= SourceQuality("untrusted") {
+		t.Fatal("inferred must outrank untrusted network content")
+	}
+	if SourceQuality("untrusted") >= SourceQuality("unknown") {
+		t.Fatal("untrusted must rank below unknown legacy content")
+	}
 	if SourceQuality("nonsense") != SourceQuality("unknown") {
 		t.Fatal("unknown trust must map to the neutral default")
 	}
