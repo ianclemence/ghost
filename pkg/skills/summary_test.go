@@ -78,3 +78,74 @@ func TestSkillsVersion(t *testing.T) {
 		t.Fatalf("removal must restore the original version: %q vs %q vs %q", v1, v2, v3)
 	}
 }
+
+func TestParseListField(t *testing.T) {
+	m := map[string]string{
+		"commands":     "[python, curl]",
+		"requires_env": "[OPENWEATHER_API_KEY, EXTRA]",
+		"empty":        "[]",
+	}
+	if got := parseListField(m, "commands"); len(got) != 2 || got[0] != "python" || got[1] != "curl" {
+		t.Fatalf("commands parse: %v", got)
+	}
+	if got := parseListField(m, "requires_env"); len(got) != 2 || got[0] != "OPENWEATHER_API_KEY" {
+		t.Fatalf("env parse: %v", got)
+	}
+	if got := parseListField(m, "empty"); got != nil {
+		t.Fatalf("empty list must be nil: %v", got)
+	}
+	if got := parseListField(m, "missing"); got != nil {
+		t.Fatalf("missing key must be nil: %v", got)
+	}
+}
+
+// A skill whose declared fallback binary is absent renders a fallback note;
+// one whose requirements are satisfied does not.
+func TestRequirementGatingNote(t *testing.T) {
+	present := "sh"
+	absent := "ghost-definitely-not-a-real-binary-xyz"
+
+	okInfo := SkillInfo{Name: "ok", RequiresBins: []string{present}}
+	if note := requirementNote(okInfo); note != "" {
+		t.Fatalf("satisfied requirement must not note: %q", note)
+	}
+
+	badInfo := SkillInfo{Name: "bad", RequiresBins: []string{absent + " --flag"}}
+	note := requirementNote(badInfo)
+	if !strings.Contains(note, absent) || !strings.Contains(note, "fallback unavailable") {
+		t.Fatalf("unmet requirement must note: %q", note)
+	}
+	if strings.Contains(note, "--flag") {
+		t.Fatalf("note must name the binary, not its flags: %q", note)
+	}
+}
+
+// The frontmatter parser surfaces nested prerequisites into RequiresBins so
+// the gating note has data to work with.
+func TestMetadataParsesPrerequisites(t *testing.T) {
+	ws := t.TempDir()
+	dir := filepath.Join(ws, "skills", "needsbin")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nname: needsbin\ndescription: x\nprerequisites:\n  commands: [ghost-nope-binary]\nrequires_env: [GHOST_TEST_ENV_VAR]\n---\n\n# x\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sl := NewSkillsLoader(ws, "", "")
+	infos := sl.ListSkills()
+	if len(infos) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(infos))
+	}
+	if len(infos[0].RequiresBins) != 1 || infos[0].RequiresBins[0] != "ghost-nope-binary" {
+		t.Fatalf("requires bins not parsed: %+v", infos[0].RequiresBins)
+	}
+	if len(infos[0].RequiresEnv) != 1 || infos[0].RequiresEnv[0] != "GHOST_TEST_ENV_VAR" {
+		t.Fatalf("requires env not parsed: %+v", infos[0].RequiresEnv)
+	}
+	// And the note renders through the summary.
+	summary := sl.BuildSkillsSummaryBudget(0)
+	if !strings.Contains(summary, "<fallback>") || !strings.Contains(summary, "ghost-nope-binary") {
+		t.Fatalf("summary must carry the fallback note: %q", summary)
+	}
+}

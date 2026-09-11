@@ -5,24 +5,36 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
 type SkillMetadata struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Schedule    string `json:"schedule,omitempty"`
+	// RequiresBins lists external binaries the skill's fallback path
+	// needs (parsed from `commands: [...]`, nested or top-level).
+	RequiresBins []string `json:"requires_bins,omitempty"`
+	// RequiresEnv lists env vars the fallback path needs (top-level
+	// `requires_env: [...]`). Preferred-path tools check their own
+	// credentials at runtime; these gate only the fallback.
+	RequiresEnv []string `json:"requires_env,omitempty"`
 }
 
 type SkillInfo struct {
-	Name        string `json:"name"`
-	Path        string `json:"path"`
-	Source      string `json:"source"`
-	Description string `json:"description"`
-	Schedule    string `json:"schedule,omitempty"`
+	Name         string   `json:"name"`
+	Path         string   `json:"path"`
+	Source       string   `json:"source"`
+	Description  string   `json:"description"`
+	Schedule     string   `json:"schedule,omitempty"`
+	RequiresBins []string `json:"requires_bins,omitempty"`
+	RequiresEnv  []string `json:"requires_env,omitempty"`
 }
 
 type SkillsLoader struct {
@@ -69,6 +81,8 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 								if metadata != nil {
 									info.Description = metadata.Description
 									info.Schedule = metadata.Schedule
+									info.RequiresBins = metadata.RequiresBins
+									info.RequiresEnv = metadata.RequiresEnv
 								}
 								// Only append if there isn't one already added with same name?
 								// Just append.
@@ -91,6 +105,8 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 						if metadata != nil {
 							info.Description = metadata.Description
 							info.Schedule = metadata.Schedule
+							info.RequiresBins = metadata.RequiresBins
+							info.RequiresEnv = metadata.RequiresEnv
 						}
 						skills = append(skills, info)
 					}
@@ -126,6 +142,8 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 						metadata := sl.getSkillMetadata(skillFile)
 						if metadata != nil {
 							info.Description = metadata.Description
+							info.RequiresBins = metadata.RequiresBins
+							info.RequiresEnv = metadata.RequiresEnv
 						}
 						skills = append(skills, info)
 					}
@@ -160,6 +178,8 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 						metadata := sl.getSkillMetadata(skillFile)
 						if metadata != nil {
 							info.Description = metadata.Description
+							info.RequiresBins = metadata.RequiresBins
+							info.RequiresEnv = metadata.RequiresEnv
 						}
 						skills = append(skills, info)
 					}
@@ -255,8 +275,15 @@ func (sl *SkillsLoader) BuildSkillsSummaryBudget(maxChars int) string {
 			fmt.Sprintf("    <intent>%s</intent>", escapeXML(intent)),
 			fmt.Sprintf("    <triggers>%s</triggers>", escapeXML(triggers)),
 			fmt.Sprintf("    <location>%s</location>", escapeXML(s.Path)),
-			"  </skill>",
 		}
+		// Requirement gating: when a skill's declared fallback needs a
+		// binary/env this machine lacks, say so up front. The preferred
+		// tool path may still work; this only stops the model from
+		// walking into a fallback it cannot run.
+		if note := requirementNote(s); note != "" {
+			block = append(block, fmt.Sprintf("    <fallback>%s</fallback>", escapeXML(note)))
+		}
+		block = append(block, "  </skill>")
 		if maxChars > 0 && included > 0 {
 			proj := 0
 			for _, l := range lines {
@@ -280,10 +307,66 @@ func (sl *SkillsLoader) BuildSkillsSummaryBudget(maxChars int) string {
 	return strings.Join(lines, "\n")
 }
 
-// Version returns a cheap fingerprint of the installed skill set (names +
-// SKILL.md mtimes). It feeds the system-prompt cache key so skill installs,
-// removals, and edits rebuild the prompt exactly once — stable across
-// turns, correct across changes.
+// requirementsCache memoizes binary/env presence: prompt builds run per
+// turn and must not stat PATH dozens of times each.
+var requirementsCache = struct {
+	sync.Mutex
+	at   time.Time
+	bins map[string]bool
+}{bins: map[string]bool{}}
+
+// CheckRequirements reports which of the skill's declared fallback
+// requirements are unmet on this machine: missing binaries (first word of
+// each entry — flags are not binaries) and empty env vars. Results cache
+// for a minute.
+func CheckRequirements(info SkillInfo) (missingBins, missingEnv []string) {
+	requirementsCache.Lock()
+	if time.Since(requirementsCache.at) >= time.Minute {
+		requirementsCache.bins = map[string]bool{}
+		requirementsCache.at = time.Now()
+	}
+	for _, entry := range info.RequiresBins {
+		bin := entry
+		if f := strings.Fields(bin); len(f) > 0 {
+			bin = f[0]
+		}
+		present, ok := requirementsCache.bins[bin]
+		if !ok {
+			_, err := exec.LookPath(bin)
+			present = err == nil
+			requirementsCache.bins[bin] = present
+		}
+		if !present {
+			missingBins = append(missingBins, bin)
+		}
+	}
+	requirementsCache.Unlock()
+	for _, key := range info.RequiresEnv {
+		if strings.TrimSpace(os.Getenv(key)) == "" {
+			missingEnv = append(missingEnv, key)
+		}
+	}
+	return missingBins, missingEnv
+}
+
+// requirementNote renders the one-line fallback availability note for a
+// skill, or "" when the fallback's requirements are satisfied (or none are
+// declared). Kept short so it fits the prompt index budget.
+func requirementNote(info SkillInfo) string {
+	missingBins, missingEnv := CheckRequirements(info)
+	if len(missingBins) == 0 && len(missingEnv) == 0 {
+		return ""
+	}
+	var parts []string
+	if len(missingBins) > 0 {
+		parts = append(parts, "missing binary "+strings.Join(missingBins, ", "))
+	}
+	if len(missingEnv) > 0 {
+		parts = append(parts, "missing env "+strings.Join(missingEnv, ", "))
+	}
+	return "fallback unavailable (" + strings.Join(parts, "; ") + "); use the preferred tool path"
+}
+
 func (sl *SkillsLoader) Version() string {
 	skills := sl.ListSkills()
 	h := fnv.New64a()
@@ -359,25 +442,57 @@ func (sl *SkillsLoader) getSkillMetadata(skillPath string) *SkillMetadata {
 
 	// Try JSON first (for backward compatibility)
 	var jsonMeta struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Schedule    string `json:"schedule"`
+		Name         string   `json:"name"`
+		Description  string   `json:"description"`
+		Schedule     string   `json:"schedule"`
+		RequiresBins []string `json:"requires_bins"`
+		RequiresEnv  []string `json:"requires_env"`
 	}
 	if err := json.Unmarshal([]byte(frontmatter), &jsonMeta); err == nil {
 		return &SkillMetadata{
-			Name:        jsonMeta.Name,
-			Description: jsonMeta.Description,
-			Schedule:    jsonMeta.Schedule,
+			Name:         jsonMeta.Name,
+			Description:  jsonMeta.Description,
+			Schedule:     jsonMeta.Schedule,
+			RequiresBins: jsonMeta.RequiresBins,
+			RequiresEnv:  jsonMeta.RequiresEnv,
 		}
 	}
 
 	// Fall back to simple YAML parsing
 	yamlMeta := sl.parseSimpleYAML(frontmatter)
 	return &SkillMetadata{
-		Name:        yamlMeta["name"],
-		Description: yamlMeta["description"],
-		Schedule:    yamlMeta["schedule"],
+		Name:         yamlMeta["name"],
+		Description:  yamlMeta["description"],
+		Schedule:     yamlMeta["schedule"],
+		RequiresBins: parseListField(yamlMeta, "commands", "requires_bins", "bins"),
+		RequiresEnv:  parseListField(yamlMeta, "requires_env", "env"),
 	}
+}
+
+// parseListField reads a bracket list (`[a, b]`) from the first present of
+// the candidate flat keys. Nested `prerequisites: commands: [...]` surfaces
+// as a flat `commands:` line under the simple parser, so both house style
+// and top-level keys resolve.
+func parseListField(m map[string]string, keys ...string) []string {
+	for _, k := range keys {
+		v, ok := m[k]
+		if !ok {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		v = strings.TrimPrefix(v, "[")
+		v = strings.TrimSuffix(v, "]")
+		var out []string
+		for _, part := range strings.Split(v, ",") {
+			if p := strings.TrimSpace(strings.Trim(part, "\"'")); p != "" {
+				out = append(out, p)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return nil
 }
 
 // parseSimpleYAML parses simple key: value YAML format
