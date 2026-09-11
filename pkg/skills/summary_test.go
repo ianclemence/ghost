@@ -149,3 +149,26 @@ func TestMetadataParsesPrerequisites(t *testing.T) {
 		t.Fatalf("summary must carry the fallback note: %q", summary)
 	}
 }
+
+// A skill may declare capability requirements, but that is a request, not
+// a grant: the summary surfaces them and nothing here authorizes them.
+func TestSkillDeclaresCapabilityRequirements(t *testing.T) {
+	ws := t.TempDir()
+	dir := filepath.Join(ws, "skills", "scheduler")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nname: scheduler\ndescription: x\nrequires: [calendar.read, web.search]\n---\n\n# x\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sl := NewSkillsLoader(ws, "", "")
+	infos := sl.ListSkills()
+	if len(infos) != 1 || len(infos[0].RequiresCapabilities) != 2 {
+		t.Fatalf("requires not parsed: %+v", infos)
+	}
+	summary := sl.BuildSkillsSummaryBudget(0)
+	if !strings.Contains(summary, "<requires>calendar.read, web.search</requires>") {
+		t.Fatalf("summary must surface declared capabilities: %q", summary)
+	}
+}

@@ -190,7 +190,9 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 		return ErrorResult(fmt.Sprintf("failed to write file: %v", err))
 	}
 
-	return SilentResult(fmt.Sprintf("File written: %s", path))
+	res := SilentResult(fmt.Sprintf("File written: %s", path))
+	res.Evidence = FileWriteEvidence(resolvedPath, []byte(content))
+	return res
 }
 
 // Verify confirms the written content actually landed on disk (Phase 3).

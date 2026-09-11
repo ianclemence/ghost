@@ -137,9 +137,18 @@ func TestTokenFilePermsAndRedaction(t *testing.T) {
 		t.Fatalf("token file must be 0600, got %o", fi.Mode().Perm())
 	}
 	raw, _ := os.ReadFile(filepath.Join(dir, "calendar-token.json"))
-	var decoded map[string]interface{}
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		t.Fatal(err)
+	// Sealed at rest: the file must not be readable plaintext JSON and must
+	// not contain credential material in the clear.
+	if json.Unmarshal(raw, &map[string]interface{}{}) == nil {
+		t.Fatal("calendar token must be sealed, not plaintext JSON")
+	}
+	if strings.Contains(string(raw), "secret-refresh") || strings.Contains(string(raw), "secret-access") {
+		t.Fatal("calendar token file must not contain plaintext credentials")
+	}
+	// It still loads correctly for server-side use.
+	tok, err := LoadCalendarToken()
+	if err != nil || tok == nil || tok.RefreshToken != "secret-refresh" {
+		t.Fatalf("sealed token must round-trip, got %+v err=%v", tok, err)
 	}
 	diag := CalendarRedactedDiagnostics()
 	if !diag.Configured {

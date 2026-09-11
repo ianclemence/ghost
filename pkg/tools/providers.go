@@ -518,7 +518,20 @@ func (t *HassTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		if action == "turn_off" {
 			verb = "off"
 		}
-		return NewToolResult(fmt.Sprintf("Turned %s %s.", entity, verb))
+		// Observe the resulting state so the completion claim is grounded
+		// in a state transition, not just the command being issued.
+		observed := ""
+		if ents, rr := svc.States(ctx); rr.Err == nil {
+			for _, e := range ents {
+				if strings.EqualFold(e.ID, entity) {
+					observed = e.State
+					break
+				}
+			}
+		}
+		res := NewToolResult(fmt.Sprintf("Turned %s %s.", entity, verb))
+		res.Evidence = DeviceEvidence(entity, verb, observed)
+		return res
 	default:
 		return ErrorResult("hass needs action list, state, turn_on, or turn_off.")
 	}

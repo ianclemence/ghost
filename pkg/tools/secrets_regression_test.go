@@ -22,7 +22,11 @@ func TestRegistryLogsRedactArgs(t *testing.T) {
 
 	reg := NewToolRegistry()
 	bt := NewBrowserTool("", "type")
-	bt.run = fakeRun("typed")
+	bt.run = func(ctx context.Context, action string, args ...string) *ToolResult {
+		// A real browser control op carries runtime evidence; provide it so
+		// the capability evidence contract is satisfied.
+		return &ToolResult{ForLLM: "typed", ForUser: "typed", Evidence: map[string]interface{}{"type": "state_transition"}}
+	}
 	reg.Register(bt)
 
 	res := reg.ExecuteWithContext(WithSystemGrant(context.Background()), "browser_type", map[string]interface{}{

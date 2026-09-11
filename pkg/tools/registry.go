@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/redact"
@@ -281,6 +282,21 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 				result = ErrorResult(fmt.Sprintf("tool %q ran but verification failed: %s", name, verr.Error())).WithError(verr)
 				logger.WarnCF("tool", "verification failed", map[string]interface{}{"tool": name, "error": verr.Error()})
 			}
+		}
+	}
+
+	// Capability evidence contract: a consequential capability that reports
+	// success without runtime evidence must not be presented as success.
+	// This is the general mechanism behind the browser/computer gates'
+	// evidence rule, extended to every capability whose contract requires
+	// proof. Read-only and evidence-free capabilities are unaffected.
+	if !result.IsError && !result.Async {
+		if spec, ok := capability.ForTool(name); ok && spec.RequiresEvidence() && len(result.Evidence) == 0 {
+			logger.WarnCF("tool", "success without required evidence",
+				map[string]interface{}{"tool": name, "capability": spec.ID, "evidence": string(spec.Evidence)})
+			result = ErrorResult(fmt.Sprintf(
+				"%s reported success but produced no runtime evidence, so I can't confirm it worked.", name)).
+				WithError(fmt.Errorf("capability %s requires %s evidence", spec.ID, spec.Evidence))
 		}
 	}
 

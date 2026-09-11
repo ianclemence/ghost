@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/skills"
 )
 
 // registerConnectionsRoutes moves safe connect/disconnect onto the
@@ -92,11 +93,20 @@ func connectionStore(id, value string) error {
 }
 
 func connectionDisconnect(id string) error {
+	// Google Calendar is an OAuth connected app: disconnecting must remove
+	// the actual credential, not just a config key. A "disconnected" app
+	// must not keep a usable token on disk.
+	if id == "google-calendar" {
+		if err := skills.CalendarDisconnect(); err != nil {
+			return err
+		}
+		return nil
+	}
 	s, err := config.LoadSecrets(secretsPathFor())
 	if err != nil {
 		return err
 	}
-	if _, ok := s.ProviderAPIKeys[id]; !ok && id != "google-calendar" {
+	if _, ok := s.ProviderAPIKeys[id]; !ok {
 		return errNotConnected(id)
 	}
 	delete(s.ProviderAPIKeys, id)

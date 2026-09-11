@@ -1251,6 +1251,7 @@ func gitHubBranchCommit(owner, repo, branch string) string {
 }
 
 func handleExec(allowedCmds []string) http.HandlerFunc {
+	policy := newExecPolicy(allowedCmds)
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req ExecRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Command == "" {
@@ -1258,25 +1259,12 @@ func handleExec(allowedCmds []string) http.HandlerFunc {
 			return
 		}
 
-		allowed := false
-		for _, prefix := range allowedCmds {
-			if strings.HasPrefix(req.Command, prefix) {
-				allowed = true
-				break
-			}
-		}
-		safeDefaults := []string{
-			"xdg-open ", "systemctl status ", "df ", "free ", "uptime", "hostname",
-			"date", "ls ", "cat /proc/", "journalctl -u ghost", "ping -c",
-		}
-		for _, s := range safeDefaults {
-			if strings.HasPrefix(req.Command, s) || req.Command == s {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			http.Error(w, `{"error":"command not in allowlist"}`, 403)
+		// argv-based allowlist, no shell. Metacharacters are refused,
+		// executables must be explicitly allowed, and sensitive
+		// executables validate their arguments. Fail closed.
+		argv, err := policy.resolve(req.Command)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), 403)
 			return
 		}
 
@@ -1289,7 +1277,7 @@ func handleExec(allowedCmds []string) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "bash", "-c", req.Command)
+		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr

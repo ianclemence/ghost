@@ -26,12 +26,18 @@ type CronTool struct {
 	execTool    *ExecTool
 	// registry routes scheduled command execution through the default-deny
 	// execution policy. Nil = legacy direct execution (tests, unwired use).
-	registry   *ToolRegistry
-	instanceID string
-	channel    string
-	chatID     string
-	profile    string
-	mu         sync.RWMutex
+	registry *ToolRegistry
+	// authorizeCommand is the authorization boundary for scheduled shell
+	// commands. The scheduler never mints its own authority: it asks this
+	// callback, which resolves through the Permission Broker and returns a
+	// context carrying the grant only when execution is allowed. Nil means
+	// no boundary is wired, and scheduled commands are refused.
+	authorizeCommand func(ctx context.Context, command string) (context.Context, error)
+	instanceID       string
+	channel          string
+	chatID           string
+	profile          string
+	mu               sync.RWMutex
 }
 
 // SetRegistry wires the tool registry so scheduled commands execute under
@@ -40,6 +46,15 @@ func (t *CronTool) SetRegistry(r *ToolRegistry) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.registry = r
+}
+
+// SetCommandAuthorizer wires the authorization boundary for scheduled
+// shell commands. The callback must resolve through the Permission Broker
+// and return a context carrying the execution grant only on success.
+func (t *CronTool) SetCommandAuthorizer(fn func(ctx context.Context, command string) (context.Context, error)) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.authorizeCommand = fn
 }
 
 // NewCronTool creates a new CronTool
@@ -339,6 +354,33 @@ func (t *CronTool) enableJob(args map[string]interface{}, enable bool) *ToolResu
 	return SilentResult(fmt.Sprintf("Cron job '%s' %s", job.Name, status))
 }
 
+// notifyBlocked tells the origin channel that a scheduled command did not
+// run and why. Silent when no bus is wired.
+func (t *CronTool) notifyBlocked(channel, chatID string, job *cron.CronJob, reason string) {
+	if t.msgBus == nil {
+		return
+	}
+	t.msgBus.PublishOutbound(bus.OutboundMessage{
+		Channel:  channel,
+		ChatID:   chatID,
+		Content:  fmt.Sprintf("Scheduled command blocked: %s", reason),
+		Metadata: job.Metadata,
+	})
+}
+
+// notify sends content to the origin channel. Silent when no bus is wired.
+func (t *CronTool) notify(channel, chatID string, job *cron.CronJob, content string) {
+	if t.msgBus == nil {
+		return
+	}
+	t.msgBus.PublishOutbound(bus.OutboundMessage{
+		Channel:  channel,
+		ChatID:   chatID,
+		Content:  content,
+		Metadata: job.Metadata,
+	})
+}
+
 // ExecuteJob executes a cron job through the agent
 func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(job.Payload.Target)) {
@@ -366,12 +408,7 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) (string, e
 	// Execute command if present
 	if job.Payload.Command != "" {
 		if err := CheckCronCommand(job.Payload.Command); err != nil {
-			t.msgBus.PublishOutbound(bus.OutboundMessage{
-				Channel:  channel,
-				ChatID:   chatID,
-				Content:  fmt.Sprintf("Scheduled command blocked: %s", err),
-				Metadata: job.Metadata,
-			})
+			t.notifyBlocked(channel, chatID, job, err.Error())
 			return "blocked", nil
 		}
 
@@ -379,17 +416,34 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) (string, e
 			"command": job.Payload.Command,
 		}
 
-		// Scheduled commands run under the execution policy: the grant is
-		// scoped to this approved job's exec call. Without a wired
-		// registry (tests), fall back to direct execution.
+		// The scheduler wakes Ghost; it does not grant authority. A
+		// scheduled shell command must pass the authorization boundary
+		// (which resolves through the Permission Broker). No boundary
+		// wired, or a refusal, means the command does not run.
 		t.mu.RLock()
 		reg := t.registry
+		authorize := t.authorizeCommand
 		t.mu.RUnlock()
+
+		execCtx := ctx
+		if authorize == nil {
+			t.notifyBlocked(channel, chatID, job, "scheduled commands require an authorization boundary; nothing ran")
+			return "blocked", nil
+		}
+		authorizedCtx, err := authorize(ctx, job.Payload.Command)
+		if err != nil {
+			t.notifyBlocked(channel, chatID, job, err.Error())
+			return "blocked", nil
+		}
+		if authorizedCtx != nil {
+			execCtx = authorizedCtx
+		}
+
 		var result *ToolResult
 		if reg != nil {
-			result = reg.ExecuteWithContext(GrantExec(ctx, "exec"), "exec", args, channel, chatID, "", nil)
+			result = reg.ExecuteWithContext(execCtx, "exec", args, channel, chatID, "", nil)
 		} else {
-			result = t.execTool.Execute(ctx, args)
+			result = t.execTool.Execute(execCtx, args)
 		}
 		var output string
 		if result.IsError {
@@ -398,23 +452,13 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) (string, e
 			output = fmt.Sprintf("Scheduled command '%s' executed:\n%s", job.Payload.Command, result.ForLLM)
 		}
 
-		t.msgBus.PublishOutbound(bus.OutboundMessage{
-			Channel:  channel,
-			ChatID:   chatID,
-			Content:  output,
-			Metadata: job.Metadata,
-		})
+		t.notify(channel, chatID, job, output)
 		return "ok", nil
 	}
 
 	// If deliver=true, send message directly without agent processing
 	if job.Payload.Deliver {
-		t.msgBus.PublishOutbound(bus.OutboundMessage{
-			Channel:  channel,
-			ChatID:   chatID,
-			Content:  job.Payload.Message,
-			Metadata: job.Metadata,
-		})
+		t.notify(channel, chatID, job, job.Payload.Message)
 		return "ok", nil
 	}
 

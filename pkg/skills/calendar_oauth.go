@@ -135,6 +135,9 @@ func CalendarAuthOutput(output string) CalendarState {
 }
 
 // CalendarDisconnect removes local oauth tokens (user disconnect flow).
+// It removes BOTH calendar stacks: the gcalcli device-flow tokens and the
+// web OAuth credential. Disconnect must be real — a "disconnected" app
+// must not keep a usable token on disk.
 func CalendarDisconnect() error {
 	var lastErr error
 	removed := false
@@ -144,6 +147,12 @@ func CalendarDisconnect() error {
 		} else if !os.IsNotExist(err) {
 			lastErr = err
 		}
+	}
+	// Web OAuth token (sealed). CalendarWebDisconnect is idempotent.
+	if err := CalendarWebDisconnect(); err != nil {
+		lastErr = err
+	} else {
+		removed = true
 	}
 	if !removed && lastErr != nil {
 		return lastErr

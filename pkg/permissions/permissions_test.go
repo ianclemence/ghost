@@ -384,3 +384,57 @@ func TestConsoleOwnerFallback(t *testing.T) {
 		t.Fatalf("owner grant must allow, got %v", v)
 	}
 }
+
+// Standing grants have a finite life. A grant that was valid once must not
+// authorize forever.
+func TestStandingGrantExpires(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	if err := b.GrantStanding("calendar.modify", "calendar_update", "owner", false); err != nil {
+		t.Fatal(err)
+	}
+	if b.Evaluate("calendar.modify", "calendar_update", "owner", RiskConsequential) != VerdictAllow {
+		t.Fatal("fresh grant must allow")
+	}
+	// Travel past the default TTL.
+	b.nowFunc = func() time.Time { return time.Now().Add(DefaultGrantTTL + time.Hour) }
+	if b.Evaluate("calendar.modify", "calendar_update", "owner", RiskConsequential) != VerdictAsk {
+		t.Fatal("expired grant must not allow")
+	}
+}
+
+func TestPruneExpiredGrants(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	if err := b.GrantStanding("message.send", "message", "owner", false); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Grants()) != 1 {
+		t.Fatalf("expected 1 grant, got %d", len(b.Grants()))
+	}
+	if n := b.PruneExpiredGrants(); n != 0 {
+		t.Fatalf("nothing should be pruned yet, pruned %d", n)
+	}
+	b.nowFunc = func() time.Time { return time.Now().Add(DefaultGrantTTL + time.Hour) }
+	if n := b.PruneExpiredGrants(); n != 1 {
+		t.Fatalf("expired grant must be pruned, got %d", n)
+	}
+	if len(b.Grants()) != 0 {
+		t.Fatal("grants must be empty after pruning")
+	}
+}
+
+// A revoke between approval and resume invalidates the standing grant.
+func TestRevokedGrantStopsAllow(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	if err := b.GrantStanding("hass.control", "turn_on", "home", false); err != nil {
+		t.Fatal(err)
+	}
+	if b.Evaluate("hass.control", "turn_on", "home", RiskConsequential) != VerdictAllow {
+		t.Fatal("grant must allow before revoke")
+	}
+	if err := b.Revoke("hass.control", "turn_on", "home"); err != nil {
+		t.Fatal(err)
+	}
+	if b.Evaluate("hass.control", "turn_on", "home", RiskConsequential) == VerdictAllow {
+		t.Fatal("revoked grant must not allow")
+	}
+}

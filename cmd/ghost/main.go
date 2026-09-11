@@ -1578,6 +1578,9 @@ func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace
 	// Wire the registry so scheduled commands execute under the
 	// default-deny execution policy with a job-scoped grant.
 	cronTool.SetRegistry(agentLoop.Tools())
+	// The scheduler wakes Ghost; it does not grant authority. Scheduled
+	// shell commands resolve through the Permission Broker here.
+	cronTool.SetCommandAuthorizer(agentLoop.AuthorizeScheduledCommand)
 	agentLoop.RegisterTool(cronTool)
 
 	// Set the onJob handler

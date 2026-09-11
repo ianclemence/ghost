@@ -198,7 +198,9 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 		return deny("Computer is unavailable: %v. Nothing was run.", err)
 	}
 	// Durable lease for control ops is acquired only after authorization.
-	switch g.Broker.Evaluate(computerCapability, tool, scopeFor(sessionKey, args), risk) {
+	// Canonical action identity: capability + tool:action, matching the
+	// governance path so a grant approved in one form is the same grant.
+	switch g.Broker.Evaluate(computerCapability, toolAction(tool, args), scopeFor(sessionKey, args), risk) {
 	case permissions.VerdictAllow:
 		return al.bindComputer(owner, contextID, sessionKey, taskID, generation, op, "allow")
 	case permissions.VerdictDeny:

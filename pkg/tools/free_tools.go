@@ -1,5 +1,7 @@
 package tools
 
+import "strings"
+
 // Free consequential tools are model-invokable without a committed
 // capability (no skill read required) yet can cause external, durable,
 // privileged, device, process, or state-changing side effects. The single
@@ -27,7 +29,6 @@ const (
 // identity so grants stay narrow, and a risk the broker evaluates.
 var FreeConsequentialTools = []FreeTool{
 	{Name: "message", Capability: "message.send", Risk: RiskConsequential},
-	{Name: "message_write", Capability: "message.send", Risk: RiskConsequential},
 	// exec is the process primitive: arbitrary command execution. Never
 	// auto-authorized without an explicit grant.
 	{Name: "exec", Capability: "exec.shell", Risk: RiskHighImpact},
@@ -59,6 +60,14 @@ func freeToolByName(name string) (FreeTool, bool) {
 		if t.Name == name {
 			return t, true
 		}
+	}
+	// Third-party MCP tools are dynamically named (mcp_<server>_<tool>) and
+	// cannot be enumerated ahead of time. They are arbitrary out-of-process
+	// code and must pass the same broker boundary as any other
+	// consequential primitive, so the whole prefix is governed under one
+	// capability identity with high_impact risk.
+	if strings.HasPrefix(name, "mcp_") {
+		return FreeTool{Name: name, Capability: "mcp.execute", Risk: RiskHighImpact}, true
 	}
 	return FreeTool{}, false
 }

@@ -479,6 +479,19 @@ func (g *Governance) CheckApprovalReply(sessionKey, text string) ResumeOutcome {
 	if !ok {
 		return ResumeOutcome{Message: "That approval couldn't be applied. Please make the request again."}
 	}
+	// allow_always re-check: the standing grant may have been revoked,
+	// denied, or expired between approval and resume. A previously valid
+	// yes must not authorize execution forever.
+	if grant == permissions.GrantAlways {
+		scope := scopeFor(sessionKey, contArgs)
+		risk := approved.Risk
+		if risk == "" {
+			risk = permissions.RiskConsequential
+		}
+		if permissions.VerdictDecision(g.Broker.Evaluate(approved.Capability, approved.Action, scope, risk)) != permissions.DecisionAllow {
+			return ResumeOutcome{Message: "That standing approval is no longer valid. Please make the request again."}
+		}
+	}
 	return resumeFrom(approved, grant)
 }
 

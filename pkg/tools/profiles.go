@@ -35,6 +35,9 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"currency_convert", "flight_status",
 		// Read-only memory + conversation tools.
 		"memory_recall", "context_get", "clarify", "todo",
+		// Device control and handoff are legitimate mobile actions; the
+		// broker still governs the consequential ones.
+		"hass", "publish_artifact", "doc_parser",
 	},
 	ProfileHeartbeatSafe: {
 		"read_file", "view", "session_search", "exec",
@@ -70,8 +73,8 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"spawn", "subagent", "batch_delegate",
 		"skill_manage",
 		"vision", "image_generate",
-		"i2c", "spi",
-		"compaction", "todo",
+		"i2c", "spi", "hass", "publish_artifact",
+		"compaction", "compact_context", "todo", "doc_parser",
 	},
 	ProfileFull: nil,
 }
@@ -167,17 +170,20 @@ var turnIntentTools = []struct {
 	{[]string{"image", "picture", "photo", "screenshot", "draw something"}, []string{"image_generate", "vision"}},
 	{[]string{"video", "clip", "frames"}, []string{"video_frames"}},
 	{[]string{"speak", "tts", "read aloud", "say this", "audio"}, []string{"tts"}},
-	{[]string{"wake word", "voice wake", "listen"}, []string{"voicewake"}},
+	{[]string{"wake word", "voice wake", "listen"}, []string{"voice_wake"}},
 	{[]string{"sandbox", "isolate", "container"}, []string{"sandbox"}},
 	{[]string{"network", "ping", "port", "dns", "wifi"}, []string{"networking"}},
-	{[]string{"i2c", "spi", "gpio", "sensor", "pins", "hardware"}, []string{"spi"}},
+	{[]string{"i2c", "spi", "gpio", "sensor", "pins", "hardware"}, []string{"spi", "i2c"}},
 	{[]string{"oracle", "ask oracle"}, []string{"oracle"}},
-	{[]string{"mcp"}, []string{"mcp"}},
-	{[]string{"lane", "template", "route"}, []string{"lanes"}},
-	{[]string{"merge", "parallel", "batch"}, []string{"delegate_batch"}},
-	{[]string{"compact", "summarize history", "context full"}, []string{"compaction"}},
+	{[]string{"lane", "template", "route"}, []string{"switch_lane"}},
+	{[]string{"merge", "parallel", "batch"}, []string{"batch_delegate"}},
+	{[]string{"compact", "summarize history", "context full"}, []string{"compact_context"}},
 	{[]string{"update ghost", "upgrade ghost", "self-update"}, []string{"update"}},
-	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"docparser"}},
+	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"doc_parser"}},
+	// Home Assistant device control (broker-gated, consequential).
+	{[]string{"light", "lights", "thermostat", "home assistant", "smart home", "turn on", "turn off", "turn the", "device", "scene"}, []string{"hass"}},
+	// Durable handoff artifacts (low risk, evidence-backed).
+	{[]string{"artifact", "hand off", "handoff", "publish", "report", "deliverable"}, []string{"publish_artifact"}},
 	// Browser/computer tools are discovered by EXPLICIT exact tool names
 	// plus intent keywords (never brittle token overlap). The governing
 	// gates remain the authority; this only controls what the model sees.

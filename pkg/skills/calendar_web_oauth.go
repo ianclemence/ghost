@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
+
+	"github.com/ianclemence/ghost/pkg/config"
 )
 
 // Proper Google OAuth 2.0 web-server flow for Calendar (product path).
@@ -320,7 +322,9 @@ func CalendarOAuthComplete(cfg CalendarOAuthConfig, state, code string, exch Exc
 	return st.PendingID, nil
 }
 
-// storeCalendarToken persists the credential atomically with 0600 perms.
+// storeCalendarToken persists the credential sealed (AES-256-GCM, same
+// vault as .secrets.json) and atomically, with 0600 perms. A long-lived
+// Google refresh token must never sit on disk in plaintext.
 func storeCalendarToken(tok *CalendarToken) error {
 	if tok == nil || strings.TrimSpace(tok.RefreshToken) == "" && strings.TrimSpace(tok.AccessToken) == "" {
 		return errors.New("calendar_oauth_empty_token")
@@ -334,8 +338,16 @@ func storeCalendarToken(tok *CalendarToken) error {
 	if err != nil {
 		return err
 	}
+	key, err := config.MasterKeyFor(calendarTokenPath())
+	if err != nil {
+		return err
+	}
+	sealed, err := config.Seal(key, data)
+	if err != nil {
+		return err
+	}
 	tmp := filepath.Join(dir, "calendar-token.json.tmp")
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
+	if err := os.WriteFile(tmp, sealed, 0600); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmp, 0600); err != nil {
@@ -344,13 +356,25 @@ func storeCalendarToken(tok *CalendarToken) error {
 	return os.Rename(tmp, calendarTokenPath())
 }
 
-// LoadCalendarToken reloads the persisted credential (restart-safe).
-// It returns the token for server-side use only; callers must never
-// serialize it to chat/SSE/logs/backups.
+// LoadCalendarToken reloads the persisted credential (restart-safe),
+// decrypting the sealed file. Legacy plaintext tokens are upgraded to
+// sealed form on first load. It returns the token for server-side use
+// only; callers must never serialize it to chat/SSE/logs/backups.
 func LoadCalendarToken() (*CalendarToken, error) {
 	data, err := os.ReadFile(calendarTokenPath())
 	if err != nil {
 		return nil, err
+	}
+	if config.IsSealed(data) {
+		key, err := config.MasterKeyFor(calendarTokenPath())
+		if err != nil {
+			return nil, err
+		}
+		plain, err := config.Unseal(key, data)
+		if err != nil {
+			return nil, err
+		}
+		data = plain
 	}
 	var tok CalendarToken
 	if err := json.Unmarshal(data, &tok); err != nil {

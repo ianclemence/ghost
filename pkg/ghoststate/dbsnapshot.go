@@ -67,7 +67,7 @@ var snapshotTables = []snapshotTable{
 		"created_at", "updated_at",
 	}, OrderBy: "item_id"},
 	{Name: "permission_grants", Columns: []string{
-		"capability", "action", "scope", "created_at",
+		"capability", "action", "scope", "created_at", "expires_at",
 	}, OrderBy: "capability, action, scope"},
 	{Name: "execution_history", Columns: []string{
 		"id", "item_id", "execution_id",

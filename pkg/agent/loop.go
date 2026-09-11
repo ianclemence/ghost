@@ -1111,6 +1111,28 @@ func (al *AgentLoop) ClearRoutineContext(sessionKey string) {
 	}
 }
 
+// AuthorizeScheduledCommand resolves a scheduled shell command through the
+// Permission Broker. The scheduler wakes Ghost; it does not grant authority.
+// On success it returns a context carrying the execution grant so the
+// registry's default-deny policy admits the call. Ask/deny, or an unwired
+// loop, refuses — a scheduled command cannot self-authorize.
+func (al *AgentLoop) AuthorizeScheduledCommand(ctx context.Context, command string) (context.Context, error) {
+	if al == nil || al.governance == nil || al.governance.Broker == nil {
+		return ctx, fmt.Errorf("no authorization boundary is wired")
+	}
+	args := map[string]interface{}{"command": command}
+	decision := al.governance.AuthorizeStandalone(
+		"scheduled:"+command, "scheduled", "exec.scheduled", "exec", args, permissions.RiskHighImpact)
+	if !decision.Allowed {
+		msg := strings.TrimSpace(decision.AskMessage)
+		if msg == "" {
+			msg = "not authorized"
+		}
+		return ctx, fmt.Errorf("%s", msg)
+	}
+	return tools.GrantExec(ctx, "exec"), nil
+}
+
 // processMessage is the panic boundary for one turn. A panic anywhere in
 // turn processing (tool executor, provider call, browser/computer driver)
 // is contained here, converted into a deterministic failed turn, and never

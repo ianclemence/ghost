@@ -106,7 +106,9 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 		return ErrorResult(fmt.Sprintf("failed to write file: %v", err))
 	}
 
-	return SilentResult(fmt.Sprintf("File edited: %s", path))
+	res := SilentResult(fmt.Sprintf("File edited: %s", path))
+	res.Evidence = FileWriteEvidenceFromDisk(resolvedPath)
+	return res
 }
 
 type AppendFileTool struct {
@@ -176,7 +178,9 @@ func (t *AppendFileTool) Execute(ctx context.Context, args map[string]interface{
 		return ErrorResult(fmt.Sprintf("failed to append to file: %v", err))
 	}
 
-	return SilentResult(fmt.Sprintf("Appended to %s", path))
+	res := SilentResult(fmt.Sprintf("Appended to %s", path))
+	res.Evidence = FileWriteEvidenceFromDisk(resolvedPath)
+	return res
 }
 
 // Verify confirms the append actually persisted at the end of the file (Phase 3).

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -182,6 +183,20 @@ func (sm *SubagentManager) filteredTools() *ToolRegistry {
 	blocked := map[string]struct{}{}
 	for _, alwaysBlocked := range []string{"subagent", "spawn", "delegate", "spawn_agent"} {
 		blocked[alwaysBlocked] = struct{}{}
+	}
+	// Actuator/privileged primitives a subagent must never inherit just
+	// because a generic surface exists. A subagent has no computer
+	// authority, no third-party MCP authority, and no hardware/self-update
+	// authority; those belong to a governed main-agent turn. Browser stays
+	// available (research subagents legitimately use it) and is still
+	// broker-gated on execution.
+	for _, actuator := range []string{"hass", "i2c", "spi", "update", "networking"} {
+		blocked[actuator] = struct{}{}
+	}
+	for _, name := range baseTools.List() {
+		if strings.HasPrefix(name, "computer_") || strings.HasPrefix(name, "mcp_") {
+			blocked[name] = struct{}{}
+		}
 	}
 	for _, name := range policy.BlockedTools {
 		blocked[name] = struct{}{}

@@ -226,8 +226,9 @@ func (t *MessageTool) handleSend(ctx context.Context, args map[string]interface{
 
 	t.sentInRound = true
 	return &ToolResult{
-		ForLLM: fmt.Sprintf("Message sent to %s:%s", channel, chatID),
-		Silent: true,
+		ForLLM:   fmt.Sprintf("Message sent to %s:%s", channel, chatID),
+		Silent:   true,
+		Evidence: MessageEvidence(channel, chatID, content),
 	}
 }
 

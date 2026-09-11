@@ -68,6 +68,7 @@ func (t *PublishArtifactTool) Execute(ctx context.Context, args map[string]inter
 		return ErrorResult("Artifact rejected: " + err.Error() + " Nothing was published.")
 	}
 	return &ToolResult{
-		ForLLM: "Published artifact " + a.ID + " (" + a.Kind + ": " + a.Title + "). It is now available to the user.",
+		ForLLM:   "Published artifact " + a.ID + " (" + a.Kind + ": " + a.Title + "). It is now available to the user.",
+		Evidence: ArtifactEvidence(a.ID, a.Kind, a.Title),
 	}
 }

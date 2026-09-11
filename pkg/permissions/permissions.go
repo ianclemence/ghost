@@ -155,13 +155,20 @@ type Request struct {
 
 // Grant is a persisted standing permission. Scope is explicit and narrow:
 // capability + action + scope (e.g. "contact:maria" or "owner"). A grant
-// never widens beyond what was approved.
+// never widens beyond what was approved. ExpiresAt bounds its life: a grant
+// that was valid once must not authorize forever.
 type Grant struct {
-	Capability string    `json:"capability"`
-	Action     string    `json:"action"`
-	Scope      string    `json:"scope"`
-	CreatedAt  time.Time `json:"created_at"`
+	Capability string     `json:"capability"`
+	Action     string     `json:"action"`
+	Scope      string     `json:"scope"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 }
+
+// DefaultGrantTTL bounds how long a standing "always allow" grant remains
+// valid without renewal. Long enough to be useful, finite so stale
+// authority cannot accumulate indefinitely.
+const DefaultGrantTTL = 90 * 24 * time.Hour
 
 // Emitter receives broker lifecycle events (wired to the canonical event
 // stream; nil-safe). Defined here to avoid import cycles.
@@ -203,7 +210,7 @@ func Open(db *sql.DB, mode Mode, ttl time.Duration) (*Broker, error) {
 		`CREATE INDEX IF NOT EXISTS idx_perm_req_status ON permission_requests(status)`,
 		`CREATE TABLE IF NOT EXISTS permission_grants (
 			capability TEXT, action TEXT, scope TEXT,
-			created_at TEXT,
+			created_at TEXT, expires_at TEXT,
 			PRIMARY KEY (capability, action, scope)
 		)`,
 	}
@@ -212,6 +219,11 @@ func Open(db *sql.DB, mode Mode, ttl time.Duration) (*Broker, error) {
 			return nil, err
 		}
 	}
+	// Migration: grants created before expiry existed get a finite life
+	// derived from their creation time. Old authority is bounded, never
+	// carried forward indefinitely.
+	_, _ = db.Exec(`ALTER TABLE permission_grants ADD COLUMN expires_at TEXT`)
+	b.backfillGrantExpiry()
 	// Migration for databases created before session linkage existed
 	// (must precede the session index below).
 	_, _ = db.Exec(`ALTER TABLE permission_requests ADD COLUMN session_key TEXT`)
@@ -524,7 +536,7 @@ func (b *Broker) Requests(status RequestStatus, limit int) []*Request {
 
 // Grants lists standing grants for UI/revocation (no secret content).
 func (b *Broker) Grants() []Grant {
-	rows, err := b.db.Query(`SELECT capability, action, scope, created_at FROM permission_grants ORDER BY created_at`)
+	rows, err := b.db.Query(`SELECT capability, action, scope, created_at, expires_at FROM permission_grants ORDER BY created_at`)
 	if err != nil {
 		return nil
 	}
@@ -533,11 +545,17 @@ func (b *Broker) Grants() []Grant {
 	for rows.Next() {
 		var g Grant
 		var ts string
-		if err := rows.Scan(&g.Capability, &g.Action, &g.Scope, &ts); err != nil {
+		var exp sql.NullString
+		if err := rows.Scan(&g.Capability, &g.Action, &g.Scope, &ts, &exp); err != nil {
 			continue
 		}
 		if t, ok := parseTime(ts); ok {
 			g.CreatedAt = t
+		}
+		if exp.Valid && exp.String != "" {
+			if t, ok := parseTime(exp.String); ok {
+				g.ExpiresAt = &t
+			}
 		}
 		out = append(out, g)
 	}
@@ -558,7 +576,8 @@ func (b *Broker) GrantStanding(capability, action, scope string, deny bool) erro
 	if deny {
 		act = "deny:" + action
 	}
-	return b.storeGrant(Grant{Capability: capability, Action: act, Scope: scope, CreatedAt: b.now()})
+	exp := b.now().Add(DefaultGrantTTL)
+	return b.storeGrant(Grant{Capability: capability, Action: act, Scope: scope, CreatedAt: b.now(), ExpiresAt: &exp})
 }
 
 // Revoke removes one standing grant (or denial).
@@ -604,9 +623,49 @@ func (b *Broker) emitEvent(t string, r *Request) {
 
 func (b *Broker) granted(capability, action, scope string) bool {
 	var n int
-	_ = b.db.QueryRow(`SELECT COUNT(*) FROM permission_grants WHERE capability=? AND action=? AND scope=?`,
-		capability, action, scope).Scan(&n)
+	_ = b.db.QueryRow(`SELECT COUNT(*) FROM permission_grants WHERE capability=? AND action=? AND scope=? AND (expires_at IS NULL OR expires_at = '' OR expires_at > ?)`,
+		capability, action, scope, b.now().Format(time.RFC3339)).Scan(&n)
 	return n > 0
+}
+
+// backfillGrantExpiry gives pre-expiry grants a finite life so stale
+// authority cannot persist forever. Runs once per Open; idempotent.
+func (b *Broker) backfillGrantExpiry() {
+	rows, err := b.db.Query(`SELECT capability, action, scope, created_at FROM permission_grants WHERE expires_at IS NULL OR expires_at = ''`)
+	if err != nil {
+		return
+	}
+	type row struct{ cap, act, scope, created string }
+	var pending []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.cap, &r.act, &r.scope, &r.created); err == nil {
+			pending = append(pending, r)
+		}
+	}
+	rows.Close()
+	now := b.now()
+	for _, r := range pending {
+		base := now
+		if t, ok := parseTime(r.created); ok {
+			base = t
+		}
+		exp := base.Add(DefaultGrantTTL)
+		_, _ = b.db.Exec(`UPDATE permission_grants SET expires_at=? WHERE capability=? AND action=? AND scope=?`,
+			exp.Format(time.RFC3339), r.cap, r.act, r.scope)
+	}
+}
+
+// PruneExpiredGrants deletes grants whose life has ended. Called by
+// maintenance so the grants table does not accumulate dead authority.
+func (b *Broker) PruneExpiredGrants() int {
+	res, err := b.db.Exec(`DELETE FROM permission_grants WHERE expires_at IS NOT NULL AND expires_at != '' AND expires_at <= ?`,
+		b.now().Format(time.RFC3339))
+	if err != nil {
+		return 0
+	}
+	n, _ := res.RowsAffected()
+	return int(n)
 }
 
 func (b *Broker) denied(capability, action, scope string) bool {
@@ -662,8 +721,12 @@ func (b *Broker) update(r *Request) error {
 }
 
 func (b *Broker) storeGrant(g Grant) error {
-	_, err := b.db.Exec(`INSERT OR REPLACE INTO permission_grants (capability, action, scope, created_at) VALUES (?,?,?,?)`,
-		g.Capability, g.Action, g.Scope, g.CreatedAt.Format(time.RFC3339))
+	var exp interface{}
+	if g.ExpiresAt != nil {
+		exp = g.ExpiresAt.Format(time.RFC3339)
+	}
+	_, err := b.db.Exec(`INSERT OR REPLACE INTO permission_grants (capability, action, scope, created_at, expires_at) VALUES (?,?,?,?,?)`,
+		g.Capability, g.Action, g.Scope, g.CreatedAt.Format(time.RFC3339), exp)
 	return err
 }
 

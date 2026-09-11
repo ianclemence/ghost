@@ -57,6 +57,7 @@ func Run(workspace string, db *sql.DB) Report {
 		pruneTmp(filepath.Join(workspace, "tmp")),
 		pruneTurns(workspace),
 		pruneJobs(db),
+		pruneGrants(db),
 		pruneArtifacts(workspace, db),
 	)
 	return rep
@@ -201,4 +202,24 @@ func pruneTmp(dir string) Action {
 		}
 	}
 	return Action{Name: "tmp", Removed: removed}
+}
+
+// pruneGrants deletes standing permission grants whose finite life has
+// ended. A grant that was valid once must not authorize forever; expired
+// authority is removed rather than carried forward. Missing table is a
+// no-op (a fresh workspace with no broker yet).
+func pruneGrants(db *sql.DB) Action {
+	if db == nil {
+		return Action{Name: "permission_grants", Detail: "skipped (no db)"}
+	}
+	res, err := db.Exec(`DELETE FROM permission_grants WHERE expires_at IS NOT NULL AND expires_at != '' AND expires_at <= ?`,
+		time.Now().Format(time.RFC3339))
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return Action{Name: "permission_grants", Detail: "skipped (no grants table)"}
+		}
+		return Action{Name: "permission_grants", Detail: err.Error()}
+	}
+	n, _ := res.RowsAffected()
+	return Action{Name: "permission_grants", Removed: int(n)}
 }

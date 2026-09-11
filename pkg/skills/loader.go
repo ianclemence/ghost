@@ -25,16 +25,22 @@ type SkillMetadata struct {
 	// `requires_env: [...]`). Preferred-path tools check their own
 	// credentials at runtime; these gate only the fallback.
 	RequiresEnv []string `json:"requires_env,omitempty"`
+	// RequiresCapabilities lists the Ghost capabilities the skill needs
+	// (`requires: [calendar.read, web.search]`). This is a REQUEST, never a
+	// grant: Ghost's normal capability/permission system still decides
+	// whether each capability may be used. A skill cannot grant authority.
+	RequiresCapabilities []string `json:"requires_capabilities,omitempty"`
 }
 
 type SkillInfo struct {
-	Name         string   `json:"name"`
-	Path         string   `json:"path"`
-	Source       string   `json:"source"`
-	Description  string   `json:"description"`
-	Schedule     string   `json:"schedule,omitempty"`
-	RequiresBins []string `json:"requires_bins,omitempty"`
-	RequiresEnv  []string `json:"requires_env,omitempty"`
+	Name                 string   `json:"name"`
+	Path                 string   `json:"path"`
+	Source               string   `json:"source"`
+	Description          string   `json:"description"`
+	Schedule             string   `json:"schedule,omitempty"`
+	RequiresBins         []string `json:"requires_bins,omitempty"`
+	RequiresEnv          []string `json:"requires_env,omitempty"`
+	RequiresCapabilities []string `json:"requires_capabilities,omitempty"`
 }
 
 type SkillsLoader struct {
@@ -83,6 +89,7 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 									info.Schedule = metadata.Schedule
 									info.RequiresBins = metadata.RequiresBins
 									info.RequiresEnv = metadata.RequiresEnv
+									info.RequiresCapabilities = metadata.RequiresCapabilities
 								}
 								// Only append if there isn't one already added with same name?
 								// Just append.
@@ -107,6 +114,7 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 							info.Schedule = metadata.Schedule
 							info.RequiresBins = metadata.RequiresBins
 							info.RequiresEnv = metadata.RequiresEnv
+							info.RequiresCapabilities = metadata.RequiresCapabilities
 						}
 						skills = append(skills, info)
 					}
@@ -144,6 +152,7 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 							info.Description = metadata.Description
 							info.RequiresBins = metadata.RequiresBins
 							info.RequiresEnv = metadata.RequiresEnv
+							info.RequiresCapabilities = metadata.RequiresCapabilities
 						}
 						skills = append(skills, info)
 					}
@@ -180,6 +189,7 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 							info.Description = metadata.Description
 							info.RequiresBins = metadata.RequiresBins
 							info.RequiresEnv = metadata.RequiresEnv
+							info.RequiresCapabilities = metadata.RequiresCapabilities
 						}
 						skills = append(skills, info)
 					}
@@ -282,6 +292,12 @@ func (sl *SkillsLoader) BuildSkillsSummaryBudget(maxChars int) string {
 		// walking into a fallback it cannot run.
 		if note := requirementNote(s); note != "" {
 			block = append(block, fmt.Sprintf("    <fallback>%s</fallback>", escapeXML(note)))
+		}
+		// Declared capability requirements are a REQUEST, not a grant:
+		// Ghost's normal capability/permission system still authorizes each
+		// one. Surfaced so the model knows what the skill needs.
+		if len(s.RequiresCapabilities) > 0 {
+			block = append(block, fmt.Sprintf("    <requires>%s</requires>", escapeXML(strings.Join(s.RequiresCapabilities, ", "))))
 		}
 		block = append(block, "  </skill>")
 		if maxChars > 0 && included > 0 {
@@ -461,11 +477,12 @@ func (sl *SkillsLoader) getSkillMetadata(skillPath string) *SkillMetadata {
 	// Fall back to simple YAML parsing
 	yamlMeta := sl.parseSimpleYAML(frontmatter)
 	return &SkillMetadata{
-		Name:         yamlMeta["name"],
-		Description:  yamlMeta["description"],
-		Schedule:     yamlMeta["schedule"],
-		RequiresBins: parseListField(yamlMeta, "commands", "requires_bins", "bins"),
-		RequiresEnv:  parseListField(yamlMeta, "requires_env", "env"),
+		Name:                 yamlMeta["name"],
+		Description:          yamlMeta["description"],
+		Schedule:             yamlMeta["schedule"],
+		RequiresBins:         parseListField(yamlMeta, "commands", "requires_bins", "bins"),
+		RequiresEnv:          parseListField(yamlMeta, "requires_env", "env"),
+		RequiresCapabilities: parseListField(yamlMeta, "requires", "requires_capabilities"),
 	}
 }
 
