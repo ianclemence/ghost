@@ -57,6 +57,26 @@ func (p *HTTPProvider) SetDefaultModel(model string) {
 	p.defaultModel = model
 }
 
+// ollamaThinkParam maps generic thinking options onto Ollama's native
+// "think" parameter. Absent options mean false: thinking stays off unless
+// explicitly opted in.
+func ollamaThinkParam(options map[string]interface{}) interface{} {
+	if v, ok := options["thinking"].(bool); ok {
+		return v
+	}
+	if lvl, ok := options["thinking_level"].(string); ok {
+		switch strings.ToLower(lvl) {
+		case "low", "medium", "high":
+			return lvl
+		case "on", "enabled", "true":
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
 func (p *HTTPProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
 	return p.StreamChat(ctx, messages, tools, model, options, nil)
 }
@@ -143,22 +163,7 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 	// Map generic thinking options to Ollama's expected "think" parameter
 	// - For Qwen/DeepSeek: bool true/false
 	// - For GPT-OSS: "low" | "medium" | "high"
-	var thinkParam interface{} = nil
-	if v, ok := options["thinking"].(bool); ok {
-		thinkParam = v
-	} else if lvl, ok := options["thinking_level"].(string); ok {
-		switch strings.ToLower(lvl) {
-		case "low", "medium", "high":
-			thinkParam = lvl
-		case "on", "enabled", "true":
-			thinkParam = true
-		default:
-			thinkParam = false
-		}
-	} else {
-		// Default: disable thinking to improve latency on local models
-		thinkParam = false
-	}
+	thinkParam := ollamaThinkParam(options)
 
 	useNative := (strings.Contains(p.apiBase, "11434") || strings.Contains(p.apiBase, "ollama.com")) && !strings.Contains(p.apiBase, "/v1")
 	if useNative {
