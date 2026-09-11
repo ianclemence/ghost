@@ -119,6 +119,12 @@ func DefaultDefinitions() []Definition {
 			Usage:       "/forget <predicate | suffix | topic> | /forget everything about <topic> | /forget session <session-id>",
 			Handler:     forgetHandler,
 		},
+		{
+			Name:        "/affect",
+			Description: "Show the current relational state (affinity, mood) — aggregates only, no raw history",
+			Usage:       "/affect",
+			Handler:     affectHandler,
+		},
 	}
 }
 

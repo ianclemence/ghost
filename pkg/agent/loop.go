@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ianclemence/ghost/pkg/artifacts"
+	"github.com/ianclemence/ghost/pkg/affect"
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/cevents"
@@ -76,6 +77,11 @@ type AgentLoop struct {
 	router           *routing.Router
 	fallback         *providers.FallbackChain
 	fallbackModels   []providers.FallbackCandidate
+	// affect holds the relational aggregate (valence/arousal/affinity).
+	// Updated once per turn from scored user text, decayed with time,
+	// persisted as aggregates only. It grounds expressed affect and
+	// gates proactivity — never capability.
+	affect affect.State
 	installer        *skills.SkillInstaller
 	providersByModel map[string]providers.LLMProvider
 	cfg              *config.Config
@@ -612,6 +618,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		pcStore:           pcStore,
 		semanticExtractor: semanticExtractor,
 		db:                database,
+		affect:            loadAffect(workspace),
 	}
 
 	cmdRuntime := &commands.Runtime{
@@ -641,6 +648,9 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// builder resolves through the Loader, so builtins and customs
 	// alike inject on the next turn).
 	cmdRuntime.OnPersonalityChanged = contextBuilder.SetPersonality
+	// Relational state renders live: the model grounds expressed affect
+	// in measured aggregates, never vibes.
+	contextBuilder.SetAffectRender(func() string { return al.Affect().Render(time.Now()) })
 	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
 	al.commandExec = cmdExec
 
@@ -2386,7 +2396,43 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			"final_chars":       len(finalContent),
 		})
 
+	// Relational bookkeeping: score the user's turn, fold it into the
+	// affect aggregate, persist best-effort. Never fails the turn.
+	al.recordAffect(opts.UserMessage)
+
 	return finalContent, iteration, nil
+}
+
+// loadAffect reads the persisted relational aggregate; a corrupt file
+// starts neutral (with a log line) rather than failing boot — feeling is
+// reconstructed from contact, never invented, and never fatal.
+func loadAffect(workspace string) affect.State {
+	s, err := affect.Load(workspace)
+	if err != nil {
+		logger.WarnCF("agent", "affect state unreadable, starting neutral",
+			map[string]interface{}{"error": err.Error()})
+		return affect.New()
+	}
+	return s
+}
+
+// recordAffect folds one user turn into the relational aggregate.
+func (al *AgentLoop) recordAffect(userText string) {
+	if strings.TrimSpace(userText) == "" {
+		return
+	}
+	v, a, c, friction := affect.Score(userText)
+	al.affect = al.affect.Turn(v, a, c, friction, time.Now())
+	if err := affect.Save(al.workspace, al.affect); err != nil {
+		logger.WarnCF("agent", "affect persist failed",
+			map[string]interface{}{"error": err.Error()})
+	}
+}
+
+// Affect exposes the current relational aggregate (decayed to now) for
+// commands and proactivity gating.
+func (al *AgentLoop) Affect() affect.State {
+	return al.affect.Decayed(time.Now())
 }
 
 func (al *AgentLoop) selectModel(opts processOptions, messages []providers.Message) (string, float64) {

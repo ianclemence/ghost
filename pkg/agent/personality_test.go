@@ -95,3 +95,29 @@ func TestAdaptiveIgnoresNonStyle(t *testing.T) {
 		t.Fatal("non-style beliefs must not enter the style profile")
 	}
 }
+
+// recordAffect folds scored turns into the persisted aggregate.
+func TestRecordAffectPersists(t *testing.T) {
+	al := pinTestLoop(t, nil)
+	al.recordAffect("I love this, amazing work, thank you!")
+	if al.affect.Turns != 1 {
+		t.Fatalf("turn must be recorded: %+v", al.affect)
+	}
+	if al.affect.Affinity <= 0.5 {
+		t.Fatalf("warm turn must raise affinity: %+v", al.affect)
+	}
+	got := al.Affect()
+	if got.Turns != 1 {
+		t.Fatalf("Affect() must expose the aggregate: %+v", got)
+	}
+}
+
+// Affect grounds the prompt: the render line must inject.
+func TestAffectInjectsIntoPrompt(t *testing.T) {
+	cb := personalityBuilder(t)
+	cb.SetAffectRender(func() string { return "Relational state: affinity 0.90 (close); mood +0.70 (bright)." })
+	prompt := cb.BuildSystemPrompt(nil)
+	if !strings.Contains(prompt, "Relational state:") {
+		t.Fatal("affect render must inject into the system prompt")
+	}
+}

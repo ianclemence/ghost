@@ -30,6 +30,10 @@ type ContextBuilder struct {
 	// builtins resolve from code, customs from disk. Nothing reads the
 	// personalities directory directly anymore.
 	personalityLoader *personality.Loader
+	// affectRender grounds expressed affect in measured state: when set,
+	// the one-line relational render is injected so the model speaks
+	// from the numbers, never from vibes.
+	affectRender func() string
 	personalityName string
 
 	// promptCache caches the compiled system prompt; promptVersion returns a
@@ -47,6 +51,11 @@ func (cb *ContextBuilder) SetPromptCache(c *contextcache.Cache, version func() s
 	cb.promptVersion = version
 }
 
+// SetAffectRender installs the live relational-state line for prompt
+// injection. Nil disables it.
+func (cb *ContextBuilder) SetAffectRender(fn func() string) {
+	cb.affectRender = fn
+}
 // SkillsVersion fingerprints the installed skill set for the system-prompt
 // cache key: skill installs/edits/removals rebuild the prompt exactly once
 // instead of serving stale indexes or churning the cache every turn.
@@ -275,6 +284,14 @@ CRITICAL — Skill is authoritative. After you READ a SKILL.md, you MUST:
 		digest := personalcontext.BuildDigest(cb.personalContext.CurrentInScope(scopes), personalcontext.DigestBudget)
 		if digest != "" {
 			parts = append(parts, digest)
+		}
+	}
+
+	// Relational state: one grounded line. Expressed affect must trace to
+	// these numbers — the anti-theater rule.
+	if cb.affectRender != nil {
+		if line := cb.affectRender(); line != "" {
+			parts = append(parts, line)
 		}
 	}
 

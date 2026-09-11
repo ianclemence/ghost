@@ -398,6 +398,9 @@ func clearPersonalContext(ws string, rt *Runtime) error {
 	prof := filepath.Join(ws, "knowledge", "self", "user-profile.md")
 	_ = os.MkdirAll(filepath.Dir(prof), 0755)
 	_ = os.WriteFile(prof, []byte(""), 0644)
+	// Relational aggregates are personal state too: reset returns
+	// affinity and mood to neutral. Raw turn text was never stored.
+	_ = os.Remove(filepath.Join(ws, "personal-context", "affect.json"))
 	// Workspace identity doc: USER.md is injected into every prompt, so a
 	// name left here survives all other wipes and the model greets a
 	// stranger by the old name. Restore the placeholder template.
