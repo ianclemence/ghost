@@ -2437,6 +2437,21 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		}
 	}
 
+	// Grace call: a small or weak model can exhaust the tool budget while
+	// still calling tools, leaving no final answer. Rather than return a
+	// dead-end ("no response to give"), give the model one final turn with
+	// tools disabled so it must answer from what it already gathered.
+	if strings.TrimSpace(finalContent) == "" && len(usedTools) > 0 {
+		graceMessages := append([]providers.Message{}, messages...)
+		graceMessages = append(graceMessages, providers.Message{
+			Role:    "system",
+			Content: "You have reached the tool budget. Do not request more tools. Answer the user now using the information you already gathered. If it is insufficient, say so plainly and ask one focused follow-up question.",
+		})
+		if resp, gerr := al.callLLM(ctx, al.model, graceMessages, nil, opts); gerr == nil && resp != nil {
+			finalContent = strings.TrimSpace(resp.Content)
+		}
+	}
+
 	// Per-turn telemetry (P8): record token cost and tool choices so quality
 	// and cost can be observed and improved with data.
 	logger.InfoCF("agent", "turn telemetry",

@@ -176,3 +176,19 @@ func TestParseHour(t *testing.T) {
 		}
 	}
 }
+
+// Wall-clock times are interpreted in the target timezone, not UTC.
+func TestParseOneTimeUsesTimezone(t *testing.T) {
+	ref := time.Date(2026, 9, 12, 1, 0, 0, 0, time.UTC) // 08:00 Asia/Bangkok
+	p, err := ParseNaturalLanguage("today at 9 pm", ref, "Asia/Bangkok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Schedule.At == nil {
+		t.Fatal("expected an at schedule")
+	}
+	want := time.Date(2026, 9, 12, 14, 0, 0, 0, time.UTC) // 21:00 +07
+	if !p.Schedule.At.Equal(want) {
+		t.Fatalf("9 PM Bangkok must be 14:00 UTC, got %s", p.Schedule.At.UTC())
+	}
+}

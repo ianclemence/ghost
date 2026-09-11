@@ -166,6 +166,15 @@ func parseRecurringSchedule(input string, referenceTime time.Time, timezone stri
 
 // parseOneTimeSchedule parses one-time schedule patterns.
 func parseOneTimeSchedule(input string, referenceTime time.Time, timezone string) (*ParsedSchedule, bool) {
+	// Wall-clock times ("9 PM", "3 PM") mean 9 PM in the target timezone,
+	// not UTC. Resolve the location once and compute dates in it, so a
+	// reminder set in Asia/Bangkok fires at 9 PM there.
+	loc, err := time.LoadLocation(timezone)
+	if err != nil || loc == nil {
+		loc = time.UTC
+	}
+	ref := referenceTime.In(loc)
+
 	// "tomorrow at 9 AM"
 	tomorrowRe := regexp.MustCompile(`tomorrow\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?`)
 	if matches := tomorrowRe.FindStringSubmatch(input); len(matches) >= 3 {
@@ -175,8 +184,8 @@ func parseOneTimeSchedule(input string, referenceTime time.Time, timezone string
 			minute, _ = strconv.Atoi(matches[2])
 		}
 
-		nextDay := referenceTime.AddDate(0, 0, 1)
-		at := time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), hour, minute, 0, 0, time.UTC)
+		nextDay := ref.AddDate(0, 0, 1)
+		at := time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), hour, minute, 0, 0, loc)
 
 		return &ParsedSchedule{
 			Schedule: Schedule{
@@ -198,7 +207,7 @@ func parseOneTimeSchedule(input string, referenceTime time.Time, timezone string
 			minute, _ = strconv.Atoi(matches[2])
 		}
 
-		at := time.Date(referenceTime.Year(), referenceTime.Month(), referenceTime.Day(), hour, minute, 0, 0, time.UTC)
+		at := time.Date(ref.Year(), ref.Month(), ref.Day(), hour, minute, 0, 0, loc)
 
 		return &ParsedSchedule{
 			Schedule: Schedule{
@@ -226,12 +235,12 @@ func parseOneTimeSchedule(input string, referenceTime time.Time, timezone string
 		}
 
 		// Find next occurrence of this weekday
-		daysUntil := (int(targetDay) - int(referenceTime.Weekday()) + 7) % 7
+		daysUntil := (int(targetDay) - int(ref.Weekday()) + 7) % 7
 		if daysUntil == 0 {
 			daysUntil = 7 // Next week if same day
 		}
-		nextDay := referenceTime.AddDate(0, 0, daysUntil)
-		at := time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), hour, minute, 0, 0, time.UTC)
+		nextDay := ref.AddDate(0, 0, daysUntil)
+		at := time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), hour, minute, 0, 0, loc)
 
 		return &ParsedSchedule{
 			Schedule: Schedule{
@@ -283,9 +292,13 @@ func parseOneTimeSchedule(input string, referenceTime time.Time, timezone string
 
 // computeNextDaily computes the next daily occurrence at the given time.
 func computeNextDaily(referenceTime time.Time, hour, minute int, timezone string) time.Time {
-	// Simplified: return tomorrow at the specified time
-	nextDay := referenceTime.AddDate(0, 0, 1)
-	return time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), hour, minute, 0, 0, time.UTC)
+	loc, err := time.LoadLocation(timezone)
+	if err != nil || loc == nil {
+		loc = time.UTC
+	}
+	ref := referenceTime.In(loc)
+	nextDay := ref.AddDate(0, 0, 1)
+	return time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), hour, minute, 0, 0, loc)
 }
 
 // parseHour parses an hour string with AM/PM indicator.
