@@ -154,7 +154,7 @@ install-ghost: build-ghost
 	@# Stop services before replacing binaries
 	@sudo systemctl stop ghost 2>/dev/null || true
 	@sudo systemctl stop ghost-web 2>/dev/null || true
-	@sudo systemctl stop ghost-stt 2>/dev/null || true
+	@sudo systemctl stop ghost-speech 2>/dev/null || true
 	@sudo mkdir -p /var/ghost/config /var/ghost/data /var/ghost/workspace
 	@sudo mkdir -p $(WORKSPACE_DIR)
 	@# Lock down the install root and personal-data workspace to the owner.
@@ -192,8 +192,8 @@ install-ghost: build-ghost
 		-e "s|__BIN_DIR__|/usr/local/bin|g" \
 		-e "s|__MODELS_DIR__|/var/ghost/models|g" \
 		-e "s|__PORT__|11435|g" \
-		ghost-stt.service.template > ghost-stt.service
-	@sudo cp ghost-stt.service /etc/systemd/system/ghost-stt.service
+		ghost-speech.service.template > ghost-speech.service
+	@sudo cp ghost-speech.service /etc/systemd/system/ghost-speech.service
 	@sudo mkdir -p /var/ghost/models
 	@# ffmpeg is a hard runtime dependency for the voice stack: the STT
 	@# sidecar converts ogg/m4a/mp3 voice notes with it and TTS uses it for
@@ -226,12 +226,12 @@ install-ghost: build-ghost
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable ghost-web
 	@sudo systemctl enable ghost
-	@sudo systemctl enable ghost-stt
+	@sudo systemctl enable ghost-speech
 	@sudo systemctl restart ghost 2>/dev/null || true
 	@sudo systemctl restart ghost-web 2>/dev/null || true
-	@sudo systemctl restart ghost-stt 2>/dev/null || true
+	@sudo systemctl restart ghost-speech 2>/dev/null || true
 	@# Restore repo ownership to the developer user
-	@sudo chown -R $(shell stat -c '%U' .):$(shell stat -c '%G' .) $(BUILD_DIR) $(CMD_DIR)/workspace ghost.service ghost-web.service ghost-stt.service 2>/dev/null || true
+	@sudo chown -R $(shell stat -c '%U' .):$(shell stat -c '%G' .) $(BUILD_DIR) $(CMD_DIR)/workspace ghost.service ghost-web.service ghost-speech.service 2>/dev/null || true
 	@echo "Ghost installed"
 	@if [ ! -f /var/ghost/.setup-complete ]; then echo "Run 'sudo systemctl start ghost-web' to begin setup now"; echo "Or reboot to start setup automatically"; fi
 

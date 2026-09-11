@@ -20,7 +20,7 @@ build/
 tmp/
 ghost.service
 ghost-web.service
-ghost-stt.service
+ghost-speech.service
 
 # Coverage
 coverage.txt
@@ -30,6 +30,8 @@ coverage.html
 .env
 config/config.json
 config/.secrets.json
+# Vault master keys — the lock must never travel with the safe.
+**/.master-key
 
 # OS
 .DS_Store

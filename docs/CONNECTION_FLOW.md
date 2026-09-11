@@ -34,7 +34,7 @@ How users set up Ghost for the first time and connect devices.
 
 - `config.json` and `.secrets.json` are written (secrets never touch `.env`)
 - The `.setup-complete` flag is created
-- The ghost gateway service starts on port 8766 (LAN-reachable; loopback trusted, LAN requires device credentials)
+- The Ghost daemon (`ghost serve`) starts on port 8766 (LAN-reachable; loopback trusted, LAN requires device credentials)
 
 ---
 
@@ -209,7 +209,7 @@ The `ghost` binary provides these commands:
 |---------|---------|
 | `ghost onboard` | Initialize config and workspace |
 | `ghost agent` | Interactive chat or single message |
-| `ghost gateway` | Start the full gateway (API + channels + cron + heartbeat) |
+| `ghost serve` | Start the full gateway (API + channels + cron + heartbeat) |
 | `ghost relay run` | Connect to relay server for remote access |
 | `ghost relay pair` | Generate pairing token for phone |
 | `ghost relay clients` | List paired clients |

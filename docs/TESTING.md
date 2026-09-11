@@ -18,7 +18,7 @@ Run these from the `~/ghost` directory on your Pi.
 ### Basic Connectivity
 
 - `ghost agent -m "ping"`: Quick test of the agent loop.
-- `ghost gateway`: Starts the full API server (for phone connection).
+- `ghost serve`: Starts the full API server (for phone connection).
 - `sudo systemctl status ghost`: Check if the background service is healthy.
 
 ### Monitoring
@@ -254,7 +254,7 @@ ls -la /var/ghost/data/     # Should show 0700
 
 ```bash
 # Start recovery mode
-sudo GHOST_RECOVERY_MODE=1 ghost gateway &
+sudo GHOST_RECOVERY_MODE=1 ghost serve &
 
 # From another device on the network (should FAIL):
 curl http://<pi-ip>:8766/api/status

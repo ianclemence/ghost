@@ -208,7 +208,7 @@ chmod +x setup.sh
 
 | Command | Description |
 |---------|-------------|
-| `ghost gateway` | Start Ghost (main service) |
+| `ghost serve` | Start Ghost (main service) |
 | `ghost agent` | Chat directly in terminal |
 | `ghost dashboard` | Launch operator TUI |
 | `ghost status` | Show system status |
@@ -262,7 +262,7 @@ chmod +x setup.sh
 | `/forget` | Forget a belief or session (`/forget <topic>` / `/forget session <id>`) |
 | `/remind` | Set a reminder (`/remind buy milk in 10m`) |
 | `/model` | Show or switch AI model |
-| `/doctor` / `/health` | Diagnostics |
+| `/doctor` | Diagnostics |
 | `/status` | System status |
 | `/skills` | List skills |
 | `/install <url>` | Install skill |
@@ -380,7 +380,7 @@ sudo systemctl restart ghost
 If Ghost fails to start, enable recovery mode:
 
 ```bash
-GHOST_RECOVERY_MODE=1 ghost gateway
+GHOST_RECOVERY_MODE=1 ghost serve
 ```
 
 This starts a web UI at `http://127.0.0.1:8766` (localhost only) with:

@@ -1,5 +1,5 @@
 [Unit]
-Description=Ghost Local Speech-to-Text (whisper-server, loopback only)
+Description=Ghost Local Speech Sidecar (whisper-server, loopback only)
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=__MODELS_DIR__/active.ggml.bin
@@ -22,7 +22,7 @@ PrivateTmp=true
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=ghost-stt
+SyslogIdentifier=ghost-speech
 
 [Install]
 WantedBy=multi-user.target

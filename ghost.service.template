@@ -1,6 +1,6 @@
 [Unit]
 Description=Ghost - Personal AI Assistant
-After=network-online.target ghost-web.service ghost-stt.service
+After=network-online.target ghost-web.service ghost-speech.service
 Wants=network-online.target
 ConditionPathExists=__GHOST_DIR__/.setup-complete
 
@@ -11,7 +11,7 @@ Group=__GROUP__
 WorkingDirectory=__GHOST_DIR__
 EnvironmentFile=__GHOST_DIR__/.env
 Environment=GHOST_WORKSPACE_DIR=/var/lib/ghost/workspace
-ExecStart=__BIN_DIR__/ghost gateway
+ExecStart=__BIN_DIR__/ghost serve
 Restart=always
 RestartSec=5
 StartLimitIntervalSec=300

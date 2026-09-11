@@ -191,7 +191,7 @@ func main() {
 		agentCmd()
 	case "dashboard":
 		runDashboard()
-	case "gateway":
+	case "serve", "gateway":
 		gatewayCmd()
 	case "status":
 		statusCmd()
@@ -299,8 +299,9 @@ func printHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  onboard     Initialize Ghost configuration and workspace")
 	fmt.Println("  agent       Interact with the agent directly")
+	fmt.Println("  serve       Start the Ghost daemon (API + channels + cron + heartbeat)")
+	fmt.Println("  gateway     Legacy alias for serve")
 	fmt.Println("  dashboard   Launch the operator TUI")
-	fmt.Println("  gateway     Start Ghost gateway")
 	fmt.Println("  status      Show Ghost status")
 	fmt.Println("  model       View or switch the active model (model [list|use <provider:model>])")
 	fmt.Println("  update      Pull latest changes and rebuild")

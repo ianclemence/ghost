@@ -105,7 +105,7 @@ func sttStatusCmd() {
 	if local.IsAvailable() {
 		fmt.Printf("Sidecar answering on %s ✓\n", voice.LocalBaseURL(cfg.STT.Port))
 	} else {
-		fmt.Printf("Sidecar answering on %s ✗ (is ghost-stt running?)\n", voice.LocalBaseURL(cfg.STT.Port))
+		fmt.Printf("Sidecar answering on %s ✗ (is ghost-speech running?)\n", voice.LocalBaseURL(cfg.STT.Port))
 	}
 
 	tr := voice.SelectTranscriber(voice.SelectConfig{

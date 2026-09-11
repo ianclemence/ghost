@@ -69,7 +69,7 @@ User=${USER}
 WorkingDirectory=${HOME}/ghost
 EnvironmentFile=${HOME}/ghost/.env
 Environment=GHOST_WORKSPACE_DIR=${HOME}/ghost/workspace
-ExecStart=${HOME}/.local/bin/ghost gateway
+ExecStart=${HOME}/.local/bin/ghost serve
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -272,6 +272,6 @@ if [[ "$RUN_NOW" =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}Ghost service is already running. Tailing logs...${NC}"
         sudo journalctl -u ghost -f
     else
-        ./ghost gateway --debug
+        ./ghost serve --debug
     fi
 fi

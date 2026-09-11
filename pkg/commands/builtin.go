@@ -49,7 +49,6 @@ func DefaultDefinitions() []Definition {
 		},
 		{
 			Name:        "/doctor",
-			Aliases:     []string{"/health"},
 			Description: "Run read-only Ghost diagnostics checks",
 			Handler:     doctorHandler,
 		},
@@ -71,7 +70,6 @@ func DefaultDefinitions() []Definition {
 		},
 		{
 			Name:        "/loop",
-			Aliases:     []string{"/repeat"},
 			Description: "Re-run a prompt on an interval. Usage: /loop [interval] <prompt>",
 			Usage:       "/loop [5m|1h|30s] <prompt>",
 			Handler:     loopHandler,
@@ -89,7 +87,6 @@ func DefaultDefinitions() []Definition {
 		},
 		{
 			Name:        "/personality",
-			Aliases:     []string{"/person"},
 			Description: "Switch or list AI personalities",
 			Usage:       "/personality [name]",
 			Handler:     personalityHandler,
