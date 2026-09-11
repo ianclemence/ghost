@@ -26,6 +26,15 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"sandbox", "exec",
 		"cron", "schedule", "remember",
 		"vision", "image_generate",
+		// Read-only skill primaries: the skill docs tell the model to call
+		// these first. Without them the model follows the doc, calls the
+		// tool, and gets "not available in profile" — then falls back to
+		// heavier paths or fails. All are read-only; the broker still
+		// governs anything consequential.
+		"weather_now", "places_nearby", "aqi_now", "crypto_price",
+		"currency_convert", "flight_status",
+		// Read-only memory + conversation tools.
+		"memory_recall", "context_get", "clarify", "todo",
 	},
 	ProfileHeartbeatSafe: {
 		"read_file", "view", "session_search", "exec",
@@ -136,9 +145,14 @@ var coreToolNames = map[string]bool{
 	"web_search": true, "web_fetch": true, "session_search": true,
 	"remember": true, "context_get": true, "memory_curate": true,
 	"memory_recall": true,
-	"message":       true, "skill_manage": true, "todo": true, "cron": true,
+	// Read-only skill reference tools: always visible so skill docs that name
+	// them as the preferred path actually work. Cheap, no side effects.
+	"weather_now": true, "places_nearby": true, "aqi_now": true,
+	"crypto_price": true, "currency_convert": true, "flight_status": true,
+	"clarify": true, "todo": true,
+	"message": true, "skill_manage": true, "cron": true,
 	"schedule": true,
-	"spawn":    true, "subagent": true, "clarify": true,
+	"spawn":    true, "subagent": true,
 }
 
 // turnIntentTools maps message keyword signals to niche tools to include so a

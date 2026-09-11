@@ -17,6 +17,7 @@ package weather
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -55,6 +56,39 @@ func (c Current) Validate() error {
 // Geocode resolves "Bangkok" etc. to coordinates via Open-Meteo's free
 // geocoding API. Separated so tests can inject coordinates directly.
 func geocode(ctx context.Context, client *http.Client, base, place string) (lat, lon float64, name string, err error) {
+	// Geocoders can be literal about punctuation: "Phang-Nga" yields nothing
+	// while "Phang Nga" resolves. Retry with normalized variants before
+	// giving up — the user's spelling, not the provider's index, is canonical.
+	for _, q := range geocodeVariants(place) {
+		lat, lon, name, err = geocodeOnce(ctx, client, base, q)
+		if err == nil {
+			return lat, lon, name, nil
+		}
+		// Only spelling variants are worth retrying: a rate-limit, a
+		// server error, or a transport failure must surface immediately
+		// rather than being masked by a fallback query.
+		var ve *provider.ValidationError
+		if !errors.As(err, &ve) || ve.Class != provider.FailEmpty {
+			return 0, 0, "", err
+		}
+	}
+	return 0, 0, "", err
+}
+
+// geocodeVariants returns the place plus separator-normalized fallbacks,
+// deduplicated, most faithful first.
+func geocodeVariants(place string) []string {
+	out := []string{place}
+	seen := map[string]bool{place: true}
+	folded := strings.Join(strings.Fields(strings.NewReplacer("-", " ", "_", " ", ",", " ").Replace(place)), " ")
+	if folded != "" && !seen[folded] {
+		seen[folded] = true
+		out = append(out, folded)
+	}
+	return out
+}
+
+func geocodeOnce(ctx context.Context, client *http.Client, base, place string) (lat, lon float64, name string, err error) {
 	u := base + "/v1/search?name=" + url.QueryEscape(place) + "&count=1&language=en&format=json"
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {

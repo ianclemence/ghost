@@ -103,3 +103,59 @@ func TestImageBase64Part(t *testing.T) {
 		t.Errorf("expected empty for non-data url")
 	}
 }
+
+// TestHTTPProvider_DeepSeekThinkingDefaultsOff verifies Ghost disables
+// DeepSeek thinking mode unless explicitly requested, using the provider's
+// object toggle {"thinking":{"type":"disabled"|"enabled"}}.
+func TestHTTPProvider_DeepSeekThinkingDefaultsOff(t *testing.T) {
+	cases := []struct {
+		name    string
+		options map[string]interface{}
+		want    string // want thinking.type; "" = field absent
+	}{
+		{"default off", map[string]interface{}{"max_tokens": 30}, "disabled"},
+		{"explicit bool true", map[string]interface{}{"thinking": true}, "enabled"},
+		{"explicit bool false", map[string]interface{}{"thinking": false}, "disabled"},
+		{"level off", map[string]interface{}{"thinking_level": "off"}, "disabled"},
+		{"level medium", map[string]interface{}{"thinking_level": "medium"}, "enabled"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotType string
+			var hasThinking bool
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req struct {
+					Model    string                 `json:"model"`
+					Thinking map[string]interface{} `json:"thinking"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("failed to decode body: %v", err)
+					return
+				}
+				if req.Thinking != nil {
+					hasThinking = true
+					gotType, _ = req.Thinking["type"].(string)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"id":      "test",
+					"choices": []map[string]interface{}{{"index": 0, "message": map[string]interface{}{"role": "assistant", "content": "OK"}, "finish_reason": "stop"}},
+				})
+			}))
+			defer server.Close()
+
+			p := NewHTTPProvider("test-key", server.URL, "", "")
+			_, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil, "deepseek/deepseek-flash", tc.options)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !hasThinking {
+				t.Fatalf("expected explicit thinking toggle, field absent")
+			}
+			if gotType != tc.want {
+				t.Errorf("expected thinking.type %q, got %q", tc.want, gotType)
+			}
+		})
+	}
+}

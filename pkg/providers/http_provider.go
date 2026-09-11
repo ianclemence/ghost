@@ -110,8 +110,34 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		}
 	}
 
-	if thinking, ok := options["thinking"].(bool); ok {
-		requestBody["thinking"] = thinking
+	// Thinking mode: DeepSeek enables it by default (effort high), which makes
+	// responses slow and, worse, breaks tool loops that do not echo
+	// reasoning_content (the API 400s). Ghost keeps thinking OFF unless the
+	// caller explicitly opts in (options["thinking"]=true or a non-"off"
+	// options["thinking_level"]), and always states the choice explicitly in
+	// the provider's own format so the default never depends on server-side
+	// behavior. DeepSeek's toggle is an object: {"thinking":{"type":...}}.
+	isDeepSeek := strings.Contains(strings.ToLower(model), "deepseek") ||
+		strings.Contains(strings.ToLower(p.apiBase), "deepseek")
+	thinkingEnabled := false
+	if v, ok := options["thinking"].(bool); ok {
+		thinkingEnabled = v
+	} else if lvl, ok := options["thinking_level"].(string); ok {
+		switch strings.ToLower(strings.TrimSpace(lvl)) {
+		case "off", "false", "disabled", "none", "":
+			thinkingEnabled = false
+		default:
+			thinkingEnabled = true
+		}
+	}
+	if isDeepSeek {
+		thinkingType := "disabled"
+		if thinkingEnabled {
+			thinkingType = "enabled"
+		}
+		requestBody["thinking"] = map[string]interface{}{"type": thinkingType}
+	} else if _, ok := options["thinking"].(bool); ok {
+		requestBody["thinking"] = options["thinking"]
 	}
 
 	// Map generic thinking options to Ollama's expected "think" parameter

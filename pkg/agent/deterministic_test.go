@@ -4,7 +4,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
@@ -231,5 +233,117 @@ func TestResumeDoesNotHijackProposals(t *testing.T) {
 	})
 	if _, ok, _, _ := resolvePendingResume(ws, "sess-g2", "yes"); ok {
 		t.Fatal("routine proposal must not be hijacked as a clarification")
+	}
+}
+
+func TestLocationRefersHere(t *testing.T) {
+	yes := []string{
+		"What's the current weather here?",
+		"weather here?",
+		"Is it going to rain at my location?",
+		"find cafes near me",
+		"anything good around here?",
+		"local weather",
+	}
+	for _, m := range yes {
+		if !locationRefersHere(m) {
+			t.Errorf("expected here-reference: %q", m)
+		}
+	}
+	no := []string{
+		"What's the current weather in Bangkok?",
+		"find cafes near Central Park",
+		"weather tomorrow",
+		"remind me at 9",
+	}
+	for _, m := range no {
+		if locationRefersHere(m) {
+			t.Errorf("must not treat as here-reference: %q", m)
+		}
+	}
+}
+
+func TestKnownLocationFromMemory(t *testing.T) {
+	ws := t.TempDir()
+	store, err := personalcontext.Open(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	al := &AgentLoop{pcStore: store}
+	if got := al.knownLocation("s"); got != "" {
+		t.Fatalf("empty store must yield no location, got %q", got)
+	}
+	now := time.Now().UTC()
+	mkEntry := func(id, pred, val string) personalcontext.Entry {
+		raw, _ := personalcontext.RawValue(val)
+		return personalcontext.Entry{ID: id, Kind: personalcontext.KindFact,
+			Subject: "user", Predicate: pred, Value: raw,
+			Status: personalcontext.StatusCurrent, Confidence: 0.9,
+			Sources: []personalcontext.Source{{Type: personalcontext.SourceConversation,
+				Kind: personalcontext.SourceUserDeclared, Ref: "t:1", Timestamp: now}},
+			CreatedAt: now, UpdatedAt: now}
+	}
+	// Structured predicate wins.
+	if _, err := store.Create(mkEntry("loc1", "fact/city", "Chiang Mai")); err != nil {
+		t.Fatal(err)
+	}
+	if got := al.knownLocation("s"); got != "Chiang Mai" {
+		t.Fatalf("structured location must resolve, got %q", got)
+	}
+}
+
+func TestKnownLocationFromGeneralFact(t *testing.T) {
+	ws := t.TempDir()
+	store, err := personalcontext.Open(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	al := &AgentLoop{pcStore: store}
+	now := time.Now().UTC()
+	raw, _ := personalcontext.RawValue("I am currently in Phang-Nga")
+	if _, err := store.Create(personalcontext.Entry{ID: "g1", Kind: personalcontext.KindFact,
+		Subject: "user", Predicate: "fact/general", Value: raw,
+		Status: personalcontext.StatusCurrent, Confidence: 0.7,
+		Sources: []personalcontext.Source{{Type: personalcontext.SourceConversation,
+			Kind: personalcontext.SourceInferred, Ref: "t:1", Timestamp: now}},
+		CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if got := al.knownLocation("s"); got != "Phang-Nga" {
+		t.Fatalf("inline location must resolve, got %q", got)
+	}
+}
+
+func TestLocationFallbackFillsHere(t *testing.T) {
+	ws := t.TempDir()
+	store, err := personalcontext.Open(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	al := &AgentLoop{pcStore: store}
+	now := time.Now().UTC()
+	raw, _ := personalcontext.RawValue("Phang-Nga")
+	if _, err := store.Create(personalcontext.Entry{ID: "loc", Kind: personalcontext.KindFact,
+		Subject: "user", Predicate: "fact/location", Value: raw,
+		Status: personalcontext.StatusCurrent, Confidence: 0.9,
+		Sources: []personalcontext.Source{{Type: personalcontext.SourceConversation,
+			Kind: personalcontext.SourceUserDeclared, Ref: "t:1", Timestamp: now}},
+		CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	inputs := map[string]string{}
+	got := al.locationWithMemoryFallback("What's the current weather here?", "s", inputs)
+	if got["location"] != "Phang-Nga" {
+		t.Fatalf("here must resolve from memory, got %q", got["location"])
+	}
+	// Explicit locations are never overwritten.
+	explicit := map[string]string{"location": "Bangkok"}
+	if got := al.locationWithMemoryFallback("weather here?", "s", explicit); got["location"] != "Bangkok" {
+		t.Fatalf("explicit location must win, got %q", got["location"])
+	}
+	// Non-here messages are untouched.
+	plain := map[string]string{}
+	if got := al.locationWithMemoryFallback("What's the current weather?", "s", plain); got["location"] != "" {
+		t.Fatalf("must not invent a location, got %q", got["location"])
 	}
 }

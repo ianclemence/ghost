@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
 
@@ -357,7 +358,7 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 
 	// Nearby / travel: missing location.
 	if isNearbyIntent(lower) || isTravelIntent(lower) {
-		inputs := capabilityInputsFromMessage(msg, metadata)
+		inputs := al.locationWithMemoryFallback(msg, session, capabilityInputsFromMessage(msg, metadata))
 		if strings.TrimSpace(inputs["location"]) == "" {
 			skill := "find-nearby"
 			if isTravelIntent(lower) {
@@ -376,9 +377,10 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 		return "", false
 	}
 
-	// Weather without any location: ask rather than wander.
+	// Weather without any location: resolve "here" from stored place, else
+	// ask rather than wander.
 	if isWeatherIntent(lower) {
-		inputs := capabilityInputsFromMessage(msg, metadata)
+		inputs := al.locationWithMemoryFallback(msg, session, capabilityInputsFromMessage(msg, metadata))
 		if strings.TrimSpace(inputs["location"]) == "" {
 			skills.SetPendingDurable(al.workspace, session, skills.PendingContinuation{
 				CapabilityID: "weather.current", Skill: "weather",
@@ -497,6 +499,69 @@ func capabilityInputsFromMessage(msg string, metadata map[string]string) map[str
 	return out
 }
 
+// hereRefRE matches location references that mean "where I am" rather than a
+// named place: "here", "my location", "near me", "around here", a bare
+// "nearby", or "local" attached to a place noun. When one matches and no
+// explicit place is present, the runtime resolves it against device metadata
+// first, then the user's stored location, before ever asking.
+var hereRefRE = regexp.MustCompile(`(?i)\b(here|my location|near me|around here|around me|close by|local weather|local aqi|weather here|here\?)\b|\bnearby\s*[?.!]?$`)
+
+// locationRefersHere reports whether the message asks about the user's own
+// location without naming a place.
+func locationRefersHere(msg string) bool {
+	return hereRefRE.MatchString(strings.TrimSpace(msg))
+}
+
+// knownLocation returns the user's stored city/place (personal context,
+// current, in-scope), or "". It lets "here" resolve without another
+// round-trip: the user already told Ghost where they are.
+func (al *AgentLoop) knownLocation(session string) string {
+	if al == nil || al.pcStore == nil {
+		return ""
+	}
+	var general []string
+	for _, e := range al.pcStore.CurrentInScope(al.sessionScopes(session)) {
+		if e.Status != "" && e.Status != personalcontext.StatusCurrent {
+			continue
+		}
+		switch e.Predicate {
+		case "fact/location", "identity/location", "fact/city", "identity/city",
+			"fact/home", "identity/home", "fact/country", "identity/country":
+			if v := strings.TrimSpace(personalcontext.Value(e)); v != "" {
+				return v
+			}
+		case "fact/general":
+			if v := strings.TrimSpace(personalcontext.Value(e)); v != "" {
+				general = append(general, v)
+			}
+		}
+	}
+	// General facts sometimes hold the location inline ("I am currently in
+	// Phang-Nga"). The "in <Place>" heuristic extracts it.
+	for _, g := range general {
+		if loc := locationFromText(g); loc != "" {
+			return loc
+		}
+	}
+	return ""
+}
+
+// locationWithMemoryFallback fills a missing location from a "here"-style
+// reference resolved against the user's stored place. It returns the inputs
+// unchanged when an explicit location is already present.
+func (al *AgentLoop) locationWithMemoryFallback(msg, session string, inputs map[string]string) map[string]string {
+	if strings.TrimSpace(inputs["location"]) != "" {
+		return inputs
+	}
+	if !locationRefersHere(msg) {
+		return inputs
+	}
+	if loc := al.knownLocation(session); loc != "" {
+		inputs["location"] = loc
+	}
+	return inputs
+}
+
 var flightNumberRE = regexp.MustCompile(`(?i)\b([A-Z]{2}\s?\d{1,4})\b`)
 
 // futureIntentWords mark forecast-style asks. Ghost's provider-backed
@@ -526,7 +591,7 @@ func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metada
 	if lower == "" || isSecurityProbe(msg) {
 		return "", false
 	}
-	inputs := capabilityInputsFromMessage(msg, metadata)
+	inputs := al.locationWithMemoryFallback(msg, session, capabilityInputsFromMessage(msg, metadata))
 	loc := strings.TrimSpace(inputs["location"])
 
 	// Weather / AQI current conditions with a location -> dispatch the

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -234,5 +235,42 @@ func TestOpenWeatherRequestFormation(t *testing.T) {
 	}
 	if q.Get("appid") != "test-key" || q.Get("lat") == "" || q.Get("lon") == "" || q.Get("units") != "metric" {
 		t.Fatalf("malformed openweather query: %s", gotQuery)
+	}
+}
+
+// TestGeocodeHyphenFallback reproduces a real failure: open-meteo returns no
+// results for hyphenated "Phang-Nga" but resolves "Phang Nga". The geocoder
+// must try the normalized variant instead of failing the lookup.
+func TestGeocodeHyphenFallback(t *testing.T) {
+	geo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.RawQuery, "Phang-Nga") {
+			fmt.Fprint(w, `{"generationtime_ms":0.6}`)
+			return
+		}
+		fmt.Fprint(w, `{"results":[{"latitude":8.45091,"longitude":98.52985,"name":"Phang Nga"}]}`)
+	}))
+	defer geo.Close()
+	m := testServer(meteoOK, 200)
+	defer m.Close()
+	cfg := Config{OpenMeteoBase: m.URL, GeocodeBase: geo.URL, BreakerCooldown: time.Second, CacheTTL: time.Minute}
+	s := New(cfg)
+	cur, r := s.CurrentByPlace(context.Background(), "Phang-Nga", false)
+	if r.Err != nil {
+		t.Fatalf("hyphenated lookup must fall back, got: %v", r.Err)
+	}
+	if cur.TemperatureC != 21.5 {
+		t.Fatalf("wrong result: %+v", cur)
+	}
+}
+
+// TestGeocodeVariants checks the normalization table.
+func TestGeocodeVariants(t *testing.T) {
+	got := geocodeVariants("Phang-Nga")
+	if len(got) != 2 || got[0] != "Phang-Nga" || got[1] != "Phang Nga" {
+		t.Fatalf("unexpected variants: %q", got)
+	}
+	if got := geocodeVariants("Bangkok"); len(got) != 1 {
+		t.Fatalf("plain names need no fallback: %q", got)
 	}
 }

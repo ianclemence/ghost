@@ -32,6 +32,18 @@ func TestToolProfileAllows(t *testing.T) {
 		{"mobile blocks shell", ProfileMobileSafe, "shell", false},
 		{"heartbeat allows session_search", ProfileHeartbeatSafe, "session_search", true},
 		{"heartbeat blocks grep_search", ProfileHeartbeatSafe, "grep_search", false},
+		// Skill docs name these as the preferred path; the model must see
+		// them on mobile or every skill call fails with "not available".
+		{"mobile allows weather_now", ProfileMobileSafe, "weather_now", true},
+		{"mobile allows places_nearby", ProfileMobileSafe, "places_nearby", true},
+		{"mobile allows aqi_now", ProfileMobileSafe, "aqi_now", true},
+		{"mobile allows crypto_price", ProfileMobileSafe, "crypto_price", true},
+		{"mobile allows currency_convert", ProfileMobileSafe, "currency_convert", true},
+		{"mobile allows flight_status", ProfileMobileSafe, "flight_status", true},
+		{"mobile allows memory_recall", ProfileMobileSafe, "memory_recall", true},
+		{"mobile allows context_get", ProfileMobileSafe, "context_get", true},
+		{"mobile allows clarify", ProfileMobileSafe, "clarify", true},
+		{"mobile allows todo", ProfileMobileSafe, "todo", true},
 	}
 
 	for _, tt := range tests {
