@@ -227,16 +227,15 @@ func workspaceForRuntime(rt *Runtime) string {
 
 // clearAllChats deletes all chat history from DB and filesystem.
 func clearAllChats(ws string, rt *Runtime) error {
-	// Prefer runtime session manager if available
-	if rt != nil && rt.Sessions != nil {
-		// Enumerate via DB if possible
-		if db := dbFromRuntime(rt, ws); db != nil {
-			_, _ = db.Exec(`DELETE FROM messages`)
-			_, _ = db.Exec(`DELETE FROM sessions`)
-			_, _ = db.Exec(`DELETE FROM kv_store WHERE key LIKE 'session:%'`)
-			// FTS triggers handle cleanup; rebuild to be safe
-			_, _ = db.Exec(`INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`)
-		}
+	// Delete the DB rows directly. This must not depend on rt.Sessions: a
+	// CLI reset builds a minimal Runtime with no session manager, and the
+	// old guard meant it silently left every message and session in place.
+	if db := dbFromRuntime(rt, ws); db != nil {
+		_, _ = db.Exec(`DELETE FROM messages`)
+		_, _ = db.Exec(`DELETE FROM sessions`)
+		_, _ = db.Exec(`DELETE FROM kv_store WHERE key LIKE 'session:%'`)
+		// FTS triggers handle cleanup; rebuild to be safe
+		_, _ = db.Exec(`INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`)
 	}
 	// Filesystem: sessions/*.jsonl or similar
 	_ = os.RemoveAll(filepath.Join(ws, "sessions"))
@@ -498,4 +497,19 @@ func dbFromRuntime(rt *Runtime, ws string) *sql.DB {
 		return nil
 	}
 	return db
+}
+
+// RunReset executes a /reset command against rt and returns the reply text.
+// It is the CLI entry point: a reset run outside the gateway still reports
+// what happened, and the caller can restart the daemon so the running
+// process reloads the cleared state (its in-memory memory is otherwise
+// stale until restart).
+func RunReset(ctx context.Context, rt *Runtime, text string) (string, error) {
+	var out string
+	req := Request{
+		Text:  text,
+		Reply: func(s string) error { out = s; return nil },
+	}
+	err := resetHandler(ctx, req, rt)
+	return out, err
 }

@@ -227,3 +227,16 @@ func TestResetSecretsNeverLeavesActiveConfig(t *testing.T) {
 		}
 	}
 }
+
+// RunReset is the CLI entry point; it must return the same reply as the
+// chat handler so a CLI reset reports what happened.
+func TestRunResetReturnsReply(t *testing.T) {
+	ws, _ := resetFixture(t)
+	out, err := RunReset(context.Background(), &Runtime{Workspace: ws}, "/reset chats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Chats:") {
+		t.Fatalf("RunReset must return the handler reply, got %q", out)
+	}
+}

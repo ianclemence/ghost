@@ -197,6 +197,8 @@ func main() {
 		modelCmd()
 	case "migrate":
 		migrateCmd()
+	case "reset":
+		resetCmd()
 	case "reset-password":
 		resetPasswordCmd()
 	case "auth":
@@ -303,6 +305,7 @@ func printHelp() {
 	fmt.Println("  update      Pull latest changes and rebuild")
 	fmt.Println("  updater     Run auto-update daemon")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
+	fmt.Println("  reset       Factory reset (e.g. ghost reset all --exclude=devices,secrets)")
 	fmt.Println("  reset-password  Reset the admin dashboard password (requires --force)")
 	fmt.Println("  mcp         Manage MCP servers (list, add, edit, remove, test)")
 	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
@@ -710,7 +713,17 @@ func agentCmd() {
 
 	if message != "" {
 		ctx := context.Background()
+		// A one-shot CLI reset must run while the daemon is stopped, or the
+		// running gateway re-persists its in-memory state and undoes it.
+		isReset := strings.HasPrefix(strings.TrimSpace(message), "/reset")
+		stopped := false
+		if isReset {
+			stopped = stopGhostDaemon()
+		}
 		response, err := agentLoop.ProcessDirect(ctx, message, sessionKey)
+		if isReset {
+			startGhostDaemon(stopped)
+		}
 		if err != nil {
 			fmt.Printf("Error: %s\n", friendlyAgentError(err))
 			os.Exit(1)
@@ -1244,6 +1257,76 @@ func statusCmd() {
 			}
 		}
 	}
+}
+
+// resetCmd is the CLI factory reset. It performs the same reset as the
+// /reset chat command, then restarts the running daemon so the cleared
+// state actually takes effect: a running gateway holds memory in RAM that
+// only reloads on restart.
+func resetCmd() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: ghost reset <all|scope...> [--exclude=scope,...]")
+		fmt.Println("  ghost reset all --exclude=devices,secrets")
+		fmt.Println("  ghost reset chats memory")
+		return
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+	rt := &commands.Runtime{Workspace: cfg.WorkspacePath()}
+	text := "/reset " + strings.Join(os.Args[2:], " ")
+	stopped := stopGhostDaemon()
+	out, err := commands.RunReset(context.Background(), rt, text)
+	if strings.TrimSpace(out) != "" {
+		fmt.Println(out)
+	}
+	startGhostDaemon(stopped)
+	if err != nil {
+		fmt.Printf("Reset error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// ghostServiceRunning reports whether the ghost daemon is active.
+func ghostServiceRunning() bool {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return false
+	}
+	return exec.Command("systemctl", "is-active", "--quiet", "ghost").Run() == nil
+}
+
+// stopGhostDaemon quiesces the daemon before a CLI reset. A running gateway
+// holds memory and sessions in RAM and can re-persist them after an
+// out-of-process clear, so the reset must happen while it is stopped.
+// Returns true when it actually stopped the service.
+func stopGhostDaemon() bool {
+	if !ghostServiceRunning() {
+		return false
+	}
+	if os.Geteuid() != 0 {
+		fmt.Println("Warning: Ghost is running. Stop it first so the reset cannot be undone by in-memory state: sudo systemctl stop ghost")
+		return false
+	}
+	if err := exec.Command("systemctl", "stop", "ghost").Run(); err != nil {
+		fmt.Printf("Could not stop Ghost: %v\n", err)
+		return false
+	}
+	return true
+}
+
+// startGhostDaemon restarts the daemon after a CLI reset so it reloads the
+// cleared state.
+func startGhostDaemon(stopped bool) {
+	if !stopped {
+		return
+	}
+	if err := exec.Command("systemctl", "start", "ghost").Run(); err != nil {
+		fmt.Printf("Reset applied, but starting Ghost failed: %v\nRun: sudo systemctl start ghost\n", err)
+		return
+	}
+	fmt.Println("Ghost service restarted — reset applied.")
 }
 
 func resetPasswordCmd() {
