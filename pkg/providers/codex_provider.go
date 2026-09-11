@@ -10,6 +10,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/responses"
+	"github.com/openai/openai-go/v3/shared"
 
 	"github.com/ianclemence/ghost/pkg/auth"
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -305,7 +306,65 @@ func buildCodexParams(
 		params.Tools = translateToolsForCodex(tools, enableWebSearch)
 	}
 
+	// Reasoning effort defaults to none: answer without a reasoning trace
+	// unless the caller opts in. "none" is only sent for model families
+	// documented to accept it (gpt-5.1+); older families (o3/o4, pre-5.1
+	// GPT, gpt-5-pro) reject it, so those keep the backend default rather
+	// than risking a 400.
+	params.Reasoning = codexReasoning(model, options)
+
 	return params
+}
+
+// codexReasoning resolves the reasoning effort for one Codex request.
+func codexReasoning(model string, options map[string]any) shared.ReasoningParam {
+	if v, ok := options["thinking"].(bool); ok {
+		if v {
+			return shared.ReasoningParam{Effort: shared.ReasoningEffortMedium}
+		}
+		if codexSupportsNone(model) {
+			return shared.ReasoningParam{Effort: shared.ReasoningEffortNone}
+		}
+		return shared.ReasoningParam{}
+	}
+	if lvl, ok := options["thinking_level"].(string); ok {
+		switch strings.ToLower(strings.TrimSpace(lvl)) {
+		case "low":
+			return shared.ReasoningParam{Effort: shared.ReasoningEffortLow}
+		case "medium":
+			return shared.ReasoningParam{Effort: shared.ReasoningEffortMedium}
+		case "high":
+			return shared.ReasoningParam{Effort: shared.ReasoningEffortHigh}
+		case "minimal":
+			return shared.ReasoningParam{Effort: shared.ReasoningEffortMinimal}
+		case "max", "xhigh":
+			// "xhigh" requires post-gpt-5.1-codex-max models; High is the
+			// safe maximum across the gpt-5.1+ family.
+			return shared.ReasoningParam{Effort: shared.ReasoningEffortHigh}
+		case "on", "enabled", "true":
+			return shared.ReasoningParam{Effort: shared.ReasoningEffortMedium}
+		}
+	}
+	if codexSupportsNone(model) {
+		return shared.ReasoningParam{Effort: shared.ReasoningEffortNone}
+	}
+	return shared.ReasoningParam{}
+}
+
+// codexSupportsNone reports whether the model family documents support for
+// reasoning effort "none" (gpt-5.1 and later minors). Anything else keeps the
+// backend default.
+func codexSupportsNone(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	rest, ok := strings.CutPrefix(m, "gpt-5.")
+	if !ok {
+		return false
+	}
+	i := 0
+	for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
+		i++
+	}
+	return i > 0 && rest[0] != '0'
 }
 
 func resolveCodexToolCall(tc ToolCall) (name string, arguments string, ok bool) {

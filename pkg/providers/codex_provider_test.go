@@ -277,3 +277,34 @@ func createOpenAITestClient(baseURL, token, accountID string) *openai.Client {
 	c := openai.NewClient(opts...)
 	return &c
 }
+
+// TestBuildCodexParams_ReasoningDefaultsOff verifies reasoning effort is
+// "none" by default on families documented to accept it, and omitted
+// elsewhere so older backends keep working.
+func TestBuildCodexParams_ReasoningDefaultsOff(t *testing.T) {
+	cases := []struct {
+		name    string
+		model   string
+		options map[string]interface{}
+		want    string // "" = field omitted
+	}{
+		{"gpt-5.3-codex default none", "gpt-5.3-codex", map[string]interface{}{}, "none"},
+		{"gpt-5.1 default none", "gpt-5.1", map[string]interface{}{}, "none"},
+		{"gpt-4o omitted", "gpt-4o", map[string]interface{}{}, ""},
+		{"o3 omitted", "o3", map[string]interface{}{}, ""},
+		{"gpt-5-pro omitted", "gpt-5-pro", map[string]interface{}{}, ""},
+		{"gpt-5.0 omitted", "gpt-5", map[string]interface{}{}, ""},
+		{"explicit medium", "gpt-5.3-codex", map[string]interface{}{"thinking_level": "medium"}, "medium"},
+		{"explicit off", "gpt-5.3-codex", map[string]interface{}{"thinking_level": "off"}, "none"},
+		{"explicit bool true", "gpt-5.3-codex", map[string]interface{}{"thinking": true}, "medium"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			params := buildCodexParams([]Message{{Role: "user", Content: "Hi"}}, nil, tc.model, tc.options, false)
+			got := string(params.Reasoning.Effort)
+			if got != tc.want {
+				t.Errorf("model %s: reasoning effort = %q, want %q", tc.model, got, tc.want)
+			}
+		})
+	}
+}

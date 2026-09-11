@@ -106,3 +106,39 @@ func TestMoonshotProvider_UploadFile(t *testing.T) {
 		t.Errorf("Expected file ID file-123, got %s", fileID)
 	}
 }
+
+// TestMoonshotProvider_Chat_ThinkingDefaultsOff locks the default: thinking
+// is disabled unless explicitly enabled, so turns stay fast by default.
+func TestMoonshotProvider_Chat_ThinkingDefaultsOff(t *testing.T) {
+	var gotType string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req kimiRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("Failed to decode request: %v", err)
+			return
+		}
+		if req.Thinking != nil {
+			gotType = req.Thinking.Type
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(kimiResponse{
+			ID: "test-id",
+			Choices: []struct {
+				Index        int         `json:"index"`
+				Message      kimiMessage `json:"message"`
+				FinishReason string      `json:"finish_reason"`
+			}{
+				{Index: 0, Message: kimiMessage{Role: "assistant", Content: "hi"}, FinishReason: "stop"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	p := NewMoonshotProvider("test-key", server.URL)
+	if _, err := p.Chat(context.Background(), []Message{{Role: "user", Content: "Hello"}}, nil, "kimi-k2.5", map[string]interface{}{}); err != nil {
+		t.Fatalf("Chat failed: %v", err)
+	}
+	if gotType != "disabled" {
+		t.Errorf("expected thinking.type %q by default, got %q", "disabled", gotType)
+	}
+}
