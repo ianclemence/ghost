@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -172,9 +173,10 @@ func buildAnthropicParams(messages []Message, tools []ToolDefinition, model stri
 		params.Temperature = anthropic.Float(temp)
 	}
 
-	// Handle Thinking/Reasoning
+	// Handle Thinking/Reasoning. Absent or "off" means no thinking param at
+	// all (the API default), so thinking stays off unless opted in.
 	if level, ok := options["thinking_level"].(string); ok && level != "" && level != "off" {
-		applyThinkingConfig(&params, level)
+		applyThinkingConfig(&params, model, level)
 	}
 
 	if len(tools) > 0 {
@@ -298,15 +300,20 @@ func parseAnthropicResponse(resp *anthropic.Message) *LLMResponse {
 	}
 }
 
-func applyThinkingConfig(params *anthropic.MessageNewParams, level string) {
+func applyThinkingConfig(params *anthropic.MessageNewParams, model, level string) {
 	// Anthropic API rejects requests with temperature set alongside thinking.
 	params.Temperature = anthropic.MessageNewParams{}.Temperature
 
-	if level == "adaptive" {
+	// Thinking generations: `thinking: {type: "enabled", budget_tokens}` is
+	// deprecated on 4.6 and REJECTED (400) on 4.7+. Those models (and all of
+	// 5.x) require `thinking: {type: "adaptive"}` with an output_config
+	// effort instead. Route by model generation so the opt-in path cannot
+	// 400 on current models.
+	if level == "adaptive" || anthropicPrefersAdaptive(model) {
 		adaptive := anthropic.NewThinkingConfigAdaptiveParam()
 		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &adaptive}
 		params.OutputConfig = anthropic.OutputConfigParam{
-			Effort: anthropic.OutputConfigEffortHigh,
+			Effort: anthropicAdaptiveEffort(level),
 		}
 		return
 	}
@@ -320,6 +327,81 @@ func applyThinkingConfig(params *anthropic.MessageNewParams, level string) {
 		budget = params.MaxTokens - 1
 	}
 	params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
+}
+
+// anthropicPrefersAdaptive reports whether the model requires adaptive
+// thinking (type "adaptive" + output_config effort) instead of the legacy
+// enabled+budget form: Claude 4.6+, 4.7/4.8, and all of 5.x. Unknown models
+// default to adaptive (forward-looking); legacy 4.5-and-earlier models fall
+// through to the budget path.
+func anthropicPrefersAdaptive(model string) bool {
+	major, minor, ok := anthropicModelGeneration(model)
+	if !ok {
+		return true
+	}
+	if major > 4 {
+		return true
+	}
+	if major < 4 {
+		return false
+	}
+	return minor >= 6
+}
+
+// anthropicModelGeneration parses the trailing generation from a Claude
+// model name ("claude-opus-4-6" -> 4,6; "claude-sonnet-5" -> 5,0).
+func anthropicModelGeneration(model string) (major, minor int, ok bool) {
+	m := strings.ToLower(strings.TrimSpace(model))
+	// Find the last digit run, optionally followed by . or - plus digits.
+	last := -1
+	for i := 0; i < len(m); i++ {
+		if m[i] >= '0' && m[i] <= '9' {
+			last = i
+		}
+	}
+	if last < 0 {
+		return 0, 0, false
+	}
+	start := last
+	for start > 0 && m[start-1] >= '0' && m[start-1] <= '9' {
+		start--
+	}
+	// Check for a preceding major: "<major>.<minor>" or "<major>-<minor>".
+	majEnd := start
+	if majEnd > 0 && (m[majEnd-1] == '.' || m[majEnd-1] == '-') {
+		ms := majEnd - 1
+		for ms > 0 && m[ms-1] >= '0' && m[ms-1] <= '9' {
+			ms--
+		}
+		var maj int
+		if _, err := fmt.Sscanf(m[ms:majEnd-1], "%d", &maj); err == nil {
+			var min int
+			fmt.Sscanf(m[start:last+1], "%d", &min)
+			return maj, min, true
+		}
+	}
+	var maj int
+	if _, err := fmt.Sscanf(m[start:last+1], "%d", &maj); err == nil {
+		return maj, 0, true
+	}
+	return 0, 0, false
+}
+
+// anthropicAdaptiveEffort maps a thinking level onto the adaptive output
+// effort. Valid values are none/low/high/max.
+func anthropicAdaptiveEffort(level string) anthropic.OutputConfigEffort {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "low":
+		return anthropic.OutputConfigEffortLow
+	case "medium":
+		return anthropic.OutputConfigEffortMedium
+	case "max", "xhigh":
+		return anthropic.OutputConfigEffortMax
+	case "none", "off":
+		return anthropic.OutputConfigEffortLow
+	default:
+		return anthropic.OutputConfigEffortHigh
+	}
 }
 
 func levelToBudget(level string) int {
