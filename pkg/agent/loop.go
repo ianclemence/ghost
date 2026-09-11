@@ -46,7 +46,9 @@ import (
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/rag"
+	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/routing"
+	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/session"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/state"
@@ -159,6 +161,10 @@ type AgentLoop struct {
 
 	// noticer is the value gate for proactive behaviour ("proactive ≠ noisy").
 	noticer *Noticer
+	// routineSvc/schedSvc feed the proactive signal scan (routine waits
+	// and failures). Nil when automation is disabled — scan yields none.
+	routineSvc *routines.Service
+	schedSvc   *scheduled.Service
 }
 
 // processOptions configures how a message is processed
@@ -752,12 +758,14 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	// Value-gated proactivity: Ghost only interrupts when usefulness is high
 	// (threshold + confidence) and never spams (daily budget, per-topic
-	// cooldown, dedupe). One honest signal is wired: a failed durable task
-	// surfaces once instead of being silent.
+	// cooldown, dedupe). Approved notices are DELIVERED to the last active
+	// channel — the gate is the single throat to choke for all proactive
+	// output, LLM chatter and signal scans alike.
 	al.noticer = NewNoticer(func(nt Notice) {
 		logger.InfoCF("agent", "proactive notice", map[string]interface{}{
 			"topic": nt.Topic, "priority": nt.Priority, "confidence": nt.Confidence, "message": nt.Message,
 		})
+		al.deliverNotice(nt)
 	})
 	al.events.Subscribe(func(ev Event) {
 		if ev.Type != EventTaskFailed || al.noticer == nil {

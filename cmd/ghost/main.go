@@ -994,6 +994,10 @@ func gatewayCmd() {
 	heartbeatService.SetCronService(cronService)
 	heartbeatService.SetBus(msgBus)
 	heartbeatService.SetHandler(func(prompt, channel, chatID string) *tools.ToolResult {
+		// Proactive signals first: gated, reason-carrying notices go out
+		// directly (no LLM round-trip); the heartbeat chatter below is
+		// independent. PollProactive is idempotent — repeats are no-ops.
+		agentLoop.PollProactive()
 		// Use cli:direct as fallback if no valid channel
 		if channel == "" || chatID == "" {
 			channel, chatID = "cli", "direct"
@@ -1697,6 +1701,9 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 	events := &scheduled.SimpleEventBus{}
 
 	service := scheduled.NewService(store, events, executor)
+	// Feed the proactive signal scan: routine waits/failures propose
+	// gated, reason-carrying notices on heartbeat ticks.
+	agentLoop.SetRoutineSignals(routineSvc, service)
 	return service
 }
 
