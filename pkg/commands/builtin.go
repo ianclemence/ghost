@@ -416,6 +416,12 @@ func modelHandler(ctx context.Context, req Request, rt *Runtime) error {
 		if len(rt.ModelPresets) > 0 {
 			sb.WriteString("\n**Available presets:**\n")
 			for _, p := range rt.ModelPresets {
+				if rt.ModelPresetStatus != nil {
+					if ok, reason := rt.ModelPresetStatus(p); !ok {
+						sb.WriteString(fmt.Sprintf("- `%s` (unavailable: %s)\n", p, reason))
+						continue
+					}
+				}
 				sb.WriteString(fmt.Sprintf("- `%s`\n", p))
 			}
 			sb.WriteString("\nUsage: `/model <preset>` or `/model <provider:model>`")

@@ -104,3 +104,22 @@ func TestEstateCredentialLookupUsesConfiguredProvider(t *testing.T) {
 		t.Fatal("no primary entry in estate")
 	}
 }
+
+func TestPresetAvailable(t *testing.T) {
+	cfg := testEstateConfig() // anthropic key set, openai key absent
+	if ok, _ := PresetAvailable(cfg, "anthropic", "claude-test"); !ok {
+		t.Error("keyed cloud provider must be available")
+	}
+	if ok, reason := PresetAvailable(cfg, "openai", "gpt-test"); ok || !strings.Contains(reason, "openai") {
+		t.Errorf("keyless cloud provider must be refused with reason, got ok=%v reason=%q", ok, reason)
+	}
+	if ok, _ := PresetAvailable(cfg, "ollama", "qwen3:0.6b"); !ok {
+		t.Error("local provider must be available without a key")
+	}
+	if ok, _ := PresetAvailable(cfg, "", "ollama/qwen3:0.6b"); !ok {
+		t.Error("provider embedded in model spec must resolve")
+	}
+	if ok, _ := PresetAvailable(cfg, "openai", ""); ok {
+		t.Error("empty model must be unavailable")
+	}
+}

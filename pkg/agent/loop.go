@@ -622,6 +622,15 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		ModelPresets:    al.ModelPresets(),
 		CurrentModel:    al.GetCurrentModel,
 		SetActiveModel:  al.SetModel,
+		ModelPresetStatus: func(name string) (bool, string) {
+			provider, model := name, name
+			if preset := cfg.FindModelPreset(name); preset != nil {
+				provider, model = preset.Provider, preset.Model
+			} else if i := strings.IndexAny(name, ":/"); i >= 0 {
+				provider, model = name[:i], name[i+1:]
+			}
+			return providers.PresetAvailable(cfg, provider, model)
+		},
 		PersonalContext: pcStore,
 		Workspace:       workspace,
 		RAG:             ragStore,
@@ -2584,6 +2593,12 @@ func (al *AgentLoop) buildCandidates(model string) []providers.FallbackCandidate
 		out = append(out, providers.FallbackCandidate{Name: model, Provider: p, Model: model})
 		seen[model] = true
 	}
+	// Strict pin: the pinned model either serves or the turn fails
+	// visibly. No silent hop to another model — fallbacks are only
+	// consulted when the operator explicitly allows them.
+	if al.cfg != nil && al.cfg.Agents.Defaults.StrictPin {
+		return out
+	}
 	// Intelligence mode: in local mode the cloud never runs, even as a
 	// fallback. The explicit primary model is always honored (owner's
 	// direct choice); only fallbacks are filtered.
@@ -2809,17 +2824,24 @@ func (al *AgentLoop) SetModel(target string) error {
 		model = parts[1]
 	}
 
-	// Update the live loop + config in memory.
-	al.cfg.SetActiveModel(provider, model)
-	al.model = model
-	// Ensure the provider is resolvable before committing.
+	// Validate availability BEFORE mutating anything: a knob the driver
+	// can't turn must refuse with the reason, never half-apply and fail
+	// later mid-turn.
 	canonical := model
 	if provider != "" {
 		canonical = provider + ":" + model
 	}
+	if ok, reason := providers.PresetAvailable(al.cfg, provider, model); !ok {
+		return fmt.Errorf("model %q unavailable: %s", canonical, reason)
+	}
+	// Ensure the provider is resolvable before committing.
 	if _, err := providers.CreateProviderForModel(al.cfg, canonical); err != nil {
 		return err
 	}
+
+	// Update the live loop + config in memory.
+	al.cfg.SetActiveModel(provider, model)
+	al.model = model
 
 	// Persist to config.json if a path is known.
 	if al.configPath != "" {

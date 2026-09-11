@@ -52,6 +52,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/pairing"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
+	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/skills"
@@ -4265,6 +4266,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 				Name     string `json:"name"`
 				Provider string `json:"provider"`
 				Model    string `json:"model"`
+				// Capabilities gating: clients must not offer knobs the
+				// driver can't turn.
+				Available bool   `json:"available"`
+				Reason    string `json:"unavailable_reason,omitempty"`
 			}
 			presets := []presetPayload{}
 			if cfg := agentLoop.Config(); cfg != nil {
@@ -4272,7 +4277,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 					if p.Name == "" {
 						continue
 					}
-					presets = append(presets, presetPayload{Name: p.Name, Provider: p.Provider, Model: p.Model})
+					ok, reason := providers.PresetAvailable(cfg, p.Provider, p.Model)
+					presets = append(presets, presetPayload{Name: p.Name, Provider: p.Provider, Model: p.Model, Available: ok, Reason: reason})
 				}
 			}
 			provider := ""

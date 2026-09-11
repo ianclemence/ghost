@@ -27,6 +27,10 @@ type Runtime struct {
 	// ModelPresets lists named model presets available for switching
 	// (e.g. from config model_list). Each is "provider:model" or "ollama/model".
 	ModelPresets []string
+	// ModelPresetStatus reports whether a preset (or provider:model ref)
+	// can serve right now, with the reason when it cannot. Capabilities
+	// gating for the model UI: unavailable knobs are marked, not hidden.
+	ModelPresetStatus func(preset string) (available bool, reason string)
 	// SetActiveModel is called by /model to persist a selection and update the
 	// live agent loop. It receives the canonical "provider:model" string.
 	SetActiveModel func(providerModel string) error

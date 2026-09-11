@@ -581,7 +581,11 @@ func modelCmd() {
 			if p.Name == "" {
 				continue
 			}
-			out = append(out, fmt.Sprintf("  %-16s %s (%s)", p.Name, p.Provider, cleanModel(p.Provider, p.Model)))
+			line := fmt.Sprintf("  %-16s %s (%s)", p.Name, p.Provider, cleanModel(p.Provider, p.Model))
+			if ok, reason := providers.PresetAvailable(cfg, p.Provider, p.Model); !ok {
+				line += fmt.Sprintf("  [unavailable: %s]", reason)
+			}
+			out = append(out, line)
 		}
 		return out
 	}

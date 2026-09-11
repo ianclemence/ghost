@@ -133,6 +133,9 @@ type AgentDefaults struct {
 	EmbeddingModel      string   `json:"embedding_model" env:"GHOST_AGENTS_DEFAULTS_EMBEDDING_MODEL"`
 	FallbackModels      []string `json:"fallback_models" env:"GHOST_AGENTS_DEFAULTS_FALLBACK_MODELS"`
 	FallbackCooldown    int      `json:"fallback_cooldown_seconds" env:"GHOST_AGENTS_DEFAULTS_FALLBACK_COOLDOWN_SECONDS"`
+	// StrictPin disables silent model fallback: the pinned model either
+	// serves or the turn fails visibly. No quiet hop to another model.
+	StrictPin           bool     `json:"strict_pin" env:"GHOST_AGENTS_DEFAULTS_STRICT_PIN"`
 	SessionStore        string   `json:"session_store" env:"GHOST_AGENTS_DEFAULTS_SESSION_STORE"`
 }
 
@@ -362,6 +365,7 @@ func DefaultConfig() *Config {
 				MaxToolIterations:   20,
 				FallbackModels:      []string{},
 				FallbackCooldown:    30,
+				StrictPin:           true,
 				SessionStore:        "sqlite",
 			},
 			Routing: RoutingConfig{

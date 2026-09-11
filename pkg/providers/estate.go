@@ -104,3 +104,35 @@ func providerKey(cfg *config.Config, name string) string {
 		return ""
 	}
 }
+
+// PresetAvailable reports whether a model reference can serve right now,
+// without probing the network: local engines are assumed available (the
+// runtime fails visibly if the daemon is down), cloud providers need their
+// key present. This is the capabilities gate behind the model UI — a knob
+// the driver can't turn is shown as unavailable, never offered as live.
+func PresetAvailable(cfg *config.Config, provider, model string) (bool, string) {
+	provider = strings.TrimSpace(provider)
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return false, "no model configured"
+	}
+	if provider == "" {
+		if name, _ := splitModelSpec(model); name != "" {
+			provider = name
+		} else if cfg != nil {
+			provider = cfg.Agents.Defaults.Provider
+		}
+	}
+	if provider == "" {
+		return false, "no provider for model"
+	}
+	// Locality is a property of the provider, not the model string: a bare
+	// model name ("qwen3:0.6b") must not flip the verdict.
+	if !modes.IsCloudProvider(provider) {
+		return true, ""
+	}
+	if cfg != nil && providerKey(cfg, provider) != "" {
+		return true, ""
+	}
+	return false, "no API key for provider " + provider
+}
