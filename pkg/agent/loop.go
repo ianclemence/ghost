@@ -637,6 +637,10 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		Workspace:       workspace,
 		RAG:             ragStore,
 	}
+	// Personality selections propagate live into prompt assembly (the
+	// builder resolves through the Loader, so builtins and customs
+	// alike inject on the next turn).
+	cmdRuntime.OnPersonalityChanged = contextBuilder.SetPersonality
 	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
 	al.commandExec = cmdExec
 

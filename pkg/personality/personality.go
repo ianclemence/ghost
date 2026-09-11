@@ -71,6 +71,15 @@ Check understanding before moving to advanced topics.`,
 		Content: `You are Ghost in minimal mode. Answer in as few words as possible.
 No explanations unless explicitly asked. One-line answers preferred.`,
 	}
+	l.builtin["adaptive"] = &Personality{
+		Name:        "adaptive",
+		Description: "Learns your style from how you correct it — explicit selections always win",
+		Builtin:     true,
+		Content: `You are Ghost in adaptive mode. Tune verbosity, formality, and playfulness
+to the learned style profile injected below (derived from reinforced user
+preferences). An explicit personality selection always overrides learning:
+if the user names a style, follow it, not the profile.`,
+	}
 }
 
 func (l *Loader) List() []*Personality {

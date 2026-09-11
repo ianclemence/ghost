@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/contextcache"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/personality"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
@@ -26,6 +26,10 @@ type ContextBuilder struct {
 	memory          *MemoryStore
 	personalContext *personalcontext.Store // source of the Active Context Digest
 	tools           *tools.ToolRegistry    // Direct reference to tool registry
+	// personalityLoader is the single source of truth for personalities:
+	// builtins resolve from code, customs from disk. Nothing reads the
+	// personalities directory directly anymore.
+	personalityLoader *personality.Loader
 	personalityName string
 
 	// promptCache caches the compiled system prompt; promptVersion returns a
@@ -71,6 +75,10 @@ func NewContextBuilder(workspace string) *ContextBuilder {
 		workspace:    workspace,
 		skillsLoader: skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir),
 		memory:       NewMemoryStore(workspace),
+		// Personalities resolve through the Loader (builtins from code,
+		// customs from ~/.GHOST/personalities) so every listed name
+		// actually injects.
+		personalityLoader: personality.NewLoader(getGlobalConfigDir()),
 	}
 }
 
@@ -287,6 +295,11 @@ CRITICAL — Skill is authoritative. After you READ a SKILL.md, you MUST:
 		if personalityContent != "" {
 			parts = append(parts, fmt.Sprintf("# Active Personality: %s\n\n%s", cb.personalityName, personalityContent))
 		}
+		if cb.personalityName == "adaptive" {
+			if learned := cb.renderLearnedStyle(scopes); learned != "" {
+				parts = append(parts, learned)
+			}
+		}
 	}
 
 	// Join with "---" separator
@@ -500,24 +513,57 @@ func (cb *ContextBuilder) loadSkills() string {
 	return "# Skill Definitions\n\n" + content
 }
 
-// loadPersonalityContent reads the active personality from the personalities directory.
+// loadPersonalityContent resolves the active personality through the
+// Loader (builtins from code, customs from disk). Unknown names yield "".
 func (cb *ContextBuilder) loadPersonalityContent() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
+	if cb.personalityLoader == nil {
 		return ""
 	}
-	personalityFile := filepath.Join(home, ".GHOST", "personalities", cb.personalityName+".json")
-	data, err := os.ReadFile(personalityFile)
-	if err != nil {
-		return ""
-	}
-	var p struct {
-		Content string `json:"content"`
-	}
-	if json.Unmarshal(data, &p) != nil {
+	p, ok := cb.personalityLoader.Get(cb.personalityName)
+	if !ok {
 		return ""
 	}
 	return p.Content
+}
+
+// warmthFloor pins what learning may never move: style tunes verbosity,
+// formality, and playfulness — never warmth, honesty, or autonomy.
+const warmthFloor = `Style floor (not learnable, not overridable): stay warm, kind, and forthcoming. Never be cold, distant, curt-with-attitude, or sycophantic. Never claim feelings you don't have; never perform distress or affection to keep attention. The user's autonomy outranks engagement — inform, suggest, then step back.`
+
+// renderLearnedStyle renders reinforced communication preferences as the
+// adaptive profile. Entries arrive via the normal extraction → promotion
+// pipeline, so they carry provenance, appear in /context, and die to
+// /forget like any other belief. No style entries: no section (the
+// adaptive builtin content alone applies).
+func (cb *ContextBuilder) renderLearnedStyle(scopes []string) string {
+	if cb.personalContext == nil {
+		return ""
+	}
+	var current []personalcontext.Entry
+	if len(scopes) > 0 {
+		current = cb.personalContext.CurrentInScope(scopes)
+	} else {
+		current = cb.personalContext.Current()
+	}
+	var lines []string
+	for _, e := range current {
+		if e.Status != personalcontext.StatusCurrent {
+			continue
+		}
+		if !strings.HasPrefix(e.Predicate, "preference/communication") && !strings.HasPrefix(e.Predicate, "style/") {
+			continue
+		}
+		val := strings.TrimSpace(string(e.Value))
+		if len(val) > 200 {
+			val = val[:200]
+		}
+		lines = append(lines, fmt.Sprintf("- %s: %s", e.Predicate, strings.Trim(val, `"`)))
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "# Learned Style (reinforced user preferences)\n\n" +
+		strings.Join(lines, "\n") + "\n\n" + warmthFloor
 }
 
 // GetSkillsInfo returns information about loaded skills.

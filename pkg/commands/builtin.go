@@ -382,7 +382,7 @@ func personalityHandler(ctx context.Context, req Request, rt *Runtime) error {
 	args := strings.Fields(req.Text)
 	if len(args) < 2 {
 		list := []string{
-			"default", "hacker", "creative", "teacher", "minimal",
+			"default", "hacker", "creative", "teacher", "minimal", "adaptive",
 		}
 		var sb strings.Builder
 		sb.WriteString("### Available Personalities\n\n")

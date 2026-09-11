@@ -2,10 +2,13 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/doctor"
+	"github.com/ianclemence/ghost/pkg/personality"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/rag"
 	"github.com/ianclemence/ghost/pkg/session"
@@ -31,6 +34,10 @@ type Runtime struct {
 	// can serve right now, with the reason when it cannot. Capabilities
 	// gating for the model UI: unavailable knobs are marked, not hidden.
 	ModelPresetStatus func(preset string) (available bool, reason string)
+	// OnPersonalityChanged fires after SetPersonality stores a new name so
+	// the runtime can validate it and propagate it into prompt assembly.
+	// Nil = store only (legacy behavior).
+	OnPersonalityChanged func(name string)
 	// SetActiveModel is called by /model to persist a selection and update the
 	// live agent loop. It receives the canonical "provider:model" string.
 	SetActiveModel func(providerModel string) error
@@ -45,11 +52,33 @@ type Runtime struct {
 }
 
 func (rt *Runtime) SetPersonality(name string) error {
+	name = strings.ToLower(strings.TrimSpace(name))
 	if rt.Personality == name {
 		return nil
 	}
+	// Unknown names are rejected up front: a selection that injects
+	// nothing is a lie to the user, not a preference.
+	if !validPersonality(name) {
+		return fmt.Errorf("unknown personality %q (see /personality for the list)", name)
+	}
 	rt.Personality = name
+	// Live-propagate into the prompt builder so selection takes effect
+	// on the next turn instead of dying in this string.
+	if rt.OnPersonalityChanged != nil {
+		rt.OnPersonalityChanged(name)
+	}
 	return nil
+}
+
+// validPersonality reports whether name resolves to a builtin or a saved
+// custom personality.
+func validPersonality(name string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	_, ok := personality.NewLoader(filepath.Join(home, ".GHOST")).Get(name)
+	return ok
 }
 
 func (rt *Runtime) SetModel(target string) error {
