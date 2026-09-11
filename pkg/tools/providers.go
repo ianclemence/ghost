@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/product"
 	"github.com/ianclemence/ghost/pkg/providers/aqi"
 	"github.com/ianclemence/ghost/pkg/providers/crypto"
@@ -29,7 +30,6 @@ import (
 	"github.com/ianclemence/ghost/pkg/providers/hass"
 	"github.com/ianclemence/ghost/pkg/providers/nearby"
 	"github.com/ianclemence/ghost/pkg/providers/weather"
-	"github.com/ianclemence/ghost/pkg/skills"
 )
 
 const providerToolTimeout = 30 * time.Second
@@ -164,7 +164,7 @@ func (t *FlightTool) Execute(ctx context.Context, args map[string]interface{}) *
 	if num == "" {
 		return ErrorResult("flight_status needs flight_number. Ask: Which flight number should I check? (e.g., TG123 or AA456)")
 	}
-	fcfg := flight.Config{AviationKey: skills.AviationKey(nil), AeroDataBoxKey: skills.AeroDataBoxKey()}
+	fcfg := flight.Config{AviationKey: credentials.AviationKey(nil), AeroDataBoxKey: credentials.AeroDataBoxKey()}
 	if t.cfg != nil {
 		fcfg = *t.cfg
 	}
@@ -444,7 +444,7 @@ func (t *HassTool) Parameters() map[string]interface{} {
 }
 func (t *HassTool) Timeout() time.Duration { return providerToolTimeout }
 func (t *HassTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
-	hassURL, token := skills.HassEndpoint()
+	hassURL, token := credentials.HassEndpoint()
 	hcfg := hass.Config{Base: hassURL, Token: token}
 	if t.cfg != nil {
 		hcfg = *t.cfg

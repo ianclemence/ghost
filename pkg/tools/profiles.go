@@ -24,7 +24,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"view", "read",
 		"web_search", "web_fetch",
 		"sandbox", "exec",
-		"cron", "schedule", "remember",
+		"schedule", "remember",
 		"vision", "image_generate",
 		// Read-only skill primaries: the skill docs tell the model to call
 		// these first. Without them the model follows the doc, calls the
@@ -68,7 +68,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"search_files", "grep_search",
 		"exec", "sandbox",
 		"web_search", "web_fetch",
-		"cron", "schedule", "remember",
+		"schedule", "remember",
 		"session_search",
 		"spawn", "subagent", "batch_delegate",
 		"skill_manage",
@@ -153,7 +153,7 @@ var coreToolNames = map[string]bool{
 	"weather_now": true, "places_nearby": true, "aqi_now": true,
 	"crypto_price": true, "currency_convert": true, "flight_status": true,
 	"clarify": true, "todo": true,
-	"message": true, "skill_manage": true, "cron": true,
+	"message": true, "skill_manage": true,
 	"schedule": true,
 	"spawn":    true, "subagent": true,
 }

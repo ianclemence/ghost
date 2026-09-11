@@ -8,6 +8,7 @@ package heartbeat
 
 import (
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,8 +18,8 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/constants"
-	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/state"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
@@ -34,16 +35,25 @@ const (
 type HeartbeatHandler func(prompt, channel, chatID string) *tools.ToolResult
 
 // HeartbeatService manages periodic heartbeat checks
+// ScheduleService is the authoritative scheduler boundary the heartbeat
+// uses to materialize HEARTBEAT.md schedules. The heartbeat never runs its
+// own scheduler engine.
+type ScheduleService interface {
+	CreateItem(item *scheduled.ScheduledItem) error
+	ListItems(itemType scheduled.ItemType, state scheduled.ItemState, limit int) ([]*scheduled.ScheduledItem, error)
+}
+
+// HeartbeatService manages periodic heartbeat checks
 type HeartbeatService struct {
-	workspace   string
-	bus         *bus.MessageBus
-	cronService *cron.CronService
-	state       *state.Manager
-	handler     HeartbeatHandler
-	interval    time.Duration
-	enabled     bool
-	mu          sync.RWMutex
-	stopChan    chan struct{}
+	workspace string
+	bus       *bus.MessageBus
+	scheduler ScheduleService
+	state     *state.Manager
+	handler   HeartbeatHandler
+	interval  time.Duration
+	enabled   bool
+	mu        sync.RWMutex
+	stopChan  chan struct{}
 }
 
 // NewHeartbeatService creates a new heartbeat service
@@ -72,11 +82,12 @@ func (hs *HeartbeatService) SetBus(msgBus *bus.MessageBus) {
 	hs.bus = msgBus
 }
 
-// SetCronService sets the cron service for scheduling jobs from HEARTBEAT.md
-func (hs *HeartbeatService) SetCronService(cs *cron.CronService) {
+// SetScheduler sets the authoritative scheduler used to materialize
+// HEARTBEAT.md schedules. It replaces the retired cron engine.
+func (hs *HeartbeatService) SetScheduler(svc ScheduleService) {
 	hs.mu.Lock()
 	defer hs.mu.Unlock()
-	hs.cronService = cs
+	hs.scheduler = svc
 }
 
 // SetHandler sets the heartbeat handler.
@@ -382,13 +393,17 @@ func (hs *HeartbeatService) log(level, format string, args ...any) {
 	fmt.Fprintf(f, "[%s] [%s] %s\n", timestamp, level, fmt.Sprintf(format, args...))
 }
 
-// ParseAndSchedule reads HEARTBEAT.md and schedules cron jobs
+// ParseAndSchedule reads HEARTBEAT.md and materializes each schedule as an
+// authoritative scheduled item (source "heartbeat"). It is idempotent:
+// item IDs are deterministic from the schedule name, so re-running creates
+// no duplicates. The heartbeat is a producer of scheduled items, not a
+// scheduler engine.
 func (hs *HeartbeatService) ParseAndSchedule() {
 	hs.mu.RLock()
-	cs := hs.cronService
+	svc := hs.scheduler
 	hs.mu.RUnlock()
 
-	if cs == nil {
+	if svc == nil {
 		return
 	}
 
@@ -408,11 +423,12 @@ func (hs *HeartbeatService) ParseAndSchedule() {
 		return
 	}
 
-	// Get existing jobs to avoid duplicates
-	existingJobs := cs.ListJobs(true)
-	existingNames := make(map[string]bool)
-	for _, j := range existingJobs {
-		existingNames[j.Name] = true
+	existing, _ := svc.ListItems("", "", 500)
+	existingIDs := make(map[string]bool, len(existing))
+	for _, it := range existing {
+		if it != nil {
+			existingIDs[it.ID] = true
+		}
 	}
 
 	for _, match := range matches {
@@ -420,20 +436,40 @@ func (hs *HeartbeatService) ParseAndSchedule() {
 		cronExpr := strings.TrimSpace(match[2])
 		message := match[3]
 
-		if existingNames[name] {
+		id := heartbeatItemID(name)
+		if existingIDs[id] {
 			continue
 		}
-
-		schedule := cron.CronSchedule{
-			Kind: "cron",
-			Expr: cronExpr,
+		item := &scheduled.ScheduledItem{
+			ID:         id,
+			Type:       scheduled.TypeAutomation,
+			Title:      name,
+			State:      scheduled.StateScheduled,
+			Timezone:   "UTC",
+			Schedule:   scheduled.Schedule{Kind: scheduled.ScheduleCron, Expr: cronExpr},
+			Action:     scheduled.Action{Kind: scheduled.ActionAgentTurn, Content: message, Deliver: true},
+			Source:     "heartbeat",
+			CreatedBy:  "heartbeat",
+			MaxRetries: 3,
 		}
-
-		// Add job (deliver=true to send output to channel)
-		cs.AddJob(name, schedule, message, true, "", "", nil)
-		logger.InfoCF("heartbeat", "Scheduled job from HEARTBEAT.md", map[string]interface{}{
-			"name": name,
-			"cron": cronExpr,
+		item.NextRunAt = scheduled.NextCronRun(cronExpr, "UTC", time.Now())
+		if err := svc.CreateItem(item); err != nil {
+			logger.ErrorCF("heartbeat", "failed to schedule HEARTBEAT.md entry", map[string]interface{}{
+				"name": name, "error": err.Error(),
+			})
+			continue
+		}
+		existingIDs[id] = true
+		logger.InfoCF("heartbeat", "scheduled item from HEARTBEAT.md", map[string]interface{}{
+			"name": name, "cron": cronExpr,
 		})
 	}
+}
+
+// heartbeatItemID derives a stable id from the schedule name so repeated
+// ParseAndSchedule calls do not duplicate items.
+func heartbeatItemID(name string) string {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(strings.ToLower(strings.TrimSpace(name))))
+	return fmt.Sprintf("heartbeat-%016x", h.Sum64())
 }

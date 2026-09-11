@@ -53,7 +53,6 @@ var FreeConsequentialTools = []FreeTool{
 	{Name: "calendar", Capability: "calendar.modify", Risk: RiskConsequential},
 	// Durable scheduling creates future external side effects.
 	{Name: "schedule", Capability: "schedule.create", Risk: RiskLow},
-	{Name: "cron", Capability: "schedule.create", Risk: RiskLow},
 	// Artifact publishing writes only Ghost's own validated handoff store
 	// (existence, bounds, and estate membership are enforced by the
 	// artifacts package, not the model). Same class as scheduling.

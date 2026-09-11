@@ -22,8 +22,16 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/config"
-	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/utils"
+)
+
+// Calendar credential hooks. The calendar integration lives in pkg/skills;
+// to keep credential storage ownership here without a package cycle, the
+// skills package wires these at init. Defaults fail closed.
+var (
+	CalendarConnected       = func() bool { return false }
+	CalendarWebDisconnectFn = func() error { return nil }
+	CalendarDisconnectFn    = func() error { return nil }
 )
 
 // Status is the credential lifecycle state (product-level, shared with
@@ -125,13 +133,13 @@ func (v *Vault) emitEvent(t, p string) {
 func (v *Vault) secretValue(id string) string {
 	switch id {
 	case "aviationstack":
-		return skills.AviationKey(nil)
+		return AviationKey(nil)
 	case "aerodatabox":
-		return skills.AeroDataBoxKey()
+		return AeroDataBoxKey()
 	case "openweather":
-		return skills.OpenWeatherKey()
+		return OpenWeatherKey()
 	case "google-calendar":
-		if skills.CalendarWebStatus().Connected || skills.CalendarCheck().Connected {
+		if CalendarConnected() {
 			return "oauth:connected"
 		}
 		return ""
@@ -302,10 +310,10 @@ func (v *Vault) MarkAuthFailure(id string, revoked bool) {
 // Disconnect removes the secret (user disconnect flow) and marks state.
 func (v *Vault) Disconnect(id string) error {
 	if id == "google-calendar" {
-		if err := skills.CalendarWebDisconnect(); err != nil {
+		if err := CalendarWebDisconnectFn(); err != nil {
 			return err
 		}
-		_ = skills.CalendarDisconnect()
+		_ = CalendarDisconnectFn()
 		v.setStatus(id, StatusDisconnected, "credential.disconnected")
 		return nil
 	}
@@ -373,4 +381,11 @@ func defaultConfigDir() string {
 		return filepath.Join(home, ".config", "ghost")
 	}
 	return "./config"
+}
+
+// Configured reports whether a usable credential exists for id, without
+// exposing its value. This is the presence check callers use instead of
+// reading the secret store directly.
+func (v *Vault) Configured(id string) bool {
+	return strings.TrimSpace(v.secretValue(id)) != ""
 }

@@ -60,7 +60,6 @@ async function loadHome(container) {
     GhostAPI.proxyGet('/v1/health'),
     GhostAPI.proxyGet('/v1/channels/status'),
     GhostAPI.proxyGet('/v1/activity?limit=20'),
-    GhostAPI.proxyGet('/v1/cron/jobs'),
     GhostAPI.proxyGet('/v1/memory/files'),
     GhostAPI.proxyGet('/v1/memory/self'),
     GhostAPI.proxyGet('/v1/pairing/devices'),

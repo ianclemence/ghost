@@ -48,7 +48,6 @@ import (
 	"github.com/ianclemence/ghost/pkg/connectedapp"
 	"github.com/ianclemence/ghost/pkg/contexts"
 	"github.com/ianclemence/ghost/pkg/credentials"
-	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/modes"
@@ -815,39 +814,6 @@ type DoctorCheckPayload struct {
 	LatencyMS int64  `json:"latency_ms,omitempty"`
 }
 
-type CronStateResponse struct {
-	ID        string     `json:"id"`
-	State     string     `json:"state"`
-	PausedAt  *time.Time `json:"paused_at,omitempty"`
-	ResumedAt *time.Time `json:"resumed_at,omitempty"`
-	NextRunAt *time.Time `json:"next_run_at,omitempty"`
-}
-
-type CronTriggerResponse struct {
-	ID          string    `json:"id"`
-	Triggered   bool      `json:"triggered"`
-	RunAsync    bool      `json:"run_async"`
-	TriggeredAt time.Time `json:"triggered_at"`
-}
-
-type cronPatchRequestBody struct {
-	ID      string         `json:"id"`
-	Updates cron.JobUpdate `json:"updates"`
-}
-
-type cronCreateRequestBody struct {
-	Name     string            `json:"name"`
-	Schedule cron.CronSchedule `json:"schedule"`
-	Message  string            `json:"message"`
-	Command  string            `json:"command"`
-	Deliver  bool              `json:"deliver"`
-	Channel  string            `json:"channel"`
-	To       string            `json:"to"`
-	Target   string            `json:"target"`
-	Skills   []string          `json:"skills"`
-	NoAgent  bool              `json:"no_agent"`
-}
-
 func resolveRequestChannel(existing, clientType, userAgent string) string {
 	if strings.TrimSpace(existing) != "" {
 		return existing
@@ -857,44 +823,6 @@ func resolveRequestChannel(existing, clientType, userAgent string) string {
 	}
 	return "cli"
 }
-
-func decodeCronPatchRequest(r *http.Request, pathID string) (string, cron.JobUpdate, error) {
-	var body cronPatchRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		return "", cron.JobUpdate{}, fmt.Errorf("invalid request: %w", err)
-	}
-	id := strings.TrimSpace(pathID)
-	if id == "" {
-		id = strings.TrimSpace(body.ID)
-	}
-	if id == "" {
-		return "", cron.JobUpdate{}, fmt.Errorf("id is required")
-	}
-	return id, body.Updates, nil
-}
-
-func buildCronStateResponse(id string, state string, pausedAt, resumedAt, nextRunAt *time.Time) CronStateResponse {
-	return CronStateResponse{
-		ID:        id,
-		State:     state,
-		PausedAt:  pausedAt,
-		ResumedAt: resumedAt,
-		NextRunAt: nextRunAt,
-	}
-}
-
-func buildCronTriggerResponse(id string, now time.Time) CronTriggerResponse {
-	return CronTriggerResponse{
-		ID:          id,
-		Triggered:   true,
-		RunAsync:    true,
-		TriggeredAt: now,
-	}
-}
-
-// ── Skills helpers ─────────────────────────────────────────────────────────
-// These mirror the ghost-web admin console's skill management endpoints but are
-// accessible via the unified 8766 API for the mobile app.
 
 // skillSummaryMD extracts a one-line description from a SKILL.md file,
 // preferring the frontmatter description field.
@@ -1740,7 +1668,7 @@ func workspaceFileProtected(rel string) bool {
 	return false
 }
 
-func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService, scheduledService *scheduled.Service, channelManager *channels.Manager) {
+func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Service, channelManager *channels.Manager) {
 	port := agentLoop.Config().Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
@@ -2091,205 +2019,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop, cronService *cron.CronService,
 		})
 	}))
 
-	// ── 1b. Cron lifecycle ───────────────────────────────────────────────
-	mux.HandleFunc("/v1/cron/jobs/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		if cronService == nil {
-			jsonError(w, http.StatusServiceUnavailable, "unavailable", "cron service unavailable")
-			return
-		}
-
-		path := strings.TrimPrefix(r.URL.Path, "/v1/cron/jobs/")
-		parts := strings.Split(strings.Trim(path, "/"), "/")
-		if len(parts) < 1 || parts[0] == "" {
-			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid cron job path")
-			return
-		}
-
-		jobID := parts[0]
-		action := ""
-		if len(parts) > 1 {
-			action = parts[1]
-		}
-		if action == "" && r.Method == http.MethodPatch {
-			id, updates, err := decodeCronPatchRequest(r, jobID)
-			if err != nil {
-				jsonError(w, http.StatusBadRequest, "invalid_request", err.Error())
-				return
-			}
-			if updates.Target != nil {
-				target := strings.ToLower(strings.TrimSpace(*updates.Target))
-				if target != "origin" && target != "local" {
-					jsonError(w, http.StatusBadRequest, "invalid_request", "target must be origin or local")
-					return
-				}
-			}
-			if err := cronService.UpdateJob(id, updates); err != nil {
-				jsonError(w, http.StatusNotFound, "not_found", err.Error())
-				return
-			}
-			status, err := cronService.GetJobStatus(id)
-			if err != nil {
-				jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
-				return
-			}
-			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "job": status})
-			return
-		}
-		if action == "" && r.Method == http.MethodDelete {
-			if cronService.RemoveJob(jobID) {
-				jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "id": jobID})
-			} else {
-				jsonError(w, http.StatusNotFound, "not_found", "job not found")
-			}
-			return
-		}
-		if action == "" {
-			jsonError(w, http.StatusBadRequest, "invalid_action", "unsupported cron action")
-			return
-		}
-
-		switch action {
-		case "pause":
-			if r.Method != http.MethodPost {
-				jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-				return
-			}
-			if err := cronService.PauseJob(jobID); err != nil {
-				jsonError(w, http.StatusNotFound, "not_found", err.Error())
-				return
-			}
-			if job, ok := cronService.GetJob(jobID); ok {
-				_ = json.NewEncoder(w).Encode(buildCronStateResponse(job.ID, string(job.LifecycleState), job.PausedAt, nil, job.NextRunAt))
-				return
-			}
-			_ = json.NewEncoder(w).Encode(buildCronStateResponse(jobID, "paused", nil, nil, nil))
-		case "resume":
-			if r.Method != http.MethodPost {
-				jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-				return
-			}
-			if err := cronService.ResumeJob(jobID); err != nil {
-				jsonError(w, http.StatusNotFound, "not_found", err.Error())
-				return
-			}
-			resumedAt := time.Now().UTC()
-			if job, ok := cronService.GetJob(jobID); ok {
-				_ = json.NewEncoder(w).Encode(buildCronStateResponse(job.ID, string(job.LifecycleState), nil, &resumedAt, job.NextRunAt))
-				return
-			}
-			_ = json.NewEncoder(w).Encode(buildCronStateResponse(jobID, "active", nil, &resumedAt, nil))
-		case "run":
-			if r.Method != http.MethodPost {
-				jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-				return
-			}
-			if err := cronService.RunJobNow(jobID); err != nil {
-				jsonError(w, http.StatusNotFound, "not_found", err.Error())
-				return
-			}
-			_ = json.NewEncoder(w).Encode(buildCronTriggerResponse(jobID, time.Now().UTC()))
-		default:
-			jsonError(w, http.StatusBadRequest, "invalid_action", "unsupported cron action")
-		}
-	}))
-
-	mux.HandleFunc("/v1/cron/jobs", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		if cronService == nil {
-			jsonError(w, http.StatusServiceUnavailable, "unavailable", "cron service unavailable")
-			return
-		}
-
-		if r.Method == http.MethodGet {
-			jobs := cronService.ListJobs(true)
-			jsonResponse(w, http.StatusOK, map[string]interface{}{
-				"jobs": jobs,
-			})
-			return
-		}
-
-		if r.Method == http.MethodPost {
-			var req cronCreateRequestBody
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
-				return
-			}
-			req.Name = strings.TrimSpace(req.Name)
-			if req.Name == "" {
-				jsonError(w, http.StatusBadRequest, "invalid_request", "name is required")
-				return
-			}
-			switch req.Schedule.Kind {
-			case "every", "cron", "at":
-			case "":
-				jsonError(w, http.StatusBadRequest, "invalid_request", "schedule.kind is required (every, cron, at)")
-				return
-			default:
-				jsonError(w, http.StatusBadRequest, "invalid_request", "schedule.kind must be every, cron, or at")
-				return
-			}
-			if req.Schedule.EveryMS != nil && *req.Schedule.EveryMS < 5000 {
-				jsonError(w, http.StatusBadRequest, "invalid_request", "every interval must be at least 5 seconds")
-				return
-			}
-			message := strings.TrimSpace(req.Message)
-			command := strings.TrimSpace(req.Command)
-			if message == "" && command == "" {
-				jsonError(w, http.StatusBadRequest, "invalid_request", "message or command is required")
-				return
-			}
-			if message == "" {
-				message = command
-			}
-			job, err := cronService.AddJobWithOptions(
-				req.Name, req.Schedule, message, req.Deliver,
-				req.Channel, req.To, nil, req.Skills, req.NoAgent, "",
-			)
-			if err != nil {
-				jsonError(w, http.StatusInternalServerError, "create_failed", err.Error())
-				return
-			}
-			if command != "" && command != message {
-				cmd := command
-				if err := cronService.UpdateJob(job.ID, cron.JobUpdate{Command: &cmd}); err == nil {
-					if j, ok := cronService.GetJob(job.ID); ok {
-						job = j
-					}
-				}
-			}
-			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "job": job})
-			return
-		}
-
-		if r.Method != http.MethodPatch {
-			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-			return
-		}
-
-		id, updates, err := decodeCronPatchRequest(r, "")
-		if err != nil {
-			jsonError(w, http.StatusBadRequest, "invalid_request", err.Error())
-			return
-		}
-		if updates.Target != nil {
-			target := strings.ToLower(strings.TrimSpace(*updates.Target))
-			if target != "origin" && target != "local" {
-				jsonError(w, http.StatusBadRequest, "invalid_request", "target must be origin or local")
-				return
-			}
-		}
-		if err := cronService.UpdateJob(id, updates); err != nil {
-			jsonError(w, http.StatusNotFound, "not_found", err.Error())
-			return
-		}
-		status, err := cronService.GetJobStatus(id)
-		if err != nil {
-			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
-			return
-		}
-		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "job": status})
-	}))
-
-	// ── 1c. Scheduled items ──────────────────────────────────────────────
 	mux.HandleFunc("/v1/scheduled", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if scheduledService == nil {
 			jsonError(w, http.StatusServiceUnavailable, "unavailable", "scheduled service unavailable")
@@ -4721,11 +4450,11 @@ func buildCapabilityResolver(cfg *config.Config) *capability.Resolver {
 
 	r := capability.NewResolver()
 	capability.RegisterDefaults(r, capability.Availability{
-		OpenWeather:   func() bool { return usable("openweather", func() bool { return skills.OpenWeatherKey() != "" }) },
-		AviationStack: func() bool { return usable("aviationstack", func() bool { return skills.AviationKey(cfg) != "" }) },
-		AeroDataBox:   func() bool { return usable("aerodatabox", func() bool { return skills.AeroDataBoxKey() != "" }) },
+		OpenWeather:   func() bool { return usable("openweather", func() bool { return credentials.OpenWeatherKey() != "" }) },
+		AviationStack: func() bool { return usable("aviationstack", func() bool { return credentials.AviationKey(cfg) != "" }) },
+		AeroDataBox:   func() bool { return usable("aerodatabox", func() bool { return credentials.AeroDataBoxKey() != "" }) },
 		HomeAssistant: func() bool {
-			u, t := skills.HassEndpoint()
+			u, t := credentials.HassEndpoint()
 			return usable("home-assistant", func() bool { return u != "" && t != "" })
 		},
 		Calendar: func() bool {

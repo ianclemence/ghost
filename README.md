@@ -221,7 +221,6 @@ chmod +x setup.sh
 |---------|-------------|
 | `ghost onboard` | Initialize configuration |
 | `ghost auth` | Manage authentication |
-| `ghost cron` | Manage scheduled tasks |
 | `ghost skills` | Manage skills |
 | `ghost state` | Export / import / inspect Ghost State archives |
 | `ghost migrate` | Migrate an OpenClaw installation into Ghost |

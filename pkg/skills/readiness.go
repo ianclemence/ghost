@@ -2,6 +2,7 @@ package skills
 
 import (
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/credentials"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,7 +79,7 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 		}
 	}
 	if skillName == "homeassistant" {
-		if !HassConfigured() {
+		if !credentials.HassConfigured() {
 			return SkillReadiness{
 				Status:      StatusNeedsConfiguration,
 				Requirement: "homeassistant_connection",
@@ -165,7 +166,7 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 		// Either credential (primary AviationStack or fallback
 		// AeroDataBox) makes the capability ready; both absent is
 		// NEEDS_CONFIGURATION handled by the fast-path; never fake data.
-		if !FlightConfigured() {
+		if !credentials.FlightConfigured() {
 			return SkillReadiness{
 				Status:      StatusNeedsConfiguration,
 				Requirement: "flight_provider",

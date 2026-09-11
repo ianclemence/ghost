@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/skills"
@@ -351,7 +352,7 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 			return r.Message, true
 		}
 		// Aviation key check is generic (no per-skill env branches elsewhere).
-		if skills.AviationKey(nil) == "" {
+		if credentials.AviationKey(nil) == "" {
 			return "Flight tracking isn't connected yet. Add your flight data key in Ghost settings under Integrations, then try again — I won't guess flight data.", true
 		}
 		return "", false
@@ -464,9 +465,9 @@ func isHassIntent(lower string) bool {
 }
 
 func hasAviationKey() bool {
-	// Deprecated shim: use skills.AviationKey (secrets-first). Kept for
+	// Deprecated shim: use credentials.AviationKey (secrets-first). Kept for
 	// existing callers/tests; new code should call skills directly.
-	return skills.AviationKey(nil) != ""
+	return credentials.AviationKey(nil) != ""
 }
 
 // capabilityInputsFromMessage extracts known inputs for readiness checks
@@ -664,7 +665,7 @@ func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metada
 		if fn == "" {
 			return "", false // readiness fast-path owns the ask
 		}
-		if skills.AviationKey(nil) == "" && skills.AeroDataBoxKey() == "" {
+		if credentials.AviationKey(nil) == "" && credentials.AeroDataBoxKey() == "" {
 			return "Flight tracking isn't connected yet. Add your flight data key in Ghost settings under Integrations, then try again — I won't guess flight data.", true
 		}
 		return al.execDeterministicTool("flight_status", map[string]interface{}{"flight_number": fn}, session)

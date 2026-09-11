@@ -18,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adhocore/gronx"
 	"github.com/charmbracelet/x/term"
 	"github.com/chzyer/readline"
 	"github.com/ianclemence/ghost/pkg/agent"
@@ -31,7 +30,6 @@ import (
 	"github.com/ianclemence/ghost/pkg/clock"
 	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/config"
-	"github.com/ianclemence/ghost/pkg/cron"
 	"github.com/ianclemence/ghost/pkg/devices"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/heartbeat"
@@ -203,8 +201,6 @@ func main() {
 		resetPasswordCmd()
 	case "auth":
 		authCmd()
-	case "cron":
-		cronCmd()
 	case "mcp":
 		mcpCmd()
 	case "stt":
@@ -308,7 +304,6 @@ func printHelp() {
 	fmt.Println("  updater     Run auto-update daemon")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  reset-password  Reset the admin dashboard password (requires --force)")
-	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  mcp         Manage MCP servers (list, add, edit, remove, test)")
 	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
@@ -845,7 +840,6 @@ func gatewayCmd() {
 		os.Exit(1)
 	}
 
-	noCron := false
 	apiOnly := false
 
 	// Check for flags
@@ -856,13 +850,13 @@ func gatewayCmd() {
 			fmt.Println("🔍 Debug mode enabled")
 		}
 		if arg == "--no-cron" {
-			noCron = true
-			fmt.Println("🕒 Cron service disabled")
+			// Retained for CLI compatibility; the authoritative scheduler
+			// is always on, so this flag is now a no-op.
+			fmt.Println("🕒 --no-cron is deprecated (single scheduler always runs)")
 		}
 		if arg == "--api-only" {
 			apiOnly = true
-			noCron = true
-			fmt.Println("🔌 API Only mode enabled (Cron, Channels, Heartbeat disabled)")
+			fmt.Println("🔌 API Only mode enabled (Channels, Heartbeat disabled)")
 		}
 	}
 
@@ -973,14 +967,15 @@ func gatewayCmd() {
 	// sane. Conversational and local functions are unaffected.
 	clockGate := clock.NewGate(30 * time.Second)
 
-	// Setup cron tool and service
-	cronService := setupCronTool(agentLoop, msgBus, cfg.WorkspacePath())
-	cronService.ClockGate = clockGate.Safe
-
-	// Setup scheduled service
+	// Setup scheduled service (the single authoritative scheduler)
 	scheduledService := setupScheduledService(agentLoop, msgBus, cfg.WorkspacePath(), authBroker)
 	if scheduledService != nil {
 		scheduledService.ClockGate = clockGate.Safe
+		// One-time, idempotent migration of the legacy JSON cron scheduler
+		// into the authoritative SQLite scheduler. Safe to run every boot.
+		migrateLegacyCron(cfg.WorkspacePath(), scheduledService)
+		// /loop and /remind schedule through the authoritative scheduler.
+		agentLoop.SetScheduler(scheduledService)
 	}
 
 	// Retention: keep the appliance responsible on small disks (SD card).
@@ -1001,7 +996,7 @@ func gatewayCmd() {
 		cfg.Heartbeat.Interval,
 		cfg.Heartbeat.Enabled,
 	)
-	heartbeatService.SetCronService(cronService)
+	heartbeatService.SetScheduler(scheduledService)
 	heartbeatService.SetBus(msgBus)
 	heartbeatService.SetHandler(func(prompt, channel, chatID string) *tools.ToolResult {
 		// Proactive signals first: gated, reason-carrying notices go out
@@ -1109,13 +1104,6 @@ func gatewayCmd() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if !noCron {
-		if err := cronService.Start(); err != nil {
-			fmt.Printf("Error starting cron service: %v\n", err)
-		}
-		fmt.Println("✓ Cron service started")
-	}
-
 	if scheduledService != nil {
 		if err := scheduledService.Start(); err != nil {
 			fmt.Printf("Error starting scheduled service: %v\n", err)
@@ -1150,7 +1138,7 @@ func gatewayCmd() {
 	}
 
 	go agentLoop.Run(ctx)
-	go startInternalAPI(agentLoop, cronService, scheduledService, channelManager)
+	go startInternalAPI(agentLoop, scheduledService, channelManager)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
@@ -1161,9 +1149,6 @@ func gatewayCmd() {
 	deviceService.Stop()
 	if !apiOnly {
 		heartbeatService.Stop()
-	}
-	if !noCron {
-		cronService.Stop()
 	}
 	if scheduledService != nil {
 		scheduledService.Stop()
@@ -1577,43 +1562,43 @@ func getConfigPath() string {
 	return filepath.Join(home, ".ghost", "config.json")
 }
 
-func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace string) *cron.CronService {
-	cronStorePath := filepath.Join(workspace, "cron", "jobs.json")
-
-	// Create cron service
-	cronService := cron.NewCronService(cronStorePath, nil, msgBus)
-
-	// Create and register CronTool
-	cronTool := tools.NewCronTool(cronService, agentLoop, msgBus, workspace)
-	// Wire the registry so scheduled commands execute under the
-	// default-deny execution policy with a job-scoped grant.
-	cronTool.SetRegistry(agentLoop.Tools())
-	// The scheduler wakes Ghost; it does not grant authority. Scheduled
-	// shell commands resolve through the Permission Broker here.
-	cronTool.SetCommandAuthorizer(agentLoop.AuthorizeScheduledCommand)
-	agentLoop.RegisterTool(cronTool)
-
-	// Set the onJob handler
-	cronService.SetOnJob(func(job *cron.CronJob) (string, error) {
-		return cronTool.ExecuteJob(context.Background(), job)
-	})
-
-	// Skill-declared schedules are DECLARATIVE metadata, never autonomous
-	// behavior. Installing or reading a skill must not create persistent
-	// scheduled execution; the user creates a routine explicitly. We log
-	// the suggestion and create nothing.
-	sl := skills.NewSkillsLoader(workspace, "", "")
-	for _, skill := range sl.ListSkills() {
-		if skill.Schedule != "" {
-			logger.InfoCF("skills", "skill declares a suggested schedule (not auto-created; create a routine to enable)",
-				map[string]interface{}{
-					"name":     skill.Name,
-					"schedule": skill.Schedule,
-				})
-		}
+// executeScheduledCommand runs a scheduled shell command: static deny-list
+// first, then the Permission Broker, then the registry's default-deny exec.
+// The scheduler never authorizes.
+func executeScheduledCommand(ctx context.Context, agentLoop *agent.AgentLoop, item *scheduled.ScheduledItem) error {
+	if err := tools.CheckCronCommand(item.Action.Command); err != nil {
+		return fmt.Errorf("scheduled command blocked: %w", err)
 	}
+	authorizedCtx, err := agentLoop.AuthorizeScheduledCommand(ctx, item.Action.Command)
+	if err != nil {
+		return fmt.Errorf("scheduled command not authorized: %w", err)
+	}
+	res := agentLoop.Tools().ExecuteWithContext(authorizedCtx, "exec",
+		map[string]interface{}{"command": item.Action.Command}, item.Channel, item.ChatID, "", nil)
+	if res != nil && res.IsError {
+		return fmt.Errorf("scheduled command failed: %s", res.ForLLM)
+	}
+	return nil
+}
 
-	return cronService
+// migrateLegacyCron imports legacy cron/jobs.json state into the
+// authoritative scheduler exactly once. Idempotent and safe to run every
+// boot; the legacy file is left in place as a migrated artifact.
+func migrateLegacyCron(workspace string, svc *scheduled.Service) {
+	if svc == nil {
+		return
+	}
+	legacyPath := filepath.Join(workspace, "cron", "jobs.json")
+	res, err := svc.MigrateLegacyCron(legacyPath)
+	if err != nil {
+		logger.ErrorCF("scheduler", "legacy cron migration failed", map[string]interface{}{"error": err.Error()})
+		return
+	}
+	if res.Migrated > 0 || len(res.Errors) > 0 {
+		logger.InfoCF("scheduler", "legacy cron migrated into authoritative scheduler", map[string]interface{}{
+			"migrated": res.Migrated, "skipped": res.Skipped, "errors": len(res.Errors),
+		})
+	}
 }
 
 func deriveScheduleTimezone(workspace string) string {
@@ -1681,6 +1666,12 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 				return executeRoutine(ctx, agentLoop, msgBus, routineSvc, broker, cstream, r, item)
 			}
 		}
+		// Scheduled shell commands are consequential and resolve through
+		// the Permission Broker before execution — the scheduler never
+		// authorizes.
+		if item.Action.Kind == scheduled.ActionCommand && item.Action.Command != "" {
+			return executeScheduledCommand(ctx, agentLoop, item)
+		}
 		if item.Action.Content == "" {
 			return fmt.Errorf("no message content")
 		}
@@ -1741,64 +1732,6 @@ func healSecretsBoundary(configPath string, cfg *config.Config) {
 	} else {
 		fmt.Println("✅ Cleaned leaked secrets from config.json")
 	}
-}
-
-func cronCmd() {
-	if len(os.Args) < 3 {
-		cronHelp()
-		return
-	}
-
-	subcommand := os.Args[2]
-
-	// Load config to get workspace path
-	cfg, err := loadConfig()
-	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
-		return
-	}
-
-	cronStorePath := filepath.Join(cfg.WorkspacePath(), "cron", "jobs.json")
-
-	switch subcommand {
-	case "list":
-		cronListCmd(cronStorePath)
-	case "add":
-		cronAddCmd(cronStorePath)
-	case "remove":
-		if len(os.Args) < 4 {
-			fmt.Println("Usage: ghost cron remove <job_id>")
-			return
-		}
-		cronRemoveCmd(cronStorePath, os.Args[3])
-	case "enable":
-		cronEnableCmd(cronStorePath, false)
-	case "disable":
-		cronEnableCmd(cronStorePath, true)
-	default:
-		fmt.Printf("Unknown cron command: %s\n", subcommand)
-		cronHelp()
-	}
-}
-
-func cronHelp() {
-	fmt.Println("\nCron commands:")
-	fmt.Println("  list              List all scheduled jobs")
-	fmt.Println("  add              Add a new scheduled job")
-	fmt.Println("  remove <id>       Remove a job by ID")
-	fmt.Println("  enable <id>      Enable a job")
-	fmt.Println("  disable <id>     Disable a job")
-	fmt.Println()
-	fmt.Println("Add options:")
-	fmt.Println("  -n, --name       Job name")
-	fmt.Println("  -m, --message    Message for agent")
-	fmt.Println("  -e, --every      Run every N seconds")
-	fmt.Println("  -c, --cron       Cron expression (e.g. '0 9 * * *')")
-	fmt.Println("  -d, --deliver     Deliver response to channel")
-	fmt.Println("  --to             Recipient for delivery")
-	fmt.Println("  --channel        Channel for delivery")
-	fmt.Println("  --skills         Comma-separated skills to load (e.g. 'planning,code-review')")
-	fmt.Println("  --no-agent       Run script directly without agent (script IS the job)")
 }
 
 func relayCmd() {
@@ -2302,226 +2235,6 @@ func confirm(prompt string) bool {
 	var response string
 	fmt.Scanln(&response)
 	return strings.ToLower(strings.TrimSpace(response)) == "y"
-}
-
-func cronListCmd(storePath string) {
-	cs := cron.NewCronService(storePath, nil, nil)
-	jobs := cs.ListJobs(true) // Show all jobs, including disabled
-
-	if len(jobs) == 0 {
-		fmt.Println("No scheduled jobs.")
-		return
-	}
-
-	fmt.Println("\nScheduled Jobs:")
-	fmt.Println("----------------")
-	for _, job := range jobs {
-		var schedule string
-		if job.Schedule.Kind == "every" && job.Schedule.EveryMS != nil {
-			schedule = fmt.Sprintf("every %ds", *job.Schedule.EveryMS/1000)
-		} else if job.Schedule.Kind == "cron" {
-			schedule = job.Schedule.Expr
-		} else {
-			schedule = "one-time"
-		}
-
-		nextRun := "scheduled"
-		if job.State.NextRunAtMS != nil {
-			nextTime := time.UnixMilli(*job.State.NextRunAtMS)
-			if nextTime.After(time.Now()) {
-				nextRun = nextTime.Format("2006-01-02 15:04")
-			} else if fresh := cronNextRunForDisplay(&job.Schedule, time.Now()); fresh != nil {
-				// Stored next-run is stale (e.g. the scheduler hasn't
-				// recomputed since the service last ran). Show the live
-				// value; stored state is left untouched.
-				nextRun = fresh.Format("2006-01-02 15:04")
-			} else if job.Schedule.Kind == "at" {
-				nextRun = "elapsed"
-			} else {
-				nextRun = "overdue"
-			}
-		}
-
-		status := "enabled"
-		if !job.Enabled {
-			status = "disabled"
-		}
-
-		fmt.Printf("  %s (%s)\n", job.Name, job.ID)
-		fmt.Printf("    Schedule: %s\n", schedule)
-		fmt.Printf("    Status: %s\n", status)
-		fmt.Printf("    Next run: %s\n", nextRun)
-
-		if len(job.Skills) > 0 {
-			fmt.Printf("    Skills: %s\n", strings.Join(job.Skills, ", "))
-		}
-		if job.NoAgent {
-			fmt.Printf("    Mode: no-agent (script execution)\n")
-		}
-	}
-}
-
-// cronNextRunForDisplay recomputes a job's next run from its schedule for
-// display purposes only (stored scheduler state is untouched).
-func cronNextRunForDisplay(schedule *cron.CronSchedule, now time.Time) *time.Time {
-	if schedule == nil {
-		return nil
-	}
-	switch schedule.Kind {
-	case "cron":
-		if schedule.Expr == "" {
-			return nil
-		}
-		next, err := gronx.NextTickAfter(schedule.Expr, now, false)
-		if err != nil {
-			return nil
-		}
-		return &next
-	case "every":
-		if schedule.EveryMS == nil || *schedule.EveryMS <= 0 {
-			return nil
-		}
-		next := now.Add(time.Duration(*schedule.EveryMS) * time.Millisecond)
-		return &next
-	default:
-		return nil
-	}
-}
-
-func cronAddCmd(storePath string) {
-	name := ""
-	message := ""
-	var everySec *int64
-	cronExpr := ""
-	deliver := false
-	channel := ""
-	to := ""
-	skillsStr := ""
-	noAgent := false
-
-	args := os.Args[3:]
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-n", "--name":
-			if i+1 < len(args) {
-				name = args[i+1]
-				i++
-			}
-		case "-m", "--message":
-			if i+1 < len(args) {
-				message = args[i+1]
-				i++
-			}
-		case "-e", "--every":
-			if i+1 < len(args) {
-				var sec int64
-				fmt.Sscanf(args[i+1], "%d", &sec)
-				everySec = &sec
-				i++
-			}
-		case "-c", "--cron":
-			if i+1 < len(args) {
-				cronExpr = args[i+1]
-				i++
-			}
-		case "-d", "--deliver":
-			deliver = true
-		case "--to":
-			if i+1 < len(args) {
-				to = args[i+1]
-				i++
-			}
-		case "--channel":
-			if i+1 < len(args) {
-				channel = args[i+1]
-				i++
-			}
-		case "--skills":
-			if i+1 < len(args) {
-				skillsStr = args[i+1]
-				i++
-			}
-		case "--no-agent":
-			noAgent = true
-		}
-	}
-
-	if name == "" {
-		fmt.Println("Error: --name is required")
-		return
-	}
-
-	if message == "" {
-		fmt.Println("Error: --message is required")
-		return
-	}
-
-	if everySec == nil && cronExpr == "" {
-		fmt.Println("Error: Either --every or --cron must be specified")
-		return
-	}
-
-	var schedule cron.CronSchedule
-	if everySec != nil {
-		everyMS := *everySec * 1000
-		schedule = cron.CronSchedule{
-			Kind:    "every",
-			EveryMS: &everyMS,
-		}
-	} else {
-		schedule = cron.CronSchedule{
-			Kind: "cron",
-			Expr: cronExpr,
-		}
-	}
-
-	var skills []string
-	if skillsStr != "" {
-		skills = strings.Split(skillsStr, ",")
-		for i := range skills {
-			skills[i] = strings.TrimSpace(skills[i])
-		}
-	}
-
-	cs := cron.NewCronService(storePath, nil, nil)
-	job, err := cs.AddJobWithOptions(name, schedule, message, deliver, channel, to, nil, skills, noAgent, "")
-	if err != nil {
-		fmt.Printf("Error adding job: %v\n", err)
-		return
-	}
-
-	fmt.Printf("✓ Added job '%s' (%s)\n", job.Name, job.ID)
-}
-
-func cronRemoveCmd(storePath, jobID string) {
-	cs := cron.NewCronService(storePath, nil, nil)
-	if cs.RemoveJob(jobID) {
-		fmt.Printf("✓ Removed job %s\n", jobID)
-	} else {
-		fmt.Printf("✗ Job %s not found\n", jobID)
-	}
-}
-
-func cronEnableCmd(storePath string, disable bool) {
-	if len(os.Args) < 4 {
-		fmt.Println("Usage: ghost cron enable/disable <job_id>")
-		return
-	}
-
-	jobID := os.Args[3]
-	cs := cron.NewCronService(storePath, nil, nil)
-	enabled := !disable
-
-	job := cs.EnableJob(jobID, enabled)
-	if job != nil {
-		status := "enabled"
-		if disable {
-			status = "disabled"
-		}
-		fmt.Printf("✓ Job '%s' %s\n", job.Name, status)
-	} else {
-		fmt.Printf("✗ Job %s not found\n", jobID)
-	}
 }
 
 // mcpCmd manages MCP servers from the CLI, mirroring the dashboard's MCP

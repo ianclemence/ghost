@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/scheduled"
 )
 
 var intervalRegex = regexp.MustCompile(`^(\d+h)?(\d+m)?(\d+s)?$`)
@@ -20,8 +22,12 @@ const (
 )
 
 func loopHandler(ctx context.Context, req Request, rt *Runtime) error {
-	if rt == nil || rt.Tools == nil {
-		return req.Reply("Loop tool unavailable.")
+	if rt == nil || rt.Scheduler == nil {
+		return req.Reply("Scheduling is unavailable.")
+	}
+	svc := rt.Scheduler()
+	if svc == nil {
+		return req.Reply("Scheduling is unavailable.")
 	}
 
 	text := strings.TrimSpace(strings.TrimPrefix(req.Text, "/loop"))
@@ -39,42 +45,35 @@ func loopHandler(ctx context.Context, req Request, rt *Runtime) error {
 		return req.Reply(fmt.Sprintf("Minimum interval is %v.", loopMinInterval))
 	}
 
-	tool, ok := rt.Tools.Get("cron")
-	if !ok {
-		return req.Reply("Cron tool not available.")
-	}
-	if ct, ok := tool.(interface {
-		SetContext(channel, chatID string)
-	}); ok {
-		ct.SetContext(req.Channel, req.ChatID)
-	}
-
 	mode := "fixed"
 	if len(strings.Fields(text)) == len(strings.Fields(prompt)) {
 		mode = "self_paced"
 	}
 
-	res := tool.Execute(ctx, map[string]interface{}{
-		"action":        "add",
-		"message":       prompt,
-		"every_seconds": float64(seconds),
-		"deliver":       true,
-	})
-
-	if res.IsError {
-		return req.Reply(fmt.Sprintf("Failed to create loop: %s", res.ForLLM))
+	now := time.Now().UTC()
+	next := now.Add(interval)
+	item := &scheduled.ScheduledItem{
+		Type:         scheduled.TypeAutomation,
+		Title:        prompt,
+		Description:  prompt,
+		State:        scheduled.StateScheduled,
+		Timezone:     "UTC",
+		Schedule:     scheduled.Schedule{Kind: scheduled.ScheduleEvery, Every: interval},
+		Action:       scheduled.Action{Kind: scheduled.ActionAgentTurn, Content: prompt, Deliver: true},
+		Channel:      req.Channel,
+		ChatID:       req.ChatID,
+		DeliveryMode: scheduled.DeliveryOrigin,
+		Source:       "loop",
+		CreatedBy:    "agent",
+		NextRunAt:    &next,
+		MaxRetries:   3,
 	}
-
-	var jobID string
-	if strings.Contains(res.ForLLM, "id:") {
-		parts := strings.Split(res.ForLLM, "id:")
-		if len(parts) > 1 {
-			jobID = strings.TrimSpace(strings.Split(parts[1], "\n")[0])
-		}
+	if err := svc.CreateItem(item); err != nil {
+		return req.Reply(fmt.Sprintf("Failed to create loop: %v", err))
 	}
 
 	return req.Reply(fmt.Sprintf("Loop created: ID=%s, interval=%v, mode=%s\nPrompt: %s",
-		jobID, interval, mode, prompt))
+		item.ID, interval, mode, prompt))
 }
 
 func parseLoopArgs(text string) (time.Duration, string) {
@@ -122,51 +121,52 @@ func computeDigest(response string) string {
 }
 
 func loopsHandler(ctx context.Context, req Request, rt *Runtime) error {
-	if rt == nil || rt.Tools == nil {
-		return req.Reply("Cron tool unavailable.")
+	if rt == nil || rt.Scheduler == nil {
+		return req.Reply("Scheduling is unavailable.")
 	}
-
-	tool, ok := rt.Tools.Get("cron")
-	if !ok {
-		return req.Reply("Cron tool not available.")
+	svc := rt.Scheduler()
+	if svc == nil {
+		return req.Reply("Scheduling is unavailable.")
 	}
-
-	res := tool.Execute(ctx, map[string]interface{}{
-		"action": "list",
-	})
-
-	if res.IsError {
-		return req.Reply(fmt.Sprintf("Failed to list loops: %s", res.ForLLM))
+	items, err := svc.ListItems("", "", 200)
+	if err != nil {
+		return req.Reply(fmt.Sprintf("Failed to list loops: %v", err))
 	}
-
-	return req.Reply(res.ForLLM)
+	var sb strings.Builder
+	sb.WriteString("### Active loops\n\n")
+	count := 0
+	for _, it := range items {
+		if it == nil || it.Source != "loop" {
+			continue
+		}
+		count++
+		next := "—"
+		if it.NextRunAt != nil {
+			next = it.NextRunAt.Format("2006-01-02 15:04")
+		}
+		sb.WriteString(fmt.Sprintf("- `%s` every %s — %s (next %s)\n", it.ID, it.Schedule.Every, it.Title, next))
+	}
+	if count == 0 {
+		return req.Reply("No active loops.")
+	}
+	return req.Reply(sb.String())
 }
 
 func stoploopHandler(ctx context.Context, req Request, rt *Runtime) error {
-	if rt == nil || rt.Tools == nil {
-		return req.Reply("Cron tool unavailable.")
+	if rt == nil || rt.Scheduler == nil {
+		return req.Reply("Scheduling is unavailable.")
 	}
-
+	svc := rt.Scheduler()
+	if svc == nil {
+		return req.Reply("Scheduling is unavailable.")
+	}
 	args := strings.Fields(req.Text)
 	if len(args) < 2 {
 		return req.Reply("Usage: /stoploop <job_id>")
 	}
-
 	jobID := args[1]
-
-	tool, ok := rt.Tools.Get("cron")
-	if !ok {
-		return req.Reply("Cron tool not available.")
+	if err := svc.CancelItem(jobID); err != nil {
+		return req.Reply(fmt.Sprintf("Failed to stop loop: %v", err))
 	}
-
-	res := tool.Execute(ctx, map[string]interface{}{
-		"action": "disable",
-		"job_id": jobID,
-	})
-
-	if res.IsError {
-		return req.Reply(fmt.Sprintf("Failed to stop loop: %s", res.ForLLM))
-	}
-
 	return req.Reply(fmt.Sprintf("Loop %s stopped.", jobID))
 }

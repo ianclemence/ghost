@@ -8,12 +8,21 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/doctor"
-	"github.com/ianclemence/ghost/pkg/personality"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
+	"github.com/ianclemence/ghost/pkg/personality"
 	"github.com/ianclemence/ghost/pkg/rag"
+	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/session"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
+
+// ScheduleCreator is the authoritative scheduler surface for /loop and
+// /remind so their durable state lives in the one scheduler.
+type ScheduleCreator interface {
+	CreateItem(item *scheduled.ScheduledItem) error
+	ListItems(itemType scheduled.ItemType, state scheduled.ItemState, limit int) ([]*scheduled.ScheduledItem, error)
+	CancelItem(id string) error
+}
 
 type Runtime struct {
 	Tools       *tools.ToolRegistry
@@ -45,6 +54,10 @@ type Runtime struct {
 	CurrentModel func() string
 	// Workspace is the filesystem workspace root for file-backed resets.
 	Workspace string
+	// Scheduler returns the authoritative scheduled-item surface for /loop
+	// and /remind. It is late-bound because the scheduler is created after
+	// the agent loop. Nil disables direct scheduling from those commands.
+	Scheduler func() ScheduleCreator
 	// RAG is the in-memory vector index. Reset clears it alongside the DB
 	// rows so deleted memories stop surfacing until restart-free operation
 	// continues. Nil when RAG is disabled — callers must nil-check.

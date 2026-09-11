@@ -32,6 +32,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/contextcache"
+	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/effort"
@@ -166,6 +167,9 @@ type AgentLoop struct {
 	// and failures). Nil when automation is disabled — scan yields none.
 	routineSvc *routines.Service
 	schedSvc   *scheduled.Service
+	// scheduler is the authoritative scheduled-item surface exposed to
+	// /loop and /remind. Nil disables direct scheduling from commands.
+	scheduler commands.ScheduleCreator
 }
 
 // processOptions configures how a message is processed
@@ -274,7 +278,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Provider-backed capability tools (deterministic strategy +
 	// validation + breaker + cache; no exec/curl needed). The capability
 	// contracts below gate the model to these per skill.
-	registry.Register(tools.NewWeatherTool(skills.OpenWeatherKey()))
+	registry.Register(tools.NewWeatherTool(credentials.OpenWeatherKey()))
 	registry.Register(tools.NewFlightTool())
 	registry.Register(tools.NewAQITool())
 	registry.Register(tools.NewCurrencyTool())
@@ -650,6 +654,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		Tools:          toolsRegistry,
 		Sessions:       sessionsManager,
 		Bus:            msgBus,
+		Scheduler:      func() commands.ScheduleCreator { return al.scheduler },
 		Commands:       cmdRegistry,
 		Doctor:         doctorRunner,
 		Model:          cfg.Agents.Defaults.Model,

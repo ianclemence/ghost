@@ -93,19 +93,17 @@ func connectionStore(id, value string) error {
 }
 
 func connectionDisconnect(id string) error {
+	vault := connectionVault()
 	// Google Calendar is an OAuth connected app: the vault removes the
 	// actual credential (both calendar stacks), not just a config key.
 	if id == "google-calendar" {
-		return connectionVault().Disconnect(id)
+		return vault.Disconnect(id)
 	}
-	s, err := config.LoadSecrets(secretsPathFor())
-	if err != nil {
-		return err
-	}
-	if _, ok := s.ProviderAPIKeys[id]; !ok {
+	// Presence check goes through the Vault, never the raw secret store.
+	if !vault.Configured(id) {
 		return errNotConnected(id)
 	}
-	return connectionVault().Disconnect(id)
+	return vault.Disconnect(id)
 }
 
 func errOAuthOnly(id string) error {

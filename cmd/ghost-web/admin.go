@@ -2834,8 +2834,8 @@ func handleIntegrationsStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cal := skills.CalendarCheck()
-	flightReady := skills.FlightConfigured()
-	hassReady := skills.HassConfigured()
+	flightReady := credentials.FlightConfigured()
+	hassReady := credentials.HassConfigured()
 	camReady := skills.CameraCheck()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok": true,

@@ -23,10 +23,10 @@ import (
 func TestRegistryGovernanceAudit(t *testing.T) {
 	al := newTestAgentLoop(t, t.TempDir())
 	names := al.tools.RegisteredNames()
-	// schedule/cron are appended to the live loop registry by the gateway
-	// (cmd/ghost), not by NewAgentLoop; they are still model-reachable so
-	// the audit must cover them.
-	names = append(names, "schedule", "cron")
+	// schedule is appended to the live loop registry by the gateway
+	// (cmd/ghost), not by NewAgentLoop; it is still model-reachable so the
+	// audit must cover it.
+	names = append(names, "schedule")
 	sort.Strings(names)
 
 	var unclassified []string

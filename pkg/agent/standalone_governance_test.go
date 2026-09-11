@@ -12,7 +12,7 @@ import (
 func TestStandaloneConsequentialAskOrDeny(t *testing.T) {
 	h := newGateHarness(t)
 	al := h.loop
-	for _, tool := range []string{"exec", "sandbox", "i2c", "spi", "hass", "schedule", "cron", "update", "image_generate", "message"} {
+	for _, tool := range []string{"exec", "sandbox", "i2c", "spi", "hass", "schedule", "update", "image_generate", "message"} {
 		decision, handled := al.authorizeStandaloneTool("req-"+tool, "sess-gov", tool, map[string]interface{}{})
 		if !handled {
 			t.Fatalf("%s must be handled by the gate", tool)

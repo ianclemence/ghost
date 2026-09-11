@@ -215,7 +215,6 @@ The `ghost` binary provides these commands:
 | `ghost relay clients` | List paired clients |
 | `ghost relay revoke <token>` | Revoke client access |
 | `ghost skills` | Manage skills (list, install, remove, sync) |
-| `ghost cron` | Manage scheduled tasks |
 | `ghost state export/import` | Portable Ghost State archives |
 | `ghost auth login/logout` | OAuth for AI providers |
 | `ghost reset-password --force` | Reset admin dashboard password |

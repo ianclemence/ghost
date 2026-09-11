@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/scheduled"
 )
 
 func DefaultDefinitions() []Definition {
@@ -337,7 +339,11 @@ func thinkHandler(ctx context.Context, req Request, rt *Runtime) error {
 }
 
 func remindHandler(ctx context.Context, req Request, rt *Runtime) error {
-	if rt == nil || rt.Tools == nil {
+	if rt == nil || rt.Scheduler == nil {
+		return req.Reply("Reminder tool unavailable.")
+	}
+	svc := rt.Scheduler()
+	if svc == nil {
 		return req.Reply("Reminder tool unavailable.")
 	}
 	args := strings.Fields(req.Text)
@@ -363,23 +369,25 @@ func remindHandler(ctx context.Context, req Request, rt *Runtime) error {
 			return req.Reply("Invalid time format. Use 10s, 5m, 1h, etc.")
 		}
 	}
-	tool, ok := rt.Tools.Get("cron")
-	if !ok {
-		return req.Reply("Cron tool not available.")
+	when := time.Now().UTC().Add(duration)
+	item := &scheduled.ScheduledItem{
+		Type:         scheduled.TypeReminder,
+		Title:        message,
+		Description:  message,
+		State:        scheduled.StateScheduled,
+		Timezone:     "UTC",
+		Schedule:     scheduled.Schedule{Kind: scheduled.ScheduleAt, At: &when},
+		Action:       scheduled.Action{Kind: scheduled.ActionAgentTurn, Content: message, Deliver: true},
+		Channel:      req.Channel,
+		ChatID:       req.ChatID,
+		DeliveryMode: scheduled.DeliveryOrigin,
+		Source:       "remind",
+		CreatedBy:    "agent",
+		NextRunAt:    &when,
+		MaxRetries:   3,
 	}
-	if ct, ok := tool.(interface {
-		SetContext(channel, chatID string)
-	}); ok {
-		ct.SetContext(req.Channel, req.ChatID)
-	}
-	res := tool.Execute(ctx, map[string]interface{}{
-		"action":     "add",
-		"message":    message,
-		"at_seconds": duration.Seconds(),
-		"deliver":    true,
-	})
-	if res.Err != nil {
-		return req.Reply(fmt.Sprintf("Failed to set reminder: %v", res.Err))
+	if err := svc.CreateItem(item); err != nil {
+		return req.Reply(fmt.Sprintf("Failed to set reminder: %v", err))
 	}
 	return req.Reply(fmt.Sprintf("Reminder set: '%s' in %s", message, duration.String()))
 }

@@ -13,7 +13,7 @@ func providersTC(name string) providers.ToolCall {
 }
 
 func TestFreeConsequentialTable(t *testing.T) {
-	for _, want := range []string{"message", "exec", "sandbox", "i2c", "spi", "hass", "schedule", "cron", "update", "image_generate"} {
+	for _, want := range []string{"message", "exec", "sandbox", "i2c", "spi", "hass", "schedule", "update", "image_generate"} {
 		ft, ok := FreeToolCapability(want)
 		if !ok || ft.Capability == "" || ft.Risk == "" {
 			t.Fatalf("%s must map to a capability + risk", want)

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/health"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
@@ -156,12 +157,12 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	default:
 		m.SetIntegration("calendar", health.Subsystem{State: health.StateNeedsAuthorization, Status: "Your calendar isn't connected yet.", Reason: "calendar_not_authorized", Remediation: "Connect Google Calendar.", Action: "connect_calendar", LastChecked: now})
 	}
-	if skills.AviationKey(nil) != "" {
+	if credentials.AviationKey(nil) != "" {
 		m.SetIntegration("flight", health.Subsystem{State: health.StateReady, Status: "Flight tracking is connected.", Reason: "flight_ready", LastChecked: now})
 	} else {
 		m.SetIntegration("flight", health.Subsystem{State: health.StateNotConfigured, Status: "Flight tracking isn't connected yet.", Reason: "flight_not_configured", Remediation: "Add your flight data key.", Action: "connect_flight", LastChecked: now})
 	}
-	if skills.HassConfigured() {
+	if credentials.HassConfigured() {
 		m.SetIntegration("homeassistant", health.Subsystem{State: health.StateReady, Status: "Home Assistant is connected.", Reason: "hass_ready", LastChecked: now})
 	} else {
 		m.SetIntegration("homeassistant", health.Subsystem{State: health.StateNotConfigured, Status: "Home Assistant isn't connected yet.", Reason: "hass_not_configured", Remediation: "Add your Home Assistant URL and token.", Action: "connect_hass", LastChecked: now})

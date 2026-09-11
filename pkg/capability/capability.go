@@ -344,13 +344,13 @@ func buildDefault() *Registry {
 
 		// --- Automation ---
 		{ID: "routine.create", Title: "Create routine", Risk: RiskLow,
-			Tools:       []string{"schedule", "cron"},
+			Tools:       []string{"schedule"},
 			Description: "Create a scheduled or recurring action."},
 		{ID: "routine.modify", Title: "Modify routine", Risk: RiskLow,
-			Tools:       []string{"schedule", "cron"},
+			Tools:       []string{"schedule"},
 			Description: "Change a scheduled or recurring action."},
 		{ID: "routine.cancel", Title: "Cancel routine", Risk: RiskLow,
-			Tools:       []string{"schedule", "cron"},
+			Tools:       []string{"schedule"},
 			Description: "Cancel a scheduled or recurring action."},
 
 		// --- Execution primitives (infrastructure, high impact) ---

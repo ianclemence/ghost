@@ -2,6 +2,7 @@ package scheduled
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -514,4 +515,14 @@ func computeCronNextRun(expr, tz string, now time.Time) *time.Time {
 	}
 	utc := next.UTC()
 	return &utc
+}
+
+// MigrateLegacyCron migrates a legacy cron/jobs.json file into the
+// authoritative store. It is idempotent (deterministic item IDs) and safe to
+// call on every boot.
+func (s *Service) MigrateLegacyCron(path string) (LegacyCronMigrationResult, error) {
+	if s == nil || s.store == nil {
+		return LegacyCronMigrationResult{}, fmt.Errorf("scheduled service not initialized")
+	}
+	return MigrateLegacyCron(path, s.store)
 }

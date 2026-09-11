@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -34,6 +35,11 @@ const minAffinityForProactive = 0.35
 func (al *AgentLoop) SetRoutineSignals(rs *routines.Service, ss *scheduled.Service) {
 	al.routineSvc = rs
 	al.schedSvc = ss
+}
+
+// SetScheduler wires the authoritative scheduler used by /loop and /remind.
+func (al *AgentLoop) SetScheduler(s commands.ScheduleCreator) {
+	al.scheduler = s
 }
 
 // ScanNotices proposes candidate proactive notices from wired signals.
@@ -111,7 +117,7 @@ func (al *AgentLoop) scanRoutineNotices() []Notice {
 				Priority:   7,
 				Confidence: 0.9,
 				DedupeKey:  "routine:" + r.ID + ":waiting",
-				Message: fmt.Sprintf("Your routine '%s' is waiting for your approval to proceed. Say the word and I'll release it — or ask me why it's being held.", displayName(r.Name, r.ID)),
+				Message:    fmt.Sprintf("Your routine '%s' is waiting for your approval to proceed. Say the word and I'll release it — or ask me why it's being held.", displayName(r.Name, r.ID)),
 			})
 		case routines.StatusFailed:
 			out = append(out, al.failedRoutineNotice(r))
@@ -125,7 +131,7 @@ func (al *AgentLoop) scanRoutineNotices() []Notice {
 					Priority:   7,
 					Confidence: 0.85,
 					DedupeKey:  "routine:" + r.ID + ":waiting",
-					Message: fmt.Sprintf("Your routine '%s' asked for approval on its last run and is still waiting. Say the word and I'll release it — or ask me why it's being held.", displayName(r.Name, r.ID)),
+					Message:    fmt.Sprintf("Your routine '%s' asked for approval on its last run and is still waiting. Say the word and I'll release it — or ask me why it's being held.", displayName(r.Name, r.ID)),
 				})
 			} else if n := routineRecentErrors(al.schedSvc, r.ID); n > 0 {
 				out = append(out, al.failedRoutineNotice(r))
