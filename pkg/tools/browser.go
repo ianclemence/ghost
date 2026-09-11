@@ -273,6 +273,7 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 		call.OnEvidence(taskID, ev)
 	}
 	res.Evidence = map[string]interface{}{
+		"type":       "action",
 		"op":         "browser." + t.action,
 		"class":      op,
 		"owner":      call.Owner,
@@ -281,6 +282,7 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 		"session":    sess.ID,
 		"permission": call.Permission,
 		"outcome":    outcome,
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
 	}
 	// Page summary for safe observation: navigate/snapshot emit the page
 	// as JSON. Parsed defensively, bounded, and redacted — the same

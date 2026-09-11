@@ -162,9 +162,11 @@ func (s *stubBrowserTool) run(ctx context.Context, args map[string]interface{}) 
 
 func stubEvidence(bag tools.BrowserCall, outcome string) map[string]interface{} {
 	return map[string]interface{}{
-		"op": "browser." + bag.Op, "session": "sess-test", "task": bag.TaskID,
+		"type": "action",
+		"op":   "browser." + bag.Op, "session": "sess-test", "task": bag.TaskID,
 		"owner": bag.Owner, "context": bag.ContextID,
 		"permission": bag.Permission, "outcome": outcome,
+		"timestamp": "2026-01-01T00:00:00Z",
 	}
 }
 

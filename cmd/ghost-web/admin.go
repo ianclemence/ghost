@@ -13,6 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/ianclemence/ghost/pkg/credentials"
 	"regexp"
 	"runtime"
 	"sort"
@@ -2935,24 +2937,20 @@ func handleIntegrationsFlightSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-	// Product path: ProviderAPIKeys map -> .secrets.json (0600). Never log key.
-	secrets, err := config.LoadSecrets(config.SecretsPath(fb.ConfigPath))
-	if err != nil {
+	// Credentials go through the single Vault boundary; the web console
+	// never writes credential storage directly.
+	vault := credentials.New(filepath.Dir(fb.ConfigPath))
+	if err := vault.Store("aviationstack", req.APIKey); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-	if secrets.ProviderAPIKeys == nil {
-		secrets.ProviderAPIKeys = map[string]string{}
-	}
-	secrets.ProviderAPIKeys["aviationstack"] = req.APIKey
 	// Optional fallback provider (AeroDataBox via RapidAPI). Either key
 	// alone makes flight tracking ready; both absent stays unconfigured.
 	if req.FallbackAPIKey != "" {
-		secrets.ProviderAPIKeys["aerodatabox"] = req.FallbackAPIKey
-	}
-	if err := config.SaveSecrets(config.SecretsPath(fb.ConfigPath), secrets); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
-		return
+		if err := vault.Store("aerodatabox", req.FallbackAPIKey); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
 	}
 	_ = cfg
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready"})
@@ -2980,18 +2978,13 @@ func handleIntegrationsHassSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "url and token are required"})
 		return
 	}
-	secrets, err := config.LoadSecrets(config.SecretsPath(fb.ConfigPath))
-	if err != nil {
+	// Credentials go through the single Vault boundary.
+	vault := credentials.New(filepath.Dir(fb.ConfigPath))
+	if err := vault.Store("hass_url", req.URL); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-	if secrets.ProviderAPIKeys == nil {
-		secrets.ProviderAPIKeys = map[string]string{}
-	}
-	// Reuse generic map (no new top-level secret fields): namespaced keys.
-	secrets.ProviderAPIKeys["hass_url"] = req.URL
-	secrets.ProviderAPIKeys["hass_token"] = req.Token
-	if err := config.SaveSecrets(config.SecretsPath(fb.ConfigPath), secrets); err != nil {
+	if err := vault.Store("hass_token", req.Token); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}

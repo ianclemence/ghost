@@ -25,7 +25,7 @@ func TestRegistryLogsRedactArgs(t *testing.T) {
 	bt.run = func(ctx context.Context, action string, args ...string) *ToolResult {
 		// A real browser control op carries runtime evidence; provide it so
 		// the capability evidence contract is satisfied.
-		return &ToolResult{ForLLM: "typed", ForUser: "typed", Evidence: map[string]interface{}{"type": "state_transition"}}
+		return &ToolResult{ForLLM: "typed", ForUser: "typed", Evidence: map[string]interface{}{"type": "action", "op": "browser.type", "outcome": "ok", "timestamp": "2026-01-01T00:00:00Z"}}
 	}
 	reg.Register(bt)
 

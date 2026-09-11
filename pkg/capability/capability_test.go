@@ -92,3 +92,29 @@ func TestMCPMapping(t *testing.T) {
 		t.Fatalf("write-shaped/unknown MCP tool must stay mcp.execute: %+v ok=%v", spec, ok)
 	}
 }
+
+// Delegated capability scope is deny-by-default and never broadens authority.
+func TestInScopeDenyByDefault(t *testing.T) {
+	scope := []string{"calendar.read", "web.search"}
+	if !InScope(scope, "calendar", map[string]interface{}{"action": "list"}) {
+		t.Fatal("calendar.read must be in scope")
+	}
+	if InScope(scope, "calendar", map[string]interface{}{"action": "create"}) {
+		t.Fatal("calendar.modify must NOT be in scope when only read is delegated")
+	}
+	if InScope(scope, "message", map[string]interface{}{"action": "send"}) {
+		t.Fatal("message.send must NOT be in scope")
+	}
+	if InScope(scope, "exec", nil) {
+		t.Fatal("exec must NOT be in scope")
+	}
+	// Unknown tool is denied when scoped.
+	if InScope(scope, "totally_unknown_tool", nil) {
+		t.Fatal("unknown tool must be denied when scoped")
+	}
+	// Empty scope is legacy-unscoped (allowed); the blocklist and broker
+	// still bound it.
+	if !InScope(nil, "exec", nil) {
+		t.Fatal("empty scope is legacy unscoped")
+	}
+}

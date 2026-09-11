@@ -100,6 +100,10 @@ type SubagentManager struct {
 	// ConsequentialAuth, when set, governs subagent standalone
 	// consequential tools. Set by the embedding runtime; nil fails closed.
 	ConsequentialAuth SubagentConsequentialAuth
+	// allowedCapabilities is the explicit capability scope delegated to
+	// subtasks. Non-empty = deny-by-default. Empty = legacy unscoped (still
+	// bounded by the actuator blocklist and the broker).
+	allowedCapabilities []string
 }
 
 func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace string, bus *bus.MessageBus) *SubagentManager {
@@ -122,6 +126,16 @@ func (sm *SubagentManager) SetTools(tools *ToolRegistry) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.tools = tools
+}
+
+// SetAllowedCapabilities sets the explicit capability scope for delegated
+// subtasks. Non-empty is deny-by-default: a subtask may only use tools whose
+// resolved capability is listed. The parent must not delegate capabilities
+// it does not itself possess.
+func (sm *SubagentManager) SetAllowedCapabilities(caps []string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.allowedCapabilities = append([]string(nil), caps...)
 }
 
 func (sm *SubagentManager) SetPolicy(policy SubagentPolicy) {
@@ -237,6 +251,7 @@ func (sm *SubagentManager) runLoop(ctx context.Context, taskPrompt, originChanne
 	sm.mu.RLock()
 	browserAuth := sm.BrowserAuth
 	consequentialAuth := sm.ConsequentialAuth
+	allowedCaps := sm.allowedCapabilities
 	sm.mu.RUnlock()
 	return RunToolLoop(ctx, ToolLoopConfig{
 		Provider:      sm.provider,
@@ -247,8 +262,9 @@ func (sm *SubagentManager) runLoop(ctx context.Context, taskPrompt, originChanne
 			"max_tokens":  4096,
 			"temperature": 0.7,
 		},
-		BrowserAuth:       browserAuth,
-		ConsequentialAuth: consequentialAuth,
+		BrowserAuth:         browserAuth,
+		ConsequentialAuth:   consequentialAuth,
+		AllowedCapabilities: allowedCaps,
 	}, messages, originChannel, originChatID)
 }
 

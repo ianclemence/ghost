@@ -1598,32 +1598,18 @@ func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace
 		return cronTool.ExecuteJob(context.Background(), job)
 	})
 
-	// Auto-discover scheduled workflows
+	// Skill-declared schedules are DECLARATIVE metadata, never autonomous
+	// behavior. Installing or reading a skill must not create persistent
+	// scheduled execution; the user creates a routine explicitly. We log
+	// the suggestion and create nothing.
 	sl := skills.NewSkillsLoader(workspace, "", "")
-	existingJobs := cronService.ListJobs(true)
-	existingNames := make(map[string]bool)
-	for _, j := range existingJobs {
-		existingNames[j.Name] = true
-	}
-
 	for _, skill := range sl.ListSkills() {
 		if skill.Schedule != "" {
-			workflowName := "Workflow: " + skill.Name
-			if !existingNames[workflowName] {
-				parsedCron := cron.ParseSchedule(skill.Schedule)
-				if parsedCron != "" {
-					cronService.AddJob(workflowName, cron.CronSchedule{Kind: "cron", Expr: parsedCron}, fmt.Sprintf("Execute the %s skill", skill.Name), true, "", "", nil)
-					logger.InfoCF("cron", "Auto-discovered scheduled workflow", map[string]interface{}{
-						"name": skill.Name,
-						"cron": parsedCron,
-					})
-				} else {
-					logger.InfoCF("cron", "Failed to parse schedule for workflow", map[string]interface{}{
-						"name":     skill.Name,
-						"schedule": skill.Schedule,
-					})
-				}
-			}
+			logger.InfoCF("skills", "skill declares a suggested schedule (not auto-created; create a routine to enable)",
+				map[string]interface{}{
+					"name":     skill.Name,
+					"schedule": skill.Schedule,
+				})
 		}
 	}
 

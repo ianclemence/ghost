@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/utils"
@@ -35,6 +36,11 @@ type ToolLoopConfig struct {
 	// It returns a replacement result (an approval wait or denial) or nil
 	// to allow execution. When nil, such tools are refused outright.
 	ConsequentialAuth SubagentConsequentialAuth
+	// AllowedCapabilities is the explicit capability scope delegated to this
+	// subtask. Non-empty = deny-by-default: a tool whose resolved capability
+	// is not listed is refused. Empty = unscoped (legacy full delegation,
+	// still bounded by the actuator blocklist and the broker).
+	AllowedCapabilities []string
 }
 
 // SubagentBrowserAuth authorizes one subagent browser call against the
@@ -215,7 +221,12 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 				turnTouchedWeb = true
 			}
 			var toolResult *ToolResult
-			if isComputerToolName(tc.Name) {
+			if !capability.InScope(config.AllowedCapabilities, tc.Name, tc.Arguments) {
+				// Delegated capability scope is authoritative for the
+				// subagent: a call outside the parent's explicit delegation
+				// is refused before any execution path is reached.
+				toolResult = ErrorResult("That capability was not delegated to this subtask, so I didn't run it.")
+			} else if isComputerToolName(tc.Name) {
 				// Computer control is a main-agent capability; a subagent
 				// has no computer authority. Refusing makes the path
 				// structurally impossible for the model to reach through a

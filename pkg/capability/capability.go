@@ -14,6 +14,7 @@
 package capability
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -48,6 +49,9 @@ const (
 	EvidenceArtifact EvidenceKind = "artifact"
 	// EvidenceFileWrite: path + existence (+ size/hash).
 	EvidenceFileWrite EvidenceKind = "file_write"
+	// EvidenceAction: a governed interaction (browser/computer control)
+	// whose proof is the runtime-recorded operation + outcome + time.
+	EvidenceAction EvidenceKind = "action"
 )
 
 // Spec is the Ghost-owned contract for one capability.
@@ -71,6 +75,60 @@ type Spec struct {
 // RequiresEvidence reports whether success for this capability must be
 // backed by runtime evidence.
 func (s Spec) RequiresEvidence() bool { return s.Evidence != EvidenceNone }
+
+// ValidateEvidence checks that a runtime evidence record satisfies the
+// capability's evidence contract. It is deliberately strict: a successful
+// consequential execution is not "done" unless the evidence is present, the
+// right type, and structurally complete. Evidence is produced by the
+// runtime (tool execution), never asserted by the model.
+func ValidateEvidence(kind EvidenceKind, ev map[string]interface{}) error {
+	if kind == EvidenceNone {
+		return nil
+	}
+	if len(ev) == 0 {
+		return fmt.Errorf("required evidence is missing")
+	}
+	typ, _ := ev["type"].(string)
+	if typ != string(kind) {
+		return fmt.Errorf("evidence type %q does not match required %q", typ, kind)
+	}
+	require := func(fields ...string) error {
+		for _, f := range fields {
+			v, ok := ev[f]
+			if !ok || v == nil || v == "" {
+				return fmt.Errorf("evidence is missing required field %q", f)
+			}
+		}
+		return nil
+	}
+	switch kind {
+	case EvidenceAcknowledgement:
+		// A provider/runtime acknowledgement: an operation identity plus time.
+		if err := require("timestamp"); err != nil {
+			return err
+		}
+		if ev["operation"] == nil && ev["message_id"] == nil && ev["recipient"] == nil && ev["provider"] == nil {
+			return fmt.Errorf("acknowledgement evidence must identify the operation")
+		}
+	case EvidenceStateTransition:
+		return require("entity", "requested", "timestamp")
+	case EvidenceArtifact:
+		return require("artifact_id", "timestamp")
+	case EvidenceFileWrite:
+		return require("path", "timestamp")
+	case EvidenceAction:
+		if err := require("outcome", "timestamp"); err != nil {
+			return err
+		}
+		if ev["op"] == nil && ev["operation"] == nil {
+			return fmt.Errorf("action evidence must identify the operation")
+		}
+		return nil
+	default:
+		return require("timestamp")
+	}
+	return nil
+}
 
 // Registry is the process-wide capability registry.
 type Registry struct {
@@ -142,16 +200,45 @@ func ForToolAction(tool string, args map[string]interface{}) (Spec, bool) {
 	return defaultRegistry.ForToolAction(tool, args)
 }
 
+// InScope reports whether a tool call is within a delegated capability
+// scope. An empty scope means "unscoped" (legacy full delegation) and is
+// allowed; a non-empty scope is deny-by-default — the tool's resolved
+// capability must be listed, or the call is refused. Unknown tools are
+// denied when scoped. This is a NARROWING mechanism only: it never grants
+// authority the broker would otherwise refuse.
+func InScope(scope []string, tool string, args map[string]interface{}) bool {
+	if len(scope) == 0 {
+		return true
+	}
+	spec, ok := ForToolAction(tool, args)
+	if !ok {
+		return false
+	}
+	for _, c := range scope {
+		if c == "*" || c == spec.ID {
+			return true
+		}
+	}
+	return false
+}
+
 // mcpCapabilityFor maps a small, well-understood set of MCP tool name shapes
 // to a Ghost capability. It is deliberately conservative: an unmatched tool
 // returns "" and is governed as mcp.execute. It never maps a write-shaped
 // tool onto a read capability.
 func mcpCapabilityFor(tool string) string {
 	t := strings.ToLower(tool)
+	// Never map a write/delete-shaped tool onto a read capability. Anything
+	// with a mutating verb stays mcp.execute (high impact, scoped).
+	for _, w := range []string{"delete", "remove", "create", "update", "write", "push", "merge", "close", "reopen", "set_", "put_", "post_", "patch", "edit", "add_"} {
+		if strings.Contains(t, w) {
+			return ""
+		}
+	}
 	switch {
 	case strings.Contains(t, "weather"):
 		return "weather.get"
-	case strings.Contains(t, "github") && (strings.Contains(t, "search") || strings.Contains(t, "repo")):
+	case strings.Contains(t, "github") && strings.Contains(t, "search"):
 		return "repository.search"
 	case strings.Contains(t, "web") && (strings.Contains(t, "search") || strings.Contains(t, "fetch")):
 		return "web.search"
@@ -232,13 +319,13 @@ func buildDefault() *Registry {
 		{ID: "browser.inspect", Title: "Browse (observe)", Risk: RiskReadOnly,
 			Tools:       []string{"browser_navigate", "browser_snapshot"},
 			Description: "Observe web pages."},
-		{ID: "browser.control", Title: "Browse (control)", Risk: RiskConsequential, Evidence: EvidenceStateTransition,
+		{ID: "browser.control", Title: "Browse (control)", Risk: RiskConsequential, Evidence: EvidenceAction,
 			Tools:       []string{"browser_click", "browser_type", "browser_press"},
 			Description: "Interact with web pages."},
 		{ID: "computer.inspect", Title: "Inspect screen", Risk: RiskReadOnly,
 			Tools:       []string{"computer_inspect_ui", "computer_screenshot"},
 			Description: "Observe the computer screen."},
-		{ID: "computer.control", Title: "Control computer", Risk: RiskConsequential, Evidence: EvidenceStateTransition,
+		{ID: "computer.control", Title: "Control computer", Risk: RiskConsequential, Evidence: EvidenceAction,
 			Tools:       []string{"computer_click", "computer_type", "computer_press_key"},
 			Description: "Control the computer UI."},
 

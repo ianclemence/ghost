@@ -286,17 +286,25 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	}
 
 	// Capability evidence contract: a consequential capability that reports
-	// success without runtime evidence must not be presented as success.
-	// This is the general mechanism behind the browser/computer gates'
-	// evidence rule, extended to every capability whose contract requires
-	// proof. Read-only and evidence-free capabilities are unaffected.
+	// success must carry runtime evidence that SATISFIES the capability's
+	// contract — present, correct type, structurally complete. Evidence is
+	// produced by the runtime (tool execution), never asserted by the model,
+	// so a model cannot manufacture a success claim. Read-only and
+	// evidence-free capabilities are unaffected.
 	if !result.IsError && !result.Async {
-		if spec, ok := capability.ForToolAction(name, args); ok && spec.RequiresEvidence() && len(result.Evidence) == 0 {
-			logger.WarnCF("tool", "success without required evidence",
-				map[string]interface{}{"tool": name, "capability": spec.ID, "evidence": string(spec.Evidence)})
-			result = ErrorResult(fmt.Sprintf(
-				"%s reported success but produced no runtime evidence, so I can't confirm it worked.", name)).
-				WithError(fmt.Errorf("capability %s requires %s evidence", spec.ID, spec.Evidence))
+		// Browser and computer capabilities enforce their evidence rule in
+		// their dedicated gates (with binding + product message). The
+		// registry must not double-enforce and mask that authoritative
+		// outcome, so those families are handled at the gate.
+		gateOwned := strings.HasPrefix(name, "browser_") || strings.HasPrefix(name, "computer_")
+		if spec, ok := capability.ForToolAction(name, args); ok && spec.RequiresEvidence() && !gateOwned {
+			if err := capability.ValidateEvidence(spec.Evidence, result.Evidence); err != nil {
+				logger.WarnCF("tool", "evidence validation failed",
+					map[string]interface{}{"tool": name, "capability": spec.ID, "evidence": string(spec.Evidence), "error": err.Error()})
+				result = ErrorResult(fmt.Sprintf(
+					"%s reported success but the runtime evidence was invalid (%s), so I can't confirm it worked.", name, err.Error())).
+					WithError(fmt.Errorf("capability %s evidence invalid: %w", spec.ID, err))
+			}
 		}
 	}
 

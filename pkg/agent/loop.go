@@ -396,6 +396,21 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	subagentTools := createToolRegistry(workspace, restrict, cfg, msgBus)
 	// Subagent doesn't need spawn/subagent tools to avoid recursion
 	subagentManager.SetTools(subagentTools)
+	// Explicit delegated capability scope (deny-by-default): subtasks may
+	// read/write files, search the web, recall/remember, produce artifacts,
+	// and use read-only information capabilities. They may NOT exec,
+	// control devices/computer, send messages, modify the calendar, manage
+	// skills, or use MCP. This is the authority model; the actuator
+	// blocklist in filteredTools is defense-in-depth.
+	subagentManager.SetAllowedCapabilities([]string{
+		"memory.recall", "memory.remember",
+		"web.search", "web.fetch",
+		"file.read", "file.write",
+		"artifact.create",
+		"weather.get", "aqi.get", "currency.convert", "crypto.price",
+		"places.nearby", "flight.status",
+		"browser.inspect", "browser.control",
+	})
 
 	// Register spawn tool (for main agent)
 	spawnTool := tools.NewSpawnTool(subagentManager)

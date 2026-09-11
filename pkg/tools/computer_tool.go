@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/computer"
 )
@@ -156,7 +157,16 @@ func (t *ComputerTool) Execute(ctx context.Context, args map[string]interface{})
 		return ErrorResult("Computer operation failed: " + derr.Error())
 	}
 	out := describeComputerResult(t.action, res)
-	evidence := map[string]interface{}{"op": "computer." + t.action, "owner": call.Owner, "context": call.ContextID, "task": call.TaskID, "permission": call.Permission}
+	evidence := map[string]interface{}{
+		"type":       "action",
+		"op":         "computer." + t.action,
+		"owner":      call.Owner,
+		"context":    call.ContextID,
+		"task":       call.TaskID,
+		"permission": call.Permission,
+		"outcome":    "ok",
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
+	}
 	for k, v := range res.Evidence {
 		evidence[k] = v
 	}
