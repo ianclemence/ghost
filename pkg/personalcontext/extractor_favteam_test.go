@@ -100,3 +100,16 @@ func TestExtractStripsTrailingTemporalFiller(t *testing.T) {
 		}
 	}
 }
+
+func TestDirectiveEchoRejected(t *testing.T) {
+	for _, v := range []string{"Remember this:", "remember this", "Note that:", "capture this", "save that:"} {
+		if !DirectiveEcho(v) {
+			t.Errorf("DirectiveEcho(%q) = false, want true", v)
+		}
+	}
+	for _, v := range []string{"Ian", "Chelsea", "mango sticky rice", "I would like to go to Bangkok some time"} {
+		if DirectiveEcho(v) {
+			t.Errorf("DirectiveEcho(%q) = true, want false", v)
+		}
+	}
+}

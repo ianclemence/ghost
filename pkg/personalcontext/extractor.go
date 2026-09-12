@@ -492,6 +492,9 @@ func matchDeclarations(text string, correction bool) []candidate {
 		if value == "" {
 			continue
 		}
+		if DirectiveEcho(value) {
+			continue
+		}
 		if r.likes && rejectLikesValue(value) {
 			continue
 		}
@@ -678,7 +681,9 @@ func stripTrailingNow(s string) string {
 
 // cleanValue trims surrounding whitespace and quotes, plus trailing
 // temporal fillers ("Arsenal now", "Sushi, for now") that describe when
-// the statement was made, never the value itself.
+// the statement was made, never the value itself. Values that ARE the
+// capture directive itself ("Remember this:") or end in a bare label
+// colon are rejected outright — they are instruction echoes, not beliefs.
 func cleanValue(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.Trim(s, `"'`)
@@ -687,6 +692,22 @@ func cleanValue(s string) string {
 		fields = fields[:len(fields)-1]
 	}
 	return strings.Join(fields, " ")
+}
+
+// DirectiveEcho reports whether a cleaned value is just the capture
+// directive restated ("remember this", "note that"). Such candidates
+// arise when the extractor chews on an explicit "Remember this: X"
+// request instead of on X itself.
+func DirectiveEcho(value string) bool {
+	norm := strings.ToLower(strings.TrimSpace(value))
+	norm = strings.TrimRight(norm, ":")
+	switch norm {
+	case "remember this", "remember that", "note this", "note that",
+		"capture this", "capture that", "save this", "save that",
+		"remember", "remember it":
+		return true
+	}
+	return false
 }
 
 // trailingFiller are words that can only qualify timing, never identity.

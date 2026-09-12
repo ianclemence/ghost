@@ -2060,6 +2060,11 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 			// over-eager extractor can never accumulate duplicate rows.
 			current := al.pcStore.CurrentInScope(al.sessionScopes(opts.SessionKey))
 			for _, entry := range result.Entries {
+				if personalcontext.DirectiveEcho(entryValueText(entry)) {
+					logger.InfoCF("agent", "semantic extraction: directive echo, skipped",
+						map[string]interface{}{"predicate": entry.Predicate})
+					continue
+				}
 				if personalcontext.HasCurrent(current, entry) {
 					logger.InfoCF("agent", "semantic extraction: duplicate of current memory, skipped",
 						map[string]interface{}{"predicate": entry.Predicate})
@@ -3668,7 +3673,7 @@ func (al *AgentLoop) summarizeSession(sessionKey string) {
 			finalSummary = s1 + " " + s2
 		}
 	} else {
-		finalSummary, _ = al.summarizeBatch(ctx, validMessages, summary)
+		finalSummary, _ = al.summarizeBatch(ctx, validMessages, stripScheduleFooters(summary))
 	}
 
 	if omitted && finalSummary != "" {
@@ -3679,6 +3684,8 @@ func (al *AgentLoop) summarizeSession(sessionKey string) {
 	// fossilize a wrong claim (e.g. "the scheduler rounded to 19:00"
 	// when the stored row says 19:45); the deterministic footer below
 	// is read from the rows, so future turns inherit truth, not rumor.
+	// Any previous footer is stripped first: exactly one block survives.
+	finalSummary = stripScheduleFooters(finalSummary)
 	if footer := al.openSchedulesFooter(); footer != "" {
 		finalSummary += "\n" + footer
 	}
@@ -3690,8 +3697,42 @@ func (al *AgentLoop) summarizeSession(sessionKey string) {
 	}
 }
 
+// footerScheduleMarker prefixes the deterministic scheduler-truth block
+// appended to session summaries. Previous blocks are stripped before a
+// new one is written, so exactly one authoritative block survives and a
+// stale row (e.g. a cancelled reminder) can never fossilize.
+const footerScheduleMarker = "[Open schedules @"
+
+// stripScheduleFooters removes previously appended scheduler-truth blocks
+// from a summary. Without this, each summarization inherits the last
+// block as if it were conversation, and dead rows live forever.
+func stripScheduleFooters(summary string) string {
+	lines := strings.Split(summary, "\n")
+	kept := lines[:0]
+	skipping := false
+	for _, ln := range lines {
+		if strings.HasPrefix(strings.TrimSpace(ln), footerScheduleMarker) {
+			skipping = true
+			continue
+		}
+		if skipping {
+			// Footer rows start with "- "; the block ends at the first
+			// non-row, non-blank line.
+			trimmed := strings.TrimSpace(ln)
+			if strings.HasPrefix(trimmed, "- ") || trimmed == "" {
+				continue
+			}
+			skipping = false
+		}
+		kept = append(kept, ln)
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n"))
+}
+
 // openSchedulesFooter renders the currently live reminders/automations
 // from the scheduler rows (never from chat text) for summary grounding.
+// Each row carries what it is for, not just when it fires, so future
+// turns never have to guess at a bare time.
 func (al *AgentLoop) openSchedulesFooter() string {
 	if al.schedSvc == nil {
 		return ""
@@ -3714,13 +3755,23 @@ func (al *AgentLoop) openSchedulesFooter() string {
 			when = it.NextRunAt.In(loc)
 		}
 		title := strings.TrimSpace(it.Title)
-		if title == "" {
-			title = strings.TrimSpace(it.Description)
+		detail := strings.TrimSpace(it.Description)
+		if detail == "" {
+			detail = strings.TrimSpace(it.Action.Content)
 		}
 		if title == "" {
-			title = strings.TrimSpace(it.Action.Content)
+			title = detail
+			detail = ""
 		}
-		fmt.Fprintf(&b, "\n- %s → %s", title, when.Format("Mon 15:04"))
+		// Cap detail so one verbose reminder can't flood every summary.
+		if len(detail) > 90 {
+			detail = strings.TrimSpace(detail[:90]) + "…"
+		}
+		if detail != "" && !strings.EqualFold(detail, title) {
+			fmt.Fprintf(&b, "\n- %s → %s — %s", title, when.Format("Mon 15:04"), detail)
+		} else {
+			fmt.Fprintf(&b, "\n- %s → %s", title, when.Format("Mon 15:04"))
+		}
 		if shown++; shown >= 5 {
 			break
 		}

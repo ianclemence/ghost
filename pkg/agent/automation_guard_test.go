@@ -2,6 +2,7 @@ package agent
 
 import (
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/ianclemence/ghost/pkg/config"
@@ -135,5 +136,22 @@ func TestPickEmbedProviderFallsBackWhenOllamaDown(t *testing.T) {
 	got := pickEmbedProvider(cfg, chat)
 	if got != providers.LLMProvider(chat) {
 		t.Error("unreachable Ollama must fall back to the chat provider")
+	}
+}
+
+func TestStripScheduleFooters(t *testing.T) {
+	in := "The user likes Chelsea.\n[Open schedules @11:04 — from scheduler rows, authoritative over chat text:]\n- Today at 9 PM → Sat 21:00\n- Every 2 minutes → Sat 11:06 — Send Ian a short poem\nMore prose here."
+	got := stripScheduleFooters(in)
+	if strings.Contains(got, "[Open schedules @") || strings.Contains(got, "Today at 9 PM") {
+		t.Errorf("old footer survived stripping: %q", got)
+	}
+	if !strings.Contains(got, "The user likes Chelsea.") || !strings.Contains(got, "More prose here.") {
+		t.Errorf("prose lost in stripping: %q", got)
+	}
+	if stripScheduleFooters("plain summary, no footer") != "plain summary, no footer" {
+		t.Error("footer-free summary altered")
+	}
+	if stripScheduleFooters("") != "" {
+		t.Error("empty summary altered")
 	}
 }
