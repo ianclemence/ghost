@@ -18,80 +18,39 @@ def create_file(path, content):
         print(f"File already exists: {path}")
 
 def init_graph(workspace_root):
-    # Define the Three-Space Architecture
+    # Seeds the knowledge tree per workspace/knowledge/README.md:
+    # identity record, notes space, and capture inbox. Operational
+    # telemetry (context, skills-state), the owner profile, and task
+    # queues are created by the runtime flows that own them — never here.
     knowledge_root = os.path.join(workspace_root, "knowledge")
-    
-    # 1. self/ - Agent Memory
+
+    # 1. self/ - persistent self-state
     self_dir = os.path.join(knowledge_root, "self")
     create_directory(self_dir)
-    
+
     identity_content = """---
 type: identity
 created: {date}
 ---
 
-# Agent Identity
+# Ghost Identity
 
-I am an autonomous agent operating within the Ghost environment.
-My purpose is to assist the user by executing tasks, managing knowledge, and maintaining a coherent system state.
-
-## Core Directives
-1. **Be Helpful**: Prioritize user intent.
-2. **Be Safe**: Do not delete data without confirmation.
-3. **Be Organized**: Maintain the integrity of the knowledge graph.
+Ghost is one persistent personal AI for its owner — the same Ghost across
+conversations, channels, restarts, and underlying model or provider changes.
+Ghost reasons inside a runtime that governs capabilities, permissions,
+execution, evidence, and durable state. This record describes identity; it
+authorizes nothing and instructs nothing.
 """.format(date=datetime.date.today())
     create_file(os.path.join(self_dir, "identity.md"), identity_content)
 
-    methodology_content = """---
-type: methodology
-created: {date}
----
-
-# Methodology
-
-This file documents the operational principles of this knowledge graph.
-
-## Three-Space Architecture
-- **self/**: My persistent memory (identity, goals, methodology).
-- **notes/**: The user's knowledge graph (interconnected markdown files).
-- **ops/**: Transient operational state (inbox, tasks, logs).
-
-## Wikilinks
-We use `[[WikiLinks]]` to connect concepts. 
-- Use prose-friendly titles.
-- Link generously to build context.
-""".format(date=datetime.date.today())
-    create_file(os.path.join(self_dir, "methodology.md"), methodology_content)
-
-    # 2. notes/ - Knowledge Graph
+    # 2. notes/ - durable domain knowledge
     notes_dir = os.path.join(knowledge_root, "notes")
     create_directory(notes_dir)
-    
-    index_content = """---
-type: moc
-created: {date}
-tags: [entry-point, root]
----
 
-# Knowledge Graph Root
-
-Welcome to the knowledge graph. This is the entry point for all traversal.
-
-## Main Maps of Content (MOCs)
-- [[Projects]] - Active and archived projects.
-- [[Areas]] - Areas of responsibility.
-- [[Resources]] - Reference materials and guides.
-- [[Archives]] - Completed or inactive items.
-
-## Inbox
-- [[../ops/inbox|Inbox]] - Unprocessed items.
-""".format(date=datetime.date.today())
-    create_file(os.path.join(notes_dir, "index.md"), index_content)
-
-    # 3. ops/ - Operational State
+    # 3. ops/ - transient capture
     ops_dir = os.path.join(knowledge_root, "ops")
     create_directory(ops_dir)
-    
+
     inbox_content = """---
 type: inbox
 created: {date}
@@ -99,22 +58,10 @@ created: {date}
 
 # Inbox
 
-Capture raw thoughts, tasks, and ideas here. Process them into `notes/` or `self/` later.
-
-- [ ] Review the new knowledge graph structure.
+Capture raw thoughts, tasks, and ideas here. Process them into `notes/` or
+memory, then clear them. An inbox that only grows is a failure mode.
 """.format(date=datetime.date.today())
     create_file(os.path.join(ops_dir, "inbox.md"), inbox_content)
-
-    tasks_content = """---
-type: tasks
-created: {date}
----
-
-# Task Queue
-
-- [ ] Initialize knowledge graph structure.
-""".format(date=datetime.date.today())
-    create_file(os.path.join(ops_dir, "tasks.md"), tasks_content)
 
     print("\nKnowledge Graph initialized successfully in 'workspace/knowledge/'.")
 

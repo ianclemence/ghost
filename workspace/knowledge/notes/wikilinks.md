@@ -11,6 +11,6 @@ Wikilinks are the fundamental edges of the knowledge graph. They are denoted by 
 
 ## Rules
 
-- Links resolve by filename (e.g., `[[projects]]` links to `projects.md`).
+- Links resolve by filename (e.g., `[[skill-observations]]` links to `skill-observations.md`).
 - Filenames must be unique across the workspace.
 - Links can have aliases: `[[Target|Display Text]]`.

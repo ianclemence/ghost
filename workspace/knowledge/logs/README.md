@@ -1,23 +1,22 @@
 ---
 type: logs
 created: 2026-03-19
-updated: 2026-03-19
-tags: [logs, session, operations]
-description: Session logs and error logs. Timestamp-ordered records of what happened.
+updated: 2026-09-12
+tags: [logs, session, history]
+description: Chronological history. What happened, not what is true.
 ---
 
 # Logs
 
-Timestamped records of sessions and significant events. Unlike [[ops/]] (task-oriented), logs are a chronological record of what happened.
+Timestamped records of sessions and significant events. Logs answer "what
+happened" — they are history, not truth. A log line never proves an execution
+occurred; execution truth lives in scheduler rows, execution receipts, and
+canonical runtime events. Durable user facts belong in memory, not here.
 
 ## Session Log
 
-- [[logs/sessions]] — Per-session summaries, topics covered, decisions made
-
-## Error Log
-
-- [[logs/errors]] — Errors encountered, their causes, and resolutions
-  (synced with [[self/recent-errors]])
+- `sessions.md` — Per-session summaries: topics covered, decisions made,
+  outcomes. One entry per significant session.
 
 ## Log Entry Format
 
@@ -35,12 +34,8 @@ Sessions follow this format:
 
 ## Retention
 
-- Keep all sessions — they form a searchable history
-- Error log entries are deduplicated against [[self/recent-errors]]
-- Archive old logs (>6 months) by moving to [[logs/archive]]
-
-## Update Schedule
-
-- Log at the **end of every significant session**
-- If a session produces no errors, note that explicitly
-- Copy resolved errors to [[self/recent-errors]] immediately
+- Sessions accumulate as searchable history. Groom only when the file becomes
+  unwieldy: summarize older spans, never rewrite them into false precision.
+- Log at the **end of significant sessions**. Routine uneventful turns need
+  no entry.
+- Never store credentials, keys, or secrets in logs.
