@@ -1901,8 +1901,15 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 
 	store := scheduled.NewStore(d)
 	if err := store.InitSchema(); err != nil {
-		fmt.Printf("Error initializing scheduled schema: %v", err)
+		fmt.Printf("Error initializing scheduled schema: %v\n", err)
 		return nil
+	}
+	// One-time repair: rows written with non-UTC offsets never compare
+	// correctly in ListDue and would fire hours late or never.
+	if n, err := store.NormalizeStoredTimesToUTC(); err != nil {
+		fmt.Printf("Warning: schedule time normalization failed: %v\n", err)
+	} else if n > 0 {
+		fmt.Printf("Normalized %d stored schedule time(s) to UTC.\n", n)
 	}
 
 	// Create executor that sends messages through the agent.

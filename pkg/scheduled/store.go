@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -89,6 +90,13 @@ func (s *Store) Create(item *ScheduledItem) error {
 	now := time.Now().UTC()
 	item.CreatedAt = now
 	item.UpdatedAt = now
+	// All schedule instants are stored UTC. The TEXT rendering of a
+	// non-UTC time sorts AFTER its UTC equivalent ("12:56 +0700" >
+	// "05:56 +0000"), which silently breaks the lexicographic
+	// next_run_at <= now comparison in ListDue — one-time reminders
+	// would fire hours late or never. Timezone stays on the row for
+	// display; storage is always UTC.
+	utcScheduleTimes(item)
 
 	actionsJSON, _ := json.Marshal(item.Action.Skills)
 
@@ -259,6 +267,7 @@ func (s *Store) ListDue(now time.Time) ([]*ScheduledItem, error) {
 // Update modifies an existing ScheduledItem.
 func (s *Store) Update(item *ScheduledItem) error {
 	item.UpdatedAt = time.Now().UTC()
+	utcScheduleTimes(item)
 
 	actionsJSON, _ := json.Marshal(item.Action.Skills)
 
@@ -386,6 +395,134 @@ func (s *Store) IncrementRunCount(id string) error {
 	_, err := s.db.Exec(`UPDATE scheduled_items SET run_count = run_count + 1, last_run_at = ?, updated_at = ? WHERE id = ?`,
 		time.Now().UTC(), time.Now().UTC(), id)
 	return err
+}
+
+// utcScheduleTimes normalizes an item's schedule instants to UTC in
+// place. See Create: TEXT-rendered offsets break due comparisons.
+func utcScheduleTimes(item *ScheduledItem) {
+	if item == nil {
+		return
+	}
+	if item.Schedule.At != nil {
+		at := item.Schedule.At.UTC()
+		item.Schedule.At = &at
+	}
+	if item.NextRunAt != nil {
+		next := item.NextRunAt.UTC()
+		item.NextRunAt = &next
+	}
+	if item.LastRunAt != nil {
+		last := item.LastRunAt.UTC()
+		item.LastRunAt = &last
+	}
+}
+
+// legacyTimeLayouts parses the TEXT forms previously stored for schedule
+// columns: Go time.String() output with a numeric offset, an optional zone
+// abbreviation, and an optional monotonic suffix
+// ("2026-09-12 12:56:00.007 +0700 +07 m=+145.9"), or the driver's
+// DATETIME round-trip form ("2026-09-12T12:56:00.007+07:00").
+func parseLegacyStoredTime(raw string) (time.Time, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}, fmt.Errorf("empty stored time")
+	}
+	rfcLayouts := []string{time.RFC3339Nano, time.RFC3339}
+	if !strings.Contains(trimmed, " ") {
+		for _, layout := range rfcLayouts {
+			if t, err := time.Parse(layout, trimmed); err == nil {
+				return t, nil
+			}
+		}
+		return time.Time{}, fmt.Errorf("unparseable stored time %q", raw)
+	}
+	fields := strings.Fields(trimmed)
+	if len(fields) < 3 {
+		return time.Time{}, fmt.Errorf("unparseable stored time %q", raw)
+	}
+	// Date, clock, numeric offset; everything after is zone abbreviation
+	// and/or monotonic reading — same instant, dropped for parsing.
+	compact := fields[0] + " " + fields[1] + " " + fields[2]
+	for _, layout := range append([]string{
+		"2006-01-02 15:04:05.999999999 -0700",
+		"2006-01-02 15:04:05 -0700",
+	}, rfcLayouts...) {
+		if t, err := time.Parse(layout, compact); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unparseable stored time %q", raw)
+}
+
+// NormalizeStoredTimesToUTC rewrites schedule_at/next_run_at/last_run_at
+// values stored with non-UTC offsets (or monotonic suffixes) into UTC.
+// One-time repair for rows written before schedule instants were
+// normalized on write; idempotent and safe to run every boot.
+func (s *Store) NormalizeStoredTimesToUTC() (int64, error) {
+	rows, err := s.db.Query(`SELECT id, schedule_at, next_run_at, last_run_at FROM scheduled_items`)
+	if err != nil {
+		return 0, err
+	}
+	type fix struct {
+		id         string
+		scheduleAt *string
+		nextRunAt  *string
+		lastRunAt  *string
+	}
+	var fixes []fix
+	for rows.Next() {
+		var id string
+		var schedAt, nextAt, lastAt sql.NullString
+		if err := rows.Scan(&id, &schedAt, &nextAt, &lastAt); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		normalize := func(ns sql.NullString) *string {
+			if !ns.Valid || ns.String == "" {
+				return nil
+			}
+			// Already UTC-shaped (or UTC ISO): leave untouched.
+			if strings.Contains(ns.String, "+0000") || strings.HasSuffix(ns.String, "Z") ||
+				strings.Contains(ns.String, "+00:00") {
+				return nil
+			}
+			t, err := parseLegacyStoredTime(ns.String)
+			if err != nil {
+				return nil
+			}
+			out := t.UTC().Format("2006-01-02 15:04:05.999999999 +0000 UTC")
+			return &out
+		}
+		if sa, na, la := normalize(schedAt), normalize(nextAt), normalize(lastAt); sa != nil || na != nil || la != nil {
+			fixes = append(fixes, fix{id: id, scheduleAt: sa, nextRunAt: na, lastRunAt: la})
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, f := range fixes {
+		if f.scheduleAt != nil {
+			if _, err := s.db.Exec(`UPDATE scheduled_items SET schedule_at = ? WHERE id = ?`, *f.scheduleAt, f.id); err != nil {
+				return total, err
+			}
+			total++
+		}
+		if f.nextRunAt != nil {
+			if _, err := s.db.Exec(`UPDATE scheduled_items SET next_run_at = ? WHERE id = ?`, *f.nextRunAt, f.id); err != nil {
+				return total, err
+			}
+			total++
+		}
+		if f.lastRunAt != nil {
+			if _, err := s.db.Exec(`UPDATE scheduled_items SET last_run_at = ? WHERE id = ?`, *f.lastRunAt, f.id); err != nil {
+				return total, err
+			}
+			total++
+		}
+	}
+	return total, nil
 }
 
 // scanItem scans a row into a ScheduledItem.
