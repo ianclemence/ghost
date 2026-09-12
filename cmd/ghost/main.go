@@ -943,8 +943,11 @@ func gatewayCmd() {
 	}
 
 	// Start the conservative, local background memory consolidation (learn/
-	// reinforce/clean). Disposable and non-blocking.
-	agentLoop.StartLearningWorker(context.Background())
+	// reinforce/clean). Disposable and non-blocking. NOTE: this must stay
+	// AFTER the scheduler wiring below — consolidation consults the live
+	// scheduled items (echo detection, summary grounding), and a worker
+	// started here would run its first pass with a nil scheduler.
+	// Started after setupScheduledService; see below.
 
 	// Sync bundled skills before starting so devices pick up new bundled
 	// skills after updates without ever stomping user edits.
@@ -1014,6 +1017,12 @@ func gatewayCmd() {
 		scheduleTool := tools.NewScheduleTool(scheduledService, tz)
 		agentLoop.RegisterTool(scheduleTool)
 	}
+
+	// Memory consolidation starts here, after ALL runtime wiring above:
+	// its first pass needs the scheduler (echo detection), the routine
+	// signals, and the registered tools. Starting it earlier runs
+	// consolidation against a half-wired loop.
+	agentLoop.StartLearningWorker(context.Background())
 
 	heartbeatService := heartbeat.NewHeartbeatService(
 		cfg.WorkspacePath(),
