@@ -1,15 +1,18 @@
 # Periodic Tasks (Heartbeat)
 
-This file defines autonomous background routines. Heartbeat tasks must never degrade active chat responsiveness.
+This file defines advisory background routines, interpreted by the model on
+each heartbeat tick. It is prose guidance, not runtime configuration: the
+scheduler owns timing and execution, the broker owns permission, and nothing
+here authorizes, dispatches, or proves anything. Budgets and thresholds below
+are judgment aids for keeping ticks cheap — they are not enforced timers.
 
 ## Global Guardrails
 
-- Maximum heartbeat runtime per cycle: 120 seconds.
-- Maximum single task runtime: 45 seconds.
+- Keep each cycle cheap (aim: under two minutes total; under a minute per task).
 - If active user chat is in progress, defer non-critical heartbeat tasks.
 - On network or provider failure (including LLM timeouts), skip quietly until the next scheduled run — log once at INFO, never error-spam.
 - Times below are in the user's device timezone (see Timezone rule), never raw server UTC.
-- Every task must be idempotent via the scheduler's execution_history (occurrence keys): re-running must not duplicate user-facing outputs.
+- Never emit a user-facing output twice for the same tick: one briefing, one reflection entry per day. Deduplication of scheduled work is scheduler-owned; your job is simply not to repeat yourself.
 
 ## Timezone
 
@@ -26,7 +29,7 @@ This file defines autonomous background routines. Heartbeat tasks must never deg
 
 - [ ] Check system time and timezone consistency.
 - [ ] Collect top tech and world headlines (max 5 sources total).
-- [ ] Review `state/state.json` for pending multi-day tasks.
+- [ ] Review `state/state.json` for pending multi-day tasks (read-only; never move runtime state files).
 - [ ] Send one concise morning briefing to the primary configured channel.
 
 Output constraints:
@@ -39,12 +42,12 @@ Output constraints:
 - [ ] Summarize significant interactions from the day.
 - [ ] Append one human-titled entry to the daily memory note (timestamped, e.g. `## 22:04 — Evening reflection`). Never use raw `YYYYMM/filename` paths as user-facing titles.
 - [ ] Update `knowledge/self/context.md` with current topic and session outcome.
-- [ ] Archive obsolete `state/` files older than 7 days.
+- [ ] Leave `state/` to the runtime's own pruning; report anything that looks stale instead of moving files.
 - [ ] Groom `knowledge/notes/` overflow: archive stale reference notes (>90 days untouched) so briefings never cite dead context.
 
 Output constraints:
 - One session log entry per day.
-- No duplicate entries for the same date key (check execution_history first).
+- No duplicate entries for the same date.
 
 ## Maintenance (Every 4 Hours)
 
