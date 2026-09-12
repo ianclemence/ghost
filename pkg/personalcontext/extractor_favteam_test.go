@@ -45,3 +45,39 @@ func TestExtractFavoriteTeamSupersedes(t *testing.T) {
 		t.Errorf("current favorite_team rows = %d, want 1", current)
 	}
 }
+
+// Interrogatives must never be filed as names: "what is my girlfriend's
+// name?" states no fact. Declarative forms keep working.
+func TestExtractPartnerQuestionYieldsNothing(t *testing.T) {
+	for _, q := range []string{
+		"what is my girlfriend's name?",
+		"Quick check — what is my girlfriend's name and which team do I support?",
+		"who is my wife?",
+	} {
+		actions, err := Extract(testInput(q))
+		if err != nil {
+			t.Fatalf("Extract(%q): %v", q, err)
+		}
+		for _, a := range actions {
+			if a.Entry.Predicate == "relationship/partner" {
+				t.Errorf("Extract(%q) filed partner=%q", q, entryString(a.Entry))
+			}
+		}
+	}
+}
+
+func TestExtractPartnerDeclarationStillWorks(t *testing.T) {
+	actions, err := Extract(testInput("Jasmine is my girlfriend"))
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	found := false
+	for _, a := range actions {
+		if a.Entry.Predicate == "relationship/partner" && entryString(a.Entry) == "Jasmine" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("declaration not extracted: %+v", actions)
+	}
+}

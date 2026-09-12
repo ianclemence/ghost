@@ -318,6 +318,11 @@ var declarationRules = []declarationRule{
 		kind:      KindRelationship,
 		predicate: "relationship/partner",
 		re:        regexp.MustCompile(`(?i)\b(\w+) is my (?:wife|husband|partner|spouse|girlfriend|boyfriend)\b`),
+		// Questions ("what is my girlfriend's name?") match this shape
+		// but state no fact — the captured interrogative must never be
+		// filed as a name. Pronouns (she/he/they) stay eligible: they
+		// resolve against the previous turn.
+		rejectWords: []string{"what", "who", "whom", "which", "whatever", "whoever", "that", "this", "it", "there"},
 	},
 	{
 		// "my sister's name is Ana", "remember that my brother's name is Sam".
