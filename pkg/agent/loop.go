@@ -3786,7 +3786,8 @@ func (al *AgentLoop) openSchedulesFooter() string {
 
 // summarizeBatch summarizes a batch of messages.
 func (al *AgentLoop) summarizeBatch(ctx context.Context, batch []providers.Message, existingSummary string) (string, error) {
-	prompt := "Provide a concise summary of this conversation segment, preserving core context and key points.\n"
+	prompt := "Provide a concise summary of this conversation segment, preserving core context and key points.\n" +
+		"This summary continues the same task — it is not a restart. Assume details missing from it, do not redo completed work, and treat the thread as one logical chain.\n"
 	if existingSummary != "" {
 		prompt += "Existing context: " + existingSummary + "\n"
 	}

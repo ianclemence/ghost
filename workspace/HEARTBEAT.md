@@ -13,6 +13,7 @@ are judgment aids for keeping ticks cheap — they are not enforced timers.
 - On network or provider failure (including LLM timeouts), skip quietly until the next scheduled run — log once at INFO, never error-spam.
 - Times below are in the user's device timezone (see Timezone rule), never raw server UTC.
 - Never emit a user-facing output twice for the same tick: one briefing, one reflection entry per day. Deduplication of scheduled work is scheduler-owned; your job is simply not to repeat yourself.
+- Notify only on completion, failure, material state change, or required user action. Results that are pending, healthy, or unchanged stay quiet — no message, no fanfare. A tick firing, or work performed, is never by itself a reason to notify.
 
 ## Timezone
 

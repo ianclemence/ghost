@@ -182,3 +182,19 @@ func TestWorkspaceContract_NoPhantomPromptFiles(t *testing.T) {
 		t.Fatal("workspace/GHOST.md missing: the model-facing behavioral contract")
 	}
 }
+
+func TestWorkspaceContract_AstraLearningsPresent(t *testing.T) {
+	main := string(readWorkspaceFile(t, "GHOST.md"))
+	for _, marker := range []string{
+		"never audition alternatives with contrastive framing",
+		"user's explicit words always outrank",
+		"name the exact skill file",
+		"with approval as the final step",
+		"which rule stopped it",
+		"what you learned, what remains uncertain",
+	} {
+		if !strings.Contains(main, marker) {
+			t.Errorf("workspace/GHOST.md missing Astra learning marker %q", marker)
+		}
+	}
+}
