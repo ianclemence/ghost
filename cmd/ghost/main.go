@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -716,13 +717,23 @@ func agentCmd() {
 		// A one-shot CLI reset must run while the daemon is stopped, or the
 		// running gateway re-persists its in-memory state and undoes it.
 		isReset := strings.HasPrefix(strings.TrimSpace(message), "/reset")
+		wasRunning := false
 		stopped := false
 		if isReset {
+			wasRunning = ghostServiceRunning()
 			stopped = stopGhostDaemon()
 		}
 		response, err := agentLoop.ProcessDirect(ctx, message, sessionKey)
-		if isReset {
-			startGhostDaemon(stopped)
+		if isReset && wasRunning {
+			// Stopped above: start it. Could not stop (no privilege):
+			// restart anyway so the daemon reloads from disk.
+			if stopped {
+				startGhostDaemon(true)
+			} else if rerr := restartGhostDaemon(); rerr != nil {
+				fmt.Printf("Reset applied, but restart failed: %v\nRun: sudo systemctl restart ghost\n", rerr)
+			} else {
+				fmt.Println("Ghost service restarted — reset applied.")
+			}
 		}
 		if err != nil {
 			fmt.Printf("Error: %s\n", friendlyAgentError(err))
@@ -1259,13 +1270,28 @@ func statusCmd() {
 	}
 }
 
-// resetCmd is the CLI factory reset. It performs the same reset as the
-// /reset chat command, then restarts the running daemon so the cleared
-// state actually takes effect: a running gateway holds memory in RAM that
-// only reloads on restart.
+// resetCmd is the CLI factory reset. Hybrid strategy:
+//  1. If the daemon is up, POST /v1/reset so it clears its own live state
+//     (sessions, RAG index, personal context) synchronously — no restart
+//     needed for the wipe itself.
+//  2. Otherwise (daemon down/unreachable), stop it if needed and wipe the
+//     DB/files directly, then restart it so it reloads the cleared state.
+//
+// A file-backed model default still needs a restart to take effect, so a
+// restart is issued after an API reset whenever the model scope ran.
 func resetCmd() {
-	if len(os.Args) < 3 {
-		fmt.Println("Usage: ghost reset <all|scope...> [--exclude=scope,...]")
+	rawArgs := os.Args[2:]
+	args := make([]string, 0, len(rawArgs))
+	noRestart := false
+	for _, a := range rawArgs {
+		if a == "--no-restart" {
+			noRestart = true
+			continue
+		}
+		args = append(args, a)
+	}
+	if len(args) < 1 {
+		fmt.Println("Usage: ghost reset <all|scope...> [--exclude=scope,...] [--no-restart]")
 		fmt.Println("  ghost reset all --exclude=devices,secrets")
 		fmt.Println("  ghost reset chats memory")
 		return
@@ -1275,18 +1301,156 @@ func resetCmd() {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
 	}
+	text := "/reset " + strings.Join(args, " ")
+
+	// 1. Live path: ask the running daemon to reset itself.
+	if out, handled := tryResetViaAPI(cfg, args, text); handled {
+		if strings.TrimSpace(out) != "" {
+			fmt.Println(out)
+		}
+		if !noRestart && resetTouchesModel(args, text) && ghostServiceRunning() {
+			fmt.Println("Model default changed on disk — restarting Ghost to apply…")
+			if err := restartGhostDaemon(); err != nil {
+				fmt.Printf("Reset applied, but restart failed: %v\nRun: sudo systemctl restart ghost\n", err)
+			} else {
+				fmt.Println("Ghost service restarted — reset applied.")
+			}
+		}
+		return
+	}
+
+	// 2. Offline fallback: daemon unreachable, wipe directly.
+	wasRunning := ghostServiceRunning()
+	stopped := false
+	if wasRunning {
+		stopped = stopGhostDaemon()
+	}
 	rt := &commands.Runtime{Workspace: cfg.WorkspacePath()}
-	text := "/reset " + strings.Join(os.Args[2:], " ")
-	stopped := stopGhostDaemon()
 	out, err := commands.RunReset(context.Background(), rt, text)
 	if strings.TrimSpace(out) != "" {
 		fmt.Println(out)
 	}
-	startGhostDaemon(stopped)
+	if wasRunning && !noRestart && err == nil && !resetIsValidationError(out) {
+		// Stopped above: start it. Never managed to stop (no privilege):
+		// restart anyway so it reloads from disk instead of keeping
+		// stale in-memory state.
+		if stopped {
+			startGhostDaemon(true)
+		} else if err := restartGhostDaemon(); err != nil {
+			fmt.Printf("Reset applied, but restart failed: %v\nRun: sudo systemctl restart ghost\n", err)
+		} else {
+			fmt.Println("Ghost service restarted — reset applied.")
+		}
+	}
 	if err != nil {
 		fmt.Printf("Reset error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// resetAPIPort resolves the internal API port the same way startInternalAPI
+// does: config default, GHOST_API_PORT override, fallback 8766.
+func resetAPIPort(cfg *config.Config) int {
+	port := 8766
+	if cfg != nil && cfg.Gateway.Port != 0 {
+		port = cfg.Gateway.Port
+	}
+	if p := strings.TrimSpace(os.Getenv("GHOST_API_PORT")); p != "" {
+		var v int
+		if _, err := fmt.Sscanf(p, "%d", &v); err == nil && v > 0 {
+			port = v
+		}
+	}
+	return port
+}
+
+// tryResetViaAPI POSTs the reset to the live daemon. It reports handled=true
+// when the daemon answered (success or a definitive validation error), in
+// which case the caller must not fall back to the offline wipe.
+// handled=false means the daemon is unreachable — use the offline path.
+func tryResetViaAPI(cfg *config.Config, args []string, text string) (string, bool) {
+	_ = args
+	port := resetAPIPort(cfg)
+	body, _ := json.Marshal(map[string]string{"text": text})
+	client := &http.Client{Timeout: 90 * time.Second}
+	resp, err := client.Post(
+		fmt.Sprintf("http://127.0.0.1:%d/v1/reset", port),
+		"application/json", strings.NewReader(string(body)),
+	)
+	if err != nil {
+		return "", false
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var payload struct {
+		OK      bool   `json:"ok"`
+		Message string `json:"message"`
+		Error   any    `json:"error"`
+	}
+	_ = json.Unmarshal(raw, &payload)
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		return payload.Message, true
+	case resp.StatusCode == http.StatusBadRequest:
+		msg := payload.Message
+		if msg == "" && payload.Error != nil {
+			msg = fmt.Sprintf("%v", payload.Error)
+		}
+		if strings.TrimSpace(msg) == "" {
+			msg = strings.TrimSpace(string(raw))
+		}
+		return msg, true
+	default:
+		return "", false
+	}
+}
+
+// resetIsValidationError reports whether reset output is a usage/validation
+// message (nothing was wiped), in which case a restart is pointless.
+func resetIsValidationError(out string) bool {
+	lower := strings.ToLower(out)
+	if !strings.Contains(lower, "usage:") {
+		return false
+	}
+	for _, s := range []string{"unknown reset scope", "unknown option", "--exclude needs", "needs a scope"} {
+		if strings.Contains(lower, strings.ToLower(s)) {
+			return true
+		}
+	}
+	return false
+}
+
+// resetTouchesModel reports whether the reset includes the model scope, whose
+// file-backed default only takes effect after a restart.
+func resetTouchesModel(args []string, text string) bool {
+	lower := strings.ToLower(" " + strings.Join(args, " ") + " ")
+	if strings.Contains(lower, " all ") || strings.Contains(lower, " all\t") {
+		return true
+	}
+	for _, a := range args {
+		base := strings.ToLower(strings.SplitN(a, "=", 2)[0])
+		base = strings.TrimPrefix(base, "-")
+		if base == "model" || base == "ai" {
+			return true
+		}
+	}
+	return strings.Contains(strings.ToLower(text), "model")
+}
+
+// runSystemctl runs systemctl, escalating via sudo (interactive prompt) when
+// not root and the direct call fails on permissions.
+func runSystemctl(sysArgs ...string) error {
+	if err := exec.Command("systemctl", sysArgs...).Run(); err == nil {
+		return nil
+	} else if os.Geteuid() == 0 {
+		return err
+	}
+	if _, lookErr := exec.LookPath("sudo"); lookErr != nil {
+		return lookErr
+	}
+	cmd := exec.Command("sudo", append([]string{"systemctl"}, sysArgs...)...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return cmd.Run()
 }
 
 // ghostServiceRunning reports whether the ghost daemon is active.
@@ -1297,23 +1461,26 @@ func ghostServiceRunning() bool {
 	return exec.Command("systemctl", "is-active", "--quiet", "ghost").Run() == nil
 }
 
-// stopGhostDaemon quiesces the daemon before a CLI reset. A running gateway
-// holds memory and sessions in RAM and can re-persist them after an
+// stopGhostDaemon quiesces the daemon before an offline CLI reset. A running
+// gateway holds memory and sessions in RAM and can re-persist them after an
 // out-of-process clear, so the reset must happen while it is stopped.
 // Returns true when it actually stopped the service.
 func stopGhostDaemon() bool {
 	if !ghostServiceRunning() {
 		return false
 	}
-	if os.Geteuid() != 0 {
-		fmt.Println("Warning: Ghost is running. Stop it first so the reset cannot be undone by in-memory state: sudo systemctl stop ghost")
-		return false
-	}
-	if err := exec.Command("systemctl", "stop", "ghost").Run(); err != nil {
-		fmt.Printf("Could not stop Ghost: %v\n", err)
+	if err := runSystemctl("stop", "ghost"); err != nil {
+		fmt.Printf("Could not stop Ghost (%v). Proceeding — a restart will follow.\n", err)
 		return false
 	}
 	return true
+}
+
+// restartGhostDaemon restarts the daemon unconditionally (used after a live
+// API reset that touched the on-disk model default, or when an offline reset
+// could not stop the daemon first).
+func restartGhostDaemon() error {
+	return runSystemctl("restart", "ghost")
 }
 
 // startGhostDaemon restarts the daemon after a CLI reset so it reloads the
@@ -1322,7 +1489,7 @@ func startGhostDaemon(stopped bool) {
 	if !stopped {
 		return
 	}
-	if err := exec.Command("systemctl", "start", "ghost").Run(); err != nil {
+	if err := runSystemctl("start", "ghost"); err != nil {
 		fmt.Printf("Reset applied, but starting Ghost failed: %v\nRun: sudo systemctl start ghost\n", err)
 		return
 	}

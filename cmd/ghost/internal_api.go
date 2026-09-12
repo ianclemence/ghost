@@ -434,7 +434,6 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 	}
 }
 
-
 const defaultInternalAPIPort = 8766
 
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -4341,6 +4340,44 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 
 	// ── WebSocket ─────────────────────────────────────────────────────────
 	mux.HandleFunc("/v1/ws", handleWebSocket(agentLoop))
+
+	// ── Factory reset (in-process, live state) ──────────────────────────
+	// Runs /reset inside the gateway so in-memory state (sessions, RAG
+	// index, personal context) is cleared synchronously — no restart
+	// needed. Loopback peers are trusted via authMiddleware; the CLI
+	// prefers this and only falls back to offline file/DB wipe when the
+	// daemon is unreachable.
+	mux.HandleFunc("/v1/reset", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			Text string   `json:"text"`
+			Args []string `json:"args"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		text := strings.TrimSpace(req.Text)
+		if text == "" && len(req.Args) > 0 {
+			text = "/reset " + strings.Join(req.Args, " ")
+		}
+		if text == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "text or args is required (e.g. {\"text\": \"/reset all --exclude=devices,secrets\"})")
+			return
+		}
+		if !strings.HasPrefix(text, "/reset") {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "only /reset is supported on this endpoint")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		resp, err := agentLoop.ProcessDirect(ctx, text, "cli:reset")
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "reset_failed", err.Error())
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "message": resp})
+	}))
 
 	// ── Live Surface plane (browser/computer control + observation) ──────
 	registerLiveSurfaceRoutes(mux, agentLoop)
