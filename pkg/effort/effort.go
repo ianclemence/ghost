@@ -45,20 +45,22 @@ type Budget struct {
 	AllowCloudEscalation bool
 }
 
-// Policy maps a level to its budget. The numbers are deliberately modest for
-// the Raspberry Pi target; Deep is bounded, not unbounded.
+// Policy maps a level to its budget. Numbers are generous: a capped turn
+// that stops mid-research produces a worse outcome than the tokens it
+// saves. The loop-level iteration ceiling remains the backstop against
+// runaway turns; these budgets make sure legitimate work finishes.
 func Policy(l Level) Budget {
 	switch l {
 	case Quick:
-		return Budget{Level: Quick, MaxOutputTokens: 400, MaxToolCalls: 2,
+		return Budget{Level: Quick, MaxOutputTokens: 2000, MaxToolCalls: 6,
 			MaxExecutionMs: 15000, MaxRetries: 0, Verification: VerifyBasic,
 			MemoryDepth: 1, AllowCloudEscalation: false}
 	case Deep:
-		return Budget{Level: Deep, MaxOutputTokens: 3000, MaxToolCalls: 20,
+		return Budget{Level: Deep, MaxOutputTokens: 8000, MaxToolCalls: 40,
 			MaxExecutionMs: 120000, MaxRetries: 2, Verification: VerifyStrict,
 			MemoryDepth: 3, AllowCloudEscalation: true}
 	default:
-		return Budget{Level: Normal, MaxOutputTokens: 1500, MaxToolCalls: 20,
+		return Budget{Level: Normal, MaxOutputTokens: 4000, MaxToolCalls: 30,
 			MaxExecutionMs: 45000, MaxRetries: 1, Verification: VerifyStandard,
 			MemoryDepth: 2, AllowCloudEscalation: true}
 	}
@@ -98,6 +100,7 @@ type Signals struct {
 	CodeOrDebug       bool
 	Ambiguous         bool
 	MemoryDep         bool
+	Research          bool
 	Urgent            bool
 	PriorFailures     int
 	VerificationFails int
@@ -108,8 +111,12 @@ var (
 	codeRE      = regexp.MustCompile("```|\\b(func|compile|debug|stack trace|refactor|regex|sql|bug|error:|exception)\\b")
 	ambiguousRE = regexp.MustCompile(`\b(somehow|maybe|not sure|whatever|etc\.?|and so on|something like)\b`)
 	memoryRE    = regexp.MustCompile(`\b(remember|recall|previously|last time|we discussed|i told you|my (preference|schedule|routine))\b`)
-	urgentRE    = regexp.MustCompile(`\b(now|asap|urgent|immediately|right away)\b`)
-	toolRE      = regexp.MustCompile(`\b(schedule|remind|calendar|email|send|create|delete|move|rename|download|upload|browse|open|run|install|summarize|summary|save|write|edit|translate|analyze|plan|organize|search|look up|generate|draft)\b`)
+	// Research asks need room to search, fetch, and verify — they must
+	// never be starved by the Quick tier. Kept narrow so greetings and
+	// clock questions still stay cheap.
+	researchRE = regexp.MustCompile(`\b(latest|breaking|trending|research|look for|look up|find out|dig into|compare|news (on|about)|price of|what .* costs?)\b`)
+	urgentRE   = regexp.MustCompile(`\b(now|asap|urgent|immediately|right away)\b`)
+	toolRE     = regexp.MustCompile(`\b(schedule|remind|calendar|email|send|create|delete|move|rename|download|upload|browse|open|run|install|summarize|summary|save|write|edit|translate|analyze|plan|organize|search|look up|generate|draft)\b`)
 )
 
 // Analyze extracts deterministic signals from a raw message.
@@ -122,6 +129,7 @@ func Analyze(msg string) Signals {
 		CodeOrDebug: codeRE.MatchString(m),
 		Ambiguous:   ambiguousRE.MatchString(m),
 		MemoryDep:   memoryRE.MatchString(m),
+		Research:    researchRE.MatchString(m),
 		Urgent:      urgentRE.MatchString(m),
 	}
 }
@@ -141,6 +149,9 @@ func ClassifySignals(s Signals) Level {
 	}
 	if s.MemoryDep {
 		score += 1
+	}
+	if s.Research {
+		score += 2
 	}
 	if s.ToolHints >= 2 {
 		score += 1

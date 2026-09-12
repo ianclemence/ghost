@@ -65,3 +65,29 @@ func TestLadderFor(t *testing.T) {
 		t.Fatal("ladder must increase with effort")
 	}
 }
+
+func TestClassifyResearchEscapesQuick(t *testing.T) {
+	for _, msg := range []string{
+		"Look for AI chips",
+		"What's the latest trending tech news",
+		"research the newest model releases and compare them",
+	} {
+		if got := Classify(msg); got == Quick {
+			t.Fatalf("Classify(%q) = quick: research must never starve on 2 tool calls", msg)
+		}
+	}
+	for _, msg := range []string{"hi", "what time is it", "thanks!"} {
+		if got := Classify(msg); got != Quick {
+			t.Fatalf("Classify(%q) = %s, want quick", msg, got)
+		}
+	}
+}
+
+func TestPolicyToolCallBounds(t *testing.T) {
+	if got := Policy(Quick).MaxToolCalls; got < 6 {
+		t.Fatalf("quick allows %d tool calls: research follow-ups need room", got)
+	}
+	if got := Policy(Normal).MaxToolCalls; got < 20 {
+		t.Fatalf("normal allows %d tool calls: multi-source research needs room", got)
+	}
+}

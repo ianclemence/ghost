@@ -135,8 +135,8 @@ type AgentDefaults struct {
 	FallbackCooldown    int      `json:"fallback_cooldown_seconds" env:"GHOST_AGENTS_DEFAULTS_FALLBACK_COOLDOWN_SECONDS"`
 	// StrictPin disables silent model fallback: the pinned model either
 	// serves or the turn fails visibly. No quiet hop to another model.
-	StrictPin           bool     `json:"strict_pin" env:"GHOST_AGENTS_DEFAULTS_STRICT_PIN"`
-	SessionStore        string   `json:"session_store" env:"GHOST_AGENTS_DEFAULTS_SESSION_STORE"`
+	StrictPin    bool   `json:"strict_pin" env:"GHOST_AGENTS_DEFAULTS_STRICT_PIN"`
+	SessionStore string `json:"session_store" env:"GHOST_AGENTS_DEFAULTS_SESSION_STORE"`
 }
 
 type RoutingConfig struct {
@@ -360,7 +360,7 @@ func DefaultConfig() *Config {
 				SearchEnabled:       true,
 				Provider:            "moonshot",
 				Model:               "kimi-k2.5",
-				MaxTokens:           8192,
+				MaxTokens:           16384,
 				Temperature:         0.7,
 				MaxToolIterations:   20,
 				FallbackModels:      []string{},

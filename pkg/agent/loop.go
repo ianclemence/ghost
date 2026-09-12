@@ -3666,7 +3666,7 @@ func (al *AgentLoop) summarizeSession(sessionKey string) {
 		// Merge them
 		mergePrompt := fmt.Sprintf("Merge these two conversation summaries into one cohesive summary:\n\n1: %s\n\n2: %s", s1, s2)
 		resp, err := al.provider.Chat(ctx, []providers.Message{{Role: "user", Content: mergePrompt}}, nil, al.model, map[string]interface{}{
-			"max_tokens":  1024,
+			"max_tokens":  2048,
 			"temperature": 0.3,
 		})
 		if err == nil {
@@ -3796,7 +3796,7 @@ func (al *AgentLoop) summarizeBatch(ctx context.Context, batch []providers.Messa
 	}
 
 	response, err := al.provider.Chat(ctx, []providers.Message{{Role: "user", Content: prompt}}, nil, al.model, map[string]interface{}{
-		"max_tokens":  1024,
+		"max_tokens":  2048,
 		"temperature": 0.3,
 	})
 	if err != nil {

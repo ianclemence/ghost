@@ -208,10 +208,10 @@ type Budget struct {
 	MaxTokens int
 }
 
-// DefaultBudget is a conservative memory-context budget for constrained
-// hardware (the Pi target); the model's own context window is larger, so this
-// deliberately under-fills rather than drowning the model.
-func DefaultBudget() Budget { return Budget{MaxTokens: 800} }
+// DefaultBudget is the memory-context budget: room for several recalled
+// facts plus their provenance. Ranked best-first, so extra space helps
+// strong matches and never drowns the model in weak ones.
+func DefaultBudget() Budget { return Budget{MaxTokens: 2000} }
 
 // Fit returns the longest prefix of items (already ranked) whose combined
 // approximate token count fits the budget. An item larger than the whole
