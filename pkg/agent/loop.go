@@ -107,6 +107,11 @@ type AgentLoop struct {
 	// match deterministic patterns.
 	semanticExtractor *personalcontext.SemanticExtractor
 
+	// rag is the vector memory index. Kept so background consolidation can
+	// backfill durable personal-context facts into searchable memory —
+	// the two stores must agree, not merely coexist.
+	rag *rag.Store
+
 	db *db.DB
 
 	// shutdownCtx is cancelled by Stop() so long-running background work (e.g.
@@ -646,6 +651,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		steering:          NewSteeringManager(),
 		pcStore:           pcStore,
 		semanticExtractor: semanticExtractor,
+		rag:               ragStore,
 		db:                database,
 		affect:            loadAffect(workspace),
 	}
@@ -1634,9 +1640,196 @@ func (al *AgentLoop) consolidatePersonalContext() {
 	} else if n > 0 {
 		logger.InfoCF("agent", "Curated profile updated", map[string]interface{}{"facts": n})
 	}
+	// Retire machine-echo pollution: current entries that look like
+	// scheduling intents but were never user-declared (e.g. an
+	// automation's own prompt ingested as a "preference"). Only inferred
+	// rows are touched — user-declared facts are never auto-deleted.
+	if n, err := al.retireAutomationEcho(); err != nil {
+		logger.WarnCF("agent", "Automation-echo retirement failed", map[string]interface{}{"error": err.Error()})
+	} else if n > 0 {
+		logger.InfoCF("agent", "Automation-echo entries retired", map[string]interface{}{"count": n})
+	}
+	// Fill the USER.md identity placeholders from structured memory so
+	// the workspace doc stops saying "(set by user)" after the user set it.
+	if err := al.syncUserDoc(); err != nil {
+		logger.WarnCF("agent", "USER.md sync failed", map[string]interface{}{"error": err.Error()})
+	}
+	// Mirror durable personal-context facts into searchable memory
+	// (MEMORY.md + vector chunks) so recall, /context, and the curated
+	// profile all describe the same user. Storage in one store is not
+	// enough — the stores must agree.
+	if n, err := al.backfillMemoryFromPC(); err != nil {
+		logger.WarnCF("agent", "Memory backfill failed", map[string]interface{}{"error": err.Error()})
+	} else if n > 0 {
+		logger.InfoCF("agent", "Memory backfilled from personal context", map[string]interface{}{"facts": n})
+	}
+}
+
+// entryValueText renders an entry's JSON value as plain text for
+// ledger checks and echo detection.
+func entryValueText(e personalcontext.Entry) string {
+	var v any
+	if err := json.Unmarshal(e.Value, &v); err != nil {
+		return strings.Trim(string(e.Value), `"`)
+	}
+	return fmt.Sprintf("%v", v)
+}
+
+// entryUserDeclared reports whether any source on the entry is an
+// explicit user statement (as opposed to model inference).
+func entryUserDeclared(e personalcontext.Entry) bool {
+	for _, s := range e.Sources {
+		if s.Kind == personalcontext.SourceUserDeclared || s.Kind == personalcontext.SourceUserCorrected {
+			return true
+		}
+	}
+	return false
+}
+
+// retireAutomationEcho forgets current inferred entries whose value is a
+// scheduling intent ("send me a poem every 5 seconds"). Those rows are
+// scheduler echo, never beliefs — the scheduled item is their record.
+func (al *AgentLoop) retireAutomationEcho() (int, error) {
+	if al.pcStore == nil {
+		return 0, nil
+	}
+	retired := 0
+	for _, e := range al.pcStore.Current() {
+		if e.Status != personalcontext.StatusCurrent {
+			continue
+		}
+		if entryUserDeclared(e) {
+			continue
+		}
+		if !isAutomationIntent(entryValueText(e)) {
+			continue
+		}
+		if err := al.pcStore.Forget(e.ID); err != nil {
+			return retired, err
+		}
+		retired++
+	}
+	return retired, nil
+}
+
+// syncUserDoc fills the "(set by user)" placeholders in USER.md from
+// structured identity facts. Placeholder lines only — anything the user
+// (or an operator) wrote is never overwritten.
+func (al *AgentLoop) syncUserDoc() error {
+	if al.pcStore == nil {
+		return nil
+	}
+	facts := map[string]string{}
+	for _, e := range al.pcStore.Current() {
+		if e.Status != personalcontext.StatusCurrent {
+			continue
+		}
+		switch e.Predicate {
+		case "identity/name":
+			facts["Name"] = entryValueText(e)
+		case "fact/location":
+			facts["Location"] = entryValueText(e)
+		}
+	}
+	if len(facts) == 0 {
+		return nil
+	}
+	path := filepath.Join(al.workspace, "USER.md")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil // missing doc is a fresh-install state, not an error
+	}
+	lines := strings.Split(string(raw), "\n")
+	changed := false
+	for i, ln := range lines {
+		for field, val := range facts {
+			if strings.TrimSpace(val) == "" {
+				continue
+			}
+			if strings.HasPrefix(strings.TrimSpace(ln), "- **"+field+"**:") && strings.Contains(ln, "(set by user)") {
+				lines[i] = "- **" + field + "**: " + strings.TrimSpace(val)
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644)
+}
+
+// backfillMemoryFromPC mirrors durable current personal-context facts
+// into MEMORY.md and the vector index, skipping anything already
+// recorded (MEMORY.md is the ledger) and anything that looks like
+// machine echo. One fact, every store.
+func (al *AgentLoop) backfillMemoryFromPC() (int, error) {
+	if al.pcStore == nil {
+		return 0, nil
+	}
+	memPath := filepath.Join(al.workspace, "memory", "MEMORY.md")
+	ledger := ""
+	if raw, err := os.ReadFile(memPath); err == nil {
+		ledger = strings.ToLower(string(raw))
+	}
+	mirrored := 0
+	for _, e := range al.pcStore.Current() {
+		if e.Status != personalcontext.StatusCurrent {
+			continue
+		}
+		val := strings.TrimSpace(entryValueText(e))
+		if val == "" || val == "null" {
+			continue
+		}
+		// Never mirror machine echo into memory, even if it somehow
+		// survived retirement above.
+		if isAutomationIntent(val) {
+			continue
+		}
+		if strings.Contains(ledger, strings.ToLower(val)) {
+			continue // already recorded
+		}
+		title := strings.TrimSpace(personalcontext.Title(e))
+		if title == "" {
+			title = val
+		}
+		category := "generic"
+		switch e.Kind {
+		case personalcontext.KindPreference, personalcontext.KindRelationship:
+			category = "user_preference"
+		case personalcontext.KindGoal:
+			category = "life_goal"
+		}
+		line := fmt.Sprintf("\n- [%s] (%s) %s", time.Now().Format("2006-01-02"), category, title)
+		_ = os.MkdirAll(filepath.Dir(memPath), 0755)
+		f, err := os.OpenFile(memPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return mirrored, err
+		}
+		if _, err := f.WriteString(line); err != nil {
+			_ = f.Close()
+			return mirrored, err
+		}
+		_ = f.Close()
+		ledger += strings.ToLower("\n" + title)
+		if al.rag != nil {
+			if err := al.rag.IngestScoped(context.Background(), title, "memory_tool", ""); err != nil {
+				logger.WarnCF("agent", "Backfill RAG ingest failed", map[string]interface{}{"error": err.Error()})
+			}
+		}
+		mirrored++
+	}
+	return mirrored, nil
 }
 
 func (al *AgentLoop) extractPersonalContext(opts processOptions) {
+	// Scheduler/routine turns are Ghost talking to itself on a timer.
+	// Their content (e.g. an automation's own prompt) must never become
+	// user memory, and their prose must not score as relational signal.
+	// The scheduled item itself is the durable record of that intent.
+	if isAutomationSession(opts.SessionKey) {
+		return
+	}
+
 	// Deterministic quick-capture for explicit "Remember/note/capture this"
 	// directives so the note persists even when the model only acknowledges it.
 	al.captureQuickNote(opts.UserMessage, opts.Channel)
@@ -1699,8 +1892,11 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 		"pcStore":            al.pcStore != nil,
 	})
 
-	// If regex didn't find anything, try semantic extraction (slow path)
-	if al.semanticExtractor != nil && len(actions) == 0 && al.pcStore != nil {
+	// If regex didn't find anything, try semantic extraction (slow path).
+	// Scheduling requests are excluded: their durable form is the
+	// scheduled item, and a refused ask ("every 5 seconds") must never
+	// become a stored preference. Deterministic rules above still ran.
+	if al.semanticExtractor != nil && len(actions) == 0 && al.pcStore != nil && !isAutomationIntent(opts.UserMessage) {
 		logger.InfoCF("agent", "Attempting semantic extraction", map[string]interface{}{
 			"message": opts.UserMessage,
 		})
@@ -1790,6 +1986,32 @@ func (al *AgentLoop) sessionScopes(sessionKey string) []string {
 // are intentionally left to the Personal Context extractor so a preference is
 // stored once as a structured memory, not twice as raw text.
 var quickCaptureRE = regexp.MustCompile(`(?i)^\s*(?:remember this|note that|note this|capture this|save this|write (?:this|that) down|jot (?:this|that) down|keep this)\s*[:,\s]+(.+?)\s*$`)
+
+// isAutomationSession reports whether a session key belongs to a
+// machine-scheduled turn rather than a human conversation. Scheduler
+// dispatches run under "automation:<item-id>"; routines under
+// "routine:<id>". Both are Ghost talking to itself on a timer — their
+// content must never be ingested as user memory, nor scored as
+// relational signal.
+func isAutomationSession(sessionKey string) bool {
+	return strings.HasPrefix(sessionKey, "automation:") ||
+		strings.HasPrefix(sessionKey, "routine:")
+}
+
+// automationIntentRE matches utterances whose durable form is a scheduled
+// item, not a personal-context preference: reminders, recurring tasks,
+// alarms. Storing "send me a poem every 5 seconds" as a durable liking
+// — especially when the request was refused — is pollution; the
+// scheduler row is the record of that intent.
+var automationIntentRE = regexp.MustCompile(`(?i)(remind\s+me\b|every\s+\d+\s*(?:seconds?|minutes?|hours?|days?|weeks?|months?)|send\s+me\s+.+\s+every\b|wake\s+me\s+(?:up\s+)?(?:at|in|every)|set\s+(?:an?\s+)?alarm\b)`)
+
+// isAutomationIntent reports whether a user message is a scheduling
+// request. Such messages skip inferred (LLM) preference extraction:
+// deterministic identity/fact rules still run, but the LLM must not mint
+// durable preferences out of automation intents.
+func isAutomationIntent(text string) bool {
+	return automationIntentRE.MatchString(strings.TrimSpace(text))
+}
 
 // captureQuickNote appends an explicit capture directive ("Remember this: X")
 // to workspace/data/captures.md deterministically, matching the quick-capture
@@ -2468,7 +2690,12 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 
 	// Relational bookkeeping: score the user's turn, fold it into the
 	// affect aggregate, persist best-effort. Never fails the turn.
-	al.recordAffect(opts.UserMessage)
+	// Scheduler turns are machine prose, not relational signal — scoring
+	// them would let automation output (warm poems, reminders) inflate
+	// affinity on its own.
+	if !isAutomationSession(opts.SessionKey) {
+		al.recordAffect(opts.UserMessage)
+	}
 
 	return finalContent, iteration, nil
 }
@@ -3300,11 +3527,60 @@ func (al *AgentLoop) summarizeSession(sessionKey string) {
 		finalSummary += "\n[Note: Some oversized messages were omitted from this summary for efficiency.]"
 	}
 
+	// Ground the summary in live scheduler state. Chat text alone can
+	// fossilize a wrong claim (e.g. "the scheduler rounded to 19:00"
+	// when the stored row says 19:45); the deterministic footer below
+	// is read from the rows, so future turns inherit truth, not rumor.
+	if footer := al.openSchedulesFooter(); footer != "" {
+		finalSummary += "\n" + footer
+	}
+
 	if finalSummary != "" {
 		al.sessions.SetSummary(sessionKey, finalSummary)
 		al.sessions.TruncateHistory(sessionKey, 4)
 		al.sessions.Save(sessionKey)
 	}
+}
+
+// openSchedulesFooter renders the currently live reminders/automations
+// from the scheduler rows (never from chat text) for summary grounding.
+func (al *AgentLoop) openSchedulesFooter() string {
+	if al.schedSvc == nil {
+		return ""
+	}
+	items, err := al.schedSvc.ListItems("", scheduled.StateScheduled, 20)
+	if err != nil || len(items) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("[Open schedules @")
+	b.WriteString(time.Now().Format("15:04"))
+	b.WriteString(" — from scheduler rows, authoritative over chat text:]")
+	shown := 0
+	for _, it := range items {
+		if it == nil || it.NextRunAt == nil {
+			continue
+		}
+		when := it.NextRunAt.UTC()
+		if loc, lerr := time.LoadLocation(it.Timezone); lerr == nil {
+			when = it.NextRunAt.In(loc)
+		}
+		title := strings.TrimSpace(it.Title)
+		if title == "" {
+			title = strings.TrimSpace(it.Description)
+		}
+		if title == "" {
+			title = strings.TrimSpace(it.Action.Content)
+		}
+		fmt.Fprintf(&b, "\n- %s → %s", title, when.Format("Mon 15:04"))
+		if shown++; shown >= 5 {
+			break
+		}
+	}
+	if shown == 0 {
+		return ""
+	}
+	return b.String()
 }
 
 // summarizeBatch summarizes a batch of messages.
@@ -3535,6 +3811,16 @@ func (al *AgentLoop) autoJournal(sessionKey string) {
 		return
 	}
 
+	// Consolidate, don't just append: when the new entry restates what
+	// the daily note already says (same facts re-summarized every turn),
+	// skip it. Without this the note grows one redundant paragraph per
+	// turn and can entrench a misreading instead of correcting it.
+	if al.contextBuilder != nil && al.contextBuilder.memory != nil {
+		if journalRedundant(al.contextBuilder.memory.ReadToday(), summary) {
+			return
+		}
+	}
+
 	// Append to daily note via memory store. The entry carries the turn's
 	// write scopes so the shared journal stays readable per-context:
 	// memory-note search only surfaces entries whose scope tag is empty
@@ -3546,4 +3832,59 @@ func (al *AgentLoop) autoJournal(sessionKey string) {
 	if al.contextBuilder != nil && al.contextBuilder.memory != nil {
 		al.contextBuilder.memory.AppendToday(entry)
 	}
+}
+
+// journalStopwords are ignored when comparing a new journal entry to the
+// note's tail: only content words decide redundancy.
+var journalStopwords = map[string]bool{
+	"the": true, "a": true, "an": true, "and": true, "or": true, "to": true,
+	"of": true, "in": true, "on": true, "at": true, "for": true, "is": true,
+	"was": true, "were": true, "are": true, "it": true, "its": true, "that": true,
+	"this": true, "with": true, "as": true, "by": true, "from": true, "user": true,
+}
+
+// journalRedundant reports whether summary restates the daily note's last
+// entry (>=60% content-word overlap). Short summaries (<8 content words)
+// are never redundant — there is too little signal to judge.
+func journalRedundant(today, summary string) bool {
+	newWords := contentWords(summary)
+	if len(newWords) < 8 {
+		return false
+	}
+	lines := strings.Split(strings.TrimSpace(today), "\n")
+	last := ""
+	for i := len(lines) - 1; i >= 0; i-- {
+		if t := strings.TrimSpace(lines[i]); t != "" && !strings.HasPrefix(t, "#") {
+			last = t
+			break
+		}
+	}
+	if last == "" {
+		return false
+	}
+	oldWords := contentWords(last)
+	if len(oldWords) == 0 {
+		return false
+	}
+	overlap := 0
+	for w := range newWords {
+		if oldWords[w] {
+			overlap++
+		}
+	}
+	// Recall-oriented: what fraction of the NEW entry is already said?
+	return float64(overlap)/float64(len(newWords)) >= 0.6
+}
+
+// contentWords tokenizes text into a set of significant lowercase words.
+func contentWords(text string) map[string]bool {
+	out := map[string]bool{}
+	for _, w := range strings.Fields(strings.ToLower(text)) {
+		w = strings.Trim(w, ".,!?;:\"'()[]{}<>*_-–—")
+		if len(w) < 4 || journalStopwords[w] {
+			continue
+		}
+		out[w] = true
+	}
+	return out
 }

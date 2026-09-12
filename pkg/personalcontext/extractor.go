@@ -223,6 +223,15 @@ var declarationRules = []declarationRule{
 		likes:     true,
 	},
 	{
+		// "My favorite team is Chelsea." A team allegiance is
+		// single-valued — unlike additive likes, a new team supersedes
+		// the old one so exactly one current row survives.
+		name:      "favorite_team",
+		kind:      KindPreference,
+		predicate: "preference/favorite_team",
+		re:        regexp.MustCompile(`(?i)\bmy favou?rite (?:football\s+|soccer\s+)?team is\s+([^;.,!?]+)`),
+	},
+	{
 		name:      "goal",
 		kind:      KindGoal,
 		predicate: "goal/primary",

@@ -1921,12 +1921,20 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 			return fmt.Errorf("no message content")
 		}
 
-		// Send message through the inbound bus for agent processing
+		// Send message through the inbound bus for agent processing.
+		// Scheduler-originated turns run under their own session
+		// ("automation:<item-id>") with an explicit scheduler sender, so
+		// they group per-automation for history/debugging — and so the
+		// memory extractor and affect scorer can tell machine-scheduled
+		// turns apart from user turns (scheduler echo must never become a
+		// "user preference", and poem prose must not inflate affinity).
 		if msgBus != nil {
 			msgBus.PublishInbound(bus.InboundMessage{
-				Channel: item.Channel,
-				ChatID:  item.ChatID,
-				Content: item.Action.Content,
+				Channel:    item.Channel,
+				ChatID:     item.ChatID,
+				Content:    item.Action.Content,
+				SessionKey: "automation:" + item.ID,
+				SenderID:   "scheduler",
 			})
 		}
 

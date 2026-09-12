@@ -165,13 +165,21 @@ func (s *Service) executeItem(item *ScheduledItem) {
 		return
 	}
 
-	// Record execution start
+	// Record execution start. Channel is always known; delivery starts
+	// as dispatched and is upgraded below once the outcome is known.
+	// Delivery semantics by executor path:
+	//   - bus reminders/automations are async (the turn runs later via the
+	//     message bus), so "dispatched" is the truthful terminal state here.
+	//   - routines and shell commands run synchronously inside the
+	//     executor, so a nil error means the result was produced: delivered.
 	record := &ExecutionRecord{
-		ItemID:      item.ID,
-		ExecutionID: execID,
-		ScheduledAt: *item.NextRunAt,
-		StartedAt:   time.Now().UTC(),
-		Status:      "ok",
+		ItemID:         item.ID,
+		ExecutionID:    execID,
+		ScheduledAt:    *item.NextRunAt,
+		StartedAt:      time.Now().UTC(),
+		Status:         "ok",
+		Channel:        item.Channel,
+		DeliveryStatus: "dispatched",
 	}
 
 	// Publish event
@@ -193,9 +201,14 @@ func (s *Service) executeItem(item *ScheduledItem) {
 	if err != nil {
 		record.Status = "error"
 		record.Error = err.Error()
+		record.DeliveryStatus = "failed"
 		log.Printf("[scheduled] execution failed for item %s: %v", item.ID, err)
 	} else {
 		record.Status = "ok"
+		if item.Source == "routine" || item.Action.Kind == ActionCommand {
+			record.DeliveryStatus = "delivered"
+			record.DeliveredAt = &now
+		}
 	}
 
 	if err := s.store.RecordExecution(record); err != nil {
@@ -205,6 +218,17 @@ func (s *Service) executeItem(item *ScheduledItem) {
 	// Update item state
 	if err := s.store.IncrementRunCount(item.ID); err != nil {
 		log.Printf("[scheduled] failed to increment run count: %v", err)
+	}
+
+	// Re-read the row before handling success/failure: both handlers
+	// persist the in-memory struct via Update, which would clobber the
+	// just-incremented run_count/last_run_at (and the running→scheduled
+	// transition) with stale zeros. The fresh row is authoritative.
+	if fresh, gerr := s.store.Get(item.ID); gerr == nil && fresh != nil {
+		item = fresh
+	} else {
+		item.RunCount++
+		item.LastRunAt = &now
 	}
 
 	if err != nil {
