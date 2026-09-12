@@ -11,6 +11,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -456,11 +458,16 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		logger.WarnC("agent", "Artifact store unavailable, publish_artifact disabled")
 	}
 
-	// Initialize RAG
+	// Initialize RAG. Embeddings stay local: cloud chat providers
+	// (DeepSeek and friends) generally expose no embeddings endpoint,
+	// so binding the vector index to the chat provider silently stops
+	// all memory learning the moment the model isn't Ollama. Prefer the
+	// on-device Ollama embedder when reachable, else the chat provider.
 	var ragStore *rag.Store
 	if cfg.RAG.Enabled {
-		if embedder, ok := provider.(providers.EmbeddingProvider); ok {
-			ragStore = rag.NewStore(database, embedder, cfg.RAG)
+		embedProvider := pickEmbedProvider(cfg, provider)
+		if ep, ok := embedProvider.(providers.EmbeddingProvider); ok {
+			ragStore = rag.NewStore(database, ep, cfg.RAG)
 			// Load index asynchronously
 			go func() {
 				if err := ragStore.LoadIndex(context.Background()); err != nil {
@@ -1663,6 +1670,55 @@ func (al *AgentLoop) consolidatePersonalContext() {
 	} else if n > 0 {
 		logger.InfoCF("agent", "Memory backfilled from personal context", map[string]interface{}{"facts": n})
 	}
+}
+
+// pickEmbedProvider chooses the embedding backend for the vector
+// memory index. Cloud chat providers rarely expose a compatible
+// embeddings endpoint, so the on-device Ollama embedder wins whenever
+// it answers a quick reachability probe; otherwise the chat provider
+// is used unchanged (previous behavior).
+func pickEmbedProvider(cfg *config.Config, chatProvider providers.LLMProvider) providers.LLMProvider {
+	base := strings.TrimSpace(cfg.Providers.Ollama.APIBase)
+	if base == "" {
+		base = "http://localhost:11434"
+	}
+	if ollamaReachable(base) {
+		model := strings.TrimSpace(cfg.Agents.Defaults.EmbeddingModel)
+		if model == "" {
+			model = "nomic-embed-text"
+		}
+		local := providers.NewHTTPProvider(
+			strings.TrimSpace(cfg.Providers.Ollama.APIKey),
+			base,
+			strings.TrimSpace(cfg.Providers.Ollama.Proxy),
+			model,
+		)
+		logger.InfoCF("agent", "RAG embeddings pinned to local Ollama", map[string]interface{}{
+			"base": base, "model": model,
+		})
+		return local
+	}
+	logger.InfoC("agent", "Ollama unreachable, RAG embeddings follow the chat provider")
+	return chatProvider
+}
+
+// ollamaReachable probes only TCP reachability (no model load, no
+// inference): fast, side-effect free, safe at startup.
+func ollamaReachable(apiBase string) bool {
+	u, err := url.Parse(strings.TrimSpace(apiBase))
+	if err != nil || u.Host == "" {
+		return false
+	}
+	host := u.Host
+	if _, _, err := net.SplitHostPort(host); err != nil {
+		host = net.JoinHostPort(host, "11434")
+	}
+	conn, err := net.DialTimeout("tcp", host, 1500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // normalizeEchoText canonicalizes a string for echo comparison:

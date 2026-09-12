@@ -1,7 +1,11 @@
 package agent
 
 import (
+	"net"
 	"testing"
+
+	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/providers"
 )
 
 func TestIsAutomationSession(t *testing.T) {
@@ -96,5 +100,40 @@ func TestIsSchedulerEcho(t *testing.T) {
 		if isSchedulerEcho(fact, echo) {
 			t.Errorf("genuine fact %q wrongly detected as echo", fact)
 		}
+	}
+}
+
+func TestPickEmbedProviderPrefersReachableOllama(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skip("no loopback listener available")
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+
+	cfg := config.DefaultConfig()
+	cfg.Providers.Ollama.APIBase = "http://" + ln.Addr().String()
+	chat := &mockProvider{}
+	got := pickEmbedProvider(cfg, chat)
+	if got == providers.LLMProvider(chat) {
+		t.Error("reachable Ollama must win over the chat provider for embeddings")
+	}
+}
+
+func TestPickEmbedProviderFallsBackWhenOllamaDown(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers.Ollama.APIBase = "http://127.0.0.1:1"
+	chat := &mockProvider{}
+	got := pickEmbedProvider(cfg, chat)
+	if got != providers.LLMProvider(chat) {
+		t.Error("unreachable Ollama must fall back to the chat provider")
 	}
 }
