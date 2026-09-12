@@ -1627,6 +1627,96 @@ func workspaceFileProtected(rel string) bool {
 	return false
 }
 
+// knownProviderModels mirrors the web console's recommended models per
+// provider (used for the provider list and as test defaults).
+var knownProviderModels = map[string][]string{
+	"openai":       {"gpt-5.4", "gpt-5.4-mini", "gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini", "gpt-4o", "gpt-4o-mini"},
+	"anthropic":    {"claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"},
+	"moonshot":     {"kimi-k3", "kimi-k2.7-code", "kimi-k2.6"},
+	"groq":         {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"},
+	"deepseek":     {"deepseek-flash", "deepseek-v4-pro"},
+	"qwen":         {"qwen3.8-max", "qwen3.7-plus", "qwen3.8-flash", "qwen3.5-omni-plus"},
+	"gemini":       {"gemini-3.6-flash", "gemini-3.1-pro", "gemini-3-flash"},
+	"zhipu":        {"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-4.7", "glm-4.7-flash"},
+	"openrouter":   {},
+	"ollama":       {},
+	"nvidia":       {"deepseek-ai/deepseek-v4-flash", "meta/llama-3.3-70b-instruct", "qwen/qwq-32b"},
+	"shengsuanyun": {},
+}
+
+// intelligenceProviderConfig returns the stored credentials for a provider,
+// or nil for unknown names.
+func intelligenceProviderConfig(cfg *config.Config, name string) *config.ProviderConfig {
+	if cfg == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "openai":
+		return &cfg.Providers.OpenAI
+	case "anthropic":
+		return &cfg.Providers.Anthropic
+	case "moonshot":
+		return &cfg.Providers.Moonshot
+	case "groq":
+		return &cfg.Providers.Groq
+	case "deepseek":
+		return &cfg.Providers.DeepSeek
+	case "gemini":
+		return &cfg.Providers.Gemini
+	case "zhipu":
+		return &cfg.Providers.Zhipu
+	case "openrouter":
+		return &cfg.Providers.OpenRouter
+	case "ollama":
+		return &cfg.Providers.Ollama
+	case "qwen":
+		return &cfg.Providers.Qwen
+	case "nvidia":
+		return &cfg.Providers.Nvidia
+	case "shengsuanyun":
+		return &cfg.Providers.ShengSuanYun
+	}
+	return nil
+}
+
+// maskDeviceKey hides a key except for the last 4 characters ("" stays "").
+func maskDeviceKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	if len(key) <= 8 {
+		return "••••••••"
+	}
+	return "••••••••" + key[len(key)-4:]
+}
+
+// listGatewayOllamaModels lists models installed in the local Ollama daemon.
+func listGatewayOllamaModels() ([]string, error) {
+	out, err := exec.Command("ollama", "list").CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list models: %w", err)
+	}
+	models := []string{}
+	for i, line := range strings.Split(string(out), "\n") {
+		if i == 0 {
+			continue // Skip header
+		}
+		if parts := strings.Fields(line); len(parts) > 0 {
+			models = append(models, parts[0])
+		}
+	}
+	return models, nil
+}
+
+// pullGatewayOllamaModel downloads an Ollama model; callers run it in the
+// background and return immediately.
+func pullGatewayOllamaModel(model string) error {
+	cmd := exec.Command("ollama", "pull", model)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Service, channelManager *channels.Manager) {
 	port := agentLoop.Config().Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
@@ -4019,6 +4109,249 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		default:
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		}
+	}))
+
+	// Device-facing equivalents of the web console's AI section (which lives
+	// on the ghost-web server and is unreachable over the device relay).
+	// Provider keys are never returned in full (masked, as in the console)
+	// and blank key fields leave the saved value untouched.
+	mux.HandleFunc("/v1/providers", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		cfg := agentLoop.Config()
+		if cfg == nil {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "configuration unavailable")
+			return
+		}
+		ollamaModels := []string{}
+		if models, err := listGatewayOllamaModels(); err == nil {
+			ollamaModels = models
+		}
+		providersMap := map[string]interface{}{}
+		for name, models := range knownProviderModels {
+			pc := intelligenceProviderConfig(cfg, name)
+			configured := pc != nil && pc.APIKey != ""
+			providerModels := models
+			if name == "ollama" {
+				providerModels = ollamaModels
+			}
+			providersMap[name] = map[string]interface{}{
+				"configured": configured,
+				"models":     providerModels,
+				"local":      name == "ollama" || name == "vllm",
+			}
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok":        true,
+			"provider":  cfg.Agents.Defaults.Provider,
+			"model":     cfg.Agents.Defaults.Model,
+			"providers": providersMap,
+		})
+	}))
+
+	mux.HandleFunc("/v1/providers/test", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			Provider string `json:"provider"`
+			APIKey   string `json:"api_key"`
+			Model    string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+			return
+		}
+		req.Provider = strings.TrimSpace(req.Provider)
+		if req.Provider == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "provider is required")
+			return
+		}
+		// Test against a scratch copy reloaded from disk: the candidate key
+		// is never persisted and live loop state is never touched.
+		var cfg *config.Config
+		if path := agentLoop.ConfigPath(); path != "" {
+			if c, err := config.LoadConfig(path); err == nil && c != nil {
+				cfg = c
+			}
+		}
+		if cfg == nil {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "configuration unavailable")
+			return
+		}
+		pc := intelligenceProviderConfig(cfg, req.Provider)
+		if pc == nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "unknown provider")
+			return
+		}
+		if trimmed := strings.TrimSpace(req.APIKey); trimmed != "" {
+			pc.APIKey = trimmed
+		}
+		testModel := strings.TrimSpace(req.Model)
+		if testModel == "" {
+			if models, ok := knownProviderModels[req.Provider]; ok && len(models) > 0 {
+				testModel = models[0]
+			}
+		}
+		if testModel == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "no model to test")
+			return
+		}
+		cfg.Agents.Defaults.Provider = req.Provider
+		cfg.Agents.Defaults.Model = testModel
+		p, err := providers.CreateProvider(cfg)
+		if err != nil {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": false, "message": fmt.Sprintf("Couldn't create provider: %v", err),
+			})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		_, err = p.Chat(ctx, []providers.Message{
+			{Role: "user", Content: "Reply with only the word OK"},
+		}, nil, testModel, map[string]interface{}{
+			"max_tokens":  30,
+			"temperature": 0,
+		})
+		if err != nil {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": false, "message": fmt.Sprintf("Connection failed: %v", err),
+			})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "message": "Connected successfully",
+		})
+	}))
+
+	mux.HandleFunc("/v1/intelligence/config", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		cfg := agentLoop.Config()
+		if cfg == nil {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "configuration unavailable")
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			providersMap := map[string]interface{}{}
+			for _, name := range []string{
+				"ollama", "openai", "anthropic", "moonshot", "groq",
+				"deepseek", "qwen", "gemini", "zhipu", "openrouter",
+				"nvidia", "shengsuanyun",
+			} {
+				pc := intelligenceProviderConfig(cfg, name)
+				if pc == nil {
+					continue
+				}
+				providersMap[name] = map[string]interface{}{
+					"has_key":    pc.APIKey != "",
+					"key_masked": maskDeviceKey(pc.APIKey),
+					"api_base":   pc.APIBase,
+				}
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok":         true,
+				"provider":   cfg.Agents.Defaults.Provider,
+				"model":      cfg.Agents.Defaults.Model,
+				"ollama_url": cfg.Providers.Ollama.APIBase,
+				"routing": map[string]interface{}{
+					"prefer_local":           cfg.Agents.Routing.PreferLocal,
+					"allow_cloud":            cfg.Agents.Routing.AllowCloud,
+					"cloud_when_local_fails": cfg.Agents.Routing.CloudWhenLocalFails,
+				},
+				"providers": providersMap,
+			})
+		case http.MethodPost:
+			var req struct {
+				APIKeys   map[string]string `json:"api_keys"`
+				OllamaURL string            `json:"ollama_url"`
+				Provider  string            `json:"provider"`
+				Model     string            `json:"model"`
+				Routing   *struct {
+					PreferLocal         bool `json:"prefer_local"`
+					AllowCloud          bool `json:"allow_cloud"`
+					CloudWhenLocalFails bool `json:"cloud_when_local_fails"`
+				} `json:"routing"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+				return
+			}
+			for name, key := range req.APIKeys {
+				trimmed := strings.TrimSpace(key)
+				if trimmed == "" {
+					continue
+				}
+				if pc := intelligenceProviderConfig(cfg, name); pc != nil {
+					pc.APIKey = trimmed
+				}
+			}
+			if trimmed := strings.TrimSpace(req.OllamaURL); trimmed != "" {
+				cfg.Providers.Ollama.APIBase = trimmed
+			}
+			if trimmed := strings.TrimSpace(req.Provider); trimmed != "" {
+				cfg.Agents.Defaults.Provider = trimmed
+			}
+			if trimmed := strings.TrimSpace(req.Model); trimmed != "" {
+				cfg.Agents.Defaults.Model = trimmed
+			}
+			if req.Routing != nil {
+				cfg.Agents.Routing.PreferLocal = req.Routing.PreferLocal
+				cfg.Agents.Routing.AllowCloud = req.Routing.AllowCloud
+				cfg.Agents.Routing.CloudWhenLocalFails = req.Routing.CloudWhenLocalFails
+			}
+			path := agentLoop.ConfigPath()
+			if path == "" {
+				jsonError(w, http.StatusServiceUnavailable, "unavailable", "config path unknown; cannot persist")
+				return
+			}
+			if err := config.SaveConfig(path, cfg); err != nil {
+				jsonError(w, http.StatusInternalServerError, "save_failed", err.Error())
+				return
+			}
+			// Health checks re-read from disk, so a key the owner just saved
+			// is reflected immediately instead of from a startup snapshot.
+			agentLoop.RefreshDoctor()
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "message": "AI configuration saved",
+			})
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		}
+	}))
+
+	mux.HandleFunc("/v1/ollama/models", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		models, err := listGatewayOllamaModels()
+		if err != nil {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": false, "error": err.Error(), "models": []string{},
+			})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "models": models})
+	}))
+
+	mux.HandleFunc("/v1/ollama/pull", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Model) == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "model is required")
+			return
+		}
+		go pullGatewayOllamaModel(strings.TrimSpace(req.Model))
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Download started"})
 	}))
 
 	// ── Session list ──────────────────────────────────────────────────────

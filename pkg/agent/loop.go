@@ -3325,6 +3325,16 @@ func (al *AgentLoop) SetConfigPath(path string) {
 	al.configPath = path
 }
 
+// ConfigPath returns the config file path recorded via SetConfigPath, or ""
+// when unknown. Device API handlers use it to persist owner configuration
+// (provider keys, routing) to the same file the loop boots from.
+func (al *AgentLoop) ConfigPath() string {
+	if al == nil {
+		return ""
+	}
+	return al.configPath
+}
+
 // SetModel switches the active model at runtime and persists the selection to
 // config.json. target may be a "provider:model" string or a named preset from
 // config model_list.
