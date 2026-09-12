@@ -92,6 +92,12 @@ func forgetTarget(ctx context.Context, req Request, rt *Runtime, phrase string) 
 				}
 			}
 			if allRejected {
+				// Structured rows are gone, but file-backed traces may
+				// linger (e.g. remember-tool notes that never entered
+				// structured context). Purge by topic before reporting.
+				if purged := forgetPurgeMemory(ctx, rt, forgetTopicValues(phrase)); purged != "" {
+					return req.Reply(fmt.Sprintf("That Personal Context is already forgotten.%s", purged))
+				}
 				return req.Reply("That Personal Context is already forgotten.")
 			}
 		}
