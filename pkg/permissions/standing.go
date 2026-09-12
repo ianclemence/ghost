@@ -103,6 +103,23 @@ func ProposeStanding(text string) (StandingProposal, StandingRejection, bool) {
 }
 
 func isBroadScope(lower string) bool {
+	// A broad-scope noun alone ("List everything", "show me all my data")
+	// is usually a knowledge question, not a permission statement. Only
+	// treat it as standing-permission intent when a grant verb is present —
+	// otherwise memory questions get hijacked by the permission fast-path.
+	hasGrantVerb := false
+	for _, verb := range []string{
+		"allow", "let", "grant", "access", "control", "manage",
+		"permission", "approve", "authoriz", "always", "never",
+	} {
+		if strings.Contains(lower, verb) {
+			hasGrantVerb = true
+			break
+		}
+	}
+	if !hasGrantVerb {
+		return false
+	}
 	for _, phrase := range []string{
 		"entire", "whole account", "everything", "all my data",
 		"full access", "anything", "whatever it wants",

@@ -182,8 +182,8 @@ for line in sys.stdin:
 
 | Problem | Solution |
 |---------|----------|
-| `No module named gcalcli --config-folder /var/lib/ghost/.calendar` | `pip install gcalcli --config-folder /var/lib/ghost/.calendar` |
-| `AuthError: invalid_grant` | Token expired — run `gcalcli --config-folder /var/lib/ghost/.calendar oauth` again |
-| Empty agenda | Verify correct calendar: `gcalcli --config-folder /var/lib/ghost/.calendar list` |
-| Wrong time zone | Set `TZ` env var or configure in gcalcli --config-folder /var/lib/ghost/.calendar config |
-| Headless auth | `gcalcli --config-folder /var/lib/ghost/.calendar oauth --auth-device` for manual code flow |
+| `No module named gcalcli` | `pip install gcalcli`, then reconnect it in Ghost settings (Integrations) |
+| `AuthError: invalid_grant` | Token expired — reconnect the calendar in Ghost settings (Integrations) |
+| Empty agenda | Verify the right calendar is connected in settings |
+| Wrong time zone | Set `TZ` env var or pick the timezone in Ghost settings |
+| Headless auth | Use the device-code flow in Ghost settings (Integrations) for a manual code |

@@ -46,4 +46,4 @@ High [X] / Low [Y] — [Advice]
 [Contextual advice based on their calendar]
 ```
 
-Deliver this using standard messaging. If this is a cron trigger, your response to this prompt will be sent right to the user!
+Deliver this using standard messaging. If this is a routine run, your response to this prompt will be sent right to the user!

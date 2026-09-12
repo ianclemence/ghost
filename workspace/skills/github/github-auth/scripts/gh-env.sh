@@ -2,7 +2,7 @@
 # GitHub environment detection helper for Ghost skills.
 #
 # Usage (via terminal tool):
-#   source skills/github/github-auth/scripts/gh-env.sh
+#   source workspace/skills/github/github-auth/scripts/gh-env.sh
 #
 # After sourcing, these variables are set:
 #   GH_AUTH_METHOD  - "gh", "curl", or "none"
@@ -23,11 +23,9 @@ if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
     GH_USER=$(gh api user --jq '.login' 2>/dev/null)
 elif [ -n "$GITHUB_TOKEN" ]; then
     GH_AUTH_METHOD="curl"
-elif [ -f "$HOME/.git-credentials" ] && grep -q "github.com" "$HOME/.git-credentials" 2>/dev/null; then
-    GITHUB_TOKEN=$(grep "github.com" "$HOME/.git-credentials" | head -1 | sed 's|https://[^:]*:\([^@]*\)@.*|\1|')
-    if [ -n "$GITHUB_TOKEN" ]; then
-        GH_AUTH_METHOD="curl"
-    fi
+fi
+if [ "$GH_AUTH_METHOD" != "gh" ] && [ "$GH_AUTH_METHOD" != "curl" ]; then
+    echo "gh-env: no authentication (gh auth login or Ghost settings -> Integrations)" >&2
 fi
 
 # Resolve username for curl method

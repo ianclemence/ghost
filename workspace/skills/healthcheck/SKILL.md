@@ -93,7 +93,6 @@ Ask for confirmation before running any "fix" commands.
 
 ## Periodic Checks
 
-You can schedule these checks using `ghost cron`.
-
-Example:
-`ghost cron add --name "daily-health" --schedule "0 9 * * *" --command "ghost status"`
+To run these on a schedule, create a routine ("check my system health every
+morning at 9") — the scheduler owns timing; there is no cron subsystem.
+Example routine prompt: "Run the system health check and report problems."

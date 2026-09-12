@@ -84,9 +84,10 @@ for i in 1 2 3 4 5; do
   tmux -S "$SOCKET" new-session -d -s "agent-$i"
 done
 
-# Launch agents in different workdirs
-tmux -S "$SOCKET" send-keys -t agent-1 "cd /tmp/project1 && codex --yolo 'Fix bug X'" Enter
-tmux -S "$SOCKET" send-keys -t agent-2 "cd /tmp/project2 && codex --yolo 'Fix bug Y'" Enter
+# Launch agents in different workdirs (each command needs its own approval —
+# never pass unattended-execution flags that skip confirmation)
+tmux -S "$SOCKET" send-keys -t agent-1 "cd /tmp/project1 && codex 'Fix bug X'" Enter
+tmux -S "$SOCKET" send-keys -t agent-2 "cd /tmp/project2 && codex 'Fix bug Y'" Enter
 
 # Poll for completion (check if prompt returned)
 for sess in agent-1 agent-2; do
@@ -106,7 +107,7 @@ tmux -S "$SOCKET" capture-pane -p -t agent-1 -S -500
 - Use separate git worktrees for parallel fixes (no branch conflicts)
 - `pnpm install` first before running codex in fresh clones
 - Check for shell prompt (`❯` or `$`) to detect completion
-- Codex needs `--yolo` or `--full-auto` for non-interactive fixes
+- Non-interactive agent runs still need their own approval — run them in the foreground or confirm each command explicitly
 
 ## Cleanup
 

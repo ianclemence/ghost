@@ -212,9 +212,9 @@ Skill creation involves these steps:
 
 1. Understand the skill with concrete examples
 2. Plan reusable skill contents (scripts, references, assets)
-3. Initialize the skill (run init_skill.py)
+3. Initialize the skill (scaffold the directory by hand)
 4. Edit the skill (implement resources and write SKILL.md)
-5. Package the skill (run package_skill.py)
+5. Package the skill (validate structure by hand)
 6. Iterate based on real usage
 
 Follow these steps in order, skipping only if there is a clear reason why they are not applicable.
@@ -274,30 +274,25 @@ At this point, it is time to actually create the skill.
 
 Skip this step only if the skill being developed already exists, and iteration or packaging is needed. In this case, continue to the next step.
 
-When creating a new skill from scratch, always run the `init_skill.py` script. The script conveniently generates a new template skill directory that automatically includes everything a skill requires, making the skill creation process much more efficient and reliable.
+When creating a new skill from scratch, scaffold it by hand — no generator
+script ships with Ghost. Create a directory named for the skill containing
+`SKILL.md` with frontmatter (`name`, `description` with trigger phrases,
+`version`, `author`, `license`) plus optional `scripts/` and `references/`
+subdirectories, using `write_file` directly.
 
-Usage:
+Example layout:
 
-```bash
-scripts/init_skill.py <skill-name> --path <output-directory> [--resources scripts,references,assets] [--examples]
+```text
+workspace/skills/my-skill/
+├── SKILL.md
+├── scripts/
+└── references/
 ```
 
-Examples:
-
-```bash
-scripts/init_skill.py my-skill --path skills/public
-scripts/init_skill.py my-skill --path skills/public --resources scripts,references
-scripts/init_skill.py my-skill --path skills/public --resources scripts --examples
-```
-
-The script:
-
-- Creates the skill directory at the specified path
-- Generates a SKILL.md template with proper frontmatter and TODO placeholders
-- Optionally creates resource directories based on `--resources`
-- Optionally adds example files when `--examples` is set
-
-After initialization, customize the SKILL.md and add resources as needed. If you used `--examples`, replace or delete placeholder files.
+The scaffold creates the skill directory, a SKILL.md template with proper
+frontmatter and TODO placeholders, and any resource directories. After
+initialization, customize the SKILL.md and add resources as needed. Replace
+or delete placeholder files.
 
 ### Step 4: Edit the Skill
 
@@ -307,8 +302,8 @@ When editing the (newly-generated or existing) skill, remember that the skill is
 
 Consult these helpful guides based on your skill's needs:
 
-- **Multi-step processes**: See references/workflows.md for sequential workflows and conditional logic
-- **Specific output formats or quality standards**: See references/output-patterns.md for template and example patterns
+- **Multi-step processes**: keep sequential workflows and conditional logic in the SKILL.md body under clear headings.
+- **Specific output formats or quality standards**: embed templates and example patterns in `references/` files you create for the skill.
 
 These files contain established best practices for effective skill design.
 
@@ -318,7 +313,7 @@ To begin implementation, start with the reusable resources identified above: `sc
 
 Added scripts must be tested by actually running them to ensure there are no bugs and that the output matches what is expected. If there are many similar scripts, only a representative sample needs to be tested to ensure confidence that they all work while balancing time to completion.
 
-If you used `--examples`, delete any placeholder files that are not needed for the skill. Only create resource directories that are actually required.
+Delete any placeholder files that are not needed for the skill. Only create resource directories that are actually required.
 
 #### Update SKILL.md
 
@@ -340,31 +335,18 @@ Do not include any other fields in YAML frontmatter.
 
 Write instructions for using the skill and its bundled resources.
 
-### Step 5: Packaging a Skill
+### Step 5: Validate the Skill
 
-Once development of the skill is complete, it must be packaged into a distributable .skill file that gets shared with the user. The packaging process automatically validates the skill first to ensure it meets all requirements:
+Once development of the skill is complete, validate it by hand against
+this checklist (no packaging script ships with Ghost):
 
-```bash
-scripts/package_skill.py <path/to/skill-folder>
-```
+- YAML frontmatter format and required fields (`name`, `description` with triggers)
+- Skill naming conventions and directory structure
+- Description completeness and quality
+- File organization and resource references
+- No authority claims, no credential handling, no cron references, no invented tool names
 
-Optional output directory specification:
-
-```bash
-scripts/package_skill.py <path/to/skill-folder> ./dist
-```
-
-The packaging script will:
-
-1. **Validate** the skill automatically, checking:
-   - YAML frontmatter format and required fields
-   - Skill naming conventions and directory structure
-   - Description completeness and quality
-   - File organization and resource references
-
-2. **Package** the skill if validation passes, creating a .skill file named after the skill (e.g., `my-skill.skill`) that includes all files and maintains the proper directory structure for distribution. The .skill file is a zip file with a .skill extension.
-
-If validation fails, the script will report the errors and exit without creating a package. Fix any validation errors and run the packaging command again.
+Ghost installs skills as directories (skill installer / `ghost skills install`); there is no `.skill` bundle step in this runtime.
 
 ### Step 6: Iterate
 

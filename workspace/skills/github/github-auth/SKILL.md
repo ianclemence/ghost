@@ -55,7 +55,10 @@ This is the most portable method — works everywhere, no SSH config needed.
 
 **Step 1: Create a personal access token**
 
-Tell the user to go to: **https://github.com/settings/tokens**
+New GitHub connections should go through Ghost settings (Integrations),
+which stores the credential in the runtime vault — never in chat, files,
+or shell history. If guiding a manual setup, tell the user to go to:
+**https://github.com/settings/tokens**
 
 - Click "Generate new token (classic)"
 - Give it a name like "ghost-agent"
@@ -68,32 +71,26 @@ Tell the user to go to: **https://github.com/settings/tokens**
 
 **Step 2: Configure git to store the token**
 
+Prefer the authenticated `gh` flow (Method 2 below) or Ghost settings
+(Integrations), which keep the credential in the vault. As a local-only
+fallback on machines without `gh`, use git's in-memory cache so the token
+never touches disk:
+
 ```bash
-# Set up the credential helper to cache credentials
-# "store" saves to ~/.git-credentials in plaintext (simple, persistent)
-git config --global credential.helper store
+# Cache in memory for 8 hours (28800 seconds) instead of saving to disk.
+# Never use the plaintext "store" helper: it writes secrets to
+# ~/.git-credentials where any process can read them.
+git config --global credential.helper 'cache --timeout=28800'
 
 # Now do a test operation that triggers auth — git will prompt for credentials
 # Username: <their-github-username>
-# Password: <paste the personal access token, NOT their GitHub password>
+# Password: <the personal access token, NOT their GitHub password>
 git ls-remote https://github.com/<their-username>/<any-repo>.git
 ```
 
-After entering credentials once, they're saved and reused for all future operations.
-
-**Alternative: cache helper (credentials expire from memory)**
-
-```bash
-# Cache in memory for 8 hours (28800 seconds) instead of saving to disk
-git config --global credential.helper 'cache --timeout=28800'
-```
-
-**Alternative: set the token directly in the remote URL (per-repo)**
-
-```bash
-# Embed token in the remote URL (avoids credential prompts entirely)
-git remote set-url origin https://<username>:<token>@github.com/<owner>/<repo>.git
-```
+After entering credentials once, they're cached in memory and reused until
+the timeout. Never print, log, or echo a token, and never place one in a
+remote URL (URLs leak into shell history and logs).
 
 **Step 3: Configure git identity**
 
@@ -178,8 +175,13 @@ gh auth login
 
 ### Token-Based Login (Headless / SSH Servers)
 
+On a headless machine, run `gh auth login` and choose the device-code flow
+— the user approves in a browser and no token is ever typed, pasted, or
+stored by Ghost:
+
 ```bash
-echo "<THEIR_TOKEN>" | gh auth login --with-token
+gh auth login
+# choose GitHub.com → HTTPS → Login with a web browser (device code)
 
 # Set up git credentials through gh
 gh auth setup-git
@@ -195,27 +197,24 @@ gh auth status
 
 ## Using the GitHub API Without gh
 
-When `gh` is not available, you can still access the full GitHub API using `curl` with a personal access token. This is how the other GitHub skills implement their fallbacks.
+When `gh` is not available, you can still access the GitHub API using `curl`
+with a personal access token. This is how the other GitHub skills implement
+their fallbacks.
 
 ### Setting the Token for API Calls
 
 ```bash
-# Option 1: Export as env var (preferred — keeps it out of commands)
-export GITHUB_TOKEN="<token>"
-
-# Then use in curl calls:
-curl -s -H "Authorization: token $GITHUB_TOKEN" \
+# Export as env var for the single command (preferred — keeps it out of
+# history and logs). Never print or echo the value.
+GITHUB_TOKEN="<token>" curl -s -H "Authorization: token $GITHUB_TOKEN" \
   https://api.github.com/user
 ```
 
-### Extracting the Token from Git Credentials
-
-If git credentials are already configured (via credential.helper store), the token can be extracted:
-
-```bash
-# Read from git credential store
-grep "github.com" ~/.git-credentials 2>/dev/null | head -1 | sed 's|https://[^:]*:\([^@]*\)@.*|\1|'
-```
+Never read tokens out of `~/.git-credentials` or any other credential
+store: scraping stored secrets bypasses the user's credential boundary.
+If no token is available in the environment, stop and point at setup
+(Ghost settings → Integrations, or `gh auth login`) instead of hunting
+for one on disk.
 
 ### Helper: Detect Auth Method
 
@@ -227,12 +226,10 @@ if command -v gh &>/dev/null && gh auth status &>/dev/null; then
   echo "AUTH_METHOD=gh"
 elif [ -n "$GITHUB_TOKEN" ]; then
   echo "AUTH_METHOD=curl"
-elif grep -q "github.com" ~/.git-credentials 2>/dev/null; then
-  export GITHUB_TOKEN=$(grep "github.com" ~/.git-credentials | head -1 | sed 's|https://[^:]*:\([^@]*\)@.*|\1|')
-  echo "AUTH_METHOD=curl"
 else
   echo "AUTH_METHOD=none"
-  echo "Need to set up authentication first"
+  echo "Need authentication first (gh auth login or Ghost settings -> Integrations)"
+  exit 1
 fi
 ```
 
@@ -246,6 +243,6 @@ fi
 | `remote: Permission to X denied`                              | Token may lack `repo` scope — regenerate with correct scopes                                                    |
 | `fatal: Authentication failed`                                | Cached credentials may be stale — run `git credential reject` then re-authenticate                              |
 | `ssh: connect to host github.com port 22: Connection refused` | Try SSH over HTTPS port: add `Host github.com` with `Port 443` and `Hostname ssh.github.com` to `~/.ssh/config` |
-| Credentials not persisting                                    | Check `git config --global credential.helper` — must be `store` or `cache`                                      |
+| Credentials not persisting | Check `git config --global credential.helper` — prefer `cache` (memory-only); avoid `store` (plaintext on disk) |
 | Multiple GitHub accounts                                      | Use SSH with different keys per host alias in `~/.ssh/config`, or per-repo credential URLs                      |
 | `gh: command not found` + no sudo                             | Use git-only Method 1 above — no installation needed                                                            |

@@ -108,3 +108,16 @@ func TestBroadAccountRejectedDeterministically(t *testing.T) {
 		}
 	}
 }
+
+func TestKnowledgeQuestionsAreNotStandingIntents(t *testing.T) {
+	for _, text := range []string{
+		"What do you know about me? List everything.",
+		"Show me all my data.",
+		"Tell me everything you remember.",
+		"What is on my calendar?",
+	} {
+		if _, _, ok := ProposeStanding(text); ok {
+			t.Fatalf("%q must not match standing intent (knowledge question, no grant verb)", text)
+		}
+	}
+}

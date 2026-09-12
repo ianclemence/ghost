@@ -161,10 +161,13 @@ Stop-Service nginx
 Restart-Service nginx
 ```
 
-## Cron Jobs (Linux) — See Also: `tmux` Skill
+## Recurring Monitoring (Linux) — See Also: `tmux` Skill
 
-To schedule process monitoring:
+To watch processes on a schedule, create a Ghost routine (e.g. "report the
+top CPU processes every 5 minutes") instead of raw system cron — routines
+stay governed, permissioned, and visible, while a crontab entry bypasses
+all of that. Example one-shot check:
+
 ```bash
-crontab -e
-# */5 * * * * ps aux --sort=-%cpu | head -5 >> /tmp/cpu_report.txt
+ps aux --sort=-%cpu | head -5 >> /tmp/cpu_report.txt
 ```

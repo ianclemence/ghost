@@ -15,7 +15,7 @@ prerequisites:
 
 Ephemeral countdowns. Fires once, then auto-deletes — unlike `reminders`/`schedule` automations which persist.
 
-> **Mandatory:** Use the `schedule` tool with a one-time relative message. Do NOT use `cron` (recurring), `exec sleep` (blocks), or `web_search`. After creating, confirm duration and what happens at fire time.
+> **Mandatory:** Use the `schedule` tool with a one-time relative message. Never create a recurring schedule for a timer, never block on `exec sleep`, and never use `web_search` for timing. After creating, confirm duration and what happens at fire time.
 
 ## Quick Reference
 
@@ -29,7 +29,7 @@ Always include the word "timer" in the content so it reads as a countdown, not a
 
 ## Lifecycle
 
-One-time items auto-delete after firing (`DeleteAfterRun` / `IsOneTime` in the scheduler). Never create recurring schedules for timers. If the user gives no duration, ask naturally: "How long should the timer run?" and resume when they reply.
+One-time items auto-delete after firing. Never create recurring schedules for timers. If the user gives no duration, ask naturally: "How long should the timer run?" and resume when they reply.
 
 ## Failure Behavior
 

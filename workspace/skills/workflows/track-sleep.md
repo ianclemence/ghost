@@ -25,4 +25,7 @@ Any thoughts on what you want to achieve tomorrow?
 ```
 
 ## 3. Storage
-When the user replies to this, you should autonomously use `memory_curate` to append their answer to a dedicated "Mood & Energy" section in the data store for future trend analysis.
+When the user replies to this, record the answer through Ghost's governed
+memory (the `remember` tool or an explicit "remember this" capture) so it
+carries provenance like any other durable fact. Never write memory stores
+directly and never treat a workflow note as authority.

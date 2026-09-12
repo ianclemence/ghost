@@ -27,7 +27,8 @@ if command -v gh &>/dev/null && gh auth status &>/dev/null; then
 else
   AUTH="git"
   if [ -z "$GITHUB_TOKEN" ]; then
-    GITHUB_TOKEN=$(grep "github.com" ~/.git-credentials 2>/dev/null | head -1 | sed 's|https://[^:]*:\([^@]*\)@.*|\1|')
+    echo "Need authentication first (gh auth login or Ghost settings -> Integrations)"
+    exit 1
   fi
 fi
 
@@ -336,7 +337,7 @@ When the user asks you to "review PR #N", "look at this PR", or gives you a PR U
 ### Step 1: Set up environment
 
 ```bash
-source ~/.ghost/skills/github/github-auth/scripts/gh-env.sh
+source workspace/skills/github/github-auth/scripts/gh-env.sh
 # Or run the inline setup block from the top of this skill
 ```
 

@@ -26,7 +26,8 @@ if command -v gh &>/dev/null && gh auth status &>/dev/null; then
 else
   AUTH="git"
   if [ -z "$GITHUB_TOKEN" ]; then
-    GITHUB_TOKEN=$(grep "github.com" ~/.git-credentials 2>/dev/null | head -1 | sed 's|https://[^:]*:\([^@]*\)@.*|\1|')
+    echo "Need authentication first (gh auth login or Ghost settings -> Integrations)"
+    exit 1
   fi
 fi
 

@@ -52,9 +52,9 @@ skip them.
 - If nothing is known about the user yet (no memory, no captures), say so
   honestly and invite them to tell you a little.
 
-## When run automatically (heartbeat)
+## When run as a scheduled routine
 
-When the heartbeat invokes this skill on its own (not on request), do this:
+When this briefing runs as a scheduled routine (not on direct request), do this:
 
 1. Read the sources as above.
 2. Compose the briefing (same style).

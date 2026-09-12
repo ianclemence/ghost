@@ -34,7 +34,7 @@ on CLI, Telegram, Discord, or any platform.
 Define a shorthand first:
 
 ```bash
-GSETUP="python ~/.ghost/skills/productivity/google-workspace/scripts/setup.py"
+GSETUP="python workspace/skills/productivity/google-workspace/scripts/setup.py"
 ```
 
 ### Step 0: Check if already set up
@@ -124,6 +124,9 @@ Should print `AUTHENTICATED`. Setup is complete — token refreshes automaticall
 
 - Token is stored at `~/.ghost/google_token.json` and auto-refreshes.
 - Pending OAuth session state/verifier are stored temporarily at `~/.ghost/google_oauth_pending.json` until exchange completes.
+- Note: this skill-local token storage predates Ghost's credential vault.
+  For new connections prefer Ghost settings (Integrations); do not copy
+  tokens out of these files into chat, logs, or other tools.
 - To revoke: `$GSETUP --revoke`
 
 ## Usage
@@ -131,7 +134,7 @@ Should print `AUTHENTICATED`. Setup is complete — token refreshes automaticall
 All commands go through the API script. Set `GAPI` as a shorthand:
 
 ```bash
-GAPI="python ~/.ghost/skills/productivity/google-workspace/scripts/google_api.py"
+GAPI="python workspace/skills/productivity/google-workspace/scripts/google_api.py"
 ```
 
 ### Gmail
