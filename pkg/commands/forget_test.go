@@ -469,7 +469,10 @@ func TestForgetTopicValuesSkipsParticles(t *testing.T) {
 	if !found["favorite snack"] {
 		t.Fatalf("whole phrase missing: %v", got)
 	}
-	if !found["favorite"] || !found["snack"] {
-		t.Fatalf("significant words missing: %v", got)
+	if found["favorite"] {
+		t.Fatalf("generic word must not drive deletes: %v", got)
+	}
+	if !found["snack"] {
+		t.Fatalf("distinctive word missing: %v", got)
 	}
 }

@@ -253,6 +253,21 @@ func forgetEntryValues(retired []personalcontext.Entry) []string {
 	return values
 }
 
+// forgetCommonWords are tokens too generic to drive deletes on their
+// own: purging by "favorite" would wipe team memories when forgetting a
+// snack. Single words must clear this list; the whole phrase always
+// applies.
+var forgetCommonWords = map[string]bool{
+	"my": true, "the": true, "a": true, "an": true, "your": true,
+	"our": true, "their": true, "this": true, "that": true,
+	"favorite": true, "favourite": true, "likes": true, "like": true,
+	"liked": true, "prefer": true, "prefers": true, "preferred": true,
+	"general": true, "remember": true, "remembered": true,
+	"is": true, "are": true, "was": true, "were": true, "be": true,
+	"do": true, "does": true, "and": true, "or": true, "to": true,
+	"of": true, "in": true, "on": true, "for": true,
+}
+
 // forgetTopicValues turns a free-form forget phrase into purge keys: the
 // whole phrase plus its significant words. Lets /forget reach facts that
 // live only in chunks or MEMORY.md (e.g. remember-tool notes that never
@@ -260,18 +275,24 @@ func forgetEntryValues(retired []personalcontext.Entry) []string {
 func forgetTopicValues(phrase string) []string {
 	var values []string
 	seen := map[string]bool{}
-	add := func(v string) {
+	add := func(v string, single bool) {
 		v = strings.TrimSpace(v)
-		if len([]rune(v)) >= 3 && !seen[strings.ToLower(v)] {
-			seen[strings.ToLower(v)] = true
+		if len([]rune(v)) < 3 {
+			return
+		}
+		low := strings.ToLower(v)
+		if single && forgetCommonWords[low] {
+			return
+		}
+		if !seen[low] {
+			seen[low] = true
 			values = append(values, v)
 		}
 	}
 	clean := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(phrase), "my "))
-	add(clean)
+	add(clean, false)
 	for _, w := range strings.Fields(clean) {
-		w = strings.Trim(w, "\"'.,!?;:")
-		add(w)
+		add(strings.Trim(w, "\"'.,!?;:"), true)
 	}
 	return values
 }
