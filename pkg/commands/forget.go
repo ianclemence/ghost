@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,14 +14,17 @@ import (
 )
 
 // forgetHandler implements /forget: the user-facing way to retire Personal
-// Context entries. It is deterministic, never calls an LLM, never searches
-// conversations, and never touches RAG or MEMORY.md.
+// Context entries and purge their traces from the file-backed memory layer.
+// It is deterministic and never calls an LLM.
 //
-// A normal /forget only retires entries in the personalcontext.Store (each
-// gets a rejected revision); it never deletes conversation evidence. Deleting
-// conversation evidence requires the explicit /forget session <id> form, which
-// removes the session transcript through the session storage API and retires
-// any Personal Context entries whose provenance references that session.
+// A normal /forget retires entries in the personalcontext.Store (each gets
+// a rejected revision) and removes matching vector chunks plus MEMORY.md
+// lines carrying the retired values — a forgotten fact must stop surfacing
+// in recall, not merely lose its structured row. It never deletes
+// conversation evidence. Deleting conversation evidence requires the
+// explicit /forget session <id> form, which removes the session transcript
+// through the session storage API and retires any Personal Context entries
+// whose provenance references that session.
 //
 // Syntax:
 //
@@ -50,9 +55,9 @@ func forgetHandler(ctx context.Context, req Request, rt *Runtime) error {
 		if len(fields) < 3 || fields[1] != "about" {
 			return req.Reply("Refusing: /forget everything would delete too much. Use `/forget everything about <topic>` to scope it.")
 		}
-		return forgetEverythingAbout(req, rt, strings.Join(fields[2:], " "))
+		return forgetEverythingAbout(ctx, req, rt, strings.Join(fields[2:], " "))
 	default:
-		return forgetTarget(req, rt, rest)
+		return forgetTarget(ctx, req, rt, rest)
 	}
 }
 
@@ -70,7 +75,7 @@ func forgetRest(text string) string {
 // forgetTarget retires the entries matching a single target phrase. It is the
 // normal, non-destructive path: nothing is ever deleted, and an ambiguous
 // match is refused in favour of asking the user to narrow the request.
-func forgetTarget(req Request, rt *Runtime, phrase string) error {
+func forgetTarget(ctx context.Context, req Request, rt *Runtime, phrase string) error {
 	store := rt.PersonalContext
 	matches := forgetMatches(activeForgetEntries(store, time.Now()), phrase)
 
@@ -120,10 +125,11 @@ func forgetTarget(req Request, rt *Runtime, phrase string) error {
 			return req.Reply(fmt.Sprintf("Failed to forget %s: %v", e.Predicate, err))
 		}
 	}
+	purged := forgetPurgeMemory(ctx, rt, group)
 	if len(group) == 1 {
-		return req.Reply(fmt.Sprintf("Forgotten: %s", group[0].Predicate))
+		return req.Reply(fmt.Sprintf("Forgotten: %s%s", group[0].Predicate, purged))
 	}
-	return req.Reply(fmt.Sprintf("Forgotten %d Personal Context entries for %s.", len(group), group[0].Predicate))
+	return req.Reply(fmt.Sprintf("Forgotten %d Personal Context entries for %s.%s", len(group), group[0].Predicate, purged))
 }
 
 // forgetBeliefs groups matching entries by subject + predicate, preserving
@@ -173,7 +179,7 @@ func renderForgetAmbiguous(phrase string, beliefs [][]personalcontext.Entry) str
 // subject, a relationship partner named after "relationship with/to", or a
 // predicate whose suffix contains the canonicalized topic. Generic or
 // self-referential topics are refused rather than interpreted destructively.
-func forgetEverythingAbout(req Request, rt *Runtime, rawTopic string) error {
+func forgetEverythingAbout(ctx context.Context, req Request, rt *Runtime, rawTopic string) error {
 	store := rt.PersonalContext
 	topic := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(rawTopic), "my ")))
 	if topic == "" || forgetGenericTopic(topic) {
@@ -213,17 +219,116 @@ func forgetEverythingAbout(req Request, rt *Runtime, rawTopic string) error {
 			return req.Reply(fmt.Sprintf("Failed to forget %s: %v", e.Predicate, err))
 		}
 	}
+	purged := forgetPurgeMemory(ctx, rt, targets)
 	if len(targets) == 1 {
-		return req.Reply(fmt.Sprintf("Forgotten 1 Personal Context entry related to %q.", rawTopic))
+		return req.Reply(fmt.Sprintf("Forgotten 1 Personal Context entry related to %q.%s", rawTopic, purged))
 	}
-	return req.Reply(fmt.Sprintf("Forgotten %d Personal Context entries related to %q.", len(targets), rawTopic))
+	return req.Reply(fmt.Sprintf("Forgotten %d Personal Context entries related to %q.%s", len(targets), rawTopic, purged))
 }
 
-// forgetSession is the explicit "delete evidence" operation: it requires the
+// forgetPurgeMemory removes file-backed traces of retired entries: vector
+// chunks containing the retired values, and MEMORY.md lines carrying them.
+// Without this, a "forgotten" fact keeps surfacing in recall. Best-effort:
+// purge failures never fail the forget itself, and values under 3 runes
+// never drive deletes. Returns a human suffix ("" when nothing purged).
+func forgetPurgeMemory(ctx context.Context, rt *Runtime, retired []personalcontext.Entry) string {
+	var values []string
+	for _, e := range retired {
+		if v := strings.TrimSpace(forgetStringValue(e)); len([]rune(v)) >= 3 {
+			values = append(values, v)
+		}
+	}
+	if len(values) == 0 {
+		return ""
+	}
+	chunks := 0
+	if rt != nil && rt.RAG != nil {
+		for _, v := range values {
+			if n, err := rt.RAG.ForgetValue(ctx, v); err == nil {
+				chunks += n
+			}
+		}
+	}
+	lines := 0
+	ws := ""
+	if rt != nil {
+		ws = rt.Workspace
+	}
+	if ws == "" {
+		if v := strings.TrimSpace(os.Getenv("GHOST_WORKSPACE_DIR")); v != "" {
+			ws = v
+		}
+	}
+	if ws != "" {
+		if n, err := forgetPurgeMemoryFile(ws, values); err == nil {
+			lines = n
+		}
+	}
+	if chunks == 0 && lines == 0 {
+		return ""
+	}
+	parts := []string{}
+	if chunks > 0 {
+		parts = append(parts, fmt.Sprintf("%d memorized note%s", chunks, pluralS(chunks)))
+	}
+	if lines > 0 {
+		parts = append(parts, fmt.Sprintf("%d MEMORY.md line%s", lines, pluralS(lines)))
+	}
+	return " Also removed " + strings.Join(parts, " and ") + "."
+}
+
+// forgetPurgeMemoryFile drops MEMORY.md lines containing any retired value
+// (case-insensitive). Only the distilled-notes file is touched; daily
+// journals are history and stay intact.
+func forgetPurgeMemoryFile(workspace string, values []string) (int, error) {
+	path := filepath.Join(workspace, "memory", "MEMORY.md")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	lowered := make([]string, len(values))
+	for i, v := range values {
+		lowered[i] = strings.ToLower(v)
+	}
+	var kept []string
+	removed := 0
+	for _, ln := range strings.Split(string(raw), "\n") {
+		low := strings.ToLower(ln)
+		drop := false
+		for _, v := range lowered {
+			if v != "" && strings.Contains(low, v) {
+				drop = true
+				break
+			}
+		}
+		if drop {
+			removed++
+			continue
+		}
+		kept = append(kept, ln)
+	}
+	if removed == 0 {
+		return 0, nil
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(kept, "\n")), 0644); err != nil {
+		return 0, err
+	}
+	return removed, nil
+}
+
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
 // session to exist, deletes the conversation evidence through the session
 // storage API, and retires any active Personal Context entries whose
 // provenance references the session. Unrelated entries and other sessions are
 // left untouched.
+// forgetSession is the explicit "delete evidence" operation: it requires the
+// session to exist, deletes the conversation evidence through the session
 func forgetSession(req Request, rt *Runtime, rest string) error {
 	if rt.Sessions == nil {
 		return req.Reply("Session manager unavailable.")

@@ -191,8 +191,52 @@ func (s *Store) ingest(ctx context.Context, content string, source string) error
 	return nil
 }
 
-// Retrieve finds relevant chunks using vector index (global/shared
-// memory: no scope restriction, legacy behavior).
+// ForgetValue removes vector chunks whose content contains the retired
+// value (case-insensitive), from both SQLite and the live index, so a
+// forgotten fact stops surfacing in recall. Only values of 3+ runes are
+// honored — particles must never drive deletes. Best-effort on the index:
+// a stale vector without its row is unreachable through Retrieve.
+func (s *Store) ForgetValue(ctx context.Context, value string) (int, error) {
+	v := strings.TrimSpace(value)
+	if len([]rune(v)) < 3 {
+		return 0, nil
+	}
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(v)
+	rows, err := s.db.Query(`SELECT id FROM memory_chunks WHERE content LIKE ? ESCAPE '\'`, "%"+esc+"%")
+	if err != nil {
+		return 0, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	placeholders := strings.Repeat("?,", len(ids)-1) + "?"
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	if _, err := s.db.Exec(`DELETE FROM memory_chunks WHERE id IN (`+placeholders+`)`, args...); err != nil {
+		return 0, err
+	}
+	s.mu.Lock()
+	if s.collection != nil {
+		_ = s.collection.Delete(ctx, nil, nil, ids...)
+	}
+	s.mu.Unlock()
+	return len(ids), nil
+}
 func (s *Store) Retrieve(ctx context.Context, query string, limit int) ([]SearchResult, error) {
 	return s.RetrieveScoped(ctx, query, limit, nil)
 }

@@ -2,6 +2,8 @@ package commands
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -426,5 +428,31 @@ func TestForgetPhraseForms(t *testing.T) {
 		if e1, _ := store.Get("e1"); e1.Status != personalcontext.StatusRejected {
 			t.Fatalf("form %q did not retire entry: %s", text, e1.Status)
 		}
+	}
+}
+
+func TestForgetPurgeMemoryFileRemovesRetiredValues(t *testing.T) {
+	ws := t.TempDir()
+	memDir := filepath.Join(ws, "memory")
+	if err := os.MkdirAll(memDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := "# Memory\n\n- [2026-09-12] (user_preference) mango sticky rice is the snack\n- [2026-09-12] (generic) The user's name is Ian\n"
+	if err := os.WriteFile(filepath.Join(memDir, "MEMORY.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	n, err := forgetPurgeMemoryFile(ws, []string{"mango sticky rice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("removed %d lines, want 1", n)
+	}
+	after, _ := os.ReadFile(filepath.Join(memDir, "MEMORY.md"))
+	if strings.Contains(strings.ToLower(string(after)), "mango") {
+		t.Fatal("retired value still present in MEMORY.md")
+	}
+	if !strings.Contains(string(after), "Ian") {
+		t.Fatal("unrelated line removed")
 	}
 }
