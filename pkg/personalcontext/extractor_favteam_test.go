@@ -81,3 +81,22 @@ func TestExtractPartnerDeclarationStillWorks(t *testing.T) {
 		t.Fatalf("declaration not extracted: %+v", actions)
 	}
 }
+
+func TestExtractStripsTrailingTemporalFiller(t *testing.T) {
+	for _, tc := range []struct{ text, want string }{
+		{"My favorite team is Arsenal now", "Arsenal"},
+		{"My favorite team is Arsenal, for now", "Arsenal"},
+		{"my favorite color is blue today", "blue"},
+	} {
+		actions, err := Extract(testInput(tc.text))
+		if err != nil {
+			t.Fatalf("Extract(%q): %v", tc.text, err)
+		}
+		if len(actions) != 1 {
+			t.Fatalf("%q produced %d actions, want 1", tc.text, len(actions))
+		}
+		if got := actionValue(t, actions[0]); got != tc.want {
+			t.Errorf("%q value = %q, want %q", tc.text, got, tc.want)
+		}
+	}
+}

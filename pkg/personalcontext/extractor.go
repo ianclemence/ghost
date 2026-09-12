@@ -676,11 +676,23 @@ func stripTrailingNow(s string) string {
 	return s
 }
 
-// cleanValue trims surrounding whitespace and quotes.
+// cleanValue trims surrounding whitespace and quotes, plus trailing
+// temporal fillers ("Arsenal now", "Sushi, for now") that describe when
+// the statement was made, never the value itself.
 func cleanValue(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.Trim(s, `"'`)
-	return s
+	fields := strings.Fields(s)
+	for len(fields) > 1 && trailingFiller[strings.ToLower(fields[len(fields)-1])] {
+		fields = fields[:len(fields)-1]
+	}
+	return strings.Join(fields, " ")
+}
+
+// trailingFiller are words that can only qualify timing, never identity.
+var trailingFiller = map[string]bool{
+	"now": true, "today": true, "currently": true, "presently": true,
+	"nowadays": true, "anymore": true,
 }
 
 // rejectFirstWord reports whether the first word of a captured value is in the
