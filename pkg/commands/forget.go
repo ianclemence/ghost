@@ -95,6 +95,12 @@ func forgetTarget(ctx context.Context, req Request, rt *Runtime, phrase string) 
 				return req.Reply("That Personal Context is already forgotten.")
 			}
 		}
+		// No structured entry — but a remember-tool fact may still live in
+		// the file-backed layer (chunks + MEMORY.md) without ever entering
+		// Personal Context. Purge by topic text so /forget stays whole.
+		if purged := forgetPurgeMemory(ctx, rt, forgetTopicValues(phrase)); purged != "" {
+			return req.Reply(fmt.Sprintf("No structured entry matches %q.%s", phrase, purged))
+		}
 		return req.Reply(fmt.Sprintf("No current Personal Context entry matches %q.", phrase))
 	}
 
@@ -125,7 +131,7 @@ func forgetTarget(ctx context.Context, req Request, rt *Runtime, phrase string) 
 			return req.Reply(fmt.Sprintf("Failed to forget %s: %v", e.Predicate, err))
 		}
 	}
-	purged := forgetPurgeMemory(ctx, rt, group)
+	purged := forgetPurgeMemory(ctx, rt, forgetEntryValues(group))
 	if len(group) == 1 {
 		return req.Reply(fmt.Sprintf("Forgotten: %s%s", group[0].Predicate, purged))
 	}
@@ -212,6 +218,9 @@ func forgetEverythingAbout(ctx context.Context, req Request, rt *Runtime, rawTop
 	}
 
 	if len(targets) == 0 {
+		if purged := forgetPurgeMemory(ctx, rt, forgetTopicValues(rawTopic)); purged != "" {
+			return req.Reply(fmt.Sprintf("No structured entry mentions %q.%s", rawTopic, purged))
+		}
 		return req.Reply(fmt.Sprintf("No current Personal Context entry mentions %q.", rawTopic))
 	}
 	for _, e := range targets {
@@ -219,11 +228,46 @@ func forgetEverythingAbout(ctx context.Context, req Request, rt *Runtime, rawTop
 			return req.Reply(fmt.Sprintf("Failed to forget %s: %v", e.Predicate, err))
 		}
 	}
-	purged := forgetPurgeMemory(ctx, rt, targets)
+	purged := forgetPurgeMemory(ctx, rt, forgetEntryValues(targets))
 	if len(targets) == 1 {
 		return req.Reply(fmt.Sprintf("Forgotten 1 Personal Context entry related to %q.%s", rawTopic, purged))
 	}
 	return req.Reply(fmt.Sprintf("Forgotten %d Personal Context entries related to %q.%s", len(targets), rawTopic, purged))
+}
+
+// forgetEntryValues renders retired entries as plain strings for the
+// file-backed purge.
+func forgetEntryValues(retired []personalcontext.Entry) []string {
+	var values []string
+	for _, e := range retired {
+		if v := strings.TrimSpace(forgetStringValue(e)); len([]rune(v)) >= 3 {
+			values = append(values, v)
+		}
+	}
+	return values
+}
+
+// forgetTopicValues turns a free-form forget phrase into purge keys: the
+// whole phrase plus its significant words. Lets /forget reach facts that
+// live only in chunks or MEMORY.md (e.g. remember-tool notes that never
+// entered structured context).
+func forgetTopicValues(phrase string) []string {
+	var values []string
+	seen := map[string]bool{}
+	add := func(v string) {
+		v = strings.TrimSpace(v)
+		if len([]rune(v)) >= 3 && !seen[strings.ToLower(v)] {
+			seen[strings.ToLower(v)] = true
+			values = append(values, v)
+		}
+	}
+	clean := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(phrase), "my "))
+	add(clean)
+	for _, w := range strings.Fields(clean) {
+		w = strings.Trim(w, "\"'.,!?;:")
+		add(w)
+	}
+	return values
 }
 
 // forgetPurgeMemory removes file-backed traces of retired entries: vector
@@ -231,16 +275,7 @@ func forgetEverythingAbout(ctx context.Context, req Request, rt *Runtime, rawTop
 // Without this, a "forgotten" fact keeps surfacing in recall. Best-effort:
 // purge failures never fail the forget itself, and values under 3 runes
 // never drive deletes. Returns a human suffix ("" when nothing purged).
-func forgetPurgeMemory(ctx context.Context, rt *Runtime, retired []personalcontext.Entry) string {
-	var values []string
-	for _, e := range retired {
-		if v := strings.TrimSpace(forgetStringValue(e)); len([]rune(v)) >= 3 {
-			values = append(values, v)
-		}
-	}
-	if len(values) == 0 {
-		return ""
-	}
+func forgetPurgeMemory(ctx context.Context, rt *Runtime, values []string) string {
 	chunks := 0
 	if rt != nil && rt.RAG != nil {
 		for _, v := range values {

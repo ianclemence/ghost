@@ -456,3 +456,20 @@ func TestForgetPurgeMemoryFileRemovesRetiredValues(t *testing.T) {
 		t.Fatal("unrelated line removed")
 	}
 }
+
+func TestForgetTopicValuesSkipsParticles(t *testing.T) {
+	got := forgetTopicValues("my favorite snack")
+	found := map[string]bool{}
+	for _, v := range got {
+		found[v] = true
+		if len([]rune(v)) < 3 {
+			t.Fatalf("particle %q must not drive deletes", v)
+		}
+	}
+	if !found["favorite snack"] {
+		t.Fatalf("whole phrase missing: %v", got)
+	}
+	if !found["favorite"] || !found["snack"] {
+		t.Fatalf("significant words missing: %v", got)
+	}
+}
