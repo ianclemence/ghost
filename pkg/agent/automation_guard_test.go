@@ -77,3 +77,24 @@ func TestContentWordsIgnoresNoise(t *testing.T) {
 		t.Errorf("content words lost: %v", words)
 	}
 }
+
+func TestIsSchedulerEcho(t *testing.T) {
+	echo := map[string]bool{"send ian a short poem": true}
+	// Verbatim automation content is echo even without intent phrasing.
+	if !isSchedulerEcho("Send Ian a short poem", echo) {
+		t.Error("automation action content not detected as echo")
+	}
+	if !isSchedulerEcho("Send Ian a short poem.", echo) {
+		t.Error("echo with trailing punctuation not detected")
+	}
+	// Scheduling-intent phrasing is echo without any item match.
+	if !isSchedulerEcho("Send me a poem every 5 seconds", map[string]bool{}) {
+		t.Error("scheduling intent not detected as echo")
+	}
+	// Genuine user facts are never echo.
+	for _, fact := range []string{"Ian", "Chelsea", "I would like to go to Bangkok some time"} {
+		if isSchedulerEcho(fact, echo) {
+			t.Errorf("genuine fact %q wrongly detected as echo", fact)
+		}
+	}
+}

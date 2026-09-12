@@ -1665,6 +1665,48 @@ func (al *AgentLoop) consolidatePersonalContext() {
 	}
 }
 
+// normalizeEchoText canonicalizes a string for echo comparison:
+// lowercase, trimmed, trailing punctuation stripped.
+func normalizeEchoText(s string) string {
+	return strings.Trim(strings.TrimSpace(strings.ToLower(s)), ".,!?;:\"'()[]{}")
+}
+
+// schedulerEchoSet returns the normalized action contents, titles, and
+// descriptions of live scheduled items. An automation's own prompt
+// ("Send Ian a short poem") appearing as a user memory is echo, not
+// belief — even though it matches no scheduling-intent phrasing.
+// Nil-safe: without a scheduler there is no echo to detect.
+func (al *AgentLoop) schedulerEchoSet() map[string]bool {
+	out := map[string]bool{}
+	if al.schedSvc == nil {
+		return out
+	}
+	items, err := al.schedSvc.ListItems("", scheduled.StateScheduled, 100)
+	if err != nil {
+		return out
+	}
+	for _, it := range items {
+		if it == nil {
+			continue
+		}
+		for _, s := range []string{it.Action.Content, it.Title, it.Description} {
+			if n := normalizeEchoText(s); n != "" {
+				out[n] = true
+			}
+		}
+	}
+	return out
+}
+
+// isSchedulerEcho reports whether a memory value is an automation's own
+// prompt: a scheduling-intent phrasing, or verbatim scheduler content.
+func isSchedulerEcho(value string, echo map[string]bool) bool {
+	if isAutomationIntent(value) {
+		return true
+	}
+	return echo[normalizeEchoText(value)]
+}
+
 // entryValueText renders an entry's JSON value as plain text for
 // ledger checks and echo detection.
 func entryValueText(e personalcontext.Entry) string {
@@ -1686,13 +1728,16 @@ func entryUserDeclared(e personalcontext.Entry) bool {
 	return false
 }
 
-// retireAutomationEcho forgets current inferred entries whose value is a
-// scheduling intent ("send me a poem every 5 seconds"). Those rows are
-// scheduler echo, never beliefs — the scheduled item is their record.
+// retireAutomationEcho forgets current inferred entries that are
+// scheduler echo: scheduling-intent phrasings, or verbatim content of a
+// live scheduled item (an automation's own prompt ingested as a
+// "preference"). Only inferred rows are touched — user-declared facts
+// are never auto-deleted.
 func (al *AgentLoop) retireAutomationEcho() (int, error) {
 	if al.pcStore == nil {
 		return 0, nil
 	}
+	echo := al.schedulerEchoSet()
 	retired := 0
 	for _, e := range al.pcStore.Current() {
 		if e.Status != personalcontext.StatusCurrent {
@@ -1701,7 +1746,7 @@ func (al *AgentLoop) retireAutomationEcho() (int, error) {
 		if entryUserDeclared(e) {
 			continue
 		}
-		if !isAutomationIntent(entryValueText(e)) {
+		if !isSchedulerEcho(entryValueText(e), echo) {
 			continue
 		}
 		if err := al.pcStore.Forget(e.ID); err != nil {
@@ -1758,14 +1803,55 @@ func (al *AgentLoop) syncUserDoc() error {
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644)
 }
 
+// backfillLedgerPath is where completed memory backfills are recorded
+// by entry ID. Both sinks (MEMORY.md append and vector ingest) must
+// succeed before an ID lands here, so a partial failure is retried
+// instead of silently leaving file and index diverged.
+func backfillLedgerPath(workspace string) string {
+	return filepath.Join(workspace, "personal-context", "backfilled.json")
+}
+
+func loadBackfillLedger(path string) map[string]bool {
+	done := map[string]bool{}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return done
+	}
+	var ids []string
+	if err := json.Unmarshal(raw, &ids); err != nil {
+		return done
+	}
+	for _, id := range ids {
+		done[id] = true
+	}
+	return done
+}
+
+func appendBackfillLedger(path, id string) {
+	done := loadBackfillLedger(path)
+	if done[id] {
+		return
+	}
+	ids := make([]string, 0, len(done)+1)
+	for k := range done {
+		ids = append(ids, k)
+	}
+	ids = append(ids, id)
+	raw, _ := json.Marshal(ids)
+	_ = os.MkdirAll(filepath.Dir(path), 0755)
+	_ = os.WriteFile(path, raw, 0644)
+}
+
 // backfillMemoryFromPC mirrors durable current personal-context facts
 // into MEMORY.md and the vector index, skipping anything already
-// recorded (MEMORY.md is the ledger) and anything that looks like
-// machine echo. One fact, every store.
+// recorded and anything that is scheduler echo. One fact, every store.
 func (al *AgentLoop) backfillMemoryFromPC() (int, error) {
 	if al.pcStore == nil {
 		return 0, nil
 	}
+	echo := al.schedulerEchoSet()
+	ledgerPath := backfillLedgerPath(al.workspace)
+	done := loadBackfillLedger(ledgerPath)
 	memPath := filepath.Join(al.workspace, "memory", "MEMORY.md")
 	ledger := ""
 	if raw, err := os.ReadFile(memPath); err == nil {
@@ -1776,46 +1862,52 @@ func (al *AgentLoop) backfillMemoryFromPC() (int, error) {
 		if e.Status != personalcontext.StatusCurrent {
 			continue
 		}
+		if done[e.ID] {
+			continue // both sinks already confirmed
+		}
 		val := strings.TrimSpace(entryValueText(e))
 		if val == "" || val == "null" {
 			continue
 		}
 		// Never mirror machine echo into memory, even if it somehow
 		// survived retirement above.
-		if isAutomationIntent(val) {
+		if isSchedulerEcho(val, echo) {
 			continue
-		}
-		if strings.Contains(ledger, strings.ToLower(val)) {
-			continue // already recorded
 		}
 		title := strings.TrimSpace(personalcontext.Title(e))
 		if title == "" {
 			title = val
 		}
-		category := "generic"
-		switch e.Kind {
-		case personalcontext.KindPreference, personalcontext.KindRelationship:
-			category = "user_preference"
-		case personalcontext.KindGoal:
-			category = "life_goal"
-		}
-		line := fmt.Sprintf("\n- [%s] (%s) %s", time.Now().Format("2006-01-02"), category, title)
-		_ = os.MkdirAll(filepath.Dir(memPath), 0755)
-		f, err := os.OpenFile(memPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return mirrored, err
-		}
-		if _, err := f.WriteString(line); err != nil {
+		if !strings.Contains(ledger, strings.ToLower(title)) {
+			category := "generic"
+			switch e.Kind {
+			case personalcontext.KindPreference, personalcontext.KindRelationship:
+				category = "user_preference"
+			case personalcontext.KindGoal:
+				category = "life_goal"
+			}
+			line := fmt.Sprintf("\n- [%s] (%s) %s", time.Now().Format("2006-01-02"), category, title)
+			_ = os.MkdirAll(filepath.Dir(memPath), 0755)
+			f, err := os.OpenFile(memPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return mirrored, err
+			}
+			if _, err := f.WriteString(line); err != nil {
+				_ = f.Close()
+				return mirrored, err
+			}
 			_ = f.Close()
-			return mirrored, err
+			ledger += strings.ToLower("\n" + title)
 		}
-		_ = f.Close()
-		ledger += strings.ToLower("\n" + title)
+		// The vector sink is retried until it succeeds: a file-only
+		// mirror leaves recall blind to the fact.
 		if al.rag != nil {
 			if err := al.rag.IngestScoped(context.Background(), title, "memory_tool", ""); err != nil {
-				logger.WarnCF("agent", "Backfill RAG ingest failed", map[string]interface{}{"error": err.Error()})
+				logger.WarnCF("agent", "Backfill RAG ingest failed, will retry", map[string]interface{}{"error": err.Error()})
+				continue
 			}
 		}
+		appendBackfillLedger(ledgerPath, e.ID)
 		mirrored++
 	}
 	return mirrored, nil
