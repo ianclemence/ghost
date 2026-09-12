@@ -1785,10 +1785,11 @@ func entryUserDeclared(e personalcontext.Entry) bool {
 }
 
 // retireAutomationEcho forgets current inferred entries that are
-// scheduler echo: scheduling-intent phrasings, or verbatim content of a
-// live scheduled item (an automation's own prompt ingested as a
-// "preference"). Only inferred rows are touched — user-declared facts
-// are never auto-deleted.
+// machine echo: scheduling-intent phrasings, verbatim content of a live
+// scheduled item (an automation's own prompt ingested as a "preference"),
+// or bare capture directives ("Remember this:") filed without a value.
+// Only inferred rows are touched — user-declared facts are never
+// auto-deleted.
 func (al *AgentLoop) retireAutomationEcho() (int, error) {
 	if al.pcStore == nil {
 		return 0, nil
@@ -1802,7 +1803,8 @@ func (al *AgentLoop) retireAutomationEcho() (int, error) {
 		if entryUserDeclared(e) {
 			continue
 		}
-		if !isSchedulerEcho(entryValueText(e), echo) {
+		val := entryValueText(e)
+		if !isSchedulerEcho(val, echo) && !personalcontext.DirectiveEcho(val) {
 			continue
 		}
 		if err := al.pcStore.Forget(e.ID); err != nil {
