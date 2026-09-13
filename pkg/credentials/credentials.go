@@ -91,14 +91,19 @@ var knownProviders = map[string]providerMeta{
 	"aerodatabox":     {"Flight Data (AeroDataBox)", CategoryProvider, "api_key", []string{"flight.status"}},
 	"openweather":     {"Weather (OpenWeather)", CategoryProvider, "api_key", []string{"weather.current"}},
 	"google-calendar": {"Google Calendar", CategoryIntegration, "oauth", []string{"calendar.read"}},
+	"gmail":           {"Gmail", CategoryIntegration, "oauth", []string{"email.read", "email.send"}},
+	"outlook":         {"Outlook Mail + Calendar", CategoryIntegration, "oauth", []string{"email.read", "email.send", "calendar.read"}},
+	"homeassistant":   {"Home Assistant", CategoryIntegration, "token", []string{"hass.control"}},
+	"spotify":         {"Spotify", CategoryIntegration, "oauth", []string{"media.playback"}},
+	"github":          {"GitHub", CategoryIntegration, "token", []string{"code.read", "repository.search"}},
+	"notion":          {"Notion", CategoryIntegration, "token", []string{"docs"}},
 	"openai":          {"OpenAI", CategoryModel, "api_key", []string{"chat"}},
 	"anthropic":       {"Anthropic", CategoryModel, "api_key", []string{"chat"}},
-	"telegram":        {"Telegram", CategoryChannel, "token", []string{"messaging"}},
-	"homeassistant":   {"Home Assistant", CategoryIntegration, "token", []string{"hass.control"}},
-	"spotify":         {"Spotify", CategoryIntegration, "oauth", []string{"media"}},
-	"github":          {"GitHub", CategoryIntegration, "token", []string{"code"}},
-	"notion":          {"Notion", CategoryIntegration, "token", []string{"docs"}},
-	"slack":           {"Slack", CategoryChannel, "token", []string{"messaging"}},
+	// Channel transports are NOT connected apps. They are listed here only so
+	// the vault can report their configured presence; they must never appear
+	// in the connected-apps API. See connectedapp.IsChannelCredential.
+	"telegram": {"Telegram (channel)", CategoryChannel, "token", []string{"messaging"}},
+	"slack":    {"Slack (channel)", CategoryChannel, "token", []string{"messaging"}},
 }
 
 // Emitter receives lifecycle events (nil-safe).

@@ -1980,8 +1980,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			jsonError(w, http.StatusServiceUnavailable, "unavailable", "channel manager unavailable")
 			return
 		}
+		// Channel transports only (telegram, whatsapp, ...). This restarts
+		// the messaging transport. It never re-authenticates a connected
+		// app — use /v1/connected-apps/{id}/connect for that.
 		var req struct {
-			Channel string `json:"channel"`
+			Channel   string `json:"channel"`
+			Transport string `json:"transport"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
@@ -1989,7 +1993,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		}
 		channel := strings.ToLower(strings.TrimSpace(req.Channel))
 		if channel == "" {
-			jsonError(w, http.StatusBadRequest, "invalid_request", "channel is required")
+			channel = strings.ToLower(strings.TrimSpace(req.Transport))
+		}
+		if channel == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "channel (message transport) is required")
 			return
 		}
 		if err := channelManager.RestartChannel(r.Context(), channel); err != nil {
@@ -3262,9 +3269,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
 	}))
 
-	mux.HandleFunc("/v1/connections", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		v := credentials.New(configDir())
-		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "connections": v.List()})
+	mux.HandleFunc("/v1/connected-apps", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "connected_apps": connectedAppsList()})
 	}))
 
 	mux.HandleFunc("/v1/routines", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
@@ -4798,4 +4808,54 @@ func buildCapabilityResolver(cfg *config.Config) *capability.Resolver {
 		},
 	})
 	return r
+}
+
+// connectedAppsList builds the device-facing connected-apps model.
+//
+// Canonical contract: connected apps are external systems Ghost acts on
+// (Gmail, Calendar, Home Assistant, ...), served at GET /v1/connected-apps
+// under the key "connected_apps". Channel transports (Telegram, Slack,
+// ...) are never included — use GET /v1/channels/status for those. Model
+// providers (OpenAI, Anthropic) are never included — use /v1/providers.
+func connectedAppsList() []map[string]interface{} {
+	v := credentials.New(configDir())
+	out := make([]map[string]interface{}, 0, len(connectedapp.FirstParty()))
+	for _, c := range connectedapp.FirstParty() {
+		ref := v.Ref(c.Provider)
+		status := string(ref.Status)
+		// Home Assistant stores url+token as a pair; surface one status.
+		if c.ID == "home-assistant" {
+			if u, t := credentials.HassEndpoint(); u != "" && t != "" {
+				status = string(credentials.StatusConnected)
+			} else if status == string(credentials.StatusConnected) {
+				// keep vault verdict
+			} else {
+				status = string(credentials.StatusNotConfigured)
+			}
+		}
+		// Google Calendar OAuth lives outside the vault (token file).
+		if c.ID == "google-calendar" {
+			if skills.CalendarWebStatus().Connected || skills.CalendarCheck().Connected {
+				status = string(credentials.StatusConnected)
+			}
+		}
+		needsReauth := status == string(credentials.StatusExpired) ||
+			status == string(credentials.StatusInvalid) ||
+			status == string(credentials.StatusRevoked)
+		out = append(out, map[string]interface{}{
+			"id":            c.ID,
+			"provider":      c.Provider,
+			"display_name":  c.DisplayName,
+			"category":      "integration",
+			"auth_kind":     string(c.AuthKind),
+			"setup":         string(c.Setup),
+			"capabilities":  c.Capabilities,
+			"read_scopes":   c.ReadScopes,
+			"write_scopes":  c.WriteScopes,
+			"status":        status,
+			"needs_reauth":  needsReauth,
+			"help":          c.Help,
+		})
+	}
+	return out
 }

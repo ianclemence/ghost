@@ -300,6 +300,24 @@ func buildDefault() *Registry {
 			Tools:       []string{"message"},
 			Description: "Send a message to the user or a contact."},
 
+		// --- Email (connected-app, read vs consequential send) ---
+		{ID: "email.read", Title: "Read email", Risk: RiskReadOnly,
+			Tools:       []string{"email_search", "email_read"},
+			Description: "Search and read email in a connected mailbox."},
+		{ID: "email.send", Title: "Send email", Risk: RiskConsequential, Evidence: EvidenceAcknowledgement,
+			Tools:       []string{"email_send"},
+			Description: "Send or reply to email on the user's behalf."},
+
+		// --- Media (connected-app, e.g. Spotify) ---
+		{ID: "media.playback", Title: "Media playback", Risk: RiskLow,
+			Tools:       []string{"media_play", "media_queue"},
+			Description: "Control playback on a connected media account."},
+
+		// --- Code (connected-app, e.g. GitHub read-only first) ---
+		{ID: "code.read", Title: "Read code", Risk: RiskReadOnly,
+			Tools:       []string{"code_search", "code_read"},
+			Description: "Search and read code in connected repositories."},
+
 		// --- Calendar (consequential, evidence required) ---
 		{ID: "calendar.read", Title: "Read calendar", Risk: RiskReadOnly,
 			Tools:       []string{"calendar"},

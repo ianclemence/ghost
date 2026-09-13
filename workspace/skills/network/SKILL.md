@@ -1,14 +1,15 @@
 ---
 name: network
-description: Scan the local network to discover connected devices, find IP addresses, and check availability. Invoke when user asks "who is on the WiFi", "scan the network", "find devices on my LAN", "is X connected", "show me active IPs", or "network scan". Requires nmap.
-version: 1.1.0
+description: Scan the local network to discover connected devices, find IP addresses, check availability, and measure internet speed. Invoke when user asks "who is on the WiFi", "scan the network", "find devices on my LAN", "is X connected", "show me active IPs", "network scan", "check my internet speed", "run a speed test", or "bandwidth test". Requires nmap; speed test requires speedtest-cli.
+version: 1.2.0
 author: Ghost
 license: MIT
 metadata:
   ghost:
-    tags: [network, scan, nmap, LAN, WiFi, discovery]
+    tags: [network, scan, nmap, LAN, WiFi, discovery, speedtest, bandwidth]
 prerequisites:
   commands: [nmap]
+  optional_commands: [speedtest-cli]
 ---
 
 # Network Scanner
@@ -174,3 +175,16 @@ sudo netstat -tlnp | grep :8080
 - Windows: Download from https://nmap.org/download.html
 - Linux/Pi: `sudo apt-get install nmap`
 - macOS: Pre-installed, or `brew install nmap`
+
+## Internet Speed Test (merged from speedtest skill)
+
+Measures internet speed using `speedtest-cli` (`pip install speedtest-cli`).
+Note: the module is `speedtest-cli` but the command is `speedtest-cli`.
+
+```bash
+speedtest-cli              # human-readable
+speedtest-cli --simple     # Ping / Download / Upload, 3 lines
+speedtest-cli --json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Ping: {d[\"ping\"]} ms'); print(f'Download: {d[\"download\"]/1_000_000:.2f} Mbit/s'); print(f'Upload: {d[\"upload\"]/1_000_000:.2f} Mbit/s')"
+speedtest-cli --list | head -20   # nearest servers
+speedtest-cli --server 1234       # specific server
+```

@@ -36,7 +36,6 @@ var curatedOptional = map[string]bool{
 	"camera":               true,
 	"process-manager":      true,
 	"ascii-art":            true,
-	"speedtest":            true,
 	"network":              true,
 	"system":               true,
 	"skill-creator":        true,

@@ -52,11 +52,18 @@ function humanizeSkillDesc(desc) {
 
 // skillGroups buckets skills so everyday capabilities come first and dev
 // tools don't drown them. Unknown/custom skills land in More.
+// Core primitives (weather, aqi, currency, crypto, find-nearby) are hidden:
+// they are always-on Ghost verbs, not user choices. Connector skills stay
+// visible because they carry the Connect affordance.
 const SKILL_GROUPS = [
-  { title: 'Everyday', sub: 'Weather, schedule, notes, and daily tasks.', skills: ['weather', 'aqi', 'daily-briefing', 'calendar', 'reminders', 'shopping', 'recipe', 'currency', 'crypto', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'find-nearby', 'travel', 'flight', 'summarize', 'scraper', 'organizer', 'healthcheck'] },
+  { title: 'Everyday', sub: 'Schedule, notes, email, and daily tasks.', skills: ['daily-briefing', 'calendar', 'email', 'reminders', 'shopping', 'recipe', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'travel', 'flight', 'summarize', 'organizer'] },
   { title: 'Smart home & media', sub: 'Devices and content that may need setup.', skills: ['homeassistant', 'camera', 'mobile', 'spotify', 'internet-reading', 'document-convert'] },
-  { title: 'System & developer', sub: 'Machine tools and skill building.', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'skill-creator', 'speedtest', 'ascii-art'] },
+  { title: 'System & developer', sub: 'Machine tools and skill building. Enabling may change this machine.', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'skill-creator', 'ascii-art', 'healthcheck', 'hardware'] },
 ];
+
+// System-gated skills ask for confirmation before enabling. The permission
+// broker still enforces approvals at runtime; this is the UI speed bump.
+const SYSTEM_GATED = { system: 1, network: 1, 'process-manager': 1, mobile: 1, hardware: 1, tmux: 1 };
 
 // skillBadge resolves the honest state. Order:
 // disabled > backend readiness (needs_setup from CheckReadiness) >
@@ -103,7 +110,7 @@ function skillBadge(s, integ) {
 // setupLabel gives the honest action: Connect for account pairings,
 // Needs setup for installable prerequisites.
 function setupLabel(name) {
-  if (name === 'calendar' || name === 'flight' || name === 'homeassistant' || name === 'mobile' || name === 'spotify' || name === 'email') return 'Connect';
+  if (name === 'calendar' || name === 'flight' || name === 'homeassistant' || name === 'mobile' || name === 'spotify' || name === 'email' || name === 'github') return 'Connect';
   return 'Needs setup';
 }
 
@@ -263,8 +270,8 @@ async function openSkill(name) {
   }
 
   actions.innerHTML = '';
-  // When a skill needs credentials (calendar/flight/homeassistant), offer a
-  // direct path to Integrations instead of leaving the user to guess.
+  // When a skill needs credentials (calendar/flight/homeassistant/email),
+  // offer a direct path to Connected Apps instead of leaving the user to guess.
   const needsSetupNames = { calendar: 1, flight: 1, homeassistant: 1, spotify: 1, email: 1 };
   if (needsSetupNames[name]) {
     const cfgBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary' }, 'Configure');
@@ -273,6 +280,10 @@ async function openSkill(name) {
   }
   const toggleBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary' }, enabled ? 'Disable' : 'Enable');
   toggleBtn.addEventListener('click', async () => {
+    if (!enabled && SYSTEM_GATED[name]) {
+      const ok = await GhostUI.confirmModal('Enable ' + name + '?', 'This skill can scan, control, or change this machine. You can disable it anytime. Runtime actions still ask for approval.', 'Enable');
+      if (!ok) return;
+    }
     try { await GhostAPI.proxyPost('/v1/skills/toggle', { name, enabled: !enabled }); GhostUI.toast(enabled ? 'Skill disabled' : 'Skill enabled'); backdrop.remove(); loadSkills(document.getElementById('view')); }
     catch (e) { GhostUI.toast('Couldn’t change it.', 'err'); }
   });

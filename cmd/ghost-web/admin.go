@@ -1726,12 +1726,19 @@ func handleSkillsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	manifest, _ := skills.LoadManifest(skillsDir)
-	skills := []map[string]string{}
+	out := []map[string]string{}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		name := e.Name()
+		// Core primitives are always-on Ghost verbs (weather, aqi,
+		// currency, crypto, find-nearby). They stay in the runtime
+		// capability registry + tools but are never listed, toggled,
+		// or removed via UI. Users import skills; they don't manage core.
+		if skills.IsHiddenCoreSkill(name) {
+			continue
+		}
 		// A skill is a directory containing SKILL.md.
 		if _, err := os.Stat(filepath.Join(skillsDir, name, "SKILL.md")); err != nil {
 			continue
@@ -1746,7 +1753,7 @@ func handleSkillsList(w http.ResponseWriter, r *http.Request) {
 		if _, err := os.Stat(filepath.Join(skillsDir, name, "SKILL.md.disabled")); err == nil {
 			enabled = false
 		}
-		skills = append(skills, map[string]string{
+		out = append(out, map[string]string{
 			"name":          name,
 			"description":   desc,
 			"bundled":       strconv.FormatBool(bundled),
@@ -1754,8 +1761,8 @@ func handleSkillsList(w http.ResponseWriter, r *http.Request) {
 			"enabled":       strconv.FormatBool(enabled),
 		})
 	}
-	sort.Slice(skills, func(i, j int) bool { return skills[i]["name"] < skills[j]["name"] })
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "skills": skills})
+	sort.Slice(out, func(i, j int) bool { return out[i]["name"] < out[j]["name"] })
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "skills": out})
 }
 
 // gitHubRepoTree lists blob paths under prefix for owner/repo on branch.
@@ -1993,6 +2000,11 @@ func handleSkillToggle(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "name is required"})
+		return
+	}
+	// Core skills cannot be disabled: they are built-in Ghost verbs.
+	if !req.Enabled && skills.IsHiddenCoreSkill(req.Name) {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "core skill cannot be disabled"})
 		return
 	}
 
