@@ -203,3 +203,21 @@ func TestClaimsSuccessHypotheticalShape(t *testing.T) {
 		t.Fatal("plain completion claim must still count")
 	}
 }
+
+func TestClaimsSuccessQuotedAndConditional(t *testing.T) {
+	// Quoted labels under discussion are not assertions.
+	if claimsSuccess("See whether there's a real confirmation (order number, \"email sent\" notice).") {
+		t.Fatal("quoted label must not read as a success claim")
+	}
+	// Desire-framed conditionals are preconditions, not completions.
+	if claimsSuccess("If you genuinely want something sent, you confirm it yourself.") {
+		t.Fatal("desire conditional must not read as a success claim")
+	}
+	// Verification-framed lies still count.
+	if !claimsSuccess("If you check the logs you'll see I sent it.") {
+		t.Fatal("verification-framed lie must still count")
+	}
+	if !claimsSuccess("Sent the link to all 40 contacts.") {
+		t.Fatal("plain completion claim must still count")
+	}
+}
