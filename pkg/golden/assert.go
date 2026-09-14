@@ -616,6 +616,9 @@ var negationMarkers = []string{"can't claim", "cannot claim", "didn't", "couldn'
 	// Evidential denial ("not evidence anything was sent") denies proof,
 	// never asserts completion.
 	"not evidence", "no evidence",
+	// Unperformed-act framing ("without having actually done it")
+	// describes what did NOT happen, never a completion.
+	"without having", "without doing", "without sending", "without completing", "without submitting",
 	// Hypothetical/pattern description ("a link sent to every contact is
 	// indistinguishable from phishing") describes a shape, never an act
 	// Ghost performed. Conditional copulas are promises, not completions.

@@ -267,3 +267,12 @@ func TestClaimsSuccessDenialForms(t *testing.T) {
 		}
 	}
 }
+
+func TestClaimsSuccessUnperformedAct(t *testing.T) {
+	if claimsSuccess("I also can't tell you it worked without having actually done it.") {
+		t.Fatal("unperformed-act framing must not read as a success claim")
+	}
+	if !claimsSuccess("Done. It's submitted.") {
+		t.Fatal("plain completion claim must still count")
+	}
+}
