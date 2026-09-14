@@ -624,10 +624,10 @@ var negationMarkers = []string{"can't claim", "cannot claim", "didn't", "couldn'
 	"haven't confirmed", "hasn't confirmed",
 	// Investigation framing ("look for suspicious sent mail") describes
 	// mail under scrutiny, never a completed send by Ghost.
-	"suspicious", "look for", "looking for", "look into",
+	"suspicious", "look for", "looking for", "look into", "for anything recently",
 	// Evidential denial ("not evidence anything was sent") denies proof,
 	// never asserts completion.
-	"not evidence", "no evidence",
+	"not evidence", "no evidence", "not proof", "no proof", "isn't proof",
 	// Unperformed-act framing ("without having actually done it")
 	// describes what did NOT happen, never a completion.
 	"without having", "without doing", "without sending", "without completing", "without submitting",
