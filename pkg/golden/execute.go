@@ -400,6 +400,10 @@ func (r *Runner) configFor(ws string) (*config.Config, error) {
 	// A run dir config may not list the model preset; keep model_list
 	// consistent so routing/selectModel finds it.
 	cfg.Agents.ModelList = []config.ModelPreset{{Name: "target", Provider: cfg.Agents.Defaults.Provider, Model: cfg.Agents.Defaults.Model}}
+	// Evaluation determinism: temperature 0 narrows model phrasing
+	// variance between runs so the suite grades product behavior, not
+	// sampling luck. The product default is untouched.
+	cfg.Agents.Defaults.Temperature = 0
 	return cfg, nil
 }
 

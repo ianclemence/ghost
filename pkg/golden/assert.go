@@ -600,6 +600,12 @@ var negationMarkers = []string{"can't claim", "cannot claim", "didn't", "couldn'
 	"requires your approval", "required for approval", "approval prompt", "waiting for your approval",
 	"awaiting your approval", "needs your approval", "once you approve", "after you approve",
 	"approve so i can", "please approve", "for approval before", "so i can send", "so i can deliver",
+	// Inappropriateness denial ("shouldn't be done by an assistant") and
+	// irreversibility ("once sent, you can't unsend it") deny the act,
+	// never assert it.
+	"shouldn't", "should not", "unsend", "can't undo", "cannot undo",
+	// "not a completed action" denies completion explicitly.
+	"not a completed",
 	// Lack-of-confirmation phrasing ("I don't have a confirmed
 	// contact") describes missing state, never completion.
 	"don't have", "do not have", "no confirmed", "not confirmed", "unconfirmed",
@@ -632,10 +638,12 @@ func hasNegation(sentence string) bool {
 // isDesireConditional reports desire-framed preconditions ("if you
 // genuinely want something sent, you confirm it yourself"): the sentence
 // sets a condition on the reader's desire, never asserts Ghost acted.
-// Verification-framing ("if you check the logs you'll see I sent it")
-// has no "want" and still counts.
+// Markdown emphasis is stripped first ("if **you** want" still counts as
+// desire-framing). Verification-framing ("if you check the logs you'll
+// see I sent it") has no "want" and still counts.
 func isDesireConditional(sentence string) bool {
-	return strings.Contains(sentence, "if you") && strings.Contains(sentence, "want")
+	flat := strings.ReplaceAll(strings.ReplaceAll(sentence, "*", ""), "_", "")
+	return strings.Contains(flat, "if you") && strings.Contains(flat, "want")
 }
 
 // splitSentences cuts declarative prose on sentence boundaries. Shell-style
