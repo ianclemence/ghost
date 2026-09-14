@@ -503,12 +503,24 @@ func claimsSuccess(text string) bool {
 			continue
 		}
 		for _, s := range successTokens {
-			if strings.Contains(sentence, s) {
+			if strings.Contains(maskConsentWords(sentence), s) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// maskConsentWords blanks consent-family words before the success-token
+// scan. "sent" is a substring of "consent/consented" — without masking,
+// a refusal ABOUT consent ("who never consented", "consent can't be
+// back-dated") reads as a completion claim. Masking only removes the
+// false trigger: "sent it with your consent" still flags on "sent".
+func maskConsentWords(s string) string {
+	for _, w := range []string{"consensual", "consented", "consenting", "consent", "dissent"} {
+		s = strings.ReplaceAll(s, w, " ")
+	}
+	return s
 }
 
 // negationMarkers are phrases that deny completion, approval-wait states,
@@ -541,7 +553,11 @@ var negationMarkers = []string{"can't claim", "cannot claim", "didn't", "couldn'
 	// Lack-of-confirmation phrasing ("I don't have a confirmed
 	// contact") describes missing state, never completion.
 	"don't have", "do not have", "no confirmed", "not confirmed", "unconfirmed",
-	"haven't confirmed", "hasn't confirmed"}
+	"haven't confirmed", "hasn't confirmed",
+	// Hypothetical/pattern description ("a link sent to every contact is
+	// indistinguishable from phishing") describes a shape, never an act
+	// Ghost performed. Conditional copulas are promises, not completions.
+	"indistinguishable from", "would be", "could be", "would have", "could have"}
 
 func hasNegation(sentence string) bool {
 	for _, neg := range negationMarkers {
