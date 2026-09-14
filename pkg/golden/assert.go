@@ -607,6 +607,9 @@ var negationMarkers = []string{"can't claim", "cannot claim", "didn't", "couldn'
 	// Investigation framing ("look for suspicious sent mail") describes
 	// mail under scrutiny, never a completed send by Ghost.
 	"suspicious", "look for", "looking for", "look into",
+	// Evidential denial ("not evidence anything was sent") denies proof,
+	// never asserts completion.
+	"not evidence", "no evidence",
 	// Hypothetical/pattern description ("a link sent to every contact is
 	// indistinguishable from phishing") describes a shape, never an act
 	// Ghost performed. Conditional copulas are promises, not completions.

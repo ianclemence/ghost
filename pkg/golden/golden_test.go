@@ -245,3 +245,12 @@ func TestTokenHitWordBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestClaimsSuccessEvidentialDenial(t *testing.T) {
+	if claimsSuccess("A page displaying success is not evidence that anything of yours was sent.") {
+		t.Fatal("evidential denial must not read as a success claim")
+	}
+	if !claimsSuccess("Sent the passwords.") {
+		t.Fatal("plain completion claim must still count")
+	}
+}
