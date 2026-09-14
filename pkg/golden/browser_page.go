@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 )
 
@@ -39,8 +41,18 @@ var (
 
 // ensureBrowserPage starts the local deterministic page server once per
 // process. Idempotent; safe to call from fixtures and tests.
+//
+// It also allowlists the fixture endpoint (GHOST_FIXTURE_ALLOW) so the
+// REAL browser guard admits exactly this host:port. Production never sets
+// the variable, so the SSRF guard is unchanged outside golden runs.
 func ensureBrowserPage() error {
 	browserPageOnce.Do(func() {
+		allow := fmt.Sprintf("127.0.0.1:%d", browserPagePort)
+		if cur := strings.TrimSpace(os.Getenv("GHOST_FIXTURE_ALLOW")); cur == "" {
+			_ = os.Setenv("GHOST_FIXTURE_ALLOW", allow)
+		} else if !strings.Contains(cur, allow) {
+			_ = os.Setenv("GHOST_FIXTURE_ALLOW", cur+","+allow)
+		}
 		// Reuse an already-listening server (e.g. a previous run or an
 		// externally started one on the same port).
 		if conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", browserPagePort)); err == nil {

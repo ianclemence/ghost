@@ -25,11 +25,52 @@ import (
 
 const routinePendingCapability = "routine.create"
 
+// isStandingGoalText reports explicit standing-goal language. Such turns
+// route to the goal tool (durable intent + progress) via the model, never
+// to the routine fast-path — even when they contain schedule words like
+// "every evening" that would otherwise parse as a reminder.
+func isStandingGoalText(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	if strings.Contains(lower, "standing goal") {
+		return true
+	}
+	for _, prefix := range []string{"set a goal", "set my goal", "create a goal", "add a goal", "track a goal", "my goal is"} {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// isStateQuestion reports replies asking about existing state rather than
+// supplying new content: trailing "?", leading interrogatives, or
+// "what are my ..." recall phrasing. Such replies must not become routine
+// task text.
+func isStateQuestion(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if strings.HasSuffix(trimmed, "?") {
+		return true
+	}
+	lower := strings.ToLower(trimmed)
+	for _, q := range []string{"what ", "which ", "when ", "where ", "who ", "how ", "list ", "show me ", "do i have ", "have i "} {
+		if strings.HasPrefix(lower, q) {
+			return true
+		}
+	}
+	return false
+}
+
 // tryRoutineTurn handles routine intents deterministically. Returns
 // (answer, handled).
 func (al *AgentLoop) tryRoutineTurn(msg bus.InboundMessage) (string, bool) {
 	text := strings.TrimSpace(msg.Content)
 	if text == "" {
+		return "", false
+	}
+	// Standing goals belong to the goal tool, not the routine fast-path:
+	// "set a standing goal to X every evening" is a durable intent with
+	// progress tracking, not a reminder. Let it fall through to the model.
+	if isStandingGoalText(text) {
 		return "", false
 	}
 	session := msg.SessionKey
@@ -45,8 +86,11 @@ func (al *AgentLoop) tryRoutineTurn(msg bus.InboundMessage) (string, bool) {
 			store.Cancel(pending.ID)
 			return "No problem — I didn't schedule anything.", true
 		default:
-			// Awaiting-task proposal: the reply IS the task.
-			if pending.MissingField == "task" && len(text) > 2 {
+			// Awaiting-task proposal: the reply IS the task — unless it
+			// is a question about existing state ("what are my goals?"),
+			// which must fall through to the model instead of becoming
+			// a garbled reminder ("remind you to What are my goals?").
+			if pending.MissingField == "task" && len(text) > 2 && !isStateQuestion(text) {
 				return al.proposeRoutine(store, pending, msg, text)
 			}
 			return "", false

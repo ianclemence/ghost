@@ -40,6 +40,32 @@ func TestURLSafetyAllowPrivate(t *testing.T) {
 	}
 }
 
+func TestURLSafetyFixtureAllowlist(t *testing.T) {
+	safety := NewURLSafety(URLSafetyConfig{AllowPrivateURLs: false})
+	t.Setenv("GHOST_FIXTURE_ALLOW", "127.0.0.1:8931")
+
+	if ok, _ := safety.IsSafe("http://127.0.0.1:8931/"); !ok {
+		t.Error("exact fixture host:port must be allowed")
+	}
+	if ok, _ := safety.IsSafe("http://127.0.0.1:9999/"); ok {
+		t.Error("wrong port must stay blocked")
+	}
+	if ok, _ := safety.IsSafe("http://127.0.0.1:8080/"); ok {
+		t.Error("unlisted loopback must stay blocked")
+	}
+	if ok, _ := safety.IsSafe("https://169.254.169.254/metadata"); ok {
+		t.Error("metadata endpoint must stay blocked")
+	}
+}
+
+func TestURLSafetyFixtureUnsetDenies(t *testing.T) {
+	safety := NewURLSafety(URLSafetyConfig{AllowPrivateURLs: false})
+	t.Setenv("GHOST_FIXTURE_ALLOW", "")
+	if ok, _ := safety.IsSafe("http://127.0.0.1:8931/"); ok {
+		t.Error("fixture URL must be blocked without the allowlist env")
+	}
+}
+
 func TestDetectSecretsInURL(t *testing.T) {
 	tests := []struct {
 		url      string

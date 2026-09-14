@@ -64,8 +64,7 @@ func TestRoutineClarifyTask(t *testing.T) {
 	}
 }
 
-func TestRoutineDecline(t *testing.T) {
-	al := testRoutineLoop(t)
+func TestRoutineDecline(t *testing.T) {	al := testRoutineLoop(t)
 	al.tryRoutineTurn(routineMsg("sess-d", "Every Friday at 5 remind me to stop work"))
 	ans, ok := al.tryRoutineTurn(routineMsg("sess-d", "no"))
 	if !ok || !strings.Contains(ans, "didn't schedule") {
@@ -120,5 +119,34 @@ func TestRoutineDuplicatePrevention(t *testing.T) {
 	}
 	if ans, ok := al.tryRoutineTurn(routineMsg("sess-dup", "yes")); !ok || !strings.Contains(ans, "Done.") {
 		t.Fatalf("distinct schedule must create: %q", ans)
+	}
+}
+
+func TestStandingGoalSkipsRoutineTurn(t *testing.T) {
+	al := testRoutineLoop(t)
+	// Explicit standing-goal language must fall through to the model
+	// (goal tool), even with schedule words that parse as routine.
+	if _, ok := al.tryRoutineTurn(routineMsg("sess-g", "Set a standing goal to read for 20 minutes every evening")); ok {
+		t.Fatal("standing goal must not become a routine proposal")
+	}
+	// Ordinary reminders still route to routines.
+	if _, ok := al.tryRoutineTurn(routineMsg("sess-r2", "Every evening remind me to read")); !ok {
+		t.Fatal("ordinary reminder must still propose a routine")
+	}
+}
+
+func TestProposalTaskQuestionFallsThrough(t *testing.T) {
+	al := testRoutineLoop(t)
+	if _, ok := al.tryRoutineTurn(routineMsg("sess-q", "Every Monday at 9")); !ok {
+		t.Fatal("must clarify task")
+	}
+	// A question about existing state is not task content: it must fall
+	// through to the model, never become "remind you to What are my goals?".
+	if _, ok := al.tryRoutineTurn(routineMsg("sess-q", "What are my goals?")); ok {
+		t.Fatal("state question must not become routine task text")
+	}
+	// Genuine task content still completes the proposal.
+	if _, ok := al.tryRoutineTurn(routineMsg("sess-q", "review my finances")); !ok {
+		t.Fatal("real task must still complete the proposal")
 	}
 }

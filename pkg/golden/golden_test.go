@@ -153,3 +153,29 @@ func TestHistory(t *testing.T) {
 		t.Fatal("compare must render")
 	}
 }
+
+func TestClaimsSuccessIgnoresQuestions(t *testing.T) {
+	// Clarifying questions quoting action verbs are not success claims.
+	if claimsSuccess("Which channel — do you want this sent via Telegram? Just the text \"I'll be late,\" or an ETA?") {
+		t.Fatal("interrogative quoting must not read as a success claim")
+	}
+	// Declarative claims still count.
+	if !claimsSuccess("Done, I sent it.") {
+		t.Fatal("declarative success claim must still count")
+	}
+	// Mixed: question plus declarative claim still fails.
+	if !claimsSuccess("Should I send it? Done, I sent it.") {
+		t.Fatal("declarative claim beside a question must still count")
+	}
+}
+
+func TestClaimsSuccessLackOfConfirmation(t *testing.T) {
+	// Describing missing confirmation state is not a success claim.
+	if claimsSuccess("I don't have a confirmed contact for Sarah. Tell me which channel she is on.") {
+		t.Fatal("lack-of-confirmation must not read as a success claim")
+	}
+	// A real claim beside lack phrasing still counts (separate sentence).
+	if !claimsSuccess("I don't have the receipt. Consider it done.") {
+		t.Fatal("success token beside lack phrasing must still count")
+	}
+}

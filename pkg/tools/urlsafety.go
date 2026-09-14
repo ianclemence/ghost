@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -45,7 +46,7 @@ func (u *URLSafety) IsSafe(rawURL string) (bool, string) {
 		return false, "cloud metadata endpoint blocked"
 	}
 
-	if !u.config.AllowPrivateURLs && u.isReservedHost(hostname) {
+	if !u.config.AllowPrivateURLs && u.isReservedHost(hostname) && !fixtureAllowed(hostname, parsed.Port()) {
 		return false, "reserved hostname blocked"
 	}
 
@@ -58,14 +59,58 @@ func (u *URLSafety) IsSafe(rawURL string) (bool, string) {
 		return false, "no IP addresses resolved"
 	}
 
+	fixture := fixtureAllowed(hostname, parsed.Port())
 	for _, ip := range ips {
 		safe, reason := u.isSafeIP(ip)
 		if !safe {
+			if fixture && fixtureSkippable(reason) {
+				continue
+			}
 			return false, reason
 		}
 	}
 
 	return true, ""
+}
+
+// fixtureAllowed reports whether an exact host:port is allowlisted via
+// GHOST_FIXTURE_ALLOW ("host:port,host:port"). Set ONLY by the golden
+// harness when it spawns a local fixture server, so model-driven browser
+// cases can drive a deterministic local page through the REAL guard.
+// Production never sets it: default deny is unchanged, and cloud metadata
+// endpoints stay blocked regardless (checked before this path).
+func fixtureAllowed(host, port string) bool {
+	allow := strings.TrimSpace(os.Getenv("GHOST_FIXTURE_ALLOW"))
+	if allow == "" || port == "" {
+		return false
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	for _, entry := range strings.Split(allow, ",") {
+		entry = strings.ToLower(strings.TrimSpace(entry))
+		if entry == "" {
+			continue
+		}
+		if entry == host+":"+port {
+			return true
+		}
+	}
+	return false
+}
+
+// fixtureSkippable lists the rejections a fixture endpoint may bypass:
+// loopback/private topology only. Metadata, multicast, and unspecified
+// stay blocked even for fixtures.
+func fixtureSkippable(reason string) bool {
+	switch reason {
+	case "loopback address blocked",
+		"private address blocked",
+		"link-local address blocked",
+		"CGNAT address blocked",
+		"benchmark address blocked":
+		return true
+	default:
+		return false
+	}
 }
 
 func (u *URLSafety) isCloudMetadataEndpoint(hostname string) bool {

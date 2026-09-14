@@ -141,6 +141,11 @@ type Expect struct {
 	// for a specific tool (e.g. a second observation snapshot).
 	ExpectedToolCalls      []string
 	ExpectedToolCallRepeat map[string]int
+	// ExpectedToolCallsAny: each group needs at least one successful
+	// governed execution among its alternatives (e.g. type OR fill for
+	// text entry — the contract is observe→mutate→observe, not which
+	// keystroke tool the model prefers).
+	ExpectedToolCallsAny [][]string
 	// RequiredNoEvents: none of these types may appear.
 	NoEvents []string
 	// ClarifyResumedExactlyOnce: clarification ask -> resume produced
