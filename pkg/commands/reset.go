@@ -254,12 +254,11 @@ func clearMemory(ws string, rt *Runtime) error {
 	if rt != nil && rt.RAG != nil {
 		rt.RAG.Reset()
 	}
-	// Files: memory/MEMORY.md, memory/YYYYMM/*.md, knowledge, data
+	// Files: memory/MEMORY.md, memory/YYYY-MM-DD.md, knowledge, data
 	memDir := filepath.Join(ws, "memory")
 	if _, err := os.Stat(memDir); err == nil {
 		_ = os.RemoveAll(memDir)
 		_ = os.MkdirAll(memDir, 0755)
-		_ = os.MkdirAll(filepath.Join(memDir, "202609"), 0755)
 		_ = os.WriteFile(filepath.Join(memDir, "MEMORY.md"), []byte("# Memory\n\n"), 0644)
 	}
 	// Keep knowledge dir but clear daily notes already handled

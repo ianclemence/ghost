@@ -20,7 +20,7 @@ func TestFirstPartyCatalog(t *testing.T) {
 		}
 		seen[c.ID] = true
 	}
-	for _, id := range []string{"gmail", "google-calendar", "outlook", "home-assistant", "spotify", "github"} {
+	for _, id := range []string{"gmail", "google-calendar", "outlook", "home-assistant", "spotify", "github", "notion"} {
 		if !seen[id] {
 			t.Fatalf("missing first-party connector %s", id)
 		}

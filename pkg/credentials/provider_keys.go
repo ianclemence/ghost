@@ -96,6 +96,34 @@ func OpenWeatherKey() string {
 	return strings.TrimSpace(os.Getenv("OPENWEATHER_API_KEY"))
 }
 
+// GithubKey returns the GitHub PAT (secrets-first, env fallback).
+// Trust-user model: Ghost documents read-only scopes but does not enforce
+// them — the token's own scopes are the authority.
+func GithubKey() string {
+	if v := providerKeyFromDisk("github"); v != "" {
+		return v
+	}
+	return strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
+}
+
+// GithubConfigured reports whether GitHub code search can run.
+func GithubConfigured() bool {
+	return GithubKey() != ""
+}
+
+// NotionKey returns the Notion integration token.
+func NotionKey() string {
+	if v := providerKeyFromDisk("notion"); v != "" {
+		return v
+	}
+	return strings.TrimSpace(os.Getenv("NOTION_TOKEN"))
+}
+
+// NotionConfigured reports whether Notion docs search can run.
+func NotionConfigured() bool {
+	return NotionKey() != ""
+}
+
 // HassEndpoint returns the Home Assistant URL and token (empty when not
 // connected — never fake).
 func HassEndpoint() (url, token string) {

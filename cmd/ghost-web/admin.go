@@ -2846,6 +2846,9 @@ func handleIntegrationsStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cal := skills.CalendarCheck()
+	gm := skills.GmailWebStatus()
+	om := skills.OutlookWebStatus()
+	sp := skills.SpotifyWebStatus()
 	flightReady := credentials.FlightConfigured()
 	hassReady := credentials.HassConfigured()
 	camReady := skills.CameraCheck()
@@ -2857,6 +2860,32 @@ func handleIntegrationsStatus(w http.ResponseWriter, r *http.Request) {
 				"connected":  cal.Connected,
 				"message":    cal.Message,
 				"needsSetup": cal.NeedsSetup,
+			},
+			"gmail": map[string]interface{}{
+				"status":     string(gm.Status),
+				"connected":  gm.Connected,
+				"message":    gm.Message,
+				"needsSetup": gm.NeedsSetup,
+			},
+			"outlook": map[string]interface{}{
+				"status":     string(om.Status),
+				"connected":  om.Connected,
+				"message":    om.Message,
+				"needsSetup": om.NeedsSetup,
+			},
+			"spotify": map[string]interface{}{
+				"status":     string(sp.Status),
+				"connected":  sp.Connected,
+				"message":    sp.Message,
+				"needsSetup": sp.NeedsSetup,
+			},
+			"github": map[string]interface{}{
+				"configured": credentials.GithubConfigured(),
+				"status":     map[bool]string{true: "ready", false: "needs_configuration"}[credentials.GithubConfigured()],
+			},
+			"notion": map[string]interface{}{
+				"configured": credentials.NotionConfigured(),
+				"status":     map[bool]string{true: "ready", false: "needs_configuration"}[credentials.NotionConfigured()],
 			},
 			"flight": map[string]interface{}{
 				"configured": flightReady,
@@ -2917,6 +2946,146 @@ func handleIntegrationsCalendarDisconnect(w http.ResponseWriter, r *http.Request
 	}
 	if err := skills.CalendarDisconnect(); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not disconnect calendar"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "needs_setup"})
+}
+
+func handleIntegrationsGmailDisconnect(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := skills.GmailWebDisconnect(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not disconnect Gmail"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "needs_setup"})
+}
+
+func handleIntegrationsOutlookDisconnect(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := skills.OutlookWebDisconnect(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not disconnect Outlook"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "needs_setup"})
+}
+
+func handleIntegrationsSpotifyDisconnect(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := skills.SpotifyWebDisconnect(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "could not disconnect Spotify"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "needs_setup"})
+}
+
+// handleIntegrationsGithubSave stores a GitHub PAT. Trust-user model: Ghost
+// documents read-only scopes; the token's own scopes govern. Blank keeps
+// the saved value.
+func handleIntegrationsGithubSave(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+	req.Token = strings.TrimSpace(req.Token)
+	if req.Token == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "token is required"})
+		return
+	}
+	vault := credentials.New(filepath.Dir(fb.ConfigPath))
+	if err := vault.Store("github", req.Token); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready"})
+}
+
+// handleIntegrationsGithubDisconnect removes the stored GitHub PAT.
+func handleIntegrationsGithubDisconnect(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	vault := credentials.New(filepath.Dir(fb.ConfigPath))
+	if err := vault.Disconnect("github"); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "needs_setup"})
+}
+
+// handleIntegrationsNotionSave stores a Notion integration token. Blank
+// keeps the saved value.
+func handleIntegrationsNotionSave(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "invalid request"})
+		return
+	}
+	req.Token = strings.TrimSpace(req.Token)
+	if req.Token == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "token is required"})
+		return
+	}
+	vault := credentials.New(filepath.Dir(fb.ConfigPath))
+	if err := vault.Store("notion", req.Token); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready"})
+}
+
+// handleIntegrationsNotionDisconnect removes the stored Notion token.
+func handleIntegrationsNotionDisconnect(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	vault := credentials.New(filepath.Dir(fb.ConfigPath))
+	if err := vault.Disconnect("notion"); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "needs_setup"})

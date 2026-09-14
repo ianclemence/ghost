@@ -51,8 +51,19 @@ var FreeConsequentialTools = []FreeTool{
 	// The table entry governs it for paths that cannot see the action
 	// (e.g. subagents) at the conservative consequential level.
 	{Name: "calendar", Capability: "calendar.modify", Risk: RiskConsequential},
+	// Email sending transmits on the user's behalf. Like calendar, reads
+	// stay free; only the send verb is governed here.
+	{Name: "email_send", Capability: "email.send", Risk: RiskConsequential},
+	// Media playback controls an external device/account. Low-risk like
+	// scheduling: auto-authorized in auto/full modes, asked otherwise.
+	{Name: "media_play", Capability: "media.playback", Risk: RiskLow},
 	// Durable scheduling creates future external side effects.
 	{Name: "schedule", Capability: "schedule.create", Risk: RiskLow},
+	// Standing goals are local intent state; what they trigger is governed.
+	{Name: "goal", Capability: "goal.manage", Risk: RiskLow},
+	// Browser submit declares purchase-class intent: quote-bound approval
+	// plus receipt evidence. Always broker-gated, never auto-authorized.
+	{Name: "browser_submit", Capability: "browser.transact", Risk: RiskHighImpact},
 	// Artifact publishing writes only Ghost's own validated handoff store
 	// (existence, bounds, and estate membership are enforced by the
 	// artifacts package, not the model). Same class as scheduling.

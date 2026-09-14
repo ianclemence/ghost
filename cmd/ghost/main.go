@@ -1032,6 +1032,16 @@ func gatewayCmd() {
 	heartbeatService.SetScheduler(scheduledService)
 	heartbeatService.SetBus(msgBus)
 	heartbeatService.SetHandler(func(prompt, channel, chatID string) *tools.ToolResult {
+		// Quiet hours (PROACTIVE_PREFERENCES.md, user timezone): skip the
+		// model turn, but still poll signals so urgent items break through
+		// via the quiet-aware deliverNotice. Evening reflection is a
+		// silent write and runs even when quiet.
+		now := time.Now()
+		agentLoop.WriteEveningReflection(now)
+		if agentLoop.ProactiveQuiet(now) {
+			agentLoop.PollProactive()
+			return tools.SilentResult("Heartbeat quiet hours")
+		}
 		// Proactive signals first: gated, reason-carrying notices go out
 		// directly (no LLM round-trip); the heartbeat chatter below is
 		// independent. PollProactive is idempotent — repeats are no-ops.

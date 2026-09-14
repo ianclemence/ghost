@@ -282,6 +282,8 @@ func buildDefault() *Registry {
 			Description: "Fetch a web page."},
 		{ID: "repository.search", Title: "Search repository", Risk: RiskReadOnly,
 			Description: "Search a connected source repository."},
+		{ID: "docs", Title: "Search docs", Risk: RiskReadOnly, Tools: []string{"docs_search"},
+			Description: "Search documents in a connected workspace."},
 		{ID: "weather.get", Title: "Weather", Risk: RiskReadOnly, Tools: []string{"weather_now"},
 			Description: "Current weather for a location."},
 		{ID: "aqi.get", Title: "Air quality", Risk: RiskReadOnly, Tools: []string{"aqi_now"},
@@ -338,8 +340,11 @@ func buildDefault() *Registry {
 			Tools:       []string{"browser_navigate", "browser_snapshot"},
 			Description: "Observe web pages."},
 		{ID: "browser.control", Title: "Browse (control)", Risk: RiskConsequential, Evidence: EvidenceAction,
-			Tools:       []string{"browser_click", "browser_type", "browser_press"},
+			Tools:       []string{"browser_click", "browser_type", "browser_fill", "browser_press"},
 			Description: "Interact with web pages."},
+		{ID: "browser.transact", Title: "Transact (submit orders/forms)", Risk: RiskHighImpact, Evidence: EvidenceAction,
+			Tools:       []string{"browser_submit"},
+			Description: "Submit purchase-class forms. Requires declared merchant + amount bound to the page quote, broker approval, and receipt evidence."},
 		{ID: "computer.inspect", Title: "Inspect screen", Risk: RiskReadOnly,
 			Tools:       []string{"computer_inspect_ui", "computer_screenshot"},
 			Description: "Observe the computer screen."},
@@ -370,6 +375,9 @@ func buildDefault() *Registry {
 		{ID: "routine.cancel", Title: "Cancel routine", Risk: RiskLow,
 			Tools:       []string{"schedule"},
 			Description: "Cancel a scheduled or recurring action."},
+		{ID: "goal.manage", Title: "Manage standing goals", Risk: RiskLow,
+			Tools:       []string{"goal"},
+			Description: "Create, pause, resume, or complete standing goals."},
 
 		// --- Execution primitives (infrastructure, high impact) ---
 		{ID: "exec.shell", Title: "Shell command", Risk: RiskHighImpact, Tools: []string{"exec"},
@@ -386,6 +394,18 @@ func buildDefault() *Registry {
 			Description: "Create, patch, or remove skills."},
 		{ID: "mcp.execute", Title: "External tool", Risk: RiskHighImpact,
 			Description: "Execute a third-party MCP tool."},
+
+		// --- Wallet (design-only: no payment partner integrated) ---
+		// wallet.pay declares the future payment shape so approvals, cards,
+		// and evidence are designed once: single-use virtual card bound to
+		// merchant + amount + expiry, per-purchase human approval, receipt
+		// evidence before any success claim. Tools is intentionally empty —
+		// with no signed partner there is no execution path, and Ghost must
+		// refuse rather than improvise one. Until a partner lands, money
+		// moves only via browser_submit preparation with a human paying.
+		{ID: "wallet.pay", Title: "Pay (wallet)", Risk: RiskHighImpact, Evidence: EvidenceAction,
+			Tools:       []string{},
+			Description: "Pay via single-use virtual card. No partner: always unavailable."},
 	}
 	for _, s := range specs {
 		r.Register(s)

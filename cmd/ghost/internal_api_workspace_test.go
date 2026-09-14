@@ -11,7 +11,7 @@ func TestWorkspaceFileProtected(t *testing.T) {
 		{"data/captures.md", false},
 		{"tmp/browser/x.png", false},
 		{"memory/MEMORY.md", false},
-		{"memory/202609/20260903.md", false},
+		{"memory/2026-09-03.md", false},
 		{"knowledge/notes/ref.md", false},
 		{"personal-context", true},
 		{"personal-context/entries.jsonl", true},

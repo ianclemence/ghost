@@ -56,9 +56,9 @@ function humanizeSkillDesc(desc) {
 // they are always-on Ghost verbs, not user choices. Connector skills stay
 // visible because they carry the Connect affordance.
 const SKILL_GROUPS = [
-  { title: 'Everyday', sub: 'Schedule, notes, email, and daily tasks.', skills: ['daily-briefing', 'calendar', 'email', 'reminders', 'shopping', 'recipe', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'travel', 'flight', 'summarize', 'organizer'] },
+  { title: 'Everyday', sub: 'Schedule, notes, email, and daily tasks.', skills: ['daily-briefing', 'calendar', 'email', 'notion', 'reminders', 'shopping', 'recipe', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'travel', 'flight', 'summarize', 'organizer'] },
   { title: 'Smart home & media', sub: 'Devices and content that may need setup.', skills: ['homeassistant', 'camera', 'mobile', 'spotify', 'internet-reading', 'document-convert'] },
-  { title: 'System & developer', sub: 'Machine tools and skill building. Enabling may change this machine.', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'skill-creator', 'ascii-art', 'healthcheck', 'hardware'] },
+  { title: 'System & developer', sub: 'Machine tools and skill building. Enabling may change this machine.', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'github', 'skill-creator', 'ascii-art', 'healthcheck', 'hardware'] },
 ];
 
 // System-gated skills ask for confirmation before enabling. The permission
@@ -97,6 +97,22 @@ function skillBadge(s, integ) {
       if (!integ.homeassistant.configured) return { state: 'warn', label: 'Connect' };
       return { state: 'ready', label: '' };
     }
+    if (s.name === 'email' && (integ.gmail || integ.outlook)) {
+      if ((integ.gmail && integ.gmail.connected) || (integ.outlook && integ.outlook.connected)) return { state: 'ready', label: '' };
+      return { state: 'warn', label: 'Connect' };
+    }
+    if (s.name === 'spotify' && integ.spotify) {
+      if (!integ.spotify.connected) return { state: 'warn', label: 'Connect' };
+      return { state: 'ready', label: '' };
+    }
+    if (s.name === 'github' && integ.github) {
+      if (!integ.github.configured) return { state: 'warn', label: 'Connect' };
+      return { state: 'ready', label: '' };
+    }
+    if (s.name === 'notion' && integ.notion) {
+      if (!integ.notion.configured) return { state: 'warn', label: 'Connect' };
+      return { state: 'ready', label: '' };
+    }
     if (s.name === 'camera' && integ.camera) {
       if (!integ.camera.available) return { state: 'warn', label: 'No camera' };
       return { state: 'ready', label: '' };
@@ -110,7 +126,7 @@ function skillBadge(s, integ) {
 // setupLabel gives the honest action: Connect for account pairings,
 // Needs setup for installable prerequisites.
 function setupLabel(name) {
-  if (name === 'calendar' || name === 'flight' || name === 'homeassistant' || name === 'mobile' || name === 'spotify' || name === 'email' || name === 'github') return 'Connect';
+  if (name === 'calendar' || name === 'flight' || name === 'homeassistant' || name === 'mobile' || name === 'spotify' || name === 'email' || name === 'github' || name === 'notion') return 'Connect';
   return 'Needs setup';
 }
 

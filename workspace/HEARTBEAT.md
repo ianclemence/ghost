@@ -41,7 +41,7 @@ Output constraints:
 ## Evening Reflection (22:00, device timezone)
 
 - [ ] Summarize significant interactions from the day.
-- [ ] Append one human-titled entry to the daily memory note (timestamped, e.g. `## 22:04 — Evening reflection`). Never use raw `YYYYMM/filename` paths as user-facing titles.
+- [ ] Append one human-titled entry to the daily memory note (timestamped, e.g. `## 22:04 — Evening reflection`). Never use raw file paths as user-facing titles (daily notes live at `memory/YYYY-MM-DD.md`).
 - [ ] Update `knowledge/self/context.md` with current topic and session outcome.
 - [ ] Leave `state/` to the runtime's own pruning; report anything that looks stale instead of moving files.
 - [ ] Groom `knowledge/notes/` overflow: archive stale reference notes (>90 days untouched) so briefings never cite dead context.

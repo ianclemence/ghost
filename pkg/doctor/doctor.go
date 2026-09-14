@@ -102,6 +102,11 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkBrowser,
 		d.checkSkillDependencies,
 		d.checkCalendarOAuth,
+		d.checkGmailOAuth,
+		d.checkOutlookOAuth,
+		d.checkSpotifyOAuth,
+		d.checkGithubToken,
+		d.checkNotionToken,
 	}
 	results := make([]CheckResult, 0, len(checks))
 	for _, check := range checks {
@@ -110,11 +115,48 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 	// A disabled calendar skill has nothing to diagnose: drop its check from
 	// the aggregate instead of nagging the owner about sign-in for a
 	// capability that is off. (checkCalendarOAuth itself stays truthful for
-	// direct/programmatic callers.)
+	// direct/programmatic callers.) Same for email (gmail/outlook) and
+	// spotify skills.
 	if !d.calendarSkillActive() {
 		kept := results[:0]
 		for _, r := range results {
 			if r.Name != "calendar_oauth" {
+				kept = append(kept, r)
+			}
+		}
+		results = kept
+	}
+	if !d.skillActive("email") {
+		kept := results[:0]
+		for _, r := range results {
+			if r.Name != "gmail_oauth" && r.Name != "outlook_oauth" {
+				kept = append(kept, r)
+			}
+		}
+		results = kept
+	}
+	if !d.skillActive("spotify") {
+		kept := results[:0]
+		for _, r := range results {
+			if r.Name != "spotify_oauth" {
+				kept = append(kept, r)
+			}
+		}
+		results = kept
+	}
+	if !d.skillActive("github") {
+		kept := results[:0]
+		for _, r := range results {
+			if r.Name != "github_token" {
+				kept = append(kept, r)
+			}
+		}
+		results = kept
+	}
+	if !d.skillActive("notion") {
+		kept := results[:0]
+		for _, r := range results {
+			if r.Name != "notion_token" {
 				kept = append(kept, r)
 			}
 		}

@@ -14,9 +14,9 @@ const GhostSemantic = (() => {
 
   // ── Memory / journal note classification ─────────────────────────────────
   // Memory files on disk follow internal conventions that must not reach the
-  // UI: YYYYMM/YYYYMMDD.md (daily notes), -briefing.md (briefings), MEMORY.md.
+  // UI: YYYY-MM-DD.md (daily notes, Muse layout), -briefing.md (briefings), MEMORY.md.
 
-  const DATE_FILE_RE = /(?:^|[\/\\])(\d{6})\/(\d{8})(?:-([a-z0-9-]+))?\.md$/i;
+  const DATE_FILE_RE = /(?:^|[\/\\])(?:(\d{6})\/(\d{8})|(\d{4}-\d{2}-\d{2}))(?:-([a-z0-9-]+))?\.md$/i;
   const BARE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
   const MEMORY_FILE_RE = /^MEMORY\.md$/i;
   const BRIEFING_RE = /briefing/i;
@@ -58,8 +58,9 @@ const GhostSemantic = (() => {
 
     const m = name.match(DATE_FILE_RE);
     if (m) {
-      const date = parseDateCode(m[2]);
-      const slug = m[3] || '';
+      const dateCode = m[2] || m[3] || '';
+      const date = parseDateCode(dateCode);
+      const slug = m[4] || '';
       const isBriefing = BRIEFING_RE.test(slug) || BRIEFING_RE.test(bare);
       return { isDaily: !isBriefing, isBriefing, date: date || null, slug };
     }
@@ -177,6 +178,7 @@ const GhostSemantic = (() => {
     if (low.startsWith('#') || /^[a-f0-9]{12,}$/i.test(t)) return true;
     if (/\/(?:sessions?|chats?|req-)/i.test(t)) return true;
     if (/^\d{6}\/\d{8}/.test(t)) return true;
+    if (/^\d{4}-\d{2}-\d{2}/.test(t)) return true;
     if (/^\d{8}$/.test(t)) return true;
     if (/^(heartbeat|system|cron\.execute)/i.test(t)) return true;
     return false;

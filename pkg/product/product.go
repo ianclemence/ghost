@@ -133,6 +133,26 @@ var capabilityHints = map[string]map[ErrorClass]string{
 		ErrProvider:       "Flight data is temporarily unavailable. I'll try again shortly.",
 		ErrRateLimited:    "Flight data is busy right now. I'll try again shortly.",
 	},
+	"email": {
+		ErrConfigRequired: "Gmail isn't connected yet. Connect Gmail in Ghost settings under Connected Apps to continue.",
+		ErrAuthRequired:   "Your Gmail connection needs to be renewed.",
+		ErrExpired:        "Your Gmail connection expired. Reconnect it to continue.",
+		ErrRevoked:        "Your Gmail access was revoked. Reconnect it to continue.",
+		ErrOffline:        "Ghost is offline, so I can't reach your email right now.",
+	},
+	"media": {
+		ErrConfigRequired: "Spotify isn't connected yet. Connect Spotify in Ghost settings under Connected Apps to continue.",
+		ErrAuthRequired:   "Your Spotify connection needs to be renewed.",
+		ErrOffline:        "Ghost is offline, so I can't reach Spotify right now.",
+	},
+	"code": {
+		ErrConfigRequired: "GitHub isn't connected yet. Add a read-only access token in Ghost settings under Connected Apps to continue.",
+		ErrAuthRequired:   "Your GitHub connection needs to be renewed.",
+	},
+	"docs": {
+		ErrConfigRequired: "Notion isn't connected yet. Add an integration token in Ghost settings under Connected Apps to continue.",
+		ErrAuthRequired:   "Your Notion connection needs to be renewed.",
+	},
 	"weather": {
 		ErrProvider: "Weather data is temporarily unavailable. I'll try again shortly.",
 		ErrOffline:  "Ghost is offline, so I can't fetch fresh weather right now.",

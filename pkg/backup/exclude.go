@@ -38,6 +38,9 @@ var excludedSuffixes = map[string]Reason{
 	".secrets.json":       ReasonSecret,
 	".gcalcli_oauth":      ReasonCredential,
 	"calendar-token.json": ReasonCredential,
+	"gmail-token.json":    ReasonCredential,
+	"outlook-token.json":  ReasonCredential,
+	"spotify-token.json":  ReasonCredential,
 	".env":                ReasonSecret,
 	".log":                ReasonTransient,
 }

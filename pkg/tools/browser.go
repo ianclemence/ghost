@@ -67,13 +67,16 @@ func NewBrowserTool(workspace string, action string) *BrowserTool {
 }
 
 // Classify maps this tool's action to its risk class: observation (reads
-// page state, changes nothing) or act (drives the page). Exposed so the
-// capability broker can distinguish the two without trusting
+// page state, changes nothing), act (drives the page), or transact
+// (declares purchase-class intent: quote + approval + receipt). Exposed so
+// the capability broker can distinguish the three without trusting
 // model-supplied arguments.
 func (t *BrowserTool) Classify() string {
 	switch t.action {
 	case "navigate", "snapshot":
 		return "observe"
+	case "submit":
+		return "transact"
 	default:
 		return "act"
 	}
@@ -94,7 +97,11 @@ func (t *BrowserTool) Description() string {
 	case "type":
 		return "Type text into an input field on the current page. Requires the element reference ID."
 	case "press":
-		return "Press a keyboard key (e.g. 'Enter', 'Tab', 'Escape', 'ArrowDown') on the current page."
+		return "Press a keyboard key (e.g. 'Enter', 'Tab', 'Escape')."
+	case "fill":
+		return "Clear an input field and fill it with text (e.g. address, cardholder name). Requires the element reference ID. Prefer fill over type for forms."
+	case "submit":
+		return "Submit a form or order by clicking its submit button. TRANSACTIONAL: on checkout-like pages you must also declare merchant and amount matching the page quote, and broker approval is required. The result carries receipt evidence; never claim success from the model side."
 	default:
 		return "Interact with the browser."
 	}
@@ -139,6 +146,30 @@ func (t *BrowserTool) Parameters() map[string]interface{} {
 			"description": "The key to press (e.g. 'Enter', 'Tab', 'Escape').",
 		}
 		required = []string{"key"}
+	case "fill":
+		props["ref"] = map[string]interface{}{
+			"type":        "string",
+			"description": "The element reference ID from the accessibility tree (e.g. '@e5').",
+		}
+		props["text"] = map[string]interface{}{
+			"type":        "string",
+			"description": "The text to fill into the field (clears first).",
+		}
+		required = []string{"ref", "text"}
+	case "submit":
+		props["ref"] = map[string]interface{}{
+			"type":        "string",
+			"description": "The submit/order button reference ID from the accessibility tree (e.g. '@e9').",
+		}
+		props["merchant"] = map[string]interface{}{
+			"type":        "string",
+			"description": "Declared merchant host (required on checkout pages; must match the page).",
+		}
+		props["amount"] = map[string]interface{}{
+			"type":        "string",
+			"description": "Declared total to charge, e.g. '42.50' (required on checkout pages; must match the page quote).",
+		}
+		required = []string{"ref"}
 	}
 
 	return map[string]interface{}{
@@ -214,7 +245,7 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 		return deny("operation binding mismatch")
 	}
 	op := t.Classify()
-	if op == "act" && call.Permission == "" {
+	if (op == "act" || op == "transact") && call.Permission == "" {
 		return deny("state-changing browser operation requires broker authorization")
 	}
 	taskID := call.TaskID
@@ -298,7 +329,7 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 	// and interactions that change the page. Snapshots already return full
 	// state (capturing there too would double executor cost per observe
 	// cycle); typing captures only when it submits (press_enter).
-	if t.action == "navigate" || t.action == "click" || (t.action == "type" && submitsOnType(args)) {
+	if t.action == "navigate" || t.action == "click" || t.action == "submit" || (t.action == "type" && submitsOnType(args)) {
 		if path, ok := captureBrowserShot(ctx, sess.ID); ok {
 			res.ScreenshotPath = path
 		}
@@ -311,6 +342,106 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 func submitsOnType(args map[string]interface{}) bool {
 	enter, _ := args["press_enter"].(bool)
 	return enter
+}
+
+// submitBare executes a declared transactional submit: snapshot the page,
+// detect checkout, bind the declared merchant+amount to the detected quote,
+// click the submit ref, re-snapshot, and record receipt evidence. Nothing
+// here authorizes payment — the gate/broker must approve first (high
+// impact), and the approval is bound to the exact merchant+amount.
+func (t *BrowserTool) submitBare(ctx context.Context, args map[string]interface{}) *ToolResult {
+	ref, _ := args["ref"].(string)
+	if ref == "" {
+		return ErrorResult("ref is required")
+	}
+	snap := t.run(ctx, "snapshot")
+	if snap.IsError {
+		return ErrorResult("submit refused: couldn't read the page before submitting")
+	}
+	pageURL, pageText := snapshotURLText(snap.ForLLM)
+	quote := browser.DetectCheckout(pageURL, pageText)
+	merchant, _ := args["merchant"].(string)
+	amount, _ := args["amount"].(string)
+	if quote.IsCheckout {
+		if !matchMerchant(merchant, quote.Merchant) {
+			return ErrorResult(fmt.Sprintf("submit refused: declared merchant %q does not match page %q (total %s). Declare the exact merchant to proceed.",
+				merchant, quote.Merchant, quote.Total))
+		}
+		if !matchAmount(amount, quote.Total) {
+			return ErrorResult(fmt.Sprintf("submit refused: declared amount %q does not match page total %q at %s. Declare the exact total to proceed.",
+				amount, quote.Total, quote.Merchant))
+		}
+	}
+	clicked := t.run(ctx, "click", ref)
+	if clicked.IsError {
+		return ErrorResult(fmt.Sprintf("submit failed at click: %s", clicked.ForLLM))
+	}
+	after := t.run(ctx, "snapshot")
+	confirmed := false
+	afterURL, afterText := "", ""
+	if !after.IsError {
+		afterURL, afterText = snapshotURLText(after.ForLLM)
+		confirmed = browser.ConfirmationKeywords(afterText)
+	}
+	res := NewToolResult(fmt.Sprintf("Submitted %s at %s (total %s). Confirmation observed: %v.",
+		ref, quote.Merchant, quote.Total, confirmed))
+	res.Evidence = map[string]interface{}{
+		"type":        "action",
+		"op":          "browser.submit",
+		"class":       "transact",
+		"merchant":    quote.Merchant,
+		"amount":      quote.Total,
+		"currency":    quote.Currency,
+		"confirmed":   confirmed,
+		"url":         afterURL,
+		"outcome":     "ok",
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}
+	return res
+}
+
+// snapshotURLText extracts url + text from agent-browser snapshot JSON.
+func snapshotURLText(output string) (string, string) {
+	var page struct {
+		URL   string `json:"url"`
+		Title string `json:"title"`
+		Text  string `json:"text"`
+	}
+	if err := json.Unmarshal([]byte(output), &page); err != nil {
+		return "", output
+	}
+	return page.URL, page.Title + "\n" + page.Text
+}
+
+// matchMerchant binds the declared merchant to the detected host
+// (either direction, case-insensitive): approval for one merchant can
+// never drive another.
+func matchMerchant(declared, detected string) bool {
+	declared = strings.ToLower(strings.TrimSpace(declared))
+	detected = strings.ToLower(strings.TrimSpace(detected))
+	if declared == "" || detected == "" {
+		return false
+	}
+	return strings.Contains(detected, declared) || strings.Contains(declared, detected)
+}
+
+// matchAmount binds the declared total to the detected quote by numeric
+// value (currency symbols and separators ignored).
+func matchAmount(declared, detected string) bool {
+	if strings.TrimSpace(declared) == "" || strings.TrimSpace(detected) == "" {
+		return false
+	}
+	return parseAmountLoose(declared) == parseAmountLoose(detected) && parseAmountLoose(declared) != ""
+}
+
+func parseAmountLoose(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= '0' && r <= '9') || r == '.' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // pageEvidenceBound caps page text carried in evidence/observations.
@@ -526,6 +657,9 @@ func (t *BrowserTool) executeBare(ctx context.Context, args map[string]interface
 		if url == "" {
 			return ErrorResult("url is required")
 		}
+		if ok, reason := ValidateURL(url, URLSafetyConfig{}); !ok {
+			return ErrorResult(fmt.Sprintf("Browser navigation refused: %s", reason))
+		}
 		return t.run(ctx, "navigate", url)
 
 	case "snapshot":
@@ -537,6 +671,17 @@ func (t *BrowserTool) executeBare(ctx context.Context, args map[string]interface
 			return ErrorResult("ref is required")
 		}
 		return t.run(ctx, "click", ref)
+
+	case "fill":
+		ref, _ := args["ref"].(string)
+		text, _ := args["text"].(string)
+		if ref == "" || text == "" {
+			return ErrorResult("ref and text are required")
+		}
+		return t.run(ctx, "fill", ref, text)
+
+	case "submit":
+		return t.submitBare(ctx, args)
 
 	case "type":
 		ref, _ := args["ref"].(string)

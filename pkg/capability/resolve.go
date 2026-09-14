@@ -108,6 +108,11 @@ type Availability struct {
 	AeroDataBox   func() bool
 	HomeAssistant func() bool
 	Calendar      func() bool
+	Gmail         func() bool
+	Outlook       func() bool
+	Spotify       func() bool
+	Github        func() bool
+	Notion        func() bool
 }
 
 // avail adapts a runtime predicate. A keyed/connected implementation with no
@@ -170,9 +175,35 @@ func RegisterDefaults(r *Resolver, a Availability) {
 	r.Register(Implementation{Capability: "calendar.modify", Provider: "google-calendar", Tool: "calendar", Priority: 10,
 		Available: avail(a.Calendar)})
 
+	// email.read / email.send — Gmail primary, Outlook fallback (both share
+	// the email_search/email_send tools, which try Gmail first).
+	r.Register(Implementation{Capability: "email.read", Provider: "gmail", Tool: "email_search", Priority: 20,
+		Available: avail(a.Gmail)})
+	r.Register(Implementation{Capability: "email.read", Provider: "outlook", Tool: "email_search", Priority: 10,
+		Available: avail(a.Outlook)})
+	r.Register(Implementation{Capability: "email.send", Provider: "gmail", Tool: "email_send", Priority: 20,
+		Available: avail(a.Gmail)})
+	r.Register(Implementation{Capability: "email.send", Provider: "outlook", Tool: "email_send", Priority: 10,
+		Available: avail(a.Outlook)})
+
+	// media.playback — Spotify integration.
+	r.Register(Implementation{Capability: "media.playback", Provider: "spotify", Tool: "media_play", Priority: 10,
+		Available: avail(a.Spotify)})
+
+	// code.read — GitHub integration (read-only PAT).
+	r.Register(Implementation{Capability: "code.read", Provider: "github", Tool: "code_search", Priority: 10,
+		Available: avail(a.Github)})
+	r.Register(Implementation{Capability: "repository.search", Provider: "github", Tool: "code_search", Priority: 10,
+		Available: avail(a.Github)})
+
+	// docs — Notion integration.
+	r.Register(Implementation{Capability: "docs", Provider: "notion", Tool: "docs_search", Priority: 10,
+		Available: avail(a.Notion)})
+
 	// browser/computer — their own gates; registered so resolution is total.
 	r.Register(Implementation{Capability: "browser.inspect", Provider: "local", Tool: "browser_navigate", Local: true, Priority: 10})
 	r.Register(Implementation{Capability: "browser.control", Provider: "local", Tool: "browser_click", Local: true, Priority: 10})
+	r.Register(Implementation{Capability: "browser.transact", Provider: "local", Tool: "browser_submit", Local: true, Priority: 10})
 	r.Register(Implementation{Capability: "computer.inspect", Provider: "local", Tool: "computer_inspect_ui", Local: true, Priority: 10})
 	r.Register(Implementation{Capability: "computer.control", Provider: "local", Tool: "computer_click", Local: true, Priority: 10})
 }

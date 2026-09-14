@@ -130,7 +130,7 @@ func newGateHarnessOnWS(t hT, ws string) *gateHarness {
 	gov.Contexts = cs
 	reg := tools.NewToolRegistry()
 	stubs := map[string]*stubBrowserTool{}
-	for _, name := range []string{"browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press"} {
+	for _, name := range []string{"browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press", "browser_fill", "browser_submit"} {
 		st := &stubBrowserTool{name: name, output: "page output for " + name}
 		stubs[name] = st
 		reg.Register(st)
@@ -306,5 +306,21 @@ func TestGateUnknownOpDenied(t *testing.T) {
 	res := h.loop.authorizeBrowserCall("req-u-1", "sess-u", "browser_exfiltrate", map[string]interface{}{})
 	if res.decision != "deny" {
 		t.Fatalf("unknown op must deny, got %s", res.decision)
+	}
+}
+
+func TestBrowserSubmitIsHighImpact(t *testing.T) {
+	op, ok := browserOp("browser_submit")
+	if !ok || op != "submit" {
+		t.Fatalf("submit must be a governed op, got %q %v", op, ok)
+	}
+	if r := browserRisk("submit"); r != permissions.RiskHighImpact {
+		t.Fatalf("submit must be high impact, got %s", r)
+	}
+	if r := browserRisk("fill"); r != permissions.RiskConsequential {
+		t.Fatalf("fill must be consequential, got %s", r)
+	}
+	if _, ok := browserOp("browser_transact"); ok {
+		t.Fatal("unknown ops must be denied")
 	}
 }

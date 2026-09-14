@@ -42,11 +42,12 @@ import (
 
 // browserOp maps a tool name to its concrete browser operation. The
 // operation IS the tool action: navigate, snapshot (observe), click, type,
-// press. The tool layer re-verifies this word equals its own action, so a
-// gate binding authorized for one action can never drive a different one.
+// press, fill, submit. The tool layer re-verifies this word equals its own
+// action, so a gate binding authorized for one action can never drive a
+// different one.
 func browserOp(tool string) (string, bool) {
 	switch tool {
-	case "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press":
+	case "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press", "browser_fill", "browser_submit":
 		return strings.TrimPrefix(tool, "browser_"), true
 	default:
 		return "", false
@@ -55,13 +56,15 @@ func browserOp(tool string) (string, bool) {
 
 // browserRisk derives risk from the operation, never from what the model
 // claims it is doing. Observation changes nothing; driving the page can
-// change the world. The capability vocabulary (navigate/observe/click/
-// type/press, and future download/upload/transact) declares its own risk
+// change the world; submit declares purchase-class intent and is always
+// high impact. The capability vocabulary declares its own risk
 // here — the runtime decides, not the model.
 func browserRisk(op string) permissions.Risk {
 	switch op {
 	case "navigate", "snapshot":
 		return permissions.RiskReadOnly
+	case "submit":
+		return permissions.RiskHighImpact
 	default:
 		return permissions.RiskConsequential
 	}

@@ -69,6 +69,10 @@ func TestRegistryGovernanceAudit(t *testing.T) {
 //   - vision, video_frames, doc_parser: read local media/files.
 //   - weather_now, flight_status, aqi_now, currency_convert, crypto_price,
 //     places_nearby: read-only lookups against provider APIs.
+//   - email_search, code_search, docs_search: read-only lookups against
+//     connected apps (Gmail/Outlook, GitHub, Notion). No bodies are
+//     fetched beyond snippets/hits; writes use separate governed verbs
+//     (email_send). Unconnected → honest refusal, never fabricated data.
 //
 // Workspace / product core (no external or privileged effect):
 //   - write_file, append_file, edit_file: filesystem writes confined to the
@@ -98,6 +102,7 @@ var allowedCoreAudit = map[string]bool{
 	"vision": true, "video_frames": true, "doc_parser": true,
 	"weather_now": true, "flight_status": true, "aqi_now": true,
 	"currency_convert": true, "crypto_price": true, "places_nearby": true,
+	"email_search": true, "code_search": true, "docs_search": true,
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,
 	"todo": true, "canvas": true, "tts": true,

@@ -42,6 +42,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/capability"
+	"github.com/ianclemence/ghost/pkg/cards"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/config"
@@ -49,6 +50,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/contexts"
 	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
+	"github.com/ianclemence/ghost/pkg/goals"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/modes"
 	"github.com/ianclemence/ghost/pkg/pairing"
@@ -393,7 +395,7 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 				if msg.Channel != "mobile" {
 					meta, _ := msg.Metadata["type"].(string)
 					switch meta {
-					case "canvas_update", "cron_update", "clarify_request", "progress_event":
+					case "canvas_update", "cron_update", "clarify_request", "progress_event", "card_update":
 						// forwarded — interactive/tool events the app renders
 					default:
 						continue // skip — wrong channel
@@ -1820,6 +1822,94 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			"pending_id": pendingID,
 		})
 	})
+	mux.HandleFunc("/oauth/gmail/callback", func(w http.ResponseWriter, r *http.Request) {
+		cfg := skills.GmailOAuthConfig{
+			ClientID:     strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_ID")),
+			ClientSecret: strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_SECRET")),
+			RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_GMAIL_REDIRECT_URL")),
+		}
+		q := r.URL.Query()
+		if errStr := q.Get("error"); errStr != "" {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "status": "cancelled",
+				"message": "Gmail sign-in was cancelled. You can try again any time.",
+			})
+			return
+		}
+		pendingID, err := skills.GmailOAuthComplete(cfg, q.Get("state"), q.Get("code"), nil, nil)
+		if err != nil {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "status": "needs_authorization",
+				"message": "That sign-in didn't complete. Please try connecting again.",
+				"action":  "connect_gmail",
+			})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "ready",
+			"message":    "Your Gmail is connected.",
+			"pending_id": pendingID,
+		})
+	})
+	mux.HandleFunc("/oauth/outlook/callback", func(w http.ResponseWriter, r *http.Request) {
+		cfg := skills.OutlookOAuthConfig{
+			ClientID:     strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_CLIENT_ID")),
+			ClientSecret: strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_CLIENT_SECRET")),
+			RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_REDIRECT_URL")),
+			Tenant:       strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_TENANT")),
+		}
+		q := r.URL.Query()
+		if errStr := q.Get("error"); errStr != "" {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "status": "cancelled",
+				"message": "Outlook sign-in was cancelled. You can try again any time.",
+			})
+			return
+		}
+		pendingID, err := skills.OutlookOAuthComplete(cfg, q.Get("state"), q.Get("code"), nil, nil)
+		if err != nil {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "status": "needs_authorization",
+				"message": "That sign-in didn't complete. Please try connecting again.",
+				"action":  "connect_outlook",
+			})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "ready",
+			"message":    "Your Outlook is connected.",
+			"pending_id": pendingID,
+		})
+	})
+	mux.HandleFunc("/oauth/spotify/callback", func(w http.ResponseWriter, r *http.Request) {
+		cfg := skills.SpotifyOAuthConfig{
+			ClientID:     strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_CLIENT_ID")),
+			ClientSecret: strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_CLIENT_SECRET")),
+			RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_REDIRECT_URL")),
+		}
+		q := r.URL.Query()
+		if errStr := q.Get("error"); errStr != "" {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "status": "cancelled",
+				"message": "Spotify sign-in was cancelled. You can try again any time.",
+			})
+			return
+		}
+		pendingID, err := skills.SpotifyOAuthComplete(cfg, q.Get("state"), q.Get("code"), nil, nil)
+		if err != nil {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "status": "needs_authorization",
+				"message": "That sign-in didn't complete. Please try connecting again.",
+				"action":  "connect_spotify",
+			})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "ready",
+			"message":    "Your Spotify is connected.",
+			"pending_id": pendingID,
+		})
+	})
 
 	mux.HandleFunc("/v1/telemetry", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -2697,6 +2787,20 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				since = ts
 			}
 		}
+		// Page budget: clamp page size and cap page bytes so long
+		// transcripts stay responsive on phones. has_more tells the
+		// client older pages exist; total counts the visible window.
+		const maxHistoryLimit = 100
+		const maxHistoryPageBytes = 1 << 20
+		if limit <= 0 {
+			limit = 50
+		}
+		if limit > maxHistoryLimit {
+			limit = maxHistoryLimit
+		}
+		if offset < 0 {
+			offset = 0
+		}
 
 		if db == nil {
 			http.Error(w, `{"error":"database not available"}`, http.StatusInternalServerError)
@@ -2759,11 +2863,39 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			messages = []Message{}
 		}
 
+		// Byte-budget the page: truncate overlong messages in place so one
+		// huge turn can't stall the client. has_more reports whether an
+		// older page exists (COUNT is cheap next to payload fetch).
+		budget := maxHistoryPageBytes
+		for i := range messages {
+			if budget <= 0 {
+				messages = messages[:i]
+				break
+			}
+			if len(messages[i].Content) > budget {
+				messages[i].Content = messages[i].Content[:budget] + "…"
+				budget = 0
+			} else {
+				budget -= len(messages[i].Content)
+			}
+		}
+		hasMore := false
+		if db != nil {
+			var remaining int
+			if since > 0 {
+				_ = db.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0) AND content IS NOT NULL AND TRIM(content) != '' AND unixepoch(created_at) <= ?`, session, since).Scan(&remaining)
+			} else {
+				_ = db.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0)`, session).Scan(&remaining)
+			}
+			hasMore = remaining > offset+len(messages)
+		}
+
 		total := len(messages)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"messages": messages,
 			"total":    total,
+			"has_more": hasMore,
 		})
 	}))
 
@@ -3009,8 +3141,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				return nil
 			}
 			rel, _ := filepath.Rel(memoryDir, path)
-			// Hide internal directory structure (202609/20260903.md) from
-			// user-visible Activity — Mobile was rendering the raw path as
+			// Hide internal directory structure from user-visible
+			// Activity — Mobile was rendering the raw path as
 			// "202609/20260903 21.13 Saved To Memory". Expose only the file
 			// name; keep rel for internal use if needed but don't leak it.
 			displayName := filepath.Base(rel)
@@ -3058,8 +3190,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			jsonError(w, http.StatusForbidden, "forbidden", "invalid path")
 			return
 		}
-		// Support both legacy rel (202609/20260903.md) and new base name
-		// (20260903.md) so the Activity fix stays backwards compatible.
+		// Support canonical flat names (2026-09-03.md) and legacy rels
+		// (202609/20260903.md) so old clients stay compatible.
 		full := filepath.Join(memoryDir, clean)
 		if _, err := os.Stat(full); os.IsNotExist(err) && !strings.Contains(clean, string(filepath.Separator)) {
 			// Try to locate by base name anywhere under memoryDir
@@ -3326,6 +3458,123 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "routine": routine})
 		default:
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		}
+	}))
+
+	// ── Rich cards: fetch-on-open for phones that missed pushes ──
+	mux.HandleFunc("/v1/cards", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET")
+			return
+		}
+		channel := strings.TrimSpace(r.URL.Query().Get("channel"))
+		if channel == "" {
+			channel = "mobile"
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "cards": cards.DefaultStore.List(channel)})
+	}))
+
+	// ── Standing goals: durable owner intents the heartbeat evaluates ──
+	mux.HandleFunc("/v1/goals", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if apiWorkspaceDir == "" {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "workspace unavailable")
+			return
+		}
+		store := goals.NewStore(apiWorkspaceDir)
+		switch r.Method {
+		case http.MethodGet:
+			list, err := store.List(time.Now())
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, "unavailable", "goals are unavailable right now")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "goals": list})
+		case http.MethodPost:
+			var req struct {
+				Text         string   `json:"text"`
+				Scope        string   `json:"scope"`
+				Success      string   `json:"success"`
+				Capabilities []string `json:"capabilities"`
+				ExpiresAt    string   `json:"expires_at,omitempty"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+				return
+			}
+			var exp time.Time
+			if strings.TrimSpace(req.ExpiresAt) != "" {
+				var err error
+				exp, err = time.Parse(time.RFC3339, strings.TrimSpace(req.ExpiresAt))
+				if err != nil {
+					jsonError(w, http.StatusBadRequest, "invalid_request", "expires_at must be RFC3339")
+					return
+				}
+			}
+			g, err := store.Create(req.Text, req.Scope, req.Success, req.Capabilities, exp)
+			if err != nil {
+				jsonError(w, http.StatusBadRequest, "create_failed", err.Error())
+				return
+			}
+			publishGoalCard("created", g.ID, g.Text)
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "goal": g})
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		}
+	}))
+	mux.HandleFunc("/v1/goals/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if apiWorkspaceDir == "" {
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "workspace unavailable")
+			return
+		}
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use POST")
+			return
+		}
+		rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/goals/"), "/")
+		parts := strings.Split(rest, "/")
+		if len(parts) != 2 || parts[0] == "" {
+			jsonError(w, http.StatusNotFound, "not_found", "use POST /v1/goals/{id}/{pause|resume|complete|progress}")
+			return
+		}
+		store := goals.NewStore(apiWorkspaceDir)
+		id, op := parts[0], parts[1]
+		switch op {
+		case "pause", "resume", "complete":
+			var (
+				g   goals.Goal
+				err error
+			)
+			switch op {
+			case "pause":
+				g, err = store.Pause(id)
+			case "resume":
+				g, err = store.Resume(id)
+			default:
+				g, err = store.Complete(id)
+			}
+			if err != nil {
+				jsonError(w, http.StatusBadRequest, op+"_failed", err.Error())
+				return
+			}
+			publishGoalCard(op+"d", g.ID, g.Text)
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "goal": g})
+		case "progress":
+			var req struct {
+				Note string `json:"note"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+				return
+			}
+			g, err := store.AppendProgress(id, req.Note)
+			if err != nil {
+				jsonError(w, http.StatusBadRequest, "progress_failed", err.Error())
+				return
+			}
+			publishGoalCard("progress", g.ID, g.Text+": "+req.Note)
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "goal": g})
+		default:
+			jsonError(w, http.StatusNotFound, "not_found", "unknown goal action")
 		}
 	}))
 
@@ -4724,6 +4973,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 
 	// ── Live Surface plane (browser/computer control + observation) ──────
 	registerLiveSurfaceRoutes(mux, agentLoop)
+	registerBrowserStreamRoutes(mux, agentLoop)
 
 	// ── Artifacts (runtime-validated handoffs) ────────────────────────────
 	registerArtifactRoutes(mux)
@@ -4779,6 +5029,16 @@ func buildCapabilityResolver(cfg *config.Config) *capability.Resolver {
 		CredentialID: "home-assistant", Capabilities: []string{"device.read", "device.control"}, Status: connectedapp.StatusDisconnected})
 	apps.Register(connectedapp.App{ID: "google-calendar", Provider: "google-calendar", DisplayName: "Google Calendar",
 		CredentialID: "google-calendar", Capabilities: []string{"calendar.read", "calendar.modify"}, Status: connectedapp.StatusDisconnected})
+	apps.Register(connectedapp.App{ID: "gmail", Provider: "gmail", DisplayName: "Gmail",
+		CredentialID: "gmail", Capabilities: []string{"email.read", "email.send"}, Status: connectedapp.StatusDisconnected})
+	apps.Register(connectedapp.App{ID: "outlook", Provider: "outlook", DisplayName: "Outlook",
+		CredentialID: "outlook", Capabilities: []string{"email.read", "email.send", "calendar.read"}, Status: connectedapp.StatusDisconnected})
+	apps.Register(connectedapp.App{ID: "spotify", Provider: "spotify", DisplayName: "Spotify",
+		CredentialID: "spotify", Capabilities: []string{"media.playback"}, Status: connectedapp.StatusDisconnected})
+	apps.Register(connectedapp.App{ID: "github", Provider: "github", DisplayName: "GitHub",
+		CredentialID: "github", Capabilities: []string{"code.read", "repository.search"}, Status: connectedapp.StatusDisconnected})
+	apps.Register(connectedapp.App{ID: "notion", Provider: "notion", DisplayName: "Notion",
+		CredentialID: "notion", Capabilities: []string{"docs"}, Status: connectedapp.StatusDisconnected})
 
 	// connStatus reports the live connection state for one app.
 	connStatus := func(connected bool) connectedapp.Status {
@@ -4806,8 +5066,44 @@ func buildCapabilityResolver(cfg *config.Config) *capability.Resolver {
 				return skills.CalendarWebStatus().Connected || skills.CalendarCheck().Connected
 			})
 		},
+		Gmail: func() bool {
+			return usable("gmail", func() bool {
+				return skills.GmailWebStatus().Connected
+			})
+		},
+		Outlook: func() bool {
+			return usable("outlook", func() bool {
+				return skills.OutlookWebStatus().Connected
+			})
+		},
+		Spotify: func() bool {
+			return usable("spotify", func() bool {
+				return skills.SpotifyWebStatus().Connected
+			})
+		},
+		Github: func() bool {
+			return usable("github", func() bool { return credentials.GithubConfigured() })
+		},
+		Notion: func() bool {
+			return usable("notion", func() bool { return credentials.NotionConfigured() })
+		},
 	})
 	return r
+}
+
+// publishGoalCard records a goal lifecycle event as a goal_update card
+// for fetch-on-open (GET /v1/cards). Store-only: the acting client
+// already sees its own result; other surfaces catch up on fetch.
+// Fanned out to mobile + web so both channels see it on fetch.
+func publishGoalCard(verb, id, text string) {
+	c, err := cards.New(cards.KindGoalUpdate, "Goal "+verb, text)
+	if err != nil {
+		return
+	}
+	c.Topic = "goal:" + id
+	c.Data = map[string]interface{}{"goal_id": id, "verb": verb}
+	cards.DefaultStore.Add("mobile", c)
+	cards.DefaultStore.Add("web", c)
 }
 
 // connectedAppsList builds the device-facing connected-apps model.
@@ -4836,6 +5132,24 @@ func connectedAppsList() []map[string]interface{} {
 		// Google Calendar OAuth lives outside the vault (token file).
 		if c.ID == "google-calendar" {
 			if skills.CalendarWebStatus().Connected || skills.CalendarCheck().Connected {
+				status = string(credentials.StatusConnected)
+			}
+		}
+		// Gmail OAuth lives outside the vault (token file).
+		if c.ID == "gmail" {
+			if skills.GmailWebStatus().Connected {
+				status = string(credentials.StatusConnected)
+			}
+		}
+		// Outlook OAuth lives outside the vault (token file).
+		if c.ID == "outlook" {
+			if skills.OutlookWebStatus().Connected {
+				status = string(credentials.StatusConnected)
+			}
+		}
+		// Spotify OAuth lives outside the vault (token file).
+		if c.ID == "spotify" {
+			if skills.SpotifyWebStatus().Connected {
 				status = string(credentials.StatusConnected)
 			}
 		}

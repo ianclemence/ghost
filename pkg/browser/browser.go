@@ -37,6 +37,8 @@ type Driver interface {
 	Snapshot(ctx context.Context, sessionID string) (Page, error)
 	Click(ctx context.Context, sessionID, ref string) error
 	Type(ctx context.Context, sessionID, ref, text string, enter bool) error
+	Fill(ctx context.Context, sessionID, ref, text string) error
+	Submit(ctx context.Context, sessionID, ref string) error
 	Press(ctx context.Context, sessionID, key string) error
 	Screenshot(ctx context.Context, sessionID string) ([]byte, error)
 	Close(sessionID string) error
@@ -117,6 +119,29 @@ func (f *FakeDriver) Type(ctx context.Context, sessionID, ref, text string, ente
 		}
 	}
 	return fmt.Errorf("browser: no such element %q", ref)
+}
+
+// Fill requires a ref present in the current snapshot (clear-and-set).
+func (f *FakeDriver) Fill(ctx context.Context, sessionID, ref, text string) error {
+	f.note("fill", sessionID, ref)
+	p, err := f.Snapshot(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	for _, e := range p.Elements {
+		if e.Ref == ref {
+			return nil
+		}
+	}
+	return fmt.Errorf("browser: no such element %q", ref)
+}
+
+// Submit clicks a submit/order ref. The FakeDriver records it; the tool
+// layer (quote + broker approval + receipt) owns transaction safety, and
+// tests assert through the OnOp hook that submit never runs unapproved.
+func (f *FakeDriver) Submit(ctx context.Context, sessionID, ref string) error {
+	f.note("submit", sessionID, ref)
+	return f.Click(ctx, sessionID, ref)
 }
 
 // Press accepts a small allowlist; anything else (notably raw

@@ -20,7 +20,7 @@ matters most to this person.
 1. `workspace/data/captures.md` — the latest unsnoozed captures (what they
    jotted down; these are *priorities* tonight).
 2. `workspace/memory/MEMORY.md` and the most recent daily note
-   (`workspace/memory/YYYYMM/YYYYMMDD.md`) — ongoing threads and context.
+   (`workspace/memory/YYYY-MM-DD.md`) — ongoing threads and context.
 3. `workspace/HEARTBEAT.md` and any scheduled automations — what Ghost is
    supposed to be doing and anything due today.
 4. `workspace/knowledge/self/user-profile.md` — who the user is, so the
@@ -59,7 +59,7 @@ When this briefing runs as a scheduled routine (not on direct request), do this:
 1. Read the sources as above.
 2. Compose the briefing (same style).
 3. **Save it** so it's visible and kept: write it to
-   `workspace/memory/YYYYMM/YYYYMMDD-briefing.md` (create the folder if needed)
+   `workspace/memory/YYYY-MM-DD-briefing.md`
    using `write_file`. Include a title line with the date. This is what shows
    up in the user's Memory, so keep it calm and short.
 4. If a reminder or capture is due today, mention it in the briefing and check

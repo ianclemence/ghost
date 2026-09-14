@@ -118,3 +118,19 @@ func TestInScopeDenyByDefault(t *testing.T) {
 		t.Fatal("empty scope is legacy unscoped")
 	}
 }
+
+func TestWalletPayHasNoExecutionPath(t *testing.T) {
+	spec, ok := Get("wallet.pay")
+	if !ok {
+		t.Fatal("wallet.pay capability must be declared")
+	}
+	if spec.Risk != RiskHighImpact {
+		t.Fatalf("wallet.pay must be high impact, got %s", spec.Risk)
+	}
+	if len(spec.Tools) != 0 {
+		t.Fatalf("wallet.pay must have no tools until a partner signs, got %v", spec.Tools)
+	}
+	if _, ok := ForTool("wallet_pay"); ok {
+		t.Fatal("no tool may resolve to wallet.pay")
+	}
+}

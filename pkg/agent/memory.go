@@ -16,11 +16,13 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 )
 
 // MemoryStore manages persistent memory for the agent.
-// - Long-term memory: memory/MEMORY.md
-// - Daily notes: memory/YYYYMM/YYYYMMDD.md
+// - Long-term memory: memory/MEMORY.md (generated digest, see DigestLongTerm)
+// - Daily notes: memory/YYYY-MM-DD.md (Muse-compatible flat layout)
 type MemoryStore struct {
 	workspace  string
 	memoryDir  string
@@ -28,13 +30,15 @@ type MemoryStore struct {
 }
 
 // NewMemoryStore creates a new MemoryStore with the given workspace path.
-// It ensures the memory directory exists.
+// It ensures the memory directory exists and migrates legacy month-nested
+// notes (memory/YYYYMM/YYYYMMDD.md) to the flat Muse layout exactly once.
 func NewMemoryStore(workspace string) *MemoryStore {
 	memoryDir := filepath.Join(workspace, "memory")
 	memoryFile := filepath.Join(memoryDir, "MEMORY.md")
 
 	// Ensure memory directory exists
 	os.MkdirAll(memoryDir, 0755)
+	migrateDayNotes(memoryDir)
 
 	return &MemoryStore{
 		workspace:  workspace,
@@ -43,12 +47,57 @@ func NewMemoryStore(workspace string) *MemoryStore {
 	}
 }
 
-// getTodayFile returns the path to today's daily note file (memory/YYYYMM/YYYYMMDD.md).
+// dailyFile returns the flat Muse-layout path for a date: memory/YYYY-MM-DD.md.
+func (ms *MemoryStore) dailyFile(t time.Time) string {
+	return filepath.Join(ms.memoryDir, t.Format("2006-01-02")+".md")
+}
+
+// migrateDayNotes moves legacy month-nested notes (memory/YYYYMM/YYYYMMDD.md)
+// into the flat Muse layout (memory/YYYY-MM-DD.md). Idempotent: existing
+// flat files win, failures are ignored (old files stay readable in place).
+func migrateDayNotes(memoryDir string) {
+	entries, err := os.ReadDir(memoryDir)
+	if err != nil {
+		return
+	}
+	legacyRE := regexp.MustCompile(`^(\d{4})(\d{2})(\d{2})\.md$`)
+	for _, e := range entries {
+		if !e.IsDir() || len(e.Name()) != 6 {
+			continue
+		}
+		monthPath := filepath.Join(memoryDir, e.Name())
+		files, err := os.ReadDir(monthPath)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if f.IsDir() {
+				continue
+			}
+			m := legacyRE.FindStringSubmatch(f.Name())
+			if m == nil {
+				continue
+			}
+			dst := filepath.Join(memoryDir, m[1]+"-"+m[2]+"-"+m[3]+".md")
+			if _, err := os.Stat(dst); err == nil {
+				continue // flat file wins
+			}
+			data, err := os.ReadFile(filepath.Join(monthPath, f.Name()))
+			if err != nil {
+				continue
+			}
+			if err := os.WriteFile(dst, data, 0644); err != nil {
+				continue
+			}
+			_ = os.Remove(filepath.Join(monthPath, f.Name()))
+		}
+		_ = os.Remove(monthPath) // succeeds only when emptied
+	}
+}
+
+// getTodayFile returns the path to today's daily note file (memory/YYYY-MM-DD.md).
 func (ms *MemoryStore) getTodayFile() string {
-	today := time.Now().Format("20060102") // YYYYMMDD
-	monthDir := today[:6]                  // YYYYMM
-	filePath := filepath.Join(ms.memoryDir, monthDir, today+".md")
-	return filePath
+	return ms.dailyFile(time.Now())
 }
 
 // ReadLongTerm reads the long-term memory (MEMORY.md).
@@ -65,6 +114,21 @@ func (ms *MemoryStore) WriteLongTerm(content string) error {
 	return os.WriteFile(ms.memoryFile, []byte(content), 0644)
 }
 
+// DigestLongTerm regenerates MEMORY.md from the canonical personal-context
+// store. MEMORY.md is a generated digest, never a second truth: hand edits
+// are overwritten on the next digest. The reflection writer calls this
+// after grooming entries.
+func (ms *MemoryStore) DigestLongTerm() error {
+	store, err := personalcontext.Open(ms.workspace)
+	if err != nil {
+		return err
+	}
+	digest := personalcontext.BuildDigest(store.Current(), personalcontext.DigestBudget)
+	out := "# Memory\n\n> Generated digest of durable memory. Do not edit by hand — " +
+		"it is rebuilt from structured memory. Use `remember` in chat to add facts.\n\n" + digest + "\n"
+	return os.WriteFile(ms.memoryFile, []byte(out), 0644)
+}
+
 // ReadToday reads today's daily note.
 // Returns empty string if the file doesn't exist.
 func (ms *MemoryStore) ReadToday() string {
@@ -79,10 +143,6 @@ func (ms *MemoryStore) ReadToday() string {
 // If the file doesn't exist, it creates a new file with a date header.
 func (ms *MemoryStore) AppendToday(content string) error {
 	todayFile := ms.getTodayFile()
-
-	// Ensure month directory exists
-	monthDir := filepath.Dir(todayFile)
-	os.MkdirAll(monthDir, 0755)
 
 	var existingContent string
 	if data, err := os.ReadFile(todayFile); err == nil {
@@ -109,9 +169,7 @@ func (ms *MemoryStore) GetRecentDailyNotes(days int) string {
 
 	for i := 0; i < days; i++ {
 		date := time.Now().AddDate(0, 0, -i)
-		dateStr := date.Format("20060102") // YYYYMMDD
-		monthDir := dateStr[:6]            // YYYYMM
-		filePath := filepath.Join(ms.memoryDir, monthDir, dateStr+".md")
+		filePath := ms.dailyFile(date)
 
 		if data, err := os.ReadFile(filePath); err == nil {
 			notes = append(notes, string(data))

@@ -355,6 +355,14 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 
 	systemPrompt := cb.BuildSystemPrompt(scopes)
 
+	// Cache boundary: everything above is the stable, version-cached
+	// prefix (identity, behavior, skills, digest) that providers can keep
+	// warm across turns. Everything below is volatile per-turn state that
+	// must never pollute the prefix: time, session, summary. Providers
+	// with prefix caching treat the boundary as the split point.
+	const systemPromptCacheBoundary = "<!-- SYSTEM_PROMPT_CACHE_BOUNDARY -->"
+	volatile := ""
+
 	// Fresh per-turn time in the user's timezone. The cached system prompt
 	// deliberately omits absolute time (it would be stale); here we compute
 	// it once per turn from the request timezone so dates are correct for
@@ -365,11 +373,11 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 			loc = l
 		}
 	}
-	systemPrompt += fmt.Sprintf("\n\n## Current Time\n%s (%s)", time.Now().In(loc).Format("2006-01-02 15:04 Monday"), loc.String())
+	volatile += fmt.Sprintf("\n\n## Current Time\n%s (%s)", time.Now().In(loc).Format("2006-01-02 15:04 Monday"), loc.String())
 
 	// Add Current Session info if provided
 	if channel != "" && chatID != "" {
-		systemPrompt += fmt.Sprintf("\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
+		volatile += fmt.Sprintf("\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
 	}
 
 	// Log system prompt summary for debugging (debug mode only)
@@ -391,8 +399,9 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 		})
 
 	if summary != "" {
-		systemPrompt += "\n\n## Summary of Previous Conversation\n\n" + summary
+		volatile += "\n\n## Summary of Previous Conversation\n\n" + summary
 	}
+	systemPrompt += "\n\n" + systemPromptCacheBoundary + volatile
 
 	// Sanitize history to prevent LLM errors with missing tool outputs
 	history = cb.sanitizeHistory(history)

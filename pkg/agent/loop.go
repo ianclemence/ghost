@@ -48,6 +48,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/modes"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
+	"github.com/ianclemence/ghost/pkg/proactive"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/rag"
 	"github.com/ianclemence/ghost/pkg/routines"
@@ -159,6 +160,8 @@ type AgentLoop struct {
 	browserSessionsOnce sync.Once
 	browserSessionsInst *browser.SessionStore
 	browserSessionsErr  error
+	// browserStreamInst mints single-use screencast viewer tickets.
+	browserStreamInst *browser.StreamBroker
 
 	// computerLeaseInst is the computer lease ledger for this loop's
 	// database, opened lazily by the computer gate. Per-loop (like browser
@@ -239,6 +242,10 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewBrowserTool(workspace, "click"))
 	registry.Register(tools.NewBrowserTool(workspace, "type"))
 	registry.Register(tools.NewBrowserTool(workspace, "press"))
+	registry.Register(tools.NewBrowserTool(workspace, "fill"))
+	// Submit declares purchase-class intent: quote + broker approval +
+	// receipt evidence. The gate treats it as high impact, always ask.
+	registry.Register(tools.NewBrowserTool(workspace, "submit"))
 
 	// Sandbox Execution Tool (Safe code running)
 	registry.RegisterHidden(tools.NewSandboxTool(workspace), 2*time.Hour)
@@ -295,6 +302,18 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Semantic calendar surface: the model asks for calendar operations,
 	// never for gcalcli/provider details.
 	registry.Register(tools.NewCalendarTool(workspace))
+	// Email surface: Gmail/Outlook connected apps (OAuth). Tools refuse
+	// honestly when unconnected; the broker gates email_send.
+	registry.Register(tools.NewEmailSearchTool())
+	registry.Register(tools.NewEmailSendTool())
+	// Media surface: Spotify connected app (OAuth).
+	registry.Register(tools.NewMediaPlayTool())
+	// Code surface: GitHub connected app (read-only PAT, trust-user).
+	registry.Register(tools.NewCodeSearchTool())
+	// Docs surface: Notion connected app (integration token).
+	registry.Register(tools.NewDocsSearchTool())
+	// Standing goals: durable owner intents the heartbeat evaluates.
+	registry.Register(tools.NewGoalTool(workspace))
 
 	// Vision tool - image analysis
 	registry.Register(tools.NewVisionTool(workspace))
@@ -421,6 +440,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		"weather.get", "aqi.get", "currency.convert", "crypto.price",
 		"places.nearby", "flight.status",
 		"browser.inspect", "browser.control",
+		"email.read", "media.playback", "code.read", "repository.search", "docs",
 	})
 
 	// Register spawn tool (for main agent)
@@ -804,6 +824,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		})
 		al.deliverNotice(nt)
 	})
+	// Proactive policy (PROACTIVE_PREFERENCES.md) tunes the gate and makes
+	// budgets survive restarts. Missing file → conservative defaults.
+	proactivePolicy := proactive.Load(workspace)
+	al.noticer.ApplyPolicy(proactivePolicy.MaxPushesPerDay, proactivePolicy.CooldownPerTopic, proactivePolicy.DedupeWindow)
+	al.noticer.WithPersistence(filepath.Join(workspace, "proactive"))
 	al.events.Subscribe(func(ev Event) {
 		if ev.Type != EventTaskFailed || al.noticer == nil {
 			return

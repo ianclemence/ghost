@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -48,6 +51,10 @@ type Noticer struct {
 	countToday int
 
 	onNotify func(Notice)
+
+	// persistDir, when set, durably stores budget/cooldown/dedupe so a
+	// restart doesn't reset the user's spam protection.
+	persistDir string
 }
 
 // NewNoticer returns a conservative, spam-resistant noticer.
@@ -111,8 +118,94 @@ func (n *Noticer) ShouldNotify(nt Notice) Decision {
 		n.topicUntil[nt.Topic] = time.Now().Add(n.cooldown)
 	}
 	n.countToday++
+	n.saveLocked()
 	if n.onNotify != nil {
 		n.onNotify(nt)
 	}
 	return DecisionNotify
+}
+
+// ApplyPolicy tunes the gate from PROACTIVE_PREFERENCES.md. Non-positive
+// values are ignored (defaults stand).
+func (n *Noticer) ApplyPolicy(dailyBudget int, cooldown, dedupeTTL time.Duration) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if dailyBudget > 0 && dailyBudget <= 50 {
+		n.dailyBudget = dailyBudget
+	}
+	if cooldown > 0 {
+		n.cooldown = cooldown
+	}
+	if dedupeTTL > 0 {
+		n.dedupeTTL = dedupeTTL
+	}
+}
+
+// pushSnapshot is the durable form of the gate state.
+type pushSnapshot struct {
+	Today      string         `json:"today"`
+	CountToday int            `json:"count_today"`
+	Topics     map[string]int64 `json:"topics,omitempty"`
+	Dedupe     map[string]int64 `json:"dedupe,omitempty"`
+}
+
+// WithPersistence enables durable budget/cooldown/dedupe under dir
+// (workspace/proactive). Best-effort: failures keep the in-memory gate.
+func (n *Noticer) WithPersistence(dir string) *Noticer {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.persistDir = dir
+	data, err := os.ReadFile(filepath.Join(dir, "pushes.json"))
+	if err != nil {
+		return n
+	}
+	var snap pushSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return n
+	}
+	today := time.Now().Format("20060102")
+	if snap.Today == today {
+		n.today = snap.Today
+		n.countToday = snap.CountToday
+	}
+	now := time.Now()
+	for k, v := range snap.Topics {
+		if t := time.Unix(v, 0); t.After(now) {
+			n.topicUntil[k] = t
+		}
+	}
+	for k, v := range snap.Dedupe {
+		if t := time.Unix(v, 0); t.After(now) {
+			n.seenDedupe[k] = t
+		}
+	}
+	return n
+}
+
+// saveLocked persists gate state. Caller holds the mutex.
+func (n *Noticer) saveLocked() {
+	if n.persistDir == "" {
+		return
+	}
+	snap := pushSnapshot{Today: n.today, CountToday: n.countToday,
+		Topics: map[string]int64{}, Dedupe: map[string]int64{}}
+	if snap.Today == "" {
+		snap.Today = time.Now().Format("20060102")
+	}
+	for k, v := range n.topicUntil {
+		snap.Topics[k] = v.Unix()
+	}
+	for k, v := range n.seenDedupe {
+		snap.Dedupe[k] = v.Unix()
+	}
+	data, err := json.Marshal(snap)
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(n.persistDir, 0755)
+	tmp := filepath.Join(n.persistDir, "pushes.json.tmp")
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, filepath.Join(n.persistDir, "pushes.json"))
 }

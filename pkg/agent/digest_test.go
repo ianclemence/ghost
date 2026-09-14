@@ -180,9 +180,8 @@ func TestMemoryMdNoLongerInjected(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "memory", "MEMORY.md"), []byte(legacyMarker), 0644); err != nil {
 		t.Fatalf("write MEMORY.md: %v", err)
 	}
-	today := time.Now().Format("20060102")
-	monthDir := today[:6]
-	notePath := filepath.Join(ws, "memory", monthDir, today+".md")
+	today := time.Now().Format("2006-01-02")
+	notePath := filepath.Join(ws, "memory", today+".md")
 	if err := os.MkdirAll(filepath.Dir(notePath), 0755); err != nil {
 		t.Fatalf("mkdir notes: %v", err)
 	}

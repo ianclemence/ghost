@@ -7,7 +7,7 @@ async function loadIntegrations(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Connected Apps'));
-  head.appendChild(GhostUI.h('p', {}, 'The apps and services Ghost can reach — Google Calendar, flight tracking, Home Assistant, and camera.'));
+  head.appendChild(GhostUI.h('p', {}, 'The apps and services Ghost can reach — Gmail, Google Calendar, flight tracking, Home Assistant, and camera.'));
   container.appendChild(head);
 
   const panel = GhostUI.h('div', { className: 'panel' });
@@ -48,6 +48,41 @@ async function loadIntegrations(container) {
   listEl.appendChild(intRow('Google Calendar', 'Calendar',
     calState, cal.connected ? 'Connected' : 'Not connected',
     cal.connected ? () => confirmDisconnectCalendar() : () => startCalendarConnect()));
+
+  // Gmail (OAuth product flow: consent URL in new tab, poll status)
+  const gm = ints.gmail || {};
+  const gmState = gm.connected ? 'connected' : 'neutral';
+  listEl.appendChild(intRow('Gmail', 'Email',
+    gmState, gm.connected ? 'Connected' : 'Not connected',
+    gm.connected ? () => confirmDisconnectGmail() : () => startGmailConnect()));
+
+  // Outlook (OAuth product flow: consent URL in new tab, poll status)
+  const om = ints.outlook || {};
+  const omState = om.connected ? 'connected' : 'neutral';
+  listEl.appendChild(intRow('Outlook', 'Email + Calendar',
+    omState, om.connected ? 'Connected' : 'Not connected',
+    om.connected ? () => confirmDisconnectOutlook() : () => startOutlookConnect()));
+
+  // Spotify (OAuth product flow: consent URL in new tab, poll status)
+  const sp = ints.spotify || {};
+  const spState = sp.connected ? 'connected' : 'neutral';
+  listEl.appendChild(intRow('Spotify', 'Music',
+    spState, sp.connected ? 'Connected' : 'Not connected',
+    sp.connected ? () => confirmDisconnectSpotify() : () => startSpotifyConnect()));
+
+  // GitHub (paste read-only PAT; trust-user: token scopes govern)
+  const gh = ints.github || {};
+  const ghCfg = gh.configured === true;
+  listEl.appendChild(intRow('GitHub', 'Code search',
+    ghCfg ? 'ready' : 'neutral', ghCfg ? 'Configured' : 'Not connected',
+    () => editGithubToken(ghCfg)));
+
+  // Notion (paste integration token)
+  const nt = ints.notion || {};
+  const ntCfg = nt.configured === true;
+  listEl.appendChild(intRow('Notion', 'Docs',
+    ntCfg ? 'ready' : 'neutral', ntCfg ? 'Configured' : 'Not connected',
+    () => editNotionToken(ntCfg)));
 
   // Flight
   const fl = ints.flight || {};
@@ -153,6 +188,188 @@ async function confirmDisconnectCalendar() {
   try { await GhostAPI.post('/api/admin/integrations/calendar/disconnect', {}); GhostUI.toast('Calendar disconnected'); }
   catch (e) { GhostUI.toast('Couldn’t disconnect.', 'err'); return; }
   loadIntegrations(document.getElementById('view'));
+}
+
+async function startGmailConnect() {
+  let res;
+  try { res = await GhostAPI.post('/api/admin/integrations/gmail/oauth/start', {}); }
+  catch (e) {
+    GhostUI.toast((e && e.message) || 'Couldn’t start Gmail setup.', 'err');
+    return;
+  }
+  if (res && res.status === 'ready') { GhostUI.toast('Gmail already connected'); loadIntegrations(document.getElementById('view')); return; }
+  if (!res || !res.auth_url) {
+    GhostUI.toast((res && res.message) || 'Gmail sign-in isn’t set up on this Ghost yet.', 'err');
+    return;
+  }
+  window.open(res.auth_url, '_blank', 'noopener');
+  const body = GhostUI.h('div');
+  body.appendChild(GhostUI.h('p', {}, 'Google’s sign-in screen opened in a new tab. Approve access, then come back here and press Check connection.'));
+  GhostUI.modal('Connect Gmail', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+      try {
+        const st = await GhostAPI.get('/api/admin/integrations/status');
+        const gm = st && st.integrations && st.integrations.gmail;
+        if (gm && gm.connected) {
+          e.target.closest('.ghost-modal-backdrop').remove();
+          GhostUI.toast('Gmail connected');
+          loadIntegrations(document.getElementById('view'));
+        } else {
+          GhostUI.toast('Not connected yet — approve access first.', 'err');
+        }
+      } catch (err) { GhostUI.toast('Couldn’t check status.', 'err'); }
+    } }, 'Check connection'),
+  ]);
+}
+
+async function confirmDisconnectGmail() {
+  if (!(await GhostUI.confirmModal('Disconnect Gmail?', 'Ghost will no longer read or send your email. You can reconnect anytime.', 'Disconnect'))) return;
+  try { await GhostAPI.post('/api/admin/integrations/gmail/disconnect', {}); GhostUI.toast('Gmail disconnected'); }
+  catch (e) { GhostUI.toast('Couldn’t disconnect.', 'err'); return; }
+  loadIntegrations(document.getElementById('view'));
+}
+
+async function startOutlookConnect() {
+  let res;
+  try { res = await GhostAPI.post('/api/admin/integrations/outlook/oauth/start', {}); }
+  catch (e) {
+    GhostUI.toast((e && e.message) || 'Couldn’t start Outlook setup.', 'err');
+    return;
+  }
+  if (res && res.status === 'ready') { GhostUI.toast('Outlook already connected'); loadIntegrations(document.getElementById('view')); return; }
+  if (!res || !res.auth_url) {
+    GhostUI.toast((res && res.message) || 'Outlook sign-in isn’t set up on this Ghost yet.', 'err');
+    return;
+  }
+  window.open(res.auth_url, '_blank', 'noopener');
+  const body = GhostUI.h('div');
+  body.appendChild(GhostUI.h('p', {}, 'Microsoft’s sign-in screen opened in a new tab. Approve access, then come back here and press Check connection.'));
+  GhostUI.modal('Connect Outlook', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+      try {
+        const st = await GhostAPI.get('/api/admin/integrations/status');
+        const om = st && st.integrations && st.integrations.outlook;
+        if (om && om.connected) {
+          e.target.closest('.ghost-modal-backdrop').remove();
+          GhostUI.toast('Outlook connected');
+          loadIntegrations(document.getElementById('view'));
+        } else {
+          GhostUI.toast('Not connected yet — approve access first.', 'err');
+        }
+      } catch (err) { GhostUI.toast('Couldn’t check status.', 'err'); }
+    } }, 'Check connection'),
+  ]);
+}
+
+async function confirmDisconnectOutlook() {
+  if (!(await GhostUI.confirmModal('Disconnect Outlook?', 'Ghost will no longer read or send your email or calendar. You can reconnect anytime.', 'Disconnect'))) return;
+  try { await GhostAPI.post('/api/admin/integrations/outlook/disconnect', {}); GhostUI.toast('Outlook disconnected'); }
+  catch (e) { GhostUI.toast('Couldn’t disconnect.', 'err'); return; }
+  loadIntegrations(document.getElementById('view'));
+}
+
+async function startSpotifyConnect() {
+  let res;
+  try { res = await GhostAPI.post('/api/admin/integrations/spotify/oauth/start', {}); }
+  catch (e) {
+    GhostUI.toast((e && e.message) || 'Couldn’t start Spotify setup.', 'err');
+    return;
+  }
+  if (res && res.status === 'ready') { GhostUI.toast('Spotify already connected'); loadIntegrations(document.getElementById('view')); return; }
+  if (!res || !res.auth_url) {
+    GhostUI.toast((res && res.message) || 'Spotify sign-in isn’t set up on this Ghost yet.', 'err');
+    return;
+  }
+  window.open(res.auth_url, '_blank', 'noopener');
+  const body = GhostUI.h('div');
+  body.appendChild(GhostUI.h('p', {}, 'Spotify’s sign-in screen opened in a new tab. Approve access, then come back here and press Check connection.'));
+  GhostUI.modal('Connect Spotify', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+      try {
+        const st = await GhostAPI.get('/api/admin/integrations/status');
+        const sp = st && st.integrations && st.integrations.spotify;
+        if (sp && sp.connected) {
+          e.target.closest('.ghost-modal-backdrop').remove();
+          GhostUI.toast('Spotify connected');
+          loadIntegrations(document.getElementById('view'));
+        } else {
+          GhostUI.toast('Not connected yet — approve access first.', 'err');
+        }
+      } catch (err) { GhostUI.toast('Couldn’t check status.', 'err'); }
+    } }, 'Check connection'),
+  ]);
+}
+
+async function confirmDisconnectSpotify() {
+  if (!(await GhostUI.confirmModal('Disconnect Spotify?', 'Ghost will no longer control your music. You can reconnect anytime.', 'Disconnect'))) return;
+  try { await GhostAPI.post('/api/admin/integrations/spotify/disconnect', {}); GhostUI.toast('Spotify disconnected'); }
+  catch (e) { GhostUI.toast('Couldn’t disconnect.', 'err'); return; }
+  loadIntegrations(document.getElementById('view'));
+}
+
+function editGithubToken(configured) {
+  const body = GhostUI.h('div');
+  body.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'margin-bottom:var(--s-4)' },
+    'Paste a read-only personal access token (Settings → Developer settings → Personal access tokens). Your token’s own scopes govern what Ghost can see. Stored securely on this device only.'));
+  const f = GhostUI.h('div', { className: 'field' });
+  f.appendChild(GhostUI.h('label', {}, configured ? 'New token (leave blank to keep current)' : 'Personal access token'));
+  const inp = GhostUI.h('input', { className: 'ghost-input', type: 'password', placeholder: configured ? '••• current token saved •••' : 'ghp_…', autocomplete: 'off' });
+  f.appendChild(inp); body.appendChild(f);
+  GhostUI.modal(configured ? 'Edit GitHub token' : 'Connect GitHub', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+      const token = inp.value.trim();
+      if (!token) { e.target.closest('.ghost-modal-backdrop').remove(); return; }
+      try {
+        await GhostAPI.post('/api/admin/integrations/github/save', { token });
+        e.target.closest('.ghost-modal-backdrop').remove();
+        GhostUI.toast('GitHub connected');
+        loadIntegrations(document.getElementById('view'));
+      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+    } }, 'Save'),
+  ]);
+  if (configured) {
+    body.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
+      if (!(await GhostUI.confirmModal('Disconnect GitHub?', 'Ghost will no longer search your code.', 'Disconnect'))) return;
+      try { await GhostAPI.post('/api/admin/integrations/github/disconnect', {}); GhostUI.toast('GitHub disconnected'); }
+      catch (e) { GhostUI.toast('Couldn’t disconnect.', 'err'); return; }
+      loadIntegrations(document.getElementById('view'));
+    } }, 'Disconnect'));
+  }
+}
+
+function editNotionToken(configured) {
+  const body = GhostUI.h('div');
+  body.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'margin-bottom:var(--s-4)' },
+    'Paste a Notion internal integration token and share the pages you want Ghost to search. Stored securely on this device only.'));
+  const f = GhostUI.h('div', { className: 'field' });
+  f.appendChild(GhostUI.h('label', {}, configured ? 'New token (leave blank to keep current)' : 'Integration token'));
+  const inp = GhostUI.h('input', { className: 'ghost-input', type: 'password', placeholder: configured ? '••• current token saved •••' : 'ntn_… / secret_…', autocomplete: 'off' });
+  f.appendChild(inp); body.appendChild(f);
+  GhostUI.modal(configured ? 'Edit Notion token' : 'Connect Notion', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+      const token = inp.value.trim();
+      if (!token) { e.target.closest('.ghost-modal-backdrop').remove(); return; }
+      try {
+        await GhostAPI.post('/api/admin/integrations/notion/save', { token });
+        e.target.closest('.ghost-modal-backdrop').remove();
+        GhostUI.toast('Notion connected');
+        loadIntegrations(document.getElementById('view'));
+      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+    } }, 'Save'),
+  ]);
+  if (configured) {
+    body.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
+      if (!(await GhostUI.confirmModal('Disconnect Notion?', 'Ghost will no longer search your docs.', 'Disconnect'))) return;
+      try { await GhostAPI.post('/api/admin/integrations/notion/disconnect', {}); GhostUI.toast('Notion disconnected'); }
+      catch (e) { GhostUI.toast('Couldn’t disconnect.', 'err'); return; }
+      loadIntegrations(document.getElementById('view'));
+    } }, 'Disconnect'));
+  }
 }
 
 function editFlightKey(configured) {

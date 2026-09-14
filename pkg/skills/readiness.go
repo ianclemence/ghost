@@ -88,6 +88,19 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 			}
 		}
 	}
+	if skillName == "email" {
+		if GmailWebStatus().Connected || OutlookWebStatus().Connected {
+			return SkillReadiness{Status: StatusReady}
+		}
+		// No connected mailbox: himalaya CLI is the fallback, checked by
+		// the generic prerequisites path below.
+	}
+	if skillName == "github" {
+		if credentials.GithubConfigured() {
+			return SkillReadiness{Status: StatusReady}
+		}
+		// No PAT: gh CLI is the fallback, checked by the generic path.
+	}
 	// User-side state skills: binaries may be present but the user's
 	// device/service still needs action. These stay amber until the user
 	// acts — never green on binaries alone.
@@ -100,11 +113,14 @@ func CheckReadiness(skillName, workspace string, providedInputs map[string]strin
 		}
 	}
 	if skillName == "spotify" {
+		if SpotifyWebStatus().Connected {
+			return SkillReadiness{Status: StatusReady}
+		}
 		return SkillReadiness{
 			Status:      StatusNeedsConfiguration,
-			Requirement: "spotify_app",
-			Message:     "Spotify control needs the Spotify desktop app running and logged in on a device Ghost can reach.",
-			UserAction:  "start_spotify",
+			Requirement: "spotify_account",
+			Message:     "Spotify control needs your Spotify account connected. See Ghost settings under Connected Apps.",
+			UserAction:  "connect_spotify",
 		}
 	}
 	if skillName == "camera" {

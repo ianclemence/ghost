@@ -49,7 +49,7 @@ live words.
 Durable human-readable memory, dual-sinked with the vector index.
 
 - `MEMORY.md` — distilled notes. Actively written (remember tool, consolidation backfill) and searched (memory recall). Not legacy.
-- `YYYYMM/YYYYMMDD.md` — daily conversation journals (system-authored summaries) plus user-facing entries. Append-only; history, not verdicts.
+- `YYYY-MM-DD.md` — daily conversation journals (system-authored summaries) plus user-facing entries. Append-only; history, not verdicts.
 
 Regenerable from structured memory + history. Excluded from git tracking.
 

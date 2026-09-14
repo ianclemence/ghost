@@ -749,6 +749,9 @@ func (s *Server) dispatchToDeviceStream(t *DeviceTunnel, f *proto.Frame) {
 // holds its own client secret may be relayed.
 var oauthCallbackProviders = map[string]string{
 	"calendar": "/oauth/calendar/callback",
+	"gmail":    "/oauth/gmail/callback",
+	"outlook":  "/oauth/outlook/callback",
+	"spotify":  "/oauth/spotify/callback",
 }
 
 // oauthRateLimit bounds unauthenticated callback hits per client address.

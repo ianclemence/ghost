@@ -1,19 +1,28 @@
 ---
 name: spotify
-description: Control Spotify playback, search tracks, manage playlists, and view what's playing. Invoke when user mentions "Spotify", "play music", "pause", "next track", "what's playing on Spotify", "search for a song", or "Spotify queue". Requires spotify-cli wrapper or dbus.
-version: 1.1.0
+description: Control Spotify playback, search tracks, manage playlists, and view what's playing. Invoke when user mentions "Spotify", "play music", "pause", "next track", "what's playing on Spotify", "search for a song", or "Spotify queue". Prefers the connected Spotify account (OAuth) when available; falls back to CLI wrapper or dbus.
+version: 1.2.0
 author: Ghost
 license: MIT
 metadata:
   ghost:
     tags: [spotify, music, playback, audio, playlist]
+    connector: true
 prerequisites:
+  connected_apps: [spotify]
   commands: []
 ---
 
 # Spotify Control
 
-Controls the Spotify desktop client via CLI wrapper or D-Bus.
+Call the `media_play` tool with `action: status|play|pause|next|previous`
+— it uses the connected Spotify OAuth account internally. If Spotify isn't
+connected, direct the user to Connected Apps → browser sign-in.
+
+## Fallback: CLI wrappers
+
+Controls the Spotify desktop client via CLI wrapper or D-Bus when no
+connected app is available.
 
 ## Quick Reference
 

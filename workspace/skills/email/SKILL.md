@@ -19,6 +19,10 @@ Email lives behind connected apps. Never ask for passwords in chat.
 
 ## Preferred: connected apps (Gmail / Outlook)
 
+Call the `email_search` tool to list mail and `email_send` to send — they
+use the connected Gmail (preferred) or Outlook OAuth credential internally.
+Never ask for provider details.
+
 1. Check Connected Apps (`gmail`, `outlook`) status first.
 2. If not connected, direct the user to Connected Apps → browser sign-in, then pull to refresh.
 3. Sending always requires broker approval and returns acknowledgement evidence (`message_id`, `timestamp`) before claiming Done.

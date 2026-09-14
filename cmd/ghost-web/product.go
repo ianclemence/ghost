@@ -103,6 +103,251 @@ func handleCalendarOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// gmailOAuthConfigFromEnv reads the shared Google OAuth client (same Cloud
+// project as Calendar) plus the Gmail redirect URL. One project, two
+// registered callbacks — simpler for consumers than two clients.
+func gmailOAuthConfigFromEnv() skills.GmailOAuthConfig {
+	return skills.GmailOAuthConfig{
+		ClientID:     strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_ID")),
+		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_SECRET")),
+		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_GMAIL_REDIRECT_URL")),
+	}
+}
+
+// handleIntegrationsGmailOAuthStart begins Gmail sign-in. Returns the Google
+// consent URL; the browser opens it. Secrets never leave the server.
+func handleIntegrationsGmailOAuthStart(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if st := skills.GmailWebStatus(); st.Connected {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready", "message": st.Message})
+		return
+	}
+	cfg := gmailOAuthConfigFromEnv()
+	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RedirectURL == "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "needs_configuration",
+			"message": "Gmail sign-in isn't set up on this Ghost yet. Add your Google OAuth client (shared with Calendar) plus the Gmail redirect URL in Ghost settings.",
+			"action":  "configure_gmail_oauth",
+		})
+		return
+	}
+	needWrite := r.URL.Query().Get("write") == "true"
+	authURL, _, err := skills.GmailOAuthBegin(cfg, sessionToken(r), r.URL.Query().Get("pending_id"), needWrite)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "needs_configuration",
+			"message": "Gmail sign-in isn't set up on this Ghost yet.",
+			"action":  "configure_gmail_oauth",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true, "status": "needs_authorization",
+		"auth_url": authURL,
+		"message":  "Opening Google's sign-in screen. After approval you'll be back to your inbox.",
+	})
+}
+
+// handleGmailOAuthCallback is the LAN-direct Gmail callback
+// (https://<ghost-lan>/oauth/gmail/callback). Remote browsers use the
+// relay-hosted callback. Validates state, exchanges, stores, validates.
+func handleGmailOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	cfg := gmailOAuthConfigFromEnv()
+	state := r.URL.Query().Get("state")
+	code := r.URL.Query().Get("code")
+	if errStr := r.URL.Query().Get("error"); errStr != "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "cancelled",
+			"message": "Gmail sign-in was cancelled. You can try again any time.",
+		})
+		return
+	}
+	pendingID, err := skills.GmailOAuthComplete(cfg, state, code, nil, nil)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "needs_authorization",
+			"message": "That sign-in didn't complete. Please try connecting again.",
+			"action":  "connect_gmail",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true, "status": "ready",
+		"message":    "Your Gmail is connected.",
+		"pending_id": pendingID,
+	})
+}
+
+// outlookOAuthConfigFromEnv reads the deployment's Microsoft app
+// registration plus the Outlook redirect URL.
+func outlookOAuthConfigFromEnv() skills.OutlookOAuthConfig {
+	return skills.OutlookOAuthConfig{
+		ClientID:     strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_CLIENT_ID")),
+		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_CLIENT_SECRET")),
+		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_REDIRECT_URL")),
+		Tenant:       strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_TENANT")),
+	}
+}
+
+// handleIntegrationsOutlookOAuthStart begins Outlook sign-in (mail +
+// calendar together). Returns the Microsoft consent URL.
+func handleIntegrationsOutlookOAuthStart(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if st := skills.OutlookWebStatus(); st.Connected {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready", "message": st.Message})
+		return
+	}
+	cfg := outlookOAuthConfigFromEnv()
+	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RedirectURL == "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "needs_configuration",
+			"message": "Outlook sign-in isn't set up on this Ghost yet. Add your Microsoft app registration plus the Outlook redirect URL in Ghost settings.",
+			"action":  "configure_outlook_oauth",
+		})
+		return
+	}
+	needWrite := r.URL.Query().Get("write") == "true"
+	authURL, _, err := skills.OutlookOAuthBegin(cfg, sessionToken(r), r.URL.Query().Get("pending_id"), needWrite)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "needs_configuration",
+			"message": "Outlook sign-in isn't set up on this Ghost yet.",
+			"action":  "configure_outlook_oauth",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true, "status": "needs_authorization",
+		"auth_url": authURL,
+		"message":  "Opening Microsoft's sign-in screen. After approval you'll be back to your inbox.",
+	})
+}
+
+// handleOutlookOAuthCallback is the LAN-direct Outlook callback.
+func handleOutlookOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	cfg := outlookOAuthConfigFromEnv()
+	state := r.URL.Query().Get("state")
+	code := r.URL.Query().Get("code")
+	if errStr := r.URL.Query().Get("error"); errStr != "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "cancelled",
+			"message": "Outlook sign-in was cancelled. You can try again any time.",
+		})
+		return
+	}
+	pendingID, err := skills.OutlookOAuthComplete(cfg, state, code, nil, nil)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "needs_authorization",
+			"message": "That sign-in didn't complete. Please try connecting again.",
+			"action":  "connect_outlook",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true, "status": "ready",
+		"message":    "Your Outlook is connected.",
+		"pending_id": pendingID,
+	})
+}
+
+// spotifyOAuthConfigFromEnv reads the deployment's Spotify app registration.
+func spotifyOAuthConfigFromEnv() skills.SpotifyOAuthConfig {
+	return skills.SpotifyOAuthConfig{
+		ClientID:     strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_CLIENT_ID")),
+		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_CLIENT_SECRET")),
+		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_REDIRECT_URL")),
+	}
+}
+
+// handleIntegrationsSpotifyOAuthStart begins Spotify sign-in.
+func handleIntegrationsSpotifyOAuthStart(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if st := skills.SpotifyWebStatus(); st.Connected {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready", "message": st.Message})
+		return
+	}
+	cfg := spotifyOAuthConfigFromEnv()
+	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RedirectURL == "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "needs_configuration",
+			"message": "Spotify sign-in isn't set up on this Ghost yet. Add your Spotify app registration plus the redirect URL in Ghost settings.",
+			"action":  "configure_spotify_oauth",
+		})
+		return
+	}
+	needWrite := r.URL.Query().Get("write") == "true"
+	authURL, _, err := skills.SpotifyOAuthBegin(cfg, sessionToken(r), r.URL.Query().Get("pending_id"), needWrite)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "needs_configuration",
+			"message": "Spotify sign-in isn't set up on this Ghost yet.",
+			"action":  "configure_spotify_oauth",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true, "status": "needs_authorization",
+		"auth_url": authURL,
+		"message":  "Opening Spotify's sign-in screen. After approval you'll be back to your music.",
+	})
+}
+
+// handleSpotifyOAuthCallback is the LAN-direct Spotify callback.
+func handleSpotifyOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	if !requireSession(w, r) {
+		return
+	}
+	cfg := spotifyOAuthConfigFromEnv()
+	state := r.URL.Query().Get("state")
+	code := r.URL.Query().Get("code")
+	if errStr := r.URL.Query().Get("error"); errStr != "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "cancelled",
+			"message": "Spotify sign-in was cancelled. You can try again any time.",
+		})
+		return
+	}
+	pendingID, err := skills.SpotifyOAuthComplete(cfg, state, code, nil, nil)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "status": "needs_authorization",
+			"message": "That sign-in didn't complete. Please try connecting again.",
+			"action":  "connect_spotify",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true, "status": "ready",
+		"message":    "Your Spotify is connected.",
+		"pending_id": pendingID,
+	})
+}
+
 // handleCalendarVerifyPacket serves the Google verification submission
 // packet: scopes, justifications, redirect URIs, data-handling facts,
 // and the deployer checklist. Registration data only — never secrets.
@@ -157,6 +402,33 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	default:
 		m.SetIntegration("calendar", health.Subsystem{State: health.StateNeedsAuthorization, Status: "Your calendar isn't connected yet.", Reason: "calendar_not_authorized", Remediation: "Connect Google Calendar.", Action: "connect_calendar", LastChecked: now})
 	}
+	gm := skills.GmailWebStatus()
+	switch {
+	case gm.Connected:
+		m.SetIntegration("gmail", health.Subsystem{State: health.StateReady, Status: "Gmail is connected.", Reason: "gmail_ready", LastChecked: now})
+	case gm.Status == skills.CalendarNeedsReauth:
+		m.SetIntegration("gmail", health.Subsystem{State: health.StateExpired, Status: "Your Gmail connection needs to be renewed.", Reason: "gmail_expired", Remediation: "Reconnect Gmail.", Action: "connect_gmail", LastChecked: now})
+	default:
+		m.SetIntegration("gmail", health.Subsystem{State: health.StateNeedsAuthorization, Status: "Your Gmail isn't connected yet.", Reason: "gmail_not_authorized", Remediation: "Connect Gmail.", Action: "connect_gmail", LastChecked: now})
+	}
+	om := skills.OutlookWebStatus()
+	switch {
+	case om.Connected:
+		m.SetIntegration("outlook", health.Subsystem{State: health.StateReady, Status: "Outlook is connected.", Reason: "outlook_ready", LastChecked: now})
+	case om.Status == skills.CalendarNeedsReauth:
+		m.SetIntegration("outlook", health.Subsystem{State: health.StateExpired, Status: "Your Outlook connection needs to be renewed.", Reason: "outlook_expired", Remediation: "Reconnect Outlook.", Action: "connect_outlook", LastChecked: now})
+	default:
+		m.SetIntegration("outlook", health.Subsystem{State: health.StateNeedsAuthorization, Status: "Your Outlook isn't connected yet.", Reason: "outlook_not_authorized", Remediation: "Connect Outlook.", Action: "connect_outlook", LastChecked: now})
+	}
+	sp := skills.SpotifyWebStatus()
+	switch {
+	case sp.Connected:
+		m.SetIntegration("spotify", health.Subsystem{State: health.StateReady, Status: "Spotify is connected.", Reason: "spotify_ready", LastChecked: now})
+	case sp.Status == skills.CalendarNeedsReauth:
+		m.SetIntegration("spotify", health.Subsystem{State: health.StateExpired, Status: "Your Spotify connection needs to be renewed.", Reason: "spotify_expired", Remediation: "Reconnect Spotify.", Action: "connect_spotify", LastChecked: now})
+	default:
+		m.SetIntegration("spotify", health.Subsystem{State: health.StateNeedsAuthorization, Status: "Your Spotify isn't connected yet.", Reason: "spotify_not_authorized", Remediation: "Connect Spotify.", Action: "connect_spotify", LastChecked: now})
+	}
 	if credentials.AviationKey(nil) != "" {
 		m.SetIntegration("flight", health.Subsystem{State: health.StateReady, Status: "Flight tracking is connected.", Reason: "flight_ready", LastChecked: now})
 	} else {
@@ -166,6 +438,16 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 		m.SetIntegration("homeassistant", health.Subsystem{State: health.StateReady, Status: "Home Assistant is connected.", Reason: "hass_ready", LastChecked: now})
 	} else {
 		m.SetIntegration("homeassistant", health.Subsystem{State: health.StateNotConfigured, Status: "Home Assistant isn't connected yet.", Reason: "hass_not_configured", Remediation: "Add your Home Assistant URL and token.", Action: "connect_hass", LastChecked: now})
+	}
+	if credentials.GithubConfigured() {
+		m.SetIntegration("github", health.Subsystem{State: health.StateReady, Status: "GitHub is connected.", Reason: "github_ready", LastChecked: now})
+	} else {
+		m.SetIntegration("github", health.Subsystem{State: health.StateNotConfigured, Status: "GitHub isn't connected yet.", Reason: "github_not_configured", Remediation: "Add your GitHub token.", Action: "connect_github", LastChecked: now})
+	}
+	if credentials.NotionConfigured() {
+		m.SetIntegration("notion", health.Subsystem{State: health.StateReady, Status: "Notion is connected.", Reason: "notion_ready", LastChecked: now})
+	} else {
+		m.SetIntegration("notion", health.Subsystem{State: health.StateNotConfigured, Status: "Notion isn't connected yet.", Reason: "notion_not_configured", Remediation: "Add your Notion token.", Action: "connect_notion", LastChecked: now})
 	}
 	rep := m.Report()
 	writeJSON(w, http.StatusOK, map[string]interface{}{

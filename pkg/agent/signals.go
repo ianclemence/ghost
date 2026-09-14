@@ -3,12 +3,16 @@ package agent
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/cards"
 	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
+	"github.com/ianclemence/ghost/pkg/goals"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/proactive"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 )
@@ -47,6 +51,7 @@ func (al *AgentLoop) SetScheduler(s commands.ScheduleCreator) {
 func (al *AgentLoop) ScanNotices() []Notice {
 	var out []Notice
 	out = append(out, al.scanRoutineNotices()...)
+	out = append(out, al.scanGoalNotices(time.Now())...)
 	return out
 }
 
@@ -72,8 +77,15 @@ func (al *AgentLoop) PollProactive() int {
 
 // deliverNotice sends an approved notice to the last active channel.
 // Internal channels (cli:direct and kin) never receive proactive pings.
+// Quiet hours (PROACTIVE_PREFERENCES.md, user timezone) hold non-urgent
+// notices; urgent ones always break through.
 func (al *AgentLoop) deliverNotice(nt Notice) {
 	if al.bus == nil || al.state == nil {
+		return
+	}
+	if !nt.Urgency && al.ProactiveQuiet(time.Now()) {
+		logger.InfoCF("agent", "proactive held: quiet hours",
+			map[string]interface{}{"topic": nt.Topic})
 		return
 	}
 	channel, chatID := al.state.GetLastActiveSession()
@@ -85,6 +97,19 @@ func (al *AgentLoop) deliverNotice(nt Notice) {
 		ChatID:  chatID,
 		Content: nt.Message,
 	})
+	// Companion suggestion card: same text, structured for rich clients.
+	// Text fallback rides in Content, so plain surfaces read fine.
+	if card, err := cards.New(cards.KindSuggestion, "Suggestion", nt.Message); err == nil {
+		card.Topic = nt.Topic
+		cards.Publish(al.bus, nil, channel, chatID, "", card)
+	}
+}
+
+// ProactiveQuiet reports whether now falls in user quiet hours.
+func (al *AgentLoop) ProactiveQuiet(now time.Time) bool {
+	pol := proactive.Load(al.workspace)
+	loc := proactive.UserLocation(al.pcStore)
+	return proactive.InQuietHours(now, loc, pol)
 }
 
 func (al *AgentLoop) ghostID() string {
@@ -139,6 +164,111 @@ func (al *AgentLoop) scanRoutineNotices() []Notice {
 		}
 	}
 	return out
+}
+
+// scanGoalNotices proposes notices for standing goals that need the
+// owner: linked routines waiting/failed, or goals with no recorded
+// progress in over 48h (stale stewardship). Quiet, expired, or completed
+// goals never notify.
+func (al *AgentLoop) scanGoalNotices(now time.Time) []Notice {
+	if al.workspace == "" {
+		return nil
+	}
+	store := goals.NewStore(al.workspace)
+	list, err := store.List(now)
+	if err != nil {
+		return nil
+	}
+	var out []Notice
+	for _, g := range list {
+		if !g.Usable(now) {
+			continue
+		}
+		// Linked routine trouble surfaces under the goal's name.
+		troubled := ""
+		if al.routineSvc != nil {
+			for _, rid := range g.RoutineIDs {
+				for _, r := range al.routineSvc.List(al.ghostID(), 100) {
+					if r == nil || r.ID != rid {
+						continue
+					}
+					if r.Status == routines.StatusWaiting || r.Status == routines.StatusFailed {
+						troubled = displayName(r.Name, r.ID)
+					}
+				}
+			}
+		}
+		if troubled != "" {
+			out = append(out, Notice{
+				Topic:      "goal:" + g.ID,
+				Priority:   8,
+				Confidence: 0.85,
+				DedupeKey:  "goal:" + g.ID + ":routine-trouble",
+				Message:    fmt.Sprintf("Your goal '%s' needs you: linked routine '%s' requires attention. Want me to dig in?", g.Text, troubled),
+			})
+			continue
+		}
+		if len(g.Progress) == 0 {
+			continue // new goal, nothing overdue yet
+		}
+		last := g.Progress[len(g.Progress)-1].At
+		if now.Sub(last) > 48*time.Hour {
+			out = append(out, Notice{
+				Topic:      "goal:" + g.ID,
+				Priority:   7,
+				Confidence: 0.7,
+				DedupeKey:  fmt.Sprintf("goal:%s:stale:%s", g.ID, last.Format("2006-01-02")),
+				Message:    fmt.Sprintf("Your goal '%s' hasn't had progress in a while. Still want me on it, or should I pause it?", g.Text),
+			})
+		}
+	}
+	return out
+}
+
+// WriteEveningReflection appends a structured daily entry (active goals
+// by name, routine counts) to today's note, refreshes the MEMORY.md
+// digest, and marks reflection done. Silent by design: it never pushes.
+// Returns true when it wrote.
+func (al *AgentLoop) WriteEveningReflection(now time.Time) bool {
+	if al.workspace == "" {
+		return false
+	}
+	pol := proactive.Load(al.workspace)
+	loc := proactive.UserLocation(al.pcStore)
+	if !proactive.ReflectionDue(al.workspace, now, loc, pol) {
+		return false
+	}
+	var goalNames []string
+	if store := goals.NewStore(al.workspace); store != nil {
+		if list, err := store.List(now); err == nil {
+			for _, g := range list {
+				if g.Usable(now) {
+					goalNames = append(goalNames, g.Text)
+				}
+			}
+		}
+	}
+	routinesTotal := 0
+	if al.routineSvc != nil {
+		routinesTotal = len(al.routineSvc.List(al.ghostID(), 500))
+	}
+	entry := fmt.Sprintf("## %s — Evening reflection\nActive goals: %d. Routines: %d.\n",
+		now.In(loc).Format("15:04"), len(goalNames), routinesTotal)
+	for _, name := range goalNames {
+		if len(entry) > 1500 {
+			break
+		}
+		entry += "- Goal: " + name + "\n"
+	}
+	ms := NewMemoryStore(al.workspace)
+	if err := ms.AppendToday(entry); err != nil {
+		logger.InfoCF("agent", "evening reflection append failed",
+			map[string]interface{}{"error": err.Error()})
+		return false
+	}
+	_ = ms.DigestLongTerm()
+	proactive.MarkReflected(al.workspace, now, loc)
+	return true
 }
 
 // routineRecentWaiting reports whether the latest history entry is a wait.

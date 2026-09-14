@@ -33,6 +33,14 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// governs anything consequential.
 		"weather_now", "places_nearby", "aqi_now", "crypto_price",
 		"currency_convert", "flight_status",
+		// Connected-app read primaries (email_search, code_search,
+		// docs_search): read-only, refuse honestly when unconnected.
+		// email_send stays out of the mobile profile (explicit approval
+		// on full profile). media_play is in: phone playback is the point,
+		// and the broker still governs it.
+		"email_search", "code_search", "docs_search", "media_play",
+		// Standing goals are user-manageable local state.
+		"goal",
 		// Read-only memory + conversation tools.
 		"memory_recall", "context_get", "clarify", "todo",
 		// Device control and handoff are legitimate mobile actions; the
@@ -54,7 +62,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 	ProfileResearch: {
 		"read_file", "list_dir", "search_files", "grep_search",
 		"web_search", "web_fetch",
-		"browser_navigate", "browser_snapshot", "browser_click", "browser_type",
+		"browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_fill",
 		"vision", "image_generate", "video_frames",
 		"remember", "session_search",
 	},
@@ -71,7 +79,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"schedule", "remember",
 		"session_search",
 		"spawn", "subagent", "batch_delegate",
-		"skill_manage",
+		"skill_manage", "browser_submit",
 		"vision", "image_generate",
 		"i2c", "spi", "device", "publish_artifact",
 		"compaction", "compact_context", "todo", "doc_parser",
@@ -187,7 +195,8 @@ var turnIntentTools = []struct {
 	// Browser/computer tools are discovered by EXPLICIT exact tool names
 	// plus intent keywords (never brittle token overlap). The governing
 	// gates remain the authority; this only controls what the model sees.
-	{[]string{"browser", "open page", "open url", "open a page", "webpage", "web page", "navigate to"}, []string{"browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press"}},
+	{[]string{"browser", "open page", "open url", "open a page", "webpage", "web page", "navigate to", "fill in", "fill out", "form"}, []string{"browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press", "browser_fill"}},
+	{[]string{"checkout", "place order", "submit order", "buy now", "pay for"}, []string{"browser_submit"}},
 	{[]string{"computer", "desktop", "screen", "on the computer", "on the desktop", "computer screen", "settings window", "ui", "interface"}, []string{"computer_inspect_ui", "computer_screenshot", "computer_click", "computer_type", "computer_press_key"}},
 }
 

@@ -32,6 +32,12 @@ var (
 	CalendarConnected       = func() bool { return false }
 	CalendarWebDisconnectFn = func() error { return nil }
 	CalendarDisconnectFn    = func() error { return nil }
+	GmailConnected          = func() bool { return false }
+	GmailDisconnectFn       = func() error { return nil }
+	OutlookConnected        = func() bool { return false }
+	OutlookDisconnectFn     = func() error { return nil }
+	SpotifyConnected        = func() bool { return false }
+	SpotifyDisconnectFn     = func() error { return nil }
 )
 
 // Status is the credential lifecycle state (product-level, shared with
@@ -145,6 +151,21 @@ func (v *Vault) secretValue(id string) string {
 		return OpenWeatherKey()
 	case "google-calendar":
 		if CalendarConnected() {
+			return "oauth:connected"
+		}
+		return ""
+	case "gmail":
+		if GmailConnected() {
+			return "oauth:connected"
+		}
+		return ""
+	case "outlook":
+		if OutlookConnected() {
+			return "oauth:connected"
+		}
+		return ""
+	case "spotify":
+		if SpotifyConnected() {
 			return "oauth:connected"
 		}
 		return ""
@@ -319,6 +340,27 @@ func (v *Vault) Disconnect(id string) error {
 			return err
 		}
 		_ = CalendarDisconnectFn()
+		v.setStatus(id, StatusDisconnected, "credential.disconnected")
+		return nil
+	}
+	if id == "gmail" {
+		if err := GmailDisconnectFn(); err != nil {
+			return err
+		}
+		v.setStatus(id, StatusDisconnected, "credential.disconnected")
+		return nil
+	}
+	if id == "outlook" {
+		if err := OutlookDisconnectFn(); err != nil {
+			return err
+		}
+		v.setStatus(id, StatusDisconnected, "credential.disconnected")
+		return nil
+	}
+	if id == "spotify" {
+		if err := SpotifyDisconnectFn(); err != nil {
+			return err
+		}
 		v.setStatus(id, StatusDisconnected, "credential.disconnected")
 		return nil
 	}
