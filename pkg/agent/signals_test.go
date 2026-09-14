@@ -2,6 +2,8 @@ package agent
 
 import (
 	"database/sql"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -117,6 +119,13 @@ func TestPollProactiveDeliversOnce(t *testing.T) {
 	ch, unsub := al.bus.SubscribeOutbound("test", true, 8)
 	defer unsub()
 	if err := al.state.SetLastActiveSession("telegram", "123"); err != nil {
+		t.Fatal(err)
+	}
+	// Pin clock assumptions: disable quiet hours for this workspace so
+	// delivery does not depend on wall-clock time (defaults hold
+	// 23:00–08:00, which made this test fail only at night).
+	if err := os.WriteFile(filepath.Join(al.workspace, "PROACTIVE_PREFERENCES.md"),
+		[]byte("# Prefs\n\n`quiet_hours: 00:00 - 00:00`\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	// Warm affinity so the floor doesn't gate the test signal.
