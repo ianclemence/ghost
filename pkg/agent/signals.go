@@ -52,16 +52,26 @@ func (al *AgentLoop) ScanNotices() []Notice {
 	var out []Notice
 	out = append(out, al.scanRoutineNotices()...)
 	out = append(out, al.scanGoalNotices(time.Now())...)
+	out = append(out, al.scanSensorNotices(time.Now())...)
 	return out
 }
 
 // PollProactive scans signals, gates each through the noticer (and the
 // affinity floor), and delivers approvals. It returns how many notices
 // went out. Safe to call on every heartbeat tick: gating makes repeats
-// no-ops.
+// no-ops. Deferred outbox items drain first so held/offline notices
+// still reach the owner.
 func (al *AgentLoop) PollProactive() int {
 	delivered := 0
 	affinity := al.Affect().Affinity
+	for _, nt := range dueHeld(al.workspace, time.Now()) {
+		if affinity < minAffinityForProactive && !nt.Urgency {
+			continue
+		}
+		if al.MaybeNotify(nt) == DecisionNotify {
+			delivered++
+		}
+	}
 	for _, nt := range al.ScanNotices() {
 		if affinity < minAffinityForProactive && !nt.Urgency {
 			logger.InfoCF("agent", "proactive skipped: affinity floor",
@@ -70,26 +80,51 @@ func (al *AgentLoop) PollProactive() int {
 		}
 		if al.MaybeNotify(nt) == DecisionNotify {
 			delivered++
+			al.consumeDeliveredSensor(nt)
 		}
 	}
 	return delivered
 }
 
+// consumeDeliveredSensor deletes the sensor event file behind a delivered
+// sensor notice so one press notifies once. Non-sensor notices abstain.
+func (al *AgentLoop) consumeDeliveredSensor(nt Notice) {
+	if !strings.HasPrefix(nt.Topic, "sensor:") {
+		return
+	}
+	rest := strings.TrimPrefix(nt.Topic, "sensor:")
+	parts := strings.SplitN(rest, ":", 2)
+	if len(parts) != 2 || al.workspace == "" {
+		return
+	}
+	now := time.Now()
+	for _, ev := range proactive.ReadSensors(al.workspace, now) {
+		if ev.Device == parts[0] && string(ev.Kind) == parts[1] {
+			proactive.ConsumeSensor(al.workspace, ev.File)
+		}
+	}
+}
+
 // deliverNotice sends an approved notice to the last active channel.
 // Internal channels (cli:direct and kin) never receive proactive pings.
 // Quiet hours (PROACTIVE_PREFERENCES.md, user timezone) hold non-urgent
-// notices; urgent ones always break through.
+// notices into the outbox for morning delivery; urgent ones always break
+// through. When no live session exists (offline, no channel yet), the
+// notice is enqueued instead of dropped — PollProactive drains it.
 func (al *AgentLoop) deliverNotice(nt Notice) {
 	if al.bus == nil || al.state == nil {
+		enqueueHeld(al.workspace, nt, time.Now())
 		return
 	}
 	if !nt.Urgency && al.ProactiveQuiet(time.Now()) {
 		logger.InfoCF("agent", "proactive held: quiet hours",
 			map[string]interface{}{"topic": nt.Topic})
+		enqueueHeld(al.workspace, nt, quietResumeTime(al, time.Now()))
 		return
 	}
 	channel, chatID := al.state.GetLastActiveSession()
 	if channel == "" || chatID == "" || constants.IsInternalChannel(channel) {
+		enqueueHeld(al.workspace, nt, time.Now())
 		return
 	}
 	al.bus.PublishOutbound(bus.OutboundMessage{
@@ -221,6 +256,33 @@ func (al *AgentLoop) scanGoalNotices(now time.Time) []Notice {
 				Message:    fmt.Sprintf("Your goal '%s' hasn't had progress in a while. Still want me on it, or should I pause it?", g.Text),
 			})
 		}
+	}
+	return out
+}
+
+// scanSensorNotices proposes notices for physical events: ESP32 / GPIO /
+// Pi sensor files in <workspace>/state/sensors/*.json. Only urgent events
+// (button, leak, open door, out-of-range temperature) propose; comfort
+// bands and motion stay silent. Consumed files are deleted after gating
+// so one press notifies at most once per dedupe window.
+func (al *AgentLoop) scanSensorNotices(now time.Time) []Notice {
+	if al.workspace == "" {
+		return nil
+	}
+	var out []Notice
+	for _, ev := range proactive.ReadSensors(al.workspace, now) {
+		urgent, reason := proactive.SensorUrgent(ev)
+		if !urgent {
+			continue
+		}
+		out = append(out, Notice{
+			Topic:      "sensor:" + ev.Device + ":" + string(ev.Kind),
+			Priority:   9,
+			Urgency:    true,
+			Confidence: 0.95,
+			DedupeKey:  fmt.Sprintf("sensor:%s:%s:%s", ev.Device, ev.Kind, ev.At.Format("2006-01-02T15:04")),
+			Message:    fmt.Sprintf("Heads up from %s: %s.", ev.Device, reason),
+		})
 	}
 	return out
 }

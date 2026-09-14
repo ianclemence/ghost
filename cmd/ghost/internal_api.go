@@ -5131,26 +5131,34 @@ func connectedAppsList() []map[string]interface{} {
 		}
 		// Google Calendar OAuth lives outside the vault (token file).
 		if c.ID == "google-calendar" {
-			if skills.CalendarWebStatus().Connected || skills.CalendarCheck().Connected {
+			if web, legacy := skills.CalendarWebStatus(), skills.CalendarCheck(); web.Connected || legacy.Connected {
 				status = string(credentials.StatusConnected)
+			} else if web.Status == skills.CalendarNeedsReauth || legacy.Status == skills.CalendarNeedsReauth {
+				status = string(credentials.StatusExpired)
 			}
 		}
 		// Gmail OAuth lives outside the vault (token file).
 		if c.ID == "gmail" {
-			if skills.GmailWebStatus().Connected {
+			if gm := skills.GmailWebStatus(); gm.Connected {
 				status = string(credentials.StatusConnected)
+			} else if gm.Status == skills.CalendarNeedsReauth {
+				status = string(credentials.StatusExpired)
 			}
 		}
 		// Outlook OAuth lives outside the vault (token file).
 		if c.ID == "outlook" {
-			if skills.OutlookWebStatus().Connected {
+			if om := skills.OutlookWebStatus(); om.Connected {
 				status = string(credentials.StatusConnected)
+			} else if om.Status == skills.CalendarNeedsReauth {
+				status = string(credentials.StatusExpired)
 			}
 		}
 		// Spotify OAuth lives outside the vault (token file).
 		if c.ID == "spotify" {
-			if skills.SpotifyWebStatus().Connected {
+			if sp := skills.SpotifyWebStatus(); sp.Connected {
 				status = string(credentials.StatusConnected)
+			} else if sp.Status == skills.CalendarNeedsReauth {
+				status = string(credentials.StatusExpired)
 			}
 		}
 		needsReauth := status == string(credentials.StatusExpired) ||

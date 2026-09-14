@@ -21,6 +21,13 @@ type HubSyncState struct {
 	LocalPath  string    `json:"local_path"`
 	Source     string    `json:"source"` // "clawhub", "github", "local"
 	AutoUpdate bool      `json:"auto_update"`
+	// Requires records the Ghost capabilities the installed version
+	// declares (`requires:` frontmatter). A request, never a grant — but
+	// recorded so readiness and evals can check it.
+	Requires []string `json:"requires,omitempty"`
+	// PreviousVersion is the last working version kept for rollback.
+	// Empty when no rollback snapshot exists.
+	PreviousVersion string `json:"previous_version,omitempty"`
 }
 
 // HubSyncFile is the on-disk format for sync state.
@@ -70,15 +77,39 @@ func (h *SkillsHub) Install(ctx context.Context, slug, version string) (*Install
 		return nil, err
 	}
 
-	// Record sync state
-	h.state.Skills = append(h.state.Skills, HubSyncState{
-		Slug:       slug,
-		Version:    result.Version,
-		LastSynced: time.Now(),
-		LocalPath:  filepath.Join(targetDir, slug),
-		Source:     "clawhub",
-		AutoUpdate: true,
-	})
+	// Capability-scoped install: the skill's declared `requires:` must name
+	// capabilities Ghost knows. An unknown name is a broken skill (typo or
+	// drift), so fail closed before recording sync state. This validates
+	// the request; granting still happens only through the broker at runtime.
+	requires := h.installedRequires(filepath.Join(targetDir, slug))
+	for _, req := range requires {
+		if !HasCapability(req) && !isKnownGhostCapability(req) {
+			return nil, fmt.Errorf("skill %q requires unknown capability %q", slug, req)
+		}
+	}
+
+	// Record sync state (dedupe: reinstalls update the existing row).
+	found := false
+	for i, s := range h.state.Skills {
+		if s.Slug == slug {
+			h.state.Skills[i].Version = result.Version
+			h.state.Skills[i].LastSynced = time.Now()
+			h.state.Skills[i].Requires = requires
+			found = true
+			break
+		}
+	}
+	if !found {
+		h.state.Skills = append(h.state.Skills, HubSyncState{
+			Slug:       slug,
+			Version:    result.Version,
+			LastSynced: time.Now(),
+			LocalPath:  filepath.Join(targetDir, slug),
+			Source:     "clawhub",
+			AutoUpdate: true,
+			Requires:   requires,
+		})
+	}
 	saveSyncFile(h.syncFilePath, h.state)
 
 	logger.InfoCF("skills-hub", "Skill installed from hub", map[string]interface{}{
@@ -87,6 +118,43 @@ func (h *SkillsHub) Install(ctx context.Context, slug, version string) (*Install
 	})
 
 	return result, nil
+}
+
+// installedRequires reads the installed skill's declared capabilities.
+func (h *SkillsHub) installedRequires(skillDir string) []string {
+	if h.loader == nil {
+		return nil
+	}
+	if meta := h.loader.getSkillMetadata(filepath.Join(skillDir, "SKILL.md")); meta != nil {
+		return meta.RequiresCapabilities
+	}
+	return nil
+}
+
+// isKnownGhostCapability reports whether id is a runtime capability outside
+// the skill-codec registry (model-facing capabilities resolved by the
+// capability resolver, e.g. memory.recall, web.search, email.read).
+func isKnownGhostCapability(id string) bool {
+	switch id {
+	case "memory.recall", "memory.remember",
+		"web.search", "web.fetch",
+		"file.read", "file.write",
+		"artifact.create",
+		"weather.get", "aqi.get", "currency.convert", "crypto.price",
+		"places.nearby", "flight.status",
+		"email.read", "email.send",
+		"media.playback", "code.read", "repository.search", "docs",
+		"calendar.read", "calendar.modify",
+		"browser.inspect", "browser.control", "browser.transact",
+		"computer.inspect", "computer.control",
+		"device.read", "device.control",
+		"message.send",
+		"routine.create", "routine.modify", "routine.cancel",
+		"goal.manage":
+		return true
+	default:
+		return false
+	}
 }
 
 // Update checks for updates and installs newer versions of installed skills.
@@ -113,18 +181,55 @@ func (h *SkillsHub) Update(ctx context.Context, slug string) (*InstallResult, er
 		return nil, fmt.Errorf("skill %q is already at latest version %s", slug, meta.LatestVersion)
 	}
 
-	// Remove old version and install new
+	// Snapshot the working version for rollback before touching it.
 	oldPath := h.state.Skills[idx].LocalPath
+	oldVersion := h.state.Skills[idx].Version
+	backupDir, err := snapshotSkillDir(oldPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot snapshot %q for rollback: %w", slug, err)
+	}
+
+	// Remove old version and install new.
 	os.RemoveAll(oldPath)
 
-	result, err := h.Install(ctx, slug, meta.LatestVersion)
+	result, err := h.registry.DownloadAndInstall(ctx, slug, meta.LatestVersion, filepath.Join(h.workspace, "skills"))
 	if err != nil {
-		return nil, err
+		// Roll back: restore the working version, keep sync state intact.
+		_ = os.RemoveAll(oldPath)
+		if rerr := restoreSkillDir(backupDir, oldPath); rerr != nil {
+			return nil, fmt.Errorf("update to %s failed (%v) and rollback failed (%v)", meta.LatestVersion, err, rerr)
+		}
+		return nil, fmt.Errorf("update to %s failed, rolled back to %s: %w", meta.LatestVersion, oldVersion, err)
 	}
+
+	// Validate the new version's declared capabilities before recording.
+	// Unknown names mean a broken skill: roll back to the working version.
+	requires := h.installedRequires(filepath.Join(h.workspace, "skills", slug))
+	for _, req := range requires {
+		if !HasCapability(req) && !isKnownGhostCapability(req) {
+			_ = os.RemoveAll(filepath.Join(h.workspace, "skills", slug))
+			_ = restoreSkillDir(backupDir, oldPath)
+			return nil, fmt.Errorf("skill %q v%s requires unknown capability %q, kept %s", slug, result.Version, req, oldVersion)
+		}
+	}
+	// Static evals gate the new version: a version that fails eval never
+	// replaces the working one (roll back, keep sync state intact).
+	if evals := EvalSkill(filepath.Join(h.workspace, "skills", slug)); !EvalPassed(evals) {
+		_ = os.RemoveAll(filepath.Join(h.workspace, "skills", slug))
+		_ = restoreSkillDir(backupDir, oldPath)
+		return nil, fmt.Errorf("skill %q v%s failed eval (%s), kept %s", slug, result.Version, evalFailure(evals), oldVersion)
+	}
+	_ = os.RemoveAll(backupDir)
+
+	h.state.Skills[idx].Version = result.Version
+	h.state.Skills[idx].PreviousVersion = oldVersion
+	h.state.Skills[idx].LastSynced = time.Now()
+	h.state.Skills[idx].Requires = requires
+	saveSyncFile(h.syncFilePath, h.state)
 
 	logger.InfoCF("skills-hub", "Skill updated", map[string]interface{}{
 		"slug":        slug,
-		"old_version": h.state.Skills[idx].Version,
+		"old_version": oldVersion,
 		"new_version": result.Version,
 	})
 
@@ -194,6 +299,61 @@ func (h *SkillsHub) SetAutoUpdate(slug string, enabled bool) error {
 		}
 	}
 	return fmt.Errorf("skill %q not found in hub sync", slug)
+}
+
+// snapshotSkillDir copies a skill directory to a temp backup for rollback.
+// Returns the backup path; absent source yields an empty path and nil error
+// (fresh install, nothing to roll back to).
+func snapshotSkillDir(src string) (string, error) {
+	fi, err := os.Stat(src)
+	if err != nil || !fi.IsDir() {
+		return "", nil
+	}
+	dst, err := os.MkdirTemp("", "ghost-skill-rollback-")
+	if err != nil {
+		return "", err
+	}
+	_ = os.Remove(dst)
+	if err := copyDirRecursive(src, dst); err != nil {
+		_ = os.RemoveAll(dst)
+		return "", err
+	}
+	return dst, nil
+}
+
+// restoreSkillDir moves a snapshot back over dst.
+func restoreSkillDir(backup, dst string) error {
+	if backup == "" {
+		return fmt.Errorf("no rollback snapshot")
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	if err := copyDirRecursive(backup, dst); err != nil {
+		return err
+	}
+	return os.RemoveAll(backup)
+}
+
+func copyDirRecursive(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0644)
+	})
 }
 
 // HubUpdateResult represents the result of updating a single skill.

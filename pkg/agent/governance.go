@@ -634,6 +634,21 @@ func (g *Governance) ClearRoutineContext(sessionKey string) {
 	delete(g.routineCtx, sessionKey)
 }
 
+// routineIDFor returns the routine owning a scoped session, or "" for
+// interactive turns. Used by deny-only guards (budgets) that treat
+// unattended runs more strictly without touching broker policy.
+func (g *Governance) routineIDFor(sessionKey string) string {
+	if !g.active() {
+		return ""
+	}
+	g.capMu.Lock()
+	defer g.capMu.Unlock()
+	if scope, ok := g.routineCtx[sessionKey]; ok {
+		return scope.routineID
+	}
+	return ""
+}
+
 // routineAllows reports whether a routine-scoped turn may use a
 // capability. No scope (interactive) always allows; an empty allowlist
 // allows all (the broker still gates consequential actions).

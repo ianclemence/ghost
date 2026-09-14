@@ -152,6 +152,8 @@ func Run(opts Options) Report {
 		checkOfflineHonest, checkFallback,
 		checkNoBypass, checkCrossOwner, checkSecretsSurfaces,
 		checkFalseSuccess, checkBackupSecrets,
+		checkBrowserSubmitEvidence, checkScreencastSingleUse,
+		checkGoalFanout, checkSubagentCaps,
 	}
 	var out []Check
 	for _, c := range checks {

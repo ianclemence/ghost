@@ -1135,6 +1135,14 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 
 func (al *AgentLoop) SetGovernance(g *Governance) {
 	al.governance = g
+	// Attempt budgets are deny-only guards: the broker stays authoritative.
+	// Wired once here so every loop (interactive, routine, heartbeat) is
+	// covered. Unattended runs additionally get halved routine caps.
+	if g != nil {
+		budgets := newAttemptBudget(nil)
+		g.AddGuard(budgets.guard)
+		g.AddGuard(budgets.routineGuard(g))
+	}
 	// Durable task evidence joins the canonical stream wherever the
 	// runtime owns one. Nil-safe: unwired loops keep transient events only.
 	if al.jobs != nil {
@@ -1664,6 +1672,15 @@ func (al *AgentLoop) consolidatePersonalContext() {
 		logger.WarnCF("agent", "Personal Context consolidation failed", map[string]interface{}{"error": err.Error()})
 	} else if rejected > 0 || decayed > 0 {
 		logger.InfoCF("agent", "Personal Context consolidated", map[string]interface{}{"rejected": rejected, "decayed": decayed})
+	}
+	// Compounding pass: declare contradictions (never auto-merge), retire
+	// time-expired beliefs, decay idle reinforcement. All transitions
+	// append revisions — provenance is never deleted.
+	if c, err := al.pcStore.Consolidate(time.Now().UTC()); err != nil {
+		logger.WarnCF("agent", "Personal Context compounding failed", map[string]interface{}{"error": err.Error()})
+	} else if c.ConflictsDeclared > 0 || c.Expired > 0 {
+		logger.InfoCF("agent", "Personal Context compounded", map[string]interface{}{
+			"conflicts": c.ConflictsDeclared, "expired": c.Expired, "decayed": c.Decayed})
 	}
 	// Keep the curated (always-injected) profile in sync with Ghost's
 	// structured memory, so the curated layer is actually used.

@@ -2849,6 +2849,7 @@ func handleIntegrationsStatus(w http.ResponseWriter, r *http.Request) {
 	gm := skills.GmailWebStatus()
 	om := skills.OutlookWebStatus()
 	sp := skills.SpotifyWebStatus()
+	needsReauth := func(s string) bool { return s == string(skills.CalendarNeedsReauth) }
 	flightReady := credentials.FlightConfigured()
 	hassReady := credentials.HassConfigured()
 	camReady := skills.CameraCheck()
@@ -2856,28 +2857,32 @@ func handleIntegrationsStatus(w http.ResponseWriter, r *http.Request) {
 		"ok": true,
 		"integrations": map[string]interface{}{
 			"calendar": map[string]interface{}{
-				"status":     string(cal.Status),
-				"connected":  cal.Connected,
-				"message":    cal.Message,
-				"needsSetup": cal.NeedsSetup,
+				"status":      string(cal.Status),
+				"connected":   cal.Connected,
+				"message":     cal.Message,
+				"needsSetup":  cal.NeedsSetup,
+				"needsReauth": needsReauth(string(cal.Status)),
 			},
 			"gmail": map[string]interface{}{
-				"status":     string(gm.Status),
-				"connected":  gm.Connected,
-				"message":    gm.Message,
-				"needsSetup": gm.NeedsSetup,
+				"status":      string(gm.Status),
+				"connected":   gm.Connected,
+				"message":     gm.Message,
+				"needsSetup":  gm.NeedsSetup,
+				"needsReauth": needsReauth(string(gm.Status)),
 			},
 			"outlook": map[string]interface{}{
-				"status":     string(om.Status),
-				"connected":  om.Connected,
-				"message":    om.Message,
-				"needsSetup": om.NeedsSetup,
+				"status":      string(om.Status),
+				"connected":   om.Connected,
+				"message":     om.Message,
+				"needsSetup":  om.NeedsSetup,
+				"needsReauth": needsReauth(string(om.Status)),
 			},
 			"spotify": map[string]interface{}{
-				"status":     string(sp.Status),
-				"connected":  sp.Connected,
-				"message":    sp.Message,
-				"needsSetup": sp.NeedsSetup,
+				"status":      string(sp.Status),
+				"connected":   sp.Connected,
+				"message":     sp.Message,
+				"needsSetup":  sp.NeedsSetup,
+				"needsReauth": needsReauth(string(sp.Status)),
 			},
 			"github": map[string]interface{}{
 				"configured": credentials.GithubConfigured(),
