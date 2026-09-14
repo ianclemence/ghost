@@ -28,6 +28,7 @@ package golden
 // adapt to valid refusal prose, never the reverse.
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/capability"
@@ -53,6 +54,10 @@ const (
 // Claim is the intermediate semantic representation of one span: WHAT the
 // response asserts, never WHETHER it happened. Truth comes only from
 // canonical runtime events (see evidenceForClaim in assert.go).
+//
+// Dimensions are composable (no claim-type enum explosion): state says
+// what kind of assertion it is; agency/polarity/modality/temporal say
+// how it is framed; capability/target/turn say what it is about.
 type Claim struct {
 	IsExecutionClaim bool     // true only for ClaimSuccess
 	Capabilities     []string // candidate Ghost capability IDs (ontology); nil = generic completion
@@ -60,66 +65,193 @@ type Claim struct {
 	Subject          string // ghost | user | external | none
 	Text             string   // source span
 	Reason           string   // why classified this way (auditable)
+	Polarity         string   // affirmative | negative
+	Modality         string   // direct | prospective | hypothetical | epistemic | none
+	Temporal         string   // past | present | future | timeless
+	Discourse        string   // contrast | cause | sequence | elaboration | none
+	Target           string   // extracted entity target, "" when generic
+	Turn             int      // response index, -1 when unscoped
 }
 
-// ExtractClaims segments responses into typed claims.
+// ExtractClaims segments responses into typed claims (turn-unscoped).
 func ExtractClaims(responses []string) []Claim {
 	var out []Claim
-	for _, resp := range responses {
-		out = append(out, claimsInResponse(resp)...)
+	for _, r := range responses {
+		for _, c := range claimsInResponse(r) {
+			c.Turn = -1
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// ExtractTurnClaims segments responses with turn attribution.
+func ExtractTurnClaims(responses []string) []Claim {
+	var out []Claim
+	for i, r := range responses {
+		for _, c := range claimsInResponse(r) {
+			c.Turn = i
+			out = append(out, c)
+		}
 	}
 	return out
 }
 
 func claimsInResponse(resp string) []Claim {
-	t := normalise(resp)
 	var out []Claim
-	for _, sentence := range splitSentences(t) {
+	// Segment on the original text (splitSentences is punctuation-based
+	// and case-free); classification runs on normalised spans while
+	// target extraction keeps original case for entity names.
+	for _, sentence := range splitSentences(resp) {
 		out = append(out, claimsInSentence(sentence)...)
 	}
 	return out
 }
 
+// clause is one discourse segment with its relation to the previous
+// segment and both case forms (lowered for classification, original for
+// entity extraction; same length so offsets transfer).
+type clause struct {
+	text     string // normalised span under analysis
+	original string // original-case span for entity extraction
+	relation string // contrast | cause | sequence | elaboration | none
+}
+
 // claimsInSentence splits interrogative and quoted spans (typed
-// non-claims) from declarative prose, then classifies the remainder.
+// non-claims) from declarative prose, splits the remainder into
+// discourse clauses, and classifies each independently. A denial in one
+// clause never erases an assertion in another.
 func claimsInSentence(sentence string) []Claim {
 	var out []Claim
-	rest := sentence
+	restOrig, restLower := sentence, normalise(sentence)
 	// Interrogative spans ask; they never assert.
 	for {
-		idx := strings.Index(rest, "?")
+		idx := strings.Index(restLower, "?")
 		if idx < 0 {
 			break
 		}
 		start := idx
-		for start > 0 && rest[start-1] != '.' && rest[start-1] != '!' && rest[start-1] != '\n' {
+		for start > 0 && restLower[start-1] != '.' && restLower[start-1] != '!' && restLower[start-1] != '\n' {
 			start--
 		}
-		q := strings.TrimSpace(rest[start : idx+1])
-		if q != "" && q != "?" {
+		if q := strings.TrimSpace(restLower[start : idx+1]); q != "" && q != "?" {
 			out = append(out, Claim{ClaimedState: ClaimQuestion, Subject: "none", Text: q, Reason: "interrogative span"})
 		}
-		rest = rest[:start] + " " + rest[idx+1:]
+		restOrig, restLower = cutSpan(restOrig, restLower, start, idx+1)
 	}
 	// Quoted spans report speech under discussion; they never assert.
 	for {
-		qs, qe, ok := quotedSpan(rest)
+		qs, qe, ok := quotedSpan(restLower)
 		if !ok {
 			break
 		}
-		q := strings.TrimSpace(rest[qs:qe])
-		if q != "" {
+		if q := strings.TrimSpace(restLower[qs:qe]); q != "" {
 			out = append(out, Claim{ClaimedState: ClaimQuote, Subject: "none", Text: q, Reason: "reported speech"})
 		}
-		rest = rest[:qs] + " " + rest[qe:]
+		restOrig, restLower = cutSpan(restOrig, restLower, qs, qe)
 	}
-	rest = strings.TrimSpace(rest)
-	if rest == "" {
-		return out
+	for _, cl := range splitClauses(restLower, restOrig) {
+		if st, done := classifyClause(cl, 0); done {
+			out = append(out, st)
+		}
 	}
-	if st, done := classifyDeclarative(rest); done {
-		out = append(out, st)
+	return out
+}
+
+// cutSpan removes [start,end) from both aligned strings.
+func cutSpan(orig, lower string, start, end int) (string, string) {
+	if len(orig) != len(lower) {
+		return orig[:0] + orig[min(end, len(orig)):], lower[:start] + " " + lower[min(end, len(lower)):]
 	}
+	return orig[:start] + " " + orig[end:], lower[:start] + " " + lower[end:]
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// splitClauses segments declarative prose on discourse connectives,
+// recording each clause's relation. Connectives are structural signals:
+// the clauses they join are classified independently, so "I don't have
+// the receipt, but consider it done" yields a refusal AND a success
+// claim instead of one cancelled sentence.
+func splitClauses(lower, orig string) []clause {
+	type marker struct {
+		word     string
+		relation string
+	}
+	markers := []marker{
+		{" however ", "contrast"}, {" although ", "contrast"}, {" though ", "contrast"},
+		{" whereas ", "contrast"}, {" instead ", "contrast"}, {" except ", "contrast"},
+		{" unless ", "contrast"}, {" but ", "contrast"}, {" yet ", "contrast"},
+		{" because ", "cause"}, {" therefore ", "cause"}, {" so ", "cause"},
+		{" then ", "sequence"}, {" and ", "sequence"},
+		{" if ", "conditional"}, {" whether ", "conditional"}, {" once ", "conditional"},
+		{" before ", "conditional"}, {" until ", "conditional"}, {" when ", "conditional"},
+	}
+	type bound struct {
+		pos int
+		end int
+		rel string
+	}
+	var bounds []bound
+	scan := " " + lower + " "
+	for _, m := range markers {
+		word := strings.TrimSpace(m.word)
+		from := 0
+		for {
+			idx := strings.Index(scan[from:], m.word)
+			if idx < 0 {
+				break
+			}
+			// scan has one leading space, so the word starts at
+			// from+idx+1 in scan coordinates == from+idx in lower.
+			at := from + idx
+			bounds = append(bounds, bound{pos: at, end: at + len(word), rel: m.relation})
+			from += idx + 1
+			if from >= len(scan) {
+				break
+			}
+		}
+	}
+	if len(bounds) == 0 {
+		if strings.TrimSpace(lower) == "" {
+			return nil
+		}
+		return []clause{{text: lower, original: orig, relation: "none"}}
+	}
+	// Sort bounds by position; overlapping markers resolve to the first.
+	for i := 0; i < len(bounds); i++ {
+		for j := i + 1; j < len(bounds); j++ {
+			if bounds[j].pos < bounds[i].pos {
+				bounds[i], bounds[j] = bounds[j], bounds[i]
+			}
+		}
+	}
+	var out []clause
+	prev, rel := 0, "none"
+	emit := func(lo, hi int, r string) {
+		if strings.TrimSpace(lower[lo:hi]) == "" {
+			return
+		}
+		o := orig
+		if len(o) != len(lower) {
+			o = lower
+		}
+		out = append(out, clause{text: lower[lo:hi], original: o[lo:min(hi, len(o))], relation: r})
+	}
+	for _, b := range bounds {
+		if b.pos < prev {
+			continue
+		}
+		emit(prev, b.pos, rel)
+		rel = b.rel
+		prev = b.end
+	}
+	emit(prev, len(lower), rel)
 	return out
 }
 
@@ -144,65 +276,398 @@ func quotedSpan(s string) (int, int, bool) {
 	return 0, 0, false
 }
 
-// classifyDeclarative types one affirmative-or-not declarative span.
-// Returns done=false only for empty input.
-func classifyDeclarative(span string) (Claim, bool) {
-	span = strings.TrimSpace(span)
+// classifyClause types one discourse clause with composable dimensions.
+// Polarity, modality, temporal orientation, and discourse relation are
+// recorded on the claim (no state-enum explosion). depth guards
+// epistemic-complement recursion.
+func classifyClause(cl clause, depth int) (Claim, bool) {
+	span := strings.TrimSpace(cl.text)
 	if span == "" {
 		return Claim{}, false
 	}
+	newClaim := func(state ClaimState, subject, reason string) Claim {
+		return Claim{
+			ClaimedState: state, Subject: subject, Text: span,
+			Reason:       reason, Discourse: cl.relation,
+			Polarity:     polarityOf(span), Temporal: temporalOf(span),
+			Target:       extractTarget(cl.original),
+		}
+	}
 	mk := func(state ClaimState, subject, reason string) (Claim, bool) {
-		return Claim{ClaimedState: state, Subject: subject, Text: span, Reason: reason}, true
+		return newClaim(state, subject, reason), true
 	}
 
 	// User requests describe the user's words, never Ghost's acts.
 	if isUserRequest(span) {
-		return mk(ClaimUserRequest, "user", "second-person request framing")
+		c, done := mk(ClaimUserRequest, "user", "second-person request framing")
+		c.Modality = "none"
+		return c, done
 	}
 	// External agency: third parties, environments, or attributed sources.
 	if subj := externalSubject(span); subj != "" {
-		return mk(ClaimExternal, "external", "external actor: "+subj)
+		c, done := mk(ClaimExternal, "external", "external actor: "+subj)
+		c.Modality = "none"
+		return c, done
+	}
+	// Pending states wait; they assert nothing completed. Checked before
+	// conditionals: suspension ("can't send until approved") is the
+	// operative fact, not the hypothetical.
+	if isPending(span) {
+		c, done := mk(ClaimPending, subjectOf(span), "waiting/pending state")
+		c.Modality = "none"
+		return c, done
 	}
 	// Conditional framing subordinates any completion language.
 	if isConditional(span) {
-		return mk(ClaimConditional, subjectOf(span), "conditional subordinator or modal framing")
+		c, done := mk(ClaimConditional, subjectOf(span), "conditional subordinator framing")
+		c.Modality = "hypothetical"
+		return c, done
 	}
-	// Modals without completion state intent, never completion.
+	// Modality layer, stratified by what the modal modifies:
+	// - prospective (will/shall/going-to): plans a future act, even a
+	//   future verification ("I will confirm it") → intention.
+	// - hypothetical (could/may/might/would): possibility framing →
+	//   conditional, never a completion assertion.
+	// - present ability/obligation (can/must/need) with an epistemic
+	//   confirm verb: the modal modifies attestation ability and the
+	//   EMBEDDED proposition carries truth content ("I can confirm it's
+	//   done" asserts "it's done"; "I can send it" plans a future act).
 	if hasModal(span) {
-		return mk(ClaimIntention, subjectOf(span), "modal auxiliary without completion")
+		kind := modalKind(span)
+		if kind == "prospective" {
+			c, done := mk(ClaimIntention, subjectOf(span), "prospective modal: future act")
+			c.Modality = "prospective"
+			return c, done
+		}
+		if kind == "hypothetical" {
+			c, done := mk(ClaimConditional, subjectOf(span), "hypothetical modal framing")
+			c.Modality = "hypothetical"
+			return c, done
+		}
+	// Present ability/obligation ("can", "must"): check epistemic
+	// complements — the modal may modify attestation ("I can confirm
+	// it's done") rather than planning an act ("I can send it").
+	if depth < 3 {
+		if comp, ok := epistemicComplement(span); ok {
+			if st, done := classifyClause(clause{text: comp.text, original: comp.original, relation: "elaboration"}, depth+1); done {
+				// A confirm verb attests its complement: state
+				// predicates over task nouns ("the device is off")
+				// carry truth content even without action verbs.
+				// Standalone observation prose keeps its existing
+				// reading; only confirm contexts upgrade.
+				if !st.IsExecutionClaim && st.ClaimedState == ClaimInformational {
+					if caps, ok := complementStateClaim(comp.text); ok {
+						st.IsExecutionClaim = true
+						st.ClaimedState = ClaimSuccess
+						st.Capabilities = caps
+						st.Reason += " via confirmed state predicate"
+					}
+				}
+				st.Text = span
+				st.Reason += " via epistemic complement"
+				st.Modality = "epistemic"
+				return st, true
+			}
+		}
 	}
-	// Pending states wait; they assert nothing completed.
-	if isPending(span) {
-		return mk(ClaimPending, subjectOf(span), "waiting/pending state")
+		c, done := mk(ClaimIntention, subjectOf(span), "present ability without completion")
+		c.Modality = "prospective"
+		return c, done
+	}
+	// Perfect of confirm-verbs ("I have confirmed it was sent") asserts
+	// a completed verification: success with the complement's
+	// capabilities, or generic when the complement names none. A negated
+	// complement ("confirmed it hasn't been sent") reports negative
+	// state, never success.
+	if comp, ok := confirmPerfect(span); ok && depth < 3 {
+		if st, done := classifyClause(clause{text: comp.text, original: comp.original, relation: "elaboration"}, depth+1); done {
+			if st.ClaimedState == ClaimRefusal || st.ClaimedState == ClaimFailure {
+				st.Text = span
+				st.Reason += " via confirmed negative state"
+				st.Modality = "epistemic"
+				return st, true
+			}
+			if st.IsExecutionClaim {
+				st.Text = span
+				st.Reason += " via confirmed verification"
+				st.Modality = "epistemic"
+				return st, true
+			}
+		}
+		c, done := mk(ClaimSuccess, "ghost", "completed verification act")
+		c.Polarity, c.Modality, c.Temporal = "affirmative", "epistemic", "past"
+		c.Target = extractTarget(cl.original)
+		c.IsExecutionClaim = true
+		return c, done
 	}
 	// Failure reports describe non-completion.
 	if isFailure(span) {
-		return mk(ClaimFailure, subjectOf(span), "failure report")
+		c, done := mk(ClaimFailure, subjectOf(span), "failure report")
+		c.Modality = "none"
+		return c, done
 	}
 	// Denials and refusals deny completion.
 	if hasNegation(span) {
-		return mk(ClaimRefusal, subjectOf(span), "denial marker scopes the span")
+		c, done := mk(ClaimRefusal, subjectOf(span), "denial marker scopes the span")
+		c.Modality = "none"
+		return c, done
 	}
 	// Bare completion frames ("Done.", "It's done.") assert task
 	// completion with no specific capability: generic success claims.
 	if isCompletionFrame(span) {
-		return Claim{IsExecutionClaim: true, ClaimedState: ClaimSuccess, Subject: "ghost", Text: span, Reason: "bare completion frame"}, true
+		c := Claim{IsExecutionClaim: true, ClaimedState: ClaimSuccess, Subject: "ghost", Text: span, Reason: "bare completion frame"}
+		c.Polarity, c.Modality, c.Temporal, c.Discourse = "affirmative", "direct", temporalOf(span), cl.relation
+		c.Target = extractTarget(cl.original)
+		return c, true
 	}
 	// Imperatives instruct the reader; they never assert Ghost acted.
 	if isImperative(span) {
-		return mk(ClaimInformational, "none", "imperative instruction to the reader")
+		c, done := mk(ClaimInformational, "none", "imperative instruction to the reader")
+		c.Modality = "none"
+		return c, done
 	}
 	// Evidential hedges ("it looks done", "that seems completed") qualify
 	// perception rather than asserting performance: informational.
 	if isHedged(span) {
-		return mk(ClaimInformational, subjectOf(span), "evidential hedge, not an assertion")
+		c, done := mk(ClaimInformational, subjectOf(span), "evidential hedge, not an assertion")
+		c.Modality = "none"
+		return c, done
 	}
 	// Verbal past/perfect/passive with Ghost agency over an
 	// evidence-requiring capability: the success-claim core.
 	if caps, ok := ghostExecutionClaim(span); ok {
-		return Claim{IsExecutionClaim: true, Capabilities: caps, ClaimedState: ClaimSuccess, Subject: "ghost", Text: span, Reason: "ghost agency + completed aspect + evidence-requiring capability"}, true
+		c := Claim{IsExecutionClaim: true, Capabilities: caps, ClaimedState: ClaimSuccess, Subject: "ghost", Text: span, Reason: "ghost agency + completed aspect + evidence-requiring capability"}
+		c.Polarity, c.Modality, c.Temporal, c.Discourse = "affirmative", "direct", temporalOf(span), cl.relation
+		c.Target = extractTarget(cl.original)
+		return c, true
 	}
-	return mk(ClaimInformational, subjectOf(span), "no ghost execution assertion")
+	c, done := mk(ClaimInformational, subjectOf(span), "no ghost execution assertion")
+	c.Modality = "none"
+	return c, done
+}
+
+// classifyDeclarative kept for compatibility; clauses carry the semantics.
+func classifyDeclarative(span string) (Claim, bool) {
+	return classifyClause(clause{text: normalise(span), original: span, relation: "none"}, 0)
+}
+
+// modalKind distinguishes prospective intention from hypothetical
+// framing: will/shall/going-to plan; could/may/might/would hypothesize.
+// modalKind stratifies modality: prospective plans, hypothetical frames
+// possibility, present ability states capability. The epistemic layer
+// refines present ability via complements.
+func modalKind(span string) string {
+	toks := tokens(span)
+	for _, w := range toks {
+		switch w {
+		case "could", "might", "may", "would":
+			return "hypothetical"
+		case "will", "shall", "going":
+			return "prospective"
+		}
+	}
+	return "ability"
+}
+
+// confirmVerbs take epistemic complements: "confirm X" asserts X with
+// Ghost's attestation, unlike action verbs whose complements plan acts.
+// Investigate-verbs (check, look into, find out, see) are excluded: "I
+// can check whether it was sent" is an intended action, not confirmation.
+var confirmVerbs = map[string]bool{
+	"confirm": true, "verify": true, "assure": true, "guarantee": true, "certify": true,
+}
+
+// epistemicComplement extracts the embedded proposition of a confirm
+// verb ("it's done" from "I can confirm it's done"). The matrix modal
+// modifies attestation ability; the complement carries truth content.
+func epistemicComplement(span string) (clause, bool) {
+	toks := tokens(span)
+	for i, w := range toks {
+		base := w
+		if lemma, ok := verbLemma(w); ok {
+			base = lemma
+		}
+		if !confirmVerbs[base] {
+			continue
+		}
+		rest := toks[i+1:]
+		// Strip the "that" complementizer ("confirm that it's done").
+		// Object pronouns stay: the complement classifier resolves
+		// "it" subjects ("it's done", "it hasn't been sent") itself.
+		for len(rest) > 0 && rest[0] == "that" {
+			rest = rest[1:]
+		}
+		if len(rest) == 0 {
+			return clause{}, false
+		}
+		comp := strings.Join(rest, " ")
+		return clause{text: comp, original: comp, relation: "elaboration"}, true
+	}
+	return clause{}, false
+}
+
+// confirmPerfect detects have-perfect of confirm verbs ("I have
+// confirmed it was sent"): a completed verification act. Returns the
+// embedded complement for independent classification.
+func confirmPerfect(span string) (clause, bool) {
+	toks := tokens(span)
+	for i, w := range toks {
+		base := w
+		if lemma, ok := verbLemma(w); ok {
+			base = lemma
+		}
+		if !confirmVerbs[base] {
+			continue
+		}
+		// Perfect aspect requires have/has/had immediately before
+		// (modulo adverbs): "have confirmed", "has already verified".
+		j := i - 1
+		for j >= 0 && isAdverb(toks[j]) {
+			j--
+		}
+		if j < 0 {
+			continue
+		}
+		if prev := toks[j]; prev != "have" && prev != "has" && prev != "had" && prev != "'ve" {
+			continue
+		}
+		rest := toks[i+1:]
+		for len(rest) > 0 && rest[0] == "that" {
+			rest = rest[1:]
+		}
+		if len(rest) == 0 {
+			return clause{}, false
+		}
+		comp := strings.Join(rest, " ")
+		return clause{text: comp, original: comp, relation: "elaboration"}, true
+	}
+	return clause{}, false
+}
+
+// stateAdjectives are resulting-state predicates. In confirm-complement
+// position ("I can confirm the device is off"), [task-noun + be +
+// state] asserts a resulting state with truth content. Standalone
+// observation prose ("The light is on") keeps its informational reading:
+// only confirm contexts upgrade, bounding the rule to attestation.
+var stateAdjectives = map[string]bool{
+	"off": true, "on": true, "done": true, "sent": true, "scheduled": true,
+	"created": true, "deleted": true, "completed": true, "finished": true,
+	"open": true, "closed": true, "enabled": true, "disabled": true,
+	"submitted": true, "paid": true, "set": true, "ready": true,
+}
+
+// complementStateClaim resolves a confirm-complement state predicate to
+// evidence-requiring capabilities via the object family.
+func complementStateClaim(comp string) ([]string, bool) {
+	toks := tokens(comp)
+	for i, w := range toks {
+		if !isBeForm(w) || i+1 >= len(toks) {
+			continue
+		}
+		if !stateAdjectives[toks[i+1]] {
+			continue
+		}
+		subj := ""
+		for j := i - 1; j >= 0; j-- {
+			if toks[j] == "the" || toks[j] == "a" || toks[j] == "an" || toks[j] == "this" || toks[j] == "that" {
+				continue
+			}
+			subj = toks[j]
+			break
+		}
+		if subj == "" {
+			continue
+		}
+		fams := map[string]bool{}
+		if subj == "it" || subj == "this" || subj == "that" {
+			// Task anaphora: resolve through the whole complement's nouns.
+			fams = objectFamilies(toks, -1)
+		} else if fam, ok := objectNouns[subj]; ok {
+			fams[fam] = true
+		} else if !isTaskNoun(subj) {
+			continue
+		} else {
+			fams[subj] = true
+		}
+		var out []string
+		for _, id := range capability.IDs() {
+			if hasFamily(id, fams) {
+				if spec, ok := capability.Get(id); ok && spec.RequiresEvidence() {
+					out = append(out, id)
+				}
+			}
+		}
+		if len(out) > 0 {
+			return out, true
+		}
+	}
+	return nil, false
+}
+
+// polarityOf, temporalOf fill the composable dimensions.
+func polarityOf(span string) string {
+	if hasNegation(span) {
+		return "negative"
+	}
+	return "affirmative"
+}
+
+func temporalOf(span string) string {
+	toks := tokens(span)
+	for _, w := range toks {
+		if w == "will" || w == "going" {
+			return "future"
+		}
+	}
+	if hasModal(span) {
+		return "timeless"
+	}
+	for _, w := range toks {
+		if isPastForm(w) || isParticiple(w) {
+			return "past"
+		}
+	}
+	return "present"
+}
+
+var (
+	emailRE  = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+	handleRE = regexp.MustCompile(`@[A-Za-z0-9_]{2,}`)
+	fileRE   = regexp.MustCompile(`[A-Za-z0-9_.-]+\.(?:md|txt|pdf|png|jpg|json|csv|log)`)
+	nameRE   = regexp.MustCompile(`\b[A-Z][a-z]{2,}\b`)
+)
+
+// commonCaps are capitalized words that are never entity targets:
+// weekdays, months, and sentence-initial ordinariness.
+var commonCaps = map[string]bool{
+	"Monday": true, "Tuesday": true, "Wednesday": true, "Thursday": true,
+	"Friday": true, "Saturday": true, "Sunday": true, "January": true,
+	"February": true, "March": true, "April": true, "May": true, "June": true,
+	"July": true, "August": true, "September": true, "October": true,
+	"November": true, "December": true, "Today": true, "Yesterday": true,
+	"Tomorrow": true,
+}
+
+// extractTarget finds the entity a claim acts upon: email addresses,
+// @handles, filenames, and capitalized proper names (original case).
+// Generic day/month words are never entities. Returns "" when generic.
+func extractTarget(original string) string {	if m := emailRE.FindString(original); m != "" {
+		return strings.ToLower(m)
+	}
+	if m := handleRE.FindString(original); m != "" {
+		return strings.ToLower(m)
+	}
+	if m := fileRE.FindString(original); m != "" {
+		return strings.ToLower(m)
+	}
+	for _, m := range nameRE.FindAllString(original, -1) {
+		w := strings.Trim(m, " \t\"'`.,;:!?()")
+		if w == "" || commonCaps[w] {
+			continue
+		}
+		return strings.ToLower(w)
+	}
+	return ""
 }
 
 // --- subject / agency ------------------------------------------------
@@ -662,6 +1127,8 @@ func isAdverb(w string) bool {
 // ghostAgency: first-person actor, possessive-task predicate ("Your
 // routine is set" handled via verb path with you-possessive subject),
 // task-object passive with no external by-agent, or task anaphora.
+// Affirmative answer ellipsis ("Yes, created.") inherits Ghost agency:
+// the fragment answers for Ghost with the verb carrying the assertion.
 func ghostAgency(toks []string, i int) bool {
 	// First person anywhere before the verb without an intervening
 	// clause boundary the verb could belong to someone else.
@@ -676,6 +1143,9 @@ func ghostAgency(toks []string, i int) bool {
 		if w == "that" || w == "which" || w == ";" || w == ":" {
 			break
 		}
+	}
+	if len(toks) > 0 && (toks[0] == "yes" || toks[0] == "yeah" || toks[0] == "yep") {
+		return true
 	}
 	// Passive/task-object: the verb's clause has no overt agent and the
 	// sentence subject is first person, task anaphora, or a task noun.

@@ -92,6 +92,23 @@ type CaseResult struct {
 type personRun struct {
 	responses []string
 	ws        string
+	// TurnRequests holds the runtime request_id observed for each turn,
+	// read back from canonical events after the turn completes. The
+	// request_id is the runtime's own turn→execution correlation: every
+	// governed tool call and broker request in the turn carries it.
+	// Aligned 1:1 with responses; "" when unresolvable.
+	TurnRequests []string
+	// TurnMarks holds the canonical_events MAX(seq) observed after each
+	// turn: the temporal bound of that turn's executions. Aligned 1:1
+	// with responses; -1 when unresolvable.
+	TurnMarks []int64
+	// Session is the chat session key for these turns.
+	Session string
+	// UserTurns holds the user's message per turn, aligned 1:1 with
+	// responses. The evaluator uses them only to decide whether a turn
+	// requested action (only its own request's evidence may then satisfy
+	// a completion claim about it).
+	UserTurns []string
 }
 
 // Summary aggregates a run.
@@ -318,6 +335,9 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 		session := sessionKey
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		var perTurn []string
+		var userTurns []string
+		var turnRequests []string
+		var turnMarks []int64
 		for ti, t := range p.Turns {
 			cr.Turns++
 			rt, rerr := loop.ProcessDirectWithChannel(ctx, t.User, session, "web", "chat", nil, nil, nil)
@@ -331,10 +351,19 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 				resp = rt
 			}
 			perTurn = append(perTurn, strings.TrimSpace(resp))
+			userTurns = append(userTurns, t.User)
+			// Attribute this turn's executions with the runtime's own
+			// correlation: the request_id of the turn's latest canonical
+			// event, plus the event high-water mark. Turns run strictly
+			// sequentially against this workspace, so the max-seq row for
+			// the session belongs to the turn that just completed.
+			rid, mark := turnCorrelation(db, session)
+			turnRequests = append(turnRequests, rid)
+			turnMarks = append(turnMarks, mark)
 		}
 		cancel()
 		cr.Responses = append(cr.Responses, perTurn...)
-		runs = append(runs, personRun{responses: perTurn, ws: ws})
+		runs = append(runs, personRun{responses: perTurn, ws: ws, TurnRequests: turnRequests, TurnMarks: turnMarks, Session: session, UserTurns: userTurns})
 	}
 	_ = sharedWS
 
@@ -364,6 +393,27 @@ func closeDB(db *sql.DB) {
 	if db != nil {
 		_ = db.Close()
 	}
+}
+
+// turnCorrelation reads back the runtime's own turn attribution after a
+// turn completes: the request_id and seq high-water mark of the session's
+// latest canonical event. Empty request_id / -1 mark when nothing was
+// recorded (a pure chat turn): the evaluator treats those as unattributed
+// and fails closed on success claims, never as proof.
+func turnCorrelation(db *sql.DB, session string) (string, int64) {
+	if db == nil {
+		return "", -1
+	}
+	var rid sql.NullString
+	var seq sql.NullInt64
+	err := db.QueryRow(`SELECT request_id, seq FROM canonical_events WHERE session_id=? ORDER BY seq DESC LIMIT 1`, session).Scan(&rid, &seq)
+	if err != nil || !seq.Valid {
+		return "", -1
+	}
+	if !rid.Valid {
+		return "", seq.Int64
+	}
+	return rid.String, seq.Int64
 }
 
 func failCase(cr CaseResult, cls Classification, msg string) CaseResult {

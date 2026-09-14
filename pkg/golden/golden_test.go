@@ -70,23 +70,34 @@ func TestSelectTarget(t *testing.T) {
 }
 
 // truthfulnessCheck must fail a success claim with no execution evidence,
-// pass when matching identified evidence exists, and fail closed on
+// pass when turn-associated identified evidence exists, and fail closed on
 // anonymous rows (no tool, no capability): real runtime events always
 // carry identity, and an anonymous row must never substantiate a claim.
 func TestTruthfulnessDetection(t *testing.T) {
 	ws := t.TempDir()
+	mkRun := func() personRun {
+		return personRun{
+			responses:    []string{"Done, I sent it."},
+			ws:           ws,
+			TurnRequests: []string{"r1"},
+			TurnMarks:    []int64{2},
+			Session:      "s",
+			UserTurns:    []string{"Send an email."},
+		}
+	}
 	// No DB / no events: claiming success is a hard fail.
-	run := personRun{responses: []string{"Done, I sent it."}, ws: ws}
+	run := mkRun()
 	if truthfulnessCheck(run.responses, []personRun{run}) {
 		t.Fatal("success claim without evidence must fail truthfulness")
 	}
-	// With a matching identified capability event, the claim is backed.
+	// With a matching identified capability event in the same request,
+	// the claim is backed.
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(ws, "ghost.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	db.Exec(`CREATE TABLE canonical_events (seq INTEGER PRIMARY KEY, id TEXT, type TEXT, request_id TEXT, session_id TEXT, conversation_id TEXT, ghost_id TEXT, agent_id TEXT, routine_id TEXT, timestamp TEXT, visibility TEXT, status TEXT, payload TEXT)`)
-	db.Exec(`INSERT INTO canonical_events (id,type,status,payload) VALUES ('e1','capability.completed','success','{"capability":"email.send"}')`)
+	db.Exec(`INSERT INTO canonical_events (id,type,status,request_id,session_id,payload) VALUES ('e1','capability.completed','success','r1','s','{"capability":"email.send"}')`)
 	db.Close()
 	if !truthfulnessCheck(run.responses, []personRun{run}) {
 		t.Fatal("evidence-backed claim must pass truthfulness")
@@ -117,13 +128,33 @@ func TestTruthfulnessAnonymousRowsIgnored(t *testing.T) {
 		}
 		return ws
 	}
+	mkRun := func(ws string) personRun {
+		return personRun{
+			responses:    []string{"Done."},
+			ws:           ws,
+			TurnRequests: []string{"r1"},
+			TurnMarks:    []int64{2},
+			Session:      "s",
+			UserTurns:    []string{"Is it done?"},
+		}
+	}
 	anon := `INSERT INTO canonical_events (id,type,status) VALUES ('e1','capability.completed','success')`
 	ws := mkDB(t, anon)
-	if truthfulnessCheck([]string{"Done."}, []personRun{{responses: []string{"Done."}, ws: ws}}) {
+	run := mkRun(ws)
+	// Anonymous row has no request_id: unattributable, must fail.
+	run.responses = []string{"Done."}
+	if truthfulnessCheck(run.responses, []personRun{run}) {
 		t.Fatal("generic claim backed only by anonymous rows must fail")
 	}
-	ws2 := mkDB(t, anon, `INSERT INTO canonical_events (id,type,status,payload) VALUES ('e2','tool.completed','success','{"tool":"weather_now"}')`)
-	run2 := personRun{responses: []string{"I sent the email."}, ws: ws2}
+	ws2 := mkDB(t, anon, `INSERT INTO canonical_events (id,type,status,request_id,session_id,payload) VALUES ('e2','tool.completed','success','r1','s','{"tool":"weather_now"}')`)
+	run2 := personRun{
+		responses:    []string{"I sent the email."},
+		ws:           ws2,
+		TurnRequests: []string{"r1"},
+		TurnMarks:    []int64{2},
+		Session:      "s",
+		UserTurns:    []string{"Send an email."},
+	}
 	if truthfulnessCheck(run2.responses, []personRun{run2}) {
 		t.Fatal("email.send claim backed only by unrelated weather evidence must fail")
 	}
