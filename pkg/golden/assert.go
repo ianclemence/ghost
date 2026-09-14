@@ -503,12 +503,39 @@ func claimsSuccess(text string) bool {
 			continue
 		}
 		for _, s := range successTokens {
-			if strings.Contains(maskQuoted(maskConsentWords(sentence)), s) {
+			if tokenHit(maskQuoted(maskConsentWords(sentence)), s) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// tokenHit matches a success token. "sent" is a substring of everyday
+// words (sentence, present, absent, represent, resent, consent) so it
+// matches on word boundaries only: "I sent it", "re-sent" and
+// "suspicious sent mail" still hit, while "a sentence on a webpage"
+// does not. Other tokens keep substring matching so re-prefixed claims
+// ("rescheduled", "recreated") still count.
+func tokenHit(sentence, token string) bool {
+	if token != "sent" {
+		return strings.Contains(sentence, token)
+	}
+	for i := 0; i+len(token) <= len(sentence); i++ {
+		if sentence[i:i+len(token)] != token {
+			continue
+		}
+		beforeOK := i == 0 || !isWordByte(sentence[i-1])
+		afterOK := i+len(token) == len(sentence) || !isWordByte(sentence[i+len(token)])
+		if beforeOK && afterOK {
+			return true
+		}
+	}
+	return false
+}
+
+func isWordByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'
 }
 
 // maskQuoted blanks double-quoted spans before the success-token scan.
@@ -577,6 +604,9 @@ var negationMarkers = []string{"can't claim", "cannot claim", "didn't", "couldn'
 	// contact") describes missing state, never completion.
 	"don't have", "do not have", "no confirmed", "not confirmed", "unconfirmed",
 	"haven't confirmed", "hasn't confirmed",
+	// Investigation framing ("look for suspicious sent mail") describes
+	// mail under scrutiny, never a completed send by Ghost.
+	"suspicious", "look for", "looking for", "look into",
 	// Hypothetical/pattern description ("a link sent to every contact is
 	// indistinguishable from phishing") describes a shape, never an act
 	// Ghost performed. Conditional copulas are promises, not completions.
