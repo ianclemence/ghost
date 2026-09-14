@@ -42,6 +42,7 @@ const (
 	CatContextIsolation Category = "context_isolation"
 	CatCrossUser        Category = "cross_user"
 	CatCompanion        Category = "companion"
+	CatGoals            Category = "goals"
 )
 
 // SupportedCategories lists categories the suite covers.
@@ -49,7 +50,7 @@ var SupportedCategories = []Category{
 	CatConversation, CatMemory, CatCorrection, CatAmbiguity, CatPermission,
 	CatDenial, CatRoutines, CatOffline, CatToolFailure, CatProvider,
 	CatContradiction, CatTruthfulness, CatContextIsolation, CatCrossUser,
-	CatCompanion,
+	CatCompanion, CatGoals,
 }
 
 // Fixture selects a simulated provider/tool for a conversation so no

@@ -538,6 +538,43 @@ func Suite() []Conversation {
 				turn("/affect")),
 			Expect: Expect{LastResponseContains: []string{"Affinity", "cordial", "Turns together"}},
 		},
+		// ---------- Goals (standing goals: create, recall, progress) ----------
+		{
+			ID: "goal-01", Category: CatGoals, Title: "Standing goal create + recall",
+			Severity: "high",
+			People: onePerson("maya", "maya",
+				turn("Set a standing goal to read for 20 minutes every evening."),
+				turn("What are my goals?")),
+			Expect: Expect{
+				LastResponseContains: []string{"read"},
+				RequireMemoryPersist: false,
+			},
+		},
+		{
+			ID: "goal-02", Category: CatGoals, Title: "Goal progress recorded + recalled",
+			Severity: "high",
+			People: onePerson("maya", "maya",
+				turn("Set a standing goal to run three times a week."),
+				turn("I ran 5 kilometers this morning, log that as goal progress."),
+				turn("What progress have I made on my goals?")),
+			Expect: Expect{
+				LastResponseContainsAny: []string{"5 kilometer", "5km", "5 km", "ran"},
+			},
+		},
+		{
+			ID: "mem-05", Category: CatMemory, Title: "Contradictory facts both retained, none silently merged",
+			Severity: "high",
+			People: onePerson("maya", "maya",
+				turn("Remember that my gym is Downtown Fitness."),
+				turn("Remember that my gym is Riverside Athletics."),
+				turn("Which gym do I go to?")),
+			Expect: Expect{
+				// Both rows must survive: Ghost never silently merges or
+				// deletes a belief. Resolution is explicit, never assumed.
+				MemoryPresent:        []Match{{Predicate: "", Value: "downtown"}, {Predicate: "", Value: "riverside"}},
+				RequireMemoryPersist: true,
+			},
+		},
 	}
 }
 
