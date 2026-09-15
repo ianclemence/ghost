@@ -179,6 +179,12 @@ func statusHandler(ctx context.Context, req Request, rt *Runtime) error {
 	runtime.ReadMemStats(&m)
 	sb.WriteString(fmt.Sprintf("**Memory**: %v MB (Alloc) / %v MB (Sys)\n", m.Alloc/1024/1024, m.Sys/1024/1024))
 	sb.WriteString(fmt.Sprintf("**Goroutines**: %d\n", runtime.NumGoroutine()))
+	// Last metered turn: cost visibility where the owner already looks.
+	if rt != nil && rt.Doctor != nil {
+		if line, ok := rt.Doctor.LastTurnCost(); ok {
+			sb.WriteString(fmt.Sprintf("**Spend**: %s\n", line))
+		}
+	}
 
 	// Uptime (approximate via tool if available, or just omit if too complex without global start time)
 	// We could use uptime command if available

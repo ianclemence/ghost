@@ -2,6 +2,7 @@ package golden
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,6 +18,38 @@ type HistoryEntry struct {
 	Provider string  `json:"provider"`
 	SuiteVer int     `json:"suite_version"`
 	Summary  Summary `json:"summary"`
+}
+
+// Latest returns the newest entry for a model (empty model = any),
+// or nil when history is empty. Missing history is not an error:
+// a fresh appliance simply has no score yet.
+func Latest(entries []HistoryEntry, model string) *HistoryEntry {
+	for i := len(entries) - 1; i >= 0; i-- {
+		if model == "" || entries[i].Model == model {
+			e := entries[i]
+			return &e
+		}
+	}
+	return nil
+}
+
+// Score summarizes a run: passed/total plus hard-fail count. A score
+// with hard fails is never reported as clean, however high the ratio.
+func (e HistoryEntry) Score() (passed, total, hardFails int) {
+	return e.Summary.Passed, e.Summary.Total, e.Summary.HardFails
+}
+
+// ScoreLine renders the one-line health summary for a run.
+func (e HistoryEntry) ScoreLine() string {
+	p, t, h := e.Score()
+	if t == 0 {
+		return "no runs recorded"
+	}
+	s := fmt.Sprintf("%d/%d passed (%s, %s)", p, t, e.Model, e.At)
+	if h > 0 {
+		s += fmt.Sprintf(" [%d HARD FAILS]", h)
+	}
+	return s
 }
 
 // LoadHistory reads prior golden runs from the workspace state dir.

@@ -226,6 +226,12 @@ install-ghost: build-ghost
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable ghost-web
 	@sudo systemctl enable ghost
+	@# Weekly state snapshots (same encrypted archive as manual export,
+	@# retention kept, no interactivity).
+	@sudo cp ghost-backup.service.template /etc/systemd/system/ghost-backup.service
+	@sudo cp ghost-backup.timer.template /etc/systemd/system/ghost-backup.timer
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable ghost-backup.timer
 	@sudo systemctl enable ghost-speech
 	@sudo systemctl restart ghost 2>/dev/null || true
 	@sudo systemctl restart ghost-web 2>/dev/null || true

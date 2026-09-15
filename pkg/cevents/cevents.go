@@ -53,6 +53,11 @@ const (
 	ToolStarted   Type = "tool.started"
 	ToolCompleted Type = "tool.completed"
 	ToolFailed    Type = "tool.failed"
+
+	// UsageRecorded carries one metered turn: tokens + cost. The
+	// per-task spend surface, Lab budgets, and the doctor spend check
+	// all read these rows; nothing else writes them.
+	UsageRecorded Type = "usage.recorded"
 	// Permissions
 	PermissionRequested Type = "permission.requested"
 	PermissionApproved  Type = "permission.approved"
@@ -547,10 +552,16 @@ func (s *Stream) Since(seq int64, limit int, f Filter) []*Event {
 // Prune deletes high-volume telemetry rows older than maxAge: progress
 // heartbeats, tool start markers, retrieval reads, and tool completion
 // outcomes. Durability means surviving restarts; retention is a separate
-// caller-chosen window, and completion rows older than the window carry
-// no live authority (leases, sessions, and generations expire on their
-// own clocks). Callers needing longer outcome history export journals,
-// not the live warehouse.
+// concern. Callers needing longer outcome history export journals, not
+// the live warehouse.
+//
+// DefaultPruneAge is the scheduled retention for transient canonical
+// events. Completion rows older than this carry no live authority —
+// leases, sessions, and generations expire on their own clocks. One
+// constant so every caller-chosen window converges instead of drifting.
+const DefaultPruneAge = 7 * 24 * time.Hour
+
+// Prune deletes rows older than maxAge (see DefaultPruneAge).
 func (s *Stream) Prune(maxAge time.Duration) int {
 	cutoff := time.Now().Add(-maxAge).Format(time.RFC3339)
 	res, err := s.db.Exec(`DELETE FROM canonical_events WHERE timestamp < ? AND

@@ -97,3 +97,6 @@ workspace/knowledge/ops/tasks.md
 
 # Skill package-manager canonical store
 .skill-store/
+
+# Appliance snapshots
+backups/

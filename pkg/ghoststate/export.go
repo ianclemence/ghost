@@ -35,6 +35,14 @@ func Export(opts ExportOptions) (*Manifest, error) {
 	if opts.Passphrase == "" {
 		return nil, fmt.Errorf("passphrase is required")
 	}
+	// Refuse before writing a half-archive on a nearly-full disk.
+	destDir := filepath.Dir(opts.Destination)
+	if destDir == "" {
+		destDir = "."
+	}
+	if err := requireFreeSpace(destDir, ExportMinFreeBytes, "export"); err != nil {
+		return nil, err
+	}
 
 	id, err := EnsureIdentity(opts.Workspace)
 	if err != nil {

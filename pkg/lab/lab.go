@@ -278,6 +278,38 @@ func (s *Store) Pending(ids []string) ([]string, error) {
 	return out, nil
 }
 
+// WaveResult is one case outcome in a red-team wave.
+type WaveResult struct {
+	CaseID  string
+	Verdict string // passed | failed | error
+}
+
+// CompareWaves diffs two waves: regressions (passed then not) must be
+// empty for a wave to graduate; fixes (failed then passed) are the
+// wave's yield. Wave N+1 must not regress wave N.
+func CompareWaves(prev, cur []WaveResult) (regressions, fixes []string) {
+	before := map[string]string{}
+	for _, r := range prev {
+		before[r.CaseID] = r.Verdict
+	}
+	seen := map[string]bool{}
+	for _, r := range cur {
+		seen[r.CaseID] = true
+		old, ok := before[r.CaseID]
+		if !ok {
+			continue // new case: neither regression nor fix
+		}
+		if old == "passed" && r.Verdict != "passed" {
+			regressions = append(regressions, r.CaseID)
+		}
+		if old != "passed" && r.Verdict == "passed" {
+			fixes = append(fixes, r.CaseID)
+		}
+	}
+	_ = seen
+	return regressions, fixes
+}
+
 // Event is one machine-readable log line.
 type Event struct {
 	At    string                 `json:"at"`

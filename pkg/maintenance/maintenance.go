@@ -13,13 +13,15 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/artifacts"
+	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/tasks"
 	"github.com/ianclemence/ghost/pkg/turnlog"
 )
 
 // Policy bounds. Generous for user history, tight for telemetry.
+// Transient canonical-event retention lives in cevents.DefaultPruneAge
+// (single constant, converged) — see pruneEvents.
 const (
-	TransientEventAge = 7 * 24 * time.Hour
 	DurableEventAge   = 180 * 24 * time.Hour
 	NDJSONAge         = 30 * 24 * time.Hour
 	HeartbeatLogLines = 2000
@@ -112,10 +114,11 @@ func pruneEvents(db *sql.DB) Action {
 	if db == nil {
 		return Action{Name: "events", Detail: "no database handle"}
 	}
-	// Transient types first (progress heartbeats etc.).
+	// Transient types first (progress heartbeats etc.). The window is the
+	// canonical-events default so retention converges in one place.
 	res, err := db.Exec(`DELETE FROM canonical_events WHERE timestamp < ? AND
 		type IN ('agent.progress','tool.started','tool.completed','memory.retrieved')`,
-		time.Now().Add(-TransientEventAge).Format(time.RFC3339))
+		time.Now().Add(-cevents.DefaultPruneAge).Format(time.RFC3339))
 	transient := 0
 	if err == nil {
 		if n, err := res.RowsAffected(); err == nil {

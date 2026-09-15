@@ -59,3 +59,10 @@ func TestSnapshotDoesNotPanic(t *testing.T) {
 		t.Fatal("worst pressure must be set")
 	}
 }
+
+func TestDiskFreeBytes(t *testing.T) {
+	free, ok := DiskFreeBytes(t.TempDir())
+	if !ok || free == 0 {
+		t.Fatalf("temp dir must report free bytes: %d %v", free, ok)
+	}
+}

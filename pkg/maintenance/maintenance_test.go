@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/cevents"
 	_ "modernc.org/sqlite"
 )
 
@@ -92,5 +93,33 @@ func TestRunNeverFailsClosed(t *testing.T) {
 	rep := Run(t.TempDir()+"/nonexistent", nil)
 	if rep.At == "" || len(rep.Actions) == 0 {
 		t.Fatal("run must always report")
+	}
+}
+
+func TestTransientWindowConverged(t *testing.T) {
+	// The scheduled transient window is the canonical-events default:
+	// one constant, no private copies that drift. A row just inside the
+	// window survives; one just outside does not.
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	db.Exec(`CREATE TABLE canonical_events (seq INTEGER PRIMARY KEY, id TEXT, type TEXT, timestamp TEXT)`)
+	justOut := time.Now().Add(-cevents.DefaultPruneAge - time.Hour).Format(time.RFC3339)
+	justIn := time.Now().Add(-cevents.DefaultPruneAge + time.Hour).Format(time.RFC3339)
+	db.Exec(`INSERT INTO canonical_events (id, type, timestamp) VALUES ('o1','tool.completed',?)`, justOut)
+	db.Exec(`INSERT INTO canonical_events (id, type, timestamp) VALUES ('o2','tool.completed',?)`, justIn)
+	Run(t.TempDir(), db)
+	var n int
+	db.QueryRow(`SELECT COUNT(*) FROM canonical_events`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("window boundary must split rows, kept %d", n)
+	}
+	var kept string
+	db.QueryRow(`SELECT id FROM canonical_events`).Scan(&kept)
+	if kept != "o2" {
+		t.Fatalf("must keep the in-window row, kept %q", kept)
 	}
 }

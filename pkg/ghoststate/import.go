@@ -45,6 +45,13 @@ func Import(opts ImportOptions) (*Manifest, error) {
 	if opts.Passphrase == "" {
 		return nil, fmt.Errorf("passphrase is required")
 	}
+	// Extraction needs headroom well beyond the archive size (decrypted
+	// staging + rebuilt database): refuse early on a full disk.
+	if fi, err := os.Stat(opts.Source); err == nil && fi.Size() > 0 {
+		if err := requireFreeSpace(opts.Workspace, uint64(fi.Size())*2+ExportMinFreeBytes, "import"); err != nil {
+			return nil, err
+		}
+	}
 
 	blob, err := os.ReadFile(opts.Source)
 	if err != nil {

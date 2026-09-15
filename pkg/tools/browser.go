@@ -14,6 +14,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/redact"
 )
 
@@ -236,23 +237,34 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 	deny := func(reason string) *ToolResult {
 		return ErrorResult("Browser policy denied this operation: " + reason)
 	}
+	denyCode := func(code permissions.DenialCode, reason, remedy string) *ToolResult {
+		return ErrorResult(policyDeny(code, "Browser policy: "+reason, remedy))
+	}
+	// denyResume codes restore-check failures: expired sessions expire,
+	// everything else is a binding violation.
+	denyResume := func(err error) *ToolResult {
+		if err != nil && strings.Contains(err.Error(), "expired") {
+			return denyCode(permissions.CodeSessionExpired, strings.TrimPrefix(err.Error(), "browser: "), "Ask again to start a fresh session.")
+		}
+		return denyCode(permissions.CodeBindingMismatch, strings.TrimPrefix(strings.TrimPrefix(err.Error(), "browser: "), "Browser policy denied this operation: "), "Ask again so the call binds to a live session.")
+	}
 	if call.Owner == "" || call.Sessions == nil {
-		return deny("no owner or session ledger bound")
+		return denyCode(permissions.CodeBindingMismatch, "no owner or session ledger bound.", "Start from an authorized call so the runtime binds owner and session.")
 	}
 	// The gate binds one concrete operation; it must be this tool's own
 	// action. An authorize-snapshot binding can never drive a click.
 	if call.Op != "" && call.Op != t.action {
-		return deny("operation binding mismatch")
+		return denyCode(permissions.CodeBindingMismatch, "operation binding mismatch.", "Call the operation the approval bound.")
 	}
 	op := t.Classify()
 	if (op == "act" || op == "transact") && call.Permission == "" {
-		return deny("state-changing browser operation requires broker authorization")
+		return denyCode(permissions.CodePolicyDenied, "state-changing browser operation requires broker authorization.", "Ask for approval first, then retry.")
 	}
 	taskID := call.TaskID
 	if taskID == "" {
 		taskID = SessionKeyFromContext(ctx)
 		if taskID == "" {
-			return deny("no work item bound")
+			return denyCode(permissions.CodeBindingMismatch, "no work item bound.", "Start the call inside a task or session so work binds.")
 		}
 	}
 	started := time.Now().UTC()
@@ -263,11 +275,11 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 		// and still be live. Anything else fails closed.
 		row, err := call.Sessions.Revalidate(call.SessionID, call.Owner, call.ContextID, taskID)
 		if err != nil {
-			return deny(err.Error())
+			return denyResume(err)
 		}
 		sess = row
 		if err := call.Sessions.Touch(sess.ID, 0); err != nil {
-			return deny("browser session unavailable")
+			return denyCode(permissions.CodeSessionExpired, "browser session unavailable.", "Ask again to start a fresh session.")
 		}
 	} else {
 		profile := call.Profile
@@ -277,7 +289,7 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 		var err error
 		sess, err = call.Sessions.GetOrCreate(call.Owner, call.ContextID, taskID, profile, 0)
 		if err != nil {
-			return deny("browser session unavailable")
+			return denyCode(permissions.CodeSessionExpired, "browser session unavailable.", "Ask again to start a fresh session.")
 		}
 	}
 	// Epoch pre-check: act-class ops must name a ref from the session's
@@ -286,6 +298,9 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 	// blind. Observations (snapshot/navigate) always pass through.
 	if ref, ok := args["ref"].(string); ok && ref != "" && (t.action == "click" || t.action == "type" || t.action == "fill" || t.action == "submit") {
 		if err := call.Sessions.CheckRef(sess.ID, ref); err != nil {
+			if _, stale := err.(*browser.StaleRefError); stale {
+				return denyCode(permissions.CodeRefStale, strings.TrimPrefix(err.Error(), "browser: "), "Re-snapshot and act on the fresh refs.")
+			}
 			return deny(err.Error())
 		}
 	}

@@ -33,6 +33,9 @@ type Doctor struct {
 	provider  providers.LLMProvider
 	registry  *tools.ToolRegistry
 	workspace string
+	// configPath binds the appliance config for the vault check.
+	// Empty means unbound (info, not an error).
+	configPath string
 	// Estate is the configured model inventory (primary + fallbacks).
 	// Optional: when set, the provider check reports the whole estate and
 	// flags cloud entries missing credentials.
@@ -107,6 +110,11 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkSpotifyOAuth,
 		d.checkGithubToken,
 		d.checkNotionToken,
+		d.checkDiskPressure,
+		d.checkVault,
+		d.checkLastGolden,
+		d.checkEvalSpend,
+		d.checkRoutinesFailing,
 	}
 	results := make([]CheckResult, 0, len(checks))
 	for _, check := range checks {

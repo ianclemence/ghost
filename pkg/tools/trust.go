@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"fmt"
+
+	"github.com/ianclemence/ghost/pkg/permissions"
 )
 
 // Trust boundary for tool execution.
@@ -58,4 +60,10 @@ func RequireLiveCtx(ctx context.Context, tool string) error {
 	default:
 		return nil
 	}
+}
+
+// policyDeny renders a tool-layer refusal with the denial envelope:
+// stable code for logs, reason + remedy for the model.
+func policyDeny(code permissions.DenialCode, reason, remedy string) string {
+	return permissions.Deny(code, reason, remedy).String()
 }

@@ -38,16 +38,16 @@ import (
 type ClaimState string
 
 const (
-	ClaimSuccess      ClaimState = "success"       // Ghost asserts it performed a consequential action
-	ClaimFailure      ClaimState = "failure"       // Ghost reports an action failed
-	ClaimPending      ClaimState = "pending"       // Ghost reports an action waiting (approval, queue)
-	ClaimRefusal      ClaimState = "refusal"       // Ghost declines / denies completion
-	ClaimIntention    ClaimState = "intention"     // Ghost states future/conditional intent (modal)
-	ClaimQuestion     ClaimState = "question"      // interrogative span: asks, never asserts
-	ClaimConditional  ClaimState = "conditional"   // subordinate condition framing, not an assertion
-	ClaimExternal     ClaimState = "external"      // third party / environment is the actor or source
-	ClaimQuote        ClaimState = "quote"         // reported speech under discussion, not asserted
-	ClaimUserRequest  ClaimState = "user_request"  // describes the user's request, not Ghost's act
+	ClaimSuccess       ClaimState = "success"       // Ghost asserts it performed a consequential action
+	ClaimFailure       ClaimState = "failure"       // Ghost reports an action failed
+	ClaimPending       ClaimState = "pending"       // Ghost reports an action waiting (approval, queue)
+	ClaimRefusal       ClaimState = "refusal"       // Ghost declines / denies completion
+	ClaimIntention     ClaimState = "intention"     // Ghost states future/conditional intent (modal)
+	ClaimQuestion      ClaimState = "question"      // interrogative span: asks, never asserts
+	ClaimConditional   ClaimState = "conditional"   // subordinate condition framing, not an assertion
+	ClaimExternal      ClaimState = "external"      // third party / environment is the actor or source
+	ClaimQuote         ClaimState = "quote"         // reported speech under discussion, not asserted
+	ClaimUserRequest   ClaimState = "user_request"  // describes the user's request, not Ghost's act
 	ClaimInformational ClaimState = "informational" // observation, habit, generic mention, no agency claim
 )
 
@@ -63,14 +63,14 @@ type Claim struct {
 	Capabilities     []string // candidate Ghost capability IDs (ontology); nil = generic completion
 	ClaimedState     ClaimState
 	Subject          string // ghost | user | external | none
-	Text             string   // source span
-	Reason           string   // why classified this way (auditable)
-	Polarity         string   // affirmative | negative
-	Modality         string   // direct | prospective | hypothetical | epistemic | none
-	Temporal         string   // past | present | future | timeless
-	Discourse        string   // contrast | cause | sequence | elaboration | none
-	Target           string   // extracted entity target, "" when generic
-	Turn             int      // response index, -1 when unscoped
+	Text             string // source span
+	Reason           string // why classified this way (auditable)
+	Polarity         string // affirmative | negative
+	Modality         string // direct | prospective | hypothetical | epistemic | none
+	Temporal         string // past | present | future | timeless
+	Discourse        string // contrast | cause | sequence | elaboration | none
+	Target           string // extracted entity target, "" when generic
+	Turn             int    // response index, -1 when unscoped
 }
 
 // ExtractClaims segments responses into typed claims (turn-unscoped).
@@ -348,9 +348,9 @@ func classifyClause(cl clause, depth int) (Claim, bool) {
 	newClaim := func(state ClaimState, subject, reason string) Claim {
 		return Claim{
 			ClaimedState: state, Subject: subject, Text: span,
-			Reason:       reason, Discourse: cl.relation,
-			Polarity:     polarityOf(span), Temporal: temporalOf(span),
-			Target:       extractTarget(cl.original),
+			Reason: reason, Discourse: cl.relation,
+			Polarity: polarityOf(span), Temporal: temporalOf(span),
+			Target: extractTarget(cl.original),
 		}
 	}
 	mk := func(state ClaimState, subject, reason string) (Claim, bool) {
@@ -404,38 +404,38 @@ func classifyClause(cl clause, depth int) (Claim, bool) {
 			c.Modality = "hypothetical"
 			return c, done
 		}
-	// Present ability/obligation ("can", "must"): check epistemic
-	// complements — the modal may modify attestation ("I can confirm
-	// it's done") rather than planning an act ("I can send it").
-	if depth < 3 {
-		if comp, ok := epistemicComplement(span); ok {
-			if st, done := classifyClause(clause{text: comp.text, original: comp.original, relation: "elaboration"}, depth+1); done {
-				// A confirm verb attests its complement: state
-				// predicates over task nouns ("the device is off")
-				// carry truth content even without action verbs.
-				// Standalone observation prose keeps its existing
-				// reading; only confirm contexts upgrade.
-				if !st.IsExecutionClaim && st.ClaimedState == ClaimInformational {
-					if caps, ok := complementStateClaim(comp.text); ok {
-						st.IsExecutionClaim = true
-						st.ClaimedState = ClaimSuccess
-						st.Capabilities = caps
-						st.Reason += " via confirmed state predicate"
+		// Present ability/obligation ("can", "must"): check epistemic
+		// complements — the modal may modify attestation ("I can confirm
+		// it's done") rather than planning an act ("I can send it").
+		if depth < 3 {
+			if comp, ok := epistemicComplement(span); ok {
+				if st, done := classifyClause(clause{text: comp.text, original: comp.original, relation: "elaboration"}, depth+1); done {
+					// A confirm verb attests its complement: state
+					// predicates over task nouns ("the device is off")
+					// carry truth content even without action verbs.
+					// Standalone observation prose keeps its existing
+					// reading; only confirm contexts upgrade.
+					if !st.IsExecutionClaim && st.ClaimedState == ClaimInformational {
+						if caps, ok := complementStateClaim(comp.text); ok {
+							st.IsExecutionClaim = true
+							st.ClaimedState = ClaimSuccess
+							st.Capabilities = caps
+							st.Reason += " via confirmed state predicate"
+						}
 					}
+					// Attestation is Ghost's act: a first-person confirmer
+					// ("I can confirm the device is off") owns the claim even
+					// when the embedded proposition names no agent.
+					if subjectOf(span) == "ghost" {
+						st.Subject = "ghost"
+					}
+					st.Text = span
+					st.Reason += " via epistemic complement"
+					st.Modality = "epistemic"
+					return st, true
 				}
-				// Attestation is Ghost's act: a first-person confirmer
-				// ("I can confirm the device is off") owns the claim even
-				// when the embedded proposition names no agent.
-				if subjectOf(span) == "ghost" {
-					st.Subject = "ghost"
-				}
-				st.Text = span
-				st.Reason += " via epistemic complement"
-				st.Modality = "epistemic"
-				return st, true
 			}
 		}
-	}
 		c, done := mk(ClaimIntention, subjectOf(span), "present ability without completion")
 		c.Modality = "prospective"
 		return c, done
@@ -761,7 +761,8 @@ var targetStop = map[string]bool{
 // extractTarget finds the entity a claim acts upon: email addresses,
 // @handles, filenames, and capitalized proper names (original case).
 // Generic day/month words are never entities. Returns "" when generic.
-func extractTarget(original string) string {	if m := emailRE.FindString(original); m != "" {
+func extractTarget(original string) string {
+	if m := emailRE.FindString(original); m != "" {
 		return strings.ToLower(m)
 	}
 	if m := handleRE.FindString(original); m != "" {
@@ -1073,17 +1074,70 @@ func isCompletionFrame(span string) bool {
 		}
 	}
 	// Bare "Done." / possessive-task predicates ("Your routine is set"
-	// handled by verb path; "All done" here).
+	// handled by verb path; "All done" here). Verb-initial "complete"
+	// is an instruction, not a report ("Complete the form" must reach
+	// the imperative check); participle-initial reports ("Done and
+	// dusted") still match.
 	for _, w := range toks {
 		if isCompletionWord(w) && (toks[0] == "all" || len(toks) <= 3) {
+			if w == "complete" && toks[0] == "complete" && len(toks) > 1 {
+				continue
+			}
 			return true
 		}
+	}
+	// Abstract-task predicates ("the deed is done", "mission
+	// accomplished", "task completed"): the undertaking's resulting
+	// state asserts completion with no specific capability.
+	if len(toks) >= 3 && (toks[0] == "the" || toks[0] == "this" || toks[0] == "that") && abstractTaskNouns[toks[1]] && isBeForm(toks[2]) {
+		for _, w := range toks[3:] {
+			if isCompletionWord(w) {
+				return true
+			}
+		}
+	}
+	if len(toks) == 2 && abstractTaskNouns[toks[0]] && isCompletionWord(toks[1]) {
+		return true
+	}
+	// Take-care-of idiom ("I already took care of it").
+	if isTakeCareFrame(toks) {
+		return true
 	}
 	return false
 }
 
 func isCompletionWord(w string) bool {
-	return w == "done" || w == "finished" || w == "completed"
+	return w == "done" || w == "finished" || w == "completed" || w == "complete" || w == "accomplished"
+}
+
+// abstractTaskNouns name undertakings whose stated resulting state
+// reports Ghost's task ("the deed is done", "mission accomplished").
+// Ordinary object nouns never qualify: "the light is on" stays
+// observation, "the deed is done" asserts completion.
+var abstractTaskNouns = map[string]bool{
+	"mission": true, "deed": true, "task": true, "job": true, "work": true,
+}
+
+// isTakeCareFrame detects first-person take-care-of completion ("I
+// already took care of it"): the idiom asserts the task handled with
+// the object as anaphora or task noun. Bare imperatives ("Take care!")
+// lack the first-person subject and never match.
+func isTakeCareFrame(toks []string) bool {
+	if len(toks) == 0 || (toks[0] != "i" && toks[0] != "we") {
+		return false
+	}
+	for i, w := range toks {
+		if w != "take" && w != "took" && w != "taken" && w != "taking" {
+			continue
+		}
+		if i+2 < len(toks) && toks[i+1] == "care" && toks[i+2] == "of" && i+3 < len(toks) {
+			obj := toks[i+3]
+			if obj == "it" || obj == "this" || obj == "that" || obj == "everything" || obj == "all" || isTaskNoun(obj) || transactionNouns[obj] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isBeForm(w string) bool {
@@ -1122,6 +1176,11 @@ func ghostExecutionClaim(span string) ([]string, bool) {
 		lemma, ok := verbLemma(w)
 		if !ok && isGoOut(toks, i) {
 			// Phrasal "go out" (has gone out, went out) means send.
+			lemma, ok = "send", true
+		}
+		if !ok && isGoThrough(toks, i) {
+			// Resultative "go through" over a transaction noun (the
+			// payment went through) means send/deliver.
 			lemma, ok = "send", true
 		}
 		if !ok {
@@ -1223,7 +1282,7 @@ func looksNominal(w string) bool {
 	}
 	switch w {
 	case "to", "for", "of", "in", "on", "at", "by", "with", "from", "and", "or", "but", "so", "that", "it",
-		"out", "up", "off", "away", "back", "over", "along", "forth":
+		"out", "up", "off", "away", "back", "over", "along", "forth", "through", "down":
 		return false
 	}
 	return true
@@ -1347,6 +1406,47 @@ func isGoOut(toks []string, i int) bool {
 	}
 	for j := i + 1; j < len(toks) && j <= i+2; j++ {
 		if toks[j] == "out" {
+			return true
+		}
+	}
+	return false
+}
+
+// transactionNouns name things that complete by going through:
+// payments, submissions, orders. "Went through" with one of these as
+// subject or object is a resultative completion report ("the payment
+// went through"). Without one ("I went through the list") it describes
+// review, never completion.
+var transactionNouns = map[string]bool{
+	"payment": true, "transaction": true, "submission": true,
+	"order": true, "form": true, "email": true, "mail": true,
+	"message": true, "request": true, "transfer": true,
+	"purchase": true, "invoice": true, "charge": true,
+	"report": true,
+}
+
+// isGoThrough detects resultative "go through" (went/gone + through)
+// over a transaction noun. Same send/deliver reading as go-out,
+// bounded to completion semantics by the noun requirement.
+func isGoThrough(toks []string, i int) bool {
+	w := toks[i]
+	if w != "go" && w != "went" && w != "gone" && w != "going" {
+		return false
+	}
+	through := false
+	for j := i + 1; j < len(toks) && j <= i+2; j++ {
+		if toks[j] == "through" {
+			through = true
+		}
+	}
+	if !through {
+		return false
+	}
+	for j := 0; j < len(toks); j++ {
+		if j == i {
+			continue
+		}
+		if transactionNouns[toks[j]] {
 			return true
 		}
 	}

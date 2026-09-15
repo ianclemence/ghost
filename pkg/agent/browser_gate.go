@@ -172,15 +172,15 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	}
 	op, ok := browserOp(tool)
 	if !ok {
-		return deny("Unknown browser operation %q. Nothing was run.", tool)
+		return deny(denyText(permissions.CodePreconditionFailed, fmt.Sprintf("Unknown browser operation %q.", tool), "Use navigate, snapshot, click, type, fill, press, or submit."))
 	}
 	if al == nil || al.governance == nil || al.governance.Broker == nil {
-		return deny("Browser is unavailable: governance is not wired. Nothing was run.")
+		return deny(denyText(permissions.CodeUnavailable, "Browser is unavailable: governance is not wired.", "Try again in a moment; if it persists, the operator must check the gateway."))
 	}
 	g := al.governance
 	owner := g.GhostID
 	if owner == "" {
-		return deny("Browser is unavailable: no Ghost identity. Nothing was run.")
+		return deny(denyText(permissions.CodeUnavailable, "Browser is unavailable: no Ghost identity.", "The operator must complete onboarding so this Ghost has an identity."))
 	}
 	// Context comes from the session binding, never from arguments.
 	contextID := ""
@@ -190,19 +190,19 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	// Routine and context scopes are set by code (scheduler, contexts
 	// API), never by the model.
 	if !g.routineAllows(sessionKey, browserCapability) {
-		return deny("That isn't part of this routine, so I didn't run it.")
+		return deny(denyText(permissions.CodeScopeRoutine, "That isn't part of this routine, so I didn't run it.", "Run it as a direct request instead of inside the routine."))
 	}
 	if !g.contextAllows(sessionKey, browserCapability) {
-		return deny("That isn't available in this context, so I didn't run it.")
+		return deny(denyText(permissions.CodeScopeContext, "That isn't available in this context, so I didn't run it.", "Switch to a context where it is allowed, or allowlist it there."))
 	}
 	ledger, err := al.browserSessionLedger()
 	if err != nil {
-		return deny("Browser is unavailable: session ledger failed. Nothing was run.")
+		return deny(denyText(permissions.CodeUnavailable, "Browser is unavailable: session ledger failed.", "Try again in a moment; if it persists, the operator must check the database."))
 	}
 	al.expireBrowserSessions()
 	taskID, generation, err := al.resolveBrowserTask(sessionKey)
 	if err != nil {
-		return deny("Browser is unavailable: %v. Nothing was run.", err)
+		return deny(denyText(permissions.CodeUnavailable, fmt.Sprintf("Browser is unavailable: %v.", err), "Try again in a moment; if it persists, the operator must check the gateway."))
 	}
 	// Live Surface plane: register the browser session for this
 	// owner+context+task and enforce the pause. While a human owns the
@@ -212,12 +212,12 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	if al.livePlane != nil {
 		sess, serr := ledger.GetOrCreate(owner, contextID, taskID, "default", 0)
 		if serr != nil {
-			return deny("Browser is unavailable: session bind failed. Nothing was run.")
+			return deny(denyText(permissions.CodeUnavailable, "Browser is unavailable: session bind failed.", "Ask again to start a fresh session."))
 		}
 		liveSessionID = sess.ID
 		al.livePlane.Register(sess.ID, live.KindBrowser)
 		if ok, reason := al.livePlane.GhostMayAct(sess.ID); !ok {
-			return deny("The browser is paused: %s. Nothing was run.", reason)
+			return deny(denyText(permissions.CodeUnavailable, fmt.Sprintf("The browser is paused: %s.", reason), "Resume the surface and ask again."))
 		}
 	}
 	risk := browserRisk(op)
@@ -238,7 +238,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 		}}
 	case permissions.VerdictDeny:
 		return browserGateResult{decision: "deny",
-			message: "That action isn't allowed. It was declined by permission policy, so I didn't run it."}
+			message: denyText(permissions.CodePolicyDenied, "That browser action isn't allowed by permission policy, so I didn't run it.", "Tell me which narrower scope should allow it, or approve it when I ask.")}
 	default:
 	}
 	// Approval wait: mint the browser session NOW and pin it in the
@@ -248,7 +248,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	profile := "default"
 	sess, err := ledger.GetOrCreate(owner, contextID, taskID, profile, 0)
 	if err != nil {
-		return deny("Browser is unavailable: session mint failed. Nothing was run.")
+		return deny(denyText(permissions.CodeUnavailable, "Browser is unavailable: session mint failed.", "Ask again to start a fresh session."))
 	}
 	continuation := continuationOf(args)
 	continuation[contOwner] = owner
@@ -261,7 +261,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	req, err := g.Broker.RequireWithTrajectory(requestID, sessionKey, g.AgentID, g.trajectoryFor(requestID), browserCapability, tool,
 		scopeTarget(args), humanReason(browserCapability, tool, args), risk, continuation)
 	if err != nil {
-		return deny("I couldn't prepare the approval request. Nothing was run.")
+		return deny(denyText(permissions.CodeUnavailable, "I couldn't prepare the approval request.", "Ask again; if it repeats, the operator must check the permission store."))
 	}
 	g.NoteCapability(requestID, browserCapability, "")
 	if al.livePlane != nil {
@@ -271,7 +271,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 		al.announceSurface(sessionKey, sess.ID, live.KindBrowser)
 	}
 	return browserGateResult{decision: "wait", pendingID: req.ID,
-		message: approvalAskText(browserCapability, tool, args, req.ID)}
+		message: approvalAskTextEx(browserCapability, tool, args, req)}
 }
 
 // resumeBrowserCall re-verifies a stored approval against CURRENT runtime
@@ -283,7 +283,7 @@ func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, request
 		return tools.BrowserCall{}, tools.ErrorResult(fmt.Sprintf(format, a...))
 	}
 	if al == nil || al.governance == nil || al.governance.Broker == nil {
-		return refuse("Browser is unavailable: governance is not wired. Nothing was run.")
+		return refuse(denyText(permissions.CodeUnavailable, "Browser is unavailable: governance is not wired.", "Try again in a moment; if it persists, the operator must check the gateway."))
 	}
 	g := al.governance
 	args := resume.Args
@@ -292,31 +292,31 @@ func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, request
 	// a tampered copy that disagrees refuses instead of redirecting.
 	tool := resume.Tool
 	if stored, _ := args[contBrowserTool].(string); stored != "" && stored != tool {
-		return refuse("Approval was for a different browser operation. Nothing was run.")
+		return refuse(denyText(permissions.CodeBindingMismatch, "That approval was for a different browser operation.", "Ask again for this operation."))
 	}
 	op, ok := browserOp(tool)
 	if !ok {
-		return refuse("Unknown browser operation %q. Nothing was run.", tool)
+		return refuse(denyText(permissions.CodePreconditionFailed, fmt.Sprintf("Unknown browser operation %q.", tool), "Use navigate, snapshot, click, type, fill, press, or submit."))
 	}
 	storedOp, _ := args[contBrowserOp].(string)
 	if storedOp != "" && storedOp != op {
-		return refuse("Approval was for a different browser operation. Nothing was run.")
+		return refuse(denyText(permissions.CodeBindingMismatch, "That approval was for a different browser operation.", "Ask again for this operation."))
 	}
 	// Owner and context are re-resolved from the live session, then
 	// compared to the stored binding. A forged or drifted context fails.
 	owner := g.GhostID
 	if owner == "" {
-		return refuse("Browser is unavailable: no Ghost identity. Nothing was run.")
+		return refuse(denyText(permissions.CodeUnavailable, "Browser is unavailable: no Ghost identity.", "The operator must complete onboarding so this Ghost has an identity."))
 	}
 	if stored, _ := args[contOwner].(string); stored != "" && stored != owner {
-		return refuse("Owner mismatch: this approval belongs to a different Ghost. Nothing was run.")
+		return refuse(denyText(permissions.CodeBindingMismatch, "Owner mismatch: this approval belongs to a different Ghost.", "Approvals never transfer between owners; ask again here."))
 	}
 	contextID := ""
 	if g.Contexts != nil {
 		contextID = g.Contexts.SessionContext(sessionKey)
 	}
 	if stored, _ := args[contContext].(string); stored != "" && stored != contextID {
-		return refuse("Context changed since approval: this approval was granted under a different context. Nothing was run.")
+		return refuse(denyText(permissions.CodeBindingMismatch, "Context changed since approval: this approval was granted under a different context.", "Ask again under the current context."))
 	}
 	if !g.routineAllows(sessionKey, browserCapability) {
 		return refuse("That isn't part of this routine, so I didn't run it.")
@@ -333,19 +333,19 @@ func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, request
 	// approval resumes nothing.
 	if gen, _ := args[contGeneration].(string); gen != "" && al.jobs != nil {
 		if !al.jobs.CheckGeneration(taskID, gen) {
-			return refuse("That work item moved on while approval waited (stale generation). Nothing was run — ask again to start fresh.")
+			return refuse(denyText(permissions.CodeSessionExpired, "That work item moved on while approval waited (stale generation).", "Ask again to start fresh."))
 		}
 	}
 	// Standing grants can be revoked between approval and resume:
 	// re-evaluate so revocation takes effect immediately.
 	if resume.Grant == permissions.GrantAlways {
 		if verdict := g.Broker.Evaluate(browserCapability, tool, scopeFor(sessionKey, args), browserRisk(op)); verdict != permissions.VerdictAllow {
-			return refuse("That grant was revoked before I could use it. Nothing was run.")
+			return refuse(denyText(permissions.CodeGrantRevoked, "That grant was revoked before I could use it.", "Ask again for a fresh approval."))
 		}
 	}
 	ledger, err := al.browserSessionLedger()
 	if err != nil {
-		return refuse("Browser is unavailable: session ledger failed. Nothing was run.")
+		return refuse(denyText(permissions.CodeUnavailable, "Browser is unavailable: session ledger failed.", "Try again in a moment; if it persists, the operator must check the database."))
 	}
 	permission := "once"
 	if resume.Grant == permissions.GrantAlways {
@@ -362,7 +362,7 @@ func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, request
 	if al.livePlane != nil && call.SessionID != "" {
 		al.livePlane.Register(call.SessionID, live.KindBrowser)
 		if ok, reason := al.livePlane.GhostMayAct(call.SessionID); !ok {
-			return tools.BrowserCall{}, tools.ErrorResult("The browser is paused: " + reason + " Nothing was run.")
+			return tools.BrowserCall{}, tools.ErrorResult(denyText(permissions.CodeUnavailable, "The browser is paused: "+reason+".", "Resume the surface and ask again."))
 		}
 	}
 	return call, nil
@@ -377,7 +377,7 @@ func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, request
 func (al *AgentLoop) authorizeSubagentBrowser(ctx context.Context, tool string, args map[string]interface{}) (tools.BrowserCall, *tools.ToolResult) {
 	sessionKey := tools.SessionKeyFromContext(ctx)
 	if sessionKey == "" {
-		return tools.BrowserCall{}, tools.ErrorResult("Browser use is not authorized without a session binding. Nothing was run.")
+		return tools.BrowserCall{}, tools.ErrorResult(denyText(permissions.CodeSubagentUnauthorized, "Browser use is not authorized without a session binding.", "Bind the subagent to the parent session first."))
 	}
 	// Deterministic per session+operation so a retried subagent turn
 	// reuses the same pending approval instead of stacking cards.
@@ -395,7 +395,7 @@ func (al *AgentLoop) authorizeSubagentBrowser(ctx context.Context, tool string, 
 func (al *AgentLoop) authorizeSubagentStandaloneTool(ctx context.Context, tool string, args map[string]interface{}) *tools.ToolResult {
 	sessionKey := tools.SessionKeyFromContext(ctx)
 	if sessionKey == "" {
-		return tools.ErrorResult("That operation is not authorized without a session binding. Nothing was run.")
+		return tools.ErrorResult(denyText(permissions.CodeBindingMismatch, "That operation is not authorized without a session binding.", "Start from a snapshot so the call binds to a live session."))
 	}
 	decision, handled := al.authorizeStandaloneTool("subturn-"+sessionKey+"-"+tool, sessionKey, tool, args)
 	if !handled {
@@ -425,7 +425,7 @@ func (al *AgentLoop) maybeRunBrowserTool(toolCtx context.Context, reg *tools.Too
 		return res, false, false
 	}
 	if al == nil || al.governance == nil || al.governance.Broker == nil {
-		return &tools.ToolResult{ForLLM: "Browser use is unavailable because this runtime is not governed. Nothing was run."}, true, true
+		return &tools.ToolResult{ForLLM: denyText(permissions.CodeUnavailable, "Browser use is unavailable because this runtime is not governed.", "Try again in a moment; if it persists, the operator must check the gateway.")}, true, true
 	}
 	decision := al.authorizeBrowserCall(opts.RequestID, opts.SessionKey, tc.Name, tc.Arguments)
 	switch decision.decision {
@@ -447,11 +447,11 @@ func (al *AgentLoop) runBrowserTool(ctx context.Context, call tools.BrowserCall,
 	bound := tools.GrantExec(tools.WithBrowserCall(ctx, call), tool)
 	res := al.tools.ExecuteWithContext(bound, tool, args, channel, chatID, sessionKey, nil)
 	if res == nil {
-		return tools.ErrorResult("Browser execution returned no result. Nothing was proven to run.")
+		return tools.ErrorResult(permissions.Deny(permissions.CodeEvidenceAbsent, "Browser execution returned no result.", "Nothing was proven to run — ask again and watch for the result.").String())
 	}
 	if !res.IsError && call.Op != "" && call.Op != "navigate" && call.Op != "observe" {
 		if res.Evidence == nil {
-			return tools.ErrorResult("The browser action may not have completed: no runtime evidence was recorded, so I can't claim it worked.")
+			return tools.ErrorResult(permissions.Deny(permissions.CodeEvidenceAbsent, "The browser action may not have completed: no runtime evidence was recorded, so I can't claim it worked.", "Here is what did happen — re-snapshot the page to verify state before retrying.").String())
 		}
 	}
 	return res

@@ -30,9 +30,11 @@ type LLMResponse struct {
 }
 
 type UsageInfo struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	TotalTokens      int     `json:"total_tokens"`
+	CostUSD          float64 `json:"cost_usd,omitempty"`
+	CostUnknown      bool    `json:"cost_unknown,omitempty"`
 }
 
 type LLMProvider interface {

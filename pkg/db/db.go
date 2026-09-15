@@ -51,7 +51,11 @@ func NewDB(workspace string) (*DB, error) {
 		return nil, fmt.Errorf("failed to create workspace: %w", err)
 	}
 
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)", dbPath)
+	// WAL for crash atomicity; NORMAL sync is WAL-safe and halves write
+	// amplification on SD cards (FULL is for spindles, not flash).
+	// journal_size_limit bounds the WAL file so a write storm cannot eat
+	// the disk before maintenance prunes.
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=journal_size_limit(33554432)", dbPath)
 	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)

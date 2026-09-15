@@ -93,6 +93,47 @@ func TestRunUpdateSuccessOrder(t *testing.T) {
 	}
 }
 
+// Snapshot failure aborts before services stop: no recovery point,
+// no mutation.
+func TestRunUpdateSnapshotFailureAbortsPreStop(t *testing.T) {
+	var log callLog
+	err := RunUpdate(UpdateSteps{
+		Pull:     log.fn("pull", nil),
+		Plan:     log.fn("plan", nil),
+		Snapshot: log.fn("snapshot", errors.New("disk full")),
+		Stop:     log.stop("stop"),
+		Apply:    log.fn("apply", nil),
+		Start:    log.fn("start", nil),
+	})
+	if err == nil || !strings.Contains(err.Error(), "services untouched") {
+		t.Fatalf("snapshot failure must abort pre-stop, got: %v", err)
+	}
+	for _, c := range log.calls {
+		if c == "stop" || c == "apply" || c == "start" {
+			t.Fatalf("post-snapshot step %q ran after snapshot failure: %v", c, log.calls)
+		}
+	}
+}
+
+// Snapshot runs between plan and stop on the happy path.
+func TestRunUpdateSnapshotOrder(t *testing.T) {
+	var log callLog
+	if err := RunUpdate(UpdateSteps{
+		Pull:     log.fn("pull", nil),
+		Plan:     log.fn("plan", nil),
+		Snapshot: log.fn("snapshot", nil),
+		Stop:     log.stop("stop"),
+		Apply:    log.fn("apply", nil),
+		Start:    log.fn("start", nil),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"pull", "plan", "snapshot", "stop", "apply"}
+	if strings.Join(log.calls, ",") != strings.Join(want, ",") {
+		t.Fatalf("order = %v, want %v", log.calls, want)
+	}
+}
+
 // Pull failure aborts before planning.
 func TestRunUpdatePullFailureAbortsFirst(t *testing.T) {
 	var log callLog

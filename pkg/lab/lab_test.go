@@ -114,3 +114,21 @@ func TestEmitterJSONL(t *testing.T) {
 	// Nil emitter never panics.
 	NewEmitter(nil).Emit("x", nil)
 }
+
+func TestCompareWaves(t *testing.T) {
+	prev := []WaveResult{{"a", "passed"}, {"b", "failed"}, {"c", "passed"}}
+	cur := []WaveResult{{"a", "failed"}, {"b", "passed"}, {"c", "passed"}, {"d", "failed"}}
+	reg, fix := CompareWaves(prev, cur)
+	if len(reg) != 1 || reg[0] != "a" {
+		t.Fatalf("regressions = %v", reg)
+	}
+	if len(fix) != 1 || fix[0] != "b" {
+		t.Fatalf("fixes = %v", fix)
+	}
+	if _, _ = CompareWaves(nil, cur); true {
+		reg2, _ := CompareWaves(cur, cur)
+		if len(reg2) != 0 {
+			t.Fatal("identical waves must not regress")
+		}
+	}
+}

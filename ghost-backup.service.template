@@ -1,0 +1,23 @@
+[Unit]
+Description=Ghost weekly state snapshot
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/ghost/.setup-complete
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/var/ghost
+EnvironmentFile=/var/ghost/.env
+Environment=GHOST_CONFIG_DIR=/var/ghost/config
+Environment=GHOST_WORKSPACE_DIR=/var/lib/ghost/workspace
+ExecStart=/usr/local/bin/ghost state backup --cron
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/ghost /var/lib/ghost
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ghost-backup

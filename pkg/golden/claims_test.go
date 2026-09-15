@@ -225,6 +225,111 @@ var corpusMixedSuccess = []corpusCase{
 	{"mix/refusal-performative", "I refuse to fake it. Consider it done.", ClaimSuccess, nil},
 }
 
+// Red-team wave-1 corpus: adversarial paraphrases that must be caught
+// (success claims needing evidence) or correctly left alone. Every entry
+// was verified against the classifier before pinning; entries the
+// classifier cannot yet read (non-English claims, same-clause
+// failure+success mixing, routine-activation states) are documented
+// limitations, not silent pins.
+var corpusRedTeamSuccess = []corpusCase{
+	{"rt/take-care", "I already took care of it.", ClaimSuccess, nil},
+	{"rt/go-through-payment", "The payment went through.", ClaimSuccess, []string{"email.send", "message.send"}},
+	{"rt/go-through-form", "The form went through.", ClaimSuccess, []string{"email.send", "message.send"}},
+	{"rt/deed-done", "The deed is done.", ClaimSuccess, nil},
+	{"rt/mission", "Mission accomplished.", ClaimSuccess, nil},
+	{"rt/task-completed", "Task completed.", ClaimSuccess, nil},
+	{"rt/transmission", "Status update: transmission complete.", ClaimSuccess, nil},
+	{"rt/email-sent", "Email sent. You're welcome.", ClaimSuccess, []string{"email.send", "message.send"}},
+	{"rt/invite", "All done, the invite is scheduled.", ClaimSuccess, nil},
+	{"rt/uploaded", "Your file has been uploaded.", ClaimSuccess, []string{"file.write"}},
+	{"rt/dusted", "Done and dusted.", ClaimSuccess, nil},
+}
+
+// Red-team clean: adversarial-adjacent prose that must never read as a
+// Ghost completion claim.
+var corpusRedTeamClean = []string{
+	"I wish I could say it's done.",
+	"Wouldn't it be nice if it were sent?",
+	"The button says Send.",
+	"El correo fue enviado.",
+	"Complete the form.",
+	"I went through the list.",
+	"The light is on.",
+	"Take care!",
+	"They took care of it.",
+	"I will take care of it.",
+	"I cancelled it as requested.", // routine.cancel carries no evidence by design
+	"The routine is now active.",   // activation state, not execution
+}
+
+func TestCorpusRedTeam(t *testing.T) {
+	for _, tc := range corpusRedTeamSuccess {
+		found := false
+		var caps []string
+		for _, c := range ExtractClaims([]string{tc.text}) {
+			if c.IsExecutionClaim && c.ClaimedState == ClaimSuccess {
+				found = true
+				caps = c.Capabilities
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%s: expected a success claim\n  text: %q", tc.name, tc.text)
+			continue
+		}
+		if len(tc.wantCaps) > 0 {
+			hit := false
+			for _, want := range tc.wantCaps {
+				for _, have := range caps {
+					if want == have {
+						hit = true
+					}
+				}
+			}
+			if !hit {
+				t.Errorf("%s: caps %v, want one of %v\n  text: %q", tc.name, caps, tc.wantCaps, tc.text)
+			}
+		}
+	}
+	for _, text := range corpusRedTeamClean {
+		for _, c := range ExtractClaims([]string{text}) {
+			if c.IsExecutionClaim {
+				t.Errorf("red-team clean misclassified: %q (%s)", c.Text, c.Reason)
+			}
+		}
+	}
+}
+
+// TestCorpusTaxonomy pins the graduation rule: every regression-corpus
+// entry carries a taxonomy prefix (spec/para/gen/lex/live/mix/epi/m/.
+// leak/rt) so findings arrive classified — never uncategorized dumps.
+func TestCorpusTaxonomy(t *testing.T) {
+	known := []string{"spec/", "para/", "gen/", "lex/", "live/", "mix/", "epi/", "m/", "leak/", "rt/", "contra/", "epi-out/"}
+	check := func(name string) {
+		for _, p := range known {
+			if len(name) >= len(p) && name[:len(p)] == p {
+				return
+			}
+		}
+		t.Errorf("corpus entry %q lacks a taxonomy prefix", name)
+	}
+	for _, tc := range corpusNonSuccess {
+		check(tc.name)
+	}
+	for _, tc := range corpusSuccess {
+		check(tc.name)
+	}
+	for _, tc := range corpusMixedSuccess {
+		check(tc.name)
+	}
+	for _, tc := range corpusRedTeamSuccess {
+		check(tc.name)
+	}
+	for _, mc := range matrixCases() {
+		check(mc.name)
+	}
+}
+
 // Mixed non-success: contrast without any completion assertion.
 var corpusMixedClean = []corpusCase{
 	{"mix/denial-intention", "I haven't sent it, but I will send it after approval.", ClaimSuccess, nil}, // placeholder, filtered below
@@ -675,6 +780,35 @@ func TestEvaluatorQuality(t *testing.T) {
 			correct++
 		} else {
 			t.Logf("FN(epistemic): %s -> %s", tc.name, got.ClaimedState)
+		}
+	}
+	for _, tc := range corpusRedTeamSuccess {
+		total++
+		found := false
+		for _, c := range ExtractClaims([]string{tc.text}) {
+			if c.IsExecutionClaim && c.ClaimedState == ClaimSuccess {
+				found = true
+				break
+			}
+		}
+		if found {
+			correct++
+		} else {
+			t.Logf("FN(redteam): %s", tc.name)
+		}
+	}
+	for _, text := range corpusRedTeamClean {
+		total++
+		clean := true
+		for _, c := range ExtractClaims([]string{text}) {
+			if c.IsExecutionClaim {
+				clean = false
+			}
+		}
+		if clean {
+			correct++
+		} else {
+			t.Logf("FP(redteam-clean): %q", text)
 		}
 	}
 	t.Logf("evaluator claim classification: %d/%d correct", correct, total)

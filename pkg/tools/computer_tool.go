@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/computer"
+	"github.com/ianclemence/ghost/pkg/permissions"
 )
 
 // ComputerCall is the server-resolved binding for one computer operation.
@@ -117,21 +118,21 @@ func (t *ComputerTool) Parameters() map[string]interface{} {
 func (t *ComputerTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	call, ok := ComputerCallFromContext(ctx)
 	if !ok {
-		return ErrorResult("Computer policy: this operation was not bound by the runtime. Nothing was run.")
+		return ErrorResult(policyDeny(permissions.CodeBindingMismatch, "Computer policy: this operation was not bound by the runtime.", "Start from an authorized call so the runtime binds it."))
 	}
 	if call.Op != "" && call.Op != t.action {
-		return ErrorResult("Computer policy: operation binding mismatch. Nothing was run.")
+		return ErrorResult(policyDeny(permissions.CodeBindingMismatch, "Computer policy: operation binding mismatch.", "Call the operation the approval bound."))
 	}
 	controlOp := computer.IsObservation(computer.Op(t.action)) == false
 	if controlOp && call.Permission == "" {
-		return ErrorResult("Computer policy: state-changing computer operation requires broker authorization. Nothing was run.")
+		return ErrorResult(policyDeny(permissions.CodePolicyDenied, "Computer policy: state-changing computer operation requires broker authorization.", "Ask for approval first, then retry."))
 	}
 	if controlOp && !call.ControlAuthority {
-		return ErrorResult("Computer policy: no control authority for this computer (view-only or none). Nothing was run.")
+		return ErrorResult(policyDeny(permissions.CodeUnavailable, "Computer policy: no control authority for this computer (view-only or none).", "Ask the operator to grant control authority, then ask again."))
 	}
 	exec, err := t.executor()
 	if err != nil || exec == nil {
-		return ErrorResult("Computer unavailable: no computer executor on this Ghost. Nothing was run.")
+		return ErrorResult(policyDeny(permissions.CodeUnavailable, "Computer unavailable: no computer executor on this Ghost.", "The operator must attach a computer executor first."))
 	}
 	op := computer.Op(t.action)
 	a := computer.Args{}

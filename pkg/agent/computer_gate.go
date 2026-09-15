@@ -146,22 +146,22 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 	}
 	op, ok := computerOp(tool)
 	if !ok {
-		return deny("Unknown computer operation %q. Nothing was run.", tool)
+		return deny(denyText(permissions.CodePreconditionFailed, fmt.Sprintf("Unknown computer operation %q.", tool), "Use an operation this computer supports; ask what it can do."))
 	}
 	if al == nil || al.governance == nil || al.governance.Broker == nil {
-		return deny("Computer is unavailable: this runtime is not governed. Nothing was run.")
+		return deny(denyText(permissions.CodeUnavailable, "Computer is unavailable: this runtime is not governed.", "Try again in a moment; if it persists, the operator must check the gateway."))
 	}
 	g := al.governance
 	owner := g.GhostID
 	if owner == "" {
-		return deny("Computer is unavailable: no Ghost identity. Nothing was run.")
+		return deny(denyText(permissions.CodeUnavailable, "Computer is unavailable: no Ghost identity.", "The operator must complete onboarding so this Ghost has an identity."))
 	}
 	// Live Surface plane: register the appliance computer and enforce the
 	// pause. While a human owns the surface, Ghost is paused.
 	if al.livePlane != nil {
 		al.livePlane.Register("local", live.KindComputer)
 		if ok, reason := al.livePlane.GhostMayAct("local"); !ok {
-			return deny("The computer is paused: %s. Nothing was run.", reason)
+			return deny(denyText(permissions.CodeUnavailable, fmt.Sprintf("The computer is paused: %s.", reason), "Resume the surface and ask again."))
 		}
 	}
 	contextID := ""
@@ -169,22 +169,22 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 		contextID = g.Contexts.SessionContext(sessionKey)
 	}
 	if !g.routineAllows(sessionKey, computerCapability) {
-		return deny("That isn't part of this routine, so I didn't run it.")
+		return deny(denyText(permissions.CodeScopeRoutine, "That isn't part of this routine, so I didn't run it.", "Run it as a direct request instead of inside the routine."))
 	}
 	if !g.contextAllows(sessionKey, computerCapability) {
-		return deny("That isn't available in this context, so I didn't run it.")
+		return deny(denyText(permissions.CodeScopeContext, "That isn't available in this context, so I didn't run it.", "Switch to a context where it is allowed, or allowlist it there."))
 	}
 	exec, err := al.computerExecutor()
 	if err != nil || exec == nil {
-		return deny("Computer unavailable on this Ghost. Nothing was run.")
+		return deny(denyText(permissions.CodeUnavailable, "Computer unavailable on this Ghost.", "The operator must attach a computer executor first."))
 	}
 	authority, reason := computerAuthority(exec)
 	if authority == "none" {
-		return deny("Computer unavailable (%s). Nothing was run.", reason)
+		return deny(denyText(permissions.CodeUnavailable, fmt.Sprintf("Computer unavailable (%s).", reason), "Try again in a moment; if it persists, the operator must check the computer."))
 	}
 	controlOp := computerControlOp(op)
 	if controlOp && authority != "control" {
-		return deny("Computer is view-only: no control authority. Nothing was run.")
+		return deny(denyText(permissions.CodeUnavailable, "Computer is view-only: no control authority.", "Ask the operator to grant control authority, then ask again."))
 	}
 	// Screenshot/inspect observation is available but must still be
 	// authorized as a capability read; control ops require the broker
@@ -195,7 +195,7 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 	}
 	taskID, generation, err := al.resolveBrowserTask(sessionKey)
 	if err != nil {
-		return deny("Computer is unavailable: %v. Nothing was run.", err)
+		return deny(denyText(permissions.CodeUnavailable, fmt.Sprintf("Computer unavailable: %v.", err), "Try again in a moment; if it persists, the operator must check the gateway."))
 	}
 	// Durable lease for control ops is acquired only after authorization.
 	// Canonical action identity: capability + tool:action, matching the
@@ -205,7 +205,7 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 		return al.bindComputer(owner, contextID, sessionKey, taskID, generation, op, "allow")
 	case permissions.VerdictDeny:
 		return computerGateResult{decision: "deny",
-			message: "That action isn't allowed. It was declined by permission policy, so I didn't run it."}
+			message: denyText(permissions.CodePolicyDenied, "That computer action isn't allowed by permission policy, so I didn't run it.", "Tell me which narrower scope should allow it, or approve it when I ask.")}
 	default:
 	}
 	continuation := continuationOf(args)
@@ -218,7 +218,7 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 	req, err := g.Broker.RequireWithTrajectory(requestID, sessionKey, g.AgentID, g.trajectoryFor(requestID), computerCapability, tool,
 		scopeTarget(args), humanReason(computerCapability, tool, args), risk, continuation)
 	if err != nil {
-		return deny("I couldn't prepare the approval request. Nothing was run.")
+		return deny(denyText(permissions.CodeUnavailable, "I couldn't prepare the approval request.", "Ask again; if it repeats, the operator must check the permission store."))
 	}
 	g.NoteCapability(requestID, computerCapability, "")
 	if al.livePlane != nil {
@@ -228,7 +228,7 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 		al.announceSurface(sessionKey, "local", live.KindComputer)
 	}
 	return computerGateResult{decision: "wait", pending: req.ID,
-		message: approvalAskText(computerCapability, tool, args, req.ID)}
+		message: approvalAskTextEx(computerCapability, tool, args, req)}
 }
 
 // bindComputer assembles the execution binding and acquires the durable
@@ -241,12 +241,12 @@ func (al *AgentLoop) bindComputer(owner, contextID, sessionKey, taskID, generati
 	if computerControlOp(op) {
 		ls, err := al.computerLeaseStore()
 		if err != nil {
-			return computerGateResult{decision: "deny", message: "Computer is unavailable: lease store failed. Nothing was run."}
+			return computerGateResult{decision: "deny", message: denyText(permissions.CodeUnavailable, "Computer is unavailable: lease store failed.", "Try again in a moment; if it persists, the operator must check the database.")}
 		}
 		lease, err := ls.Acquire("local", owner, taskID, sessionKey, contextID, computer.DefaultLeaseTTL)
 		if err != nil {
 			return computerGateResult{decision: "deny",
-				message: "The computer is busy with another task. I didn't run it."}
+				message: denyText(permissions.CodeUnavailable, "The computer is busy with another task.", "Wait for the current task to finish, then ask again.")}
 		}
 		_ = lease
 		call.ControlAuthority = true
@@ -267,41 +267,41 @@ func (al *AgentLoop) resumeComputerCall(resume ResumeOutcome, sessionKey, reques
 		return tools.ComputerCall{}, tools.ErrorResult(fmt.Sprintf(format, a...))
 	}
 	if al == nil || al.governance == nil || al.governance.Broker == nil {
-		return refuse("Computer is unavailable: this runtime is not governed. Nothing was run.")
+		return refuse(denyText(permissions.CodeUnavailable, "Computer is unavailable: this runtime is not governed.", "Try again in a moment; if it persists, the operator must check the gateway."))
 	}
 	g := al.governance
 	tool := resume.Tool
 	if stored, _ := resume.Args[contComputerTool].(string); stored != "" && stored != tool {
-		return refuse("Approval was for a different computer operation. Nothing was run.")
+		return refuse(denyText(permissions.CodeBindingMismatch, "That approval was for a different computer operation.", "Ask again for this operation."))
 	}
 	op, ok := computerOp(tool)
 	if !ok {
-		return refuse("Unknown computer operation %q. Nothing was run.", tool)
+		return refuse(denyText(permissions.CodePreconditionFailed, fmt.Sprintf("Unknown computer operation %q.", tool), "Use an operation this computer supports; ask what it can do."))
 	}
 	owner := g.GhostID
 	if owner == "" {
-		return refuse("Computer is unavailable: no Ghost identity. Nothing was run.")
+		return refuse(denyText(permissions.CodeUnavailable, "Computer is unavailable: no Ghost identity.", "The operator must complete onboarding so this Ghost has an identity."))
 	}
 	// Live Surface pause must be rechecked on resume (a takeover may have
 	// happened while approval waited).
 	if al.livePlane != nil {
 		al.livePlane.Register("local", live.KindComputer)
 		if ok, reason := al.livePlane.GhostMayAct("local"); !ok {
-			return refuse("The computer is paused: %s. Nothing was run.", reason)
+			return refuse(denyText(permissions.CodeUnavailable, fmt.Sprintf("The computer is paused: %s.", reason), "Resume the surface and ask again."))
 		}
 	}
 	if stored, _ := resume.Args[contOwner].(string); stored != "" && stored != owner {
-		return refuse("Owner mismatch: this approval belongs to a different Ghost. Nothing was run.")
+		return refuse(denyText(permissions.CodeBindingMismatch, "Owner mismatch: this approval belongs to a different Ghost.", "Approvals never transfer between owners; ask again here."))
 	}
 	contextID := ""
 	if g.Contexts != nil {
 		contextID = g.Contexts.SessionContext(sessionKey)
 	}
 	if stored, _ := resume.Args[contContext].(string); stored != "" && stored != contextID {
-		return refuse("Context changed since approval. Nothing was run.")
+		return refuse(denyText(permissions.CodeBindingMismatch, "Context changed since approval.", "Ask again under the current context."))
 	}
 	if !g.routineAllows(sessionKey, computerCapability) || !g.contextAllows(sessionKey, computerCapability) {
-		return refuse("That isn't allowed anymore in this context/routine. Nothing was run.")
+		return refuse(denyText(permissions.CodeScopeContext, "That isn't allowed anymore in this context/routine.", "Ask again where it is allowed."))
 	}
 	taskID, _ := resume.Args[contTask].(string)
 	if taskID == "" {
@@ -309,21 +309,21 @@ func (al *AgentLoop) resumeComputerCall(resume ResumeOutcome, sessionKey, reques
 	}
 	if gen, _ := resume.Args[contGeneration].(string); gen != "" && al.jobs != nil {
 		if !al.jobs.CheckGeneration(taskID, gen) {
-			return refuse("That work item moved on while approval waited (stale generation). Nothing was run.")
+			return refuse(denyText(permissions.CodeSessionExpired, "That work item moved on while approval waited (stale generation).", "Ask again to start fresh."))
 		}
 	}
 	if resume.Grant == permissions.GrantAlways {
 		if verdict := g.Broker.Evaluate(computerCapability, tool, scopeFor(sessionKey, resume.Args), computerRisk(op)); verdict != permissions.VerdictAllow {
-			return refuse("That grant was revoked before I could use it. Nothing was run.")
+			return refuse(denyText(permissions.CodeGrantRevoked, "That grant was revoked before I could use it.", "Ask again for a fresh approval."))
 		}
 	}
 	exec, err := al.computerExecutor()
 	if err != nil || exec == nil {
-		return refuse("Computer unavailable on this Ghost. Nothing was run.")
+		return refuse(denyText(permissions.CodeUnavailable, "Computer unavailable on this Ghost.", "The operator must attach a computer executor first."))
 	}
 	authority, _ := computerAuthority(exec)
 	if computerControlOp(op) && authority != "control" {
-		return refuse("Computer no longer has control authority. Nothing was run.")
+		return refuse(denyText(permissions.CodeUnavailable, "Computer no longer has control authority.", "Ask the operator to grant control authority, then ask again."))
 	}
 	permission := "once"
 	if resume.Grant == permissions.GrantAlways {
@@ -336,10 +336,10 @@ func (al *AgentLoop) resumeComputerCall(resume ResumeOutcome, sessionKey, reques
 	if computerControlOp(op) {
 		ls, err := al.computerLeaseStore()
 		if err != nil {
-			return refuse("Computer is unavailable: lease store failed. Nothing was run.")
+			return refuse(denyText(permissions.CodeUnavailable, "Computer is unavailable: lease store failed.", "Try again in a moment; if it persists, the operator must check the database."))
 		}
 		if _, err := ls.Acquire("local", owner, taskID, sessionKey, contextID, computer.DefaultLeaseTTL); err != nil {
-			return refuse("The computer is busy with another task. Nothing was run.")
+			return refuse(denyText(permissions.CodeUnavailable, "The computer is busy with another task.", "Wait for the current task to finish, then ask again."))
 		}
 		call.ControlAuthority = true
 	}
@@ -353,11 +353,11 @@ func (al *AgentLoop) runComputerTool(ctx context.Context, call tools.ComputerCal
 	bound := tools.GrantExec(tools.WithComputerCall(ctx, call), tool)
 	res := al.tools.ExecuteWithContext(bound, tool, args, channel, chatID, sessionKey, nil)
 	if res == nil {
-		return tools.ErrorResult("Computer execution returned no result. Nothing was proven to run.")
+		return tools.ErrorResult(permissions.Deny(permissions.CodeEvidenceAbsent, "Computer execution returned no result.", "Nothing was proven to run — ask again and watch for the result.").String())
 	}
 	if !res.IsError && computerControlOp(call.Op) {
 		if res.Evidence == nil {
-			return tools.ErrorResult("The computer action may not have completed: no runtime evidence was recorded, so I can't claim it worked.")
+			return tools.ErrorResult(permissions.Deny(permissions.CodeEvidenceAbsent, "The computer action may not have completed: no runtime evidence was recorded, so I can't claim it worked.", "Verify state on the machine before retrying.").String())
 		}
 	}
 	return res
@@ -420,7 +420,7 @@ func (al *AgentLoop) maybeRunComputerTool(toolCtx context.Context, reg *tools.To
 		return res, false, false
 	}
 	if al == nil || al.governance == nil || al.governance.Broker == nil {
-		return &tools.ToolResult{ForLLM: "Computer use is unavailable because this runtime is not governed. Nothing was run."}, true, true
+		return &tools.ToolResult{ForLLM: denyText(permissions.CodeUnavailable, "Computer use is unavailable because this runtime is not governed.", "Try again in a moment; if it persists, the operator must check the gateway.")}, true, true
 	}
 	decision := al.authorizeComputerCall(opts.RequestID, opts.SessionKey, tc.Name, tc.Arguments)
 	switch decision.decision {

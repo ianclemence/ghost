@@ -114,6 +114,18 @@ type AgentsConfig struct {
 	Connections []ModelConnection `json:"connections,omitempty"`
 }
 
+// DefaultLocalModel is the canonical local-first model: provider,
+// bare tag, and combined form in one place. setup.sh, the web wizard,
+// reset defaults, and guided onboarding all reference these — never a
+// second literal, so the pulled tag can never drift from the
+// configured one again.
+const (
+	DefaultLocalProvider = "ollama"
+	DefaultLocalTag      = "qwen3:0.6b"
+	DefaultLocalModel    = "ollama/qwen3:0.6b"
+	DefaultLocalBaseURL  = "http://localhost:11434"
+)
+
 // ModelPreset is a named, user-selectable model configuration (Picoclaw-style).
 // Provider and Model follow the same conventions as AgentDefaults.
 type ModelPreset struct {

@@ -160,6 +160,11 @@ func (p *ClaudeCliProvider) parseClaudeCliResponse(output string) (*LLMResponse,
 			PromptTokens:     resp.Usage.InputTokens + resp.Usage.CacheCreationInputTokens + resp.Usage.CacheReadInputTokens,
 			CompletionTokens: resp.Usage.OutputTokens,
 			TotalTokens:      resp.Usage.InputTokens + resp.Usage.CacheCreationInputTokens + resp.Usage.CacheReadInputTokens + resp.Usage.OutputTokens,
+			// Measured cost threads through: the CLI reports what was
+			// actually spent. Zero with tokens present means unpriced,
+			// not free — mark unknown instead of recording $0.
+			CostUSD:     resp.TotalCostUSD,
+			CostUnknown: resp.TotalCostUSD <= 0,
 		}
 	}
 

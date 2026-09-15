@@ -31,7 +31,9 @@ import (
 	"github.com/ianclemence/ghost/pkg/clock"
 	"github.com/ianclemence/ghost/pkg/commands"
 	"github.com/ianclemence/ghost/pkg/config"
+	ghostdb "github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/devices"
+	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/heartbeat"
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -338,10 +340,39 @@ func printHelp() {
 func onboard() {
 	configPath := getConfigPath()
 	force := false
+	guided := false
+	var provider, model, apiKey string
+	skipChannels := false
+	yes := false
 	for _, a := range os.Args[2:] {
-		if a == "--force" {
+		switch {
+		case a == "--force":
 			force = true
+		case a == "--guided":
+			guided = true
+		case a == "--yes" || a == "-y":
+			yes = true
+		case a == "--skip-channels":
+			skipChannels = true
+		case strings.HasPrefix(a, "--provider="):
+			provider = strings.TrimPrefix(a, "--provider=")
+		case strings.HasPrefix(a, "--model="):
+			model = strings.TrimPrefix(a, "--model=")
+		case strings.HasPrefix(a, "--api-key="):
+			apiKey = strings.TrimPrefix(a, "--api-key=")
 		}
+	}
+	if guided {
+		home, _ := os.UserHomeDir()
+		if err := runGuided(guidedOpts{
+			ConfigPath: configPath, Home: home,
+			Provider: provider, Model: model, APIKey: apiKey,
+			SkipChannel: skipChannels, Yes: yes, Force: force,
+		}); err != nil {
+			fmt.Printf("Onboarding failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	if _, err := os.Stat(configPath); err == nil && !force {
@@ -1019,11 +1050,21 @@ func gatewayCmd() {
 	// it. A failed migration stops startup loudly: running services against
 	// a partially migrated schema would corrupt user state silently.
 	if v, err := schema.MigrateToCurrent(agentLoop.DB()); err != nil {
+		err = ghostdb.TranslateError("database migration", err)
 		fmt.Printf("❌ Database migration failed: %v\n", err)
 		fmt.Println("   Ghost cannot start safely. Restore from a backup with `ghost state import` and try again.")
 		os.Exit(1)
 	} else {
 		fmt.Printf("  • Database schema v%d\n", v)
+	}
+
+	// Integrity gate: a migrated-but-corrupt database must not serve.
+	// Refusing boot with the restore runbook beats serving wrong memories.
+	if err := ghostdb.CheckIntegrity(agentLoop.DB()); err != nil {
+		fmt.Printf("❌ %v\n", err)
+		os.Exit(1)
+	} else {
+		fmt.Printf("  • Database integrity ok\n")
 	}
 
 	// Print agent startup info
@@ -1265,14 +1306,32 @@ func statusCmd() {
 		return
 	}
 
+	asJSON := false
+	for _, a := range os.Args[2:] {
+		if a == "--json" {
+			asJSON = true
+		}
+	}
+
 	configPath := getConfigPath()
 
+	// One health surface: the doctor rollup is the status. The static
+	// config dump below stays for detail; the verdict up top answers
+	// "is Ghost healthy" in one screen.
+	results := runStatusDoctor(cfg)
+	if asJSON {
+		raw, _ := json.MarshalIndent(results, "", "  ")
+		fmt.Println(string(raw))
+		return
+	}
 	fmt.Printf("%s Ghost Status\n", logo)
 	fmt.Printf("Version: %s\n", formatVersion())
 	build, _ := formatBuildInfo()
 	if build != "" {
 		fmt.Printf("Build: %s\n", build)
 	}
+	fmt.Println()
+	printDoctorRollup(results)
 	fmt.Println()
 
 	if _, err := os.Stat(configPath); err == nil {
@@ -1290,6 +1349,8 @@ func statusCmd() {
 
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Printf("Model: %s\n", cfg.Agents.Defaults.Model)
+
+		printStatusSpend(cfg)
 
 		hasOpenRouter := cfg.Providers.OpenRouter.APIKey != ""
 		hasAnthropic := cfg.Providers.Anthropic.APIKey != ""
@@ -1342,6 +1403,66 @@ func statusCmd() {
 			}
 		}
 	}
+}
+
+// runStatusDoctor executes the health checks for `ghost status` against
+// the workspace database (read-only). A missing DB degrades checks to
+// info rather than failing the whole status.
+func runStatusDoctor(cfg *config.Config) []doctor.CheckResult {
+	workspace := cfg.WorkspacePath()
+	var db *sql.DB
+	if workspace != "" {
+		if odb, err := sql.Open("sqlite", "file:"+filepath.Join(workspace, "ghost.db")+"?mode=ro"); err == nil {
+			db = odb
+			defer db.Close()
+		}
+	}
+	doc := doctor.New(db, nil, nil, workspace)
+	doc.SetConfigPath(getConfigPath())
+	return doc.RunAll(context.Background())
+}
+
+// printDoctorRollup prints the overall verdict plus every non-ok row.
+// Green rows stay silent: healthy output is short output.
+func printDoctorRollup(results []doctor.CheckResult) {
+	overall := "ok"
+	for _, r := range results {
+		if r.Status == "error" {
+			overall = "error"
+			break
+		}
+		if r.Status == "warning" {
+			overall = "warning"
+		}
+	}
+	fmt.Printf("Health: %s (%d checks)\n", overall, len(results))
+	for _, r := range results {
+		if r.Status == "ok" || r.Status == "info" {
+			continue
+		}
+		label := r.Label
+		if label == "" {
+			label = r.Name
+		}
+		fmt.Printf("  [%s] %s: %s\n", r.Status, label, r.Message)
+	}
+}
+
+// printStatusSpend prints metered turn spend from canonical events.
+// Absent instrumentation prints nothing: no rows means no claim.
+func printStatusSpend(cfg *config.Config) {
+	workspace := cfg.WorkspacePath()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(workspace, "ghost.db")+"?mode=ro")
+	if err != nil {
+		return
+	}
+	defer db.Close()
+	var total float64
+	var turns int64
+	if err := db.QueryRow(`SELECT COALESCE(SUM(CAST(json_extract(payload,'$.cost_usd') AS REAL)),0), COUNT(*) FROM canonical_events WHERE type='usage.recorded'`).Scan(&total, &turns); err != nil || turns == 0 {
+		return
+	}
+	fmt.Printf("Spend: $%.4f across %d metered turns\n", total, turns)
 }
 
 // resetCmd is the CLI factory reset. Hybrid strategy:
@@ -2359,6 +2480,10 @@ func stateCmd() {
 		stateImportCmd(cfg)
 	case "inspect":
 		stateInspectCmd(cfg)
+	case "backup":
+		stateBackupCmd(cfg)
+	case "prune":
+		statePruneCmd(cfg)
 	default:
 		stateHelp()
 	}
@@ -2497,6 +2622,7 @@ func stateImportCmd(cfg *config.Config) {
 }
 
 func stateInspectCmd(cfg *config.Config) {
+
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: ghost state inspect <archive>")
 		return
@@ -2551,9 +2677,53 @@ func stateHelp() {
 	fmt.Println("  export <archive> [--include-secrets]   Export portable Ghost State to an encrypted archive")
 	fmt.Println("  inspect <archive>                      Show what an archive contains without importing")
 	fmt.Println("  import <archive> [--force]             Restore an archive into a fresh Ghost installation")
+	fmt.Println("  backup [--cron]                        Take a recovery snapshot (same archive, retention kept)")
+	fmt.Println("  prune [--keep=N]                       Enforce snapshot retention (default keeps 5)")
 	fmt.Println()
 	fmt.Println("Import only runs on a fresh installation unless --force is given.")
 	fmt.Println("Rebound (device-specific) state is never exported; secrets need --include-secrets.")
+	fmt.Println("Backup snapshots live beside the workspace backups dir and always include secrets;")
+	fmt.Println("recovery needs only the archive and the vault master key.")
+}
+
+// stateBackupCmd takes a recovery snapshot and enforces retention. It is
+// the scheduled-backup entry point (systemd timer) and the pre-update
+// snapshot path: same archive as export, keyed by the vault master key,
+// never interactive (passphrase comes from key resolution, not a prompt).
+func stateBackupCmd(cfg *config.Config) {
+	dest, removed, err := ghoststate.SnapshotAndPrune(cfg.WorkspacePath(), getConfigPath(), ghoststate.SnapshotKeep)
+	if err != nil {
+		fmt.Printf("Error taking snapshot: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Snapshot: %s\n", dest)
+	for _, r := range removed {
+		fmt.Printf("Pruned: %s\n", r)
+	}
+}
+
+// statePruneCmd enforces snapshot retention without taking a new one.
+// Named by disk-full recovery paths ("prune oldest backups").
+func statePruneCmd(cfg *config.Config) {
+	keep := ghoststate.SnapshotKeep
+	for _, a := range os.Args[3:] {
+		var n int
+		if _, err := fmt.Sscanf(a, "--keep=%d", &n); err == nil && n >= 1 {
+			keep = n
+		}
+	}
+	removed, err := ghoststate.PruneSnapshots(ghoststate.BackupDir(cfg.WorkspacePath()), keep)
+	if err != nil {
+		fmt.Printf("Error pruning snapshots: %v\n", err)
+		os.Exit(1)
+	}
+	if len(removed) == 0 {
+		fmt.Println("Nothing to prune.")
+		return
+	}
+	for _, r := range removed {
+		fmt.Printf("Pruned: %s\n", r)
+	}
 }
 
 // readPassphrase reads a passphrase from the terminal without echoing, or

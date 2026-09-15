@@ -436,3 +436,26 @@ func defaultConfigDir() string {
 func (v *Vault) Configured(id string) bool {
 	return strings.TrimSpace(v.secretValue(id)) != ""
 }
+
+// Sealed reports whether a sealed secrets file exists under the vault's
+// config dir and opens with the resolved key: the health-checkable form
+// of the vault boundary. ("", false, nil) means absent (first boot —
+// not an error); a present-but-unopenable file returns the error.
+// Callers must not read the secrets file themselves; this is the API.
+func (v *Vault) Sealed() (path string, ok bool, err error) {
+	dirs := v.secretDirs()
+	if len(dirs) == 0 {
+		dirs = []string{defaultConfigDir()}
+	}
+	for _, d := range dirs {
+		p := filepath.Join(d, ".secrets.json")
+		if _, serr := os.Stat(p); os.IsNotExist(serr) {
+			continue
+		}
+		if _, lerr := config.LoadSecrets(p); lerr != nil {
+			return p, false, lerr
+		}
+		return p, true, nil
+	}
+	return "", false, nil
+}

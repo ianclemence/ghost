@@ -1,0 +1,10 @@
+[Unit]
+Description=Ghost weekly state snapshot timer
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=3600
+
+[Install]
+WantedBy=timers.target

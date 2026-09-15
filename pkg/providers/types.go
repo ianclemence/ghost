@@ -27,6 +27,11 @@ type UsageInfo struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+	// CostUSD is measured cost when the provider reports it.
+	// CostUnknown means no measured cost and no estimate applied:
+	// unknown is never zero.
+	CostUSD     float64 `json:"cost_usd,omitempty"`
+	CostUnknown bool    `json:"cost_unknown,omitempty"`
 }
 
 type Message struct {

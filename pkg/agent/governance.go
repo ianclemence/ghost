@@ -276,6 +276,8 @@ type AuthorizeResult struct {
 	AskMessage string
 	// PendingID identifies the durable request for approval UX.
 	PendingID string
+	// DenyCode is the stable machine code when Allowed is false.
+	DenyCode permissions.DenialCode
 }
 
 // AuthorizeTool enforces the broker BEFORE consequential execution.
@@ -320,7 +322,9 @@ func (g *Governance) authorize(requestID, sessionKey, capabilityID, tool string,
 	// Authoritative broker policy.
 	scope := scopeFor(sessionKey, args)
 	decision := permissions.VerdictDecision(g.Broker.Evaluate(capabilityID, toolAction(tool, args), scope, risk))
-	denyMessage := "That action isn't allowed. It was declined by permission policy, so I didn't run it."
+	denial := permissions.Deny(permissions.CodePolicyDenied,
+		fmt.Sprintf("That %s action isn't allowed by permission policy, so I didn't run it.", capabilityID),
+		"Tell me which narrower scope should allow it, or approve it when I ask.")
 
 	// Deny-only layers, combined monotonically. None of these can turn a
 	// broker denial into an allow; each can only make the outcome stricter.
@@ -328,35 +332,40 @@ func (g *Governance) authorize(requestID, sessionKey, capabilityID, tool string,
 	// (scope is set by the scheduler executor in code, never by model output).
 	if !g.routineAllows(sessionKey, capabilityID) {
 		decision = permissions.Combine(decision, permissions.DecisionDeny)
-		denyMessage = "That isn't part of this routine, so I didn't run it."
+		denial = permissions.Deny(permissions.CodeScopeRoutine,
+			"That isn't part of this routine, so I didn't run it.",
+			"Run it as a direct request instead of inside the routine.")
 	}
 	// Context scope: a scoped context cannot use capabilities outside its
 	// allowlist (set by explicit user action, never by the model).
 	if !g.contextAllows(sessionKey, capabilityID) {
 		decision = permissions.Combine(decision, permissions.DecisionDeny)
-		denyMessage = "That isn't available in this context, so I didn't run it."
+		denial = permissions.Deny(permissions.CodeScopeContext,
+			"That isn't available in this context, so I didn't run it.",
+			"Switch to a context where it is allowed, or allowlist it there.")
 	}
 	// Registered runtime guards (deny-only).
 	for _, guard := range g.guardsSnapshot() {
 		if reason := guard(requestID, sessionKey, capabilityID, tool, args); reason != "" {
 			decision = permissions.Combine(decision, permissions.DecisionDeny)
-			denyMessage = reason
+			denial = permissions.Deny(permissions.CodePolicyDenied, reason,
+				"Adjust the request to satisfy the guard, then ask again.")
 		}
 	}
 
 	switch decision {
 	case permissions.DecisionDeny:
-		return AuthorizeResult{Allowed: false, AskMessage: denyMessage}
+		return AuthorizeResult{Allowed: false, AskMessage: denial.Chat(), DenyCode: denial.Code}
 	case permissions.DecisionAsk:
 		req, err := g.Broker.RequireWithTrajectory(requestID, sessionKey, g.AgentID, g.trajectoryFor(requestID), capabilityID,
 			toolAction(tool, args), scopeTarget(args), humanReason(capabilityID, tool, args),
 			risk, continuationOf(args))
 		if err != nil {
 			return AuthorizeResult{Allowed: false,
-				AskMessage: "I couldn't prepare the approval request. Nothing was run."}
+				AskMessage: denyText(permissions.CodeUnavailable, "I couldn't prepare the approval request.", "Ask again; if it repeats, the operator must check the permission store.")}
 		}
 		return AuthorizeResult{Allowed: false, PendingID: req.ID,
-			AskMessage: approvalAskText(capabilityID, tool, args, req.ID)}
+			AskMessage: approvalAskTextEx(capabilityID, tool, args, req)}
 	default:
 		return AuthorizeResult{Allowed: true}
 	}
@@ -419,9 +428,29 @@ func continuationOf(args map[string]interface{}) map[string]string {
 	return out
 }
 
+// denyText builds user-visible refusals: stable code + reason + remedy.
+// Chat renders the whole line; the code travels in logs. Gate deny and
+// refuse closures wrap their messages with this so every refusal carries
+// a machine code, a human reason, and a next action.
+func denyText(code permissions.DenialCode, reason, remedy string) string {
+	return permissions.Deny(code, reason, remedy).Chat()
+}
+
 func approvalAskText(capabilityID, tool string, args map[string]interface{}, pendingID string) string {
 	desc := humanReason(capabilityID, tool, args)
 	return fmt.Sprintf("I can do that (%s), but I need your approval first.\n\nActions: [allow_once] [always_allow] [deny] (permission request %s).", desc, pendingID)
+}
+
+// approvalAskTextEx adds where and expiry to the ask card: the missing
+// half of the remedy. Reply keywords work here in chat; the same actions
+// live on the dashboard card until the request expires.
+func approvalAskTextEx(capabilityID, tool string, args map[string]interface{}, req *permissions.Request) string {
+	base := approvalAskText(capabilityID, tool, args, req.ID)
+	where := "Reply here with `allow once`, `always allow`, or `deny` — or tap the card in the dashboard."
+	if !req.ExpiresAt.IsZero() {
+		where += fmt.Sprintf(" The request expires at %s.", req.ExpiresAt.Format("15:04"))
+	}
+	return base + "\n" + where
 }
 
 // approvalPhrases match chat replies that answer a pending approval

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/utils"
 )
@@ -78,7 +79,7 @@ func toolsFreeConsequential(name string) bool {
 // the call is refused — fail closed with a message the subagent can report.
 func executeSubagentConsequential(ctx context.Context, config ToolLoopConfig, tc providers.ToolCall, channel, chatID string) *ToolResult {
 	if config.ConsequentialAuth == nil {
-		return ErrorResult("That operation is not authorized for a subagent. Nothing was run.")
+		return ErrorResult(policyDeny(permissions.CodeSubagentUnauthorized, "That operation is not authorized for a subagent.", "Have the main agent perform it, or bind the subagent to the parent session."))
 	}
 	replacement := config.ConsequentialAuth(ctx, tc.Name, tc.Arguments)
 	if replacement != nil {
@@ -98,7 +99,7 @@ func executeSubagentConsequential(ctx context.Context, config ToolLoopConfig, tc
 // refused — fail closed with a message the subagent can report.
 func executeSubagentBrowser(ctx context.Context, config ToolLoopConfig, tc providers.ToolCall, channel, chatID string) *ToolResult {
 	if config.BrowserAuth == nil {
-		return ErrorResult("Browser use is not authorized for this subagent. Nothing was run.")
+		return ErrorResult(policyDeny(permissions.CodeSubagentUnauthorized, "Browser use is not authorized for this subagent.", "Bind the subagent to the parent browser session first."))
 	}
 	bag, replacement := config.BrowserAuth(ctx, tc.Name, tc.Arguments)
 	if replacement != nil {
@@ -231,7 +232,7 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 				// has no computer authority. Refusing makes the path
 				// structurally impossible for the model to reach through a
 				// subagent rather than creating an ungoverned alternate.
-				toolResult = ErrorResult("Computer operations are not authorized for a subagent. Nothing was run.")
+				toolResult = ErrorResult(policyDeny(permissions.CodeSubagentUnauthorized, "Computer operations are not authorized for a subagent.", "Computer control is a main-agent capability; have the main agent perform it."))
 			} else if isBrowserToolName(tc.Name) {
 				toolResult = executeSubagentBrowser(callCtx, config, tc, channel, chatID)
 			} else if toolsFreeConsequential(tc.Name) {

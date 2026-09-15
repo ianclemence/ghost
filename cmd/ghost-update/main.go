@@ -63,6 +63,10 @@ func main() {
 			fmt.Println("2. Validating workspace layout (services still running)...")
 			return appliance.CheckWorkspaceMigration(appliance.DefaultGhostDir)
 		},
+		Snapshot: func() error {
+			fmt.Println("2b. Taking recovery snapshot (services still running)...")
+			return appliance.PreUpdateSnapshot()
+		},
 		Stop: func() {
 			// Quiesce the appliance before touching its runtime
 			// workspace, so the move never happens under a running

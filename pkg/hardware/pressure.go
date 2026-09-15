@@ -29,6 +29,13 @@ type LiveStats struct {
 	Storage        Pressure `json:"storage"`
 }
 
+// DiskFreeBytes returns available bytes for the filesystem holding
+// path, false when unknown. Enforcement paths refuse on known-low
+// space and proceed on unknown — never block on a failed stat.
+func DiskFreeBytes(path string) (uint64, bool) {
+	return freeBytes(path)
+}
+
 // Snapshot reads live memory and disk headroom for the filesystem holding
 // path. Missing inputs degrade to "normal" rather than alarming falsely.
 func Snapshot(path string) LiveStats {

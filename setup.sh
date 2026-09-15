@@ -7,6 +7,40 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Canonical local model tag. Single-sourced with pkg/config
+# DefaultLocalTag — if you change this, change that constant too
+# (covered by TestDefaultModelTagSingleSourced).
+DEFAULT_MODEL_TAG="qwen3:0.6b"
+
+# Non-interactive flags: --yes answers every prompt affirmatively,
+# --no-service skips the service/install prompts. CI=1 implies --yes.
+ASSUME_YES=0
+NO_SERVICE=0
+for arg in "$@"; do
+    case "$arg" in
+        --yes|-y) ASSUME_YES=1 ;;
+        --no-service) NO_SERVICE=1 ;;
+    esac
+done
+if [ -n "$CI" ]; then
+    ASSUME_YES=1
+fi
+
+# ask reads one prompt unless --yes/CI answered it already.
+ask() {
+    local prompt="$1" default_answer="$2" varname="$3" reply=""
+    if [ "$ASSUME_YES" = "1" ]; then
+        printf -v "$varname" '%s' "$default_answer"
+        return 0
+    fi
+    if [ ! -t 0 ]; then
+        echo -e "${RED}[ERROR] $prompt requires input but stdin is not a terminal. Re-run with --yes or pipe an answer.${NC}" >&2
+        return 1
+    fi
+    read -p "$prompt" reply
+    printf -v "$varname" '%s' "$reply"
+}
+
 echo -e "${GREEN}===================================================${NC}"
 echo -e "${GREEN}  Ghost: Your Sovereign Intelligence (Linux/Pi Setup)${NC}"
 echo -e "${GREEN}===================================================${NC}"
@@ -167,14 +201,14 @@ if ! check_command "ollama"; then
     if check_command "curl"; then
         curl -fsSL https://ollama.com/install.sh | sh
         echo -e "${GREEN}[OK] Ollama installed.${NC}"
-        echo -e "${YELLOW}[INFO] Pre-pulling Qwen 3.5 0.8B model...${NC}"
-        ollama pull qwen3.5:0.8b
+        echo -e "${YELLOW}[INFO] Pre-pulling ${DEFAULT_MODEL_TAG} model...${NC}"
+        ollama pull "$DEFAULT_MODEL_TAG"
     else
         echo -e "${RED}[ERROR] curl is required for Ollama installation.${NC}"
     fi
 else
     echo -e "${GREEN}[OK] Ollama already installed.${NC}"
-    ollama pull qwen3.5:0.8b
+    ollama pull "$DEFAULT_MODEL_TAG"
 fi
 
 # ── 3. Build Ghost ────────────────────────────────────────────────────────
@@ -248,9 +282,13 @@ echo -e "${GREEN}[OK] Binary installed to ${HOME}/.local/bin/ghost${NC}"
 # ── 4. Service setup ──────────────────────────────────────────────────────
 echo ""
 echo -e "${YELLOW}[4/4] Service Configuration${NC}"
-read -p "Do you want to install Ghost as a system service (auto-start on boot)? (y/N) " INSTALL_SERVICE
-if [[ "$INSTALL_SERVICE" =~ ^[Yy]$ ]]; then
-    install_service
+if [ "$NO_SERVICE" = "1" ]; then
+    echo -e "${BLUE}[INFO] Skipping service install (--no-service).${NC}"
+else
+    ask "Do you want to install Ghost as a system service (auto-start on boot)? (y/N) " "n" INSTALL_SERVICE || exit 1
+    if [[ "$INSTALL_SERVICE" =~ ^[Yy]$ ]]; then
+        install_service
+    fi
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────
@@ -259,6 +297,9 @@ echo -e "${GREEN}===================================================${NC}"
 echo -e "${GREEN}  Setup Complete!${NC}"
 echo -e "${GREEN}===================================================${NC}"
 echo ""
+echo -e "${BLUE}Finish onboarding:${NC}"
+echo "  ./ghost onboard --guided        # guided provider/model setup (resumable)"
+echo ""
 echo -e "${BLUE}Useful commands:${NC}"
 echo "  sudo systemctl status ghost          # check service status"
 echo "  sudo journalctl -u ghost -f          # follow logs"
@@ -266,7 +307,7 @@ echo "  sudo systemctl restart ghost         # restart after config changes"
 echo "  make install && sudo systemctl restart ghost   # rebuild + restart"
 echo ""
 
-read -p "Do you want to start Ghost now? (Y/N) " RUN_NOW
+ask "Do you want to start Ghost now? (Y/N) " "n" RUN_NOW || exit 1
 if [[ "$RUN_NOW" =~ ^[Yy]$ ]]; then
     if systemctl is-active ghost &>/dev/null; then
         echo -e "${BLUE}Ghost service is already running. Tailing logs...${NC}"

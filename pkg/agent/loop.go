@@ -2473,6 +2473,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	// Turn telemetry: accumulate token usage and tools chosen so quality and
 	// cost can be observed (P8), not guessed.
 	var promptTokens, completionTokens, totalTokens int
+	var measuredCost float64
+	usageResponses, unmeasuredResponses := 0, 0
+	turnModel := al.model
 	var usedTools []string
 	// turnTouchedWeb tracks whether this turn has executed a network tool.
 	// Memory written after that point is web-derived (tainted): the model
@@ -2520,6 +2523,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		providerToolDefs := activeTools.ToProviderDefs()
 
 		selectedModel, _ := al.selectModel(opts, messages)
+		turnModel = selectedModel
 		logger.DebugCF("agent", "LLM request",
 			map[string]interface{}{
 				"iteration":         iteration,
@@ -2544,6 +2548,15 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			promptTokens += response.Usage.PromptTokens
 			completionTokens += response.Usage.CompletionTokens
 			totalTokens += response.Usage.TotalTokens
+			// Measured cost threads through per call; a single call
+			// without cost info voids turn-level measured totals (the
+			// resolver falls back to estimates, then unknown).
+			usageResponses++
+			if response.Usage.CostUnknown || (response.Usage.CostUSD <= 0 && (response.Usage.PromptTokens > 0 || response.Usage.CompletionTokens > 0)) {
+				unmeasuredResponses++
+			} else {
+				measuredCost += response.Usage.CostUSD
+			}
 		}
 
 		if err != nil {
@@ -2884,6 +2897,12 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			"tools_used":        usedTools,
 			"final_chars":       len(finalContent),
 		})
+
+	// Metered usage: one canonical row per user turn so spend is
+	// queryable per session/task instead of log-scraped. Measured totals
+	// win; otherwise the static table estimates; otherwise unknown (never
+	// zero). Best-effort: never fails the turn.
+	recordTurnUsage(al, opts, turnModel, iteration, promptTokens, completionTokens, totalTokens, measuredCost, usageResponses, unmeasuredResponses)
 
 	// Relational bookkeeping: score the user's turn, fold it into the
 	// affect aggregate, persist best-effort. Never fails the turn.

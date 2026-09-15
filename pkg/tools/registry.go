@@ -11,6 +11,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/redact"
 	"github.com/santhosh-tekuri/jsonschema/v5"
@@ -220,7 +221,7 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 			map[string]interface{}{
 				"tool": name,
 			})
-		return ErrorResult(fmt.Sprintf("tool %q is denied by execution policy: no execution grant for this turn (authorization boundary bypass suspected)", name))
+		return ErrorResult(policyDeny(permissions.CodePolicyDenied, fmt.Sprintf("Tool %q is denied by execution policy: no execution grant for this turn (authorization boundary bypass suspected).", name), "Route the call through the broker approval for this turn, then retry."))
 	}
 
 	// Validate arguments

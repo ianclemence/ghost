@@ -7,20 +7,21 @@ import "fmt"
 // read-only (config load, migration dry-check), while Apply performs the
 // workspace move and the rebuild/reinstall.
 type UpdateSteps struct {
-	Pull  func() error // fetch latest changes (no service impact)
-	Plan  func() error // read-only validation; must not stop services or write disk
-	Stop  func()       // quiesce services before mutation
-	Apply func() error // migrate workspace + build/install (services restart on success path)
-	Start func() error // best-effort service restart after a failed Apply
+	Pull     func() error // fetch latest changes (no service impact)
+	Plan     func() error // read-only validation; must not stop services or write disk
+	Snapshot func() error // recovery snapshot; nil skips (tests only — production always wires it)
+	Stop     func()       // quiesce services before mutation
+	Apply    func() error // migrate workspace + build/install (services restart on success path)
+	Start    func() error // best-effort service restart after a failed Apply
 }
 
-// RunUpdate executes pull → read-only plan → stop → apply.
+// RunUpdate executes pull → read-only plan → snapshot → stop → apply.
 //
-// Planning runs while services are still up: a planning failure (bad
-// config, unreadable vault, unresolvable layout) aborts before anything
-// is stopped, so a broken update changes nothing. Once services are
-// stopped, any Apply failure triggers a best-effort Start so an update
-// can never leave the appliance dark; both errors are reported.
+// Planning and snapshotting run while services are still up: a planning
+// failure or a failed snapshot aborts before anything stops, so a broken
+// update changes nothing and every applied update is recoverable. Once
+// services are stopped, any Apply failure triggers a best-effort Start
+// so an update can never leave the appliance dark; both errors reported.
 func RunUpdate(s UpdateSteps) error {
 	if s.Pull == nil || s.Plan == nil || s.Apply == nil {
 		return fmt.Errorf("update: pull, plan, and apply steps are required")
@@ -38,6 +39,11 @@ func RunUpdate(s UpdateSteps) error {
 	}
 	if err := s.Plan(); err != nil {
 		return fmt.Errorf("update plan: %w (services untouched)", err)
+	}
+	if s.Snapshot != nil {
+		if err := s.Snapshot(); err != nil {
+			return fmt.Errorf("update snapshot: %w (services untouched; fix backups before updating)", err)
+		}
 	}
 	stop()
 	if err := s.Apply(); err != nil {
