@@ -258,21 +258,12 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 	started := time.Now().UTC()
 	var sess *browser.Session
 	if call.SessionID != "" {
-		// Pinned session (approval resume): the stored row must still
-		// belong to this owner/context/task and still be live. Anything
-		// else fails closed — no silent rebinding.
-		row, err := call.Sessions.Get(call.SessionID)
+		// Pinned session (approval resume): explicit restore-check —
+		// the stored row must still belong to this owner/context/task
+		// and still be live. Anything else fails closed.
+		row, err := call.Sessions.Revalidate(call.SessionID, call.Owner, call.ContextID, taskID)
 		if err != nil {
-			return deny("browser session unavailable")
-		}
-		if row == nil {
-			return deny("browser session not found")
-		}
-		if row.Owner != call.Owner || row.ContextID != call.ContextID || row.TaskID != taskID {
-			return deny("browser session belongs to a different owner, context, or task")
-		}
-		if time.Now().UTC().After(row.ExpiresAt) {
-			return deny("browser session expired; ask again to start a fresh one")
+			return deny(err.Error())
 		}
 		sess = row
 		if err := call.Sessions.Touch(sess.ID, 0); err != nil {
@@ -287,6 +278,15 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 		sess, err = call.Sessions.GetOrCreate(call.Owner, call.ContextID, taskID, profile, 0)
 		if err != nil {
 			return deny("browser session unavailable")
+		}
+	}
+	// Epoch pre-check: act-class ops must name a ref from the session's
+	// live snapshot epoch. Stale or never-observed refs fail here,
+	// before the CLI runs — the model re-snapshots instead of acting
+	// blind. Observations (snapshot/navigate) always pass through.
+	if ref, ok := args["ref"].(string); ok && ref != "" && (t.action == "click" || t.action == "type" || t.action == "fill" || t.action == "submit") {
+		if err := call.Sessions.CheckRef(sess.ID, ref); err != nil {
+			return deny(err.Error())
 		}
 	}
 	res := t.executeBare(ctx, args)
@@ -321,6 +321,22 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 	// unparseable is simply absent, never an error.
 	if !res.IsError && (t.action == "navigate" || t.action == "snapshot") {
 		attachPageEvidence(res)
+		// Open a new ref epoch from the observed snapshot and record
+		// the page as an untrusted-content (taint) span: everything
+		// page-derived enters model context marked, and the broker can
+		// scope consequential approvals against tainted domains.
+		epoch := call.Sessions.Observe(sess.ID, browser.ParseRefs(res.ForLLM))
+		res.Evidence["ref_epoch"] = epoch
+		if url, _ := res.Evidence["url"].(string); url != "" {
+			domain, _ := res.Evidence["domain"].(string)
+			call.Sessions.RecordTaint(browser.TaintSpan{SessionID: sess.ID, URL: url, Domain: domain})
+			res.Evidence["taint_sources"] = call.Sessions.TaintedDomains(sess.ID)
+		}
+	}
+	// Successful mutations close the epoch: the next act requires a
+	// fresh snapshot. Epochs advance exactly on real mutations.
+	if !res.IsError && (t.action == "click" || t.action == "type" || t.action == "fill" || t.action == "submit" || t.action == "press") {
+		call.Sessions.Mutate(sess.ID)
 	}
 	if res.IsError || res.ForLLM == "" {
 		return res
@@ -386,16 +402,16 @@ func (t *BrowserTool) submitBare(ctx context.Context, args map[string]interface{
 	res := NewToolResult(fmt.Sprintf("Submitted %s at %s (total %s). Confirmation observed: %v.",
 		ref, quote.Merchant, quote.Total, confirmed))
 	res.Evidence = map[string]interface{}{
-		"type":        "action",
-		"op":          "browser.submit",
-		"class":       "transact",
-		"merchant":    quote.Merchant,
-		"amount":      quote.Total,
-		"currency":    quote.Currency,
-		"confirmed":   confirmed,
-		"url":         afterURL,
-		"outcome":     "ok",
-		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+		"type":      "action",
+		"op":        "browser.submit",
+		"class":     "transact",
+		"merchant":  quote.Merchant,
+		"amount":    quote.Total,
+		"currency":  quote.Currency,
+		"confirmed": confirmed,
+		"url":       afterURL,
+		"outcome":   "ok",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 	return res
 }

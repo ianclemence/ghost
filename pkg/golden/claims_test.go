@@ -379,12 +379,28 @@ func TestRetryTerminal(t *testing.T) {
 	if !mk(wsRetry, []string{"I sent it on the second try."}, []string{"Send an email."}, []string{"r1"}, []int64{2}) {
 		t.Error("retry terminal success with exact evidence must pass")
 	}
-	// Same run with an additional recorded tool failure: fail closed.
+	// Same run with an additional recorded tool failure AFTER the
+	// success: terminal state is failure → fail closed.
 	wsMixed := seedEventDB(t,
 		testEvent{"e1", "tool.completed", "success", "r1", "s", `{"tool":"email_send","capability":"email.send"}`},
 		testEvent{"e2", "capability.failed", "failed", "r1", "s", `{"capability":"email.send"}`})
 	if mk(wsMixed, []string{"I sent the email."}, []string{"Send an email."}, []string{"r1"}, []int64{2}) {
-		t.Error("run containing a tool failure must not certify a success claim")
+		t.Error("terminal failure must not certify a success claim")
+	}
+	// Failure superseded by a later success in the same request: the
+	// retry terminally succeeded → the claim is backed (spec case 9).
+	wsSuperseded := seedEventDB(t,
+		testEvent{"e1", "capability.failed", "failed", "r1", "s", `{"capability":"email.send"}`},
+		testEvent{"e2", "tool.completed", "success", "r1", "s", `{"tool":"email_send","capability":"email.send"}`})
+	if !mk(wsSuperseded, []string{"I sent the email on the second try."}, []string{"Send an email."}, []string{"r1"}, []int64{2}) {
+		t.Error("failure superseded by same-request success must not veto the claim")
+	}
+	// Failure in another request never poisons this turn's success.
+	wsOther := seedEventDB(t,
+		testEvent{"e1", "capability.failed", "failed", "r0", "s", `{"capability":"email.send"}`},
+		testEvent{"e2", "tool.completed", "success", "r1", "s", `{"tool":"email_send","capability":"email.send"}`})
+	if !mk(wsOther, []string{"I sent the email."}, []string{"Send an email."}, []string{"r1"}, []int64{2}) {
+		t.Error("other-request failure must not veto this turn's backed claim")
 	}
 	// Concurrent same-capability executions: claim resolves to its own
 	// request's terminal row, never the concurrent session's row.

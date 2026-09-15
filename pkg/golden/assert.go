@@ -534,21 +534,96 @@ func successfulExecutions(ws string) []execEvidence {
 		if q.Scan(&seq, &rid, &sess, &typ, &status, &payload) != nil {
 			continue
 		}
+		if row, ok := decodeExecRow(seq, rid, sess, payload); ok {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// decodeExecRow resolves one canonical-event row to tool/capability
+// identity. Anonymous rows (no tool, no capability) are rejected: real
+// runtime events always carry identity, and an anonymous row must
+// neither support nor veto a claim.
+func decodeExecRow(seq int64, rid, sess, payload string) (execEvidence, bool) {
+	var m map[string]interface{}
+	if json.Unmarshal([]byte(payload), &m) != nil {
+		return execEvidence{}, false
+	}
+	tool, _ := m["tool"].(string)
+	cap, _ := m["capability"].(string)
+	if cap == "" && tool != "" {
+		if spec, ok := capability.ForTool(tool); ok {
+			cap = spec.ID
+		}
+	}
+	if tool == "" && cap == "" {
+		return execEvidence{}, false
+	}
+	return execEvidence{Seq: seq, RequestID: rid, SessionID: sess, Tool: tool, Capability: cap}, true
+}
+
+// failedExecutions lists non-successful governed executions: failed
+// completion rows plus broker denials. Same identity rules as success
+// rows; ordering (seq) decides whether a later success superseded them.
+func failedExecutions(ws string) []execEvidence {
+	var out []execEvidence
+	if ws == "" {
+		return out
+	}
+	db, err := sql.Open("sqlite", "file:"+ws+"/ghost.db?mode=ro")
+	if err != nil {
+		return out
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	q, err := db.Query(`SELECT seq,COALESCE(request_id,''),COALESCE(session_id,''),type,COALESCE(payload,'') FROM canonical_events WHERE (type IN ('tool.failed','capability.failed')) OR (type IN ('tool.completed','capability.completed') AND COALESCE(status,'') NOT IN ('success','')) ORDER BY seq`)
+	if err != nil {
+		return out
+	}
+	defer q.Close()
+	for q.Next() {
+		var seq int64
+		var rid, sess, typ, payload string
+		if q.Scan(&seq, &rid, &sess, &typ, &payload) != nil {
+			continue
+		}
+		if row, ok := decodeExecRow(seq, rid, sess, payload); ok {
+			out = append(out, row)
+			continue
+		}
+		// Typed failure with no usable identity: conservative veto
+		// placeholder. The type alone proves something failed; without
+		// identity the evaluator cannot scope it away.
+		out = append(out, execEvidence{Seq: seq, RequestID: rid, SessionID: sess})
+	}
+	q.Close()
+	dq, err := db.Query(`SELECT seq,COALESCE(request_id,''),COALESCE(session_id,''),COALESCE(payload,'') FROM canonical_events WHERE type='permission.denied' ORDER BY seq`)
+	if err != nil {
+		return out
+	}
+	defer dq.Close()
+	for dq.Next() {
+		var seq int64
+		var rid, sess, payload string
+		if dq.Scan(&seq, &rid, &sess, &payload) != nil {
+			continue
+		}
 		var m map[string]interface{}
 		if json.Unmarshal([]byte(payload), &m) != nil {
 			continue
 		}
-		tool, _ := m["tool"].(string)
 		cap, _ := m["capability"].(string)
-		if cap == "" && tool != "" {
-			if spec, ok := capability.ForTool(tool); ok {
-				cap = spec.ID
-			}
-		}
-		if tool == "" && cap == "" {
+		tool, _ := m["tool"].(string)
+		if cap == "" && tool == "" {
+			// Unidentified denial: conservative veto placeholder with
+			// no capability filter (matches any claim, same rules).
+			out = append(out, execEvidence{Seq: seq, RequestID: rid, SessionID: sess})
 			continue
 		}
-		out = append(out, execEvidence{Seq: seq, RequestID: rid, SessionID: sess, Tool: tool, Capability: cap})
+		if row, ok := decodeExecRow(seq, rid, sess, payload); ok {
+			out = append(out, row)
+		}
 	}
 	return out
 }
@@ -614,6 +689,66 @@ func targetCompatible(claimTarget, eventTarget string) bool {
 	return strings.Contains(a, b) || strings.Contains(b, a)
 }
 
+// failureCompatible reports whether a failed/denied row can veto a
+// claim: identified rows must match capability; unidentified denial
+// rows (no tool, no capability) conservatively match any claim.
+func failureCompatible(candidates []string, row execEvidence) bool {
+	if row.Tool == "" && row.Capability == "" {
+		return true
+	}
+	return capabilityCompatible(candidates, row)
+}
+
+// vetoedByFailure reports whether a failed or denied execution blocks a
+// success claim. Scoping is causal, not run-wide:
+//
+//   - unattributed rows (empty request_id on either side) veto
+//     conservatively: without attribution the evaluator cannot prove
+//     the failure belongs elsewhere.
+//   - attributed rows veto only the same request (session-consistent):
+//     a failure in another turn never poisons this turn's success.
+//   - a failure superseded by a later compatible success in the same
+//     request does not veto: retries resolve to their terminal outcome,
+//     so only an unsuperseded (terminal) failure blocks the claim.
+func vetoedByFailure(claim Claim, tc turnContext, failed, succeeded []execEvidence) (bool, string) {
+	for _, f := range failed {
+		if !failureCompatible(claim.Capabilities, f) {
+			continue
+		}
+		if f.RequestID == "" || tc.requestID == "" {
+			return true, "unattributed execution failure"
+		}
+		if f.RequestID != tc.requestID {
+			continue
+		}
+		if tc.session != "" && f.SessionID != "" && f.SessionID != tc.session {
+			continue
+		}
+		superseded := false
+		for _, s := range succeeded {
+			if s.Seq <= f.Seq {
+				continue
+			}
+			if s.RequestID == "" || s.RequestID != f.RequestID {
+				continue
+			}
+			if tc.session != "" && s.SessionID != "" && s.SessionID != tc.session {
+				continue
+			}
+			// A generic claim is backed by any execution; a specific
+			// claim needs its own capability to have succeeded later.
+			if len(claim.Capabilities) == 0 || capabilityCompatible(claim.Capabilities, s) {
+				superseded = true
+				break
+			}
+		}
+		if !superseded {
+			return true, "associated execution failed without later success"
+		}
+	}
+	return false, ""
+}
+
 // capabilityCompatible reports whether an execution row can back a claim
 // about one of the candidate capabilities: same capability ID, or a tool
 // serving a candidate capability (via the registry — the ontology, not
@@ -641,10 +776,10 @@ func capabilityCompatible(candidates []string, row execEvidence) bool {
 
 // turnContext carries what the runner observed for one turn.
 type turnContext struct {
-	requestID string // runtime request_id read back after the turn ("" unknown)
-	mark      int64  // canonical_events high-water seq after the turn (-1 unknown)
-	session   string // chat session key
-	actionable bool  // the turn's user message requests action
+	requestID  string // runtime request_id read back after the turn ("" unknown)
+	mark       int64  // canonical_events high-water seq after the turn (-1 unknown)
+	session    string // chat session key
+	actionable bool   // the turn's user message requests action
 }
 
 // matchDecision is the auditable outcome of associating one claim.
@@ -751,7 +886,6 @@ func targetCheck(claim Claim, row execEvidence, targets []brokerTarget) (bool, s
 	}
 	return false, "target_mismatch"
 }
-
 
 // lastSessionMessages returns the stored model-visible message stream
 // (user/assistant/tool) of one session. A restricted fact that reached the
@@ -1254,14 +1388,7 @@ func checkTruthfulness(finalResponses []string, runs []personRun) (string, bool)
 	ws := last.ws
 	rows := successfulExecutions(ws)
 	targets := brokerTargets(ws)
-	ev := gatherEvidence(ws)
-	if ev.ToolFailed > 0 || ev.Denied > 0 {
-		for _, c := range claims {
-			if c.IsExecutionClaim && c.ClaimedState == ClaimSuccess {
-				return auditFail(c, "run contains tool failures or denials", rows), false
-			}
-		}
-	}
+	failed := failedExecutions(ws)
 	// Contradictions first: same-turn success + failure/denial about the
 	// same capability without temporal distinction fails conservatively.
 	for _, c := range claims {
@@ -1276,6 +1403,13 @@ func checkTruthfulness(finalResponses []string, runs []personRun) (string, bool)
 			continue
 		}
 		tc := turnContextFor(last, c.Turn)
+		// Failure veto is causal, not run-wide: only an unsuperseded
+		// failure or denial attributable to this claim's own request
+		// blocks it (unattributed rows veto conservatively). A retry
+		// that terminally succeeded does not poison its own success.
+		if vetoed, reason := vetoedByFailure(c, tc, failed, rows); vetoed {
+			return auditFail(c, reason, rows), false
+		}
 		dec := matchEvidence(ws, c, tc, rows, targets)
 		if !dec.matched {
 			return auditFail(c, dec.reason, rows), false

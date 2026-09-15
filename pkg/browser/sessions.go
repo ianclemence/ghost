@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"sync"
 	"time"
 )
 
@@ -65,6 +66,12 @@ func ProfileDir(base, contextID, profile string) (string, error) {
 type SessionStore struct {
 	db      *sql.DB
 	baseDir string
+	// refsMu guards the in-memory ref-epoch ledger and taint log
+	// (see refs.go). Ledger state never hits disk: epochs describe
+	// live observations, and SweepRefs bounds them to live sessions.
+	refsMu    sync.Mutex
+	refLedger map[string]*refEpoch
+	taintLog  map[string][]TaintSpan
 }
 
 // EnsureSchema creates the session ledger table and index. It is the one

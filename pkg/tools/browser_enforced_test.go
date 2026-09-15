@@ -173,7 +173,9 @@ func TestEnforcedObserveExecutesAndEvidences(t *testing.T) {
 	}
 }
 
-// Allowed act executes exactly once and records evidence.
+// Allowed act executes exactly once and records evidence. The ref loop
+// is enforced end to end: snapshot first (opens the epoch), then click
+// on a live ref; a click on a never-observed ref is denied.
 func TestEnforcedActExecutesWithPermission(t *testing.T) {
 	bt, sessions := newEnforcedTool(t, "click")
 	calls := 0
@@ -182,7 +184,24 @@ func TestEnforcedActExecutesWithPermission(t *testing.T) {
 		return &ToolResult{ForLLM: "clicked @e1", ForUser: "clicked"}
 	}
 	call := BrowserCall{Owner: "ian", ContextID: "personal", TaskID: "task-a", Sessions: sessions, Op: "click", Permission: "grant:once:x"}
+	// No snapshot yet: the click must fail closed without reaching the CLI.
 	res := bt.Execute(enforcedCtx(call), map[string]interface{}{"ref": "@e1"})
+	if !res.IsError || !strings.Contains(res.ForLLM, "stale element ref") {
+		t.Fatalf("unobserved ref must deny: %+v", res)
+	}
+	if calls != 0 {
+		t.Fatal("stale ref reached the executor")
+	}
+	// Snapshot opens the epoch (fake CLI returns a ref-bearing tree).
+	snapper := NewBrowserTool("", "snapshot")
+	snapper.run = func(ctx context.Context, action string, args ...string) *ToolResult {
+		return &ToolResult{ForLLM: `{"url":"https://x.test/","text":"@e1 [button] Go"}`, ForUser: "page"}
+	}
+	snapCall := BrowserCall{Owner: "ian", ContextID: "personal", TaskID: "task-a", Sessions: sessions, Op: "snapshot", Permission: "allow"}
+	if sres := snapper.Execute(enforcedCtx(snapCall), map[string]interface{}{}); sres.IsError {
+		t.Fatalf("snapshot failed: %s", sres.ForLLM)
+	}
+	res = bt.Execute(enforcedCtx(call), map[string]interface{}{"ref": "@e1"})
 	if res.IsError {
 		t.Fatalf("click failed: %s", res.ForLLM)
 	}

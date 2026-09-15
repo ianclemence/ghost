@@ -266,6 +266,25 @@ func (b *Broker) Evaluate(capability, action, scope string, risk Risk) Verdict {
 	b.mu.RLock()
 	mode := b.mode
 	b.mu.RUnlock()
+	if mode == ModeAudit {
+		// Audit mode enforces nothing; observation flows through
+		// Audit/EvaluateAudit. Returning allow here keeps the single
+		// enforcement choke point honest.
+		return VerdictAllow
+	}
+	return evaluatePolicy(b, mode, capability, action, scope, risk)
+}
+
+// evaluatePolicy is the pure policy core shared by Evaluate and audit:
+//   - explicit deny grant → DENY
+//   - matching always-grant (exact scope) → ALLOW
+//   - read_only risk → ALLOW (no approval)
+//   - low_risk → ALLOW unless mode is ask? No: low-risk creation acts
+//     (reminders, drafts, saved memories) auto-allow in auto/full,
+//     ask in ask/custom. Read-only always allows.
+//   - consequential/high_impact → ASK, except full mode allows
+//     consequential (never high_impact).
+func evaluatePolicy(b *Broker, mode Mode, capability, action, scope string, risk Risk) Verdict {
 	capability = strings.TrimSpace(capability)
 	action = strings.TrimSpace(action)
 	if capability == "" || action == "" {

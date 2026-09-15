@@ -179,6 +179,11 @@ func (r *ToolRegistry) Execute(ctx context.Context, name string, args map[string
 // ExecuteWithContext executes a tool with channel/chatID context and optional async callback.
 // It also validates tool arguments against the tool's JSON schema.
 func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args map[string]interface{}, channel, chatID, sessionKey string, asyncCallback AsyncCallback) *ToolResult {
+	// Revocation on cancel: a dead context refuses launch before any
+	// logging, lookup, or side effect.
+	if err := RequireLiveCtx(ctx, name); err != nil {
+		return ErrorResult(err.Error()).WithError(err)
+	}
 	// The logger does not redact; args are model input that may contain
 	// secret-shaped content (typed credentials, keys), so the registry
 	// redacts before anything leaves the core. Tool execution itself uses

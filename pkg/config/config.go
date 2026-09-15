@@ -108,9 +108,10 @@ type RAGConfig struct {
 }
 
 type AgentsConfig struct {
-	Defaults  AgentDefaults `json:"defaults"`
-	Routing   RoutingConfig `json:"routing"`
-	ModelList []ModelPreset `json:"model_list,omitempty"`
+	Defaults    AgentDefaults     `json:"defaults"`
+	Routing     RoutingConfig     `json:"routing"`
+	ModelList   []ModelPreset     `json:"model_list,omitempty"`
+	Connections []ModelConnection `json:"connections,omitempty"`
 }
 
 // ModelPreset is a named, user-selectable model configuration (Picoclaw-style).

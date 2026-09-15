@@ -94,3 +94,6 @@ workspace/knowledge/ops/tasks.md
 *.db
 *.db-shm
 *.db-wal
+
+# Skill package-manager canonical store
+.skill-store/

@@ -38,6 +38,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/maintenance"
 	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/migrate"
+	"github.com/ianclemence/ghost/pkg/nontty"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/product"
 	"github.com/ianclemence/ghost/pkg/providers"
@@ -246,6 +247,10 @@ func main() {
 			skillsListCmd(skillsLoader)
 		case "install":
 			skillsInstallCmd(installer, workspace)
+		case "add":
+			skillsAddCmd(workspace, os.Args[3:])
+		case "update":
+			skillsUpdateCmd(workspace, os.Args[3:])
 		case "remove", "uninstall":
 			if len(os.Args) < 4 {
 				fmt.Println("Usage: ghost skills remove <skill-name>")
@@ -332,9 +337,19 @@ func printHelp() {
 
 func onboard() {
 	configPath := getConfigPath()
+	force := false
+	for _, a := range os.Args[2:] {
+		if a == "--force" {
+			force = true
+		}
+	}
 
-	if _, err := os.Stat(configPath); err == nil {
+	if _, err := os.Stat(configPath); err == nil && !force {
 		fmt.Printf("Config already exists at %s\n", configPath)
+		if err := nontty.RequireInteractive("overwriting the config", "--force"); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 		fmt.Print("Overwrite? (y/n): ")
 		var response string
 		fmt.Scanln(&response)
@@ -598,6 +613,20 @@ func modelCmd() {
 		}
 		return out
 	}
+	connections := func() []string {
+		var out []string
+		for _, cn := range cfg.Agents.Connections {
+			if cn.Name == "" {
+				continue
+			}
+			line := fmt.Sprintf("  %-16s %s (%s)", cn.Name, cn.Provider, cn.Model)
+			if _, err := cfg.ResolveConnection(cn.Name); err != nil {
+				line += fmt.Sprintf("  [unavailable: %s]", err)
+			}
+			out = append(out, line)
+		}
+		return out
+	}
 
 	args := os.Args[2:]
 	if len(args) == 0 || args[0] == "list" {
@@ -609,6 +638,12 @@ func modelCmd() {
 		if ps := presets(); len(ps) > 0 {
 			fmt.Println("\nPresets:")
 			for _, s := range ps {
+				fmt.Println(s)
+			}
+		}
+		if cs := connections(); len(cs) > 0 {
+			fmt.Println("\nConnections:")
+			for _, s := range cs {
 				fmt.Println(s)
 			}
 		}
@@ -627,9 +662,19 @@ func modelCmd() {
 	target := args[1]
 
 	provider, model := "", target
+	fromConnection := false
 	if preset := cfg.FindModelPreset(target); preset != nil {
 		provider = preset.Provider
 		model = preset.Model
+	} else if conn, cerr := cfg.ResolveConnection(target); cerr == nil {
+		// Named connection: resolution (endpoint + credential) is the
+		// validation. The credential stays in the environment — activation
+		// writes provider/model only, never secrets.
+		provider, model = conn.Provider, conn.Model
+		fromConnection = true
+		if conn.AuthEnv != "" {
+			fmt.Printf("Connection %q authenticates via %s (must be set at runtime).\n", conn.Name, conn.AuthEnv)
+		}
 	} else if strings.Contains(target, ":") {
 		parts := strings.SplitN(target, ":", 2)
 		if parts[0] == "" || parts[1] == "" {
@@ -640,8 +685,9 @@ func modelCmd() {
 	}
 
 	// Guard against typos: an unknown provider would silently produce a broken
-	// config, so reject it up front.
-	if provider != "" && !knownProviders[strings.ToLower(provider)] {
+	// config, so reject it up front. Connections skip this guard —
+	// ResolveConnection already validated the endpoint and credential.
+	if provider != "" && !fromConnection && !knownProviders[strings.ToLower(provider)] {
 		fmt.Printf("Unknown provider %q — expected one of: %s\n", provider, strings.Join(knownProviderNames(), ", "))
 		os.Exit(1)
 	}
@@ -2553,6 +2599,10 @@ func readPassphrase(prompt string, confirm bool) (string, error) {
 }
 
 func confirm(prompt string) bool {
+	if err := nontty.RequireInteractive("confirmation", "--yes"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return false
+	}
 	fmt.Fprint(os.Stderr, prompt)
 	var response string
 	fmt.Scanln(&response)
@@ -2772,6 +2822,8 @@ func skillsHelp() {
 	fmt.Println("\nSkills commands:")
 	fmt.Println("  list                    List installed skills")
 	fmt.Println("  install <owner>/<repo>  Install skill from GitHub (root SKILL.md)")
+	fmt.Println("  add <source> [--copy]   Install via package manager (owner/repo[@skill][#ref], git URL, local path)")
+	fmt.Println("  update [name] [--apply] Check (or apply) upstream updates for locked skills")
 	fmt.Println("  install-builtin          Install all builtin skills to workspace")
 	fmt.Println("  list-builtin             List available builtin skills")
 	fmt.Println("  remove <name>            Remove installed skill (alias: uninstall)")
@@ -2825,6 +2877,112 @@ func skillsInstallCmd(installer *skills.SkillInstaller, workspace string) {
 
 	fmt.Printf("✓ Skill '%s' installed successfully!\n", filepath.Base(repo))
 	cliEmitSkillEvent(workspace, cevents.SkillInstalled, filepath.Base(repo))
+}
+
+// skillsAddCmd installs through the package-manager distributor:
+// canonical store + symlink, dual locks, bounded fetch. Explicit
+// command invocation is consent; the command never prompts (it fails
+// loudly instead), so it is safe in pipelines and agents.
+func skillsAddCmd(workspace string, args []string) {
+	copyMode := false
+	var sources []string
+	for _, a := range args {
+		if a == "--copy" {
+			copyMode = true
+			continue
+		}
+		if a == "-y" || a == "--yes" {
+			continue
+		}
+		sources = append(sources, a)
+	}
+	if len(sources) != 1 {
+		fmt.Println("Usage: ghost skills add <source> [--copy]")
+		fmt.Println("  source: owner/repo[@skill][/path][#ref], git URL, local path, host@skill")
+		fmt.Println("Example: ghost skills add vercel-labs/agent-skills@web-design-guidelines")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	dataDir := skills.StoreBaseDir(workspace)
+	slug, err := skills.InstallSource(ctx, dataDir, workspace, sources[0], copyMode)
+	if err != nil {
+		fmt.Printf("✗ Failed to add skill: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ Skill '%s' added (locked).\n", slug)
+	cliEmitSkillEvent(workspace, cevents.SkillInstalled, slug)
+}
+
+// skillsUpdateCmd checks locked skills against upstream; --apply
+// reinstalls the ones that moved.
+func skillsUpdateCmd(workspace string, args []string) {
+	apply := false
+	var names []string
+	for _, a := range args {
+		if a == "--apply" {
+			apply = true
+			continue
+		}
+		names = append(names, a)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	dataDir := skills.StoreBaseDir(workspace)
+	targets := names
+	if len(targets) == 0 {
+		var err error
+		targets, err = skills.LockedSlugs(dataDir)
+		if err != nil {
+			fmt.Printf("✗ Cannot read skill lock: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if len(targets) == 0 {
+		fmt.Println("No locked skills. Use: ghost skills add <source>")
+		return
+	}
+	changed := 0
+	for _, slug := range targets {
+		current, latest, moved, err := skills.UpdateCheck(ctx, dataDir, slug)
+		if err != nil {
+			fmt.Printf("  ? %s: check failed: %v\n", slug, err)
+			continue
+		}
+		if !moved {
+			fmt.Printf("  = %s: up to date\n", slug)
+			continue
+		}
+		changed++
+		fmt.Printf("  ≠ %s: %s -> %s\n", slug, shortID(current), shortID(latest))
+		if !apply {
+			continue
+		}
+		source, serr := skills.LockedSource(dataDir, slug)
+		if serr != nil {
+			fmt.Printf("    update failed: %v\n", serr)
+			continue
+		}
+		fmt.Printf("    updating %s...\n", slug)
+		if _, uerr := skills.InstallSource(ctx, dataDir, workspace, source, skills.InstalledCopyMode(workspace, slug)); uerr != nil {
+			fmt.Printf("    update failed: %v\n", uerr)
+			continue
+		}
+		fmt.Printf("    ✓ %s updated\n", slug)
+	}
+	if changed > 0 && !apply {
+		fmt.Println("Re-run with --apply to update.")
+	}
+}
+
+func shortID(id string) string {
+	if i := strings.Index(id, ":"); i >= 0 && i+9 < len(id) {
+		return id[:i+1] + id[i+1:i+9]
+	}
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
 }
 
 func skillsRemoveCmd(installer *skills.SkillInstaller, skillName, workspace string) {
