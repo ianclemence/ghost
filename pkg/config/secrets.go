@@ -57,7 +57,10 @@ func LoadSecrets(path string) (*Secrets, error) {
 		return nil, err
 	}
 	if IsSealed(data) {
-		key, err := MasterKeyFor(path)
+		// Read-only resolution: loading secrets must never mint a key
+		// file as a side effect (a minted key cannot unseal the
+		// existing vault and strands forensics).
+		key, err := ResolveMasterKey(path)
 		if err != nil {
 			return nil, err
 		}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -160,5 +161,124 @@ func TestSecretsWrongKeyFailsLoud(t *testing.T) {
 	t.Setenv("GHOST_MASTER_KEY", "wrong-key-for-this-test-12345678")
 	if _, err := LoadSecrets(path2); err == nil {
 		t.Fatal("wrong master key must fail loudly, never silently boot keyless")
+	}
+}
+
+// TestResolvePrecedence pins the unified hierarchy: env wins over the
+// appliance key file, which wins over the legacy sibling key file.
+func TestResolvePrecedence(t *testing.T) {
+	dir := t.TempDir()
+	secrets := filepath.Join(dir, ".secrets.json")
+	// Legacy key first: 32 fixed bytes so we can distinguish it later.
+	legacyRaw := make([]byte, 32)
+	for i := range legacyRaw {
+		legacyRaw[i] = byte(200 + i)
+	}
+	legacy, err := func() ([]byte, error) {
+		if err := os.WriteFile(filepath.Join(dir, ".master-key"), []byte(base64.StdEncoding.EncodeToString(legacyRaw)+"\n"), 0600); err != nil {
+			return nil, err
+		}
+		return legacyRaw, nil
+	}()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".master-env"), []byte("GHOST_MASTER_KEY=appliance-passphrase\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Without env, the appliance file wins over the legacy file. Prove
+	// it by sealing under the appliance key and resolving without env.
+	t.Setenv("GHOST_MASTER_KEY", "")
+	got, err := ResolveMasterKey(secrets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := Seal(got, []byte(`{"x":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Unseal(deriveKey("appliance-passphrase"), sealed); err != nil {
+		t.Fatal("appliance key file must win over legacy .master-key")
+	}
+	if string(got) == string(legacy) {
+		t.Fatal("resolved key must be the appliance key, not the legacy one")
+	}
+	// Env wins over everything.
+	t.Setenv("GHOST_MASTER_KEY", "env-passphrase")
+	got, err = ResolveMasterKey(secrets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(deriveKey("env-passphrase")) {
+		t.Fatal("env must win over key files")
+	}
+}
+
+// TestResolveNeverMints is the core regression test for the update-path
+// bug: resolving a missing key must error without creating key files.
+func TestResolveNeverMints(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GHOST_MASTER_KEY", "")
+	if _, err := ResolveMasterKey(filepath.Join(dir, ".secrets.json")); err == nil {
+		t.Fatal("missing key must be a hard error")
+	} else if !isNoKeyError(err) {
+		t.Fatalf("missing key must be a no-key error, got: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("resolve must not write anything, found %d entries", len(entries))
+	}
+}
+
+// TestEnsureGeneratesOnlyWhenBare proves generation happens exactly when
+// no key material exists anywhere.
+func TestEnsureGeneratesOnlyWhenBare(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GHOST_MASTER_KEY", "")
+	k, err := EnsureMasterKey(filepath.Join(dir, ".secrets.json"))
+	if err != nil || len(k) != 32 {
+		t.Fatalf("ensure must generate on bare dir: %v", err)
+	}
+	// A corrupt legacy file must fail loudly, never be replaced.
+	if err := os.WriteFile(filepath.Join(dir, "c", ".master-key"), []byte("x"), 0600); err == nil {
+		_ = err
+	}
+	cdir := t.TempDir()
+	t.Setenv("GHOST_MASTER_KEY", "")
+	if err := os.WriteFile(filepath.Join(cdir, ".master-key"), []byte("too-short"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureMasterKey(filepath.Join(cdir, ".secrets.json")); err == nil {
+		t.Fatal("corrupt key file must fail, not regenerate")
+	}
+}
+
+// TestApplianceEnvWithoutEntryFailsClosed: a .master-env that holds no
+// GHOST_MASTER_KEY entry must error, not silently fall through to an
+// older key that would fail auth with a misleading message.
+func TestApplianceEnvWithoutEntryFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GHOST_MASTER_KEY", "")
+	if err := os.WriteFile(filepath.Join(dir, ".master-env"), []byte("# rotated out\nOTHER=1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveMasterKey(filepath.Join(dir, ".secrets.json")); err == nil {
+		t.Fatal("entry-less .master-env must be a hard error")
+	}
+}
+
+func TestEnvFileValue(t *testing.T) {
+	data := []byte("# comment\n\nexport GHOST_MASTER_KEY=\"quoted value\"\nOTHER=1\nGHOST_MASTER_KEY=second\n")
+	if got := envFileValue(data, "GHOST_MASTER_KEY"); got != "quoted value" {
+		t.Fatalf("got %q, want first-match unquoted value", got)
+	}
+	if got := envFileValue([]byte("GHOST_MASTER_KEY=plain\n"), "GHOST_MASTER_KEY"); got != "plain" {
+		t.Fatalf("got %q", got)
+	}
+	if got := envFileValue([]byte("OTHER=1\n"), "GHOST_MASTER_KEY"); got != "" {
+		t.Fatalf("got %q, want empty", got)
 	}
 }

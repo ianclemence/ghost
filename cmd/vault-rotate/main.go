@@ -41,7 +41,9 @@ func main() {
 	}
 	var plain []byte
 	if config.IsSealed(blob) {
-		oldKey, err := config.MasterKeyFor(secretsPath)
+		// Read-only: rotation must never mint a key while loading the
+		// old one (a minted key would fail auth and mask the real one).
+		oldKey, err := config.ResolveMasterKey(secretsPath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "load old master key:", err)
 			os.Exit(1)
@@ -108,22 +110,23 @@ func main() {
 	fmt.Println("rotation ok")
 }
 
-// checkOldKeyDead proves the on-disk key no longer opens the vault.
-// Run with a clean environment (env -i) so MasterKeyFor reads the file,
-// not GHOST_MASTER_KEY. Exit 0 + message on success in either form:
-// file key rejected, or file absent.
+// checkOldKeyDead proves the legacy on-disk key no longer opens the
+// vault. It reads the .master-key file directly — never the unified
+// resolver, which would (correctly) find the live rotation key in
+// .master-env and always report STALE.
+// Run with a clean environment (env -i) so nothing leaks in via env.
 func checkOldKeyDead(dir string) {
-	secretsPath := filepath.Join(dir, ".secrets.json")
-	if _, err := os.Stat(filepath.Join(dir, ".master-key")); os.IsNotExist(err) {
+	keyPath := filepath.Join(dir, ".master-key")
+	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
 		fmt.Println("old key file absent: ok")
 		return
 	}
-	blob, err := os.ReadFile(secretsPath)
+	blob, err := os.ReadFile(filepath.Join(dir, ".secrets.json"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "read blob:", err)
 		os.Exit(1)
 	}
-	key, err := config.MasterKeyFor(secretsPath)
+	key, err := config.LoadKeyFile(keyPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "load file key:", err)
 		os.Exit(1)

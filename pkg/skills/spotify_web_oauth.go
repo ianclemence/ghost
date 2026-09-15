@@ -263,7 +263,8 @@ func LoadSpotifyToken() (*SpotifyToken, error) {
 		return nil, err
 	}
 	if config.IsSealed(data) {
-		key, err := config.MasterKeyFor(spotifyTokenPath())
+		// Read-only: loading must never mint keys.
+		key, err := config.ResolveMasterKey(spotifyTokenPath())
 		if err != nil {
 			return nil, err
 		}

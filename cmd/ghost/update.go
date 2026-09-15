@@ -33,38 +33,59 @@ func updateCmd() {
 		return
 	}
 
-	// Git pull
-	fmt.Println("1. Pulling latest changes...")
-	cmd := exec.Command("git", "-C", ghostDir, "pull")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("Error pulling changes: %v\n", err)
-		os.Exit(1)
+	// Crash-safe sequencing (pkg/appliance.RunUpdate): read-only
+	// migration planning runs while services are still up, so a sealed
+	// config or unreadable layout aborts before anything stops; any
+	// failure after the stop triggers a best-effort restart.
+	steps := appliance.UpdateSteps{
+		Pull: func() error {
+			fmt.Println("1. Pulling latest changes...")
+			cmd := exec.Command("git", "-C", ghostDir, "pull")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			return cmd.Run()
+		},
+		Plan: func() error {
+			fmt.Println("2. Validating workspace layout (services still running)...")
+			return appliance.CheckWorkspaceMigration(appliance.DefaultGhostDir)
+		},
+		Stop: func() {
+			// Quiesce the appliance before touching its runtime
+			// workspace, so the move never happens under a running
+			// gateway with the DB open.
+			fmt.Println("3. Stopping services...")
+			exec.Command("systemctl", "stop", "ghost").Run()
+			exec.Command("systemctl", "stop", "ghost-web").Run()
+		},
+		Apply: func() error {
+			// Migrate the workspace out of the install tree if the
+			// running install still uses the legacy layout. This must
+			// happen before install-ghost restarts services with
+			// GHOST_WORKSPACE_DIR pointing at /var/lib/ghost.
+			fmt.Println("4. Checking workspace layout...")
+			if err := migrateApplianceWorkspace(false); err != nil {
+				return err
+			}
+			// Build and deploy (install-ghost restarts services).
+			fmt.Println("5. Building and deploying...")
+			cmd := exec.Command("make", "-C", ghostDir, "install-ghost")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			return cmd.Run()
+		},
+		Start: func() error {
+			fmt.Println("Update failed — restarting services...")
+			var first error
+			for _, svc := range []string{"ghost", "ghost-web"} {
+				if err := exec.Command("systemctl", "start", svc).Run(); err != nil && first == nil {
+					first = fmt.Errorf("%s: %w", svc, err)
+				}
+			}
+			return first
+		},
 	}
-
-	// Quiesce the appliance before touching its runtime workspace, so the
-	// move never happens under a running gateway with the DB open.
-	fmt.Println("2. Stopping services...")
-	exec.Command("systemctl", "stop", "ghost").Run()
-	exec.Command("systemctl", "stop", "ghost-web").Run()
-
-	// Migrate the workspace out of the install tree if the running install
-	// still uses the legacy layout. This must happen before install-ghost
-	// restarts services with GHOST_WORKSPACE_DIR pointing at /var/lib/ghost.
-	fmt.Println("3. Checking workspace layout...")
-	if err := migrateApplianceWorkspace(false); err != nil {
-		fmt.Printf("Workspace migration failed: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Build and deploy
-	fmt.Println("4. Building and deploying...")
-	cmd = exec.Command("make", "-C", ghostDir, "install-ghost")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("Error building: %v\n", err)
+	if err := appliance.RunUpdate(steps); err != nil {
+		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -154,23 +175,42 @@ func checkAndUpdate() {
 
 	fmt.Println("New changes found, rebuilding...")
 
-	// Quiesce the appliance before touching its runtime workspace.
-	exec.Command("systemctl", "stop", "ghost").Run()
-	exec.Command("systemctl", "stop", "ghost-web").Run()
-
-	// Migrate the workspace layout if the running install still uses the
-	// legacy location.
-	if err := migrateApplianceWorkspace(false); err != nil {
-		fmt.Printf("Error migrating workspace: %v\n", err)
-		return
+	// Same crash-safe sequencing as updateCmd: plan while up, restart
+	// on failure.
+	steps := appliance.UpdateSteps{
+		Pull: func() error { return nil }, // already pulled above
+		Plan: func() error {
+			return appliance.CheckWorkspaceMigration(appliance.DefaultGhostDir)
+		},
+		Stop: func() {
+			// Quiesce the appliance before touching its runtime workspace.
+			exec.Command("systemctl", "stop", "ghost").Run()
+			exec.Command("systemctl", "stop", "ghost-web").Run()
+		},
+		Apply: func() error {
+			// Migrate the workspace layout if the running install still
+			// uses the legacy location.
+			if err := migrateApplianceWorkspace(false); err != nil {
+				return err
+			}
+			// Build and deploy
+			cmd := exec.Command("make", "-C", ghostDir, "install-ghost")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			return cmd.Run()
+		},
+		Start: func() error {
+			var first error
+			for _, svc := range []string{"ghost", "ghost-web"} {
+				if err := exec.Command("systemctl", "start", svc).Run(); err != nil && first == nil {
+					first = fmt.Errorf("%s: %w", svc, err)
+				}
+			}
+			return first
+		},
 	}
-
-	// Build and deploy
-	cmd = exec.Command("make", "-C", ghostDir, "install-ghost")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("Error building: %v\n", err)
+	if err := appliance.RunUpdate(steps); err != nil {
+		fmt.Printf("Error updating: %v\n", err)
 		return
 	}
 

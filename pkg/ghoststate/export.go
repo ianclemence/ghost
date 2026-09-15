@@ -102,7 +102,8 @@ func Export(opts ExportOptions) (*Manifest, error) {
 			// key on import. Staging source-sealed bytes verbatim would
 			// strand them under a key the new machine doesn't have.
 			if sc.logical == configSecretsLogical && config.IsSealed(data) {
-				key, err := config.MasterKeyFor(sc.path)
+				// Read-only: export planning must not mint keys.
+				key, err := config.ResolveMasterKey(sc.path)
 				if err != nil {
 					return nil, fmt.Errorf("unlock secrets for export: %w", err)
 				}

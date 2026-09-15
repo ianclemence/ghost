@@ -183,6 +183,15 @@ func main() {
 
 	command := os.Args[1]
 
+	// Root ops commands default to the installed appliance (config +
+	// workspace) instead of the current checkout, matching how the
+	// systemd units run. Explicit GHOST_CONFIG_DIR /
+	// GHOST_WORKSPACE_DIR always win; non-root and non-appliance runs
+	// are unaffected.
+	if isApplianceOpsCommand(command) {
+		applyApplianceTarget()
+	}
+
 	switch command {
 	case "onboard":
 		onboard()
@@ -1829,6 +1838,40 @@ func getConfigPath() string {
 	}
 
 	return filepath.Join(home, ".ghost", "config.json")
+}
+
+// isApplianceOpsCommand reports whether a CLI command operates on the
+// installed appliance rather than the current checkout. Only these
+// commands receive appliance path defaults (see applyApplianceTarget);
+// agent/serve/skills and friends keep checkout-relative resolution.
+func isApplianceOpsCommand(command string) bool {
+	switch command {
+	case "reset", "reset-password", "verify", "status", "migrate":
+		return true
+	}
+	return false
+}
+
+// applyApplianceTarget points root ops commands at the installed
+// appliance. Without it, `sudo ghost reset` from a source checkout
+// silently operates on the checkout's config/workspace instead of the
+// live system. Explicit env always wins (see appliance.ResolveOpsTarget);
+// the appliance .env is loaded too, without overriding existing vars,
+// so behavior matches the systemd units.
+func applyApplianceTarget() {
+	configDir, workspace, ok := appliance.ResolveOpsTarget(os.Getenv, os.Geteuid(), appliance.ApplianceInstalled())
+	if !ok {
+		return
+	}
+	if configDir != "" {
+		_ = os.Setenv("GHOST_CONFIG_DIR", configDir)
+		if err := godotenv.Load(filepath.Join(filepath.Dir(configDir), ".env")); err == nil {
+			fmt.Fprintf(os.Stderr, "✓ Loaded .env (from appliance dir)\n")
+		}
+	}
+	if workspace != "" {
+		_ = os.Setenv("GHOST_WORKSPACE_DIR", workspace)
+	}
 }
 
 // executeScheduledCommand runs a scheduled shell command: static deny-list

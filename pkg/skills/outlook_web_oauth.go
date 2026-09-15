@@ -272,7 +272,8 @@ func LoadOutlookToken() (*OutlookToken, error) {
 		return nil, err
 	}
 	if config.IsSealed(data) {
-		key, err := config.MasterKeyFor(outlookTokenPath())
+		// Read-only: loading must never mint keys.
+		key, err := config.ResolveMasterKey(outlookTokenPath())
 		if err != nil {
 			return nil, err
 		}

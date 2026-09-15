@@ -366,7 +366,8 @@ func LoadCalendarToken() (*CalendarToken, error) {
 		return nil, err
 	}
 	if config.IsSealed(data) {
-		key, err := config.MasterKeyFor(calendarTokenPath())
+		// Read-only: loading must never mint keys.
+		key, err := config.ResolveMasterKey(calendarTokenPath())
 		if err != nil {
 			return nil, err
 		}

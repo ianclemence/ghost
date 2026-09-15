@@ -16,11 +16,20 @@ import (
 // The magic prefix lets readers distinguish sealed files from legacy
 // plaintext JSON and upgrade them on load.
 //
-// Key hierarchy (first hit wins):
+// Key hierarchy (first hit wins, read-only unless stated):
 //  1. GHOST_MASTER_KEY env — passphrase or base64/hex key. The raw value
 //     is hashed with SHA-256, so any string works (containers, tests).
-//  2. <dir>/.master-key — 32 random bytes (base64), 0600, generated once
-//     on first seal next to the secrets file it protects.
+//  2. <dir>/.master-env — KEY=VALUE env-file format written by
+//     vault-rotate as a root-only EnvironmentFile. This is the appliance
+//     key store; it wins over legacy files so a rotation takes effect
+//     even when an older key file lingers beside it.
+//  3. <dir>/.master-key — 32 random bytes (base64), 0600, generated once
+//     on first seal next to the secrets file it protects (legacy).
+//
+// ResolveMasterKey implements exactly this precedence and never writes:
+// planning, diagnostic, and read paths must be side-effect free. Key
+// generation happens only in EnsureMasterKey, used by onboarding and
+// rotation (write paths).
 //
 // A stolen disk image without the key file (or env) yields nothing: the
 // secrets file alone is opaque. This replaces the old 0600-perms-only
@@ -28,6 +37,10 @@ import (
 var vaultMagic = []byte("GVS1")
 
 const MasterKeyFileName = ".master-key"
+
+// ApplianceKeyFileName is the rotation-installed key store next to the
+// secrets file: a KEY=VALUE env file holding GHOST_MASTER_KEY.
+const ApplianceKeyFileName = ".master-env"
 
 // masterKeyFileName is the on-disk name (kept as an alias for brevity).
 const masterKeyFileName = MasterKeyFileName
@@ -86,30 +99,95 @@ func Unseal(key, blob []byte) ([]byte, error) {
 	return plain, nil
 }
 
-// MasterKeyFor loads the master key protecting secretsPath, generating and
-// persisting one on first use. The key file is 0600 in a 0700 dir.
-func MasterKeyFor(secretsPath string) ([]byte, error) {
+// ResolveMasterKey returns the master key protecting secretsPath using
+// the documented hierarchy (env → .master-env → .master-key). It is
+// strictly read-only: a missing key is a hard error, never a generated
+// one. Planning, diagnostic, export, and unlock paths must use this — a
+// migrator that mints keys as a side effect strands vaults under keys
+// nobody holds.
+func ResolveMasterKey(secretsPath string) ([]byte, error) {
 	if v := strings.TrimSpace(os.Getenv("GHOST_MASTER_KEY")); v != "" {
-		if raw, err := base64.StdEncoding.DecodeString(v); err == nil && len(raw) == 32 {
-			return raw, nil
+		return deriveKey(v), nil
+	}
+	dir := filepath.Dir(secretsPath)
+	if raw, err := os.ReadFile(filepath.Join(dir, ApplianceKeyFileName)); err == nil {
+		if v := envFileValue(raw, "GHOST_MASTER_KEY"); v != "" {
+			return deriveKey(v), nil
 		}
-		sum := sha256.Sum256([]byte(v))
-		return sum[:], nil
+		// Present but unusable: say so instead of falling through to an
+		// older key that would fail auth with a misleading error.
+		return nil, fmt.Errorf("vault: %s holds no GHOST_MASTER_KEY entry", filepath.Join(dir, ApplianceKeyFileName))
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("vault: read appliance key file: %w", err)
 	}
 	keyPath := MasterKeyPath(secretsPath)
-	if raw, err := os.ReadFile(keyPath); err == nil {
-		key, err := decodeMasterKey(strings.TrimSpace(string(raw)))
-		if err != nil {
-			return nil, fmt.Errorf("vault: corrupt master key %s: %w", keyPath, err)
+	raw, err := os.ReadFile(keyPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("vault: no master key for %s (set GHOST_MASTER_KEY to the backup key)", secretsPath)
 		}
-		return key, nil
-	} else if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("vault: read master key: %w", err)
+	}
+	key, err := decodeMasterKey(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return nil, fmt.Errorf("vault: corrupt master key %s: %w", keyPath, err)
+	}
+	return key, nil
+}
+
+// deriveKey maps an operator-supplied passphrase to a 32-byte key:
+// raw base64 32-byte values pass through, anything else is hashed.
+func deriveKey(v string) []byte {
+	if raw, err := base64.StdEncoding.DecodeString(v); err == nil && len(raw) == 32 {
+		return raw
+	}
+	sum := sha256.Sum256([]byte(v))
+	return sum[:]
+}
+
+// envFileValue extracts one KEY=value from env-file bytes, skipping
+// blanks, comments, and an optional leading "export ". Quotes are
+// stripped; the first match wins.
+func envFileValue(data []byte, key string) string {
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+		name, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(name) != key {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if len(value) >= 2 {
+			if (value[0] == '"' && value[len(value)-1] == '"') ||
+				(value[0] == '\'' && value[len(value)-1] == '\'') {
+				value = value[1 : len(value)-1]
+			}
+		}
+		return value
+	}
+	return ""
+}
+
+// EnsureMasterKey loads the master key protecting secretsPath, generating
+// and persisting a legacy .master-key on first use. For onboarding and
+// seal paths only — never for reads. The key file is 0600 in a 0700 dir.
+func EnsureMasterKey(secretsPath string) ([]byte, error) {
+	if key, err := ResolveMasterKey(secretsPath); err == nil {
+		return key, nil
+	} else if !isNoKeyError(err) {
+		// Present-but-corrupt (or unreadable) key material must fail
+		// loudly instead of being silently replaced by a fresh key
+		// that would strand the existing vault.
+		return nil, err
 	}
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("vault: generate master key: %w", err)
 	}
+	keyPath := MasterKeyPath(secretsPath)
 	dir := filepath.Dir(keyPath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("vault: create key dir: %w", err)
@@ -135,6 +213,34 @@ func MasterKeyFor(secretsPath string) ([]byte, error) {
 		return nil, fmt.Errorf("vault: install master key: %w", err)
 	}
 	return key, nil
+}
+
+// LoadKeyFile reads and decodes a single key file: no env lookup, no
+// search, no generation. For rotation checks and forensics, where the
+// question is "what does THIS file hold", not "what would resolve".
+func LoadKeyFile(path string) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	key, err := decodeMasterKey(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return nil, fmt.Errorf("vault: corrupt master key %s: %w", path, err)
+	}
+	return key, nil
+}
+
+// isNoKeyError reports the "no key material anywhere" outcome — the only
+// case where generation is justified.
+func isNoKeyError(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), "vault: no master key for ")
+}
+
+// MasterKeyFor is the historical entry point, kept for compatibility.
+// Read paths should use ResolveMasterKey (never generates); seal paths
+// should use EnsureMasterKey.
+func MasterKeyFor(secretsPath string) ([]byte, error) {
+	return EnsureMasterKey(secretsPath)
 }
 
 func decodeMasterKey(s string) ([]byte, error) {

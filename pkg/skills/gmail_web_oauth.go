@@ -267,7 +267,8 @@ func LoadGmailToken() (*GmailToken, error) {
 		return nil, err
 	}
 	if config.IsSealed(data) {
-		key, err := config.MasterKeyFor(gmailTokenPath())
+		// Read-only: loading must never mint keys.
+		key, err := config.ResolveMasterKey(gmailTokenPath())
 		if err != nil {
 			return nil, err
 		}

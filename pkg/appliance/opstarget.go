@@ -1,0 +1,46 @@
+package appliance
+
+import (
+	"os"
+	"path/filepath"
+)
+
+// ApplianceInstalled reports whether this host carries an installed
+// appliance: the setup-complete flag plus an appliance config. Ops
+// commands use it to decide whether root invocations should default to
+// appliance paths instead of the current checkout.
+func ApplianceInstalled() bool {
+	if _, err := os.Stat(filepath.Join(DefaultGhostDir, SetupCompleteFlag)); err != nil {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(DefaultConfigDir, "config.json")); err != nil {
+		return false
+	}
+	return true
+}
+
+// ResolveOpsTarget returns appliance config/workspace defaults for ops
+// commands (reset, verify, status, migrate, reset-password) when running
+// as root on an installed appliance and the operator did not override
+// them via env. ok=false means "no opinion — keep normal CLI
+// resolution", which covers non-root runs, dev checkouts without an
+// appliance, and fully-overridden environments.
+//
+// Explicit GHOST_CONFIG_DIR always wins; GHOST_WORKSPACE_DIR wins unless
+// the legacy GHOST_WORKSPACE is set instead (both feed the same
+// workspace resolution downstream).
+func ResolveOpsTarget(getenv func(string) string, euid int, installed bool) (configDir, workspace string, ok bool) {
+	if euid != 0 || !installed {
+		return "", "", false
+	}
+	if getenv("GHOST_CONFIG_DIR") == "" {
+		configDir = DefaultConfigDir
+	}
+	if getenv("GHOST_WORKSPACE_DIR") == "" && getenv("GHOST_WORKSPACE") == "" {
+		workspace = DefaultWorkspaceDir
+	}
+	if configDir == "" && workspace == "" {
+		return "", "", false
+	}
+	return configDir, workspace, true
+}
