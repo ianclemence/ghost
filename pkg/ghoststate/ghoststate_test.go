@@ -416,6 +416,9 @@ func TestWorkspaceArtifactClassification(t *testing.T) {
 		"USER.md", "AGENTS.md", "SOUL.md", "GHOST.md", "README.md",
 		"kanban.json",
 		".skills-sync.json",
+		"data/shopping_list.txt",
+		"data/captures.md",
+		"data/reminders.md",
 	}
 	rebound := []string{
 		"ghost.db",

@@ -50,6 +50,12 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 	case rel == "kanban.json":
 		// User planning/workflow boards created through the kanban tool.
 		return CategoryPortable, nil
+	case strings.HasPrefix(rel, "data/"):
+		// User data files created through tools (shopping lists,
+		// captures, reminders): user-owned durable content that must
+		// migrate between machines. This is why exports failed on live
+		// appliances the moment a skill wrote its first data file.
+		return CategoryPortable, nil
 	case rel == ".skills-sync.json":
 		// Records which skills came from the skills hub and their versions.
 		return CategoryPortable, nil
