@@ -4986,6 +4986,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	registerActivityStream(mux)
 	registerConnectionsRoutes(mux)
 
+	// ── Phone/Pod cooperation: protocol, capabilities, catalog, sync ───
+	registerLocalGhostRoutes(mux, agentLoop)
+
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	log.Printf("🤖 Ghost Internal API listening on %s (chat + tools; loopback trusted, LAN requires device credentials)", addr)
 
