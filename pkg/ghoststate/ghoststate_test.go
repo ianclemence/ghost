@@ -419,6 +419,7 @@ func TestWorkspaceArtifactClassification(t *testing.T) {
 		"data/shopping_list.txt",
 		"data/captures.md",
 		"data/reminders.md",
+		"pending/requests.json",
 	}
 	rebound := []string{
 		"ghost.db",
@@ -434,10 +435,12 @@ func TestWorkspaceArtifactClassification(t *testing.T) {
 		"media/delegation/spill.txt",
 		"cache/images/a.png",
 		"logs/subagent.log",
+		"proactive/reflected-2026-09-14.mark",
 	}
 	disposable := []string{
 		"ghost.db-wal", "ghost.db-shm",
 		"tmp/frames/1.png",
+		"journal/debug.ndjson",
 	}
 	for _, p := range portable {
 		cat, err := classifyWorkspaceFile(p)
@@ -478,6 +481,7 @@ func TestWorkspaceToolArtifactsRoundTrip(t *testing.T) {
 		"media/delegation/spill.txt",
 		"cache/images/a.png",
 		"logs/subagent.log",
+		"proactive/reflected-2026-09-14.mark",
 	} {
 		p := filepath.Join(ws, rel)
 		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {

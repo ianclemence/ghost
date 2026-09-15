@@ -56,6 +56,18 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 		// migrate between machines. This is why exports failed on live
 		// appliances the moment a skill wrote its first data file.
 		return CategoryPortable, nil
+	case strings.HasPrefix(rel, "pending/"):
+		// In-flight user business (pending questions, continuations):
+		// interrupted work that must resume after restore, like sessions.
+		return CategoryPortable, nil
+	case strings.HasPrefix(rel, "proactive/"):
+		// Reflection markers and derived proactive state:
+		// reconstructible by re-running reflection, never user-owned.
+		return CategoryDerived, nil
+	case strings.HasPrefix(rel, "journal/"):
+		// Transient debug trail (matches the console-backup policy,
+		// which excludes journal/ as transient).
+		return CategoryDisposable, nil
 	case rel == ".skills-sync.json":
 		// Records which skills came from the skills hub and their versions.
 		return CategoryPortable, nil
