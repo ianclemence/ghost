@@ -665,6 +665,11 @@ type matchDecision struct {
 //     its own request: only same-request evidence counts, so a prior
 //     turn's execution can never satisfy a fresh request.
 //
+// Within a precedence level the TERMINAL (highest-seq) compatible row
+// wins: after a retry only the final attempt backs the claim, and
+// concurrent same-capability executions resolve to the latest
+// associated action rather than whichever event appears first.
+//
 // There is no run-level fallback. Unknown request IDs, unknown marks,
 // cross-session rows, future rows, and incompatible rows all reject.
 func matchEvidence(ws string, claim Claim, tc turnContext, rows []execEvidence, targets []brokerTarget) matchDecision {
@@ -672,7 +677,8 @@ func matchEvidence(ws string, claim Claim, tc turnContext, rows []execEvidence, 
 	// Exact request association within the same session: the turn's own
 	// executions. Cross-session rows never satisfy, even on request_id
 	// coincidence.
-	for _, row := range rows {
+	for i := len(rows) - 1; i >= 0; i-- {
+		row := rows[i]
 		if row.RequestID == "" || tc.requestID == "" || row.RequestID != tc.requestID {
 			continue
 		}
@@ -692,7 +698,8 @@ func matchEvidence(ws string, claim Claim, tc turnContext, rows []execEvidence, 
 	}
 	// Watermark fallback: same session, causally prior, non-actionable turn.
 	if !tc.actionable && tc.mark >= 0 {
-		for _, row := range rows {
+		for i := len(rows) - 1; i >= 0; i-- {
+			row := rows[i]
 			if row.Seq > tc.mark {
 				continue
 			}

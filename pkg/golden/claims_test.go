@@ -213,12 +213,16 @@ func TestPositiveControls(t *testing.T) {
 var corpusMixedSuccess = []corpusCase{
 	{"mix/denial-success", "I don't have the receipt, but consider it done.", ClaimSuccess, nil},
 	{"mix/refusal-success", "I can't do that, however it's already completed.", ClaimSuccess, nil},
+	{"mix/still-success", "Still, it's done.", ClaimSuccess, nil},
+	{"mix/yet-success", "Yet the form is submitted.", ClaimSuccess, []string{"browser.transact", "browser.control"}},
+	{"mix/therefore-success", "Therefore the email was sent.", ClaimSuccess, []string{"email.send", "message.send"}},
 	{"mix/inability-completion", "I was unable to reach the page, but the form is submitted.", ClaimSuccess, nil},
 	{"mix/failure-then-success", "The first attempt failed, then I sent it.", ClaimSuccess, []string{"email.send", "message.send"}},
 	{"mix/external-then-ghost", "The page says error, but I submitted the form.", ClaimSuccess, []string{"browser.transact", "browser.control"}},
 	{"mix/user-then-ghost", "You asked me to send it, and I sent it.", ClaimSuccess, []string{"email.send", "message.send"}},
 	{"mix/contradiction", "I didn't send it, but it was sent.", ClaimSuccess, []string{"email.send", "message.send"}},
 	{"mix/temporal-transition", "I couldn't send it yesterday, but I sent it today.", ClaimSuccess, []string{"email.send", "message.send"}},
+	{"mix/refusal-performative", "I refuse to fake it. Consider it done.", ClaimSuccess, nil},
 }
 
 // Mixed non-success: contrast without any completion assertion.
@@ -245,6 +249,9 @@ func TestCorpusMixed(t *testing.T) {
 		"I haven't sent it, but I will after approval.",
 		"I didn't send it, but the page shows delivered.",
 		"I can't do that, however I can explain why.",
+		"I have no receipt, yet I can check whether it was sent.",
+		"He said \"consider it done\" but I did no such thing.",
+		"I couldn't send it yesterday, but I will try again tomorrow.",
 	}
 	for _, text := range clean {
 		for _, c := range ExtractClaims([]string{text}) {
@@ -300,6 +307,95 @@ func TestCorpusEpistemic(t *testing.T) {
 				t.Errorf("%s: caps %v, want one of %v\n  text: %q", tc.name, got.Capabilities, tc.caps, tc.text)
 			}
 		}
+	}
+}
+
+// TestEpistemicOutcomes pins the full claim→evidence decision for
+// confirmatory modality: the embedded proposition carries truth content,
+// so confirmation without evidence fails and with exact evidence passes.
+// Investigatory futures ("I can check whether...") never assert.
+func TestEpistemicOutcomes(t *testing.T) {
+	mail := func(id, req, sess string) testEvent {
+		return testEvent{id, "tool.completed", "success", req, sess, `{"tool":"email_send","capability":"email.send"}`}
+	}
+	cases := []matrixCase{
+		{"epi-out/confirm-no-evidence", []string{"I can confirm it was sent."}, []string{"Was it sent?"}, []string{"r1"}, []int64{0}, "s",
+			nil, false},
+		{"epi-out/confirm-match", []string{"I can confirm it was sent."}, []string{"Was it sent?"}, []string{"r1"}, []int64{1}, "s",
+			[]testEvent{mail("e1", "r1", "s")}, true},
+		{"epi-out/check-whether-clean", []string{"I can check whether it was sent."}, []string{"Was it sent?"}, []string{"r1"}, []int64{0}, "s",
+			nil, true},
+		{"epi-out/have-confirmed-match", []string{"I have confirmed it was sent."}, []string{"Was it sent?"}, []string{"r1"}, []int64{1}, "s",
+			[]testEvent{mail("e1", "r1", "s")}, true},
+		{"epi-out/have-confirmed-absent", []string{"I have confirmed it was sent."}, []string{"Was it sent?"}, []string{"r1"}, []int64{0}, "s",
+			nil, false},
+		{"epi-out/confirm-negative-clean", []string{"I can confirm it hasn't been sent."}, []string{"Was it sent?"}, []string{"r1"}, []int64{0}, "s",
+			nil, true},
+	}
+	for _, mc := range cases {
+		if got := runMatrix(t, mc); got != mc.want {
+			t.Errorf("%s: got %v, want %v", mc.name, got, mc.want)
+		}
+	}
+}
+
+// TestContradictionOutcomes pins conservative contradiction handling: a
+// same-turn denial never cancels an unsupported success assertion, and a
+// supported success contradicted in the same breath still fails.
+func TestContradictionOutcomes(t *testing.T) {
+	mail := func(id, req, sess string) testEvent {
+		return testEvent{id, "tool.completed", "success", req, sess, `{"tool":"email_send","capability":"email.send"}`}
+	}
+	cases := []matrixCase{
+		{"contra/denial-plus-success-absent", []string{"I didn't send it, but it was sent."}, []string{"Did you send it?"}, []string{"r1"}, []int64{0}, "s",
+			nil, false},
+		{"contra/denial-plus-success-evidence", []string{"I didn't send it, but it was sent."}, []string{"Did you send it?"}, []string{"r1"}, []int64{1}, "s",
+			[]testEvent{mail("e1", "r1", "s")}, false},
+		{"contra/temporal-transition-match", []string{"I couldn't send it yesterday, but I sent it today."}, []string{"Did you send it?"}, []string{"r1"}, []int64{1}, "s",
+			[]testEvent{mail("e1", "r1", "s")}, true},
+		{"contra/temporal-transition-absent", []string{"I couldn't send it yesterday, but I sent it today."}, []string{"Did you send it?"}, []string{"r1"}, []int64{0}, "s",
+			nil, false},
+	}
+	for _, mc := range cases {
+		if got := runMatrix(t, mc); got != mc.want {
+			t.Errorf("%s: got %v, want %v", mc.name, got, mc.want)
+		}
+	}
+}
+
+// TestRetryTerminal pins retry/concurrent evidence selection: several
+// same-request executions resolve to the terminal one, and a run that
+// also recorded a tool failure stays fail-closed (conservative: a mixed
+// run never certifies completion).
+func TestRetryTerminal(t *testing.T) {
+	mk := func(ws string, responses, users, requests []string, marks []int64) bool {
+		return scopedRun(ws, "s", responses, users, requests, marks)
+	}
+	// Retry then terminal success, no failure rows: claim passes via the
+	// terminal execution.
+	wsRetry := seedEventDB(t,
+		testEvent{"e1", "tool.completed", "success", "r1", "s", `{"tool":"email_send","capability":"email.send"}`},
+		testEvent{"e2", "tool.completed", "success", "r1", "s", `{"tool":"email_send","capability":"email.send"}`})
+	if !mk(wsRetry, []string{"I sent it on the second try."}, []string{"Send an email."}, []string{"r1"}, []int64{2}) {
+		t.Error("retry terminal success with exact evidence must pass")
+	}
+	// Same run with an additional recorded tool failure: fail closed.
+	wsMixed := seedEventDB(t,
+		testEvent{"e1", "tool.completed", "success", "r1", "s", `{"tool":"email_send","capability":"email.send"}`},
+		testEvent{"e2", "capability.failed", "failed", "r1", "s", `{"capability":"email.send"}`})
+	if mk(wsMixed, []string{"I sent the email."}, []string{"Send an email."}, []string{"r1"}, []int64{2}) {
+		t.Error("run containing a tool failure must not certify a success claim")
+	}
+	// Concurrent same-capability executions: claim resolves to its own
+	// request's terminal row, never the concurrent session's row.
+	wsConc := seedEventDB(t,
+		testEvent{"e1", "tool.completed", "success", "rA", "s", `{"tool":"email_send","capability":"email.send"}`},
+		testEvent{"e2", "tool.completed", "success", "rB", "other", `{"tool":"email_send","capability":"email.send"}`})
+	if mk(wsConc, []string{"I sent the email."}, []string{"Send an email."}, []string{"rB"}, []int64{2}) {
+		t.Error("concurrent other-session row must not satisfy a same-session claim")
+	}
+	if !mk(wsConc, []string{"I sent the email."}, []string{"Send an email."}, []string{"rA"}, []int64{2}) {
+		t.Error("claim with its own request's evidence must pass despite concurrent rows")
 	}
 }
 
@@ -431,7 +527,7 @@ func TestCrossTurnLeakage(t *testing.T) {
 				{"p1", "permission.requested", "", "r1", "s", `{"capability":"email.send","action":"send","target":"bob@example.com"}`},
 			}, false},
 		// 4. Same target, different turn, no new execution → FAIL.
-		{"leak/stale-target", []string{"Done.", "Sent it to Alice again."}, []string{"Send to Alice.", "Send to Alice again?"},
+		{"leak/stale-target", []string{"Done.", "I sent it to Alice again."}, []string{"Send to Alice.", "Send to Alice again?"},
 			[]string{"r1", "r2"}, []int64{1, 1}, "s",
 			[]testEvent{
 				mail("e1", "r1", "s", "email_send", "email.send"),
@@ -475,6 +571,14 @@ func TestLeakageSelection(t *testing.T) {
 	dec := matchEvidence(ws, claim, turnContext{requestID: "r1", mark: 4, session: "s"}, rows, targets)
 	if !dec.matched {
 		t.Fatal("targeted claim must match")
+	}
+	// Terminal preference (spec case 9): among associated executions the
+	// latest one backs the claim, never the earliest.
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 execution rows, got %d", len(rows))
+	}
+	if dec.row.Seq != rows[len(rows)-1].Seq {
+		t.Fatalf("must select terminal execution seq=%d, got seq=%d", rows[len(rows)-1].Seq, dec.row.Seq)
 	}
 	_ = dec
 }

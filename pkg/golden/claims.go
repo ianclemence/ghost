@@ -187,6 +187,7 @@ func splitClauses(lower, orig string) []clause {
 		{" however ", "contrast"}, {" although ", "contrast"}, {" though ", "contrast"},
 		{" whereas ", "contrast"}, {" instead ", "contrast"}, {" except ", "contrast"},
 		{" unless ", "contrast"}, {" but ", "contrast"}, {" yet ", "contrast"},
+		{" still ", "contrast"},
 		{" because ", "cause"}, {" therefore ", "cause"}, {" so ", "cause"},
 		{" then ", "sequence"}, {" and ", "sequence"},
 		{" if ", "conditional"}, {" whether ", "conditional"}, {" once ", "conditional"},
@@ -198,7 +199,17 @@ func splitClauses(lower, orig string) []clause {
 		rel string
 	}
 	var bounds []bound
-	scan := " " + lower + " "
+	// Punctuation never carries discourse structure: commas, semicolons,
+	// and colons become spaces in the scan copy so "Still, it's done"
+	// and "sent, yet denied" split like their spaced forms. Replacement
+	// is 1:1 so offsets still align with lower/orig.
+	scanLower := strings.Map(func(r rune) rune {
+		if r == ',' || r == ';' || r == ':' {
+			return ' '
+		}
+		return r
+	}, lower)
+	scan := " " + scanLower + " "
 	for _, m := range markers {
 		word := strings.TrimSpace(m.word)
 		from := 0
@@ -249,10 +260,50 @@ func splitClauses(lower, orig string) []clause {
 		}
 		emit(prev, b.pos, rel)
 		rel = b.rel
-		prev = b.end
+		// A conditional subordinator belongs to its clause: "whether it
+		// was sent" must keep "whether" or the orphan reads as an
+		// assertion ("it was sent"). Retaining the word lets the
+		// conditional framing survive the split, so subordinate
+		// complements ("I can check whether it was sent") never assert
+		// completion while temporal presuppositions stay intact.
+		if b.rel == "conditional" {
+			prev = b.pos
+		} else {
+			prev = b.end
+		}
 	}
 	emit(prev, len(lower), rel)
 	return out
+}
+
+// leadingAdverbials are discourse frames, never subjects, verbs, or
+// entity targets. Stripped only in leading position with an optional
+// comma ("Still, it's done" → "it's done").
+var leadingAdverbials = []string{"still", "yet", "however", "though", "although", "also"}
+
+func stripLeadingAdverbial(s string) string {
+	t := strings.TrimSpace(s)
+	for {
+		changed := false
+		lowered := strings.ToLower(t)
+		for _, adv := range leadingAdverbials {
+			rest := ""
+			if strings.HasPrefix(lowered, adv+",") {
+				rest = t[len(adv)+1:]
+			} else if strings.HasPrefix(lowered, adv+" ") {
+				rest = t[len(adv)+1:]
+			} else {
+				continue
+			}
+			if strings.TrimSpace(rest) == "" {
+				continue
+			}
+			t, changed = strings.TrimSpace(rest), true
+		}
+		if !changed {
+			return t
+		}
+	}
 }
 
 // quotedSpan finds the next double-quoted or backtick span.
@@ -281,7 +332,16 @@ func quotedSpan(s string) (int, int, bool) {
 // recorded on the claim (no state-enum explosion). depth guards
 // epistemic-complement recursion.
 func classifyClause(cl clause, depth int) (Claim, bool) {
-	span := strings.TrimSpace(cl.text)
+	// Leading discourse adverbials ("Still, it's done") frame the clause;
+	// they never supply its subject or verb. Strip them (with an optional
+	// comma) so agency and completion frames read the operative clause.
+	cl.text = stripLeadingAdverbial(cl.text)
+	cl.original = stripLeadingAdverbial(cl.original)
+	// Clause splits leave fringe punctuation (", it's done" after a
+	// contrast split): trim it so agency reads the operative words and
+	// audit text stays clean. Sentence-final periods never reach here
+	// (splitSentences consumes them); quotes were removed earlier.
+	span := strings.Trim(strings.TrimSpace(cl.text), " \t,;:")
 	if span == "" {
 		return Claim{}, false
 	}
@@ -362,6 +422,12 @@ func classifyClause(cl clause, depth int) (Claim, bool) {
 						st.Capabilities = caps
 						st.Reason += " via confirmed state predicate"
 					}
+				}
+				// Attestation is Ghost's act: a first-person confirmer
+				// ("I can confirm the device is off") owns the claim even
+				// when the embedded proposition names no agent.
+				if subjectOf(span) == "ghost" {
+					st.Subject = "ghost"
 				}
 				st.Text = span
 				st.Reason += " via epistemic complement"
@@ -477,17 +543,44 @@ var confirmVerbs = map[string]bool{
 	"confirm": true, "verify": true, "assure": true, "guarantee": true, "certify": true,
 }
 
+// confirmBase resolves an inflected confirm verb to its base
+// ("confirmed"→"confirm", "verifies"→"verify"), independent of the
+// capability verb index (confirmation is attestation, not a governed
+// capability, so it never appears there). Returns "" when w is not a
+// confirm-verb form.
+func confirmBase(w string) string {
+	if confirmVerbs[w] {
+		return w
+	}
+	if lemma, ok := irregularForms[w]; ok && confirmVerbs[lemma] {
+		return lemma
+	}
+	for _, cand := range []string{
+		strings.TrimSuffix(strings.TrimSuffix(w, "ed"), "e"),
+		strings.TrimSuffix(w, "d"),
+		strings.TrimSuffix(w, "ing"),
+		strings.TrimSuffix(w, "es"),
+		strings.TrimSuffix(w, "s"),
+	} {
+		if cand != "" && cand != w && confirmVerbs[cand] {
+			return cand
+		}
+	}
+	if strings.HasSuffix(w, "ied") {
+		if cand := strings.TrimSuffix(w, "ied") + "y"; confirmVerbs[cand] {
+			return cand
+		}
+	}
+	return ""
+}
+
 // epistemicComplement extracts the embedded proposition of a confirm
 // verb ("it's done" from "I can confirm it's done"). The matrix modal
 // modifies attestation ability; the complement carries truth content.
 func epistemicComplement(span string) (clause, bool) {
 	toks := tokens(span)
 	for i, w := range toks {
-		base := w
-		if lemma, ok := verbLemma(w); ok {
-			base = lemma
-		}
-		if !confirmVerbs[base] {
+		if confirmBase(w) == "" {
 			continue
 		}
 		rest := toks[i+1:]
@@ -512,11 +605,7 @@ func epistemicComplement(span string) (clause, bool) {
 func confirmPerfect(span string) (clause, bool) {
 	toks := tokens(span)
 	for i, w := range toks {
-		base := w
-		if lemma, ok := verbLemma(w); ok {
-			base = lemma
-		}
-		if !confirmVerbs[base] {
+		if confirmBase(w) == "" {
 			continue
 		}
 		// Perfect aspect requires have/has/had immediately before
@@ -648,6 +737,27 @@ var commonCaps = map[string]bool{
 	"Tomorrow": true,
 }
 
+// targetStop are capitalized words that are never entity targets:
+// discourse frames, affirmatives, and bare completion words. Without
+// them "Yes, I sent it" targets "yes" and "Done." targets "done",
+// which would fail target compatibility against real broker targets.
+var targetStop = map[string]bool{
+	"yes": true, "yeah": true, "yep": true, "yup": true, "nope": true, "no": true,
+	"ok": true, "okay": true, "done": true, "still": true, "yet": true,
+	"however": true, "though": true, "although": true, "also": true, "just": true,
+	"please": true, "sorry": true, "thanks": true, "thank": true,
+	"hello": true, "hi": true, "hey": true, "well": true, "now": true,
+	"all": true,
+	// Sentence-initial function words are never entities ("Before
+	// anything is sent", "Once sent", "When you asked").
+	"before": true, "once": true, "when": true, "whether": true, "while": true,
+	"since": true, "after": true, "until": true, "if": true, "then": true,
+	"because": true, "but": true, "and": true, "as": true, "what": true,
+	"which": true, "that": true, "this": true, "these": true, "those": true,
+	"the": true, "your": true, "my": true, "his": true, "her": true,
+	"its": true, "our": true, "their": true, "you": true,
+}
+
 // extractTarget finds the entity a claim acts upon: email addresses,
 // @handles, filenames, and capitalized proper names (original case).
 // Generic day/month words are never entities. Returns "" when generic.
@@ -663,6 +773,9 @@ func extractTarget(original string) string {	if m := emailRE.FindString(original
 	for _, m := range nameRE.FindAllString(original, -1) {
 		w := strings.Trim(m, " \t\"'`.,;:!?()")
 		if w == "" || commonCaps[w] {
+			continue
+		}
+		if targetStop[strings.ToLower(w)] {
 			continue
 		}
 		return strings.ToLower(w)
