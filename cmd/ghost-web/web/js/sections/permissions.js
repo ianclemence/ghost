@@ -50,6 +50,42 @@ function groupHead(title, sub) {
   return head;
 }
 
+// riskWords translates the broker's risk taxonomy into owner language.
+// Capability and action ids never reach the screen.
+function riskWords(risk) {
+  switch (String(risk || '')) {
+    case 'read_only': return 'Only reads \u2014 changes nothing';
+    case 'low_risk': return 'Low risk';
+    case 'high_impact': return 'Can affect the outside world';
+    case 'consequential': return 'Needs your approval';
+    default: return 'Needs your approval';
+  }
+}
+
+// permTitle mirrors the backend ApprovalCard vocabulary (cardTitle in
+// pkg/permissions) for places that have no card — standing grants. New
+// capability families fall back to plain action words, never raw ids.
+function permTitle(capability, action) {
+  const cap = String(capability || '');
+  let act = String(action || '');
+  const ci = act.indexOf(':');
+  if (ci >= 0) act = act.slice(ci + 1);
+  const has = (...words) => words.some(w => cap.includes(w));
+  if (has('calendar')) return (/create|add/.test(act) ? 'Add calendar events' : 'Use your calendar');
+  if (has('telegram', 'message')) return 'Send messages';
+  if (has('mail', 'email')) return 'Send email';
+  if (has('hass', 'home')) return 'Control home devices';
+  if (has('file', 'delete')) return 'Change files';
+  if (has('reminder')) return 'Manage reminders';
+  if (has('routine', 'schedul')) return 'Manage routines';
+  if (has('artifact')) return 'Create files and documents';
+  if (has('browser')) return 'Browse the web for you';
+  if (has('computer')) return 'Control this computer';
+  if (has('weather', 'aqi', 'currency', 'crypto', 'places', 'flight')) return 'Look up information';
+  if (act && act !== cap) return 'Allow ' + act.replace(/[_.-]+/g, ' ').trim();
+  return 'Allow this action';
+}
+
 function paintPending(el, pending, refresh) {
   el.innerHTML = '';
   const panel = groupPanel();
@@ -63,8 +99,14 @@ function paintPending(el, pending, refresh) {
     pending.forEach(p => {
       const card = GhostUI.h('div', { className: 'ghost-row' });
       const c = GhostUI.h('div', { className: 'ghost-row-content' });
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, (p.reason || p.capability) + ' \u2014 ' + p.action));
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, 'Risk: ' + p.risk + (p.target ? ' \u00b7 ' + p.target : '')));
+      // Prefer the backend's native card (plain title + description), then
+      // the request reason, then the local title map. Raw capability and
+      // action ids are never shown.
+      const title = (p.card && p.card.title) || p.reason || permTitle(p.capability, p.action);
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, title));
+      const desc = (p.card && p.card.description) || '';
+      const sub = riskWords(p.risk) + (p.target ? ' \u00b7 ' + p.target : '') + (desc && desc !== title ? ' \u00b7 ' + desc : '');
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub));
       card.appendChild(c);
       const tr = GhostUI.h('div', { className: 'ghost-row-trailing perm-actions' });
       [['Allow once', 'allow_once'], ['Always allow', 'allow_always'], ['Deny', 'deny']].forEach(([label, grant]) => {
@@ -110,8 +152,15 @@ function paintGrants(el, grants, refresh) {
       if (String(g.action).startsWith('deny:')) return; // denials are policy, not grants
       const row = GhostUI.h('div', { className: 'ghost-row' });
       const c = GhostUI.h('div', { className: 'ghost-row-content' });
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, g.capability + ' \u00b7 ' + g.action));
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, 'Applies to: ' + scopeLabel(g.scope)));
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, permTitle(g.capability, g.action)));
+      // Standing grants carry no risk field; scope plus expiry is the
+      // honest subtitle (grants expire — authority must not accumulate).
+      let grantSub = 'Applies to: ' + scopeLabel(g.scope);
+      if (g.expires_at) {
+        const d = new Date(g.expires_at);
+        if (!isNaN(d.getTime())) grantSub += ' \u00b7 Expires ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      }
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, grantSub));
       row.appendChild(c);
       row.appendChild(GhostUI.h('div', { className: 'ghost-row-trailing' },
         GhostUI.btn('Revoke', 'secondary', async () => {

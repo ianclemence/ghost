@@ -147,7 +147,7 @@ async function startCalendarConnect() {
   if (res && res.status === 'needs_setup' && !res.setup_url) {
     const body = GhostUI.h('div');
     body.appendChild(GhostUI.h('p', {}, 'Calendar setup needs one admin step first:'));
-    body.appendChild(GhostUI.h('p', { className: 'type-mono', style: 'word-break:break-all' }, (res && res.message) || 'Install gcalcli where the Ghost service can see it, then try again.'));
+    body.appendChild(GhostUI.h('p', { className: 'type-mono', style: 'word-break:break-all' }, (res && res.message) || 'Install the calendar helper where the Ghost service can see it, then try again.'));
     GhostUI.modal('Calendar setup', body, [
       GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Got it'),
     ]);
@@ -163,7 +163,7 @@ async function startCalendarConnect() {
     const link = GhostUI.h('a', { href: res.setup_url, target: '_blank', rel: 'noopener', style: 'word-break:break-all' }, res.setup_url);
     body.appendChild(GhostUI.h('p', {}, link));
   } else {
-    body.appendChild(GhostUI.h('p', { className: 'text-tertiary' }, 'No setup link was returned. Make sure gcalcli is installed, then try again.'));
+    body.appendChild(GhostUI.h('p', { className: 'text-tertiary' }, 'No setup link was returned. Make sure the calendar helper is installed, then try again.'));
   }
   GhostUI.modal('Connect Calendar', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),

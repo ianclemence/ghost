@@ -179,7 +179,7 @@ function editSlack(cur) {
 
 function editWhatsApp(cur) {
   const body = GhostUI.h('div');
-  body.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'margin-bottom:var(--s-4)' }, 'WhatsApp uses a bridge URL — point it at your running whatsapp-web.js bridge or compatible gateway.'));
+  body.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'margin-bottom:var(--s-4)' }, 'WhatsApp needs a bridge app running somewhere — paste its address below.'));
   const wrap = GhostUI.h('div');
   wrap.appendChild(GhostUI.h('label', { style: 'display:block;font-size:var(--t-foot);color:var(--ink-soft);margin-bottom:4px' }, 'Bridge URL'));
   const urlField = GhostUI.h('input', { className: 'ghost-input', placeholder: 'http://localhost:3000', value: cur.bridge_url || '' });

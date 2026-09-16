@@ -57,9 +57,6 @@ async function renderDevices(listEl) {
     c.appendChild(title);
     const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
     sub.appendChild(document.createTextNode(plat.charAt(0).toUpperCase() + plat.slice(1)));
-    if (d.capabilities && d.capabilities.length > 0) {
-      sub.appendChild(document.createTextNode('  \u00b7  ' + d.capabilities.join(', ')));
-    }
     sub.appendChild(document.createTextNode('  \u00b7  added ' + GhostUI.timeAgo(Math.floor(new Date(d.paired_at).getTime() / 1000))));
     c.appendChild(sub);
     row.appendChild(c);

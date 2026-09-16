@@ -98,8 +98,10 @@ function changeDefaultModal(currentProvider, currentModel, providerModels, ollam
     groups.push({ provider: 'ollama', label: 'Ollama \u00b7 Local', models: ollamaModels, local: true });
   }
 
-  // Cloud providers
+  // Cloud providers — the current default sorts first so the owner's
+  // choice leads, instead of a fixed vendor order.
   const order = ['openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter'];
+  order.sort((a, b) => (a === currentProvider ? -1 : 0) - (b === currentProvider ? -1 : 0));
   for (const key of order) {
     const pm = providerModels[key];
     if (!pm || !pm.configured || !pm.models || pm.models.length === 0) continue;
@@ -191,6 +193,7 @@ function renderProviders(panel, cfg, providerModels, ollamaModels) {
 
   const order = ['ollama', 'openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter'];
   const currentProvider = cfg ? (cfg.provider || '') : '';
+  order.sort((a, b) => (a === currentProvider ? -1 : 0) - (b === currentProvider ? -1 : 0));
 
   for (const key of order) {
     const pm = providerModels[key];

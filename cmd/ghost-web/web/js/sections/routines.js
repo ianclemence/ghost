@@ -6,7 +6,12 @@ async function loadRoutines(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Routines'));
-  head.appendChild(GhostUI.h('p', {}, 'Recurring tasks Ghost runs for you on a schedule — pause, resume, or cancel them here.'));
+  head.appendChild(GhostUI.h('p', {}, 'Standing instructions Ghost runs like a conversation, on a schedule — pause, resume, or cancel them here.'));
+  const cross = GhostUI.h('p', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-2)' }, 'For one-off reminders and deliveries to your apps, see ');
+  const crossLink = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost ghost-btn-sm', style: 'padding:0', onClick: () => GhostApp.navigate('automations') }, 'Automations');
+  cross.appendChild(crossLink);
+  cross.appendChild(document.createTextNode('.'));
+  head.appendChild(cross);
   container.appendChild(head);
 
   const newBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showCreateRoutine(container, refresh) }, 'New routine');
@@ -66,24 +71,41 @@ async function loadRoutines(container) {
   await refresh();
 }
 
+// parseRoutineSchedule accepts plain words first ("Every Monday at 9am",
+// "every 2 hours") and cron expressions as the advanced fallback — same
+// shape as the Automations form, so owners never need cron syntax.
+function parseRoutineSchedule(text) {
+  const t = String(text || '').trim();
+  if (/^[\d\*\/\-\,\s]+$/.test(t) && t.split(/\s+/).length === 5) {
+    return { kind: 'cron', expr: t };
+  }
+  let m = t.match(/^every\s+(\d+)\s*m(?:in)?/i);
+  if (m) return { kind: 'every', every_seconds: parseInt(m[1], 10) * 60 };
+  m = t.match(/^every\s+(\d+\.?\d*)\s*h/i);
+  if (m) return { kind: 'every', every_seconds: Math.round(parseFloat(m[1]) * 3600) };
+  m = t.match(/^every\s+(\d+\.?\d*)\s*d(?:ay)?/i);
+  if (m) return { kind: 'every', every_seconds: Math.round(parseFloat(m[1]) * 86400) };
+  const at = new Date(t);
+  if (!isNaN(at.getTime()) && !/^every/i.test(t)) return { kind: 'at', at: at.toISOString() };
+  return { kind: 'cron', expr: t };
+}
+
 function showCreateRoutine(container, refresh) {
   const body = GhostUI.h('div');
   const nameInput = GhostUI.input('Name — e.g. Weekly brief');
   const instrInput = GhostUI.input('What should Ghost do? — e.g. prepare my weekly brief');
-  const kindSel = GhostUI.select([{ value: 'cron', label: 'Weekly / cron' }, { value: 'every', label: 'Every N seconds' }, { value: 'at', label: 'Once at time' }]);
-  const exprInput = GhostUI.input('Schedule — cron “0 9 * * MON”, seconds, or RFC3339 time');
-  [nameInput, instrInput, kindSel, exprInput].forEach(el => { el.style.marginBottom = 'var(--s-2)'; el.style.width = '100%'; body.appendChild(el); });
+  const schedInput = GhostUI.input('When — e.g. Every Monday at 9am');
+  [nameInput, instrInput, schedInput].forEach(el => { el.style.marginBottom = 'var(--s-2)'; el.style.width = '100%'; body.appendChild(el); });
   body.appendChild(GhostUI.h('p', { style: 'opacity:.7' },
-    'Tip: just say “Every Monday at 9…” in chat and Ghost proposes the routine for you.'));
+    'Plain words work ("every 2 hours", "weekdays at 9am"); a cron expression works too. Tip: just say “Every Monday at 9…” in chat and Ghost proposes the routine for you.'));
   GhostUI.modal('New routine', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
-      const kind = kindSel.value;
-      const payload = { name: nameInput.value.trim(), instruction: instrInput.value.trim(), kind };
+      const payload = { name: nameInput.value.trim(), instruction: instrInput.value.trim() };
       if (!payload.name || !payload.instruction) { GhostUI.toast('Name and instruction are required.', 'err'); return; }
-      if (kind === 'cron') payload.expr = exprInput.value.trim();
-      else if (kind === 'every') payload.every_seconds = parseInt(exprInput.value.trim(), 10) || 0;
-      else payload.at = exprInput.value.trim();
+      const schedText = schedInput.value.trim();
+      if (!schedText) { GhostUI.toast('Tell Ghost when it should run.', 'err'); return; }
+      Object.assign(payload, parseRoutineSchedule(schedText));
       try {
         await GhostAPI.proxyPost('/v1/routines', payload);
       } catch (err) { GhostUI.toast('Couldn\'t create that routine.', 'err'); return; }

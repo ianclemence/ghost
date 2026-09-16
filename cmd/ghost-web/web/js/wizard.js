@@ -193,6 +193,15 @@ const GhostWizard = (() => {
     setTimeout(() => goTo('local-ai'), 800);
   }
 
+  // pickChatModel chooses what "Use this model" means: the first model
+  // that isn't an embedding model. The Ollama list mixes chat and embedding
+  // models; defaulting to an embedder would leave Ghost unable to talk.
+  function pickChatModel() {
+    const models = _state.ollamaModels || [];
+    const chat = models.find(m => !/embed/i.test(typeof m === 'string' ? m : (m.name || '')));
+    return chat !== undefined ? chat : models[0];
+  }
+
   function renderLocalAI(screen) {
     if (_state.ollamaReady && _state.ollamaModels.length > 0) {
       screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-title' }, 'Ghost\u2019s Brain'));
@@ -206,14 +215,16 @@ const GhostWizard = (() => {
       status.appendChild(GhostUI.statusDot('online'));
       status.appendChild(GhostUI.h('span', { className: 'type-callout', style: 'margin-left:var(--space-sm)' }, 'Ready'));
       card.appendChild(status);
+      const picked = pickChatModel();
+      const pickedName = typeof picked === 'string' ? picked : (picked.name || '');
       card.appendChild(GhostUI.h('div', { className: 'type-subhead text-secondary', style: 'margin-top:var(--space-sm)' },
-        _state.ollamaModels[0]?.name || 'Model available'
+        (GhostUI.modelFriendly('ollama:' + pickedName) || {}).name || pickedName || 'Model available'
       ));
       screen.appendChild(card);
 
       screen.appendChild(GhostUI.h('div', { className: 'wizard-actions' },
         GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async () => {
-          _state.selectedModel = _state.ollamaModels[0]?.name || '';
+          _state.selectedModel = pickedName;
           // Persist the choice now: setup completion records whatever the
           // configuration holds, and an unrecorded choice used to vanish.
           try {
@@ -240,17 +251,49 @@ const GhostWizard = (() => {
     }
   }
 
-  function renderCloudAI(screen) {
+  // Cloud providers offered in setup order: Ghost's default cloud choice
+  // first, then the rest alphabetically. Keys save immediately; the model
+  // Ghost uses stays whatever was chosen on the previous screen — switch it
+  // anytime in AI settings.
+  const CLOUD_PROVIDERS = [
+    { key: 'deepseek', label: 'DeepSeek', note: 'Recommended cloud choice' },
+    { key: 'openai', label: 'OpenAI', note: '' },
+    { key: 'anthropic', label: 'Anthropic', note: '' },
+    { key: 'moonshot', label: 'Kimi', note: '' },
+  ];
+
+  async function renderCloudAI(screen) {
     screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-title' }, 'Cloud intelligence'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--space-xxl)' },
-      'Ghost can optionally use cloud AI for tasks that benefit from deeper reasoning.'
+      'Optional. Add a key and Ghost can use stronger cloud AI when the on-device model isn\u2019t enough.'
     ));
 
-    const providers = ['OpenAI', 'Anthropic', 'Kimi'];
-    for (const p of providers) {
+    // Every /api/configure call revokes admin sessions, so the session from
+    // the earlier steps is dead by now — without this silent re-login the
+    // config fetch below 401s and the global auth hook boots the owner out
+    // of the wizard into the login screen.
+    try { await GhostAPI.post('/api/login', { password: _state.password }); } catch (e) { /* read-only fallback below */ }
+
+    let configured = {};
+    try {
+      const cfg = await GhostAPI.get('/api/admin/config');
+      configured = (cfg && cfg.providers) || {};
+    } catch (e) { /* offline-safe: everything renders as unconfigured */ }
+
+    for (const p of CLOUD_PROVIDERS) {
+      const hasKey = !!(configured[p.key] && configured[p.key].api_key);
       const row = GhostUI.h('div', { className: 'ghost-row' });
-      row.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, p));
-      row.appendChild(GhostUI.h('span', { className: 'type-footnote text-tertiary' }, 'Not configured'));
+      const c = GhostUI.h('div', { className: 'ghost-row-content' });
+      const title = GhostUI.h('div', { className: 'ghost-row-title' }, p.label);
+      if (p.note) title.appendChild(GhostUI.h('span', { className: 'type-footnote text-tertiary', style: 'margin-left:var(--s-2);font-weight:400' }, '\u00b7  ' + p.note));
+      c.appendChild(title);
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, hasKey ? 'Key saved' : 'Not configured'));
+      row.appendChild(c);
+      const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+      const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary ghost-btn-sm' }, hasKey ? 'Replace key' : 'Add key');
+      btn.addEventListener('click', () => toggleCloudKey(screen, p, btn));
+      tr.appendChild(btn);
+      row.appendChild(tr);
       screen.appendChild(row);
     }
 
@@ -260,34 +303,45 @@ const GhostWizard = (() => {
     ));
   }
 
+  function toggleCloudKey(screen, provider, btn) {
+    const row = btn.closest('.ghost-row');
+    if (btn.nextForm && document.body.contains(btn.nextForm)) { btn.nextForm.remove(); btn.nextForm = null; return; }
+    // Full-width row below the provider row: appending inside the trailing
+    // cell overlaps the row text.
+    const form = GhostUI.h('div', { style: 'margin:0 0 var(--space-md);padding:var(--s-3);background:var(--ghost-bg-sunken);border-radius:var(--radius-md)' });
+    const input = GhostUI.input('Paste your ' + provider.label + ' API key', 'password');
+    input.style.marginBottom = 'var(--s-2)';
+    input.style.width = '100%';
+    const save = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary ghost-btn-sm' }, 'Save key');
+    save.addEventListener('click', async () => {
+      const val = input.value.trim();
+      if (!val) { GhostUI.toast('Paste a key first.'); return; }
+      save.disabled = true;
+      try {
+        await GhostAPI.post('/api/admin/config/save', { api_keys: { [provider.key]: val } });
+        GhostUI.toast(provider.label + ' key saved \u2014 Ghost keeps your current model; switch anytime in AI settings.');
+        renderStep();
+      } catch (e) { GhostUI.toast('Couldn\u2019t save that key.', 'err'); save.disabled = false; }
+    });
+    form.appendChild(input);
+    form.appendChild(save);
+    form.appendChild(GhostUI.h('div', { className: 'type-footnote text-tertiary', style: 'margin-top:var(--s-1)' }, 'Stored only on this Ghost. Never shown back in full.'));
+    row.parentElement.insertBefore(form, row.nextSibling);
+    btn.nextForm = form;
+    setTimeout(() => input.focus(), 50);
+  }
+
   function renderPhone(screen) {
+    // Pairing codes are minted by the running gateway (Devices screen), which
+    // isn't up yet at this point in setup — so this step points there
+    // instead of showing a code that can't be redeemed.
     screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-title' }, 'Your Ghost is ready.'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--space-xxl)' },
-      'Take Ghost with you. Open the Ghost app on your phone and scan this code.'
+      'Take Ghost with you. After setup, open Devices to connect your phone in about a minute \u2014 your Ghost stays on this hardware.'
     ));
 
-    // Generate pairing code
-    const qrPlaceholder = GhostUI.h('div', { className: 'wizard-qr', style: 'padding:var(--space-xxxl);background:var(--ghost-bg-sunken);border-radius:var(--radius-lg);text-align:center;margin-bottom:var(--space-md)' });
-    qrPlaceholder.appendChild(GhostUI.h('div', { className: 'type-body text-secondary' }, 'Loading pairing code\u2026'));
-    screen.appendChild(qrPlaceholder);
-
-    (async () => {
-      try {
-        const res = await GhostAPI.post('/api/pairing-code');
-        if (res && res.code) {
-          qrPlaceholder.innerHTML = '';
-          qrPlaceholder.appendChild(GhostUI.h('div', { className: 'type-mono', style: 'word-break:break-all' }, res.code));
-          qrPlaceholder.appendChild(GhostUI.h('div', { className: 'type-footnote text-tertiary', style: 'margin-top:var(--space-sm)' }, 'Expires in 5 minutes'));
-        }
-      } catch (e) {
-        qrPlaceholder.innerHTML = '';
-        qrPlaceholder.appendChild(GhostUI.h('div', { className: 'type-callout text-secondary' }, 'Couldn\u2019t generate pairing code.'));
-      }
-    })();
-
     screen.appendChild(GhostUI.h('div', { className: 'wizard-actions' },
-      GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => goTo('done') }, 'Done'),
-      GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: () => goTo('done') }, 'Skip for now')
+      GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary ghost-btn-lg', onClick: () => goTo('done') }, 'Finish setup')
     ));
   }
 

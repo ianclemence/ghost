@@ -14,7 +14,7 @@ async function loadHelp(container) {
 Open **Devices** and choose *Connect another device*. Ghost shows a code that expires after a few minutes and can be used once. Scan it with the Ghost app on your phone. Once paired, that device can reach your Ghost — but your Ghost itself stays on this hardware.
 
 ## AI
-Ghost runs a small model on your hardware for everyday tasks (*Local intelligence*). You can optionally add a cloud provider for harder reasoning. Ghost decides where each task runs based on capability, privacy, latency, cost, and availability.
+Ghost answers with your chosen AI model (see **AI & providers**) — running on your hardware, in the cloud, or a mix you control with the routing switches. Ghost picks per task based on capability, privacy, latency, cost, and availability.
 
 ## Memory
 Ghost remembers things that matter as plain notes on this device. Open **Memory** to browse, read, and forget them. Forgetting deletes a note from your Ghost.
@@ -35,7 +35,7 @@ A backup is a download containing your memory, skills, configuration, and automa
 If something seems off, open **System** and run *Diagnostics*. It checks Ghost, its services, storage, and connections, and tells you what’s healthy and what isn’t.
 
 ## Recovery
-If you’re locked out, you can re-run setup from the Ghost service with the force flag to reset owner access. Your memory and skills are preserved.
+If you’re locked out, you can re-run setup to reset owner access. Your memory and skills are preserved.
   `);
   container.appendChild(prose);
 }

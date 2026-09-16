@@ -6,7 +6,12 @@ async function loadAutomations(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Automations'));
-  head.appendChild(GhostUI.h('p', {}, 'Create and manage the scheduled things Ghost does for you — reminders, briefings, and check-ins.'));
+  head.appendChild(GhostUI.h('p', {}, 'One-off reminders and deliveries to your apps — briefings, check-ins, nudges.'));
+  const cross = GhostUI.h('p', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-2)' }, 'For standing instructions that run like a conversation, see ');
+  const crossLink = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost ghost-btn-sm', style: 'padding:0', onClick: () => GhostApp.navigate('routines') }, 'Routines');
+  cross.appendChild(crossLink);
+  cross.appendChild(document.createTextNode('.'));
+  head.appendChild(cross);
   container.appendChild(head);
 
   const newBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showCreate(container) }, 'New scheduled item');
