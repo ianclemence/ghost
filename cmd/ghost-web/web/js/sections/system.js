@@ -58,14 +58,7 @@ async function loadSystem(container) {
   gk.appendChild(systemKv('Uptime', st.uptime || '—'));
   gk.appendChild(systemKv('Model', (st.provider || '—') + (st.model ? ' · ' + st.model : '')));
   gk.appendChild(systemKv('Address', (st.ip || '—') + (st.hostname ? '  (' + st.hostname + ')' : '')));
-  // This console: the address that reaches THIS page, so the owner never
-  // needs SSH to rediscover it. ghost.local appears only when mDNS is live.
-  if (consoleStatus && consoleStatus.console_port) {
-    const host = st.ip || window.location.hostname;
-    let addr = 'http://' + host + ':' + consoleStatus.console_port;
-    if (consoleStatus.mdns) addr += '  ·  http://ghost.local:' + consoleStatus.console_port;
-    gk.appendChild(systemKv('This console', addr));
-  }
+
   gk.appendChild(systemKv('CPU', (st.cpu_percent != null ? st.cpu_percent.toFixed(0) + '%' : '—')));
   if (st.memory) gk.appendChild(systemKv('Memory', fmtBytes(st.memory.used) + ' / ' + fmtBytes(st.memory.total)));
   if (st.disk) gk.appendChild(systemKv('Storage', GhostUI.fmtNum(Math.round(st.disk.used / 1073741824)) + ' GB / ' + GhostUI.fmtNum(Math.round(st.disk.total / 1073741824)) + ' GB'));
