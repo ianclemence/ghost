@@ -1,14 +1,10 @@
 package doctor
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -94,83 +90,44 @@ func (d *Doctor) Rebind(p providers.LLMProvider, estate []providers.ProviderInfo
 }
 
 func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
+	// Order is the user-visible diagnostics order: core health first
+	// (can Ghost think, act, remember?), capabilities next, storage and
+	// security risk after, setup state last. Length scales with problems,
+	// not inventory — see the omission filter below.
 	checks := []func(context.Context) CheckResult{
 		d.checkDatabase,
 		d.checkSchema,
 		d.checkClock,
 		d.checkProvider,
 		d.checkToolRegistry,
-		d.checkIntelligence,
-		d.checkResources,
 		d.checkBrowser,
 		d.checkSkillDependencies,
-		d.checkCalendarOAuth,
-		d.checkGmailOAuth,
-		d.checkOutlookOAuth,
-		d.checkSpotifyOAuth,
-		d.checkGithubToken,
-		d.checkNotionToken,
 		d.checkDiskPressure,
+		d.checkResources,
 		d.checkVault,
+		d.checkRoutinesFailing,
+		d.checkConnectedServices,
 		d.checkLastGolden,
 		d.checkEvalSpend,
-		d.checkRoutinesFailing,
 	}
 	results := make([]CheckResult, 0, len(checks))
 	for _, check := range checks {
 		results = append(results, check(ctx))
 	}
-	// A disabled calendar skill has nothing to diagnose: drop its check from
-	// the aggregate instead of nagging the owner about sign-in for a
-	// capability that is off. (checkCalendarOAuth itself stays truthful for
-	// direct/programmatic callers.) Same for email (gmail/outlook) and
-	// spotify skills.
-	if !d.calendarSkillActive() {
-		kept := results[:0]
-		for _, r := range results {
-			if r.Name != "calendar_oauth" {
-				kept = append(kept, r)
-			}
+	// Diagnostics is health, not inventory: a row with nothing to report is
+	// omitted rather than rendered as permanent info noise. Golden and spend
+	// appear once runs/turns exist; the vault row appears once a config is
+	// bound (unbound means the check didn't run, not that all is well); the
+	// connected-services aggregate appears once at least one service skill
+	// is enabled.
+	kept := results[:0]
+	for _, r := range results {
+		if r.Status == "info" && (r.Name == "last_golden" || r.Name == "eval_spend" || r.Name == "vault" || r.Name == "connected_services") {
+			continue
 		}
-		results = kept
+		kept = append(kept, r)
 	}
-	if !d.skillActive("email") {
-		kept := results[:0]
-		for _, r := range results {
-			if r.Name != "gmail_oauth" && r.Name != "outlook_oauth" {
-				kept = append(kept, r)
-			}
-		}
-		results = kept
-	}
-	if !d.skillActive("spotify") {
-		kept := results[:0]
-		for _, r := range results {
-			if r.Name != "spotify_oauth" {
-				kept = append(kept, r)
-			}
-		}
-		results = kept
-	}
-	if !d.skillActive("github") {
-		kept := results[:0]
-		for _, r := range results {
-			if r.Name != "github_token" {
-				kept = append(kept, r)
-			}
-		}
-		results = kept
-	}
-	if !d.skillActive("notion") {
-		kept := results[:0]
-		for _, r := range results {
-			if r.Name != "notion_token" {
-				kept = append(kept, r)
-			}
-		}
-		results = kept
-	}
-	return results
+	return kept
 }
 
 func (d *Doctor) checkBrowser(ctx context.Context) CheckResult {
@@ -382,71 +339,16 @@ func (d *Doctor) checkToolRegistry(ctx context.Context) CheckResult {
 // memory (durable facts + embeddings), tasks (active/completed/recovered),
 // verification failures, and observed retrieval latency. It is operational
 // and count-based — never query content, never hidden reasoning.
-func (d *Doctor) checkIntelligence(ctx context.Context) CheckResult {
-	start := time.Now()
-	if d.db == nil {
-		return CheckResult{Name: "intelligence", Label: "Ghost Intelligence", Status: "info",
-			Message: "State store isn't available yet."}
-	}
-
-	durable := countCurrentMemoryEntries(d.workspace)
-	var chunks int
-	_ = d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM memory_chunks`).Scan(&chunks)
-
-	// A job is "active" while it can still make progress.
-	var active int
-	_ = d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN
-		('pending','running','waiting_for_permission','waiting_for_user','paused','retrying','interrupted')`).Scan(&active)
-
-	since := time.Now().Add(-24 * time.Hour)
-	var completed, recovered, verifyFailed int
-	_ = d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status='succeeded' AND finished_at >= ?`,
-		since.Unix()).Scan(&completed)
-	_ = d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM canonical_events WHERE type='task.interrupted' AND timestamp >= ?`,
-		since.Format(time.RFC3339)).Scan(&recovered)
-	_ = d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM canonical_events WHERE type='verification.failed' AND timestamp >= ?`,
-		since.Format(time.RFC3339)).Scan(&verifyFailed)
-
-	parts := []string{
-		fmt.Sprintf("Memory: %d durable, %d embedded", durable, chunks),
-		fmt.Sprintf("Tasks: %d active, %d done in 24h, %d recovered", active, completed, recovered),
-	}
-	if d.RetrievalSource != nil {
-		rs := d.RetrievalSource()
-		if rs.RAG.Queries > 0 {
-			parts = append(parts, fmt.Sprintf("Semantic retrieval: %.0fms avg over %d", rs.RAG.AvgMs, rs.RAG.Queries))
-		}
-		if rs.Memo.Queries > 0 {
-			parts = append(parts, fmt.Sprintf("Note search: %.0fms avg over %d", rs.Memo.AvgMs, rs.Memo.Queries))
-		}
-	}
-	if verifyFailed > 0 {
-		parts = append(parts, fmt.Sprintf("%d verification failure(s) in 24h", verifyFailed))
-	}
-
-	status := "ok"
-	if verifyFailed > 0 {
-		// A failed world-state check is worth surfacing, not hiding.
-		status = "warning"
-	}
-	return CheckResult{
-		Name:    "intelligence",
-		Label:   "Ghost Intelligence",
-		Status:  status,
-		Message: strings.Join(parts, ". ") + ".",
-		Latency: time.Since(start).Milliseconds(),
-	}
-}
-
-// checkResources reports live memory and disk headroom so the owner can see
-// pressure before it becomes a failure. It never alarms on missing inputs.
+// checkResources reports live RAM headroom so the owner sees memory pressure
+// before it becomes a failure. Disk has its own authority (checkDiskPressure
+// in health.go); reporting it here too produced two rows for one resource.
+// It never alarms on missing inputs.
 func (d *Doctor) checkResources(ctx context.Context) CheckResult {
 	start := time.Now()
 	s := hardware.Snapshot(d.workspace)
-	msg := fmt.Sprintf("RAM %d/%d MB free; disk %d GB free (%d%%)",
-		s.MemAvailableMB, s.MemTotalMB, s.DiskFreeGB, s.DiskFreePct)
+	msg := fmt.Sprintf("RAM %d/%d MB free", s.MemAvailableMB, s.MemTotalMB)
 	status := "ok"
-	switch s.Worst() {
+	switch s.Memory {
 	case hardware.PressureCritical:
 		status = "error"
 		msg += " — critical: Ghost will reduce context and retrieval to keep running."
@@ -461,32 +363,6 @@ func (d *Doctor) checkResources(ctx context.Context) CheckResult {
 		Message: msg,
 		Latency: time.Since(start).Milliseconds(),
 	}
-}
-
-// countCurrentMemoryEntries counts durable personal-context facts
-// (status=current) by scanning the append-only log. Best-effort: a missing
-// or unreadable store reports zero rather than failing the check.
-func countCurrentMemoryEntries(workspace string) int {
-	if workspace == "" {
-		return 0
-	}
-	f, err := os.Open(filepath.Join(workspace, "personal-context", "entries.jsonl"))
-	if err != nil {
-		return 0
-	}
-	defer f.Close()
-	n := 0
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		var e struct {
-			Status string `json:"status"`
-		}
-		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Status == "current" {
-			n++
-		}
-	}
-	return n
 }
 
 func (d *Doctor) checkSkillDependencies(ctx context.Context) CheckResult {

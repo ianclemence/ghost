@@ -31,9 +31,10 @@ func healthFixture(t *testing.T) (*Doctor, string) {
 func TestHealthCheckCount(t *testing.T) {
 	d, _ := healthFixture(t)
 	results := d.RunAll(context.Background())
-	// 20 registered minus 6 skill-gated suppressions on a bare workspace.
-	if len(results) != 14 {
-		t.Fatalf("expected 14 checks, got %d", len(results))
+	// 14 registered minus 4 empty-info omissions on a bare workspace
+	// (unbound vault, no service skills, no golden history, no spend).
+	if len(results) != 10 {
+		t.Fatalf("expected 10 checks, got %d", len(results))
 	}
 	names := map[string]bool{}
 	for _, r := range results {
@@ -42,10 +43,40 @@ func TestHealthCheckCount(t *testing.T) {
 			t.Fatalf("check must carry name and status: %+v", r)
 		}
 	}
-	for _, want := range []string{"disk_pressure", "vault", "last_golden", "eval_spend", "routines_failing"} {
+	for _, want := range []string{"disk_pressure", "routines_failing"} {
 		if !names[want] {
 			t.Fatalf("missing health check %q", want)
 		}
+	}
+	for _, gone := range []string{"vault", "last_golden", "eval_spend", "connected_services", "intelligence"} {
+		if names[gone] {
+			t.Fatalf("empty/info row %q must be omitted, not rendered", gone)
+		}
+	}
+}
+
+func TestHealthSeededRowsAppear(t *testing.T) {
+	d, ws := healthFixture(t)
+	state := filepath.Join(ws, "state")
+	if err := os.MkdirAll(state, 0755); err != nil {
+		t.Fatal(err)
+	}
+	hist := `[{"at":"2026-09-15T00:00:00Z","model":"deepseek-flash","provider":"deepseek","suite_version":1,"summary":{"total":59,"passed":59,"failed":0,"hard_fails":0}}]`
+	if err := os.WriteFile(filepath.Join(state, "golden-history.json"), []byte(hist), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.db.Exec(`INSERT INTO canonical_events (id, type, timestamp, status, payload) VALUES ('u1','usage.recorded','2026-09-15T00:00:00Z','recorded','{"cost_usd":0.01}')`); err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, r := range d.RunAll(context.Background()) {
+		names[r.Name] = true
+	}
+	if !names["last_golden"] {
+		t.Fatal("seeded golden history must surface a Golden row")
+	}
+	if !names["eval_spend"] {
+		t.Fatal("metered turns must surface a Spend row")
 	}
 }
 

@@ -36,15 +36,27 @@ func TestDoctorRunAll(t *testing.T) {
 
 	runner := New(database.DB, &testProvider{}, reg, t.TempDir())
 	results := runner.RunAll(context.Background())
-	// 20 registered checks minus 6 skill-gated suppressions on a bare
-	// workspace (calendar, gmail/outlook, spotify, github, notion
-	// skills absent — inactive capabilities contribute no checks).
-	if len(results) != 14 {
-		t.Fatalf("expected 14 checks, got %d", len(results))
+	// 14 registered checks minus 4 empty-info omissions on a bare workspace:
+	// unbound vault, no connected-service skills, no golden history, no
+	// metered turns. Diagnostics length scales with problems, not inventory.
+	if len(results) != 10 {
+		t.Fatalf("expected 10 checks, got %d", len(results))
 	}
+	names := map[string]bool{}
 	for _, check := range results {
+		names[check.Name] = true
 		if check.Status == "error" {
 			t.Fatalf("unexpected error status for check %s: %s", check.Name, check.Message)
+		}
+	}
+	for _, want := range []string{"database", "schema", "clock", "provider", "tool_registry", "browser_env", "skill_dependencies", "disk_pressure", "resources", "routines_failing"} {
+		if !names[want] {
+			t.Fatalf("missing core check %q", want)
+		}
+	}
+	for _, gone := range []string{"intelligence", "vault", "connected_services", "last_golden", "eval_spend", "calendar_oauth", "gmail_oauth", "github_token"} {
+		if names[gone] {
+			t.Fatalf("empty/info row %q must be omitted, not rendered", gone)
 		}
 	}
 }

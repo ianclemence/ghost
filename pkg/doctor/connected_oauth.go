@@ -2,6 +2,7 @@ package doctor
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/url"
 	"os"
@@ -95,6 +96,61 @@ func oauthDeploymentCheck(d *Doctor, name, label, skill, clientID, secret, redir
 		Message: "Sign-in is configured and the redirect host resolves.",
 		Latency: time.Since(start).Milliseconds(),
 	}
+}
+
+// checkConnectedServices collapses the six per-service setup rows (calendar,
+// gmail, outlook, spotify, github, notion) into one diagnostics row.
+// Diagnostics is health, not inventory: owners don't need five warnings to
+// learn three integrations are unconnected. A disabled skill contributes
+// nothing — same suppression the aggregate previously applied by dropping
+// rows, now by excluding from counts. Returns info when no service skill is
+// enabled, which RunAll omits. Individual checks stay truthful for
+// direct/programmatic callers.
+func (d *Doctor) checkConnectedServices(ctx context.Context) CheckResult {
+	start := time.Now()
+	done := func(status, msg string) CheckResult {
+		return CheckResult{Name: "connected_services", Label: "Connected services", Status: status, Message: msg, Latency: time.Since(start).Milliseconds()}
+	}
+	services := []struct {
+		label string
+		skill string
+		check func(context.Context) CheckResult
+	}{
+		{"Calendar", "calendar", d.checkCalendarOAuth},
+		{"Gmail", "email", d.checkGmailOAuth},
+		{"Outlook", "email", d.checkOutlookOAuth},
+		{"Spotify", "spotify", d.checkSpotifyOAuth},
+		{"GitHub", "github", d.checkGithubToken},
+		{"Notion", "notion", d.checkNotionToken},
+	}
+	var ready, missing []string
+	for _, s := range services {
+		if d != nil && !d.skillActive(s.skill) {
+			continue
+		}
+		r := s.check(ctx)
+		if r.Status == "ok" {
+			ready = append(ready, s.label)
+			continue
+		}
+		if r.Status == "error" {
+			return done("error", s.label+": "+r.Message)
+		}
+		missing = append(missing, s.label)
+	}
+	if len(ready)+len(missing) == 0 {
+		return done("info", "no connected-service skills enabled")
+	}
+	if len(missing) == 0 {
+		return done("ok", fmt.Sprintf("%d connected: %s", len(ready), strings.Join(ready, ", ")))
+	}
+	if len(ready) == 0 {
+		return done("warning", fmt.Sprintf("none connected — %s need setup (see Connected Apps)",
+			strings.Join(missing, ", ")))
+	}
+	return done("warning", fmt.Sprintf("%d of %d connected — %s ready; %s need setup (see Connected Apps)",
+		len(ready), len(ready)+len(missing),
+		strings.Join(ready, ", "), strings.Join(missing, ", ")))
 }
 
 // checkGmailOAuth validates the shared Google OAuth client + Gmail callback.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -40,16 +41,22 @@ func TestCalendarOAuthNonHTTPSWarns(t *testing.T) {
 	}
 }
 
-func TestDoctorRunAllIncludesCalendarOAuth(t *testing.T) {
+func TestDoctorRunAllAggregatesServices(t *testing.T) {
 	d := &Doctor{}
 	found := false
 	for _, r := range d.RunAll(context.Background()) {
-		if r.Name == "calendar_oauth" {
+		if r.Name == "calendar_oauth" || r.Name == "gmail_oauth" || r.Name == "github_token" {
+			t.Fatalf("per-service row %q must not appear; services aggregate", r.Name)
+		}
+		if r.Name == "connected_services" {
 			found = true
+			if r.Status != "warning" {
+				t.Fatalf("unconfigured services must warn, got %s: %s", r.Status, r.Message)
+			}
 		}
 	}
 	if !found {
-		t.Fatal("RunAll must include the calendar_oauth check")
+		t.Fatal("RunAll must include the connected_services aggregate")
 	}
 }
 
@@ -91,8 +98,10 @@ func TestCalendarOAuthWarnsWhenSkillEnabled(t *testing.T) {
 	}
 }
 
-// The aggregate must not contain a calendar row at all when the skill is
-// off — a disabled capability has nothing to diagnose.
+// The aggregate must not mention calendar at all when the skill is off —
+// a disabled capability has nothing to diagnose. With only the calendar
+// skill dir present-but-disabled, every service is excluded, so the
+// aggregate itself is info and omitted from RunAll.
 func TestRunAllOmitsCalendarCheckWhenSkillDisabled(t *testing.T) {
 	ws := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(ws, "skills", "calendar"), 0o755); err != nil {
@@ -106,11 +115,17 @@ func TestRunAllOmitsCalendarCheckWhenSkillDisabled(t *testing.T) {
 		if r.Name == "calendar_oauth" {
 			t.Fatal("disabled skill must not appear in diagnostics")
 		}
+		if r.Name == "connected_services" {
+			t.Fatal("aggregate with zero applicable services must be omitted")
+		}
 	}
 }
 
-// ...but the check is present when the skill is enabled.
+// ...but an enabled-but-unconfigured calendar surfaces inside the aggregate.
 func TestRunAllIncludesCalendarCheckWhenSkillEnabled(t *testing.T) {
+	t.Setenv("GHOST_GOOGLE_CLIENT_ID", "")
+	t.Setenv("GHOST_GOOGLE_CLIENT_SECRET", "")
+	t.Setenv("GHOST_CALENDAR_REDIRECT_URL", "")
 	ws := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(ws, "skills", "calendar"), 0o755); err != nil {
 		t.Fatal(err)
@@ -121,11 +136,17 @@ func TestRunAllIncludesCalendarCheckWhenSkillEnabled(t *testing.T) {
 	d := &Doctor{workspace: ws}
 	found := false
 	for _, r := range d.RunAll(context.Background()) {
-		if r.Name == "calendar_oauth" {
+		if r.Name == "connected_services" {
 			found = true
+			if r.Status != "warning" {
+				t.Fatalf("unconfigured calendar must warn, got %s: %s", r.Status, r.Message)
+			}
+			if !strings.Contains(r.Message, "Calendar") {
+				t.Fatalf("aggregate must name the missing service: %q", r.Message)
+			}
 		}
 	}
 	if !found {
-		t.Fatal("enabled skill must appear in diagnostics")
+		t.Fatal("enabled skill must appear in diagnostics via the aggregate")
 	}
 }
