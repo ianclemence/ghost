@@ -78,6 +78,47 @@ func TestFreshDBReachesCurrent(t *testing.T) {
 	}
 }
 
+// `ghost status` opens the workspace database ?mode=ro and calls
+// CheckCurrent through the doctor. CheckCurrent is documented as changing
+// nothing, so a read-only handle must never fail it with a write error —
+// the failure below is exactly the reported
+// "Could not determine schema version: attempt to write a readonly
+// database (8)".
+func TestCheckCurrentReadOnlyHandle(t *testing.T) {
+	db, path := openRaw(t)
+	if err := db.Ping(); err != nil {
+		t.Fatalf("seed rw ping: %v", err)
+	}
+	db.Close()
+	ro, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ro.Close() })
+	ok, at, err := CheckCurrent(ro)
+	if err != nil {
+		t.Fatalf("CheckCurrent on read-only handle: %v", err)
+	}
+	if ok || at != 0 {
+		t.Fatalf("CheckCurrent = %v, %d; want false, 0 on unmigrated DB", ok, at)
+	}
+}
+
+// CheckCurrent must not create anything, even on a writable handle: the
+// version table belongs to Migrate, not to the currency check.
+func TestCheckCurrentCreatesNothing(t *testing.T) {
+	db, _ := openRaw(t)
+	if err := db.Ping(); err != nil {
+		t.Fatalf("seed rw ping: %v", err)
+	}
+	if _, _, err := CheckCurrent(db); err != nil {
+		t.Fatalf("CheckCurrent: %v", err)
+	}
+	if tablesOf(t, db)["schema_migrations"] {
+		t.Fatal("CheckCurrent created schema_migrations; currency checks must be read-only")
+	}
+}
+
 // An old database with only core tables and real user data migrates to
 // current without losing a row. The sessions table deliberately lacks the
 // title column (a real historical shape) to prove the baseline's

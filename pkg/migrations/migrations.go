@@ -85,8 +85,18 @@ func appliedVersions(db *sql.DB) (map[int]bool, error) {
 
 // CurrentVersion returns the highest recorded migration version (0 when
 // nothing has run yet). Cheap enough for startup sanity checks.
+//
+// Strictly read-only: callers like `ghost status` open the database
+// ?mode=ro, so creating the version table here fails those handles with
+// "attempt to write a readonly database". Table creation belongs to Migrate
+// (which ensures it explicitly); a missing table simply means version 0.
 func CurrentVersion(db *sql.DB) (int, error) {
-	if err := ensureVersionTable(db); err != nil {
+	var present string
+	err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'`).Scan(&present)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
 		return 0, err
 	}
 	applied, err := appliedVersions(db)
