@@ -23,8 +23,8 @@ const GhostApp = (() => {
         { name: 'memory', title: 'Memory', glyph: 'memory' },
         { name: 'activity', title: 'Activity', glyph: 'activity' },
         { name: 'routines', title: 'Routines', glyph: 'automation' },
-        { name: 'skills', title: 'Skills', glyph: 'skill' },
         { name: 'intelligence', title: 'Intelligence', glyph: 'ai' },
+        { name: 'skills', title: 'Skills', glyph: 'skill' },
       ],
     },
     {
