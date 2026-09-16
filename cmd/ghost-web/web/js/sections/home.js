@@ -54,7 +54,7 @@ async function loadHome(container) {
   container.appendChild(view);
 
   // Independent fetches — a single failure shouldn't blank the page.
-  const [meta, doctor, health, channels, activity, jobs, memory, selfMem, devices, ollama, activeModel, identity] = await Promise.allSettled([
+  const [meta, doctor, health, channels, activity, jobs, memory, selfMem, devices, ollama, activeModel, identity, consoleStatus] = await Promise.allSettled([
     GhostAPI.get('/api/admin/auth/meta'),
     GhostAPI.proxyGet('/v1/doctor'),
     GhostAPI.proxyGet('/v1/health'),
@@ -67,6 +67,7 @@ async function loadHome(container) {
     GhostAPI.get('/api/ollama/models'),
     GhostAPI.proxyGet('/v1/model'),
     GhostAPI.proxyGet('/v1/identity'),
+    GhostAPI.get('/api/status'),
   ]);
 
   if (!document.body.contains(container)) return;
@@ -90,7 +91,7 @@ async function loadHome(container) {
   renderActivity(activityBody, activity);
 
   // Needs your attention.
-  renderAttention(attentionBody, doctor, channels, devices, ollama);
+  renderAttention(attentionBody, doctor, channels, devices, ollama, consoleStatus);
 }
 
 function greetingFor(hour) {
@@ -302,12 +303,12 @@ function formatTime(d) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function renderAttention(container, doctorRes, channelsRes, devicesRes) {
+function renderAttention(container, doctorRes, channelsRes, devicesRes, ollamaRes, consoleRes) {
   if (!document.body.contains(container)) return;
   container.innerHTML = '';
   container.setAttribute('aria-busy', 'false');
 
-  const items = collectAttentionItems(doctorRes, channelsRes, devicesRes);
+  const items = collectAttentionItems(doctorRes, channelsRes, devicesRes, consoleRes);
 
   if (items.length === 0) {
     const empty = GhostUI.h('div', { className: 'home-attention-empty' });
@@ -324,8 +325,27 @@ function renderAttention(container, doctorRes, channelsRes, devicesRes) {
   container.appendChild(list);
 }
 
-function collectAttentionItems(doctorRes, channelsRes, devicesRes) {
+function collectAttentionItems(doctorRes, channelsRes, devicesRes, consoleRes) {
   const items = [];
+
+  // Console moved ports: same per-port dismissal as the System banner, so a
+  // new move re-arms it on both surfaces.
+  if (consoleRes && consoleRes.status === 'fulfilled') {
+    const cs = consoleRes.value || {};
+    if (cs.console_port && cs.console_port_requested && cs.console_port !== cs.console_port_requested) {
+      let dismissed = false;
+      try { dismissed = !!sessionStorage.getItem('ghost:port-banner:' + cs.console_port); } catch (e) {}
+      if (!dismissed) {
+        const who = cs.console_port_occupant ? ' (' + cs.console_port_occupant + ' is using port ' + cs.console_port_requested + ')' : '';
+        items.push({
+          title: 'Console moved to port ' + cs.console_port,
+          detail: 'Its usual port (' + cs.console_port_requested + ') was taken' + who + '. Bookmarks to this address keep working.',
+          cta: { label: 'View system', section: 'system' },
+          state: 'warn',
+        });
+      }
+    }
+  }
 
   // Doctor checks with errors or warnings become attention items.
   if (doctorRes.status === 'fulfilled') {

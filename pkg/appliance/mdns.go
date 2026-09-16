@@ -32,6 +32,13 @@ func NewMDNSAdvertiser(port int, version string) *MDNSAdvertiser {
 	}
 }
 
+// Available reports whether advertisement can run here: avahi-publish must
+// exist. No environment gating — presence of the daemon tooling is the only
+// precondition, so dev checkouts and appliances behave the same.
+func (m *MDNSAdvertiser) Available() error {
+	return m.checkAvahi()
+}
+
 // Advertise registers the Ghost service via mDNS.
 // On Linux, this uses avahi-daemon. On other platforms, it's a no-op.
 func (m *MDNSAdvertiser) Advertise() error {
@@ -56,12 +63,6 @@ func (m *MDNSAdvertiser) Stop() {
 }
 
 func (m *MDNSAdvertiser) checkAvahi() error {
-	// Check if we're on Linux
-	if os.Getenv("GHOST_DIR") == "" {
-		// Not in appliance mode, skip
-		return fmt.Errorf("not in appliance mode")
-	}
-
 	// Check if avahi-publish exists
 	_, err := os.Stat("/usr/bin/avahi-publish")
 	if err != nil {

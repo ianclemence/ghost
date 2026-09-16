@@ -8,6 +8,33 @@ async function loadSystem(container) {
   head.appendChild(GhostUI.h('p', {}, 'The hardware and services your Ghost runs on — version, updates, diagnostics, and permissions.'));
   container.appendChild(head);
 
+  // Port-fallback banner: the console moved off its usual port. Dismissal
+  // is per-port (sessionStorage), so a new move re-arms it. Fetched once,
+  // reused by the This-console row below.
+  let consoleStatus = null;
+  try {
+    const cs = await GhostAPI.get('/api/status');
+    consoleStatus = cs;
+    if (cs && cs.console_port && cs.console_port_requested && cs.console_port !== cs.console_port_requested &&
+        !sessionStorage.getItem('ghost:port-banner:' + cs.console_port)) {
+      const who = cs.console_port_occupant ? ' — ' + cs.console_port_occupant + ' is using port ' + cs.console_port_requested : '';
+      const banner = GhostUI.h('div', { className: 'panel', style: 'border-left:3px solid var(--warn)' });
+      const bh = GhostUI.h('div', { className: 'panel-head' });
+      const bt = GhostUI.h('div');
+      bt.appendChild(GhostUI.h('h2', {}, 'Console moved to port ' + cs.console_port));
+      bt.appendChild(GhostUI.h('p', {}, 'Its usual port (' + cs.console_port_requested + ') was taken' + who + '. It stays here until that port is free when Ghost starts — your bookmarks to this address keep working.'));
+      bh.appendChild(bt);
+      const dismiss = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost ghost-btn-sm' }, 'Dismiss');
+      dismiss.addEventListener('click', () => {
+        try { sessionStorage.setItem('ghost:port-banner:' + cs.console_port, '1'); } catch (e) {}
+        banner.remove();
+      });
+      bh.appendChild(dismiss);
+      banner.appendChild(bh);
+      container.appendChild(banner);
+    }
+  } catch (e) { /* banner is best-effort */ }
+
   const statusEl = GhostUI.h('div', { className: 'loading' }, GhostUI.h('span', {}, 'Reading system…'));
   container.appendChild(statusEl);
 
@@ -31,6 +58,14 @@ async function loadSystem(container) {
   gk.appendChild(systemKv('Uptime', st.uptime || '—'));
   gk.appendChild(systemKv('Model', (st.provider || '—') + (st.model ? ' · ' + st.model : '')));
   gk.appendChild(systemKv('Address', (st.ip || '—') + (st.hostname ? '  (' + st.hostname + ')' : '')));
+  // This console: the address that reaches THIS page, so the owner never
+  // needs SSH to rediscover it. ghost.local appears only when mDNS is live.
+  if (consoleStatus && consoleStatus.console_port) {
+    const host = st.ip || window.location.hostname;
+    let addr = 'http://' + host + ':' + consoleStatus.console_port;
+    if (consoleStatus.mdns) addr += '  ·  http://ghost.local:' + consoleStatus.console_port;
+    gk.appendChild(systemKv('This console', addr));
+  }
   gk.appendChild(systemKv('CPU', (st.cpu_percent != null ? st.cpu_percent.toFixed(0) + '%' : '—')));
   if (st.memory) gk.appendChild(systemKv('Memory', fmtBytes(st.memory.used) + ' / ' + fmtBytes(st.memory.total)));
   if (st.disk) gk.appendChild(systemKv('Storage', GhostUI.fmtNum(Math.round(st.disk.used / 1073741824)) + ' GB / ' + GhostUI.fmtNum(Math.round(st.disk.total / 1073741824)) + ' GB'));

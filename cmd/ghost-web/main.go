@@ -43,6 +43,13 @@ var (
 	// boundPort is the port the wizard actually bound to (may differ from the
 	// requested -port when it fell back, e.g. 80 -> 8080).
 	boundPort int
+	// portRequested is the -port flag value the bound port is compared
+	// against for the fallback banner. portOccupant names the process
+	// holding the requested port when determinable, else "".
+	portRequested int
+	portOccupant  string
+	// mdnsActive reports whether ghost.local advertisement is running.
+	mdnsActive bool
 	// sessions tracks authenticated admin sessions for wizard re-runs.
 	sessions = newSessionStore()
 	// loginThrottle tracks consecutive failed login attempts per client IP.
@@ -599,11 +606,10 @@ func main() {
 	// Gateway API proxy — forwards requests to the Ghost gateway (port 8766)
 	mux.HandleFunc("/api/proxy/", handleGatewayProxy)
 
-	// Try ports in order: 80, 8080, 8888, 9090
-	ports := []int{*port, 8080, 8888, 9090}
-	if *port != 80 {
-		ports = append([]int{*port}, ports...)
-	}
+	// Try ports in order: -port first (return to it once free), then the
+	// sticky pick (no flapping while a conflict persists), then fallbacks.
+	portRequested = *port
+	ports := consolePortOrder(portRequested, readStickyConsolePort(fb.GhostDir))
 
 	var listener net.Listener
 	for _, p := range ports {
@@ -614,6 +620,9 @@ func main() {
 			switch {
 			case errors.Is(err, syscall.EADDRINUSE):
 				log.Printf("Port %d is already in use by another process, trying next...", p)
+				if p == portRequested {
+					portOccupant = portOccupantName(p)
+				}
 			case errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM):
 				if p < 1024 {
 					log.Printf("Cannot bind port %d: permission denied. Ports below 1024 require root.", p)
@@ -628,9 +637,22 @@ func main() {
 		}
 		listener = ln
 		boundPort = p
+		// Remember the pick so the next start tries it first. A fallback
+		// caused by a transient conflict must not permanently move the
+		// console — but while the conflict persists, neither should the
+		// address flap between restarts.
+		writeStickyConsolePort(fb.GhostDir, boundPort)
 		// Open the firewall for the port we actually bound (may differ from
 		// -port when port 80 fell back). Best-effort.
 		openFirewallPort(boundPort)
+		if boundPort != portRequested {
+			who := portOccupant
+			if who == "" {
+				who = "another process"
+			}
+			log.Printf("WARNING: console running on :%d instead of requested :%d (%s is using it). Pass -port %d to make it permanent, or free port %d. This sticks until port %d is free at startup.",
+				boundPort, portRequested, who, boundPort, portRequested, portRequested)
+		}
 		log.Printf("Setup wizard running at http://ghost.local:%d", boundPort)
 		log.Printf("Also available at http://<your-pi-ip>:%d", boundPort)
 		break
@@ -638,6 +660,19 @@ func main() {
 
 	if listener == nil {
 		log.Fatalf("All ports failed to bind: %v", ports)
+	}
+
+	// Advertise ghost.local with the port actually bound (not requested).
+	// Absent avahi only logs; discovery degrades to the LAN IP, never a
+	// startup failure.
+	if adv := appliance.NewMDNSAdvertiser(boundPort, version); adv != nil {
+		if aerr := adv.Available(); aerr != nil {
+			log.Printf("mDNS: ghost.local unavailable (%v) — install avahi-daemon, or use the LAN IP below.", aerr)
+		} else if aerr := adv.Advertise(); aerr != nil {
+			log.Printf("mDNS: advertisement failed: %v", aerr)
+		} else {
+			mdnsActive = true
+		}
 	}
 
 	// Remember how we're running so handleConfigure knows whether systemd's
@@ -663,6 +698,99 @@ func main() {
 			log.Fatalf("Server failed: %v", err)
 		}
 	}
+}
+
+// consolePortFileName persists the bound console port so restarts return to
+// it instead of flapping across the fallback chain.
+const consolePortFileName = ".console-port"
+
+// consolePortOrder builds the bind attempt order: the requested port first
+// (so the console returns to it the moment it is free), then the sticky
+// pick (stability while the conflict persists), then the standard
+// fallbacks. Deduped.
+func consolePortOrder(requested, sticky int) []int {
+	seen := map[int]bool{}
+	out := []int{}
+	push := func(p int) {
+		if p < 1 || p > 65535 || seen[p] {
+			return
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	push(requested)
+	push(sticky)
+	push(80)
+	push(8080)
+	push(8888)
+	push(9090)
+	return out
+}
+
+func readStickyConsolePort(dir string) int {
+	if dir == "" {
+		return 0
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, consolePortFileName))
+	if err != nil {
+		return 0
+	}
+	port := 0
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(raw)), "%d", &port); err != nil {
+		return 0
+	}
+	if port < 1 || port > 65535 {
+		return 0
+	}
+	return port
+}
+
+func writeStickyConsolePort(dir string, port int) {
+	if dir == "" || port < 1 || port > 65535 {
+		return
+	}
+	// Best-effort: a missing sticky file only costs address stability.
+	if err := os.WriteFile(filepath.Join(dir, consolePortFileName), []byte(fmt.Sprintf("%d\n", port)), 0600); err != nil {
+		log.Printf("Could not remember console port: %v", err)
+	}
+}
+
+// portOccupantName best-effort names the process listening on a port ("nginx
+// (pid 123)") for the fallback banner. Empty when indeterminable.
+func portOccupantName(port int) string {
+	out, err := exec.Command("ss", "-ltnp").Output()
+	if err != nil {
+		return ""
+	}
+	want := fmt.Sprintf(":%d", port)
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 5 || !strings.HasSuffix(fields[3], want) {
+			continue
+		}
+		for _, f := range fields {
+			if strings.HasPrefix(f, `users:(("`) {
+				name := strings.TrimPrefix(f, `users:(("`)
+				if i := strings.Index(name, `",`); i >= 0 {
+					name = name[:i]
+				}
+				pid := ""
+				if j := strings.Index(f, "pid="); j >= 0 {
+					pid = f[j:]
+					if k := strings.Index(pid, ","); k >= 0 {
+						pid = pid[:k]
+					}
+					pid = strings.TrimSuffix(pid, ")")
+					pid = strings.TrimSuffix(pid, `"`)
+				}
+				if pid != "" {
+					return fmt.Sprintf("%s (%s)", name, pid)
+				}
+				return name
+			}
+		}
+	}
+	return ""
 }
 
 // waitForSetupComplete polls for the .setup-complete flag file.
@@ -826,10 +954,14 @@ func handleConnectWiFi(w http.ResponseWriter, r *http.Request) {
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"needs_setup":      fb.NeedsSetup(),
-		"admin_configured": appliance.AdminConfigured(fb.GhostDir),
-		"force":            forceMode,
-		"version":          version,
+		"needs_setup":            fb.NeedsSetup(),
+		"admin_configured":       appliance.AdminConfigured(fb.GhostDir),
+		"force":                  forceMode,
+		"version":                version,
+		"console_port":           boundPort,
+		"console_port_requested": portRequested,
+		"console_port_occupant":  portOccupant,
+		"mdns":                   mdnsActive,
 	})
 }
 

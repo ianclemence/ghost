@@ -13,6 +13,9 @@ async function loadHelp(container) {
 ## Connecting devices
 Open **Devices** and choose *Connect another device*. Ghost shows a code that expires after a few minutes and can be used once. Scan it with the Ghost app on your phone. Once paired, that device can reach your Ghost — but your Ghost itself stays on this hardware.
 
+## Reach Ghost away from home
+The console lives on your home network: http://ghost.local (when name lookup works) or the address shown under **System → This console**. Away from home, join the same Tailscale network on your phone or laptop and open the same address — no extra setup, and nothing is exposed to the public internet.
+
 ## AI
 Ghost answers with your chosen AI model (see **AI & providers**) — running on your hardware, in the cloud, or a mix you control with the routing switches. Ghost picks per task based on capability, privacy, latency, cost, and availability.
 
