@@ -145,10 +145,10 @@ func (d *Doctor) checkConnectedServices(ctx context.Context) CheckResult {
 		return done("ok", fmt.Sprintf("%d connected: %s", len(ready), strings.Join(ready, ", ")))
 	}
 	if len(ready) == 0 {
-		return done("warning", fmt.Sprintf("none connected — %s need setup (see Connected Apps)",
+		return done("warning", fmt.Sprintf("none connected — %s need setup (see Apps)",
 			strings.Join(missing, ", ")))
 	}
-	return done("warning", fmt.Sprintf("%d of %d connected — %s ready; %s need setup (see Connected Apps)",
+	return done("warning", fmt.Sprintf("%d of %d connected — %s ready; %s need setup (see Apps)",
 		len(ready), len(ready)+len(missing),
 		strings.Join(ready, ", "), strings.Join(missing, ", ")))
 }
@@ -211,7 +211,7 @@ func tokenPresenceCheck(d *Doctor, name, label, skill string, present bool) Chec
 		return CheckResult{
 			Name: name, Label: label,
 			Status:  "warning",
-			Message: "Not connected yet (paste a read-only token in Connected Apps).",
+			Message: "Not connected yet (paste a read-only token in Apps).",
 			Latency: time.Since(start).Milliseconds(),
 		}
 	}

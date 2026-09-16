@@ -44,8 +44,8 @@ func TestConnectedServicesAllMissing(t *testing.T) {
 			t.Fatalf("aggregate must name %q: %q", want, res.Message)
 		}
 	}
-	if !strings.Contains(res.Message, "Connected Apps") {
-		t.Fatalf("aggregate must point at Connected Apps: %q", res.Message)
+	if !strings.Contains(res.Message, "Apps") {
+		t.Fatalf("aggregate must point at Apps: %q", res.Message)
 	}
 }
 

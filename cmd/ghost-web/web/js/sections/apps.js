@@ -3,16 +3,16 @@
 'use strict';
 
 async function loadIntegrations(container) {
-  if (GhostApp.currentSection() !== 'integrations') return;
+  if (GhostApp.currentSection() !== 'apps') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
-  head.appendChild(GhostUI.h('h1', {}, 'Connected Apps'));
+  head.appendChild(GhostUI.h('h1', {}, 'Apps'));
   head.appendChild(GhostUI.h('p', {}, 'The apps and services Ghost can reach — Gmail, Google Calendar, flight tracking, Home Assistant, and camera.'));
   container.appendChild(head);
 
   const panel = GhostUI.h('div', { className: 'panel' });
   const listEl = GhostUI.h('div', { id: 'int-list' });
-  listEl.appendChild(GhostUI.loading('Loading integrations…'));
+  listEl.appendChild(GhostUI.loading('Loading apps…'));
   panel.appendChild(listEl);
   container.appendChild(panel);
 
@@ -424,4 +424,4 @@ function editHass(configured) {
   ]);
 }
 
-GhostApp.registerSection('integrations', loadIntegrations);
+GhostApp.registerSection('apps', loadIntegrations);

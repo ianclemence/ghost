@@ -12,8 +12,9 @@ const GhostApp = (() => {
   // Ghost is ONE persistent personal AI. There is no chat list, no "New
   // Chat", and no conversation switcher. Home is the relationship; Memory is
   // what Ghost knows; Activity is what Ghost has done; Routines are what
-  // Ghost does automatically; Connected Apps are what Ghost can access;
-  // Devices are where Ghost has hands. System holds owner/appliance config.
+  // Ghost does automatically. Connect holds everything reaching in or out:
+  // Devices are where Ghost has hands, Channels are where it reaches you,
+  // Apps are what it can access. System holds owner/appliance config.
   const NAV = [
     {
       label: 'Ghost',
@@ -22,14 +23,14 @@ const GhostApp = (() => {
         { name: 'memory', title: 'Memory', glyph: 'memory' },
         { name: 'activity', title: 'Activity', glyph: 'activity' },
         { name: 'routines', title: 'Routines', glyph: 'automation' },
-        { name: 'devices', title: 'Devices', glyph: 'device' },
-        { name: 'integrations', title: 'Connected Apps', glyph: 'integrations' },
       ],
     },
     {
       label: 'Connect',
       items: [
+        { name: 'apps', title: 'Apps', glyph: 'apps' },
         { name: 'channels', title: 'Channels', glyph: 'channel' },
+        { name: 'devices', title: 'Devices', glyph: 'device' },
       ],
     },
     {
@@ -55,7 +56,7 @@ const GhostApp = (() => {
     skill: '<path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/><line x1="16" y1="8" x2="2" y2="22" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><line x1="17.5" y1="15" x2="9" y2="15" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
     device: '<rect x="5" y="2" width="14" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><line x1="12" y1="18" x2="12.01" y2="18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
     channel: '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
-    integrations: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
+    apps: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     system: '<rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="10" y="10" width="4" height="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
     ai: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
     security: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/>',
