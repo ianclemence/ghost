@@ -72,6 +72,12 @@ and implementations. A tool name is never the permission identity. See
 There is deliberately no generic `execute(capability, args)` surface. A single
 unrestricted executor would hide the old problem behind an escape hatch.
 
+The on-device Mini is the limiting case of this design: it sees no tool
+surfaces at all. The phone answers from bounded context plus deterministically
+injected notebook facts; collection (`remember ...`) is a pipeline rule, never
+a model-invoked tool call. Anything needing tools, routines, or hardware
+routes to the Pod.
+
 ## Ambiguity and clarification
 
 When a request is ambiguous, Ghost asks rather than guessing at a consequential

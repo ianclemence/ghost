@@ -18,6 +18,11 @@ The user interacts with Ghost in ordinary language — through a chat channel,
 the Web Console, or a paired device. They do not issue structured commands to
 internal machinery.
 
+A paired phone with Ghost Mini downloaded also works while the Pod is
+unreachable: it answers and collects (`remember ...` notes, queued messages),
+then syncs on reconnect. It never executes actions offline — routines, home
+control, and full memory stay on the Pod.
+
 Examples:
 
 | The user says | The user means |
@@ -110,6 +115,11 @@ The user should not need to know:
 - permission internals or event schemas;
 - how credentials are stored;
 - model selection or routing.
+
+One deliberate exception: every phone answer says where it ran (on this phone
+vs home Pod). Routing disclosure is the user's only window into a distributed
+runtime, and hiding it would read as untrustworthy when answers differ in
+strength.
 
 ## Related concepts
 

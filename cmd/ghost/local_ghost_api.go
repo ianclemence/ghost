@@ -32,17 +32,18 @@ var podSyncLog = memsync.NewLog()
 
 // mobileCatalog is the seed registry of phone-local model artifacts.
 //
-// Sizes are publisher estimates (size_estimated) and manifests are unsigned:
-// the phone pins the observed SHA-256 on first verified download and shows
-// these models as "unverified publisher" until the operator publishes signed
-// manifests. URLs point at the real upstream GGUF repos; exact per-file
-// hashes are resolved at publish time via the signed-manifest flow.
+// Travel-cache policy: Mini only. ghost-balanced-1 (1.7B) was retired — it
+// doubled QA/storage/support for marginal quality that still loses to the
+// Pod. Sizes are publisher estimates (size_estimated) and manifests are
+// unsigned: the phone pins the observed SHA-256 on first verified download.
+// URLs point at the real upstream GGUF repos; exact per-file hashes are
+// resolved at publish time via the signed-manifest flow.
 func mobileCatalog() []modelreg.Manifest {
 	return []modelreg.Manifest{
 		{
 			ID: "ghost-mini-1", Version: "1.0.0", ManifestVers: modelreg.ManifestVersion,
 			Role:         "language",
-			Capabilities: []string{"chat", "tool_calling", "structured_output"},
+			Capabilities: []string{"chat"},
 			Runtime:      "mobile-local", Format: "gguf", Quantization: "Q4_K_M",
 			SizeBytes:     650 * 1024 * 1024,
 			SizeEstimated: true,
@@ -50,18 +51,6 @@ func mobileCatalog() []modelreg.Manifest {
 			Archs:         []string{"arm64"},
 			MinRAMMB:      4000, RecRAMMB: 6000,
 			DownloadURL: "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf",
-		},
-		{
-			ID: "ghost-balanced-1", Version: "1.0.0", ManifestVers: modelreg.ManifestVersion,
-			Role:         "language",
-			Capabilities: []string{"chat", "tool_calling", "structured_output"},
-			Runtime:      "mobile-local", Format: "gguf", Quantization: "Q4_K_M",
-			SizeBytes:     1250 * 1024 * 1024,
-			SizeEstimated: true,
-			Platforms:     []string{"android", "ios"},
-			Archs:         []string{"arm64"},
-			MinRAMMB:      6000, RecRAMMB: 8000,
-			DownloadURL: "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf",
 		},
 	}
 }

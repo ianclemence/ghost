@@ -461,7 +461,7 @@ The gateway listens on the LAN (`0.0.0.0:8766`) with a layered trust model. Loop
 | `/var/ghost/` | `0700` | Ghost installation root |
 | `/var/ghost/config/` | `0700` | Configuration and secrets |
 | `/var/ghost/data/` | `0700` | Admin password hash, metadata |
-| `/var/ghost/workspace/` | `0755` | Skills, memory, sessions |
+| `/var/lib/ghost/workspace/` | `0755` | Skills, memory, sessions (`/var/ghost/workspace` is a legacy fallback) |
 
 ---
 
@@ -512,7 +512,9 @@ sudo tailscale up
 tailscale ip -4
 ```
 
-Use that IP in app settings.
+Use that IP in app settings. The gateway listens on the LAN
+(`0.0.0.0:8766`), so same-network and Tailscale connections reach it directly
+with device credentials; the relay tunnel is only needed off-network.
 
 ### Mobile API Endpoints
 
@@ -520,20 +522,43 @@ Key HTTP endpoints the app uses on port `8766`:
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
-| `/v1/health` | GET | Connectivity + latency check |
+| `/v1/health` | GET | Connectivity + latency check (authed; loopback bypass) |
 | `/v1/chat` | POST | Send a chat message (SSE stream) |
+| `/v1/history` | GET | Conversation history |
 | `/v1/steering` | POST | Redirect / interrupt / abort the running agent loop |
 | `/v1/clarify/respond` | POST | Answer an in-flight clarification question |
 | `/v1/model` | GET/POST | Read active model + presets, switch model |
-| `/v1/sessions` | GET | List recent sessions with titles and activity |
 | `/v1/doctor` | GET | Diagnostics and service health checks |
 | `/v1/tools` | GET | List available skills/tools |
+| `/v1/identity` | GET | Owner/Ghost identity |
+| `/v1/activity` | GET | User-safe activity |
+| `/v1/permissions/requests` + `/v1/permissions/resolve` | GET/POST | Pending approvals |
+| `/v1/routines` | GET/POST | Routines |
+| `/v1/goals` | GET/POST | Goals |
+| `/v1/connected-apps` | GET/POST | Connected services |
+| `/v1/intelligence/config` | GET/POST | AI config (masked keys, routing) |
+| `/v1/ollama/models` + `/v1/ollama/pull` | GET/POST | Local model management |
+| `/v1/models/catalog` | GET | Phone-local model catalog (Mini only) |
+| `/v1/sync/ops` | GET/POST | Memory-sync op push/pull |
+| `/v1/voice/turn` | POST | Voice message transcription + reply |
 
-All mobile API endpoints require device credentials (`X-Ghost-Device-ID` + `X-Ghost-Credential` headers).
+All mobile API endpoints require device credentials (`X-Ghost-Device-ID` +
+`X-Ghost-Credential` headers) unless the request arrives on loopback, which the
+gateway trusts. Auth failures return `401` (`authentication_required` /
+`authentication_failed`); the only public pairing endpoint is
+`POST /v1/pairing/complete`, where the short-lived token is the authorization.
 
 WebSocket messages on `/v1/ws` are broadcast per channel; `mobile` receives
 `assistant_message`, `clarify_request`, `canvas_update`, `cron_update`, and
-`progress_event` payloads.
+`progress_event` payloads. The app opens `/v1/ws` without auth headers
+(React Native WebSockets can't set them).
+
+### Offline phone (travel cache)
+
+With Ghost Mini downloaded, the phone answers and collects (`remember ...`
+notes + queued messages) while the Pod is unreachable, then syncs on
+reconnect. Routines, home control, files, notifications, and full memory stay
+on the Pod. Chat shows where each answer ran: phone vs home Pod.
 
 ---
 

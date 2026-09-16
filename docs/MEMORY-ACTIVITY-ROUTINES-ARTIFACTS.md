@@ -53,6 +53,16 @@ Conversation is not memory. A conversation can inform memory through governed
 extraction, but memory is a curated, provenance-bearing store, not a raw
 transcript.
 
+## Phone collection and op sync
+
+An offline phone collects without governing: `remember ...` queues a
+`shared_durable` op, and queued chat turns wait in the outbox. On reconnect
+the phone pushes ops to `POST /v1/sync/ops` and pulls Pod ops; application is
+idempotent (`op_id` dedupe, version-ordered), so retries never duplicate.
+Phone-local facts are origin-stamped, never promoted above Pod-curated belief
+until merged through the governed path. Implementation: `pkg/memsync` on the
+Pod, `ghost-sync.db` on the phone.
+
 ---
 
 # Activity
