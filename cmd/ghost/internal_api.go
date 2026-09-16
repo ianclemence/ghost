@@ -4974,6 +4974,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	// ── Live Surface plane (browser/computer control + observation) ──────
 	registerLiveSurfaceRoutes(mux, agentLoop)
 	registerBrowserStreamRoutes(mux, agentLoop)
+	registerLiveVoiceRoutes(mux, agentLoop)
 
 	// ── Artifacts (runtime-validated handoffs) ────────────────────────────
 	registerArtifactRoutes(mux)
