@@ -845,7 +845,30 @@ func cardTitle(capability, action string) string {
 	if idx := strings.Index(act, ":"); idx >= 0 {
 		act = act[idx+1:]
 	}
+	lcCap := strings.ToLower(capability)
+	lcAct := strings.ToLower(act)
+	has := func(words ...string) bool {
+		for _, w := range words {
+			if strings.Contains(lcCap, w) || strings.Contains(lcAct, w) {
+				return true
+			}
+		}
+		return false
+	}
 	switch {
+	// Running things is the highest-stakes grant: name it exactly.
+	case has("exec", "shell", "sandbox"):
+		return "Run commands on this Ghost?"
+	case has("computer"):
+		if has("inspect", "screenshot") {
+			return "See this computer's screen?"
+		}
+		return "Control this computer?"
+	case has("browser"):
+		if has("click", "type", "press", "submit", "transact", "control") {
+			return "Control the browser?"
+		}
+		return "Read web pages?"
 	case strings.Contains(capability, "calendar"):
 		if strings.Contains(act, "create") || strings.Contains(act, "add") {
 			return "Add calendar event?"

@@ -242,6 +242,32 @@ func TestApprovalCardShape(t *testing.T) {
 	}
 }
 
+func TestApprovalCardExecutionTitles(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	cases := map[string]string{
+		"exec.shell":      "Run commands on this Ghost?",
+		"sandbox.exec":    "Run commands on this Ghost?",
+		"computer.click":  "Control this computer?",
+		"computer.inspect": "See this computer's screen?",
+		"browser.transact": "Control the browser?",
+	}
+	i := 0
+	for cap, want := range cases {
+		i++
+		req, err := b.Require("req-card-"+strings.ReplaceAll(cap, ".", "-"), "sess-1", "a", cap, "run", "owner", "", RiskConsequential, nil)
+		if err != nil {
+			t.Fatalf("Require(%q): %v", cap, err)
+		}
+		card, ok := req.Card()
+		if !ok {
+			t.Fatal("pending must project a card")
+		}
+		if card.Title != want {
+			t.Fatalf("card title for %q = %q, want %q", cap, card.Title, want)
+		}
+	}
+}
+
 func TestScopeForCanonical(t *testing.T) {
 	cases := []struct {
 		session, to, contact, want string

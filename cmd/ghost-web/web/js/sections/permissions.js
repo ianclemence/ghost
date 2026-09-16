@@ -63,25 +63,45 @@ function riskWords(risk) {
 }
 
 // permTitle mirrors the backend ApprovalCard vocabulary (cardTitle in
-// pkg/permissions) for places that have no card — standing grants. New
-// capability families fall back to plain action words, never raw ids.
+// pkg/permissions) for places that have no card — standing grants. Every
+// known family names what Ghost may DO, in owner words. Unknown families
+// fall back to plain action words, never raw ids.
 function permTitle(capability, action) {
-  const cap = String(capability || '');
-  let act = String(action || '');
+  const cap = String(capability || '').toLowerCase();
+  let act = String(action || '').toLowerCase();
   const ci = act.indexOf(':');
   if (ci >= 0) act = act.slice(ci + 1);
-  const has = (...words) => words.some(w => cap.includes(w));
+  const has = (...words) => words.some(w => cap.includes(w) || act.includes(w));
+  // Running things is the highest-stakes grant: name it exactly.
+  if (has('exec', 'shell', 'sandbox')) return 'Run commands on this Ghost';
+  if (has('computer')) {
+    return (/inspect|screenshot|read|observe/.test(act) || /inspect|screenshot/.test(cap))
+      ? 'See this computer\u2019s screen' : 'Control this computer';
+  }
+  if (has('browser')) {
+    return (/click|type|press|submit|transact|control/.test(act))
+      ? 'Control the browser' : 'Read web pages';
+  }
+  if (has('mcp')) return 'Use outside tools';
+  if (has('system')) return 'Update Ghost itself';
   if (has('calendar')) return (/create|add/.test(act) ? 'Add calendar events' : 'Use your calendar');
   if (has('telegram', 'message')) return 'Send messages';
   if (has('mail', 'email')) return 'Send email';
-  if (has('hass', 'home')) return 'Control home devices';
-  if (has('file', 'delete')) return 'Change files';
+  if (has('hass', 'home', 'device')) {
+    return (/read|inspect|status|list/.test(act) ? 'See home device status' : 'Control home devices');
+  }
+  if (has('camera')) return 'Use the camera';
+  if (has('file')) return (/read|open|list|search/.test(act) ? 'Read files' : 'Change files');
   if (has('reminder')) return 'Manage reminders';
-  if (has('routine', 'schedul')) return 'Manage routines';
+  if (has('routine', 'schedul', 'cron', 'task', 'job')) return 'Manage routines';
   if (has('artifact')) return 'Create files and documents';
-  if (has('browser')) return 'Browse the web for you';
-  if (has('computer')) return 'Control this computer';
-  if (has('weather', 'aqi', 'currency', 'crypto', 'places', 'flight')) return 'Look up information';
+  if (has('goal')) return 'Manage goals';
+  if (has('memory', 'recall', 'forget')) {
+    return (/read|recall|search|list/.test(act) ? 'Recall what Ghost remembers' : 'Remember things about you');
+  }
+  if (has('weather')) return 'Check the weather';
+  if (has('flight')) return 'Check flight status';
+  if (has('aqi', 'currency', 'crypto', 'places', 'repository', 'search', 'fetch')) return 'Look up information';
   if (act && act !== cap) return 'Allow ' + act.replace(/[_.-]+/g, ' ').trim();
   return 'Allow this action';
 }
@@ -148,24 +168,44 @@ function paintGrants(el, grants, refresh) {
   } else if (grants.length === 0) {
     list.appendChild(GhostUI.emptyState('No standing permissions', 'Choose \u201cAlways allow\u201d on any approval to add one.'));
   } else {
+    // Group identical grants: several chats each holding "run commands"
+    // would otherwise render as mystery duplicates. One row per
+    // (permission, scope) group; Revoke clears the whole group.
+    const groups = new Map();
     grants.forEach(g => {
       if (String(g.action).startsWith('deny:')) return; // denials are policy, not grants
+      const key = permTitle(g.capability, g.action) + '|' + scopeLabel(g.scope);
+      if (!groups.has(key)) groups.set(key, { title: permTitle(g.capability, g.action), scope: scopeLabel(g.scope), items: [] });
+      groups.get(key).items.push(g);
+    });
+    if (groups.size === 0) {
+      list.appendChild(GhostUI.emptyState('No standing permissions', 'Choose \u201cAlways allow\u201d on any approval to add one.'));
+    }
+    groups.forEach(gr => {
       const row = GhostUI.h('div', { className: 'ghost-row' });
       const c = GhostUI.h('div', { className: 'ghost-row-content' });
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, permTitle(g.capability, g.action)));
-      // Standing grants carry no risk field; scope plus expiry is the
-      // honest subtitle (grants expire — authority must not accumulate).
-      let grantSub = 'Applies to: ' + scopeLabel(g.scope);
-      if (g.expires_at) {
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, gr.title));
+      // Standing grants carry no risk field; scope plus count plus earliest
+      // expiry is the honest subtitle (grants expire — authority must not
+      // accumulate).
+      let grantSub = 'Applies to: ' + gr.scope;
+      if (gr.items.length > 1) grantSub += ' \u00b7 ' + gr.items.length + ' saved';
+      let earliest = null;
+      gr.items.forEach(g => {
+        if (!g.expires_at) return;
         const d = new Date(g.expires_at);
-        if (!isNaN(d.getTime())) grantSub += ' \u00b7 Expires ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-      }
+        if (isNaN(d.getTime())) return;
+        if (!earliest || d < earliest) earliest = d;
+      });
+      if (earliest) grantSub += ' \u00b7 Expires ' + earliest.toLocaleDateString([], { month: 'short', day: 'numeric' });
       c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, grantSub));
       row.appendChild(c);
       row.appendChild(GhostUI.h('div', { className: 'ghost-row-trailing' },
         GhostUI.btn('Revoke', 'secondary', async () => {
           try {
-            await GhostAPI.proxyPost('/v1/permissions/revoke', { capability: g.capability, action: g.action, scope: g.scope });
+            for (const g of gr.items) {
+              await GhostAPI.proxyPost('/v1/permissions/revoke', { capability: g.capability, action: g.action, scope: g.scope });
+            }
           } catch (e) { GhostUI.toast('Couldn\u2019t revoke \u2014 try again.'); return; }
           refresh();
         })));
