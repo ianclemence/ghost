@@ -6,7 +6,7 @@ async function loadAI(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Intelligence'));
-  head.appendChild(GhostUI.h('p', {}, 'Appliance setup: which provider and model Ghost runs on, and AI health. This is owner configuration, not something you change while talking to Ghost.'));
+  head.appendChild(GhostUI.h('p', {}, 'Which AI Ghost runs on, and whether it is healthy.'));
   container.appendChild(head);
 
   const [providerModelsRes, cfgRes, ollamaRes, modelRes] = await Promise.allSettled([
