@@ -180,8 +180,8 @@ func TestConvertConfig(t *testing.T) {
 	t.Run("unsupported provider warning", func(t *testing.T) {
 		data := map[string]interface{}{
 			"providers": map[string]interface{}{
-				"deepseek": map[string]interface{}{
-					"api_key": "sk-deep-test",
+				"cohere": map[string]interface{}{
+					"api_key": "sk-cohere-test",
 				},
 			},
 		}
@@ -193,8 +193,35 @@ func TestConvertConfig(t *testing.T) {
 		if len(warnings) != 1 {
 			t.Fatalf("expected 1 warning, got %d", len(warnings))
 		}
-		if warnings[0] != "Provider 'deepseek' not supported in Ghost, skipping" {
+		if warnings[0] != "Provider 'cohere' not supported in Ghost, skipping" {
 			t.Errorf("unexpected warning: %s", warnings[0])
+		}
+	})
+
+	t.Run("deepseek and moonshot keys migrate", func(t *testing.T) {
+		data := map[string]interface{}{
+			"providers": map[string]interface{}{
+				"deepseek": map[string]interface{}{
+					"api_key": "sk-deep-test",
+				},
+				"moonshot": map[string]interface{}{
+					"api_key": "sk-moon-test",
+				},
+			},
+		}
+
+		cfg, warnings, err := ConvertConfig(data)
+		if err != nil {
+			t.Fatalf("ConvertConfig: %v", err)
+		}
+		if len(warnings) != 0 {
+			t.Errorf("expected no warnings, got %v", warnings)
+		}
+		if cfg.Providers.DeepSeek.APIKey != "sk-deep-test" {
+			t.Errorf("DeepSeek.APIKey = %q, want %q", cfg.Providers.DeepSeek.APIKey, "sk-deep-test")
+		}
+		if cfg.Providers.Moonshot.APIKey != "sk-moon-test" {
+			t.Errorf("Moonshot.APIKey = %q, want %q", cfg.Providers.Moonshot.APIKey, "sk-moon-test")
 		}
 	})
 
@@ -293,8 +320,11 @@ func TestConvertConfig(t *testing.T) {
 		if len(warnings) != 0 {
 			t.Errorf("expected no warnings, got %v", warnings)
 		}
-		if cfg.Agents.Defaults.Model != "kimi-k2.5" {
-			t.Errorf("default model should be kimi-k2.5, got %q", cfg.Agents.Defaults.Model)
+		if cfg.Agents.Defaults.Provider != "deepseek" {
+			t.Errorf("default provider should be deepseek, got %q", cfg.Agents.Defaults.Provider)
+		}
+		if cfg.Agents.Defaults.Model != "deepseek-flash" {
+			t.Errorf("default model should be deepseek-flash, got %q", cfg.Agents.Defaults.Model)
 		}
 	})
 }

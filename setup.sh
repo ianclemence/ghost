@@ -141,7 +141,7 @@ EOF
         echo -e "${RED}Common causes:${NC}"
         echo "  1. .env file missing at ${HOME}/ghost/.env"
         echo "  2. Binary not found at ${HOME}/.local/bin/ghost — run: make install"
-        echo "  3. KIMI_API_KEY not set in .env"
+        echo "  3. DEEPSEEK_API_KEY not set in .env"
         return 1
     fi
 }

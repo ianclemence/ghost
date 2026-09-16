@@ -16,6 +16,8 @@ var supportedProviders = map[string]bool{
 	"openai":     true,
 	"openrouter": true,
 	"groq":       true,
+	"deepseek":   true,
+	"moonshot":   true,
 	"zhipu":      true,
 	"vllm":       true,
 	"gemini":     true,
@@ -108,9 +110,13 @@ func ConvertConfig(data map[string]interface{}) (*config.Config, []string, error
 				cfg.Providers.OpenAI = pc
 			case "openrouter":
 				cfg.Providers.OpenRouter = pc
-			case "groq":
-				cfg.Providers.Groq = pc
-			case "zhipu":
+		case "groq":
+			cfg.Providers.Groq = pc
+		case "deepseek":
+			cfg.Providers.DeepSeek = pc
+		case "moonshot":
+			cfg.Providers.Moonshot = pc
+		case "zhipu":
 				cfg.Providers.Zhipu = pc
 			case "vllm":
 				cfg.Providers.VLLM = pc

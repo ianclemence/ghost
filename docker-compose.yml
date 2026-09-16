@@ -11,8 +11,8 @@ services:
       - ghost-data:/var/ghost/data
       - ghost-workspace:/var/lib/ghost/workspace
     environment:
-      - GHOST_AGENTS_DEFAULTS_PROVIDER=${GHOST_PROVIDER:-moonshot}
-      - GHOST_AGENTS_DEFAULTS_MODEL=${GHOST_MODEL:-kimi-k2.5}
+      - GHOST_AGENTS_DEFAULTS_PROVIDER=${GHOST_PROVIDER:-deepseek}
+      - GHOST_AGENTS_DEFAULTS_MODEL=${GHOST_MODEL:-deepseek-flash}
       - KIMI_API_KEY=${KIMI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
