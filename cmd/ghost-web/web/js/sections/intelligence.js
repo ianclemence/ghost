@@ -1,11 +1,11 @@
-/* Ghost Section: AI — default model, providers, routing, health. */
+/* Ghost Section: Intelligence — default model, providers, routing, health. */
 'use strict';
 
 async function loadAI(container) {
-  if (GhostApp.currentSection() !== 'ai') return;
+  if (GhostApp.currentSection() !== 'intelligence') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
-  head.appendChild(GhostUI.h('h1', {}, 'AI & providers'));
+  head.appendChild(GhostUI.h('h1', {}, 'Intelligence'));
   head.appendChild(GhostUI.h('p', {}, 'Appliance setup: which provider and model Ghost runs on, and AI health. This is owner configuration, not something you change while talking to Ghost.'));
   container.appendChild(head);
 
@@ -449,4 +449,4 @@ function renderDiag(panel) {
   });
 }
 
-GhostApp.registerSection('ai', loadAI);
+GhostApp.registerSection('intelligence', loadAI);

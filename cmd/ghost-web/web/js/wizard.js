@@ -234,7 +234,7 @@ const GhostWizard = (() => {
               provider: 'ollama',
             });
           } catch (e) {
-            GhostUI.toast('Couldn\u2019t save that model \u2014 you can pick one later in AI settings.', 'err');
+            GhostUI.toast('Couldn\u2019t save that model \u2014 you can pick one later under Intelligence.', 'err');
           }
           goTo('cloud-ai');
         }}, 'Use this model'),
@@ -319,7 +319,7 @@ const GhostWizard = (() => {
       save.disabled = true;
       try {
         await GhostAPI.post('/api/admin/config/save', { api_keys: { [provider.key]: val } });
-        GhostUI.toast(provider.label + ' key saved \u2014 Ghost keeps your current model; switch anytime in AI settings.');
+        GhostUI.toast(provider.label + ' key saved \u2014 Ghost keeps your current model; switch anytime under Intelligence.');
         renderStep();
       } catch (e) { GhostUI.toast('Couldn\u2019t save that key.', 'err'); save.disabled = false; }
     });

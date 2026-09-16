@@ -23,6 +23,8 @@ const GhostApp = (() => {
         { name: 'memory', title: 'Memory', glyph: 'memory' },
         { name: 'activity', title: 'Activity', glyph: 'activity' },
         { name: 'routines', title: 'Routines', glyph: 'automation' },
+        { name: 'skills', title: 'Skills', glyph: 'skill' },
+        { name: 'intelligence', title: 'Intelligence', glyph: 'ai' },
       ],
     },
     {
@@ -36,10 +38,8 @@ const GhostApp = (() => {
     {
       label: 'System',
       items: [
-        { name: 'skills', title: 'Skills', glyph: 'skill' },
         { name: 'automations', title: 'Automations', glyph: 'automation' },
         { name: 'system', title: 'System', glyph: 'system' },
-        { name: 'ai', title: 'AI & providers', glyph: 'ai' },
         { name: 'security', title: 'Security', glyph: 'security' },
         { name: 'help', title: 'Help', glyph: 'help' },
         { name: 'about', title: 'About', glyph: 'about' },

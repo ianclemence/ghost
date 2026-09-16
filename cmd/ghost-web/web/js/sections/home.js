@@ -418,7 +418,7 @@ function channelTitle(name) {
 
 function ctaForCheck(name) {
   const n = (name || '').toLowerCase();
-  if (n.includes('ollama') || n.includes('model')) return { label: 'Check AI', section: 'ai' };
+  if (n.includes('ollama') || n.includes('model')) return { label: 'Check AI', section: 'intelligence' };
   if (n.includes('connect')) return { label: 'Open Apps', section: 'apps' };
   if (n.includes('memory')) return { label: 'View memory', section: 'memory' };
   if (n.includes('channel')) return { label: 'Check channels', section: 'channels' };
