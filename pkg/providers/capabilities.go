@@ -30,6 +30,12 @@ func Describe(spec string) Capability {
 		ToolCalling: true, MaxContext: 8192}
 
 	switch {
+	case strings.Contains(provider, "sting") || strings.Contains(m, "sting"):
+		// Offline tool-router: structured calls only, no prose, no
+		// vision/reasoning. 256-token window; ~60MB resident.
+		c.MaxContext = 256
+		c.ToolCalling = true
+		c.EstimatedRAMMB = 60
 	case strings.Contains(m, "deepseek"):
 		c.MaxContext = 1_000_000
 		c.Reasoning = true

@@ -10,7 +10,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/config"
 )
 
-// DefaultWorkspaceDir is where an appliance keeps its runtime workspace.
+// DefaultWorkspaceDir is where a personal AI keeps its runtime workspace.
 // It lives outside the install tree so user data never mixes with the
 // deployment and never interferes with git pulls in checkout layouts.
 const DefaultWorkspaceDir = "/var/lib/ghost/workspace"
@@ -29,7 +29,7 @@ func ResolveWorkspaceDir(ghostDir string) string {
 	return DefaultWorkspaceDir
 }
 
-// WorkspaceMigrationPlan describes moving the appliance workspace from the
+// WorkspaceMigrationPlan describes moving the Ghost workspace from the
 // legacy <ghostDir>/workspace location inside the install tree to
 // DefaultWorkspaceDir.
 type WorkspaceMigrationPlan struct {
@@ -113,7 +113,7 @@ func PlanWorkspaceMigrationFromDisk(ghostDir, targetDir string) (*WorkspaceMigra
 	return plan, nil
 }
 
-// MigrateWorkspaceIfNeeded moves the appliance workspace from the legacy
+// MigrateWorkspaceIfNeeded moves the Ghost workspace from the legacy
 // <ghostDir>/workspace location to the runtime location when needed. It is
 // safe to call on every gateway start and during updates: it only acts when
 // the configured workspace is exactly the legacy layout, and it refuses to

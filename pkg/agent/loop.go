@@ -1206,7 +1206,7 @@ func (al *AgentLoop) AuthorizeScheduledCommand(ctx context.Context, command stri
 // processMessage is the panic boundary for one turn. A panic anywhere in
 // turn processing (tool executor, provider call, browser/computer driver)
 // is contained here, converted into a deterministic failed turn, and never
-// allowed to crash the appliance. The inner implementation does the work.
+// allowed to crash the personal AI. The inner implementation does the work.
 func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage, onChunk func(string), onToolCall func(string, string)) (resp string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1442,6 +1442,24 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.tryDeterministicNetworkDispatch(msg.Content, msg.SessionKey, msg.Metadata); ok {
 			logger.InfoCF("agent", "deterministic network dispatch",
+				map[string]interface{}{"session_key": msg.SessionKey})
+			if onChunk != nil && ans != "" {
+				onChunk(ans)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return endTurn(ans, nil)
+		}
+	}
+	// Sting offline router fast-path: read-only tools routed locally
+	// with zero LLM calls. Anything unroutable (sidecar down, low
+	// confidence, non-read-only) falls through to the normal loop.
+	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+		if ans, ok := al.tryStingTurn(msg.Content, msg.SessionKey); ok {
+			logger.InfoCF("agent", "sting fast-path: routed locally",
 				map[string]interface{}{"session_key": msg.SessionKey})
 			if onChunk != nil && ans != "" {
 				onChunk(ans)

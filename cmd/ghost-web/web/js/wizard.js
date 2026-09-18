@@ -5,6 +5,7 @@ const GhostWizard = (() => {
   let _container;
   let _state = {
     step: 'welcome',
+    setupCode: '',
     ownerName: '',
     ghostName: 'Ghost',
     password: '',
@@ -53,8 +54,50 @@ const GhostWizard = (() => {
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-callout text-secondary' },
       'A personal AI that lives on your hardware, remembers what matters, and keeps working for you.'
     ));
+
+    // Phone handoff: a QR carrying only the Pod address (never the setup
+    // code, which stays a device-only secret). Scan it with the Ghost app to
+    // prefill the address, then type the code from the device.
+    const qrWrap = GhostUI.h('div', {});
+    qrWrap.style.marginTop = 'var(--space-xl)';
+    qrWrap.style.display = 'flex';
+    qrWrap.style.flexDirection = 'column';
+    qrWrap.style.alignItems = 'center';
+    const qrCanvas = document.createElement('canvas');
+    qrWrap.appendChild(qrCanvas);
+    screen.appendChild(qrWrap);
+    fetch('/api/status').then((r) => r.json()).then((s) => {
+      const host = window.location.hostname || '';
+      const port = String(s.console_port || window.location.port || '80');
+      const pod = s.pod_id || '';
+      const uri = 'ghost://setup?v=1&host=' + encodeURIComponent(host) +
+        '&port=' + encodeURIComponent(port) + '&pod=' + encodeURIComponent(pod);
+      let ok = false;
+      try { ok = GhostQR.draw(uri, qrCanvas, 4); } catch (e) { ok = false; }
+      if (ok) {
+        qrWrap.appendChild(GhostUI.h('div', {
+          className: 'type-footnote text-tertiary',
+          style: 'margin-top:var(--space-sm)',
+        }, 'Scan with the Ghost app to set up from your phone'));
+      }
+    }).catch(() => {});
+
+    // Setup code: proves local presence so a host on the network cannot claim
+    // an unconfigured Ghost. Printed in the console output on the device.
+    const codeInput = GhostUI.input('Setup code');
+    codeInput.value = _state.setupCode;
+    codeInput.addEventListener('input', (e) => { _state.setupCode = e.target.value.trim(); });
+    codeInput.style.marginTop = 'var(--space-xl)';
+    screen.appendChild(codeInput);
+    screen.appendChild(GhostUI.h('div', { className: 'type-footnote text-tertiary', style: 'margin-top:var(--space-sm)' },
+      'Shown in the Ghost console output on the device: journalctl -u ghost-web | grep "Setup code"'
+    ));
+
     screen.appendChild(GhostUI.h('div', { className: 'wizard-actions' },
-      GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary ghost-btn-lg', onClick: () => goTo('identity') }, 'Set up Ghost')
+      GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary ghost-btn-lg', onClick: () => {
+        if (!_state.setupCode) { GhostUI.toast('Enter the setup code shown on your Ghost.'); return; }
+        goTo('identity');
+      }}, 'Set up Ghost')
     ));
   }
 
@@ -147,6 +190,7 @@ const GhostWizard = (() => {
     try {
       await GhostAPI.post('/api/configure', {
         admin_password: _state.password,
+        setup_code: _state.setupCode,
         owner_name: _state.ownerName,
         ghost_name: _state.ghostName,
       });

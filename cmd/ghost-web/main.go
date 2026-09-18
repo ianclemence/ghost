@@ -23,6 +23,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
@@ -54,6 +55,9 @@ var (
 	sessions = newSessionStore()
 	// loginThrottle tracks consecutive failed login attempts per client IP.
 	loginThrottle = newLoginThrottle()
+	// setupThrottle limits wrong setup-code attempts per client IP, so the
+	// first-run claim cannot be brute-forced from the LAN.
+	setupThrottle = newLoginThrottle()
 )
 
 // sessionRecord stores everything we know about an active admin session so
@@ -480,6 +484,17 @@ func main() {
 	// live throttle re-learns.
 	loginThrottle.load(filepath.Join(fb.DataDir, "login-throttle.json"))
 
+	// First-run claim protection: while Ghost is unconfigured, mint a fresh
+	// setup code and print it to the console/journal. The first configure must
+	// present it, so a remote LAN host cannot claim an unconfigured Ghost.
+	if fb.NeedsSetup() {
+		if code, cerr := fb.RotateSetupCode(); cerr != nil {
+			log.Printf("WARNING: could not create setup code: %v", cerr)
+		} else {
+			log.Printf("Setup code: %s — enter this to claim this Ghost (journalctl -u ghost-web | grep 'Setup code')", code)
+		}
+	}
+
 	// Reconcile bundled skills against the runtime workspace. On a fresh
 	// checkout layout this seeds the wizard's skills tab; on every start it
 	// refreshes unchanged bundled skills and always preserves user edits. On
@@ -527,7 +542,6 @@ func main() {
 	mux.HandleFunc("/api/login", handleLogin)
 	mux.HandleFunc("/api/logout", handleLogout)
 	mux.HandleFunc("/api/configure", handleConfigure)
-	mux.HandleFunc("/api/pairing-code", handlePairingCode)
 	mux.HandleFunc("/api/ollama/models", handleOllamaModels)
 	mux.HandleFunc("/api/ollama/pull", handleOllamaPull)
 	mux.HandleFunc("/api/ollama/delete", handleOllamaDelete)
@@ -666,6 +680,21 @@ func main() {
 	// Absent avahi only logs; discovery degrades to the LAN IP, never a
 	// startup failure.
 	if adv := appliance.NewMDNSAdvertiser(boundPort, version); adv != nil {
+		// Discovery metadata for phones: the stable pod id, the transport,
+		// both ports (setup console + gateway), and whether setup is needed.
+		// Without this a phone has no way to find an unconfigured Ghost.
+		podID, _ := ghoststate.GetPodID(fb.Workspace)
+		setupState := "needed"
+		if !fb.NeedsSetup() {
+			setupState = "done"
+		}
+		adv.TXT = map[string]string{
+			"pod_id":       podID,
+			"transport":    "lan",
+			"console_port": fmt.Sprintf("%d", boundPort),
+			"api_port":     fmt.Sprintf("%d", defaultGatewayPort),
+			"setup":        setupState,
+		}
 		if aerr := adv.Available(); aerr != nil {
 			log.Printf("mDNS: ghost.local unavailable (%v) — install avahi-daemon, or use the LAN IP below.", aerr)
 		} else if aerr := adv.Advertise(); aerr != nil {
@@ -951,11 +980,25 @@ func handleConnectWiFi(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// defaultGatewayPort is the port the ghost gateway binds to once setup is
+// complete. The console advertises it so a phone can discover both the
+// setup surface (this console) and the API surface (the gateway).
+const defaultGatewayPort = 8766
+
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	// pod_id is the stable pairing identifier; best-effort, empty if the
+	// workspace is not writable yet. It is already broadcast via mDNS, so
+	// exposing it here is not a new disclosure.
+	podID, _ := ghoststate.GetPodID(fb.Workspace)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"needs_setup":            fb.NeedsSetup(),
+		"setup_complete":         !fb.NeedsSetup(),
+		"setup_code_required":    fb.NeedsSetup(),
 		"admin_configured":       appliance.AdminConfigured(fb.GhostDir),
+		"pod_id":                 podID,
+		"gateway_port":           defaultGatewayPort,
+		"transport":              "lan",
 		"force":                  forceMode,
 		"version":                version,
 		"console_port":           boundPort,
@@ -1075,9 +1118,16 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AdminPassword   string `json:"admin_password"`
 		CurrentPassword string `json:"current_password"`
+		SetupCode       string `json:"setup_code"`
+		OwnerName       string `json:"owner_name"`
+		GhostName       string `json:"ghost_name"`
 		Model           string `json:"model"`
 		Provider        string `json:"provider"`
 		OllamaURL       string `json:"ollama_url"`
+		// Pair asks the console to mint a one-time pairing invitation after a
+		// successful fresh setup, so a phone that drove setup can pair without
+		// a second visit to the console.
+		Pair bool `json:"pair"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"ok":false,"error":"invalid request"}`, http.StatusBadRequest)
@@ -1123,6 +1173,26 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
+		// First-run claim: require the setup code printed on the device. This
+		// is the local-presence proof that stops a LAN host from claiming an
+		// unconfigured Ghost. Throttled per IP like login.
+		ip := clientIP(r)
+		if ok, wait := setupThrottle.allowed(ip); !ok {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": fmt.Sprintf("too many attempts — try again in %s", wait.Round(time.Second)),
+			})
+			return
+		}
+		if !fb.VerifySetupCode(req.SetupCode) {
+			setupThrottle.recordFailure(ip)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": "setup code is missing or incorrect — enter the code shown in the Ghost console output on the device",
+			})
+			return
+		}
+		setupThrottle.recordSuccess(ip)
 		if req.AdminPassword == "" {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"ok":    false,
@@ -1180,6 +1250,30 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The claim is complete: the setup code is no longer needed and must not
+	// linger as a reusable secret.
+	fb.ClearSetupCode()
+
+	// Persist the identity names the wizard collected. These were previously
+	// dropped on the floor, so owner/Ghost names only ever came from defaults.
+	// Empty fields are ignored (existing values preserved) so a password-only
+	// re-run can never wipe the names.
+	if strings.TrimSpace(req.OwnerName) != "" || strings.TrimSpace(req.GhostName) != "" {
+		owner, ghost := strings.TrimSpace(req.OwnerName), strings.TrimSpace(req.GhostName)
+		if id, ierr := ghoststate.LoadIdentity(fb.Workspace); ierr == nil && id != nil {
+			if owner == "" {
+				owner = id.OwnerName
+			}
+			if ghost == "" {
+				ghost = id.GhostName
+			}
+		}
+		if serr := ghoststate.SetIdentityNames(fb.Workspace, owner, ghost); serr != nil {
+			// Setup itself succeeded; a failed identity write must not fail it.
+			log.Printf("setup: could not save identity names: %v", serr)
+		}
+	}
+
 	// Invalidate all admin sessions: the configuration has changed.
 	sessions.revokeAll()
 
@@ -1197,28 +1291,63 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 		restartGhostService()
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	resp := map[string]interface{}{
 		"ok":      true,
 		"message": "Setup complete! Ghost will start shortly.",
-	})
+	}
+	if podID, perr := ghoststate.GetPodID(fb.Workspace); perr == nil {
+		resp["pod_id"] = podID
+	}
+	// A phone that drove setup gets a pairing invitation minted by the now
+	// starting gateway (loopback is trusted), so it can pair in one pass. If
+	// the gateway is slow to come up, say so honestly and let the caller fall
+	// back to the console QR.
+	if req.Pair && !setupWasConfigured {
+		if inv, perr := mintPairingInvitation(); perr == nil {
+			resp["pairing"] = inv
+		} else {
+			resp["pairing_pending"] = true
+		}
+	}
+	json.NewEncoder(w).Encode(resp)
 }
 
-func handlePairingCode(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	code, err := appliance.GeneratePairingCode()
-	if err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":    false,
-			"error": err.Error(),
-		})
-		return
+// mintPairingInvitation asks the local gateway for a one-time pairing
+// invitation, retrying briefly while the gateway starts after setup. The
+// gateway trusts loopback, so no credential is needed. It returns the raw
+// invitation JSON (token, host, port, transport) for the caller to hand to a
+// phone.
+func mintPairingInvitation() (map[string]interface{}, error) {
+	url := fmt.Sprintf("http://127.0.0.1:%d/v1/pairing/invitations", defaultGatewayPort)
+	client := &http.Client{Timeout: 3 * time.Second}
+	deadline := time.Now().Add(12 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequest(http.MethodPost, url, strings.NewReader("{}"))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		if err == nil {
+			if resp.StatusCode == http.StatusOK {
+				var inv map[string]interface{}
+				derr := json.NewDecoder(resp.Body).Decode(&inv)
+				resp.Body.Close()
+				if derr == nil {
+					return inv, nil
+				}
+				lastErr = derr
+			} else {
+				resp.Body.Close()
+				lastErr = fmt.Errorf("gateway status %d", resp.StatusCode)
+			}
+		} else {
+			lastErr = err
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":   true,
-		"code": code,
-	})
+	return nil, lastErr
 }
 
 func handleOllamaModels(w http.ResponseWriter, r *http.Request) {
@@ -1269,7 +1398,7 @@ func handleOllamaPull(w http.ResponseWriter, r *http.Request) {
 // is never written here; it lives only as a bcrypt hash in data/admin.hash.
 func generateConfig(model, provider, ollamaURL string) error {
 	// Generate .env
-	envContent := fmt.Sprintf(`# Ghost Appliance Configuration
+	envContent := fmt.Sprintf(`# Ghost configuration
 # Generated by setup wizard
 
 # API Server

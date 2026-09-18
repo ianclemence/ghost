@@ -1,6 +1,6 @@
 // Provable runtime checks: browser transact evidence, screencast tickets,
 // goal fanout, subagent caps. Every check executes real product behavior
-// against the scratch appliance — never canned results.
+// against the scratch device — never canned results.
 package verify
 
 import (

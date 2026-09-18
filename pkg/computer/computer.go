@@ -1,6 +1,6 @@
 // Package computer makes computers a capability of the personal AI
 // runtime — not a separate product. One Ghost drives any number of
-// computers (its own appliance, a paired laptop, a future sandbox)
+// computers (its own personal AI, a paired laptop, a future sandbox)
 // through one interface, one lease discipline, one permission broker,
 // and one evidence trail.
 //
@@ -62,7 +62,7 @@ func OpRisk(op Op) string {
 type Placement string
 
 const (
-	// PlacementLocal is the Ghost appliance itself.
+	// PlacementLocal is the Ghost device itself.
 	PlacementLocal Placement = "local"
 	// PlacementPaired is a user computer paired with this Ghost.
 	PlacementPaired Placement = "paired"
@@ -95,7 +95,7 @@ type Computer interface {
 	ID() string
 	// Placement reports where this computer executes.
 	Placement() Placement
-	// DisplayName is the human-facing label ("Ghost appliance", "MacBook").
+	// DisplayName is the human-facing label ("Ghost", "MacBook").
 	DisplayName() string
 	// Do executes one operation. Unimplemented ops return an explicit
 	// error naming the op — never silent success.

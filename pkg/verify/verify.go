@@ -1,6 +1,6 @@
-// Package verify is the canonical appliance verification suite behind
+// Package verify is the canonical personal AI verification suite behind
 // `ghost verify`. Every check executes real product behavior against a
-// scratch appliance (temp workspace + SQLite) — never compilation
+// scratch device (temp workspace + SQLite) — never compilation
 // status, never canned results. Live-vendor checks run only with
 // Live=true; otherwise they report NOT-RUN explicitly.
 //
@@ -53,7 +53,7 @@ type Check struct {
 	Outcome string `json:"outcome"`
 	Detail  string `json:"detail,omitempty"`
 	Hard    bool   `json:"hard_fail,omitempty"`
-	// Kind separates infrastructure health ("is the appliance
+	// Kind separates infrastructure health ("is the personal AI
 	// structurally healthy?") from Ghost quality ("does Ghost behave
 	// correctly for a person?"). Never collapsed into one flag.
 	Kind string `json:"kind"`
@@ -65,12 +65,12 @@ const KindInfra = "infrastructure"
 // KindQuality marks behavioral correctness checks.
 const KindQuality = "quality"
 
-// kindOf separates infrastructure health ("is the appliance
+// kindOf separates infrastructure health ("is the personal AI
 // structurally healthy?") from Ghost quality ("does Ghost behave
 // correctly for a person?"). Single mapping point; never collapsed.
 func kindOf(c Check) string {
 	switch c.Section {
-	case "Appliance":
+	case "Personal AI":
 		return KindInfra
 	case "Events":
 		switch c.Name {
@@ -90,9 +90,9 @@ func kindOf(c Check) string {
 type Options struct {
 	// Live allows real-vendor checks (needs network + credentials).
 	Live bool
-	// Workspace, when set, adds checks against the real appliance
+	// Workspace, when set, adds checks against the real personal AI
 	// (identity on disk, live database, writable state) alongside the
-	// scratch-appliance behavioral checks.
+	// scratch device behavioral checks.
 	Workspace string
 	// Timeout bounds the whole suite.
 	Timeout time.Duration
@@ -105,7 +105,7 @@ type Report struct {
 	At      string  `json:"at"`
 }
 
-// Env is the scratch appliance under test.
+// Env is the scratch device under test.
 type Env struct {
 	Workspace string
 	DB        *sql.DB
@@ -227,24 +227,24 @@ func checkPrimaryAgent(e *Env) Check {
 
 func checkModes(e *Env) Check {
 	if modes.Resolve(e.Workspace, false) != modes.Local {
-		return fail("Appliance", "intelligence mode derives", "no-cloud must derive local", false)
+		return fail("Personal AI", "intelligence mode derives", "no-cloud must derive local", false)
 	}
 	if err := modes.Set(e.Workspace, modes.Hybrid); err != nil {
-		return fail("Appliance", "intelligence mode derives", err.Error(), false)
+		return fail("Personal AI", "intelligence mode derives", err.Error(), false)
 	}
 	if modes.Resolve(e.Workspace, false) != modes.Hybrid {
-		return fail("Appliance", "intelligence mode derives", "explicit choice ignored", false)
+		return fail("Personal AI", "intelligence mode derives", "explicit choice ignored", false)
 	}
-	return pass("Appliance", "intelligence mode derives")
+	return pass("Personal AI", "intelligence mode derives")
 }
 
 func checkHardware(e *Env) Check {
 	p := hardware.Detect()
 	d := hardware.DefaultsFor(p)
 	if d.MaxConcurrency <= 0 || d.ContextTokens <= 0 {
-		return fail("Appliance", "hardware profile sane", "non-positive defaults", false)
+		return fail("Personal AI", "hardware profile sane", "non-positive defaults", false)
 	}
-	return pass("Appliance", "hardware profile sane")
+	return pass("Personal AI", "hardware profile sane")
 }
 
 // --- Memory ---
@@ -682,14 +682,14 @@ func checkSecretsSurfaces(e *Env) Check {
 	return pass("Security", "secret leak checks")
 }
 
-// --- Live appliance (real workspace, only with Options.Workspace) ---
+// --- Live personal AI (real workspace, only with Options.Workspace) ---
 
 func checkLiveIdentity(workspace string) Check {
 	id, err := ghoststate.LoadIdentity(workspace)
 	if err != nil || id == nil || id.GhostID == "" {
-		return Check{Section: "Appliance", Name: "live identity on disk", Outcome: Skip, Detail: "Ghost not set up yet at this workspace"}
+		return Check{Section: "Personal AI", Name: "live identity on disk", Outcome: Skip, Detail: "Ghost not set up yet at this workspace"}
 	}
-	return Check{Section: "Appliance", Name: "live identity on disk", Outcome: Pass}
+	return Check{Section: "Personal AI", Name: "live identity on disk", Outcome: Pass}
 }
 
 func checkLiveDatabase(workspace string) Check {
@@ -702,22 +702,22 @@ func checkLiveDatabase(workspace string) Check {
 		err = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table'`).Scan(&n)
 		db.Close()
 		if err == nil && n > 0 {
-			return Check{Section: "Appliance", Name: "live database opens", Outcome: Pass}
+			return Check{Section: "Personal AI", Name: "live database opens", Outcome: Pass}
 		}
 	}
-	return Check{Section: "Appliance", Name: "live database opens", Outcome: Skip, Detail: "no Ghost database found yet"}
+	return Check{Section: "Personal AI", Name: "live database opens", Outcome: Skip, Detail: "no Ghost database found yet"}
 }
 
 func checkLiveStateWritable(workspace string) Check {
 	probe := workspace + "/state/.verify-probe"
 	if err := os.MkdirAll(workspace+"/state", 0755); err != nil {
-		return Check{Section: "Appliance", Name: "state writable", Outcome: Fail, Detail: err.Error(), Hard: true}
+		return Check{Section: "Personal AI", Name: "state writable", Outcome: Fail, Detail: err.Error(), Hard: true}
 	}
 	if err := os.WriteFile(probe, []byte("ok"), 0600); err != nil {
-		return Check{Section: "Appliance", Name: "state writable", Outcome: Fail, Detail: err.Error(), Hard: true}
+		return Check{Section: "Personal AI", Name: "state writable", Outcome: Fail, Detail: err.Error(), Hard: true}
 	}
 	os.Remove(probe)
-	return Check{Section: "Appliance", Name: "state writable", Outcome: Pass}
+	return Check{Section: "Personal AI", Name: "state writable", Outcome: Pass}
 }
 
 // Render produces the human-readable report (the priority output),
@@ -729,7 +729,7 @@ func Render(r Report) string {
 		kind  string
 		title string
 	}{
-		{KindInfra, "INFRASTRUCTURE — is the appliance structurally healthy?"},
+		{KindInfra, "INFRASTRUCTURE — is Ghost structurally healthy?"},
 		{KindQuality, "GHOST QUALITY — does Ghost behave correctly for a person?"},
 	}
 	for _, group := range groups {
@@ -763,7 +763,7 @@ func Render(r Report) string {
 	return b.String()
 }
 
-// --- Appliance health: disk + retention (infrastructure) ---
+// --- system health: disk + retention (infrastructure) ---
 
 func checkFalseSuccess(e *Env) Check {
 	for _, class := range []product.ErrorClass{
@@ -825,17 +825,17 @@ func checkBackupSecrets(e *Env) Check {
 func checkLiveDisk(workspace string) Check {
 	usedPct, err := diskUsedPercent(workspace)
 	if err != nil {
-		return Check{Section: "Appliance", Name: "disk headroom", Outcome: Skip, Detail: "disk info unavailable"}
+		return Check{Section: "Personal AI", Name: "disk headroom", Outcome: Skip, Detail: "disk info unavailable"}
 	}
 	if usedPct >= 95 {
-		return Check{Section: "Appliance", Name: "disk headroom", Outcome: Fail,
+		return Check{Section: "Personal AI", Name: "disk headroom", Outcome: Fail,
 			Detail: fmt.Sprintf("disk %d%% full", usedPct), Hard: true}
 	}
 	if usedPct >= 85 {
-		return Check{Section: "Appliance", Name: "disk headroom", Outcome: Fail,
+		return Check{Section: "Personal AI", Name: "disk headroom", Outcome: Fail,
 			Detail: fmt.Sprintf("disk %d%% full (SD card getting full)", usedPct)}
 	}
-	return Check{Section: "Appliance", Name: "disk headroom", Outcome: Pass,
+	return Check{Section: "Personal AI", Name: "disk headroom", Outcome: Pass,
 		Detail: fmt.Sprintf("disk %d%% used", usedPct)}
 }
 
@@ -858,10 +858,10 @@ func checkLiveRetention(workspace string) Check {
 			continue
 		}
 		if time.Since(ts) > (180*24+7)*time.Hour {
-			return Check{Section: "Appliance", Name: "retention healthy", Outcome: Fail,
+			return Check{Section: "Personal AI", Name: "retention healthy", Outcome: Fail,
 				Detail: "event history older than retention policy", Hard: true}
 		}
-		return Check{Section: "Appliance", Name: "retention healthy", Outcome: Pass}
+		return Check{Section: "Personal AI", Name: "retention healthy", Outcome: Pass}
 	}
-	return Check{Section: "Appliance", Name: "retention healthy", Outcome: Skip, Detail: "no event history yet"}
+	return Check{Section: "Personal AI", Name: "retention healthy", Outcome: Skip, Detail: "no event history yet"}
 }

@@ -135,7 +135,7 @@ type BehavioralMeta struct {
 	// Dimensions this scenario actually grades.
 	Dimensions []Dimension
 	// Skip, when set, means the scenario cannot be exercised on this
-	// appliance; the reason is reported honestly instead of a verdict.
+	// personal AI; the reason is reported honestly instead of a verdict.
 	Skip string
 }
 

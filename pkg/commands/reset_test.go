@@ -207,7 +207,7 @@ func TestEnsureUserDoc(t *testing.T) {
 }
 
 // A reset must be structurally unable to touch another installation's
-// keys (regression: the old directory sweep deleted a live appliance's
+// keys (regression: the old directory sweep deleted a live personal AI's
 // secrets from a unit test run).
 func TestResetSecretsNeverLeavesActiveConfig(t *testing.T) {
 	ws, _ := resetFixture(t)

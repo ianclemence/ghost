@@ -81,7 +81,7 @@ var (
 	computerExecErr  error
 )
 
-// computerExecutor returns the appliance's real computer executor.
+// computerExecutor returns the personal AI's real computer executor.
 func (al *AgentLoop) computerExecutor() (computer.Computer, error) {
 	computerExecOnce.Do(func() {
 		computerExecInst = computer.NewLocalComputer("local")
@@ -156,7 +156,7 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 	if owner == "" {
 		return deny(denyText(permissions.CodeUnavailable, "Computer is unavailable: no Ghost identity.", "The operator must complete onboarding so this Ghost has an identity."))
 	}
-	// Live Surface plane: register the appliance computer and enforce the
+	// Live Surface plane: register the personal AI computer and enforce the
 	// pause. While a human owns the surface, Ghost is paused.
 	if al.livePlane != nil {
 		al.livePlane.Register("local", live.KindComputer)

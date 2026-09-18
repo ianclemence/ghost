@@ -8,11 +8,11 @@ import (
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 )
 
-// PreUpdateSnapshot takes a recovery snapshot of the appliance
+// PreUpdateSnapshot takes a recovery snapshot of the personal AI
 // workspace before any mutating update step. It is the Snapshot stage
 // of RunUpdate: failure aborts the update while services still run.
 // Secrets are included — a recovery point without credentials restores
-// a lobotomized appliance — sealed under the existing vault key.
+// a lobotomized Ghost — sealed under the existing vault key.
 func PreUpdateSnapshot() error {
 	workspace := os.Getenv("GHOST_WORKSPACE_DIR")
 	if workspace == "" {

@@ -165,7 +165,7 @@ func TestSecretsWrongKeyFailsLoud(t *testing.T) {
 }
 
 // TestResolvePrecedence pins the unified hierarchy: env wins over the
-// appliance key file, which wins over the legacy sibling key file.
+// key file, which wins over the legacy sibling key file.
 func TestResolvePrecedence(t *testing.T) {
 	dir := t.TempDir()
 	secrets := filepath.Join(dir, ".secrets.json")
@@ -183,11 +183,11 @@ func TestResolvePrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".master-env"), []byte("GHOST_MASTER_KEY=appliance-passphrase\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".master-env"), []byte("GHOST_MASTER_KEY=ghost-passphrase\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	// Without env, the appliance file wins over the legacy file. Prove
-	// it by sealing under the appliance key and resolving without env.
+	// Without env, the personal AI file wins over the legacy file. Prove
+	// it by sealing under the personal AI key and resolving without env.
 	t.Setenv("GHOST_MASTER_KEY", "")
 	got, err := ResolveMasterKey(secrets)
 	if err != nil {
@@ -197,11 +197,11 @@ func TestResolvePrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Unseal(deriveKey("appliance-passphrase"), sealed); err != nil {
-		t.Fatal("appliance key file must win over legacy .master-key")
+	if _, err := Unseal(deriveKey("ghost-passphrase"), sealed); err != nil {
+		t.Fatal("key file must win over legacy .master-key")
 	}
 	if string(got) == string(legacy) {
-		t.Fatal("resolved key must be the appliance key, not the legacy one")
+		t.Fatal("resolved key must be the personal AI key, not the legacy one")
 	}
 	// Env wins over everything.
 	t.Setenv("GHOST_MASTER_KEY", "env-passphrase")

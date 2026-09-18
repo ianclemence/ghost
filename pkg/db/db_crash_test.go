@@ -17,7 +17,7 @@ import (
 // Ghost relies on: a writer SIGKILLed mid-transaction (simulated power
 // loss) must leave the database integral, without the uncommitted row,
 // and fully writable afterwards. WAL mode + atomic commit is what makes
-// abrupt appliance power loss safe.
+// abrupt personal AI power loss safe.
 func TestCrashMidTransactionRecovers(t *testing.T) {
 	if os.Getenv("GO_WANT_DB_CRASH_HELPER") == "1" {
 		dbPath := os.Getenv("GO_WANT_DB_CRASH_PATH")

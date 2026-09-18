@@ -1,0 +1,28 @@
+[Unit]
+Description=Ghost Sting Sidecar (offline tool router, loopback only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Restart=always
+RestartSec=5
+WorkingDirectory=__SIDECAR_DIR__
+ExecStart=/usr/bin/python3 __SIDECAR_DIR__/sting_sidecar.py --port __PORT__
+Environment=NEEDLE_TELEMETRY=0
+Environment=STING_PORT=__PORT__
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ghost-sting
+
+[Install]
+WantedBy=multi-user.target

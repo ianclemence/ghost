@@ -11,7 +11,7 @@ import (
 // only makes outcomes stricter. Counts are attempts (evaluations), which
 // bound executions for gated tools since every execution evaluates first.
 //
-// Budgets reset on process restart (documented, not silent): the appliance
+// Budgets reset on process restart (documented, not silent): the personal AI
 // is single-owner and restarts are infrequent. A restart widens nothing —
 // the broker still gates every consequential act.
 type attemptBudget struct {

@@ -2040,7 +2040,7 @@ func handleSkillToggle(w http.ResponseWriter, r *http.Request) {
 }
 
 // bundledSkillsSourceDir resolves where the bundled skills live for this
-// appliance. Overridable for testing and for setups where the bundled copy is
+// personal AI. Overridable for testing and for setups where the bundled copy is
 // kept separately from the runtime workspace. On installed layouts the
 // runtime workspace lives outside the install tree (see workspace migration),
 // so there is no bundled copy here — the ghost binary embeds it and seeds the
@@ -2716,7 +2716,7 @@ func handleAdvancedSet(w http.ResponseWriter, r *http.Request) {
 
 	if req.RAG != nil {
 		// RAG is a core memory capability and is always enabled for the
-		// appliance. The console may tune index parameters but cannot
+		// personal AI. The console may tune index parameters but cannot
 		// disable RAG here; only GHOST_RAG_ENABLED=false (advanced) does.
 		cfg.RAG.Enabled = true
 		if req.RAG.M > 0 {

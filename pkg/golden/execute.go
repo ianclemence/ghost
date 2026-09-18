@@ -164,7 +164,7 @@ func isQwen(t Target) bool {
 // SkipReason for supported-but-not-run targets.
 func SkipReason(t Target) string {
 	if isQwen(t) {
-		return "supported but intentionally NOT RUN: Qwen is too slow on the development appliance for this evaluation pass"
+		return "supported but intentionally NOT RUN: Qwen is too slow on the development device for this evaluation pass"
 	}
 	return "supported but not selected for this run"
 }

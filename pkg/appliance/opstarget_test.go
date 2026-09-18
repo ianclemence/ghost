@@ -19,18 +19,18 @@ func TestOpsTargetNonRoot(t *testing.T) {
 	}
 }
 
-// No appliance installed: root checkout runs are unaffected.
+// No personal AI installed: root checkout runs are unaffected.
 func TestOpsTargetNoAppliance(t *testing.T) {
 	if _, _, ok := ResolveOpsTarget(envOf(), 0, false); ok {
-		t.Fatal("missing appliance must keep CLI resolution")
+		t.Fatal("missing personal AI must keep CLI resolution")
 	}
 }
 
-// Root + appliance: both defaults apply.
+// Root + personal AI: both defaults apply.
 func TestOpsTargetDefaults(t *testing.T) {
 	configDir, workspace, ok := ResolveOpsTarget(envOf(), 0, true)
 	if !ok {
-		t.Fatal("root on appliance must default")
+		t.Fatal("root on personal AI must default")
 	}
 	if configDir != DefaultConfigDir {
 		t.Fatalf("configDir = %q, want %q", configDir, DefaultConfigDir)

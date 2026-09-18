@@ -398,7 +398,7 @@ func (r *Registry) Reconcile(now time.Time) int {
 			n++
 		}
 		if s.Kind == KindComputer && s.ID == "local" {
-			continue // the appliance surface is presence-governed elsewhere
+			continue // the personal AI surface is presence-governed elsewhere
 		}
 		if s.Control != OwnerUser && s.State != StateCompleted && s.State != StateFailed &&
 			s.State != StateExpired && now.Sub(s.Updated) > surfaceIdleTTL {

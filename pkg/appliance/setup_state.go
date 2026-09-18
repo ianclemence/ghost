@@ -2,7 +2,9 @@ package appliance
 
 import (
 	"crypto/rand"
-	"encoding/hex"
+	"crypto/subtle"
+	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,11 @@ import (
 
 const (
 	SetupCompleteFlag = ".setup-complete"
+	// SetupCodeFileName holds the one-time setup code that gates the first
+	// configure. It proves local presence: only someone who can read the
+	// device's console output (journal/terminal) or its filesystem can claim
+	// an unconfigured Ghost.
+	SetupCodeFileName = ".setup-code"
 	DefaultGhostDir   = "/var/ghost"
 	DefaultConfigDir  = "/var/ghost/config"
 	DefaultDataDir    = "/var/ghost/data"
@@ -134,13 +141,46 @@ func isConfigCustomized(cfg *config.Config) bool {
 	return false
 }
 
-// GeneratePairingCode creates a short code for mobile app pairing.
-func GeneratePairingCode() (string, error) {
-	b := make([]byte, 4)
-	if _, err := rand.Read(b); err != nil {
+// RotateSetupCode mints a fresh setup code and persists it (0600) so the first
+// configure can prove local presence. It is called on every ghost-web start
+// while Ghost is unconfigured, so a code leaked in an older log is invalidated
+// by the next restart.
+func (fb *SetupState) RotateSetupCode() (string, error) {
+	code, err := randomSetupCode()
+	if err != nil {
 		return "", err
 	}
-	code := hex.EncodeToString(b)
-	// Format: XXXX-XXXX
-	return strings.ToUpper(code[:4] + "-" + code[4:]), nil
+	if err := os.WriteFile(filepath.Join(fb.GhostDir, SetupCodeFileName), []byte(code+"\n"), 0600); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// VerifySetupCode reports whether code matches the stored setup code, compared
+// in constant time. A missing or empty code file never verifies.
+func (fb *SetupState) VerifySetupCode(code string) bool {
+	stored, err := os.ReadFile(filepath.Join(fb.GhostDir, SetupCodeFileName))
+	if err != nil {
+		return false
+	}
+	want := strings.TrimSpace(string(stored))
+	got := strings.TrimSpace(code)
+	if want == "" || got == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(want), []byte(got)) == 1
+}
+
+// ClearSetupCode removes the setup code once setup is complete.
+func (fb *SetupState) ClearSetupCode() {
+	os.Remove(filepath.Join(fb.GhostDir, SetupCodeFileName))
+}
+
+// randomSetupCode returns a zero-padded 6-digit code from crypto/rand.
+func randomSetupCode() (string, error) {
+	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", n.Int64()), nil
 }

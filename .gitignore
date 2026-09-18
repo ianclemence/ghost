@@ -100,5 +100,9 @@ workspace/knowledge/ops/tasks.md
 # Skill package-manager canonical store
 .skill-store/
 
-# Appliance snapshots
+# Personal AI snapshots
 backups/
+
+# Python caches
+__pycache__/
+*.pyc

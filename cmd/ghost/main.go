@@ -186,10 +186,10 @@ func main() {
 
 	command := os.Args[1]
 
-	// Root ops commands default to the installed appliance (config +
+	// Root ops commands default to the installed Ghost (config +
 	// workspace) instead of the current checkout, matching how the
 	// systemd units run. Explicit GHOST_CONFIG_DIR /
-	// GHOST_WORKSPACE_DIR always win; non-root and non-appliance runs
+	// GHOST_WORKSPACE_DIR always win; non-root and non-device runs
 	// are unaffected.
 	if isApplianceOpsCommand(command) {
 		applyApplianceTarget()
@@ -296,6 +296,8 @@ func main() {
 		benchmarkCmd()
 	case "golden":
 		goldenCmd()
+	case "sting":
+		stingCmd()
 	case "replay":
 		replayCmd()
 	case "version", "--version", "-v":
@@ -331,9 +333,10 @@ func printHelp() {
 	fmt.Println("  tts         Manage local speech synthesis (setup, status)")
 	fmt.Println("  state       Export, import, or inspect Ghost State archives")
 	fmt.Println("  relay       Manage relay connection (run, pair, clients)")
-	fmt.Println("  verify      Run appliance verification (real product checks)")
-	fmt.Println("  benchmark   Run appliance benchmark + core score")
+	fmt.Println("  verify      Run personal AI verification (real product checks)")
+	fmt.Println("  benchmark   Run personal AI benchmark + core score")
 	fmt.Println("  golden      Run the Golden Conversation Suite (model NL evaluation)")
+	fmt.Println("  sting       Offline tool-router (status|dump-tools|calibrate|learn|select)")
 	fmt.Println("  version     Show version information")
 }
 
@@ -1101,7 +1104,7 @@ func gatewayCmd() {
 		agentLoop.SetScheduler(scheduledService)
 	}
 
-	// Retention: keep the appliance responsible on small disks (SD card).
+	// Retention: keep the personal AI responsible on small disks (SD card).
 	// Runs once now, then daily. Conservative oldest-first cleanup only.
 	go runMaintenanceLoop(agentLoop.DB(), cfg.WorkspacePath())
 
@@ -2008,8 +2011,8 @@ func getConfigPath() string {
 }
 
 // isApplianceOpsCommand reports whether a CLI command operates on the
-// installed appliance rather than the current checkout. Only these
-// commands receive appliance path defaults (see applyApplianceTarget);
+// installed Ghost rather than the current checkout. Only these
+// commands receive personal AI path defaults (see applyApplianceTarget);
 // agent/serve/skills and friends keep checkout-relative resolution.
 func isApplianceOpsCommand(command string) bool {
 	switch command {
@@ -2020,10 +2023,10 @@ func isApplianceOpsCommand(command string) bool {
 }
 
 // applyApplianceTarget points root ops commands at the installed
-// appliance. Without it, `sudo ghost reset` from a source checkout
+// personal AI. Without it, `sudo ghost reset` from a source checkout
 // silently operates on the checkout's config/workspace instead of the
 // live system. Explicit env always wins (see appliance.ResolveOpsTarget);
-// the appliance .env is loaded too, without overriding existing vars,
+// the .env is loaded too, without overriding existing vars,
 // so behavior matches the systemd units.
 func applyApplianceTarget() {
 	configDir, workspace, ok := appliance.ResolveOpsTarget(os.Getenv, os.Geteuid(), appliance.ApplianceInstalled())
@@ -2033,7 +2036,7 @@ func applyApplianceTarget() {
 	if configDir != "" {
 		_ = os.Setenv("GHOST_CONFIG_DIR", configDir)
 		if err := godotenv.Load(filepath.Join(filepath.Dir(configDir), ".env")); err == nil {
-			fmt.Fprintf(os.Stderr, "✓ Loaded .env (from appliance dir)\n")
+			fmt.Fprintf(os.Stderr, "✓ Loaded .env (from Ghost dir)\n")
 		}
 	}
 	if workspace != "" {
@@ -3409,10 +3412,10 @@ func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus
 	return nil
 }
 
-// verifyCmd runs the canonical appliance verification suite: real
+// verifyCmd runs the canonical personal AI verification suite: real
 // product checks (identity, memory, capabilities, governance,
 // automation, events, activity, credentials, offline, providers,
-// security) against a scratch appliance plus the live workspace.
+// security) against a scratch device plus the live workspace.
 func verifyCmd() {
 	asJSON := false
 	live := false
@@ -3440,7 +3443,7 @@ func verifyCmd() {
 	}
 }
 
-// benchmarkCmd runs the appliance benchmark, prints the core score,
+// benchmarkCmd runs the personal AI benchmark, prints the core score,
 // and appends to local history for change→compare loops.
 func benchmarkCmd() {
 	asJSON := false

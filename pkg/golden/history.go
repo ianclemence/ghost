@@ -22,7 +22,7 @@ type HistoryEntry struct {
 
 // Latest returns the newest entry for a model (empty model = any),
 // or nil when history is empty. Missing history is not an error:
-// a fresh appliance simply has no score yet.
+// a fresh personal AI simply has no score yet.
 func Latest(entries []HistoryEntry, model string) *HistoryEntry {
 	for i := len(entries) - 1; i >= 0; i-- {
 		if model == "" || entries[i].Model == model {

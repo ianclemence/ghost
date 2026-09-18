@@ -7,14 +7,14 @@
 
 ## What is Ghost?
 
-Ghost is a **local-first personal AI appliance**: one persistent entity on
+Ghost is a **local-first personal AI**: one persistent entity on
 hardware you own. It remembers you, understands natural language, acts through
 capabilities, asks permission before consequential actions, runs routines, and
 reports what it actually did.
 
 The core rule: **the model is not the authority.** Runtime execution evidence
 decides whether an action happened — a model saying "Done" is a claim, not
-proof. Memory, permissions, identity, and control stay on the appliance; cloud
+proof. Memory, permissions, identity, and control stay on your machine; cloud
 models are optional intelligence providers, and offline-local capabilities keep
 working when the network does not.
 
@@ -43,12 +43,18 @@ You choose an outcome — **Local / Hybrid / Cloud** — and the runtime derives
 details (models, fallbacks, context sizes). RAG is always enabled. You never need
 to configure temperature, top-p, quantization, or routing tables.
 
+**Two surfaces, two roles.** The **Ghost app** is the daily driver — talk,
+approve, review, connect. The **Web Console** is the owner control plane —
+system, security, devices, skills, channels, memory. They overlap only where
+they must (pairing, first-run setup, model selection), so the same task never
+has two different homes.
+
 ---
 
 ## Requirements
 
 ### Hardware
-Ghost runs on any Linux device. These are the reference appliance targets:
+Ghost runs on any Linux device. These are the reference device targets:
 - Raspberry Pi 5 (8 GB+) or RK1 (16 GB)
 - 256 GB NVMe SSD (recommended) or 32 GB microSD storage
 - Mobile phone with Ghost app
@@ -111,6 +117,17 @@ appears automatically. Completing the wizard:
 1. Writes `/var/ghost/.setup-complete`
 2. Starts the `ghost` gateway service (port 8766)
 3. The Web Console transitions from wizard to login → control plane
+
+**Setup code:** the first configure must present a one-time setup code, which
+proves you are at the device (not a host elsewhere on the network). While Ghost
+is unconfigured, `ghost-web` mints a fresh code on every start and prints it:
+
+```bash
+journalctl -u ghost-web | grep 'Setup code'
+```
+
+Enter it in the wizard's first step. The code is cleared once setup completes;
+restarting `ghost-web` invalidates the previous one.
 
 **Web Console:** the `ghost-web` service runs on port 80 and serves as Ghost's
 persistent control plane — the place where you own, configure, understand, and
@@ -234,8 +251,8 @@ chmod +x setup.sh
 
 | Command | Description |
 |---------|-------------|
-| `ghost verify` | Real appliance checks: identity, memory, capabilities, governance, automation, events, activity, credentials, offline, security |
-| `ghost benchmark` | Appliance benchmark + Ghost Core Score + hard governance gates + local history |
+| `ghost verify` | Real personal AI checks: identity, memory, capabilities, governance, automation, events, activity, credentials, offline, security |
+| `ghost benchmark` | Personal AI benchmark + Ghost Core Score + hard governance gates + local history |
 | `ghost golden` | Golden Conversation Suite — model-agnostic natural-language evaluation (`--model --suite --cases --offline --json --compare`) |
 
 ### Relay Commands
@@ -402,7 +419,7 @@ The recovery server auto-shuts down after 15 minutes.
 
 ## Security Architecture
 
-Ghost uses a layered security model designed for a self-hosted appliance.
+Ghost uses a layered security model designed for a self-hosted personal AI.
 
 Consequential actions pass through the **Permission Broker**; secrets live behind
 a **credential vault** boundary (write-only from the UI, presence-only in
@@ -435,7 +452,7 @@ Credential rules enforced at runtime:
 
 - secrets are never printed, logged, serialized to events/SSE/activity/APIs, or
   archived in backups (backup walkers use the centralized exclusion boundary)
-- OAuth credentials are stored on the appliance and only their presence/state is
+- OAuth credentials are stored locally and only their presence/state is
   exposed; tokens never travel to the UI or the model
 - the model cannot read, grant, or revoke permissions
 
@@ -477,6 +494,19 @@ Ghost exposes a unified API on port **8766**:
 ### Connecting the Mobile App
 
 The mobile app connects via device pairing — no manual API key configuration is needed.
+
+#### Set up a brand-new Pod from the phone (phone-first)
+
+The app can bring a fresh Pod online without opening a browser:
+
+1. Start `ghost-web` on the Pod and read its setup code:
+   `journalctl -u ghost-web | grep 'Setup code'`
+2. In the app: **Connect a Ghost Pod → Set up a new Ghost Pod**
+3. Enter the Pod address, the setup code, your name, and an owner password
+4. The phone claims the Pod, then pairs automatically
+
+If the gateway is still starting, setup still succeeds and the app offers the
+manual pairing path as a fallback.
 
 #### Same Network (LAN)
 

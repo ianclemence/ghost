@@ -39,7 +39,7 @@ func registerLiveSurfaceRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 		plane = live.NewRegistry(ghostID())
 		al.SetLivePlane(plane)
 	}
-	// The appliance computer always exists as a surface for discovery.
+	// The personal AI computer always exists as a surface for discovery.
 	plane.Register("local", live.KindComputer)
 	reconcileLivePlaneOnce(plane)
 

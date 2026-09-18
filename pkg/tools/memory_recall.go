@@ -53,7 +53,7 @@ func (t *MemoryRecall) SetScopesOf(fn func(sessionKey string) []string) { t.Scop
 func (t *MemoryRecall) Name() string { return "memory_recall" }
 
 func (t *MemoryRecall) Description() string {
-	return "Search Ghost's memory notes (daily notes, MEMORY.md, captures) for past content on a topic. Use when: you need something Ghost wrote earlier that isn't in the current context. Do NOT use for: a live/external fact (use web_search or a skill), or a past conversation (use session_search). Returns ranked excerpts with their note names."
+	return "Search Ghost's memory notes for past content on a topic. Not for live facts (use web_search) or past conversations (use session_search)."
 }
 
 func (t *MemoryRecall) Parameters() map[string]interface{} {
@@ -62,11 +62,11 @@ func (t *MemoryRecall) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"query": map[string]interface{}{
 				"type":        "string",
-				"description": "The topic/keywords to search for. Example: \"grandma's birthday\" or \"shopping list\".",
+				"description": "Topic or keywords to search for.",
 			},
 			"limit": map[string]interface{}{
 				"type":        "integer",
-				"description": "Max results (default 5, max 10).",
+				"description": "Max results, 1-10 (default 5).",
 				"default":     5,
 				"minimum":     1.0,
 				"maximum":     10.0,

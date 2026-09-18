@@ -3,7 +3,7 @@
 // Borrowed pattern (OpenMausBot): a broker turns every risky action into
 // an inline decision — allow / deny in chat — with per-bot approval modes
 // (ask/auto/full/custom) and persistent scoped grants. Ghost adapts it to
-// the appliance: capabilities declare risk, the broker sits between
+// the personal AI: capabilities declare risk, the broker sits between
 // capability resolution and consequential execution, and NOTHING
 // consequential runs on LLM authority alone.
 //

@@ -40,7 +40,7 @@ func VerificationPacketFor(redirectURIs []string) VerificationPacket {
 			"backup_restore": "Credentials are excluded from backups; restore requires reconnecting the calendar (documented product behavior).",
 			"scope_minimum":  "Read-only scope by default; events scope only when the user invokes the event-writing capability.",
 			"revocation":     "Revoked/expired credentials are detected and reported as reconnection prompts, never silent failures.",
-			"multi_device":   "Tokens belong to the owner's Ghost appliance, not to individual devices.",
+			"multi_device":   "Tokens belong to the owner's Ghost, not to individual devices.",
 		},
 		Checklist: CalendarVerificationChecklist(),
 	}

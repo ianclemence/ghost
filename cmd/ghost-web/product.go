@@ -371,7 +371,7 @@ func handleCalendarVerifyPacket(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleHealth serves the canonical appliance health model — the single
+// handleHealth serves the canonical system health model — the single
 // source of truth the Control Center Home renders ("Is my Ghost okay?").
 // Product language only; technical detail lives under Advanced
 // diagnostics (handleDoctor), both redacted.

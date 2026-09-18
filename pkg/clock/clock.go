@@ -1,11 +1,11 @@
-// Package clock answers one appliance question: is wall-clock time
+// Package clock answers one personal AI question: is wall-clock time
 // trustworthy enough for time-sensitive automation to act on?
 //
 // A stock Raspberry Pi has no battery-backed clock. After a power loss
 // without network, the system can boot believing it is 1970 (or firmware
 // build time) — and every routine, TTL, and cron comparison in Ghost runs
 // on wall time. Firing a day's automations "because 2026 finally arrived"
-// or expiring every pending approval at once is a predictable appliance
+// or expiring every pending approval at once is a predictable personal AI
 // failure, so the schedulers consult this package before firing.
 //
 // Policy (deliberate, offline-first):

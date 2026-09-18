@@ -9,7 +9,7 @@ import (
 // CronCommandDenyPatterns are regexes matched against a scheduled command
 // before it is executed. Matches are refused, so a cron job that a user or
 // the agent created via natural language cannot silently run something
-// destructive on the appliance. This is PicoClaw-style "cron security
+// destructive on the personal AI. This is PicoClaw-style "cron security
 // gating": scheduled commands are not allowed to touch the system the way an
 // interactive, human-approved exec would.
 var CronCommandDenyPatterns = []*regexp.Regexp{
@@ -19,7 +19,7 @@ var CronCommandDenyPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bmkfs\.?[a-z0-9]*\b`),
 	regexp.MustCompile(`(?i)\bdd\s+if=/dev/zero\b`),
 	regexp.MustCompile(`(?i)\bwipefs\b`),
-	// Shutting down or rebooting the appliance without approval.
+	// Shutting down or rebooting the personal AI without approval.
 	regexp.MustCompile(`(?i)\b(shutdown|reboot|poweroff|halt)\b`),
 	// Messing with the admin credential or secrets.
 	regexp.MustCompile(`(?i)admin\.hash`),

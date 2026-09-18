@@ -9,7 +9,7 @@ import (
 
 // SupportedTarget returns whether a (provider, model) is a supported Ghost
 // model target. Qwen is supported but intentionally NOT run on this dev
-// appliance (too slow) — the architecture must permit selecting it later.
+// personal AI (too slow) — the architecture must permit selecting it later.
 type ModelInfo struct {
 	Target    Target `json:"target"`
 	Available bool   `json:"available"` // provider credential configured
@@ -37,6 +37,7 @@ func DiscoverTargets(configDir string) []ModelInfo {
 		keyed["openrouter"] = cfg.Providers.OpenRouter.APIKey != ""
 		keyed["groq"] = cfg.Providers.Groq.APIKey != ""
 		keyed["ollama"] = true // local, no key
+		keyed["sting"] = true  // local sidecar, no key
 	}
 	// Default/configured model first.
 	if cfg != nil {
@@ -75,7 +76,7 @@ func DiscoverTargets(configDir string) []ModelInfo {
 
 func qwenNote(model string) string {
 	if isQwen(Target{Model: model}) {
-		return "supported; intentionally NOT RUN on this development appliance (too slow)"
+		return "supported; intentionally NOT RUN on this development device (too slow)"
 	}
 	return ""
 }
@@ -92,7 +93,7 @@ func Select(spec string) Target {
 	// provider-only or model-only: prefer provider=spec if it looks like a
 	// provider name.
 	providers := map[string]bool{"deepseek": true, "anthropic": true, "openai": true,
-		"openrouter": true, "groq": true, "ollama": true}
+		"openrouter": true, "groq": true, "ollama": true, "sting": true}
 	if providers[spec] {
 		return Target{Provider: spec}
 	}

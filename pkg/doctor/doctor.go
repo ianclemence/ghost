@@ -29,7 +29,7 @@ type Doctor struct {
 	provider  providers.LLMProvider
 	registry  *tools.ToolRegistry
 	workspace string
-	// configPath binds the appliance config for the vault check.
+	// configPath binds the Ghost config for the vault check.
 	// Empty means unbound (info, not an error).
 	configPath string
 	// Estate is the configured model inventory (primary + fallbacks).

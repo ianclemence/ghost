@@ -2,7 +2,7 @@ package appliance
 
 import "fmt"
 
-// UpdateSteps are the injectable stages of an appliance update. Splitting
+// UpdateSteps are the injectable stages of a personal AI update. Splitting
 // planning from mutation is what makes updates crash-safe: Plan must be
 // read-only (config load, migration dry-check), while Apply performs the
 // workspace move and the rebuild/reinstall.
@@ -21,7 +21,7 @@ type UpdateSteps struct {
 // failure or a failed snapshot aborts before anything stops, so a broken
 // update changes nothing and every applied update is recoverable. Once
 // services are stopped, any Apply failure triggers a best-effort Start
-// so an update can never leave the appliance dark; both errors reported.
+// so an update can never leave the personal AI dark; both errors reported.
 func RunUpdate(s UpdateSteps) error {
 	if s.Pull == nil || s.Plan == nil || s.Apply == nil {
 		return fmt.Errorf("update: pull, plan, and apply steps are required")
@@ -56,7 +56,7 @@ func RunUpdate(s UpdateSteps) error {
 }
 
 // CheckWorkspaceMigration is the read-only half of the workspace
-// migration: it loads the appliance config (vault included) and reports
+// migration: it loads the Ghost config (vault included) and reports
 // whether a move is needed, without moving anything. Update planning
 // calls this before services stop so a sealed-config failure aborts
 // early instead of stranding stopped services.

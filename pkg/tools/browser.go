@@ -481,7 +481,7 @@ const pageEvidenceBound = 4000
 // browserShotBound caps screenshot bytes (Pi 5 + mobile bandwidth).
 const browserShotBound = 2 << 20
 
-// browserShotKeep bounds retained screenshots per appliance.
+// browserShotKeep bounds retained screenshots per personal AI.
 const browserShotKeep = 20
 
 // captureBrowserShot attempts one bounded screenshot of the browser's

@@ -1,4 +1,4 @@
-// Package health is the single source of truth for appliance health.
+// Package health is the single source of truth for system health.
 //
 // It covers Core, Local AI, Memory, Storage, Security, Network, Remote
 // Access, Automations, Integrations, Backup, and Updates. Each subsystem
@@ -73,7 +73,7 @@ const (
 // AllSubsystems lists every subsystem the aggregate covers.
 var AllSubsystems = []string{Core, LocalAI, Memory, Storage, Security, Network, RemoteAccess, Automations, Integrations, Backup, Updates}
 
-// Report is the whole-appliance view. Overall is derived, never set
+// Report is the whole-system view. Overall is derived, never set
 // independently: READY only if nothing needs attention; DEGRADED if any
 // warning; ACTION_REQUIRED if any critical/actionable item.
 type Report struct {

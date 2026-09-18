@@ -56,7 +56,7 @@ const (
 	ActiveModelLink = "active.ggml.bin"
 	// SidecarBinary is the installed whisper-server executable name.
 	SidecarBinary = "whisper-server"
-	// DefaultModelsDir is where speech models live on the appliance.
+	// DefaultModelsDir is where speech models live on the personal AI.
 	DefaultModelsDir = "/var/ghost/models"
 	// DefaultSidecarBinDir is where the sidecar binary is installed.
 	DefaultSidecarBinDir = "/usr/local/bin"

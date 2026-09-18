@@ -1,6 +1,6 @@
 // Package-level helpers for installing EXTERNAL skills (GitHub/ClawHub) and
 // recording their provenance. External skills are markdown instruction sets,
-// never host-executed code, but their files land on the appliance and their
+// never host-executed code, but their files land on the personal AI and their
 // text is later shown to the model — so the download surface is governed:
 // bounded size/count, blocked binary extensions, no path traversal, a SKILL.md
 // must exist with name+description, and every install is traceable to a
@@ -18,7 +18,7 @@ import (
 
 // External-skill install policy. These bound what may be pulled from an
 // external source so a repo cannot dump arbitrary/binary content onto the
-// appliance. They mirror the guarantees of the original web installer and are
+// personal AI. They mirror the guarantees of the original web installer and are
 // shared by every install path to prevent drift.
 const (
 	MaxSkillFiles     = 50

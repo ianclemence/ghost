@@ -8,7 +8,7 @@ import (
 )
 
 // After a factory reset the default AI provider must return to a LOCAL model
-// so the appliance doesn't boot pointed at a cloud provider without keys
+// so the personal AI doesn't boot pointed at a cloud provider without keys
 // (which is what produced the spurious "missing credentials for deepseek"
 // state the owner saw).
 func TestResetModelDefaultRestoresLocal(t *testing.T) {

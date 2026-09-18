@@ -41,7 +41,7 @@ func IsDiskFullError(err error) bool {
 
 // DiskFullError wraps a write failure with the recovery path: prune old
 // snapshots first, then retry. Pruning is the cheapest reclaim on an
-// appliance (archives are large and retention-bounded).
+// personal AI (archives are large and retention-bounded).
 func DiskFullError(op string, err error) error {
 	return fmt.Errorf("%w during %s: free space now or run `ghost state prune` to drop old snapshots (original error: %v)", ErrDiskFull, op, err)
 }

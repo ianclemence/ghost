@@ -1,11 +1,11 @@
-// Package bench answers "does the appliance behave like a good Ghost?"
+// Package bench answers "does this Ghost behave like a good Ghost?"
 // — distinct from unit tests ("does code behave in isolation?").
 //
 // Dimensions: responsiveness (latencies, split by layer), capability
 // correctness (honest-unavailable ≠ success), agent reliability
 // (runtime-evidence grading, never LLM prose), governance (the ten
 // invariants; any violation is a hard FAIL), memory (deterministic eval
-// set), automation, privacy (leaks = 0), appliance (restart/concurrency/
+// set), automation, privacy (leaks = 0), personal AI (restart/concurrency/
 // duplicate side effects).
 //
 // Core score: weighted pass-rates per dimension. Catastrophic failures
@@ -78,7 +78,7 @@ type Report struct {
 	HardwareCover map[string]string `json:"hardware_coverage"`
 }
 
-// Env is the scratch appliance.
+// Env is the scratch device.
 type Env struct {
 	Workspace string
 	DB        *sql.DB

@@ -7,7 +7,7 @@ import (
 )
 
 // Descriptor describes one computer Ghost may drive. Availability is
-// always honest: local reflects the appliance itself, paired reflects
+// always honest: local reflects the device itself, paired reflects
 // last contact, and future placements report unavailable with a reason
 // until they exist.
 type Descriptor struct {
@@ -45,12 +45,12 @@ func AvailabilityOf(d Descriptor, now time.Time) Availability {
 	switch d.Placement {
 	case PlacementLocal:
 		// Preview vs control: the local computer is "available" only in the
-		// sense that it is the appliance itself. Whether Ghost can actually
+		// sense that it is the device itself. Whether Ghost can actually
 		// control it depends on a real executor (SupportedOps/Capabilities).
 		if len(d.Capabilities) == 0 {
-			return Availability{State: Available, Detail: "Ghost appliance (view only: no computer executor installed)"}
+			return Availability{State: Available, Detail: "Ghost (view only: no computer executor installed)"}
 		}
-		return Availability{State: Available, Detail: "Ghost appliance (computer executor ready)"}
+		return Availability{State: Available, Detail: "Ghost (computer executor ready)"}
 	case PlacementPaired:
 		if d.LastSeen.IsZero() {
 			return Availability{State: Offline, Detail: "paired computer has never checked in"}

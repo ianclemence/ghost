@@ -7,7 +7,7 @@ import (
 )
 
 // A panicking executor must be contained: runItemSafely recovers so one bad
-// scheduled run cannot crash the appliance.
+// scheduled run cannot crash the personal AI.
 func TestRunItemSafelyRecoversExecutorPanic(t *testing.T) {
 	store := NewStore(openTestDB(t))
 	if err := store.InitSchema(); err != nil {

@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// LocalComputer is the real executor for the Ghost appliance placement
+// LocalComputer is the real executor for the Ghost placement
 // (PlacementLocal). It drives the machine's own display through bounded,
 // explicit tools — xdotool for input, scrot/import for observation — never
 // through an arbitrary shell. Every operation is validated, bounded, and
@@ -86,7 +86,7 @@ func NewLocalComputer(id string) *LocalComputer {
 func (c *LocalComputer) ID() string           { return c.id }
 func (c *LocalComputer) Placement() Placement { return PlacementLocal }
 func (c *LocalComputer) DisplayName() string {
-	return "Ghost appliance"
+	return "Ghost"
 }
 
 // Authority is Ghost's explicit preview-vs-control signal: "control" when a
@@ -105,7 +105,7 @@ func (c *LocalComputer) Authority() (control string, reason string) {
 
 // SupportedOps lists the operations Do can actually perform given the tools
 // and display discovered at construction. An empty list is honest: it means
-// this appliance currently has no computer-control executor.
+// this personal AI currently has no computer-control executor.
 func (c *LocalComputer) SupportedOps() []Op {
 	var out []Op
 	if c.shotTool != "" {

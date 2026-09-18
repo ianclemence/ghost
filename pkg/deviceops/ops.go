@@ -1,4 +1,4 @@
-// Package deviceops is a tiny durable store for appliance operations
+// Package deviceops is a tiny durable store for device operations
 // (restart, update). Operations survive process death so a mobile client can
 // request a reboot, lose the connection, reconnect, and read the final state.
 // File-backed under the workspace state dir (no new database). Never accepts

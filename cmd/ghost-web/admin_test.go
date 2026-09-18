@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -439,7 +440,11 @@ func TestConfigureRefusesUnstartableProvider(t *testing.T) {
 	// Fresh setup with default (keyless cloud) provider must fail loudly
 	// instead of completing into a crash-looping gateway. (This handler
 	// reports application errors as 200+ok:false by convention.)
-	body := `{"admin_password":"fresh-setup-test-1"}`
+	code, err := fb.RotateSetupCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"admin_password":"fresh-setup-test-1","setup_code":%q}`, code)
 	req := httptest.NewRequest(http.MethodPost, "/api/configure", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	handleConfigure(rec, req)
@@ -470,11 +475,69 @@ func TestConfigureAcceptsLocalProvider(t *testing.T) {
 	t.Cleanup(func() { fb = oldFb })
 
 	// Explicit local provider constructs without keys or servers.
-	body := `{"admin_password":"fresh-setup-test-2","provider":"ollama","model":"qwen3:0.6b"}`
+	code, err := fb.RotateSetupCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"admin_password":"fresh-setup-test-2","setup_code":%q,"provider":"ollama","model":"qwen3:0.6b"}`, code)
 	req := httptest.NewRequest(http.MethodPost, "/api/configure", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	handleConfigure(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("explicit ollama config must 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestConfigureRequiresSetupCode is the first-run claim guard: without the
+// code printed on the device, a LAN host cannot claim an unconfigured Ghost.
+func TestConfigureRequiresSetupCode(t *testing.T) {
+	oldFb := fb
+	dir := t.TempDir()
+	fb = &appliance.SetupState{
+		GhostDir:   dir,
+		ConfigDir:  dir + "/config",
+		DataDir:    dir + "/data",
+		Workspace:  dir + "/workspace",
+		ConfigPath: dir + "/config/config.json",
+		EnvPath:    dir + "/.env",
+	}
+	t.Cleanup(func() { fb = oldFb })
+	if _, err := fb.RotateSetupCode(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Missing code: refused before anything is written.
+	body := `{"admin_password":"fresh-setup-test-3","provider":"ollama","model":"qwen3:0.6b"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/configure", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	handleConfigure(rec, req)
+	var j map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&j)
+	if j["ok"] != false {
+		t.Fatalf("missing setup code must be refused, got %v", j)
+	}
+	if msg, _ := j["error"].(string); !strings.Contains(msg, "setup code") {
+		t.Fatalf("error must name the setup code, got %v", j["error"])
+	}
+	if _, err := os.Stat(filepath.Join(dir, appliance.SetupCompleteFlag)); !os.IsNotExist(err) {
+		t.Fatal("setup must not complete without the setup code")
+	}
+
+	// Correct code: proceeds, then clears the code.
+	code, err := fb.RotateSetupCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = fmt.Sprintf(`{"admin_password":"fresh-setup-test-3","setup_code":%q,"provider":"ollama","model":"qwen3:0.6b"}`, code)
+	req = httptest.NewRequest(http.MethodPost, "/api/configure", strings.NewReader(body))
+	rec = httptest.NewRecorder()
+	handleConfigure(rec, req)
+	j = nil
+	json.NewDecoder(rec.Body).Decode(&j)
+	if j["ok"] != true {
+		t.Fatalf("correct setup code must complete, got %v", j)
+	}
+	if _, err := os.Stat(filepath.Join(dir, appliance.SetupCodeFileName)); !os.IsNotExist(err) {
+		t.Fatal("setup code must be cleared after a successful setup")
 	}
 }

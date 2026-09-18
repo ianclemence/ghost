@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 )
@@ -16,6 +17,10 @@ type MDNSAdvertiser struct {
 	Hostname string
 	Port     int
 	Version  string
+	// TXT carries additional key=value discovery records (pod_id, transport,
+	// console_port, api_port, setup). Entries with empty keys or values are
+	// omitted. Keep values short and free of spaces.
+	TXT map[string]string
 }
 
 // NewMDNSAdvertiser creates a new mDNS advertiser.
@@ -34,7 +39,7 @@ func NewMDNSAdvertiser(port int, version string) *MDNSAdvertiser {
 
 // Available reports whether advertisement can run here: avahi-publish must
 // exist. No environment gating — presence of the daemon tooling is the only
-// precondition, so dev checkouts and appliances behave the same.
+// precondition, so dev checkouts and devices behave the same.
 func (m *MDNSAdvertiser) Available() error {
 	return m.checkAvahi()
 }
@@ -78,8 +83,24 @@ func (m *MDNSAdvertiser) registerAvahi() {
 	// Build service type
 	serviceType := "_ghost._tcp"
 
-	// Build TXT records
-	txtRecords := fmt.Sprintf("version=%s api_port=%d", m.Version, m.Port)
+	// avahi-publish expects each TXT record as its own key=value argument.
+	// Passing one space-joined string (the previous behaviour) makes the
+	// daemon treat it as a single opaque record that no client can parse.
+	txt := map[string]string{
+		"version":  m.Version,
+		"api_port": fmt.Sprintf("%d", m.Port),
+	}
+	for k, v := range m.TXT {
+		if strings.TrimSpace(k) == "" || strings.TrimSpace(v) == "" {
+			continue
+		}
+		txt[k] = v
+	}
+	keys := make([]string, 0, len(txt))
+	for k := range txt {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 
 	// avahi-publish -R -s <name> <type> <port> [key=value ...]
 	args := []string{
@@ -88,7 +109,9 @@ func (m *MDNSAdvertiser) registerAvahi() {
 		m.Hostname,
 		serviceType,
 		fmt.Sprintf("%d", m.Port),
-		txtRecords,
+	}
+	for _, k := range keys {
+		args = append(args, k+"="+txt[k])
 	}
 
 	// Try both paths

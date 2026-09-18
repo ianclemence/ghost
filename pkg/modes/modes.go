@@ -6,7 +6,7 @@
 //	Local  — local intelligence and execution only. Cloud is never called.
 //	Hybrid — local first; cloud reasoning when useful and permitted.
 //	Cloud  — cloud reasoning preferred; memory, permissions, identity,
-//	         and appliance control stay local no matter what.
+//	         and personal AI control stay local no matter what.
 //
 // The mode governs the BRAIN only. Governance (permissions, credentials,
 // identity, events) is identical in every mode: "cloud-assisted" never
@@ -82,14 +82,16 @@ func modePath(workspace string) string {
 
 // IsCloudProvider reports whether a provider name denotes cloud
 // reasoning (used to filter fallback candidates in local mode).
-// Local providers: ollama, vllm, and local-* prefixed engines.
+// Local providers: ollama, vllm, sting (plus pre-fork "needle" alias),
+// and local-* prefixed engines.
 func IsCloudProvider(name string) bool {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	if lower == "" {
 		return false
 	}
 	if strings.HasPrefix(lower, "ollama") || strings.HasPrefix(lower, "vllm") ||
-		strings.HasPrefix(lower, "local") {
+		strings.HasPrefix(lower, "local") || strings.HasPrefix(lower, "sting") ||
+		strings.HasPrefix(lower, "needle") {
 		return false
 	}
 	return true

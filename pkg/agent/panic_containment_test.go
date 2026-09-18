@@ -19,7 +19,7 @@ func (p *panicProvider) Chat(ctx context.Context, messages []providers.Message, 
 func (p *panicProvider) GetDefaultModel() string { return "mock-model" }
 
 // A panic anywhere in turn processing must be contained and converted into a
-// failed turn, never crash the appliance or claim success.
+// failed turn, never crash the personal AI or claim success.
 func TestTurnPanicContained(t *testing.T) {
 	ws := t.TempDir()
 	cfg := &config.Config{Agents: config.AgentsConfig{Defaults: config.AgentDefaults{

@@ -14,7 +14,7 @@ const GhostApp = (() => {
   // what Ghost knows; Activity is what Ghost has done; Routines are what
   // Ghost does automatically. Connect holds everything reaching in or out:
   // Devices are where Ghost has hands, Channels are where it reaches you,
-  // Apps are what it can access. System holds owner/appliance config.
+  // Apps are what it can access. System holds owner/Ghost config.
   const NAV = [
     {
       label: 'Ghost',

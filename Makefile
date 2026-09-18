@@ -1,4 +1,4 @@
-.PHONY: all build install uninstall clean help test install-service build-ghost rebuild-web
+.PHONY: all build install uninstall clean help test install-service build-ghost rebuild-web install-sting install-needle
 
 # Build variables
 BINARY_NAME=ghost
@@ -26,7 +26,7 @@ INSTALL_PREFIX?=$(HOME)/.local
 INSTALL_BIN_DIR=$(INSTALL_PREFIX)/bin
 INSTALL_MAN_DIR=$(INSTALL_PREFIX)/share/man/man1
 
-# Appliance runtime workspace (kept outside the install tree so user data
+# Personal AI runtime workspace (kept outside the install tree so user data
 # never mixes with the deployment or blocks git pulls in checkout layouts)
 WORKSPACE_DIR?=/var/lib/ghost/workspace
 
@@ -250,3 +250,31 @@ rebuild-web:
 	@sudo systemctl daemon-reload
 	@sudo systemctl restart ghost-web
 	@echo "Web console rebuilt and restarted"
+
+## install-sting: Provision the offline tool-router sidecar (Pi, loopback only)
+install-sting:
+	@echo "Provisioning Sting sidecar..."
+	@if ! command -v python3 >/dev/null 2>&1; then \
+		echo "Installing Python 3 + venv..."; \
+		sudo apt-get install -y python3 python3-venv; \
+	fi
+	@python3 -m venv --system-site-packages /var/ghost/sting-venv 2>/dev/null || sudo python3 -m venv --system-site-packages /var/ghost/sting-venv
+	@sudo /var/ghost/sting-venv/bin/pip install -q -r sting-sidecar/requirements.txt
+	@# Prefetch the engine + base weights once (inference itself is offline)
+	@sudo NEEDLE_TELEMETRY=0 /var/ghost/sting-venv/bin/python -c "import needle; needle.Needle(tools=[])" || echo "WARNING: engine prefetch failed; sidecar will retry at first /health"
+	@sudo mkdir -p /opt/ghost/sting-sidecar
+	@sudo cp sting-sidecar/sting_sidecar.py /opt/ghost/sting-sidecar/
+	@sed \
+		-e "s|__SIDECAR_DIR__|/opt/ghost/sting-sidecar|g" \
+		-e "s|__PORT__|11436|g" \
+		ghost-sting.service.template > ghost-sting.service
+	@sudo cp ghost-sting.service /etc/systemd/system/ghost-sting.service
+	@sudo sed -i 's|ExecStart=/usr/bin/python3|ExecStart=/var/ghost/sting-venv/bin/python|' /etc/systemd/system/ghost-sting.service
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable ghost-sting
+	@sudo systemctl restart ghost-sting 2>/dev/null || true
+	@echo "Sting sidecar installed (127.0.0.1:11436). Enable routing with:"
+	@echo "  GHOST_STING_ENABLED=true ghost serve"
+
+## install-needle: pre-fork alias for install-sting
+install-needle: install-sting

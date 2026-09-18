@@ -85,13 +85,13 @@ type WeatherTool struct {
 func NewWeatherTool(openWeatherKey string) *WeatherTool { return &WeatherTool{key: openWeatherKey} }
 func (t *WeatherTool) Name() string                     { return "weather_now" }
 func (t *WeatherTool) Description() string {
-	return "Get current validated weather for a place or coordinates. Prefer this over shell curl for weather."
+	return "Current weather for a place or coordinates."
 }
 func (t *WeatherTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"location":  map[string]interface{}{"type": "string", "description": "Place name, e.g. Bangkok"},
+			"location":  map[string]interface{}{"type": "string", "description": "Place name."},
 			"latitude":  map[string]interface{}{"type": "number"},
 			"longitude": map[string]interface{}{"type": "number"},
 		},
@@ -299,14 +299,14 @@ type CurrencyTool struct {
 func NewCurrencyTool() *CurrencyTool { return &CurrencyTool{} }
 func (t *CurrencyTool) Name() string { return "currency_convert" }
 func (t *CurrencyTool) Description() string {
-	return "Convert amounts between currencies with validated rates. Prefer this over shell curl for currency."
+	return "Convert amounts between currencies at current rates."
 }
 func (t *CurrencyTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"from":   map[string]interface{}{"type": "string", "description": "Source ISO code, e.g. USD"},
-			"to":     map[string]interface{}{"type": "string", "description": "Target ISO code, e.g. EUR"},
+			"from":   map[string]interface{}{"type": "string", "description": "Source ISO code."},
+			"to":     map[string]interface{}{"type": "string", "description": "Target ISO code."},
 			"amount": map[string]interface{}{"type": "number"},
 		},
 		"required": []string{"from", "to"},

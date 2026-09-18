@@ -14,7 +14,7 @@
 // bypasses the runtime, the permission broker, or capability dispatch.
 //
 // Qwen is a SUPPORTED target but is intentionally NOT run by this task
-// (too slow on the development appliance); selecting it reports
+// (too slow on the development device); selecting it reports
 // SUPPORTED/NOT RUN rather than a pass or fail.
 package golden
 
@@ -175,7 +175,7 @@ type Expect struct {
 	Fixture Fixture
 	// Skip is a transport field for the Behavioral suite: bc copies it onto
 	// Behavioral.Skip. A non-empty reason means the scenario cannot be
-	// exercised on this appliance and is reported honestly, not passed.
+	// exercised on this personal AI and is reported honestly, not passed.
 	Skip string
 }
 

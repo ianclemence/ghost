@@ -134,7 +134,7 @@ func (s *Service) tick() {
 }
 
 // runItemSafely runs one scheduled item in its own goroutine and contains a
-// panic so a single failing executor cannot crash the whole appliance. The
+// panic so a single failing executor cannot crash the whole personal AI. The
 // item's execution state is left for the store's own retry/expiry handling.
 func (s *Service) runItemSafely(item *ScheduledItem) {
 	defer func() {

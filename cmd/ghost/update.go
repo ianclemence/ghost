@@ -54,7 +54,7 @@ func updateCmd() {
 			return appliance.PreUpdateSnapshot()
 		},
 		Stop: func() {
-			// Quiesce the appliance before touching its runtime
+			// Quiesce the personal AI before touching its runtime
 			// workspace, so the move never happens under a running
 			// gateway with the DB open.
 			fmt.Println("3. Stopping services...")
@@ -96,10 +96,10 @@ func updateCmd() {
 	fmt.Println("Update complete!")
 }
 
-// migrateApplianceWorkspace moves the appliance workspace from the legacy
+// migrateApplianceWorkspace moves the Ghost workspace from the legacy
 // <ghostDir>/workspace location to the runtime location when needed. The
-// appliance runs from DefaultGhostDir regardless of where the checkout (and
-// therefore the git pull) lives, so this always targets the appliance dir.
+// Ghost runs from DefaultGhostDir regardless of where the checkout (and
+// therefore the git pull) lives, so this always targets the Ghost dir.
 func migrateApplianceWorkspace(dryRun bool) error {
 	ghostDir := appliance.DefaultGhostDir
 	plan, err := appliance.PlanWorkspaceMigrationFromDisk(ghostDir, "")
@@ -190,7 +190,7 @@ func checkAndUpdate() {
 			return appliance.PreUpdateSnapshot()
 		},
 		Stop: func() {
-			// Quiesce the appliance before touching its runtime workspace.
+			// Quiesce the personal AI before touching its runtime workspace.
 			exec.Command("systemctl", "stop", "ghost").Run()
 			exec.Command("systemctl", "stop", "ghost-web").Run()
 		},

@@ -1,5 +1,5 @@
 // Package hardware normalizes the machine Ghost runs on into the small
-// profile the runtime actually needs — then derives appliance defaults
+// profile the runtime actually needs — then derives device defaults
 // automatically. Same Ghost, different hardware, appropriate defaults;
 // the owner never configures model tiers, concurrency, or context sizes.
 //
@@ -168,7 +168,7 @@ func isPi() bool {
 	return strings.Contains(lower, "raspberry")
 }
 
-// DefaultsFor derives appliance defaults. Small models on constrained
+// DefaultsFor derives device defaults. Small models on constrained
 // boards, larger where headroom exists; voice needs either an
 // accelerator or a generous CPU.
 func DefaultsFor(p Profile) Defaults {

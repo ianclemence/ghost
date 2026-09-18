@@ -63,7 +63,7 @@ func SnapshotPassphrase(configPath string) (string, error) {
 }
 
 // TakeSnapshot exports workspace+config (including secrets — a recovery
-// point without credentials restores a lobotomized appliance) to the
+// point without credentials restores a lobotomized Ghost) to the
 // backup dir. Fails closed: no archive, no mutation downstream.
 func TakeSnapshot(workspace, configPath string) (string, error) {
 	return TakeSnapshotAt(workspace, configPath, time.Now().UTC())

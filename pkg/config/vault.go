@@ -20,7 +20,7 @@ import (
 //  1. GHOST_MASTER_KEY env — passphrase or base64/hex key. The raw value
 //     is hashed with SHA-256, so any string works (containers, tests).
 //  2. <dir>/.master-env — KEY=VALUE env-file format written by
-//     vault-rotate as a root-only EnvironmentFile. This is the appliance
+//     vault-rotate as a root-only EnvironmentFile. This is the personal AI
 //     key store; it wins over legacy files so a rotation takes effect
 //     even when an older key file lingers beside it.
 //  3. <dir>/.master-key — 32 random bytes (base64), 0600, generated once
@@ -118,7 +118,7 @@ func ResolveMasterKey(secretsPath string) ([]byte, error) {
 		// older key that would fail auth with a misleading error.
 		return nil, fmt.Errorf("vault: %s holds no GHOST_MASTER_KEY entry", filepath.Join(dir, ApplianceKeyFileName))
 	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("vault: read appliance key file: %w", err)
+		return nil, fmt.Errorf("vault: read key file: %w", err)
 	}
 	keyPath := MasterKeyPath(secretsPath)
 	raw, err := os.ReadFile(keyPath)

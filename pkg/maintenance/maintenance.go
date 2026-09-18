@@ -1,4 +1,4 @@
-// Package maintenance keeps the appliance responsible on small disks
+// Package maintenance keeps the personal AI responsible on small disks
 // (32GB SD card): bounded event history, log caps, temp cleanup.
 // Runs once at daemon startup and daily thereafter; every action is
 // conservative (oldest-first deletes, regular files only) and reported.
@@ -130,7 +130,7 @@ func pruneEvents(db *sql.DB) Action {
 		time.Now().Add(-DurableEventAge).Format(time.RFC3339))
 	durable := 0
 	if err == nil {
-		// Table may not exist on fresh appliances; ignore.
+		// Table may not exist on fresh devices; ignore.
 		if n, err := res2.RowsAffected(); err == nil {
 			durable = int(n)
 		}

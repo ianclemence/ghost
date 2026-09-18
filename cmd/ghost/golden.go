@@ -17,7 +17,7 @@ import (
 
 // goldenCmd runs the Ghost Golden Conversation Suite against a supported
 // model. Qwen is a supported target but is intentionally NOT run here
-// (too slow on the development appliance); selecting it reports NOT RUN.
+// (too slow on the development device); selecting it reports NOT RUN.
 func goldenCmd() {
 	// Behavioral Golden 100 is a layer above the capability suite; it has
 	// its own command surface but shares this runner and target resolution.
@@ -187,7 +187,7 @@ func goldenHelp() {
 	fmt.Println("  --state-dir=<dir>        workspace for golden history (default: configured workspace)")
 	fmt.Println()
 	fmt.Println("Models: any provider Ghost supports. Qwen is supported but intentionally")
-	fmt.Println("NOT RUN on the development appliance (too slow); selecting it reports")
+	fmt.Println("NOT RUN on the development device (too slow); selecting it reports")
 	fmt.Println("SUPPORTED/NOT RUN rather than pass or fail.")
 }
 

@@ -54,7 +54,7 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 		// User data files created through tools (shopping lists,
 		// captures, reminders): user-owned durable content that must
 		// migrate between machines. This is why exports failed on live
-		// appliances the moment a skill wrote its first data file.
+		// devices the moment a skill wrote its first data file.
 		return CategoryPortable, nil
 	case strings.HasPrefix(rel, "pending/"):
 		// In-flight user business (pending questions, continuations):

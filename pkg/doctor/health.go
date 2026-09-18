@@ -19,7 +19,7 @@ import (
 // next action in the message — health output is read by owners, not
 // engineers.
 
-// SetConfigPath binds the appliance config for the vault check.
+// SetConfigPath binds the Ghost config for the vault check.
 // Empty means unbound: the check reports info instead of guessing
 // layout (the config dir is not derivable from the workspace).
 func (d *Doctor) SetConfigPath(path string) {
