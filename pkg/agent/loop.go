@@ -1454,24 +1454,6 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 			return endTurn(ans, nil)
 		}
 	}
-	// Sting offline router fast-path: read-only tools routed locally
-	// with zero LLM calls. Anything unroutable (sidecar down, low
-	// confidence, non-read-only) falls through to the normal loop.
-	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
-		if ans, ok := al.tryStingTurn(msg.Content, msg.SessionKey); ok {
-			logger.InfoCF("agent", "sting fast-path: routed locally",
-				map[string]interface{}{"session_key": msg.SessionKey})
-			if onChunk != nil && ans != "" {
-				onChunk(ans)
-			}
-			if al.sessions != nil {
-				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
-				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
-				al.sessions.Save(msg.SessionKey)
-			}
-			return endTurn(ans, nil)
-		}
-	}
 	// Phase 1 — intent/effort triage: keep trivial self-fact recall cheap and
 	// deterministic (no model, no tools) and be honest when the fact isn't
 	// stored. Only extremely clear, harmless cases; everything else falls

@@ -60,7 +60,6 @@ type Config struct {
 	Toolsets    ToolsetsConfig    `json:"toolsets"`
 	STT         STTConfig         `json:"stt"`
 	TTS         TTSConfig         `json:"tts"`
-	Sting       StingConfig       `json:"sting"`
 	mu          sync.RWMutex
 }
 
@@ -70,28 +69,6 @@ type Config struct {
 type STTConfig struct {
 	Engine string `json:"engine" env:"GHOST_STT_ENGINE"` // auto|local|groq|moonshot|off
 	Port   int    `json:"port" env:"GHOST_STT_PORT"`     // sidecar loopback port
-}
-
-// StingConfig controls the Sting offline tool-router sidecar. Sting is
-// an intent router, never an authority: it proposes tool calls, the
-// Permission Broker still allows/asks/denies, and runtime evidence still
-// decides success. Disabled by default; enable after `make install-sting`.
-type StingConfig struct {
-	Enabled             bool    `json:"enabled" env:"GHOST_STING_ENABLED"`
-	SidecarURL          string  `json:"sidecar_url" env:"GHOST_STING_SIDECAR_URL"`
-	ConfidenceThreshold float64 `json:"confidence_threshold" env:"GHOST_STING_CONFIDENCE_THRESHOLD"`
-	TimeoutSecs         int     `json:"timeout_secs" env:"GHOST_STING_TIMEOUT_SECS"`
-	Weights             string  `json:"weights" env:"GHOST_STING_WEIGHTS"`
-	// RolloutLog is the rollout-evidence JSONL path. Empty means
-	// <workspace>/state/sting-rollouts.jsonl; "off" disables. Rollouts
-	// hold raw queries (same sensitivity as conversation history, same
-	// 0600 handling) and feed calibration + future filtered-SFT loops.
-	RolloutLog string `json:"rollout_log" env:"GHOST_STING_ROLLOUT_LOG"`
-	// Ledger is the reliability-ledger JSON path that gates routing.
-	// Empty means <workspace>/state/sting-ledger.json, falling back to
-	// the shipped priors when that file does not exist; "off" restores
-	// the pre-ledger confidence-only gate. See pkg/sting/calibrate.go.
-	Ledger string `json:"ledger" env:"GHOST_STING_LEDGER"`
 }
 
 // TTSConfig controls speech-synthesis engine selection. The local
@@ -479,13 +456,6 @@ func DefaultConfig() *Config {
 			Engine: "auto",
 			Speed:  1.0,
 		},
-		Sting: StingConfig{
-			Enabled:             false,
-			SidecarURL:          "http://127.0.0.1:11436",
-			ConfidenceThreshold: 0.5,
-			TimeoutSecs:         15,
-			Weights:             "",
-		},
 		Relay: RelayConfig{
 			Enabled:      false,
 			Server:       "",
@@ -609,17 +579,6 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if key := os.Getenv("DEEPSEEK_API_KEY"); key != "" {
 		cfg.Providers.DeepSeek.APIKey = key
-	}
-	// Pre-fork GHOST_NEEDLE_* envs still honoured when the GHOST_STING_*
-	// equivalent is unset.
-	if v := os.Getenv("GHOST_NEEDLE_ENABLED"); v != "" && os.Getenv("GHOST_STING_ENABLED") == "" {
-		cfg.Sting.Enabled = strings.EqualFold(strings.TrimSpace(v), "true") || strings.TrimSpace(v) == "1"
-	}
-	if v := os.Getenv("GHOST_NEEDLE_SIDECAR_URL"); v != "" && os.Getenv("GHOST_STING_SIDECAR_URL") == "" {
-		cfg.Sting.SidecarURL = v
-	}
-	if v := os.Getenv("GHOST_NEEDLE_WEIGHTS"); v != "" && os.Getenv("GHOST_STING_WEIGHTS") == "" {
-		cfg.Sting.Weights = v
 	}
 
 	// Apply the strict secrets boundary: overlay .secrets.json (0600) so

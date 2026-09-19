@@ -777,11 +777,6 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			if apiBase == "" {
 				apiBase = "http://localhost:11434"
 			}
-		case "sting", "local-sting", "needle", "local-needle":
-			// Local tool-router: no key, no cloud. Availability is
-			// probed per turn; a stopped sidecar escalates via error.
-			// "needle" is the pre-fork alias, still accepted.
-			return NewStingProvider(cfg), nil
 		}
 
 	}
@@ -796,9 +791,6 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 				apiBase = "http://localhost:11434"
 			}
 			model = model[7:] // Strip "ollama/" prefix
-		case strings.HasPrefix(model, "sting/") || strings.HasPrefix(lowerModel, "sting") ||
-			strings.HasPrefix(model, "needle/") || strings.HasPrefix(lowerModel, "needle"):
-			return NewStingProvider(cfg), nil
 		case (strings.Contains(lowerModel, "kimi") || strings.Contains(lowerModel, "moonshot") || strings.HasPrefix(model, "moonshot/")) && cfg.Providers.Moonshot.APIKey != "":
 			apiKey = cfg.Providers.Moonshot.APIKey
 			apiBase = cfg.Providers.Moonshot.APIBase

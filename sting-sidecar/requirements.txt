@@ -1,2 +1,0 @@
-# Upstream runtime (Cactus Compute, Apache-2.0) — see THIRD-PARTY-NOTICES.md
-cactus-needle>=2.0.12

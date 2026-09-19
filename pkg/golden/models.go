@@ -37,7 +37,6 @@ func DiscoverTargets(configDir string) []ModelInfo {
 		keyed["openrouter"] = cfg.Providers.OpenRouter.APIKey != ""
 		keyed["groq"] = cfg.Providers.Groq.APIKey != ""
 		keyed["ollama"] = true // local, no key
-		keyed["sting"] = true  // local sidecar, no key
 	}
 	// Default/configured model first.
 	if cfg != nil {
@@ -93,7 +92,7 @@ func Select(spec string) Target {
 	// provider-only or model-only: prefer provider=spec if it looks like a
 	// provider name.
 	providers := map[string]bool{"deepseek": true, "anthropic": true, "openai": true,
-		"openrouter": true, "groq": true, "ollama": true, "sting": true}
+		"openrouter": true, "groq": true, "ollama": true}
 	if providers[spec] {
 		return Target{Provider: spec}
 	}

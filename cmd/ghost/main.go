@@ -296,8 +296,6 @@ func main() {
 		benchmarkCmd()
 	case "golden":
 		goldenCmd()
-	case "sting":
-		stingCmd()
 	case "replay":
 		replayCmd()
 	case "version", "--version", "-v":
@@ -336,7 +334,6 @@ func printHelp() {
 	fmt.Println("  verify      Run personal AI verification (real product checks)")
 	fmt.Println("  benchmark   Run personal AI benchmark + core score")
 	fmt.Println("  golden      Run the Golden Conversation Suite (model NL evaluation)")
-	fmt.Println("  sting       Offline tool-router (status|dump-tools|calibrate|learn|select)")
 	fmt.Println("  version     Show version information")
 }
 
