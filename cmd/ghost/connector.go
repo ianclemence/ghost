@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -294,18 +295,36 @@ func connectorReviewCmd(args []string) {
 
 func connectorInstallCmd(args []string) {
 	if len(args) == 0 {
-		fmt.Println("Usage: ghost connector install <path> [--dir=<workspace>/connectors] [--force]")
+		fmt.Println("Usage: ghost connector install <path|url> [--dir=] [--force] [--key=<pubfile>] [--require-signature]")
 		os.Exit(1)
 	}
-	path := args[0]
+	source := args[0]
 	dir := ""
 	force := false
+	requireSig := false
+	var keys []ed25519.PublicKey
 	for _, a := range args[1:] {
 		switch {
 		case strings.HasPrefix(a, "--dir="):
 			dir = strings.TrimPrefix(a, "--dir=")
 		case a == "--force":
 			force = true
+		case a == "--require-signature":
+			requireSig = true
+		case strings.HasPrefix(a, "--key="):
+			kf := strings.TrimPrefix(a, "--key=")
+			raw, err := os.ReadFile(kf)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "could not read key %s: %v\n", kf, err)
+				os.Exit(1)
+			}
+			k, err := connector.DecodePublicKey(string(raw))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				os.Exit(1)
+			}
+			keys = append(keys, k)
+			requireSig = true
 		default:
 			fmt.Printf("Unknown flag: %s\n", a)
 			os.Exit(1)
@@ -322,7 +341,17 @@ func connectorInstallCmd(args []string) {
 		fmt.Fprintln(os.Stderr, "no install dir; pass --dir=<path>")
 		os.Exit(1)
 	}
-	dest, err := connector.Install(path, dir, force)
+
+	var dest string
+	var err error
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		dest, err = connector.FetchAndInstall(context.Background(), source, dir, force, connector.FetchOptions{
+			RequireSignature: requireSig,
+			TrustedKeys:      keys,
+		})
+	} else {
+		dest, err = connector.Install(source, dir, force)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "install failed: %v\n", err)
 		os.Exit(1)

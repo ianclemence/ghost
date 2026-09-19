@@ -60,7 +60,16 @@ type Config struct {
 	Toolsets    ToolsetsConfig    `json:"toolsets"`
 	STT         STTConfig         `json:"stt"`
 	TTS         TTSConfig         `json:"tts"`
+	Connectors  ConnectorsConfig  `json:"connectors"`
 	mu          sync.RWMutex
+}
+
+// ConnectorsConfig controls the portable-connector directory. TrustedKeys pins
+// the ed25519 public keys a remote connector signature must verify against
+// before install; an empty list means unsigned remote installs are refused
+// when a signature is required.
+type ConnectorsConfig struct {
+	TrustedKeys []string `json:"trusted_keys"`
 }
 
 // STTConfig controls speech-to-text engine selection. The local

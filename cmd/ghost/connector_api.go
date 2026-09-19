@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"net/http"
 	"path/filepath"
@@ -127,15 +129,38 @@ func connectorsInstallHandler(w http.ResponseWriter, r *http.Request, al *agent.
 		return
 	}
 	var req struct {
-		Source   string              `json:"source"`
-		Manifest *connector.Manifest `json:"manifest"`
-		Force    bool                `json:"force"`
+		Source           string              `json:"source"`
+		URL              string              `json:"url"`
+		Manifest         *connector.Manifest `json:"manifest"`
+		Force            bool                `json:"force"`
+		RequireSignature bool                `json:"require_signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 	dir := filepath.Join(ws, connector.InstalledDir)
+
+	if strings.HasPrefix(req.URL, "http://") || strings.HasPrefix(req.URL, "https://") {
+		var trusted []ed25519.PublicKey
+		if al != nil && al.Config() != nil {
+			for _, hexKey := range al.Config().Connectors.TrustedKeys {
+				if k, err := connector.DecodePublicKey(hexKey); err == nil {
+					trusted = append(trusted, k)
+				}
+			}
+		}
+		dest, err := connector.FetchAndInstall(context.Background(), req.URL, dir, req.Force, connector.FetchOptions{
+			RequireSignature: req.RequireSignature,
+			TrustedKeys:      trusted,
+		})
+		if err != nil {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "installed": dest})
+		return
+	}
 
 	if req.Manifest != nil {
 		if verrs := req.Manifest.Validate(); len(verrs) > 0 {
