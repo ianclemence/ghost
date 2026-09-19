@@ -99,7 +99,11 @@ func installManifestAt(m *Manifest, dir string, force bool, sourcePath string) (
 // canonical JSON of the manifest, so an unchanged connector is idempotent and
 // a changed one is detectable.
 func manifestHash(m *Manifest) (string, error) {
-	raw, err := json.Marshal(m)
+	// Hash the connector's functional content only: provenance is metadata,
+	// so clearing it keeps the hash stable across signing and verification.
+	c := *m
+	c.Provenance = Provenance{}
+	raw, err := json.Marshal(&c)
 	if err != nil {
 		return "", err
 	}

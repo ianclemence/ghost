@@ -109,11 +109,12 @@ type OpenAPISpec struct {
 
 // Provenance records where a connector came from so installs are traceable.
 type Provenance struct {
-	Source   string `json:"source,omitempty"` // registry | github | clawhub | local
-	Repo     string `json:"repo,omitempty"`
-	Revision string `json:"revision,omitempty"`
-	Hash     string `json:"hash,omitempty"`
-	SignedBy string `json:"signed_by,omitempty"`
+	Source    string `json:"source,omitempty"` // registry | github | clawhub | local
+	Repo      string `json:"repo,omitempty"`
+	Revision  string `json:"revision,omitempty"`
+	Hash      string `json:"hash,omitempty"`
+	SignedBy  string `json:"signed_by,omitempty"`
+	Signature string `json:"signature,omitempty"` // base64 ed25519 over the content hash
 }
 
 // Manifest is the portable connector definition.
@@ -211,6 +212,9 @@ func (m *Manifest) Validate() []ValidationError {
 
 	if m.Provenance.SignedBy != "" && m.Provenance.Hash == "" {
 		add("provenance.hash", "a signed connector must carry a content hash")
+	}
+	if m.Provenance.Signature != "" && m.Provenance.SignedBy == "" {
+		add("provenance.signed_by", "a signature without a signer is meaningless")
 	}
 	return errs
 }

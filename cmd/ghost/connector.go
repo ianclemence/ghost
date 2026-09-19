@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,6 +39,12 @@ func connectorCmd() {
 		connectorInstallCmd(os.Args[3:])
 	case "call":
 		connectorCallCmd(os.Args[3:])
+	case "keygen":
+		connectorKeygenCmd(os.Args[3:])
+	case "sign":
+		connectorSignCmd(os.Args[3:])
+	case "verify":
+		connectorVerifyCmd(os.Args[3:])
 	default:
 		fmt.Printf("Unknown connector command: %s\n", os.Args[2])
 		connectorHelp()
@@ -48,13 +55,142 @@ func connectorHelp() {
 	fmt.Println("Usage: ghost connector <validate|review|init|from-openapi|install|list>")
 	fmt.Println()
 	fmt.Println("  validate <path>          Validate connector.json (or a directory containing it)")
-	fmt.Println("  review <path>            Schema + capability-risk + provenance audit")
+	fmt.Println("  review <path> [--json]   Schema + capability-risk + provenance audit")
 	fmt.Println("  init <id> [--dir=path]   Scaffold a connector manifest")
 	fmt.Println("  from-openapi <spec>      Generate a draft connector from an OpenAPI document")
 	fmt.Println("                           [--out=connector.json] [--id=] [--version=] [--url=] [--keyless]")
 	fmt.Println("  install <path>           Install into <workspace>/connectors [--dir=] [--force]")
 	fmt.Println("  call <path> <cap> [k=v]  Execute one capability (openapi connectors)")
+	fmt.Println("  keygen [--out=dir]       Generate an ed25519 connector signing keypair")
+	fmt.Println("  sign <path> --key= --by= Sign a connector manifest")
+	fmt.Println("  verify <path> --key=     Verify a connector signature")
 	fmt.Println("  list [--dir=path]        List first-party and installed connectors")
+}
+
+// connectorManifestPath resolves a file or directory argument to the manifest
+// file path (for reading and writing).
+func connectorManifestPath(path string) string {
+	if fi, err := os.Stat(path); err == nil && fi.IsDir() {
+		return filepath.Join(path, connector.FileName)
+	}
+	return path
+}
+
+func connectorKeygenCmd(args []string) {
+	dir := "."
+	for _, a := range args {
+		if strings.HasPrefix(a, "--out=") {
+			dir = strings.TrimPrefix(a, "--out=")
+		}
+	}
+	pub, priv, err := connector.GenerateSigningKey()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "keygen failed: %v\n", err)
+		os.Exit(1)
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "could not create %s: %v\n", dir, err)
+		os.Exit(1)
+	}
+	privPath := filepath.Join(dir, "connector-signing.key")
+	pubPath := filepath.Join(dir, "connector-signing.pub")
+	if err := os.WriteFile(privPath, []byte(connector.EncodePrivateKey(priv)+"\n"), 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "could not write private key: %v\n", err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(pubPath, []byte(connector.EncodePublicKey(pub)+"\n"), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "could not write public key: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("wrote %s (private, 0600) and %s (public)\n", privPath, pubPath)
+}
+
+func connectorSignCmd(args []string) {
+	if len(args) == 0 {
+		fmt.Println("Usage: ghost connector sign <path> --key=<private-key-file> --by=<name>")
+		os.Exit(1)
+	}
+	path, keyFile, by := args[0], "", ""
+	for _, a := range args[1:] {
+		switch {
+		case strings.HasPrefix(a, "--key="):
+			keyFile = strings.TrimPrefix(a, "--key=")
+		case strings.HasPrefix(a, "--by="):
+			by = strings.TrimPrefix(a, "--by=")
+		default:
+			fmt.Printf("Unknown flag: %s\n", a)
+			os.Exit(1)
+		}
+	}
+	if keyFile == "" || strings.TrimSpace(by) == "" {
+		fmt.Fprintln(os.Stderr, "both --key and --by are required")
+		os.Exit(1)
+	}
+	raw, err := os.ReadFile(keyFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not read key: %v\n", err)
+		os.Exit(1)
+	}
+	priv, err := connector.DecodePrivateKey(string(raw))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+	m, verrs, err := connector.Load(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid: %v\n", err)
+		os.Exit(1)
+	}
+	if len(verrs) > 0 {
+		fmt.Fprintf(os.Stderr, "connector is invalid:\n%s\n", connector.FormatErrors(verrs))
+		os.Exit(1)
+	}
+	if err := connector.Sign(m, priv, by); err != nil {
+		fmt.Fprintf(os.Stderr, "sign failed: %v\n", err)
+		os.Exit(1)
+	}
+	if err := connector.Save(m, connectorManifestPath(path)); err != nil {
+		fmt.Fprintf(os.Stderr, "could not write manifest: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("signed %s as %s (%s)\n", m.ID, m.Provenance.SignedBy, m.Provenance.Hash)
+}
+
+func connectorVerifyCmd(args []string) {
+	if len(args) == 0 {
+		fmt.Println("Usage: ghost connector verify <path> --key=<public-key-file>")
+		os.Exit(1)
+	}
+	path, keyFile := args[0], ""
+	for _, a := range args[1:] {
+		if strings.HasPrefix(a, "--key=") {
+			keyFile = strings.TrimPrefix(a, "--key=")
+		}
+	}
+	if keyFile == "" {
+		fmt.Fprintln(os.Stderr, "--key is required")
+		os.Exit(1)
+	}
+	raw, err := os.ReadFile(keyFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not read key: %v\n", err)
+		os.Exit(1)
+	}
+	pub, err := connector.DecodePublicKey(string(raw))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+	m, _, err := connector.Load(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid: %v\n", err)
+		os.Exit(1)
+	}
+	if err := connector.VerifySignature(m, pub); err != nil {
+		fmt.Fprintf(os.Stderr, "✗ %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ %s signed by %s\n", m.ID, m.Provenance.SignedBy)
 }
 
 func connectorCallCmd(args []string) {
@@ -105,16 +241,37 @@ func connectorCallCmd(args []string) {
 }
 
 func connectorReviewCmd(args []string) {
-	if len(args) == 0 {
-		fmt.Println("Usage: ghost connector review <path>")
+	path := ""
+	asJSON := false
+	for _, a := range args {
+		if a == "--json" {
+			asJSON = true
+		} else {
+			path = a
+		}
+	}
+	if path == "" {
+		fmt.Println("Usage: ghost connector review <path> [--json]")
 		os.Exit(1)
 	}
-	m, _, err := connector.Load(args[0])
+	m, _, err := connector.Load(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid: %v\n", err)
 		os.Exit(1)
 	}
 	findings := connector.Review(m)
+	if asJSON {
+		raw, _ := json.MarshalIndent(map[string]interface{}{
+			"id":         m.ID,
+			"findings":   findings,
+			"has_errors": connector.HasErrors(findings),
+		}, "", "  ")
+		fmt.Println(string(raw))
+		if connector.HasErrors(findings) {
+			os.Exit(1)
+		}
+		return
+	}
 	fmt.Printf("Review: %s v%s (%s)\n", m.ID, m.Version, m.Kind)
 	for _, f := range findings {
 		mark := "·"

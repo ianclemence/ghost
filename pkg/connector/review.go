@@ -36,6 +36,10 @@ func Review(m *Manifest) []Finding {
 		out = append(out, Finding{Level: "warning", Field: "provenance.source",
 			Message: "no provenance source; a directory cannot attest this connector"})
 	}
+	if m.Provenance.SignedBy != "" && m.Provenance.Signature == "" {
+		out = append(out, Finding{Level: "warning", Field: "provenance.signature",
+			Message: "signed_by is set but no signature is present"})
+	}
 	// High-impact capabilities are the sharp edge; keep them deliberate.
 	high := 0
 	for _, c := range m.Capabilities {
