@@ -99,6 +99,43 @@ source of authority.
 
 ---
 
+# Things Ghost does
+
+A **Thing** is the single owner-facing primitive for anything Ghost runs on its
+own: a reminder, a recurring instruction, a scheduled action, or a task.
+
+The owner never chooses between the internal models. They express an intent —
+"every Monday at 9, prepare my weekly brief" — and Ghost infers the shape. The
+split between "Routines" and "Automations" was an internal taxonomy leaking
+into the product; it no longer exists on any owner surface.
+
+## One presentation boundary, not a new authority
+
+`pkg/things` is a **read-only normalization**, not a storage or scheduling
+layer. It reads the existing models and returns one feed:
+
+```
+pkg/routines (product view over scheduled automations)
+pkg/scheduled (the one scheduler authority)
+        ↓
+     pkg/things   (normalize + infer shape + sort)
+        ↓
+  GET /v1/things (one feed for every surface)
+```
+
+It owns no tables, no scheduler, no permission. Kind (`reminder`, `routine`,
+`automation`, `task`) and state (`active`, `paused`, `waiting`, `done`,
+`failed`, `cancelled`) are inferred deterministically, and each inference
+carries an audit reason. A routine appears exactly once even though it is also
+a scheduled row. Human schedule phrasing reuses the scheduler's own humanizer
+so no surface can disagree about what `0 9 * * 1-5` means.
+
+The deep rules below still govern execution: a Thing is surfaced by
+`pkg/things`, but it wakes Ghost through the scheduler and re-enters the
+normal capability, permission, and evidence path like any other work.
+
+---
+
 # Routines
 
 A **routine** is the user-facing product primitive for persistent, recurring
