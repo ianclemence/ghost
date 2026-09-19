@@ -310,6 +310,11 @@ func buildDefault() *Registry {
 			Tools:       []string{"email_send"},
 			Description: "Send or reply to email on the user's behalf."},
 
+		// --- Payments (connected-app, high impact, acknowledgement required) ---
+		{ID: "payments.charge", Title: "Take a payment", Risk: RiskHighImpact, Evidence: EvidenceAcknowledgement,
+			Tools:       []string{"payment_charge"},
+			Description: "Charge a payment method on the owner's behalf through a connected provider. Every charge asks first and is proven by the provider acknowledgement. Ghost takes no cut and ranks no connector for pay."},
+
 		// --- Media (connected-app, e.g. Spotify) ---
 		{ID: "media.playback", Title: "Media playback", Risk: RiskLow,
 			Tools:       []string{"media_play", "media_queue"},
