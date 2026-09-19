@@ -249,3 +249,30 @@ func TestHumanScheduleUnknownFallsBackToManual(t *testing.T) {
 		t.Errorf("unknown kind should be Manual, got %q", got)
 	}
 }
+
+func TestFromRoutineStripsExecutionPhrasing(t *testing.T) {
+	r := &routines.Routine{
+		ID: "routine-x", Name: "Prepare my brief",
+		Instruction: "remind me to prepare my brief",
+		Status:      routines.StatusActive, ScheduleKind: "every", ScheduleEverySecs: 60,
+	}
+	got := FromRoutine(r)
+	if got.What != "Prepare my brief" {
+		t.Errorf("what = %q, want clean task without 'remind me to'", got.What)
+	}
+	if got.Title != "Prepare my brief" {
+		t.Errorf("title = %q", got.Title)
+	}
+}
+
+func TestDisplayInstructionFallbacks(t *testing.T) {
+	if got := displayInstruction("Please send the report"); got != "Send the report" {
+		t.Errorf("got %q", got)
+	}
+	if got := displayInstruction(""); got != "" {
+		t.Errorf("empty should stay empty, got %q", got)
+	}
+	if got := displayInstruction("water the plants"); got != "Water the plants" {
+		t.Errorf("got %q", got)
+	}
+}

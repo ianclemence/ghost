@@ -82,7 +82,7 @@ func FromRoutine(r *routines.Routine) Thing {
 	return Thing{
 		ID:        r.ID,
 		Title:     r.Name,
-		What:      r.Instruction,
+		What:      displayInstruction(r.Instruction),
 		Kind:      KindRoutine,
 		State:     normalizeRoutineState(r.Status),
 		Schedule:  sched,
@@ -95,6 +95,28 @@ func FromRoutine(r *routines.Routine) Thing {
 		// instruction is the "what", so no shape inference is needed.
 		KindReason: "recurring instruction",
 	}
+}
+
+// displayInstruction presents a routine's instruction as owner-facing text.
+// The stored instruction carries execution phrasing ("remind me to prepare
+// the brief") so the agent turn reads naturally when it fires; the display
+// should read as the task itself. The stored value is never mutated.
+func displayInstruction(instruction string) string {
+	s := strings.TrimSpace(instruction)
+	for _, prefix := range []string{"remind me to ", "remind me ", "please ", "can you ", "could you "} {
+		if len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+			s = strings.TrimSpace(s[len(prefix):])
+			break
+		}
+	}
+	if s == "" {
+		return instruction
+	}
+	if r := []rune(s); r[0] >= 'a' && r[0] <= 'z' {
+		r[0] = r[0] - 32
+		return string(r)
+	}
+	return s
 }
 
 // FromScheduled normalizes a raw scheduled item into a Thing. This is the
