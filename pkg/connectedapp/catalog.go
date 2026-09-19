@@ -111,14 +111,6 @@ func FirstParty() []Connector {
 			Help:         "Paste an internal integration token for docs access.",
 		},
 		{
-			ID: "stripe", Provider: "stripe", DisplayName: "Stripe",
-			AuthKind: AuthAPIKey, Setup: SetupPasteKey,
-			ReadScopes:   []string{"read_only"},
-			WriteScopes:  []string{"charges.write"},
-			Capabilities: []string{"payments.charge"},
-			Help:         "Take payments through your own Stripe account. Every charge asks first and is proven by the provider acknowledgement. Ghost takes no cut.",
-		},
-		{
 			ID: "openweather", Provider: "openweather", DisplayName: "OpenWeather",
 			AuthKind: AuthAPIKey, Setup: SetupPasteKey,
 			Capabilities: []string{"weather.get"},

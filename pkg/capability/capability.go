@@ -313,7 +313,7 @@ func buildDefault() *Registry {
 		// --- Payments (connected-app, high impact, acknowledgement required) ---
 		{ID: "payments.charge", Title: "Take a payment", Risk: RiskHighImpact, Evidence: EvidenceAcknowledgement,
 			Tools:       []string{"payment_charge"},
-			Description: "Charge a payment method on the owner's behalf through a connected provider. Every charge asks first and is proven by the provider acknowledgement. Ghost takes no cut and ranks no connector for pay."},
+			Description: "Charge a payment method on the owner's behalf through the owner's own connected payment connector. Every charge asks first and is proven by the provider acknowledgement. Ghost takes no cut and ranks no connector for pay."},
 
 		// --- Media (connected-app, e.g. Spotify) ---
 		{ID: "media.playback", Title: "Media playback", Risk: RiskLow,
