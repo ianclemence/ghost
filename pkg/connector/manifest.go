@@ -90,6 +90,11 @@ type Auth struct {
 	Provider string `json:"provider,omitempty"`
 	// Scopes are the external scopes requested; users may grant read-only first.
 	Scopes []string `json:"scopes,omitempty"`
+	// Header is the request header that carries the credential (default
+	// "Authorization"); Scheme is its prefix (default "Bearer" for the
+	// Authorization header, empty otherwise, so X-API-Key carries the raw key).
+	Header string `json:"header,omitempty"`
+	Scheme string `json:"scheme,omitempty"`
 }
 
 // MCPSpec configures a Model Context Protocol connector.

@@ -12,6 +12,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/connectedapp"
 	"github.com/ianclemence/ghost/pkg/connector"
+	"github.com/ianclemence/ghost/pkg/credentials"
 )
 
 // connectorCmd is the authoring surface for Ghost's portable connectors:
@@ -66,6 +67,34 @@ func connectorHelp() {
 	fmt.Println("  sign <path> --key= --by= Sign a connector manifest")
 	fmt.Println("  verify <path> --key=     Verify a connector signature")
 	fmt.Println("  list [--dir=path]        List first-party and installed connectors")
+}
+
+// connectorCLIAuthHeaders builds the auth header for a connector from the
+// credential store, mirroring the agent's runtime behavior.
+func connectorCLIAuthHeaders(m *connector.Manifest) func() (map[string]string, error) {
+	return func() (map[string]string, error) {
+		id := strings.TrimSpace(m.Auth.Provider)
+		if id == "" {
+			id = strings.TrimSpace(m.ID)
+		}
+		key := credentials.ProviderKey(id)
+		if key == "" {
+			return nil, nil
+		}
+		header := strings.TrimSpace(m.Auth.Header)
+		if header == "" {
+			header = "Authorization"
+		}
+		scheme := strings.TrimSpace(m.Auth.Scheme)
+		if scheme == "" && header == "Authorization" {
+			scheme = "Bearer"
+		}
+		value := key
+		if scheme != "" {
+			value = scheme + " " + key
+		}
+		return map[string]string{header: value}, nil
+	}
 }
 
 // connectorManifestPath resolves a file or directory argument to the manifest
@@ -232,7 +261,7 @@ func connectorCallCmd(args []string) {
 		}
 		callArgs[k] = v
 	}
-	exec := &connector.OpenAPIExecutor{BaseURL: m.OpenAPI.BaseURL}
+	exec := &connector.OpenAPIExecutor{BaseURL: m.OpenAPI.BaseURL, Headers: connectorCLIAuthHeaders(m)}
 	out, err := exec.Execute(context.Background(), *found, callArgs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "call failed: %v\n", err)

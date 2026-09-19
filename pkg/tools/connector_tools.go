@@ -19,7 +19,7 @@ import (
 // owns the vault). A nil headers func means keyless connectors only; an
 // authenticated connector then fails honestly at call time rather than
 // silently.
-func RegisterConnectorTools(reg *ToolRegistry, workspace string, headers func(connectorID, provider string) (map[string]string, error)) (int, error) {
+func RegisterConnectorTools(reg *ToolRegistry, workspace string, headers func(*connector.Manifest) (map[string]string, error)) (int, error) {
 	if reg == nil {
 		return 0, fmt.Errorf("nil tool registry")
 	}
@@ -29,6 +29,7 @@ func RegisterConnectorTools(reg *ToolRegistry, workspace string, headers func(co
 	}
 	registered := 0
 	for _, m := range manifests {
+		m := m
 		if m.Kind != connector.KindOpenAPI {
 			continue
 		}
@@ -41,7 +42,7 @@ func RegisterConnectorTools(reg *ToolRegistry, workspace string, headers func(co
 				if headers == nil {
 					return nil, nil
 				}
-				return headers(m.ID, m.Auth.Provider)
+				return headers(m)
 			},
 		}
 		for _, c := range m.Capabilities {
