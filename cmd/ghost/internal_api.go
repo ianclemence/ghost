@@ -3409,6 +3409,20 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "connected_apps": connectedAppsList()})
 	}))
 
+	// ── Portable connectors: the directory (list/install/uninstall/review) ──
+	mux.HandleFunc("/v1/connectors", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		connectorsListHandler(w, r, agentLoop)
+	}))
+	mux.HandleFunc("/v1/connectors/install", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		connectorsInstallHandler(w, r, agentLoop)
+	}))
+	mux.HandleFunc("/v1/connectors/uninstall", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		connectorsUninstallHandler(w, r, agentLoop)
+	}))
+	mux.HandleFunc("/v1/connectors/review", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		connectorsReviewHandler(w, r)
+	}))
+
 	mux.HandleFunc("/v1/routines", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		svc, err := routineService()
 		if err != nil {

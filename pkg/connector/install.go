@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -14,9 +15,7 @@ import (
 // connector. It records what was installed, from where, and the content hash.
 const SourceRecordName = ".ghost-source.json"
 
-// Install validates a connector and installs it into dir/<id>/, writing a
-// provenance record. It refuses to silently replace a different connector
-// under the same id unless force is true.
+// Install validates a connector file and installs it into dir/<id>/.
 func Install(path, dir string, force bool) (string, error) {
 	m, verrs, err := Load(path)
 	if err != nil {
@@ -25,7 +24,36 @@ func Install(path, dir string, force bool) (string, error) {
 	if len(verrs) > 0 {
 		return "", fmt.Errorf("connector is invalid:\n%s", FormatErrors(verrs))
 	}
+	return installManifestAt(m, dir, force, path)
+}
 
+// Uninstall removes an installed connector by id. The id is slugified and
+// path-checked, so it can never escape the connectors directory.
+func Uninstall(dir, id string) error {
+	slug := Slugify(id)
+	if slug == "" || strings.ContainsAny(slug, `/\`) {
+		return fmt.Errorf("invalid connector id")
+	}
+	return os.RemoveAll(filepath.Join(dir, slug))
+}
+
+// InstallManifest validates an in-memory manifest (e.g. from an API request)
+// and installs it into dir/<id>/, writing a provenance record. It refuses to
+// silently replace a different connector under the same id unless force is
+// true.
+func InstallManifest(m *Manifest, dir string, force bool) (string, error) {
+	if m == nil {
+		return "", fmt.Errorf("nil manifest")
+	}
+	if verrs := m.Validate(); len(verrs) > 0 {
+		return "", fmt.Errorf("connector is invalid:\n%s", FormatErrors(verrs))
+	}
+	return installManifestAt(m, dir, force, "")
+}
+
+// installManifestAt is the shared install body. sourcePath is recorded for
+// provenance (empty for in-memory installs).
+func installManifestAt(m *Manifest, dir string, force bool, sourcePath string) (string, error) {
 	hash, err := manifestHash(m)
 	if err != nil {
 		return "", err
@@ -53,7 +81,7 @@ func Install(path, dir string, force bool) (string, error) {
 		"id":           m.ID,
 		"version":      m.Version,
 		"source":       source,
-		"source_path":  path,
+		"source_path":  sourcePath,
 		"hash":         hash,
 		"installed_at": time.Now().UTC().Format(time.RFC3339),
 	}

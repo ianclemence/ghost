@@ -115,6 +115,75 @@ async function loadIntegrations(container) {
   camTr.appendChild(camBtn);
   camRow.appendChild(camTr);
   listEl.appendChild(camRow);
+
+  // Portable connectors: one directory of installed connectors and built-in
+  // connected apps, searchable by capability rather than by brand.
+  renderConnectorDirectory(container);
+}
+
+function renderConnectorDirectory(container) {
+  const head = GhostUI.h('div', { className: 'page-head', style: 'margin-top:var(--s-6)' });
+  head.appendChild(GhostUI.h('h2', {}, 'Connectors'));
+  head.appendChild(GhostUI.h('p', {}, 'Portable connectors Ghost can use. Search by capability — “who can send email?” — not by brand. Install and manage with `ghost connector`.'));
+  container.appendChild(head);
+
+  const panel = GhostUI.h('div', { className: 'panel' });
+  const search = GhostUI.h('input', { className: 'ghost-input', placeholder: 'Filter by capability, e.g. email.read', autocomplete: 'off' });
+  search.style.marginBottom = 'var(--s-4)';
+  panel.appendChild(search);
+  const listEl = GhostUI.h('div', {});
+  listEl.appendChild(GhostUI.loading('Loading connectors…'));
+  panel.appendChild(listEl);
+  container.appendChild(panel);
+
+  let all = [];
+  const render = (filter) => {
+    listEl.innerHTML = '';
+    const f = (filter || '').trim().toLowerCase();
+    const shown = f ? all.filter((c) => connectorEntryMatches(c, f)) : all;
+    if (shown.length === 0) {
+      listEl.appendChild(GhostUI.h('div', { className: 'text-tertiary' }, 'No connectors match.'));
+      return;
+    }
+    shown.forEach((c) => listEl.appendChild(connectorRow(c)));
+  };
+
+  GhostAPI.proxyGet('/v1/connectors').then((res) => {
+    if (!document.body.contains(container)) return;
+    all = (res && res.connectors) || [];
+    render('');
+  }).catch(() => {
+    listEl.innerHTML = '';
+    listEl.appendChild(GhostUI.h('div', { className: 'text-tertiary' }, 'Connectors are unavailable right now.'));
+  });
+
+  let t = null;
+  search.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => render(search.value), 120);
+  });
+}
+
+function connectorEntryMatches(c, f) {
+  if ((c.id || '').toLowerCase().includes(f)) return true;
+  if ((c.display_name || '').toLowerCase().includes(f)) return true;
+  return (c.capabilities || []).some((cap) => (cap.id || '').toLowerCase().includes(f));
+}
+
+function connectorRow(c) {
+  const row = GhostUI.h('div', { className: 'model-row' });
+  const main = GhostUI.h('div', { className: 'model-main' });
+  main.appendChild(GhostUI.h('div', { className: 'model-name' }, c.display_name || c.id));
+  const capCount = (c.capabilities || []).length;
+  main.appendChild(GhostUI.h('div', { className: 'model-sub' },
+    (c.kind || '') + '  ·  ' + (c.source || '') + '  ·  ' + capCount + ' capabilit' + (capCount === 1 ? 'y' : 'ies')));
+  row.appendChild(main);
+  const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+  tr.appendChild(GhostUI.h('span', { className: 'status-pill' },
+    GhostUI.statusDot(c.source === 'installed' ? 'ready' : 'neutral'),
+    c.source === 'installed' ? 'Installed' : 'Built-in'));
+  row.appendChild(tr);
+  return row;
 }
 
 function intRow(name, kind, state, sub, onClick) {
