@@ -410,6 +410,10 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 				registry.Register(tools.NewMCPTool(manager, info.Server, info.Tool))
 			}
 		}
+		// Installed mcp connectors: their declared server joins the same
+		// manager, and their capabilities map to the server's tools, so an
+		// MCP server becomes a first-class connector with no new execution code.
+		registerConnectorMCPTools(registry, manager, workspace)
 	}
 
 	// registry.SetToolEnabledForChannel("mobile", "exec", false)
