@@ -132,6 +132,7 @@ func FromOpenAPI(doc []byte, opts OpenAPIOptions) (*Manifest, error) {
 				Description:     desc,
 				Risk:            risk,
 				NetworkRequired: true,
+				Operation:       &Operation{Method: strings.ToUpper(method), Path: p},
 			})
 		}
 	}

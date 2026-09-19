@@ -315,6 +315,14 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Standing goals: durable owner intents the heartbeat evaluates.
 	registry.Register(tools.NewGoalTool(workspace))
 
+	// Installed connectors: openapi connectors register their capabilities as
+	// tools so they run through the same governed path (broker, evidence,
+	// honest errors). native/skill connectors add nothing here; mcp
+	// connectors are handled by the MCP manager.
+	if _, cerr := tools.RegisterConnectorTools(registry, workspace, connectorAuthHeaders); cerr != nil {
+		logger.WarnCF("agent", "installed connectors not registered", map[string]interface{}{"error": cerr.Error()})
+	}
+
 	// Vision tool - image analysis
 	registry.Register(tools.NewVisionTool(workspace))
 

@@ -44,6 +44,16 @@ const (
 	KindOpenAPI Kind = "openapi" // generated from an OpenAPI document
 )
 
+// Operation binds a capability to a transport operation. For an openapi
+// connector it is the HTTP method + path; for an mcp connector it is the
+// remote tool name. Native/skill capabilities leave it nil (the runtime
+// resolves them through the existing tool registry).
+type Operation struct {
+	Method string `json:"method,omitempty"`
+	Path   string `json:"path,omitempty"`
+	Tool   string `json:"tool,omitempty"`
+}
+
 // Capability declares one thing a connector can do, with the risk the
 // permission broker will enforce. Risk is authored here and never inferred by
 // the model.
@@ -68,6 +78,8 @@ type Capability struct {
 	NetworkRequired bool `json:"network_required,omitempty"`
 	// Deterministic marks local ops that may bypass the model when possible.
 	Deterministic bool `json:"deterministic,omitempty"`
+	// Operation binds this capability to a transport operation (openapi/mcp).
+	Operation *Operation `json:"operation,omitempty"`
 }
 
 // Auth declares how the user proves ownership of the external system.
@@ -258,6 +270,17 @@ func (m *Manifest) validateCapabilities() []ValidationError {
 				}
 			}
 		}
+		// Executable transports must bind each capability to an operation.
+		switch m.Kind {
+		case KindOpenAPI:
+			if c.Operation == nil || strings.TrimSpace(c.Operation.Method) == "" || strings.TrimSpace(c.Operation.Path) == "" {
+				add(f+".operation", "an openapi capability needs an operation with method and path")
+			}
+		case KindMCP:
+			if c.Operation == nil || strings.TrimSpace(c.Operation.Tool) == "" {
+				add(f+".operation", "an mcp capability needs an operation naming the remote tool")
+			}
+		}
 	}
 	return errs
 }
@@ -275,8 +298,10 @@ func (m *Manifest) validateTransport() []ValidationError {
 			add("openapi", "must be empty for an mcp connector")
 		}
 	case KindOpenAPI:
-		if m.OpenAPI == nil || (strings.TrimSpace(m.OpenAPI.URL) == "" && strings.TrimSpace(m.OpenAPI.Path) == "") {
-			add("openapi", "an openapi connector needs a url or a path")
+		// Execution needs the base URL; url/path are optional provenance of
+		// the source document.
+		if m.OpenAPI == nil || strings.TrimSpace(m.OpenAPI.BaseURL) == "" {
+			add("openapi", "an openapi connector needs a base_url to execute against")
 		}
 		if m.MCP != nil {
 			add("mcp", "must be empty for an openapi connector")

@@ -93,8 +93,9 @@ func TestTransportRequirements(t *testing.T) {
 		t.Fatalf("mcp without a command/url must fail: %v", m.Validate())
 	}
 	m.MCP = &MCPSpec{Command: "npx"}
+	m.Capabilities[0].Operation = &Operation{Tool: "remote_tool"}
 	if errs := m.Validate(); len(errs) != 0 {
-		t.Fatalf("mcp with a command should pass, got %v", errs)
+		t.Fatalf("mcp with a command and bound operation should pass, got %v", errs)
 	}
 
 	m2 := validNative()

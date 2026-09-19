@@ -46,6 +46,21 @@ func providerKeyFromDisk(key string) string {
 	return ""
 }
 
+// ProviderKey returns a generic credential for a connected app or connector by
+// id: .secrets.json ProviderAPIKeys[id] first, then the <ID>_API_KEY env
+// fallback. Empty when unset. It is the read-only storage adapter for
+// connector auth; the Vault remains the lifecycle authority.
+func ProviderKey(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	if v := providerKeyFromDisk(id); v != "" {
+		return v
+	}
+	return strings.TrimSpace(os.Getenv(strings.ToUpper(id) + "_API_KEY"))
+}
+
 // AviationKey returns the AviationStack key (secrets-first, env fallback).
 func AviationKey(cfg *config.Config) string {
 	_ = cfg

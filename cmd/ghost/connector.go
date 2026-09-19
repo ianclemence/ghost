@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,6 +36,8 @@ func connectorCmd() {
 		connectorReviewCmd(os.Args[3:])
 	case "install":
 		connectorInstallCmd(os.Args[3:])
+	case "call":
+		connectorCallCmd(os.Args[3:])
 	default:
 		fmt.Printf("Unknown connector command: %s\n", os.Args[2])
 		connectorHelp()
@@ -50,7 +53,55 @@ func connectorHelp() {
 	fmt.Println("  from-openapi <spec>      Generate a draft connector from an OpenAPI document")
 	fmt.Println("                           [--out=connector.json] [--id=] [--version=] [--url=] [--keyless]")
 	fmt.Println("  install <path>           Install into <workspace>/connectors [--dir=] [--force]")
+	fmt.Println("  call <path> <cap> [k=v]  Execute one capability (openapi connectors)")
 	fmt.Println("  list [--dir=path]        List first-party and installed connectors")
+}
+
+func connectorCallCmd(args []string) {
+	if len(args) < 2 {
+		fmt.Println("Usage: ghost connector call <path> <capability-id> [key=value ...]")
+		os.Exit(1)
+	}
+	path, capID := args[0], args[1]
+	m, verrs, err := connector.Load(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid: %v\n", err)
+		os.Exit(1)
+	}
+	if len(verrs) > 0 {
+		fmt.Fprintf(os.Stderr, "connector is invalid:\n%s\n", connector.FormatErrors(verrs))
+		os.Exit(1)
+	}
+	if m.Kind != connector.KindOpenAPI || m.OpenAPI == nil {
+		fmt.Fprintln(os.Stderr, "only openapi connectors can be called from the CLI")
+		os.Exit(1)
+	}
+	var found *connector.Capability
+	for i := range m.Capabilities {
+		if m.Capabilities[i].ID == capID {
+			found = &m.Capabilities[i]
+		}
+	}
+	if found == nil {
+		fmt.Fprintf(os.Stderr, "unknown capability %q\n", capID)
+		os.Exit(1)
+	}
+	callArgs := map[string]interface{}{}
+	for _, a := range args[2:] {
+		k, v, ok := strings.Cut(a, "=")
+		if !ok {
+			fmt.Fprintf(os.Stderr, "bad argument %q (want key=value)\n", a)
+			os.Exit(1)
+		}
+		callArgs[k] = v
+	}
+	exec := &connector.OpenAPIExecutor{BaseURL: m.OpenAPI.BaseURL}
+	out, err := exec.Execute(context.Background(), *found, callArgs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "call failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(out)
 }
 
 func connectorReviewCmd(args []string) {
