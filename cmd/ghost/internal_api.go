@@ -1742,6 +1742,33 @@ func pullGatewayOllamaModel(model string) error {
 	return cmd.Run()
 }
 
+// resolveApiWorkspace resolves the workspace and memory directories the
+// owner-facing Memory/files API reads.
+//
+// It must return the SAME workspace the agent writes to. The earlier code
+// resolved from $HOME, which silently split the owner's memory view from
+// reality whenever the configured workspace differed from the default
+// (e.g. /var/lib/ghost/workspace on a Pod): the agent wrote memories to the
+// configured path while /v1/memory/self read an empty default.
+//
+// Precedence: explicit env override (GHOST_WORKSPACE_DIR / MEMORY_DIR),
+// then the loaded config's workspace, then $HOME/ghost/workspace.
+func resolveApiWorkspace(cfg *config.Config) (workspaceDir, memoryDir string) {
+	workspaceDir = os.Getenv("GHOST_WORKSPACE_DIR")
+	if workspaceDir == "" && cfg != nil {
+		workspaceDir = cfg.WorkspacePath()
+	}
+	if workspaceDir == "" {
+		home := os.Getenv("HOME")
+		workspaceDir = filepath.Join(home, "ghost", "workspace")
+	}
+	memoryDir = os.Getenv("MEMORY_DIR")
+	if memoryDir == "" {
+		memoryDir = filepath.Join(workspaceDir, "memory")
+	}
+	return workspaceDir, memoryDir
+}
+
 func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Service, channelManager *channels.Manager) {
 	port := agentLoop.Config().Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
@@ -1754,16 +1781,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	}
 	screenshotCmd := os.Getenv("SCREENSHOT_CMD")
 
-	memoryDir := os.Getenv("MEMORY_DIR")
-	if memoryDir == "" {
-		home := os.Getenv("HOME")
-		memoryDir = filepath.Join(home, "ghost", "workspace", "memory")
-	}
-	workspaceDir := os.Getenv("GHOST_WORKSPACE_DIR")
-	if workspaceDir == "" {
-		home := os.Getenv("HOME")
-		workspaceDir = filepath.Join(home, "ghost", "workspace")
-	}
+	workspaceDir, memoryDir := resolveApiWorkspace(agentLoop.Config())
 	skillsDir := filepath.Join(workspaceDir, "skills")
 
 	db := agentLoop.DB()

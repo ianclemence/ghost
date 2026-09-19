@@ -110,7 +110,23 @@ func extractTask(text, clause string) string {
 	rest := strings.TrimSpace(strings.Replace(text, clause, " ", 1))
 	rest = strings.Trim(rest, " .,;")
 	lower := strings.ToLower(rest)
-	for _, prefix := range []string{"remind me to ", "remind me ", "please ", "can you ", "could you "} {
+	// Peel leading conversational connectives and filler that precede the
+	// actual task. "Also remind me to X", "and can you X", "then X" all
+	// mean X; leaving the connective produced titles like "Also remind me
+	// to send a status update".
+	connectives := []string{"also ", "and also ", "and ", "then ", "plus "}
+	changed := true
+	for changed {
+		changed = false
+		for _, c := range connectives {
+			if strings.HasPrefix(lower, c) {
+				rest = strings.TrimSpace(rest[len(c):])
+				lower = strings.ToLower(rest)
+				changed = true
+			}
+		}
+	}
+	for _, prefix := range []string{"remind me to ", "remind me ", "please ", "can you ", "could you ", "would you "} {
 		if strings.HasPrefix(lower, prefix) {
 			rest = strings.TrimSpace(rest[len(prefix):])
 			lower = strings.ToLower(rest)
@@ -121,6 +137,9 @@ func extractTask(text, clause string) string {
 	if strings.HasPrefix(lower, "to ") && len(rest) > 3 {
 		rest = strings.TrimSpace(rest[3:])
 	}
+	// Collapse internal whitespace left by clause removal ("Also remind me
+	//   to send" -> "Also remind me to send").
+	rest = strings.Join(strings.Fields(rest), " ")
 	if len(rest) < 3 {
 		return ""
 	}

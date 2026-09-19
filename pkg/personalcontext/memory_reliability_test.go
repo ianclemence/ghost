@@ -3,7 +3,9 @@ package personalcontext
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/providers"
 )
@@ -199,3 +201,169 @@ func (failProvider) Chat(ctx context.Context, messages []providers.Message, defs
 	return nil, errBoom
 }
 func (failProvider) GetDefaultModel() string { return "test" }
+
+// A compound message must decompose into discrete, cleanly-phrased memories,
+// and the stored value must come from the model's summary — never the raw
+// command language. This is the regression guard for the demo defect where
+// "Remember that I never take meetings before 10am, and I always order oat
+// milk lattes" was stored verbatim as one preference/general blob.
+func TestReliabilityCompoundMessageDecomposes(t *testing.T) {
+	q := &queuedProvider{contents: []string{
+		`{"should_remember": true, "memories": [
+			{"kind":"constraint","domain":"work","confidence":0.95,"summary":"Does not take meetings before 10am"},
+			{"kind":"preference","domain":"food","confidence":0.95,"summary":"Always orders oat milk lattes"}
+		]}`,
+	}}
+	se := NewSemanticExtractor(q, "test")
+	res := se.Extract(context.Background(),
+		"Remember that I never take meetings before 10am, and I always order oat milk lattes.", nil)
+
+	if !res.ShouldRemember {
+		t.Fatalf("expected memories, got %+v", res)
+	}
+	if len(res.Entries) != 2 {
+		t.Fatalf("want 2 discrete memories, got %d: %+v", len(res.Entries), res.Entries)
+	}
+	for _, e := range res.Entries {
+		v := Value(e)
+		if strings.HasPrefix(strings.ToLower(v), "remember") {
+			t.Errorf("stored value leaked command language: %q", v)
+		}
+		if strings.Contains(strings.ToLower(v), " and i always ") {
+			t.Errorf("compound fact was fused into one value: %q", v)
+		}
+	}
+	// Predicates should be specific, not the generic fallback.
+	seen := map[string]bool{}
+	for _, e := range res.Entries {
+		seen[e.Predicate] = true
+	}
+	if seen["preference/general"] {
+		t.Errorf("compound memories fell back to preference/general: %+v", seen)
+	}
+}
+
+// A single-memory response (legacy top-level shape) still works: the value
+// uses the model's summary, not raw text.
+func TestReliabilitySingleMemoryUsesSummary(t *testing.T) {
+	q := &queuedProvider{contents: []string{
+		`{"should_remember": true, "kind": "fact", "domain": "lifestyle", "confidence": 0.9, "summary": "Volunteers at an animal shelter every weekend"}`,
+	}}
+	se := NewSemanticExtractor(q, "test")
+	res := se.Extract(context.Background(), "Every weekend I volunteer at the animal shelter.", nil)
+	if !res.ShouldRemember || len(res.Entries) != 1 {
+		t.Fatalf("expected one memory, got %+v", res)
+	}
+	if got := Value(res.Entries[0]); got != "Volunteers at an animal shelter every weekend" {
+		t.Fatalf("value = %q, want the model summary", got)
+	}
+}
+
+// Memories with no summary and no title must be dropped rather than stored
+// as an empty or raw-text value.
+func TestReliabilityEmptySummaryIsDropped(t *testing.T) {
+	q := &queuedProvider{contents: []string{
+		`{"should_remember": true, "memories": [{"kind":"fact","domain":"other","confidence":0.9,"summary":"   "}]}`,
+	}}
+	se := NewSemanticExtractor(q, "test")
+	res := se.Extract(context.Background(), "Something durable happened yesterday.", nil)
+	if res.ShouldRemember {
+		t.Fatalf("empty summary must not become a memory: %+v", res)
+	}
+}
+
+// Every kind the classifier's controlled vocabulary can produce must be a
+// valid entry kind, and vice versa. A mismatch silently drops valid
+// extractions at persist time: the demo caught "constraint" (a scheduling
+// boundary like "no meetings before 10am") and "project" being rejected by
+// the store even though the classifier emitted them.
+func TestReliabilityKindVocabularyAgrees(t *testing.T) {
+	for mk, valid := range ValidMemoryKinds {
+		if !valid {
+			continue
+		}
+		if !ValidKind(Kind(mk)) {
+			t.Errorf("classifier kind %q is not a valid entry kind (would be dropped at persist)", mk)
+		}
+	}
+	// And the reverse: every entry kind must be classifiable.
+	for _, k := range []Kind{
+		KindIdentity, KindFact, KindPreference, KindRelationship,
+		KindGoal, KindDecision, KindConsent, KindRoutine,
+		KindProject, KindConstraint, KindInterest,
+	} {
+		if !ValidKind(k) {
+			t.Errorf("entry kind %q is not valid", k)
+		}
+		if !ValidMemoryKinds[MemoryKind(k)] {
+			t.Errorf("entry kind %q is not in the classifier vocabulary", k)
+		}
+	}
+}
+
+// A constraint memory (the class of fact the demo lost) must survive the
+// store's validation round-trip.
+func TestReliabilityConstraintEntryValidates(t *testing.T) {
+	e := Entry{
+		ID: "sem_test", Kind: KindConstraint, Subject: "user",
+		Predicate: "constraint/work", Status: StatusCurrent,
+		Value:     []byte(`"Does not take meetings before 10am"`),
+		CreatedAt: time.Now(),
+	}
+	if err := e.Validate(); err != nil {
+		t.Fatalf("constraint entry must validate, got: %v", err)
+	}
+}
+
+// A multi-clause introduction states several facts, but the deterministic
+// grammar captures only one (location). The extractor must merge the model's
+// complementary memories (name, role) with the grammar result instead of
+// returning regex-only and silently losing them.
+func TestReliabilityMultiClauseMergesGrammarAndModel(t *testing.T) {
+	q := &queuedProvider{contents: []string{
+		`{"should_remember": true, "memories": [
+			{"kind":"identity","domain":"identity","confidence":0.95,"summary":"Name is Maya"},
+			{"kind":"fact","domain":"work","confidence":0.95,"summary":"Works as a product designer"}
+		]}`,
+	}}
+	se := NewSemanticExtractor(q, "test")
+	res := se.Extract(context.Background(), "Hi, I'm Maya. I live in Bangkok and work as a product designer.", nil)
+	if !res.ShouldRemember {
+		t.Fatalf("expected merged memories, got %+v", res)
+	}
+	if res.Reason != "regex+semantic_extraction" {
+		t.Fatalf("reason = %q, want regex+semantic_extraction", res.Reason)
+	}
+	var haveLoc, haveName, haveWork bool
+	for _, e := range res.Entries {
+		switch e.Predicate {
+		case "fact/location":
+			haveLoc = true
+		case "identity/name":
+			haveName = true
+		case "fact/work":
+			haveWork = true
+		}
+	}
+	if !haveLoc {
+		t.Error("grammar location fact was lost in the merge")
+	}
+	if !haveName || !haveWork {
+		t.Errorf("model memories not merged: name=%v work=%v entries=%d", haveName, haveWork, len(res.Entries))
+	}
+}
+
+// A single-fact message must NOT trigger a model call: the grammar result is
+// authoritative and should not be second-guessed (keeps the fast path cheap
+// and deterministic).
+func TestReliabilitySingleFactSkipsModel(t *testing.T) {
+	q := &queuedProvider{contents: []string{`{"should_remember": false}`}}
+	se := NewSemanticExtractor(q, "test")
+	res := se.Extract(context.Background(), "I live in Bangkok.", nil)
+	if len(res.Entries) == 0 {
+		t.Fatalf("expected the grammar location fact, got %+v", res)
+	}
+	if q.calls != 0 {
+		t.Fatalf("single-fact message must not call the model, got %d calls", q.calls)
+	}
+}

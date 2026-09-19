@@ -141,7 +141,8 @@ func TestFormatCronExpression(t *testing.T) {
 		{"*/15 * * * *", "Every 15 minutes"},
 		{"0 8 * * 1", "Every Monday at 8:00 AM"},
 		{"0 8 * * 5", "Every Friday at 8:00 AM"},
-		{"30 7 * * 1-5", "30 7 * * 1-5"},
+		{"30 7 * * 1-5", "Weekdays at 7:30 AM"},
+		{"0 9 * * 1", "Every Monday at 9:00 AM"},
 	}
 	for _, tc := range cases {
 		got := formatCronExpression(tc.expr)
@@ -173,5 +174,27 @@ func TestExecutionRecordCreation(t *testing.T) {
 	}
 	if record.Status != "ok" {
 		t.Errorf("expected Status ok, got %s", record.Status)
+	}
+}
+
+// Real user schedules must render as sentences, never raw cron. The old
+// implementation was a tiny lookup table and returned "0 9 * * 1" verbatim,
+// which the Things feed then showed to the owner.
+func TestFormatCronExpressionCoversRealSchedules(t *testing.T) {
+	cases := map[string]string{
+		"0 9 * * 1":   "Every Monday at 9:00 AM",
+		"0 16 * * 5":  "Every Friday at 4:00 PM",
+		"30 14 * * 0": "Every Sunday at 2:30 PM",
+		"0 12 * * 6":  "Every Saturday at 12:00 PM",
+		"0 9 1 * *":   "Day 1 of every month at 9:00 AM",
+		"0 0 * * *":   "Every day at midnight",
+	}
+	for expr, want := range cases {
+		if got := formatCronExpression(expr); got != want {
+			t.Errorf("formatCronExpression(%q) = %q, want %q", expr, got, want)
+		}
+	}
+	if got := formatCronExpression("0 9 * * 1"); got == "0 9 * * 1" {
+		t.Error("a parseable expression must never be echoed as raw cron")
 	}
 }

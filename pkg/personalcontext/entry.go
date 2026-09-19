@@ -145,11 +145,17 @@ func (e Entry) ValueInto(v interface{}) error {
 	return json.Unmarshal(e.Value, v)
 }
 
-// ValidKind reports whether k is a known kind.
+// ValidKind reports whether k is a known kind. It must accept every kind the
+// classifier's controlled vocabulary can produce: the semantic extractor and
+// the store agree on the same set, or valid extractions are silently rejected
+// at persist time (e.g. "no meetings before 10am" is a constraint, and
+// dropping constraints loses exactly the scheduling boundaries a personal AI
+// most needs to remember).
 func ValidKind(k Kind) bool {
 	switch k {
 	case KindIdentity, KindFact, KindPreference, KindRelationship,
-		KindGoal, KindDecision, KindConsent, KindRoutine:
+		KindGoal, KindDecision, KindConsent, KindRoutine,
+		KindProject, KindConstraint, KindInterest:
 		return true
 	}
 	return false

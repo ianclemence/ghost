@@ -124,9 +124,18 @@ func (t *ScheduleTool) Execute(ctx context.Context, args map[string]interface{})
 		return ErrorResult(fmt.Sprintf("I couldn't understand the schedule. Please specify a time. For example: 'Remind me tomorrow at 9 AM to %s'", content))
 	}
 
+	// The owner cares WHAT Ghost does, not the schedule restated as a name.
+	// Prefer a title derived from the action content; fall back to the parsed
+	// schedule phrase only when there is no content to name it after. The
+	// schedule itself is carried separately and rendered as its own sentence.
+	title := derivedItemTitle(content)
+	if title == "" {
+		title = parsed.Title
+	}
+
 	item := &scheduled.ScheduledItem{
 		Type:        scheduled.TypeReminder,
-		Title:       parsed.Title,
+		Title:       title,
 		Description: message,
 		State:       scheduled.StateScheduled,
 		Timezone:    parsed.Timezone,
@@ -222,6 +231,40 @@ func findDuplicateSchedule(lister interface {
 		return it
 	}
 	return nil
+}
+
+// derivedItemTitle builds a short, human title for a scheduled item from the
+// action content ("Prepare my weekly design review brief"). It strips a
+// leading directive verb filler and caps length so the Things list reads as
+// a task name, not a paragraph. Returns "" when content is too thin to name
+// anything meaningful, so the caller can fall back to the schedule phrase.
+func derivedItemTitle(content string) string {
+	s := strings.TrimSpace(content)
+	if s == "" {
+		return ""
+	}
+	// Drop a trailing schedule clause if the content accidentally includes it.
+	lower := strings.ToLower(s)
+	for _, cut := range []string{", every ", " every monday", " every tuesday", " every wednesday", " every thursday", " every friday", " every saturday", " every sunday", " every day", " every week"} {
+		if idx := strings.Index(lower, cut); idx > 0 {
+			s = strings.TrimSpace(s[:idx])
+			break
+		}
+	}
+	if len(s) < 3 {
+		return ""
+	}
+	// Capitalize the first letter for presentation.
+	runes := []rune(s)
+	if runes[0] >= 'a' && runes[0] <= 'z' {
+		runes[0] = runes[0] - 32
+	}
+	out := string(runes)
+	const max = 80
+	if len(out) > max {
+		out = strings.TrimSpace(out[:max]) + "\u2026"
+	}
+	return out
 }
 
 func extractReminderContent(message string) string {

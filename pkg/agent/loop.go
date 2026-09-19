@@ -2086,7 +2086,14 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 				})
 			}
 		}
-		return // Regex found something, no need for semantic extraction
+		// The grammar found at least one fact. For a multi-clause message it
+		// may have captured only some of what was stated ("I'm Maya. I live
+		// in Bangkok and work as a designer" -> only location). Fall through
+		// to complementary semantic extraction in that case; the persist loop
+		// deduplicates against current memory so nothing is stored twice.
+		if len(actions) > 1 || !shouldComplement(opts.UserMessage, actions) {
+			return
+		}
 	}
 
 	logger.InfoCF("agent", "Regex extraction result", map[string]interface{}{
@@ -2100,7 +2107,8 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 	// Scheduling requests are excluded: their durable form is the
 	// scheduled item, and a refused ask ("every 5 seconds") must never
 	// become a stored preference. Deterministic rules above still ran.
-	if al.semanticExtractor != nil && len(actions) == 0 && al.pcStore != nil && !isAutomationIntent(opts.UserMessage) {
+	if al.semanticExtractor != nil && al.pcStore != nil && !isAutomationIntent(opts.UserMessage) &&
+		(len(actions) == 0 || shouldComplement(opts.UserMessage, actions)) {
 		logger.InfoCF("agent", "Attempting semantic extraction", map[string]interface{}{
 			"message": opts.UserMessage,
 		})
@@ -2116,6 +2124,11 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 			// over-eager extractor can never accumulate duplicate rows.
 			current := al.pcStore.CurrentInScope(al.sessionScopes(opts.SessionKey))
 			for _, entry := range result.Entries {
+				logger.InfoCF("agent", "semantic entry candidate", map[string]interface{}{
+					"predicate": entry.Predicate,
+					"value":     entryValueText(entry),
+					"status":    string(entry.Status),
+				})
 				if personalcontext.DirectiveEcho(entryValueText(entry)) {
 					logger.InfoCF("agent", "semantic extraction: directive echo, skipped",
 						map[string]interface{}{"predicate": entry.Predicate})
@@ -2152,11 +2165,16 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 					logger.WarnCF("agent", "Failed to persist semantic extraction", map[string]interface{}{
 						"error": err.Error(),
 					})
-				} else if al.events != nil {
-					al.events.emit(EventMemoryCreated, "", map[string]interface{}{
-						"session_key": opts.SessionKey,
-						"method":      "semantic",
+				} else {
+					logger.InfoCF("agent", "semantic extraction persisted", map[string]interface{}{
+						"predicate": entry.Predicate,
 					})
+					if al.events != nil {
+						al.events.emit(EventMemoryCreated, "", map[string]interface{}{
+							"session_key": opts.SessionKey,
+							"method":      "semantic",
+						})
+					}
 				}
 			}
 		} else {
@@ -2165,6 +2183,18 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 			})
 		}
 	}
+}
+
+// shouldComplement reports whether a message the grammar partially captured
+// may state more facts, so the agent should run complementary semantic
+// extraction. Single-action messages are the only case that can be
+// incomplete; multiple captured actions mean the grammar handled the
+// compound itself.
+func shouldComplement(msg string, actions []personalcontext.Action) bool {
+	if len(actions) != 1 {
+		return false
+	}
+	return personalcontext.MayHaveMoreFacts(msg, len(actions))
 }
 
 // memoryActionSummary renders the deterministic human title for a memory

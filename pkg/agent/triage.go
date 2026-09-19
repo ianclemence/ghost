@@ -121,9 +121,53 @@ func (al *AgentLoop) fastPathAnswer(m, session string) (string, bool) {
 		// inventing an answer.
 		return "I don\u2019t have that stored yet. Tell me and I\u2019ll remember it.", true
 	}
-	// Single value: answer plainly. Multiple: list them.
-	if len(values) == 1 {
-		return values[0], true
+	// Phrase the stored value as an answer to the question that was asked.
+	// The stored form is a third-person note ("The user's name is Maya",
+	// "Lives in Bangkok"); returning it verbatim reads like a database row,
+	// not a companion answering you.
+	return phraseFastAnswer(preds[0], values), true
+}
+
+// phraseFastAnswer renders a stored belief as a natural reply. The stored
+// value stays the source of truth; only the delivery changes. Unknown
+// predicates fall back to the plain value so behavior never regresses.
+func phraseFastAnswer(predicate string, values []string) string {
+	first := stripThirdPersonPrefix(values[0])
+	switch predicate {
+	case "identity/name":
+		return "You're " + first + "."
+	case "identity/location", "fact/location":
+		return "You live in " + first + "."
+	case "identity/phone":
+		return "Your phone number is " + first + "."
+	case "identity/email":
+		return "Your email is " + first + "."
+	case "preference/likes", "preference/prefers":
+		if len(values) == 1 {
+			return "You like " + first + "."
+		}
+		return "You like " + strings.Join(values, ", ") + "."
 	}
-	return strings.Join(values, " and "), true
+	if len(values) == 1 {
+		return first
+	}
+	return strings.Join(values, " and ")
+}
+
+// stripThirdPersonPrefix removes a leading "The user's X is" / "Lives in"
+// wrapper the extractor sometimes stores, so the answer can be re-voiced.
+func stripThirdPersonPrefix(v string) string {
+	s := strings.TrimSpace(v)
+	for _, marker := range []string{"name is ", "is named ", "lives in ", "works as ", "works in "} {
+		if idx := strings.Index(strings.ToLower(s), marker); idx >= 0 {
+			return strings.TrimSpace(s[idx+len(marker):])
+		}
+	}
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "the user") || strings.HasPrefix(lower, "user's") || strings.HasPrefix(lower, "user is") {
+		if idx := strings.Index(lower, " is "); idx >= 0 {
+			return strings.TrimSpace(s[idx+4:])
+		}
+	}
+	return s
 }

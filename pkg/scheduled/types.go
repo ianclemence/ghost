@@ -5,6 +5,7 @@
 package scheduled
 
 import (
+	"strings"
 	"time"
 )
 
@@ -265,25 +266,139 @@ func itoa(n int) string {
 }
 
 // formatCronExpression converts a cron expression to human-readable form.
+// formatCronExpression renders a 5-field cron expression as a human
+// sentence. It covers the shapes owners actually write (fixed times on
+// weekdays, day-of-week names, intervals) and, crucially, never returns a
+// raw expression for a parseable one — a schedule shown to the owner must
+// read as a sentence, not as "0 9 * * 1". Unparseable input falls back to
+// the original string rather than inventing a meaning.
 func formatCronExpression(expr string) string {
-	// Simple cron formatting (supports basic patterns)
-	switch expr {
-	case "0 8 * * *":
-		return "Every day at 8:00 AM"
-	case "0 9 * * 1-5":
-		return "Weekdays at 9:00 AM"
-	case "0 0 * * *":
-		return "Every day at midnight"
-	case "0 */2 * * *":
-		return "Every 2 hours"
-	case "*/15 * * * *":
-		return "Every 15 minutes"
-	case "0 8 * * 1":
-		return "Every Monday at 8:00 AM"
-	case "0 8 * * 5":
-		return "Every Friday at 8:00 AM"
+	fields := strings.Fields(strings.TrimSpace(expr))
+	if len(fields) != 5 {
+		return expr
+	}
+	minute, hour, dom, month, dow := fields[0], fields[1], fields[2], fields[3], fields[4]
+
+	// Interval: */N in minute or hour position.
+	if strings.HasPrefix(minute, "*/") {
+		if n := atoiSafe(minute[2:]); n > 0 {
+			if n == 1 {
+				return "Every minute"
+			}
+			return "Every " + itoa(n) + " minutes"
+		}
+	}
+	if strings.HasPrefix(hour, "*/") {
+		if n := atoiSafe(hour[2:]); n > 0 {
+			if n == 1 {
+				return "Every hour"
+			}
+			return "Every " + itoa(n) + " hours"
+		}
+	}
+
+	// Fixed time requires numeric minute and hour (single values or a list).
+	timeStr, ok := formatClock(minute, hour)
+	if !ok {
+		return expr
+	}
+	// Midnight reads better as a word than as 12:00 AM.
+	if minute == "0" && hour == "0" {
+		timeStr = "midnight"
+	}
+
+	day := dayPhrase(dow)
+	switch {
+	case dom == "*" && month == "*":
+		// Weekly / daily on a fixed clock time.
+		return day + "at " + timeStr
+	case dom != "*" && month == "*":
+		// Monthly on a day number.
+		if d := atoiSafe(dom); d > 0 {
+			return "Day " + itoa(d) + " of every month at " + timeStr
+		}
 	}
 	return expr
+}
+
+// dayPhrase renders the day-of-week field as a leading phrase. A wildcard
+// or weekday-range yields "Every day"/"Weekdays"; named days yield
+// "Every Monday"/"Mondays and Fridays".
+func dayPhrase(dow string) string {
+	switch dow {
+	case "*", "?":
+		return "Every day "
+	case "1-5":
+		return "Weekdays "
+	case "0,6", "6,0", "0,7":
+		return "Weekends "
+	case "1-7", "0-6":
+		return "Every day "
+	}
+	names := map[string]string{
+		"0": "Sunday", "7": "Sunday", "1": "Monday", "2": "Tuesday",
+		"3": "Wednesday", "4": "Thursday", "5": "Friday", "6": "Saturday",
+	}
+	parts := strings.Split(dow, ",")
+	var labels []string
+	for _, p := range parts {
+		if n, ok := names[strings.TrimSpace(p)]; ok {
+			labels = append(labels, n)
+		}
+	}
+	if len(labels) == 0 {
+		return "Every day "
+	}
+	if len(labels) == 1 {
+		return "Every " + labels[0] + " "
+	}
+	return strings.Join(labels[:len(labels)-1], ", ") + " and " + labels[len(labels)-1] + " "
+}
+
+// formatClock renders numeric minute/hour fields as "9:00 AM". Lists and
+// ranges are not rendered (they return ok=false) so the caller can fall back
+// instead of producing a misleading phrase.
+func formatClock(minute, hour string) (string, bool) {
+	m := atoiSafe(minute)
+	h := atoiSafe(hour)
+	if m < 0 || h < 0 || m > 59 || h > 23 {
+		return "", false
+	}
+	// Reject fields with extra cron syntax (lists/ranges/steps).
+	if strings.ContainsAny(minute, "*/,-") || strings.ContainsAny(hour, "*/,-") {
+		return "", false
+	}
+	suffix := "AM"
+	if h >= 12 {
+		suffix = "PM"
+	}
+	display := h % 12
+	if display == 0 {
+		display = 12
+	}
+	return itoa(display) + ":" + pad2(m) + " " + suffix, true
+}
+
+func pad2(n int) string {
+	if n < 10 {
+		return "0" + itoa(n)
+	}
+	return itoa(n)
+}
+
+func atoiSafe(s string) int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return -1
+	}
+	n := 0
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return -1
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n
 }
 
 // SimpleEventBus is a no-op event bus for basic usage.

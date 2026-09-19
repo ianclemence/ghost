@@ -85,16 +85,23 @@ func (al *AgentLoop) tryRoutineTurn(msg bus.InboundMessage) (string, bool) {
 		case "no", "n", "cancel", "never mind", "nevermind":
 			store.Cancel(pending.ID)
 			return "No problem — I didn't schedule anything.", true
-		default:
-			// Awaiting-task proposal: the reply IS the task — unless it
-			// is a question about existing state ("what are my goals?"),
-			// which must fall through to the model instead of becoming
-			// a garbled reminder ("remind you to What are my goals?").
-			if pending.MissingField == "task" && len(text) > 2 && !isStateQuestion(text) {
-				return al.proposeRoutine(store, pending, msg, text)
-			}
-			return "", false
 		}
+		// A new message that is itself a complete routine intent supersedes
+		// the stale open proposal. Without this, an abandoned proposal
+		// hijacked the next routine request and its text was appended to the
+		// old intent ("prepare my brief. Please create it now Every Monday").
+		if intent := routines.ParseIntent(text, time.Now(), routineTimezone(msg)); intent.IsRoutine && !intent.NeedsClarification && intent.Task != "" {
+			store.Cancel(pending.ID)
+			return al.proposeRoutine(store, nil, msg, intent.Task, intent)
+		}
+		// Awaiting-task proposal: the reply IS the task — unless it
+		// is a question about existing state ("what are my goals?"),
+		// which must fall through to the model instead of becoming
+		// a garbled reminder ("remind you to What are my goals?").
+		if pending.MissingField == "task" && len(text) > 2 && !isStateQuestion(text) {
+			return al.proposeRoutine(store, pending, msg, text)
+		}
+		return "", false
 	}
 
 	// 2. Fresh intent.
@@ -255,10 +262,20 @@ func ifEmpty(s, fallback string) string {
 
 func truncateRoutine(s string, n int) string {
 	s = strings.TrimSpace(s)
-	if len(s) <= n {
-		return s
+	if len(s) > n {
+		s = s[:n-1] + "…"
 	}
-	return s[:n-1] + "…"
+	// The routine name is owner-facing (Things list). Present it as a title:
+	// "prepare my brief" reads as a fragment, "Prepare my brief" reads as a
+	// task. Only the first rune is touched.
+	if s != "" {
+		r := []rune(s)
+		if r[0] >= 'a' && r[0] <= 'z' {
+			r[0] = r[0] - 32
+		}
+		s = string(r)
+	}
+	return s
 }
 
 func routineTask(instruction string) string {

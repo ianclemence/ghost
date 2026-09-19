@@ -98,6 +98,23 @@ type ClassificationOutput struct {
 	Confidence     float64 `json:"confidence"`
 	Title          string  `json:"title,omitempty"`
 	Summary        string  `json:"summary,omitempty"`
+	// Memories lets one message yield several discrete, cleanly-phrased
+	// facts. A compound statement ("I never take meetings before 10am and
+	// I always order oat milk lattes") must become two memories, not one
+	// fused blob. When absent, the top-level fields describe a single
+	// memory and behavior is unchanged.
+	Memories []MemoryItem `json:"memories,omitempty"`
+}
+
+// MemoryItem is one discrete memory the model extracted from a message.
+// Summary is the stored value; it must be a clean statement of the fact,
+// never the user's command language ("remember that …").
+type MemoryItem struct {
+	Kind       string  `json:"kind"`
+	Domain     string  `json:"domain"`
+	Confidence float64 `json:"confidence"`
+	Title      string  `json:"title,omitempty"`
+	Summary    string  `json:"summary"`
 }
 
 // ClassificationResult is the validated classification output.
