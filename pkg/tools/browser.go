@@ -180,6 +180,21 @@ func (t *BrowserTool) Parameters() map[string]interface{} {
 	}
 }
 
+// browserEnvironment returns the environment for the agent-browser child.
+// If Ghost discovered a working browser executable (Playwright's
+// headless_shell) and the operator has not chosen one, it is exported so
+// agent-browser steers clear of a system Chromium that may crash silently
+// under --remote-debugging-port. An operator-set value is never overridden.
+func browserEnvironment() []string {
+	env := os.Environ()
+	if os.Getenv(browser.ExecutableEnv) == "" {
+		if exe := browser.DiscoverExecutable(nil); exe != "" {
+			env = append(env, browser.ExecutableEnv+"="+exe)
+		}
+	}
+	return env
+}
+
 // executeCLI runs the agent-browser CLI.
 func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...string) *ToolResult {
 	// Ensure temp directory exists for session tracking (agent-browser usually uses ~/.agent-browser)
@@ -196,6 +211,7 @@ func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...str
 	})
 
 	cmd := exec.CommandContext(ctx, "agent-browser", cmdArgs...)
+	cmd.Env = browserEnvironment()
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
