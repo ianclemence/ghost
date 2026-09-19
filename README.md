@@ -5,23 +5,67 @@
 
 ---
 
-## What is Ghost?
+## What Ghost does for you
 
-Ghost is a **local-first personal AI**: one persistent entity on
-hardware you own. It remembers you, understands natural language, acts through
-capabilities, asks permission before consequential actions, runs routines, and
-reports what it actually did.
+Ghost runs the recurring admin of your life, so you don't have to think about it:
 
-The core rule: **the model is not the authority.** Runtime execution evidence
-decides whether an action happened — a model saying "Done" is a claim, not
-proof. Memory, permissions, identity, and control stay on your machine; cloud
-models are optional intelligence providers, and offline-local capabilities keep
-working when the network does not.
+- **It briefs you.** “Every Monday at 9, prepare my weekly brief.” Ghost reads your calendar and mail, writes the brief, and has it waiting for you.
+- **It remembers for you.** Birthdays, preferences, who's who, what you decided last month — Ghost keeps it and recalls it when it matters.
+- **It handles the follow-through.** Renewals, check-ins, reminders, the thing you'd otherwise forget — Ghost does them on time and tells you when it's done.
+- **It warns you ahead.** “Your sister's birthday is in a week.” Ghost notices and speaks up before it's too late.
+
+You say what you want in plain language — in a chat, on your phone, or out loud.
+Ghost figures out the rest.
+
+And it asks before it does anything consequential, with proof it actually did it.
+That last part matters more than it sounds — see [Why trust is the point](#why-trust-is-the-point).
+
+---
+
+## Why trust is the point
+
+Most “AI agents” say “Done” and hope you believe them. Ghost is built so you
+don't have to. The core rule: **the model is not the authority.** Runtime
+execution evidence decides whether an action happened — a model saying
+“Done” is a claim, not proof.
+
+- **It asks before consequential actions.** The model cannot self-grant authority; one Permission Broker decides *allow / ask / deny*, and unknown risk fails closed.
+- **Every answer says where it ran.** Local model, home Pod, or cloud — you always know.
+- **Every action leaves proof.** What Ghost says it did is backed by runtime evidence, not a language model's optimism.
+- **Your data stays on your machine.** Memory, permissions, and identity live on your hardware; cloud models are optional intelligence providers, and offline-local capabilities keep working when the network does not.
+
+You get a capable assistant. You keep the guarantees.
+
+---
+
+## How it works
+
+You express a goal. Ghost interprets it against your memory and context, picks a
+capability, and asks the Permission Broker whether it may proceed. Authorized
+work executes through a replaceable implementation. Runtime evidence proves what
+actually happened. A canonical event records it, and memory, activity, and
+routines all consume that one record.
+
+```
+User → Ghost → intent/memory/context → Permission Broker → capability
+     → execution → evidence → events/activity → response
+```
+
+You choose an outcome — **Local / Hybrid / Cloud** — and the runtime derives the
+details (models, fallbacks, context sizes). RAG is always enabled. You never need
+to configure temperature, top-p, quantization, or routing tables.
+
+**One product, two surfaces.** The **Ghost app** is the daily driver — talk,
+approve, review, connect. The **Web Console** is the owner control plane —
+system, security, devices, skills, channels, memory. They overlap only where
+they must (pairing, first-run setup, model selection), so the same task never
+has two different homes.
 
 ---
 
 ## Core features
 
+- **Things Ghost does** — one place for everything Ghost runs for you, whether you'd call it a routine, a reminder, or a scheduled action. You never file your own intent; Ghost infers the shape.
 - Persistent memory with retrieval and context isolation
 - Consequential actions governed by a permission broker (the model can't self-grant)
 - Deterministic capability execution — no fabricated live data
@@ -31,23 +75,6 @@ working when the network does not.
 - Credential vault with redaction and backup exclusion
 - Offline-honest behaviour
 - `ghost verify`, `ghost benchmark`, and the Golden Conversation Suite
-
----
-
-## How it works
-
-User request → Ghost → intent/memory/context → permission broker → capability
-execution → **runtime evidence** → events/activity → response.
-
-You choose an outcome — **Local / Hybrid / Cloud** — and the runtime derives the
-details (models, fallbacks, context sizes). RAG is always enabled. You never need
-to configure temperature, top-p, quantization, or routing tables.
-
-**Two surfaces, two roles.** The **Ghost app** is the daily driver — talk,
-approve, review, connect. The **Web Console** is the owner control plane —
-system, security, devices, skills, channels, memory. They overlap only where
-they must (pairing, first-run setup, model selection), so the same task never
-has two different homes.
 
 ---
 
@@ -141,8 +168,7 @@ take care of Ghost.
   - **AI** — local and cloud intelligence, model management, routing
   - **Memory** — browse, search, and manage what Ghost remembers
   - **Conversations** — past chats with Ghost
-  - **Routines** — recurring instructions you give in chat (“every Monday at 9…”) that Ghost runs like a conversation
-  - **Automations** — scheduled tasks (briefings, research, check-ins)
+  - **Things Ghost does** — one list for everything Ghost runs for you: recurring instructions (“every Monday at 9…”), reminders, and scheduled tasks. You never file your intent as a “routine” or an “automation” — Ghost infers the shape. (Backed by `/v1/things`; the internal scheduler and routine models stay unified underneath.)
   - **Skills** — installed capabilities, enable/disable, install from GitHub
 
   **Connections** — how Ghost reaches people and services:
@@ -563,7 +589,8 @@ Key HTTP endpoints the app uses on port `8766`:
 | `/v1/identity` | GET | Owner/Ghost identity |
 | `/v1/activity` | GET | User-safe activity |
 | `/v1/permissions/requests` + `/v1/permissions/resolve` | GET/POST | Pending approvals |
-| `/v1/routines` | GET/POST | Routines |
+| `/v1/things` | GET | Unified “things Ghost does for you” feed (routines + scheduled items) |
+| `/v1/routines` | GET/POST | Routines (product view over scheduled automations) |
 | `/v1/goals` | GET/POST | Goals |
 | `/v1/connected-apps` | GET/POST | Connected services |
 | `/v1/intelligence/config` | GET/POST | AI config (masked keys, routing) |

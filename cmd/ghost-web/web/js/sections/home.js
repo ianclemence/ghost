@@ -60,7 +60,7 @@ async function loadHome(container) {
     GhostAPI.proxyGet('/v1/health'),
     GhostAPI.proxyGet('/v1/channels/status'),
     GhostAPI.proxyGet('/v1/activity?limit=20'),
-    GhostAPI.proxyGet('/v1/scheduled'),
+    GhostAPI.proxyGet('/v1/things'),
     GhostAPI.proxyGet('/v1/memory/files'),
     GhostAPI.proxyGet('/v1/memory/self'),
     GhostAPI.proxyGet('/v1/pairing/devices'),
@@ -166,7 +166,7 @@ function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, mem
   appendSummary(dl, 'Local AI', localAI.label);
   appendSummary(dl, 'Memory', memCount == null ? '\u2014' : GhostUI.fmtNum(memCount) + (memCount === 1 ? ' memory' : ' memories'));
   appendSummary(dl, 'Devices', devCount == null ? '\u2014' : (devCount === 0 ? 'Not connected' : devCount + ' connected'));
-  appendSummary(dl, 'Automations', jobCount == null ? '\u2014' : (jobCount === 0 ? 'None' : activeJobCount + ' active of ' + jobCount));
+  appendSummary(dl, 'Things Ghost does', jobCount == null ? '\u2014' : (jobCount === 0 ? 'None yet' : activeJobCount + ' running of ' + jobCount));
   bodyEl.appendChild(dl);
 }
 
@@ -205,16 +205,26 @@ function extractMemoryCount(v) {
 }
 
 function extractJobCount(v) {
+  // /v1/things returns one normalized feed covering routines and scheduled
+  // items. Fall back to legacy job/item shapes so a stale gateway still
+  // renders something honest rather than an em dash.
+  if (v && Array.isArray(v.things)) return v.things.length;
   const arr = Array.isArray(v) ? v : (v && (v.jobs || v.items)) || [];
   return Array.isArray(arr) ? arr.length : 0;
 }
 
 function extractActiveJobCount(v) {
-  const arr = Array.isArray(v) ? v : (v && (v.jobs || v.items)) || [];
+  const arr = v && Array.isArray(v.things)
+    ? v.things
+    : (Array.isArray(v) ? v : (v && (v.jobs || v.items)) || []);
   if (!Array.isArray(arr)) return 0;
-  // Scheduled items are active when scheduled/running; paused/terminal items
-  // are not. (The legacy cron "enabled" field no longer exists.)
-  return arr.filter(j => j.state === 'scheduled' || j.state === 'running' || j.enabled === true).length;
+  // The unified feed uses normalized states. Legacy scheduled shapes used
+  // scheduled/running. Treat both active and waiting as "running" from the
+  // owner's point of view — a thing waiting on them is still live.
+  return arr.filter(j =>
+    j.state === 'active' || j.state === 'waiting' ||
+    j.state === 'scheduled' || j.state === 'running' || j.enabled === true,
+  ).length;
 }
 
 function extractDeviceCount(v) {

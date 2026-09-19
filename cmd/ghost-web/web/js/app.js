@@ -11,8 +11,9 @@ const GhostApp = (() => {
   // ── Navigation model (the product's information architecture) ──
   // Ghost is ONE persistent personal AI. There is no chat list, no "New
   // Chat", and no conversation switcher. Home is the relationship; Memory is
-  // what Ghost knows; Activity is what Ghost has done; Routines are what
-  // Ghost does automatically. Connect holds everything reaching in or out:
+  // what Ghost knows; Activity is what Ghost has done; Things Ghost does is
+  // what Ghost does automatically — ONE destination, because the owner has
+  // one mental model. Connect holds everything reaching in or out:
   // Devices are where Ghost has hands, Channels are where it reaches you,
   // Apps are what it can access. System holds owner/Ghost config.
   const NAV = [
@@ -22,7 +23,7 @@ const GhostApp = (() => {
         { name: 'home', title: 'Home', glyph: 'home' },
         { name: 'memory', title: 'Memory', glyph: 'memory' },
         { name: 'activity', title: 'Activity', glyph: 'activity' },
-        { name: 'routines', title: 'Routines', glyph: 'automation' },
+        { name: 'things', title: 'Things Ghost does', glyph: 'automation' },
         { name: 'intelligence', title: 'Intelligence', glyph: 'ai' },
         { name: 'skills', title: 'Skills', glyph: 'skill' },
       ],
@@ -38,7 +39,6 @@ const GhostApp = (() => {
     {
       label: 'System',
       items: [
-        { name: 'automations', title: 'Automations', glyph: 'automation' },
         { name: 'system', title: 'System', glyph: 'system' },
         { name: 'security', title: 'Security', glyph: 'security' },
         { name: 'help', title: 'Help', glyph: 'help' },

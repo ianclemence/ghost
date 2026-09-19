@@ -61,6 +61,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/telemetry"
+	"github.com/ianclemence/ghost/pkg/things"
 	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/turnlog"
 	"github.com/ianclemence/ghost/pkg/voice"
@@ -169,6 +170,28 @@ func routineService() (*routines.Service, error) {
 		return nil, err
 	}
 	return routines.New(apiDB, store)
+}
+
+// buildThingsFeed assembles the unified product feed from the two backing
+// models. It is a pure read: it never mutates, never authorizes, and never
+// opens a new authority. Missing backends degrade to an empty slice rather
+// than failing the whole feed, so a partially-available Ghost still shows
+// whatever it can honestly show.
+func buildThingsFeed(scheduledService *scheduled.Service) []things.Thing {
+	var routineList []*routines.Routine
+	if svc, err := routineService(); err == nil {
+		routineList = svc.List(ghostID(), 100)
+	}
+	var scheduledList []*scheduled.ScheduledItem
+	if scheduledService != nil {
+		// Routine-sourced rows are represented by their routine view, which
+		// carries product metadata the raw row lacks. Excluding them here
+		// avoids showing the same work twice.
+		if items, err := scheduledService.ListItemsExcluding("", "", 200, "routine"); err == nil {
+			scheduledList = items
+		}
+	}
+	return things.List(routineList, scheduledList)
 }
 
 func contextStore() (*contexts.Store, error) {
@@ -2297,6 +2320,22 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		default:
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		}
+	}))
+
+	// /v1/things is the one product feed for "things Ghost does for you".
+	// It merges routines and scheduled items into a single normalized shape
+	// at the presentation boundary; storage and scheduling authority stay in
+	// pkg/scheduled and pkg/routines. Product surfaces read this instead of
+	// splitting the owner's intent across two lists.
+	mux.HandleFunc("/v1/things", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok":     true,
+			"things": buildThingsFeed(scheduledService),
+		})
 	}))
 
 	// Scheduled item by ID
@@ -5183,18 +5222,18 @@ func connectedAppsList() []map[string]interface{} {
 			status == string(credentials.StatusInvalid) ||
 			status == string(credentials.StatusRevoked)
 		out = append(out, map[string]interface{}{
-			"id":            c.ID,
-			"provider":      c.Provider,
-			"display_name":  c.DisplayName,
-			"category":      "integration",
-			"auth_kind":     string(c.AuthKind),
-			"setup":         string(c.Setup),
-			"capabilities":  c.Capabilities,
-			"read_scopes":   c.ReadScopes,
-			"write_scopes":  c.WriteScopes,
-			"status":        status,
-			"needs_reauth":  needsReauth,
-			"help":          c.Help,
+			"id":           c.ID,
+			"provider":     c.Provider,
+			"display_name": c.DisplayName,
+			"category":     "integration",
+			"auth_kind":    string(c.AuthKind),
+			"setup":        string(c.Setup),
+			"capabilities": c.Capabilities,
+			"read_scopes":  c.ReadScopes,
+			"write_scopes": c.WriteScopes,
+			"status":       status,
+			"needs_reauth": needsReauth,
+			"help":         c.Help,
 		})
 	}
 	return out
