@@ -1179,9 +1179,16 @@ func ghostExecutionClaim(span string) ([]string, bool) {
 			lemma, ok = "send", true
 		}
 		if !ok && isGoThrough(toks, i) {
-			// Resultative "go through" over a transaction noun (the
-			// payment went through) means send/deliver.
-			lemma, ok = "send", true
+			// Resultative "go through" over a transaction noun. The noun
+			// decides the family: a submission/form completing is a browser
+			// act (a click that submitted), while a payment/message/email
+			// completing is a send. Defaulting every "went through" to send
+			// misgraded browser form submissions as email/message claims.
+			if fam := goThroughFamily(toks); fam == "browser" {
+				lemma, ok = "submit", true
+			} else {
+				lemma, ok = "send", true
+			}
 		}
 		if !ok {
 			continue
@@ -1425,6 +1432,23 @@ var transactionNouns = map[string]bool{
 	"report": true,
 }
 
+// goThroughFamily returns the capability family implied by the
+// transaction noun that "go through" completes over. Browser nouns
+// (submission, form) complete as a browser act; everything else keeps
+// the send/deliver reading. Returns "" when no transaction noun is
+// present (the caller then does not treat it as a completion).
+func goThroughFamily(toks []string) string {
+	for _, w := range toks {
+		if !transactionNouns[w] {
+			continue
+		}
+		if fam, ok := objectNouns[w]; ok {
+			return fam
+		}
+	}
+	return ""
+}
+
 // isGoThrough detects resultative "go through" (went/gone + through)
 // over a transaction noun. Same send/deliver reading as go-out,
 // bounded to completion semantics by the noun requirement.
@@ -1516,6 +1540,12 @@ var objectNouns = map[string]string{
 	"music": "media", "song": "media", "spotify": "media", "playback": "media",
 	"browser": "browser", "page": "browser", "site": "browser", "website": "browser",
 	"tab": "browser", "form": "browser", "field": "browser", "button": "browser", "link": "browser",
+	// A form submission is a browser act, not a send-a-message act. Without
+	// these, "confirming the submission went through" resolves into the
+	// email/message family and a real browser click looks like a false
+	// success claim. The browser owns this vocabulary.
+	"submission": "browser", "submissions": "browser",
+	"submit": "browser", "submits": "browser", "submitted": "browser", "submitting": "browser",
 	"computer": "computer", "screen": "computer", "desktop": "computer", "monitor": "computer", "window": "computer",
 	"file": "file", "files": "file", "note": "file", "notes": "file", "document": "file",
 	"goal": "goal", "goals": "goal",
