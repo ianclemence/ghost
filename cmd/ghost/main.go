@@ -218,6 +218,8 @@ func main() {
 		authCmd()
 	case "mcp":
 		mcpCmd()
+	case "connector":
+		connectorCmd()
 	case "stt":
 		sttCmd()
 	case "tts":
@@ -325,6 +327,7 @@ func printHelp() {
 	fmt.Println("  reset       Factory reset (e.g. ghost reset all --exclude=devices,secrets)")
 	fmt.Println("  reset-password  Reset the admin dashboard password (requires --force)")
 	fmt.Println("  mcp         Manage MCP servers (list, add, edit, remove, test)")
+	fmt.Println("  connector   Portable connectors (validate|init|from-openapi|list)")
 	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
 	fmt.Println("  stt         Manage local speech-to-text (setup, status)")
