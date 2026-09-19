@@ -100,6 +100,19 @@ Bangkok"). **Fixed**: answers are re-voiced conversationally ("You're Maya.",
 "You live in Bangkok.") with a fallback that never regresses unknown
 predicates.
 
+### 11. A harmless file read was gated as a consequential "Send email" (HIGH)
+Under the email skill (which lists `read_file` in its AllowedTools so the
+skill can read its own SKILL.md), reading `skills/email/SKILL.md` was
+authorized as `email.read` with the skill's `consequential` risk — producing a
+"Send this email?" approval card for a read-only file read. A false consent
+prompt is worse than no prompt: it teaches owners to approve reflexively and
+mislabels what is actually happening. **Fixed**: `authorizedToolRisk`
+classifies read-only tools (`read_file`, `list_dir`, `search_files`,
+`grep_search`, `web_fetch`, `web_search`, memory recall) as `read_only`
+regardless of the surrounding skill's declared risk — mirroring the existing
+rule that `exec`/`sandbox` are always `high_impact`. Genuinely consequential
+tools (`email_send`) still inherit the skill's risk.
+
 ## What already worked well (verified, not claimed)
 
 - Permission discipline: routine creation asks before acting and creates a

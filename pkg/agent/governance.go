@@ -291,18 +291,26 @@ func (g *Governance) AuthorizeTool(requestID, sessionKey, capabilityID, tool str
 }
 
 // authorizedToolRisk returns the broker risk class for one tool call inside a
-// committed capability. The floor is the capability's declared risk, BUT
-// privileged execution primitives (exec, sandbox) are ALWAYS classified
-// high_impact, no matter how low-risk the surrounding skill declares itself.
-// Without this, a read-only skill that lists exec in its AllowedTools (for a
-// legitimate curl) would let a skill's instructions run ARBITRARY shell with
-// no broker decision. This closes that gap: shell still runs (the skill may
-// legitimately need it), but only with an explicit grant/approval and
-// evidence — never silently.
+// committed capability. The floor is the capability's declared risk, with two
+// overrides that keep classification honest:
+//
+//   - Privileged execution primitives (exec, sandbox) are ALWAYS high_impact,
+//     no matter how low-risk the surrounding skill declares itself. Without
+//     this, a read-only skill that lists exec in its AllowedTools (for a
+//     legitimate curl) would let a skill's instructions run ARBITRARY shell
+//     with no broker decision.
+//   - Read-only tools (read_file, list_dir, search_files, grep_search,
+//     web_fetch, memory recall) are ALWAYS read_only. A skill declaring
+//     consequential risk (email, calendar) also lists read_file so the skill
+//     can read its own SKILL.md; without this override, reading a file under
+//     the email skill produced a consequential "Send this email?" approval, a
+//     false consent prompt that teaches owners to approve reflexively.
 func authorizedToolRisk(capabilityID, tool string) permissions.Risk {
 	switch tool {
 	case "exec", "sandbox":
 		return permissions.RiskHighImpact
+	case "read_file", "list_dir", "search_files", "grep_search", "web_fetch", "web_search", "memory_recall", "context_get", "session_search":
+		return permissions.RiskReadOnly
 	}
 	return permissions.RiskOf(capabilityID)
 }
