@@ -56,28 +56,29 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 | ↑ / ↓ | `/` palette selection when open, else editor history |
 | PgUp / PgDn | Scroll the transcript |
 
-## Layout (pi / opencode-inspired chrome)
+## Layout (pi-style)
 
 ```
- ┌ header ─────────────────────────────────────────────┐
- │ 👻 Ghost  ◈ model  ● local/cloud/pod  ❖ context  …  │
  ├ transcript (markdown, tool trail, spinner+elapsed) ─┤
  │ /palette when typing / (↑/↓ + Tab)                  │
- │ ┌ Message Ghost ────────────────────────────────┐   │
+ │ ╭── ⠋ working · 4s · 2 tools ─────────────────╮   │
  │ │ ❯ …                                           │   │
- │ └───────────────────────────────────────────────┘   │
- │ enter send · esc abort · ctrl+l model · / commands  │
+ │ ╰───────────────────────────────────────────────╯   │
+ │ cli:default • personal                              │
+ │ ready · 3 turns              (cloud) deepseek-flash │
  └─────────────────────────────────────────────────────┘
 ```
 
-- **Header bar:** product + model pill + locality (`● local/cloud/pod`)
-  + context pill on the left; short session + state
-  (`ready · N turns`, `working ⠋ · 3 tools`, `waiting for you`) on the right.
-- **Empty state:** welcome card with `/help /model /memory /routines` starters.
-- **Assistant markdown:** headers, `code`, ```blocks```, lists, quotes.
-- **Working block:** live stream + completed tool trail (`✓ …`),
-  active tool with spinner, elapsed (`4s`, `1m02s`), queued count.
-- **Palette:** type `/` to filter; `↑/↓` picks, `Tab` completes, `Enter` runs.
+- **No top header:** like pi, the transcript owns the full height. Model,
+  session and turn state live in the footer — nowhere else.
+- **Prompt box:** rounded border, no label above it. While a turn runs the
+  working status is embedded in the top border
+  (`── ⠋ working · 4s · 2 tools ──`, pi's `CustomEditor` pattern) and the
+  border takes the accent color. The placeholder carries the hints.
+- **Footer (2 dim lines, pi's `FooterComponent` pattern):**
+  `session • context`, then left activity (`ready`, `N turns`,
+  `⠋ working · 4s · 2 tools`, `waiting for you`) with
+  `(locality) model` right-aligned.
 
 ## Status line
 

@@ -979,15 +979,17 @@ func renderSpan(s, delim string, fn func(...string) string) string {
 // layout recomputes frozen geometry. It runs only on resize and on input
 // edits (via Update), never inside View: View must stay pure or the
 // viewport height oscillates and chrome duplicates.
+//
+// pi layout: no top header — the transcript owns the full height. The
+// bottom stack is palette popup + prompt box + 2-line footer.
 func (m *agentTUI) layout() {
-	headerH := 1
-	footerH := 1
+	const footerH = 2
 	paletteH := m.paletteHeight()
 	inputH := m.estimatedInputHeight()
 	if m.approval != nil {
 		inputH = m.estimatedApprovalHeight()
 	}
-	vpH := m.height - headerH - footerH - paletteH - inputH - 1
+	vpH := m.height - footerH - paletteH - inputH - 1
 	if vpH < 1 {
 		vpH = 1
 	}
@@ -1000,8 +1002,9 @@ func (m *agentTUI) layout() {
 	m.input.SetWidth(m.inputWidth())
 }
 
-// estimatedInputHeight mirrors inputBox without rendering it: title row (1)
-// + border (2) + textarea lines clamped to the box.
+// estimatedInputHeight mirrors promptBox without rendering it: border (2)
+// + textarea lines clamped to the box. No title row — pi has no label
+// above the prompt box, and neither do we.
 func (m *agentTUI) estimatedInputHeight() int {
 	lines := strings.Count(m.input.Value(), "\n") + 1
 	if lines < 1 {
@@ -1010,7 +1013,7 @@ func (m *agentTUI) estimatedInputHeight() int {
 	if lines > 6 {
 		lines = 6
 	}
-	return lines + 3
+	return lines + 2
 }
 
 func (m *agentTUI) estimatedApprovalHeight() int {
@@ -1019,7 +1022,8 @@ func (m *agentTUI) estimatedApprovalHeight() int {
 }
 
 func (m *agentTUI) inputWidth() int {
-	w := m.width - 6
+	// Manual prompt box: "│ " + content + " │" fills the full width.
+	w := m.width - 4
 	if w < 20 {
 		w = 20
 	}
@@ -1038,7 +1042,10 @@ func (m *agentTUI) paletteHeight() int {
 }
 
 // ─── view ────────────────────────────────────────────────────────────────
-
+// pi layout: no top header — the transcript owns the full height. Bottom
+// stack is palette popup + prompt box + 2-line dim footer (session line,
+// then stats/model line). Pure composition: each region renders exactly
+// once; geometry was frozen in layout() and rendering must not mutate it.
 func (m *agentTUI) View() string {
 	if m.quitting {
 		return ""
@@ -1046,12 +1053,7 @@ func (m *agentTUI) View() string {
 	if !m.ready {
 		return "starting Ghost…"
 	}
-	// Pure composition: header, transcript, popover, prompt, footer each
-	// render exactly once. Geometry was frozen in layout(); rendering here
-	// must not mutate it.
 	var b strings.Builder
-	b.WriteString(m.headerBar())
-	b.WriteString("\n")
 	b.WriteString(m.viewport.View())
 	b.WriteString("\n")
 	if m.paletteVisible() {
@@ -1061,20 +1063,29 @@ func (m *agentTUI) View() string {
 	if m.approval != nil {
 		b.WriteString(m.approvalCard())
 	} else {
-		b.WriteString(m.inputBox(m.input.View()))
+		b.WriteString(m.promptBox())
 	}
 	b.WriteString("\n")
-	b.WriteString(m.footerHints())
+	for i, ln := range m.footerLines() {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(ln)
+	}
 	return b.String()
 }
 
-// headerBar is the opencode-style top bar: product + model pill + locality
-// + context on the left, session + turn count + state on the right.
-// It degrades gracefully on narrow terminals: context pill first, then the
-// session, then the model get shortened — never wrapped or truncated mid-word.
-func (m *agentTUI) headerBar() string {
-	model := m.loop.GetCurrentModel()
-	local := providerLocality(model)
+// ─── footer (pi-faithful) ──────────────────────────────────────────────
+// pi's footer is two dim lines under the prompt box:
+// line 1: `~/cwd (branch) • session` — Ghost's equivalent is
+// `session • context` (Ghost has no cwd/branch; memory is one truth).
+// line 2: left usage stats, right `(provider) model`, right-aligned.
+// Model, session and turn state live here — nowhere else.
+func (m *agentTUI) footerLines() []string {
+	return []string{m.footerSessionLine(), m.footerStatsLine()}
+}
+
+func (m *agentTUI) currentCtx() string {
 	ctx := ""
 	func() {
 		defer func() { _ = recover() }()
@@ -1082,45 +1093,60 @@ func (m *agentTUI) headerBar() string {
 			ctx = m.loop.CurrentContext(m.session)
 		}
 	}()
-	state := m.stateWord()
-	right := styleHeaderRight.Render(shortSession(m.session) + " · " + state)
-	budget := m.width - lipgloss.Width(right) - 2
-	if budget < 12 {
-		// Extremely narrow: state only.
-		return styleHeader.Width(m.width).Render(cellTruncate(shortSession(m.session)+" · "+state, m.width))
-	}
-	left := styleHeaderLogo.Render(logo+" Ghost") + "  " +
-		styleModelPill.Render("◈ "+shortModel(model)) + " " +
-		localityPill(local)
-	if ctx != "" && lipgloss.Width(left)+lipgloss.Width(styleCtxPill.Render("❖ "+ctx))+1 <= budget {
-		left += " " + styleCtxPill.Render("❖ "+ctx)
-	}
-	if lipgloss.Width(left) > budget {
-		// Drop the model pill, keep identity + locality.
-		left = styleHeaderLogo.Render(logo+" Ghost") + "  " + localityPill(local)
-	}
-	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 2
-	if gap < 1 {
-		gap = 1
-	}
-	return styleHeader.Width(m.width).Render(left + strings.Repeat(" ", gap) + right)
+	return ctx
 }
 
-func (m *agentTUI) stateWord() string {
+// footerSessionLine is pi's `pwd (branch) • session` line.
+func (m *agentTUI) footerSessionLine() string {
+	line := shortSession(m.session)
+	if ctx := m.currentCtx(); ctx != "" {
+		line += " • " + ctx
+	}
+	return styleFooter.Render(cellTruncate(line, m.width))
+}
+
+// footerStatsLine is pi's `↑in ↓out … ctx% │ (provider) model` line,
+// right-aligned with a 2-space minimum gap, truncating gracefully.
+func (m *agentTUI) footerStatsLine() string {
+	model := m.loop.GetCurrentModel()
+	local := providerLocality(model)
+	left := m.activityWord()
+	right := fmt.Sprintf("(%s) %s", local, shortModel(model))
+	lw, rw := lipgloss.Width(left), lipgloss.Width(right)
+	const minGap = 2
+	if lw+minGap+rw <= m.width {
+		return styleFooter.Render(left + strings.Repeat(" ", m.width-lw-rw) + right)
+	}
+	if lw+minGap < m.width {
+		right = cellTruncate(right, m.width-lw-minGap)
+		rw = lipgloss.Width(right)
+		return styleFooter.Render(left + strings.Repeat(" ", m.width-lw-rw) + right)
+	}
+	return styleFooter.Render(cellTruncate(left, m.width))
+}
+
+// activityWord is the left half of the stats line.
+func (m *agentTUI) activityWord() string {
 	if m.approval != nil {
 		return "waiting for you"
 	}
 	if m.working {
-		s := "working " + m.spinner()
-		if m.toolCount > 0 {
-			s += fmt.Sprintf(" · %d tool%s", m.toolCount, plural(m.toolCount))
+		s := fmt.Sprintf("%s working", m.spinner())
+		if m.elapsed > 0 {
+			s += fmt.Sprintf(" · %s", formatElapsed(m.elapsed))
+		}
+		if n := len(m.toolHistory); n > 0 {
+			s += fmt.Sprintf(" · %d tool%s", n, plural(n))
+		}
+		if len(m.queued) > 0 {
+			s += fmt.Sprintf(" · %d queued", len(m.queued))
 		}
 		return s
 	}
 	if m.turnCount == 0 {
 		return "ready"
 	}
-	return fmt.Sprintf("ready · %d turn%s", m.turnCount, plural(m.turnCount))
+	return fmt.Sprintf("%d turn%s", m.turnCount, plural(m.turnCount))
 }
 
 func shortModel(s string) string {
@@ -1144,29 +1170,61 @@ func shortSession(s string) string {
 	return s
 }
 
-func localityPill(local string) string {
-	switch local {
-	case "local":
-		return styleLocalPill.Render("● local")
-	case "cloud":
-		return styleCloudPill.Render("● cloud")
-	default:
-		return stylePodPill.Render("● pod")
+// ─── prompt box (pi-faithful) ──────────────────────────────────────────
+// pi's prompt box has NO label above it — just a rounded border whose top
+// edge embeds the working status while a turn runs:
+//
+//	── ⠋ working · 4s · 2 tools ──────────────   (working)
+//	──────────────────────────────────────────   (idle)
+//
+// The border takes the accent color while working, faint otherwise (pi
+// recolors its editor border by state the same way). The textarea's own
+// placeholder carries the hints, so no extra key bar is needed.
+func (m *agentTUI) promptBox() string {
+	innerW := m.inputWidth()
+	lines := strings.Split(m.input.View(), "\n")
+	border := stylePromptBorder
+	if m.working {
+		border = stylePromptBorderActive
 	}
+	var b strings.Builder
+	b.WriteString(border.Render(m.promptTopBorder()))
+	for _, ln := range lines {
+		// Pad each editor line out to the inner width so the side
+		// borders stay aligned, then wrap in │ borders.
+		pad := innerW - lipgloss.Width(ln)
+		if pad < 0 {
+			pad = 0
+		}
+		b.WriteString("\n")
+		b.WriteString(border.Render("│") + " " + ln + strings.Repeat(" ", pad) + " " + border.Render("│"))
+	}
+	b.WriteString("\n")
+	b.WriteString(border.Render("╰" + strings.Repeat("─", m.width-2) + "╯"))
+	return b.String()
 }
 
-// inputBox is the pi/opencode-style bordered editor with a title row.
-// The title names the *state* (never the placeholder text) so it can't echo.
-func (m *agentTUI) inputBox(inner string) string {
-	title := "prompt"
-	if m.working {
-		title = "working — enter queues steering"
-	} else if strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/") {
-		title = "command — tab completes, enter runs"
+// promptTopBorder is pi's CustomEditor.renderTopBorder: `── <status> ──…`
+// while working, a plain rule while idle. Always exactly m.width cells.
+func (m *agentTUI) promptTopBorder() string {
+	w := m.width
+	if w < 10 {
+		w = 10
 	}
-	head := styleInputTitle.Render(" " + title + " ")
-	box := styleInputBox.Width(m.width - 2).Render(inner)
-	return head + "\n" + box
+	if !m.working {
+		return "╭" + strings.Repeat("─", w-2) + "╮"
+	}
+	status := fmt.Sprintf(" %s %s ", m.spinner(), m.activityWord())
+	sw := lipgloss.Width(status)
+	if sw+6 > w {
+		status = cellTruncate(status, w-6)
+		sw = lipgloss.Width(status)
+	}
+	fill := w - 5 - sw // corners + "── " prefix + status
+	if fill < 0 {
+		fill = 0
+	}
+	return "╭── " + styleWorking.Render(status) + strings.Repeat("─", fill) + "╮"
 }
 
 // paletteView is the "/" autocomplete popup (pi-style command palette).
@@ -1188,20 +1246,6 @@ func (m *agentTUI) paletteView() string {
 		}
 	}
 	return stylePaletteBox.Width(m.width - 2).Render(b.String())
-}
-
-// footerHints is the opencode-style key bar under the editor.
-// Single line, always truncated to the terminal width — never wrapped.
-func (m *agentTUI) footerHints() string {
-	keys := "enter send · esc abort · ctrl+l model · ctrl+o details · / commands"
-	if m.working {
-		keys = "enter queues · esc aborts · " + keys
-	}
-	for lipgloss.Width(keys)+2 > m.width && strings.Contains(keys, " · ") {
-		i := strings.LastIndex(keys, " · ")
-		keys = keys[:i]
-	}
-	return styleFooter.Width(m.width).Render(cellTruncate(keys, m.width-2))
 }
 
 // approvalCard is the inline permission prompt. It states the risk in owner
@@ -1331,23 +1375,14 @@ var (
 	styleToolActive    = lipgloss.NewStyle().Foreground(cGreen)
 	styleBold          = lipgloss.NewStyle().Bold(true).Foreground(cInk)
 
-	styleHeader      = lipgloss.NewStyle().Foreground(cMuted).Background(cBgBar)
-	styleHeaderLogo  = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
-	styleHeaderRight = lipgloss.NewStyle().Foreground(cFaint)
-	styleModelPill   = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
-	styleLocalPill   = lipgloss.NewStyle().Foreground(cGreen)
-	styleCloudPill   = lipgloss.NewStyle().Foreground(cBlue)
-	stylePodPill     = lipgloss.NewStyle().Foreground(cMuted)
-	styleCtxPill     = lipgloss.NewStyle().Foreground(cGold)
-
-	styleInputTitle = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
-	styleInputBox   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cBorder).Padding(0, 1)
-
 	stylePaletteBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cBorder).Background(cBgPanel).Padding(0, 1)
 	stylePaletteRow = lipgloss.NewStyle().Foreground(cMuted)
 	stylePaletteSel = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Background(cSelBg).Bold(true)
 
 	styleFooter = lipgloss.NewStyle().Foreground(cFaint).Background(cBgBar)
+
+	stylePromptBorder       = lipgloss.NewStyle().Foreground(cBorder)
+	stylePromptBorderActive = lipgloss.NewStyle().Foreground(cAccent)
 
 	styleApprovalBox   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cGold).Background(cBgPanel).Padding(0, 1)
 	styleApprovalTitle = lipgloss.NewStyle().Foreground(cGold).Bold(true)

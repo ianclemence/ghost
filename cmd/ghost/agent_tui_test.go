@@ -334,23 +334,28 @@ func TestTUIRewindRestoresLastUserMessage(t *testing.T) {
 	}
 }
 
-// View must render each chrome region exactly once: one header, one prompt
-// box, one footer. Regression test for the doubled header/welcome/input.
+// View renders each region exactly once with pi layout: no top header,
+// transcript, prompt box, 2-line footer. Regression test for the doubled
+// header/welcome/input and the stray title label above the prompt box.
 func TestTUIViewRendersSingleChrome(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.renderTranscript()
 	view := m.View()
-	if n := strings.Count(view, "Ghost"); n < 1 {
-		t.Fatalf("view should contain the header, got %q", view)
+	// No "prompt" title label above the box (pi has none).
+	if strings.Contains(view, " prompt\n") || strings.Contains(view, "\n prompt ") {
+		t.Errorf("view must not label the prompt box, got %q", view)
 	}
-	// Welcome card renders into the viewport, the header above it: the logo
-	// may appear twice total (header + welcome) but never more.
-	if n := strings.Count(view, "👻"); n > 3 {
-		t.Errorf("view renders duplicated chrome (%d logos): %q", n, view)
+	// Footer carries session/model/state exactly once each.
+	if n := strings.Count(view, "cli:test"); n != 1 {
+		t.Errorf("session should appear once in the footer, found %d: %q", n, view)
 	}
-	if !strings.Contains(view, "enter send") {
-		t.Errorf("view should contain the footer hints, got %q", view)
+	if n := strings.Count(view, "deepseek-flash"); n != 1 {
+		t.Errorf("model should appear once in the footer, found %d: %q", n, view)
+	}
+	// Welcome card renders into the viewport only — never duplicated.
+	if n := strings.Count(view, "switch thinking engine"); n != 1 {
+		t.Errorf("welcome card should appear once, found %d: %q", n, view)
 	}
 }
 
