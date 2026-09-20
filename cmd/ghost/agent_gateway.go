@@ -413,46 +413,78 @@ type historyEntry struct {
 	Timestamp int64
 }
 
+// conversationBackfillCap bounds startup history loads: the whole
+// conversation, unless it is truly enormous.
+const conversationBackfillCap = 500
+
 // LoadRecentHistory fetches the latest user/assistant rows for a session so
 // a freshly started terminal opens on the same conversation the app shows.
 func (g *gatewayRuntime) LoadRecentHistory(sessionKey string, limit int) ([]historyEntry, error) {
 	return g.LoadConversationHistory(sessionKey, limit)
 }
 
-// LoadConversationHistory fetches the latest rows for the session plus, as
-// a display-level bridge, any pre-unification legacy rows (mobile:default,
-// cli:default) that the v6 migration has not folded yet — embedded-only
-// devices never run gateway migrations, so their past chats would
-// otherwise vanish. Rows merge chronologically and cap at limit.
-func (g *gatewayRuntime) LoadConversationHistory(sessionKey string, limit int) ([]historyEntry, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 20
+// LoadConversationHistory loads the whole conversation (paged, oldest to
+// newest, capped) plus, as a display-level bridge, any pre-unification
+// legacy rows (mobile:default, cli:default) that the v6 migration has not
+// folded yet — embedded-only devices never run gateway migrations, so
+// their past chats would otherwise vanish. Rows merge chronologically.
+func (g *gatewayRuntime) LoadConversationHistory(sessionKey string, maxTotal int) ([]historyEntry, error) {
+	if maxTotal <= 0 || maxTotal > conversationBackfillCap {
+		maxTotal = conversationBackfillCap
 	}
-	keys := []string{sessionKey}
-	for _, legacy := range []string{"mobile:default", "cli:default"} {
-		if legacy != sessionKey {
-			keys = append(keys, legacy)
-		}
+	primary, err := g.loadSessionPages(sessionKey, maxTotal)
+	if err != nil {
+		return nil, err
 	}
-	var all []historyEntry
-	for _, key := range keys {
-		rows, err := g.loadSessionHistory(key, limit)
-		if err != nil {
-			if key == sessionKey {
-				return nil, err
+	all := primary
+	if len(primary) < maxTotal {
+		for _, legacy := range []string{"mobile:default", "cli:default"} {
+			if legacy == sessionKey {
+				continue
 			}
-			continue // legacy bridges are best-effort
-		}
-		all = append(all, rows...)
-		if len(rows) >= limit && key == sessionKey {
-			break // primary already fills the window; skip legacy reads
+			rows, err := g.loadSessionPages(legacy, maxTotal-len(all))
+			if err != nil {
+				continue // legacy bridges are best-effort
+			}
+			all = append(all, rows...)
 		}
 	}
 	sortByTimestamp(all)
-	if len(all) > limit {
-		all = all[len(all)-limit:]
+	if len(all) > maxTotal {
+		all = all[len(all)-maxTotal:]
 	}
 	return all, nil
+}
+
+// loadSessionPages walks one session newest-page-first and returns rows
+// oldest-first, stopping at maxTotal or the last page.
+func (g *gatewayRuntime) loadSessionPages(sessionKey string, maxTotal int) ([]historyEntry, error) {
+	const pageSize = 100
+	var pages [][]historyEntry
+	for offset := 0; len(pages)*pageSize < maxTotal; offset += pageSize {
+		rows, more, err := g.loadSessionHistory(sessionKey, pageSize, offset)
+		if err != nil {
+			if offset == 0 {
+				return nil, err
+			}
+			break
+		}
+		if len(rows) == 0 {
+			break
+		}
+		pages = append(pages, rows)
+		if !more {
+			break
+		}
+	}
+	var out []historyEntry
+	for i := len(pages) - 1; i >= 0; i-- {
+		out = append(out, pages[i]...)
+	}
+	if len(out) > maxTotal {
+		out = out[len(out)-maxTotal:]
+	}
+	return out, nil
 }
 
 func sortByTimestamp(rows []historyEntry) {
@@ -463,19 +495,20 @@ func sortByTimestamp(rows []historyEntry) {
 	}
 }
 
-func (g *gatewayRuntime) loadSessionHistory(sessionKey string, limit int) ([]historyEntry, error) {
+func (g *gatewayRuntime) loadSessionHistory(sessionKey string, limit, offset int) ([]historyEntry, bool, error) {
 	var res struct {
 		Messages []struct {
 			Role      string `json:"role"`
 			Content   string `json:"content"`
 			Timestamp int64  `json:"timestamp"`
 		} `json:"messages"`
+		HasMore bool `json:"has_more"`
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	path := fmt.Sprintf("/v1/history?session=%s&limit=%d", sessionKey, limit)
+	path := fmt.Sprintf("/v1/history?session=%s&limit=%d&offset=%d", sessionKey, limit, offset)
 	if err := g.getJSON(ctx, path, sessionKey, &res); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	out := make([]historyEntry, 0, len(res.Messages))
 	for _, m := range res.Messages {
@@ -487,7 +520,7 @@ func (g *gatewayRuntime) loadSessionHistory(sessionKey string, limit int) ([]his
 		}
 		out = append(out, historyEntry{Role: m.Role, Content: m.Content, Timestamp: m.Timestamp})
 	}
-	return out, nil
+	return out, res.HasMore, nil
 }
 
 // ProcessDirectWithChannel runs one turn on the daemon over SSE. Chunks flow

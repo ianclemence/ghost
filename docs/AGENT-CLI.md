@@ -73,8 +73,14 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   height. Model, session and turn state live in the footer — nowhere else.
 - **Composer:** opencode's left-`┃`-border panel, no `❯` prefix, rotating
   `Ask Ghost anything… "example"` placeholder. Multi-line with `Ctrl+J`
-  (grows to 5 rows, then scrolls inside the box). Accent bar while working.
-  The working status lives in the footer, not the composer chrome.
+  (idles 3 rows tall, grows to 5, then scrolls inside the box). Accent
+  bar while working. The working status lives in the footer, not the
+  composer chrome.
+- **Full conversation, grouped by day:** launching loads the whole shared
+  transcript (paged, capped at 500 rows) and opens scrolled to the
+  latest turn — iMessage/WhatsApp style, with `Today` / `Yesterday` /
+  date dividers wherever the calendar day flips. The welcome card only
+  appears for a genuinely new conversation.
 - **Messages:** yours render as a left-bar panel with paragraphs preserved
   (never markdown-rendered, like opencode); Ghost's render as opencode
   markdown — concealed markers (no ``` fences, `#`, backticks, or URLs),

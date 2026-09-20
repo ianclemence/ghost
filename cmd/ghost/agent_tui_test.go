@@ -420,6 +420,58 @@ func TestTUIInputHeightCountsWrappedLines(t *testing.T) {
 	}
 }
 
+// The composer idles taller than a sliver and never exceeds the cap.
+func TestTUIComposerDefaultAndCap(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.input.SetValue("")
+	m.layout()
+	if h := m.input.Height(); h != composerMinLines {
+		t.Errorf("empty composer should idle at %d rows, got %d", composerMinLines, h)
+	}
+	if got := m.estimatedInputHeight(); got != composerMinLines {
+		t.Errorf("empty estimate should be %d, got %d", composerMinLines, got)
+	}
+	m.input.SetValue(strings.Repeat("x\n", 20))
+	m.layout()
+	if h := m.input.Height(); h != maxPromptLines {
+		t.Errorf("composer must cap at %d rows, got %d", maxPromptLines, h)
+	}
+}
+
+// Day dividers group the transcript like chat apps: one opens the
+// transcript, another appears wherever the calendar day flips — never
+// between same-day messages, never for undated rows.
+func TestTUIDayDividers(t *testing.T) {
+	if dayLabel(time.Time{}) != "" {
+		t.Errorf("zero time must have no divider")
+	}
+	if dayLabel(time.Now()) != "Today" {
+		t.Errorf("today must label Today")
+	}
+	if dayLabel(time.Now().AddDate(0, 0, -1)) != "Yesterday" {
+		t.Errorf("yesterday must label Yesterday")
+	}
+	old := time.Now().AddDate(0, 0, -5)
+	if dayLabel(old) != old.Format("2 January 2006") {
+		t.Errorf("older days must show the date, got %q", dayLabel(old))
+	}
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	now := time.Now()
+	m.append(entry{kind: entryUser, text: "a", at: now})
+	m.append(entry{kind: entryAssistant, text: "b", at: now})
+	m.append(entry{kind: entryUser, text: "c", at: now.AddDate(0, 0, -1)})
+	m.renderTranscript()
+	content := m.viewport.View()
+	if n := strings.Count(content, "Today"); n != 1 {
+		t.Errorf("same-day rows share one divider, found %d", n)
+	}
+	if !strings.Contains(content, "Yesterday") {
+		t.Errorf("day flip must divide, got %q", content)
+	}
+}
+
 // Enter with the palette open completes the highlighted command AND runs
 // it immediately — every slash command is valid with zero args, so there
 // is no dead complete-only state. (Tab is the compose-first key.) This is

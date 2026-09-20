@@ -73,6 +73,7 @@ type entry struct {
 	kind entryKind
 	text string
 	dur  time.Duration // assistant turns only (opencode `· duration` footer)
+	at   time.Time     // when the message landed; zero = unknown (no divider)
 }
 
 // ─── model ───────────────────────────────────────────────────────────────
@@ -305,7 +306,7 @@ func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if text == "" {
 					text = "(no response)"
 				}
-				m.append(entry{kind: entryAssistant, text: text, dur: time.Since(m.turnStart)})
+				m.append(entry{kind: entryAssistant, text: text, dur: time.Since(m.turnStart), at: time.Now()})
 			}
 		}
 		m.streaming = ""
@@ -591,7 +592,7 @@ func (m *agentTUI) send(text string) {
 		return
 	}
 
-	m.append(entry{kind: entryUser, text: text})
+	m.append(entry{kind: entryUser, text: text, at: time.Now()})
 	m.working = true
 	m.toolCount = 0
 	m.toolLine = ""
@@ -1109,6 +1110,35 @@ func (m *agentTUI) spinner() string {
 	return spinnerFrames[m.spinFrame%len(spinnerFrames)]
 }
 
+// dayLabel groups the transcript the way chat apps do: Today,
+// Yesterday, or the calendar date. Zero time means unknown — no divider.
+func dayLabel(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	y, mo, d := t.Date()
+	ny, nmo, nd := time.Now().Date()
+	if y == ny && mo == nmo && d == nd {
+		return "Today"
+	}
+	yy, ymo, yd := time.Now().AddDate(0, 0, -1).Date()
+	if y == yy && mo == ymo && d == yd {
+		return "Yesterday"
+	}
+	return t.Format("2 January 2006")
+}
+
+func (m *agentTUI) renderDayDivider(label string) string {
+	w := m.contentWidth()
+	core := " " + label + " "
+	fill := w - lipgloss.Width(core)
+	if fill < 0 {
+		return styleDayDivider.Render(cellTruncate(label, w))
+	}
+	left := fill / 2
+	return styleDayDivider.Render(strings.Repeat("─", left) + core + strings.Repeat("─", fill-left))
+}
+
 func (m *agentTUI) renderTranscript() {
 	if !m.ready {
 		return
@@ -1118,7 +1148,21 @@ func (m *agentTUI) renderTranscript() {
 		b.WriteString(m.welcomeCard())
 		b.WriteString("\n")
 	}
+	// iMessage/WhatsApp grouping: a day divider opens the transcript and
+	// reappears wherever the calendar day flips. Entries without a
+	// timestamp inherit the previous day so they never split a group.
+	prevDay := ""
 	for i, e := range m.entries {
+		if d := dayLabel(e.at); d != "" && d != prevDay {
+			if i > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(m.renderDayDivider(d))
+			b.WriteString("\n")
+			prevDay = d
+		} else if d != "" {
+			prevDay = d
+		}
 		if i > 0 {
 			b.WriteString("\n")
 		}
@@ -1544,9 +1588,10 @@ func (m *agentTUI) layout() {
 	m.syncInputHeight()
 }
 
-// syncInputHeight grows the composer with the text up to maxPromptLines
-// (opencode caps its composer height the same way) so long input scrolls
-// inside the box instead of pushing the transcript away.
+// syncInputHeight grows the composer with the text between
+// composerMinLines and maxPromptLines (opencode caps its composer height
+// the same way) so long input scrolls inside the box instead of pushing
+// the transcript away.
 func (m *agentTUI) syncInputHeight() {
 	lines := 0
 	inner := m.inputWidth()
@@ -1558,8 +1603,8 @@ func (m *agentTUI) syncInputHeight() {
 		}
 		lines += (w + inner - 1) / inner
 	}
-	if lines < 1 {
-		lines = 1
+	if lines < composerMinLines {
+		lines = composerMinLines
 	}
 	if lines > maxPromptLines {
 		lines = maxPromptLines
@@ -1567,7 +1612,12 @@ func (m *agentTUI) syncInputHeight() {
 	m.input.SetHeight(lines)
 }
 
-const maxPromptLines = 5
+// The composer idles at composerMinLines rows (presence, not a sliver)
+// and never exceeds maxPromptLines.
+const (
+	composerMinLines = 3
+	maxPromptLines   = 5
+)
 
 // estimatedInputHeight mirrors promptBox without rendering it: border (2)
 // + textarea visual lines clamped to the box. Visual lines, not physical
@@ -1585,8 +1635,8 @@ func (m *agentTUI) estimatedInputHeight() int {
 		}
 		lines += (w + inner - 1) / inner
 	}
-	if lines < 1 {
-		lines = 1
+	if lines < composerMinLines {
+		lines = composerMinLines
 	}
 	if lines > maxPromptLines {
 		lines = maxPromptLines
@@ -2071,6 +2121,7 @@ var (
 	styleWelcomeTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
 	styleGhostArt     = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
 	styleWelcomeCmds  = lipgloss.NewStyle().Foreground(cMuted)
+	styleDayDivider   = lipgloss.NewStyle().Foreground(cFaint)
 
 	// opencode markdown roles (dark default): headings violet bold (h1
 	// underlined), strong orange, emphasis/quotes sand italic, code green

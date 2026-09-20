@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -96,12 +97,37 @@ func (f *fakeGateway) handler() http.Handler {
 			_, _ = w.Write([]byte(payload))
 			return
 		}
-		_, _ = w.Write([]byte(`{"messages":[
-			{"role":"user","content":"hello","timestamp":100},
-			{"role":"tool","content":"should be skipped","timestamp":101},
-			{"role":"assistant","content":"hi there","timestamp":102},
-			{"role":"user","content":"   ","timestamp":103}
-		],"total":4}`))
+		// Default store honors limit/offset newest-first like the real
+		// endpoint (DESC page, chronological within the page).
+		all := []string{
+			`{"role":"user","content":"hello","timestamp":100}`,
+			`{"role":"tool","content":"should be skipped","timestamp":101}`,
+			`{"role":"assistant","content":"hi there","timestamp":102}`,
+			`{"role":"user","content":"   ","timestamp":103}`,
+			`{"role":"assistant","content":"bye","timestamp":104}`,
+		}
+		limit, offset := 50, 0
+		_, _ = fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
+		_, _ = fmt.Sscanf(r.URL.Query().Get("offset"), "%d", &offset)
+		if limit <= 0 {
+			limit = 50
+		}
+		if offset < 0 {
+			offset = 0
+		}
+		start := len(all) - offset - limit
+		if start < 0 {
+			start = 0
+		}
+		end := len(all) - offset
+		if end < 0 {
+			end = 0
+		}
+		if end > len(all) {
+			end = len(all)
+		}
+		page := all[start:end]
+		fmt.Fprintf(w, `{"messages":[%s],"total":%d,"has_more":%v}`, strings.Join(page, ","), len(page), start > 0)
 	})
 	mux.HandleFunc("/v1/clarify/respond", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
@@ -264,15 +290,51 @@ func TestGatewayContexts(t *testing.T) {
 
 func TestGatewayHistory(t *testing.T) {
 	gw, _ := newTestGateway(t, "")
-	hist, err := gw.loadSessionHistory("main", 20)
+	hist, more, err := gw.loadSessionHistory("main", 20, 0)
 	if err != nil {
 		t.Fatalf("history must load: %v", err)
 	}
-	if len(hist) != 2 || hist[0].Role != "user" || hist[1].Role != "assistant" {
+	if more {
+		t.Errorf("full store in one page must not report more")
+	}
+	if len(hist) != 3 || hist[0].Role != "user" || hist[1].Role != "assistant" || hist[2].Role != "assistant" {
 		t.Fatalf("tool rows and blanks must be skipped, got %+v", hist)
 	}
-	if hist[0].Content != "hello" || hist[1].Content != "hi there" {
+	if hist[0].Content != "hello" || hist[2].Content != "bye" {
 		t.Errorf("history content wrong: %+v", hist)
+	}
+}
+
+func TestGatewayHistoryPages(t *testing.T) {
+	gw, _ := newTestGateway(t, "")
+	// Newest-first paging: offset 0 takes the tail, offset 2 the head.
+	p0, more0, err := gw.loadSessionHistory("main", 2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !more0 {
+		t.Errorf("first page must report more")
+	}
+	if len(p0) != 1 || p0[0].Content != "bye" {
+		t.Fatalf("page 0 wrong (blank user row skipped): %+v", p0)
+	}
+	p1, _, err := gw.loadSessionHistory("main", 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Note: like the real endpoint, has_more counts unfiltered rows, so a
+	// page of only-filtered rows can still report more. The walker keeps
+	// fetching until an empty page or has_more=false.
+	if len(p1) != 1 || p1[0].Content != "hi there" {
+		t.Fatalf("page 1 wrong: %+v", p1)
+	}
+	// Whole-conversation load assembles oldest-first and caps the tail.
+	full, err := gw.LoadConversationHistory("other:session", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(full) != 2 || full[0].Content != "hi there" || full[1].Content != "bye" {
+		t.Fatalf("capped load must keep the newest chronological tail, got %+v", full)
 	}
 }
 

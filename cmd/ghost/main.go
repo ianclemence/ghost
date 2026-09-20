@@ -1014,13 +1014,17 @@ func agentGatewayCmd(gw *gatewayRuntime, message, sessionKey string) {
 		os.Exit(2)
 	}
 	var preload []entry
-	if hist, err := gw.LoadConversationHistory(sessionKey, 20); err == nil {
+	if hist, err := gw.LoadConversationHistory(sessionKey, conversationBackfillCap); err == nil {
 		for _, h := range hist {
+			at := time.Unix(h.Timestamp, 0)
+			if h.Timestamp <= 0 {
+				at = time.Time{}
+			}
 			switch h.Role {
 			case "user":
-				preload = append(preload, entry{kind: entryUser, text: h.Content})
+				preload = append(preload, entry{kind: entryUser, text: h.Content, at: at})
 			case "assistant":
-				preload = append(preload, entry{kind: entryAssistant, text: h.Content})
+				preload = append(preload, entry{kind: entryAssistant, text: h.Content, at: at})
 			}
 		}
 	} else {
