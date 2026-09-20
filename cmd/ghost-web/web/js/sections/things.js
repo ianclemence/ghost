@@ -1,4 +1,4 @@
-/* Ghost Section: Things Ghost does — everything Ghost runs for you, in one list.
+/* Ghost Section: Routines — everything Ghost runs for you, in one list.
  *
  * One destination for routines, reminders, and scheduled actions. The owner
  * never files their intent as a "routine" or an "automation"; the gateway
@@ -32,7 +32,7 @@ async function loadThings(container) {
   if (GhostApp.currentSection() !== 'things') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
-  head.appendChild(GhostUI.h('h1', {}, 'Things Ghost does'));
+  head.appendChild(GhostUI.h('h1', {}, 'Routines'));
   head.appendChild(GhostUI.h('p', {},
     'Everything Ghost runs for you \u2014 recurring briefs, reminders, and scheduled actions. Pause, resume, or stop any of them here.'));
   const cross = GhostUI.h('p', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-2)' },

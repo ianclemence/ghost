@@ -99,10 +99,10 @@ source of authority.
 
 ---
 
-# Things Ghost does
+# Routines
 
-A **Thing** is the single owner-facing primitive for anything Ghost runs on its
-own: a reminder, a recurring instruction, a scheduled action, or a task.
+**Routines** is the single owner-facing destination for anything Ghost runs on
+its own: a reminder, a recurring instruction, a scheduled action, or a task.
 
 The owner never chooses between the internal models. They express an intent —
 "every Monday at 9, prepare my weekly brief" — and Ghost infers the shape. The

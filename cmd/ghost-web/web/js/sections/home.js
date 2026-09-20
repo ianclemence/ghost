@@ -167,7 +167,7 @@ function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, mem
   appendSummary(dl, 'Local AI', localAI.label);
   appendSummary(dl, 'Memory', memCount == null ? '\u2014' : GhostUI.fmtNum(memCount) + (memCount === 1 ? ' memory' : ' memories'));
   appendSummary(dl, 'Devices', devCount == null ? '\u2014' : (devCount === 0 ? 'Not connected' : devCount + ' connected'));
-  appendSummary(dl, 'Things Ghost does', jobCount == null ? '\u2014' : (jobCount === 0 ? 'None yet' : activeJobCount + ' running of ' + jobCount));
+  appendSummary(dl, 'Routines', jobCount == null ? '\u2014' : (jobCount === 0 ? 'None yet' : activeJobCount + ' running of ' + jobCount));
   appendSummary(dl, 'Watching', proactiveSummary(proactiveRes));
   bodyEl.appendChild(dl);
 }
