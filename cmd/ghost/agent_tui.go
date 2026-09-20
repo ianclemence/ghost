@@ -21,6 +21,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/ianclemence/ghost/pkg/providers"
 )
 
 // ─── messages ─────────────────────────────────────────────────────────────
@@ -755,6 +757,10 @@ type modalItem struct {
 	label   string
 	desc    string
 	current bool
+	// target is what pick receives (preset/connection name or
+	// provider:model); usable false blocks picking with an explanation.
+	target string
+	usable bool
 }
 
 type selectModal struct {
@@ -784,21 +790,39 @@ func (m *agentTUI) modalMatches() []modalItem {
 
 func (m *agentTUI) openModelModal() {
 	m.loop.RefreshModels()
-	presets := m.loop.ModelPresets()
+	opts := m.modelOptions()
 	cur := m.loop.GetCurrentModel()
-	items := make([]modalItem, 0, len(presets)+1)
+	items := make([]modalItem, 0, len(opts))
 	seen := map[string]bool{}
-	for _, p := range presets {
-		if seen[p] {
+	for _, o := range opts {
+		if o.Name == "" || seen[o.Name+o.Target] {
 			continue
 		}
-		seen[p] = true
-		items = append(items, modalItem{label: p, desc: providerLocality(p), current: p == cur})
+		seen[o.Name+o.Target] = true
+		desc := o.Provider
+		if o.Model != "" && o.Model != o.Provider {
+			desc += " · " + shortModel(o.Model)
+		}
+		if loc := providerLocality(o.Provider + ":" + o.Model); loc != "" {
+			desc += " · " + loc
+		}
+		if !o.Available {
+			if o.Reason != "" {
+				desc += " · unavailable: " + o.Reason
+			} else {
+				desc += " · unavailable"
+			}
+		}
+		current := o.Target == cur || o.Name == cur ||
+			modelBase(o.Target) == modelBase(cur) || modelBase(o.Model) == modelBase(cur)
+		items = append(items, modalItem{label: o.Name, desc: desc, current: current, target: o.Target, usable: o.Available})
 	}
-	if !seen[cur] {
-		items = append(items, modalItem{label: cur, desc: providerLocality(cur) + " · active", current: true})
+	if len(items) == 0 {
+		m.append(entry{kind: entryNotice, text: "no models configured"})
+		m.renderTranscript()
+		return
 	}
-	m.modal = &selectModal{title: "Models", items: items, pick: func(label string) { m.setModel(label) }}
+	m.modal = &selectModal{title: "Models", items: items, pick: func(target string) { m.setModel(target) }}
 	m.renderTranscript()
 }
 
@@ -826,10 +850,20 @@ func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(items) == 0 {
 			return m, nil
 		}
+		chosen := items[m.modal.sel]
+		if !chosen.usable {
+			m.append(entry{kind: entryNotice, text: "that model isn't usable right now — " + chosen.desc})
+			m.modal = nil
+			m.renderTranscript()
+			return m, nil
+		}
 		pick := m.modal.pick
-		label := items[m.modal.sel].label
+		target := chosen.target
+		if target == "" {
+			target = chosen.label
+		}
 		m.modal = nil
-		pick(label)
+		pick(target)
 		return m, nil
 	case tea.KeyUp:
 		m.modal.sel--
@@ -1047,20 +1081,21 @@ func onOff(b bool) string {
 }
 
 func (m *agentTUI) cycleModel() {
-	presets := m.loop.ModelPresets()
-	if len(presets) == 0 {
+	opts := m.modelOptions()
+	if len(opts) == 0 {
 		m.append(entry{kind: entryNotice, text: "no model presets configured"})
 		m.renderTranscript()
 		return
 	}
-	// The active model is canonical (provider:model) while presets are
-	// names, so a naive == never matches and every press fell through to
-	// presets[0]. Match loosely to resync, else continue from our own
-	// last position so every press visibly advances.
+	// Match loosely (preset names vs canonical provider:model) to resync,
+	// else continue from our own last position so every press advances.
 	cur := m.loop.GetCurrentModel()
 	idx := -1
-	for i, p := range presets {
-		if p == cur || modelBase(p) == modelBase(cur) {
+	for i, o := range opts {
+		if !o.Available {
+			continue
+		}
+		if o.Target == cur || o.Name == cur || modelBase(o.Target) == modelBase(cur) || modelBase(o.Model) == modelBase(cur) {
 			idx = i
 			break
 		}
@@ -1068,9 +1103,36 @@ func (m *agentTUI) cycleModel() {
 	if idx == -1 {
 		idx = m.modelCycleIdx
 	}
-	idx = (idx + 1) % len(presets)
-	m.modelCycleIdx = idx
-	m.setModel(presets[idx])
+	for step := 1; step <= len(opts); step++ {
+		next := opts[(idx+step)%len(opts)]
+		if next.Available {
+			m.modelCycleIdx = (idx + step) % len(opts)
+			m.setModel(next.Target)
+			return
+		}
+	}
+	m.append(entry{kind: entryNotice, text: "no usable model configured"})
+	m.renderTranscript()
+}
+
+// modelOptionProvider is the optional full switchable set (presets +
+// connections + keyed providers). Runtimes without it fall back to bare
+// preset names.
+type modelOptionProvider interface {
+	ModelOptions() []providers.ModelOption
+}
+
+func (m *agentTUI) modelOptions() []providers.ModelOption {
+	if po, ok := m.loop.(modelOptionProvider); ok {
+		if opts := po.ModelOptions(); len(opts) > 0 {
+			return opts
+		}
+	}
+	var out []providers.ModelOption
+	for _, p := range m.loop.ModelPresets() {
+		out = append(out, providers.ModelOption{Name: p, Target: p, Kind: "preset", Available: true})
+	}
+	return out
 }
 
 // modelBase strips provider prefixes and case so a preset name matches

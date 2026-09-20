@@ -817,6 +817,22 @@ func modelCmd() {
 				fmt.Println(s)
 			}
 		}
+		// Configured providers without a preset (e.g. a deepseek key but
+		// no deepseek preset): selectable via `ghost model use
+		// <provider:model>`, and listed in the terminal picker.
+		var prov []string
+		for _, o := range providers.AvailableModelOptions(cfg) {
+			if o.Kind != "provider" {
+				continue
+			}
+			prov = append(prov, fmt.Sprintf("  %-16s %s (%s)", o.Name, o.Provider, o.Model))
+		}
+		if len(prov) > 0 {
+			fmt.Println("\nProviders (configured keys, no preset needed):")
+			for _, s := range prov {
+				fmt.Println(s)
+			}
+		}
 		return
 	}
 

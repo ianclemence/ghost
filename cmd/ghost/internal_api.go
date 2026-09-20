@@ -57,11 +57,11 @@ import (
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/routinefeed"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/telemetry"
-	"github.com/ianclemence/ghost/pkg/routinefeed"
 	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/turnlog"
 	"github.com/ianclemence/ghost/pkg/voice"
@@ -1680,21 +1680,10 @@ func workspaceFileProtected(rel string) bool {
 }
 
 // knownProviderModels mirrors the web console's recommended models per
-// provider (used for the provider list and as test defaults).
-var knownProviderModels = map[string][]string{
-	"openai":       {"gpt-5.4", "gpt-5.4-mini", "gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini", "gpt-4o", "gpt-4o-mini"},
-	"anthropic":    {"claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"},
-	"moonshot":     {"kimi-k3", "kimi-k2.7-code", "kimi-k2.6"},
-	"groq":         {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"},
-	"deepseek":     {"deepseek-flash", "deepseek-v4-pro"},
-	"qwen":         {"qwen3.8-max", "qwen3.7-plus", "qwen3.8-flash", "qwen3.5-omni-plus"},
-	"gemini":       {"gemini-3.6-flash", "gemini-3.1-pro", "gemini-3-flash"},
-	"zhipu":        {"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-4.7", "glm-4.7-flash"},
-	"openrouter":   {},
-	"ollama":       {},
-	"nvidia":       {"deepseek-ai/deepseek-v4-flash", "meta/llama-3.3-70b-instruct", "qwen/qwq-32b"},
-	"shengsuanyun": {},
-}
+// provider (used for the provider list and as test defaults). Single
+// source of truth lives in pkg/providers; this alias keeps existing
+// references working.
+var knownProviderModels = providers.KnownProviderModels
 
 // intelligenceProviderConfig returns the stored credentials for a provider,
 // or nil for unknown names.
@@ -2378,7 +2367,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			return
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
-			"ok":     true,
+			"ok":       true,
 			"routines": buildRoutineFeed(scheduledService),
 		})
 	}))
@@ -4447,6 +4436,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				"active":   agentLoop.GetCurrentModel(),
 				"provider": provider,
 				"presets":  presets,
+				// Full switchable set (presets + connections + keyed
+				// providers) for terminal pickers: additive, existing
+				// clients ignore it.
+				"options": providers.AvailableModelOptions(agentLoop.Config()),
 			})
 		case http.MethodPost:
 			var req struct {

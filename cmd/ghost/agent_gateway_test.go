@@ -74,7 +74,11 @@ func (f *fakeGateway) handler() http.Handler {
 		f.mu.Lock()
 		f.modelGet++
 		f.mu.Unlock()
-		_, _ = w.Write([]byte(`{"active":"deepseek-flash","provider":"deepseek","presets":[{"name":"fast"},{"name":"deep"}]}`))
+		_, _ = w.Write([]byte(`{"active":"deepseek-flash","provider":"deepseek","presets":[{"name":"fast"},{"name":"deep"}],"options":[
+			{"name":"fast","provider":"fast-p","model":"fast-m","target":"fast","kind":"preset","available":true},
+			{"name":"deep","provider":"deep-p","model":"deep-m","target":"deep","kind":"preset","available":false,"unavailable_reason":"no key"},
+			{"name":"deepseek","provider":"deepseek","model":"deepseek-flash","target":"deepseek:deepseek-flash","kind":"provider","available":true}
+		]}`))
 	})
 	mux.HandleFunc("/v1/contexts", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"ok":true,"contexts":[{"id":"personal"},{"id":"work"}],"current":"work"}`))
@@ -252,6 +256,20 @@ func TestGatewayModel(t *testing.T) {
 
 // Footer-speed reads must not hit the network every frame: the second
 // GetCurrentModel inside the TTL serves the cache.
+func TestGatewayModelOptions(t *testing.T) {
+	gw, _ := newTestGateway(t, "")
+	opts := gw.ModelOptions()
+	if len(opts) != 3 {
+		t.Fatalf("expected 3 options, got %+v", opts)
+	}
+	if opts[2].Kind != "provider" || opts[2].Target != "deepseek:deepseek-flash" || !opts[2].Available {
+		t.Errorf("provider option wrong: %+v", opts[2])
+	}
+	if opts[1].Available || opts[1].Reason == "" {
+		t.Errorf("unavailable preset must carry its reason: %+v", opts[1])
+	}
+}
+
 func TestGatewayModelCache(t *testing.T) {
 	gw, fg := newTestGateway(t, "")
 	if got := gw.GetCurrentModel(); got != "deepseek-flash" {

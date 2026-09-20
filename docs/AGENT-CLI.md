@@ -26,7 +26,7 @@ provenance are first-class here in a way a coding agent does not need.
 | Command | Purpose |
 |---|---|
 | `/help` | List commands and keybindings |
-| `/model [name]` | Show or switch the active model (presets first) |
+| `/model [name]` | Show or switch the active model (presets, connections, keyed providers) |
 | `/details` | Toggle tool step details (durations) |
 | `/new` | Start a fresh conversation |
 | `/sessions` | Show the current session key and turn count |
@@ -155,6 +155,15 @@ tools (for example `work`). This is Ghost's answer to keeping complex topics
 separate. It deliberately does **not** fork the conversation: Ghost keeps one
 durable, reconciled memory, so what Ghost knows stays a single truth rather
 than a tree of conflicting branches.
+
+## Models: everything usable is visible
+
+The picker (`/model`), `Ctrl+L`, and `ghost model list` all read the same
+switchable set: **named presets** first, then **named connections**, then
+every **provider with a configured key** (e.g. deepseek appears the moment
+its key exists — no preset entry required). Unkeyed presets still show,
+marked with why they can't serve. Switching accepts a preset name, a
+connection name, or `provider:model`.
 
 ## One shared conversation (terminal + app)
 

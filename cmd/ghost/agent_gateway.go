@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/providers"
 )
 
 // gatewayRuntime is agentRuntime over HTTP+SSE to a local ghost gateway.
@@ -42,6 +43,7 @@ type gatewayRuntime struct {
 	mu           sync.Mutex
 	modelActive  string
 	modelPresets []string
+	modelOptions []providers.ModelOption
 	modelAt      time.Time
 	ctxCurrent   map[string]string
 	ctxList      []string
@@ -177,10 +179,25 @@ func (g *gatewayRuntime) GetCurrentModel() string {
 }
 
 func (g *gatewayRuntime) ModelPresets() []string {
+	names, _ := g.modelCatalog()
+	return names
+}
+
+// ModelOptions returns the full switchable set the daemon reports
+// (presets + connections + keyed providers), falling back to bare preset
+// names when the daemon predates the options field.
+func (g *gatewayRuntime) ModelOptions() []providers.ModelOption {
+	_, opts := g.modelCatalog()
+	return opts
+}
+
+// modelCatalog fetches and caches the daemon's model listing once per
+// TTL: preset names plus the full option set when available.
+func (g *gatewayRuntime) modelCatalog() ([]string, []providers.ModelOption) {
 	g.mu.Lock()
 	if time.Since(g.modelAt) < gatewayCacheTTL && g.modelPresets != nil {
 		defer g.mu.Unlock()
-		return append([]string{}, g.modelPresets...)
+		return append([]string{}, g.modelPresets...), append([]providers.ModelOption{}, g.modelOptions...)
 	}
 	g.mu.Unlock()
 	var res struct {
@@ -188,26 +205,28 @@ func (g *gatewayRuntime) ModelPresets() []string {
 		Presets []struct {
 			Name string `json:"name"`
 		} `json:"presets"`
+		Options []providers.ModelOption `json:"options"`
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := g.getJSON(ctx, "/v1/model", "", &res); err != nil {
-		return nil
+		return nil, nil
 	}
-	out := make([]string, 0, len(res.Presets))
+	names := make([]string, 0, len(res.Presets))
 	for _, p := range res.Presets {
 		if p.Name != "" {
-			out = append(out, p.Name)
+			names = append(names, p.Name)
 		}
 	}
 	g.mu.Lock()
 	if res.Active != "" {
 		g.modelActive = res.Active
 	}
-	g.modelPresets = append([]string{}, out...)
+	g.modelPresets = append([]string{}, names...)
+	g.modelOptions = append([]providers.ModelOption{}, res.Options...)
 	g.modelAt = time.Now()
 	g.mu.Unlock()
-	return out
+	return names, append([]providers.ModelOption{}, res.Options...)
 }
 
 // RefreshModels busts the cached model state so the picker always opens
@@ -217,6 +236,7 @@ func (g *gatewayRuntime) RefreshModels() {
 	defer g.mu.Unlock()
 	g.modelAt = time.Time{}
 	g.modelPresets = nil
+	g.modelOptions = nil
 }
 
 func (g *gatewayRuntime) SetModel(target string) error {

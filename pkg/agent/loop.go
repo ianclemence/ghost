@@ -3562,6 +3562,12 @@ func (al *AgentLoop) SetModel(target string) error {
 	if preset := al.cfg.FindModelPreset(target); preset != nil {
 		provider = preset.Provider
 		model = preset.Model
+	} else if conn, cerr := al.cfg.ResolveConnection(target); cerr == nil {
+		// Named connection (same resolution `ghost model use` performs):
+		// the credential stays in the environment — activation writes
+		// provider/model only, never secrets.
+		provider = conn.Provider
+		model = conn.Model
 	} else if strings.Contains(target, ":") {
 		parts := strings.SplitN(target, ":", 2)
 		if parts[0] == "" || parts[1] == "" {
@@ -3600,6 +3606,17 @@ func (al *AgentLoop) SetModel(target string) error {
 	// turns and health checks use the selected model, not the boot-time one.
 	_ = al.refreshActiveProvider()
 	return nil
+}
+
+// ModelOptions lists everything switchable: named presets, named
+// connections, and every provider with a configured credential. The
+// terminal picker and Ctrl+L cycle read this (not bare presets), so a
+// configured-but-unlisted model is visible instead of silently missing.
+func (al *AgentLoop) ModelOptions() []providers.ModelOption {
+	if al == nil || al.cfg == nil {
+		return nil
+	}
+	return providers.AvailableModelOptions(al.cfg)
 }
 
 // refreshActiveProvider rebuilds the loop's active provider and points the

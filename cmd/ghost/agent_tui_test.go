@@ -7,6 +7,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/ianclemence/ghost/pkg/providers"
 )
 
 // fakeRuntime records calls and simulates a runtime for TUI tests.
@@ -16,6 +18,7 @@ type fakeRuntime struct {
 	injected []string // steering messages queued while working
 	aborted  []string // sessions aborted via Esc
 	answered map[string]string
+	options  []providers.ModelOption // nil = derive from presets
 	turns    []string
 	setCalls []string
 	pending  *pendingApproval
@@ -37,6 +40,17 @@ func (f *fakeRuntime) SetModel(t string) error {
 func (f *fakeRuntime) InjectSteering(_, content string) { f.injected = append(f.injected, content) }
 func (f *fakeRuntime) AbortTurn(sessionKey string)      { f.aborted = append(f.aborted, sessionKey) }
 func (f *fakeRuntime) RefreshModels()                   {}
+
+func (f *fakeRuntime) ModelOptions() []providers.ModelOption {
+	if f.options != nil {
+		return f.options
+	}
+	var out []providers.ModelOption
+	for _, p := range f.presets {
+		out = append(out, providers.ModelOption{Name: p, Target: p, Kind: "preset", Available: true})
+	}
+	return out
+}
 func (f *fakeRuntime) RespondClarify(questionID, response string) bool {
 	f.answered[questionID] = response
 	return true
@@ -654,6 +668,43 @@ func TestTUIApprovalEnterConfirmsSelection(t *testing.T) {
 	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	if !waitForTurns(f, 1) || f.turns[0] != "always allow" {
 		t.Fatalf("enter should confirm the selection, got %v", f.turns)
+	}
+}
+
+// A configured-but-unlisted provider (the deepseek case) must appear in
+// the picker and the Ctrl+L rotation — never silently missing.
+func TestTUIModelOptionsIncludeProviders(t *testing.T) {
+	f := newFakeRuntime()
+	f.options = []providers.ModelOption{
+		{Name: "local", Provider: "ollama", Model: "ollama/qwen3:0.6b", Target: "local", Kind: "preset", Available: true},
+		{Name: "deepseek", Provider: "deepseek", Model: "deepseek-flash", Target: "deepseek:deepseek-flash", Kind: "provider", Available: true},
+		{Name: "broken", Provider: "x", Model: "y", Target: "broken", Kind: "preset", Available: false, Reason: "no key"},
+	}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/model")
+	if m.modal == nil {
+		t.Fatalf("/model should open the picker")
+	}
+	var labels []string
+	for _, it := range m.modalMatches() {
+		labels = append(labels, it.label)
+	}
+	if len(labels) != 3 || labels[1] != "deepseek" {
+		t.Fatalf("picker must list the provider option, got %v", labels)
+	}
+	// Cycling skips the unavailable entry and lands the provider target.
+	f.model = "weird:thing"
+	m.cycleModel()
+	if f.model != "local" {
+		t.Fatalf("first press should take the first option, got %q", f.model)
+	}
+	m.cycleModel()
+	if f.model != "deepseek:deepseek-flash" {
+		t.Fatalf("cycle must reach the provider target, got %q", f.model)
+	}
+	m.cycleModel()
+	if f.model != "local" {
+		t.Fatalf("cycle must wrap past unavailable entries, got %q", f.model)
 	}
 }
 
