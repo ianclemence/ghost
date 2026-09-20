@@ -611,6 +611,18 @@ func TestTUIComposerGrowsWithContentAndCaps(t *testing.T) {
 		t.Errorf("estimate %d must equal rows %d + 2 rules", got, grew)
 	}
 
+	// A long unbroken word (no spaces) hard-breaks and still grows the box,
+	// exactly as the textarea wraps it — a long URL or token must not stay
+	// a one-row box that hides the text.
+	m.input.SetValue(strings.Repeat("x", 79*4)) // ~4 rows at width 80
+	m.layout()
+	if h := m.input.Height(); h < 3 {
+		t.Errorf("a long unbroken word must grow the composer, got %d rows", h)
+	}
+	if got, want := m.input.Height(), m.composerRows(); got != want {
+		t.Errorf("textarea height %d must match measured rows %d", got, want)
+	}
+
 	// Past the cap the box stops growing and scrolls instead.
 	cap := m.composerCapRows()
 	m.input.SetValue(strings.Repeat("word ", 400))

@@ -2106,8 +2106,10 @@ func (m *agentTUI) composerCapRows() int {
 }
 
 // composerContentRows is the number of visual rows the current input needs
-// when wrapped to the composer width. The textarea wraps at exactly this
-// width, so the estimate and the paint agree.
+// when wrapped to the composer width. It must match how the textarea
+// actually wraps — word wrap, but hard-breaking a word longer than the
+// width (a long URL or a long token still grows the box). Measuring with
+// wrapText alone undercounts such input and the composer fails to grow.
 func (m *agentTUI) composerContentRows() int {
 	w := m.inputWidth()
 	v := m.input.Value()
@@ -2116,16 +2118,50 @@ func (m *agentTUI) composerContentRows() int {
 	}
 	n := 0
 	for _, line := range strings.Split(v, "\n") {
-		if line == "" {
-			n++
-			continue
-		}
-		n += len(wrapText(line, w))
+		n += visualRowCount(line, w)
 	}
 	if n < composerMinRows {
 		n = composerMinRows
 	}
 	return n
+}
+
+// visualRowCount is how many terminal rows one logical line occupies at
+// width w, word-wrapping and hard-breaking words longer than w — the
+// wrapping the composer's textarea applies.
+func visualRowCount(s string, w int) int {
+	if w < 1 {
+		w = 1
+	}
+	if s == "" {
+		return 1
+	}
+	rows := 1
+	col := 0
+	for _, word := range strings.Fields(s) {
+		ww := lipgloss.Width(word)
+		if col == 0 {
+			// A word wider than the row hard-breaks across rows.
+			for ww > w {
+				rows++
+				ww -= w
+			}
+			col = ww
+			continue
+		}
+		if col+1+ww > w {
+			rows++
+			col = 0
+			for ww > w {
+				rows++
+				ww -= w
+			}
+			col = ww
+			continue
+		}
+		col += 1 + ww
+	}
+	return rows
 }
 
 // composerRows is the visible text height: content clamped to the cap.
