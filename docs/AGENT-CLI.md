@@ -68,13 +68,12 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 ── ⠋ working · 4s · 2 tools ───────────────────────────────
 
 ────────────────────────────────────────────────────────────
-Your AI on your machine — it remembers, acts with approval, and shows…
 3 turns                                  (cloud) deepseek-flash
 / commands · tab complete · ctrl+l model · esc quit
 ```
 
-- **No top header:** the transcript owns the full height. The tagline,
-  state and model live in the footer — nowhere else.
+- **No top header:** the transcript owns the full height. State and model
+  live in the footer — nowhere else.
 - **Composer:** two full-width `─` rules with the text between them — no
   side borders, no `❯` prefix, no placeholder. Transparent inside: only
   the cursor is drawn, no line background. It is **responsive**: it opens
@@ -88,8 +87,7 @@ Your AI on your machine — it remembers, acts with approval, and shows…
 - **Full conversation, grouped by day:** launching loads the whole shared
   transcript (paged, capped at 500 rows) and opens scrolled to the latest
   turn — iMessage/WhatsApp style, with `Today` / `Yesterday` / date
-  dividers wherever the calendar day flips. The welcome card (the Ghost
-  banner, centered) only appears for a genuinely new conversation.
+  dividers wherever the calendar day flips.
 - **Messages:** yours render as a full-width background panel with the
   text inset by one cell and paragraphs preserved (never
   markdown-rendered). Ghost's render as Ghost markdown — concealed
@@ -121,11 +119,15 @@ Your AI on your machine — it remembers, acts with approval, and shows…
   (`→` read, `←` write, `✱` search, `%` fetch, `◈` web, `$` shell,
   `⚙` generic), spinner row while running, durations behind `/details`.
   Assistant turns carry `· duration`.
-- **Footer (3 transparent dim lines):** the Ghost tagline; a session
-  digest (turns, contexts, queued) with the model in its locality color
-  right-aligned; contextual shortcuts ordered by frequency — the command
-  surface first and the exit route last (`/ commands · tab complete ·
-  ctrl+l model · esc quit`).
+- **Footer (2 transparent dim lines):** a session digest (turns,
+  contexts, queued) with the model in its locality color right-aligned;
+  contextual shortcuts ordered by frequency — the command surface first
+  and the exit route last (`/ commands · tab complete · ctrl+l model ·
+  esc quit`).
+- **Welcome card:** the empty state, centered — the Ghost banner, the
+  Ghost tagline (`Your AI. Your Memory. Your Machine.`), and a command
+  cheat-sheet. It only appears for a genuinely new conversation; the
+  tagline lives here, not in the footer.
 - **Scroll:** mouse wheel + `PgUp/PgDn`; follows the bottom while working.
   Every region is edge to edge on the same canvas, with only text inset
   by one cell, so messages, the rules, and the footer all align.

@@ -1406,10 +1406,12 @@ func (m *agentTUI) welcomeCard() string {
 		}
 		return strings.Join(lines, "\n")
 	}
+	// The tagline is the Ghost promise: three declaratives, no filler. It
+	// wraps on narrow terminals so it is never cut mid-word.
 	art := styleGhostArt.Render("▓▒░  👻  G H O S T  ░▒▓")
-	sub := styleNotice.Render(wrapFirst(ghostTagline, minInt(w-4, 72)))
+	tag := styleWelcomeTitle.Render(wrapFirst(ghostTagline, minInt(w-2, 64)))
 	cmds := styleWelcomeCmds.Render("  /help      commands & keys\n  /model     switch thinking engine\n  /memory    what Ghost remembers\n  /routines  recurring work")
-	return center(art) + "\n" + center(sub) + "\n\n" + center(cmds)
+	return center(art) + "\n" + center(tag) + "\n\n" + center(cmds)
 }
 
 func minInt(a, b int) int {
@@ -1698,9 +1700,9 @@ func renderSpan(s, delim string, fn func(...string) string) string {
 // viewport height oscillates and chrome duplicates.
 //
 // Layout: no top header — the transcript owns the full height. The bottom
-// stack is palette popup + prompt box + 3-line footer.
+// stack is palette popup + prompt box + 2-line footer.
 func (m *agentTUI) layout() {
-	const footerH = 3 // session, stats/model, shortcuts
+	const footerH = 2 // stats/model, shortcuts
 	paletteH := m.paletteHeight()
 	if m.modal != nil {
 		paletteH = m.modalHeight() // the picker replaces the palette below the box
@@ -1834,9 +1836,9 @@ func (m *agentTUI) paletteOffset(total, maxRows int) int {
 
 // ─── view ────────────────────────────────────────────────────────────────
 // No top header — the transcript owns the full height. Bottom stack is the
-// palette popup + prompt box + 3-line footer (session, stats/model,
-// shortcuts). Pure composition: each region renders exactly once; geometry
-// was frozen in layout() and rendering must not mutate it.
+// palette popup + prompt box + 2-line footer (stats/model, shortcuts).
+// Pure composition: each region renders exactly once; geometry was frozen
+// in layout() and rendering must not mutate it.
 func (m *agentTUI) View() string {
 	if m.quitting {
 		return ""
@@ -1873,26 +1875,18 @@ func (m *agentTUI) View() string {
 }
 
 // ─── footer ─────────────────────────────────────────────────────────────
-// Three dim lines under the prompt box (ux-color-semantics: hints dim,
-// the model in its locality color, never decorative):
-// line 1: the Ghost tagline (what the product is).
-// line 2: session digest left, `(locality) model` right-aligned.
-// line 3: contextual shortcut hints for the current state.
+// Two dim lines under the prompt box (ux-color-semantics: hints dim, the
+// model in its locality color, never decorative):
+// line 1: session digest left, `(locality) model` right-aligned.
+// line 2: contextual shortcut hints for the current state.
 // State and model live here — nowhere else.
 func (m *agentTUI) footerLines() []string {
-	return []string{m.footerTaglineLine(), m.footerStatsLine(), m.footerKeysLine()}
+	return []string{m.footerStatsLine(), m.footerKeysLine()}
 }
 
-// ghostTagline is Ghost's one-line promise, shown in the footer and the
-// welcome card so the product always says what it is.
-const ghostTagline = "Your AI on your machine — it remembers, acts with approval, and shows where it ran."
-
-// footerTaglineLine is the top footer line: the Ghost tagline, dim, on the
-// full canvas. It replaces the old session/context label so the footer says
-// what Ghost is rather than repeating internal identifiers.
-func (m *agentTUI) footerTaglineLine() string {
-	return styleFooter.Render(cellTruncate(ghostTagline, m.width))
-}
+// ghostTagline is Ghost's promise, shown on the welcome card — not in the
+// footer. It is the owner-facing identity line.
+const ghostTagline = "Your AI. Your Memory. Your Machine."
 
 // footerStatsLine is the session digest on the left, `(locality) model`
 // right-aligned with a 2-space minimum gap, truncating gracefully. The
@@ -2014,20 +2008,6 @@ func (m *agentTUI) activityWord() string {
 func shortModel(s string) string {
 	if len(s) > 28 {
 		return s[:27] + "…"
-	}
-	return s
-}
-
-func shortSession(s string) string {
-	if i := strings.LastIndex(s, ":"); i >= 0 && i+1 < len(s) {
-		tail := s[i+1:]
-		if len(tail) > 8 {
-			return "cli:" + tail[:6] + "…"
-		}
-		return s
-	}
-	if len(s) > 18 {
-		return s[:17] + "…"
 	}
 	return s
 }

@@ -434,12 +434,20 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	if n := strings.Count(view, "switch thinking engine"); n != 1 {
 		t.Errorf("welcome card should appear once, found %d: %q", n, view)
 	}
-	// Footer is exactly 3 lines: tagline, stats/model, shortcuts.
-	if got := len(m.footerLines()); got != 3 {
-		t.Fatalf("footer must be 3 lines, got %d", got)
+	// Footer is exactly 2 lines: stats/model, shortcuts. The tagline lives
+	// on the welcome card, never in the footer.
+	if got := len(m.footerLines()); got != 2 {
+		t.Fatalf("footer must be 2 lines, got %d", got)
 	}
-	if !strings.Contains(m.footerTaglineLine(), "Your AI on your machine") {
-		t.Errorf("first footer line must carry the tagline, got %q", m.footerTaglineLine())
+	if strings.Contains(strings.Join(m.footerLines(), "\n"), ghostTagline) {
+		t.Errorf("the tagline must not appear in the footer")
+	}
+	// The welcome card carries the Ghost tagline exactly once.
+	if n := strings.Count(view, ghostTagline); n != 1 {
+		t.Errorf("welcome card must show the tagline once, found %d: %q", n, view)
+	}
+	if !strings.Contains(view, "Your AI. Your Memory. Your Machine.") {
+		t.Errorf("welcome card must carry the Ghost tagline, got %q", view)
 	}
 	// The idle hint lists the command surface first and the exit last, and
 	// never spells out the obvious Enter-to-send.
