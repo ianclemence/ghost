@@ -780,7 +780,7 @@ func agentCmd() {
 
 	provider, err := providers.CreateProvider(cfg)
 	if err != nil {
-		fmt.Printf("Error creating provider: %v\n", err)
+		printProviderSetupHelp(cfg, err)
 		os.Exit(1)
 	}
 
@@ -1000,7 +1000,7 @@ func gatewayCmd() {
 
 	provider, err := providers.CreateProvider(cfg)
 	if err != nil {
-		fmt.Printf("Error creating provider: %v\n", err)
+		printProviderSetupHelp(cfg, err)
 		os.Exit(1)
 	}
 
@@ -1341,6 +1341,21 @@ func statusCmd() {
 		fmt.Println("Config:", configPath, "✓")
 	} else {
 		fmt.Println("Config:", configPath, "✗")
+	}
+	// Honesty note: if this config is a checkout config shadowing an installed
+	// Ghost, say so here too (not only on provider failure).
+	if shadow, ok := appliance.DetectConfigShadow(configPath, appliance.ApplianceInstalled(), func(p string) string {
+		c, cerr := config.LoadConfig(p)
+		if cerr != nil || c == nil {
+			return ""
+		}
+		return providerKeyFor(c, cfg.Agents.Defaults.Provider)
+	}); ok {
+		if shadow.InstalledHasSecret {
+			fmt.Printf("  note: the installed Ghost at %s has a key for %s. Use it with:\n    GHOST_CONFIG_DIR=%s ghost <command>\n", shadow.InstalledPath, cfg.Agents.Defaults.Provider, filepath.Dir(shadow.InstalledPath))
+		} else {
+			fmt.Printf("  note: an installed Ghost config exists at %s\n", shadow.InstalledPath)
+		}
 	}
 
 	workspace := cfg.WorkspacePath()
@@ -2192,6 +2207,111 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 
 func loadConfig() (*config.Config, error) {
 	return config.LoadConfig(getConfigPath())
+}
+
+// printProviderSetupHelp turns a provider-creation failure into an
+// actionable diagnostic. The most common cause is not "no key was ever
+// saved" but "the CLI resolved a different config than the one that holds
+// the key" — e.g. running from a source checkout while the installed Ghost
+// (and the console that saved the key) uses a different config directory.
+//
+// It names the config file that was read, and when an installed Ghost config
+// exists with a key for this provider, says exactly how to use it. It never
+// silently changes resolution.
+func printProviderSetupHelp(cfg *config.Config, err error) {
+	configPath := getConfigPath()
+	provider, model := "", ""
+	if cfg != nil {
+		provider = cfg.Agents.Defaults.Provider
+		model = cfg.Agents.Defaults.Model
+	}
+
+	fmt.Fprintf(os.Stderr, "Error creating provider: %v\n", err)
+	fmt.Fprintf(os.Stderr, "  config read: %s\n", configPath)
+	if provider != "" {
+		fmt.Fprintf(os.Stderr, "  provider: %s (model %s)\n", provider, model)
+	}
+
+	// Is a configured, installed Ghost being shadowed by this config?
+	if shadow, ok := appliance.DetectConfigShadow(configPath, appliance.ApplianceInstalled(), func(p string) string {
+		c, cerr := config.LoadConfig(p)
+		if cerr != nil || c == nil {
+			return ""
+		}
+		return providerKeyFor(c, provider)
+	}); ok {
+		fmt.Fprintln(os.Stderr, "  note: this is not the installed Ghost's config.")
+		if shadow.InstalledHasSecret {
+			fmt.Fprintf(os.Stderr, "  the installed Ghost at %s has a key for %s.\n", shadow.InstalledPath, provider)
+			fmt.Fprintf(os.Stderr, "  To use it here:\n    GHOST_CONFIG_DIR=%s ghost agent\n", filepath.Dir(shadow.InstalledPath))
+		} else {
+			fmt.Fprintf(os.Stderr, "  installed Ghost config: %s\n", shadow.InstalledPath)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "  Fix it with either:")
+	envVar := providerEnvVar(provider)
+	if envVar != "" {
+		fmt.Fprintf(os.Stderr, "    - export %s=... then retry, or\n", envVar)
+	}
+	fmt.Fprintf(os.Stderr, "    - the Web Console → AI → configure %s.\n", provider)
+}
+
+// providerEnvVar returns the conventional API-key environment variable for a
+// provider name, or "" when none is defined. It mirrors the mapping in
+// pkg/config so the CLI hint matches what the loader actually reads.
+func providerEnvVar(provider string) string {
+	switch provider {
+	case "deepseek":
+		return "DEEPSEEK_API_KEY"
+	case "anthropic":
+		return "ANTHROPIC_API_KEY"
+	case "openai":
+		return "OPENAI_API_KEY"
+	case "openrouter":
+		return "OPENROUTER_API_KEY"
+	case "groq":
+		return "GROQ_API_KEY"
+	case "gemini":
+		return "GEMINI_API_KEY"
+	case "zhipu":
+		return "ZHIPU_API_KEY"
+	case "moonshot", "kimi":
+		return "KIMI_API_KEY"
+	}
+	return ""
+}
+
+// providerKeyFor returns the stored API key for a provider name, or "".
+func providerKeyFor(c *config.Config, provider string) string {
+	if c == nil {
+		return ""
+	}
+	switch provider {
+	case "deepseek":
+		return c.Providers.DeepSeek.APIKey
+	case "anthropic":
+		return c.Providers.Anthropic.APIKey
+	case "openai":
+		return c.Providers.OpenAI.APIKey
+	case "openrouter":
+		return c.Providers.OpenRouter.APIKey
+	case "groq":
+		return c.Providers.Groq.APIKey
+	case "gemini":
+		return c.Providers.Gemini.APIKey
+	case "zhipu":
+		return c.Providers.Zhipu.APIKey
+	case "moonshot", "kimi":
+		return c.Providers.Moonshot.APIKey
+	case "qwen":
+		return c.Providers.Qwen.APIKey
+	case "nvidia":
+		return c.Providers.Nvidia.APIKey
+	case "ollama":
+		return c.Providers.Ollama.APIKey
+	}
+	return ""
 }
 
 // healSecretsBoundary checks if config.json contains secrets that should only
