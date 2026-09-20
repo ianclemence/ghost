@@ -329,8 +329,8 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	// - GHOST.md: The core system identity, personality, and directives (consolidated).
 	// - USER.md: Persistent facts and preferences about the user (updated at runtime).
 	// - HEARTBEAT.md: The autonomic nervous system schedule (periodic tasks).
-	// - AGENTS.md: Project-level agent instructions and conventions (Hermes-inspired).
-	// - SOUL.md: Persona and personality override (Hermes-inspired).
+	// - AGENTS.md: Project-level agent instructions and conventions.
+	// - SOUL.md: Persona and personality override.
 	bootstrapFiles := []string{
 		"GHOST.md",
 		"USER.md",

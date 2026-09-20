@@ -15,7 +15,6 @@ import (
 
 // SkillManageTool allows the agent to autonomously create, update, and delete
 // skills — turning successful approaches into reusable procedural knowledge.
-// Inspired by Hermes Agent's skill_manager_tool.
 type SkillManageTool struct {
 	workspace string // Ghost workspace root (contains skills/ directory)
 }

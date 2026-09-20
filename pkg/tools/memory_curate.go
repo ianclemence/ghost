@@ -19,7 +19,6 @@ import (
 //
 // Both are injected into the system prompt. Character limits force the agent to curate,
 // keeping only what actually matters. This complements Ghost's existing RAG memory system.
-// Inspired by Hermes Agent's memory_tool.py.
 type MemoryCurateTool struct {
 	workspace string
 	// ContextFor resolves the calling session's context (nil = legacy

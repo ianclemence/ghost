@@ -263,8 +263,8 @@ func (t *SessionSearchTool) discover(ctx context.Context, args map[string]interf
 }
 
 // summarize groups FTS search results by session and returns a compact
-// digest. The LLM reads this and produces a cross-session recall summary,
-// mirroring Hermes's "search + LLM summarization for cross-session recall".
+// digest. The LLM reads this and produces a cross-session recall summary
+// (search + LLM summarization for cross-session recall).
 func (t *SessionSearchTool) summarize(ctx context.Context, args map[string]interface{}) *ToolResult {
 	query, ok := args["query"].(string)
 	if !ok || query == "" {

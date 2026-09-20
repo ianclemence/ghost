@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	maxDocumentBytes   = 50 * 1024 * 1024 // 50MB limit matching Hermes
+	maxDocumentBytes   = 50 * 1024 * 1024 // 50MB document limit
 	pandocTimeout      = 30 * time.Second
 	pandocRetrySeconds = 300.0
 )
@@ -408,8 +408,8 @@ func detectFormat(filePath string) string {
 	}
 }
 
-// ensurePandoc lazily detects or installs pandoc, returning the path.
-// Follows Hermes's lazy dependency pattern with retry on failure.
+// ensurePandoc lazily detects or installs pandoc, returning the path. The
+// dependency is resolved on first use and retried on failure.
 func ensurePandoc() (string, error) {
 	pandocMu.Lock()
 	defer pandocMu.Unlock()

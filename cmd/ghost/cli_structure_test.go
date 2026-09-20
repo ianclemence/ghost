@@ -41,7 +41,7 @@ func TestPrintCommandHelpCoversAllCommands(t *testing.T) {
 	}
 }
 
-// The OpenClaw migration command was removed; assert the name is no longer
+// The legacy migration command was removed; assert the name is no longer
 // special-cased as an appliance ops command.
 func TestMigrateNoLongerAnOpsCommand(t *testing.T) {
 	if isApplianceOpsCommand("migrate") {

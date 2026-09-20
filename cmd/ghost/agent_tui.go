@@ -3,9 +3,10 @@ package main
 // Ghost Agent CLI — the interactive terminal surface.
 //
 // Talk to Ghost, watch it work, approve what it asks, and see where each
-// answer came from. Inspired by the pi coding agent's terminal UX, but built
-// around Ghost's own semantics: provenance ("where did this run"), memory,
-// routines, and inline approvals.
+// answer came from. The chrome is Ghost's own: a full-bleed composer ruled
+// top and bottom, a command palette and pickers that open below the box,
+// provenance ("where did this run"), memory, routines, and inline
+// approvals.
 //
 // See docs/AGENT-CLI.md for the behavior contract.
 
@@ -50,7 +51,7 @@ type clarifyRequestMsg struct {
 	choices    []string
 }
 
-// spinnerTickMsg advances the working spinner (pi-style activity pulse).
+// spinnerTickMsg advances the working spinner (the Ghost activity pulse).
 type spinnerTickMsg struct{}
 
 // turnDoneMsg carries the final response of a turn.
@@ -74,7 +75,7 @@ const (
 type entry struct {
 	kind entryKind
 	text string
-	dur  time.Duration // assistant turns only (opencode `· duration` footer)
+	dur  time.Duration // assistant turns only (`· duration` trailing meta)
 	at   time.Time     // when the message landed; zero = unknown (no divider)
 }
 
@@ -133,7 +134,7 @@ type agentTUI struct {
 	history   []string // sent messages, for ↑ recall
 	histIndex int
 
-	// pi/opencode-inspired chrome state (display only, never semantics).
+	// chrome state (display only, never semantics).
 	turnCount   int       // completed turns this session
 	turnStart   time.Time // when the current turn started
 	elapsed     time.Duration
@@ -144,11 +145,11 @@ type agentTUI struct {
 	// approval is set when a turn ends with a durable permission request;
 	// the composer is replaced by Allow once / Always allow / Deny choices.
 	approval *pendingApproval
-	// approvalSel is the opencode-style left/right cursor over those
+	// approvalSel is the left/right cursor over those
 	// choices (1/2/3 still answer directly).
 	approvalSel int
-	// modal is an open centered dialog (opencode dialog.select), e.g. the
-	// model picker. It owns the keyboard until Enter picks or Esc closes.
+	// modal is the inline model picker below the composer. It owns the
+	// keyboard until Enter picks or Esc closes.
 	modal *selectModal
 	// modelCycleIdx is our own position in the preset rotation, so Ctrl+L
 	// advances even when the canonical active model matches no preset.
@@ -171,11 +172,11 @@ type pendingApproval struct {
 	risk  string
 }
 
-// toolStep is one collapsed tool row in the opencode-style activity trail.
-// Only the active step shows a spinner; finished steps collapse to ✓ rows
-// (raw tool JSON is never streamed into the transcript).
+// toolStep is one collapsed tool row in the activity trail. Only the
+// active step shows a spinner; finished steps collapse to ✓ rows (raw
+// tool JSON is never streamed into the transcript).
 type toolStep struct {
-	tool  string // machine tool name (for the opencode icon map)
+	tool  string // machine tool name (for the icon map)
 	label string
 	start time.Time
 	done  bool
@@ -184,27 +185,15 @@ type toolStep struct {
 
 const agentPrompt = "› "
 
-// promptExamples rotates the composer placeholder the opencode way
-// (`Ask anything… "{example}"`) so the empty box teaches by example.
-var promptExamples = []string{
-	"What routines do you have for me?",
-	"What do you remember about me?",
-	"Remind me to stretch in 25 minutes",
-	"Summarize what we discussed yesterday",
-}
-
-func promptPlaceholder() string {
-	return fmt.Sprintf("Ask Ghost anything…  e.g. %q  (/ for commands)", promptExamples[time.Now().Second()%len(promptExamples)])
-}
-
 func newAgentTUI(loop agentRuntime, session string) *agentTUI {
 	ta := textarea.New()
-	// No ❯ prefix: like opencode's composer, the prompt is a bare
-	// textarea in a left-bordered panel — the border is the chrome.
-	ta.Placeholder = promptPlaceholder()
+	// The composer has no placeholder and no prefix: two bare horizontal
+	// rules with the text between them. Hints live in the footer and the
+	// welcome card, not in the box.
+	ta.Placeholder = ""
 	ta.Prompt = ""
 	ta.CharLimit = 0
-	ta.SetHeight(composerHeight)
+	ta.SetHeight(composerTextRows)
 	ta.ShowLineNumbers = false
 	ta.Focus()
 
@@ -224,7 +213,7 @@ func (m *agentTUI) Init() tea.Cmd {
 }
 
 func spinnerTick() tea.Cmd {
-	// opencode spins at 80ms; match it so activity reads identically.
+	// The activity pulse ticks at 80ms so motion reads evenly.
 	return tea.Tick(80*time.Millisecond, func(t time.Time) tea.Msg {
 		return spinnerTickMsg{}
 	})
@@ -303,8 +292,8 @@ func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.approval = &pendingApproval{id: id, title: title, risk: risk}
 				m.append(entry{kind: entryNotice, text: "needs your approval"})
 			} else {
-				// opencode rule: the final response wins. The stream buffer
-				// is a live preview only — never concatenated with the final.
+				// The final response wins. The stream buffer is a live
+				// preview only — never concatenated with the final.
 				text := strings.TrimSpace(msg.text)
 				if text == "" {
 					text = strings.TrimSpace(m.streaming)
@@ -392,7 +381,7 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleModalKey(msg)
 	}
 	// While an approval is pending, the keyboard is the approval panel:
-	// 1/2/3 (or a/A/d) answer directly; ←/→ (h/l) moves the opencode
+	// 1/2/3 (or a/A/d) answer directly; ←/→ (h/l) moves the
 	// cursor and Enter confirms it. A stray keystroke can never approve.
 	if m.approval != nil {
 		switch msg.String() {
@@ -435,8 +424,8 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case tea.KeyEsc:
-		// Escape is contextual cancel at every level (pi app.interrupt,
-		// opencode session_interrupt): palette first, then the running
+		// Escape is contextual cancel at every level: palette first, then
+		// the running
 		// turn. Idle with an empty editor, it closes the TUI — the
 		// session persists in the database, so nothing is lost.
 		if m.paletteVisible() {
@@ -492,7 +481,7 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyCtrlJ:
-		// Universal newline key (opencode's input.newline family):
+		// Universal newline key family:
 		// terminals that swallow Shift+Enter still send Ctrl+J
 		// faithfully, and the trailing-\ escape keeps working too.
 		var cmd tea.Cmd
@@ -503,8 +492,9 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyUp:
 		if m.paletteVisible() {
-			if m.paletteSel > 0 {
-				m.paletteSel--
+			// The select list wraps top↔bottom.
+			if n := len(m.paletteMatches()); n > 0 {
+				m.paletteSel = (m.paletteSel - 1 + n) % n
 			}
 			return m, nil
 		}
@@ -512,8 +502,8 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyDown:
 		if m.paletteVisible() {
-			if m.paletteSel < len(m.paletteMatches())-1 {
-				m.paletteSel++
+			if n := len(m.paletteMatches()); n > 0 {
+				m.paletteSel = (m.paletteSel + 1) % n
 			}
 			return m, nil
 		}
@@ -669,7 +659,7 @@ func (m *agentTUI) resolveApproval(phrase string) (tea.Model, tea.Cmd) {
 }
 
 // handleContext shows or switches the session's context. Contexts scope
-// memory and tools the way pi's branches scope a session — but without
+// memory and tools — scoping a session without forking memory.
 // forking Ghost's single durable memory, so "what Ghost knows" stays one
 // reconciled truth.
 func (m *agentTUI) handleContext(args []string) {
@@ -729,7 +719,7 @@ func (m *agentTUI) paletteMatches() []paletteItem {
 	return out
 }
 
-// completePalette accepts a palette item the opencode way: the command
+// completePalette accepts a palette item: the command
 // name is completed in place (partial `/mod` → `/model `), preserving any
 // already-typed arguments. It never submits — the next Enter runs it.
 func (m *agentTUI) completePalette(it paletteItem) {
@@ -749,10 +739,10 @@ func (m *agentTUI) completePalette(it paletteItem) {
 	m.paletteSel = 0
 }
 
-// ─── modal dialog (opencode dialog.select) ─────────────────────────────
-// Centered overlay with title, live filter, grouped rows and footer hints:
-// ↑↓/ctrl+p/ctrl+n move, pgup/pgdn jump, home/end, return selects,
-// esc closes. Filter narrows as you type; empty shows everything.
+// ─── model picker state ─────────────────────────────────────────────────
+// Inline below-box selector with a title, a live filter, grouped rows and
+// footer hints: ↑↓/ctrl+p/ctrl+n move, pgup/pgdn jump, home/end, return
+// selects, esc closes. The filter narrows as you type; empty shows all.
 type modalItem struct {
 	label   string
 	desc    string
@@ -896,7 +886,7 @@ func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		clamp()
 		return m, nil
 	case tea.KeyRunes:
-		// ctrl+p / ctrl+n move like opencode; other runes filter.
+		// ctrl+p / ctrl+n move; other runes filter.
 		if len(msg.Runes) == 1 {
 			switch msg.Runes[0] {
 			case 0x10: // ctrl+p
@@ -925,94 +915,100 @@ func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// renderModal draws the dialog centered over the frame, opencode-style:
-// title + esc hint, filter echo, current-marked rows, footer hints.
-func (m *agentTUI) renderModal() string {
+// ─── inline selector (model picker) ──────────────────────────────────────
+// No floating modal: like the slash palette, the picker opens BELOW the
+// prompt box and shares its list language (bare rows, `→ ` selection, a
+// padded primary column, a dim description, a `(n/total)` scroll footer).
+// A thin header line names the surface and the esc route; a filter line
+// echoes typing. Nothing floats over the transcript, so context is never
+// hidden.
+const modalMaxRows = 6
+
+func (m *agentTUI) modalHeight() int {
+	if m.modal == nil {
+		return 0
+	}
+	n := 2 // header + filter
 	items := m.modalMatches()
-	maxRows := m.height - 10
-	if maxRows < 3 {
-		maxRows = 3
+	if len(items) == 0 {
+		n++
+	} else {
+		n += minInt(len(items), modalMaxRows)
+		if len(items) > modalMaxRows {
+			n++ // scroll footer
+		}
 	}
-	if maxRows > 10 {
-		maxRows = 10
+	return n
+}
+
+func (m *agentTUI) modalWindow() (items []modalItem, off int) {
+	all := m.modalMatches()
+	if len(all) <= modalMaxRows {
+		return all, 0
 	}
-	off := 0
-	if m.modal.sel >= maxRows {
-		off = m.modal.sel - maxRows + 1
+	off = m.paletteOffset(m.modal.sel, modalMaxRows)
+	end := off + modalMaxRows
+	if end > len(all) {
+		end = len(all)
 	}
-	end := off + maxRows
-	if end > len(items) {
-		end = len(items)
-	}
+	return all[off:end], off
+}
+
+func (m *agentTUI) modalView() string {
+	items, off := m.modalWindow()
+	w := m.contentWidth()
 	var b strings.Builder
-	title := styleModalTitle.Render(m.modal.title)
-	esc := styleNotice.Render("esc")
-	gap := m.contentWidth() - lipgloss.Width(m.modal.title) - lipgloss.Width("esc")
+	put := func(row string) {
+		pad := w - lipgloss.Width(row)
+		if pad < 0 {
+			pad = 0
+		}
+		b.WriteString(row + strings.Repeat(" ", pad))
+		b.WriteString("\n")
+	}
+	header := styleModalTitle.Render(m.modal.title)
+	esc := stylePaletteScroll.Render("esc")
+	gap := w - lipgloss.Width(m.modal.title) - lipgloss.Width("esc")
 	if gap < 1 {
 		gap = 1
 	}
-	b.WriteString(title + strings.Repeat(" ", gap) + esc)
-	b.WriteString("\n")
+	put(header + strings.Repeat(" ", gap) + esc)
 	filter := m.modal.filter
 	if filter == "" {
 		filter = "type to filter…"
 	}
-	b.WriteString(styleNotice.Render("  " + filter + "▍"))
-	b.WriteString("\n")
+	put(stylePaletteNoMatch.Render("  " + filter + "▍"))
 	if len(items) == 0 {
-		b.WriteString(styleNotice.Render("  No results found"))
-		b.WriteString("\n")
+		put(stylePaletteNoMatch.Render("  No results found"))
+		return strings.TrimRight(b.String(), "\n")
 	}
-	for i := off; i < end; i++ {
-		it := items[i]
+	for i, it := range items {
+		selected := off+i == m.modal.sel
+		prefix := "  "
+		if selected {
+			prefix = "→ "
+		}
 		mark := "  "
 		if it.current {
 			mark = "● "
 		}
-		row := fmt.Sprintf("%s%-24s %s", mark, cellTruncate(it.label, 24), it.desc)
-		if i == m.modal.sel {
-			b.WriteString(stylePaletteSel.Render(" " + cellTruncate(row, m.contentWidth()-2) + " "))
+		primary := cellTruncate(it.label, 26)
+		spacing := strings.Repeat(" ", maxInt(1, 28-lipgloss.Width(primary)))
+		remaining := w - len(prefix) - len(mark) - lipgloss.Width(primary) - len(spacing) - 2
+		row := prefix + mark + primary + spacing
+		if remaining > 10 && it.desc != "" {
+			row += cellTruncate(it.desc, remaining)
+		}
+		if selected {
+			put(stylePaletteSel.Render(row))
 		} else {
-			b.WriteString(stylePaletteRow.Render(" " + row))
-		}
-		b.WriteString("\n")
-	}
-	b.WriteString(styleNotice.Render("  ↑↓ move · enter select · esc close"))
-	return styleModalBox.Width(m.contentWidth()).Render(strings.TrimRight(b.String(), "\n"))
-}
-
-// overlayCenter splices the dialog over the middle rows of the frame.
-func overlayCenter(base, dialog string, w, h int) string {
-	lines := strings.Split(base, "\n")
-	for len(lines) < h {
-		lines = append(lines, "")
-	}
-	if len(lines) > h {
-		lines = lines[:h]
-	}
-	dl := strings.Split(dialog, "\n")
-	dw := 0
-	for _, ln := range dl {
-		if wd := lipgloss.Width(ln); wd > dw {
-			dw = wd
+			put(row)
 		}
 	}
-	start := (h - len(dl)) / 2
-	if start < 0 {
-		start = 0
+	if total := len(m.modalMatches()); total > modalMaxRows {
+		put(stylePaletteScroll.Render(fmt.Sprintf("  (%d/%d)", m.modal.sel+1, total)))
 	}
-	for i, dln := range dl {
-		r := start + i
-		if r < 0 || r >= len(lines) {
-			continue
-		}
-		pad := (w - lipgloss.Width(dln)) / 2
-		if pad < 0 {
-			pad = 0
-		}
-		lines[r] = strings.Repeat(" ", pad) + dln
-	}
-	return strings.Join(lines, "\n")
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func (m *agentTUI) paletteVisible() bool {
@@ -1020,7 +1016,9 @@ func (m *agentTUI) paletteVisible() bool {
 	if m.approval != nil || m.modal != nil {
 		return false
 	}
-	return len(m.paletteMatches()) > 0 && strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/")
+	// The list opens on the trigger and stays open to say "No matching
+	// commands" — it never silently vanishes mid-typing.
+	return strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/")
 }
 
 func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
@@ -1262,14 +1260,14 @@ func (m *agentTUI) renderTranscript() {
 	m.viewport.GotoBottom()
 }
 
-// workingBlock is the opencode-style live turn: in-place stream preview with
-// a cursor, then one collapsed ✓ row per finished tool and a spinner row for
-// the active one. Raw tool JSON never reaches the transcript.
+// workingBlock is the live turn: an in-place stream preview with a cursor,
+// then one collapsed ✓ row per finished tool and a spinner row for the
+// active one. Raw tool JSON never reaches the transcript.
 func (m *agentTUI) workingBlock() string {
 	var b strings.Builder
 	w := m.contentWidth()
 	if m.streaming != "" {
-		b.WriteString(renderAssistantBody(m.streaming+"▍", w))
+		b.WriteString(m.assistantBlock(m.streaming + "▍"))
 		b.WriteString("\n")
 	}
 	steps := m.toolHistory
@@ -1280,34 +1278,32 @@ func (m *agentTUI) workingBlock() string {
 	for i := 0; i < limit; i++ {
 		s := steps[i]
 		icon := toolIcon(s.tool)
+		// Tool blocks are full-width background panels with one cell of
+		// inner padding; the icon sits right where the text column is.
+		var row string
 		if !s.done {
-			b.WriteString(styleToolActive.Render(fmt.Sprintf("  %s %s %s", m.spinner(), icon, cellTruncate(s.label, w-8))))
+			row = fmt.Sprintf(" %s %s %s", m.spinner(), icon, cellTruncate(s.label, w-8))
+			b.WriteString(styleToolRowActive.Width(w).Render(row))
 		} else if m.showTools {
-			b.WriteString(styleTool.Render(fmt.Sprintf("  %s %s (%s)", icon, cellTruncate(s.label, w-12), formatElapsed(s.dur))))
+			row = fmt.Sprintf(" %s %s (%s)", icon, cellTruncate(s.label, w-14), formatElapsed(s.dur))
+			b.WriteString(styleToolRowDone.Width(w).Render(row))
 		} else {
-			b.WriteString(styleTool.Render(fmt.Sprintf("  %s %s", icon, cellTruncate(s.label, w-8))))
+			row = fmt.Sprintf(" %s %s", icon, cellTruncate(s.label, w-8))
+			b.WriteString(styleToolRowDone.Width(w).Render(row))
 		}
 		b.WriteString("\n")
 	}
 	if !m.showTools && len(steps) > limit {
-		b.WriteString(styleNotice.Render(fmt.Sprintf("  · +%d more (ctrl+o for details)", len(steps)-limit)))
+		b.WriteString(styleNotice.Render(fmt.Sprintf(" · +%d more (ctrl+o for details)", len(steps)-limit)))
 		b.WriteString("\n")
 	}
-	status := fmt.Sprintf("  %s working", m.spinner())
-	if m.elapsed > 0 {
-		status += fmt.Sprintf(" · %s", formatElapsed(m.elapsed))
-	}
-	if len(steps) > 0 {
-		status += fmt.Sprintf(" · %d tool%s", len(steps), plural(len(steps)))
-	}
-	if len(m.queued) > 0 {
-		status += fmt.Sprintf(" · %d queued", len(m.queued))
-	}
-	b.WriteString(styleWorking.Render(status + "…"))
-	return b.String()
+	// The live working status (spinner · elapsed · tools · queued) is
+	// embedded in the composer's top rule, so it is never repeated here
+	// in the transcript.
+	return strings.TrimRight(b.String(), "\n")
 }
 
-// toolIcon maps Ghost tools to opencode's collapsed-row icon language:
+// toolIcon maps Ghost tools to the collapsed-row icon language:
 // → read, ← write, ✱ search, % fetch, ◈ web search, $ shell, ⚙ generic.
 func toolIcon(name string) string {
 	switch name {
@@ -1338,35 +1334,43 @@ func formatElapsed(d time.Duration) string {
 
 func (m *agentTUI) renderEntry(e entry) string {
 	w := m.contentWidth()
+	tw := m.textWidth()
 	switch e.kind {
 	case entryUser:
-		// opencode user bubble: name line, then a left-bar panel with
-		// the raw text (never markdown-rendered), paragraphs preserved.
+		// The user bubble is a full-width background block with one cell
+		// of padding on every side, the raw text, never markdown-
+		// rendered, and explicit newlines preserved as paragraph breaks.
 		var lines []string
-		lines = append(lines, styleUserName.Render("You"))
+		blank := styleUserBubble.Render(strings.Repeat(" ", w))
+		lines = append(lines, blank)
 		for _, para := range strings.Split(e.text, "\n") {
 			if strings.TrimSpace(para) == "" {
-				lines = append(lines, styleUserPanel.Render(styleUserBar.Render("┃")))
+				lines = append(lines, blank)
 				continue
 			}
-			for _, wl := range wrapText(para, w-4) {
-				lines = append(lines, styleUserPanel.Render(styleUserBar.Render("┃")+" "+styleUserText.Render(wl)))
+			for _, wl := range wrapText(para, tw) {
+				pad := w - 1 - lipgloss.Width(wl)
+				if pad < 0 {
+					pad = 0
+				}
+				lines = append(lines, styleUserBubble.Render(" "+wl+strings.Repeat(" ", pad)))
 			}
 		}
+		lines = append(lines, blank)
 		return strings.Join(lines, "\n")
 	case entryAssistant:
-		head := styleAssistantName.Render(logo + " Ghost · " + m.loop.GetCurrentModel())
+		head := " " + styleAssistantName.Render(logo+" Ghost · "+m.loop.GetCurrentModel())
 		if e.dur > 0 {
 			head += styleAssistantMeta.Render(" · " + formatElapsed(e.dur))
 		}
-		return head + "\n" + renderAssistantBody(e.text, w)
+		return head + "\n" + m.assistantBlock(e.text)
 	case entryTool:
-		return styleTool.Render("  ✓ " + cellTruncate(e.text, w-6))
+		return styleTool.Render("  ✓ " + cellTruncate(e.text, tw-4))
 	case entryNotice:
-		return styleNotice.Render("  · " + e.text)
+		return styleNotice.Render("  · " + cellTruncate(e.text, tw-2))
 	case entryError:
 		var lines []string
-		for _, wl := range wrapText(e.text, w-4) {
+		for _, wl := range wrapText(e.text, tw-2) {
 			lines = append(lines, "  "+wl)
 		}
 		return styleErrorCard.Render(strings.Join(lines, "\n"))
@@ -1374,23 +1378,65 @@ func (m *agentTUI) renderEntry(e entry) string {
 	return e.text
 }
 
-// welcomeCard is the opencode-style empty state. It is rendered directly,
-// never stored as an entry, so it can never duplicate.
+// assistantBlock renders markdown at the transcript text column and insets
+// it by one cell so assistant prose lines up with the user bubble's inner
+// text.
+func (m *agentTUI) assistantBlock(text string) string {
+	body := renderAssistantBody(text, m.textWidth())
+	lines := strings.Split(body, "\n")
+	for i, ln := range lines {
+		if ln == "" {
+			continue
+		}
+		lines[i] = " " + ln
+	}
+	return strings.Join(lines, "\n")
+}
+
+// welcomeCard is the empty state: the Ghost banner stays exactly as it
+// was, but centered like a chat app's conversation start. Rendered
+// directly, never stored as an entry, so it can never duplicate.
 func (m *agentTUI) welcomeCard() string {
 	w := m.contentWidth()
-	art := styleGhostArt.Render("▓▒░  G H O S T  ░▒▓")
-	title := styleWelcomeTitle.Render(logo + " Ghost")
-	sub := styleNotice.Render(wrapFirst("Your AI on your machine — it remembers, acts with approval, and shows where it ran.", w))
+	center := func(s string) string {
+		var lines []string
+		for _, ln := range strings.Split(s, "\n") {
+			lines = append(lines, lipgloss.PlaceHorizontal(w, lipgloss.Center, ln))
+		}
+		return strings.Join(lines, "\n")
+	}
+	art := styleGhostArt.Render("▓▒░  👻  G H O S T  ░▒▓")
+	sub := styleNotice.Render(wrapFirst("Your AI on your machine — it remembers, acts with approval, and shows where it ran.", minInt(w-4, 72)))
 	cmds := styleWelcomeCmds.Render("  /help      commands & keys\n  /model     switch thinking engine\n  /memory    what Ghost remembers\n  /routines  recurring work")
-	return art + "\n" + title + "\n" + sub + "\n" + cmds
+	return center(art) + "\n" + center(sub) + "\n\n" + center(cmds)
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // ─── width helpers ─────────────────────────────────────────────────────
-// contentWidth is the usable transcript width: terminal minus the viewport
-// margin. Every renderer must wrap/truncate to it — nothing may assume the
-// full terminal width, which is what caused mid-word truncation.
+// contentWidth is the full terminal width. Every region runs edge to edge
+// — the composer rules, the user/tool background blocks, the palette and
+// the footer all share the same canvas — and only the text inside a block
+// is inset by one cell, so nothing is left-shifted against the composer
+// lines.
 func (m *agentTUI) contentWidth() int {
-	w := m.width - 4
+	w := m.width
+	if w < 20 {
+		w = 20
+	}
+	return w
+}
+
+// textWidth is the transcript text column: the full canvas minus the
+// 1-cell inner padding on each side. Renderers wrap/truncate to this and
+// then pad the row out to contentWidth().
+func (m *agentTUI) textWidth() int {
+	w := m.contentWidth() - 2
 	if w < 20 {
 		w = 20
 	}
@@ -1460,12 +1506,12 @@ func wrapFirst(s string, w int) string {
 	return strings.Join(wrapText(s, w), "\n")
 }
 
-// ─── markdown (opencode spec, no new deps) ─────────────────────────────────
-// Follows OpenCode's TUI markdown roles on the dark theme: markers are
-// concealed (no ``` fences, no #/backtick/bracket noise, URLs hidden
-// behind cyan underlined labels), headings bold violet (h1 underlined),
-// **bold** orange, *italic*/quotes sand italic, code green with no
-// background, bullets peach, ordered numbers cyan, checked green.
+// ─── markdown (Ghost theme, no new deps) ────────────────────────────────
+// Ghost's TUI markdown roles: markers are concealed (no ``` fences, no
+// #/backtick/bracket noise, URLs hidden behind cyan underlined labels),
+// headings bold violet (h1 underlined), **bold** orange, *italic*/quotes
+// sand italic, code green with no background, bullets peach, ordered
+// numbers cyan, checked green.
 func renderAssistantBody(text string, width int) string {
 	if width < 20 {
 		width = 20
@@ -1562,7 +1608,7 @@ func isOrderedList(s string) bool {
 	return i > 0 && i < len(s) && s[i] == '.' && i+1 < len(s) && s[i+1] == ' '
 }
 
-// renderInline applies opencode's inline roles in conceal-safe order:
+// renderInline applies the inline roles in conceal-safe order:
 // code spans first (literals win), then links (label cyan underlined,
 // URL hidden; bare URLs peach underlined), **bold** orange,
 // *italic* sand, ~~strikethrough~~ muted.
@@ -1650,11 +1696,14 @@ func renderSpan(s, delim string, fn func(...string) string) string {
 // edits (via Update), never inside View: View must stay pure or the
 // viewport height oscillates and chrome duplicates.
 //
-// pi layout: no top header — the transcript owns the full height. The
-// bottom stack is palette popup + prompt box + 2-line footer.
+// Layout: no top header — the transcript owns the full height. The bottom
+// stack is palette popup + prompt box + 3-line footer.
 func (m *agentTUI) layout() {
 	const footerH = 3 // session, stats/model, shortcuts
 	paletteH := m.paletteHeight()
+	if m.modal != nil {
+		paletteH = m.modalHeight() // the picker replaces the palette below the box
+	}
 	inputH := m.estimatedInputHeight()
 	if m.approval != nil {
 		inputH = m.estimatedApprovalHeight()
@@ -1670,29 +1719,36 @@ func (m *agentTUI) layout() {
 		m.viewport.Height = vpH
 	}
 	m.input.SetWidth(m.inputWidth())
-	m.input.SetHeight(composerHeight)
+	m.input.SetHeight(composerTextRows)
 }
 
-// The composer is a fixed height: the bar and the editor can never
-// disagree, and the transcript geometry never shifts while typing.
-// Longer input scrolls inside the box.
-const composerHeight = 3
+// The composer is fixed: 3 text rows between two rules. Bar, editor, and
+// estimate below all agree, so typing never shifts the layout and longer
+// input scrolls inside the box.
+const composerTextRows = 3
+const composerHeight = composerTextRows + 2 // text rows + top/bottom rules
 
-// estimatedInputHeight mirrors promptBox: the fixed composer height.
-// One constant drives layout, paint, and estimate alike, so the bar and
-// the editor rows can never disagree.
+// estimatedInputHeight mirrors promptBox exactly: the text rows plus the
+// two rules (top + bottom). composerHeight already folds in the rules, so
+// the estimate and the paint can never disagree.
 func (m *agentTUI) estimatedInputHeight() int {
 	return composerHeight
 }
 
+// estimatedApprovalHeight measures the exact inline approval block. The
+// block stacks its three options on narrow terminals and lays them on one
+// row when they fit, so the height is width-dependent; measuring the paint
+// keeps layout and render from ever disagreeing.
 func (m *agentTUI) estimatedApprovalHeight() int {
-	// Title + subject + risk note + options, no border (inline panel).
-	return 5
+	if m.approval == nil {
+		return 0
+	}
+	return len(strings.Split(m.approvalCard(), "\n"))
 }
 
 func (m *agentTUI) inputWidth() int {
-	// Bare panel: "┃ " gutter only.
-	w := m.width - 2
+	// Composer: full-bleed text, no gutter, no side borders.
+	w := m.width
 	if w < 20 {
 		w = 20
 	}
@@ -1703,33 +1759,36 @@ func (m *agentTUI) paletteHeight() int {
 	if !m.paletteVisible() {
 		return 0
 	}
-	items, _, moreAbove, moreBelow := m.paletteWindow()
+	items, _, more := m.paletteWindow()
 	n := len(items)
-	if moreAbove {
-		n++
+	if n == 0 {
+		n = 1 // "No matching commands" row
 	}
-	if moreBelow {
-		n++
+	if more {
+		n++ // the `(n/total)` scroll footer
 	}
-	return n // bare rows + edge indicators, no border
+	return n // bare rows, no border, no side bar
 }
 
-// paletteOffset returns the first visible row so the selection stays in
-// a maxRows window.
+// paletteOffset returns the first visible row so the selection stays in a
+// maxRows window, centered on the selection.
 func (m *agentTUI) paletteOffset(total, maxRows int) int {
-	if total <= maxRows || m.paletteSel < maxRows {
+	if total <= maxRows {
 		return 0
 	}
-	off := m.paletteSel - maxRows + 1
+	off := m.paletteSel - maxRows/2
 	if off+maxRows > total {
 		off = total - maxRows
+	}
+	if off < 0 {
+		off = 0
 	}
 	return off
 }
 
 // ─── view ────────────────────────────────────────────────────────────────
-// pi layout: no top header — the transcript owns the full height. Bottom
-// stack is palette popup + prompt box + 3-line footer (session, stats/model,
+// No top header — the transcript owns the full height. Bottom stack is the
+// palette popup + prompt box + 3-line footer (session, stats/model,
 // shortcuts). Pure composition: each region renders exactly once; geometry
 // was frozen in layout() and rendering must not mutate it.
 func (m *agentTUI) View() string {
@@ -1742,41 +1801,38 @@ func (m *agentTUI) View() string {
 	var b strings.Builder
 	b.WriteString(m.viewport.View())
 	b.WriteString("\n")
-	if m.paletteVisible() {
-		b.WriteString(m.paletteView())
-		b.WriteString("\n")
-	}
 	if m.approval != nil {
 		b.WriteString(m.approvalCard())
 	} else {
 		b.WriteString(m.promptBox())
 	}
 	b.WriteString("\n")
+	// Both the slash palette and the model picker render BELOW the
+	// composer — Ghost floats no modal over the transcript.
+	if m.paletteVisible() {
+		b.WriteString(m.paletteView())
+		b.WriteString("\n")
+	}
+	if m.modal != nil {
+		b.WriteString(m.modalView())
+		b.WriteString("\n")
+	}
 	for i, ln := range m.footerLines() {
 		if i > 0 {
 			b.WriteString("\n")
 		}
 		b.WriteString(ln)
 	}
-	if m.modal != nil {
-		return overlayCenter(b.String(), m.renderModal(), m.width, m.height)
-	}
 	return b.String()
 }
 
-// ─── footer (pi-faithful) ──────────────────────────────────────────────
-// pi's footer is two dim lines under the prompt box:
-// line 1: `~/cwd (branch) • session` — Ghost's equivalent is
-// `session • context` (Ghost has no cwd/branch; memory is one truth).
-// line 2: left usage stats, right `(provider) model`, right-aligned.
-// Model, session and turn state live here — nowhere else.
-// ─── footer (pi-faithful) ──────────────────────────────────────────────
+// ─── footer ─────────────────────────────────────────────────────────────
 // Three dim lines under the prompt box (ux-color-semantics: hints dim,
-// model in its locality color, never decorative):
-// line 1: `session • context` (pi's `pwd (branch) • session`; Ghost has
-// no cwd/branch — session + context is the honest equivalent).
-// line 2: activity left, `(locality) model` right-aligned (pi's stats line).
-// line 3: contextual shortcuts (pi shows key hints alongside the editor).
+// the model in its locality color, never decorative):
+// line 1: `session • context` — Ghost's conversations and topic scopes
+// (Ghost has no cwd/branch; memory is one truth).
+// line 2: session digest left, `(locality) model` right-aligned.
+// line 3: contextual shortcut hints for the current state.
 // Model, session and turn state live here — nowhere else.
 func (m *agentTUI) footerLines() []string {
 	return []string{m.footerSessionLine(), m.footerStatsLine(), m.footerKeysLine()}
@@ -1793,7 +1849,7 @@ func (m *agentTUI) currentCtx() string {
 	return ctx
 }
 
-// footerSessionLine is pi's `pwd (branch) • session` line.
+// footerSessionLine names the conversation and its topic context.
 func (m *agentTUI) footerSessionLine() string {
 	line := shortSession(m.session)
 	if ctx := m.currentCtx(); ctx != "" {
@@ -1802,14 +1858,17 @@ func (m *agentTUI) footerSessionLine() string {
 	return styleFooter.Render(cellTruncate(line, m.width))
 }
 
-// footerStatsLine is pi's `↑in ↓out … ctx% │ (provider) model` line,
-// right-aligned with a 2-space minimum gap, truncating gracefully.
-// The model carries its locality color (ux-color-semantics: green local,
-// blue cloud, muted pod) so "where it ran" reads at a glance.
+// footerStatsLine is the session digest on the left, `(locality) model`
+// right-aligned with a 2-space minimum gap, truncating gracefully. The
+// model carries its locality color (ux-color-semantics: green local, blue
+// cloud, muted pod) so "where it ran" reads at a glance.
 func (m *agentTUI) footerStatsLine() string {
 	model := m.loop.GetCurrentModel()
 	local := providerLocality(model)
-	left := m.activityWord()
+	// The left half is a quiet Ghost session digest. The live spinner
+	// lives only in the composer's top rule, never here, so the working
+	// state is stated exactly once.
+	left := m.footerSummary()
 	plainRight := fmt.Sprintf("(%s) %s", local, shortModel(model))
 	lw, rw := lipgloss.Width(left), lipgloss.Width(plainRight)
 	const minGap = 2
@@ -1831,6 +1890,8 @@ func (m *agentTUI) footerStatsLine() string {
 func (m *agentTUI) footerKeysLine() string {
 	var keys string
 	switch {
+	case m.modal != nil:
+		keys = "type to filter · ↑↓ pick · enter select · esc close"
 	case m.clarify != nil:
 		keys = "type your answer · enter sends · esc aborts the question"
 	case m.approval != nil:
@@ -1845,6 +1906,36 @@ func (m *agentTUI) footerKeysLine() string {
 	return styleFooterHint.Render(cellTruncate(keys, m.width))
 }
 
+// footerSummary is the quiet left half of the stats line: a stable,
+// glanceable digest of this Ghost session that does not animate. Every
+// figure is real Ghost state — turns completed this session, how many
+// topic contexts exist (Ghost's scoped-memory model), and how many
+// steering messages are queued. The live spinner lives only in the
+// composer's top rule, never here, so the working state is stated once.
+func (m *agentTUI) footerSummary() string {
+	if m.approval != nil {
+		return "waiting for you"
+	}
+	var parts []string
+	if m.turnCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d turn%s", m.turnCount, plural(m.turnCount)))
+	} else {
+		parts = append(parts, "ready")
+	}
+	n := 0
+	func() {
+		defer func() { _ = recover() }()
+		n = len(m.loop.ListContexts())
+	}()
+	if n > 1 {
+		parts = append(parts, fmt.Sprintf("%d contexts", n))
+	}
+	if q := len(m.queued); q > 0 {
+		parts = append(parts, fmt.Sprintf("%d queued", q))
+	}
+	return strings.Join(parts, " · ")
+}
+
 func modelLocalityStyle(local string) lipgloss.Style {
 	switch local {
 	case "local":
@@ -1856,7 +1947,9 @@ func modelLocalityStyle(local string) lipgloss.Style {
 	}
 }
 
-// activityWord is the left half of the stats line.
+// activityWord is the live status embedded in the composer's top rule
+// while a turn runs: spinner, then how long it has been working, how many
+// tools ran, and anything queued.
 func (m *agentTUI) activityWord() string {
 	if m.approval != nil {
 		return "waiting for you"
@@ -1901,87 +1994,153 @@ func shortSession(s string) string {
 	return s
 }
 
-// ─── prompt composer (opencode-faithful) ───────────────────────────────
-// opencode's composer is NOT a full box: it is a panel with a single left
-// `┃` border tinted with the agent color (Ghost violet, faint at idle),
-// no `>`/`❯` prefix, and a rotating `Ask anything… "{example}"`
-// placeholder. Rows sit on the panel background so the composer reads as
-// one defined area. The working status lives in the below-box status row.
+// ─── prompt composer ───────────────────────────────────────────────────
+// The composer: a top and bottom `─` rule at full width, NO side borders,
+// NO prefix, NO placeholder — just the text between two lines. While a
+// turn runs, the working status embeds in the top rule
+// (`── ⠋ working · 4s · 2 tools ──…`); the border takes the Ghost-violet
+// accent, faint slate-violet at idle.
 func (m *agentTUI) promptBox() string {
 	bar := stylePromptBar
 	if m.working {
 		bar = stylePromptBarActive
 	}
-	innerW := m.inputWidth()
 	var b strings.Builder
-	for i, ln := range strings.Split(m.input.View(), "\n") {
-		if i > 0 {
-			b.WriteString("\n")
-		}
-		pad := innerW - lipgloss.Width(ln)
-		if pad < 0 {
-			pad = 0
-		}
-		b.WriteString(stylePromptPanel.Render(bar.Render("┃") + " " + ln + strings.Repeat(" ", pad)))
+	b.WriteString(bar.Render(m.composerTopRule()))
+	for _, ln := range strings.Split(m.input.View(), "\n") {
+		b.WriteString("\n")
+		b.WriteString(ln)
 	}
+	b.WriteString("\n")
+	b.WriteString(bar.Render(strings.Repeat("─", m.width)))
 	return b.String()
 }
 
-// paletteView is opencode's autocomplete popup: absolute above the
-// composer, left `┃` split-border, menu background, selected row
-// highlighted. Return accepts, Tab completes, Esc hides.
-const paletteMaxRows = 6
+// composerTopRule is `── <spinner> <message> ──…` while working, a plain
+// rule while idle. Always exactly m.width cells.
+func (m *agentTUI) composerTopRule() string {
+	w := m.width
+	if w < 10 {
+		w = 10
+	}
+	if !m.working {
+		return strings.Repeat("─", w)
+	}
+	// activityWord already carries spinner + "working"; embedding it here
+	// verbatim gives the `── ⠋ working ──…` border, so the spinner is
+	// never rendered twice.
+	status := m.activityWord()
+	sw := lipgloss.Width(status)
+	if sw+6 > w {
+		status = cellTruncate(status, w-6)
+		sw = lipgloss.Width(status)
+	}
+	fill := w - 3 - sw - 1 // "── " prefix + status + closing gap
+	if fill < 0 {
+		fill = 0
+	}
+	return "── " + styleWorking.Render(status) + " " + strings.Repeat("─", fill)
+}
 
-// paletteWindow returns the visible slice plus edge flags. paletteHeight
+// paletteView is the autocomplete list: owned by the composer, rendered
+// BELOW its bottom rule. No side bar, no border — bare rows with `→ `/`  `
+// selection prefixes, a padded primary column, a dim description two
+// columns past it, and a `(n/total)` scroll footer. The selected row is
+// tinted Ghost-violet; everything else stays dim so the command list never
+// competes with the transcript.
+const paletteMaxRows = 5
+const palettePrimaryCol = 30
+
+// paletteWindow returns the visible slice plus the scroll flag. paletteHeight
 // renders from this same window, so geometry can never drift from paint.
-func (m *agentTUI) paletteWindow() (items []paletteItem, off int, moreAbove, moreBelow bool) {
+func (m *agentTUI) paletteWindow() (items []paletteItem, off int, more bool) {
 	all := m.paletteMatches()
 	if len(all) <= paletteMaxRows {
-		return all, 0, false, false
+		return all, 0, false
 	}
 	off = m.paletteOffset(len(all), paletteMaxRows)
 	end := off + paletteMaxRows
 	if end > len(all) {
 		end = len(all)
 	}
-	return all[off:end], off, off > 0, end < len(all)
+	return all[off:end], off, true
 }
 
 func (m *agentTUI) paletteView() string {
-	items, off, moreAbove, moreBelow := m.paletteWindow()
-	fieldW := m.contentWidth() - 2 // bar + space
-	if fieldW < 10 {
-		fieldW = 10
+	items, off, _ := m.paletteWindow()
+	w := m.width
+	if w < 20 {
+		w = 20
 	}
 	var b strings.Builder
-	put := func(bar, row string) {
-		pad := fieldW - lipgloss.Width(row)
+	put := func(row string) {
+		pad := w - lipgloss.Width(row)
 		if pad < 0 {
 			pad = 0
 		}
-		b.WriteString(bar + " " + row + strings.Repeat(" ", pad))
+		b.WriteString(row + strings.Repeat(" ", pad))
 		b.WriteString("\n")
 	}
-	if moreAbove {
-		put(styleMenuBar.Render("┃"), stylePaletteRow.Render("↑ more"))
+	if len(items) == 0 {
+		put(stylePaletteNoMatch.Render("  No matching commands"))
+		return strings.TrimRight(b.String(), "\n")
 	}
 	for i, it := range items {
-		row := cellTruncate(fmt.Sprintf("/%-10s %s", it.name, it.desc), fieldW-2)
-		if off+i == m.paletteSel {
-			put(styleMenuBar.Render("┃"), stylePaletteSel.Render(" "+row+" "))
-		} else {
-			put(styleMenuBar.Render("┃"), stylePaletteRow.Render(row))
-		}
+		selected := off+i == m.paletteSel
+		put(m.paletteRow(it, selected, w))
 	}
-	if moreBelow {
-		put(styleMenuBar.Render("┃"), stylePaletteRow.Render("↓ more"))
+	if total := len(m.paletteMatches()); total > paletteMaxRows {
+		put(stylePaletteScroll.Render(fmt.Sprintf("  (%d/%d)", m.paletteSel+1, total)))
 	}
-	return styleMenu.Render(strings.TrimRight(b.String(), "\n"))
+	return strings.TrimRight(b.String(), "\n")
 }
 
-// approvalCard is opencode's inline permission block: a left-bordered
-// panel in place of the composer (not a modal) — title, risk note, and
-// the three governed choices resolved through the broker resume path.
+// paletteRow lays out one row: `→ `/`  ` prefix; when a description fits
+// in a 30+2 primary column and the surface is wider than 40 cells, the
+// description sits in that column, otherwise only the value is shown. The
+// selected row is Ghost-violet.
+func (m *agentTUI) paletteRow(it paletteItem, selected bool, w int) string {
+	prefix := "  "
+	if selected {
+		prefix = "→ "
+	}
+	value := "/" + it.name
+	if w > 40 && it.desc != "" {
+		primary := palettePrimaryCol
+		if primary > w-len(prefix)-4 {
+			primary = w - len(prefix) - 4
+		}
+		if primary < 1 {
+			primary = 1
+		}
+		v := cellTruncate(value, primary-2)
+		spacing := strings.Repeat(" ", maxInt(1, primary-lipgloss.Width(v)))
+		remaining := w - len(prefix) - lipgloss.Width(v) - len(spacing) - 2
+		if remaining > 10 {
+			desc := cellTruncate(it.desc, remaining)
+			if selected {
+				return stylePaletteSel.Render(prefix + v + spacing + desc)
+			}
+			return prefix + v + stylePaletteDesc.Render(spacing+desc)
+		}
+	}
+	v := cellTruncate(value, w-len(prefix)-2)
+	if selected {
+		return stylePaletteSel.Render(prefix + v)
+	}
+	return prefix + v
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// approvalCard is the inline permission block: a left-bordered panel in
+// place of the composer (not a modal) — title, risk note, and the three
+// governed choices resolved through the broker resume path.
 func (m *agentTUI) approvalCard() string {
 	title := m.approval.title
 	if title == "" {
@@ -2114,14 +2273,19 @@ var (
 	cErr     = lipgloss.Color("#c86a5c")
 	cGold    = lipgloss.Color("#e8c06a")
 	cBgBar   = lipgloss.Color("#141210")
-	cBgPanel = lipgloss.Color("#1b1815")
-	cBorder  = lipgloss.Color("#3a352f")
 	cBarIdle = lipgloss.Color("#6e648a") // visible slate-violet composer bar
 	cGreen   = lipgloss.Color("#7fb08a")
 	cBlue    = lipgloss.Color("#7fa8c9")
 	cViolet  = lipgloss.Color("#a89bc7")
 	cCodeBg  = lipgloss.Color("#201c18")
 	cSelBg   = lipgloss.Color("#2a251f")
+	// Panel tones in Ghost's key (user bubble slate, tool state green-black
+	// while done and slate while running).
+	cBubbleBg     = lipgloss.Color("#26262e")
+	cUserText     = lipgloss.Color("#d4d4d4")
+	cToolDoneBg   = lipgloss.Color("#1c2320")
+	cToolActiveBg = lipgloss.Color("#242433")
+	cToolSoft     = lipgloss.Color("#8fb59d")
 
 	styleUser      = lipgloss.NewStyle().Foreground(cInk).Bold(true)
 	styleAssistant = lipgloss.NewStyle().Foreground(cInk)
@@ -2132,33 +2296,32 @@ var (
 	styleApproval  = lipgloss.NewStyle().Foreground(cGold).Bold(true)
 	styleStatus    = lipgloss.NewStyle().Foreground(cMuted).Background(cBgBar)
 
-	styleUserName      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleAssistantName = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
 	styleAssistantMeta = lipgloss.NewStyle().Foreground(cFaint)
 	styleErrorCard     = lipgloss.NewStyle().Foreground(cErr).Bold(true)
-	styleToolActive    = lipgloss.NewStyle().Foreground(cGreen)
-	// opencode user bubble: agent-color bar, panel background, plain text.
-	styleUserBar   = lipgloss.NewStyle().Foreground(cAccent)
-	styleUserText  = lipgloss.NewStyle().Foreground(cInk)
-	styleUserPanel = lipgloss.NewStyle().Background(cBgPanel).Padding(0, 1)
+	// Tool panels: full-width state backgrounds (pending/active vs done),
+	// with Ghost icons retained for scanability.
+	styleToolRowActive = lipgloss.NewStyle().Foreground(cInk).Background(cToolActiveBg)
+	styleToolRowDone   = lipgloss.NewStyle().Foreground(cToolSoft).Background(cToolDoneBg)
+	// User bubble: full-width background block, blank padding lines, plain
+	// text. Ghost bubble tone: dark slate.
+	styleUserBubble = lipgloss.NewStyle().Foreground(cUserText).Background(cBubbleBg)
 
-	// opencode autocomplete menu: left split-border, menu background,
-	// selected row highlighted (dialog.select pattern).
-	styleMenu       = lipgloss.NewStyle().Background(cBgPanel)
-	styleMenuBar    = lipgloss.NewStyle().Foreground(cBorder).Background(cBgPanel)
-	stylePaletteRow = lipgloss.NewStyle().Foreground(cMuted).Background(cBgPanel)
 	// ─── Ghost palette ───────────────────────────────────────────────
 	// One semantic scheme across composer, menus, modal, and approvals
-	// (terminal-ui skill: ux-color-semantics), reverse-engineered from
-	// pi's DynamicBorder selectors and opencode's dialog.select:
-	// violet = brand/selection, gold = approvals/warnings only,
-	// green = success/done, red = errors, blue = info/links,
-	// dim = hints/meta. Selected rows are dark-on-violet blocks, the
-	// same language as the approval cursor.
-	stylePaletteSel = lipgloss.NewStyle().Foreground(lipgloss.Color("#141210")).Background(cAccent).Bold(true)
+	// (terminal-ui skill: ux-color-semantics), keyed to the Ghost ASCII
+	// violet: violet = brand/selection, gold = approvals/warnings only,
+	// green = success/done, red = errors, blue = info/links, dim =
+	// hints/meta. The palette is bare rows — no side bar, no card — so the
+	// selected row is a violet block on transparent ground, the same
+	// language as the approval cursor.
+	stylePaletteSel     = lipgloss.NewStyle().Foreground(lipgloss.Color("#f2eefc")).Background(cAccent).Bold(true)
+	stylePaletteDesc    = lipgloss.NewStyle().Foreground(cMuted)
+	stylePaletteNoMatch = lipgloss.NewStyle().Foreground(cMuted)
+	stylePaletteScroll  = lipgloss.NewStyle().Foreground(cFaint)
 
-	// Footer is transparent dim text (opencode muted footer) — no bar
-	// background, so it sits on the terminal instead of a solid block.
+	// Footer is transparent dim text — no bar background, so it sits on the
+	// terminal instead of a solid block.
 	styleFooter     = lipgloss.NewStyle().Foreground(cFaint)
 	styleFooterHint = lipgloss.NewStyle().Foreground(cFaint).Italic(true)
 
@@ -2168,14 +2331,13 @@ var (
 	styleModelCloud = lipgloss.NewStyle().Foreground(cBlue).Bold(true)
 	styleModelPod   = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
 
-	// Composer + approval panels: single left `┃` bar (opencode composer),
-	// agent-accent while working, gold for approvals.
+	// Composer rules + approval bar: top/bottom `─` rules around the
+	// composer (Ghost-violet while working, slate-violet idle), gold bar
+	// for the inline approval block.
 	stylePromptBar       = lipgloss.NewStyle().Foreground(cBarIdle)
 	stylePromptBarActive = lipgloss.NewStyle().Foreground(cAccent)
-	stylePromptPanel     = lipgloss.NewStyle().Background(cBgPanel)
 	styleApprovalBar     = lipgloss.NewStyle().Foreground(cGold)
 	styleModalTitle      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
-	styleModalBox        = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cAccent).Background(cBgPanel).Padding(0, 1)
 	styleApprovalTitle   = lipgloss.NewStyle().Foreground(cGold).Bold(true)
 	styleApprovalKeys    = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc"))
 	styleApprovalSel     = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(cGold).Bold(true)
@@ -2189,10 +2351,10 @@ var (
 	styleWelcomeCmds  = lipgloss.NewStyle().Foreground(cMuted)
 	styleDayDivider   = lipgloss.NewStyle().Foreground(cFaint)
 
-	// opencode markdown roles (dark default): headings violet bold (h1
-	// underlined), strong orange, emphasis/quotes sand italic, code green
-	// with no background, bullets peach, ordered numbers cyan, checked
-	// green, links cyan underlined with the URL concealed.
+	// Markdown roles (dark default): headings violet bold (h1 underlined),
+	// strong orange, emphasis/quotes sand italic, code green with no
+	// background, bullets peach, ordered numbers cyan, checked green,
+	// links cyan underlined with the URL concealed.
 	styleMDHead      = lipgloss.NewStyle().Foreground(lipgloss.Color("#9d7cd8")).Bold(true)
 	styleMDHead1     = lipgloss.NewStyle().Foreground(lipgloss.Color("#9d7cd8")).Bold(true).Underline(true)
 	styleMDStrong    = lipgloss.NewStyle().Foreground(lipgloss.Color("#f5a742")).Bold(true)

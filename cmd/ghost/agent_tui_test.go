@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/ianclemence/ghost/pkg/providers"
 )
@@ -272,6 +274,22 @@ func TestTUIApprovalCardOnPending(t *testing.T) {
 	}
 }
 
+// The inline approval block is measured, not guessed: its painted height
+// must equal the layout estimate at any width, so the dock never jumps
+// between the wide one-row options and the narrow stacked options.
+func TestTUIApprovalHeightMatchesPaint(t *testing.T) {
+	f := newFakeRuntime()
+	for _, w := range []int{120, 80, 40} {
+		m := readyForTest(newAgentTUI(f, "cli:test"))
+		m.width, m.height = w, 24
+		m.approval = &pendingApproval{id: "r", title: "Send this email to the landlord about the deposit?", risk: "consequential"}
+		painted := len(strings.Split(m.approvalCard(), "\n"))
+		if got := m.estimatedApprovalHeight(); got != painted {
+			t.Errorf("width %d: approval estimate %d must equal paint %d", w, got, painted)
+		}
+	}
+}
+
 // Choosing "always allow" sends the recognized phrase as a normal turn, so the
 // governed resume path runs — the CLI never authorizes around the broker.
 func TestTUIApprovalSendsGrantPhrase(t *testing.T) {
@@ -389,7 +407,7 @@ func TestTUIRewindRestoresLastUserMessage(t *testing.T) {
 	}
 }
 
-// View renders each region exactly once with pi layout: no top header,
+// View renders each region exactly once: no top header,
 // transcript, prompt box, 3-line footer. Regression test for the doubled
 // header/welcome/input and the stray title label above the prompt box.
 func TestTUIViewRendersSingleChrome(t *testing.T) {
@@ -397,7 +415,7 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.renderTranscript()
 	view := m.View()
-	// No "prompt" title label above the box (pi has none).
+	// No "prompt" title label above the box (the box is its own label).
 	if strings.Contains(view, " prompt\n") || strings.Contains(view, "\n prompt ") {
 		t.Errorf("view must not label the prompt box, got %q", view)
 	}
@@ -418,6 +436,39 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	}
 	if !strings.Contains(m.footerKeysLine(), "enter send") {
 		t.Errorf("idle footer must name the send key, got %q", m.footerKeysLine())
+	}
+}
+
+// The footer digest is real Ghost session state: turns accumulate, extra
+// topic contexts surface, queued steering is counted, and a held approval
+// reads "waiting for you" — never a decorative token/context figure.
+func TestTUIFooterSummaryReflectsGhostState(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	if got := m.footerSummary(); got != "ready" {
+		t.Errorf("fresh session digest must read ready, got %q", got)
+	}
+	m.turnCount = 3
+	if got := m.footerSummary(); !strings.Contains(got, "3 turns") {
+		t.Errorf("digest must count turns, got %q", got)
+	}
+	f.contexts = []string{"personal", "work", "health"}
+	if got := m.footerSummary(); !strings.Contains(got, "3 contexts") {
+		t.Errorf("digest must count Ghost contexts, got %q", got)
+	}
+	m.queued = []string{"a", "b"}
+	if got := m.footerSummary(); !strings.Contains(got, "2 queued") {
+		t.Errorf("digest must count queued steering, got %q", got)
+	}
+	m.approval = &pendingApproval{id: "r", title: "t", risk: "consequential"}
+	if got := m.footerSummary(); got != "waiting for you" {
+		t.Errorf("held approval must read waiting for you, got %q", got)
+	}
+	// The digest is never the live spinner (that lives in the composer rule).
+	m.approval = nil
+	m.working = true
+	if got := m.footerSummary(); strings.Contains(got, m.spinner()) {
+		t.Errorf("digest must not duplicate the composer spinner, got %q", got)
 	}
 }
 
@@ -446,7 +497,8 @@ func TestTUIFooterKeysContextual(t *testing.T) {
 	}
 }
 
-// The estimate is the fixed composer height whatever the content holds.
+// The estimate is the fixed composer height (text rows + both rules)
+// whatever the content holds.
 func TestTUIInputHeightCountsWrappedLines(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
@@ -463,19 +515,117 @@ func TestTUIComposerDefaultAndCap(t *testing.T) {
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("")
 	m.layout()
-	if h := m.input.Height(); h != composerHeight {
-		t.Errorf("empty composer should be %d rows, got %d", composerHeight, h)
+	if h := m.input.Height(); h != composerTextRows {
+		t.Errorf("empty composer should be %d rows, got %d", composerTextRows, h)
 	}
 	if got := m.estimatedInputHeight(); got != composerHeight {
-		t.Errorf("empty estimate should be %d, got %d", composerHeight, got)
+		t.Errorf("estimate must count text rows plus both rules (%d), got %d", composerHeight, got)
 	}
 	m.input.SetValue(strings.Repeat("x\n", 20))
 	m.layout()
-	if h := m.input.Height(); h != composerHeight {
-		t.Errorf("long input must not resize the composer (%d rows), got %d", composerHeight, h)
+	if h := m.input.Height(); h != composerTextRows {
+		t.Errorf("long input must not resize the composer (%d rows), got %d", composerTextRows, h)
 	}
 	if got := m.estimatedInputHeight(); got != composerHeight {
 		t.Errorf("long estimate must stay %d, got %d", composerHeight, got)
+	}
+}
+
+// The composer is exactly two full-width rules, no side borders, no
+// prefix, and the text rows between them. While working, the live status
+// is embedded once in the top rule — never duplicated.
+func TestTUIComposerIsPIRules(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	box := m.promptBox()
+	rows := strings.Split(box, "\n")
+	if len(rows) != composerHeight {
+		t.Fatalf("composer must be %d rows (rule + %d text + rule), got %d: %q", composerHeight, composerTextRows, len(rows), box)
+	}
+	for i, ln := range rows {
+		if got := lipgloss.Width(ln); got != 80 {
+			t.Errorf("composer row %d must span the full width (80), got %d: %q", i, got, ln)
+		}
+	}
+	if !strings.HasPrefix(rows[0], "──") && strings.Trim(rows[0], "─") != "" {
+		t.Errorf("top rule must be all ─ when idle, got %q", rows[0])
+	}
+	if strings.Contains(box, "│") || strings.Contains(box, "┃") {
+		t.Errorf("the composer has no side borders, got %q", box)
+	}
+
+	// While working the status appears once, embedded in the top rule.
+	m.working = true
+	m.elapsed = 4200_000_000
+	m.toolHistory = []toolStep{{tool: "read_file", label: "x"}, {tool: "web_search", label: "y"}}
+	m.spinFrame = 0
+	working := m.promptBox()
+	top := strings.Split(working, "\n")[0]
+	if !strings.Contains(top, m.spinner()) {
+		t.Errorf("working top rule must carry the spinner, got %q", top)
+	}
+	if n := strings.Count(top, m.spinner()); n != 1 {
+		t.Errorf("spinner must appear once in the top rule, found %d: %q", n, top)
+	}
+	if !strings.Contains(top, "2 tools") {
+		t.Errorf("working top rule must carry the tool count, got %q", top)
+	}
+}
+
+// The user bubble is a full-width background block: edge to edge, text
+// inset by one cell, one blank padding row above and below.
+func TestTUIUserBubblePI(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	out := m.renderEntry(entry{kind: entryUser, text: "hello"})
+	rows := strings.Split(out, "\n")
+	if len(rows) != 3 {
+		t.Fatalf("one-line bubble must be pad + line + pad, got %d: %q", len(rows), out)
+	}
+	for _, ln := range rows {
+		if got := lipgloss.Width(ln); got != m.width {
+			t.Errorf("bubble must span the canvas (%d), got %d: %q", m.width, got, ln)
+		}
+	}
+	if !strings.HasPrefix(rows[1], " hello") {
+		t.Errorf("bubble text must be inset by one cell, got %q", rows[1])
+	}
+}
+
+// The model picker is not a floating modal: it renders below the prompt
+// box, sharing the palette's bare list rows.
+func TestTUIModelPickerIsInlineBelowBox(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/model")
+	if m.modal == nil {
+		t.Fatal("/model must open the picker")
+	}
+	m.layout()
+	m.renderTranscript()
+	view := m.View()
+	viewRows := strings.Split(strings.TrimRight(view, "\n"), "\n")
+	box := strings.Split(m.promptBox(), "\n")
+	bottomRule := box[len(box)-1]
+	// The picker's title and filter must sit below the composer's bottom rule.
+	ruleIdx, titleIdx := -1, -1
+	for i, ln := range viewRows {
+		if ruleIdx < 0 && strings.Contains(ln, bottomRule) {
+			ruleIdx = i
+		}
+		if titleIdx < 0 && strings.Contains(ln, "Models") && strings.Contains(ln, "esc") {
+			titleIdx = i
+		}
+	}
+	if ruleIdx < 0 || titleIdx < 0 {
+		t.Fatalf("picker title and composer rule must both be present\nview:\n%s", view)
+	}
+	if titleIdx <= ruleIdx {
+		t.Errorf("picker must render below the prompt box (rule row %d, title row %d)", ruleIdx, titleIdx)
+	}
+	if strings.Contains(view, "╭") || strings.Contains(view, "╰") {
+		t.Errorf("picker must not be a bordered modal, got %q", view)
 	}
 }
 
@@ -586,28 +736,32 @@ func TestTUIEscPriorityChain(t *testing.T) {
 	}
 }
 
-// The palette scrolls: the selection always stays inside a 6-row window
-// with edge indicators, and the painted height matches the estimate.
+// The palette scrolls: the select list keeps the selection inside the
+// maxVisible window, prints a `(n/total)` footer while scrolled, and the
+// painted height matches the layout estimate exactly.
 func TestTUIPaletteScrollWindow(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/")
 	total := len(m.paletteMatches())
-	if total <= 6 {
-		t.Fatalf("need >6 commands to test scrolling, got %d", total)
+	if total <= paletteMaxRows {
+		t.Fatalf("need >%d commands to test scrolling, got %d", paletteMaxRows, total)
 	}
 	m.paletteSel = total - 1
 	m.clampPalette()
-	items, off, moreAbove, moreBelow := m.paletteWindow()
-	if !moreAbove || moreBelow {
-		t.Errorf("bottom selection: want moreAbove only, got %v %v", moreAbove, moreBelow)
+	items, off, more := m.paletteWindow()
+	if !more {
+		t.Errorf("bottom selection must flag the scroll footer")
 	}
 	if off+len(items) != total {
 		t.Errorf("window must end at the last row, off=%d shown=%d total=%d", off, len(items), total)
 	}
 	view := m.paletteView()
-	if !strings.Contains(view, "↑ more") {
-		t.Errorf("hidden rows above must be indicated, got %q", view)
+	if !strings.Contains(view, fmt.Sprintf("(%d/%d)", total, total)) {
+		t.Errorf("scroll footer must show (n/total), got %q", view)
+	}
+	if strings.Contains(view, "┃") {
+		t.Errorf("the palette has no side bar, got %q", view)
 	}
 	rows := strings.Count(strings.TrimSpace(view), "\n") + 1
 	if rows != m.paletteHeight() {
@@ -789,20 +943,24 @@ func TestTUIMultilineComposer(t *testing.T) {
 	}
 	m.input.SetValue(strings.Repeat("x\n", 10))
 	m.layout()
-	if h := m.input.Height(); h != composerHeight {
-		t.Errorf("long input must not resize the composer (%d rows), got %d", composerHeight, h)
+	// The textarea holds only the text rows; promptBox paints the two
+	// rules around them (composerHeight = composerTextRows + 2).
+	if h := m.input.Height(); h != composerTextRows {
+		t.Errorf("long input must not resize the composer (%d rows), got %d", composerTextRows, h)
 	}
 }
 
-// User messages render as an opencode panel: name line, bar-prefixed
-// rows, explicit newlines preserved as paragraph breaks (never
+// User messages render as a full-width background panel: name line,
+// inset rows, explicit newlines preserved as paragraph breaks (never
 // markdown-rendered).
 func TestTUIUserBubbleMultiline(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	out := m.renderEntry(entry{kind: entryUser, text: "first **not bold**\n\nsecond"})
-	if n := strings.Count(out, "┃"); n != 3 {
-		t.Errorf("user bubble must bar-prefix every row (2 text + 1 blank), got %d: %q", n, out)
+	rows := strings.Split(out, "\n")
+	// Panel: blank padding row, 2 text rows, blank row, blank padding row.
+	if len(rows) != 5 {
+		t.Fatalf("user bubble must be 5 rows (pad + text + blank + text + pad), got %d: %q", len(rows), out)
 	}
 	if !strings.Contains(out, "first **not bold**") {
 		t.Errorf("user text must stay literal markdown, got %q", out)
@@ -810,10 +968,17 @@ func TestTUIUserBubbleMultiline(t *testing.T) {
 	if !strings.Contains(out, "second") {
 		t.Errorf("paragraphs must survive, got %q", out)
 	}
+	// The bubble is edge to edge: the background spans the whole canvas,
+	// only the text is inset by one cell.
+	for _, ln := range rows {
+		if got := lipgloss.Width(ln); got != 80 {
+			t.Errorf("bubble rows must fill the canvas (80), got %d: %q", got, ln)
+		}
+	}
 }
 
-// Markdown follows the opencode spec: markers concealed, semantic colors.
-func TestTUIMarkdownOpencodeRoles(t *testing.T) {
+// Markdown follows the Ghost theme: markers concealed, semantic colors.
+func TestTUIMarkdownRoles(t *testing.T) {
 	body := renderAssistantBody("# Title\nSome **bold** and *em* with `code`\n```go\nfmt.Println()\n```\n[docs](https://x.test/y) and https://bare.test/z\n- item\n1. first\n> quote\n---", 60)
 	for _, concealed := range []string{"```go", "# Title", "`code`", "(https://x.test/y)"} {
 		if strings.Contains(body, concealed) {

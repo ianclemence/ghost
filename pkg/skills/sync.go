@@ -20,8 +20,8 @@ type SyncReport struct {
 }
 
 // SyncBundled reconciles the runtime skills directory against the bundled
-// skills source, Hermes-style: new bundled skills are seeded, unchanged skills
-// receive upstream updates, and skills the user has edited are marked
+// skills source: new bundled skills are seeded, unchanged skills receive
+// upstream updates, and skills the user has edited are marked
 // user-modified and never overwritten. Skills present only in the runtime
 // directory (installed from the hub, created manually) are never touched.
 //
