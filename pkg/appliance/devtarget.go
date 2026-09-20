@@ -6,6 +6,12 @@ import (
 	"strconv"
 )
 
+// DefaultBinDir is the single canonical directory the `ghost` binary is
+// installed to. Every service ExecStart and every documented install path uses
+// it; a second copy elsewhere on PATH is what caused updates to appear not to
+// take.
+const DefaultBinDir = "/usr/local/bin"
+
 // Development vs production separation.
 //
 // A Ghost source checkout and an installed Ghost must never share a config,

@@ -1,4 +1,4 @@
-.PHONY: all build install uninstall clean help test install-service build-ghost rebuild-web
+.PHONY: all build install install-ghost install-cleanup-shadow uninstall clean help test install-service build-ghost rebuild-web
 
 # Build variables
 BINARY_NAME=ghost
@@ -22,9 +22,12 @@ GO?=go
 GOFLAGS?=-v
 
 # Installation
-INSTALL_PREFIX?=$(HOME)/.local
-INSTALL_BIN_DIR=$(INSTALL_PREFIX)/bin
-INSTALL_MAN_DIR=$(INSTALL_PREFIX)/share/man/man1
+# Single canonical location. Services (ghost, ghost-web, ghost-speech) all
+# ExecStart from here, so this must be the only place a `ghost` binary lives.
+# A user-local copy (~/.local/bin/ghost) once shadowed it because it came first
+# in PATH, making updates appear not to take; install-cleanup-shadow removes it.
+CANONICAL_BIN_DIR?=/usr/local/bin
+INSTALL_MAN_DIR=/usr/local/share/man/man1
 
 # The account that OWNS the install (config, workspace, services). This is the
 # owner of the source checkout, NOT $(USER): `sudo make install-ghost` (as
@@ -112,21 +115,40 @@ deps:
 	@echo "Installing system dependencies..."
 	@sudo apt-get update && sudo apt-get install -y golang git python3 python3-pip ffmpeg alsa-utils espeak fswebcam adb nmap poppler-utils pandoc chromium avahi-utils coreutils
 
-## install: Stop service, install ghost binary, restart service
+## install: Stop service, install ghost binary to the canonical location, restart
 install: build
 	@echo "Installing $(BINARY_NAME)..."
-	@mkdir -p $(INSTALL_BIN_DIR)
+	@# Canonical install location. A second, user-local copy is what made an
+	@# updated binary appear not to run (the copy earlier in PATH won).
+	@sudo mkdir -p $(CANONICAL_BIN_DIR)
 	@# Stop the service before replacing the binary to avoid "Text file busy" error.
 	@# The binary cannot be overwritten while it is being executed by systemd.
 	@sudo systemctl stop ghost 2>/dev/null || true
 	@sudo systemctl stop ghost-web 2>/dev/null || true
-	@rm -f $(INSTALL_BIN_DIR)/$(BINARY_NAME)
-	@cp $(BINARY_PATH) $(INSTALL_BIN_DIR)/$(BINARY_NAME)
-	@chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME)
-	@echo "Installed binary to $(INSTALL_BIN_DIR)/$(BINARY_NAME)"
+	@sudo cp $(BINARY_PATH) $(CANONICAL_BIN_DIR)/$(BINARY_NAME).new
+	@sudo mv -f $(CANONICAL_BIN_DIR)/$(BINARY_NAME).new $(CANONICAL_BIN_DIR)/$(BINARY_NAME)
+	@sudo chmod +x $(CANONICAL_BIN_DIR)/$(BINARY_NAME)
+	@echo "Installed binary to $(CANONICAL_BIN_DIR)/$(BINARY_NAME)"
+	@$(MAKE) --no-print-directory install-cleanup-shadow
 	@# Restart the service if it was previously enabled
 	@sudo systemctl start ghost 2>/dev/null || true
 	@echo "Installation complete!"
+
+## install-cleanup-shadow: remove a stale user-local ghost that shadows /usr/local/bin
+##
+## Only removes a file this repo actually installed (identified by the string
+## marker), so it can never delete an unrelated program that happens to be
+## named 'ghost'.
+install-cleanup-shadow:
+	@for d in $(HOME)/.local/bin /usr/local/sbin; do \
+		f="$$d/$(BINARY_NAME)"; \
+		if [ -f "$$f" ] && [ "$$f" != "$(CANONICAL_BIN_DIR)/$(BINARY_NAME)" ]; then \
+			if grep -aq "Ghost - Personal AI Assistant" "$$f" 2>/dev/null; then \
+				rm -f "$$f" 2>/dev/null || sudo rm -f "$$f"; \
+				echo "Removed stale shadow: $$f"; \
+			fi; \
+		fi; \
+	done
 
 ## install-service: Generate service file from template and install it
 install-service:
@@ -180,17 +202,11 @@ install-ghost: build-ghost
 	@sudo cp $(BUILD_DIR)/$(WEB_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(WEB_NAME).new
 	@sudo mv -f /usr/local/bin/$(WEB_NAME).new /usr/local/bin/$(WEB_NAME)
 	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(WEB_NAME)
-	@# Also refresh the user-local binary when it exists. It typically comes
-	@# FIRST in PATH, so a stale copy there silently shadows the installed one
-	@# (the "old binary keeps running after an update" trap). Best-effort:
-	@# skip when the path is inside the system prefix or absent.
-	@if [ -d "$(INSTALL_BIN_DIR)" ] && echo "$(INSTALL_BIN_DIR)" | grep -q "$(HOME)"; then \
-		cp $(BINARY_PATH) $(INSTALL_BIN_DIR)/$(BINARY_NAME).new && \
-		mv -f $(INSTALL_BIN_DIR)/$(BINARY_NAME).new $(INSTALL_BIN_DIR)/$(BINARY_NAME) && \
-		chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME) && \
-		chown $(INSTALL_OWNER):$(INSTALL_GROUP) $(INSTALL_BIN_DIR)/$(BINARY_NAME) 2>/dev/null || true; \
-		echo "Refreshed $(INSTALL_BIN_DIR)/$(BINARY_NAME)"; \
-	fi
+	@# Single canonical install location: /usr/local/bin. A user-local copy at
+	@# ~/.local/bin/ghost historically shadowed it (it comes FIRST in PATH), so
+	@# an update could appear not to take. Rather than keep two copies in sync,
+	@# remove the stale shadow when it lives on the operator's PATH.
+	@$(MAKE) --no-print-directory install-cleanup-shadow
 	@# Build and deploy update tooling
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-$(PLATFORM)-$(ARCH) ./cmd/ghost-update
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-daemon-$(PLATFORM)-$(ARCH) ./cmd/ghost-update-daemon

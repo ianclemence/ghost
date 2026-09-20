@@ -245,6 +245,12 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
+Developer Mode installs to the same canonical location as production
+(`/usr/local/bin/ghost`) and uses the same service. There is exactly **one**
+`ghost` binary: a second copy earlier in `PATH` used to shadow the installed
+one and make updates appear not to take. `ghost update` removes any stale copy
+automatically, and `ghost status` warns if one is ever found.
+
 ---
 
 ## Commands

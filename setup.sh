@@ -79,7 +79,7 @@ install_service() {
     echo -e "${YELLOW}[INFO] Installing Ghost as a system service...${NC}"
     echo -e "${BLUE}  User       : ${USER}${NC}"
     echo -e "${BLUE}  Home       : ${HOME}${NC}"
-    echo -e "${BLUE}  Binary     : ${HOME}/.local/bin/ghost${NC}"
+    echo -e "${BLUE}  Binary     : /usr/local/bin/ghost${NC}"
     echo -e "${BLUE}  WorkingDir : ${HOME}/ghost${NC}"
     echo -e "${BLUE}  EnvFile    : ${HOME}/ghost/.env${NC}"
     echo ""
@@ -103,7 +103,7 @@ User=${USER}
 WorkingDirectory=${HOME}/ghost
 EnvironmentFile=${HOME}/ghost/.env
 Environment=GHOST_WORKSPACE_DIR=${HOME}/ghost/workspace
-ExecStart=${HOME}/.local/bin/ghost serve
+ExecStart=/usr/local/bin/ghost serve
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -140,7 +140,7 @@ EOF
         echo ""
         echo -e "${RED}Common causes:${NC}"
         echo "  1. .env file missing at ${HOME}/ghost/.env"
-        echo "  2. Binary not found at ${HOME}/.local/bin/ghost — run: make install"
+        echo "  2. Binary not found at /usr/local/bin/ghost — run: sudo make install-ghost"
         echo "  3. DEEPSEEK_API_KEY not set in .env"
         return 1
     fi
@@ -275,9 +275,12 @@ else
     exit 1
 fi
 
-# Install binary via make
-make install
-echo -e "${GREEN}[OK] Binary installed to ${HOME}/.local/bin/ghost${NC}"
+# Install binary to the canonical location via make (single install path).
+# Developer Mode converges on the same /usr/local/bin/ghost the services and
+# `ghost update` use — a separate ~/.local/bin copy is what made updated
+# binaries appear not to run.
+make install-ghost
+echo -e "${GREEN}[OK] Binary installed to /usr/local/bin/ghost${NC}"
 
 # ── 4. Service setup ──────────────────────────────────────────────────────
 echo ""

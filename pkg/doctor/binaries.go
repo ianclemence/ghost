@@ -42,7 +42,9 @@ func (d *Doctor) checkBinaries(ctx context.Context) CheckResult {
 		Message: "An out-of-date Ghost is shadowing the installed one: " +
 			shadow.Wins + " (" + shadow.WinsVersion + ") runs instead of " +
 			shadow.Shadows + " (" + shadow.ShadowsVersion + "). " +
-			"Remove the stale copy or run `ghost update` to refresh both.",
+			"There should be exactly one `ghost`, at " + appliance.DefaultBinDir + ". " +
+			"Fix it now with `sudo ghost update` (which removes the stale copy) or " +
+			"`sudo rm " + shadow.Wins + "`.",
 		Latency: time.Since(start).Milliseconds(),
 	}
 }
