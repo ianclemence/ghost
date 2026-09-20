@@ -77,14 +77,15 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 ## Layout
 
 ```
- transcript (markdown, icon tool trail, spinner + elapsed)
+ transcript (markdown, streaming reply)
 
-  What do you remember about me?
+  You
+  ┃ What do you remember about me?
 
   👻 Ghost · deepseek-flash
   Here's what I keep about you...
 
-── ⠋ thinking · 4s · 2 tools ──────────────────────────────
+── ⠋ Searching: weather in Bangkok · 4s · 2 tools ────────
 
 ────────────────────────────────────────────────────────────
 3 turns                                  (cloud) deepseek-flash
@@ -135,10 +136,14 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   or direct `1/2/3` keys. `Esc` leaves the request pending. Its height is
   measured, so the dock never jumps between the wide one-row options and
   the narrow stacked options.
-- **Tool trail:** collapsed one-liners with the Ghost icon language
-  (`→` read, `←` write, `✱` search, `%` fetch, `◈` web, `$` shell,
-  `⚙` generic), spinner row while running, durations behind `/details`.
-  Assistant turns carry `· duration`.
+- **Activity lives in the prompt rule, not the transcript:** while a turn
+  runs, the composer's top rule names what Ghost is doing right now — the
+  active step (`Searching: weather in Bangkok`, `Reading notes.md`) when a
+  tool runs, otherwise `thinking` — with elapsed time and tool count. The
+  transcript is not littered with `searching…`/`reading…` rows under the
+  user's message. The full icon tool trail (`→` read, `←` write, `✱`
+  search, `%` fetch, `◈` web, `$` shell, `⚙` generic) is available on
+  demand behind `/details` (Ctrl+O). Assistant turns carry `· duration`.
 - **Footer (2 transparent dim lines):** a session digest (turns,
   contexts, queued) with the model in its locality color right-aligned;
   contextual shortcuts ordered by frequency — the command surface first
@@ -148,9 +153,12 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   Ghost tagline (`Your AI. Your Memory. Your Machine.`), and a command
   cheat-sheet. It only appears for a genuinely new conversation; the
   tagline lives here, not in the footer.
-- **Scroll:** mouse wheel + `PgUp/PgDn`; follows the bottom while working.
-  Every region is edge to edge on the same canvas, with only text inset
-  by one cell, so messages, the rules, and the footer all align.
+- **Scroll:** mouse wheel + `PgUp/PgDn`. New content follows the bottom
+  only when you are already there; scroll up to read earlier turns and a
+  long reply or streaming chunk keeps your place instead of yanking you
+  down. Sending a turn always follows. Every region is edge to edge on the
+  same canvas, with only text inset by one cell, so messages, the rules,
+  and the footer all align.
 - **Terminal hygiene (terminal-ui skill):** the TUI owns the whole frame —
   stderr is parked during the run and logger output silenced, so no
   dependency's stray line can paint over the alt-screen (the one

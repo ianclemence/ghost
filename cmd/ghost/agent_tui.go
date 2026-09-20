@@ -606,7 +606,10 @@ func (m *agentTUI) send(text string) {
 	m.streaming = ""
 	m.turnStart = time.Now()
 	m.elapsed = 0
+	// A new turn always follows: the owner just acted and expects to see
+	// their message and the reply.
 	m.renderTranscript()
+	m.viewport.GotoBottom()
 
 	go m.runTurn(text)
 }
@@ -1328,13 +1331,21 @@ func (m *agentTUI) renderTranscript() {
 		b.WriteString(m.workingBlock())
 		b.WriteString("\n")
 	}
+	// Follow the conversation only when the reader is already at the
+	// bottom. If they have scrolled up to read earlier turns, a new
+	// message or a streaming chunk must not yank them back down — that is
+	// what made previous chats look like they disappeared.
+	atBottom := m.viewport.AtBottom()
 	m.viewport.SetContent(strings.TrimRight(b.String(), "\n"))
-	m.viewport.GotoBottom()
+	if atBottom {
+		m.viewport.GotoBottom()
+	}
 }
 
-// workingBlock is the live turn: an in-place stream preview with a cursor,
-// then one collapsed ✓ row per finished tool and a spinner row for the
-// active one. Raw tool JSON never reaches the transcript.
+// workingBlock is the live turn: an in-place stream preview with a cursor.
+// The active step ("Searching…", "Reading…") is not repeated here — it is
+// named in the composer's top rule, so the transcript stays clean. The
+// full icon tool trail is still available behind /details (Ctrl+O).
 func (m *agentTUI) workingBlock() string {
 	var b strings.Builder
 	w := m.contentWidth()
@@ -1342,29 +1353,17 @@ func (m *agentTUI) workingBlock() string {
 		b.WriteString(renderAssistantBody(m.streaming+"▍", w))
 		b.WriteString("\n")
 	}
-	steps := m.toolHistory
-	limit := len(steps)
-	if !m.showTools && limit > 5 {
-		limit = 5
-	}
-	for i := 0; i < limit; i++ {
-		s := steps[i]
-		icon := toolIcon(s.tool)
-		if !s.done {
-			b.WriteString(styleToolActive.Render(fmt.Sprintf("  %s %s %s", m.spinner(), icon, cellTruncate(s.label, w-8))))
-		} else if m.showTools {
-			b.WriteString(styleTool.Render(fmt.Sprintf("  %s %s (%s)", icon, cellTruncate(s.label, w-12), formatElapsed(s.dur))))
-		} else {
-			b.WriteString(styleTool.Render(fmt.Sprintf("  %s %s", icon, cellTruncate(s.label, w-8))))
+	if m.showTools {
+		for _, s := range m.toolHistory {
+			icon := toolIcon(s.tool)
+			if !s.done {
+				b.WriteString(styleToolActive.Render(fmt.Sprintf("  %s %s %s", m.spinner(), icon, cellTruncate(s.label, w-8))))
+			} else {
+				b.WriteString(styleTool.Render(fmt.Sprintf("  %s %s (%s)", icon, cellTruncate(s.label, w-12), formatElapsed(s.dur))))
+			}
+			b.WriteString("\n")
 		}
-		b.WriteString("\n")
 	}
-	if !m.showTools && len(steps) > limit {
-		b.WriteString(styleNotice.Render(fmt.Sprintf("  · +%d more (ctrl+o for details)", len(steps)-limit)))
-		b.WriteString("\n")
-	}
-	// The live status (spinner · elapsed · tools · queued) lives only in
-	// the composer's top rule, so the turn is never stated twice.
 	return strings.TrimRight(b.String(), "\n")
 }
 
@@ -2037,14 +2036,16 @@ func modelLocalityStyle(local string) lipgloss.Style {
 }
 
 // activityWord is the live status embedded in the composer's top rule
-// while a turn runs: spinner, "thinking", how long it has been, how many
-// tools ran, and anything queued.
+// while a turn runs. It names what Ghost is doing right now — the active
+// tool ("Searching the web…", "Reading notes.md") when one is running,
+// otherwise "thinking" — followed by how long, how many tools, and
+// anything queued.
 func (m *agentTUI) activityWord() string {
 	if m.approval != nil {
 		return "waiting for you"
 	}
 	if m.working {
-		s := fmt.Sprintf("%s thinking", m.spinner())
+		s := fmt.Sprintf("%s %s", m.spinner(), m.activeStepWord())
 		if m.elapsed > 0 {
 			s += fmt.Sprintf(" · %s", formatElapsed(m.elapsed))
 		}
@@ -2060,6 +2061,22 @@ func (m *agentTUI) activityWord() string {
 		return "ready"
 	}
 	return fmt.Sprintf("%d turn%s", m.turnCount, plural(m.turnCount))
+}
+
+// activeStepWord is the current tool's product-language label when a tool
+// is running, or "thinking" when Ghost is reasoning without a tool. The
+// composer's top rule shows this so the prompt names the real activity
+// instead of a generic status.
+func (m *agentTUI) activeStepWord() string {
+	for i := len(m.toolHistory) - 1; i >= 0; i-- {
+		if !m.toolHistory[i].done {
+			if label := strings.TrimSpace(m.toolHistory[i].label); label != "" {
+				return label
+			}
+			break
+		}
+	}
+	return "thinking"
 }
 
 func shortModel(s string) string {

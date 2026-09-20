@@ -625,6 +625,29 @@ func TestTUIComposerGrowsWithContentAndCaps(t *testing.T) {
 // The composer is exactly two full-width rules, no side borders, no
 // prefix, and the text rows between them. While working, the live status
 // is embedded once in the top rule — never duplicated.
+// Long replies must not make earlier turns look like they vanished. The
+// transcript follows new content only when the reader is already at the
+// bottom; once they scroll up, streaming keeps their place.
+func TestTUITranscriptKeepsScrollPosition(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 20
+	for i := 0; i < 10; i++ {
+		m.append(entry{kind: entryUser, text: "q", at: time.Now()})
+		m.append(entry{kind: entryAssistant, text: strings.Repeat("a long answer ", 20), at: time.Now()})
+	}
+	m.layout()
+	m.renderTranscript()
+	m.viewport.HalfViewUp()
+	m.viewport.HalfViewUp()
+	up := m.viewport.YOffset
+	m.streaming = "more text"
+	m.renderTranscript()
+	if m.viewport.YOffset != up {
+		t.Errorf("a streaming chunk must not yank the reader to the bottom (want offset %d, got %d)", up, m.viewport.YOffset)
+	}
+}
+
 func TestTUIComposerIsPIRules(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
@@ -650,29 +673,40 @@ func TestTUIComposerIsPIRules(t *testing.T) {
 	// While working the status appears once, embedded in the top rule.
 	m.working = true
 	m.elapsed = 4200_000_000
-	m.toolHistory = []toolStep{{tool: "read_file", label: "x"}, {tool: "web_search", label: "y"}}
+	// No tool active yet: the rule reads "thinking".
+	m.toolHistory = nil
 	m.spinFrame = 0
-	working := m.promptBox()
-	top := strings.Split(working, "\n")[0]
+	top := strings.Split(m.promptBox(), "\n")[0]
 	if !strings.Contains(top, m.spinner()) {
 		t.Errorf("working top rule must carry the spinner, got %q", top)
 	}
 	if n := strings.Count(top, m.spinner()); n != 1 {
 		t.Errorf("spinner must appear once in the top rule, found %d: %q", n, top)
 	}
-	if !strings.Contains(top, "2 tools") {
-		t.Errorf("working top rule must carry the tool count, got %q", top)
-	}
-	// The live state reads "thinking", and it appears only here, never in
-	// the transcript.
 	if !strings.Contains(top, "thinking") {
-		t.Errorf("the top rule must read 'thinking', got %q", top)
+		t.Errorf("the rule must read 'thinking' when no tool runs, got %q", top)
 	}
 	if strings.Contains(top, "working") {
-		t.Errorf("the top rule must not say 'working', got %q", top)
+		t.Errorf("the rule must not say 'working', got %q", top)
 	}
-	if block := m.workingBlock(); strings.Contains(block, "thinking") || strings.Contains(block, "working") {
-		t.Errorf("the transcript working block must not repeat the status, got %q", block)
+
+	// An active tool names itself in the rule instead of "thinking".
+	m.toolHistory = []toolStep{{tool: "read_file", label: "Reading notes.md", done: true}, {tool: "web_search", label: "Searching the web…"}}
+	top = strings.Split(m.promptBox(), "\n")[0]
+	if !strings.Contains(top, "Searching the web…") {
+		t.Errorf("the rule must name the active tool, got %q", top)
+	}
+	if strings.Contains(top, "thinking") {
+		t.Errorf("the rule must not say 'thinking' while a tool runs, got %q", top)
+	}
+	if !strings.Contains(top, "2 tools") {
+		t.Errorf("the rule must carry the tool count, got %q", top)
+	}
+
+	// The transcript must not repeat the activity: no tool row under the
+	// user message by default.
+	if block := m.workingBlock(); strings.Contains(block, "Searching the web") {
+		t.Errorf("the transcript must not repeat the active step, got %q", block)
 	}
 }
 
