@@ -1339,7 +1339,7 @@ func (m *agentTUI) workingBlock() string {
 	var b strings.Builder
 	w := m.contentWidth()
 	if m.streaming != "" {
-		b.WriteString(m.assistantBlock(m.streaming + "▍"))
+		b.WriteString(renderAssistantBody(m.streaming+"▍", w))
 		b.WriteString("\n")
 	}
 	steps := m.toolHistory
@@ -1350,29 +1350,31 @@ func (m *agentTUI) workingBlock() string {
 	for i := 0; i < limit; i++ {
 		s := steps[i]
 		icon := toolIcon(s.tool)
-		// Tool blocks are full-width background panels with one cell of
-		// inner padding; the icon sits right where the text column is.
-		var row string
 		if !s.done {
-			row = fmt.Sprintf(" %s %s %s", m.spinner(), icon, cellTruncate(s.label, w-8))
-			b.WriteString(styleToolRowActive.Width(w).Render(row))
+			b.WriteString(styleToolActive.Render(fmt.Sprintf("  %s %s %s", m.spinner(), icon, cellTruncate(s.label, w-8))))
 		} else if m.showTools {
-			row = fmt.Sprintf(" %s %s (%s)", icon, cellTruncate(s.label, w-14), formatElapsed(s.dur))
-			b.WriteString(styleToolRowDone.Width(w).Render(row))
+			b.WriteString(styleTool.Render(fmt.Sprintf("  %s %s (%s)", icon, cellTruncate(s.label, w-12), formatElapsed(s.dur))))
 		} else {
-			row = fmt.Sprintf(" %s %s", icon, cellTruncate(s.label, w-8))
-			b.WriteString(styleToolRowDone.Width(w).Render(row))
+			b.WriteString(styleTool.Render(fmt.Sprintf("  %s %s", icon, cellTruncate(s.label, w-8))))
 		}
 		b.WriteString("\n")
 	}
 	if !m.showTools && len(steps) > limit {
-		b.WriteString(styleNotice.Render(fmt.Sprintf(" · +%d more (ctrl+o for details)", len(steps)-limit)))
+		b.WriteString(styleNotice.Render(fmt.Sprintf("  · +%d more (ctrl+o for details)", len(steps)-limit)))
 		b.WriteString("\n")
 	}
-	// The live working status (spinner · elapsed · tools · queued) is
-	// embedded in the composer's top rule, so it is never repeated here
-	// in the transcript.
-	return strings.TrimRight(b.String(), "\n")
+	status := fmt.Sprintf("  %s working", m.spinner())
+	if m.elapsed > 0 {
+		status += fmt.Sprintf(" · %s", formatElapsed(m.elapsed))
+	}
+	if len(steps) > 0 {
+		status += fmt.Sprintf(" · %d tool%s", len(steps), plural(len(steps)))
+	}
+	if len(m.queued) > 0 {
+		status += fmt.Sprintf(" · %d queued", len(m.queued))
+	}
+	b.WriteString(styleWorking.Render(status + "…"))
+	return b.String()
 }
 
 // toolIcon maps Ghost tools to the collapsed-row icon language:
@@ -2347,44 +2349,35 @@ func providerLocality(model string) string {
 // ─── styles ──────────────────────────────────────────────────────────────
 
 var (
-	cInk     = lipgloss.Color("#d8d4cc")
-	cMuted   = lipgloss.Color("#8a857c")
-	cFaint   = lipgloss.Color("#5c574f")
-	cAccent  = lipgloss.Color("#8a86b8")
-	cTool    = lipgloss.Color("#6f9c86")
-	cErr     = lipgloss.Color("#c86a5c")
-	cGold    = lipgloss.Color("#e8c06a")
-	cBgBar   = lipgloss.Color("#141210")
-	cBgPanel = lipgloss.Color("#1b1815")
-	cBarIdle = lipgloss.Color("#6e648a") // visible slate-violet composer bar
-	cGreen   = lipgloss.Color("#7fb08a")
-	cBlue    = lipgloss.Color("#7fa8c9")
-	cViolet  = lipgloss.Color("#a89bc7")
-	cCodeBg  = lipgloss.Color("#201c18")
-	cSelBg   = lipgloss.Color("#2a251f")
-	// Tool panel tones in Ghost's key (green-black while done, slate while
-	// running).
-	cToolDoneBg   = lipgloss.Color("#1c2320")
-	cToolActiveBg = lipgloss.Color("#242433")
-	cToolSoft     = lipgloss.Color("#8fb59d")
-
-	styleUser      = lipgloss.NewStyle().Foreground(cInk).Bold(true)
-	styleAssistant = lipgloss.NewStyle().Foreground(cInk)
-	styleTool      = lipgloss.NewStyle().Foreground(cTool)
-	styleNotice    = lipgloss.NewStyle().Foreground(cMuted)
-	styleError     = lipgloss.NewStyle().Foreground(cErr)
-	styleWorking   = lipgloss.NewStyle().Foreground(cAccent)
-	styleApproval  = lipgloss.NewStyle().Foreground(cGold).Bold(true)
-	styleStatus    = lipgloss.NewStyle().Foreground(cMuted).Background(cBgBar)
+	cInk            = lipgloss.Color("#d8d4cc")
+	cMuted          = lipgloss.Color("#8a857c")
+	cFaint          = lipgloss.Color("#5c574f")
+	cAccent         = lipgloss.Color("#8a86b8")
+	cTool           = lipgloss.Color("#6f9c86")
+	cErr            = lipgloss.Color("#c86a5c")
+	cGold           = lipgloss.Color("#e8c06a")
+	cBgBar          = lipgloss.Color("#141210")
+	cBgPanel        = lipgloss.Color("#1b1815")
+	cBarIdle        = lipgloss.Color("#6e648a") // visible slate-violet composer bar
+	cGreen          = lipgloss.Color("#7fb08a")
+	cBlue           = lipgloss.Color("#7fa8c9")
+	cViolet         = lipgloss.Color("#a89bc7")
+	cCodeBg         = lipgloss.Color("#201c18")
+	cSelBg          = lipgloss.Color("#2a251f")
+	styleUser       = lipgloss.NewStyle().Foreground(cInk).Bold(true)
+	styleAssistant  = lipgloss.NewStyle().Foreground(cInk)
+	styleTool       = lipgloss.NewStyle().Foreground(cTool)
+	styleToolActive = lipgloss.NewStyle().Foreground(cGreen)
+	styleNotice     = lipgloss.NewStyle().Foreground(cMuted)
+	styleError      = lipgloss.NewStyle().Foreground(cErr)
+	styleWorking    = lipgloss.NewStyle().Foreground(cAccent)
+	styleApproval   = lipgloss.NewStyle().Foreground(cGold).Bold(true)
+	styleStatus     = lipgloss.NewStyle().Foreground(cMuted).Background(cBgBar)
 
 	styleUserName      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleAssistantName = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
 	styleAssistantMeta = lipgloss.NewStyle().Foreground(cFaint)
 	styleErrorCard     = lipgloss.NewStyle().Foreground(cErr).Bold(true)
-	// Tool panels: full-width state backgrounds (pending/active vs done),
-	// with Ghost icons retained for scanability.
-	styleToolRowActive = lipgloss.NewStyle().Foreground(cInk).Background(cToolActiveBg)
-	styleToolRowDone   = lipgloss.NewStyle().Foreground(cToolSoft).Background(cToolDoneBg)
 	// opencode user bubble: agent-color bar, panel background, plain text.
 	styleUserBar   = lipgloss.NewStyle().Foreground(cAccent)
 	styleUserText  = lipgloss.NewStyle().Foreground(cInk)
