@@ -195,6 +195,23 @@ func newAgentTUI(loop agentRuntime, session string) *agentTUI {
 	ta.CharLimit = 0
 	ta.SetHeight(composerTextRows)
 	ta.ShowLineNumbers = false
+	// Transparent composer: the cursor is the only affordance. The stock
+	// textarea paints the cursor line with a background and tints placeholder
+	// grammar; both are stripped here so Ghost text sits on the terminal
+	// untouched, per the "only the cursor, transparent background" rule.
+	focused, blurred := textarea.DefaultStyles()
+	for _, s := range []*textarea.Style{&focused, &blurred} {
+		s.Base = lipgloss.NewStyle()
+		s.CursorLine = lipgloss.NewStyle()
+		s.CursorLineNumber = lipgloss.NewStyle()
+		s.EndOfBuffer = lipgloss.NewStyle()
+		s.LineNumber = lipgloss.NewStyle()
+		s.Placeholder = lipgloss.NewStyle().Foreground(cFaint)
+		s.Prompt = lipgloss.NewStyle()
+		s.Text = lipgloss.NewStyle().Foreground(cInk)
+	}
+	ta.FocusedStyle = focused
+	ta.BlurredStyle = blurred
 	ta.Focus()
 
 	return &agentTUI{
@@ -480,16 +497,6 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.KeyCtrlJ:
-		// Universal newline key family:
-		// terminals that swallow Shift+Enter still send Ctrl+J
-		// faithfully, and the trailing-\ escape keeps working too.
-		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(tea.KeyMsg{Type: tea.KeyEnter})
-		m.clampPalette()
-		m.layout()
-		return m, cmd
-
 	case tea.KeyUp:
 		if m.paletteVisible() {
 			// The select list wraps top↔bottom.
@@ -530,12 +537,6 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.completePalette(items[sel])
 		}
 		line := strings.TrimSpace(m.input.Value())
-		if msg.Alt || strings.HasSuffix(m.input.Value(), "\\") {
-			// allow newline
-			var cmd tea.Cmd
-			m.input, cmd = m.input.Update(msg)
-			return m, cmd
-		}
 		m.input.Reset()
 		if line == "" {
 			return m, nil
@@ -1849,13 +1850,23 @@ func (m *agentTUI) currentCtx() string {
 	return ctx
 }
 
-// footerSessionLine names the conversation and its topic context.
+// footerSessionLine names where you are in Ghost, with labels so the bare
+// words are never ambiguous: the topic context (Ghost's scoped memory and
+// tools) always shows, and the conversation only shows when it is a side
+// thread rather than the shared default (`main`). That keeps the line
+// meaningful instead of printing three unlabelled words.
 func (m *agentTUI) footerSessionLine() string {
-	line := shortSession(m.session)
+	var parts []string
 	if ctx := m.currentCtx(); ctx != "" {
-		line += " • " + ctx
+		parts = append(parts, "context "+ctx)
 	}
-	return styleFooter.Render(cellTruncate(line, m.width))
+	if s := shortSession(m.session); s != "main" {
+		parts = append(parts, "conversation "+s)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return styleFooter.Render(cellTruncate(strings.Join(parts, " · "), m.width))
 }
 
 // footerStatsLine is the session digest on the left, `(locality) model`
@@ -1901,7 +1912,7 @@ func (m *agentTUI) footerKeysLine() string {
 	case strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/"):
 		keys = "↑↓ pick · tab/enter complete · esc dismiss"
 	default:
-		keys = "enter send · ctrl+j newline · esc quit · ctrl+l model · / commands · tab complete"
+		keys = "esc quit · ctrl+l model · / commands · tab complete"
 	}
 	return styleFooterHint.Render(cellTruncate(keys, m.width))
 }

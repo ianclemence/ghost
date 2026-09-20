@@ -434,8 +434,13 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	if got := len(m.footerLines()); got != 3 {
 		t.Fatalf("footer must be 3 lines, got %d", got)
 	}
-	if !strings.Contains(m.footerKeysLine(), "enter send") {
-		t.Errorf("idle footer must name the send key, got %q", m.footerKeysLine())
+	// The idle hint names the escape routes and the command surface; Enter
+	// is the obvious send key and is deliberately not spelled out.
+	if strings.Contains(m.footerKeysLine(), "enter send") {
+		t.Errorf("idle footer must not spell out enter send, got %q", m.footerKeysLine())
+	}
+	if !strings.Contains(m.footerKeysLine(), "esc quit") {
+		t.Errorf("idle footer must name the quit key, got %q", m.footerKeysLine())
 	}
 }
 
@@ -928,20 +933,20 @@ func TestTUIToolProgressPassthrough(t *testing.T) {
 	}
 }
 
-// Ctrl+J inserts a newline (universal multiline key); Enter still sends.
-// The composer grows to maxPromptLines, then scrolls inside the box.
-func TestTUIMultilineComposer(t *testing.T) {
+// The composer is single-line: Ctrl+J no longer inserts a newline, and the
+// box stays a fixed height so typing never shifts the layout.
+func TestTUIComposerIsSingleLine(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("line one")
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlJ})
-	if got := m.input.Value(); got != "line one\n" {
-		t.Fatalf("ctrl+j must insert a newline, got %q", got)
+	if got := m.input.Value(); strings.Contains(got, "\n") {
+		t.Fatalf("ctrl+j must not insert a newline, got %q", got)
 	}
 	if len(f.turns) != 0 {
-		t.Fatalf("newline must not send, got %v", f.turns)
+		t.Fatalf("ctrl+j must not send, got %v", f.turns)
 	}
-	m.input.SetValue(strings.Repeat("x\n", 10))
+	m.input.SetValue(strings.Repeat("x", 200))
 	m.layout()
 	// The textarea holds only the text rows; promptBox paints the two
 	// rules around them (composerHeight = composerTextRows + 2).

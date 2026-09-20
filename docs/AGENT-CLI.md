@@ -47,7 +47,6 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 | Key | Action |
 |---|---|
 | Enter | Send. With the `/` palette open: complete the highlighted command and run it. While working: queue a steering message |
-| Ctrl+J | Newline in the composer (grows to 5 rows, then scrolls) |
 | Tab | Complete the selected `/command` without running (for adding arguments) |
 | Esc | Contextual cancel: close picker → dismiss approval (leaves pending) → dismiss palette → abort the running turn → close the TUI (the session persists, so quitting is safe) |
 | Ctrl+C | Clear the editor; twice quits |
@@ -69,20 +68,20 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 ── ⠋ working · 4s · 2 tools ───────────────────────────────
 
 ────────────────────────────────────────────────────────────
-main • personal
+context personal
 3 turns                                  (cloud) deepseek-flash
-enter send · ctrl+j newline · esc quit · ctrl+l model · / commands
+esc quit · ctrl+l model · / commands · tab complete
 ```
 
-- **No top header:** the transcript owns the full height. Model, session
-  and turn state live in the footer — nowhere else.
+- **No top header:** the transcript owns the full height. Context, state
+  and model live in the footer — nowhere else.
 - **Composer:** two full-width `─` rules with the text between them — no
-  side borders, no `❯` prefix, no placeholder. Fixed 3-row height, so the
-  rules and the editor can never disagree and typing never shifts the
-  layout — longer input scrolls inside the box. Multi-line with `Ctrl+J`.
-  While Ghost works, the live status (`spinner · elapsed · tools ·
-  queued`) embeds in the **top rule** and the rules take the Ghost-violet
-  working accent (slate-violet at idle).
+  side borders, no `❯` prefix, no placeholder. Transparent inside: only
+  the cursor is drawn, no line background. Single-line and fixed 3-row
+  height, so the rules and the editor can never disagree and typing never
+  shifts the layout. While Ghost works, the live status (`spinner ·
+  elapsed · tools · queued`) embeds in the **top rule** and the rules take
+  the Ghost-violet working accent (slate-violet at idle).
 - **Full conversation, grouped by day:** launching loads the whole shared
   transcript (paged, capped at 500 rows) and opens scrolled to the latest
   turn — iMessage/WhatsApp style, with `Today` / `Yesterday` / date
@@ -118,10 +117,11 @@ enter send · ctrl+j newline · esc quit · ctrl+l model · / commands
   (`→` read, `←` write, `✱` search, `%` fetch, `◈` web, `$` shell,
   `⚙` generic), spinner row while running, durations behind `/details`.
   Assistant turns carry `· duration`.
-- **Footer (3 transparent dim lines):** `session • context`; a session
-  digest (turns, contexts, queued) with the model in its locality color
-  right-aligned; contextual shortcuts naming the escape routes for the
-  current state.
+- **Footer (3 transparent dim lines):** the labelled topic context
+  (`context personal`, plus `conversation …` only for a side thread — the
+  shared default `main` is not spelled out); a session digest (turns,
+  contexts, queued) with the model in its locality color right-aligned;
+  contextual shortcuts naming the escape routes for the current state.
 - **Scroll:** mouse wheel + `PgUp/PgDn`; follows the bottom while working.
   Every region is edge to edge on the same canvas, with only text inset
   by one cell, so messages, the rules, and the footer all align.
