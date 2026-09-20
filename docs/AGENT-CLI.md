@@ -68,13 +68,13 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 ── ⠋ working · 4s · 2 tools ───────────────────────────────
 
 ────────────────────────────────────────────────────────────
-context personal
+Your AI on your machine — it remembers, acts with approval, and shows…
 3 turns                                  (cloud) deepseek-flash
-esc quit · ctrl+l model · / commands · tab complete
+/ commands · tab complete · ctrl+l model · esc quit
 ```
 
-- **No top header:** the transcript owns the full height. Context, state
-  and model live in the footer — nowhere else.
+- **No top header:** the transcript owns the full height. The tagline,
+  state and model live in the footer — nowhere else.
 - **Composer:** two full-width `─` rules with the text between them — no
   side borders, no `❯` prefix, no placeholder. Transparent inside: only
   the cursor is drawn, no line background. It is **responsive**: it opens
@@ -121,11 +121,11 @@ esc quit · ctrl+l model · / commands · tab complete
   (`→` read, `←` write, `✱` search, `%` fetch, `◈` web, `$` shell,
   `⚙` generic), spinner row while running, durations behind `/details`.
   Assistant turns carry `· duration`.
-- **Footer (3 transparent dim lines):** the labelled topic context
-  (`context personal`, plus `conversation …` only for a side thread — the
-  shared default `main` is not spelled out); a session digest (turns,
-  contexts, queued) with the model in its locality color right-aligned;
-  contextual shortcuts naming the escape routes for the current state.
+- **Footer (3 transparent dim lines):** the Ghost tagline; a session
+  digest (turns, contexts, queued) with the model in its locality color
+  right-aligned; contextual shortcuts ordered by frequency — the command
+  surface first and the exit route last (`/ commands · tab complete ·
+  ctrl+l model · esc quit`).
 - **Scroll:** mouse wheel + `PgUp/PgDn`; follows the bottom while working.
   Every region is edge to edge on the same canvas, with only text inset
   by one cell, so messages, the rules, and the footer all align.

@@ -419,9 +419,13 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	if strings.Contains(view, " prompt\n") || strings.Contains(view, "\n prompt ") {
 		t.Errorf("view must not label the prompt box, got %q", view)
 	}
-	// Footer carries session/model/state exactly once each.
-	if n := strings.Count(view, "cli:test"); n != 1 {
-		t.Errorf("session should appear once in the footer, found %d: %q", n, view)
+	// The footer no longer repeats internal identifiers; the model appears
+	// exactly once, on the stats line.
+	if n := strings.Count(view, "cli:test"); n != 0 {
+		t.Errorf("session id must not surface in the footer, found %d: %q", n, view)
+	}
+	if strings.Contains(view, "context personal") || strings.Contains(view, "context ") {
+		t.Errorf("footer must not print the context label, got %q", view)
 	}
 	if n := strings.Count(view, "deepseek-flash"); n != 1 {
 		t.Errorf("model should appear once in the footer, found %d: %q", n, view)
@@ -430,17 +434,24 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	if n := strings.Count(view, "switch thinking engine"); n != 1 {
 		t.Errorf("welcome card should appear once, found %d: %q", n, view)
 	}
-	// Footer is exactly 3 lines: session, stats/model, shortcuts.
+	// Footer is exactly 3 lines: tagline, stats/model, shortcuts.
 	if got := len(m.footerLines()); got != 3 {
 		t.Fatalf("footer must be 3 lines, got %d", got)
 	}
-	// The idle hint names the escape routes and the command surface; Enter
-	// is the obvious send key and is deliberately not spelled out.
-	if strings.Contains(m.footerKeysLine(), "enter send") {
-		t.Errorf("idle footer must not spell out enter send, got %q", m.footerKeysLine())
+	if !strings.Contains(m.footerTaglineLine(), "Your AI on your machine") {
+		t.Errorf("first footer line must carry the tagline, got %q", m.footerTaglineLine())
 	}
-	if !strings.Contains(m.footerKeysLine(), "esc quit") {
-		t.Errorf("idle footer must name the quit key, got %q", m.footerKeysLine())
+	// The idle hint lists the command surface first and the exit last, and
+	// never spells out the obvious Enter-to-send.
+	keys := m.footerKeysLine()
+	if strings.Contains(keys, "enter send") {
+		t.Errorf("idle footer must not spell out enter send, got %q", keys)
+	}
+	if !strings.HasPrefix(keys, "/ commands · tab complete") {
+		t.Errorf("idle keys must lead with the command surface, got %q", keys)
+	}
+	if !strings.HasSuffix(keys, "esc quit") {
+		t.Errorf("esc quit must come last, got %q", keys)
 	}
 }
 

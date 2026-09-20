@@ -1407,7 +1407,7 @@ func (m *agentTUI) welcomeCard() string {
 		return strings.Join(lines, "\n")
 	}
 	art := styleGhostArt.Render("▓▒░  👻  G H O S T  ░▒▓")
-	sub := styleNotice.Render(wrapFirst("Your AI on your machine — it remembers, acts with approval, and shows where it ran.", minInt(w-4, 72)))
+	sub := styleNotice.Render(wrapFirst(ghostTagline, minInt(w-4, 72)))
 	cmds := styleWelcomeCmds.Render("  /help      commands & keys\n  /model     switch thinking engine\n  /memory    what Ghost remembers\n  /routines  recurring work")
 	return center(art) + "\n" + center(sub) + "\n\n" + center(cmds)
 }
@@ -1875,43 +1875,23 @@ func (m *agentTUI) View() string {
 // ─── footer ─────────────────────────────────────────────────────────────
 // Three dim lines under the prompt box (ux-color-semantics: hints dim,
 // the model in its locality color, never decorative):
-// line 1: `session • context` — Ghost's conversations and topic scopes
-// (Ghost has no cwd/branch; memory is one truth).
+// line 1: the Ghost tagline (what the product is).
 // line 2: session digest left, `(locality) model` right-aligned.
 // line 3: contextual shortcut hints for the current state.
-// Model, session and turn state live here — nowhere else.
+// State and model live here — nowhere else.
 func (m *agentTUI) footerLines() []string {
-	return []string{m.footerSessionLine(), m.footerStatsLine(), m.footerKeysLine()}
+	return []string{m.footerTaglineLine(), m.footerStatsLine(), m.footerKeysLine()}
 }
 
-func (m *agentTUI) currentCtx() string {
-	ctx := ""
-	func() {
-		defer func() { _ = recover() }()
-		if m.loop != nil {
-			ctx = m.loop.CurrentContext(m.session)
-		}
-	}()
-	return ctx
-}
+// ghostTagline is Ghost's one-line promise, shown in the footer and the
+// welcome card so the product always says what it is.
+const ghostTagline = "Your AI on your machine — it remembers, acts with approval, and shows where it ran."
 
-// footerSessionLine names where you are in Ghost, with labels so the bare
-// words are never ambiguous: the topic context (Ghost's scoped memory and
-// tools) always shows, and the conversation only shows when it is a side
-// thread rather than the shared default (`main`). That keeps the line
-// meaningful instead of printing three unlabelled words.
-func (m *agentTUI) footerSessionLine() string {
-	var parts []string
-	if ctx := m.currentCtx(); ctx != "" {
-		parts = append(parts, "context "+ctx)
-	}
-	if s := shortSession(m.session); s != "main" {
-		parts = append(parts, "conversation "+s)
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return styleFooter.Render(cellTruncate(strings.Join(parts, " · "), m.width))
+// footerTaglineLine is the top footer line: the Ghost tagline, dim, on the
+// full canvas. It replaces the old session/context label so the footer says
+// what Ghost is rather than repeating internal identifiers.
+func (m *agentTUI) footerTaglineLine() string {
+	return styleFooter.Render(cellTruncate(ghostTagline, m.width))
 }
 
 // footerStatsLine is the session digest on the left, `(locality) model`
@@ -1957,7 +1937,9 @@ func (m *agentTUI) footerKeysLine() string {
 	case strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/"):
 		keys = "↑↓ pick · tab/enter complete · esc dismiss"
 	default:
-		keys = "esc quit · ctrl+l model · / commands · tab complete"
+		// Ordered by frequency: discover commands, complete, switch model,
+		// then the exit route last so it is never the first thing hit.
+		keys = "/ commands · tab complete · ctrl+l model · esc quit"
 	}
 	return styleFooterHint.Render(cellTruncate(keys, m.width))
 }
