@@ -60,7 +60,7 @@ async function loadHome(container) {
     GhostAPI.proxyGet('/v1/health'),
     GhostAPI.proxyGet('/v1/channels/status'),
     GhostAPI.proxyGet('/v1/activity?limit=20'),
-    GhostAPI.proxyGet('/v1/things'),
+    GhostAPI.proxyGet('/v1/routinefeed'),
     GhostAPI.proxyGet('/v1/memory/files'),
     GhostAPI.proxyGet('/v1/memory/self'),
     GhostAPI.proxyGet('/v1/pairing/devices'),
@@ -223,17 +223,17 @@ function extractMemoryCount(v) {
 }
 
 function extractJobCount(v) {
-  // /v1/things returns one normalized feed covering routines and scheduled
+  // /v1/routinefeed returns one normalized feed covering routines and scheduled
   // items. Fall back to legacy job/item shapes so a stale gateway still
   // renders something honest rather than an em dash.
-  if (v && Array.isArray(v.things)) return v.things.length;
+  if (v && Array.isArray(v.routines)) return v.routines.length;
   const arr = Array.isArray(v) ? v : (v && (v.jobs || v.items)) || [];
   return Array.isArray(arr) ? arr.length : 0;
 }
 
 function extractActiveJobCount(v) {
-  const arr = v && Array.isArray(v.things)
-    ? v.things
+  const arr = v && Array.isArray(v.routines)
+    ? v.routines
     : (Array.isArray(v) ? v : (v && (v.jobs || v.items)) || []);
   if (!Array.isArray(arr)) return 0;
   // The unified feed uses normalized states. Legacy scheduled shapes used

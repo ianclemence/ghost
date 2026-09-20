@@ -22,7 +22,7 @@ The user-visible surfaces are now correct and consistent:
 [preference ] Food     | Always orders oat milk lattes
 ```
 
-**Things Ghost does** (`/v1/things`) — what Ghost runs for you:
+**Things Ghost does** (`/v1/routinefeed`) — what Ghost runs for you:
 ```
 • Prepare my weekly design review brief  —  Every Monday at 9:00 AM
 ```

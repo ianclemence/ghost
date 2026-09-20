@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/routinefeed"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
-	"github.com/ianclemence/ghost/pkg/things"
 	_ "modernc.org/sqlite"
 )
 
 // TestBuildThingsFeedMergesRoutinesAndScheduled exercises the real write
 // path (routineService + scheduledService) and the real read path
-// (buildThingsFeed). It is the end-to-end guarantee behind /v1/things:
+// (buildRoutineFeed). It is the end-to-end guarantee behind /v1/routinefeed:
 // one owner-visible list, routines represented once, no second authority.
 func TestBuildThingsFeedMergesRoutinesAndScheduled(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "ghost.db"))
@@ -59,7 +59,7 @@ func TestBuildThingsFeedMergesRoutinesAndScheduled(t *testing.T) {
 		t.Fatalf("create reminder: %v", err)
 	}
 
-	feed := buildThingsFeed(svc)
+	feed := buildRoutineFeed(svc)
 	if len(feed) != 2 {
 		t.Fatalf("want 2 things (routine + reminder), got %d: %+v", len(feed), feed)
 	}
@@ -67,7 +67,7 @@ func TestBuildThingsFeedMergesRoutinesAndScheduled(t *testing.T) {
 	var sawRoutine, sawReminder bool
 	for _, th := range feed {
 		switch th.Kind {
-		case things.KindRoutine:
+		case routinefeed.KindRoutine:
 			sawRoutine = true
 			if th.Title != "Weekly brief" || th.What != "Prepare my weekly brief" {
 				t.Errorf("routine thing wrong: %+v", th)
@@ -75,7 +75,7 @@ func TestBuildThingsFeedMergesRoutinesAndScheduled(t *testing.T) {
 			if th.Schedule == "" || th.Schedule == "Manual" {
 				t.Errorf("routine schedule should be humanized: %q", th.Schedule)
 			}
-		case things.KindReminder:
+		case routinefeed.KindReminder:
 			sawReminder = true
 			if th.Title != "Stand up" {
 				t.Errorf("reminder thing wrong: %+v", th)
@@ -118,7 +118,7 @@ func TestBuildThingsFeedNoDuplicateRoutine(t *testing.T) {
 		t.Fatalf("create routine: %v", err)
 	}
 
-	feed := buildThingsFeed(svc)
+	feed := buildRoutineFeed(svc)
 	count := 0
 	for _, th := range feed {
 		if th.ID == r.ID {
@@ -159,8 +159,8 @@ func TestBuildThingsFeedDegradesWithoutScheduler(t *testing.T) {
 	}
 
 	// nil scheduler service: must still return the routine.
-	feed := buildThingsFeed(nil)
-	if len(feed) != 1 || feed[0].Kind != things.KindRoutine {
+	feed := buildRoutineFeed(nil)
+	if len(feed) != 1 || feed[0].Kind != routinefeed.KindRoutine {
 		t.Fatalf("want only the routine with nil scheduler, got %+v", feed)
 	}
 }

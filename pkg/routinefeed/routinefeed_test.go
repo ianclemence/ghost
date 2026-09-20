@@ -1,4 +1,4 @@
-package things
+package routinefeed
 
 import (
 	"testing"
@@ -42,7 +42,7 @@ func TestFromRoutine(t *testing.T) {
 
 func TestFromRoutineNil(t *testing.T) {
 	if got := FromRoutine(nil); got.ID != "" {
-		t.Errorf("nil routine should yield zero Thing, got %+v", got)
+		t.Errorf("nil routine should yield zero Item, got %+v", got)
 	}
 }
 
@@ -206,14 +206,14 @@ func TestListDeterministicOnTies(t *testing.T) {
 func TestSummary(t *testing.T) {
 	cases := []struct {
 		name string
-		th   Thing
+		th   Item
 		want string
 	}{
-		{"waiting", Thing{Schedule: "Every day", State: StateWaiting}, "Every day · waiting for you"},
-		{"paused", Thing{Schedule: "Every day", State: StatePaused}, "Every day · paused"},
-		{"ran", Thing{Schedule: "Every day", State: StateActive, RunCount: 3}, "Every day · ran 3×"},
-		{"plain", Thing{Schedule: "Every day", State: StateActive}, "Every day"},
-		{"manual", Thing{State: StateActive}, "Manual"},
+		{"waiting", Item{Schedule: "Every day", State: StateWaiting}, "Every day · waiting for you"},
+		{"paused", Item{Schedule: "Every day", State: StatePaused}, "Every day · paused"},
+		{"ran", Item{Schedule: "Every day", State: StateActive, RunCount: 3}, "Every day · ran 3×"},
+		{"plain", Item{Schedule: "Every day", State: StateActive}, "Every day"},
+		{"manual", Item{State: StateActive}, "Manual"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

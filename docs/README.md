@@ -117,7 +117,7 @@ Ghost's trust model rests on a small number of invariants:
 | Execution | Performs authorized work via implementations | `pkg/tools`, `pkg/providers`, `pkg/browser`, `pkg/computer`, `pkg/mcp` |
 | Evidence | Runtime proof of what executed | `pkg/capability`, `pkg/tools` |
 | Canonical Event | Durable runtime-owned record | `pkg/cevents` |
-| Memory / Activity / Things / Artifacts | Downstream behavior and outputs | `pkg/personalcontext`, `pkg/rag`, `pkg/activity`, `pkg/things`, `pkg/routines`, `pkg/scheduled`, `pkg/artifacts` |
+| Memory / Activity / Things / Artifacts | Downstream behavior and outputs | `pkg/personalcontext`, `pkg/rag`, `pkg/activity`, `pkg/routinefeed`, `pkg/routines`, `pkg/scheduled`, `pkg/artifacts` |
 
 Supporting subsystems: `pkg/connectedapp` (authenticated external systems),
 `pkg/credentials` (the credential boundary), `pkg/live` (browser/computer
@@ -136,7 +136,7 @@ Ghost keeps a small number of firm boundaries:
 - **One permission authority.** `pkg/permissions` holds the only Broker.
 - **One scheduler authority.** `pkg/scheduled` is the active scheduler. The
   retired JSON cron engine (`pkg/cron`) no longer exists. Owner surfaces read
-  the unified feed from `pkg/things` (`GET /v1/things`), which normalizes
+  the unified feed from `pkg/routinefeed` (`GET /v1/routinefeed`), which normalizes
   routines and scheduled items without owning storage or scheduling.
 - **One credential authority.** `pkg/credentials.Vault` owns credential
   lifecycle. No other package reads or writes credential storage directly.

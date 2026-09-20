@@ -1,5 +1,5 @@
-// Package things is Ghost's single product-facing model for "things Ghost
-// does for you". It is deliberately NOT a new storage layer.
+// Package routinefeed is Ghost's single product-facing model for the owner's
+// Routines. It is deliberately NOT a new storage layer.
 //
 // The domain already has exactly one scheduler authority (pkg/scheduled):
 // a routine IS a scheduled automation item with Source=="routine" plus a
@@ -8,10 +8,11 @@
 // internal taxonomy to file their own intent.
 //
 // This package collapses that split at the presentation boundary only. It
-// reads the existing models and returns one normalized list. No new tables,
-// no duplicated authority, no second scheduler. Shape inference is
-// deterministic and total, so the same input always yields the same Thing.
-package things
+// reads the existing models and returns one normalized list of feed items.
+// No new tables, no duplicated authority, no second scheduler. Shape
+// inference is deterministic and total, so the same input always yields the
+// same item.
+package routinefeed
 
 import (
 	"fmt"
@@ -23,8 +24,8 @@ import (
 	"github.com/ianclemence/ghost/pkg/scheduled"
 )
 
-// Kind is the user-facing shape of a Thing. Owners never choose it; Ghost
-// infers it from what the Thing actually is.
+// Kind is the user-facing shape of a Item. Owners never choose it; Ghost
+// infers it from what the Item actually is.
 type Kind string
 
 const (
@@ -39,7 +40,7 @@ const (
 )
 
 // State is the normalized lifecycle state, independent of which backing
-// model produced the Thing. It is intentionally identical to the words a
+// model produced the Item. It is intentionally identical to the words a
 // person would use.
 type State string
 
@@ -52,8 +53,8 @@ const (
 	StateCancelled State = "cancelled"
 )
 
-// Thing is the one product shape both the phone and the console render.
-type Thing struct {
+// Item is the one product shape both the phone and the console render.
+type Item struct {
 	ID        string     `json:"id"`
 	Title     string     `json:"title"`
 	What      string     `json:"what"` // the instruction / prompt / message body
@@ -73,13 +74,13 @@ type Thing struct {
 	KindReason string `json:"kind_reason,omitempty"`
 }
 
-// FromRoutine normalizes a routine product view into a Thing.
-func FromRoutine(r *routines.Routine) Thing {
+// FromRoutine normalizes a routine product view into a Item.
+func FromRoutine(r *routines.Routine) Item {
 	if r == nil {
-		return Thing{}
+		return Item{}
 	}
 	sched := humanRoutineSchedule(r)
-	return Thing{
+	return Item{
 		ID:        r.ID,
 		Title:     r.Name,
 		What:      displayInstruction(r.Instruction),
@@ -119,14 +120,14 @@ func displayInstruction(instruction string) string {
 	return s
 }
 
-// FromScheduled normalizes a raw scheduled item into a Thing. This is the
+// FromScheduled normalizes a raw scheduled item into a Item. This is the
 // path used for non-routine items (reminders, one-off automations, tasks).
-func FromScheduled(item *scheduled.ScheduledItem) Thing {
+func FromScheduled(item *scheduled.ScheduledItem) Item {
 	if item == nil {
-		return Thing{}
+		return Item{}
 	}
 	kind, reason := inferKind(item)
-	return Thing{
+	return Item{
 		ID:         item.ID,
 		Title:      item.Title,
 		What:       item.Action.Content,
@@ -236,9 +237,9 @@ func humanItemSchedule(item *scheduled.ScheduledItem) string {
 //
 // Ordering is deterministic: active items first, then by soonest next run,
 // then newest created, then ID. This makes the feed stable across calls.
-func List(routineList []*routines.Routine, scheduledList []*scheduled.ScheduledItem) []Thing {
+func List(routineList []*routines.Routine, scheduledList []*scheduled.ScheduledItem) []Item {
 	seen := make(map[string]bool, len(routineList))
-	out := make([]Thing, 0, len(routineList)+len(scheduledList))
+	out := make([]Item, 0, len(routineList)+len(scheduledList))
 
 	for _, r := range routineList {
 		if r == nil || seen[r.ID] {
@@ -266,7 +267,7 @@ func List(routineList []*routines.Routine, scheduledList []*scheduled.ScheduledI
 	return out
 }
 
-func less(a, b Thing) bool {
+func less(a, b Item) bool {
 	aActive := a.State == StateActive || a.State == StateWaiting
 	bActive := b.State == StateActive || b.State == StateWaiting
 	if aActive != bActive {
@@ -288,8 +289,8 @@ func less(a, b Thing) bool {
 
 // Summary is a one-line, user-safe description for compact surfaces (home
 // cards, notifications). It never contains credentials or message bodies
-// beyond the Thing's own instruction.
-func Summary(t Thing) string {
+// beyond the Item's own instruction.
+func Summary(t Item) string {
 	s := strings.TrimSpace(t.Schedule)
 	if s == "" {
 		s = "Manual"

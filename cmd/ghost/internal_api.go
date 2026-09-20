@@ -61,7 +61,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/telemetry"
-	"github.com/ianclemence/ghost/pkg/things"
+	"github.com/ianclemence/ghost/pkg/routinefeed"
 	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/turnlog"
 	"github.com/ianclemence/ghost/pkg/voice"
@@ -175,12 +175,12 @@ func routineService() (*routines.Service, error) {
 	return routines.New(apiDB, store)
 }
 
-// buildThingsFeed assembles the unified product feed from the two backing
+// buildRoutineFeed assembles the unified routines feed from the two backing
 // models. It is a pure read: it never mutates, never authorizes, and never
 // opens a new authority. Missing backends degrade to an empty slice rather
 // than failing the whole feed, so a partially-available Ghost still shows
 // whatever it can honestly show.
-func buildThingsFeed(scheduledService *scheduled.Service) []things.Thing {
+func buildRoutineFeed(scheduledService *scheduled.Service) []routinefeed.Item {
 	var routineList []*routines.Routine
 	if svc, err := routineService(); err == nil {
 		routineList = svc.List(ghostID(), 100)
@@ -194,7 +194,7 @@ func buildThingsFeed(scheduledService *scheduled.Service) []things.Thing {
 			scheduledList = items
 		}
 	}
-	return things.List(routineList, scheduledList)
+	return routinefeed.List(routineList, scheduledList)
 }
 
 func contextStore() (*contexts.Store, error) {
@@ -2343,19 +2343,19 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		}
 	}))
 
-	// /v1/things is the one product feed for "things Ghost does for you".
+	// /v1/routinefeed is the one product feed for the owner's Routines.
 	// It merges routines and scheduled items into a single normalized shape
 	// at the presentation boundary; storage and scheduling authority stay in
 	// pkg/scheduled and pkg/routines. Product surfaces read this instead of
 	// splitting the owner's intent across two lists.
-	mux.HandleFunc("/v1/things", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/routinefeed", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
 			"ok":     true,
-			"things": buildThingsFeed(scheduledService),
+			"routines": buildRoutineFeed(scheduledService),
 		})
 	}))
 

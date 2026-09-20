@@ -111,16 +111,16 @@ into the product; it no longer exists on any owner surface.
 
 ## One presentation boundary, not a new authority
 
-`pkg/things` is a **read-only normalization**, not a storage or scheduling
+`pkg/routinefeed` is a **read-only normalization**, not a storage or scheduling
 layer. It reads the existing models and returns one feed:
 
 ```
 pkg/routines (product view over scheduled automations)
 pkg/scheduled (the one scheduler authority)
         ↓
-     pkg/things   (normalize + infer shape + sort)
+     pkg/routinefeed   (normalize + infer shape + sort)
         ↓
-  GET /v1/things (one feed for every surface)
+  GET /v1/routinefeed (one feed for every surface)
 ```
 
 It owns no tables, no scheduler, no permission. Kind (`reminder`, `routine`,
@@ -131,7 +131,7 @@ a scheduled row. Human schedule phrasing reuses the scheduler's own humanizer
 so no surface can disagree about what `0 9 * * 1-5` means.
 
 The deep rules below still govern execution: a Thing is surfaced by
-`pkg/things`, but it wakes Ghost through the scheduler and re-enters the
+`pkg/routinefeed`, but it wakes Ghost through the scheduler and re-enters the
 normal capability, permission, and evidence path like any other work.
 
 ---

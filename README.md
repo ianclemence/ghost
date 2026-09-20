@@ -170,7 +170,7 @@ take care of Ghost.
   - **AI** — local and cloud intelligence, model management, routing
   - **Memory** — browse, search, and manage what Ghost remembers
   - **Conversations** — past chats with Ghost
-  - **Routines** — one list for everything Ghost runs for you: recurring instructions (“every Monday at 9…”), reminders, and scheduled tasks. You say it in chat; Ghost infers the shape. (Backed by `/v1/things`; the internal scheduler and routine models stay unified underneath.)
+  - **Routines** — one list for everything Ghost runs for you: recurring instructions (“every Monday at 9…”), reminders, and scheduled tasks. You say it in chat; Ghost infers the shape. (Backed by `/v1/routinefeed`; the internal scheduler and routine models stay unified underneath.)
   - **Skills** — installed capabilities, enable/disable, install from GitHub
 
   **Connections** — how Ghost reaches people and services:
@@ -591,7 +591,7 @@ Key HTTP endpoints the app uses on port `8766`:
 | `/v1/identity` | GET | Owner/Ghost identity |
 | `/v1/activity` | GET | User-safe activity |
 | `/v1/permissions/requests` + `/v1/permissions/resolve` | GET/POST | Pending approvals |
-| `/v1/things` | GET | Unified “things Ghost does for you” feed (routines + scheduled items) |
+| `/v1/routinefeed` | GET | Unified “things Ghost does for you” feed (routines + scheduled items) |
 | `/v1/routines` | GET/POST | Routines (product view over scheduled automations) |
 | `/v1/goals` | GET/POST | Goals |
 | `/v1/connected-apps` | GET/POST | Connected services |

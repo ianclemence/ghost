@@ -2,7 +2,7 @@
  *
  * One destination for routines, reminders, and scheduled actions. The owner
  * never files their intent as a "routine" or an "automation"; the gateway
- * merges both backing models at /v1/things and this surface renders one feed.
+ * merges both backing models at /v1/routinefeed and this surface renders one feed.
  * Creation happens in conversation; this screen reviews and steers.
  */
 'use strict';
@@ -43,7 +43,7 @@ async function loadThings(container) {
 
   let res;
   try {
-    res = await GhostAPI.proxyGet('/v1/things');
+    res = await GhostAPI.proxyGet('/v1/routinefeed');
   } catch (e) {
     if (!document.body.contains(container)) return;
     listEl.innerHTML = '';
