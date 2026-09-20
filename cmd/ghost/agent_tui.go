@@ -1625,7 +1625,9 @@ func renderAssistantBody(text string, width int) string {
 	}
 	var out []string
 	inCode := false
-	for _, ln := range strings.Split(text, "\n") {
+	lines := strings.Split(text, "\n")
+	for i := 0; i < len(lines); i++ {
+		ln := lines[i]
 		trim := strings.TrimSpace(ln)
 		if strings.HasPrefix(trim, "```") {
 			inCode = !inCode // conceal fences and language tags entirely
@@ -1635,6 +1637,17 @@ func renderAssistantBody(text string, width int) string {
 			for _, wl := range wrapText(ln, width) {
 				out = append(out, styleMDCodeBlock.Render(wl))
 			}
+			continue
+		}
+		// A table is a header row followed by a delimiter row (| --- |).
+		// Render it as a box-drawn grid, matching the opencode CLI.
+		if i+1 < len(lines) && isTableRow(trim) && isTableDelimiter(strings.TrimSpace(lines[i+1])) {
+			end := i + 2
+			for end < len(lines) && isTableRow(strings.TrimSpace(lines[end])) {
+				end++
+			}
+			out = append(out, renderTable(lines[i:end], width)...)
+			i = end - 1
 			continue
 		}
 		if level, rest, ok := parseHeading(trim); ok {
@@ -1693,6 +1706,278 @@ func renderAssistantBody(text string, width int) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// ─── markdown tables (opencode-style) ───────────────────────────────────
+// A table renders as a box-drawn grid: `┌─┬─┐` / `├─┼─┤` / `└─┴─┘`, a bold
+// header row, a separator between every row, and inline styling inside
+// cells. Columns size to their natural width and shrink to fit the
+// available space, wrapping long cells; if even that cannot fit, the raw
+// markdown is shown rather than a broken grid.
+
+// isTableRow reports whether a line is a pipe-delimited table row. A
+// single pipe is enough (a two-column table without outer pipes).
+func isTableRow(s string) bool {
+	return strings.Count(s, "|") >= 1
+}
+
+// isTableDelimiter reports whether a line is a markdown table delimiter
+// (e.g. `| --- | :--: |`), allowing alignment colons.
+func isTableDelimiter(s string) bool {
+	if !isTableRow(s) {
+		return false
+	}
+	cells := splitTableRow(s)
+	if len(cells) < 2 {
+		return false
+	}
+	for _, c := range cells {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			return false
+		}
+		for _, r := range c {
+			if r != '-' && r != ':' {
+				return false
+			}
+		}
+		if !strings.Contains(c, "-") {
+			return false
+		}
+	}
+	return true
+}
+
+// splitTableRow splits a pipe row into trimmed cells. The leading and
+// trailing pipes are optional and dropped.
+func splitTableRow(s string) []string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "|")
+	s = strings.TrimSuffix(s, "|")
+	parts := strings.Split(s, "|")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+// renderTable renders a parsed markdown table into box-drawn lines.
+func renderTable(block []string, width int) []string {
+	if len(block) < 2 {
+		return wrapText(strings.Join(block, "\n"), width)
+	}
+	header := splitTableRow(block[0])
+	numCols := len(header)
+	if numCols == 0 {
+		return wrapText(strings.Join(block, "\n"), width)
+	}
+	var rows [][]string
+	for _, ln := range block[2:] {
+		if strings.TrimSpace(ln) == "" {
+			continue
+		}
+		row := splitTableRow(ln)
+		// Normalize to the header's column count.
+		for len(row) < numCols {
+			row = append(row, "")
+		}
+		if len(row) > numCols {
+			row = row[:numCols]
+		}
+		rows = append(rows, row)
+	}
+
+	// Border overhead: "│ " + (n-1) * " │ " + " │" = 3n + 1.
+	borderOverhead := 3*numCols + 1
+	availableForCells := width - borderOverhead
+	if availableForCells < numCols {
+		// Too narrow for a stable grid: show the raw markdown.
+		return wrapText(strings.Join(block, "\n"), width)
+	}
+
+	// Natural (unwrapped) and minimum (longest word) column widths.
+	const maxUnbrokenWord = 30
+	natural := make([]int, numCols)
+	minWord := make([]int, numCols)
+	measure := func(cells []string) {
+		for i, c := range cells {
+			plain := stripInline(c)
+			if w := lipgloss.Width(plain); w > natural[i] {
+				natural[i] = w
+			}
+			if w := longestWordWidth(plain, maxUnbrokenWord); w > minWord[i] {
+				minWord[i] = w
+			}
+		}
+	}
+	measure(header)
+	for _, r := range rows {
+		measure(r)
+	}
+	for i := range minWord {
+		if minWord[i] < 1 {
+			minWord[i] = 1
+		}
+	}
+
+	widths := fitColumns(natural, minWord, availableForCells)
+	// Ghost's wrapText keeps long words whole, so a word wider than its
+	// column would burst the grid. If that happens, the table is too
+	// narrow to render cleanly — show the raw markdown instead.
+	for i, w := range widths {
+		if minWord[i] > w {
+			return wrapText(strings.Join(block, "\n"), width)
+		}
+	}
+
+	var out []string
+	var sb strings.Builder
+	borderLine := func(left, mid, right string) string {
+		sb.Reset()
+		sb.WriteString(left)
+		for i, w := range widths {
+			if i > 0 {
+				sb.WriteString(mid)
+			}
+			sb.WriteString(strings.Repeat("─", w))
+		}
+		sb.WriteString(right)
+		return styleMDTableBorder.Render(sb.String())
+	}
+
+	out = append(out, borderLine("┌─", "─┬─", "─┐"))
+	out = append(out, renderTableRowPadded(header, widths, styleMDTableHead)...)
+	out = append(out, borderLine("├─", "─┼─", "─┤"))
+	for ri, row := range rows {
+		out = append(out, renderTableRowPadded(row, widths, styleMDTableRow)...)
+		if ri < len(rows)-1 {
+			out = append(out, borderLine("├─", "─┼─", "─┤"))
+		}
+	}
+	out = append(out, borderLine("└─", "─┴─", "─┘"))
+	return out
+}
+
+// fitColumns sizes columns to fit availableForCells: natural widths when
+// they fit, otherwise each column keeps at least its longest word and the
+// remaining space is distributed proportionally (opencode's algorithm).
+func fitColumns(natural, minWord []int, availableForCells int) []int {
+	n := len(natural)
+	totalNatural := 0
+	minCells := 0
+	for i := range natural {
+		totalNatural += natural[i]
+		minCells += minWord[i]
+	}
+	if totalNatural <= availableForCells {
+		out := make([]int, n)
+		copy(out, natural)
+		return out
+	}
+	// If even the minimums overflow, distribute what we have by weight.
+	base := make([]int, n)
+	if minCells <= availableForCells {
+		copy(base, minWord)
+	} else {
+		for i := range base {
+			base[i] = 1
+		}
+		extra := availableForCells - n
+		if extra > 0 {
+			totalWeight := 0
+			for _, w := range minWord {
+				if w-1 > 0 {
+					totalWeight += w - 1
+				}
+			}
+			for i, w := range minWord {
+				if totalWeight > 0 && w-1 > 0 {
+					base[i] += (w - 1) * extra / totalWeight
+				}
+			}
+		}
+	}
+	// Grow toward natural widths with the leftover space.
+	allocated := 0
+	for _, w := range base {
+		allocated += w
+	}
+	remaining := availableForCells - allocated
+	for remaining > 0 {
+		grew := false
+		for i := 0; i < n && remaining > 0; i++ {
+			if base[i] < natural[i] {
+				base[i]++
+				remaining--
+				grew = true
+			}
+		}
+		if !grew {
+			break
+		}
+	}
+	return base
+}
+
+// renderTableRowPadded wraps each cell to its column width, pads it, and
+// joins the cells with the box's vertical separators. Header cells take the
+// header style; body cells take the row style.
+func renderTableRowPadded(cells []string, widths []int, style lipgloss.Style) []string {
+	wrapped := make([][]string, len(cells))
+	height := 1
+	for i := range cells {
+		wrapped[i] = wrapText(stripInline(cells[i]), maxInt(1, widths[i]))
+		if len(wrapped[i]) > height {
+			height = len(wrapped[i])
+		}
+	}
+	var out []string
+	for line := 0; line < height; line++ {
+		var sb strings.Builder
+		sb.WriteString(styleMDTableBorder.Render("│"))
+		for i := range cells {
+			var piece string
+			if line < len(wrapped[i]) {
+				piece = wrapped[i][line]
+			}
+			pad := widths[i] - lipgloss.Width(piece)
+			if pad < 0 {
+				pad = 0
+			}
+			sb.WriteString(" ")
+			sb.WriteString(style.Render(piece + strings.Repeat(" ", pad)))
+			sb.WriteString(" ")
+			sb.WriteString(styleMDTableBorder.Render("│"))
+		}
+		out = append(out, sb.String())
+	}
+	return out
+}
+
+// stripInline removes the markdown inline markers so widths are measured on
+// the visible text. Cell content is rendered plainly (the grid already
+// provides structure); this keeps measuring and painting in agreement.
+func stripInline(s string) string {
+	s = mdLinkRe.ReplaceAllString(s, "$1")
+	s = strings.ReplaceAll(s, "**", "")
+	s = strings.ReplaceAll(s, "`", "")
+	s = strings.ReplaceAll(s, "~~", "")
+	s = strings.Trim(s, "*_")
+	return s
+}
+
+// longestWordWidth is the widest single word in s, capped at max.
+func longestWordWidth(s string, max int) int {
+	best := 0
+	for _, w := range strings.Fields(s) {
+		if n := lipgloss.Width(w); n > best {
+			best = n
+		}
+	}
+	if best > max {
+		best = max
+	}
+	return best
 }
 
 // parseHeading returns the level and concealed text of an ATX heading.
@@ -2505,6 +2790,11 @@ var (
 	styleMDLinkURL   = lipgloss.NewStyle().Foreground(lipgloss.Color("#fab283")).Underline(true)
 	styleMDStrike    = lipgloss.NewStyle().Foreground(cMuted).Strikethrough(true)
 	styleMDHR        = lipgloss.NewStyle().Foreground(cMuted)
+	// Table grid: dim box borders, violet bold header, plain body cells
+	// (matching the opencode CLI's box-drawn tables).
+	styleMDTableBorder = lipgloss.NewStyle().Foreground(cFaint)
+	styleMDTableHead   = lipgloss.NewStyle().Foreground(lipgloss.Color("#9d7cd8")).Bold(true)
+	styleMDTableRow    = lipgloss.NewStyle().Foreground(cInk)
 )
 
 func agentHelpText() string {

@@ -130,6 +130,20 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   (h1 underlined), orange **bold**, sand *italics* and quotes, green code
   with no background, peach bullets, cyan ordered numbers and link text
   (underlined), green checked tasks.
+
+  **Tables** render as a box-drawn grid, like the opencode CLI: a
+  top/middle/bottom border, a violet bold header row, a separator between
+  rows, and inline styling inside cells. Columns size to their content and
+  shrink to fit the terminal, wrapping long cells; a table too narrow to
+  render cleanly falls back to raw markdown rather than a broken box.
+
+  ```
+  ┌─────────┬───────────────────────────────┬────────┐
+  │ Command │ Purpose                       │ Status │
+  ├─────────┼───────────────────────────────┼────────┤
+  │ /help   │ List commands and keybindings │ done   │
+  └─────────┴───────────────────────────────┴────────┘
+  ```
 - **Autocomplete:** the `/` menu opens **below** the composer — bare rows
   with a `→ ` pointer on the selected row (no highlight background), a
   padded command column, a dim description, and a `(n/total)` scroll

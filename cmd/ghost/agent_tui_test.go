@@ -1183,6 +1183,36 @@ func TestTUIMarkdownRoles(t *testing.T) {
 		t.Errorf("task markers must render, got %q", tasks)
 	}
 }
+
+// Markdown tables render as an opencode-style box-drawn grid: top/mid/
+// bottom borders, a bold header, and a separator between rows. Columns
+// wrap to fit, and a table too narrow to render falls back to raw markdown.
+func TestTUIMarkdownTable(t *testing.T) {
+	md := "| Command | Purpose |\n| --- | --- |\n| /help | List commands |\n| /model | Switch model |"
+	body := renderAssistantBody(md, 60)
+	for _, want := range []string{"┌", "┬", "┐", "├", "┼", "┤", "└", "┴", "┘", "│", "Command", "/help", "Switch model"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("table must contain %q, got %q", want, body)
+		}
+	}
+	// The delimiter row must be concealed (rendered as a border, not text).
+	if strings.Contains(body, "---") {
+		t.Errorf("the delimiter row must be concealed, got %q", body)
+	}
+	// The grid must not overflow the requested width.
+	for _, ln := range strings.Split(body, "\n") {
+		if lipgloss.Width(ln) > 60 {
+			t.Errorf("table line exceeds width 60: %q", ln)
+		}
+	}
+
+	// Too narrow for a stable grid: raw markdown, not a broken box.
+	narrow := renderAssistantBody("| ABCDEFGHIJ | KLMNOPQRST |\n| --- | --- |\n| x | y |", 12)
+	if strings.Contains(narrow, "┌") {
+		t.Errorf("a table too narrow must not draw a box, got %q", narrow)
+	}
+}
+
 func TestTUIToolDedupe(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
