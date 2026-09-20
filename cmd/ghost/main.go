@@ -19,8 +19,9 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/term"
-	"github.com/chzyer/readline"
+
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/auth"
@@ -458,6 +459,11 @@ func printCommandHelp(command string) {
 	case "verify":
 		fmt.Println("Usage: ghost verify")
 		fmt.Println("Run personal AI verification (real product checks).")
+	case "model":
+		fmt.Println("Usage: ghost model [list | use <provider:model|preset>]")
+		fmt.Println("With no arguments, shows the active model and presets.")
+		fmt.Println("  list              show the active model and available presets")
+		fmt.Println("  use <target>      switch to provider:model or a configured preset name")
 	case "relay":
 		relayHelp()
 	case "auth":
@@ -519,7 +525,7 @@ func printHelp() {
 	fmt.Println("  state       Export, import, inspect, backup, or prune Ghost State")
 	fmt.Println()
 	fmt.Println("Deploy")
-	fmt.Println("  update      Deploy the tagged release to the installed Ghost (refuses a dirty checkout; --force to override, --dry-run to preview)")
+	fmt.Println("  update      Deploy the tagged release to the installed Ghost (sudo; refuses a dirty checkout; --force, --dry-run)")
 	fmt.Println("  auto-update Run the auto-update daemon")
 	fmt.Println()
 	fmt.Println("Recover")
@@ -960,53 +966,14 @@ func agentCmd() {
 }
 
 func interactiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
-	prompt := fmt.Sprintf("%s You: ", logo)
-
-	rl, err := readline.NewEx(&readline.Config{
-		Prompt:          prompt,
-		HistoryFile:     filepath.Join(os.TempDir(), ".ghost_history"),
-		HistoryLimit:    100,
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
-	})
-
-	if err != nil {
-		fmt.Printf("Error initializing readline: %v\n", err)
-		fmt.Println("Falling back to simple input mode...")
+	m := newAgentTUI(agentLoop, sessionKey)
+	agentProgram = tea.NewProgram(m, tea.WithAltScreen())
+	defer func() { agentProgram = nil }()
+	if _, err := agentProgram.Run(); err != nil {
+		// A TUI failure (e.g. no TTY) must not strand the user: fall back to
+		// the simple line mode with an honest note.
+		fmt.Printf("Interactive UI unavailable (%v); using simple mode.\n", err)
 		simpleInteractiveMode(agentLoop, sessionKey)
-		return
-	}
-	defer rl.Close()
-
-	for {
-		line, err := rl.Readline()
-		if err != nil {
-			if err == readline.ErrInterrupt || err == io.EOF {
-				fmt.Println("\nGoodbye!")
-				return
-			}
-			fmt.Printf("Error reading input: %v\n", err)
-			continue
-		}
-
-		input := strings.TrimSpace(line)
-		if input == "" {
-			continue
-		}
-
-		if input == "exit" || input == "quit" {
-			fmt.Println("Goodbye!")
-			return
-		}
-
-		ctx := context.Background()
-		response, err := agentLoop.ProcessDirect(ctx, input, sessionKey)
-		if err != nil {
-			fmt.Printf("Error: %s\n", friendlyAgentError(err))
-			continue
-		}
-
-		fmt.Printf("\n%s %s\n\n", logo, response)
 	}
 }
 
@@ -2914,7 +2881,7 @@ func stateExportCmd(cfg *config.Config) {
 	}
 	if dest == "" {
 		fmt.Println("Usage: ghost state export <archive> [--include-secrets]")
-		return
+		os.Exit(2)
 	}
 
 	passphrase, err := readPassphrase("Passphrase (used to encrypt the archive): ", true)
@@ -2980,7 +2947,7 @@ func stateImportCmd(cfg *config.Config) {
 	}
 	if src == "" {
 		fmt.Println("Usage: ghost state import <archive> [--force] [--context <id>]")
-		return
+		os.Exit(2)
 	}
 
 	if force {
@@ -3029,7 +2996,7 @@ func stateInspectCmd(cfg *config.Config) {
 
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: ghost state inspect <archive>")
-		return
+		os.Exit(2)
 	}
 	src := os.Args[3]
 	passphrase, err := readPassphrase("Passphrase (to decrypt the archive): ", false)
