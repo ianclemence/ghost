@@ -69,6 +69,13 @@ type agentRuntime interface {
 	SetModel(target string) error
 	Steering() *agent.SteeringManager
 	ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string, media []string, onChunk func(string), onToolCall func(string, string)) (string, error)
+	// PendingApproval reports a durable permission request awaiting the owner.
+	PendingApproval(sessionKey string) (id, title, risk string, ok bool)
+	// Contexts: which topic space the session is in (Ghost's native answer to
+	// keeping complex topics separate, without forking memory).
+	CurrentContext(sessionKey string) string
+	ListContexts() []string
+	SwitchContext(sessionKey, contextID string) error
 }
 
 type agentTUI struct {
@@ -94,6 +101,16 @@ type agentTUI struct {
 	quitting  bool
 	history   []string // sent messages, for ↑ recall
 	histIndex int
+
+	// approval is set when a turn ends with a durable permission request;
+	// the editor is replaced by Allow once / Always allow / Deny choices.
+	approval *pendingApproval
+}
+
+type pendingApproval struct {
+	id    string
+	title string
+	risk  string
 }
 
 const agentPrompt = "› "
@@ -156,7 +173,15 @@ func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if text == "" && m.streaming == "" {
 				text = "(no response)"
 			}
-			m.append(entry{kind: entryAssistant, text: text})
+			// If the turn is blocked on a durable approval, show it as a card
+			// rather than a wall of text. The paused call resumes through the
+			// governed path when the owner answers.
+			if id, title, risk, ok := m.loop.PendingApproval(m.session); ok {
+				m.approval = &pendingApproval{id: id, title: title, risk: risk}
+				m.append(entry{kind: entryNotice, text: "needs your approval"})
+			} else {
+				m.append(entry{kind: entryAssistant, text: text})
+			}
 		}
 		m.streaming = ""
 		m.toolCount = 0
@@ -173,6 +198,28 @@ func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// While an approval is pending, the keyboard is the approval card: 1/2/3
+	// (or a/A/d) answer it. This is the only input the card accepts, so a
+	// stray keystroke cannot accidentally approve anything.
+	if m.approval != nil {
+		switch msg.String() {
+		case "1", "a":
+			return m.resolveApproval("allow once")
+		case "2", "A":
+			return m.resolveApproval("always allow")
+		case "3", "d":
+			return m.resolveApproval("deny")
+		case "ctrl+c", "esc":
+			// Dismissing is a deny-by-inaction: leave the request pending and
+			// return to normal input without claiming anything ran.
+			m.approval = nil
+			m.append(entry{kind: entryNotice, text: "left pending — Ghost will wait"})
+			m.renderTranscript()
+			return m, nil
+		}
+		return m, nil
+	}
+
 	switch msg.Type {
 	case tea.KeyCtrlC:
 		if strings.TrimSpace(m.input.Value()) != "" {
@@ -309,6 +356,40 @@ func (m *agentTUI) runTurn(text string) {
 	send(turnDoneMsg{text: resp, err: err})
 }
 
+// resolveApproval answers a pending approval by sending the recognized grant
+// phrase as a normal turn. This is deliberate: the reply travels through the
+// SAME governed resume path the console and mobile use (CheckApprovalReply),
+// so the CLI can never authorize around the broker. The card clears first so
+// the phrase is sent as an ordinary message, not re-interpreted as a key.
+func (m *agentTUI) resolveApproval(phrase string) (tea.Model, tea.Cmd) {
+	m.approval = nil
+	m.append(entry{kind: entryNotice, text: "you chose: " + phrase})
+	m.renderTranscript()
+	m.send(phrase)
+	return m, nil
+}
+
+// handleContext shows or switches the session's context. Contexts scope
+// memory and tools the way pi's branches scope a session — but without
+// forking Ghost's single durable memory, so "what Ghost knows" stays one
+// reconciled truth.
+func (m *agentTUI) handleContext(args []string) {
+	if len(args) == 0 {
+		cur := m.loop.CurrentContext(m.session)
+		all := m.loop.ListContexts()
+		m.append(entry{kind: entryNotice, text: fmt.Sprintf("context: %s\navailable: %s\nswitch with /context <name>", cur, strings.Join(all, ", "))})
+		m.renderTranscript()
+		return
+	}
+	name := strings.ToLower(strings.TrimSpace(args[0]))
+	if err := m.loop.SwitchContext(m.session, name); err != nil {
+		m.append(entry{kind: entryError, text: "context: " + err.Error() + " (see /context for available)"})
+	} else {
+		m.append(entry{kind: entryNotice, text: "context → " + m.loop.CurrentContext(m.session) + " (memory and tools are scoped to it)"})
+	}
+	m.renderTranscript()
+}
+
 // ─── slash commands ──────────────────────────────────────────────────────
 
 func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
@@ -340,6 +421,10 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		}
 	case "memory":
 		m.showMemory(args)
+	case "context":
+		m.handleContext(args)
+	case "rewind":
+		m.rewind()
 	case "routines":
 		m.showRoutines()
 	default:
@@ -402,6 +487,23 @@ func (m *agentTUI) showMemory(args []string) {
 
 func (m *agentTUI) showRoutines() {
 	m.send("What routines do you have scheduled for me?")
+}
+
+// rewind puts the most recent user message back in the editor so it can be
+// edited and resent. It is an editor convenience only: nothing in the stored
+// conversation or memory is changed, so the session stays one continuous
+// thread (no branching).
+func (m *agentTUI) rewind() {
+	for i := len(m.entries) - 1; i >= 0; i-- {
+		if m.entries[i].kind == entryUser {
+			m.input.SetValue(m.entries[i].text)
+			m.append(entry{kind: entryNotice, text: "rewound the last message into the editor"})
+			m.renderTranscript()
+			return
+		}
+	}
+	m.append(entry{kind: entryNotice, text: "nothing to rewind"})
+	m.renderTranscript()
 }
 
 // ─── transcript ──────────────────────────────────────────────────────────
@@ -486,12 +588,53 @@ func (m *agentTUI) View() string {
 	b.WriteString("\n")
 	b.WriteString(m.statusLine())
 	b.WriteString("\n")
-	b.WriteString(m.input.View())
+	if m.approval != nil {
+		b.WriteString(m.approvalCard())
+	} else {
+		b.WriteString(m.input.View())
+	}
 	return b.String()
+}
+
+// approvalCard is the inline permission prompt. It states the risk in owner
+// language and offers the three governed choices. It occupies the editor's
+// place so the decision is the only thing in front of the user.
+func (m *agentTUI) approvalCard() string {
+	title := m.approval.title
+	if title == "" {
+		title = "Ghost needs your approval"
+	}
+	var b strings.Builder
+	b.WriteString(styleApproval.Render(" ⚑ " + title))
+	b.WriteString("\n")
+	if note := approvalRiskNote(m.approval.risk); note != "" {
+		b.WriteString(styleNotice.Render("   " + note))
+		b.WriteString("\n")
+	}
+	b.WriteString(styleNotice.Render("   [1] allow once   [2] always allow   [3] deny"))
+	return b.String()
+}
+
+// approvalRiskNote mirrors the mobile permission card's risk language so the
+// CLI and the phone explain the stakes identically.
+func approvalRiskNote(risk string) string {
+	switch strings.ToLower(risk) {
+	case "high_impact":
+		return "This can be hard to undo, so Ghost stops for you every time."
+	case "consequential":
+		return "This acts on your behalf, so Ghost asks before doing it."
+	case "low_risk":
+		return "Ghost asks the first time; you can let it always do this."
+	default:
+		return ""
+	}
 }
 
 func (m *agentTUI) statusLine() string {
 	state := "ready"
+	if m.approval != nil {
+		state = "waiting for you"
+	}
 	if m.working {
 		state = "working"
 		if m.toolCount > 0 {
@@ -547,6 +690,7 @@ var (
 	styleNotice    = lipgloss.NewStyle().Foreground(cMuted)
 	styleError     = lipgloss.NewStyle().Foreground(cErr)
 	styleWorking   = lipgloss.NewStyle().Foreground(cAccent)
+	styleApproval  = lipgloss.NewStyle().Foreground(lipgloss.Color("#e8c06a")).Bold(true)
 	styleStatus    = lipgloss.NewStyle().Foreground(cMuted).Background(lipgloss.Color("#141210"))
 )
 
@@ -558,6 +702,8 @@ func agentHelpText() string {
 		"  /new               start a fresh conversation",
 		"  /session           show session and model",
 		"  /memory [query]    ask what Ghost remembers",
+		"  /context [name]    show or switch topic context (scoped memory/tools)",
+		"  /rewind            put the last message back in the editor",
 		"  /routines          what Ghost does for you",
 		"  /clear             clear the screen",
 		"  /quit              exit",

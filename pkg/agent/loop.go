@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -948,6 +949,69 @@ func (al *AgentLoop) Steering() *SteeringManager {
 // can reach interactive tools such as clarify.
 func (al *AgentLoop) Tools() *tools.ToolRegistry {
 	return al.tools
+}
+
+// PendingApproval returns the durable pending permission request for a session,
+// if one exists. The interactive CLI uses it to render an inline approval card
+// (allow once / always allow / deny). It is read-only: the choice itself goes
+// through the normal governed resume path, never around it.
+func (al *AgentLoop) PendingApproval(sessionKey string) (id, title, risk string, ok bool) {
+	if al == nil || al.governance == nil || al.governance.Broker == nil {
+		return "", "", "", false
+	}
+	req, found := al.governance.Broker.PendingForSession(sessionKey)
+	if !found || req == nil {
+		return "", "", "", false
+	}
+	t := req.Reason
+	if card, cok := req.Card(); cok {
+		t = card.Title
+	}
+	return req.ID, t, string(req.Risk), true
+}
+
+// CurrentContext returns the context id a session is currently in (personal by
+// default). Read-only.
+func (al *AgentLoop) CurrentContext(sessionKey string) string {
+	if al == nil || al.governance == nil || al.governance.Contexts == nil {
+		return "personal"
+	}
+	return al.governance.Contexts.SessionContext(sessionKey)
+}
+
+// ListContexts returns the available context ids (sorted, personal first).
+func (al *AgentLoop) ListContexts() []string {
+	if al == nil || al.governance == nil || al.governance.Contexts == nil {
+		return []string{"personal"}
+	}
+	ids := []string{}
+	for _, c := range al.governance.Contexts.List() {
+		ids = append(ids, c.ID)
+	}
+	sort.Strings(ids)
+	// personal is always first when present.
+	for i, id := range ids {
+		if id == "personal" {
+			ids = append([]string{"personal"}, append(ids[:i], ids[i+1:]...)...)
+			break
+		}
+	}
+	if len(ids) == 0 {
+		return []string{"personal"}
+	}
+	return ids
+}
+
+// SwitchContext moves a session into a context. Unknown contexts fail closed —
+// the session stays where it was rather than landing somewhere unexpected.
+func (al *AgentLoop) SwitchContext(sessionKey, contextID string) error {
+	if al == nil || al.governance == nil || al.governance.Contexts == nil {
+		if contextID == "personal" {
+			return nil
+		}
+		return fmt.Errorf("contexts are unavailable")
+	}
+	return al.governance.Contexts.SetSessionContext(sessionKey, contextID)
 }
 
 func (al *AgentLoop) Doctor() *doctor.Doctor {

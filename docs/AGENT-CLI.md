@@ -28,6 +28,8 @@ provenance are first-class here in a way a coding agent does not need.
 | `/new` | Start a fresh conversation |
 | `/session` | Show the current session key and turn count |
 | `/memory [query]` | Ask Ghost what it remembers (read-only) |
+| `/context [name]` | Show or switch topic context (scopes memory + tools) |
+| `/rewind` | Put the last message back in the editor to edit and resend |
 | `/routines` | List the things Ghost does for you |
 | `/clear` | Clear the screen (keeps the session) |
 | `/quit` | Exit (also Ctrl+C twice) |
@@ -53,6 +55,30 @@ deepseek-flash · cloud · cli:default · ready
 ```
 
 While working: `… · working · 3 tools`. On a held approval: `waiting for you`.
+
+## Approvals
+
+When Ghost needs permission for something consequential, the editor is
+replaced by an inline approval card:
+
+```
+⚑ Send this email?
+  This acts on your behalf, so Ghost asks before doing it.
+  [1] allow once   [2] always allow   [3] deny
+```
+
+The choice sends the recognized grant phrase as a normal turn, so it travels
+through the **same governed resume path** the console and mobile use — the CLI
+never authorizes around the broker. Dismissing the card (Esc) leaves the
+request pending; nothing is claimed to have run.
+
+## Contexts, not branches
+
+`/context` switches the session into a topic space that scopes memory and
+tools (for example `work`). This is Ghost's answer to keeping complex topics
+separate. It deliberately does **not** fork the conversation: Ghost keeps one
+durable, reconciled memory, so what Ghost knows stays a single truth rather
+than a tree of conflicting branches.
 
 ## Turning it off
 

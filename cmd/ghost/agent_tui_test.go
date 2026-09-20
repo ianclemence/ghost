@@ -4,6 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/ianclemence/ghost/pkg/agent"
 )
@@ -15,6 +18,9 @@ type fakeRuntime struct {
 	steering *agent.SteeringManager
 	turns    []string
 	setCalls []string
+	pending  *pendingApproval
+	context  string
+	contexts []string
 }
 
 func newFakeRuntime() *fakeRuntime {
@@ -29,6 +35,36 @@ func (f *fakeRuntime) SetModel(t string) error {
 	return nil
 }
 func (f *fakeRuntime) Steering() *agent.SteeringManager { return f.steering }
+
+// pending, when set, is reported by PendingApproval until cleared.
+func (f *fakeRuntime) PendingApproval(sessionKey string) (string, string, string, bool) {
+	if f.pending == nil {
+		return "", "", "", false
+	}
+	return f.pending.id, f.pending.title, f.pending.risk, true
+}
+func (f *fakeRuntime) CurrentContext(string) string {
+	if f.context == "" {
+		return "personal"
+	}
+	return f.context
+}
+func (f *fakeRuntime) ListContexts() []string {
+	if len(f.contexts) == 0 {
+		return []string{"personal"}
+	}
+	return f.contexts
+}
+func (f *fakeRuntime) SwitchContext(_, id string) error {
+	for _, c := range f.ListContexts() {
+		if c == id {
+			f.context = id
+			return nil
+		}
+	}
+	return errUnknownContext
+}
+
 func (f *fakeRuntime) ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string, media []string, onChunk func(string), onToolCall func(string, string)) (string, error) {
 	f.turns = append(f.turns, content)
 	if onChunk != nil {
@@ -175,4 +211,125 @@ func hasUser(m *agentTUI, sub string) bool {
 		}
 	}
 	return false
+}
+
+// A turn that ends blocked on a durable approval shows a card, not prose, and
+// records nothing as done.
+func TestTUIApprovalCardOnPending(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	f.pending = &pendingApproval{id: "req-1", title: "Send this email?", risk: "consequential"}
+	m.Update(turnDoneMsg{text: "waiting", err: nil})
+	if m.approval == nil {
+		t.Fatalf("a pending approval must raise the card")
+	}
+	if !hasNotice(m, "needs your approval") {
+		t.Errorf("transcript should note the approval")
+	}
+}
+
+// Choosing "always allow" sends the recognized phrase as a normal turn, so the
+// governed resume path runs — the CLI never authorizes around the broker.
+func TestTUIApprovalSendsGrantPhrase(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
+	m.resolveApproval("always allow")
+	if m.approval != nil {
+		t.Errorf("resolving must clear the card")
+	}
+	if !waitForTurns(f, 1) || f.turns[0] != "always allow" {
+		t.Fatalf("grant phrase must be sent as a turn, got %v", f.turns)
+	}
+}
+
+// While the card is up, keys 1/2/3 map to the three grants; other keys do
+// nothing (so a stray keystroke cannot approve).
+func TestTUIApprovalKeys(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
+	// A stray key must not resolve.
+	m.handleKey(keyMsgFor('x'))
+	if m.approval == nil {
+		t.Fatalf("a non-choice key must not resolve the approval")
+	}
+	m.handleKey(keyMsgFor('3'))
+	if m.approval != nil {
+		t.Errorf("key 3 must resolve (deny)")
+	}
+	if !waitForTurns(f, 1) || f.turns[0] != "deny" {
+		t.Fatalf("key 3 should send deny, got %v", f.turns)
+	}
+}
+
+func TestApprovalRiskNote(t *testing.T) {
+	if approvalRiskNote("high_impact") == "" || approvalRiskNote("consequential") == "" {
+		t.Errorf("known risks must have notes")
+	}
+	if approvalRiskNote("weird") != "" {
+		t.Errorf("unknown risk must be silent")
+	}
+}
+
+var errUnknownContext = fmtError("unknown context")
+
+func fmtError(s string) error { return &simpleErr{s} }
+
+type simpleErr struct{ s string }
+
+func (e *simpleErr) Error() string { return e.s }
+
+func keyMsgFor(r rune) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+}
+
+// waitForTurns waits briefly for the async turn goroutine to record its turn.
+func waitForTurns(f *fakeRuntime, n int) bool {
+	for i := 0; i < 100; i++ {
+		if len(f.turns) >= n {
+			return true
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	return false
+}
+
+func TestTUIContextShowAndSwitch(t *testing.T) {
+	f := newFakeRuntime()
+	f.contexts = []string{"personal", "work"}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/context")
+	if !hasNotice(m, "context: personal") {
+		t.Errorf("showing context should report the current one")
+	}
+	m.runCommand("/context work")
+	if f.CurrentContext("cli:test") != "work" {
+		t.Errorf("switch should move the session, got %q", f.CurrentContext("cli:test"))
+	}
+}
+
+func TestTUIContextUnknownFailsClosed(t *testing.T) {
+	f := newFakeRuntime()
+	f.contexts = []string{"personal"}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/context doesnotexist")
+	if f.CurrentContext("cli:test") != "personal" {
+		t.Errorf("unknown context must not move the session")
+	}
+	if !hasError(m, "context") {
+		t.Errorf("unknown context must be reported")
+	}
+}
+
+func TestTUIRewindRestoresLastUserMessage(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.append(entry{kind: entryUser, text: "first"})
+	m.append(entry{kind: entryAssistant, text: "reply"})
+	m.append(entry{kind: entryUser, text: "second"})
+	m.rewind()
+	if m.input.Value() != "second" {
+		t.Errorf("rewind should restore the last user message, got %q", m.input.Value())
+	}
 }
