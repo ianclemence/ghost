@@ -415,17 +415,21 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 					"message_id": messageID,
 				})
 
-				// Only forward mobile-channel messages and interactive/tool events
-				// to the app. Telegram and CLI responses must not appear in the
-				// mobile chat.
-				if msg.Channel != "mobile" {
-					meta, _ := msg.Metadata["type"].(string)
-					switch meta {
-					case "canvas_update", "cron_update", "clarify_request", "progress_event", "card_update":
-						// forwarded — interactive/tool events the app renders
-					default:
-						continue // skip — wrong channel
-					}
+				// One conversation, many surfaces: the app shows a turn because
+				// it belongs to its conversation, not because it arrived on the
+				// app's channel. A reply Ghost produced for a Telegram or CLI
+				// turn is still part of the shared conversation (`main`), so it
+				// must reach the app live. The payload keeps `channel` so the
+				// app can note the surface. Interactive/tool events are always
+				// forwarded.
+				metaType, _ := msg.Metadata["type"].(string)
+				interactive := false
+				switch metaType {
+				case "canvas_update", "cron_update", "clarify_request", "progress_event", "card_update", "surface_update":
+					interactive = true
+				}
+				if !interactive && !conversationEvent(msg) {
+					continue // routine/telemetry event outside the conversation
 				}
 
 				payload := map[string]interface{}{
@@ -460,6 +464,26 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 			}
 		}
 	}
+}
+
+// conversationEvent reports whether an outbound message belongs to the
+// shared conversation. The conversation, not the channel, decides whether a
+// surface shows a turn: a main-conversation message (or one whose type is a
+// chat message) is part of every surface's transcript, while routine/telemetry
+// events from other subsystems are not.
+func conversationEvent(msg bus.OutboundMessage) bool {
+	switch t, _ := msg.Metadata["type"].(string); t {
+	case "assistant_message", "user_message", "":
+		// fall through to the session check
+	default:
+		return false
+	}
+	sid, _ := msg.Metadata["session_id"].(string)
+	if sid == "" {
+		// No session tag: treat channel-based chat surfaces as conversation.
+		return msg.Channel == "mobile" || msg.Channel == "web" || msg.Channel == "cli"
+	}
+	return canonicalSessionID(sid) == MainSessionID
 }
 
 const defaultInternalAPIPort = 8766
@@ -787,6 +811,9 @@ type Message struct {
 	Timestamp int64  `json:"timestamp"`
 	MediaType string `json:"media_type,omitempty"`
 	MediaURL  string `json:"media_url,omitempty"`
+	// Channel is the surface the message arrived on (mobile, cli, telegram,
+	// voice, …). Provenance only — every surface shares one conversation.
+	Channel string `json:"channel,omitempty"`
 }
 
 type HistoryResponse struct {
@@ -2924,6 +2951,14 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				continue
 			}
 			m.Timestamp = createdAt.Unix()
+			if len(metaJSON) > 0 {
+				var meta map[string]interface{}
+				if json.Unmarshal(metaJSON, &meta) == nil {
+					if ch, ok := meta["source_channel"].(string); ok {
+						m.Channel = ch
+					}
+				}
+			}
 			messages = append(messages, m)
 		}
 

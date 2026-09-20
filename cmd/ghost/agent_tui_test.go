@@ -26,6 +26,7 @@ type fakeRuntime struct {
 	pending  *pendingApproval
 	context  string
 	contexts []string
+	history  map[string][]historyEntry // session key -> transcript rows
 }
 
 func newFakeRuntime() *fakeRuntime {
@@ -34,6 +35,10 @@ func newFakeRuntime() *fakeRuntime {
 
 func (f *fakeRuntime) GetCurrentModel() string { return f.model }
 func (f *fakeRuntime) ModelPresets() []string  { return f.presets }
+
+func (f *fakeRuntime) LoadHistory(sessionKey string) ([]historyEntry, error) {
+	return f.history[sessionKey], nil
+}
 func (f *fakeRuntime) SetModel(t string) error {
 	f.setCalls = append(f.setCalls, t)
 	f.model = t
@@ -119,6 +124,55 @@ func TestTUIUnknownCommandIsHonest(t *testing.T) {
 	m.runCommand("/frobnicate")
 	if !hasError(m, "unknown command") {
 		t.Errorf("unknown command must be reported")
+	}
+}
+
+// Ghost is one conversation: /new opens a clearly-labelled side thread, and
+// /main returns to the shared conversation and reloads its rows.
+func TestTUINewOpensSideThreadAndMainReturns(t *testing.T) {
+	f := newFakeRuntime()
+	f.history = map[string][]historyEntry{
+		mainConversationKey: {
+			{Role: "user", Content: "shared hello"},
+			{Role: "assistant", Content: "shared reply"},
+		},
+	}
+	m := readyForTest(newAgentTUI(f, mainConversationKey))
+
+	m.runCommand("/new")
+	if m.session == mainConversationKey {
+		t.Fatal("/new must open a side thread, not stay on main")
+	}
+	if !hasNotice(m, "side thread") {
+		t.Errorf("/new must say it opened a side thread, entries=%v", m.entries)
+	}
+	if hasNotice(m, "fresh conversation") {
+		t.Errorf("/new must not claim a fresh conversation (Ghost is one conversation)")
+	}
+
+	m.runCommand("/main")
+	if m.session != mainConversationKey {
+		t.Fatalf("/main must return to %q, got %q", mainConversationKey, m.session)
+	}
+	if !hasUser(m, "shared hello") {
+		t.Errorf("/main must reload the shared conversation, entries=%v", m.entries)
+	}
+}
+
+// /session reports where this terminal is, and is honest that a side thread
+// is separate from the shared conversation.
+func TestTUISessionReportsSharedVsThread(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, mainConversationKey))
+	m.runCommand("/session")
+	if !hasNotice(m, "shared conversation") {
+		t.Errorf("/session on main must say it is the shared conversation, entries=%v", m.entries)
+	}
+
+	m2 := readyForTest(newAgentTUI(f, "cli:thread"))
+	m2.runCommand("/sessions")
+	if !hasNotice(m2, "side thread") {
+		t.Errorf("/sessions must flag a side thread, entries=%v", m2.entries)
 	}
 }
 

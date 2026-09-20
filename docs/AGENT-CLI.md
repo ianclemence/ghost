@@ -27,14 +27,33 @@ routines, and provenance are first-class here.
 | `/help` | List commands and keybindings |
 | `/model [name]` | Show or switch the active model (presets, connections, keyed providers) |
 | `/details` | Toggle tool step details (durations) |
-| `/new` | Start a fresh conversation |
-| `/sessions` | Show the current session key and turn count |
-| `/memory [query]` | Ask Ghost what it remembers (read-only) |
+| `/new` | Open a **side thread** — a tangent, not the shared conversation |
+| `/main` | Return to the shared conversation (reloads its rows) |
+| `/session` | Where this terminal is, the model, and turn count |
+| `/memory [query]` | Ask Ghost, in a turn, what it remembers |
 | `/context [name]` | Show or switch topic context (scopes memory + tools) |
 | `/rewind` | Put the last message back in the editor to edit and resend |
-| `/routines` | List the things Ghost does for you |
-| `/clear` | Clear the screen (keeps the session) |
+| `/routines` | Ask Ghost, in a turn, what it has scheduled |
+| `/clear` | Clear the screen (keeps the conversation) |
 | `/quit` | Exit (also Ctrl+C twice) |
+
+`/memory` and `/routines` are **turns**: they ask Ghost (a model call),
+not a local read, and they render the answer in the transcript. Everything
+else is instant and local.
+
+## One conversation, many surfaces
+
+Ghost has **one conversation**. Every surface — the terminal, the mobile
+app, the web console, and the owner's messaging channels (Telegram, Slack,
+WhatsApp, SMS, Discord, voice, …) — reads and writes the same thread. The
+surface a turn came from is **provenance**, not identity: it is recorded on
+the turn and on the message (`source_channel`), and the read history
+carries a `channel` field so a client can note "via Telegram", but it never
+splits the conversation.
+
+`/new` opens a *side thread* for a tangent; `/main` returns to the shared
+conversation. Side threads are visible to any surface that asks for them,
+but the home conversation is the one every surface lands on by default.
 
 ## Logs
 
@@ -183,18 +202,28 @@ its key exists — no preset entry required). Unkeyed presets still show,
 marked with why they can't serve. Switching accepts a preset name, a
 connection name, or `provider:model`.
 
-## One shared conversation (terminal + app)
+## One shared conversation (terminal + app + channels)
 
-The terminal and the app are two windows onto the same conversation, not
-two chats that happen to share a database:
+The terminal, the app, the web console, and the owner's messaging channels
+are all windows onto the same conversation, not separate chats that happen
+to share a database. A message the owner sends on Telegram lands in `main`
+next to a message typed in the terminal; a reply Ghost produced for the
+terminal is visible to the app, tagged with its surface. Channel is
+provenance; the conversation is one.
 
-- The default session is `main` everywhere: terminal, app, and
-  gateway resolve to the same rows. (Pre-unification names
-  `mobile:default` and `cli:default` canonicalize onto `main` at the
-  gateway edge and in the app, and a database migration folds their
-  stored rows — so upgrades never strand history.) `-s` / `/new` still
-  open side threads (listed by `/v1/sessions`), but the home
-  conversation is shared.
+- The default session is `main` everywhere: terminal, app, web, and
+  every owner messaging channel resolve to the same rows. (Pre-unification
+  names `mobile:default` and `cli:default` canonicalize onto `main` at the
+  gateway edge and in the app, and a database migration folds their stored
+  rows — so upgrades never strand history.) `-s` / `/new` still open side
+  threads (listed by `/v1/sessions`), but the home conversation is shared.
+- An allowlisted channel sender talks into `main`; the inbound message
+  keeps its `channel`, `chat_id`, and `sender_id` so the reply routes back
+  to the right chat, and the turn records the surface as provenance.
+- The live app stream forwards a turn when it belongs to the shared
+  conversation (by session), not merely when it arrived on the app's own
+  channel — so a reply Ghost produced for another surface still reaches the
+  app live, labelled with where it came from.
 - Starting the TUI backfills the latest shared transcript (merging any
   pre-migration legacy rows chronologically), so it opens where the app
   left off — the welcome card only appears for a genuinely new `main`.

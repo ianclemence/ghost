@@ -2,7 +2,6 @@ package channels
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/bus"
@@ -82,13 +81,32 @@ func (c *BaseChannel) IsAllowed(senderID string) bool {
 	return false
 }
 
+// SharedConversationKey is the one conversation every surface talks into:
+// the terminal, the mobile app, the web console, and the owner's messaging
+// channels all read and write the same thread. The *surface* a message came
+// from is provenance (recorded on the turn and in message metadata), never
+// a different conversation.
+const SharedConversationKey = "main"
+
 func (c *BaseChannel) HandleMessage(senderID, chatID, content string, media []string, metadata map[string]string) {
 	if !c.IsAllowed(senderID) {
 		return
 	}
 
-	// Build session key: channel:chatID
-	sessionKey := fmt.Sprintf("%s:%s", c.name, chatID)
+	// One conversation, many surfaces. An allowlisted sender — Ghost's
+	// owner — talks into the shared conversation no matter which channel
+	// they used. The channel, chat and sender ride along on the message so
+	// the reply still goes back to the right place and the turn keeps its
+	// provenance; they are not part of the conversation identity.
+	sessionKey := SharedConversationKey
+
+	// Record where this turn came from without changing the conversation.
+	if metadata == nil {
+		metadata = map[string]string{}
+	}
+	if metadata["source_channel"] == "" {
+		metadata["source_channel"] = c.name
+	}
 
 	msg := bus.InboundMessage{
 		Channel:    c.name,

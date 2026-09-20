@@ -34,6 +34,9 @@ func (s *SQLiteStore) AddFullMessage(sessionKey string, msg providers.Message) {
 		"tool_calls":   msg.ToolCalls,
 		"tool_call_id": msg.ToolCallID,
 	}
+	if msg.SourceChannel != "" {
+		meta["source_channel"] = msg.SourceChannel
+	}
 	metaJSON, _ := json.Marshal(meta)
 
 	content := msg.Content
@@ -80,6 +83,9 @@ func (s *SQLiteStore) GetHistory(key string) []providers.Message {
 
 		if val, ok := meta["tool_call_id"].(string); ok {
 			msg.ToolCallID = val
+		}
+		if val, ok := meta["source_channel"].(string); ok {
+			msg.SourceChannel = val
 		}
 
 		if tc, ok := meta["tool_calls"]; ok {

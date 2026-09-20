@@ -1051,6 +1051,16 @@ func (al *AgentLoop) ListContexts() []string {
 	return ids
 }
 
+// History returns a conversation's stored messages, oldest first. Used by
+// surfaces that need to re-display a thread (for example the terminal
+// returning to the shared conversation after a side thread).
+func (al *AgentLoop) History(sessionKey string) []providers.Message {
+	if al == nil || al.sessions == nil {
+		return nil
+	}
+	return al.sessions.GetHistory(sessionKey)
+}
+
 // SwitchContext moves a session into a context. Unknown contexts fail closed —
 // the session stays where it was rather than landing somewhere unexpected.
 func (al *AgentLoop) SwitchContext(sessionKey, contextID string) error {
@@ -1113,7 +1123,8 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 						ChatID:  msg.ChatID,
 						Content: response,
 						Metadata: map[string]interface{}{
-							"type": "assistant_message",
+							"type":       "assistant_message",
+							"session_id": msg.SessionKey,
 						},
 					})
 				}
@@ -1199,6 +1210,18 @@ func (al *AgentLoop) CommandDefinitions() []commands.Definition {
 		return nil
 	}
 	return al.commands.Definitions()
+}
+
+// surfaceChannel returns the owner-facing surface name to record as message
+// provenance. Non-surface internal flows (system, subagent, heartbeat, cron)
+// return "" so they are not labelled as a place the owner spoke from.
+func surfaceChannel(channel string) string {
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "", "system", "subagent", "heartbeat", "cron":
+		return ""
+	default:
+		return channel
+	}
 }
 
 // RecordLastChannel records the last active channel for this workspace.
@@ -2472,7 +2495,14 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// 3. Save user message to session (only if not a slash command)
 	isSlashCommand := strings.HasPrefix(opts.UserMessage, "/")
 	if !isSlashCommand {
-		al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
+		// Persist the originating surface as provenance. The message lives
+		// in the one shared conversation; the channel only notes where the
+		// owner spoke from (mobile, cli, telegram, voice, …).
+		al.sessions.AddFullMessage(opts.SessionKey, providers.Message{
+			Role:          "user",
+			Content:       opts.UserMessage,
+			SourceChannel: surfaceChannel(opts.Channel),
+		})
 		// Track user turn for memory nudge
 		al.nudge.OnUserTurn(opts.SessionKey)
 		// Derive Personal Context from the persisted user message. Runs after
@@ -2553,7 +2583,8 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			ChatID:  opts.ChatID,
 			Content: finalContent,
 			Metadata: map[string]interface{}{
-				"type": "assistant_message",
+				"type":       "assistant_message",
+				"session_id": opts.SessionKey,
 			},
 		})
 	}

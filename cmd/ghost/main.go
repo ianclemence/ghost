@@ -1000,7 +1000,7 @@ func agentCmd() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		interactiveMode(agentLoop, sessionKey, debugLog, nil)
+		interactiveMode(embeddedRuntime{agentLoop}, sessionKey, debugLog, nil)
 	}
 }
 

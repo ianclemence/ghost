@@ -42,6 +42,12 @@ type Message struct {
 	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
 	ToolCallID       string        `json:"tool_call_id,omitempty"`
 	CacheControl     *CacheControl `json:"cache_control,omitempty"`
+	// SourceChannel records which surface a message came in on (mobile,
+	// cli, telegram, voice, …). It is provenance, not conversation
+	// identity: every surface shares one conversation, and this field only
+	// notes where a turn originated. Empty for messages Ghost produced
+	// without an external surface.
+	SourceChannel string `json:"source_channel,omitempty"`
 }
 
 type CacheControl struct {

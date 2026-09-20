@@ -108,6 +108,10 @@ type agentRuntime interface {
 	CurrentContext(sessionKey string) string
 	ListContexts() []string
 	SwitchContext(sessionKey, contextID string) error
+	// LoadHistory backfills one conversation so the terminal can switch
+	// threads (e.g. back to the shared main conversation) and show the
+	// same rows every other surface sees.
+	LoadHistory(sessionKey string) ([]historyEntry, error)
 }
 
 type agentTUI struct {
@@ -184,6 +188,11 @@ type toolStep struct {
 }
 
 const agentPrompt = "› "
+
+// mainConversationKey is the one shared conversation every surface talks
+// into. It aliases MainSessionID (internal_api.go) so the two can never
+// drift: the TUI, the gateway, and every channel resolve to the same key.
+const mainConversationKey = MainSessionID
 
 func newAgentTUI(loop agentRuntime, session string) *agentTUI {
 	ta := textarea.New()
@@ -691,12 +700,13 @@ var paletteCommands = []paletteItem{
 	{"help", "list commands and keys"},
 	{"model", "show or switch model"},
 	{"details", "toggle tool step details"},
-	{"new", "fresh conversation"},
-	{"sessions", "session and turn count"},
+	{"new", "open a side thread"},
+	{"main", "return to the shared conversation"},
+	{"session", "where this terminal is + model"},
 	{"memory", "ask what Ghost remembers"},
 	{"context", "topic space (scoped memory/tools)"},
 	{"rewind", "edit and resend last message"},
-	{"routines", "what Ghost does for you"},
+	{"routines", "ask what Ghost has scheduled"},
 	{"clear", "clear the screen"},
 	{"quit", "exit"},
 }
@@ -1038,16 +1048,29 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		m.toolHistory = nil
 		m.streaming = ""
 		m.renderTranscript()
-	case "new":
+	case "new", "thread":
+		// Ghost is one conversation. /new does not wipe it — it opens a side
+		// thread so a tangent never pollutes the main thread.
 		m.session = "cli:" + fmt.Sprintf("%d", time.Now().UnixNano())
 		m.entries = nil
 		m.toolHistory = nil
 		m.streaming = ""
 		m.turnCount = 0
-		m.append(entry{kind: entryNotice, text: "new conversation: " + m.session})
+		m.append(entry{kind: entryNotice, text: "side thread opened: " + m.session + "\nthis is a separate thread; /main returns to the shared conversation"})
+		m.renderTranscript()
+	case "main":
+		// Return to the one shared conversation (the default every surface
+		// talks into).
+		m.session = mainConversationKey
+		m.entries = nil
+		m.toolHistory = nil
+		m.streaming = ""
+		m.turnCount = 0
+		m.append(entry{kind: entryNotice, text: "back to the shared conversation: " + m.session})
+		m.loadHistory()
 		m.renderTranscript()
 	case "session", "sessions":
-		m.append(entry{kind: entryNotice, text: fmt.Sprintf("session: %s · model: %s · %d turns", m.session, m.loop.GetCurrentModel(), m.turnCount)})
+		m.showSession()
 	case "model", "models":
 		if len(args) == 0 {
 			m.openModelModal()
@@ -1151,6 +1174,54 @@ func (m *agentTUI) setModel(name string) {
 		m.append(entry{kind: entryNotice, text: "model → " + m.loop.GetCurrentModel()})
 	}
 	m.renderTranscript()
+}
+
+// loadHistory refills the transcript from the current conversation's stored
+// rows, used after switching threads so the terminal shows the same rows
+// every other surface sees.
+func (m *agentTUI) loadHistory() {
+	entries, err := m.loop.LoadHistory(m.session)
+	if err != nil {
+		m.append(entry{kind: entryNotice, text: "could not load this conversation's history: " + friendlyAgentError(err)})
+		return
+	}
+	m.entries = nil
+	for _, h := range entries {
+		at := time.Unix(h.Timestamp, 0)
+		if h.Timestamp <= 0 {
+			at = time.Time{}
+		}
+		switch h.Role {
+		case "user":
+			m.entries = append(m.entries, entry{kind: entryUser, text: h.Content, at: at})
+		case "assistant":
+			m.entries = append(m.entries, entry{kind: entryAssistant, text: h.Content, at: at})
+		}
+	}
+	m.turnCount = 0
+	for _, e := range m.entries {
+		if e.kind == entryAssistant {
+			m.turnCount++
+		}
+	}
+}
+
+// showSession reports where this terminal is in Ghost's single conversation
+// model: the shared conversation, or a named side thread — plus model,
+// turns, and the topic contexts available.
+func (m *agentTUI) showSession() {
+	where := "the shared conversation (every surface talks here)"
+	if m.session != mainConversationKey {
+		where = "a side thread — /main returns to the shared conversation"
+	}
+	lines := []string{
+		"conversation: " + m.session + " — " + where,
+		fmt.Sprintf("model: %s · %d turn%s", m.loop.GetCurrentModel(), m.turnCount, plural(m.turnCount)),
+	}
+	if ctxs := m.loop.ListContexts(); len(ctxs) > 0 {
+		lines = append(lines, "context: "+m.loop.CurrentContext(m.session)+" ("+strings.Join(ctxs, ", ")+")")
+	}
+	m.append(entry{kind: entryNotice, text: strings.Join(lines, "\n")})
 }
 
 func (m *agentTUI) showMemory(args []string) {
@@ -2396,17 +2467,18 @@ var (
 
 func agentHelpText() string {
 	return strings.Join([]string{
-		"Commands  (/ + Tab completes, ↑/↓ picks)",
+		"Commands  (/ + Tab completes, ↑/↓ picks · every surface shares one conversation)",
 		"  /help              this help",
 		"  /model [name]      show or switch the active model",
 		"  /details           toggle tool step details",
-		"  /new               start a fresh conversation",
-		"  /sessions          show session and turn count",
-		"  /memory [query]    ask what Ghost remembers",
+		"  /new               open a side thread (a tangent, not the main one)",
+		"  /main              return to the shared conversation",
+		"  /session           where this terminal is, the model, and turn count",
+		"  /memory [query]    ask Ghost in a turn what it remembers",
 		"  /context [name]    show or switch topic context (scoped memory/tools)",
 		"  /rewind            put the last message back in the editor",
-		"  /routines          what Ghost does for you",
-		"  /clear             clear the screen",
+		"  /routines          ask Ghost in a turn what it has scheduled",
+		"  /clear             clear the screen (keeps the conversation)",
 		"  /quit              exit",
 		"",
 		"Keys",

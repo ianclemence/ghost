@@ -26,9 +26,29 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/providers"
 )
+
+// embeddedRuntime adapts the in-process AgentLoop to agentRuntime, adding the
+// history backfill the TUI needs to switch threads. All other methods come
+// from the embedded loop.
+type embeddedRuntime struct{ *agent.AgentLoop }
+
+// LoadHistory converts the embedded loop's stored messages into transcript
+// entries, mirroring the gateway client's shape.
+func (e embeddedRuntime) LoadHistory(sessionKey string) ([]historyEntry, error) {
+	msgs := e.AgentLoop.History(sessionKey)
+	out := make([]historyEntry, 0, len(msgs))
+	for _, m := range msgs {
+		switch m.Role {
+		case "user", "assistant":
+			out = append(out, historyEntry{Role: m.Role, Content: m.Content})
+		}
+	}
+	return out, nil
+}
 
 // gatewayRuntime is agentRuntime over HTTP+SSE to a local ghost gateway.
 // All requests target loopback, which the gateway trusts without device
@@ -441,6 +461,12 @@ const conversationBackfillCap = 500
 // a freshly started terminal opens on the same conversation the app shows.
 func (g *gatewayRuntime) LoadRecentHistory(sessionKey string, limit int) ([]historyEntry, error) {
 	return g.LoadConversationHistory(sessionKey, limit)
+}
+
+// LoadHistory implements agentRuntime: it backfills one conversation for the
+// terminal (used when returning to the shared conversation from a thread).
+func (g *gatewayRuntime) LoadHistory(sessionKey string) ([]historyEntry, error) {
+	return g.LoadConversationHistory(sessionKey, conversationBackfillCap)
 }
 
 // LoadConversationHistory loads the whole conversation (paged, oldest to
