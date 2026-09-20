@@ -2252,7 +2252,7 @@ func isApplianceOpsCommand(command string) bool {
 // commands whose config MUST match the console and the daemon.
 func isInteractiveCommand(command string) bool {
 	switch command {
-	case "agent", "serve", "gateway", "dashboard", "model", "golden", "benchmark", "doctor":
+	case "agent", "serve", "gateway", "dashboard", "model", "golden", "benchmark":
 		return true
 	}
 	return false

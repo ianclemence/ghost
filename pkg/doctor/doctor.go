@@ -109,6 +109,7 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkConnectedServices,
 		d.checkLastGolden,
 		d.checkEvalSpend,
+		d.checkBinaries,
 	}
 	results := make([]CheckResult, 0, len(checks))
 	for _, check := range checks {
@@ -122,7 +123,7 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 	// is enabled.
 	kept := results[:0]
 	for _, r := range results {
-		if r.Status == "info" && (r.Name == "last_golden" || r.Name == "eval_spend" || r.Name == "vault" || r.Name == "connected_services") {
+		if r.Status == "info" && (r.Name == "last_golden" || r.Name == "eval_spend" || r.Name == "vault" || r.Name == "connected_services" || r.Name == "binaries") {
 			continue
 		}
 		kept = append(kept, r)
