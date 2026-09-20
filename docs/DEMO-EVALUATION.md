@@ -123,3 +123,21 @@ tools (`email_send`) still inherit the skill's risk.
   the runtime's execution policy."
 - Memory recall, routine creation, the unified Things feed, and the
   permission broker all function end to end after the fixes.
+
+## Verification after fixes
+
+- `go test ./pkg/... ./cmd/...` — all pass.
+- `bun test` (mobile) — 199 pass.
+- Golden Conversation Suite (deepseek-flash), two clean runs: **59/59 PASS,
+  0 fail, 0 hard-fail**. A later run hit a transient DNS outage
+  (`dial tcp: lookup api.deepseek.com`); the four resulting failures
+  (`cc-01`, `goal-01`, `goal-02`, `mem-05`) all pass in isolation and the
+  runner labeled them `environment`. This is the harness correctly
+  distinguishing a product failure from an infrastructure one.
+
+## Method note
+
+Every defect above was reproduced against canonical data or the live
+permission broker — not inferred from the model's prose. The demo drove the
+real gateway over SSE exactly as the mobile app does; the production Ghost on
+port 8766 was never touched (the demo used an isolated workspace on 8877).
