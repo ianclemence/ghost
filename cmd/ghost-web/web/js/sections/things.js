@@ -29,15 +29,12 @@ function thingState(thing) {
 }
 
 async function loadThings(container) {
-  if (GhostApp.currentSection() !== 'things') return;
+  if (GhostApp.currentSection() !== 'routines') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Routines'));
   head.appendChild(GhostUI.h('p', {},
     'Everything Ghost runs for you \u2014 recurring briefs, reminders, and scheduled actions. Pause, resume, or stop any of them here.'));
-  const cross = GhostUI.h('p', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-2)' },
-    'To add one, just say it in a chat \u2014 for example \u201cevery Monday at 9, prepare my weekly brief\u201d. Ghost works out the rest.');
-  head.appendChild(cross);
   container.appendChild(head);
 
   const listEl = GhostUI.h('div', { className: 'ghost-list', id: 'things-list' });
@@ -124,4 +121,4 @@ async function thingAction(container, thing, op) {
   loadThings(container);
 }
 
-GhostApp.registerSection('things', loadThings);
+GhostApp.registerSection('routines', loadThings);
