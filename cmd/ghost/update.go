@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/appliance"
@@ -96,7 +97,7 @@ func updateCmd() {
 			}
 			// Build and deploy (install-ghost restarts services).
 			fmt.Println("5. Building and deploying...")
-			cmd := exec.Command("make", "-C", ghostDir, "install-ghost")
+			cmd := makeInstallGhost(ghostDir)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			return cmd.Run()
@@ -237,7 +238,7 @@ func checkAndUpdate() {
 				return err
 			}
 			// Build and deploy
-			cmd := exec.Command("make", "-C", ghostDir, "install-ghost")
+			cmd := makeInstallGhost(ghostDir)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			return cmd.Run()
@@ -259,6 +260,55 @@ func checkAndUpdate() {
 
 	fmt.Println("Updated successfully")
 	_ = currentVersion
+}
+
+// makeInstallGhost builds the `make install-ghost` command with the invoking
+// user's environment restored. `ghost update` runs as root, so HOME would be
+// /root and $(INSTALL_PREFIX) would resolve to /root/.local — leaving a stale
+// ~/.local/bin/ghost shadowing the freshly installed binary (that copy is
+// usually FIRST in the operator's PATH). We carry SUDO_USER's home and name so
+// the installer refreshes the right user-local binary as well.
+func makeInstallGhost(ghostDir string) *exec.Cmd {
+	cmd := exec.Command("make", "-C", ghostDir, "install-ghost")
+	env := os.Environ()
+	if u := os.Getenv("SUDO_USER"); u != "" && u != "root" {
+		owner := u
+		if home := homeForUser(u); home != "" {
+			env = setEnv(env, "HOME", home)
+		}
+		env = setEnv(env, "INSTALL_OWNER", owner)
+		env = setEnv(env, "INSTALL_GROUP", owner)
+	}
+	cmd.Env = env
+	return cmd
+}
+
+// setEnv replaces or adds a KEY=VALUE entry in an environment slice.
+func setEnv(env []string, key, val string) []string {
+	prefix := key + "="
+	for i, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			env[i] = prefix + val
+			return env
+		}
+	}
+	return append(env, prefix+val)
+}
+
+// homeForUser resolves a user's home directory from /etc/passwd without
+// shelling out.
+func homeForUser(user string) string {
+	data, err := os.ReadFile("/etc/passwd")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		parts := strings.Split(line, ":")
+		if len(parts) >= 6 && parts[0] == user {
+			return parts[5]
+		}
+	}
+	return ""
 }
 
 func findGhostDir() string {

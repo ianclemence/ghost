@@ -180,6 +180,16 @@ install-ghost: build-ghost
 	@sudo cp $(BUILD_DIR)/$(WEB_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(WEB_NAME).new
 	@sudo mv -f /usr/local/bin/$(WEB_NAME).new /usr/local/bin/$(WEB_NAME)
 	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(WEB_NAME)
+	@# Also refresh the user-local binary when it exists. It typically comes
+	@# FIRST in PATH, so a stale copy there silently shadows the installed one
+	@# (the "old binary keeps running after an update" trap). Best-effort:
+	@# skip when the path is inside the system prefix or absent.
+	@if [ -d "$(INSTALL_BIN_DIR)" ] && echo "$(INSTALL_BIN_DIR)" | grep -q "$(HOME)"; then \
+		cp $(BINARY_PATH) $(INSTALL_BIN_DIR)/$(BINARY_NAME).new && \
+		mv -f $(INSTALL_BIN_DIR)/$(BINARY_NAME).new $(INSTALL_BIN_DIR)/$(BINARY_NAME) && \
+		chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME) && \
+		echo "Refreshed $(INSTALL_BIN_DIR)/$(BINARY_NAME)"; \
+	fi
 	@# Build and deploy update tooling
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-$(PLATFORM)-$(ARCH) ./cmd/ghost-update
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-daemon-$(PLATFORM)-$(ARCH) ./cmd/ghost-update-daemon
