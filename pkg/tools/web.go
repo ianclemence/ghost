@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/logger"
 )
 
 const (
@@ -60,8 +62,11 @@ func (p *BraveSearchProvider) Search(ctx context.Context, query string, count in
 	}
 
 	if err := json.Unmarshal(body, &searchResp); err != nil {
-		// Log error body for debugging
-		fmt.Printf("Brave API Error Body: %s\n", string(body))
+		// Never print to stdout here: this runs mid-turn inside the
+		// alt-screen TUI, where a stray write corrupts the frame. The
+		// logger is silenced on stderr in interactive mode and kept
+		// for one-shot/file use.
+		logger.DebugCF("tools", "Brave API error body", map[string]interface{}{"body": string(body)})
 		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 

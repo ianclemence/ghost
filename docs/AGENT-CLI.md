@@ -47,15 +47,15 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 
 | Key | Action |
 |---|---|
-| Enter | Send. While Ghost is working: queue a steering message |
+| Enter | Send. With the `/` palette open: complete the highlighted command and run it. While working: queue a steering message |
 | Ctrl+J | Newline in the composer (grows to 5 rows, then scrolls) |
-| Tab | Complete the selected `/command` |
-| Esc | Abort the current turn; queued text returns to the editor |
+| Tab | Complete the selected `/command` without running (for adding arguments) |
+| Esc | Contextual cancel, like pi and opencode: close dialog → dismiss approval (leaves pending) → dismiss palette → abort the running turn → close the TUI (the session persists, so quitting is safe) |
 | Ctrl+C | Clear the editor; twice quits |
 | Ctrl+L | Open the model picker |
 | Ctrl+O | Toggle tool-detail expansion |
-| ↑ / ↓ | `/` palette selection when open, else editor history |
-| PgUp / PgDn | Scroll the transcript |
+| ↑ / ↓ | `/` palette selection when open (scrolls with `↑/↓ more` edges), else editor history |
+| PgUp / PgDn, mouse wheel | Scroll the transcript |
 
 ## Layout (opencode-faithful)
 
@@ -96,9 +96,13 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   the model in its locality color right-aligned; contextual shortcuts
   naming the escape routes for the current state.
 - **Scroll:** mouse wheel + `PgUp/PgDn`; follows the bottom while working.
-- **Terminal hygiene (terminal-ui skill):** logs never paint the alt-screen
-  (`--debug-log` for a file trail); non-TTY stdin refuses interactive mode
-  with the `-m` remedy instead of hanging; quitting prints a session outro.
+- **Terminal hygiene (terminal-ui skill):** the TUI owns the whole frame —
+  stderr is parked during the run and logger output silenced, so no
+  dependency's stray line can paint over the alt-screen (the one
+  historical offender, a mid-turn `fmt.Printf` in the web tool, now goes
+  through the logger). `--debug-log` keeps a file trail; non-TTY stdin
+  refuses interactive mode with the `-m` remedy instead of hanging;
+  quitting prints a session outro.
 
 ## Status line
 

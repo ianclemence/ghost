@@ -428,6 +428,16 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case tea.KeyEsc:
+		// Escape is contextual cancel at every level (pi app.interrupt,
+		// opencode session_interrupt): palette first, then the running
+		// turn. Idle with an empty editor, it closes the TUI — the
+		// session persists in the database, so nothing is lost.
+		if m.paletteVisible() {
+			m.input.Reset()
+			m.paletteSel = 0
+			m.renderTranscript()
+			return m, nil
+		}
 		if m.working {
 			// Abort the turn; return queued text to the editor. A
 			// dropped clarification dies with the turn, so clear it.
@@ -441,7 +451,12 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.renderTranscript()
 			return m, nil
 		}
-		return m, nil
+		if strings.TrimSpace(m.input.Value()) != "" {
+			m.input.Reset()
+			return m, nil
+		}
+		m.quitting = true
+		return m, tea.Quit
 
 	case tea.KeyCtrlL:
 		m.cycleModel()
@@ -505,16 +520,17 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.answerClarify()
 			return m, nil
 		}
-		// opencode autocomplete rule (prompt.autocomplete.select): with
-		// the palette open, Enter accepts the highlighted completion
-		// into the editor — it never runs a half-typed command.
+		// With the palette open, Enter accepts the highlighted completion
+		// AND runs it immediately — every slash command is valid with
+		// zero args, so there is no dead complete-only state. (Tab is
+		// the compose-first key: it completes without running, for
+		// adding arguments.)
 		if items := m.paletteMatches(); len(items) > 0 && m.paletteVisible() {
 			sel := m.paletteSel
 			if sel < 0 || sel >= len(items) {
 				sel = 0
 			}
 			m.completePalette(items[sel])
-			return m, nil
 		}
 		line := strings.TrimSpace(m.input.Value())
 		if msg.Alt || strings.HasSuffix(m.input.Value(), "\\") {
@@ -1233,10 +1249,11 @@ func (m *agentTUI) renderEntry(e entry) string {
 // never stored as an entry, so it can never duplicate.
 func (m *agentTUI) welcomeCard() string {
 	w := m.contentWidth()
+	art := styleGhostArt.Render("▓▒░  G H O S T  ░▒▓")
 	title := styleWelcomeTitle.Render(logo + " Ghost")
 	sub := styleNotice.Render(wrapFirst("Your AI on your machine — it remembers, acts with approval, and shows where it ran.", w))
 	cmds := styleWelcomeCmds.Render("  /help      commands & keys\n  /model     switch thinking engine\n  /memory    what Ghost remembers\n  /routines  recurring work")
-	return title + "\n" + sub + "\n" + cmds
+	return art + "\n" + title + "\n" + sub + "\n" + cmds
 }
 
 // ─── width helpers ─────────────────────────────────────────────────────
@@ -1595,11 +1612,28 @@ func (m *agentTUI) paletteHeight() int {
 	if !m.paletteVisible() {
 		return 0
 	}
-	n := len(m.paletteMatches())
-	if n > 6 {
-		n = 6
+	items, _, moreAbove, moreBelow := m.paletteWindow()
+	n := len(items)
+	if moreAbove {
+		n++
 	}
-	return n // bare rows, no border
+	if moreBelow {
+		n++
+	}
+	return n // bare rows + edge indicators, no border
+}
+
+// paletteOffset returns the first visible row so the selection stays in
+// a maxRows window.
+func (m *agentTUI) paletteOffset(total, maxRows int) int {
+	if total <= maxRows || m.paletteSel < maxRows {
+		return 0
+	}
+	off := m.paletteSel - maxRows + 1
+	if off+maxRows > total {
+		off = total - maxRows
+	}
+	return off
 }
 
 // ─── view ────────────────────────────────────────────────────────────────
@@ -1715,7 +1749,7 @@ func (m *agentTUI) footerKeysLine() string {
 	case strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/"):
 		keys = "↑↓ pick · tab/enter complete · esc dismiss"
 	default:
-		keys = "enter send · ctrl+j newline · esc abort · ctrl+l model · / commands · tab complete"
+		keys = "enter send · ctrl+j newline · esc quit · ctrl+l model · / commands · tab complete"
 	}
 	return styleFooterHint.Render(cellTruncate(keys, m.width))
 }
@@ -1800,24 +1834,44 @@ func (m *agentTUI) promptBox() string {
 // paletteView is opencode's autocomplete popup: absolute above the
 // composer, left `┃` split-border, menu background, selected row
 // highlighted. Return accepts, Tab completes, Esc hides.
-func (m *agentTUI) paletteView() string {
-	items := m.paletteMatches()
-	if len(items) > 6 {
-		items = items[:6]
+const paletteMaxRows = 6
+
+// paletteWindow returns the visible slice plus edge flags. paletteHeight
+// renders from this same window, so geometry can never drift from paint.
+func (m *agentTUI) paletteWindow() (items []paletteItem, off int, moreAbove, moreBelow bool) {
+	all := m.paletteMatches()
+	if len(all) <= paletteMaxRows {
+		return all, 0, false, false
 	}
+	off = m.paletteOffset(len(all), paletteMaxRows)
+	end := off + paletteMaxRows
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[off:end], off, off > 0, end < len(all)
+}
+
+func (m *agentTUI) paletteView() string {
+	items, off, moreAbove, moreBelow := m.paletteWindow()
 	var b strings.Builder
+	if moreAbove {
+		b.WriteString(styleMenuBar.Render("┃") + " " + stylePaletteRow.Render("↑ more"))
+		b.WriteString("\n")
+	}
 	for i, it := range items {
 		row := fmt.Sprintf("/%-10s %s", it.name, it.desc)
-		if i == m.paletteSel {
+		if off+i == m.paletteSel {
 			b.WriteString(styleMenuBar.Render("┃") + " " + stylePaletteSel.Render(" "+row+" "))
 		} else {
 			b.WriteString(styleMenuBar.Render("┃") + " " + stylePaletteRow.Render(row))
 		}
-		if i+1 < len(items) {
-			b.WriteString("\n")
-		}
+		b.WriteString("\n")
 	}
-	return styleMenu.Render(b.String())
+	if moreBelow {
+		b.WriteString(styleMenuBar.Render("┃") + " " + stylePaletteRow.Render("↓ more"))
+		b.WriteString("\n")
+	}
+	return styleMenu.Render(strings.TrimRight(b.String(), "\n"))
 }
 
 // approvalCard is opencode's inline permission block: a left-bordered
@@ -2015,6 +2069,7 @@ var (
 	styleRiskDefault     = lipgloss.NewStyle().Foreground(cMuted).Background(cSelBg)
 
 	styleWelcomeTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
+	styleGhostArt     = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
 	styleWelcomeCmds  = lipgloss.NewStyle().Foreground(cMuted)
 
 	// opencode markdown roles (dark default): headings violet bold (h1

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -1027,6 +1028,25 @@ func agentGatewayCmd(gw *gatewayRuntime, message, sessionKey string) {
 	interactiveMode(gw, sessionKey, "", preload)
 }
 
+// silenceStderr parks the process stderr on devnull and returns a
+// restore function. The TUI calls it around program.Run so a stray write
+// from any dependency (std log, subprocess chatter) can never corrupt the
+// alt-screen frame. Stdout stays untouched — tea renders there.
+func silenceStderr() func() {
+	log.SetOutput(io.Discard)
+	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		return func() { log.SetOutput(os.Stderr) }
+	}
+	orig := os.Stderr
+	os.Stderr = devnull
+	return func() {
+		os.Stderr = orig
+		log.SetOutput(os.Stderr)
+		_ = devnull.Close()
+	}
+}
+
 func interactiveMode(runtime agentRuntime, sessionKey, debugLog string, preload []entry) {
 	// P0 correctness: the TUI owns the screen. Route logs to a file (or
 	// drop the stderr line entirely) so INFO lines can never paint over
@@ -1041,13 +1061,20 @@ func interactiveMode(runtime agentRuntime, sessionKey, debugLog string, preload 
 	for _, e := range preload {
 		m.append(e)
 	}
+	// Own the whole frame (terminal-ui skill: render-single-write): the
+	// tea renderer writes stdout, and stderr is parked on devnull so no
+	// dependency's stray log line can ever paint over the alt-screen.
+	// Restored before any post-TUI output below.
+	restoreStderr := silenceStderr()
 	agentProgram = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	defer func() { agentProgram = nil }()
-	if _, err := agentProgram.Run(); err != nil {
+	_, runErr := agentProgram.Run()
+	restoreStderr()
+	if runErr != nil {
 		// A TUI failure must not strand the user: fall back to the simple
 		// line mode with an honest note (stdin is a TTY here — checked
 		// above — so this cannot hang).
-		fmt.Printf("Interactive UI unavailable (%v); using simple mode.\n", err)
+		fmt.Printf("Interactive UI unavailable (%v); using simple mode.\n", runErr)
 		simpleInteractiveMode(runtime, sessionKey)
 		return
 	}

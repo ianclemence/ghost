@@ -388,8 +388,8 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 func TestTUIFooterKeysContextual(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
-	if !strings.Contains(m.footerKeysLine(), "esc abort") {
-		t.Errorf("idle keys must name esc, got %q", m.footerKeysLine())
+	if !strings.Contains(m.footerKeysLine(), "esc quit") {
+		t.Errorf("idle keys must name esc quit, got %q", m.footerKeysLine())
 	}
 	m.working = true
 	if !strings.Contains(m.footerKeysLine(), "esc aborts") {
@@ -420,26 +420,25 @@ func TestTUIInputHeightCountsWrappedLines(t *testing.T) {
 	}
 }
 
-// Enter with the palette open must ACCEPT the completion (opencode
-// prompt.autocomplete.select) — never run the half-typed text. This is
-// the "command unknown unless written in full" regression test.
+// Enter with the palette open completes the highlighted command AND runs
+// it immediately — every slash command is valid with zero args, so there
+// is no dead complete-only state. (Tab is the compose-first key.) This is
+// the "command unknown unless written in full" regression test: the
+// half-typed text must never execute literally.
 func TestTUIEnterAcceptsPaletteCompletion(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/mod")
 	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
-	if got := m.input.Value(); got != "/model " {
-		t.Fatalf("enter should complete to /model, got %q", got)
+	if m.modal == nil {
+		t.Fatalf("enter on /mod should run the completed /model picker, modal=%v input=%q", m.modal, m.input.Value())
 	}
 	if len(f.turns) != 0 {
-		t.Fatalf("completing must not start a turn, got %v", f.turns)
-	}
-	if m.working {
-		t.Errorf("completing must not mark working")
+		t.Fatalf("a slash command must not start a chat turn, got %v", f.turns)
 	}
 }
 
-// Tab completes the same way without submitting.
+// Tab completes without submitting, for composing arguments first.
 func TestTUITabCompletesPalette(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
@@ -453,14 +452,74 @@ func TestTUITabCompletesPalette(t *testing.T) {
 	}
 }
 
-// Completion preserves already-typed arguments.
+// Completion preserves already-typed arguments, then runs.
 func TestTUICompletionPreservesArgs(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/mod deep")
 	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
-	if got := m.input.Value(); got != "/model deep " {
-		t.Fatalf("args must survive completion, got %q", got)
+	if f.model != "deep" {
+		t.Fatalf("completed /model deep must switch the model, got %q (input %q)", f.model, m.input.Value())
+	}
+}
+
+// Esc is contextual cancel at every level: palette, then the running
+// turn, then the TUI itself (the session persists, so quitting is safe).
+func TestTUIEscPriorityChain(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	// Palette open: Esc dismisses it without quitting.
+	m.input.SetValue("/mod")
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.input.Value() != "" {
+		t.Errorf("esc must dismiss the palette, input=%q", m.input.Value())
+	}
+	if m.quitting {
+		t.Errorf("dismissing the palette must not quit")
+	}
+	// Working: Esc aborts the turn.
+	m.working = true
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if len(f.aborted) != 1 {
+		t.Errorf("esc must abort the running turn, got %v", f.aborted)
+	}
+	if !hasNotice(m, "aborted") {
+		t.Errorf("abort must be narrated")
+	}
+	// Idle and empty: Esc closes the TUI.
+	m.working = false
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if !m.quitting {
+		t.Errorf("idle esc must close the TUI")
+	}
+}
+
+// The palette scrolls: the selection always stays inside a 6-row window
+// with edge indicators, and the painted height matches the estimate.
+func TestTUIPaletteScrollWindow(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.input.SetValue("/")
+	total := len(m.paletteMatches())
+	if total <= 6 {
+		t.Fatalf("need >6 commands to test scrolling, got %d", total)
+	}
+	m.paletteSel = total - 1
+	m.clampPalette()
+	items, off, moreAbove, moreBelow := m.paletteWindow()
+	if !moreAbove || moreBelow {
+		t.Errorf("bottom selection: want moreAbove only, got %v %v", moreAbove, moreBelow)
+	}
+	if off+len(items) != total {
+		t.Errorf("window must end at the last row, off=%d shown=%d total=%d", off, len(items), total)
+	}
+	view := m.paletteView()
+	if !strings.Contains(view, "↑ more") {
+		t.Errorf("hidden rows above must be indicated, got %q", view)
+	}
+	rows := strings.Count(strings.TrimSpace(view), "\n") + 1
+	if rows != m.paletteHeight() {
+		t.Errorf("painted rows (%d) must equal estimated height (%d)", rows, m.paletteHeight())
 	}
 }
 
