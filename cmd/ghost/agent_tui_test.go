@@ -7,15 +7,15 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/ianclemence/ghost/pkg/agent"
 )
 
 // fakeRuntime records calls and simulates a runtime for TUI tests.
 type fakeRuntime struct {
 	model    string
 	presets  []string
-	steering *agent.SteeringManager
+	injected []string // steering messages queued while working
+	aborted  []string // sessions aborted via Esc
+	answered map[string]string
 	turns    []string
 	setCalls []string
 	pending  *pendingApproval
@@ -24,7 +24,7 @@ type fakeRuntime struct {
 }
 
 func newFakeRuntime() *fakeRuntime {
-	return &fakeRuntime{model: "deepseek-flash", presets: []string{"fast", "deep"}, steering: agent.NewSteeringManager()}
+	return &fakeRuntime{model: "deepseek-flash", presets: []string{"fast", "deep"}, answered: map[string]string{}}
 }
 
 func (f *fakeRuntime) GetCurrentModel() string { return f.model }
@@ -34,7 +34,13 @@ func (f *fakeRuntime) SetModel(t string) error {
 	f.model = t
 	return nil
 }
-func (f *fakeRuntime) Steering() *agent.SteeringManager { return f.steering }
+func (f *fakeRuntime) InjectSteering(_, content string) { f.injected = append(f.injected, content) }
+func (f *fakeRuntime) AbortTurn(sessionKey string)      { f.aborted = append(f.aborted, sessionKey) }
+func (f *fakeRuntime) RefreshModels()                   {}
+func (f *fakeRuntime) RespondClarify(questionID, response string) bool {
+	f.answered[questionID] = response
+	return true
+}
 
 // pending, when set, is reported by PendingApproval until cleared.
 func (f *fakeRuntime) PendingApproval(sessionKey string) (string, string, string, bool) {
@@ -121,8 +127,8 @@ func TestTUIQueueWhileWorkingInjectsSteering(t *testing.T) {
 	if len(m.queued) != 1 || m.queued[0] != "change of plan" {
 		t.Fatalf("working send must queue, got %v", m.queued)
 	}
-	if f.steering.PendingCount("cli:test") != 1 {
-		t.Errorf("working send must inject a steering message")
+	if len(f.injected) != 1 || f.injected[0] != "change of plan" {
+		t.Errorf("working send must inject a steering message, got %v", f.injected)
 	}
 	if len(f.turns) != 0 {
 		t.Errorf("working send must not start a new turn")
@@ -288,6 +294,17 @@ func keyMsgFor(r rune) tea.KeyMsg {
 func waitForTurns(f *fakeRuntime, n int) bool {
 	for i := 0; i < 100; i++ {
 		if len(f.turns) >= n {
+			return true
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	return false
+}
+
+// waitForAnswer waits briefly for the async clarify post to land.
+func waitForAnswer(f *fakeRuntime, qid string) bool {
+	for i := 0; i < 100; i++ {
+		if _, ok := f.answered[qid]; ok {
 			return true
 		}
 		time.Sleep(2 * time.Millisecond)
@@ -500,6 +517,72 @@ func TestTUIApprovalEnterConfirmsSelection(t *testing.T) {
 	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	if !waitForTurns(f, 1) || f.turns[0] != "always allow" {
 		t.Fatalf("enter should confirm the selection, got %v", f.turns)
+	}
+}
+
+// A clarify request mid-turn must surface the question and route the next
+// Enter to the blocked turn (mobile-card parity) — never a new turn.
+func TestTUIClarifyFlow(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.working = true
+	m.Update(clarifyRequestMsg{questionID: "q-1", question: "Which color?", choices: []string{"red", "blue"}})
+	if m.clarify == nil || m.clarify.questionID != "q-1" {
+		t.Fatalf("clarify must pend, got %+v", m.clarify)
+	}
+	if !hasNotice(m, "Which color?") {
+		t.Errorf("question must appear in the transcript")
+	}
+	m.input.SetValue("2")
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if !waitForAnswer(f, "q-1") || f.answered["q-1"] != "blue" {
+		t.Fatalf("number must map to the choice, got %q", f.answered["q-1"])
+	}
+	if len(f.turns) != 0 {
+		t.Fatalf("answering must not start a new turn, got %v", f.turns)
+	}
+	if !hasUser(m, "blue") {
+		t.Errorf("the answer must appear as the user's words")
+	}
+}
+
+// A failed clarify answer must say so and clear the pending question.
+func TestTUIClarifyAnswerFailed(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.clarify = &pendingClarify{questionID: "q-9", question: "Q?", choices: nil}
+	m.Update(clarifyAnswerMsg{ok: false})
+	if m.clarify != nil {
+		t.Errorf("failed answer must clear the pending question")
+	}
+	if !hasError(m, "expired") {
+		t.Errorf("failed answer must be reported")
+	}
+}
+
+// Esc while a question pends must drop it along with the turn.
+func TestTUIEscClearsClarify(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.working = true
+	m.clarify = &pendingClarify{questionID: "q-1", question: "Q?", choices: nil}
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.clarify != nil {
+		t.Errorf("abort must clear the pending question")
+	}
+	if len(f.aborted) != 1 || f.aborted[0] != "cli:test" {
+		t.Errorf("abort must reach the runtime, got %v", f.aborted)
+	}
+}
+
+// Daemon tool labels arrive complete and must not be relabeled.
+func TestTUIToolProgressPassthrough(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.working = true
+	m.Update(toolProgressMsg{tool: "exec", label: "Running: ls"})
+	if len(m.toolHistory) != 1 || m.toolHistory[0].label != "Running: ls" || m.toolHistory[0].tool != "exec" {
+		t.Fatalf("server label must land verbatim, got %+v", m.toolHistory)
 	}
 }
 

@@ -3782,7 +3782,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			return
 		}
 		if r.Method == http.MethodGet {
-			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "contexts": cs.List()})
+			out := map[string]interface{}{"ok": true, "contexts": cs.List()}
+			// Terminal clients show and switch the session's context from
+			// the same call (additive: existing clients ignore it).
+			if sk := strings.TrimSpace(r.URL.Query().Get("session_key")); sk != "" {
+				out["current"] = cs.SessionContext(sk)
+			}
+			jsonResponse(w, http.StatusOK, out)
 			return
 		}
 		if r.Method != http.MethodPost {

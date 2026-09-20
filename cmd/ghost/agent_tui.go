@@ -12,6 +12,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,8 +20,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-
-	"github.com/ianclemence/ghost/pkg/agent"
 )
 
 // ─── messages ─────────────────────────────────────────────────────────────
@@ -34,6 +33,19 @@ type streamChunkMsg struct{ text string }
 
 // toolCallMsg reports the model invoking a tool (label is product language).
 type toolCallMsg struct{ tool, label string }
+
+// toolProgressMsg is toolCallMsg for turns that run on the daemon: the
+// server-side label arrives complete, so it bypasses local relabeling.
+type toolProgressMsg struct{ tool, label string }
+
+// clarifyRequestMsg surfaces an in-flight clarification question (the same
+// event the mobile app renders as an interactive card) so the terminal can
+// answer it in-band instead of hanging until the tool times out.
+type clarifyRequestMsg struct {
+	questionID string
+	question   string
+	choices    []string
+}
 
 // spinnerTickMsg advances the working spinner (pi-style activity pulse).
 type spinnerTickMsg struct{}
@@ -66,12 +78,23 @@ type entry struct {
 
 // agentRuntime is the slice of the agent loop the TUI needs. Depending on an
 // interface (not the concrete loop) keeps the UI testable without a full
-// runtime and makes the coupling explicit.
+// runtime and makes the coupling explicit. Both the embedded AgentLoop and
+// the gateway client implement it, so the TUI is transport-blind: it cannot
+// tell whether a turn ran in-process or on the daemon.
 type agentRuntime interface {
 	GetCurrentModel() string
 	ModelPresets() []string
 	SetModel(target string) error
-	Steering() *agent.SteeringManager
+	// RefreshModels busts any cached model state (the picker calls it on
+	// open). Embedded runtimes read live and no-op.
+	RefreshModels()
+	// InjectSteering queues a follow-up into the running turn (Enter while
+	// working); AbortTurn ends it immediately (Esc).
+	InjectSteering(sessionKey, content string)
+	AbortTurn(sessionKey string)
+	// RespondClarify answers an in-flight clarification question,
+	// reporting false when there is no such pending question.
+	RespondClarify(questionID, response string) bool
 	ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string, media []string, onChunk func(string), onToolCall func(string, string)) (string, error)
 	// PendingApproval reports a durable permission request awaiting the owner.
 	PendingApproval(sessionKey string) (id, title, risk string, ok bool)
@@ -123,6 +146,16 @@ type agentTUI struct {
 	// modal is an open centered dialog (opencode dialog.select), e.g. the
 	// model picker. It owns the keyboard until Enter picks or Esc closes.
 	modal *selectModal
+	// clarify is set when the running turn asks a clarification question
+	// (the event the mobile app renders as an interactive card). The next
+	// Enter answers it in-band instead of starting a new turn.
+	clarify *pendingClarify
+}
+
+type pendingClarify struct {
+	questionID string
+	question   string
+	choices    []string
 }
 
 type pendingApproval struct {
@@ -217,30 +250,31 @@ func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case toolCallMsg:
-		label := strings.TrimSpace(msg.label)
-		if label == "" {
-			return m, nil
-		}
-		// Dedupe: providers often re-report the same active tool. Only the
-		// active (last, unfinished) step spins; repeats update it in place.
-		if n := len(m.toolHistory); n > 0 && !m.toolHistory[n-1].done && m.toolHistory[n-1].label == label {
-			m.toolLine = label
-			m.renderTranscript()
-			return m, nil
-		}
-		now := time.Now()
-		if n := len(m.toolHistory); n > 0 && !m.toolHistory[n-1].done {
-			m.toolHistory[n-1].done = true
-			m.toolHistory[n-1].dur = now.Sub(m.toolHistory[n-1].start)
-		}
-		m.toolHistory = append(m.toolHistory, toolStep{tool: msg.tool, label: label, start: now})
-		m.toolCount = len(m.toolHistory)
-		m.toolLine = label
+		m.pushToolStep(msg.tool, msg.label)
+		return m, nil
+
+	case toolProgressMsg:
+		// Daemon turns arrive with complete server-side labels.
+		m.pushToolStep(msg.tool, msg.label)
+		return m, nil
+
+	case clarifyRequestMsg:
+		m.clarify = &pendingClarify{questionID: msg.questionID, question: msg.question, choices: msg.choices}
+		m.append(entry{kind: entryNotice, text: renderClarifyPrompt(msg.question, msg.choices, m.contentWidth())})
 		m.renderTranscript()
+		return m, nil
+
+	case clarifyAnswerMsg:
+		if !msg.ok {
+			m.clarify = nil
+			m.append(entry{kind: entryError, text: "Ghost couldn't take that answer (question expired) — ask again"})
+			m.renderTranscript()
+		}
 		return m, nil
 
 	case turnDoneMsg:
 		m.working = false
+		m.clarify = nil
 		now := time.Now()
 		for i := range m.toolHistory {
 			if !m.toolHistory[i].done {
@@ -304,6 +338,46 @@ func (m *agentTUI) clampPalette() {
 	}
 }
 
+// pushToolStep appends one collapsed activity row. Dedupe: providers often
+// re-report the same active tool, so repeats update the spinning row in
+// place instead of appending.
+func (m *agentTUI) pushToolStep(tool, label string) {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return
+	}
+	if n := len(m.toolHistory); n > 0 && !m.toolHistory[n-1].done && m.toolHistory[n-1].label == label {
+		m.toolLine = label
+		m.renderTranscript()
+		return
+	}
+	now := time.Now()
+	if n := len(m.toolHistory); n > 0 && !m.toolHistory[n-1].done {
+		m.toolHistory[n-1].done = true
+		m.toolHistory[n-1].dur = now.Sub(m.toolHistory[n-1].start)
+	}
+	m.toolHistory = append(m.toolHistory, toolStep{tool: tool, label: label, start: now})
+	m.toolCount = len(m.toolHistory)
+	m.toolLine = label
+	m.renderTranscript()
+}
+
+// renderClarifyPrompt formats the in-flight question the way the mobile
+// app's interactive card reads: question first, numbered choices after.
+func renderClarifyPrompt(question string, choices []string, width int) string {
+	var b strings.Builder
+	b.WriteString("Ghost asks: " + strings.TrimSpace(question))
+	for i, c := range choices {
+		b.WriteString(fmt.Sprintf("\n  [%d] %s", i+1, strings.TrimSpace(c)))
+	}
+	if len(choices) > 0 {
+		b.WriteString("\nanswer with text, or pick a number")
+	} else {
+		b.WriteString("\ntype your answer and press Enter")
+	}
+	return b.String()
+}
+
 func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// A modal dialog owns the keyboard until picked or dismissed.
 	if m.modal != nil {
@@ -354,8 +428,10 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyEsc:
 		if m.working {
-			// Abort the turn; return queued text to the editor.
-			m.loop.Steering().HardAbort(m.session)
+			// Abort the turn; return queued text to the editor. A
+			// dropped clarification dies with the turn, so clear it.
+			m.loop.AbortTurn(m.session)
+			m.clarify = nil
 			if len(m.queued) > 0 {
 				m.input.SetValue(strings.Join(m.queued, "\n"))
 				m.queued = nil
@@ -412,6 +488,12 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEnter:
+		// An in-flight clarification owns Enter: the answer goes to the
+		// blocked turn (like the mobile card), never a new turn.
+		if m.clarify != nil {
+			m.answerClarify()
+			return m, nil
+		}
 		// opencode autocomplete rule (prompt.autocomplete.select): with
 		// the palette open, Enter accepts the highlighted completion
 		// into the editor — it never runs a half-typed command.
@@ -476,12 +558,7 @@ func (m *agentTUI) send(text string) {
 	if m.working {
 		// Queue a steering message into the running turn.
 		m.queued = append(m.queued, text)
-		m.loop.Steering().Inject(agent.SteeringMessage{
-			Content:    text,
-			SessionKey: m.session,
-			Channel:    "cli",
-			ChatID:     "direct",
-		})
+		m.loop.InjectSteering(m.session, text)
 		m.append(entry{kind: entryNotice, text: "↳ queued for the current turn: " + text})
 		m.renderTranscript()
 		return
@@ -514,6 +591,34 @@ func (m *agentTUI) runTurn(text string) {
 		context.Background(), text, m.session, "cli", "direct", nil, chunk, onTool)
 	send(turnDoneMsg{text: resp, err: err})
 }
+
+// answerClarify posts the editor text as the answer to the in-flight
+// clarification question (mobile-card parity). A bare number picks that
+// choice. The blocked turn resumes on its own; nothing new starts.
+func (m *agentTUI) answerClarify() {
+	text := strings.TrimSpace(m.input.Value())
+	m.input.Reset()
+	if text == "" || m.clarify == nil {
+		return
+	}
+	if n, err := strconv.Atoi(text); err == nil && n >= 1 && n <= len(m.clarify.choices) {
+		text = m.clarify.choices[n-1]
+	}
+	qid := m.clarify.questionID
+	m.history = append(m.history, text)
+	m.histIndex = -1
+	m.append(entry{kind: entryUser, text: text})
+	m.renderTranscript()
+	go func() {
+		ok := m.loop.RespondClarify(qid, text)
+		if agentProgram != nil {
+			agentProgram.Send(clarifyAnswerMsg{ok: ok})
+		}
+	}()
+}
+
+// clarifyAnswerMsg reports whether the clarify answer landed.
+type clarifyAnswerMsg struct{ ok bool }
 
 // resolveApproval answers a pending approval by sending the recognized grant
 // phrase as a normal turn. This is deliberate: the reply travels through the
@@ -646,6 +751,7 @@ func (m *agentTUI) modalMatches() []modalItem {
 }
 
 func (m *agentTUI) openModelModal() {
+	m.loop.RefreshModels()
 	presets := m.loop.ModelPresets()
 	cur := m.loop.GetCurrentModel()
 	items := make([]modalItem, 0, len(presets)+1)
@@ -1466,6 +1572,8 @@ func (m *agentTUI) footerStatsLine() string {
 func (m *agentTUI) footerKeysLine() string {
 	var keys string
 	switch {
+	case m.clarify != nil:
+		keys = "type your answer · enter sends · esc aborts the question"
 	case m.approval != nil:
 		keys = "1 allow once · 2 always allow · 3 deny · esc leaves pending"
 	case m.working:
@@ -1800,6 +1908,7 @@ func agentHelpText() string {
 		"",
 		"Keys",
 		"  Enter              send (while working: queue a steering message)",
+		"  Enter (question)   answer Ghost's in-flight question in the running turn",
 		"  Tab                complete /command",
 		"  Esc                abort the turn; queued text returns to the editor",
 		"  Ctrl+C             clear editor; twice to quit",

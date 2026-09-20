@@ -62,7 +62,7 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
  ├ transcript (markdown, icon tool trail, spinner+elapsed) ─┤
  │ ┃ /model     switch thinking engine   (autocomplete menu)│
  │ ┃ Ask Ghost anything…  e.g. "Remind me…"  (composer)     │
- │ cli:default • personal                                    │
+ │ mobile:default • personal                                 │
  │ 3 turns                            (cloud) deepseek-flash │
  │ enter send · esc abort · ctrl+l model · / commands        │
  └───────────────────────────────────────────────────────────┘
@@ -97,7 +97,7 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 `model · where it runs · session · state` — for example:
 
 ```
-deepseek-flash · cloud · cli:default · ready
+deepseek-flash · cloud · mobile:default · ready
 ```
 
 While working: `… · working · 3 tools`. On a held approval: `waiting for you`.
@@ -126,6 +126,25 @@ tools (for example `work`). This is Ghost's answer to keeping complex topics
 separate. It deliberately does **not** fork the conversation: Ghost keeps one
 durable, reconciled memory, so what Ghost knows stays a single truth rather
 than a tree of conflicting branches.
+
+## One shared conversation (terminal + app)
+
+The terminal and the app are two windows onto the same conversation —
+opencode's CLI/desktop arrangement, not two chats that happen to share a
+database:
+
+- The default session is `mobile:default` everywhere: terminal, app, and
+  gateway resolve to the same rows. `-s` / `/new` still open side threads
+  (listed by `/v1/sessions`), but the home conversation is shared.
+- When the gateway daemon runs, `ghost agent` is its thin client over the
+  same HTTP+SSE surface as the app: same turns, same permission broker
+  (approvals raised anywhere answer anywhere), same model and contexts,
+  questions answerable in-band. Starting the TUI backfills the latest
+  shared transcript, so it opens where the app left off.
+- When the daemon is down, the CLI runs its embedded loop instead
+  (offline-capable) and says so on stderr. That mode is honest local
+  work: it rejoins the shared conversation only through the store, with
+  no shared live state. Start the daemon (`ghost serve`) for full sync.
 
 ## Turning it off
 

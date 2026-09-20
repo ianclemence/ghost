@@ -432,6 +432,9 @@ func printCommandHelp(command string) {
 	case "agent":
 		fmt.Println("Usage: ghost agent [-m <message>] [-s <session>] [--debug] [--debug-log <file>]")
 		fmt.Println("Chat with Ghost in the terminal. Without -m, starts interactive mode.")
+		fmt.Println("Default session is mobile:default — the same conversation the app shows.")
+		fmt.Println("When the gateway daemon runs, the CLI is its client (shared turns,")
+		fmt.Println("approvals, memory); otherwise it runs an offline embedded loop.")
 		fmt.Println("In interactive mode logs go to --debug-log (or are hidden); stderr stays clean for the TUI.")
 	case "serve", "gateway":
 		fmt.Println("Usage: ghost serve [--api-only] [--debug]")
@@ -881,7 +884,7 @@ func agentCmd() {
 	// (manifest-aware; never overwrites user edits) so a first-run user who
 	// simply starts chatting gets working capabilities.
 	message := ""
-	sessionKey := "cli:default"
+	sessionKey := "mobile:default"
 	debugLog := ""
 	args := os.Args[2:]
 	for i := 0; i < len(args); i++ {
@@ -912,6 +915,18 @@ func agentCmd() {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Option 2 ("one conversation"): when the gateway daemon is reachable,
+	// the CLI becomes its thin client — same session store, same broker,
+	// same turn lifecycle as the app, live over SSE. Otherwise it falls
+	// back to the embedded loop (today's offline-capable behavior).
+	if base := gatewayBaseURL(cfg); gatewayReachable(base) {
+		fmt.Fprintf(os.Stderr, "✓ Connected to Ghost gateway (%s) — one shared conversation with the app\n", base)
+		agentGatewayCmd(&gatewayRuntime{baseURL: base, http: &http.Client{}}, message, sessionKey)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "○ Gateway unreachable — local mode (this conversation stays on this machine until the daemon runs)\n")
+
 	// Seed bundled skills for a fresh workspace (idempotent, manifest-aware).
 	syncEmbeddedSkills(cfg.WorkspacePath())
 
@@ -973,11 +988,46 @@ func agentCmd() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		interactiveMode(agentLoop, sessionKey, debugLog)
+		interactiveMode(agentLoop, sessionKey, debugLog, nil)
 	}
 }
 
-func interactiveMode(agentLoop *agent.AgentLoop, sessionKey, debugLog string) {
+// agentGatewayCmd runs `ghost agent` against the live daemon: one-shot
+// turns print and exit; interactive mode backfills the shared transcript
+// first so the terminal opens on the same conversation the app shows.
+// The reset stop/start dance is embedded-mode only — remotely the daemon
+// IS the executor, and stopping it would kill the server mid-turn.
+func agentGatewayCmd(gw *gatewayRuntime, message, sessionKey string) {
+	if message != "" {
+		resp, err := gw.ProcessDirectWithChannel(context.Background(), message, sessionKey, "cli", "direct", nil, nil, nil)
+		if err != nil {
+			fmt.Printf("Error: %s\n", friendlyAgentError(err))
+			os.Exit(1)
+		}
+		fmt.Printf("\n%s %s\n", logo, resp)
+		return
+	}
+	if err := nontty.RequireInteractive("interactive chat", "`ghost agent -m \"...\"`"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	var preload []entry
+	if hist, err := gw.LoadRecentHistory(sessionKey, 20); err == nil {
+		for _, h := range hist {
+			switch h.Role {
+			case "user":
+				preload = append(preload, entry{kind: entryUser, text: h.Content})
+			case "assistant":
+				preload = append(preload, entry{kind: entryAssistant, text: h.Content})
+			}
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "note: couldn't load shared history (%v); starting fresh\n", err)
+	}
+	interactiveMode(gw, sessionKey, "", preload)
+}
+
+func interactiveMode(runtime agentRuntime, sessionKey, debugLog string, preload []entry) {
 	// P0 correctness: the TUI owns the screen. Route logs to a file (or
 	// drop the stderr line entirely) so INFO lines can never paint over
 	// the alt-screen transcript and input box.
@@ -987,7 +1037,10 @@ func interactiveMode(agentLoop *agent.AgentLoop, sessionKey, debugLog string) {
 		}
 	}
 	logger.SetSilent(true)
-	m := newAgentTUI(agentLoop, sessionKey)
+	m := newAgentTUI(runtime, sessionKey)
+	for _, e := range preload {
+		m.append(e)
+	}
 	agentProgram = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	defer func() { agentProgram = nil }()
 	if _, err := agentProgram.Run(); err != nil {
@@ -995,15 +1048,15 @@ func interactiveMode(agentLoop *agent.AgentLoop, sessionKey, debugLog string) {
 		// line mode with an honest note (stdin is a TTY here — checked
 		// above — so this cannot hang).
 		fmt.Printf("Interactive UI unavailable (%v); using simple mode.\n", err)
-		simpleInteractiveMode(agentLoop, sessionKey)
+		simpleInteractiveMode(runtime, sessionKey)
 		return
 	}
 	// ux-intro-outro: close the session the way the welcome card opened
 	// it — one line on what the conversation produced.
-	fmt.Printf("\n%s Ghost session ended · %d turn%s · %s\n", logo, m.turnCount, plural(m.turnCount), agentLoop.GetCurrentModel())
+	fmt.Printf("\n%s Ghost session ended · %d turn%s · %s\n", logo, m.turnCount, plural(m.turnCount), runtime.GetCurrentModel())
 }
 
-func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
+func simpleInteractiveMode(runtime agentRuntime, sessionKey string) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print(fmt.Sprintf("%s You: ", logo))
@@ -1028,7 +1081,7 @@ func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 		}
 
 		ctx := context.Background()
-		response, err := agentLoop.ProcessDirect(ctx, input, sessionKey)
+		response, err := runtime.ProcessDirectWithChannel(ctx, input, sessionKey, "cli", "direct", nil, nil, nil)
 		if err != nil {
 			fmt.Printf("Error: %s\n", friendlyAgentError(err))
 			continue

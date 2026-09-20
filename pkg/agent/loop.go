@@ -945,6 +945,55 @@ func (al *AgentLoop) Steering() *SteeringManager {
 	return al.steering
 }
 
+// InjectSteering queues a follow-up message into the running turn for a
+// session (the "type while working" path). It is the same call the gateway
+// steering endpoint makes; the terminal CLI uses it in both embedded and
+// gateway-client modes so behavior matches across surfaces.
+func (al *AgentLoop) InjectSteering(sessionKey, content string) {
+	if al == nil || al.steering == nil {
+		return
+	}
+	al.steering.Inject(SteeringMessage{
+		Content:    content,
+		SessionKey: sessionKey,
+		Channel:    "cli",
+		ChatID:     "direct",
+	})
+}
+
+// AbortTurn requests an immediate abort of the running turn for a session
+// (the Esc path). The loop honors it at the next iteration boundary and
+// reports "Aborted by user."
+func (al *AgentLoop) AbortTurn(sessionKey string) {
+	if al == nil || al.steering == nil {
+		return
+	}
+	al.steering.HardAbort(sessionKey)
+}
+
+// RefreshModels busts cached model state. The embedded loop reads its
+// config live, so this is a no-op kept for the agentRuntime contract
+// (the gateway client actually caches).
+func (al *AgentLoop) RefreshModels() {}
+
+// RespondClarify answers an in-flight clarification question for the
+// embedded loop, mirroring POST /v1/clarify/respond on the gateway. It
+// reports false when there is no such pending question.
+func (al *AgentLoop) RespondClarify(questionID, response string) bool {
+	if al == nil || al.tools == nil {
+		return false
+	}
+	tool, ok := al.tools.Get("clarify")
+	if !ok {
+		return false
+	}
+	ct, ok := tool.(*tools.ClarifyTool)
+	if !ok {
+		return false
+	}
+	return ct.HandleResponse(questionID, response)
+}
+
 // Tools exposes the tool registry so external callers (e.g. the mobile API)
 // can reach interactive tools such as clarify.
 func (al *AgentLoop) Tools() *tools.ToolRegistry {
