@@ -452,7 +452,8 @@ func printCommandHelp(command string) {
 	case "update":
 		fmt.Println("Usage: ghost update [--dry-run] [--force]")
 		fmt.Println("Deploy the tagged release to the installed Ghost. Refuses a dirty checkout")
-		fmt.Println("unless --force. Run with sudo.")
+		fmt.Println("unless --force. Exits quietly when already up to date (same --force")
+		fmt.Println("overrides that too). Run with sudo.")
 	case "auto-update", "updater":
 		fmt.Println("Usage: ghost auto-update [--interval DURATION]")
 		fmt.Println("Run the auto-update daemon: periodically pull the latest release and rebuild.")
@@ -530,7 +531,7 @@ func printHelp() {
 	fmt.Println("  state       Export, import, inspect, backup, or prune Ghost State")
 	fmt.Println()
 	fmt.Println("Deploy")
-	fmt.Println("  update      Deploy the tagged release to the installed Ghost (sudo; refuses a dirty checkout; --force, --dry-run)")
+	fmt.Println("  update      Deploy the tagged release to the installed Ghost (sudo; refuses a dirty checkout; skips when already up to date; --force, --dry-run)")
 	fmt.Println("  auto-update Run the auto-update daemon")
 	fmt.Println()
 	fmt.Println("Recover")

@@ -244,9 +244,9 @@ install-ghost: build-ghost
 		exit 1; \
 	fi
 	@# Provision the sidecar binary + speech model (best effort: cloud STT stays as fallback)
-	@$(BINARY_PATH) stt setup || echo "WARNING: local speech-to-text provisioning failed; cloud transcription remains available"
+	@$(BINARY_PATH) speech stt setup || echo "WARNING: local speech-to-text provisioning failed; cloud transcription remains available"
 	@# Provision the TTS engine binary + default voice (best effort: edge-tts stays as fallback)
-	@$(BINARY_PATH) tts setup || echo "WARNING: local speech synthesis provisioning failed; edge-tts remains available"
+	@$(BINARY_PATH) speech tts setup || echo "WARNING: local speech synthesis provisioning failed; edge-tts remains available"
 	@# Install main ghost service. The daemon runs as root for hardware and
 	@# service management; that is independent of who OWNS the data. Keep
 	@# User=root explicitly rather than deriving it from the invoking user.
@@ -257,9 +257,10 @@ install-ghost: build-ghost
 		-e "s|__BIN_DIR__|/usr/local/bin|g" \
 		ghost.service.template > ghost.service
 	@sudo cp ghost.service /etc/systemd/system/ghost.service
-	@# Open firewall ports
-	@sudo ufw allow 80/tcp 2>/dev/null || true
-	@sudo ufw allow 8766/tcp 2>/dev/null || true
+	@# Open firewall ports (silent when the rules already exist: ufw
+	@# narrates "Skipping adding existing rule" on stdout otherwise).
+	@sudo ufw allow 80/tcp >/dev/null 2>&1 || true
+	@sudo ufw allow 8766/tcp >/dev/null 2>&1 || true
 	@# Enable and restart services
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable ghost-web

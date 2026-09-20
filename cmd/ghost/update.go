@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -66,23 +68,34 @@ func updateCmd() {
 		Pull: func() error {
 			fmt.Println("1. Pulling latest changes...")
 			cmd := exec.Command("git", "-C", ghostDir, "pull")
-			cmd.Stdout = os.Stdout
+			var out bytes.Buffer
+			cmd.Stdout = io.MultiWriter(os.Stdout, &out)
 			cmd.Stderr = os.Stderr
-			return cmd.Run()
+			if err := cmd.Run(); err != nil {
+				return err
+			}
+			// No-change updates used to snapshot, stop, rebuild, and
+			// restart every service for zero benefit. Exit here instead;
+			// --force still redeploys on demand.
+			if !force && strings.Contains(out.String(), "Already up to date.") {
+				fmt.Println("Already up to date — nothing to deploy. Use --force to redeploy anyway.")
+				os.Exit(0)
+			}
+			return nil
 		},
 		Plan: func() error {
 			fmt.Println("2. Validating workspace layout (services still running)...")
 			return appliance.CheckWorkspaceMigration(appliance.DefaultGhostDir)
 		},
 		Snapshot: func() error {
-			fmt.Println("2b. Taking recovery snapshot (services still running)...")
+			fmt.Println("3. Taking recovery snapshot (services still running)...")
 			return appliance.PreUpdateSnapshot()
 		},
 		Stop: func() {
 			// Quiesce the personal AI before touching its runtime
 			// workspace, so the move never happens under a running
 			// gateway with the DB open.
-			fmt.Println("3. Stopping services...")
+			fmt.Println("4. Stopping services...")
 			exec.Command("systemctl", "stop", "ghost").Run()
 			exec.Command("systemctl", "stop", "ghost-web").Run()
 		},
@@ -91,12 +104,11 @@ func updateCmd() {
 			// running install still uses the legacy layout. This must
 			// happen before install-ghost restarts services with
 			// GHOST_WORKSPACE_DIR pointing at /var/lib/ghost.
-			fmt.Println("4. Checking workspace layout...")
+			fmt.Println("5. Applying workspace layout, building and deploying...")
 			if err := migrateApplianceWorkspace(false); err != nil {
 				return err
 			}
 			// Build and deploy (install-ghost restarts services).
-			fmt.Println("5. Building and deploying...")
 			cmd := makeInstallGhost(ghostDir)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
