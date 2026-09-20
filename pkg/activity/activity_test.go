@@ -175,3 +175,65 @@ func TestSkillLifecycleProjectsSuccessNotRunning(t *testing.T) {
 		}
 	}
 }
+
+// The revelation layer: an owner must be able to see WHY Ghost asked or
+// acted on consequential work, and get no noise for routine reads.
+func TestWhyForConsequentialActions(t *testing.T) {
+	cases := []struct {
+		name    string
+		event   *cevents.Event
+		wantWhy string
+	}{
+		{
+			"approval requested explains itself",
+			ev(cevents.PermissionRequested, map[string]interface{}{"capability": "email.send", "risk": "consequential"}),
+			"Consequential action, so Ghost asked first.",
+		},
+		{
+			"high-impact approval warns it is hard to undo",
+			ev(cevents.PermissionApproved, map[string]interface{}{"capability": "browser.transact", "risk": "high_impact"}),
+			"You approved this high-impact action; it may be hard to undo.",
+		},
+		{
+			"denial is honest that nothing ran",
+			ev(cevents.PermissionDenied, map[string]interface{}{"capability": "message.send", "risk": "consequential"}),
+			"You declined this action, so Ghost did not do it.",
+		},
+		{
+			"expiry is honest that nothing ran",
+			ev(cevents.PermissionExpired, map[string]interface{}{"risk": "consequential"}),
+			"The approval expired before it was used, so nothing ran.",
+		},
+		{
+			"consequential completion records it ran under approval",
+			ev(cevents.CapabilityCompleted, map[string]interface{}{"capability": "email.send", "risk": "consequential"}),
+			"Done under your approval.",
+		},
+		{
+			"failed consequential action says nothing changed",
+			ev(cevents.CapabilityFailed, map[string]interface{}{"capability": "email.send", "risk": "consequential"}),
+			"The action did not complete; nothing was changed.",
+		},
+		{
+			"a read needs no justification",
+			ev(cevents.CapabilityCompleted, map[string]interface{}{"capability": "weather.get", "risk": "read_only"}),
+			"",
+		},
+		{
+			"routine housekeeping gets no line",
+			ev(cevents.RoutineCreated, map[string]interface{}{}),
+			"",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			chip, ok := Project(tc.event)
+			if !ok {
+				t.Fatalf("event should project")
+			}
+			if chip.Why != tc.wantWhy {
+				t.Errorf("Why = %q, want %q", chip.Why, tc.wantWhy)
+			}
+		})
+	}
+}

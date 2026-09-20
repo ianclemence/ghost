@@ -585,6 +585,10 @@ func NewGovernance(events *cevents.Stream, broker *permissions.Broker, ghostID, 
 				Payload: map[string]interface{}{
 					"capability": r.Capability, "action": r.Action,
 					"target": r.Target, "summary": r.Reason,
+					// Risk travels with the event so the owner-facing activity
+					// projection can explain WHY Ghost asked ("sending is
+					// consequential") instead of just that it did.
+					"risk": string(r.Risk),
 				},
 			})
 		})

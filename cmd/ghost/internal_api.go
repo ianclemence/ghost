@@ -157,6 +157,9 @@ func emitPermissionEvent(t string, r *permissions.Request) {
 		Payload: map[string]interface{}{
 			"capability": r.Capability, "action": r.Action,
 			"target": r.Target, "summary": r.Reason,
+			// Risk explains WHY the owner is being asked; see the activity
+			// projection (pkg/activity) which turns it into product language.
+			"risk": string(r.Risk),
 		},
 	})
 }

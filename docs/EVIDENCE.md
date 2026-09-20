@@ -14,6 +14,25 @@ never occurred. Ghost refuses to do that:
 > Ghost must not claim successful consequential execution without sufficient
 > runtime evidence.
 
+## Revelation: evidence the owner can see
+
+Evidence protects the owner even when they never read it. But an owner who
+cannot see why Ghost acted cannot fully trust it, so the same facts are
+surfaced in owner language on the Activity feed:
+
+- **why an approval was asked** — derived from the broker's own risk class,
+  never model prose ("Consequential action, so Ghost asked first.");
+- **what a decision meant** — an approval, a denial, or an expiry, each with
+  the consequence stated honestly ("You declined this action, so Ghost did
+  not do it.");
+- **that consequential work ran under approval** — and, on failure, that
+  nothing was changed.
+
+The revelation line is quiet by construction: it appears only where there is
+something the owner would want to reason about. Routine reads get no line.
+The values come from `pkg/activity` (`whyFor`), rendered on both the mobile
+app and the Web Console.
+
 ## Model claim is not evidence
 
 ```

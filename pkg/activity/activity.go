@@ -44,6 +44,11 @@ type Chip struct {
 	Timestamp time.Time `json:"timestamp"`
 	Summary   string    `json:"summary,omitempty"`
 	Detail    string    `json:"detail,omitempty"` // layer 2: safe expanded text
+	// Why explains, in owner language, why Ghost acted or asked. It is the
+	// revelation layer: the owner should never have to wonder why a
+	// consequential action happened. Empty for events that need no
+	// justification (routine housekeeping, reads).
+	Why string `json:"why,omitempty"`
 }
 
 // humanTitles maps event types to product-narrative titles. Unknown types
@@ -209,7 +214,47 @@ func Project(e *cevents.Event) (*Chip, bool) {
 		chip.Summary = truncate(s, 160)
 	}
 	chip.Detail = expandDetail(e)
+	chip.Why = whyFor(e)
 	return chip, true
+}
+
+// whyFor renders the revelation line: why Ghost asked or acted. It uses only
+// runtime-owned facts (capability, risk, status) and never model prose. It is
+// deliberately quiet: a reason only appears when there IS a reason the owner
+// would want (a consequential action, an approval, a denial). Routine reads
+// and housekeeping get no line.
+func whyFor(e *cevents.Event) string {
+	risk, _ := e.Payload["risk"].(string)
+	risk = strings.ToLower(strings.TrimSpace(risk))
+
+	switch e.Type {
+	case cevents.PermissionRequested:
+		return "Consequential action, so Ghost asked first."
+	case cevents.PermissionApproved:
+		if risk == "high_impact" {
+			return "You approved this high-impact action; it may be hard to undo."
+		}
+		return "You approved this consequential action."
+	case cevents.PermissionDenied:
+		return "You declined this action, so Ghost did not do it."
+	case cevents.PermissionExpired:
+		return "The approval expired before it was used, so nothing ran."
+	case cevents.CapabilityCompleted, cevents.ToolCompleted:
+		// Only justify consequential work; reads need no explanation.
+		switch risk {
+		case "consequential":
+			return "Done under your approval."
+		case "high_impact":
+			return "High-impact action, completed under your approval."
+		}
+		return ""
+	case cevents.CapabilityFailed, cevents.ToolFailed:
+		if risk == "consequential" || risk == "high_impact" {
+			return "The action did not complete; nothing was changed."
+		}
+		return ""
+	}
+	return ""
 }
 
 // expandDetail builds layer-2 text: safe provenance, never internals.

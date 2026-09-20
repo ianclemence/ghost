@@ -47,6 +47,11 @@ async function loadActivity(container) {
     if (item.summary && item.timestamp) sub.appendChild(document.createTextNode('  \u00b7  '));
     if (item.timestamp) sub.appendChild(document.createTextNode(activityTime(item.timestamp)));
     c.appendChild(sub);
+    // Revelation: why Ghost asked or acted. Only present for consequential
+    // work, so routine reads stay quiet.
+    if (item.why) {
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle type-foot text-tertiary', style: 'font-style:italic;margin-top:2px' }, item.why));
+    }
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
     const st = item.state || '';
