@@ -408,20 +408,67 @@ func (g *gatewayRuntime) SwitchContext(sessionKey, contextID string) error {
 
 // historyEntry is one backfillable transcript row.
 type historyEntry struct {
-	Role    string
-	Content string
+	Role      string
+	Content   string
+	Timestamp int64
 }
 
 // LoadRecentHistory fetches the latest user/assistant rows for a session so
 // a freshly started terminal opens on the same conversation the app shows.
 func (g *gatewayRuntime) LoadRecentHistory(sessionKey string, limit int) ([]historyEntry, error) {
+	return g.LoadConversationHistory(sessionKey, limit)
+}
+
+// LoadConversationHistory fetches the latest rows for the session plus, as
+// a display-level bridge, any pre-unification legacy rows (mobile:default,
+// cli:default) that the v6 migration has not folded yet — embedded-only
+// devices never run gateway migrations, so their past chats would
+// otherwise vanish. Rows merge chronologically and cap at limit.
+func (g *gatewayRuntime) LoadConversationHistory(sessionKey string, limit int) ([]historyEntry, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
+	keys := []string{sessionKey}
+	for _, legacy := range []string{"mobile:default", "cli:default"} {
+		if legacy != sessionKey {
+			keys = append(keys, legacy)
+		}
+	}
+	var all []historyEntry
+	for _, key := range keys {
+		rows, err := g.loadSessionHistory(key, limit)
+		if err != nil {
+			if key == sessionKey {
+				return nil, err
+			}
+			continue // legacy bridges are best-effort
+		}
+		all = append(all, rows...)
+		if len(rows) >= limit && key == sessionKey {
+			break // primary already fills the window; skip legacy reads
+		}
+	}
+	sortByTimestamp(all)
+	if len(all) > limit {
+		all = all[len(all)-limit:]
+	}
+	return all, nil
+}
+
+func sortByTimestamp(rows []historyEntry) {
+	for i := 1; i < len(rows); i++ {
+		for j := i; j > 0 && rows[j-1].Timestamp > rows[j].Timestamp; j-- {
+			rows[j-1], rows[j] = rows[j], rows[j-1]
+		}
+	}
+}
+
+func (g *gatewayRuntime) loadSessionHistory(sessionKey string, limit int) ([]historyEntry, error) {
 	var res struct {
 		Messages []struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
+			Role      string `json:"role"`
+			Content   string `json:"content"`
+			Timestamp int64  `json:"timestamp"`
 		} `json:"messages"`
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -438,7 +485,7 @@ func (g *gatewayRuntime) LoadRecentHistory(sessionKey string, limit int) ([]hist
 		if strings.TrimSpace(m.Content) == "" {
 			continue
 		}
-		out = append(out, historyEntry{Role: m.Role, Content: m.Content})
+		out = append(out, historyEntry{Role: m.Role, Content: m.Content, Timestamp: m.Timestamp})
 	}
 	return out, nil
 }

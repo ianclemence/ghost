@@ -26,6 +26,9 @@ type fakeGateway struct {
 	switched [][2]string
 	clarify  []map[string]string
 	chatSSE  string
+	// historyBySession overrides the history payload per ?session=.
+	// Absent keys fall back to the default two-row payload.
+	historyBySession map[string]string
 }
 
 func (f *fakeGateway) handler() http.Handler {
@@ -49,7 +52,7 @@ func (f *fakeGateway) handler() http.Handler {
 	mux.HandleFunc("/v1/permissions/requests", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"ok":true,"requests":[
 			{"id":"req-9","session_key":"other:session","capability":"exec","action":"run","risk":"high_impact"},
-			{"id":"req-1","session_key":"mobile:default","capability":"exec","action":"run","target":"deploy.sh","risk":"consequential","card":{"title":"Run deploy.sh?"}}
+			{"id":"req-1","session_key":"main","capability":"exec","action":"run","target":"deploy.sh","risk":"consequential","card":{"title":"Run deploy.sh?"}}
 		]}`))
 	})
 	mux.HandleFunc("/v1/model", func(w http.ResponseWriter, r *http.Request) {
@@ -89,11 +92,15 @@ func (f *fakeGateway) handler() http.Handler {
 		_, _ = w.Write([]byte(`{"ok":true,"context_id":"` + body["context_id"] + `"}`))
 	})
 	mux.HandleFunc("/v1/history", func(w http.ResponseWriter, r *http.Request) {
+		if payload, ok := f.historyBySession[r.URL.Query().Get("session")]; ok {
+			_, _ = w.Write([]byte(payload))
+			return
+		}
 		_, _ = w.Write([]byte(`{"messages":[
-			{"role":"user","content":"hello"},
-			{"role":"tool","content":"should be skipped"},
-			{"role":"assistant","content":"hi there"},
-			{"role":"user","content":"   "}
+			{"role":"user","content":"hello","timestamp":100},
+			{"role":"tool","content":"should be skipped","timestamp":101},
+			{"role":"assistant","content":"hi there","timestamp":102},
+			{"role":"user","content":"   ","timestamp":103}
 		],"total":4}`))
 	})
 	mux.HandleFunc("/v1/clarify/respond", func(w http.ResponseWriter, r *http.Request) {
@@ -141,7 +148,7 @@ func TestGatewayChatStream(t *testing.T) {
 		"data: [DONE]\n\n"
 	gw, _ := newTestGateway(t, sse)
 	var chunks []string
-	text, err := gw.ProcessDirectWithChannel(context.Background(), "hi", "mobile:default", "cli", "direct", nil,
+	text, err := gw.ProcessDirectWithChannel(context.Background(), "hi", "main", "cli", "direct", nil,
 		func(s string) { chunks = append(chunks, s) }, nil)
 	if err != nil {
 		t.Fatalf("stream must succeed: %v", err)
@@ -159,7 +166,7 @@ func TestGatewayChatFailed(t *testing.T) {
 		"data: {\"type\":\"lifecycle\",\"state\":\"completed\",\"outcome\":\"failed\"}\n\n" +
 		"data: [DONE]\n\n"
 	gw, _ := newTestGateway(t, sse)
-	_, err := gw.ProcessDirectWithChannel(context.Background(), "hi", "mobile:default", "cli", "direct", nil, nil, nil)
+	_, err := gw.ProcessDirectWithChannel(context.Background(), "hi", "main", "cli", "direct", nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "thinking engine offline") {
 		t.Fatalf("failed turns must surface the daemon error, got %v", err)
 	}
@@ -167,8 +174,8 @@ func TestGatewayChatFailed(t *testing.T) {
 
 func TestGatewaySteeringAndAbort(t *testing.T) {
 	gw, fg := newTestGateway(t, "")
-	gw.InjectSteering("mobile:default", "change of plan")
-	gw.AbortTurn("mobile:default")
+	gw.InjectSteering("main", "change of plan")
+	gw.AbortTurn("main")
 	fg.mu.Lock()
 	defer fg.mu.Unlock()
 	if len(fg.steering) != 2 {
@@ -177,14 +184,14 @@ func TestGatewaySteeringAndAbort(t *testing.T) {
 	if fg.steering[0]["action"] != "redirect" || fg.steering[0]["content"] != "change of plan" {
 		t.Errorf("redirect payload wrong: %v", fg.steering[0])
 	}
-	if fg.steering[1]["action"] != "abort" || fg.steering[1]["session_key"] != "mobile:default" {
+	if fg.steering[1]["action"] != "abort" || fg.steering[1]["session_key"] != "main" {
 		t.Errorf("abort payload wrong: %v", fg.steering[1])
 	}
 }
 
 func TestGatewayApprovalMapping(t *testing.T) {
 	gw, _ := newTestGateway(t, "")
-	id, title, risk, ok := gw.PendingApproval("mobile:default")
+	id, title, risk, ok := gw.PendingApproval("main")
 	if !ok {
 		t.Fatalf("pending request for the session must be reported")
 	}
@@ -236,28 +243,28 @@ func TestGatewayModelCache(t *testing.T) {
 
 func TestGatewayContexts(t *testing.T) {
 	gw, fg := newTestGateway(t, "")
-	if got := gw.CurrentContext("mobile:default"); got != "work" {
+	if got := gw.CurrentContext("main"); got != "work" {
 		t.Errorf("current context wrong: %q", got)
 	}
 	if ids := gw.ListContexts(); len(ids) != 2 || ids[0] != "personal" {
 		t.Errorf("context list wrong: %v", ids)
 	}
-	if err := gw.SwitchContext("mobile:default", "personal"); err != nil {
+	if err := gw.SwitchContext("main", "personal"); err != nil {
 		t.Errorf("switch must succeed: %v", err)
 	}
-	if err := gw.SwitchContext("mobile:default", "nope"); err == nil {
+	if err := gw.SwitchContext("main", "nope"); err == nil {
 		t.Errorf("unknown context must fail")
 	}
 	fg.mu.Lock()
 	defer fg.mu.Unlock()
-	if len(fg.switched) != 1 || fg.switched[0] != [2]string{"mobile:default", "personal"} {
+	if len(fg.switched) != 1 || fg.switched[0] != [2]string{"main", "personal"} {
 		t.Errorf("switch payload wrong: %v", fg.switched)
 	}
 }
 
 func TestGatewayHistory(t *testing.T) {
 	gw, _ := newTestGateway(t, "")
-	hist, err := gw.LoadRecentHistory("mobile:default", 20)
+	hist, err := gw.loadSessionHistory("main", 20)
 	if err != nil {
 		t.Fatalf("history must load: %v", err)
 	}
@@ -266,6 +273,54 @@ func TestGatewayHistory(t *testing.T) {
 	}
 	if hist[0].Content != "hello" || hist[1].Content != "hi there" {
 		t.Errorf("history content wrong: %+v", hist)
+	}
+}
+
+// Pre-unification rows (mobile:/cli:default) merge chronologically into
+// the backfill so past chats survive the rename on devices whose gateway
+// never ran the v6 migration (embedded-only use).
+func TestGatewayHistoryMergesLegacy(t *testing.T) {
+	gw, fg := newTestGateway(t, "")
+	fg.historyBySession = map[string]string{
+		"main":            `{"messages":[{"role":"user","content":"new","timestamp":300}],"total":1}`,
+		"mobile:default":  `{"messages":[{"role":"user","content":"old app","timestamp":100}],"total":1}`,
+		"cli:default":     `{"messages":[{"role":"assistant","content":"old cli","timestamp":200}],"total":1}`,
+		"unrelated:voice": `{"messages":[{"role":"user","content":"nope","timestamp":400}],"total":1}`,
+	}
+	hist, err := gw.LoadConversationHistory("main", 20)
+	if err != nil {
+		t.Fatalf("merge must load: %v", err)
+	}
+	if len(hist) != 3 {
+		t.Fatalf("expected 3 merged rows, got %+v", hist)
+	}
+	if hist[0].Content != "old app" || hist[1].Content != "old cli" || hist[2].Content != "new" {
+		t.Errorf("rows must merge chronologically, got %+v", hist)
+	}
+}
+
+// Legacy session names canonicalize onto main at the gateway edge so old
+// apps, scripts, and relay clients keep working after the rename.
+func TestResolveSessionCanonical(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                  "main",
+		"mobile:default":    "main",
+		"cli:default":       "main",
+		"main":              "main",
+		"voice:note":        "voice:note",
+		"cli:custom-thread": "cli:custom-thread",
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/v1/history", nil)
+		if in != "" {
+			req.Header.Set("X-Ghost-Session", in)
+		}
+		if got := resolveSession(req); got != want {
+			t.Errorf("resolveSession(%q) = %q, want %q", in, got, want)
+		}
+	}
+	req := httptest.NewRequest(http.MethodGet, "/v1/history?session=cli:default", nil)
+	if got := resolveSession(req); got != "main" {
+		t.Errorf("query session must canonicalize, got %q", got)
 	}
 }
 
@@ -292,16 +347,16 @@ func TestGatewayUnreachableSurfaces(t *testing.T) {
 	if ids := gw.ListContexts(); len(ids) != 1 || ids[0] != "personal" {
 		t.Errorf("contexts must degrade, got %v", ids)
 	}
-	if _, _, _, ok := gw.PendingApproval("mobile:default"); ok {
+	if _, _, _, ok := gw.PendingApproval("main"); ok {
 		t.Errorf("approvals must degrade to none")
 	}
-	if _, err := gw.LoadRecentHistory("mobile:default", 20); err == nil {
+	if _, err := gw.LoadRecentHistory("main", 20); err == nil {
 		t.Errorf("history must fail cleanly")
 	}
 	if gw.RespondClarify("q", "a") {
 		t.Errorf("clarify must report false")
 	}
-	if err := gw.SwitchContext("mobile:default", "work"); err == nil {
+	if err := gw.SwitchContext("main", "work"); err == nil {
 		t.Errorf("switch must fail cleanly")
 	}
 	if err := gw.SetModel("x"); err == nil {

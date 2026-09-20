@@ -586,8 +586,63 @@ func TestTUIToolProgressPassthrough(t *testing.T) {
 	}
 }
 
-// Tool repeats for the active step must not append duplicate rows; the
-// spinner row updates in place (opencode collapsed-trail rule).
+// Ctrl+J inserts a newline (universal multiline key); Enter still sends.
+// The composer grows to maxPromptLines, then scrolls inside the box.
+func TestTUIMultilineComposer(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.input.SetValue("line one")
+	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	if got := m.input.Value(); got != "line one\n" {
+		t.Fatalf("ctrl+j must insert a newline, got %q", got)
+	}
+	if len(f.turns) != 0 {
+		t.Fatalf("newline must not send, got %v", f.turns)
+	}
+	m.input.SetValue(strings.Repeat("x\n", 10))
+	m.layout()
+	if h := m.input.Height(); h != maxPromptLines {
+		t.Errorf("composer must cap at %d lines, got %d", maxPromptLines, h)
+	}
+}
+
+// User messages render as an opencode panel: name line, bar-prefixed
+// rows, explicit newlines preserved as paragraph breaks (never
+// markdown-rendered).
+func TestTUIUserBubbleMultiline(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	out := m.renderEntry(entry{kind: entryUser, text: "first **not bold**\n\nsecond"})
+	if n := strings.Count(out, "┃"); n != 3 {
+		t.Errorf("user bubble must bar-prefix every row (2 text + 1 blank), got %d: %q", n, out)
+	}
+	if !strings.Contains(out, "first **not bold**") {
+		t.Errorf("user text must stay literal markdown, got %q", out)
+	}
+	if !strings.Contains(out, "second") {
+		t.Errorf("paragraphs must survive, got %q", out)
+	}
+}
+
+// Markdown follows the opencode spec: markers concealed, semantic colors.
+func TestTUIMarkdownOpencodeRoles(t *testing.T) {
+	body := renderAssistantBody("# Title\nSome **bold** and *em* with `code`\n```go\nfmt.Println()\n```\n[docs](https://x.test/y) and https://bare.test/z\n- item\n1. first\n> quote\n---", 60)
+	for _, concealed := range []string{"```go", "# Title", "`code`", "(https://x.test/y)"} {
+		if strings.Contains(body, concealed) {
+			t.Errorf("markers must be concealed, found %q in %q", concealed, body)
+		}
+	}
+	for _, want := range []string{"Title", "bold", "em", "code", "docs", "https://bare.test/z", "item", "first", "quote"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("content %q must survive, got %q", want, body)
+		}
+	}
+	// Task lists get semantic markers.
+	tasks := renderAssistantBody("- [ ] todo\n- [x] done", 60)
+	if !strings.Contains(tasks, "○") || !strings.Contains(tasks, "●") {
+		t.Errorf("task markers must render, got %q", tasks)
+	}
+}
 func TestTUIToolDedupe(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))

@@ -553,14 +553,38 @@ func jsonError(w http.ResponseWriter, status int, kind, message string) {
 	})
 }
 
+// MainSessionID is the one shared conversation: terminal, app, and
+// gateway resolve to the same rows. Surface-neutral by design — it used
+// to be called mobile:default, which lied about who it belongs to.
+const MainSessionID = "main"
+
+// legacySessionIDs are pre-unification names for the main conversation.
+// Old apps, scripts, and stored rows still reference them; they resolve
+// to MainSessionID so no history is ever stranded behind a rename.
+var legacySessionIDs = map[string]bool{"mobile:default": true, "cli:default": true}
+
 func resolveSession(r *http.Request) string {
 	if s := r.Header.Get("X-Ghost-Session"); s != "" {
-		return s
+		return canonicalSessionID(s)
 	}
 	if s := r.URL.Query().Get("session"); s != "" {
-		return s
+		return canonicalSessionID(s)
 	}
-	return "mobile:default"
+	return MainSessionID
+}
+
+// canonicalSessionID folds legacy main-conversation names onto
+// MainSessionID. Explicit side threads (voice:, operator:, cli:<id>)
+// pass through untouched.
+func canonicalSessionID(s string) string {
+	s = strings.TrimSpace(s)
+	if legacySessionIDs[s] {
+		return MainSessionID
+	}
+	if s == "" {
+		return MainSessionID
+	}
+	return s
 }
 
 func isUserVisibleHistoryMessage(role, content string, metaJSON []byte) bool {

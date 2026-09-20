@@ -29,7 +29,7 @@ import (
 )
 
 // CurrentVersion is the schema head this build understands.
-const CurrentVersion = 5
+const CurrentVersion = 6
 
 // baseline builds the full v1 schema through the same initializers
 // production startup has always used. Every step is CREATE-IF-NOT-EXISTS
@@ -92,7 +92,69 @@ func registry() []migrations.Migration {
 			Description: "job trajectory: trajectory_id column on jobs",
 			UpDB:        jobTrajectoryV5,
 		},
+		{
+			Version:     6,
+			Description: "one conversation: fold mobile:default and cli:default into main",
+			UpDB:        mainSessionV6,
+		},
 	}
+}
+
+// mainSessionV6 unifies the pre-unification home-conversation names
+// (mobile:default from the app era, cli:default from the terminal era)
+// into the surface-neutral main session. Rows interleave chronologically
+// by created_at, which is exactly the product promise: one conversation.
+// Idempotent: re-running finds no legacy rows and changes nothing.
+// Defensive like the other migrations: very old databases may lack the
+// sessions title/timestamp columns, in which case only the message fold
+// runs (titles fall back to first-user-message downstream anyway).
+func mainSessionV6(raw *sql.DB) error {
+	cols := map[string]bool{}
+	if rows, err := raw.Query(`SELECT name FROM pragma_table_info('sessions')`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err == nil {
+				cols[name] = true
+			}
+		}
+	}
+	if cols["title"] {
+		titleCols, titleVals := "id, title", "'main', s.title"
+		if cols["summary"] {
+			titleCols += ", summary"
+			titleVals += ", s.summary"
+		}
+		// Freshest title wins; rowid order proxies recency when the
+		// updated_at column predates this database.
+		tsOrder := "s.rowid"
+		if cols["created_at"] {
+			titleCols += ", created_at"
+			titleVals += ", s.created_at"
+		}
+		if cols["updated_at"] {
+			titleCols += ", updated_at"
+			titleVals += ", s.updated_at"
+			tsOrder = "s.updated_at"
+		}
+		q := fmt.Sprintf(`
+			INSERT INTO sessions (%s)
+			SELECT %s FROM sessions s
+			WHERE s.id IN ('mobile:default', 'cli:default')
+			  AND s.title IS NOT NULL AND TRIM(s.title) != ''
+			ORDER BY %s DESC LIMIT 1
+			ON CONFLICT(id) DO NOTHING`, titleCols, titleVals, tsOrder)
+		if _, err := raw.Exec(q); err != nil {
+			return fmt.Errorf("main session title carry-over: %w", err)
+		}
+	}
+	if _, err := raw.Exec(`UPDATE messages SET session_id = 'main' WHERE session_id IN ('mobile:default', 'cli:default')`); err != nil {
+		return fmt.Errorf("main session message fold: %w", err)
+	}
+	if _, err := raw.Exec(`DELETE FROM sessions WHERE id IN ('mobile:default', 'cli:default')`); err != nil {
+		return fmt.Errorf("main session ledger cleanup: %w", err)
+	}
+	return nil
 }
 
 // jobTrajectoryV5 adds trajectory_id to jobs on databases that predate it.

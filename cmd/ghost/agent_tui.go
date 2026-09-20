@@ -12,6 +12,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -467,6 +468,16 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil
+
+	case tea.KeyCtrlJ:
+		// Universal newline key (opencode's input.newline family):
+		// terminals that swallow Shift+Enter still send Ctrl+J
+		// faithfully, and the trailing-\ escape keeps working too.
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		m.clampPalette()
+		m.layout()
+		return m, cmd
 
 	case tea.KeyUp:
 		if m.paletteVisible() {
@@ -1184,10 +1195,18 @@ func (m *agentTUI) renderEntry(e entry) string {
 	w := m.contentWidth()
 	switch e.kind {
 	case entryUser:
+		// opencode user bubble: name line, then a left-bar panel with
+		// the raw text (never markdown-rendered), paragraphs preserved.
 		var lines []string
 		lines = append(lines, styleUserName.Render("You"))
-		for _, wl := range wrapText(e.text, w-2) {
-			lines = append(lines, styleUserCard.Render("❯ "+wl))
+		for _, para := range strings.Split(e.text, "\n") {
+			if strings.TrimSpace(para) == "" {
+				lines = append(lines, styleUserPanel.Render(styleUserBar.Render("┃")))
+				continue
+			}
+			for _, wl := range wrapText(para, w-4) {
+				lines = append(lines, styleUserPanel.Render(styleUserBar.Render("┃")+" "+styleUserText.Render(wl)))
+			}
 		}
 		return strings.Join(lines, "\n")
 	case entryAssistant:
@@ -1295,66 +1314,98 @@ func wrapFirst(s string, w int) string {
 	return strings.Join(wrapText(s, w), "\n")
 }
 
-// ─── markdown-lite (no new deps) ─────────────────────────────────────────
-// pi and opencode both render assistant markdown (headers, bold, code,
-// lists, quotes). We do a lightweight pass with lipgloss so code blocks
-// and inline code stand out without pulling in glamour.
-
+// ─── markdown (opencode spec, no new deps) ─────────────────────────────────
+// Follows OpenCode's TUI markdown roles on the dark theme: markers are
+// concealed (no ``` fences, no #/backtick/bracket noise, URLs hidden
+// behind cyan underlined labels), headings bold violet (h1 underlined),
+// **bold** orange, *italic*/quotes sand italic, code green with no
+// background, bullets peach, ordered numbers cyan, checked green.
 func renderAssistantBody(text string, width int) string {
 	if width < 20 {
 		width = 20
 	}
-	lines := strings.Split(text, "\n")
 	var out []string
 	inCode := false
-	for _, ln := range lines {
+	for _, ln := range strings.Split(text, "\n") {
 		trim := strings.TrimSpace(ln)
 		if strings.HasPrefix(trim, "```") {
-			inCode = !inCode
-			out = append(out, styleCodeFence.Render(cellTruncate(trim, width)))
+			inCode = !inCode // conceal fences and language tags entirely
 			continue
 		}
 		if inCode {
-			for _, wl := range wrapText(ln, width-2) {
-				out = append(out, styleCodeBlock.Render("  "+wl))
+			for _, wl := range wrapText(ln, width) {
+				out = append(out, styleMDCodeBlock.Render(wl))
+			}
+			continue
+		}
+		if level, rest, ok := parseHeading(trim); ok {
+			body := cellTruncate(rest, width)
+			if level == 1 {
+				out = append(out, styleMDHead1.Render(body))
+			} else {
+				out = append(out, styleMDHead.Render(body))
 			}
 			continue
 		}
 		switch {
-		case strings.HasPrefix(trim, "### "):
-			out = append(out, styleH3.Render("◆ "+cellTruncate(strings.TrimPrefix(trim, "### "), width-4)))
-		case strings.HasPrefix(trim, "## "):
-			out = append(out, styleH2.Render("◆ "+cellTruncate(strings.TrimPrefix(trim, "## "), width-4)))
-		case strings.HasPrefix(trim, "# "):
-			out = append(out, styleH1.Render("◆ "+cellTruncate(strings.TrimPrefix(trim, "# "), width-4)))
+		case trim == "---" || trim == "***" || trim == "___":
+			out = append(out, styleMDHR.Render(strings.Repeat("─", width)))
 		case strings.HasPrefix(trim, "> "):
-			// Wrap the quote body, keep the bar on each visual line.
-			first := true
 			for _, wl := range wrapText(strings.TrimPrefix(trim, "> "), width-4) {
-				_ = first
-				out = append(out, styleQuote.Render("▍ "+wl))
-				first = false
+				out = append(out, styleMDQuoteMark.Render("> ")+styleMDQuote.Render(renderInline(wl)))
 			}
-		case strings.HasPrefix(trim, "- ") || strings.HasPrefix(trim, "* "):
-			for _, wl := range wrapText(trim[2:], width-6) {
-				out = append(out, styleList.Render("  • "+wl))
+		case strings.HasPrefix(trim, "- [ ] ") || strings.HasPrefix(trim, "* [ ] "):
+			rest := strings.TrimSpace(trim[6:])
+			for _, wl := range wrapText(rest, width-6) {
+				out = append(out, styleMDUncheck.Render("  ○ "+renderInline(wl)))
+			}
+		case strings.HasPrefix(trim, "- [x] ") || strings.HasPrefix(trim, "- [X] ") ||
+			strings.HasPrefix(trim, "* [x] ") || strings.HasPrefix(trim, "* [X] "):
+			rest := trim[6:]
+			for _, wl := range wrapText(rest, width-6) {
+				out = append(out, styleMDCheck.Render("  ● "+renderInline(wl)))
+			}
+		case strings.HasPrefix(trim, "- ") || strings.HasPrefix(trim, "* ") || strings.HasPrefix(trim, "+ "):
+			body := strings.TrimSpace(trim[2:])
+			parts := wrapText(body, width-4)
+			for i, wl := range parts {
+				if i == 0 {
+					out = append(out, styleMDList.Render(trim[:1]+" ")+styleAssistant.Render(renderInline(wl)))
+				} else {
+					out = append(out, "  "+styleAssistant.Render(renderInline(wl)))
+				}
 			}
 		case isOrderedList(trim):
 			dot := strings.Index(trim, ".")
-			for _, wl := range wrapText(strings.TrimSpace(trim[dot+1:]), width-6) {
-				out = append(out, styleList.Render("  "+trim[:dot+1]+" "+wl))
+			parts := wrapText(strings.TrimSpace(trim[dot+1:]), width-6)
+			for i, wl := range parts {
+				if i == 0 {
+					out = append(out, styleMDEnum.Render(trim[:dot+1]+" ")+styleAssistant.Render(renderInline(wl)))
+				} else {
+					out = append(out, "  "+styleAssistant.Render(renderInline(wl)))
+				}
 			}
 		case trim == "":
 			out = append(out, "")
 		default:
-			// Body lines render plain (the block already has its Ghost
-			// header); inline spans carry the emphasis.
 			for _, wl := range wrapText(ln, width) {
 				out = append(out, styleAssistant.Render(renderInline(wl)))
 			}
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// parseHeading returns the level and concealed text of an ATX heading.
+func parseHeading(s string) (int, string, bool) {
+	i := 0
+	for i < len(s) && s[i] == '#' {
+		i++
+	}
+	if i == 0 || i > 6 || i >= len(s) || s[i] != ' ' {
+		return 0, "", false
+	}
+	return i, strings.TrimSpace(s[i+1:]), true
 }
 
 func isOrderedList(s string) bool {
@@ -1365,11 +1416,68 @@ func isOrderedList(s string) bool {
 	return i > 0 && i < len(s) && s[i] == '.' && i+1 < len(s) && s[i+1] == ' '
 }
 
-// renderInline handles **bold**, `code`, and *emphasis* with lipgloss spans.
+// renderInline applies opencode's inline roles in conceal-safe order:
+// code spans first (literals win), then links (label cyan underlined,
+// URL hidden; bare URLs peach underlined), **bold** orange,
+// *italic* sand, ~~strikethrough~~ muted.
 func renderInline(s string) string {
-	s = renderSpan(s, "`", styleInlineCode.Render)
-	s = renderSpan(s, "**", styleBold.Render)
+	s = renderSpan(s, "`", styleMDCode.Render)
+	s = renderLinks(s)
+	s = renderSpan(s, "**", styleMDStrong.Render)
+	s = renderEmphasis(s)
+	s = renderSpan(s, "~~", styleMDStrike.Render)
 	return s
+}
+
+var (
+	mdLinkRe = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
+	mdURLRe  = regexp.MustCompile(`https?://[^\s)>\]]+`)
+)
+
+func renderLinks(s string) string {
+	s = mdLinkRe.ReplaceAllStringFunc(s, func(m string) string {
+		parts := mdLinkRe.FindStringSubmatch(m)
+		if len(parts) != 2 {
+			return m
+		}
+		return styleMDLinkText.Render(parts[1]) + " "
+	})
+	return mdURLRe.ReplaceAllStringFunc(s, func(m string) string {
+		return styleMDLinkURL.Render(m)
+	})
+}
+
+// renderEmphasis handles single-star *italic* with boundary guards so
+// multiplication (2 * 3) and list markers never render as emphasis.
+func renderEmphasis(s string) string {
+	var b strings.Builder
+	for {
+		a := strings.Index(s, "*")
+		if a < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		if a+1 < len(s) && (s[a+1] == '*' || s[a+1] == ' ') {
+			b.WriteString(s[:a+1])
+			s = s[a+1:]
+			continue
+		}
+		rest := s[a+1:]
+		c := strings.Index(rest, "*")
+		if c < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		inner := rest[:c]
+		if inner == "" || strings.HasSuffix(inner, " ") || strings.Contains(inner, "*") {
+			b.WriteString(s[:a+1])
+			s = s[a+1:]
+			continue
+		}
+		b.WriteString(s[:a])
+		b.WriteString(styleMDEmph.Render(inner))
+		s = rest[c+1:]
+	}
 }
 
 func renderSpan(s, delim string, fn func(...string) string) string {
@@ -1416,7 +1524,33 @@ func (m *agentTUI) layout() {
 		m.viewport.Height = vpH
 	}
 	m.input.SetWidth(m.inputWidth())
+	m.syncInputHeight()
 }
+
+// syncInputHeight grows the composer with the text up to maxPromptLines
+// (opencode caps its composer height the same way) so long input scrolls
+// inside the box instead of pushing the transcript away.
+func (m *agentTUI) syncInputHeight() {
+	lines := 0
+	inner := m.inputWidth()
+	for _, ln := range strings.Split(m.input.Value(), "\n") {
+		w := lipgloss.Width(ln)
+		if w <= 0 {
+			lines++
+			continue
+		}
+		lines += (w + inner - 1) / inner
+	}
+	if lines < 1 {
+		lines = 1
+	}
+	if lines > maxPromptLines {
+		lines = maxPromptLines
+	}
+	m.input.SetHeight(lines)
+}
+
+const maxPromptLines = 5
 
 // estimatedInputHeight mirrors promptBox without rendering it: border (2)
 // + textarea visual lines clamped to the box. Visual lines, not physical
@@ -1437,8 +1571,8 @@ func (m *agentTUI) estimatedInputHeight() int {
 	if lines < 1 {
 		lines = 1
 	}
-	if lines > 6 {
-		lines = 6
+	if lines > maxPromptLines {
+		lines = maxPromptLines
 	}
 	return lines // bare panel: no border rows (opencode composer)
 }
@@ -1581,7 +1715,7 @@ func (m *agentTUI) footerKeysLine() string {
 	case strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/"):
 		keys = "↑↓ pick · tab/enter complete · esc dismiss"
 	default:
-		keys = "enter send · esc abort · ctrl+l model · ctrl+o details · / commands · tab complete"
+		keys = "enter send · ctrl+j newline · esc abort · ctrl+l model · / commands · tab complete"
 	}
 	return styleFooterHint.Render(cellTruncate(keys, m.width))
 }
@@ -1838,13 +1972,15 @@ var (
 	styleApproval  = lipgloss.NewStyle().Foreground(cGold).Bold(true)
 	styleStatus    = lipgloss.NewStyle().Foreground(cMuted).Background(cBgBar)
 
-	styleUserCard      = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
 	styleUserName      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleAssistantName = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
 	styleAssistantMeta = lipgloss.NewStyle().Foreground(cFaint)
 	styleErrorCard     = lipgloss.NewStyle().Foreground(cErr).Bold(true)
 	styleToolActive    = lipgloss.NewStyle().Foreground(cGreen)
-	styleBold          = lipgloss.NewStyle().Bold(true).Foreground(cInk)
+	// opencode user bubble: agent-color bar, panel background, plain text.
+	styleUserBar   = lipgloss.NewStyle().Foreground(cAccent)
+	styleUserText  = lipgloss.NewStyle().Foreground(cInk)
+	styleUserPanel = lipgloss.NewStyle().Background(cBgPanel).Padding(0, 1)
 
 	// opencode autocomplete menu: left split-border, menu background,
 	// selected row highlighted (dialog.select pattern).
@@ -1881,14 +2017,26 @@ var (
 	styleWelcomeTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
 	styleWelcomeCmds  = lipgloss.NewStyle().Foreground(cMuted)
 
-	styleH1         = lipgloss.NewStyle().Foreground(cGold).Bold(true)
-	styleH2         = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
-	styleH3         = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
-	styleQuote      = lipgloss.NewStyle().Foreground(cMuted).Italic(true)
-	styleList       = lipgloss.NewStyle().Foreground(cInk)
-	styleInlineCode = lipgloss.NewStyle().Foreground(cGreen).Background(cCodeBg)
-	styleCodeBlock  = lipgloss.NewStyle().Foreground(lipgloss.Color("#c9c2b4")).Background(cCodeBg)
-	styleCodeFence  = lipgloss.NewStyle().Foreground(cFaint)
+	// opencode markdown roles (dark default): headings violet bold (h1
+	// underlined), strong orange, emphasis/quotes sand italic, code green
+	// with no background, bullets peach, ordered numbers cyan, checked
+	// green, links cyan underlined with the URL concealed.
+	styleMDHead      = lipgloss.NewStyle().Foreground(lipgloss.Color("#9d7cd8")).Bold(true)
+	styleMDHead1     = lipgloss.NewStyle().Foreground(lipgloss.Color("#9d7cd8")).Bold(true).Underline(true)
+	styleMDStrong    = lipgloss.NewStyle().Foreground(lipgloss.Color("#f5a742")).Bold(true)
+	styleMDEmph      = lipgloss.NewStyle().Foreground(lipgloss.Color("#e5c07b")).Italic(true)
+	styleMDQuote     = lipgloss.NewStyle().Foreground(lipgloss.Color("#e5c07b")).Italic(true)
+	styleMDQuoteMark = lipgloss.NewStyle().Foreground(cMuted)
+	styleMDCode      = lipgloss.NewStyle().Foreground(lipgloss.Color("#7fd88f"))
+	styleMDCodeBlock = lipgloss.NewStyle().Foreground(cInk)
+	styleMDList      = lipgloss.NewStyle().Foreground(lipgloss.Color("#fab283"))
+	styleMDEnum      = lipgloss.NewStyle().Foreground(lipgloss.Color("#56b6c2"))
+	styleMDCheck     = lipgloss.NewStyle().Foreground(lipgloss.Color("#7fd88f"))
+	styleMDUncheck   = lipgloss.NewStyle().Foreground(cMuted)
+	styleMDLinkText  = lipgloss.NewStyle().Foreground(lipgloss.Color("#56b6c2")).Underline(true)
+	styleMDLinkURL   = lipgloss.NewStyle().Foreground(lipgloss.Color("#fab283")).Underline(true)
+	styleMDStrike    = lipgloss.NewStyle().Foreground(cMuted).Strikethrough(true)
+	styleMDHR        = lipgloss.NewStyle().Foreground(cMuted)
 )
 
 func agentHelpText() string {

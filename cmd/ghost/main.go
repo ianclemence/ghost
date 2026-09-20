@@ -432,7 +432,7 @@ func printCommandHelp(command string) {
 	case "agent":
 		fmt.Println("Usage: ghost agent [-m <message>] [-s <session>] [--debug] [--debug-log <file>]")
 		fmt.Println("Chat with Ghost in the terminal. Without -m, starts interactive mode.")
-		fmt.Println("Default session is mobile:default — the same conversation the app shows.")
+		fmt.Println("Default session is main — the same conversation the app shows.")
 		fmt.Println("When the gateway daemon runs, the CLI is its client (shared turns,")
 		fmt.Println("approvals, memory); otherwise it runs an offline embedded loop.")
 		fmt.Println("In interactive mode logs go to --debug-log (or are hidden); stderr stays clean for the TUI.")
@@ -884,7 +884,7 @@ func agentCmd() {
 	// (manifest-aware; never overwrites user edits) so a first-run user who
 	// simply starts chatting gets working capabilities.
 	message := ""
-	sessionKey := "mobile:default"
+	sessionKey := MainSessionID
 	debugLog := ""
 	args := os.Args[2:]
 	for i := 0; i < len(args); i++ {
@@ -1012,7 +1012,7 @@ func agentGatewayCmd(gw *gatewayRuntime, message, sessionKey string) {
 		os.Exit(2)
 	}
 	var preload []entry
-	if hist, err := gw.LoadRecentHistory(sessionKey, 20); err == nil {
+	if hist, err := gw.LoadConversationHistory(sessionKey, 20); err == nil {
 		for _, h := range hist {
 			switch h.Role {
 			case "user":

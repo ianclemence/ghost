@@ -48,6 +48,7 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 | Key | Action |
 |---|---|
 | Enter | Send. While Ghost is working: queue a steering message |
+| Ctrl+J | Newline in the composer (grows to 5 rows, then scrolls) |
 | Tab | Complete the selected `/command` |
 | Esc | Abort the current turn; queued text returns to the editor |
 | Ctrl+C | Clear the editor; twice quits |
@@ -62,7 +63,7 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
  ├ transcript (markdown, icon tool trail, spinner+elapsed) ─┤
  │ ┃ /model     switch thinking engine   (autocomplete menu)│
  │ ┃ Ask Ghost anything…  e.g. "Remind me…"  (composer)     │
- │ mobile:default • personal                                 │
+ │ main • personal                                 │
  │ 3 turns                            (cloud) deepseek-flash │
  │ enter send · esc abort · ctrl+l model · / commands        │
  └───────────────────────────────────────────────────────────┘
@@ -71,8 +72,15 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 - **No top header:** like pi and opencode, the transcript owns the full
   height. Model, session and turn state live in the footer — nowhere else.
 - **Composer:** opencode's left-`┃`-border panel, no `❯` prefix, rotating
-  `Ask Ghost anything… "example"` placeholder. Accent bar while working.
+  `Ask Ghost anything… "example"` placeholder. Multi-line with `Ctrl+J`
+  (grows to 5 rows, then scrolls inside the box). Accent bar while working.
   The working status lives in the footer, not the composer chrome.
+- **Messages:** yours render as a left-bar panel with paragraphs preserved
+  (never markdown-rendered, like opencode); Ghost's render as opencode
+  markdown — concealed markers (no ``` fences, `#`, backticks, or URLs),
+  violet bold headings (h1 underlined), orange **bold**, sand *italics*
+  and quotes, green code with no background, peach bullets, cyan ordered
+  numbers and link text (underlined), green checked tasks.
 - **Autocomplete:** opencode rules — `↑/↓` moves, `Enter` accepts the
   highlighted completion into the editor (never runs half-typed text),
   `Tab` completes, `Esc` hides. Bare `/model` opens the centered model
@@ -97,7 +105,7 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 `model · where it runs · session · state` — for example:
 
 ```
-deepseek-flash · cloud · mobile:default · ready
+deepseek-flash · cloud · main · ready
 ```
 
 While working: `… · working · 3 tools`. On a held approval: `waiting for you`.
@@ -133,9 +141,16 @@ The terminal and the app are two windows onto the same conversation —
 opencode's CLI/desktop arrangement, not two chats that happen to share a
 database:
 
-- The default session is `mobile:default` everywhere: terminal, app, and
-  gateway resolve to the same rows. `-s` / `/new` still open side threads
-  (listed by `/v1/sessions`), but the home conversation is shared.
+- The default session is `main` everywhere: terminal, app, and
+  gateway resolve to the same rows. (Pre-unification names
+  `mobile:default` and `cli:default` canonicalize onto `main` at the
+  gateway edge and in the app, and a database migration folds their
+  stored rows — so upgrades never strand history.) `-s` / `/new` still
+  open side threads (listed by `/v1/sessions`), but the home
+  conversation is shared.
+- Starting the TUI backfills the latest shared transcript (merging any
+  pre-migration legacy rows chronologically), so it opens where the app
+  left off — the welcome card only appears for a genuinely new `main`.
 - When the gateway daemon runs, `ghost agent` is its thin client over the
   same HTTP+SSE surface as the app: same turns, same permission broker
   (approvals raised anywhere answer anywhere), same model and contexts,
