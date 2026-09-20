@@ -84,7 +84,7 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   👻 Ghost · deepseek-flash
   Here's what I keep about you...
 
-── ⠋ working · 4s · 2 tools ───────────────────────────────
+── ⠋ thinking · 4s · 2 tools ──────────────────────────────
 
 ────────────────────────────────────────────────────────────
 3 turns                                  (cloud) deepseek-flash
@@ -99,17 +99,18 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   at one text row and grows as the sentence wraps onto new rows, up to a
   cap of 30% of the terminal height (at least five rows), after which it
   scrolls inside the box. It is single-line input — there is no manual
-  newline key — so growth comes from wrapping. While Ghost works, the live
-  status (`spinner · elapsed · tools · queued`) embeds in the **top rule**
-  and the rules take the Ghost-violet working accent (slate-violet at
-  idle).
+  newline key — so growth comes from wrapping. While Ghost is thinking,
+  the live status (`⠋ thinking · elapsed · tools · queued`) embeds in the
+  **top rule** — the only place the live state appears, never repeated in
+  the transcript — and the rules take the Ghost-violet accent
+  (slate-violet at idle).
 - **Full conversation, grouped by day:** launching loads the whole shared
   transcript (paged, capped at 500 rows) and opens scrolled to the latest
   turn — iMessage/WhatsApp style, with `Today` / `Yesterday` / date
   dividers wherever the calendar day flips.
-- **Messages:** yours render as a full-width background panel with the
-  text inset by one cell and paragraphs preserved (never
-  markdown-rendered). Ghost's render as Ghost markdown — concealed
+- **Messages:** yours render as a name line and a single purple bar with
+  the raw text preserved (never markdown-rendered, no panel background
+  or side bars). Ghost's render as Ghost markdown — concealed
   markers (no ``` fences, `#`, backticks, or URLs), violet bold headings
   (h1 underlined), orange **bold**, sand *italics* and quotes, green code
   with no background, peach bullets, cyan ordered numbers and link text
@@ -166,7 +167,7 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 deepseek-flash · cloud · main · ready
 ```
 
-While working: `… · working · 3 tools`. On a held approval: `waiting for you`.
+While thinking: `… · thinking · 3 tools`. On a held approval: `waiting for you`.
 
 ## Approvals
 

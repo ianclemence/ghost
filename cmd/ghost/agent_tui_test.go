@@ -663,6 +663,17 @@ func TestTUIComposerIsPIRules(t *testing.T) {
 	if !strings.Contains(top, "2 tools") {
 		t.Errorf("working top rule must carry the tool count, got %q", top)
 	}
+	// The live state reads "thinking", and it appears only here, never in
+	// the transcript.
+	if !strings.Contains(top, "thinking") {
+		t.Errorf("the top rule must read 'thinking', got %q", top)
+	}
+	if strings.Contains(top, "working") {
+		t.Errorf("the top rule must not say 'working', got %q", top)
+	}
+	if block := m.workingBlock(); strings.Contains(block, "thinking") || strings.Contains(block, "working") {
+		t.Errorf("the transcript working block must not repeat the status, got %q", block)
+	}
 }
 
 // The user bubble is a full-width background block: edge to edge, text

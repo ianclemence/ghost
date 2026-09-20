@@ -51,7 +51,7 @@ type clarifyRequestMsg struct {
 	choices    []string
 }
 
-// spinnerTickMsg advances the working spinner (the Ghost activity pulse).
+// spinnerTickMsg advances the activity spinner (the Ghost thinking pulse).
 type spinnerTickMsg struct{}
 
 // turnDoneMsg carries the final response of a turn.
@@ -1363,18 +1363,9 @@ func (m *agentTUI) workingBlock() string {
 		b.WriteString(styleNotice.Render(fmt.Sprintf("  · +%d more (ctrl+o for details)", len(steps)-limit)))
 		b.WriteString("\n")
 	}
-	status := fmt.Sprintf("  %s working", m.spinner())
-	if m.elapsed > 0 {
-		status += fmt.Sprintf(" · %s", formatElapsed(m.elapsed))
-	}
-	if len(steps) > 0 {
-		status += fmt.Sprintf(" · %d tool%s", len(steps), plural(len(steps)))
-	}
-	if len(m.queued) > 0 {
-		status += fmt.Sprintf(" · %d queued", len(m.queued))
-	}
-	b.WriteString(styleWorking.Render(status + "…"))
-	return b.String()
+	// The live status (spinner · elapsed · tools · queued) lives only in
+	// the composer's top rule, so the turn is never stated twice.
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // toolIcon maps Ghost tools to the collapsed-row icon language:
@@ -2046,14 +2037,14 @@ func modelLocalityStyle(local string) lipgloss.Style {
 }
 
 // activityWord is the live status embedded in the composer's top rule
-// while a turn runs: spinner, then how long it has been working, how many
+// while a turn runs: spinner, "thinking", how long it has been, how many
 // tools ran, and anything queued.
 func (m *agentTUI) activityWord() string {
 	if m.approval != nil {
 		return "waiting for you"
 	}
 	if m.working {
-		s := fmt.Sprintf("%s working", m.spinner())
+		s := fmt.Sprintf("%s thinking", m.spinner())
 		if m.elapsed > 0 {
 			s += fmt.Sprintf(" · %s", formatElapsed(m.elapsed))
 		}
@@ -2081,9 +2072,10 @@ func shortModel(s string) string {
 // ─── prompt composer ───────────────────────────────────────────────────
 // The composer: a top and bottom `─` rule at full width, NO side borders,
 // NO prefix, NO placeholder — just the text between two lines. While a
-// turn runs, the working status embeds in the top rule
-// (`── ⠋ working · 4s · 2 tools ──…`); the border takes the Ghost-violet
-// accent, faint slate-violet at idle.
+// turn runs, the live status embeds in the top rule
+// (`── ⠋ thinking · 4s · 2 tools ──…`); the border takes the Ghost-violet
+// accent, faint slate-violet at idle. This is the only place the turn's
+// live status appears.
 func (m *agentTUI) promptBox() string {
 	bar := stylePromptBar
 	if m.working {
@@ -2100,8 +2092,8 @@ func (m *agentTUI) promptBox() string {
 	return b.String()
 }
 
-// composerTopRule is `── <spinner> <message> ──…` while working, a plain
-// rule while idle. Always exactly m.width cells.
+// composerTopRule is `── <spinner> thinking … ──…` while a turn runs, a
+// plain rule while idle. Always exactly m.width cells.
 func (m *agentTUI) composerTopRule() string {
 	w := m.width
 	if w < 10 {
@@ -2110,9 +2102,9 @@ func (m *agentTUI) composerTopRule() string {
 	if !m.working {
 		return strings.Repeat("─", w)
 	}
-	// activityWord already carries spinner + "working"; embedding it here
-	// verbatim gives the `── ⠋ working ──…` border, so the spinner is
-	// never rendered twice.
+	// activityWord already carries spinner + "thinking"; embedding it
+	// here verbatim gives the `── ⠋ thinking ──…` border, so the spinner
+	// is never rendered twice.
 	status := m.activityWord()
 	sw := lipgloss.Width(status)
 	if sw+6 > w {
@@ -2307,9 +2299,9 @@ func (m *agentTUI) statusLine() string {
 		state = "waiting for you"
 	}
 	if m.working {
-		state = "working"
+		state = "thinking"
 		if m.toolCount > 0 {
-			state = fmt.Sprintf("working · %d tool%s", m.toolCount, plural(m.toolCount))
+			state = fmt.Sprintf("thinking · %d tool%s", m.toolCount, plural(m.toolCount))
 		}
 	}
 	if len(m.queued) > 0 {
