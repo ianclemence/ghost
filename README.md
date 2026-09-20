@@ -261,7 +261,6 @@ automatically, and `ghost status` warns if one is ever found.
 |---------|-------------|
 | `ghost serve` | Start Ghost (main service) |
 | `ghost agent` | Chat directly in terminal |
-| `ghost dashboard` | Launch operator TUI |
 | `ghost status` | Show system status |
 | `ghost update` | Pull latest changes and rebuild |
 | `ghost updater` | Run auto-update daemon |
@@ -502,7 +501,7 @@ After pairing, the QR token disappears from the equation. Each device gets its o
 
 ### Gateway Binding
 
-The gateway listens on the LAN (`0.0.0.0:8766`) with a layered trust model. Loopback peers (web proxy, relay client, TUI dashboard) are trusted and need no credential headers. Other machines on the network must present valid per-device credentials on every request — unauthenticated LAN requests are rejected with structured errors. The only credential-free endpoint is pairing redemption, where the short-lived single-use token is the authorization. The relay server forwards remote app traffic to the gateway via localhost on the device.
+The gateway listens on the LAN (`0.0.0.0:8766`) with a layered trust model. Loopback peers (web proxy, relay client, terminal agent) are trusted and need no credential headers. Other machines on the network must present valid per-device credentials on every request — unauthenticated LAN requests are rejected with structured errors. The only credential-free endpoint is pairing redemption, where the short-lived single-use token is the authorization. The relay server forwards remote app traffic to the gateway via localhost on the device.
 
 ### Directory Permissions
 
@@ -653,7 +652,7 @@ Internal components run on the device itself and connect via loopback, which the
 gateway trusts:
 - Web proxy forwards requests to `127.0.0.1:8766`
 - Relay client connects to `127.0.0.1:8766`
-- TUI dashboard connects to `127.0.0.1:8766`
+- Terminal agent connects to `127.0.0.1:8766`
 
 No authentication headers are needed for loopback traffic. Requests arriving
 from other machines on the LAN require valid device credentials.

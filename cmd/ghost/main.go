@@ -292,8 +292,6 @@ func main() {
 		onboard()
 	case "agent":
 		agentCmd()
-	case "dashboard":
-		runDashboard()
 	case "serve", "gateway":
 		gatewayCmd()
 	case "dev":
@@ -443,9 +441,6 @@ func printCommandHelp(command string) {
 	case "dev":
 		fmt.Println("Usage: ghost dev [--port=N] [--api-only] [--use-installed-key]")
 		fmt.Println("Run an isolated development instance. Never touches the installed Ghost.")
-	case "dashboard":
-		fmt.Println("Usage: ghost dashboard")
-		fmt.Println("Launch the operator TUI (requires a TTY).")
 	case "onboard":
 		fmt.Println("Usage: ghost onboard")
 		fmt.Println("Initialize Ghost configuration and workspace.")
@@ -506,7 +501,6 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Talk")
 	fmt.Println("  agent       Chat with Ghost directly")
-	fmt.Println("  dashboard   Launch the operator TUI")
 	fmt.Println()
 	fmt.Println("Run")
 	fmt.Println("  serve       Start the Ghost daemon (API + channels + scheduler + heartbeat)")
@@ -2379,7 +2373,7 @@ func isApplianceOpsCommand(command string) bool {
 // commands whose config MUST match the console and the daemon.
 func isInteractiveCommand(command string) bool {
 	switch command {
-	case "agent", "serve", "gateway", "dashboard", "model", "golden", "benchmark":
+	case "agent", "serve", "gateway", "model", "golden", "benchmark":
 		return true
 	}
 	return false
@@ -3277,7 +3271,7 @@ func confirm(prompt string) bool {
 	return strings.ToLower(strings.TrimSpace(response)) == "y"
 }
 
-// mcpCmd manages MCP servers from the CLI, mirroring the dashboard's MCP
+// mcpCmd manages MCP servers from the CLI, mirroring the web console's MCP
 // section for headless or scripted configuration.
 func mcpCmd() {
 	if len(os.Args) < 3 || wantsHelp(os.Args[2:]) {

@@ -52,8 +52,8 @@ type gatewayRuntime struct {
 
 const gatewayCacheTTL = 5 * time.Second
 
-// gatewayBaseURL resolves the gateway address the same way runDashboard
-// does: config gateway port, overridden by GHOST_API_PORT.
+// gatewayBaseURL resolves the gateway address from the config gateway port,
+// overridden by GHOST_API_PORT.
 func gatewayBaseURL(cfg *config.Config) string {
 	port := cfg.Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {

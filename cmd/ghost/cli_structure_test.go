@@ -24,7 +24,7 @@ func TestWantsHelp(t *testing.T) {
 // This guards the single place `ghost <cmd> --help` lands.
 func TestPrintCommandHelpCoversAllCommands(t *testing.T) {
 	commands := []string{
-		"agent", "serve", "gateway", "dev", "dashboard", "onboard",
+		"agent", "serve", "gateway", "dev", "onboard",
 		"update", "auto-update", "updater", "reset", "verify",
 		"relay", "auth", "mcp", "state", "skills", "connector",
 		"speech", "eval", "stt", "tts", "version", "help",
