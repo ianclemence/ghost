@@ -65,6 +65,11 @@ func firstPartyView(c connectedapp.Connector) map[string]interface{} {
 
 // connectorsListHandler lists installed and first-party connectors, optionally
 // filtered by capability (or id/name) substring.
+//
+// First-party connectors are annotated with their LIVE status so the owner can
+// tell what is ready to use versus what still needs connecting. Status is
+// resolved by the existing connected-apps path (one source of truth for the
+// OAuth-outside-the-vault cases) rather than duplicated here.
 func connectorsListHandler(w http.ResponseWriter, r *http.Request, al *agent.AgentLoop) {
 	if r.Method != http.MethodGet {
 		jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET")
@@ -79,8 +84,25 @@ func connectorsListHandler(w http.ResponseWriter, r *http.Request, al *agent.Age
 	for _, m := range installed {
 		out = append(out, connectorView(m, "installed"))
 	}
+
+	// Live status keyed by connector id, from the authoritative resolver.
+	statusByID := map[string]string{}
+	readyByID := map[string]bool{}
+	for _, app := range connectedAppsList() {
+		id, _ := app["id"].(string)
+		st, _ := app["status"].(string)
+		if id != "" {
+			statusByID[id] = st
+			readyByID[id] = st == "connected"
+		}
+	}
 	for _, c := range connectedapp.FirstParty() {
-		out = append(out, firstPartyView(c))
+		view := firstPartyView(c)
+		if st, ok := statusByID[c.ID]; ok {
+			view["status"] = st
+			view["ready"] = readyByID[c.ID]
+		}
+		out = append(out, view)
 	}
 
 	filter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("capability")))
