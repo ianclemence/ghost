@@ -24,9 +24,12 @@ const GhostUI = (() => {
 
   const h = el;
 
+  // Ghost visual mark — the same artwork as the mobile app (GhostMark),
+  // so the console and the phone present one identity. Colorized via
+  // currentColor; sized by the .ghost-mark-* classes.
   function ghostMark(size) {
     const cls = size ? `ghost-mark ghost-mark-${size}` : 'ghost-mark';
-    return h('span', { className: cls, html: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C7.58 2 4 5.58 4 10v10c0 1.1.9 2 2 2h1c.55 0 1-.45 1-1v-6h6v6c0 .55.45 1 1 1h1c1.1 0 2-.9 2-2V10c0-4.42-3.58-8-8-8zm-2 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>' });
+    return h('span', { className: cls, html: '<svg viewBox="0 0 32 32" fill="none"><path fill="currentColor" d="M4.859 7.401v2.115h13.256v-4.231h-13.256v2.115zM22.91 7.401v2.115h4.231v-4.231h-4.231v2.115zM4.859 16.427v2.115h22.282v-4.231h-22.282v2.115zM4.859 25.311v1.974h8.744v-3.949h-8.744v1.975zM18.398 25.311v1.974h8.744v-3.949h-8.744v1.975z"/></svg>' });
   }
 
   function statusDot(state) {
