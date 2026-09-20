@@ -51,7 +51,7 @@ async function loadSecurity(container) {
   const bkKv = GhostUI.h('div', { className: 'kv' });
   bkKv.appendChild(securityKv('Conversation history', 'Included'));
   bkKv.appendChild(securityKv('Memory', 'Included'));
-  bkKv.appendChild(securityKv('Routines & automations', 'Included'));
+  bkKv.appendChild(securityKv('Routines', 'Included'));
   bkKv.appendChild(securityKv('Standing permissions', 'Included'));
   bkKv.appendChild(securityKv('Skills & configuration', 'Included'));
   bkKv.appendChild(securityKv('Secrets & passwords', 'Never included'));
@@ -206,7 +206,7 @@ function showRestoreSummary(token, passphrase, s) {
     body.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3);margin-bottom:var(--s-1)' }, 'Stays on this machine / must be redone:'));
     s.rebound.forEach(r => body.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, '\u00b7  ' + r)));
   }
-  body.appendChild(GhostUI.h('p', { className: 'type-callout', style: 'margin-top:var(--s-4)' }, 'Restoring replaces this Ghost\u2019s conversations, memory, routines, automations, and permissions with the backup. Your owner password stays the same; paired devices must be re-paired afterwards.'));
+  body.appendChild(GhostUI.h('p', { className: 'type-callout', style: 'margin-top:var(--s-4)' }, 'Restoring replaces this Ghost\u2019s conversations, memory, routines, and permissions with the backup. Your owner password stays the same; paired devices must be re-paired afterwards.'));
   GhostUI.modal('Restore this backup?', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Keep current state'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-danger', onClick: async (e) => {
@@ -238,7 +238,7 @@ async function applyRestore(token, passphrase) {
         backdrop.remove();
         if (st.success) {
           GhostUI.toast('Restore complete \u2014 re-pair your devices');
-          GhostUI.modal('Restore complete', 'Your Ghost\u2019s conversations, memory, routines, automations, and permissions now come from the backup.\n\nNext: re-pair your phone and any devices, and reconnect services that need fresh credentials. Your owner password is unchanged.', [
+          GhostUI.modal('Restore complete', 'Your Ghost\u2019s conversations, memory, routines, and permissions now come from the backup.\n\nNext: re-pair your phone and any devices, and reconnect services that need fresh credentials. Your owner password is unchanged.', [
             GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: (e) => { e.target.closest('.ghost-modal-backdrop').remove(); GhostApp.navigate('devices'); } }, 'Pair a device'),
           ]);
         } else {

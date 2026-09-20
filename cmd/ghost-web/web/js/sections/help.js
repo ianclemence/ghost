@@ -28,11 +28,11 @@ Each morning Ghost writes a short **daily briefing** — a calm look at your day
 ## Skills
 Skills are capabilities Ghost has installed. Built-ins come with Ghost; you can add more from a GitHub repository. Disable a skill to turn it off without deleting it.
 
-## Automations
-Automations are tasks Ghost runs on a schedule — a morning briefing, a weekly research roundup. Create one with a name, what it should do, and when it should run.
+## Routines
+Routines are things Ghost does on its own — a morning briefing, a weekly research roundup, a recurring reminder. Tell Ghost in a chat (“every Monday at 9, prepare my brief”) and it sets the routine up; manage them under **Routines**.
 
 ## Backups
-A backup is a download containing your memory, skills, configuration, and automations. Secrets are kept out of backups for safety. Store the file somewhere you trust.
+A backup is a download containing your memory, skills, configuration, and routines. Secrets are kept out of backups for safety. Store the file somewhere you trust.
 
 ## Diagnostics
 If something seems off, open **System** and run *Diagnostics*. It checks Ghost, its services, storage, and connections, and tells you what’s healthy and what isn’t.
