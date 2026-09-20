@@ -22,7 +22,7 @@ The user-visible surfaces are now correct and consistent:
 [preference ] Food     | Always orders oat milk lattes
 ```
 
-**Things Ghost does** (`/v1/routinefeed`) — what Ghost runs for you:
+**Routines** (`/v1/routinefeed`; the surface was named "Things Ghost does" at the time) — what Ghost runs for you:
 ```
 • Prepare my weekly design review brief  —  Every Monday at 9:00 AM
 ```
@@ -65,7 +65,7 @@ multi-clause message, the model's complementary memories are merged in, with
 dedup against current memory.
 
 ### 5. Raw cron shown to the owner (MED)
-The Things feed rendered `schedule: "0 9 * * 1"`. The humanizer was a tiny
+The routines feed rendered `schedule: "0 9 * * 1"`. The humanizer was a tiny
 lookup table and echoed any expression it didn't hardcode. **Fixed**: a real
 cron humanizer ("Every Monday at 9:00 AM"), with tests; the old test that
 asserted raw-cron output encoded the bug and was corrected.
@@ -121,7 +121,7 @@ tools (`email_send`) still inherit the skill's risk.
   "no meetings before 10am" window.
 - Honest unavailability: "I can't read your calendar right now — blocked by
   the runtime's execution policy."
-- Memory recall, routine creation, the unified Things feed, and the
+- Memory recall, routine creation, the unified routines feed, and the
   permission broker all function end to end after the fixes.
 
 ## Verification after fixes

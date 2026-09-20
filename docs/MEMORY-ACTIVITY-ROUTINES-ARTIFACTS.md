@@ -130,16 +130,16 @@ carries an audit reason. A routine appears exactly once even though it is also
 a scheduled row. Human schedule phrasing reuses the scheduler's own humanizer
 so no surface can disagree about what `0 9 * * 1-5` means.
 
-The deep rules below still govern execution: a Thing is surfaced by
+The deep rules below still govern execution: a routine is surfaced by
 `pkg/routinefeed`, but it wakes Ghost through the scheduler and re-enters the
 normal capability, permission, and evidence path like any other work.
 
 ---
 
-# Routines
+# The routine model
 
-A **routine** is the user-facing product primitive for persistent, recurring
-behavior. Scheduling is the implementation machinery beneath it.
+The product destination is **Routines**. The domain beneath it is a persistent,
+recurring behavior: scheduling is the implementation machinery.
 
 ## One scheduler
 

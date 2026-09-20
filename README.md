@@ -13,7 +13,7 @@ Ghost runs the recurring admin of your life, so you don't have to think about it
 - **It remembers for you.** Birthdays, preferences, who's who, what you decided last month — Ghost keeps it and recalls it when it matters.
 - **It handles the follow-through.** Renewals, check-ins, reminders, the thing you'd otherwise forget — Ghost does them on time and tells you when it's done.
 - **It warns you ahead.** “Your sister's birthday is in a week.” Ghost notices and speaks up before it's too late.
-- **It has its own desk on your machine.** A persistent working space where the files it writes, the things it makes for you, and the tools it builds all live — visible, inspectable, and yours.
+- **It makes things for you.** Reports, plans, checklists, links — Ghost produces durable work you can open and keep, and shows it as a card right in the conversation.
 
 You say what you want in plain language — in a chat, on your phone, or out loud.
 Ghost figures out the rest.
@@ -67,7 +67,7 @@ has two different homes.
 ## Core features
 
 - **Routines** — one place for everything Ghost runs for you: recurring instructions, reminders, and scheduled actions. You say it in chat (“every Monday at 9…”); Ghost figures out the rest.
-- **The Desk** — the work Ghost has done on your machine: files it writes, things it makes for you, tools it builds, and live sessions it acts on. A read-only view; acting on anything is a normal approved request.
+- **Artifacts** — reports, plans, checklists, and links Ghost produces on your behalf. A runtime-validated handoff shown as a card in the conversation; acting on one is a normal approved request.
 - Persistent memory with retrieval and context isolation
 - Consequential actions governed by a permission broker (the model can't self-grant)
 - Deterministic capability execution — no fabricated live data
@@ -165,22 +165,22 @@ take care of Ghost.
 - **After setup:** shows a login screen (your owner password) that opens the
   **Web Console** with sections organized around the product:
 
-  **Main** — what Ghost does:
+  **Ghost** — what Ghost is and does:
   - **Home** — is Ghost okay, what has it been doing, does it need you
-  - **AI** — local and cloud intelligence, model management, routing
-  - **Memory** — browse, search, and manage what Ghost remembers
-  - **Conversations** — past chats with Ghost
   - **Routines** — one list for everything Ghost runs for you: recurring instructions (“every Monday at 9…”), reminders, and scheduled tasks. You say it in chat; Ghost infers the shape. (Backed by `/v1/routinefeed`; the internal scheduler and routine models stay unified underneath.)
+  - **Memory** — browse, search, and manage what Ghost remembers
+  - **Activity** — what Ghost has done, with the reason each consequential action asked or ran
+  - **Intelligence** — local and cloud AI, model management, routing
   - **Skills** — installed capabilities, enable/disable, install from GitHub
 
-  **Connections** — how Ghost reaches people and services:
+  **Connect** — how Ghost reaches people and services:
   - **Devices** — paired phones, secure QR pairing flow
   - **Channels** — Telegram, Discord, Slack, WhatsApp, and Email configuration
-  - **Integrations** — optional service connections
+  - **Apps** — the services Ghost can act on (Calendar, Gmail, Outlook, Spotify, Home Assistant, and more); connect and manage credentials here
 
   **System** — how Ghost itself is maintained:
-  - **System** — hardware, services, updates, diagnostics, permissions
-  - **Security** — owner password, active sessions, failed sign-in visibility, backups, recovery
+  - **System** — hardware, services, updates, diagnostics
+  - **Security** — owner password, active sessions, failed sign-in visibility, backups, recovery, standing permissions
   - **Help** — guidance for what Ghost actually does
   - **About** — version and product information
 
@@ -591,7 +591,7 @@ Key HTTP endpoints the app uses on port `8766`:
 | `/v1/identity` | GET | Owner/Ghost identity |
 | `/v1/activity` | GET | User-safe activity |
 | `/v1/permissions/requests` + `/v1/permissions/resolve` | GET/POST | Pending approvals |
-| `/v1/routinefeed` | GET | Unified “things Ghost does for you” feed (routines + scheduled items) |
+| `/v1/routinefeed` | GET | The unified Routines feed (routines + scheduled items) |
 | `/v1/routines` | GET/POST | Routines (product view over scheduled automations) |
 | `/v1/goals` | GET/POST | Goals |
 | `/v1/connected-apps` | GET/POST | Connected services |

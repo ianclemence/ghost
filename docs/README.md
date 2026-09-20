@@ -117,15 +117,16 @@ Ghost's trust model rests on a small number of invariants:
 | Execution | Performs authorized work via implementations | `pkg/tools`, `pkg/providers`, `pkg/browser`, `pkg/computer`, `pkg/mcp` |
 | Evidence | Runtime proof of what executed | `pkg/capability`, `pkg/tools` |
 | Canonical Event | Durable runtime-owned record | `pkg/cevents` |
-| Memory / Activity / Things / Artifacts | Downstream behavior and outputs | `pkg/personalcontext`, `pkg/rag`, `pkg/activity`, `pkg/routinefeed`, `pkg/routines`, `pkg/scheduled`, `pkg/artifacts` |
+| Memory / Activity / Routines / Artifacts | Downstream behavior and outputs | `pkg/personalcontext`, `pkg/rag`, `pkg/activity`, `pkg/routinefeed`, `pkg/routines`, `pkg/scheduled`, `pkg/artifacts` |
 
 Supporting subsystems: `pkg/connectedapp` (authenticated external systems),
 `pkg/credentials` (the credential boundary), `pkg/live` (browser/computer
 surfaces), `pkg/skills` (knowledge and procedures), `pkg/memsync`
 (phone↔Pod operation sync), `pkg/infer` (capability-based inference contract
-shared with the phone runtime), `pkg/desk` (the read-only projection of
-Ghost's work on the owner's machine), `pkg/proactive` (proactive policy and
-the owner-facing status of Ghost's quiet work).
+shared with the phone runtime), `pkg/desk` (the read-only projection of the
+artifacts Ghost makes for the owner), `pkg/proactive` (proactive policy and
+the owner-facing status of Ghost's quiet work), `pkg/connector` (portable,
+signed connector manifests and their governed execution).
 
 ---
 
