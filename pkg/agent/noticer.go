@@ -141,10 +141,23 @@ func (n *Noticer) ApplyPolicy(dailyBudget int, cooldown, dedupeTTL time.Duration
 	}
 }
 
+// Budget reports today's push count and the daily cap for the owner-facing
+// status. It rolls the day over first so a stale count is never reported.
+func (n *Noticer) Budget() (used, max int) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	day := time.Now().Format("20060102")
+	if day != n.today {
+		n.today = day
+		n.countToday = 0
+	}
+	return n.countToday, n.dailyBudget
+}
+
 // pushSnapshot is the durable form of the gate state.
 type pushSnapshot struct {
-	Today      string         `json:"today"`
-	CountToday int            `json:"count_today"`
+	Today      string           `json:"today"`
+	CountToday int              `json:"count_today"`
 	Topics     map[string]int64 `json:"topics,omitempty"`
 	Dedupe     map[string]int64 `json:"dedupe,omitempty"`
 }

@@ -32,6 +32,35 @@ func outboxPath(workspace string) string {
 	return filepath.Join(workspace, "proactive", outboxFile)
 }
 
+// heldCount reports how many notices are waiting in the outbox for later
+// delivery (quiet hours, offline, or no live session). Read-only: it never
+// drains or mutates the outbox. Used by the owner-facing proactive status.
+func heldCount(workspace string, now time.Time) int {
+	if workspace == "" {
+		return 0
+	}
+	f, err := os.Open(outboxPath(workspace))
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	count := 0
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64<<10), 64<<10)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var h heldNotice
+		if err := json.Unmarshal([]byte(line), &h); err != nil || h.Notice.Message == "" {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
 // enqueueHeld stores a notice for later delivery. Bounded: oldest dropped
 // past the cap. Best-effort: storage failure means the notice is lost,
 // same as the previous drop behavior — never an error path.

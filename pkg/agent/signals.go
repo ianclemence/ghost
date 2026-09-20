@@ -147,6 +147,22 @@ func (al *AgentLoop) ProactiveQuiet(now time.Time) bool {
 	return proactive.InQuietHours(now, loc, pol)
 }
 
+// ProactiveStatus assembles the owner-facing view of Ghost's quiet work:
+// quiet-hours state, today's check-in budget, and anything waiting to be
+// delivered. Read-only — it changes no policy and delivers nothing. Safe to
+// call from an API handler; returns a zero status when unwired.
+func (al *AgentLoop) ProactiveStatus() proactive.Status {
+	now := time.Now()
+	pol := proactive.Load(al.workspace)
+	loc := proactive.UserLocation(al.pcStore)
+	used := 0
+	if al.noticer != nil {
+		used, _ = al.noticer.Budget()
+	}
+	waiting := heldCount(al.workspace, now)
+	return proactive.BuildStatus(pol, now, loc, used, waiting)
+}
+
 func (al *AgentLoop) ghostID() string {
 	if id, err := ghoststate.LoadIdentity(al.workspace); err == nil && id != nil {
 		return id.GhostID

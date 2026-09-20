@@ -123,7 +123,9 @@ Supporting subsystems: `pkg/connectedapp` (authenticated external systems),
 `pkg/credentials` (the credential boundary), `pkg/live` (browser/computer
 surfaces), `pkg/skills` (knowledge and procedures), `pkg/memsync`
 (phone↔Pod operation sync), `pkg/infer` (capability-based inference contract
-shared with the phone runtime).
+shared with the phone runtime), `pkg/desk` (the read-only projection of
+Ghost's work on the owner's machine), `pkg/proactive` (proactive policy and
+the owner-facing status of Ghost's quiet work).
 
 ---
 

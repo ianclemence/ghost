@@ -54,7 +54,7 @@ async function loadHome(container) {
   container.appendChild(view);
 
   // Independent fetches — a single failure shouldn't blank the page.
-  const [meta, doctor, health, channels, activity, jobs, memory, selfMem, devices, ollama, activeModel, identity, consoleStatus] = await Promise.allSettled([
+  const [meta, doctor, health, channels, activity, jobs, memory, selfMem, devices, ollama, activeModel, identity, consoleStatus, proactive] = await Promise.allSettled([
     GhostAPI.get('/api/admin/auth/meta'),
     GhostAPI.proxyGet('/v1/doctor'),
     GhostAPI.proxyGet('/v1/health'),
@@ -68,6 +68,7 @@ async function loadHome(container) {
     GhostAPI.proxyGet('/v1/model'),
     GhostAPI.proxyGet('/v1/identity'),
     GhostAPI.get('/api/status'),
+    GhostAPI.proxyGet('/v1/proactive'),
   ]);
 
   if (!document.body.contains(container)) return;
@@ -85,7 +86,7 @@ async function loadHome(container) {
 
   // Compose state.
   const overall = computeOverall(doctor, health);
-  renderStatus(statusTitle, statusDot, subline, statusBody, overall, doctor, selfMem, jobs, devices, ollama, activeModel);
+  renderStatus(statusTitle, statusDot, subline, statusBody, overall, doctor, selfMem, jobs, devices, ollama, activeModel, proactive);
 
   // Recent activity (canonical, user-safe Ghost activity — never a chat list).
   renderActivity(activityBody, activity);
@@ -147,7 +148,7 @@ function computeOverall(doctorRes, healthRes) {
   return { state: 'ok', label: 'Ghost is healthy', detail: 'Ghost is running normally.' };
 }
 
-function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, memoryRes, jobsRes, devicesRes, ollamaRes, activeModelRes) {
+function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, memoryRes, jobsRes, devicesRes, ollamaRes, activeModelRes, proactiveRes) {
   dotEl.className = 'home-status-dot home-status-dot-' + overall.state;
   titleEl.textContent = overall.label;
   sublineEl.textContent = overall.detail;
@@ -167,7 +168,24 @@ function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, mem
   appendSummary(dl, 'Memory', memCount == null ? '\u2014' : GhostUI.fmtNum(memCount) + (memCount === 1 ? ' memory' : ' memories'));
   appendSummary(dl, 'Devices', devCount == null ? '\u2014' : (devCount === 0 ? 'Not connected' : devCount + ' connected'));
   appendSummary(dl, 'Things Ghost does', jobCount == null ? '\u2014' : (jobCount === 0 ? 'None yet' : activeJobCount + ' running of ' + jobCount));
+  appendSummary(dl, 'Watching', proactiveSummary(proactiveRes));
   bodyEl.appendChild(dl);
+}
+
+// proactiveSummary renders the quiet-work state as one honest phrase: whether
+// Ghost is in quiet hours, how much of today's check-in budget is used, and
+// whether anything is waiting. Never a number for its own sake.
+function proactiveSummary(res) {
+  if (!res || res.status !== 'fulfilled' || !res.value || !res.value.proactive) return '\u2014';
+  const p = res.value.proactive;
+  if (p.waiting > 0) {
+    return p.quiet
+      ? p.waiting + ' waiting until ' + (p.quiet_end || 'morning')
+      : p.waiting + ' ready';
+  }
+  if (p.quiet) return 'Quiet until ' + (p.quiet_end || 'morning');
+  if (p.budget_max > 0) return p.budget_used + ' of ' + p.budget_max + ' check-ins used today';
+  return 'Idle';
 }
 
 function appendSummary(dl, key, value) {

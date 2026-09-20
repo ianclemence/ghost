@@ -5056,6 +5056,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	// ── The Desk (read-only projection of Ghost's work) ───────────────────
 	registerDeskRoutes(mux, agentLoop)
 
+	// ── Proactive status (read-only view of Ghost's quiet work) ────────────
+	registerProactiveRoutes(mux, agentLoop)
+
 	// ── Device operations (restart/update) ───────────────────────────────
 	registerDeviceRoutes(mux)
 
