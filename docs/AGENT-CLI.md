@@ -39,12 +39,36 @@ provenance are first-class here in a way a coding agent does not need.
 | Key | Action |
 |---|---|
 | Enter | Send. While Ghost is working: queue a steering message |
+| Tab | Complete the selected `/command` |
 | Esc | Abort the current turn; queued text returns to the editor |
 | Ctrl+C | Clear the editor; twice quits |
 | Ctrl+L | Open the model picker |
 | Ctrl+O | Toggle tool-detail expansion |
-| ↑ / ↓ | Editor history |
+| ↑ / ↓ | `/` palette selection when open, else editor history |
 | PgUp / PgDn | Scroll the transcript |
+
+## Layout (pi / opencode-inspired chrome)
+
+```
+ ┌ header ─────────────────────────────────────────────┐
+ │ 👻 Ghost  ◈ model  ● local/cloud/pod  ❖ context  …  │
+ ├ transcript (markdown, tool trail, spinner+elapsed) ─┤
+ │ /palette when typing / (↑/↓ + Tab)                  │
+ │ ┌ Message Ghost ────────────────────────────────┐   │
+ │ │ ❯ …                                           │   │
+ │ └───────────────────────────────────────────────┘   │
+ │ enter send · esc abort · ctrl+l model · / commands  │
+ └─────────────────────────────────────────────────────┘
+```
+
+- **Header bar:** product + model pill + locality (`● local/cloud/pod`)
+  + context pill on the left; short session + state
+  (`ready · N turns`, `working ⠋ · 3 tools`, `waiting for you`) on the right.
+- **Empty state:** welcome card with `/help /model /memory /routines` starters.
+- **Assistant markdown:** headers, `code`, ```blocks```, lists, quotes.
+- **Working block:** live stream + completed tool trail (`✓ …`),
+  active tool with spinner, elapsed (`4s`, `1m02s`), queued count.
+- **Palette:** type `/` to filter; `↑/↓` picks, `Tab` completes, `Enter` runs.
 
 ## Status line
 
