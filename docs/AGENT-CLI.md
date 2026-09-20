@@ -8,8 +8,10 @@ provenance are first-class here in a way a coding agent does not need.
 
 ## Principles
 
-- **Streaming, not waiting.** Tokens render as they arrive; tool activity shows
-  inline ("Searching…", "Running…") so Ghost never looks frozen.
+- **Streaming, not waiting.** Tokens render as they arrive in place (with a
+  cursor); each tool shows as one collapsed row (`✓ label`, spinner while
+  active) so Ghost never looks frozen and raw tool output never floods chat.
+  The final response wins verbatim over the stream preview.
 - **Where it ran is always visible.** Every turn reports whether it was served
   locally, by the Pod, or by cloud.
 - **Approvals are first-class.** A permission request is a prompt in the flow,
@@ -25,14 +27,21 @@ provenance are first-class here in a way a coding agent does not need.
 |---|---|
 | `/help` | List commands and keybindings |
 | `/model [name]` | Show or switch the active model (presets first) |
+| `/details` | Toggle tool step details (durations) |
 | `/new` | Start a fresh conversation |
-| `/session` | Show the current session key and turn count |
+| `/sessions` | Show the current session key and turn count |
 | `/memory [query]` | Ask Ghost what it remembers (read-only) |
 | `/context [name]` | Show or switch topic context (scopes memory + tools) |
 | `/rewind` | Put the last message back in the editor to edit and resend |
 | `/routines` | List the things Ghost does for you |
 | `/clear` | Clear the screen (keeps the session) |
 | `/quit` | Exit (also Ctrl+C twice) |
+
+## Logs
+
+Interactive mode owns the screen: log lines are silenced on stderr (JSON
+file log still writes). Pass `ghost agent --debug-log <file>` to keep a
+debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 
 ## Keys
 

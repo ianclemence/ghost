@@ -430,8 +430,9 @@ func main() {
 func printCommandHelp(command string) {
 	switch command {
 	case "agent":
-		fmt.Println("Usage: ghost agent [-m <message>] [-s <session>] [--debug]")
+		fmt.Println("Usage: ghost agent [-m <message>] [-s <session>] [--debug] [--debug-log <file>]")
 		fmt.Println("Chat with Ghost in the terminal. Without -m, starts interactive mode.")
+		fmt.Println("In interactive mode logs go to --debug-log (or are hidden); stderr stays clean for the TUI.")
 	case "serve", "gateway":
 		fmt.Println("Usage: ghost serve [--api-only] [--debug]")
 		fmt.Println("Start the Ghost daemon (API + channels + scheduler + heartbeat).")
@@ -881,12 +882,18 @@ func agentCmd() {
 	// simply starts chatting gets working capabilities.
 	message := ""
 	sessionKey := "cli:default"
+	debugLog := ""
 	args := os.Args[2:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--debug", "-d":
 			logger.SetLevel(logger.DEBUG)
 			fmt.Println("🔍 Debug mode enabled")
+		case "--debug-log":
+			if i+1 < len(args) {
+				debugLog = args[i+1]
+				i++
+			}
 		case "-m", "--message":
 			if i+1 < len(args) {
 				message = args[i+1]
@@ -960,12 +967,20 @@ func agentCmd() {
 		}
 		fmt.Printf("\n%s %s\n", logo, response)
 	} else {
-		fmt.Printf("%s Interactive mode (Ctrl+C to exit)\n\n", logo)
-		interactiveMode(agentLoop, sessionKey)
+		interactiveMode(agentLoop, sessionKey, debugLog)
 	}
 }
 
-func interactiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
+func interactiveMode(agentLoop *agent.AgentLoop, sessionKey, debugLog string) {
+	// P0 correctness: the TUI owns the screen. Route logs to a file (or
+	// drop the stderr line entirely) so INFO lines can never paint over
+	// the alt-screen transcript and input box.
+	if debugLog != "" {
+		if err := logger.EnableFileLogging(debugLog); err != nil {
+			fmt.Fprintf(os.Stderr, "note: could not open --debug-log %s: %v\n", debugLog, err)
+		}
+	}
+	logger.SetSilent(true)
 	m := newAgentTUI(agentLoop, sessionKey)
 	agentProgram = tea.NewProgram(m, tea.WithAltScreen())
 	defer func() { agentProgram = nil }()

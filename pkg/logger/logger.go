@@ -34,6 +34,10 @@ var (
 	logger       *Logger
 	once         sync.Once
 	mu           sync.RWMutex
+	// silent drops the stderr line while still writing the JSON file log.
+	// The interactive TUI enables it so INFO lines never paint over the
+	// alt-screen; one-shot CLI commands keep stderr output.
+	silent = false
 )
 
 type Logger struct {
@@ -65,6 +69,15 @@ func GetLevel() LogLevel {
 	mu.RLock()
 	defer mu.RUnlock()
 	return currentLevel
+}
+
+// SetSilent drops the stderr line (the JSON file log still writes).
+// The interactive TUI enables it so INFO lines never paint over the
+// alt-screen; one-shot CLI commands keep stderr output.
+func SetSilent(s bool) {
+	mu.Lock()
+	defer mu.Unlock()
+	silent = s
 }
 
 func EnableFileLogging(filePath string) error {
@@ -136,7 +149,9 @@ func logMessage(level LogLevel, component string, message string, fields map[str
 		fieldStr,
 	)
 
-	log.Println(logLine)
+	if !silent {
+		log.Println(logLine)
+	}
 
 	if level == FATAL {
 		os.Exit(1)

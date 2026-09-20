@@ -110,8 +110,8 @@ type agentTUI struct {
 	turnStart   time.Time // when the current turn started
 	elapsed     time.Duration
 	spinFrame   int
-	toolHistory []string // product-language labels for this turn
-	paletteSel  int      // selected index in the / palette popup
+	toolHistory []toolStep // product-language tool steps for the current turn
+	paletteSel  int        // selected index in the / palette popup
 
 	// approval is set when a turn ends with a durable permission request;
 	// the editor is replaced by Allow once / Always allow / Deny choices.
@@ -122,6 +122,16 @@ type pendingApproval struct {
 	id    string
 	title string
 	risk  string
+}
+
+// toolStep is one collapsed tool row in the opencode-style activity trail.
+// Only the active step shows a spinner; finished steps collapse to ✓ rows
+// (raw tool JSON is never streamed into the transcript).
+type toolStep struct {
+	label string
+	start time.Time
+	done  bool
+	dur   time.Duration
 }
 
 const agentPrompt = "› "
@@ -183,24 +193,43 @@ func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case toolCallMsg:
-		m.toolCount++
-		m.toolLine = msg.label
-		m.toolHistory = append(m.toolHistory, msg.label)
+		label := strings.TrimSpace(msg.label)
+		if label == "" {
+			return m, nil
+		}
+		// Dedupe: providers often re-report the same active tool. Only the
+		// active (last, unfinished) step spins; repeats update it in place.
+		if n := len(m.toolHistory); n > 0 && !m.toolHistory[n-1].done && m.toolHistory[n-1].label == label {
+			m.toolLine = label
+			m.renderTranscript()
+			return m, nil
+		}
+		now := time.Now()
+		if n := len(m.toolHistory); n > 0 && !m.toolHistory[n-1].done {
+			m.toolHistory[n-1].done = true
+			m.toolHistory[n-1].dur = now.Sub(m.toolHistory[n-1].start)
+		}
+		m.toolHistory = append(m.toolHistory, toolStep{label: label, start: now})
+		m.toolCount = len(m.toolHistory)
+		m.toolLine = label
 		m.renderTranscript()
 		return m, nil
 
 	case turnDoneMsg:
 		m.working = false
+		now := time.Now()
+		for i := range m.toolHistory {
+			if !m.toolHistory[i].done {
+				m.toolHistory[i].done = true
+				m.toolHistory[i].dur = now.Sub(m.toolHistory[i].start)
+			}
+		}
 		m.toolLine = ""
 		m.turnCount++
 		if msg.err != nil {
 			m.lastErr = msg.err.Error()
 			m.append(entry{kind: entryError, text: "✗ " + friendlyAgentError(msg.err)})
 		} else {
-			text := strings.TrimSpace(msg.text)
-			if text == "" && m.streaming == "" {
-				text = "(no response)"
-			}
 			// If the turn is blocked on a durable approval, show it as a card
 			// rather than a wall of text. The paused call resumes through the
 			// governed path when the owner answers.
@@ -208,12 +237,14 @@ func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.approval = &pendingApproval{id: id, title: title, risk: risk}
 				m.append(entry{kind: entryNotice, text: "needs your approval"})
 			} else {
-				if m.streaming != "" && text != "" && strings.HasPrefix(text, strings.TrimSpace(m.streaming)) {
-					// Final text duplicates the stream; keep one copy.
-				} else if m.streaming != "" && text != "" {
-					text = m.streaming + text
-				} else if m.streaming != "" {
-					text = m.streaming
+				// opencode rule: the final response wins. The stream buffer
+				// is a live preview only — never concatenated with the final.
+				text := strings.TrimSpace(msg.text)
+				if text == "" {
+					text = strings.TrimSpace(m.streaming)
+				}
+				if text == "" {
+					text = "(no response)"
 				}
 				m.append(entry{kind: entryAssistant, text: text})
 			}
@@ -229,7 +260,24 @@ func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
+	m.clampPalette()
+	m.layout()
 	return m, cmd
+}
+
+// clampPalette keeps the palette selection inside the filtered list.
+func (m *agentTUI) clampPalette() {
+	n := len(m.paletteMatches())
+	if n == 0 {
+		m.paletteSel = 0
+		return
+	}
+	if m.paletteSel < 0 {
+		m.paletteSel = 0
+	}
+	if m.paletteSel >= n {
+		m.paletteSel = n - 1
+	}
 }
 
 func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -462,8 +510,9 @@ type paletteItem struct {
 var paletteCommands = []paletteItem{
 	{"help", "list commands and keys"},
 	{"model", "show or switch model"},
+	{"details", "toggle tool step details"},
 	{"new", "fresh conversation"},
-	{"session", "session and model"},
+	{"sessions", "session and turn count"},
 	{"memory", "ask what Ghost remembers"},
 	{"context", "topic space (scoped memory/tools)"},
 	{"rewind", "edit and resend last message"},
@@ -492,9 +541,8 @@ func (m *agentTUI) paletteMatches() []paletteItem {
 }
 
 func (m *agentTUI) paletteVisible() bool {
-	if m.approval != nil || m.working && false {
-		// palette stays available while working too; only the card hides it.
-	}
+	// The approval dialog owns the keyboard while up; otherwise the palette
+	// stays available even mid-turn so commands stay reachable.
 	if m.approval != nil {
 		return false
 	}
@@ -514,20 +562,28 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "clear":
 		m.entries = nil
+		m.toolHistory = nil
+		m.streaming = ""
 		m.renderTranscript()
 	case "new":
 		m.session = "cli:" + fmt.Sprintf("%d", time.Now().UnixNano())
 		m.entries = nil
+		m.toolHistory = nil
+		m.streaming = ""
+		m.turnCount = 0
 		m.append(entry{kind: entryNotice, text: "new conversation: " + m.session})
 		m.renderTranscript()
-	case "session":
-		m.append(entry{kind: entryNotice, text: fmt.Sprintf("session: %s · model: %s", m.session, m.loop.GetCurrentModel())})
-	case "model":
+	case "session", "sessions":
+		m.append(entry{kind: entryNotice, text: fmt.Sprintf("session: %s · model: %s · %d turns", m.session, m.loop.GetCurrentModel(), m.turnCount)})
+	case "model", "models":
 		if len(args) == 0 {
 			m.listModels()
 		} else {
 			m.setModel(strings.Join(args, " "))
 		}
+	case "details":
+		m.showTools = !m.showTools
+		m.append(entry{kind: entryNotice, text: fmt.Sprintf("tool details %s", onOff(m.showTools))})
 	case "memory":
 		m.showMemory(args)
 	case "context":
@@ -541,6 +597,13 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 	}
 	m.renderTranscript()
 	return m, nil
+}
+
+func onOff(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
 }
 
 func (m *agentTUI) cycleModel() {
@@ -649,44 +712,48 @@ func (m *agentTUI) renderTranscript() {
 	m.viewport.GotoBottom()
 }
 
-// workingBlock mirrors pi ("⠿ working + tool line") and opencode
-// ("Working… 4s · 3 tools"): spinner + elapsed + live stream + tool trail.
+// workingBlock is the opencode-style live turn: in-place stream preview with
+// a cursor, then one collapsed ✓ row per finished tool and a spinner row for
+// the active one. Raw tool JSON never reaches the transcript.
 func (m *agentTUI) workingBlock() string {
 	var b strings.Builder
+	w := m.contentWidth()
 	if m.streaming != "" {
-		b.WriteString(renderAssistantBody(m.streaming, m.width))
+		b.WriteString(renderAssistantBody(m.streaming+"▍", w))
 		b.WriteString("\n")
 	}
-	seen := map[string]bool{}
+	steps := m.toolHistory
 	shown := 0
-	for _, h := range m.toolHistory {
-		if seen[h] {
-			continue
-		}
-		seen[h] = true
-		shown++
-		if shown > 3 && !m.showTools {
-			break
-		}
-		b.WriteString(styleTool.Render("  ✓ " + h))
-		b.WriteString("\n")
+	limit := len(steps)
+	if !m.showTools && limit > 5 {
+		limit = 5
 	}
-	if m.toolLine != "" {
-		b.WriteString(styleToolActive.Render("  " + m.spinner() + " " + m.toolLine))
+	for i := 0; i < limit; i++ {
+		s := steps[i]
+		if !s.done {
+			b.WriteString(styleToolActive.Render("  " + m.spinner() + " " + cellTruncate(s.label, w-6)))
+		} else if m.showTools {
+			b.WriteString(styleTool.Render(fmt.Sprintf("  ✓ %s (%s)", cellTruncate(s.label, w-12), formatElapsed(s.dur))))
+		} else {
+			b.WriteString(styleTool.Render("  ✓ " + cellTruncate(s.label, w-6)))
+		}
+		b.WriteString("\n")
+		shown++
+		_ = shown
+	}
+	if !m.showTools && len(steps) > limit {
+		b.WriteString(styleNotice.Render(fmt.Sprintf("  · +%d more (ctrl+o for details)", len(steps)-limit)))
 		b.WriteString("\n")
 	}
 	status := fmt.Sprintf("  %s working", m.spinner())
 	if m.elapsed > 0 {
 		status += fmt.Sprintf(" · %s", formatElapsed(m.elapsed))
 	}
-	if m.toolCount > 0 {
-		status += fmt.Sprintf(" · %d tool%s", m.toolCount, plural(m.toolCount))
+	if len(steps) > 0 {
+		status += fmt.Sprintf(" · %d tool%s", len(steps), plural(len(steps)))
 	}
 	if len(m.queued) > 0 {
 		status += fmt.Sprintf(" · %d queued", len(m.queued))
-	}
-	if !m.showTools && len(m.toolHistory) > 3 {
-		status += fmt.Sprintf(" · +%d more", len(m.toolHistory)-3)
 	}
 	b.WriteString(styleWorking.Render(status + "…"))
 	return b.String()
@@ -701,27 +768,115 @@ func formatElapsed(d time.Duration) string {
 }
 
 func (m *agentTUI) renderEntry(e entry) string {
+	w := m.contentWidth()
 	switch e.kind {
 	case entryUser:
-		return styleUserCard.Render("❯ " + e.text)
+		var lines []string
+		lines = append(lines, styleUserName.Render("You"))
+		for _, wl := range wrapText(e.text, w-2) {
+			lines = append(lines, styleUserCard.Render("❯ "+wl))
+		}
+		return strings.Join(lines, "\n")
 	case entryAssistant:
-		return renderAssistantBody(e.text, m.width)
+		head := styleAssistantName.Render(logo + " Ghost · " + providerLocality(m.loop.GetCurrentModel()))
+		return head + "\n" + renderAssistantBody(e.text, w)
 	case entryTool:
-		return styleTool.Render("  ⚙ " + e.text)
+		return styleTool.Render("  ✓ " + cellTruncate(e.text, w-6))
 	case entryNotice:
 		return styleNotice.Render("  · " + e.text)
 	case entryError:
-		return styleErrorCard.Render("  ✗ " + e.text)
+		var lines []string
+		for _, wl := range wrapText(e.text, w-4) {
+			lines = append(lines, "  "+wl)
+		}
+		return styleErrorCard.Render(strings.Join(lines, "\n"))
 	}
 	return e.text
 }
 
-// welcomeCard is the opencode-style empty state: what Ghost is + how to start.
+// welcomeCard is the opencode-style empty state. It is rendered directly,
+// never stored as an entry, so it can never duplicate.
 func (m *agentTUI) welcomeCard() string {
+	w := m.contentWidth()
 	title := styleWelcomeTitle.Render(logo + " Ghost")
-	sub := styleNotice.Render("Your AI on your machine — it remembers, acts with approval, and shows where it ran.")
+	sub := styleNotice.Render(wrapFirst("Your AI on your machine — it remembers, acts with approval, and shows where it ran.", w))
 	cmds := styleWelcomeCmds.Render("  /help      commands & keys\n  /model     switch thinking engine\n  /memory    what Ghost remembers\n  /routines  recurring work")
 	return title + "\n" + sub + "\n" + cmds
+}
+
+// ─── width helpers ─────────────────────────────────────────────────────
+// contentWidth is the usable transcript width: terminal minus the viewport
+// margin. Every renderer must wrap/truncate to it — nothing may assume the
+// full terminal width, which is what caused mid-word truncation.
+func (m *agentTUI) contentWidth() int {
+	w := m.width - 4
+	if w < 20 {
+		w = 20
+	}
+	return w
+}
+
+// truncate shortens s to at most w cells, adding … when cut.
+func cellTruncate(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= w {
+		return s
+	}
+	runes := []rune(s)
+	lo, hi := 0, len(runes)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if lipgloss.Width(string(runes[:mid])) < w-1 {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo > 1 {
+		return string(runes[:lo-1]) + "…"
+	}
+	return "…"
+}
+
+// wrapText greedily wraps s to lines of at most w cells.
+func wrapText(s string, w int) []string {
+	if w < 10 {
+		w = 10
+	}
+	var out []string
+	for _, para := range strings.Split(s, "\n") {
+		if lipgloss.Width(para) <= w {
+			out = append(out, para)
+			continue
+		}
+		var cur strings.Builder
+		curW := 0
+		for _, word := range strings.Fields(para) {
+			ww := lipgloss.Width(word)
+			if curW == 0 {
+				cur.WriteString(word)
+				curW = ww
+				continue
+			}
+			if curW+1+ww > w {
+				out = append(out, cur.String())
+				cur.Reset()
+				cur.WriteString(word)
+				curW = ww
+				continue
+			}
+			cur.WriteString(" " + word)
+			curW += 1 + ww
+		}
+		out = append(out, cur.String())
+	}
+	return out
+}
+
+func wrapFirst(s string, w int) string {
+	return strings.Join(wrapText(s, w), "\n")
 }
 
 // ─── markdown-lite (no new deps) ─────────────────────────────────────────
@@ -730,6 +885,9 @@ func (m *agentTUI) welcomeCard() string {
 // and inline code stand out without pulling in glamour.
 
 func renderAssistantBody(text string, width int) string {
+	if width < 20 {
+		width = 20
+	}
 	lines := strings.Split(text, "\n")
 	var out []string
 	inCode := false
@@ -737,29 +895,47 @@ func renderAssistantBody(text string, width int) string {
 		trim := strings.TrimSpace(ln)
 		if strings.HasPrefix(trim, "```") {
 			inCode = !inCode
-			out = append(out, styleCodeFence.Render(trim))
+			out = append(out, styleCodeFence.Render(cellTruncate(trim, width)))
 			continue
 		}
 		if inCode {
-			out = append(out, styleCodeBlock.Render("  "+ln))
+			for _, wl := range wrapText(ln, width-2) {
+				out = append(out, styleCodeBlock.Render("  "+wl))
+			}
 			continue
 		}
 		switch {
 		case strings.HasPrefix(trim, "### "):
-			out = append(out, styleH3.Render("◆ "+strings.TrimPrefix(trim, "### ")))
+			out = append(out, styleH3.Render("◆ "+cellTruncate(strings.TrimPrefix(trim, "### "), width-4)))
 		case strings.HasPrefix(trim, "## "):
-			out = append(out, styleH2.Render("◆ "+strings.TrimPrefix(trim, "## ")))
+			out = append(out, styleH2.Render("◆ "+cellTruncate(strings.TrimPrefix(trim, "## "), width-4)))
 		case strings.HasPrefix(trim, "# "):
-			out = append(out, styleH1.Render("◆ "+strings.TrimPrefix(trim, "# ")))
+			out = append(out, styleH1.Render("◆ "+cellTruncate(strings.TrimPrefix(trim, "# "), width-4)))
 		case strings.HasPrefix(trim, "> "):
-			out = append(out, styleQuote.Render("▍ "+renderInline(strings.TrimPrefix(trim, "> "))))
+			// Wrap the quote body, keep the bar on each visual line.
+			first := true
+			for _, wl := range wrapText(strings.TrimPrefix(trim, "> "), width-4) {
+				_ = first
+				out = append(out, styleQuote.Render("▍ "+wl))
+				first = false
+			}
 		case strings.HasPrefix(trim, "- ") || strings.HasPrefix(trim, "* "):
-			out = append(out, styleList.Render("  • "+renderInline(trim[2:])))
+			for _, wl := range wrapText(trim[2:], width-6) {
+				out = append(out, styleList.Render("  • "+wl))
+			}
 		case isOrderedList(trim):
 			dot := strings.Index(trim, ".")
-			out = append(out, styleList.Render("  "+trim[:dot+1]+" "+renderInline(strings.TrimSpace(trim[dot+1:]))))
+			for _, wl := range wrapText(strings.TrimSpace(trim[dot+1:]), width-6) {
+				out = append(out, styleList.Render("  "+trim[:dot+1]+" "+wl))
+			}
+		case trim == "":
+			out = append(out, "")
 		default:
-			out = append(out, styleAssistant.Render(logo+" "+renderInline(ln)))
+			// Body lines render plain (the block already has its Ghost
+			// header); inline spans carry the emphasis.
+			for _, wl := range wrapText(ln, width) {
+				out = append(out, styleAssistant.Render(renderInline(wl)))
+			}
 		}
 	}
 	return strings.Join(out, "\n")
@@ -800,16 +976,16 @@ func renderSpan(s, delim string, fn func(...string) string) string {
 	}
 }
 
+// layout recomputes frozen geometry. It runs only on resize and on input
+// edits (via Update), never inside View: View must stay pure or the
+// viewport height oscillates and chrome duplicates.
 func (m *agentTUI) layout() {
 	headerH := 1
 	footerH := 1
 	paletteH := m.paletteHeight()
-	inputH := lipgloss.Height(m.inputBox("")) + 1
-	if inputH < 4 {
-		inputH = 4
-	}
+	inputH := m.estimatedInputHeight()
 	if m.approval != nil {
-		inputH = lipgloss.Height(m.approvalCard()) + 1
+		inputH = m.estimatedApprovalHeight()
 	}
 	vpH := m.height - headerH - footerH - paletteH - inputH - 1
 	if vpH < 1 {
@@ -822,6 +998,24 @@ func (m *agentTUI) layout() {
 		m.viewport.Height = vpH
 	}
 	m.input.SetWidth(m.inputWidth())
+}
+
+// estimatedInputHeight mirrors inputBox without rendering it: title row (1)
+// + border (2) + textarea lines clamped to the box.
+func (m *agentTUI) estimatedInputHeight() int {
+	lines := strings.Count(m.input.Value(), "\n") + 1
+	if lines < 1 {
+		lines = 1
+	}
+	if lines > 6 {
+		lines = 6
+	}
+	return lines + 3
+}
+
+func (m *agentTUI) estimatedApprovalHeight() int {
+	// Title + risk note + keys + border, wrapped to content width.
+	return 6
 }
 
 func (m *agentTUI) inputWidth() int {
@@ -852,8 +1046,9 @@ func (m *agentTUI) View() string {
 	if !m.ready {
 		return "starting Ghost…"
 	}
-	// Keep geometry in sync as the palette opens/closes and the card swaps.
-	m.layout()
+	// Pure composition: header, transcript, popover, prompt, footer each
+	// render exactly once. Geometry was frozen in layout(); rendering here
+	// must not mutate it.
 	var b strings.Builder
 	b.WriteString(m.headerBar())
 	b.WriteString("\n")
@@ -875,6 +1070,8 @@ func (m *agentTUI) View() string {
 
 // headerBar is the opencode-style top bar: product + model pill + locality
 // + context on the left, session + turn count + state on the right.
+// It degrades gracefully on narrow terminals: context pill first, then the
+// session, then the model get shortened — never wrapped or truncated mid-word.
 func (m *agentTUI) headerBar() string {
 	model := m.loop.GetCurrentModel()
 	local := providerLocality(model)
@@ -885,17 +1082,26 @@ func (m *agentTUI) headerBar() string {
 			ctx = m.loop.CurrentContext(m.session)
 		}
 	}()
+	state := m.stateWord()
+	right := styleHeaderRight.Render(shortSession(m.session) + " · " + state)
+	budget := m.width - lipgloss.Width(right) - 2
+	if budget < 12 {
+		// Extremely narrow: state only.
+		return styleHeader.Width(m.width).Render(cellTruncate(shortSession(m.session)+" · "+state, m.width))
+	}
 	left := styleHeaderLogo.Render(logo+" Ghost") + "  " +
 		styleModelPill.Render("◈ "+shortModel(model)) + " " +
 		localityPill(local)
-	if ctx != "" {
+	if ctx != "" && lipgloss.Width(left)+lipgloss.Width(styleCtxPill.Render("❖ "+ctx))+1 <= budget {
 		left += " " + styleCtxPill.Render("❖ "+ctx)
 	}
-	state := m.stateWord()
-	right := styleHeaderRight.Render(shortSession(m.session) + " · " + state)
+	if lipgloss.Width(left) > budget {
+		// Drop the model pill, keep identity + locality.
+		left = styleHeaderLogo.Render(logo+" Ghost") + "  " + localityPill(local)
+	}
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 2
 	if gap < 1 {
-		return styleHeader.Width(m.width).Render(left)
+		gap = 1
 	}
 	return styleHeader.Width(m.width).Render(left + strings.Repeat(" ", gap) + right)
 }
@@ -950,16 +1156,16 @@ func localityPill(local string) string {
 }
 
 // inputBox is the pi/opencode-style bordered editor with a title row.
+// The title names the *state* (never the placeholder text) so it can't echo.
 func (m *agentTUI) inputBox(inner string) string {
-	title := "Message Ghost"
+	title := "prompt"
 	if m.working {
-		title = "Working — type to steer, Enter queues"
+		title = "working — enter queues steering"
 	} else if strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/") {
-		title = "Command — Tab completes, Enter runs"
+		title = "command — tab completes, enter runs"
 	}
 	head := styleInputTitle.Render(" " + title + " ")
 	box := styleInputBox.Width(m.width - 2).Render(inner)
-	// Overlay the title on the top border by prepending it; simple and stable.
 	return head + "\n" + box
 }
 
@@ -985,15 +1191,17 @@ func (m *agentTUI) paletteView() string {
 }
 
 // footerHints is the opencode-style key bar under the editor.
+// Single line, always truncated to the terminal width — never wrapped.
 func (m *agentTUI) footerHints() string {
-	keys := "enter send · esc abort · ctrl+l model · ctrl+o tools · / commands · pgup/pgdn scroll"
+	keys := "enter send · esc abort · ctrl+l model · ctrl+o details · / commands"
 	if m.working {
-		keys = "enter queues steering · esc aborts · " + keys
+		keys = "enter queues · esc aborts · " + keys
 	}
-	if lipgloss.Width(keys)+2 > m.width {
-		keys = "enter send · esc abort · / commands"
+	for lipgloss.Width(keys)+2 > m.width && strings.Contains(keys, " · ") {
+		i := strings.LastIndex(keys, " · ")
+		keys = keys[:i]
 	}
-	return styleFooter.Width(m.width).Render(" " + keys + " ")
+	return styleFooter.Width(m.width).Render(cellTruncate(keys, m.width-2))
 }
 
 // approvalCard is the inline permission prompt. It states the risk in owner
@@ -1015,13 +1223,16 @@ func (m *agentTUI) approvalCard() string {
 		badge = styleRiskLow.Render(" ◆ low risk ")
 	}
 	var b strings.Builder
-	b.WriteString(styleApprovalTitle.Render("⚑ "+title) + "  " + badge)
+	b.WriteString(styleApprovalTitle.Render("⚑ "+cellTruncate(title, m.contentWidth()-16)) + "  " + badge)
 	b.WriteString("\n")
 	if note := approvalRiskNote(m.approval.risk); note != "" {
-		b.WriteString(styleNotice.Render("  " + note))
-		b.WriteString("\n")
+		for _, wl := range wrapText(note, m.contentWidth()-4) {
+			b.WriteString(styleNotice.Render("  " + wl))
+			b.WriteString("\n")
+		}
 	}
-	b.WriteString(styleApprovalKeys.Render("  [1] allow once    [2] always allow    [3] deny") + "  " + styleNotice.Render("esc leaves pending"))
+	b.WriteString(styleApprovalKeys.Render("  [1] allow once    [2] always allow    [3] deny"))
+	b.WriteString(styleNotice.Render("  esc leaves pending"))
 	return styleApprovalBox.Width(m.width - 2).Render(b.String())
 }
 
@@ -1113,10 +1324,12 @@ var (
 	styleApproval  = lipgloss.NewStyle().Foreground(cGold).Bold(true)
 	styleStatus    = lipgloss.NewStyle().Foreground(cMuted).Background(cBgBar)
 
-	styleUserCard   = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
-	styleErrorCard  = lipgloss.NewStyle().Foreground(cErr).Bold(true)
-	styleToolActive = lipgloss.NewStyle().Foreground(cGreen)
-	styleBold       = lipgloss.NewStyle().Bold(true).Foreground(cInk)
+	styleUserCard      = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
+	styleUserName      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
+	styleAssistantName = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
+	styleErrorCard     = lipgloss.NewStyle().Foreground(cErr).Bold(true)
+	styleToolActive    = lipgloss.NewStyle().Foreground(cGreen)
+	styleBold          = lipgloss.NewStyle().Bold(true).Foreground(cInk)
 
 	styleHeader      = lipgloss.NewStyle().Foreground(cMuted).Background(cBgBar)
 	styleHeaderLogo  = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
@@ -1162,8 +1375,9 @@ func agentHelpText() string {
 		"Commands  (/ + Tab completes, ↑/↓ picks)",
 		"  /help              this help",
 		"  /model [name]      show or switch the active model",
+		"  /details           toggle tool step details",
 		"  /new               start a fresh conversation",
-		"  /session           show session and model",
+		"  /sessions          show session and turn count",
 		"  /memory [query]    ask what Ghost remembers",
 		"  /context [name]    show or switch topic context (scoped memory/tools)",
 		"  /rewind            put the last message back in the editor",

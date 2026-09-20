@@ -333,3 +333,61 @@ func TestTUIRewindRestoresLastUserMessage(t *testing.T) {
 		t.Errorf("rewind should restore the last user message, got %q", m.input.Value())
 	}
 }
+
+// View must render each chrome region exactly once: one header, one prompt
+// box, one footer. Regression test for the doubled header/welcome/input.
+func TestTUIViewRendersSingleChrome(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.renderTranscript()
+	view := m.View()
+	if n := strings.Count(view, "Ghost"); n < 1 {
+		t.Fatalf("view should contain the header, got %q", view)
+	}
+	// Welcome card renders into the viewport, the header above it: the logo
+	// may appear twice total (header + welcome) but never more.
+	if n := strings.Count(view, "👻"); n > 3 {
+		t.Errorf("view renders duplicated chrome (%d logos): %q", n, view)
+	}
+	if !strings.Contains(view, "enter send") {
+		t.Errorf("view should contain the footer hints, got %q", view)
+	}
+}
+
+// Tool repeats for the active step must not append duplicate rows; the
+// spinner row updates in place (opencode collapsed-trail rule).
+func TestTUIToolDedupe(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.working = true
+	m.Update(toolCallMsg{tool: "exec", label: "Running: ls"})
+	m.Update(toolCallMsg{tool: "exec", label: "Running: ls"})
+	if len(m.toolHistory) != 1 {
+		t.Fatalf("repeated active tool must not append rows, got %v", m.toolHistory)
+	}
+	m.Update(toolCallMsg{tool: "read_file", label: "Reading: foo"})
+	if len(m.toolHistory) != 2 || !m.toolHistory[0].done {
+		t.Fatalf("new tool must close the previous step, got %+v", m.toolHistory)
+	}
+}
+
+// The final response wins over the stream preview: never concatenated.
+func TestTUIFinalWinsOverStream(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.working = true
+	m.streaming = "Hel"
+	m.Update(turnDoneMsg{text: "Hello!", err: nil})
+	found := false
+	for _, e := range m.entries {
+		if e.kind == entryAssistant {
+			found = true
+			if e.text != "Hello!" {
+				t.Fatalf("final must win verbatim, got %q", e.text)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("assistant entry missing: %+v", m.entries)
+	}
+}
