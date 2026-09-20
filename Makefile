@@ -188,6 +188,7 @@ install-ghost: build-ghost
 		cp $(BINARY_PATH) $(INSTALL_BIN_DIR)/$(BINARY_NAME).new && \
 		mv -f $(INSTALL_BIN_DIR)/$(BINARY_NAME).new $(INSTALL_BIN_DIR)/$(BINARY_NAME) && \
 		chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME) && \
+		chown $(INSTALL_OWNER):$(INSTALL_GROUP) $(INSTALL_BIN_DIR)/$(BINARY_NAME) 2>/dev/null || true; \
 		echo "Refreshed $(INSTALL_BIN_DIR)/$(BINARY_NAME)"; \
 	fi
 	@# Build and deploy update tooling
