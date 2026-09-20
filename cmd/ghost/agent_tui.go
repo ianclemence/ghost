@@ -148,6 +148,9 @@ type agentTUI struct {
 	// modal is an open centered dialog (opencode dialog.select), e.g. the
 	// model picker. It owns the keyboard until Enter picks or Esc closes.
 	modal *selectModal
+	// modelCycleIdx is our own position in the preset rotation, so Ctrl+L
+	// advances even when the canonical active model matches no preset.
+	modelCycleIdx int
 	// clarify is set when the running turn asks a clarification question
 	// (the event the mobile app renders as an interactive card). The next
 	// Enter answers it in-band instead of starting a new turn.
@@ -199,15 +202,16 @@ func newAgentTUI(loop agentRuntime, session string) *agentTUI {
 	ta.Placeholder = promptPlaceholder()
 	ta.Prompt = ""
 	ta.CharLimit = 0
-	ta.SetHeight(1)
+	ta.SetHeight(composerHeight)
 	ta.ShowLineNumbers = false
 	ta.Focus()
 
 	return &agentTUI{
-		loop:      loop,
-		session:   session,
-		input:     ta,
-		histIndex: -1,
+		loop:          loop,
+		session:       session,
+		input:         ta,
+		histIndex:     -1,
+		modelCycleIdx: -1,
 	}
 }
 
@@ -1049,15 +1053,34 @@ func (m *agentTUI) cycleModel() {
 		m.renderTranscript()
 		return
 	}
+	// The active model is canonical (provider:model) while presets are
+	// names, so a naive == never matches and every press fell through to
+	// presets[0]. Match loosely to resync, else continue from our own
+	// last position so every press visibly advances.
 	cur := m.loop.GetCurrentModel()
-	next := presets[0]
+	idx := -1
 	for i, p := range presets {
-		if p == cur {
-			next = presets[(i+1)%len(presets)]
+		if p == cur || modelBase(p) == modelBase(cur) {
+			idx = i
 			break
 		}
 	}
-	m.setModel(next)
+	if idx == -1 {
+		idx = m.modelCycleIdx
+	}
+	idx = (idx + 1) % len(presets)
+	m.modelCycleIdx = idx
+	m.setModel(presets[idx])
+}
+
+// modelBase strips provider prefixes and case so a preset name matches
+// the canonical active model ("provider:model", "provider/model").
+func modelBase(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if i := strings.LastIndexAny(s, ":/"); i >= 0 {
+		s = s[i+1:]
+	}
+	return s
 }
 
 func (m *agentTUI) setModel(name string) {
@@ -1585,63 +1608,19 @@ func (m *agentTUI) layout() {
 		m.viewport.Height = vpH
 	}
 	m.input.SetWidth(m.inputWidth())
-	m.syncInputHeight()
+	m.input.SetHeight(composerHeight)
 }
 
-// syncInputHeight grows the composer with the text between
-// composerMinLines and maxPromptLines (opencode caps its composer height
-// the same way) so long input scrolls inside the box instead of pushing
-// the transcript away.
-func (m *agentTUI) syncInputHeight() {
-	lines := 0
-	inner := m.inputWidth()
-	for _, ln := range strings.Split(m.input.Value(), "\n") {
-		w := lipgloss.Width(ln)
-		if w <= 0 {
-			lines++
-			continue
-		}
-		lines += (w + inner - 1) / inner
-	}
-	if lines < composerMinLines {
-		lines = composerMinLines
-	}
-	if lines > maxPromptLines {
-		lines = maxPromptLines
-	}
-	m.input.SetHeight(lines)
-}
+// The composer is a fixed height: the bar and the editor can never
+// disagree, and the transcript geometry never shifts while typing.
+// Longer input scrolls inside the box.
+const composerHeight = 3
 
-// The composer idles at composerMinLines rows (presence, not a sliver)
-// and never exceeds maxPromptLines.
-const (
-	composerMinLines = 3
-	maxPromptLines   = 5
-)
-
-// estimatedInputHeight mirrors promptBox without rendering it: border (2)
-// + textarea visual lines clamped to the box. Visual lines, not physical
-// ones: a long line wraps in the editor (tuicomp-measure-element), so the
-// box estimate must wrap too or the viewport drifts. No title row — pi
-// has no label above the prompt box, and neither do we.
+// estimatedInputHeight mirrors promptBox: the fixed composer height.
+// One constant drives layout, paint, and estimate alike, so the bar and
+// the editor rows can never disagree.
 func (m *agentTUI) estimatedInputHeight() int {
-	inner := m.inputWidth()
-	lines := 0
-	for _, ln := range strings.Split(m.input.Value(), "\n") {
-		w := lipgloss.Width(ln)
-		if w <= 0 {
-			lines++
-			continue
-		}
-		lines += (w + inner - 1) / inner
-	}
-	if lines < composerMinLines {
-		lines = composerMinLines
-	}
-	if lines > maxPromptLines {
-		lines = maxPromptLines
-	}
-	return lines // bare panel: no border rows (opencode composer)
+	return composerHeight
 }
 
 func (m *agentTUI) estimatedApprovalHeight() int {
@@ -2075,6 +2054,7 @@ var (
 	cBgBar   = lipgloss.Color("#141210")
 	cBgPanel = lipgloss.Color("#1b1815")
 	cBorder  = lipgloss.Color("#3a352f")
+	cBarIdle = lipgloss.Color("#6e648a") // visible slate-violet composer bar
 	cGreen   = lipgloss.Color("#7fb08a")
 	cBlue    = lipgloss.Color("#7fa8c9")
 	cViolet  = lipgloss.Color("#a89bc7")
@@ -2128,7 +2108,7 @@ var (
 
 	// Composer + approval panels: single left `┃` bar (opencode composer),
 	// agent-accent while working, gold for approvals.
-	stylePromptBar       = lipgloss.NewStyle().Foreground(cBorder)
+	stylePromptBar       = lipgloss.NewStyle().Foreground(cBarIdle)
 	stylePromptBarActive = lipgloss.NewStyle().Foreground(cAccent)
 	stylePromptPanel     = lipgloss.NewStyle().Background(cBgPanel)
 	styleApprovalBar     = lipgloss.NewStyle().Foreground(cGold)

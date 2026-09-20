@@ -119,6 +119,30 @@ func TestTUIModelCycleAndSet(t *testing.T) {
 	}
 }
 
+// The canonical active model (provider:model) matches no preset name, so
+// cycling must still advance every press instead of sticking on the
+// first preset — the "Ctrl+L always picks ollama" regression test.
+func TestTUIModelCycleAdvancesPastCanonical(t *testing.T) {
+	f := newFakeRuntime()
+	f.model = "ollama:qwen3"
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.cycleModel()
+	if f.model != "fast" {
+		t.Fatalf("first press should take the first preset, got %q", f.model)
+	}
+	// Simulate the daemon reporting back the canonical form, as happens
+	// after a real SetModel (preset name in, provider:model out).
+	f.model = "testprovider:fast"
+	m.cycleModel()
+	if f.model != "deep" {
+		t.Fatalf("second press must advance past the canonical match, got %q", f.model)
+	}
+	m.cycleModel()
+	if f.model != "fast" {
+		t.Fatalf("rotation must wrap around, got %q", f.model)
+	}
+}
+
 func TestTUIQueueWhileWorkingInjectsSteering(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
@@ -408,34 +432,36 @@ func TestTUIFooterKeysContextual(t *testing.T) {
 	}
 }
 
-// Box height estimates must count visual (wrapped) lines, not physical
-// ones, or the viewport drifts when a long line wraps
-// (terminal-ui skill: tuicomp-measure-element).
+// The estimate is the fixed composer height whatever the content holds.
 func TestTUIInputHeightCountsWrappedLines(t *testing.T) {
 	f := newFakeRuntime()
-	m := readyForTest(newAgentTUI(f, "cli:test")) // width 80 → inner 78
+	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue(strings.Repeat("x", 200))
-	if got := m.estimatedInputHeight(); got != 3 { // bare panel: wrapped rows only
-		t.Errorf("200 cols at inner 78 should estimate 3 rows, got %d", got)
+	if got := m.estimatedInputHeight(); got != composerHeight {
+		t.Errorf("estimate must stay %d, got %d", composerHeight, got)
 	}
 }
 
-// The composer idles taller than a sliver and never exceeds the cap.
+// The composer is a fixed height: estimate and paint can never disagree,
+// and long input scrolls inside the box instead of shifting the layout.
 func TestTUIComposerDefaultAndCap(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("")
 	m.layout()
-	if h := m.input.Height(); h != composerMinLines {
-		t.Errorf("empty composer should idle at %d rows, got %d", composerMinLines, h)
+	if h := m.input.Height(); h != composerHeight {
+		t.Errorf("empty composer should be %d rows, got %d", composerHeight, h)
 	}
-	if got := m.estimatedInputHeight(); got != composerMinLines {
-		t.Errorf("empty estimate should be %d, got %d", composerMinLines, got)
+	if got := m.estimatedInputHeight(); got != composerHeight {
+		t.Errorf("empty estimate should be %d, got %d", composerHeight, got)
 	}
 	m.input.SetValue(strings.Repeat("x\n", 20))
 	m.layout()
-	if h := m.input.Height(); h != maxPromptLines {
-		t.Errorf("composer must cap at %d rows, got %d", maxPromptLines, h)
+	if h := m.input.Height(); h != composerHeight {
+		t.Errorf("long input must not resize the composer (%d rows), got %d", composerHeight, h)
+	}
+	if got := m.estimatedInputHeight(); got != composerHeight {
+		t.Errorf("long estimate must stay %d, got %d", composerHeight, got)
 	}
 }
 
@@ -712,8 +738,8 @@ func TestTUIMultilineComposer(t *testing.T) {
 	}
 	m.input.SetValue(strings.Repeat("x\n", 10))
 	m.layout()
-	if h := m.input.Height(); h != maxPromptLines {
-		t.Errorf("composer must cap at %d lines, got %d", maxPromptLines, h)
+	if h := m.input.Height(); h != composerHeight {
+		t.Errorf("long input must not resize the composer (%d rows), got %d", composerHeight, h)
 	}
 }
 

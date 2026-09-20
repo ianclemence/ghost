@@ -71,11 +71,13 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 
 - **No top header:** like pi and opencode, the transcript owns the full
   height. Model, session and turn state live in the footer — nowhere else.
-- **Composer:** opencode's left-`┃`-border panel, no `❯` prefix, rotating
-  `Ask Ghost anything… "example"` placeholder. Multi-line with `Ctrl+J`
-  (idles 3 rows tall, grows to 5, then scrolls inside the box). Accent
-  bar while working. The working status lives in the footer, not the
-  composer chrome.
+- **Composer:** opencode's left-`┃`-border panel (slate-violet idle,
+  Ghost-violet while working), no `❯` prefix, rotating
+  `Ask Ghost anything… "example"` placeholder. Fixed 3-row height, so
+  the bar and the editor can never disagree and typing never shifts
+  the layout — longer input scrolls inside the box. Multi-line with
+  `Ctrl+J`. The working status lives in the footer, not the composer
+  chrome.
 - **Full conversation, grouped by day:** launching loads the whole shared
   transcript (paged, capped at 500 rows) and opens scrolled to the
   latest turn — iMessage/WhatsApp style, with `Today` / `Yesterday` /
