@@ -15,9 +15,33 @@ func updateCmd() {
 	ghostDir := findGhostDir()
 
 	dryRun := false
+	force := false
 	for _, arg := range os.Args[2:] {
-		if arg == "--dry-run" {
+		switch arg {
+		case "--dry-run":
 			dryRun = true
+		case "--force":
+			force = true
+		}
+	}
+
+	// Release guard: production must run a release, not a working tree.
+	// A dirty checkout would build and deploy uncommitted (prototype) work
+	// straight into the running install. Refuse unless --force.
+	if !force {
+		if out, gerr := exec.Command("git", "-C", ghostDir, "status", "--porcelain").Output(); gerr == nil {
+			if !appliance.IsClean(string(out)) {
+				fmt.Fprintln(os.Stderr, "✗ Refusing to update: the checkout has uncommitted changes.")
+				fmt.Fprintln(os.Stderr, "  Production must run a release, not a working tree. Uncommitted paths:")
+				for _, p := range appliance.SummarizeDirty(string(out), 8) {
+					fmt.Fprintf(os.Stderr, "    %s\n", p)
+				}
+				fmt.Fprintln(os.Stderr, "")
+				fmt.Fprintln(os.Stderr, "  Commit and tag a release, then run `ghost update`; or")
+				fmt.Fprintln(os.Stderr, "  test changes in an isolated instance with `ghost dev`; or")
+				fmt.Fprintln(os.Stderr, "  deploy anyway with `ghost update --force`.")
+				os.Exit(1)
+			}
 		}
 	}
 

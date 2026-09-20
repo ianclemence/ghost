@@ -211,6 +211,8 @@ func main() {
 		runDashboard()
 	case "serve", "gateway":
 		gatewayCmd()
+	case "dev":
+		devCmd()
 	case "status":
 		statusCmd()
 	case "model":
@@ -325,10 +327,11 @@ func printHelp() {
 	fmt.Println("  agent       Interact with the agent directly")
 	fmt.Println("  serve       Start the Ghost daemon (API + channels + cron + heartbeat)")
 	fmt.Println("  gateway     Legacy alias for serve")
+	fmt.Println("  dev         Run an isolated development instance (own dir/port; never touches the installed Ghost)")
 	fmt.Println("  dashboard   Launch the operator TUI")
 	fmt.Println("  status      Show Ghost status")
 	fmt.Println("  model       View or switch the active model (model [list|use <provider:model>])")
-	fmt.Println("  update      Pull latest changes and rebuild")
+	fmt.Println("  update      Deploy the tagged release to the installed Ghost (refuses a dirty checkout; --force to override, --dry-run to preview)")
 	fmt.Println("  updater     Run auto-update daemon")
 	fmt.Println("  auth        Manage authentication (login, logout, status)")
 	fmt.Println("  reset       Factory reset (e.g. ghost reset all --exclude=devices,secrets)")
@@ -926,6 +929,122 @@ func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 
 		fmt.Printf("\n%s %s\n\n", logo, response)
 	}
+}
+
+// devCmd launches an isolated development instance from the current checkout.
+// It never touches the installed Ghost: its own GHOST_DIR, config, workspace,
+// data, and port. Use it to prototype and test; promote to production only via
+// a tagged release and `ghost update`.
+//
+// Flags:
+//
+//	--port=N     bind the gateway/internal API to this port (default 8877)
+//	--api-only   same as `serve --api-only` in the dev instance
+func devCmd() {
+	port := 0
+	apiOnly := false
+	useInstalledKey := false
+	for _, a := range os.Args[2:] {
+		switch {
+		case strings.HasPrefix(a, "--port="):
+			fmt.Sscanf(strings.TrimPrefix(a, "--port="), "%d", &port)
+		case a == "--api-only":
+			apiOnly = true
+		case a == "--use-installed-key":
+			useInstalledKey = true
+		}
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		home = "."
+	}
+	target := appliance.ResolveDevTarget(os.Getenv, home, port)
+
+	// Safety: refuse to run a dev instance against the production paths.
+	if target.ConflictsWithProduction() {
+		fmt.Fprintf(os.Stderr, "✗ Refusing to run: the dev target overlaps the installed Ghost.\n")
+		fmt.Fprintf(os.Stderr, "  dev target: %s\n", target.Describe())
+		fmt.Fprintf(os.Stderr, "  production: %s\n", appliance.DefaultGhostDir)
+		fmt.Fprintf(os.Stderr, "  Set GHOST_DEV_DIR to a directory outside the install paths.\n")
+		os.Exit(1)
+	}
+
+	// Materialize the isolated layout (config + workspace + data).
+	for _, dir := range []string{target.ConfigDir, target.Workspace, target.DataDir, filepath.Join(target.Workspace, "memory")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "✗ Could not create %s: %v\n", dir, err)
+			os.Exit(1)
+		}
+	}
+	// First run in a fresh dev root: seed a setup-complete flag so the
+	// instance starts configured (it is a scratch environment, not a
+	// production onboarding), unless the developer already set one up.
+	flag := filepath.Join(target.GhostDir, appliance.SetupCompleteFlag)
+	if _, err := os.Stat(flag); err != nil {
+		if werr := os.WriteFile(flag, []byte("dev\n"), 0o644); werr == nil {
+			fmt.Printf("• Seeded dev setup flag at %s\n", flag)
+		}
+	}
+
+	// Point this process at the isolated environment before serve resolves
+	// anything.
+	_ = os.Setenv("GHOST_DIR", target.GhostDir)
+	_ = os.Setenv("GHOST_CONFIG_DIR", target.ConfigDir)
+	_ = os.Setenv("GHOST_WORKSPACE_DIR", target.Workspace)
+	_ = os.Setenv("GHOST_API_PORT", fmt.Sprintf("%d", target.Port))
+	_ = os.Setenv("GHOST_GATEWAY_PORT", fmt.Sprintf("%d", target.Port))
+
+	fmt.Printf("\n🧪 Ghost dev instance\n")
+	fmt.Printf("   dir:       %s\n", target.GhostDir)
+	fmt.Printf("   config:    %s\n", target.ConfigDir)
+	fmt.Printf("   workspace: %s\n", target.Workspace)
+	fmt.Printf("   port:      %d\n", target.Port)
+	fmt.Printf("   production (%s) is NOT touched.\n\n", appliance.DefaultGhostDir)
+
+	// Optional convenience: reuse the installed Ghost's provider config so a
+	// dev instance can reach the same models without re-entering keys. Copied
+	// ONLY when the dev config has no key yet, so it never clobbers dev work.
+	if useInstalledKey {
+		seedDevConfigFromInstalled(target)
+	}
+
+	// Reuse the normal serve path with --api-only when requested.
+	if apiOnly {
+		os.Args = append(os.Args[:2], "--api-only")
+	}
+	gatewayCmd()
+}
+
+// seedDevConfigFromInstalled copies the installed Ghost's provider config
+// (including its secrets) into a dev instance's config dir, but ONLY when the
+// dev config is missing provider configuration. This lets a developer reuse
+// production keys in an isolated instance without re-entering them, and it
+// never overwrites dev-local configuration. Failure is non-fatal.
+func seedDevConfigFromInstalled(target appliance.DevTarget) {
+	src := filepath.Join(appliance.DefaultConfigDir, "config.json")
+	dst := filepath.Join(target.ConfigDir, "config.json")
+	if _, err := os.Stat(src); err != nil {
+		return // no installed config to seed from
+	}
+	// Only seed when the dev config does not already exist.
+	if _, err := os.Stat(dst); err == nil {
+		fmt.Println("• Dev config already exists; not overwriting it.")
+		return
+	}
+	for _, name := range []string{"config.json", ".secrets.json", ".master-key", ".master-env"} {
+		s := filepath.Join(appliance.DefaultConfigDir, name)
+		d := filepath.Join(target.ConfigDir, name)
+		data, rerr := os.ReadFile(s)
+		if rerr != nil {
+			continue
+		}
+		if werr := os.WriteFile(d, data, 0o600); werr != nil {
+			fmt.Printf("• Could not copy %s into dev: %v\n", name, werr)
+			return
+		}
+	}
+	fmt.Println("• Seeded dev provider keys from the installed Ghost (reusable locally).")
 }
 
 func gatewayCmd() {
@@ -2056,10 +2175,10 @@ func isInteractiveCommand(command string) bool {
 }
 
 // applyInstalledConfig points interactive commands at the installed Ghost's
-// config directory when it exists and this user can read it. This keeps the
-// CLI consistent with the Web Console and the daemon — the fix for
-// "configured it in the console but the CLI says no key". It never overrides
-// an explicit GHOST_CONFIG_DIR.
+// config directory (and workspace) when they exist and this user can read
+// them. This keeps the CLI consistent with the Web Console and the daemon —
+// the fix for "configured it in the console but the CLI says no key". It never
+// overrides an explicit GHOST_CONFIG_DIR or GHOST_WORKSPACE_DIR.
 func applyInstalledConfig() {
 	configDir, ok := appliance.ResolveInstalledConfig(os.Getenv, appliance.ApplianceInstalled(), func(dir string) bool {
 		_, err := os.ReadFile(filepath.Join(dir, "config.json"))
@@ -2069,6 +2188,16 @@ func applyInstalledConfig() {
 		return
 	}
 	_ = os.Setenv("GHOST_CONFIG_DIR", configDir)
+
+	// Adopt the installed workspace too, or the CLI would read the installed
+	// config but still try to use a checkout workspace. Only when readable and
+	// not already set by the operator.
+	if os.Getenv("GHOST_WORKSPACE_DIR") == "" {
+		ws := appliance.DefaultWorkspaceDir
+		if _, err := os.Stat(ws); err == nil {
+			_ = os.Setenv("GHOST_WORKSPACE_DIR", ws)
+		}
+	}
 	fmt.Fprintf(os.Stderr, "✓ Using installed Ghost config (%s)\n", configDir)
 }
 
