@@ -484,10 +484,6 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	if n := strings.Count(view, "deepseek-flash"); n != 1 {
 		t.Errorf("model should appear once in the footer, found %d: %q", n, view)
 	}
-	// Welcome card renders into the viewport only — never duplicated.
-	if n := strings.Count(view, "switch thinking engine"); n != 1 {
-		t.Errorf("welcome card should appear once, found %d: %q", n, view)
-	}
 	// Footer is exactly 2 lines: stats/model, shortcuts. The tagline lives
 	// on the welcome card, never in the footer.
 	if got := len(m.footerLines()); got != 2 {
@@ -496,12 +492,17 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	if strings.Contains(strings.Join(m.footerLines(), "\n"), ghostTagline) {
 		t.Errorf("the tagline must not appear in the footer")
 	}
-	// The welcome card carries the Ghost tagline exactly once.
-	if n := strings.Count(view, ghostTagline); n != 1 {
-		t.Errorf("welcome card must show the tagline once, found %d: %q", n, view)
+	// The welcome card is printed into the scrollback (not the live view),
+	// and carries the Ghost tagline.
+	welcome := m.welcomeCard()
+	if n := strings.Count(welcome, "switch thinking engine"); n != 1 {
+		t.Errorf("welcome card should appear once, found %d: %q", n, welcome)
 	}
-	if !strings.Contains(view, "Your AI. Your Memory. Your Machine.") {
-		t.Errorf("welcome card must carry the Ghost tagline, got %q", view)
+	if !strings.Contains(welcome, "Your AI. Your Memory. Your Machine.") {
+		t.Errorf("welcome card must carry the Ghost tagline, got %q", welcome)
+	}
+	if strings.Contains(view, ghostTagline) {
+		t.Errorf("the live view must not carry the welcome card, got %q", view)
 	}
 	// The idle hint lists the command surface first and the exit last, and
 	// never spells out the obvious Enter-to-send.
@@ -623,60 +624,36 @@ func TestTUIComposerGrowsWithContentAndCaps(t *testing.T) {
 }
 
 // The composer is exactly two full-width rules, no side borders, no
-// prefix, and the text rows between them. While working, the live status
-// is embedded once in the top rule — never duplicated.
-// Long replies must not make earlier turns look like they vanished. The
-// transcript follows new content only when the reader is already at the
-// bottom; once they scroll up, streaming keeps their place.
-func TestTUITranscriptKeepsScrollPosition(t *testing.T) {
+// The transcript lives in the terminal's own scrollback: committed entries
+// are emitted once via tea.Println so native scrolling reaches every
+// previous message, and the live View() holds only the bottom region (never
+// the committed transcript). This is the opencode-CLI model.
+func TestTUITranscriptPrintsToScrollback(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.width, m.height = 80, 20
-	for i := 0; i < 10; i++ {
-		m.append(entry{kind: entryUser, text: "q", at: time.Now()})
-		m.append(entry{kind: entryAssistant, text: strings.Repeat("a long answer ", 20), at: time.Now()})
-	}
-	m.layout()
-	m.renderTranscript()
-	m.viewport.HalfViewUp()
-	m.viewport.HalfViewUp()
-	up := m.viewport.YOffset
-	m.streaming = "more text"
-	m.renderTranscript()
-	if m.viewport.YOffset != up {
-		t.Errorf("a streaming chunk must not yank the reader to the bottom (want offset %d, got %d)", up, m.viewport.YOffset)
-	}
-}
+	m.append(entry{kind: entryUser, text: "first question", at: time.Now()})
+	m.append(entry{kind: entryAssistant, text: "first answer", at: time.Now()})
 
-// The TUI captures the mouse, so the terminal's own scrollback is gone;
-// the wheel must scroll the transcript, and a hint must appear when there
-// is more history above. Without this, earlier turns look lost.
-func TestTUITranscriptWheelScrollsAndHints(t *testing.T) {
-	f := newFakeRuntime()
-	m := readyForTest(newAgentTUI(f, "cli:test"))
-	m.width, m.height = 80, 20
-	for i := 0; i < 10; i++ {
-		m.append(entry{kind: entryUser, text: "q", at: time.Now()})
-		m.append(entry{kind: entryAssistant, text: strings.Repeat("answer ", 30), at: time.Now()})
+	if m.printed != 0 {
+		t.Fatalf("nothing should be printed before a flush, got %d", m.printed)
 	}
-	m.layout()
-	m.renderTranscript()
-	if m.viewport.YOffset == 0 {
-		t.Fatalf("precondition: content must overflow the viewport")
+	if cmd := m.flushScrollback(); cmd == nil {
+		t.Fatalf("committed entries must flush to the scrollback")
 	}
-	before := m.viewport.YOffset
-	m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp})
-	if m.viewport.YOffset >= before {
-		t.Errorf("wheel up must scroll the transcript (before %d, after %d)", before, m.viewport.YOffset)
+	if m.printed != 2 {
+		t.Errorf("flush must mark both entries printed, got %d", m.printed)
 	}
-	if !strings.Contains(m.View(), "more above") {
-		t.Errorf("a scrolled-up transcript must hint that more is above\n%s", m.View())
+	// A second flush with nothing new is a no-op (never reprints history).
+	if cmd := m.flushScrollback(); cmd != nil {
+		t.Errorf("a second flush with no new entries must be a no-op")
 	}
 
-	// Back at the bottom, the hint is gone.
-	m.viewport.GotoBottom()
-	if strings.Contains(m.View(), "more above") {
-		t.Errorf("the hint must disappear at the bottom")
+	// The live view must not contain the committed transcript.
+	m.renderTranscript()
+	view := m.View()
+	if strings.Contains(view, "first question") || strings.Contains(view, "first answer") {
+		t.Errorf("committed entries must not be in the live view, got %q", view)
 	}
 }
 
@@ -855,8 +832,7 @@ func TestTUIDayDividers(t *testing.T) {
 	m.append(entry{kind: entryUser, text: "a", at: now})
 	m.append(entry{kind: entryAssistant, text: "b", at: now})
 	m.append(entry{kind: entryUser, text: "c", at: now.AddDate(0, 0, -1)})
-	m.renderTranscript()
-	content := m.viewport.View()
+	content := m.pendingScrollback()
 	if n := strings.Count(content, "Today"); n != 1 {
 		t.Errorf("same-day rows share one divider, found %d", n)
 	}

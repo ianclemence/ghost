@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -118,9 +117,14 @@ type agentTUI struct {
 	loop    agentRuntime
 	session string
 
-	viewport viewport.Model
-	input    textarea.Model
-	entries  []entry
+	input   textarea.Model
+	entries []entry
+	// printed is how many entries have been flushed to the terminal's own
+	// scrollback (main screen). The transcript lives in the scrollback, not
+	// in an app-owned viewport, so the terminal's native scrolling reaches
+	// every previous message — the same model the opencode CLI uses.
+	printed        int
+	lastPrintedDay string
 
 	width, height int
 	ready         bool
@@ -247,14 +251,27 @@ func spinnerTick() tea.Cmd {
 
 type teaMsg = tea.Msg
 
+// Update handles one message and then flushes any newly-committed entries
+// into the terminal scrollback, so transcript lines reach the terminal's
+// own buffer where native scrolling can reach them.
 func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	model, cmd := m.updateInner(msg)
+	if flush := m.flushScrollback(); flush != nil {
+		cmd = tea.Batch(cmd, flush)
+	}
+	return model, cmd
+}
+
+func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.layout()
 		if !m.ready {
 			m.ready = true
-			m.renderTranscript()
+			// A genuinely new conversation opens with the welcome card in
+			// the scrollback; backfilled history prints instead (flush).
+			return m, m.welcomeScrollback()
 		}
 		return m, nil
 
@@ -333,18 +350,6 @@ func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streaming = ""
 		m.toolCount = 0
 		m.renderTranscript()
-		return m, nil
-
-	case tea.MouseMsg:
-		// The TUI owns the mouse (cell motion), so the terminal's own
-		// scrollback is off. Route the wheel to the transcript viewport —
-		// without this, wheel events are swallowed and the reader cannot
-		// scroll back to earlier turns.
-		if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
-			var cmd tea.Cmd
-			m.viewport, cmd = m.viewport.Update(msg)
-			return m, cmd
-		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -501,13 +506,6 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.renderTranscript()
 		return m, nil
 
-	case tea.KeyPgUp:
-		m.viewport.HalfViewUp()
-		return m, nil
-	case tea.KeyPgDown:
-		m.viewport.HalfViewDown()
-		return m, nil
-
 	case tea.KeyTab:
 		if items := m.paletteMatches(); len(items) > 0 {
 			if m.paletteSel < 0 || m.paletteSel >= len(items) {
@@ -621,11 +619,9 @@ func (m *agentTUI) send(text string) tea.Cmd {
 	m.streaming = ""
 	m.turnStart = time.Now()
 	m.elapsed = 0
-	// A new turn always follows: the owner just acted and expects to see
-	// their message and the reply.
-	m.renderTranscript()
-	m.viewport.GotoBottom()
-
+	// A new turn always follows: the owner just acted. The user message is
+	// flushed to the scrollback by Update's flush; the terminal shows it at
+	// the bottom.
 	go m.runTurn(text)
 	return spinnerTick()
 }
@@ -1322,72 +1318,65 @@ func (m *agentTUI) renderDayDivider(label string) string {
 	return styleDayDivider.Render(strings.Repeat("─", left) + core + strings.Repeat("─", fill-left))
 }
 
-func (m *agentTUI) renderTranscript() {
-	if !m.ready {
-		return
+// The transcript lives in the terminal's own scrollback (main screen), not
+// in an app-owned viewport. Committed entries are printed once with
+// tea.Println, so the terminal's native scrolling — wheel, scrollbar,
+// PageUp, and its own buffer — reaches every previous message. This is the
+// model the opencode CLI uses, and it is why history is never lost.
+
+// flushScrollback prints any committed entries that have not yet reached
+// the scrollback. It is the only place transcript lines are emitted; the
+// live View() below renders just the streaming preview, composer and
+// footer.
+func (m *agentTUI) flushScrollback() tea.Cmd {
+	if !m.ready || m.printed >= len(m.entries) {
+		return nil
 	}
+	text := m.pendingScrollback()
+	m.printed = len(m.entries)
+	return tea.Println(text)
+}
+
+// pendingScrollback renders the not-yet-printed entries (with day dividers)
+// and advances the printed-day cursor. Split out so it can be asserted in
+// tests without a running tea.Program.
+func (m *agentTUI) pendingScrollback() string {
 	var b strings.Builder
-	if len(m.entries) == 0 && m.streaming == "" && !m.working {
-		b.WriteString(m.welcomeCard())
-		b.WriteString("\n")
-	}
-	// iMessage/WhatsApp grouping: a day divider opens the transcript and
-	// reappears wherever the calendar day flips. Entries without a
-	// timestamp inherit the previous day so they never split a group.
-	prevDay := ""
-	for i, e := range m.entries {
+	prevDay := m.lastPrintedDay
+	for i := m.printed; i < len(m.entries); i++ {
+		e := m.entries[i]
 		if d := dayLabel(e.at); d != "" && d != prevDay {
-			if i > 0 {
+			if b.Len() > 0 {
 				b.WriteString("\n")
 			}
 			b.WriteString(m.renderDayDivider(d))
 			b.WriteString("\n")
 			prevDay = d
-		} else if d != "" {
-			prevDay = d
 		}
-		if i > 0 {
+		if b.Len() > 0 {
 			b.WriteString("\n")
 		}
 		b.WriteString(m.renderEntry(e))
 		b.WriteString("\n")
 	}
-	if m.working {
-		b.WriteString(m.workingBlock())
-		b.WriteString("\n")
-	}
-	// Follow the conversation only when the reader is already at the
-	// bottom. If they have scrolled up to read earlier turns, a new
-	// message or a streaming chunk must not yank them back down — that is
-	// what made previous chats look like they disappeared.
-	atBottom := m.viewport.AtBottom()
-	m.viewport.SetContent(strings.TrimRight(b.String(), "\n"))
-	if atBottom {
-		m.viewport.GotoBottom()
-	}
+	m.lastPrintedDay = prevDay
+	return strings.TrimRight(b.String(), "\n")
 }
 
-// transcriptView is the viewport plus a one-line scroll affordance. The
-// TUI owns the mouse (cell motion), so the terminal's own scrollback is
-// unavailable; this tells the reader there is more above and how to reach
-// it, so earlier turns never look lost.
-func (m *agentTUI) transcriptView() string {
-	view := m.viewport.View()
-	if m.viewport.AtBottom() || m.viewport.Height < 2 {
-		return view
+// welcomeScrollback prints the welcome card into the scrollback for a
+// genuinely new conversation, so it behaves like the first printed entry.
+func (m *agentTUI) welcomeScrollback() tea.Cmd {
+	if len(m.entries) > 0 || m.printed > 0 {
+		return nil
 	}
-	hint := "  ↑ more above · scroll or pgup"
-	lines := strings.Split(view, "\n")
-	if len(lines) == 0 {
-		return view
-	}
-	// Overlay the hint on the first visible row, dim, padded to width.
-	hint = cellTruncate(hint, m.viewport.Width)
-	if pad := m.viewport.Width - lipgloss.Width(hint); pad > 0 {
-		hint += strings.Repeat(" ", pad)
-	}
-	lines[0] = styleFooter.Render(hint)
-	return strings.Join(lines, "\n")
+	return tea.Println(m.welcomeCard())
+}
+
+// renderTranscript is kept as the callers' "content changed" signal. With
+// the scrollback model it simply flushes newly-committed entries; the live
+// View() picks up streaming/composer changes on the next frame.
+func (m *agentTUI) renderTranscript() tea.Cmd {
+	return m.flushScrollback()
 }
 
 // workingBlock is the live turn: an in-place stream preview with a cursor.
@@ -2090,26 +2079,10 @@ func renderSpan(s, delim string, fn func(...string) string) string {
 //
 // Layout: no top header — the transcript owns the full height. The bottom
 // stack is palette popup + prompt box + 2-line footer.
+// layout sizes the live bottom region only. The transcript is not laid out
+// here: it is printed once into the terminal's scrollback (see
+// flushScrollback), so there is no app-owned viewport to size.
 func (m *agentTUI) layout() {
-	const footerH = 2 // stats/model, shortcuts
-	paletteH := m.paletteHeight()
-	if m.modal != nil {
-		paletteH = m.modalHeight() // the picker replaces the palette below the box
-	}
-	inputH := m.estimatedInputHeight()
-	if m.approval != nil {
-		inputH = m.estimatedApprovalHeight()
-	}
-	vpH := m.height - footerH - paletteH - inputH - 1
-	if vpH < 1 {
-		vpH = 1
-	}
-	if m.viewport.Width == 0 {
-		m.viewport = viewport.New(m.width, vpH)
-	} else {
-		m.viewport.Width = m.width
-		m.viewport.Height = vpH
-	}
 	m.input.SetWidth(m.inputWidth())
 	m.input.SetHeight(m.composerRows())
 }
@@ -2224,10 +2197,11 @@ func (m *agentTUI) paletteOffset(total, maxRows int) int {
 }
 
 // ─── view ────────────────────────────────────────────────────────────────
-// No top header — the transcript owns the full height. Bottom stack is the
-// palette popup + prompt box + 2-line footer (stats/model, shortcuts).
-// Pure composition: each region renders exactly once; geometry was frozen
-// in layout() and rendering must not mutate it.
+// The View is only the live bottom region: the in-progress stream preview,
+// the composer (or approval card), the palette / model picker, and the
+// footer. Committed transcript lines are printed into the terminal's
+// scrollback (flushScrollback), so the terminal owns scrolling and every
+// previous message stays reachable with the wheel, scrollbar or PageUp.
 func (m *agentTUI) View() string {
 	if m.quitting {
 		return ""
@@ -2236,8 +2210,13 @@ func (m *agentTUI) View() string {
 		return "starting Ghost…"
 	}
 	var b strings.Builder
-	b.WriteString(m.transcriptView())
-	b.WriteString("\n")
+	// Live stream preview stays pinned above the composer while a turn runs.
+	if m.working {
+		if block := m.workingBlock(); block != "" {
+			b.WriteString(block)
+			b.WriteString("\n")
+		}
+	}
 	if m.approval != nil {
 		b.WriteString(m.approvalCard())
 	} else {

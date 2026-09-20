@@ -181,23 +181,21 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   Ghost tagline (`Your AI. Your Memory. Your Machine.`), and a command
   cheat-sheet. It only appears for a genuinely new conversation; the
   tagline lives here, not in the footer.
-- **Scroll:** mouse wheel + `PgUp/PgDn`. Because the TUI captures the
-  mouse (for its own rendering), the terminal's native scrollback is off —
-  the app scrolls its own transcript. When there is history above the
-  visible area the first row shows `↑ more above · scroll or pgup`, so
-  earlier turns are never lost. New content follows the bottom only when
-  you are already there; scroll up to read earlier turns and a long reply
-  or streaming chunk keeps your place instead of yanking you down. Sending
-  a turn always follows. Every region is edge to edge on the same canvas,
-  with only text inset by one cell, so messages, the rules, and the footer
-  all align.
-- **Terminal hygiene (terminal-ui skill):** the TUI owns the whole frame —
-  stderr is parked during the run and logger output silenced, so no
-  dependency's stray line can paint over the alt-screen (the one
-  historical offender, a mid-turn `fmt.Printf` in the web tool, now goes
-  through the logger). `--debug-log` keeps a file trail; non-TTY stdin
-  refuses interactive mode with the `-m` remedy instead of hanging;
-  quitting prints a session outro.
+- **Scroll: the terminal's own scrollback.** Ghost runs in the terminal's
+  main screen — no alternate screen and no mouse capture — and prints each
+  committed message into the scrollback as it happens. Only the live
+  region (the in-progress stream preview, the composer, the palette, the
+  footer) is repainted in place. So scrolling history works exactly like
+  the opencode CLI: your terminal's mouse wheel, scrollbar, and
+  PageUp/PageDown reach every previous message, and nothing is ever
+  ``hidden'' behind an app-owned viewport. This is the same model the
+  opencode/pi CLI uses in its regular (non-fullscreen) mode.
+- **Terminal hygiene:** stderr is parked during the run and logger output
+  silenced, so a dependency's stray line cannot paint over the live
+  composer (the one historical offender, a mid-turn `fmt.Printf` in the
+  web tool, now goes through the logger). `--debug-log` keeps a file trail;
+  non-TTY stdin refuses interactive mode with the `-m` remedy instead of
+  hanging; quitting prints a session outro.
 
 ## Status line
 

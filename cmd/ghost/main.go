@@ -1046,7 +1046,7 @@ func agentGatewayCmd(gw *gatewayRuntime, message, sessionKey string) {
 // silenceStderr parks the process stderr on devnull and returns a
 // restore function. The TUI calls it around program.Run so a stray write
 // from any dependency (std log, subprocess chatter) can never corrupt the
-// alt-screen frame. Stdout stays untouched — tea renders there.
+// live composer frame. Stdout stays untouched — tea renders there.
 func silenceStderr() func() {
 	log.SetOutput(io.Discard)
 	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
@@ -1063,9 +1063,9 @@ func silenceStderr() func() {
 }
 
 func interactiveMode(runtime agentRuntime, sessionKey, debugLog string, preload []entry) {
-	// P0 correctness: the TUI owns the screen. Route logs to a file (or
-	// drop the stderr line entirely) so INFO lines can never paint over
-	// the alt-screen transcript and input box.
+	// The transcript is printed into the terminal's scrollback; route logs
+	// to a file (or drop the stderr line entirely) so INFO lines never
+	// paint over the live composer and input box.
 	if debugLog != "" {
 		if err := logger.EnableFileLogging(debugLog); err != nil {
 			fmt.Fprintf(os.Stderr, "note: could not open --debug-log %s: %v\n", debugLog, err)
@@ -1076,12 +1076,14 @@ func interactiveMode(runtime agentRuntime, sessionKey, debugLog string, preload 
 	for _, e := range preload {
 		m.append(e)
 	}
-	// Own the whole frame (terminal-ui skill: render-single-write): the
-	// tea renderer writes stdout, and stderr is parked on devnull so no
-	// dependency's stray log line can ever paint over the alt-screen.
+	// The tea renderer writes stdout; stderr is parked on devnull so a
+	// dependency's stray log line cannot paint over the live composer.
 	// Restored before any post-TUI output below.
 	restoreStderr := silenceStderr()
-	agentProgram = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	// Main-screen mode, like the opencode CLI: no alt-screen and no mouse
+	// capture, so the transcript lands in the terminal's own scrollback and
+	// the terminal's native scrolling reaches every previous message.
+	agentProgram = tea.NewProgram(m)
 	defer func() { agentProgram = nil }()
 	_, runErr := agentProgram.Run()
 	restoreStderr()
