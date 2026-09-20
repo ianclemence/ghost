@@ -983,7 +983,7 @@ func renderSpan(s, delim string, fn func(...string) string) string {
 // pi layout: no top header — the transcript owns the full height. The
 // bottom stack is palette popup + prompt box + 2-line footer.
 func (m *agentTUI) layout() {
-	const footerH = 2
+	const footerH = 3 // session, stats/model, shortcuts
 	paletteH := m.paletteHeight()
 	inputH := m.estimatedInputHeight()
 	if m.approval != nil {
@@ -1003,10 +1003,21 @@ func (m *agentTUI) layout() {
 }
 
 // estimatedInputHeight mirrors promptBox without rendering it: border (2)
-// + textarea lines clamped to the box. No title row — pi has no label
-// above the prompt box, and neither do we.
+// + textarea visual lines clamped to the box. Visual lines, not physical
+// ones: a long line wraps in the editor (tuicomp-measure-element), so the
+// box estimate must wrap too or the viewport drifts. No title row — pi
+// has no label above the prompt box, and neither do we.
 func (m *agentTUI) estimatedInputHeight() int {
-	lines := strings.Count(m.input.Value(), "\n") + 1
+	inner := m.inputWidth()
+	lines := 0
+	for _, ln := range strings.Split(m.input.Value(), "\n") {
+		w := lipgloss.Width(ln)
+		if w <= 0 {
+			lines++
+			continue
+		}
+		lines += (w + inner - 1) / inner
+	}
 	if lines < 1 {
 		lines = 1
 	}
@@ -1038,14 +1049,14 @@ func (m *agentTUI) paletteHeight() int {
 	if n > 6 {
 		n = 6
 	}
-	return n + 1
+	return n + 2 // rows + top/bottom border
 }
 
 // ─── view ────────────────────────────────────────────────────────────────
 // pi layout: no top header — the transcript owns the full height. Bottom
-// stack is palette popup + prompt box + 2-line dim footer (session line,
-// then stats/model line). Pure composition: each region renders exactly
-// once; geometry was frozen in layout() and rendering must not mutate it.
+// stack is palette popup + prompt box + 3-line footer (session, stats/model,
+// shortcuts). Pure composition: each region renders exactly once; geometry
+// was frozen in layout() and rendering must not mutate it.
 func (m *agentTUI) View() string {
 	if m.quitting {
 		return ""
@@ -1081,8 +1092,16 @@ func (m *agentTUI) View() string {
 // `session • context` (Ghost has no cwd/branch; memory is one truth).
 // line 2: left usage stats, right `(provider) model`, right-aligned.
 // Model, session and turn state live here — nowhere else.
+// ─── footer (pi-faithful) ──────────────────────────────────────────────
+// Three dim lines under the prompt box (ux-color-semantics: hints dim,
+// model in its locality color, never decorative):
+// line 1: `session • context` (pi's `pwd (branch) • session`; Ghost has
+// no cwd/branch — session + context is the honest equivalent).
+// line 2: activity left, `(locality) model` right-aligned (pi's stats line).
+// line 3: contextual shortcuts (pi shows key hints alongside the editor).
+// Model, session and turn state live here — nowhere else.
 func (m *agentTUI) footerLines() []string {
-	return []string{m.footerSessionLine(), m.footerStatsLine()}
+	return []string{m.footerSessionLine(), m.footerStatsLine(), m.footerKeysLine()}
 }
 
 func (m *agentTUI) currentCtx() string {
@@ -1107,22 +1126,54 @@ func (m *agentTUI) footerSessionLine() string {
 
 // footerStatsLine is pi's `↑in ↓out … ctx% │ (provider) model` line,
 // right-aligned with a 2-space minimum gap, truncating gracefully.
+// The model carries its locality color (ux-color-semantics: green local,
+// blue cloud, muted pod) so "where it ran" reads at a glance.
 func (m *agentTUI) footerStatsLine() string {
 	model := m.loop.GetCurrentModel()
 	local := providerLocality(model)
 	left := m.activityWord()
-	right := fmt.Sprintf("(%s) %s", local, shortModel(model))
-	lw, rw := lipgloss.Width(left), lipgloss.Width(right)
+	plainRight := fmt.Sprintf("(%s) %s", local, shortModel(model))
+	lw, rw := lipgloss.Width(left), lipgloss.Width(plainRight)
 	const minGap = 2
+	right := modelLocalityStyle(local).Render(plainRight)
 	if lw+minGap+rw <= m.width {
-		return styleFooter.Render(left + strings.Repeat(" ", m.width-lw-rw) + right)
+		return styleFooter.Render(left+strings.Repeat(" ", m.width-lw-rw)) + right
 	}
 	if lw+minGap < m.width {
-		right = cellTruncate(right, m.width-lw-minGap)
-		rw = lipgloss.Width(right)
-		return styleFooter.Render(left + strings.Repeat(" ", m.width-lw-rw) + right)
+		right = modelLocalityStyle(local).Render(cellTruncate(plainRight, m.width-lw-minGap))
+		rw = lipgloss.Width(cellTruncate(plainRight, m.width-lw-minGap))
+		return styleFooter.Render(left+strings.Repeat(" ", m.width-lw-rw)) + right
 	}
 	return styleFooter.Render(cellTruncate(left, m.width))
+}
+
+// footerKeysLine is the contextual shortcut hint. It names the escape
+// routes (input-escape-routes) for the current state and truncates from
+// the right so it never wraps.
+func (m *agentTUI) footerKeysLine() string {
+	var keys string
+	switch {
+	case m.approval != nil:
+		keys = "1 allow once · 2 always allow · 3 deny · esc leaves pending"
+	case m.working:
+		keys = "enter queues steering · esc aborts · ctrl+o details · / commands"
+	case strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/"):
+		keys = "↑↓ pick · tab complete · enter run · esc dismiss"
+	default:
+		keys = "enter send · esc abort · ctrl+l model · ctrl+o details · / commands · tab complete"
+	}
+	return styleFooterHint.Render(cellTruncate(keys, m.width))
+}
+
+func modelLocalityStyle(local string) lipgloss.Style {
+	switch local {
+	case "local":
+		return styleModelLocal
+	case "cloud":
+		return styleModelCloud
+	default:
+		return styleModelPod
+	}
 }
 
 // activityWord is the left half of the stats line.
@@ -1245,7 +1296,7 @@ func (m *agentTUI) paletteView() string {
 			b.WriteString("\n")
 		}
 	}
-	return stylePaletteBox.Width(m.width - 2).Render(b.String())
+	return stylePaletteBox.Width(m.width).Render(b.String())
 }
 
 // approvalCard is the inline permission prompt. It states the risk in owner
@@ -1277,7 +1328,7 @@ func (m *agentTUI) approvalCard() string {
 	}
 	b.WriteString(styleApprovalKeys.Render("  [1] allow once    [2] always allow    [3] deny"))
 	b.WriteString(styleNotice.Render("  esc leaves pending"))
-	return styleApprovalBox.Width(m.width - 2).Render(b.String())
+	return styleApprovalBox.Width(m.width).Render(b.String())
 }
 
 // approvalRiskNote mirrors the mobile permission card's risk language so the
@@ -1379,7 +1430,14 @@ var (
 	stylePaletteRow = lipgloss.NewStyle().Foreground(cMuted)
 	stylePaletteSel = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Background(cSelBg).Bold(true)
 
-	styleFooter = lipgloss.NewStyle().Foreground(cFaint).Background(cBgBar)
+	styleFooter     = lipgloss.NewStyle().Foreground(cFaint).Background(cBgBar)
+	styleFooterHint = lipgloss.NewStyle().Foreground(cFaint).Background(cBgBar).Italic(true)
+
+	// ux-color-semantics: the footer model carries its locality color on
+	// the same bar background, so "where it ran" reads at a glance.
+	styleModelLocal = lipgloss.NewStyle().Foreground(cGreen).Background(cBgBar).Bold(true)
+	styleModelCloud = lipgloss.NewStyle().Foreground(cBlue).Background(cBgBar).Bold(true)
+	styleModelPod   = lipgloss.NewStyle().Foreground(cMuted).Background(cBgBar).Bold(true)
 
 	stylePromptBorder       = lipgloss.NewStyle().Foreground(cBorder)
 	stylePromptBorderActive = lipgloss.NewStyle().Foreground(cAccent)

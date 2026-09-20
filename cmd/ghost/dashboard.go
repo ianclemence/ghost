@@ -16,6 +16,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/ianclemence/ghost/pkg/nontty"
 )
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -49,8 +51,8 @@ var (
 	themeBg      = lipgloss.Color("#06060e")
 	themeCardBg  = lipgloss.Color("#0a0a14")
 	themeCardHi  = lipgloss.Color("#0e0e1c")
-	themeAccent  = lipgloss.Color("#00e5ff") // Electric cyan
-	themeSuccess = lipgloss.Color("#00e5ff") // Cyan (success = operational)
+	themeAccent  = lipgloss.Color("#00e5ff") // Electric cyan (emphasis, selection, sync)
+	themeSuccess = lipgloss.Color("#34d399") // Green (success/healthy ONLY — never accent)
 	themeWarning = lipgloss.Color("#fbbf24") // Amber
 	themeError   = lipgloss.Color("#f87171") // Red
 	themeGhost   = lipgloss.Color("#a855f7") // Violet
@@ -204,6 +206,10 @@ type dashboardModel struct {
 	textInput textinput.Model
 	chatLog   viewport.Model
 	chatMsgs  []string
+	// chatPending tracks an in-flight operator message so the chat pane
+	// shows a transmitting indicator (ux-progress-indicators) instead of
+	// looking idle while the gateway responds.
+	chatPending bool
 }
 
 type tickMsg struct{}
@@ -282,6 +288,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if strings.TrimSpace(v) != "" {
 					m.chatMsgs = append(m.chatMsgs, lipgloss.NewStyle().Foreground(cTextSecondary).Render("Operator: ")+v)
 					m.textInput.SetValue("")
+					m.chatPending = true
 					m.updateChatViewport()
 					cmds = append(cmds, sendChatCmd(m.client, v))
 				}
@@ -376,6 +383,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, fetchDataCmd(m.client))
 
 	case chatResponseMsg:
+		m.chatPending = false
 		if msg.err != nil {
 			m.chatMsgs = append(m.chatMsgs, lipgloss.NewStyle().Foreground(themeError).Render("Err: ")+msg.err.Error())
 		} else {
@@ -388,7 +396,11 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *dashboardModel) updateChatViewport() {
-	m.chatLog.SetContent(strings.Join(m.chatMsgs, "\n"))
+	lines := m.chatMsgs
+	if m.chatPending {
+		lines = append(append([]string{}, lines...), lipgloss.NewStyle().Foreground(themeAccent).Render("⟳ transmitting…"))
+	}
+	m.chatLog.SetContent(strings.Join(lines, "\n"))
 	m.chatLog.GotoBottom()
 }
 
@@ -470,6 +482,12 @@ func (m dashboardModel) renderStatusPills() string {
 		m.renderPill("RAM", ramStr, cTextSecondary),
 		m.renderPill("GO", routinesStr, cTextTertiary),
 		m.renderPill("LAT", m.formatLatency(), m.latencyColor()),
+	}
+	// tuicomp-percentage-widths: the pill row must never exceed its share
+	// of the header — drop trailing pills on narrow terminals.
+	budget := m.width - 30 // ghost art + padding
+	for len(pills) > 3 && lipgloss.Width(lipgloss.JoinHorizontal(lipgloss.Top, pills...)) > budget {
+		pills = pills[:len(pills)-1]
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, pills...)
 }
@@ -676,14 +694,41 @@ func (m dashboardModel) renderFooter() string {
 	} else if m.mode == ModeWorkspace {
 		controls = "W Close Workspace"
 	}
+	isErr := false
 	if m.lastError != "" {
-		controls = lipgloss.NewStyle().Foreground(themeError).Render("Err: " + truncate(m.lastError, 50))
+		// ux-error-messages: lead with the fix so truncation from the
+		// right can never eat the remedy on narrow terminals.
+		controls = "Err: " + truncate(m.lastError, 50)
+		if isConnRefused(m.lastError) {
+			controls = "Err: is `ghost serve` running? — " + truncate(m.lastError, 40)
+		}
+		isErr = true
 	}
 	refresh := ""
 	if !m.lastRefresh.IsZero() {
 		refresh = "Telemetry: " + formatDuration(time.Since(m.lastRefresh)) + " ago"
 	}
-	return lipgloss.NewStyle().Width(m.width).Padding(0, 2).Foreground(cTextMuted).Background(themeBg).Render(controls + strings.Repeat(" ", max(1, m.width-lipgloss.Width(controls)-lipgloss.Width(refresh)-4)) + refresh)
+	// Single line, always fits: truncate the plain controls first (never a
+	// styled string — cutting ANSI codes corrupts the frame), then style.
+	if gap := m.width - lipgloss.Width(controls) - lipgloss.Width(refresh) - 4; gap < 1 {
+		controls = truncate(controls, max(1, m.width-lipgloss.Width(refresh)-5))
+	}
+	styled := controls
+	if isErr {
+		styled = lipgloss.NewStyle().Foreground(themeError).Render(controls)
+	}
+	line := styled + strings.Repeat(" ", max(1, m.width-lipgloss.Width(controls)-lipgloss.Width(refresh)-4)) + refresh
+	return lipgloss.NewStyle().Width(m.width).Padding(0, 2).Foreground(cTextMuted).Background(themeBg).Render(line)
+}
+
+// isConnRefused reports the "gateway is down" class of errors that have
+// exactly one fix: start the daemon.
+func isConnRefused(s string) bool {
+	s = strings.ToLower(s)
+	return strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "no such host") ||
+		strings.Contains(s, "connection reset") ||
+		strings.Contains(s, "econnrefused")
 }
 
 func (m dashboardModel) renderLockScreen() string {
@@ -852,14 +897,27 @@ func (c *operatorClient) reconnect(channel string) error {
 }
 
 func runDashboard() {
+	// robust-tty-detection: the dashboard is alt-screen interactive — fail
+	// early with a named remedy instead of a tea error or a hang.
+	if err := nontty.RequireInteractive("the operator dashboard", "`ghost status`"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	port := 8766
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
 	}
+	start := time.Now()
 	client := newOperatorClient(fmt.Sprintf("http://127.0.0.1:%d", port), "")
-	if _, err := tea.NewProgram(initialModel(client), tea.WithAltScreen()).Run(); err != nil {
+	final, err := tea.NewProgram(initialModel(client), tea.WithAltScreen()).Run()
+	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
+	}
+	// ux-intro-outro: close with what the session saw.
+	if dm, ok := final.(dashboardModel); ok {
+		fmt.Printf("👻 Operator console closed · %s watched · %d channel%s tracked\n",
+			formatDuration(time.Since(start)), len(dm.channelNames), plural(len(dm.channelNames)))
 	}
 }
 

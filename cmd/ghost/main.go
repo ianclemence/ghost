@@ -967,6 +967,12 @@ func agentCmd() {
 		}
 		fmt.Printf("\n%s %s\n", logo, response)
 	} else {
+		// robust-tty-detection: never hang on a swallowed prompt in pipes
+		// or CI — fail early and name the non-interactive flag.
+		if err := nontty.RequireInteractive("interactive chat", "`ghost agent -m \"...\"`"); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
 		interactiveMode(agentLoop, sessionKey, debugLog)
 	}
 }
@@ -985,11 +991,16 @@ func interactiveMode(agentLoop *agent.AgentLoop, sessionKey, debugLog string) {
 	agentProgram = tea.NewProgram(m, tea.WithAltScreen())
 	defer func() { agentProgram = nil }()
 	if _, err := agentProgram.Run(); err != nil {
-		// A TUI failure (e.g. no TTY) must not strand the user: fall back to
-		// the simple line mode with an honest note.
+		// A TUI failure must not strand the user: fall back to the simple
+		// line mode with an honest note (stdin is a TTY here — checked
+		// above — so this cannot hang).
 		fmt.Printf("Interactive UI unavailable (%v); using simple mode.\n", err)
 		simpleInteractiveMode(agentLoop, sessionKey)
+		return
 	}
+	// ux-intro-outro: close the session the way the welcome card opened
+	// it — one line on what the conversation produced.
+	fmt.Printf("\n%s Ghost session ended · %d turn%s · %s\n", logo, m.turnCount, plural(m.turnCount), agentLoop.GetCurrentModel())
 }
 
 func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {

@@ -65,7 +65,8 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
  │ │ ❯ …                                           │   │
  │ ╰───────────────────────────────────────────────╯   │
  │ cli:default • personal                              │
- │ ready · 3 turns              (cloud) deepseek-flash │
+ │ 3 turns                      (cloud) deepseek-flash │
+ │ enter send · esc abort · ctrl+l model · / commands  │
  └─────────────────────────────────────────────────────┘
 ```
 
@@ -75,10 +76,14 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   working status is embedded in the top border
   (`── ⠋ working · 4s · 2 tools ──`, pi's `CustomEditor` pattern) and the
   border takes the accent color. The placeholder carries the hints.
-- **Footer (2 dim lines, pi's `FooterComponent` pattern):**
-  `session • context`, then left activity (`ready`, `N turns`,
-  `⠋ working · 4s · 2 tools`, `waiting for you`) with
-  `(locality) model` right-aligned.
+- **Footer (3 lines, pi's `FooterComponent` pattern + terminal-ui skill):**
+  `session • context`; activity with the model in its locality color
+  right-aligned (green local, blue cloud, muted pod); contextual shortcuts
+  naming the escape routes for the current state
+  (`esc abort` idle, `esc aborts` working, `esc leaves pending` on approvals).
+- **Terminal hygiene (terminal-ui skill):** logs never paint the alt-screen
+  (`--debug-log` for a file trail); non-TTY stdin refuses interactive mode
+  with the `-m` remedy instead of hanging; quitting prints a session outro.
 
 ## Status line
 

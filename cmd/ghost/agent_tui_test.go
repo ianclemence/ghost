@@ -335,7 +335,7 @@ func TestTUIRewindRestoresLastUserMessage(t *testing.T) {
 }
 
 // View renders each region exactly once with pi layout: no top header,
-// transcript, prompt box, 2-line footer. Regression test for the doubled
+// transcript, prompt box, 3-line footer. Regression test for the doubled
 // header/welcome/input and the stray title label above the prompt box.
 func TestTUIViewRendersSingleChrome(t *testing.T) {
 	f := newFakeRuntime()
@@ -356,6 +356,50 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	// Welcome card renders into the viewport only — never duplicated.
 	if n := strings.Count(view, "switch thinking engine"); n != 1 {
 		t.Errorf("welcome card should appear once, found %d: %q", n, view)
+	}
+	// Footer is exactly 3 lines: session, stats/model, shortcuts.
+	if got := len(m.footerLines()); got != 3 {
+		t.Fatalf("footer must be 3 lines, got %d", got)
+	}
+	if !strings.Contains(m.footerKeysLine(), "enter send") {
+		t.Errorf("idle footer must name the send key, got %q", m.footerKeysLine())
+	}
+}
+
+// The shortcuts line names the escape routes for each state
+// (terminal-ui skill: input-escape-routes).
+func TestTUIFooterKeysContextual(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	if !strings.Contains(m.footerKeysLine(), "esc abort") {
+		t.Errorf("idle keys must name esc, got %q", m.footerKeysLine())
+	}
+	m.working = true
+	if !strings.Contains(m.footerKeysLine(), "esc aborts") {
+		t.Errorf("working keys must name esc abort, got %q", m.footerKeysLine())
+	}
+	m.working = false
+	m.approval = &pendingApproval{id: "1", title: "Send?", risk: "consequential"}
+	if !strings.Contains(m.footerKeysLine(), "esc leaves pending") {
+		t.Errorf("approval keys must name the esc outcome, got %q", m.footerKeysLine())
+	}
+	m.approval = nil
+	m.input.SetValue("/mod")
+	m.paletteSel = 0
+	if !strings.Contains(m.footerKeysLine(), "tab complete") {
+		t.Errorf("palette keys must name tab, got %q", m.footerKeysLine())
+	}
+}
+
+// Box height estimates must count visual (wrapped) lines, not physical
+// ones, or the viewport drifts when a long line wraps
+// (terminal-ui skill: tuicomp-measure-element).
+func TestTUIInputHeightCountsWrappedLines(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test")) // width 80 → inner 76
+	m.input.SetValue(strings.Repeat("x", 200))
+	if got := m.estimatedInputHeight(); got != 5 { // 3 wrapped + 2 border
+		t.Errorf("200 cols at inner 76 should estimate 5 rows, got %d", got)
 	}
 }
 
