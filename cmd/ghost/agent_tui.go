@@ -700,7 +700,7 @@ var paletteCommands = []paletteItem{
 	{"help", "list commands and keys"},
 	{"model", "show or switch model"},
 	{"details", "toggle tool step details"},
-	{"new", "open a side thread"},
+	{"thread", "open a side thread"},
 	{"main", "return to the shared conversation"},
 	{"session", "where this terminal is + model"},
 	{"memory", "ask what Ghost remembers"},
@@ -1048,9 +1048,9 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		m.toolHistory = nil
 		m.streaming = ""
 		m.renderTranscript()
-	case "new", "thread":
-		// Ghost is one conversation. /new does not wipe it — it opens a side
-		// thread so a tangent never pollutes the main thread.
+	case "thread":
+		// Ghost is one conversation. /thread does not wipe it — it opens a
+		// side thread so a tangent never pollutes the main thread.
 		m.session = "cli:" + fmt.Sprintf("%d", time.Now().UnixNano())
 		m.entries = nil
 		m.toolHistory = nil
@@ -2471,7 +2471,7 @@ func agentHelpText() string {
 		"  /help              this help",
 		"  /model [name]      show or switch the active model",
 		"  /details           toggle tool step details",
-		"  /new               open a side thread (a tangent, not the main one)",
+		"  /thread            open a side thread (a tangent, not the main one)",
 		"  /main              return to the shared conversation",
 		"  /session           where this terminal is, the model, and turn count",
 		"  /memory [query]    ask Ghost in a turn what it remembers",

@@ -27,7 +27,7 @@ routines, and provenance are first-class here.
 | `/help` | List commands and keybindings |
 | `/model [name]` | Show or switch the active model (presets, connections, keyed providers) |
 | `/details` | Toggle tool step details (durations) |
-| `/new` | Open a **side thread** — a tangent, not the shared conversation |
+| `/thread` | Open a **side thread** — a tangent, not the shared conversation |
 | `/main` | Return to the shared conversation (reloads its rows) |
 | `/session` | Where this terminal is, the model, and turn count |
 | `/memory [query]` | Ask Ghost, in a turn, what it remembers |
@@ -51,7 +51,7 @@ the turn and on the message (`source_channel`), and the read history
 carries a `channel` field so a client can note "via Telegram", but it never
 splits the conversation.
 
-`/new` opens a *side thread* for a tangent; `/main` returns to the shared
+`/thread` opens a *side thread* for a tangent; `/main` returns to the shared
 conversation. Side threads are visible to any surface that asks for them,
 but the home conversation is the one every surface lands on by default.
 
@@ -215,7 +215,7 @@ provenance; the conversation is one.
   every owner messaging channel resolve to the same rows. (Pre-unification
   names `mobile:default` and `cli:default` canonicalize onto `main` at the
   gateway edge and in the app, and a database migration folds their stored
-  rows — so upgrades never strand history.) `-s` / `/new` still open side
+  rows — so upgrades never strand history.) `-s` / `/thread` still open side
   threads (listed by `/v1/sessions`), but the home conversation is shared.
 - An allowlisted channel sender talks into `main`; the inbound message
   keeps its `channel`, `chat_id`, and `sender_id` so the reply routes back

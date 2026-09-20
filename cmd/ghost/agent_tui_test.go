@@ -127,9 +127,9 @@ func TestTUIUnknownCommandIsHonest(t *testing.T) {
 	}
 }
 
-// Ghost is one conversation: /new opens a clearly-labelled side thread, and
-// /main returns to the shared conversation and reloads its rows.
-func TestTUINewOpensSideThreadAndMainReturns(t *testing.T) {
+// Ghost is one conversation: /thread opens a clearly-labelled side thread,
+// and /main returns to the shared conversation and reloads its rows.
+func TestTUIThreadOpensSideThreadAndMainReturns(t *testing.T) {
 	f := newFakeRuntime()
 	f.history = map[string][]historyEntry{
 		mainConversationKey: {
@@ -139,15 +139,15 @@ func TestTUINewOpensSideThreadAndMainReturns(t *testing.T) {
 	}
 	m := readyForTest(newAgentTUI(f, mainConversationKey))
 
-	m.runCommand("/new")
+	m.runCommand("/thread")
 	if m.session == mainConversationKey {
-		t.Fatal("/new must open a side thread, not stay on main")
+		t.Fatal("/thread must open a side thread, not stay on main")
 	}
 	if !hasNotice(m, "side thread") {
-		t.Errorf("/new must say it opened a side thread, entries=%v", m.entries)
+		t.Errorf("/thread must say it opened a side thread, entries=%v", m.entries)
 	}
 	if hasNotice(m, "fresh conversation") {
-		t.Errorf("/new must not claim a fresh conversation (Ghost is one conversation)")
+		t.Errorf("/thread must not claim a fresh conversation (Ghost is one conversation)")
 	}
 
 	m.runCommand("/main")
