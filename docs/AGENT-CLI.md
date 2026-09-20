@@ -56,31 +56,38 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
 | ↑ / ↓ | `/` palette selection when open, else editor history |
 | PgUp / PgDn | Scroll the transcript |
 
-## Layout (pi-style)
+## Layout (opencode-faithful)
 
 ```
- ├ transcript (markdown, tool trail, spinner+elapsed) ─┤
- │ /palette when typing / (↑/↓ + Tab)                  │
- │ ╭── ⠋ working · 4s · 2 tools ─────────────────╮   │
- │ │ ❯ …                                           │   │
- │ ╰───────────────────────────────────────────────╯   │
- │ cli:default • personal                              │
- │ 3 turns                      (cloud) deepseek-flash │
- │ enter send · esc abort · ctrl+l model · / commands  │
- └─────────────────────────────────────────────────────┘
+ ├ transcript (markdown, icon tool trail, spinner+elapsed) ─┤
+ │ ┃ /model     switch thinking engine   (autocomplete menu)│
+ │ ┃ Ask Ghost anything…  e.g. "Remind me…"  (composer)     │
+ │ cli:default • personal                                    │
+ │ 3 turns                            (cloud) deepseek-flash │
+ │ enter send · esc abort · ctrl+l model · / commands        │
+ └───────────────────────────────────────────────────────────┘
 ```
 
-- **No top header:** like pi, the transcript owns the full height. Model,
-  session and turn state live in the footer — nowhere else.
-- **Prompt box:** rounded border, no label above it. While a turn runs the
-  working status is embedded in the top border
-  (`── ⠋ working · 4s · 2 tools ──`, pi's `CustomEditor` pattern) and the
-  border takes the accent color. The placeholder carries the hints.
-- **Footer (3 lines, pi's `FooterComponent` pattern + terminal-ui skill):**
-  `session • context`; activity with the model in its locality color
-  right-aligned (green local, blue cloud, muted pod); contextual shortcuts
-  naming the escape routes for the current state
-  (`esc abort` idle, `esc aborts` working, `esc leaves pending` on approvals).
+- **No top header:** like pi and opencode, the transcript owns the full
+  height. Model, session and turn state live in the footer — nowhere else.
+- **Composer:** opencode's left-`┃`-border panel, no `❯` prefix, rotating
+  `Ask Ghost anything… "example"` placeholder. Accent bar while working.
+  The working status lives in the footer, not the composer chrome.
+- **Autocomplete:** opencode rules — `↑/↓` moves, `Enter` accepts the
+  highlighted completion into the editor (never runs half-typed text),
+  `Tab` completes, `Esc` hides. Bare `/model` opens the centered model
+  picker (`↑↓` move, type to filter, `Enter` picks, `Esc` closes).
+- **Permissions:** opencode's inline block — `┃ △ Permission required`,
+  title, risk note, `[1] allow once [2] always allow [3] deny` with
+  `←→`+`Enter` or direct `1/2/3` keys. `Esc` leaves the request pending.
+- **Tool trail:** collapsed one-liners with opencode's icon language
+  (`→` read, `←` write, `✱` search, `%` fetch, `◈` web, `$` shell,
+  `⚙` generic), spinner row while running, durations behind `/details`.
+  Assistant turns carry `· duration` (opencode `▣ Mode · model · duration`).
+- **Footer (3 transparent dim lines):** `session • context`; activity with
+  the model in its locality color right-aligned; contextual shortcuts
+  naming the escape routes for the current state.
+- **Scroll:** mouse wheel + `PgUp/PgDn`; follows the bottom while working.
 - **Terminal hygiene (terminal-ui skill):** logs never paint the alt-screen
   (`--debug-log` for a file trail); non-TTY stdin refuses interactive mode
   with the `-m` remedy instead of hanging; quitting prints a session outro.
@@ -97,13 +104,14 @@ While working: `… · working · 3 tools`. On a held approval: `waiting for you
 
 ## Approvals
 
-When Ghost needs permission for something consequential, the editor is
-replaced by an inline approval card:
+When Ghost needs permission for something consequential, the composer is
+replaced by an inline approval panel (opencode's permission-block pattern):
 
 ```
-⚑ Send this email?
-  This acts on your behalf, so Ghost asks before doing it.
-  [1] allow once   [2] always allow   [3] deny
+┃ △ Permission required   ◆ consequential
+┃ Send this email?
+┃ This acts on your behalf, so Ghost asks before doing it.
+┃ [1] allow once    [2] always allow    [3] deny   ←→ select · enter confirm
 ```
 
 The choice sends the recognized grant phrase as a normal turn, so it travels

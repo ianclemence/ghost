@@ -386,7 +386,7 @@ func TestTUIFooterKeysContextual(t *testing.T) {
 	m.approval = nil
 	m.input.SetValue("/mod")
 	m.paletteSel = 0
-	if !strings.Contains(m.footerKeysLine(), "tab complete") {
+	if !strings.Contains(m.footerKeysLine(), "tab/enter complete") {
 		t.Errorf("palette keys must name tab, got %q", m.footerKeysLine())
 	}
 }
@@ -396,10 +396,110 @@ func TestTUIFooterKeysContextual(t *testing.T) {
 // (terminal-ui skill: tuicomp-measure-element).
 func TestTUIInputHeightCountsWrappedLines(t *testing.T) {
 	f := newFakeRuntime()
-	m := readyForTest(newAgentTUI(f, "cli:test")) // width 80 → inner 76
+	m := readyForTest(newAgentTUI(f, "cli:test")) // width 80 → inner 78
 	m.input.SetValue(strings.Repeat("x", 200))
-	if got := m.estimatedInputHeight(); got != 5 { // 3 wrapped + 2 border
-		t.Errorf("200 cols at inner 76 should estimate 5 rows, got %d", got)
+	if got := m.estimatedInputHeight(); got != 3 { // bare panel: wrapped rows only
+		t.Errorf("200 cols at inner 78 should estimate 3 rows, got %d", got)
+	}
+}
+
+// Enter with the palette open must ACCEPT the completion (opencode
+// prompt.autocomplete.select) — never run the half-typed text. This is
+// the "command unknown unless written in full" regression test.
+func TestTUIEnterAcceptsPaletteCompletion(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.input.SetValue("/mod")
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if got := m.input.Value(); got != "/model " {
+		t.Fatalf("enter should complete to /model, got %q", got)
+	}
+	if len(f.turns) != 0 {
+		t.Fatalf("completing must not start a turn, got %v", f.turns)
+	}
+	if m.working {
+		t.Errorf("completing must not mark working")
+	}
+}
+
+// Tab completes the same way without submitting.
+func TestTUITabCompletesPalette(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.input.SetValue("/mem")
+	m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	if got := m.input.Value(); got != "/memory " {
+		t.Fatalf("tab should complete to /memory, got %q", got)
+	}
+	if len(f.turns) != 0 {
+		t.Fatalf("completing must not start a turn, got %v", f.turns)
+	}
+}
+
+// Completion preserves already-typed arguments.
+func TestTUICompletionPreservesArgs(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.input.SetValue("/mod deep")
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if got := m.input.Value(); got != "/model deep " {
+		t.Fatalf("args must survive completion, got %q", got)
+	}
+}
+
+// The model picker modal: opens on bare /model, filters as you type,
+// Enter picks through setModel, Esc closes without touching anything.
+func TestTUIModelModal(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/model")
+	if m.modal == nil {
+		t.Fatalf("/model should open the picker modal")
+	}
+	if m.modal.title != "Models" {
+		t.Errorf("modal title should be Models, got %q", m.modal.title)
+	}
+	// Filter narrows to one preset.
+	m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a', 's', 't'}})
+	items := m.modalMatches()
+	if len(items) != 1 || items[0].label != "fast" {
+		t.Fatalf("filter 'ast' should match fast only, got %+v", items)
+	}
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.modal != nil {
+		t.Errorf("picking must close the modal")
+	}
+	if f.model != "fast" {
+		t.Errorf("picking must switch the model, got %q", f.model)
+	}
+}
+
+func TestTUIModelModalEscCloses(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/model")
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.modal != nil {
+		t.Errorf("esc must close the modal")
+	}
+	if len(f.setCalls) != 0 {
+		t.Errorf("dismissing must not switch models, got %v", f.setCalls)
+	}
+}
+
+// Approval panel: ←/→ moves the cursor, Enter confirms the selection;
+// 1/2/3 keep answering directly.
+func TestTUIApprovalEnterConfirmsSelection(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
+	m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}}) // → always allow
+	if m.approvalSel != 1 {
+		t.Fatalf("right should move to index 1, got %d", m.approvalSel)
+	}
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if !waitForTurns(f, 1) || f.turns[0] != "always allow" {
+		t.Fatalf("enter should confirm the selection, got %v", f.turns)
 	}
 }
 

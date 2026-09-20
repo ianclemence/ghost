@@ -988,7 +988,7 @@ func interactiveMode(agentLoop *agent.AgentLoop, sessionKey, debugLog string) {
 	}
 	logger.SetSilent(true)
 	m := newAgentTUI(agentLoop, sessionKey)
-	agentProgram = tea.NewProgram(m, tea.WithAltScreen())
+	agentProgram = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	defer func() { agentProgram = nil }()
 	if _, err := agentProgram.Run(); err != nil {
 		// A TUI failure must not strand the user: fall back to the simple
