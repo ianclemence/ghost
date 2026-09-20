@@ -680,6 +680,58 @@ func TestTUITranscriptWheelScrollsAndHints(t *testing.T) {
 	}
 }
 
+// The palette is ordered the way the help lists commands: discovery and
+// state, memory and behavior, navigation, display, then housekeeping.
+func TestTUIPaletteOrderMatchesHelp(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.input.SetValue("/")
+	want := []string{"help", "session", "model", "context", "memory", "routines", "thread", "main", "rewind", "details", "clear", "quit"}
+	items := m.paletteMatches()
+	if len(items) != len(want) {
+		t.Fatalf("palette has %d commands, want %d", len(items), len(want))
+	}
+	for i, name := range want {
+		if items[i].name != name {
+			t.Errorf("palette[%d] = %q, want %q", i, items[i].name, name)
+		}
+	}
+}
+
+// Starting a turn restarts the activity spinner, so the cube before
+// "thinking"/"searching" always animates — the tick loop stops when a turn
+// ends and must resume on the next one.
+func TestTUISendRestartsSpinner(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	if cmd := m.send("hello"); cmd == nil {
+		t.Fatalf("starting a turn must return a spinner tick command")
+	}
+	if !m.working {
+		t.Fatalf("sending must mark the turn working")
+	}
+}
+
+// The prompt rule keeps its idle colour while a turn runs; only the
+// embedded status text is accented.
+func TestTUIComposerRuleKeepsIdleColor(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	m.working = true
+	m.spinFrame = 0
+	m.toolHistory = []toolStep{{tool: "web_search", label: "Searching the web…"}}
+	rule := m.composerTopRule()
+	// The rule never takes a different colour than the idle bar.
+	if !strings.Contains(rule, stylePromptBar.Render("── ")) {
+		t.Errorf("the top rule prefix must keep the idle colour, got %q", rule)
+	}
+	// The status is the only accented part.
+	if !strings.Contains(rule, styleWorking.Render(spinnerFrames[0]+" Searching the web…")) {
+		t.Errorf("the status must be accented, got %q", rule)
+	}
+}
+
 func TestTUIComposerIsPIRules(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))

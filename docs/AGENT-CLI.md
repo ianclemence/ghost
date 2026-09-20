@@ -25,17 +25,21 @@ routines, and provenance are first-class here.
 | Command | Purpose |
 |---|---|
 | `/help` | List commands and keybindings |
+| `/session` | Where this terminal is, the model, and turn count |
 | `/model [name]` | Show or switch the active model (presets, connections, keyed providers) |
-| `/details` | Toggle tool step details (durations) |
+| `/context [name]` | Show or switch topic context (scopes memory + tools) |
+| `/memory [query]` | Ask Ghost, in a turn, what it remembers |
+| `/routines` | Ask Ghost, in a turn, what it has scheduled |
 | `/thread` | Open a **side thread** — a tangent, not the shared conversation |
 | `/main` | Return to the shared conversation (reloads its rows) |
-| `/session` | Where this terminal is, the model, and turn count |
-| `/memory [query]` | Ask Ghost, in a turn, what it remembers |
-| `/context [name]` | Show or switch topic context (scopes memory + tools) |
 | `/rewind` | Put the last message back in the editor to edit and resend |
-| `/routines` | Ask Ghost, in a turn, what it has scheduled |
+| `/details` | Toggle tool step details (durations) |
 | `/clear` | Clear the screen (keeps the conversation) |
 | `/quit` | Exit (also Ctrl+C twice) |
+
+The palette shows the commands in this same order — discovery and state
+first, then memory and behavior, then navigation, then display, with
+housekeeping and exit last.
 
 `/memory` and `/routines` are **turns**: they ask Ghost (a model call),
 not a local read, and they render the answer in the transcript. Everything
@@ -85,7 +89,7 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   👻 Ghost · deepseek-flash
   Here's what I keep about you...
 
-── ⠋ Searching: weather in Bangkok · 4s · 2 tools ────────
+── ▘ Searching: weather in Bangkok · 4s · 2 tools ────────
 
 ────────────────────────────────────────────────────────────
 3 turns                                  (cloud) deepseek-flash
@@ -100,11 +104,21 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   at one text row and grows as the sentence wraps onto new rows, up to a
   cap of 30% of the terminal height (at least five rows), after which it
   scrolls inside the box. It is single-line input — there is no manual
-  newline key — so growth comes from wrapping. While Ghost is thinking,
-  the live status (`⠋ thinking · elapsed · tools · queued`) embeds in the
-  **top rule** — the only place the live state appears, never repeated in
-  the transcript — and the rules take the Ghost-violet accent
-  (slate-violet at idle).
+  newline key — so growth comes from wrapping. While Ghost works, the live
+  status embeds in the **top rule** — the only place the live state appears,
+  never repeated in the transcript. A turning cube (`▖▘▝▗`) leads the
+  status, then what Ghost is doing right now (`thinking`, or the active step
+  such as `Searching the web…`), then elapsed time and tool count:
+
+  ```
+  ── ▖ thinking · 4s ──────────────────────────────────────
+  ── ▘ Searching the web… · 4s · 1 tool ───────────────────
+  ```
+
+  The `─` rule lines keep their idle slate-violet colour at all times —
+  only the status text is accented — so the prompt chrome never changes
+  colour while Ghost works. The cube always animates: the tick restarts
+  with each turn.
 - **Full conversation, grouped by day:** launching loads the whole shared
   transcript (paged, capped at 500 rows) and opens scrolled to the latest
   turn — iMessage/WhatsApp style, with `Today` / `Yesterday` / date

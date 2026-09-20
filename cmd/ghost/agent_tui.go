@@ -565,8 +565,7 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if strings.HasPrefix(line, "/") {
 			return m.runCommand(line)
 		}
-		m.send(line)
-		return m, nil
+		return m, m.send(line)
 	}
 
 	var cmd tea.Cmd
@@ -596,7 +595,11 @@ func (m *agentTUI) recallHistory(delta int) {
 
 // ─── sending ─────────────────────────────────────────────────────────────
 
-func (m *agentTUI) send(text string) {
+// send starts a turn (or queues a steering message while one runs). It
+// returns the command that keeps the activity spinner moving, so the cube
+// before "thinking"/"searching" is always animating — the tick loop stops
+// when a turn ends and must be restarted on the next turn.
+func (m *agentTUI) send(text string) tea.Cmd {
 	m.history = append(m.history, text)
 	m.histIndex = -1
 	m.paletteSel = 0
@@ -607,7 +610,7 @@ func (m *agentTUI) send(text string) {
 		m.loop.InjectSteering(m.session, text)
 		m.append(entry{kind: entryNotice, text: "↳ queued for the current turn: " + text})
 		m.renderTranscript()
-		return
+		return nil
 	}
 
 	m.append(entry{kind: entryUser, text: text, at: time.Now()})
@@ -624,6 +627,7 @@ func (m *agentTUI) send(text string) {
 	m.viewport.GotoBottom()
 
 	go m.runTurn(text)
+	return spinnerTick()
 }
 
 func (m *agentTUI) runTurn(text string) {
@@ -679,8 +683,7 @@ func (m *agentTUI) resolveApproval(phrase string) (tea.Model, tea.Cmd) {
 	m.approvalSel = 0
 	m.append(entry{kind: entryNotice, text: "you chose: " + phrase})
 	m.renderTranscript()
-	m.send(phrase)
-	return m, nil
+	return m, m.send(phrase)
 }
 
 // handleContext shows or switches the session's context. Contexts scope
@@ -711,17 +714,20 @@ type paletteItem struct {
 	desc string
 }
 
+// paletteCommands is ordered the way the help lists them: discovery and
+// state first, then memory and behavior, then conversation navigation,
+// then display, with housekeeping and exit last.
 var paletteCommands = []paletteItem{
 	{"help", "list commands and keys"},
+	{"session", "where this terminal is + model"},
 	{"model", "show or switch model"},
-	{"details", "toggle tool step details"},
+	{"context", "topic space (scoped memory/tools)"},
+	{"memory", "ask what Ghost remembers"},
+	{"routines", "ask what Ghost has scheduled"},
 	{"thread", "open a side thread"},
 	{"main", "return to the shared conversation"},
-	{"session", "where this terminal is + model"},
-	{"memory", "ask what Ghost remembers"},
-	{"context", "topic space (scoped memory/tools)"},
 	{"rewind", "edit and resend last message"},
-	{"routines", "ask what Ghost has scheduled"},
+	{"details", "toggle tool step details"},
 	{"clear", "clear the screen"},
 	{"quit", "exit"},
 }
@@ -1096,13 +1102,13 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		m.showTools = !m.showTools
 		m.append(entry{kind: entryNotice, text: fmt.Sprintf("tool details %s", onOff(m.showTools))})
 	case "memory":
-		m.showMemory(args)
+		return m, m.showMemory(args)
 	case "context":
 		m.handleContext(args)
 	case "rewind":
 		m.rewind()
 	case "routines":
-		m.showRoutines()
+		return m, m.showRoutines()
 	default:
 		m.append(entry{kind: entryError, text: "unknown command: /" + cmd + " (try /help)"})
 	}
@@ -1239,18 +1245,18 @@ func (m *agentTUI) showSession() {
 	m.append(entry{kind: entryNotice, text: strings.Join(lines, "\n")})
 }
 
-func (m *agentTUI) showMemory(args []string) {
+func (m *agentTUI) showMemory(args []string) tea.Cmd {
 	// Delegate to the same read-only paths the console uses: ask Ghost in a
 	// turn so memory retrieval stays governed and scoped.
 	q := "What do you remember about me?"
 	if len(args) > 0 {
 		q = "From memory, tell me about: " + strings.Join(args, " ")
 	}
-	m.send(q)
+	return m.send(q)
 }
 
-func (m *agentTUI) showRoutines() {
-	m.send("What routines do you have scheduled for me?")
+func (m *agentTUI) showRoutines() tea.Cmd {
+	return m.send("What routines do you have scheduled for me?")
 }
 
 // rewind puts the most recent user message back in the editor so it can be
@@ -1274,9 +1280,16 @@ func (m *agentTUI) rewind() {
 
 func (m *agentTUI) append(e entry) { m.entries = append(m.entries, e) }
 
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+// spinnerFrames is the "cube" that turns before the activity word in the
+// prompt ("▖ Thinking", "▘ Searching"). The four quadrant blocks rotate
+// clockwise, reading as a spinning cube. Rendered from spinFrame, advanced
+// by the spinner tick while a turn runs, so it is always in motion.
+var spinnerFrames = []string{"▖", "▘", "▝", "▗"}
 
 func (m *agentTUI) spinner() string {
+	if len(spinnerFrames) == 0 {
+		return ""
+	}
 	return spinnerFrames[m.spinFrame%len(spinnerFrames)]
 }
 
@@ -2125,38 +2138,35 @@ func shortModel(s string) string {
 // The composer: a top and bottom `─` rule at full width, NO side borders,
 // NO prefix, NO placeholder — just the text between two lines. While a
 // turn runs, the live status embeds in the top rule
-// (`── ⠋ thinking · 4s · 2 tools ──…`); the border takes the Ghost-violet
-// accent, faint slate-violet at idle. This is the only place the turn's
-// live status appears.
+// (`── ⠋ thinking · 4s · 2 tools ──…`). The rule lines themselves keep
+// their idle color at all times — only the status text takes the accent —
+// so the prompt chrome never changes colour while Ghost works.
 func (m *agentTUI) promptBox() string {
-	bar := stylePromptBar
-	if m.working {
-		bar = stylePromptBarActive
-	}
 	var b strings.Builder
-	b.WriteString(bar.Render(m.composerTopRule()))
+	b.WriteString(m.composerTopRule())
 	for _, ln := range strings.Split(m.input.View(), "\n") {
 		b.WriteString("\n")
 		b.WriteString(ln)
 	}
 	b.WriteString("\n")
-	b.WriteString(bar.Render(strings.Repeat("─", m.width)))
+	b.WriteString(stylePromptBar.Render(strings.Repeat("─", m.width)))
 	return b.String()
 }
 
 // composerTopRule is `── <spinner> thinking … ──…` while a turn runs, a
-// plain rule while idle. Always exactly m.width cells.
+// plain rule while idle. Always exactly m.width cells. The `─` fill stays
+// the idle bar color; only the embedded status is accented.
 func (m *agentTUI) composerTopRule() string {
 	w := m.width
 	if w < 10 {
 		w = 10
 	}
 	if !m.working {
-		return strings.Repeat("─", w)
+		return stylePromptBar.Render(strings.Repeat("─", w))
 	}
-	// activityWord already carries spinner + "thinking"; embedding it
-	// here verbatim gives the `── ⠋ thinking ──…` border, so the spinner
-	// is never rendered twice.
+	// activityWord already carries the spinner cube + the activity word;
+	// embedding it here gives the `── ▖ thinking ──…` border, so the
+	// spinner is never rendered twice.
 	status := m.activityWord()
 	sw := lipgloss.Width(status)
 	if sw+6 > w {
@@ -2167,7 +2177,9 @@ func (m *agentTUI) composerTopRule() string {
 	if fill < 0 {
 		fill = 0
 	}
-	return "── " + styleWorking.Render(status) + " " + strings.Repeat("─", fill)
+	// Rule chars keep the idle bar color; only the status word is accented.
+	return stylePromptBar.Render("── ") + styleWorking.Render(status) +
+		stylePromptBar.Render(" "+strings.Repeat("─", fill))
 }
 
 // paletteView is the autocomplete list: owned by the composer, rendered
@@ -2454,20 +2466,19 @@ var (
 	styleModelCloud = lipgloss.NewStyle().Foreground(cBlue).Bold(true)
 	styleModelPod   = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
 
-	// Composer rules + approval bar: top/bottom `─` rules around the
-	// composer (Ghost-violet while working, slate-violet idle), gold bar
-	// for the inline approval block.
-	stylePromptBar       = lipgloss.NewStyle().Foreground(cBarIdle)
-	stylePromptBarActive = lipgloss.NewStyle().Foreground(cAccent)
-	styleApprovalBar     = lipgloss.NewStyle().Foreground(cGold)
-	styleModalTitle      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
-	styleApprovalTitle   = lipgloss.NewStyle().Foreground(cGold).Bold(true)
-	styleApprovalKeys    = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc"))
-	styleApprovalSel     = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(cGold).Bold(true)
-	styleRiskHigh        = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(lipgloss.Color("#c86a5c")).Bold(true)
-	styleRiskMid         = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(cGold).Bold(true)
-	styleRiskLow         = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(cGreen).Bold(true)
-	styleRiskDefault     = lipgloss.NewStyle().Foreground(cMuted).Background(cSelBg)
+	// Composer rules + approval bar: the top/bottom `─` rules around the
+	// composer keep their idle slate-violet colour at all times (only the
+	// status text is accented), and the approval block uses a gold bar.
+	stylePromptBar     = lipgloss.NewStyle().Foreground(cBarIdle)
+	styleApprovalBar   = lipgloss.NewStyle().Foreground(cGold)
+	styleModalTitle    = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
+	styleApprovalTitle = lipgloss.NewStyle().Foreground(cGold).Bold(true)
+	styleApprovalKeys  = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc"))
+	styleApprovalSel   = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(cGold).Bold(true)
+	styleRiskHigh      = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(lipgloss.Color("#c86a5c")).Bold(true)
+	styleRiskMid       = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(cGold).Bold(true)
+	styleRiskLow       = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(cGreen).Bold(true)
+	styleRiskDefault   = lipgloss.NewStyle().Foreground(cMuted).Background(cSelBg)
 
 	styleWelcomeTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
 	styleGhostArt     = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
@@ -2500,15 +2511,15 @@ func agentHelpText() string {
 	return strings.Join([]string{
 		"Commands  (/ + Tab completes, ↑/↓ picks · every surface shares one conversation)",
 		"  /help              this help",
+		"  /session           where this terminal is, the model, and turn count",
 		"  /model [name]      show or switch the active model",
-		"  /details           toggle tool step details",
+		"  /context [name]    show or switch topic context (scoped memory/tools)",
+		"  /memory [query]    ask Ghost in a turn what it remembers",
+		"  /routines          ask Ghost in a turn what it has scheduled",
 		"  /thread            open a side thread (a tangent, not the main one)",
 		"  /main              return to the shared conversation",
-		"  /session           where this terminal is, the model, and turn count",
-		"  /memory [query]    ask Ghost in a turn what it remembers",
-		"  /context [name]    show or switch topic context (scoped memory/tools)",
 		"  /rewind            put the last message back in the editor",
-		"  /routines          ask Ghost in a turn what it has scheduled",
+		"  /details           toggle tool step details",
 		"  /clear             clear the screen (keeps the conversation)",
 		"  /quit              exit",
 		"",
