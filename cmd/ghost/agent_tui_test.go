@@ -648,6 +648,38 @@ func TestTUITranscriptKeepsScrollPosition(t *testing.T) {
 	}
 }
 
+// The TUI captures the mouse, so the terminal's own scrollback is gone;
+// the wheel must scroll the transcript, and a hint must appear when there
+// is more history above. Without this, earlier turns look lost.
+func TestTUITranscriptWheelScrollsAndHints(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 20
+	for i := 0; i < 10; i++ {
+		m.append(entry{kind: entryUser, text: "q", at: time.Now()})
+		m.append(entry{kind: entryAssistant, text: strings.Repeat("answer ", 30), at: time.Now()})
+	}
+	m.layout()
+	m.renderTranscript()
+	if m.viewport.YOffset == 0 {
+		t.Fatalf("precondition: content must overflow the viewport")
+	}
+	before := m.viewport.YOffset
+	m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp})
+	if m.viewport.YOffset >= before {
+		t.Errorf("wheel up must scroll the transcript (before %d, after %d)", before, m.viewport.YOffset)
+	}
+	if !strings.Contains(m.View(), "more above") {
+		t.Errorf("a scrolled-up transcript must hint that more is above\n%s", m.View())
+	}
+
+	// Back at the bottom, the hint is gone.
+	m.viewport.GotoBottom()
+	if strings.Contains(m.View(), "more above") {
+		t.Errorf("the hint must disappear at the bottom")
+	}
+}
+
 func TestTUIComposerIsPIRules(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))

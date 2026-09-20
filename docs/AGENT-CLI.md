@@ -153,12 +153,16 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   Ghost tagline (`Your AI. Your Memory. Your Machine.`), and a command
   cheat-sheet. It only appears for a genuinely new conversation; the
   tagline lives here, not in the footer.
-- **Scroll:** mouse wheel + `PgUp/PgDn`. New content follows the bottom
-  only when you are already there; scroll up to read earlier turns and a
-  long reply or streaming chunk keeps your place instead of yanking you
-  down. Sending a turn always follows. Every region is edge to edge on the
-  same canvas, with only text inset by one cell, so messages, the rules,
-  and the footer all align.
+- **Scroll:** mouse wheel + `PgUp/PgDn`. Because the TUI captures the
+  mouse (for its own rendering), the terminal's native scrollback is off —
+  the app scrolls its own transcript. When there is history above the
+  visible area the first row shows `↑ more above · scroll or pgup`, so
+  earlier turns are never lost. New content follows the bottom only when
+  you are already there; scroll up to read earlier turns and a long reply
+  or streaming chunk keeps your place instead of yanking you down. Sending
+  a turn always follows. Every region is edge to edge on the same canvas,
+  with only text inset by one cell, so messages, the rules, and the footer
+  all align.
 - **Terminal hygiene (terminal-ui skill):** the TUI owns the whole frame —
   stderr is parked during the run and logger output silenced, so no
   dependency's stray line can paint over the alt-screen (the one

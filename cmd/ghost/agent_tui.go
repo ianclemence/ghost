@@ -335,6 +335,18 @@ func (m *agentTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.renderTranscript()
 		return m, nil
 
+	case tea.MouseMsg:
+		// The TUI owns the mouse (cell motion), so the terminal's own
+		// scrollback is off. Route the wheel to the transcript viewport —
+		// without this, wheel events are swallowed and the reader cannot
+		// scroll back to earlier turns.
+		if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -1342,6 +1354,29 @@ func (m *agentTUI) renderTranscript() {
 	}
 }
 
+// transcriptView is the viewport plus a one-line scroll affordance. The
+// TUI owns the mouse (cell motion), so the terminal's own scrollback is
+// unavailable; this tells the reader there is more above and how to reach
+// it, so earlier turns never look lost.
+func (m *agentTUI) transcriptView() string {
+	view := m.viewport.View()
+	if m.viewport.AtBottom() || m.viewport.Height < 2 {
+		return view
+	}
+	hint := "  ↑ more above · scroll or pgup"
+	lines := strings.Split(view, "\n")
+	if len(lines) == 0 {
+		return view
+	}
+	// Overlay the hint on the first visible row, dim, padded to width.
+	hint = cellTruncate(hint, m.viewport.Width)
+	if pad := m.viewport.Width - lipgloss.Width(hint); pad > 0 {
+		hint += strings.Repeat(" ", pad)
+	}
+	lines[0] = styleFooter.Render(hint)
+	return strings.Join(lines, "\n")
+}
+
 // workingBlock is the live turn: an in-place stream preview with a cursor.
 // The active step ("Searching…", "Reading…") is not repeated here — it is
 // named in the composer's top rule, so the transcript stays clean. The
@@ -1903,7 +1938,7 @@ func (m *agentTUI) View() string {
 		return "starting Ghost…"
 	}
 	var b strings.Builder
-	b.WriteString(m.viewport.View())
+	b.WriteString(m.transcriptView())
 	b.WriteString("\n")
 	if m.approval != nil {
 		b.WriteString(m.approvalCard())
