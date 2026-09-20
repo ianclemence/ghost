@@ -26,6 +26,14 @@ INSTALL_PREFIX?=$(HOME)/.local
 INSTALL_BIN_DIR=$(INSTALL_PREFIX)/bin
 INSTALL_MAN_DIR=$(INSTALL_PREFIX)/share/man/man1
 
+# The account that OWNS the install (config, workspace, services). This is the
+# owner of the source checkout, NOT $(USER): `sudo make install-ghost` (as
+# `ghost update` runs it) would otherwise resolve $(USER) to root and make the
+# config unreadable to the owner — the cause of "configured in the console but
+# the CLI says no key". Explicit INSTALL_OWNER / INSTALL_GROUP always win.
+INSTALL_OWNER?=$(shell stat -c '%U' . 2>/dev/null || echo "$(USER)")
+INSTALL_GROUP?=$(shell stat -c '%G' . 2>/dev/null || echo "$(USER)")
+
 # Personal AI runtime workspace (kept outside the install tree so user data
 # never mixes with the deployment or blocks git pulls in checkout layouts)
 WORKSPACE_DIR?=/var/lib/ghost/workspace
@@ -122,16 +130,16 @@ install: build
 
 ## install-service: Generate service file from template and install it
 install-service:
-	@echo "Installing ghost.service for user: $(USER)"
+	@echo "Installing ghost.service for user: $(INSTALL_OWNER)"
 	@sed \
-		-e "s|__USER__|$(USER)|g" \
+		-e "s|__USER__|$(INSTALL_OWNER)|g" \
 		-e "s|__HOME__|$(HOME)|g" \
 		ghost.service.template > ghost.service
 	@sudo cp ghost.service /etc/systemd/system/ghost.service
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable ghost
 	@sudo systemctl restart ghost
-	@echo "ghost.service installed for $(USER)"
+	@echo "ghost.service installed for $(INSTALL_OWNER)"
 
 ## build-ghost: Build all Ghost binaries
 build-ghost: build
@@ -157,9 +165,12 @@ install-ghost: build-ghost
 	@sudo systemctl stop ghost-speech 2>/dev/null || true
 	@sudo mkdir -p /var/ghost/config /var/ghost/data /var/ghost/workspace
 	@sudo mkdir -p $(WORKSPACE_DIR)
-	@# Lock down the install root and personal-data workspace to the owner.
-	@# Ghost stores memory, sessions, conversations and device credentials;
-	@# these must be root-only, not world-readable.
+	@# Lock down the install root and hand OWNERSHIP of the data to the
+	@# install owner so the CLI (running as that user) reads the same config
+	@# and workspace the console and daemon use. Mode 700 still keeps it
+	@# private; the daemon (root) can read anything.
+	@sudo chown -R $(INSTALL_OWNER):$(INSTALL_GROUP) /var/ghost
+	@sudo chown -R $(INSTALL_OWNER):$(INSTALL_GROUP) /var/lib/ghost
 	@sudo chmod 700 /var/ghost /var/ghost/config /var/ghost/data
 	@sudo chmod 700 /var/lib/ghost /var/lib/ghost/workspace
 	@sudo chmod 600 $(WORKSPACE_DIR)/ghost.db 2>/dev/null || true
@@ -169,8 +180,6 @@ install-ghost: build-ghost
 	@sudo cp $(BUILD_DIR)/$(WEB_NAME)-$(PLATFORM)-$(ARCH) /usr/local/bin/$(WEB_NAME).new
 	@sudo mv -f /usr/local/bin/$(WEB_NAME).new /usr/local/bin/$(WEB_NAME)
 	@sudo chmod +x /usr/local/bin/ghost /usr/local/bin/$(WEB_NAME)
-	@sudo chown -R $(USER):$(USER) /var/ghost
-	@sudo chown -R $(USER):$(USER) /var/lib/ghost
 	@# Build and deploy update tooling
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-$(PLATFORM)-$(ARCH) ./cmd/ghost-update
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-daemon-$(PLATFORM)-$(ARCH) ./cmd/ghost-update-daemon
@@ -211,10 +220,12 @@ install-ghost: build-ghost
 	@$(BINARY_PATH) stt setup || echo "WARNING: local speech-to-text provisioning failed; cloud transcription remains available"
 	@# Provision the TTS engine binary + default voice (best effort: edge-tts stays as fallback)
 	@$(BINARY_PATH) tts setup || echo "WARNING: local speech synthesis provisioning failed; edge-tts remains available"
-	@# Install main ghost service
+	@# Install main ghost service. The daemon runs as root for hardware and
+	@# service management; that is independent of who OWNS the data. Keep
+	@# User=root explicitly rather than deriving it from the invoking user.
 	@sed \
-		-e "s|__USER__|$(USER)|g" \
-		-e "s|__GROUP__|$(USER)|g" \
+		-e "s|__USER__|root|g" \
+		-e "s|__GROUP__|root|g" \
 		-e "s|__GHOST_DIR__|/var/ghost|g" \
 		-e "s|__BIN_DIR__|/usr/local/bin|g" \
 		ghost.service.template > ghost.service
