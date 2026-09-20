@@ -1,4 +1,4 @@
-// Package browser live screencast: OpenClaw 2026.9.3 parity.
+// Package browser live screencast.
 //
 // The agent-browser CLI (a Node CDP wrapper) already owns frame production:
 // `agent-browser stream enable` binds a localhost WebSocket server that emits
@@ -7,13 +7,14 @@
 // mints short-lived, single-use viewer tickets bound to a browser session,
 // so the gateway can proxy exactly one viewer stream per ticket.
 //
-// Transport (mirrors OpenClaw #141031):
-//   POST /v1/browser/screencast {session_id} -> {token, ws_path, expires_at}
-//   GET  /v1/browser/screencast?token=... (WS upgrade, one-time consume)
-//   Frames proxy byte-for-byte to the agent-browser server; idle = zero
-//   bandwidth (server only sends on repaint). Fallback when streaming is
-//   unavailable: 501 SCREENCAST_UNSUPPORTED, client uses GET observation
-//   stills (ScreenshotPath PNGs) instead.
+// Transport:
+//
+//	POST /v1/browser/screencast {session_id} -> {token, ws_path, expires_at}
+//	GET  /v1/browser/screencast?token=... (WS upgrade, one-time consume)
+//	Frames proxy byte-for-byte to the agent-browser server; idle = zero
+//	bandwidth (server only sends on repaint). Fallback when streaming is
+//	unavailable: 501 SCREENCAST_UNSUPPORTED, client uses GET observation
+//	stills (ScreenshotPath PNGs) instead.
 package browser
 
 import (
@@ -60,7 +61,7 @@ type StreamBroker struct {
 	run     func(ctx context.Context, args ...string) ([]byte, error)
 }
 
-// ticketTTL matches OpenClaw 9.3: 60s from mint to WS open.
+// ticketTTL: 60s from mint to WS open.
 const ticketTTL = 60 * time.Second
 
 // streamCacheTTL bounds how long a discovered stream URL is reused.

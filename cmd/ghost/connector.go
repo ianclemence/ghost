@@ -22,7 +22,7 @@ import (
 //	ghost connector from-openapi <spec>    generate a draft from OpenAPI
 //	ghost connector list                   first-party + installed connectors
 func connectorCmd() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 3 || wantsHelp(os.Args[2:]) {
 		connectorHelp()
 		return
 	}
@@ -39,7 +39,10 @@ func connectorCmd() {
 		connectorReviewCmd(os.Args[3:])
 	case "install":
 		connectorInstallCmd(os.Args[3:])
+	case "run":
+		connectorCallCmd(os.Args[3:])
 	case "call":
+		deprecationWarning("connector call", "connector run")
 		connectorCallCmd(os.Args[3:])
 	case "keygen":
 		connectorKeygenCmd(os.Args[3:])
@@ -54,7 +57,7 @@ func connectorCmd() {
 }
 
 func connectorHelp() {
-	fmt.Println("Usage: ghost connector <validate|review|init|from-openapi|install|list>")
+	fmt.Println("Usage: ghost connector <command> [args]")
 	fmt.Println()
 	fmt.Println("  validate <path>          Validate connector.json (or a directory containing it)")
 	fmt.Println("  review <path> [--json]   Schema + capability-risk + provenance audit")
@@ -62,11 +65,13 @@ func connectorHelp() {
 	fmt.Println("  from-openapi <spec>      Generate a draft connector from an OpenAPI document")
 	fmt.Println("                           [--out=connector.json] [--id=] [--version=] [--url=] [--keyless]")
 	fmt.Println("  install <path>           Install into <workspace>/connectors [--dir=] [--force]")
-	fmt.Println("  call <path> <cap> [k=v]  Execute one capability (openapi connectors)")
+	fmt.Println("  run <path> <cap> [k=v]   Execute one capability (openapi connectors)")
+	fmt.Println("  list [--dir=path]        List first-party and installed connectors")
 	fmt.Println("  keygen [--out=dir]       Generate an ed25519 connector signing keypair")
 	fmt.Println("  sign <path> --key= --by= Sign a connector manifest")
 	fmt.Println("  verify <path> --key=     Verify a connector signature")
-	fmt.Println("  list [--dir=path]        List first-party and installed connectors")
+	fmt.Println()
+	fmt.Println("Legacy: 'connector call' is an alias of 'connector run'.")
 }
 
 // connectorCLIAuthHeaders builds the auth header for a connector from the

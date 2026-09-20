@@ -11,7 +11,7 @@ import (
 )
 
 // OracleTool bundles multiple files and a prompt into a single "context package" for the LLM.
-// Adapted from OpenClaw's oracle skill.
+// Oracle: a durable question/answer handoff.
 type OracleTool struct {
 	workspace string
 	restrict  bool

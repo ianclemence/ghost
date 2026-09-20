@@ -155,6 +155,18 @@ func requireRoot() {
 }
 
 func updaterCmd() {
+	if wantsHelp(os.Args[2:]) {
+		fmt.Println("Usage: ghost auto-update [--interval DURATION]")
+		fmt.Println()
+		fmt.Println("Runs the auto-update daemon: periodically pulls the latest release and")
+		fmt.Println("rebuilds. Uses 'ghost update' semantics (refuses a dirty checkout).")
+		fmt.Println()
+		fmt.Println("  --interval/-i DURATION   how often to check (default 6h, e.g. 30m, 24h)")
+		fmt.Println()
+		fmt.Println("For a one-shot deploy of the current release, use 'ghost update'.")
+		return
+	}
+
 	interval := 6 * time.Hour
 	args := os.Args[2:]
 	for i, arg := range args {

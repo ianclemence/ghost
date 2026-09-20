@@ -6,7 +6,7 @@ import (
 )
 
 // CompactionTool allows the agent to explicitly trigger a session summary (compaction) to save tokens.
-// Adapted from OpenClaw's compaction.ts.
+// Context compaction.
 type CompactionTool struct {
 	onCompact func() error
 }

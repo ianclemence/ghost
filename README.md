@@ -268,7 +268,6 @@ chmod +x setup.sh
 | `ghost auth` | Manage authentication |
 | `ghost skills` | Manage skills |
 | `ghost state` | Export / import / inspect Ghost State archives |
-| `ghost migrate` | Migrate an OpenClaw installation into Ghost |
 | `ghost model` | View or switch the active model |
 | `ghost reset` | Factory reset (`all --exclude=devices,secrets`, scopes, `--no-restart`) |
 | `ghost reset-password` | Reset the admin dashboard password (requires `--force`) |

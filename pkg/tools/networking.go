@@ -9,7 +9,7 @@ import (
 )
 
 // NetworkingTool provides information on Tailscale, Bonjour, and other networking features.
-// Adapted from OpenClaw's networking/tailscale features.
+// Networking and tailscale features.
 type NetworkingTool struct {
 	workspace string
 }

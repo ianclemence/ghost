@@ -16,7 +16,7 @@ import (
 )
 
 func sttCmd() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 3 || wantsHelp(os.Args[2:]) {
 		sttHelp()
 		return
 	}

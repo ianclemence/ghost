@@ -39,7 +39,6 @@ import (
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/maintenance"
 	"github.com/ianclemence/ghost/pkg/mcp"
-	"github.com/ianclemence/ghost/pkg/migrate"
 	"github.com/ianclemence/ghost/pkg/nontty"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/product"
@@ -90,6 +89,82 @@ func formatBuildInfo() (build string, goVer string) {
 		goVer = runtime.Version()
 	}
 	return
+}
+
+// deprecationWarning tells an operator that a legacy command name still
+// works but has a canonical replacement. It never blocks.
+func deprecationWarning(oldCmd, newCmd string) {
+	fmt.Fprintf(os.Stderr, "note: 'ghost %s' is deprecated; use 'ghost %s'.\n", oldCmd, newCmd)
+}
+
+// speechCmd groups local speech-to-text and speech-synthesis provisioning
+// under one command. It re-slices os.Args so the existing stt/tts handlers see
+// their expected argument positions (no duplication).
+func speechCmd() {
+	if len(os.Args) < 3 || wantsHelp(os.Args[2:]) {
+		speechHelp()
+		return
+	}
+	switch os.Args[2] {
+	case "stt":
+		os.Args = append([]string{os.Args[0], "stt"}, os.Args[3:]...)
+		sttCmd()
+	case "tts":
+		os.Args = append([]string{os.Args[0], "tts"}, os.Args[3:]...)
+		ttsCmd()
+	case "status":
+		// Combined readiness view across both engines.
+		os.Args = append([]string{os.Args[0], "stt", "status"}, os.Args[3:]...)
+		sttStatusCmd()
+		os.Args = append([]string{os.Args[0], "tts", "status"}, os.Args[3:]...)
+		ttsStatusCmd(os.Args[3:])
+	default:
+		fmt.Printf("Unknown speech command: %s\n", os.Args[2])
+		speechHelp()
+	}
+}
+
+func speechHelp() {
+	fmt.Println("Usage: ghost speech <command>")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  stt setup|status    Local speech-to-text (whisper sidecar + model)")
+	fmt.Println("  tts setup|status    Local speech synthesis (engine + voice)")
+	fmt.Println("  status              Show both engines' readiness")
+	fmt.Println()
+	fmt.Println("Legacy: 'ghost stt' and 'ghost tts' still work.")
+}
+
+// evalCmd groups model/behavior evaluation tools that previously sat as
+// sibling top-level commands with no shared home.
+func evalCmd() {
+	if len(os.Args) < 3 || wantsHelp(os.Args[2:]) {
+		evalHelp()
+		return
+	}
+	switch os.Args[2] {
+	case "golden":
+		os.Args = append([]string{os.Args[0], "golden"}, os.Args[3:]...)
+		goldenCmd()
+	case "benchmark":
+		os.Args = append([]string{os.Args[0], "benchmark"}, os.Args[3:]...)
+		benchmarkCmd()
+	case "replay":
+		os.Args = append([]string{os.Args[0], "replay"}, os.Args[3:]...)
+		replayCmd()
+	default:
+		fmt.Printf("Unknown eval command: %s\n", os.Args[2])
+		evalHelp()
+	}
+}
+
+func evalHelp() {
+	fmt.Println("Usage: ghost eval <command>")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  golden [flags]      Run the Golden Conversation Suite")
+	fmt.Println("  benchmark [flags]   Run the personal AI benchmark + core score")
+	fmt.Println("  replay <id> [--json] Show a recorded trajectory (execution evidence)")
 }
 
 func printVersion() {
@@ -202,6 +277,14 @@ func main() {
 		applyInstalledConfig()
 	}
 
+	// Uniform --help: `ghost <command> --help` must print usage and NEVER run
+	// the command. This guards the dangerous/long-running ones (agent, serve,
+	// dev, update, reset, onboard) and any command without bespoke help.
+	if len(os.Args) > 2 && wantsHelp(os.Args[2:]) {
+		printCommandHelp(command)
+		return
+	}
+
 	switch command {
 	case "onboard":
 		onboard()
@@ -217,11 +300,10 @@ func main() {
 		statusCmd()
 	case "model":
 		modelCmd()
-	case "migrate":
-		migrateCmd()
 	case "reset":
 		resetCmd()
 	case "reset-password":
+		deprecationWarning("reset-password", "auth reset-password")
 		resetPasswordCmd()
 	case "auth":
 		authCmd()
@@ -230,11 +312,15 @@ func main() {
 	case "connector":
 		connectorCmd()
 	case "stt":
+		deprecationWarning("stt", "speech stt")
 		sttCmd()
 	case "tts":
+		deprecationWarning("tts", "speech tts")
 		ttsCmd()
+	case "speech":
+		speechCmd()
 	case "skills":
-		if len(os.Args) < 3 {
+		if len(os.Args) < 3 || wantsHelp(os.Args[2:]) {
 			skillsHelp()
 			return
 		}
@@ -257,25 +343,36 @@ func main() {
 
 		switch subcommand {
 		case "list":
+			// --builtin lists bundled skills instead of installed ones.
+			if hasFlag(os.Args[3:], "--builtin") {
+				skillsListBuiltinCmd()
+				break
+			}
 			skillsListCmd(skillsLoader)
-		case "install":
-			skillsInstallCmd(installer, workspace)
 		case "add":
 			skillsAddCmd(workspace, os.Args[3:])
+		case "install":
+			deprecationWarning("skills install", "skills add")
+			skillsInstallCmd(installer, workspace)
 		case "update":
 			skillsUpdateCmd(workspace, os.Args[3:])
 		case "remove", "uninstall":
+			if subcommand == "uninstall" {
+				deprecationWarning("skills uninstall", "skills remove")
+			}
 			if len(os.Args) < 4 {
 				fmt.Println("Usage: ghost skills remove <skill-name>")
 				return
 			}
 			skillsRemoveCmd(installer, os.Args[3], workspace)
 		case "install-builtin":
+			deprecationWarning("skills install-builtin", "skills add --builtin")
 			skillsInstallBuiltinCmd(workspace)
 		case "sync":
 			syncEmbeddedSkills(workspace)
 			fmt.Println("\n✓ Bundled skills synced (user-modified skills were preserved).")
 		case "list-builtin":
+			deprecationWarning("skills list-builtin", "skills list --builtin")
 			skillsListBuiltinCmd()
 		case "search":
 			query := ""
@@ -297,7 +394,10 @@ func main() {
 		stateCmd()
 	case "update":
 		updateCmd()
-	case "updater":
+	case "auto-update", "updater":
+		if command == "updater" {
+			deprecationWarning("updater", "auto-update")
+		}
 		updaterCmd()
 	case "relay":
 		relayCmd()
@@ -308,9 +408,14 @@ func main() {
 	case "golden":
 		goldenCmd()
 	case "replay":
+		deprecationWarning("replay", "eval replay")
 		replayCmd()
+	case "eval":
+		evalCmd()
 	case "version", "--version", "-v":
 		printVersion()
+	case "help", "--help", "-h":
+		printHelp()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printHelp()
@@ -318,36 +423,115 @@ func main() {
 	}
 }
 
+// printCommandHelp prints usage for one top-level command. Group commands
+// delegate to their own help; leaf commands print a one-line usage plus a
+// short explanation. It is the single place `ghost <cmd> --help` resolves.
+func printCommandHelp(command string) {
+	switch command {
+	case "agent":
+		fmt.Println("Usage: ghost agent [-m <message>] [-s <session>] [--debug]")
+		fmt.Println("Chat with Ghost in the terminal. Without -m, starts interactive mode.")
+	case "serve", "gateway":
+		fmt.Println("Usage: ghost serve [--api-only] [--debug]")
+		fmt.Println("Start the Ghost daemon (API + channels + scheduler + heartbeat).")
+	case "dev":
+		fmt.Println("Usage: ghost dev [--port=N] [--api-only] [--use-installed-key]")
+		fmt.Println("Run an isolated development instance. Never touches the installed Ghost.")
+	case "dashboard":
+		fmt.Println("Usage: ghost dashboard")
+		fmt.Println("Launch the operator TUI (requires a TTY).")
+	case "onboard":
+		fmt.Println("Usage: ghost onboard")
+		fmt.Println("Initialize Ghost configuration and workspace.")
+	case "update":
+		fmt.Println("Usage: ghost update [--dry-run] [--force]")
+		fmt.Println("Deploy the tagged release to the installed Ghost. Refuses a dirty checkout")
+		fmt.Println("unless --force. Run with sudo.")
+	case "auto-update", "updater":
+		fmt.Println("Usage: ghost auto-update [--interval DURATION]")
+		fmt.Println("Run the auto-update daemon: periodically pull the latest release and rebuild.")
+		fmt.Println("  --interval/-i DURATION   how often to check (default 6h)")
+		fmt.Println("For a one-shot deploy of the current release, use 'ghost update'.")
+	case "reset":
+		fmt.Println("Usage: ghost reset <all|scope...> [--exclude=scope,...] [--no-restart]")
+		fmt.Println("Scopes: chats memory activity automations context devices secrets model")
+	case "verify":
+		fmt.Println("Usage: ghost verify")
+		fmt.Println("Run personal AI verification (real product checks).")
+	case "relay":
+		relayHelp()
+	case "auth":
+		authHelp()
+	case "mcp":
+		mcpHelp()
+	case "state":
+		stateHelp()
+	case "skills":
+		skillsHelp()
+	case "connector":
+		connectorHelp()
+	case "speech":
+		speechHelp()
+	case "eval":
+		evalHelp()
+	case "stt":
+		sttHelp()
+	case "tts":
+		ttsHelp()
+	case "version":
+		printVersion()
+	case "help":
+		printHelp()
+	default:
+		// No bespoke help: fall back to the grouped top-level help.
+		printHelp()
+	}
+}
+
 func printHelp() {
 	fmt.Printf("%s Ghost - Personal AI Assistant v%s\n\n", logo, version)
-	fmt.Println("Usage: ghost <command>")
+	fmt.Println("Usage: ghost <command> [args]")
 	fmt.Println()
-	fmt.Println("Commands:")
-	fmt.Println("  onboard     Initialize Ghost configuration and workspace")
-	fmt.Println("  agent       Interact with the agent directly")
-	fmt.Println("  serve       Start the Ghost daemon (API + channels + cron + heartbeat)")
-	fmt.Println("  gateway     Legacy alias for serve")
-	fmt.Println("  dev         Run an isolated development instance (own dir/port; never touches the installed Ghost)")
+	fmt.Println("Talk")
+	fmt.Println("  agent       Chat with Ghost directly")
 	fmt.Println("  dashboard   Launch the operator TUI")
-	fmt.Println("  status      Show Ghost status")
+	fmt.Println()
+	fmt.Println("Run")
+	fmt.Println("  serve       Start the Ghost daemon (API + channels + scheduler + heartbeat)")
+	fmt.Println("  dev         Run an isolated development instance (own dir/port; never touches the installed Ghost)")
+	fmt.Println()
+	fmt.Println("Configure")
+	fmt.Println("  auth        Credentials (login, logout, status, reset-password)")
 	fmt.Println("  model       View or switch the active model (model [list|use <provider:model>])")
-	fmt.Println("  update      Deploy the tagged release to the installed Ghost (refuses a dirty checkout; --force to override, --dry-run to preview)")
-	fmt.Println("  updater     Run auto-update daemon")
-	fmt.Println("  auth        Manage authentication (login, logout, status)")
-	fmt.Println("  reset       Factory reset (e.g. ghost reset all --exclude=devices,secrets)")
-	fmt.Println("  reset-password  Reset the admin dashboard password (requires --force)")
 	fmt.Println("  mcp         Manage MCP servers (list, add, edit, remove, test)")
-	fmt.Println("  connector   Portable connectors (validate|init|from-openapi|list)")
-	fmt.Println("  migrate     Migrate from OpenClaw to Ghost")
-	fmt.Println("  skills      Manage skills (install, list, remove)")
-	fmt.Println("  stt         Manage local speech-to-text (setup, status)")
-	fmt.Println("  tts         Manage local speech synthesis (setup, status)")
-	fmt.Println("  state       Export, import, or inspect Ghost State archives")
-	fmt.Println("  relay       Manage relay connection (run, pair, clients)")
+	fmt.Println("  connector   Portable connectors (validate, init, from-openapi, list, review, install, run, sign, verify)")
+	fmt.Println("  skills      Skills (list, add, remove, show, search, sync, enable, disable)")
+	fmt.Println("  speech      Local speech (stt setup|status, tts setup|status)")
+	fmt.Println()
+	fmt.Println("Observe")
+	fmt.Println("  status      Show Ghost status")
 	fmt.Println("  verify      Run personal AI verification (real product checks)")
-	fmt.Println("  benchmark   Run personal AI benchmark + core score")
-	fmt.Println("  golden      Run the Golden Conversation Suite (model NL evaluation)")
+	fmt.Println()
+	fmt.Println("Evaluate")
+	fmt.Println("  eval        Model/behavior evaluation (golden, benchmark, replay)")
+	fmt.Println()
+	fmt.Println("Data")
+	fmt.Println("  state       Export, import, inspect, backup, or prune Ghost State")
+	fmt.Println()
+	fmt.Println("Deploy")
+	fmt.Println("  update      Deploy the tagged release to the installed Ghost (refuses a dirty checkout; --force to override, --dry-run to preview)")
+	fmt.Println("  auto-update Run the auto-update daemon")
+	fmt.Println()
+	fmt.Println("Recover")
+	fmt.Println("  reset       Factory reset (e.g. ghost reset all --exclude=devices,secrets)")
+	fmt.Println("  relay       Manage the relay connection (run, pair, clients, revoke, setup)")
+	fmt.Println()
+	fmt.Println("Setup")
+	fmt.Println("  onboard     Initialize Ghost configuration and workspace")
+	fmt.Println()
+	fmt.Println("Other")
 	fmt.Println("  version     Show version information")
+	fmt.Println("  help        Show this help (also: ghost <command> --help)")
 }
 
 func onboard() {
@@ -516,76 +700,6 @@ func syncEmbeddedSkills(workspace string) {
 	if len(report.UserModified) > 0 {
 		fmt.Printf("  • Preserved user-modified skills: %s\n", strings.Join(report.UserModified, ", "))
 	}
-}
-
-func migrateCmd() {
-	if len(os.Args) > 2 && (os.Args[2] == "--help" || os.Args[2] == "-h") {
-		migrateHelp()
-		return
-	}
-
-	opts := migrate.Options{}
-
-	args := os.Args[2:]
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--dry-run":
-			opts.DryRun = true
-		case "--config-only":
-			opts.ConfigOnly = true
-		case "--workspace-only":
-			opts.WorkspaceOnly = true
-		case "--force":
-			opts.Force = true
-		case "--refresh":
-			opts.Refresh = true
-		case "--openclaw-home":
-			if i+1 < len(args) {
-				opts.OpenClawHome = args[i+1]
-				i++
-			}
-		case "--ghost-home":
-			if i+1 < len(args) {
-				opts.GhostHome = args[i+1]
-				i++
-			}
-		default:
-			fmt.Printf("Unknown flag: %s\n", args[i])
-			migrateHelp()
-			os.Exit(1)
-		}
-	}
-
-	result, err := migrate.Run(opts)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if !opts.DryRun {
-		migrate.PrintSummary(result)
-	}
-}
-
-func migrateHelp() {
-	fmt.Println("\nMigrate from OpenClaw to Ghost")
-	fmt.Println()
-	fmt.Println("Usage: ghost migrate [options]")
-	fmt.Println()
-	fmt.Println("Options:")
-	fmt.Println("  --dry-run          Show what would be migrated without making changes")
-	fmt.Println("  --refresh          Re-sync workspace files from OpenClaw (repeatable)")
-	fmt.Println("  --config-only      Only migrate config, skip workspace files")
-	fmt.Println("  --workspace-only   Only migrate workspace files, skip config")
-	fmt.Println("  --force            Skip confirmation prompts")
-	fmt.Println("  --openclaw-home    Override OpenClaw home directory (default: ~/.openclaw)")
-	fmt.Println("  --ghost-home    Override Ghost home directory (default: ~/.ghost)")
-	fmt.Println()
-	fmt.Println("Examples:")
-	fmt.Println("  ghost migrate              Detect and migrate from OpenClaw")
-	fmt.Println("  ghost migrate --dry-run    Show what would be migrated")
-	fmt.Println("  ghost migrate --refresh    Re-sync workspace files")
-	fmt.Println("  ghost migrate --force      Migrate without confirmation")
 }
 
 // knownProviders is the set of provider names Ghost can route to, including
@@ -1912,7 +2026,7 @@ func resetPasswordCmd() {
 }
 
 func authCmd() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 3 || wantsHelp(os.Args[2:]) {
 		authHelp()
 		return
 	}
@@ -1924,6 +2038,8 @@ func authCmd() {
 		authLogoutCmd()
 	case "status":
 		authStatusCmd()
+	case "reset-password":
+		resetPasswordCmd()
 	default:
 		fmt.Printf("Unknown auth command: %s\n", os.Args[2])
 		authHelp()
@@ -1935,6 +2051,7 @@ func authHelp() {
 	fmt.Println("  login       Login via OAuth or paste token")
 	fmt.Println("  logout      Remove stored credentials")
 	fmt.Println("  status      Show current auth status")
+	fmt.Println("  reset-password  Reset the admin dashboard password (requires --force)")
 	fmt.Println()
 	fmt.Println("Login options:")
 	fmt.Println("  --provider <name>    Provider to login with (openai, anthropic)")
@@ -2157,7 +2274,7 @@ func getConfigPath() string {
 // agent/serve/skills and friends keep checkout-relative resolution.
 func isApplianceOpsCommand(command string) bool {
 	switch command {
-	case "reset", "reset-password", "verify", "status", "migrate":
+	case "reset", "reset-password", "verify", "status":
 		return true
 	}
 	return false
@@ -2511,7 +2628,7 @@ func healSecretsBoundary(configPath string, cfg *config.Config) {
 }
 
 func relayCmd() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 3 || wantsHelp(os.Args[2:]) {
 		relayHelp()
 		return
 	}
@@ -2751,7 +2868,7 @@ func relaySetupCmd() {
 }
 
 func stateCmd() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 3 || wantsHelp(os.Args[2:]) {
 		stateHelp()
 		return
 	}
@@ -3069,7 +3186,7 @@ func confirm(prompt string) bool {
 // mcpCmd manages MCP servers from the CLI, mirroring the dashboard's MCP
 // section for headless or scripted configuration.
 func mcpCmd() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 3 || wantsHelp(os.Args[2:]) {
 		mcpHelp()
 		return
 	}
@@ -3275,25 +3392,49 @@ func saveConfigFromCLI(cfg *config.Config) error {
 	return config.SaveConfig(getConfigPath(), cfg)
 }
 
+func hasFlag(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// wantsHelp reports whether the first argument is a help request. Command
+// groups call it before dispatching so `ghost <group> --help` prints help
+// cleanly instead of "Unknown <group> command: --help".
+func wantsHelp(args []string) bool {
+	for _, a := range args {
+		switch a {
+		case "--help", "-h", "help":
+			return true
+		}
+		return false // only the first token decides
+	}
+	return false
+}
+
 func skillsHelp() {
-	fmt.Println("\nSkills commands:")
-	fmt.Println("  list                    List installed skills")
-	fmt.Println("  install <owner>/<repo>  Install skill from GitHub (root SKILL.md)")
-	fmt.Println("  add <source> [--copy]   Install via package manager (owner/repo[@skill][#ref], git URL, local path)")
-	fmt.Println("  update [name] [--apply] Check (or apply) upstream updates for locked skills")
-	fmt.Println("  install-builtin          Install all builtin skills to workspace")
-	fmt.Println("  list-builtin             List available builtin skills")
-	fmt.Println("  remove <name>            Remove installed skill (alias: uninstall)")
-	fmt.Println("  search [query]           Search available skills in the registry")
+	fmt.Println("\nUsage: ghost skills <command> [args]")
+	fmt.Println()
+	fmt.Println("  list [--builtin]        List installed skills (or bundled ones with --builtin)")
+	fmt.Println("  add <source> [--copy]   Install a skill (owner/repo[@skill][#ref], git URL, local path)")
+	fmt.Println("  remove <name>           Remove an installed skill")
 	fmt.Println("  show <name>             Show skill details")
+	fmt.Println("  search [query]          Search available skills in the registry")
+	fmt.Println("  update [name] [--apply] Check (or apply) upstream updates for locked skills")
+	fmt.Println("  sync                    Re-seed bundled skills (preserves user edits)")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  ghost skills list")
-	fmt.Println("  ghost skills install sipeed/GHOST-skills")
+	fmt.Println("  ghost skills add sipeed/Ghost-skills")
 	fmt.Println("  ghost skills search weather")
-	fmt.Println("  ghost skills install-builtin")
-	fmt.Println("  ghost skills list-builtin")
+	fmt.Println("  ghost skills add --builtin")
 	fmt.Println("  ghost skills remove weather")
+	fmt.Println()
+	fmt.Println("Legacy aliases: install (-> add), uninstall (-> remove),")
+	fmt.Println("install-builtin (-> add --builtin), list-builtin (-> list --builtin).")
 }
 
 func skillsListCmd(loader *skills.SkillsLoader) {

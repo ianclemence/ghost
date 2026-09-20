@@ -15,10 +15,10 @@ import (
 )
 
 // registerBrowserStreamRoutes exposes live browser automation viewing
-// (OpenClaw 2026.9.3 parity: "Watch browser automation live").
+// (Watch browser automation live).
 //
-//   POST /v1/browser/screencast {session_id} -> {token, ws_path, expires_at}
-//   GET  /v1/browser/screencast?token=... (WS upgrade, single-use ticket)
+//	POST /v1/browser/screencast {session_id} -> {token, ws_path, expires_at}
+//	GET  /v1/browser/screencast?token=... (WS upgrade, single-use ticket)
 //
 // Frames proxy byte-for-byte to the agent-browser stream server
 // (ws://127.0.0.1:<port>, JPEG on repaint, latest-first, ack-paced). Idle
@@ -105,7 +105,7 @@ func serveBrowserStreamWS(w http.ResponseWriter, r *http.Request, al *agent.Agen
 	}
 	tk, err := al.ConsumeBrowserScreencast(token)
 	if err != nil {
-		// OpenClaw close-code parity: 4001 = token invalid/expired/used.
+		// Close code 4001 = token invalid/expired/used.
 		http.Error(w, "invalid screencast token", http.StatusUnauthorized)
 		return
 	}

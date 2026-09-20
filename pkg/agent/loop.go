@@ -2672,7 +2672,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				})
 
 			// Create async callback for tools that implement AsyncTool
-			// NOTE: Following openclaw's design, async tools do NOT send results directly to users.
+			// NOTE: async tools do NOT send results directly to users.
 			// Instead, they notify the agent via PublishInbound, and the agent decides
 			// whether to forward the result to the user (in processSystemMessage).
 			asyncCallback := func(callbackCtx context.Context, result *tools.ToolResult) {
