@@ -10,17 +10,19 @@ const GhostApp = (() => {
 
   // ── Navigation model (the product's information architecture) ──
   // Ghost is ONE persistent personal AI. There is no chat list, no "New
-  // Chat", and no conversation switcher. Home is the relationship; Memory is
-  // what Ghost knows; Activity is what Ghost has done; Things Ghost does is
-  // what Ghost does automatically — ONE destination, because the owner has
-  // one mental model. Connect holds everything reaching in or out:
-  // Devices are where Ghost has hands, Channels are where it reaches you,
-  // Apps are what it can access. System holds owner/Ghost config.
+  // Chat", and no conversation switcher. Home is the relationship; The Desk
+  // is the work Ghost has done on your machine; Memory is what Ghost knows;
+  // Activity is what Ghost has done; Things Ghost does is what Ghost does
+  // automatically — ONE destination each, because the owner has one mental
+  // model. Connect holds everything reaching in or out: Devices are where
+  // Ghost has hands, Channels are where it reaches you, Apps are what it can
+  // access. System holds owner/Ghost config.
   const NAV = [
     {
       label: 'Ghost',
       items: [
         { name: 'home', title: 'Home', glyph: 'home' },
+        { name: 'desk', title: 'The Desk', glyph: 'desk' },
         { name: 'memory', title: 'Memory', glyph: 'memory' },
         { name: 'activity', title: 'Activity', glyph: 'activity' },
         { name: 'things', title: 'Things Ghost does', glyph: 'automation' },
@@ -51,6 +53,7 @@ const GhostApp = (() => {
   const GLYPHS = {
     home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/><polyline points="9 22 9 12 15 12 15 22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     memory: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/>',
+    desk: '<rect x="2" y="7" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/>',
     activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     automation: '<polyline points="23 4 23 10 17 10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><polyline points="1 20 1 14 7 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     skill: '<path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/><line x1="16" y1="8" x2="2" y2="22" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><line x1="17.5" y1="15" x2="9" y2="15" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',

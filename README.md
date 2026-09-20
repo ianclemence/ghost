@@ -13,6 +13,7 @@ Ghost runs the recurring admin of your life, so you don't have to think about it
 - **It remembers for you.** Birthdays, preferences, who's who, what you decided last month — Ghost keeps it and recalls it when it matters.
 - **It handles the follow-through.** Renewals, check-ins, reminders, the thing you'd otherwise forget — Ghost does them on time and tells you when it's done.
 - **It warns you ahead.** “Your sister's birthday is in a week.” Ghost notices and speaks up before it's too late.
+- **It has its own desk on your machine.** A persistent working space where the files it writes, the things it makes for you, and the tools it builds all live — visible, inspectable, and yours.
 
 You say what you want in plain language — in a chat, on your phone, or out loud.
 Ghost figures out the rest.
@@ -66,6 +67,7 @@ has two different homes.
 ## Core features
 
 - **Things Ghost does** — one place for everything Ghost runs for you, whether you'd call it a routine, a reminder, or a scheduled action. You never file your own intent; Ghost infers the shape.
+- **The Desk** — the work Ghost has done on your machine: files it writes, things it makes for you, tools it builds, and live sessions it acts on. A read-only view; acting on anything is a normal approved request.
 - Persistent memory with retrieval and context isolation
 - Consequential actions governed by a permission broker (the model can't self-grant)
 - Deterministic capability execution — no fabricated live data
@@ -168,6 +170,7 @@ take care of Ghost.
   - **AI** — local and cloud intelligence, model management, routing
   - **Memory** — browse, search, and manage what Ghost remembers
   - **Conversations** — past chats with Ghost
+  - **The Desk** — the work Ghost has done on your machine: files, things it made for you, tools it built, and live sessions. (Backed by `/v1/desk`; a read-only projection, never an execution surface.)
   - **Things Ghost does** — one list for everything Ghost runs for you: recurring instructions (“every Monday at 9…”), reminders, and scheduled tasks. You never file your intent as a “routine” or an “automation” — Ghost infers the shape. (Backed by `/v1/things`; the internal scheduler and routine models stay unified underneath.)
   - **Skills** — installed capabilities, enable/disable, install from GitHub
 

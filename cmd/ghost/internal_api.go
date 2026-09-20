@@ -5050,6 +5050,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	// ── Artifacts (runtime-validated handoffs) ────────────────────────────
 	registerArtifactRoutes(mux)
 
+	// ── The Desk (read-only projection of Ghost's work) ───────────────────
+	registerDeskRoutes(mux, agentLoop)
+
 	// ── Device operations (restart/update) ───────────────────────────────
 	registerDeviceRoutes(mux)
 

@@ -263,6 +263,32 @@ func (s *Store) List(sessionKey string, limit int) ([]Artifact, error) {
 	return out, rows.Err()
 }
 
+// ListAll returns the most recent artifacts across every conversation. The
+// Desk uses it: the owner's work is one shelf, not one shelf per chat. It is
+// a read that revalidates nothing (state is stored), so callers that render
+// an artifact should still Get it before showing contents; ListAll is for the
+// index.
+func (s *Store) ListAll(limit int) ([]Artifact, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := s.db.Query(`SELECT id, session_key, kind, title, summary, path, text, url, state, reason, actions, evidence_request_id, created_at
+		FROM artifacts ORDER BY created_at DESC, rowid DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("artifacts: list all: %w", err)
+	}
+	defer rows.Close()
+	out := []Artifact{}
+	for rows.Next() {
+		a, err := scanArtifact(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *a)
+	}
+	return out, rows.Err()
+}
+
 // resolveFile validates a workspace-relative file reference: clean,
 // confined, present, a regular file, bounded, and outside the protected
 // estate. It returns the clean relative path.
