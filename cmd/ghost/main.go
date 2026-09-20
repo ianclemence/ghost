@@ -193,6 +193,13 @@ func main() {
 	// are unaffected.
 	if isApplianceOpsCommand(command) {
 		applyApplianceTarget()
+	} else if isInteractiveCommand(command) {
+		// Interactive commands read the SAME config the Web Console and
+		// the daemon use when an installed Ghost exists and this user can
+		// read it — so "configured in the console" means "configured for
+		// the CLI" too. A checkout config is not silently preferred over
+		// an installed one; env always wins.
+		applyInstalledConfig()
 	}
 
 	switch command {
@@ -2035,6 +2042,34 @@ func isApplianceOpsCommand(command string) bool {
 		return true
 	}
 	return false
+}
+
+// isInteractiveCommand reports whether a command loads the config to run the
+// model/agent (as opposed to ops or pure-local commands). These are the
+// commands whose config MUST match the console and the daemon.
+func isInteractiveCommand(command string) bool {
+	switch command {
+	case "agent", "serve", "gateway", "dashboard", "model", "golden", "benchmark", "doctor":
+		return true
+	}
+	return false
+}
+
+// applyInstalledConfig points interactive commands at the installed Ghost's
+// config directory when it exists and this user can read it. This keeps the
+// CLI consistent with the Web Console and the daemon — the fix for
+// "configured it in the console but the CLI says no key". It never overrides
+// an explicit GHOST_CONFIG_DIR.
+func applyInstalledConfig() {
+	configDir, ok := appliance.ResolveInstalledConfig(os.Getenv, appliance.ApplianceInstalled(), func(dir string) bool {
+		_, err := os.ReadFile(filepath.Join(dir, "config.json"))
+		return err == nil
+	})
+	if !ok {
+		return
+	}
+	_ = os.Setenv("GHOST_CONFIG_DIR", configDir)
+	fmt.Fprintf(os.Stderr, "✓ Using installed Ghost config (%s)\n", configDir)
 }
 
 // applyApplianceTarget points root ops commands at the installed

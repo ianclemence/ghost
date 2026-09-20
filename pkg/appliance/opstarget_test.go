@@ -60,3 +60,32 @@ func TestOpsTargetEnvWins(t *testing.T) {
 		t.Fatal("fully overridden env must keep CLI resolution")
 	}
 }
+
+func TestResolveInstalledConfig(t *testing.T) {
+	noenv := func(string) string { return "" }
+	readable := func(string) bool { return true }
+	unreadable := func(string) bool { return false }
+
+	// Env wins: no override when GHOST_CONFIG_DIR is set.
+	env := func(k string) string {
+		if k == "GHOST_CONFIG_DIR" {
+			return "/custom"
+		}
+		return ""
+	}
+	if _, ok := ResolveInstalledConfig(env, true, readable); ok {
+		t.Fatal("explicit GHOST_CONFIG_DIR must not be overridden")
+	}
+	// No installed Ghost: no opinion.
+	if _, ok := ResolveInstalledConfig(noenv, false, readable); ok {
+		t.Fatal("no installed Ghost means no override")
+	}
+	// Installed + readable: use it.
+	if dir, ok := ResolveInstalledConfig(noenv, true, readable); !ok || dir != DefaultConfigDir {
+		t.Fatalf("installed+readable should resolve to %s, got %q ok=%v", DefaultConfigDir, dir, ok)
+	}
+	// Installed but unreadable (non-root /var/ghost): no override.
+	if _, ok := ResolveInstalledConfig(noenv, true, unreadable); ok {
+		t.Fatal("unreadable installed config must not be used")
+	}
+}
