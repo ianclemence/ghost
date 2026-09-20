@@ -667,24 +667,6 @@ func TestTUIComposerIsPIRules(t *testing.T) {
 
 // The user bubble is a full-width background block: edge to edge, text
 // inset by one cell, one blank padding row above and below.
-func TestTUIUserBubblePI(t *testing.T) {
-	f := newFakeRuntime()
-	m := readyForTest(newAgentTUI(f, "cli:test"))
-	out := m.renderEntry(entry{kind: entryUser, text: "hello"})
-	rows := strings.Split(out, "\n")
-	if len(rows) != 3 {
-		t.Fatalf("one-line bubble must be pad + line + pad, got %d: %q", len(rows), out)
-	}
-	for _, ln := range rows {
-		if got := lipgloss.Width(ln); got != m.width {
-			t.Errorf("bubble must span the canvas (%d), got %d: %q", m.width, got, ln)
-		}
-	}
-	if !strings.HasPrefix(rows[1], " hello") {
-		t.Errorf("bubble text must be inset by one cell, got %q", rows[1])
-	}
-}
-
 // The model picker is not a floating modal: it renders below the prompt
 // box, sharing the palette's bare list rows.
 func TestTUIModelPickerIsInlineBelowBox(t *testing.T) {
@@ -1035,30 +1017,21 @@ func TestTUIComposerHasNoNewlineBinding(t *testing.T) {
 	}
 }
 
-// User messages render as a full-width background panel: name line,
-// inset rows, explicit newlines preserved as paragraph breaks (never
+// User messages render as a name line then a left-bar panel: bar-prefixed
+// rows, explicit newlines preserved as paragraph breaks (never
 // markdown-rendered).
 func TestTUIUserBubbleMultiline(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	out := m.renderEntry(entry{kind: entryUser, text: "first **not bold**\n\nsecond"})
-	rows := strings.Split(out, "\n")
-	// Panel: blank padding row, 2 text rows, blank row, blank padding row.
-	if len(rows) != 5 {
-		t.Fatalf("user bubble must be 5 rows (pad + text + blank + text + pad), got %d: %q", len(rows), out)
+	if n := strings.Count(out, "┃"); n != 3 {
+		t.Errorf("user bubble must bar-prefix every row (2 text + 1 blank), got %d: %q", n, out)
 	}
 	if !strings.Contains(out, "first **not bold**") {
 		t.Errorf("user text must stay literal markdown, got %q", out)
 	}
 	if !strings.Contains(out, "second") {
 		t.Errorf("paragraphs must survive, got %q", out)
-	}
-	// The bubble is edge to edge: the background spans the whole canvas,
-	// only the text is inset by one cell.
-	for _, ln := range rows {
-		if got := lipgloss.Width(ln); got != 80 {
-			t.Errorf("bubble rows must fill the canvas (80), got %d: %q", got, ln)
-		}
 	}
 }
 

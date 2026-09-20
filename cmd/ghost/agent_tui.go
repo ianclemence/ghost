@@ -1409,26 +1409,19 @@ func (m *agentTUI) renderEntry(e entry) string {
 	tw := m.textWidth()
 	switch e.kind {
 	case entryUser:
-		// The user bubble is a full-width background block with one cell
-		// of padding on every side, the raw text, never markdown-
-		// rendered, and explicit newlines preserved as paragraph breaks.
+		// User bubble: a name line, then a left-bar panel with the raw
+		// text (never markdown-rendered), paragraphs preserved.
 		var lines []string
-		blank := styleUserBubble.Render(strings.Repeat(" ", w))
-		lines = append(lines, blank)
+		lines = append(lines, styleUserName.Render("You"))
 		for _, para := range strings.Split(e.text, "\n") {
 			if strings.TrimSpace(para) == "" {
-				lines = append(lines, blank)
+				lines = append(lines, styleUserPanel.Render(styleUserBar.Render("┃")))
 				continue
 			}
-			for _, wl := range wrapText(para, tw) {
-				pad := w - 1 - lipgloss.Width(wl)
-				if pad < 0 {
-					pad = 0
-				}
-				lines = append(lines, styleUserBubble.Render(" "+wl+strings.Repeat(" ", pad)))
+			for _, wl := range wrapText(para, w-4) {
+				lines = append(lines, styleUserPanel.Render(styleUserBar.Render("┃")+" "+styleUserText.Render(wl)))
 			}
 		}
-		lines = append(lines, blank)
 		return strings.Join(lines, "\n")
 	case entryAssistant:
 		head := " " + styleAssistantName.Render(logo+" Ghost · "+m.loop.GetCurrentModel())
@@ -2362,16 +2355,15 @@ var (
 	cErr     = lipgloss.Color("#c86a5c")
 	cGold    = lipgloss.Color("#e8c06a")
 	cBgBar   = lipgloss.Color("#141210")
+	cBgPanel = lipgloss.Color("#1b1815")
 	cBarIdle = lipgloss.Color("#6e648a") // visible slate-violet composer bar
 	cGreen   = lipgloss.Color("#7fb08a")
 	cBlue    = lipgloss.Color("#7fa8c9")
 	cViolet  = lipgloss.Color("#a89bc7")
 	cCodeBg  = lipgloss.Color("#201c18")
 	cSelBg   = lipgloss.Color("#2a251f")
-	// Panel tones in Ghost's key (user bubble slate, tool state green-black
-	// while done and slate while running).
-	cBubbleBg     = lipgloss.Color("#26262e")
-	cUserText     = lipgloss.Color("#d4d4d4")
+	// Tool panel tones in Ghost's key (green-black while done, slate while
+	// running).
 	cToolDoneBg   = lipgloss.Color("#1c2320")
 	cToolActiveBg = lipgloss.Color("#242433")
 	cToolSoft     = lipgloss.Color("#8fb59d")
@@ -2385,6 +2377,7 @@ var (
 	styleApproval  = lipgloss.NewStyle().Foreground(cGold).Bold(true)
 	styleStatus    = lipgloss.NewStyle().Foreground(cMuted).Background(cBgBar)
 
+	styleUserName      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleAssistantName = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
 	styleAssistantMeta = lipgloss.NewStyle().Foreground(cFaint)
 	styleErrorCard     = lipgloss.NewStyle().Foreground(cErr).Bold(true)
@@ -2392,9 +2385,10 @@ var (
 	// with Ghost icons retained for scanability.
 	styleToolRowActive = lipgloss.NewStyle().Foreground(cInk).Background(cToolActiveBg)
 	styleToolRowDone   = lipgloss.NewStyle().Foreground(cToolSoft).Background(cToolDoneBg)
-	// User bubble: full-width background block, blank padding lines, plain
-	// text. Ghost bubble tone: dark slate.
-	styleUserBubble = lipgloss.NewStyle().Foreground(cUserText).Background(cBubbleBg)
+	// opencode user bubble: agent-color bar, panel background, plain text.
+	styleUserBar   = lipgloss.NewStyle().Foreground(cAccent)
+	styleUserText  = lipgloss.NewStyle().Foreground(cInk)
+	styleUserPanel = lipgloss.NewStyle().Background(cBgPanel).Padding(0, 1)
 
 	// ─── Ghost palette ───────────────────────────────────────────────
 	// One semantic scheme across composer, menus, modal, and approvals
