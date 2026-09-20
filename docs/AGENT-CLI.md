@@ -77,11 +77,14 @@ esc quit · ctrl+l model · / commands · tab complete
   and model live in the footer — nowhere else.
 - **Composer:** two full-width `─` rules with the text between them — no
   side borders, no `❯` prefix, no placeholder. Transparent inside: only
-  the cursor is drawn, no line background. Single-line and fixed 3-row
-  height, so the rules and the editor can never disagree and typing never
-  shifts the layout. While Ghost works, the live status (`spinner ·
-  elapsed · tools · queued`) embeds in the **top rule** and the rules take
-  the Ghost-violet working accent (slate-violet at idle).
+  the cursor is drawn, no line background. It is **responsive**: it opens
+  at one text row and grows as the sentence wraps onto new rows, up to a
+  cap of 30% of the terminal height (at least five rows), after which it
+  scrolls inside the box. It is single-line input — there is no manual
+  newline key — so growth comes from wrapping. While Ghost works, the live
+  status (`spinner · elapsed · tools · queued`) embeds in the **top rule**
+  and the rules take the Ghost-violet working accent (slate-violet at
+  idle).
 - **Full conversation, grouped by day:** launching loads the whole shared
   transcript (paged, capped at 500 rows) and opens scrolled to the latest
   turn — iMessage/WhatsApp style, with `Today` / `Yesterday` / date
@@ -95,16 +98,17 @@ esc quit · ctrl+l model · / commands · tab complete
   with no background, peach bullets, cyan ordered numbers and link text
   (underlined), green checked tasks.
 - **Autocomplete:** the `/` menu opens **below** the composer — bare rows
-  with a `→ ` selection cursor, a padded command column, a dim
-  description, and a `(n/total)` scroll footer past five rows. `↑/↓`
-  wraps top↔bottom, `Enter` completes the highlighted command and runs
-  it, `Tab` completes without running (for adding arguments), `Esc`
-  hides. Bare `/model` opens the model picker in the same below-box
-  position (`↑↓` move, type to filter, `Enter` picks, `Esc` closes) —
-  Ghost floats no modal over the transcript.
+  with a `→ ` pointer on the selected row (no highlight background), a
+  padded command column, a dim description, and a `(n/total)` scroll
+  footer past five rows. `↑/↓` wraps top↔bottom, `Enter` completes the
+  highlighted command and runs it, `Tab` completes without running (for
+  adding arguments), `Esc` hides. Bare `/model` opens the model picker in
+  the same below-box position (`↑↓` move, type to filter, `Enter` picks,
+  `Esc` closes) — Ghost floats no modal over the transcript, and its
+  selected row carries the same pointer, not a filled block.
 - **Ghost palette** (one semantic scheme across the composer, menus, and
   approvals): violet = brand and selection (working composer rules,
-  selected palette rows, picker title), gold = approvals and warnings
+  palette pointer text, picker title), gold = approvals and warnings
   only, green = success and done, red = errors, blue = info and links,
   dim = hints and metadata. The `/` menu and the model picker share the
   same selected-row language as the approval cursor.

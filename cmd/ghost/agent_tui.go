@@ -193,7 +193,7 @@ func newAgentTUI(loop agentRuntime, session string) *agentTUI {
 	ta.Placeholder = ""
 	ta.Prompt = ""
 	ta.CharLimit = 0
-	ta.SetHeight(composerTextRows)
+	ta.SetHeight(composerMinRows) // grows to fit content; cap applied in layout()
 	ta.ShowLineNumbers = false
 	// Transparent composer: the cursor is the only affordance. The stock
 	// textarea paints the cursor line with a background and tints placeholder
@@ -1720,20 +1720,65 @@ func (m *agentTUI) layout() {
 		m.viewport.Height = vpH
 	}
 	m.input.SetWidth(m.inputWidth())
-	m.input.SetHeight(composerTextRows)
+	m.input.SetHeight(m.composerRows())
 }
 
-// The composer is fixed: 3 text rows between two rules. Bar, editor, and
-// estimate below all agree, so typing never shifts the layout and longer
-// input scrolls inside the box.
-const composerTextRows = 3
-const composerHeight = composerTextRows + 2 // text rows + top/bottom rules
+// The composer is responsive, exactly like a real terminal editor: it opens
+// at one text row, grows as the sentence wraps onto new rows, and, once it
+// reaches its cap, scrolls inside the box instead of growing further. The
+// cap is 30% of the terminal height with a floor of five rows, so the
+// composer never swallows the transcript on a small terminal.
+const composerMinRows = 1
 
-// estimatedInputHeight mirrors promptBox exactly: the text rows plus the
-// two rules (top + bottom). composerHeight already folds in the rules, so
-// the estimate and the paint can never disagree.
+// composerCapRows is the maximum visible text rows (30% of the viewport,
+// at least five) — the same rule a bash/readline editor uses to bound
+// itself against the screen.
+func (m *agentTUI) composerCapRows() int {
+	n := m.height * 3 / 10
+	if n < 5 {
+		n = 5
+	}
+	return n
+}
+
+// composerContentRows is the number of visual rows the current input needs
+// when wrapped to the composer width. The textarea wraps at exactly this
+// width, so the estimate and the paint agree.
+func (m *agentTUI) composerContentRows() int {
+	w := m.inputWidth()
+	v := m.input.Value()
+	if v == "" {
+		return composerMinRows
+	}
+	n := 0
+	for _, line := range strings.Split(v, "\n") {
+		if line == "" {
+			n++
+			continue
+		}
+		n += len(wrapText(line, w))
+	}
+	if n < composerMinRows {
+		n = composerMinRows
+	}
+	return n
+}
+
+// composerRows is the visible text height: content clamped to the cap.
+func (m *agentTUI) composerRows() int {
+	n := m.composerContentRows()
+	if cap := m.composerCapRows(); n > cap {
+		n = cap
+	}
+	return n
+}
+
+// estimatedInputHeight measures the composer exactly as promptBox paints
+// it: the visible text rows plus the two rules. Measuring from the same
+// composerRows() the paint uses means the estimate and the render can
+// never disagree as the box grows and shrinks.
 func (m *agentTUI) estimatedInputHeight() int {
-	return composerHeight
+	return m.composerRows() + 2
 }
 
 // estimatedApprovalHeight measures the exact inline approval block. The
@@ -2326,7 +2371,10 @@ var (
 	// hints/meta. The palette is bare rows — no side bar, no card — so the
 	// selected row is a violet block on transparent ground, the same
 	// language as the approval cursor.
-	stylePaletteSel     = lipgloss.NewStyle().Foreground(lipgloss.Color("#f2eefc")).Background(cAccent).Bold(true)
+	// The selected menu row carries no highlight background — only the `→`
+	// pointer and the Ghost-violet foreground mark it, so the command list
+	// stays calm while scrolling.
+	stylePaletteSel     = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
 	stylePaletteDesc    = lipgloss.NewStyle().Foreground(cMuted)
 	stylePaletteNoMatch = lipgloss.NewStyle().Foreground(cMuted)
 	stylePaletteScroll  = lipgloss.NewStyle().Foreground(cFaint)

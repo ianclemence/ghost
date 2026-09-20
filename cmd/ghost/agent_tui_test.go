@@ -502,37 +502,50 @@ func TestTUIFooterKeysContextual(t *testing.T) {
 	}
 }
 
-// The estimate is the fixed composer height (text rows + both rules)
-// whatever the content holds.
-func TestTUIInputHeightCountsWrappedLines(t *testing.T) {
+// The composer is responsive: it opens at one row, grows as the sentence
+// wraps, and stops at the cap (30% of the viewport, floor five), where it
+// scrolls inside the box. The estimate always equals rows + both rules.
+func TestTUIComposerGrowsWithContentAndCaps(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
-	m.input.SetValue(strings.Repeat("x", 200))
-	if got := m.estimatedInputHeight(); got != composerHeight {
-		t.Errorf("estimate must stay %d, got %d", composerHeight, got)
-	}
-}
+	m.width, m.height = 80, 24
 
-// The composer is a fixed height: estimate and paint can never disagree,
-// and long input scrolls inside the box instead of shifting the layout.
-func TestTUIComposerDefaultAndCap(t *testing.T) {
-	f := newFakeRuntime()
-	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("")
 	m.layout()
-	if h := m.input.Height(); h != composerTextRows {
-		t.Errorf("empty composer should be %d rows, got %d", composerTextRows, h)
+	if h := m.input.Height(); h != 1 {
+		t.Errorf("empty composer must be one row, got %d", h)
 	}
-	if got := m.estimatedInputHeight(); got != composerHeight {
-		t.Errorf("estimate must count text rows plus both rules (%d), got %d", composerHeight, got)
+	if got := m.estimatedInputHeight(); got != 3 {
+		t.Errorf("one-row estimate must be rules + 1 = 3, got %d", got)
 	}
-	m.input.SetValue(strings.Repeat("x\n", 20))
+
+	// A short sentence stays one row.
+	m.input.SetValue("hello")
 	m.layout()
-	if h := m.input.Height(); h != composerTextRows {
-		t.Errorf("long input must not resize the composer (%d rows), got %d", composerTextRows, h)
+	if h := m.input.Height(); h != 1 {
+		t.Errorf("short input must stay one row, got %d", h)
 	}
-	if got := m.estimatedInputHeight(); got != composerHeight {
-		t.Errorf("long estimate must stay %d, got %d", composerHeight, got)
+
+	// A long sentence wraps and grows the box (width 80, so ~79 cols/row).
+	m.input.SetValue(strings.Repeat("word ", 60)) // ~300 cols → several rows
+	m.layout()
+	grew := m.input.Height()
+	if grew <= 1 {
+		t.Fatalf("wrapped input must grow the composer, got %d rows", grew)
+	}
+	if got := m.estimatedInputHeight(); got != grew+2 {
+		t.Errorf("estimate %d must equal rows %d + 2 rules", got, grew)
+	}
+
+	// Past the cap the box stops growing and scrolls instead.
+	cap := m.composerCapRows()
+	m.input.SetValue(strings.Repeat("word ", 400))
+	m.layout()
+	if h := m.input.Height(); h != cap {
+		t.Errorf("over-cap input must hold at the cap %d, got %d", cap, h)
+	}
+	if got := m.estimatedInputHeight(); got != cap+2 {
+		t.Errorf("capped estimate must be cap %d + 2, got %d", cap, got)
 	}
 }
 
@@ -545,8 +558,9 @@ func TestTUIComposerIsPIRules(t *testing.T) {
 	m.width, m.height = 80, 24
 	box := m.promptBox()
 	rows := strings.Split(box, "\n")
-	if len(rows) != composerHeight {
-		t.Fatalf("composer must be %d rows (rule + %d text + rule), got %d: %q", composerHeight, composerTextRows, len(rows), box)
+	want := m.composerRows() + 2 // text rows + top/bottom rules
+	if len(rows) != want {
+		t.Fatalf("composer must be %d rows (rule + %d text + rule), got %d: %q", want, m.composerRows(), len(rows), box)
 	}
 	for i, ln := range rows {
 		if got := lipgloss.Width(ln); got != 80 {
@@ -933,9 +947,9 @@ func TestTUIToolProgressPassthrough(t *testing.T) {
 	}
 }
 
-// The composer is single-line: Ctrl+J no longer inserts a newline, and the
-// box stays a fixed height so typing never shifts the layout.
-func TestTUIComposerIsSingleLine(t *testing.T) {
+// The composer has no manual newline binding: Ctrl+J does nothing. Growth
+// comes from wrapping a long sentence, not from typed line breaks.
+func TestTUIComposerHasNoNewlineBinding(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("line one")
@@ -945,13 +959,6 @@ func TestTUIComposerIsSingleLine(t *testing.T) {
 	}
 	if len(f.turns) != 0 {
 		t.Fatalf("ctrl+j must not send, got %v", f.turns)
-	}
-	m.input.SetValue(strings.Repeat("x", 200))
-	m.layout()
-	// The textarea holds only the text rows; promptBox paints the two
-	// rules around them (composerHeight = composerTextRows + 2).
-	if h := m.input.Height(); h != composerTextRows {
-		t.Errorf("long input must not resize the composer (%d rows), got %d", composerTextRows, h)
 	}
 }
 
