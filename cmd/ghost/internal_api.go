@@ -2987,13 +2987,17 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				budget -= len(messages[i].Content)
 			}
 		}
+		// hasMore must count with the same filters the page query uses
+		// (non-empty, non-archived). Counting unfiltered rows reports a
+		// next page that never materializes, so clients fetch again for
+		// nothing.
 		hasMore := false
 		if db != nil {
 			var remaining int
 			if since > 0 {
-				_ = db.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0) AND content IS NOT NULL AND TRIM(content) != '' AND unixepoch(created_at) <= ?`, session, since).Scan(&remaining)
+				_ = db.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0) AND content IS NOT NULL AND TRIM(content) != '' AND LENGTH(content) > 0 AND unixepoch(created_at) <= ?`, session, since).Scan(&remaining)
 			} else {
-				_ = db.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0)`, session).Scan(&remaining)
+				_ = db.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id = ? AND (archived IS NULL OR archived = 0) AND content IS NOT NULL AND TRIM(content) != '' AND LENGTH(content) > 0`, session).Scan(&remaining)
 			}
 			hasMore = remaining > offset+len(messages)
 		}

@@ -2357,7 +2357,6 @@ var (
 	cErr            = lipgloss.Color("#c86a5c")
 	cGold           = lipgloss.Color("#e8c06a")
 	cBgBar          = lipgloss.Color("#141210")
-	cBgPanel        = lipgloss.Color("#1b1815")
 	cBarIdle        = lipgloss.Color("#6e648a") // visible slate-violet composer bar
 	cGreen          = lipgloss.Color("#7fb08a")
 	cBlue           = lipgloss.Color("#7fa8c9")
@@ -2378,10 +2377,11 @@ var (
 	styleAssistantName = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
 	styleAssistantMeta = lipgloss.NewStyle().Foreground(cFaint)
 	styleErrorCard     = lipgloss.NewStyle().Foreground(cErr).Bold(true)
-	// opencode user bubble: agent-color bar, panel background, plain text.
+	// User bubble: a single purple bar and plain text on transparent ground.
+	// No side bars, no panel background — only the one bar marks the turn.
 	styleUserBar   = lipgloss.NewStyle().Foreground(cAccent)
 	styleUserText  = lipgloss.NewStyle().Foreground(cInk)
-	styleUserPanel = lipgloss.NewStyle().Background(cBgPanel).Padding(0, 1)
+	styleUserPanel = lipgloss.NewStyle().PaddingLeft(1)
 
 	// ─── Ghost palette ───────────────────────────────────────────────
 	// One semantic scheme across composer, menus, modal, and approvals

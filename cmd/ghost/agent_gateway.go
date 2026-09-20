@@ -469,37 +469,40 @@ func (g *gatewayRuntime) LoadHistory(sessionKey string) ([]historyEntry, error) 
 	return g.LoadConversationHistory(sessionKey, conversationBackfillCap)
 }
 
+// legacySessionAliases are pre-unification names for the one shared
+// conversation. The gateway canonicalizes them onto `main`, so requesting
+// them on a live gateway returns the main rows — the reason the CLI must
+// never treat them as separate conversations (doing so triples the
+// transcript).
+var legacySessionAliases = map[string]bool{"mobile:default": true, "cli:default": true}
+
+// canonicalConversationKey mirrors the gateway's canonicalSessionID so the
+// client can tell when two session names are the same conversation.
+func canonicalConversationKey(sessionKey string) string {
+	s := strings.TrimSpace(sessionKey)
+	if s == "" || legacySessionAliases[s] {
+		return MainSessionID
+	}
+	return s
+}
+
 // LoadConversationHistory loads the whole conversation (paged, oldest to
-// newest, capped) plus, as a display-level bridge, any pre-unification
-// legacy rows (mobile:default, cli:default) that the v6 migration has not
-// folded yet — embedded-only devices never run gateway migrations, so
-// their past chats would otherwise vanish. Rows merge chronologically.
+// newest, capped). In the unified model there is exactly one conversation:
+// legacy names canonicalize onto it at the gateway, so they are never
+// fetched as separate threads (that would duplicate every row).
 func (g *gatewayRuntime) LoadConversationHistory(sessionKey string, maxTotal int) ([]historyEntry, error) {
 	if maxTotal <= 0 || maxTotal > conversationBackfillCap {
 		maxTotal = conversationBackfillCap
 	}
-	primary, err := g.loadSessionPages(sessionKey, maxTotal)
+	primary, err := g.loadSessionPages(canonicalConversationKey(sessionKey), maxTotal)
 	if err != nil {
 		return nil, err
 	}
-	all := primary
-	if len(primary) < maxTotal {
-		for _, legacy := range []string{"mobile:default", "cli:default"} {
-			if legacy == sessionKey {
-				continue
-			}
-			rows, err := g.loadSessionPages(legacy, maxTotal-len(all))
-			if err != nil {
-				continue // legacy bridges are best-effort
-			}
-			all = append(all, rows...)
-		}
+	sortByTimestamp(primary)
+	if len(primary) > maxTotal {
+		primary = primary[len(primary)-maxTotal:]
 	}
-	sortByTimestamp(all)
-	if len(all) > maxTotal {
-		all = all[len(all)-maxTotal:]
-	}
-	return all, nil
+	return primary, nil
 }
 
 // loadSessionPages walks one session newest-page-first and returns rows

@@ -359,23 +359,34 @@ func TestGatewayHistoryPages(t *testing.T) {
 // Pre-unification rows (mobile:/cli:default) merge chronologically into
 // the backfill so past chats survive the rename on devices whose gateway
 // never ran the v6 migration (embedded-only use).
-func TestGatewayHistoryMergesLegacy(t *testing.T) {
+// The one conversation is never fetched more than once. Legacy names
+// (mobile:default, cli:default) canonicalize onto main at the gateway, so
+// treating them as separate sessions returned the same rows three times and
+// tripled the transcript. LoadConversationHistory must ask for the
+// canonical conversation only.
+func TestGatewayHistoryDoesNotDuplicateLegacyAliases(t *testing.T) {
 	gw, fg := newTestGateway(t, "")
 	fg.historyBySession = map[string]string{
-		"main":            `{"messages":[{"role":"user","content":"new","timestamp":300}],"total":1}`,
-		"mobile:default":  `{"messages":[{"role":"user","content":"old app","timestamp":100}],"total":1}`,
-		"cli:default":     `{"messages":[{"role":"assistant","content":"old cli","timestamp":200}],"total":1}`,
-		"unrelated:voice": `{"messages":[{"role":"user","content":"nope","timestamp":400}],"total":1}`,
+		// The gateway canonicalizes every legacy name onto main, so all
+		// three names resolve to this one payload.
+		"main": `{"messages":[{"role":"user","content":"hello","timestamp":100},{"role":"assistant","content":"hi","timestamp":200}],"total":2}`,
 	}
 	hist, err := gw.LoadConversationHistory("main", 20)
 	if err != nil {
-		t.Fatalf("merge must load: %v", err)
+		t.Fatalf("load must succeed: %v", err)
 	}
-	if len(hist) != 3 {
-		t.Fatalf("expected 3 merged rows, got %+v", hist)
+	if len(hist) != 2 {
+		t.Fatalf("the conversation must not be duplicated, expected 2 rows, got %+v", hist)
 	}
-	if hist[0].Content != "old app" || hist[1].Content != "old cli" || hist[2].Content != "new" {
-		t.Errorf("rows must merge chronologically, got %+v", hist)
+
+	// Asking for a legacy alias still resolves to the one conversation,
+	// and still yields it exactly once.
+	hist2, err := gw.LoadConversationHistory("mobile:default", 20)
+	if err != nil {
+		t.Fatalf("legacy load must succeed: %v", err)
+	}
+	if len(hist2) != 2 {
+		t.Fatalf("a legacy alias must resolve to the one conversation (2 rows), got %+v", hist2)
 	}
 }
 
