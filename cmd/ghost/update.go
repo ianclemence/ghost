@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -69,18 +68,21 @@ func updateCmd() {
 			fmt.Println("1. Pulling latest changes...")
 			cmd := exec.Command("git", "-C", ghostDir, "pull")
 			var out bytes.Buffer
-			cmd.Stdout = io.MultiWriter(os.Stdout, &out)
+			cmd.Stdout = &out
 			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {
 				return err
 			}
 			// No-change updates used to snapshot, stop, rebuild, and
 			// restart every service for zero benefit. Exit here instead;
-			// --force still redeploys on demand.
+			// --force still redeploys on demand. Print exactly one
+			// verdict line: git's own "Already up to date." is swallowed
+			// so it never appears twice.
 			if !force && strings.Contains(out.String(), "Already up to date.") {
 				fmt.Println("Already up to date — nothing to deploy. Use --force to redeploy anyway.")
 				os.Exit(0)
 			}
+			fmt.Print(out.String())
 			return nil
 		},
 		Plan: func() error {

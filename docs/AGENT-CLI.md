@@ -87,10 +87,19 @@ debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
   violet bold headings (h1 underlined), orange **bold**, sand *italics*
   and quotes, green code with no background, peach bullets, cyan ordered
   numbers and link text (underlined), green checked tasks.
-- **Autocomplete:** opencode rules — `↑/↓` moves, `Enter` accepts the
-  highlighted completion into the editor (never runs half-typed text),
-  `Tab` completes, `Esc` hides. Bare `/model` opens the centered model
+- **Autocomplete:** opencode rules — `↑/↓` moves (the list scrolls with
+  `↑/↓ more` edges past 6 rows), `Enter` completes the highlighted
+  command and runs it, `Tab` completes without running (for adding
+  arguments), `Esc` hides. Bare `/model` opens the centered model
   picker (`↑↓` move, type to filter, `Enter` picks, `Esc` closes).
+- **Ghost palette** (one semantic scheme across composer, menus, modal,
+  and approvals — reverse-engineered from pi's `DynamicBorder` selectors
+  and opencode's `dialog.select`): violet = brand and selection
+  (composer bar while working, dark-on-violet selected rows, modal
+  title and border), gold = approvals and warnings only, green =
+  success and done, red = errors, blue = info and links, dim = hints
+  and metadata. The `/` menu and the model picker share the same
+  selected-row language as the approval cursor.
 - **Permissions:** opencode's inline block — `┃ △ Permission required`,
   title, risk note, `[1] allow once [2] always allow [3] deny` with
   `←→`+`Enter` or direct `1/2/3` keys. `Esc` leaves the request pending.

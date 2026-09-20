@@ -907,7 +907,7 @@ func (m *agentTUI) renderModal() string {
 		end = len(items)
 	}
 	var b strings.Builder
-	title := styleApprovalTitle.Render(m.modal.title)
+	title := styleModalTitle.Render(m.modal.title)
 	esc := styleNotice.Render("esc")
 	gap := m.contentWidth() - lipgloss.Width(m.modal.title) - lipgloss.Width("esc")
 	if gap < 1 {
@@ -1862,21 +1862,26 @@ func shortSession(s string) string {
 
 // ─── prompt composer (opencode-faithful) ───────────────────────────────
 // opencode's composer is NOT a full box: it is a panel with a single left
-// `┃` border tinted with the agent color (accent while working, faint
-// idle), no `>`/`❯` prefix, and a rotating `Ask anything… "{example}"`
-// placeholder. The working status lives in the below-box status row, not
-// in the composer chrome.
+// `┃` border tinted with the agent color (Ghost violet, faint at idle),
+// no `>`/`❯` prefix, and a rotating `Ask anything… "{example}"`
+// placeholder. Rows sit on the panel background so the composer reads as
+// one defined area. The working status lives in the below-box status row.
 func (m *agentTUI) promptBox() string {
 	bar := stylePromptBar
 	if m.working {
 		bar = stylePromptBarActive
 	}
+	innerW := m.inputWidth()
 	var b strings.Builder
 	for i, ln := range strings.Split(m.input.View(), "\n") {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString(bar.Render("┃") + " " + ln)
+		pad := innerW - lipgloss.Width(ln)
+		if pad < 0 {
+			pad = 0
+		}
+		b.WriteString(stylePromptPanel.Render(bar.Render("┃") + " " + ln + strings.Repeat(" ", pad)))
 	}
 	return b.String()
 }
@@ -1903,23 +1908,32 @@ func (m *agentTUI) paletteWindow() (items []paletteItem, off int, moreAbove, mor
 
 func (m *agentTUI) paletteView() string {
 	items, off, moreAbove, moreBelow := m.paletteWindow()
+	fieldW := m.contentWidth() - 2 // bar + space
+	if fieldW < 10 {
+		fieldW = 10
+	}
 	var b strings.Builder
-	if moreAbove {
-		b.WriteString(styleMenuBar.Render("┃") + " " + stylePaletteRow.Render("↑ more"))
+	put := func(bar, row string) {
+		pad := fieldW - lipgloss.Width(row)
+		if pad < 0 {
+			pad = 0
+		}
+		b.WriteString(bar + " " + row + strings.Repeat(" ", pad))
 		b.WriteString("\n")
+	}
+	if moreAbove {
+		put(styleMenuBar.Render("┃"), stylePaletteRow.Render("↑ more"))
 	}
 	for i, it := range items {
-		row := fmt.Sprintf("/%-10s %s", it.name, it.desc)
+		row := cellTruncate(fmt.Sprintf("/%-10s %s", it.name, it.desc), fieldW-2)
 		if off+i == m.paletteSel {
-			b.WriteString(styleMenuBar.Render("┃") + " " + stylePaletteSel.Render(" "+row+" "))
+			put(styleMenuBar.Render("┃"), stylePaletteSel.Render(" "+row+" "))
 		} else {
-			b.WriteString(styleMenuBar.Render("┃") + " " + stylePaletteRow.Render(row))
+			put(styleMenuBar.Render("┃"), stylePaletteRow.Render(row))
 		}
-		b.WriteString("\n")
 	}
 	if moreBelow {
-		b.WriteString(styleMenuBar.Render("┃") + " " + stylePaletteRow.Render("↓ more"))
-		b.WriteString("\n")
+		put(styleMenuBar.Render("┃"), stylePaletteRow.Render("↓ more"))
 	}
 	return styleMenu.Render(strings.TrimRight(b.String(), "\n"))
 }
@@ -2091,7 +2105,15 @@ var (
 	styleMenu       = lipgloss.NewStyle().Background(cBgPanel)
 	styleMenuBar    = lipgloss.NewStyle().Foreground(cBorder).Background(cBgPanel)
 	stylePaletteRow = lipgloss.NewStyle().Foreground(cMuted).Background(cBgPanel)
-	stylePaletteSel = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Background(cSelBg).Bold(true)
+	// ─── Ghost palette ───────────────────────────────────────────────
+	// One semantic scheme across composer, menus, modal, and approvals
+	// (terminal-ui skill: ux-color-semantics), reverse-engineered from
+	// pi's DynamicBorder selectors and opencode's dialog.select:
+	// violet = brand/selection, gold = approvals/warnings only,
+	// green = success/done, red = errors, blue = info/links,
+	// dim = hints/meta. Selected rows are dark-on-violet blocks, the
+	// same language as the approval cursor.
+	stylePaletteSel = lipgloss.NewStyle().Foreground(lipgloss.Color("#141210")).Background(cAccent).Bold(true)
 
 	// Footer is transparent dim text (opencode muted footer) — no bar
 	// background, so it sits on the terminal instead of a solid block.
@@ -2108,7 +2130,9 @@ var (
 	// agent-accent while working, gold for approvals.
 	stylePromptBar       = lipgloss.NewStyle().Foreground(cBorder)
 	stylePromptBarActive = lipgloss.NewStyle().Foreground(cAccent)
+	stylePromptPanel     = lipgloss.NewStyle().Background(cBgPanel)
 	styleApprovalBar     = lipgloss.NewStyle().Foreground(cGold)
+	styleModalTitle      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleModalBox        = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cAccent).Background(cBgPanel).Padding(0, 1)
 	styleApprovalTitle   = lipgloss.NewStyle().Foreground(cGold).Bold(true)
 	styleApprovalKeys    = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc"))
