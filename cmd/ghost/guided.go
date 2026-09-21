@@ -295,6 +295,6 @@ func runGuided(o guidedOpts) error {
 	}
 
 	fmt.Fprintf(o.Stdout, "\nGhost is ready (%s, model %s).\n", st.Provider, st.Model)
-	fmt.Fprintln(o.Stdout, "Chat: ghost agent -m \"Hello!\"   Health: ghost status")
+	fmt.Fprintln(o.Stdout, "Chat: ghost -m \"Hello!\"   Health: ghost status")
 	return mark("done")
 }

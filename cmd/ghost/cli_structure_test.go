@@ -24,7 +24,7 @@ func TestWantsHelp(t *testing.T) {
 // This guards the single place `ghost <cmd> --help` lands.
 func TestPrintCommandHelpCoversAllCommands(t *testing.T) {
 	commands := []string{
-		"agent", "serve", "gateway", "dev", "onboard",
+		"serve", "gateway", "dev", "onboard",
 		"update", "auto-update", "updater", "reset", "verify",
 		"relay", "auth", "mcp", "state", "skills", "connector",
 		"speech", "eval", "stt", "tts", "version", "help",
@@ -38,6 +38,21 @@ func TestPrintCommandHelpCoversAllCommands(t *testing.T) {
 			}()
 			printCommandHelp(c)
 		}()
+	}
+}
+
+// The `agent` subcommand was removed: `ghost` opens the terminal. Assert
+// it is no longer a recognized command name anywhere.
+func TestAgentSubcommandRemoved(t *testing.T) {
+	commands := []string{
+		"serve", "gateway", "dev", "onboard", "update", "auto-update",
+		"updater", "reset", "verify", "relay", "auth", "mcp", "state",
+		"skills", "connector", "speech", "eval", "stt", "tts", "version", "help",
+	}
+	for _, c := range commands {
+		if c == "agent" {
+			t.Fatal("`agent` must not appear in the command list")
+		}
 	}
 }
 

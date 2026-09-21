@@ -256,23 +256,26 @@ func main() {
 		_ = os.Setenv("GHOST_CHANNELS_TELEGRAM_ALLOW_FROM", val)
 	}
 
-	// `ghost` with no subcommand opens the terminal chat — the primary
-	// entry point, like `pi` and `opencode`. Piped/CI use (no TTY) still
-	// gets help rather than a hanging prompt; `ghost agent` remains an
-	// explicit alias.
-	if len(os.Args) < 2 {
-		// A real TTY (not /dev/null, not a pipe) opens the chat.
-		if !nontty.Interactive() || !term.IsTerminal(uintptr(os.Stdin.Fd())) {
+	// `ghost` opens the terminal chat — the primary entry point, like `pi`
+	// and `opencode`. Flags (`ghost -m "..."`, `--debug-log`, …) belong to
+	// the chat too. `--help`/`-h` and a non-TTY (pipe/CI) get help instead
+	// of a hanging prompt.
+	if len(os.Args) < 2 || strings.HasPrefix(os.Args[1], "-") {
+		if len(os.Args) >= 2 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
 			printHelp()
-			os.Exit(1)
+			return
+		}
+		if len(os.Args) == 1 && (!nontty.Interactive() || !term.IsTerminal(uintptr(os.Stdin.Fd()))) {
+			printHelp()
+			return
 		}
 		applyInstalledConfig()
 		agentCmd()
 		return
 	}
 
-	// `ghost help` / `ghost --help` / `ghost -h` print help.
-	if a := os.Args[1]; a == "help" || a == "--help" || a == "-h" {
+	// `ghost help` prints help.
+	if os.Args[1] == "help" {
 		printHelp()
 		return
 	}
@@ -296,8 +299,8 @@ func main() {
 	}
 
 	// Uniform --help: `ghost <command> --help` must print usage and NEVER run
-	// the command. This guards the dangerous/long-running ones (agent, serve,
-	// dev, update, reset, onboard) and any command without bespoke help.
+	// the command. This guards the dangerous/long-running ones (serve, dev,
+	// update, reset, onboard) and any command without bespoke help.
 	if len(os.Args) > 2 && wantsHelp(os.Args[2:]) {
 		printCommandHelp(command)
 		return
@@ -306,8 +309,6 @@ func main() {
 	switch command {
 	case "onboard":
 		onboard()
-	case "agent":
-		agentCmd()
 	case "serve", "gateway":
 		gatewayCmd()
 	case "dev":
@@ -432,6 +433,10 @@ func main() {
 		printVersion()
 	case "help", "--help", "-h":
 		printHelp()
+	case "agent":
+		// The `agent` subcommand was removed: `ghost` opens the terminal.
+		fmt.Println("`ghost agent` was removed — run `ghost` to open the terminal.")
+		os.Exit(1)
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printHelp()
@@ -444,14 +449,6 @@ func main() {
 // short explanation. It is the single place `ghost <cmd> --help` resolves.
 func printCommandHelp(command string) {
 	switch command {
-	case "agent":
-		fmt.Println("Usage: ghost [-m <message>] [-s <session>] [--debug] [--debug-log <file>]")
-		fmt.Println("Chat with Ghost in the terminal. Run `ghost` for interactive mode.")
-		fmt.Println("`ghost agent` is an alias for the same command.")
-		fmt.Println("Default session is main — the same conversation the app shows.")
-		fmt.Println("When the gateway daemon runs, the CLI is its client (shared turns,")
-		fmt.Println("approvals, memory); otherwise it runs an offline embedded loop.")
-		fmt.Println("In interactive mode logs go to --debug-log (or are hidden); stderr stays clean for the TUI.")
 	case "serve", "gateway":
 		fmt.Println("Usage: ghost serve [--api-only] [--debug]")
 		fmt.Println("Start the Ghost daemon (API + channels + scheduler + heartbeat).")
@@ -517,8 +514,7 @@ func printHelp() {
 	fmt.Println("Usage: ghost [command] [args]")
 	fmt.Println()
 	fmt.Println("Talk")
-	fmt.Println("  ghost       Chat with Ghost (same as `ghost agent`)")
-	fmt.Println("  agent       Chat with Ghost directly (alias)")
+	fmt.Println("  ghost       Chat with Ghost in the terminal")
 	fmt.Println()
 	fmt.Println("Run")
 	fmt.Println("  serve       Start the Ghost daemon (API + channels + scheduler + heartbeat)")
@@ -628,7 +624,7 @@ func onboard() {
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Add your API key to", configPath)
 	fmt.Println("     Get one at: https://openrouter.ai/keys")
-	fmt.Println("  2. Chat: ghost agent -m \"Hello!\"")
+	fmt.Println("  2. Chat: ghost -m \"Hello!\"")
 }
 
 func copyEmbeddedToTarget(targetDir string) error {
@@ -916,10 +912,10 @@ func agentCmd() {
 	message := ""
 	sessionKey := MainSessionID
 	debugLog := ""
-	// `ghost` (no subcommand) reaches agentCmd too, so guard the slice.
+	// `ghost` is the command; its flags live at os.Args[1:].
 	var args []string
-	if len(os.Args) > 2 {
-		args = os.Args[2:]
+	if len(os.Args) > 1 {
+		args = os.Args[1:]
 	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -1018,7 +1014,7 @@ func agentCmd() {
 	} else {
 		// robust-tty-detection: never hang on a swallowed prompt in pipes
 		// or CI — fail early and name the non-interactive flag.
-		if err := nontty.RequireInteractive("interactive chat", "`ghost agent -m \"...\"`"); err != nil {
+		if err := nontty.RequireInteractive("interactive chat", "`ghost -m \"...\"`"); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
@@ -1026,7 +1022,7 @@ func agentCmd() {
 	}
 }
 
-// agentGatewayCmd runs `ghost agent` against the live daemon: one-shot
+// agentGatewayCmd runs the terminal chat against the live daemon: one-shot
 // turns print and exit; interactive mode backfills the shared transcript
 // first so the terminal opens on the same conversation the app shows.
 // The reset stop/start dance is embedded-mode only — remotely the daemon
@@ -1041,7 +1037,7 @@ func agentGatewayCmd(gw *gatewayRuntime, message, sessionKey string) {
 		fmt.Printf("\n%s %s\n", logo, resp)
 		return
 	}
-	if err := nontty.RequireInteractive("interactive chat", "`ghost agent -m \"...\"`"); err != nil {
+	if err := nontty.RequireInteractive("interactive chat", "`ghost -m \"...\"`"); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
@@ -2397,7 +2393,7 @@ func isApplianceOpsCommand(command string) bool {
 // commands whose config MUST match the console and the daemon.
 func isInteractiveCommand(command string) bool {
 	switch command {
-	case "agent", "serve", "gateway", "model", "golden", "benchmark":
+	case "serve", "gateway", "model", "golden", "benchmark":
 		return true
 	}
 	return false
@@ -2636,7 +2632,7 @@ func printProviderSetupHelp(cfg *config.Config, err error) {
 		fmt.Fprintln(os.Stderr, "  note: this is not the installed Ghost's config.")
 		if shadow.InstalledHasSecret {
 			fmt.Fprintf(os.Stderr, "  the installed Ghost at %s has a key for %s.\n", shadow.InstalledPath, provider)
-			fmt.Fprintf(os.Stderr, "  To use it here:\n    GHOST_CONFIG_DIR=%s ghost agent\n", filepath.Dir(shadow.InstalledPath))
+			fmt.Fprintf(os.Stderr, "  To use it here:\n    GHOST_CONFIG_DIR=%s ghost\n", filepath.Dir(shadow.InstalledPath))
 		} else {
 			fmt.Fprintf(os.Stderr, "  installed Ghost config: %s\n", shadow.InstalledPath)
 		}

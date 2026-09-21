@@ -3,7 +3,7 @@ package main
 // Ghost agent ↔ gateway client.
 //
 // Option 2 ("one conversation"): when the local gateway daemon is
-// reachable, `ghost agent` stops running its own embedded AgentLoop and
+// reachable, the terminal chat stops running its own embedded AgentLoop and
 // becomes a thin client of the gateway — the same HTTP+SSE surface the
 // mobile app uses. Same session store, same permission broker, same turn
 // lifecycle, live rather than polled. When the daemon is down, the CLI

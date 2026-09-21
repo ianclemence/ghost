@@ -1,7 +1,7 @@
 # Ghost terminal (interactive)
 
 Run `ghost` to chat in the terminal — Ghost's daily surface, like `pi` or
-`opencode`. (`ghost agent` is the same command.) Talk to Ghost, watch it work,
+`opencode`. Talk to Ghost, watch it work,
 approve what it asks, and see where each answer came from. The behavior,
 commands, and status are Ghost's own — trust, memory, routines, and provenance
 are first-class here.
@@ -267,7 +267,7 @@ provenance; the conversation is one.
 - Starting the TUI backfills the latest shared transcript (merging any
   pre-migration legacy rows chronologically), so it opens where the app
   left off — the welcome card only appears for a genuinely new `main`.
-- When the gateway daemon runs, `ghost agent` is its thin client over the
+- When the gateway daemon runs, `ghost` is its thin client over the
   same HTTP+SSE surface as the app: same turns, same permission broker
   (approvals raised anywhere answer anywhere), same model and contexts,
   questions answerable in-band. Starting the TUI backfills the latest
