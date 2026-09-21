@@ -231,6 +231,58 @@ func VerifyEd25519(path string, pubHex, sigHex string) error {
 	return nil
 }
 
+// BaseVersion strips any git suffix ("-1-gabc1234", "-dirty") from a version
+// string, returning just the leading x.y.z. A marker recorded from a dev build
+// then still matches the corresponding changelog entry.
+func BaseVersion(s string) string {
+	s = NormalizeVersion(s)
+	if maj, min, pat, ok := parseSemver(s); ok {
+		return fmt.Sprintf("%d.%d.%d", maj, min, pat)
+	}
+	return s
+}
+
+// ChangelogEntry is one versioned section of a CHANGELOG file.
+type ChangelogEntry struct {
+	Version string
+	Body    string
+}
+
+var changelogHeaderRe = regexp.MustCompile(`(?m)^##\s+\[?v?(\d+\.\d+\.\d+)\]?.*$`)
+
+// ParseChangelog splits a CHANGELOG.md into versioned entries, newest first.
+func ParseChangelog(md string) []ChangelogEntry {
+	idx := changelogHeaderRe.FindAllStringSubmatchIndex(md, -1)
+	var out []ChangelogEntry
+	for i, loc := range idx {
+		ver := md[loc[2]:loc[3]]
+		start := loc[1]
+		end := len(md)
+		if i+1 < len(idx) {
+			end = idx[i+1][0]
+		}
+		out = append(out, ChangelogEntry{Version: ver, Body: strings.TrimSpace(md[start:end])})
+	}
+	return out
+}
+
+// NewEntries returns the entries newer than lastSeen (exclusive), newest
+// first, comparing by base version.
+func NewEntries(entries []ChangelogEntry, lastSeen string) []ChangelogEntry {
+	if strings.TrimSpace(lastSeen) == "" {
+		return entries
+	}
+	base := BaseVersion(lastSeen)
+	var out []ChangelogEntry
+	for _, e := range entries {
+		if e.Version == base {
+			break
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 // AtomicInstall installs src as dst via a sibling .new file and a rename, so a
 // running binary is never partially overwritten. srcFile's mode is preserved as
 // executable.

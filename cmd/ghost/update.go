@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/appliance"
+	"github.com/ianclemence/ghost/pkg/changelog"
 )
 
 // updateCmd deploys a Ghost release. It runs as the invoking user and only
@@ -44,7 +45,7 @@ func updateCmd() {
 	}
 
 	if notes {
-		printGhostNotes()
+		printGhostChangelog()
 		return
 	}
 
@@ -98,6 +99,7 @@ func updateReleaseChannel(scope appliance.ScopePaths, dryRun, force bool) {
 	fmt.Printf("Installed: %s\nAvailable: %s\n", current, target)
 	if !force && !appliance.IsNewer(target, current) {
 		fmt.Println("Already current.")
+		printGhostNotes(current)
 		return
 	}
 	if dryRun {
@@ -114,6 +116,7 @@ func updateReleaseChannel(scope appliance.ScopePaths, dryRun, force bool) {
 		if err := installReleaseAsset(scope, rel, asset); err != nil {
 			return
 		}
+		printNotesFor(target)
 		return
 	}
 
@@ -208,6 +211,7 @@ func installReleaseAsset(scope appliance.ScopePaths, rel *appliance.Release, ass
 	}
 	fmt.Printf("  Installed %s\n", target)
 	restartScope(scope)
+	_ = changelog.MarkSeen(ghostDataDir(), rel.Version)
 	fmt.Printf("Updated %s → %s\n", ghostVersion(), rel.Version)
 	return nil
 }
@@ -316,16 +320,57 @@ func ghostVersion() string {
 }
 
 func ghostCheck(scope appliance.ScopePaths) {
-	ghostDir := findGhostDir()
-	target := gitTagAtCheckout(ghostDir)
 	current := ghostVersion()
-	fmt.Printf("Installed: %s\n", current)
-	fmt.Printf("Available: %s\n", target)
-	fmt.Printf("Scope: %s (%s, root: %v)\n", scope.Scope, scope.BinDir, scope.NeedsRoot())
-	if target != "" && target == current {
-		fmt.Println("Already current.")
+	target := ""
+	if rel, err := resolveRelease(offline()); err == nil {
+		target = rel.Version
 	} else {
-		fmt.Println("Run `ghost update` to deploy.")
+		target = gitTagAtCheckout(findGhostDir())
+	}
+	fmt.Printf("Installed: %s\n", current)
+	if target != "" {
+		fmt.Printf("Available: %s\n", target)
+	}
+	fmt.Printf("Scope: %s (%s, root: %v)\n", scope.Scope, scope.BinDir, scope.NeedsRoot())
+	if target == "" {
+		fmt.Println("No release channel reachable; run `ghost update --channel dev` to build locally.")
+		return
+	}
+	if !appliance.IsNewer(target, current) {
+		fmt.Println("Already current.")
+		printGhostNotes(current)
+		return
+	}
+	fmt.Println("Run `ghost update` to deploy.")
+}
+
+// ghostDataDir is where the changelog marker lives (the install root).
+func ghostDataDir() string {
+	if v := os.Getenv("GHOST_DATA_DIR"); v != "" {
+		return v
+	}
+	if v := os.Getenv("GHOST_DIR"); v != "" {
+		return v
+	}
+	if _, err := os.Stat(appliance.DefaultGhostDir); err == nil {
+		return appliance.DefaultGhostDir
+	}
+	h, _ := os.UserHomeDir()
+	return filepath.Join(h, ".local", "share", "ghost")
+}
+
+// printGhostNotes prints changelog entries newer than the given version (or
+// nothing on a fresh install, which just records the current version).
+func printGhostNotes(version string) {
+	for _, e := range changelog.NewSince(ghostDataDir(), version) {
+		fmt.Printf("\nWhat's new in %s:\n\n%s\n", e.Version, e.Body)
+	}
+}
+
+// printNotesFor prints the notes for an exact version after an update.
+func printNotesFor(version string) {
+	if body := changelog.ForVersion(version); body != "" {
+		fmt.Printf("\nWhat's new in %s:\n\n%s\n", version, body)
 	}
 }
 
@@ -345,9 +390,9 @@ func homeDir() string {
 	return h
 }
 
-func printGhostNotes() {
-	fmt.Println("Ghost changelog is maintained in the repository docs; see docs/ and the release notes at")
-	fmt.Println("  https://github.com/ianclemence/ghost/releases")
+// printGhostChangelog prints the full embedded changelog (ghost update --notes).
+func printGhostChangelog() {
+	fmt.Println(changelog.Raw())
 }
 
 // buildAndDeploy runs the crash-safe update sequence for the detected scope.
