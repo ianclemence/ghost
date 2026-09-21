@@ -240,6 +240,13 @@ func stageEntry(staging map[string]string, stagingDir string, m *Manifest, logic
 func stageFromDisk(staging map[string]string, stagingDir string, m *Manifest, logical string, cat Category, d os.DirEntry, abs string) error {
 	data, err := os.ReadFile(abs)
 	if err != nil {
+		// A snapshot is best-effort. A file the updater cannot read (e.g. one
+		// written by a root-run daemon while the update runs as the owner)
+		// must not abort the recovery point or block the service update.
+		if os.IsPermission(err) {
+			m.Unreadable = append(m.Unreadable, logical)
+			return nil
+		}
 		return fmt.Errorf("read %s: %w", abs, err)
 	}
 	info, err := d.Info()

@@ -67,6 +67,11 @@ type Manifest struct {
 	Files             []FileEntry `json:"files"`
 	Rebound           []string    `json:"rebound,omitempty"`
 	SecretsExcluded   []string    `json:"secrets_excluded,omitempty"`
+	// Unreadable lists files the snapshot could not read (bad permissions,
+	// typically a file the root-run daemon wrote). A snapshot is taken
+	// best-effort: one unreadable file must not block a recovery point or a
+	// service update.
+	Unreadable []string `json:"unreadable,omitempty"`
 }
 
 // Validate checks that a manifest is a well-formed Ghost State contract of a
