@@ -433,10 +433,6 @@ func main() {
 		printVersion()
 	case "help", "--help", "-h":
 		printHelp()
-	case "agent":
-		// The `agent` subcommand was removed: `ghost` opens the terminal.
-		fmt.Println("`ghost agent` was removed — run `ghost` to open the terminal.")
-		os.Exit(1)
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printHelp()
