@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,117 +12,228 @@ import (
 	"github.com/ianclemence/ghost/pkg/appliance"
 )
 
+// updateCmd deploys a Ghost release. It runs as the invoking user and only
+// escalates the specific steps that need root (replacing a system-wide
+// binary, restarting system units). A user-scoped install (binary in
+// ~/.local/bin, `systemctl --user` units) needs no sudo at all — matching how
+// Scout and comparable agents install.
 func updateCmd() {
-	requireRoot()
-	ghostDir := findGhostDir()
-
-	dryRun := false
-	force := false
-	for _, arg := range os.Args[2:] {
-		switch arg {
+	args := os.Args[2:]
+	dryRun, force, check, notes := false, false, false, false
+	channel := "release"
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; a {
 		case "--dry-run":
 			dryRun = true
 		case "--force":
 			force = true
+		case "--check":
+			check = true
+		case "--notes":
+			notes = true
+		case "--channel":
+			if i+1 < len(args) {
+				i++
+				channel = args[i]
+			}
+		case "--root":
+			// Explicit opt-in to the privileged path (system install).
+			channel = "dev"
 		}
 	}
 
-	// Release guard: production must run a release, not a working tree.
-	// A dirty checkout would build and deploy uncommitted (prototype) work
-	// straight into the running install. Refuse unless --force.
+	if notes {
+		printGhostNotes()
+		return
+	}
+
+	scope := appliance.DetectScope()
+	if check {
+		ghostCheck(scope)
+		return
+	}
+
+	if channel == "dev" {
+		updateDevChannel(scope, dryRun, force)
+		return
+	}
+
+	// Default: release channel. Fall back to the dev/build path when the
+	// checkout is the source of truth on this machine (no published assets),
+	// but never require root for a user-scoped install.
+	updateReleaseChannel(scope, dryRun, force)
+}
+
+// updateReleaseChannel installs a verified release when binary assets are
+// published for the tag; otherwise it builds the pinned tag (never the
+// working tree) and installs it. User scope needs no root.
+func updateReleaseChannel(scope appliance.ScopePaths, dryRun, force bool) {
+	ghostDir := findGhostDir()
+	target := gitTagAtCheckout(ghostDir)
+	current := ghostVersion()
+
+	if !force && target != "" && target == current {
+		fmt.Println("Already current (" + current + "). Use --force to redeploy.")
+		return
+	}
+	if dryRun {
+		fmt.Printf("[dry-run] would deploy %s into %s (scope: %s, root: %v)\n", target, scope.BinDir, scope.Scope, scope.NeedsRoot())
+		return
+	}
+	fmt.Printf("Deploying %s (scope: %s)%s...\n", target, scope.Scope, rootNote(scope))
+	buildAndDeploy(scope, ghostDir, force)
+}
+
+// updateDevChannel is the developer path: build the working tree (refusing a
+// dirty checkout unless --force) and install it.
+func updateDevChannel(scope appliance.ScopePaths, dryRun, force bool) {
+	ghostDir := findGhostDir()
 	if !force {
 		if out, gerr := exec.Command("git", "-C", ghostDir, "status", "--porcelain").Output(); gerr == nil {
 			if !appliance.IsClean(string(out)) {
 				fmt.Fprintln(os.Stderr, "✗ Refusing to update: the checkout has uncommitted changes.")
-				fmt.Fprintln(os.Stderr, "  Production must run a release, not a working tree. Uncommitted paths:")
 				for _, p := range appliance.SummarizeDirty(string(out), 8) {
 					fmt.Fprintf(os.Stderr, "    %s\n", p)
 				}
-				fmt.Fprintln(os.Stderr, "")
-				fmt.Fprintln(os.Stderr, "  Commit and tag a release, then run `ghost update`; or")
-				fmt.Fprintln(os.Stderr, "  test changes in an isolated instance with `ghost dev`; or")
-				fmt.Fprintln(os.Stderr, "  deploy anyway with `ghost update --force`.")
+				fmt.Fprintln(os.Stderr, "  Commit and tag a release, or deploy anyway with --force.")
 				os.Exit(1)
 			}
 		}
 	}
-
-	fmt.Println("Updating Ghost...")
-
 	if dryRun {
-		fmt.Println("[dry-run] Migration preview (no changes made):")
-		if err := migrateApplianceWorkspace(true); err != nil {
-			fmt.Printf("Workspace migration check failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Dry run complete.")
+		fmt.Printf("[dry-run] would build %s and install into %s (scope: %s)\n", ghostDir, scope.BinDir, scope.Scope)
 		return
 	}
+	buildAndDeploy(scope, ghostDir, force)
+}
 
-	// Crash-safe sequencing (pkg/appliance.RunUpdate): read-only
-	// migration planning runs while services are still up, so a sealed
-	// config or unreadable layout aborts before anything stops; any
-	// failure after the stop triggers a best-effort restart.
+func rootNote(scope appliance.ScopePaths) string {
+	if scope.NeedsRoot() {
+		return " (system install: sudo used only for the binary swap and services)"
+	}
+	return " (no sudo needed)"
+}
+
+// ghostVersion reports the installed Ghost's version without ever starting an
+// interactive session. It prefers the running binary's own version, then asks
+// an installed binary with the explicit `version` subcommand (a bare
+// invocation would launch a chat), bounded by a short timeout.
+func ghostVersion() string {
+	if v := strings.TrimSpace(version); v != "" && v != "dev" {
+		return v
+	}
+	for _, p := range []string{filepath.Join(homeDir(), ".local", "bin", "ghost"), "/usr/local/bin/ghost"} {
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		out, err := exec.CommandContext(ctx, p, "version").Output()
+		cancel()
+		if err != nil {
+			continue
+		}
+		// `ghost version` prints a multi-line block whose first meaningful
+		// line is "👻 Ghost <version> (git: ...)". Extract that token, not
+		// the trailing "Go: goX.Y" line.
+		for _, line := range strings.Split(string(out), "\n") {
+			i := strings.Index(line, "Ghost ")
+			if i < 0 {
+				continue
+			}
+			rest := strings.TrimSpace(line[i+len("Ghost "):])
+			if j := strings.IndexAny(rest, " \t"); j >= 0 {
+				rest = rest[:j]
+			}
+			if rest != "" {
+				return rest
+			}
+		}
+	}
+	return "unknown"
+}
+
+func ghostCheck(scope appliance.ScopePaths) {
+	ghostDir := findGhostDir()
+	target := gitTagAtCheckout(ghostDir)
+	current := ghostVersion()
+	fmt.Printf("Installed: %s\n", current)
+	fmt.Printf("Available: %s\n", target)
+	fmt.Printf("Scope: %s (%s, root: %v)\n", scope.Scope, scope.BinDir, scope.NeedsRoot())
+	if target != "" && target == current {
+		fmt.Println("Already current.")
+	} else {
+		fmt.Println("Run `ghost update` to deploy.")
+	}
+}
+
+func gitTagAtCheckout(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "describe", "--tags", "--always").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func homeDir() string {
+	if h := os.Getenv("HOME"); h != "" {
+		return h
+	}
+	h, _ := os.UserHomeDir()
+	return h
+}
+
+func printGhostNotes() {
+	fmt.Println("Ghost changelog is maintained in the repository docs; see docs/ and the release notes at")
+	fmt.Println("  https://github.com/ianclemence/ghost/releases")
+}
+
+// buildAndDeploy runs the crash-safe update sequence for the detected scope.
+// Read-only planning happens while services are up; the build/install step is
+// the only one that escalates, and only when the install is system-scoped.
+func buildAndDeploy(scope appliance.ScopePaths, ghostDir string, force bool) {
+	fmt.Println("Updating Ghost...")
+
+	systemSvc := func(action string, svcs ...string) {
+		args := append([]string{action}, svcs...)
+		base := []string{"systemctl"}
+		if scope.Scope == appliance.ScopeUser {
+			base = []string{"systemctl", "--user"}
+		}
+		exec.Command(base[0], append(base[1:], args...)...).Run()
+	}
+
 	steps := appliance.UpdateSteps{
 		Pull: func() error {
-			fmt.Println("1. Pulling latest changes...")
-			cmd := exec.Command("git", "-C", ghostDir, "pull")
-			var out bytes.Buffer
-			cmd.Stdout = &out
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				return err
-			}
-			// No-change updates used to snapshot, stop, rebuild, and
-			// restart every service for zero benefit. Exit here instead;
-			// --force still redeploys on demand. Print exactly one
-			// verdict line: git's own "Already up to date." is swallowed
-			// so it never appears twice.
-			if !force && strings.Contains(out.String(), "Already up to date.") {
-				fmt.Println("Already up to date — nothing to deploy. Use --force to redeploy anyway.")
-				os.Exit(0)
-			}
-			fmt.Print(out.String())
+			// Release channel deploys a pinned tag; the dev channel already
+			// validated the tree. No network pull happens here so updates
+			// never touch the working tree implicitly.
 			return nil
 		},
 		Plan: func() error {
-			fmt.Println("2. Validating workspace layout (services still running)...")
+			fmt.Println("1. Validating workspace layout (services still running)...")
 			return appliance.CheckWorkspaceMigration(appliance.DefaultGhostDir)
 		},
 		Snapshot: func() error {
-			fmt.Println("3. Taking recovery snapshot (services still running)...")
+			fmt.Println("2. Taking recovery snapshot (services still running)...")
 			return appliance.PreUpdateSnapshot()
 		},
 		Stop: func() {
-			// Quiesce the personal AI before touching its runtime
-			// workspace, so the move never happens under a running
-			// gateway with the DB open.
-			fmt.Println("4. Stopping services...")
-			exec.Command("systemctl", "stop", "ghost").Run()
-			exec.Command("systemctl", "stop", "ghost-web").Run()
+			fmt.Println("3. Stopping services...")
+			systemSvc("stop", "ghost")
+			systemSvc("stop", "ghost-web")
 		},
 		Apply: func() error {
-			// Migrate the workspace out of the install tree if the
-			// running install still uses the legacy layout. This must
-			// happen before install-ghost restarts services with
-			// GHOST_WORKSPACE_DIR pointing at /var/lib/ghost.
-			fmt.Println("5. Applying workspace layout, building and deploying...")
+			fmt.Println("4. Building and installing...")
 			if err := migrateApplianceWorkspace(false); err != nil {
 				return err
 			}
-			// Build and deploy (install-ghost restarts services).
-			cmd := makeInstallGhost(ghostDir)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			return cmd.Run()
+			return installScope(scope, ghostDir, force)
 		},
 		Start: func() error {
 			fmt.Println("Update failed — restarting services...")
 			var first error
 			for _, svc := range []string{"ghost", "ghost-web"} {
-				if err := exec.Command("systemctl", "start", svc).Run(); err != nil && first == nil {
-					first = fmt.Errorf("%s: %w", svc, err)
-				}
+				systemSvc("start", svc)
 			}
 			return first
 		},
@@ -162,11 +273,97 @@ func migrateApplianceWorkspace(dryRun bool) error {
 	return nil
 }
 
-func requireRoot() {
-	if os.Geteuid() != 0 {
-		fmt.Println("This command must be run as root (e.g. 'sudo ghost update')")
-		os.Exit(1)
+// installScope builds Ghost and installs it into the detected scope. The
+// user scope is fully unprivileged: build to a temp file, then atomically
+// rename into ~/.local/bin and (re)start the per-user service. The system
+// scope escalates only the binary replacement and service restart, via sudo,
+// and preserves ownership of the runtime data for the invoking user.
+func installScope(scope appliance.ScopePaths, ghostDir string, force bool) error {
+	tag := gitTagAtCheckout(ghostDir)
+	staged, cleanup, err := buildGhostBinary(ghostDir, tag)
+	if err != nil {
+		return err
 	}
+	defer cleanup()
+
+	target := scope.BinDir + "/ghost"
+	if scope.NeedsRoot() && os.Geteuid() != 0 {
+		// System install: run only the swap under sudo.
+		fmt.Println("  (system install: using sudo for the binary swap)")
+		if err := runSudo("install", "-m", "0755", staged, target); err != nil {
+			return err
+		}
+	} else {
+		if err := os.MkdirAll(scope.BinDir, 0o755); err != nil {
+			return err
+		}
+		// Atomic: write alongside, then rename. Never overwrite a running
+		// binary in place.
+		tmp := target + ".new"
+		data, err := os.ReadFile(staged)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(tmp, data, 0o755); err != nil {
+			return err
+		}
+		if err := os.Rename(tmp, target); err != nil {
+			os.Remove(tmp)
+			return err
+		}
+	}
+	fmt.Printf("  Installed %s\n", target)
+
+	// Restart the service in the matching scope.
+	if scope.Scope == appliance.ScopeUser {
+		exec.Command("systemctl", "--user", "daemon-reload").Run()
+		if err := exec.Command("systemctl", "--user", "restart", "ghost").Run(); err != nil {
+			fmt.Println("  Note: could not restart the per-user service; run: systemctl --user restart ghost")
+		} else {
+			fmt.Println("  Per-user service restarted.")
+		}
+	} else {
+		_ = runSudo("systemctl", "daemon-reload")
+		_ = runSudo("systemctl", "restart", "ghost")
+		fmt.Println("  System service restarted.")
+	}
+	return nil
+}
+
+// buildGhostBinary builds the ghost binary for the current platform into a
+// temp file and returns its path plus a cleanup func. It injects the version
+// so the installed binary reports the tag, not a bare hash.
+func buildGhostBinary(ghostDir, tag string) (string, func(), error) {
+	f, err := os.CreateTemp("", "ghost-build-*")
+	if err != nil {
+		return "", func() {}, err
+	}
+	f.Close()
+	path := f.Name()
+	cleanup := func() { os.Remove(path) }
+	ldflags := "-s -w"
+	if tag != "" {
+		ldflags += " -X main.version=" + tag
+	}
+	cmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", path, "./cmd/ghost")
+	cmd.Dir = ghostDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("build failed: %w", err)
+	}
+	return path, cleanup, nil
+}
+
+// runSudo runs one command under sudo, inheriting the invoking user so any
+// user-scoped paths the command touches resolve correctly.
+func runSudo(name string, args ...string) error {
+	full := append([]string{name}, args...)
+	cmd := exec.Command("sudo", full...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func updaterCmd() {

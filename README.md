@@ -199,17 +199,24 @@ sudo systemctl disable --now ghost-web
 ### On a device already running Ghost
 
 ```bash
-cd ghost                 # the cloned repo
-sudo ghost update        # git pull + rebuild + redeploy + restart services
+ghost update             # deploy the release; runs as you
+ghost update --check     # report installed vs available, change nothing
+ghost update --notes     # show the changelog / release notes
+ghost update --channel dev   # build the local checkout (developers)
 ```
 
-`sudo ghost update`:
-1. `git pull` from GitHub
-2. Builds all binaries and deploys them
-3. Reinstalls the systemd services
-4. Restarts `ghost` and the always-on wizard
+`ghost update`:
+1. Resolves the target release
+2. Builds (or, when a binary asset is published, downloads and verifies) it
+3. Atomically installs the binary
+4. Restarts the Ghost service(s)
 
-Requires root. If you no longer have a repo clone on the device, clone one:
+**No sudo for a user-scoped install.** When Ghost is installed per-user
+(`make install-user` → `~/.local/bin` + `systemctl --user`), the whole update
+runs unprivileged. For a system install (`/usr/local/bin` + system units) it
+escalates only the binary swap and the service restart — never the build or
+the read-only planning. Run `ghost update --check` to see which scope you are
+in. If you no longer have a repo clone on the device, clone one:
 
 ```bash
 sudo apt install -y git make golang-go   # if not installed

@@ -1,0 +1,21 @@
+[Unit]
+Description=Ghost - Personal AI Assistant (per-user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__GHOST_DIR__
+EnvironmentFile=-__GHOST_DIR__/.env
+Environment=GHOST_WORKSPACE_DIR=__WORKSPACE_DIR__
+ExecStart=__BIN_DIR__/ghost serve
+Restart=always
+RestartSec=5
+
+# A per-user service already runs as the owner, so no NewPrivileges dance
+# is needed; the process simply cannot touch other users' data.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

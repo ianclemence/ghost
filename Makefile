@@ -1,4 +1,4 @@
-.PHONY: all build install install-ghost install-cleanup-shadow uninstall clean help test install-service build-ghost rebuild-web
+.PHONY: all build install install-ghost install-user uninstall-user install-cleanup-shadow uninstall clean help test install-service build-ghost rebuild-web
 
 # Build variables
 BINARY_NAME=ghost
@@ -279,6 +279,34 @@ install-ghost: build-ghost
 	@sudo chown -R $(shell stat -c '%U' .):$(shell stat -c '%G' .) $(BUILD_DIR) $(CMD_DIR)/workspace ghost.service ghost-web.service ghost-speech.service 2>/dev/null || true
 	@echo "Ghost installed"
 	@if [ ! -f /var/ghost/.setup-complete ]; then echo "Run 'sudo systemctl start ghost-web' to begin setup now"; echo "Or reboot to start setup automatically"; fi
+
+## install-user: Unprivileged install into ~/.local/bin with a per-user service
+##
+## No sudo anywhere. Mirrors how Scout and comparable agents install: the
+## binary lives in the user's bin dir and the service runs under
+## `systemctl --user`. Data stays under ~/.local/share/ghost.
+install-user: build
+	@echo "Installing Ghost (user scope; no sudo)..."
+	@mkdir -p $(HOME)/.local/bin $(HOME)/.local/share/ghost/workspace $(HOME)/.config/systemd/user
+	@# Atomic swap so a running 'ghost update' can replace the binary.
+	@cp $(BINARY_PATH) $(HOME)/.local/bin/ghost.new
+	@mv -f $(HOME)/.local/bin/ghost.new $(HOME)/.local/bin/ghost
+	@chmod +x $(HOME)/.local/bin/ghost
+	@sed \
+		-e "s|__GHOST_DIR__|$(HOME)/.local/share/ghost|g" \
+		-e "s|__BIN_DIR__|$(HOME)/.local/bin|g" \
+		-e "s|__WORKSPACE_DIR__|$(HOME)/.local/share/ghost/workspace|g" \
+		ghost-user.service.template > $(HOME)/.config/systemd/user/ghost.service
+	@systemctl --user daemon-reload
+	@systemctl --user enable --now ghost 2>/dev/null || true
+	@echo "Ghost installed (user scope). Service: systemctl --user status ghost"
+
+## uninstall-user: Remove the per-user install (no sudo)
+uninstall-user:
+	@systemctl --user disable --now ghost 2>/dev/null || true
+	@rm -f $(HOME)/.config/systemd/user/ghost.service $(HOME)/.local/bin/ghost
+	@systemctl --user daemon-reload 2>/dev/null || true
+	@echo "Ghost user install removed (data under ~/.local/share/ghost left intact)"
 
 ## rebuild-web: Quick rebuild and install web console only
 rebuild-web:
