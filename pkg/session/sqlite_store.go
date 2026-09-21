@@ -54,10 +54,29 @@ func (s *SQLiteStore) AddFullMessage(sessionKey string, msg providers.Message) {
 	s.db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, now, sessionKey)
 }
 
+// GetHistory returns the messages that go into the model's context. Rows
+// compacted out (summarized away) and rows the owner deleted are excluded —
+// this is what keeps the context window bounded.
 func (s *SQLiteStore) GetHistory(key string) []providers.Message {
+	return s.queryHistory(key, true)
+}
+
+// GetDisplayHistory returns the messages the owner sees in the transcript:
+// deleted rows are excluded, but compacted rows are kept. Context compaction
+// must never hide earlier turns from the owner, so the transcript stays whole
+// even after the model's context has been summarized.
+func (s *SQLiteStore) GetDisplayHistory(key string) []providers.Message {
+	return s.queryHistory(key, false)
+}
+
+func (s *SQLiteStore) queryHistory(key string, excludeCompacted bool) []providers.Message {
+	where := `session_id = ? AND (archived IS NULL OR archived = 0)`
+	if excludeCompacted {
+		where += ` AND (compacted IS NULL OR compacted = 0)`
+	}
 	rows, err := s.db.Query(`
 		SELECT role, content, meta FROM messages 
-		WHERE session_id = ? AND (archived IS NULL OR archived = 0)
+		WHERE `+where+`
 		ORDER BY created_at ASC
 	`, key)
 	if err != nil {
@@ -144,14 +163,18 @@ func (s *SQLiteStore) SetTitle(key string, title string) {
 	s.db.Exec(`UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?`, title, now, key)
 }
 
+// TruncateHistory drops all but the last keepLast messages from the model's
+// context by marking them compacted. They are NOT archived: the owner's
+// transcript keeps showing them, so compaction never makes earlier turns
+// disappear from the terminal or the app.
 func (s *SQLiteStore) TruncateHistory(key string, keepLast int) {
 	if keepLast <= 0 {
-		s.db.Exec(`UPDATE messages SET archived = 1 WHERE session_id = ?`, key)
+		s.db.Exec(`UPDATE messages SET compacted = 1 WHERE session_id = ?`, key)
 		return
 	}
 	s.db.Exec(`
 		UPDATE messages 
-		SET archived = 1 
+		SET compacted = 1 
 		WHERE session_id = ? 
 		AND id NOT IN (
 			SELECT id FROM messages 

@@ -83,6 +83,15 @@ func (sm *SessionManager) GetHistory(key string) []providers.Message {
 	return sm.store.GetHistory(key)
 }
 
+// GetDisplayHistory is the owner-facing transcript: everything except rows
+// the owner deleted (compacted rows are kept).
+func (sm *SessionManager) GetDisplayHistory(key string) []providers.Message {
+	if sm.store == nil {
+		return []providers.Message{}
+	}
+	return sm.store.GetDisplayHistory(key)
+}
+
 func (sm *SessionManager) GetSummary(key string) string {
 	if sm.store == nil {
 		return ""

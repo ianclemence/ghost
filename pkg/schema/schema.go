@@ -29,7 +29,7 @@ import (
 )
 
 // CurrentVersion is the schema head this build understands.
-const CurrentVersion = 6
+const CurrentVersion = 8
 
 // baseline builds the full v1 schema through the same initializers
 // production startup has always used. Every step is CREATE-IF-NOT-EXISTS
@@ -97,7 +97,77 @@ func registry() []migrations.Migration {
 			Description: "one conversation: fold mobile:default and cli:default into main",
 			UpDB:        mainSessionV6,
 		},
+		{
+			Version:     7,
+			Description: "compacted messages stay visible to the owner (compacted flag)",
+			UpDB:        compactedVisibleV7,
+		},
+		{
+			Version:     8,
+			Description: "restore conversations hidden by the old compaction behaviour",
+			UpDB:        restoreCompactedV8,
+		},
 	}
+}
+
+// restoreCompactedV8 un-hides conversations the old compaction behaviour
+// archived. That behaviour archived everything but the last few rows, which
+// leaves a session with BOTH archived and unarchived rows — unlike a
+// deliberate "clear session" (every row archived, no survivors) or a single
+// message delete (one archived row). Only the compaction signature is
+// restored; explicitly cleared sessions are left cleared. Idempotent.
+func restoreCompactedV8(raw *sql.DB) error {
+	// Very old databases may lack the archived/compacted columns; nothing
+	// to restore then.
+	cols := map[string]bool{}
+	if rows, err := raw.Query(`SELECT name FROM pragma_table_info('messages')`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err == nil {
+				cols[name] = true
+			}
+		}
+	}
+	if !cols["archived"] || !cols["compacted"] {
+		return nil
+	}
+	if _, err := raw.Exec(`
+		UPDATE messages SET compacted = 1, archived = 0
+		WHERE archived = 1
+		  AND session_id IN (
+		    SELECT session_id FROM messages
+		    WHERE archived IS NULL OR archived = 0
+		  )
+	`); err != nil {
+		return fmt.Errorf("restore compacted rows: %w", err)
+	}
+	return nil
+}
+
+// compactedVisibleV7 adds a `compacted` flag to messages. Context compaction
+// marks old rows compacted so they drop out of the model's context, but they
+// remain in the owner's transcript: archiving is for deletion, compacting is
+// for context-window management. Before this, compaction archived rows and
+// the owner's history silently shrank to the last few turns. Idempotent.
+func compactedVisibleV7(raw *sql.DB) error {
+	has := false
+	if rows, err := raw.Query(`SELECT name FROM pragma_table_info('messages')`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err == nil && name == "compacted" {
+				has = true
+			}
+		}
+	}
+	if has {
+		return nil
+	}
+	if _, err := raw.Exec(`ALTER TABLE messages ADD COLUMN compacted BOOLEAN DEFAULT FALSE`); err != nil {
+		return fmt.Errorf("messages.compacted column: %w", err)
+	}
+	return nil
 }
 
 // mainSessionV6 unifies the pre-unification home-conversation names

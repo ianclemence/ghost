@@ -259,8 +259,8 @@ automatically, and `ghost status` warns if one is ever found.
 
 | Command | Description |
 |---------|-------------|
+| `ghost` | Chat with Ghost in the terminal (`ghost agent` is an alias) |
 | `ghost serve` | Start Ghost (main service) |
-| `ghost agent` | Chat directly in terminal |
 | `ghost status` | Show system status |
 | `ghost update` | Pull latest changes and rebuild |
 | `ghost updater` | Run auto-update daemon |

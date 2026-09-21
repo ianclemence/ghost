@@ -61,6 +61,16 @@ func (s *JSONLStore) AddFullMessage(sessionKey string, msg providers.Message) {
 }
 
 func (s *JSONLStore) GetHistory(key string) []providers.Message {
+	return s.readHistory(key)
+}
+
+// GetDisplayHistory: the JSONL store keeps the whole transcript, so the
+// model context and the owner view are the same.
+func (s *JSONLStore) GetDisplayHistory(key string) []providers.Message {
+	return s.readHistory(key)
+}
+
+func (s *JSONLStore) readHistory(key string) []providers.Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	path := s.sessionPath(key)

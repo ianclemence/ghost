@@ -292,6 +292,16 @@ func (es *EphemeralSessionStore) AddFullMessage(key string, msg providers.Messag
 }
 
 func (es *EphemeralSessionStore) GetHistory(key string) []providers.Message {
+	return es.snapshot(key)
+}
+
+// GetDisplayHistory: ephemeral subturn history is never compacted, so the
+// model context and the owner view are the same.
+func (es *EphemeralSessionStore) GetDisplayHistory(key string) []providers.Message {
+	return es.snapshot(key)
+}
+
+func (es *EphemeralSessionStore) snapshot(key string) []providers.Message {
 	es.mu.RLock()
 	defer es.mu.RUnlock()
 	msgs, ok := es.messages[key]

@@ -256,9 +256,25 @@ func main() {
 		_ = os.Setenv("GHOST_CHANNELS_TELEGRAM_ALLOW_FROM", val)
 	}
 
+	// `ghost` with no subcommand opens the terminal chat — the primary
+	// entry point, like `pi` and `opencode`. Piped/CI use (no TTY) still
+	// gets help rather than a hanging prompt; `ghost agent` remains an
+	// explicit alias.
 	if len(os.Args) < 2 {
+		// A real TTY (not /dev/null, not a pipe) opens the chat.
+		if !nontty.Interactive() || !term.IsTerminal(uintptr(os.Stdin.Fd())) {
+			printHelp()
+			os.Exit(1)
+		}
+		applyInstalledConfig()
+		agentCmd()
+		return
+	}
+
+	// `ghost help` / `ghost --help` / `ghost -h` print help.
+	if a := os.Args[1]; a == "help" || a == "--help" || a == "-h" {
 		printHelp()
-		os.Exit(1)
+		return
 	}
 
 	command := os.Args[1]
@@ -429,8 +445,9 @@ func main() {
 func printCommandHelp(command string) {
 	switch command {
 	case "agent":
-		fmt.Println("Usage: ghost agent [-m <message>] [-s <session>] [--debug] [--debug-log <file>]")
-		fmt.Println("Chat with Ghost in the terminal. Without -m, starts interactive mode.")
+		fmt.Println("Usage: ghost [-m <message>] [-s <session>] [--debug] [--debug-log <file>]")
+		fmt.Println("Chat with Ghost in the terminal. Run `ghost` for interactive mode.")
+		fmt.Println("`ghost agent` is an alias for the same command.")
 		fmt.Println("Default session is main — the same conversation the app shows.")
 		fmt.Println("When the gateway daemon runs, the CLI is its client (shared turns,")
 		fmt.Println("approvals, memory); otherwise it runs an offline embedded loop.")
@@ -497,10 +514,11 @@ func printCommandHelp(command string) {
 
 func printHelp() {
 	fmt.Printf("%s Ghost - Personal AI Assistant v%s\n\n", logo, version)
-	fmt.Println("Usage: ghost <command> [args]")
+	fmt.Println("Usage: ghost [command] [args]")
 	fmt.Println()
 	fmt.Println("Talk")
-	fmt.Println("  agent       Chat with Ghost directly")
+	fmt.Println("  ghost       Chat with Ghost (same as `ghost agent`)")
+	fmt.Println("  agent       Chat with Ghost directly (alias)")
 	fmt.Println()
 	fmt.Println("Run")
 	fmt.Println("  serve       Start the Ghost daemon (API + channels + scheduler + heartbeat)")
@@ -898,7 +916,11 @@ func agentCmd() {
 	message := ""
 	sessionKey := MainSessionID
 	debugLog := ""
-	args := os.Args[2:]
+	// `ghost` (no subcommand) reaches agentCmd too, so guard the slice.
+	var args []string
+	if len(os.Args) > 2 {
+		args = os.Args[2:]
+	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--debug", "-d":

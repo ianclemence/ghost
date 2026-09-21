@@ -91,6 +91,7 @@ func baseSchemaStatements() []string {
 			content TEXT,
 			meta JSON,
 			archived BOOLEAN DEFAULT FALSE,
+			compacted BOOLEAN DEFAULT FALSE,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)`,

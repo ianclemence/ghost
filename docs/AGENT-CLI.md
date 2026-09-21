@@ -1,9 +1,10 @@
-# Ghost Agent CLI (interactive)
+# Ghost terminal (interactive)
 
-The interactive `ghost agent` experience. It is Ghost's daily terminal surface:
-talk to Ghost, watch it work, approve what it asks, and see where each answer
-came from. The behavior, commands, and status are Ghost's own — trust, memory,
-routines, and provenance are first-class here.
+Run `ghost` to chat in the terminal — Ghost's daily surface, like `pi` or
+`opencode`. (`ghost agent` is the same command.) Talk to Ghost, watch it work,
+approve what it asks, and see where each answer came from. The behavior,
+commands, and status are Ghost's own — trust, memory, routines, and provenance
+are first-class here.
 
 ## Principles
 
@@ -62,8 +63,8 @@ but the home conversation is the one every surface lands on by default.
 ## Logs
 
 Interactive mode owns the screen: log lines are silenced on stderr (JSON
-file log still writes). Pass `ghost agent --debug-log <file>` to keep a
-debug trail while chatting. One-shot `ghost agent -m` keeps stderr logs.
+file log still writes). Pass `ghost --debug-log <file>` to keep a
+debug trail while chatting. One-shot `ghost -m` keeps stderr logs.
 
 ## Keys
 
@@ -278,5 +279,5 @@ provenance; the conversation is one.
 
 ## Turning it off
 
-`ghost agent -m "..."` stays one-shot and machine-friendly; the TUI is used
+`ghost -m "..."` stays one-shot and machine-friendly; the TUI is used
 only when no message is passed and stdin is a terminal.

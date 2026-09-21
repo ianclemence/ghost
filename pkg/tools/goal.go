@@ -30,11 +30,11 @@ func (t *GoalTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"action":  map[string]interface{}{"type": "string", "enum": []string{"create", "list", "pause", "resume", "complete", "progress"}},
-			"text":    map[string]interface{}{"type": "string", "description": "Goal text (create)"},
-			"scope":   map[string]interface{}{"type": "string", "description": "Scope bound (create)"},
-			"id":      map[string]interface{}{"type": "string", "description": "Goal ID (pause/resume/complete/progress)"},
-			"note":    map[string]interface{}{"type": "string", "description": "Progress note (progress)"},
+			"action": map[string]interface{}{"type": "string", "enum": []string{"create", "list", "pause", "resume", "complete", "progress"}},
+			"text":   map[string]interface{}{"type": "string", "description": "Goal text (create)"},
+			"scope":  map[string]interface{}{"type": "string", "description": "Scope bound (create)"},
+			"id":     map[string]interface{}{"type": "string", "description": "Goal ID (pause/resume/complete/progress)"},
+			"note":   map[string]interface{}{"type": "string", "description": "Progress note (progress)"},
 		},
 		"required": []string{"action"},
 	}
