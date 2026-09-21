@@ -207,16 +207,17 @@ install-ghost: build-ghost
 	@# an update could appear not to take. Rather than keep two copies in sync,
 	@# remove the stale shadow when it lives on the operator's PATH.
 	@$(MAKE) --no-print-directory install-cleanup-shadow
-	@# Build and deploy update tooling
+	@# Build and deploy the update tooling. There is exactly one updater:
+	@# ghost-update (the privileged executor). The standalone release-polling
+	@# daemon was retired in favour of `ghost update --check` against GitHub
+	@# Releases, so no second, divergent updater ships.
 	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-$(PLATFORM)-$(ARCH) ./cmd/ghost-update
-	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/ghost-update-daemon-$(PLATFORM)-$(ARCH) ./cmd/ghost-update-daemon
 	@ln -sf ghost-update-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/ghost-update
-	@ln -sf ghost-update-daemon-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/ghost-update-daemon
 	@sudo cp $(BUILD_DIR)/ghost-update-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost-update.new
 	@sudo mv -f /usr/local/bin/ghost-update.new /usr/local/bin/ghost-update
-	@sudo cp $(BUILD_DIR)/ghost-update-daemon-$(PLATFORM)-$(ARCH) /usr/local/bin/ghost-update-daemon.new
-	@sudo mv -f /usr/local/bin/ghost-update-daemon.new /usr/local/bin/ghost-update-daemon
-	@sudo chmod +x /usr/local/bin/ghost-update /usr/local/bin/ghost-update-daemon
+	@sudo chmod +x /usr/local/bin/ghost-update
+	@# Remove a previously installed daemon so it can never diverge again.
+	@sudo rm -f /usr/local/bin/ghost-update-daemon 2>/dev/null || true
 	@# Install web console service
 	@sed \
 		-e "s|__GHOST_DIR__|/var/ghost|g" \

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -64,25 +65,187 @@ func updateCmd() {
 	updateReleaseChannel(scope, dryRun, force)
 }
 
-// updateReleaseChannel installs a verified release when binary assets are
-// published for the tag; otherwise it builds the pinned tag (never the
-// working tree) and installs it. User scope needs no root.
+// updateReleaseChannel installs a verified release. It resolves the target
+// from GitHub Releases; if a binary asset is published it downloads and
+// verifies it (sha256 + optional Ed25519) and installs that, otherwise it
+// falls back to building the pinned tag from a detached checkout. Either way
+// it never builds the dirty working tree. User scope needs no root.
 func updateReleaseChannel(scope appliance.ScopePaths, dryRun, force bool) {
 	ghostDir := findGhostDir()
-	target := gitTagAtCheckout(ghostDir)
 	current := ghostVersion()
 
-	if !force && target != "" && target == current {
-		fmt.Println("Already current (" + current + "). Use --force to redeploy.")
+	rel, err := resolveRelease(offline())
+	if err != nil {
+		// No release channel reachable: fall back to the local tag.
+		target := gitTagAtCheckout(ghostDir)
+		if target == "" {
+			fmt.Printf("Could not resolve a release and no local tag found: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Release channel unavailable (%v); deploying local tag %s.\n", err, target)
+		if !force && target == current {
+			fmt.Println("Already current (" + current + "). Use --force to redeploy.")
+			return
+		}
+		if dryRun {
+			return
+		}
+		buildAndDeploy(scope, ghostDir, force)
+		return
+	}
+
+	target := rel.Version
+	fmt.Printf("Installed: %s\nAvailable: %s\n", current, target)
+	if !force && !appliance.IsNewer(target, current) {
+		fmt.Println("Already current.")
 		return
 	}
 	if dryRun {
-		fmt.Printf("[dry-run] would deploy %s into %s (scope: %s, root: %v)\n", target, scope.BinDir, scope.Scope, scope.NeedsRoot())
+		kind := "build the pinned tag"
+		if asset, ok := pickGhostAsset(rel); ok {
+			kind = "download and verify " + asset.Name + ""
+		}
+		fmt.Printf("[dry-run] would %s and install into %s (scope: %s, root: %v)\n", kind, scope.BinDir, scope.Scope, scope.NeedsRoot())
 		return
 	}
 	fmt.Printf("Deploying %s (scope: %s)%s...\n", target, scope.Scope, rootNote(scope))
+
+	if asset, ok := pickGhostAsset(rel); ok {
+		if err := installReleaseAsset(scope, rel, asset); err != nil {
+			return
+		}
+		return
+	}
+
+	// No published asset: build the pinned tag (detached, never the working
+	// tree) so the install is still reproducible and version-stamped.
 	buildAndDeploy(scope, ghostDir, force)
 }
+
+// ghostRepo is the release repository.
+const ghostRepo = "ianclemence/ghost"
+
+func offline() bool {
+	return os.Getenv("GHOST_OFFLINE") != ""
+}
+
+// resolveRelease fetches the latest Ghost release (or a pinned one via
+// GHOST_VERSION) from GitHub. When offline it returns an error so the caller
+// can fall back to the local tag.
+func resolveRelease(isOffline bool) (*appliance.Release, error) {
+	if isOffline {
+		return nil, fmt.Errorf("offline")
+	}
+	client := appliance.NewGitHubClient(ghostRepo)
+	if v := strings.TrimSpace(os.Getenv("GHOST_VERSION")); v != "" {
+		return client.ByTag(v)
+	}
+	return client.Latest()
+}
+
+// pickGhostAsset selects the platform binary asset for this machine.
+func pickGhostAsset(rel *appliance.Release) (appliance.Asset, bool) {
+	want := "ghost_" + runtimeGOOS() + "_" + runtimeArch()
+	for _, a := range rel.Assets {
+		if strings.Contains(strings.ToLower(a.Name), want) || strings.Contains(strings.ToLower(a.Name), "ghost-linux-"+runtimeArch()) {
+			return a, true
+		}
+	}
+	return appliance.Asset{}, false
+}
+
+// installReleaseAsset downloads, verifies, and atomically installs a release
+// binary, then restarts the service in the matching scope.
+func installReleaseAsset(scope appliance.ScopePaths, rel *appliance.Release, asset appliance.Asset) error {
+	stage, err := os.MkdirTemp("", "ghost-rel-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stage)
+	dst := filepath.Join(stage, "ghost")
+	client := appliance.NewGitHubClient(ghostRepo)
+	fmt.Printf("  Downloading %s...\n", asset.Name)
+	if err := client.Download(asset.URL, dst); err != nil {
+		return err
+	}
+
+	if sum, ok := pickAsset(rel, "checksums"); ok {
+		sumPath := filepath.Join(stage, sum.Name)
+		if err := client.Download(sum.URL, sumPath); err == nil {
+			if data, rerr := os.ReadFile(sumPath); rerr == nil {
+				if want := parseChecksums(string(data))[asset.Name]; want != "" {
+					if err := appliance.VerifySHA256(dst, want); err != nil {
+						return err
+					}
+					fmt.Println("  Checksum verified.")
+				}
+			}
+		}
+	}
+
+	if sig, ok := pickAsset(rel, ".sig"); ok {
+		pub := strings.TrimSpace(os.Getenv("GHOST_RELEASE_PUBKEY"))
+		sigPath := filepath.Join(stage, sig.Name)
+		if pub != "" && client.Download(sig.URL, sigPath) == nil {
+			if data, rerr := os.ReadFile(sigPath); rerr == nil {
+				if err := appliance.VerifyEd25519(dst, pub, strings.TrimSpace(string(data))); err != nil {
+					return err
+				}
+				fmt.Println("  Signature verified.")
+			}
+		}
+	}
+
+	target := scope.BinDir + "/ghost"
+	if scope.NeedsRoot() && os.Geteuid() != 0 {
+		if err := runSudo("install", "-m", "0755", dst, target); err != nil {
+			return err
+		}
+	} else {
+		if err := appliance.AtomicInstall(dst, target); err != nil {
+			return err
+		}
+	}
+	fmt.Printf("  Installed %s\n", target)
+	restartScope(scope)
+	fmt.Printf("Updated %s → %s\n", ghostVersion(), rel.Version)
+	return nil
+}
+
+func pickAsset(rel *appliance.Release, substr string) (appliance.Asset, bool) {
+	for _, a := range rel.Assets {
+		if strings.Contains(strings.ToLower(a.Name), strings.ToLower(substr)) {
+			return a, true
+		}
+	}
+	return appliance.Asset{}, false
+}
+
+// parseChecksums parses a sha256sums file into name->hex.
+func parseChecksums(data string) map[string]string {
+	out := map[string]string{}
+	for _, line := range strings.Split(data, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 2 {
+			out[strings.TrimPrefix(f[1], "*")] = strings.ToLower(f[0])
+		}
+	}
+	return out
+}
+
+// restartScope reloads and restarts the service in the detected scope.
+func restartScope(scope appliance.ScopePaths) {
+	if scope.Scope == appliance.ScopeUser {
+		exec.Command("systemctl", "--user", "daemon-reload").Run()
+		exec.Command("systemctl", "--user", "restart", "ghost").Run()
+	} else {
+		_ = runSudo("systemctl", "daemon-reload")
+		_ = runSudo("systemctl", "restart", "ghost")
+	}
+}
+
+func runtimeGOOS() string { return runtime.GOOS }
+func runtimeArch() string { return runtime.GOARCH }
 
 // updateDevChannel is the developer path: build the working tree (refusing a
 // dirty checkout unless --force) and install it.
@@ -313,20 +476,7 @@ func installScope(scope appliance.ScopePaths, ghostDir string, force bool) error
 		}
 	}
 	fmt.Printf("  Installed %s\n", target)
-
-	// Restart the service in the matching scope.
-	if scope.Scope == appliance.ScopeUser {
-		exec.Command("systemctl", "--user", "daemon-reload").Run()
-		if err := exec.Command("systemctl", "--user", "restart", "ghost").Run(); err != nil {
-			fmt.Println("  Note: could not restart the per-user service; run: systemctl --user restart ghost")
-		} else {
-			fmt.Println("  Per-user service restarted.")
-		}
-	} else {
-		_ = runSudo("systemctl", "daemon-reload")
-		_ = runSudo("systemctl", "restart", "ghost")
-		fmt.Println("  System service restarted.")
-	}
+	restartScope(scope)
 	return nil
 }
 
@@ -370,12 +520,12 @@ func updaterCmd() {
 	if wantsHelp(os.Args[2:]) {
 		fmt.Println("Usage: ghost auto-update [--interval DURATION]")
 		fmt.Println()
-		fmt.Println("Runs the auto-update daemon: periodically pulls the latest release and")
-		fmt.Println("rebuilds. Uses 'ghost update' semantics (refuses a dirty checkout).")
+		fmt.Println("Periodically check GitHub Releases and install a newer release using the")
+		fmt.Println("same verified, user-scoped updater as 'ghost update'.")
 		fmt.Println()
 		fmt.Println("  --interval/-i DURATION   how often to check (default 6h, e.g. 30m, 24h)")
 		fmt.Println()
-		fmt.Println("For a one-shot deploy of the current release, use 'ghost update'.")
+		fmt.Println("For a one-shot deploy, use 'ghost update'.")
 		return
 	}
 
@@ -402,124 +552,13 @@ func updaterCmd() {
 	}
 }
 
+// checkAndUpdate is the periodic tick for `ghost auto-update`. It uses the
+// same release-channel updater as `ghost update`, so there is exactly one
+// code path: resolve a release, verify, install, restart.
 func checkAndUpdate() {
 	fmt.Println("Checking for updates...")
-
-	ghostDir := findGhostDir()
-
-	// Get current version
-	cmd := exec.Command("git", "-C", ghostDir, "describe", "--tags", "--always")
-	currentVersion, _ := cmd.Output()
-
-	// Pull latest
-	cmd = exec.Command("git", "-C", ghostDir, "pull")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("Error pulling: %v\n", err)
-		return
-	}
-
-	// Check if anything changed
-	if string(output) == "Already up to date.\n" {
-		fmt.Println("Already up to date")
-		return
-	}
-
-	fmt.Println("New changes found, rebuilding...")
-
-	// Same crash-safe sequencing as updateCmd: plan while up, restart
-	// on failure.
-	steps := appliance.UpdateSteps{
-		Pull: func() error { return nil }, // already pulled above
-		Plan: func() error {
-			return appliance.CheckWorkspaceMigration(appliance.DefaultGhostDir)
-		},
-		Snapshot: func() error {
-			return appliance.PreUpdateSnapshot()
-		},
-		Stop: func() {
-			// Quiesce the personal AI before touching its runtime workspace.
-			exec.Command("systemctl", "stop", "ghost").Run()
-			exec.Command("systemctl", "stop", "ghost-web").Run()
-		},
-		Apply: func() error {
-			// Migrate the workspace layout if the running install still
-			// uses the legacy location.
-			if err := migrateApplianceWorkspace(false); err != nil {
-				return err
-			}
-			// Build and deploy
-			cmd := makeInstallGhost(ghostDir)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			return cmd.Run()
-		},
-		Start: func() error {
-			var first error
-			for _, svc := range []string{"ghost", "ghost-web"} {
-				if err := exec.Command("systemctl", "start", svc).Run(); err != nil && first == nil {
-					first = fmt.Errorf("%s: %w", svc, err)
-				}
-			}
-			return first
-		},
-	}
-	if err := appliance.RunUpdate(steps); err != nil {
-		fmt.Printf("Error updating: %v\n", err)
-		return
-	}
-
-	fmt.Println("Updated successfully")
-	_ = currentVersion
-}
-
-// makeInstallGhost builds the `make install-ghost` command with the invoking
-// user's environment restored. `ghost update` runs as root, so HOME would be
-// /root and $(INSTALL_PREFIX) would resolve to /root/.local — leaving a stale
-// ~/.local/bin/ghost shadowing the freshly installed binary (that copy is
-// usually FIRST in the operator's PATH). We carry SUDO_USER's home and name so
-// the installer refreshes the right user-local binary as well.
-func makeInstallGhost(ghostDir string) *exec.Cmd {
-	cmd := exec.Command("make", "-C", ghostDir, "install-ghost")
-	env := os.Environ()
-	if u := os.Getenv("SUDO_USER"); u != "" && u != "root" {
-		owner := u
-		if home := homeForUser(u); home != "" {
-			env = setEnv(env, "HOME", home)
-		}
-		env = setEnv(env, "INSTALL_OWNER", owner)
-		env = setEnv(env, "INSTALL_GROUP", owner)
-	}
-	cmd.Env = env
-	return cmd
-}
-
-// setEnv replaces or adds a KEY=VALUE entry in an environment slice.
-func setEnv(env []string, key, val string) []string {
-	prefix := key + "="
-	for i, e := range env {
-		if strings.HasPrefix(e, prefix) {
-			env[i] = prefix + val
-			return env
-		}
-	}
-	return append(env, prefix+val)
-}
-
-// homeForUser resolves a user's home directory from /etc/passwd without
-// shelling out.
-func homeForUser(user string) string {
-	data, err := os.ReadFile("/etc/passwd")
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		parts := strings.Split(line, ":")
-		if len(parts) >= 6 && parts[0] == user {
-			return parts[5]
-		}
-	}
-	return ""
+	scope := appliance.DetectScope()
+	updateReleaseChannel(scope, false, false)
 }
 
 func findGhostDir() string {

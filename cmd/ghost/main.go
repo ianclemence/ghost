@@ -468,9 +468,10 @@ func printCommandHelp(command string) {
 		fmt.Println("  --dry-run          show the plan, make no changes")
 	case "auto-update", "updater":
 		fmt.Println("Usage: ghost auto-update [--interval DURATION]")
-		fmt.Println("Run the auto-update daemon: periodically pull the latest release and rebuild.")
+		fmt.Println("Periodically check GitHub Releases and install a newer release with the")
+		fmt.Println("same verified, user-scoped updater as 'ghost update'.")
 		fmt.Println("  --interval/-i DURATION   how often to check (default 6h)")
-		fmt.Println("For a one-shot deploy of the current release, use 'ghost update'.")
+		fmt.Println("For a one-shot deploy, use 'ghost update'.")
 	case "reset":
 		fmt.Println("Usage: ghost reset <all|scope...> [--exclude=scope,...] [--no-restart]")
 		fmt.Println("Scopes: chats memory activity automations context devices secrets model")
