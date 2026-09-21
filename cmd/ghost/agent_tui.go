@@ -2443,7 +2443,7 @@ func (m *agentTUI) activeStepWord() string {
 			break
 		}
 	}
-	return "thinking"
+	return "Thinking"
 }
 
 func shortModel(s string) string {

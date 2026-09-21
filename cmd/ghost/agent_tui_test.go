@@ -796,7 +796,7 @@ func TestTUIComposerIsPIRules(t *testing.T) {
 	// While working the status appears once, embedded in the top rule.
 	m.working = true
 	m.elapsed = 4200_000_000
-	// No tool active yet: the rule reads "thinking".
+	// No tool active yet: the rule reads "Thinking".
 	m.toolHistory = nil
 	m.spinFrame = 0
 	top := strings.Split(m.promptBox(), "\n")[0]
@@ -806,21 +806,21 @@ func TestTUIComposerIsPIRules(t *testing.T) {
 	if n := strings.Count(top, m.spinner()); n != 1 {
 		t.Errorf("spinner must appear once in the top rule, found %d: %q", n, top)
 	}
-	if !strings.Contains(top, "thinking") {
-		t.Errorf("the rule must read 'thinking' when no tool runs, got %q", top)
+	if !strings.Contains(top, "Thinking") {
+		t.Errorf("the rule must read 'Thinking' when no tool runs, got %q", top)
 	}
 	if strings.Contains(top, "working") {
 		t.Errorf("the rule must not say 'working', got %q", top)
 	}
 
-	// An active tool names itself in the rule instead of "thinking".
+	// An active tool names itself in the rule instead of "Thinking".
 	m.toolHistory = []toolStep{{tool: "read_file", label: "Reading notes.md", done: true}, {tool: "web_search", label: "Searching the web…"}}
 	top = strings.Split(m.promptBox(), "\n")[0]
 	if !strings.Contains(top, "Searching the web…") {
 		t.Errorf("the rule must name the active tool, got %q", top)
 	}
-	if strings.Contains(top, "thinking") {
-		t.Errorf("the rule must not say 'thinking' while a tool runs, got %q", top)
+	if strings.Contains(top, "Thinking") {
+		t.Errorf("the rule must not say 'Thinking' while a tool runs, got %q", top)
 	}
 	// The rule names the activity and elapsed time only — never a tool
 	// count (that detail lives in the /details trail).

@@ -108,12 +108,13 @@ debug trail while chatting. One-shot `ghost -m` keeps stderr logs.
   newline key — so growth comes from wrapping. While Ghost works, the live
   status embeds in the **top rule** — the only place the live state appears,
   never repeated in the transcript. A turning cube (`▖▘▝▗`) leads the
-  status, then what Ghost is doing right now (`thinking`, or the active step
-  such as `Searching the web…`), then elapsed time and tool count:
+  status, then what Ghost is doing right now (`Thinking`, or the active
+  step such as `Searching the web…`), then elapsed time. No tool count:
+  that detail lives in the `/details` trail.
 
   ```
-  ── ▖ thinking · 4s ──────────────────────────────────────
-  ── ▘ Searching the web… · 4s · 1 tool ───────────────────
+  ── ▖ Thinking · 4s ─────────────────────────────────────┐
+  ── ▘ Searching the web… · 4s ───────────────────────────┘
   ```
 
   The `─` rule lines keep their idle slate-violet colour at all times —
@@ -168,7 +169,7 @@ debug trail while chatting. One-shot `ghost -m` keeps stderr logs.
 - **Activity lives in the prompt rule, not the transcript:** while a turn
   runs, the composer's top rule names what Ghost is doing right now — the
   active step (`Searching: weather in Bangkok`, `Reading notes.md`) when a
-  tool runs, otherwise `thinking` — with elapsed time and tool count. The
+  tool runs, otherwise `Thinking` — with elapsed time. The
   transcript is not littered with `searching…`/`reading…` rows under the
   user's message. The full icon tool trail (`→` read, `←` write, `✱`
   search, `%` fetch, `◈` web, `$` shell, `⚙` generic) is available on
@@ -206,7 +207,7 @@ debug trail while chatting. One-shot `ghost -m` keeps stderr logs.
 deepseek-flash · cloud · main · ready
 ```
 
-While thinking: `… · thinking · 3 tools`. On a held approval: `waiting for you`.
+While thinking: `… · Thinking · 4s`. On a held approval: `waiting for you`.
 
 ## Approvals
 
