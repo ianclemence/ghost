@@ -635,6 +635,46 @@ func TestTUIComposerGrowsWithContentAndCaps(t *testing.T) {
 	}
 }
 
+// The composer holds at seven rows maximum (never more), regardless of a
+// tall terminal, and scrolls once past that.
+func TestTUIComposerCapsAtSevenRows(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 60 // 30% would be 18 rows; the cap is 7
+	if cap := m.composerCapRows(); cap != 7 {
+		t.Fatalf("composer cap must be 7 rows, got %d", cap)
+	}
+	m.input.SetValue(strings.Repeat("word ", 400))
+	m.layout()
+	if h := m.input.Height(); h != 7 {
+		t.Errorf("composer must hold at 7 rows, got %d", h)
+	}
+}
+
+// Past the cap the textarea scrolls to keep the caret visible: the text
+// being typed must be on screen, not pushed below the window. This was the
+// bug where the first line showed while the cursor typed off-screen.
+func TestTUIComposerScrollsToCaretPastCap(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 40
+	first, last := "FIRSTSENTENCE", "LASTWORD"
+	m.input.SetValue(first + " " + strings.Repeat("more words here ", 80) + last)
+	m.layout()
+	view := m.input.View()
+	if !strings.Contains(view, last) {
+		t.Errorf("past the cap the caret's text must be visible\n%s", view)
+	}
+	// Under the cap everything stays visible from the top.
+	short := readyForTest(newAgentTUI(f, "cli:test"))
+	short.width, short.height = 80, 40
+	short.input.SetValue("a short sentence")
+	short.layout()
+	if !strings.Contains(short.input.View(), "a short sentence") {
+		t.Errorf("under the cap the whole text must be visible")
+	}
+}
+
 // The composer is exactly two full-width rules, no side borders, no
 // The transcript lives in the terminal's own scrollback: committed entries
 // are emitted once via tea.Println so native scrolling reaches every

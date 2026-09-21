@@ -2085,6 +2085,14 @@ func renderSpan(s, delim string, fn func(...string) string) string {
 func (m *agentTUI) layout() {
 	m.input.SetWidth(m.inputWidth())
 	m.input.SetHeight(m.composerRows())
+	// SetHeight changes the visible window but does not reposition the
+	// textarea's internal viewport, and repositioning only works once the
+	// wrapped content has been rebuilt against the new height. Render once
+	// (to rebuild the viewport content), then nudge so repositionView runs
+	// against the new geometry — the caret stays in view (the whole text
+	// while it fits, the last rows once past the cap).
+	_ = m.input.View()
+	m.input, _ = m.input.Update(tea.KeyMsg{})
 }
 
 // The composer is responsive, exactly like a real terminal editor: it opens
@@ -2094,13 +2102,19 @@ func (m *agentTUI) layout() {
 // composer never swallows the transcript on a small terminal.
 const composerMinRows = 1
 
-// composerCapRows is the maximum visible text rows (30% of the viewport,
-// at least five) — the same rule a bash/readline editor uses to bound
-// itself against the screen.
+// composerCapRows is the maximum visible text rows: seven, and never more
+// than 30% of the terminal. Past it the composer stops growing and scrolls
+// to keep the cursor visible, so a long message never swallows the
+// transcript. Seven rows is the product cap the user asked for.
+const composerMaxRows = 7
+
 func (m *agentTUI) composerCapRows() int {
 	n := m.height * 3 / 10
 	if n < 5 {
 		n = 5
+	}
+	if n > composerMaxRows {
+		n = composerMaxRows
 	}
 	return n
 }
