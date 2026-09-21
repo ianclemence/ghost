@@ -1379,29 +1379,32 @@ func (m *agentTUI) renderTranscript() tea.Cmd {
 	return m.flushScrollback()
 }
 
-// workingBlock is the live turn: an in-place stream preview with a cursor.
-// The active step ("Searching…", "Reading…") is not repeated here — it is
-// named in the composer's top rule, so the transcript stays clean. The
-// full icon tool trail is still available behind /details (Ctrl+O).
-func (m *agentTUI) workingBlock() string {
-	var b strings.Builder
+// dockPreviewRows is the fixed height of the live preview area directly
+// above the composer. It is always present — blank when idle — so the dock
+// never changes height at the moment a turn commits. A stable dock is what
+// keeps tea.Println (the printed reply) from being clobbered by the next
+// repaint; a view that shrank on the same tick lost the reply on screen.
+const dockPreviewRows = 1
+
+// dockPreview is the live area above the composer, always exactly
+// dockPreviewRows lines: the tail of the streaming reply with a caret while
+// a turn runs, blank when idle. The active step is named in the composer's
+// top rule; the full tool trail is behind /details (Ctrl+O).
+func (m *agentTUI) dockPreview() string {
 	w := m.contentWidth()
-	if m.streaming != "" {
-		b.WriteString(renderAssistantBody(m.streaming+"▍", w))
-		b.WriteString("\n")
-	}
-	if m.showTools {
-		for _, s := range m.toolHistory {
-			icon := toolIcon(s.tool)
-			if !s.done {
-				b.WriteString(styleToolActive.Render(fmt.Sprintf("  %s %s %s", m.spinner(), icon, cellTruncate(s.label, w-8))))
-			} else {
-				b.WriteString(styleTool.Render(fmt.Sprintf("  %s %s (%s)", icon, cellTruncate(s.label, w-12), formatElapsed(s.dur))))
-			}
-			b.WriteString("\n")
+	line := ""
+	if m.working && m.streaming != "" {
+		lines := wrapText(strings.ReplaceAll(m.streaming, "\n", " ")+"▍", w)
+		if len(lines) > 0 {
+			line = styleAssistant.Render(lines[len(lines)-1])
 		}
 	}
-	return strings.TrimRight(b.String(), "\n")
+	// Pad to exactly dockPreviewRows lines so the dock height is constant.
+	rows := []string{line}
+	for len(rows) < dockPreviewRows {
+		rows = append(rows, "")
+	}
+	return strings.Join(rows, "\n")
 }
 
 // toolIcon maps Ghost tools to the collapsed-row icon language:
@@ -2247,11 +2250,17 @@ func (m *agentTUI) paletteOffset(total, maxRows int) int {
 }
 
 // ─── view ────────────────────────────────────────────────────────────────
-// The View is only the live bottom region: the in-progress stream preview,
-// the composer (or approval card), the palette / model picker, and the
-// footer. Committed transcript lines are printed into the terminal's
-// scrollback (flushScrollback), so the terminal owns scrolling and every
-// previous message stays reachable with the wheel, scrollbar or PageUp.
+// The View is only the live bottom region — "the dock": the in-progress
+// stream preview, the composer (or approval card), the palette / model
+// picker, and the footer. Committed transcript lines are printed into the
+// terminal's scrollback (flushScrollback), so the terminal owns scrolling
+// and every previous message stays reachable.
+//
+// The dock keeps a STABLE height: the preview area is always reserved (blank
+// when idle), so the live view does not change height at the exact frame a
+// turn commits. Bubbletea only repaints the lines the view occupies; a view
+// that shrinks in the same tick as tea.Println can clobber the just-printed
+// reply — which is why a response sometimes only appeared after reopening.
 func (m *agentTUI) View() string {
 	if m.quitting {
 		return ""
@@ -2260,13 +2269,10 @@ func (m *agentTUI) View() string {
 		return "starting Ghost…"
 	}
 	var b strings.Builder
-	// Live stream preview stays pinned above the composer while a turn runs.
-	if m.working {
-		if block := m.workingBlock(); block != "" {
-			b.WriteString(block)
-			b.WriteString("\n")
-		}
-	}
+	// The preview area is ALWAYS present and always dockPreviewRows tall,
+	// whether or not a turn is running — a stable anchor for the dock.
+	b.WriteString(m.dockPreview())
+	b.WriteString("\n")
 	if m.approval != nil {
 		b.WriteString(m.approvalCard())
 	} else {

@@ -637,6 +637,32 @@ func TestTUIComposerGrowsWithContentAndCaps(t *testing.T) {
 
 // The composer holds at seven rows maximum (never more), regardless of a
 // tall terminal, and scrolls once past that.
+// The dock (preview area + composer + footer) must not change height at a
+// turn boundary. Bubbletea only repaints the lines the view occupies, so a
+// view that shrank in the same tick as tea.Println clobbered the printed
+// reply — the bug where an answer only appeared after reopening the TUI.
+func TestTUIDockHeightStableAcrossTurn(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	m.layout()
+	height := func() int { return len(strings.Split(m.View(), "\n")) }
+	idle := height()
+
+	m.send("hello")
+	if got := height(); got != idle {
+		t.Errorf("dock height changed on send: idle %d, after send %d", idle, got)
+	}
+	m.Update(streamChunkMsg{text: "a reply that streams in over time"})
+	if got := height(); got != idle {
+		t.Errorf("dock height changed while streaming: idle %d, got %d", idle, got)
+	}
+	m.Update(turnDoneMsg{text: "a reply that streams in over time", err: nil})
+	if got := height(); got != idle {
+		t.Errorf("dock height changed on turn end: idle %d, got %d", idle, got)
+	}
+}
+
 func TestTUIComposerCapsAtSevenRows(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
@@ -816,10 +842,10 @@ func TestTUIComposerIsPIRules(t *testing.T) {
 		t.Errorf("the rule must carry the tool count, got %q", top)
 	}
 
-	// The transcript must not repeat the activity: no tool row under the
-	// user message by default.
-	if block := m.workingBlock(); strings.Contains(block, "Searching the web") {
-		t.Errorf("the transcript must not repeat the active step, got %q", block)
+	// The dock preview must not repeat the activity: no tool row above the
+	// composer by default.
+	if block := m.dockPreview(); strings.Contains(block, "Searching the web") {
+		t.Errorf("the dock must not repeat the active step, got %q", block)
 	}
 }
 
