@@ -169,7 +169,7 @@ func (p *ClaudeCliProvider) parseClaudeCliResponse(output string) (*LLMResponse,
 	}
 
 	return &LLMResponse{
-		Content:      strings.TrimSpace(content),
+		Content:      stripInlineReasoning(strings.TrimSpace(content)),
 		ToolCalls:    toolCalls,
 		FinishReason: finishReason,
 		Usage:        usage,

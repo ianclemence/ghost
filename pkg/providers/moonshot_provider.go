@@ -252,7 +252,7 @@ func (p *MoonshotProvider) Chat(ctx context.Context, messages []Message, tools [
 	}
 
 	return &LLMResponse{
-		Content:      contentStr,
+		Content:      stripInlineReasoning(contentStr),
 		ToolCalls:    choice.Message.ToolCalls,
 		FinishReason: choice.FinishReason,
 		Usage:        kResp.Usage,

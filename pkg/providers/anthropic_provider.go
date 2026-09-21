@@ -299,7 +299,7 @@ func parseAnthropicResponse(resp *anthropic.Message) *LLMResponse {
 		finishReason = "stop"
 	}
 	return &LLMResponse{
-		Content:          content,
+		Content:          stripInlineReasoning(content),
 		ReasoningContent: reasoning,
 		ToolCalls:        toolCalls,
 		FinishReason:     finishReason,

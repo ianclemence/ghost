@@ -312,6 +312,7 @@ func (p *HTTPProvider) readOpenAIStream(r io.Reader, onChunk func(string)) (*LLM
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 
 	var sb, reasoning strings.Builder
+	filter := &reasoningStreamFilter{}
 	var toolCalls []ToolCall // accumulated by index
 	var rawArgs []string     // raw argument fragments, parallel to toolCalls
 	finishReason := "stop"
@@ -334,6 +335,8 @@ func (p *HTTPProvider) readOpenAIStream(r io.Reader, onChunk func(string)) (*LLM
 				Delta struct {
 					Content          string `json:"content"`
 					ReasoningContent string `json:"reasoning_content"`
+					Reasoning        string `json:"reasoning"`
+					ReasoningText    string `json:"reasoning_text"`
 					ToolCalls        []struct {
 						Index    int    `json:"index"`
 						ID       string `json:"id"`
@@ -356,12 +359,24 @@ func (p *HTTPProvider) readOpenAIStream(r io.Reader, onChunk func(string)) (*LLM
 			continue
 		}
 		choice := chunk.Choices[0]
-		if choice.Delta.ReasoningContent != "" {
-			reasoning.WriteString(choice.Delta.ReasoningContent)
+		// Reasoning fields are accumulated separately and never emitted as
+		// answer text. All allowlisted names are read so a server using
+		// "reasoning" or "reasoning_text" is handled the same as
+		// "reasoning_content".
+		for _, r := range []string{choice.Delta.ReasoningContent, choice.Delta.Reasoning, choice.Delta.ReasoningText} {
+			if r != "" {
+				reasoning.WriteString(r)
+			}
 		}
 		if choice.Delta.Content != "" {
-			sb.WriteString(choice.Delta.Content)
-			onChunk(choice.Delta.Content)
+			// Strip inline <think> tags (some models put reasoning in
+			// content) before anything is stored or streamed.
+			if visible := filter.Write(choice.Delta.Content); visible != "" {
+				sb.WriteString(visible)
+				if onChunk != nil {
+					onChunk(visible)
+				}
+			}
 		}
 		for _, tcd := range choice.Delta.ToolCalls {
 			for len(toolCalls) <= tcd.Index {
@@ -385,6 +400,14 @@ func (p *HTTPProvider) readOpenAIStream(r io.Reader, onChunk func(string)) (*LLM
 
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("stream read failed: %w", err)
+	}
+
+	// Release any text held back waiting on a possible inline tag.
+	if tail := filter.Flush(); tail != "" {
+		sb.WriteString(tail)
+		if onChunk != nil {
+			onChunk(tail)
+		}
 	}
 
 	// Resolve accumulated tool-call arguments into maps, mirroring parseResponse.
@@ -414,6 +437,8 @@ func (p *HTTPProvider) parseNativeResponse(body []byte) (*LLMResponse, error) {
 		Message struct {
 			Content          string `json:"content"`
 			ReasoningContent string `json:"reasoning_content"`
+			Reasoning        string `json:"reasoning"`
+			ReasoningText    string `json:"reasoning_text"`
 			ToolCalls        []struct {
 				ID       string `json:"id"`
 				Type     string `json:"type"`
@@ -454,8 +479,8 @@ func (p *HTTPProvider) parseNativeResponse(body []byte) (*LLMResponse, error) {
 		})
 	}
 	return &LLMResponse{
-		Content:          apiResponse.Message.Content,
-		ReasoningContent: apiResponse.Message.ReasoningContent,
+		Content:          stripInlineReasoning(apiResponse.Message.Content),
+		ReasoningContent: firstNonEmpty(apiResponse.Message.ReasoningContent, apiResponse.Message.Reasoning, apiResponse.Message.ReasoningText),
 		ToolCalls:        toolCalls,
 		FinishReason:     "stop",
 		Usage:            apiResponse.Usage,
@@ -467,6 +492,8 @@ func (p *HTTPProvider) parseResponse(body []byte) (*LLMResponse, error) {
 			Message struct {
 				Content          string `json:"content"`
 				ReasoningContent string `json:"reasoning_content"`
+				Reasoning        string `json:"reasoning"`
+				ReasoningText    string `json:"reasoning_text"`
 				ToolCalls        []struct {
 					ID       string `json:"id"`
 					Type     string `json:"type"`
@@ -525,8 +552,8 @@ func (p *HTTPProvider) parseResponse(body []byte) (*LLMResponse, error) {
 	}
 
 	return &LLMResponse{
-		Content:          choice.Message.Content,
-		ReasoningContent: choice.Message.ReasoningContent,
+		Content:          stripInlineReasoning(choice.Message.Content),
+		ReasoningContent: firstNonEmpty(choice.Message.ReasoningContent, choice.Message.Reasoning, choice.Message.ReasoningText),
 		ToolCalls:        toolCalls,
 		FinishReason:     choice.FinishReason,
 		Usage:            apiResponse.Usage,
