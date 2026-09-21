@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.1] - 2026-09-21
+
+Updater parity release.
+
+- `ghost update` / `ghost update --check` print **what's new** on top of "Already current" and after an install, matching Scout.
+- Embedded changelog + last-seen marker; `ghost update --notes` prints the full changelog.
+- Version comparison is base-version aware, so a `-dirty` or dev-suffixed installed binary is correctly recognised as current instead of looking different.
+
 ## [0.24.0] - 2026-09-21
 
 Updater release.
