@@ -27,7 +27,8 @@ are first-class here.
 |---|---|
 | `/help` | List commands and keybindings |
 | `/session` | Where this terminal is, the model, and turn count |
-| `/model [name]` | Show or switch the active model (presets, connections, keyed providers) |
+| `/model [name]` | Show or switch the active model (configured providers; searchable picker) |
+| `/scoped-models` | Pick which models Ctrl+P cycles (enable/disable, reorder, save) |
 | `/context [name]` | Show or switch topic context (scopes memory + tools) |
 | `/memory [query]` | Ask Ghost, in a turn, what it remembers |
 | `/routines` | Ask Ghost, in a turn, what it has scheduled |
@@ -75,6 +76,7 @@ debug trail while chatting. One-shot `ghost -m` keeps stderr logs.
 | Esc | Contextual cancel: close picker → dismiss approval (leaves pending) → dismiss palette → abort the running turn → close the TUI (the session persists, so quitting is safe) |
 | Ctrl+C | Clear the editor; twice quits |
 | Ctrl+L | Open the model picker |
+| Ctrl+P | Cycle the enabled model scope |
 | Ctrl+O | Toggle tool-detail expansion |
 | ↑ / ↓ | `/` palette selection when open (wraps top↔bottom, scroll footer while long), else editor history |
 | PgUp / PgDn, mouse wheel | Scroll the transcript |
@@ -94,7 +96,7 @@ debug trail while chatting. One-shot `ghost -m` keeps stderr logs.
 
 ────────────────────────────────────────────────────────────
 3 turns                                  (cloud) deepseek-flash
-/ commands · tab complete · ctrl+l model · esc quit
+/ commands · tab complete · ctrl+l model · ctrl+p cycle · esc quit
 ```
 
 - **No top header:** the transcript owns the full height. State and model
@@ -178,7 +180,7 @@ debug trail while chatting. One-shot `ghost -m` keeps stderr logs.
   contexts, queued) with the model in its locality color right-aligned;
   contextual shortcuts ordered by frequency — the command surface first
   and the exit route last (`/ commands · tab complete · ctrl+l model ·
-  esc quit`).
+  ctrl+p cycle · esc quit`).
 - **Welcome card:** the empty state, centered — the Ghost banner, the
   Ghost tagline (`Your AI. Your Memory. Your Machine.`), and a command
   cheat-sheet. It only appears for a genuinely new conversation; the
@@ -239,9 +241,20 @@ than a tree of conflicting branches.
 The picker (`/model`), `Ctrl+L`, and `ghost model list` all read the same
 switchable set: **named presets** first, then **named connections**, then
 every **provider with a configured key** (e.g. deepseek appears the moment
-its key exists — no preset entry required). Unkeyed presets still show,
-marked with why they can't serve. Switching accepts a preset name, a
-connection name, or `provider:model`.
+its key exists — no preset entry required). The picker shows only models
+that can actually serve: an unkeyed preset is hidden rather than offered.
+`Tab` toggles the scope between **all** usable models and the **scoped**
+subset you enabled. Switching accepts a preset name, a connection name, or
+`provider:model`.
+
+### Cycling scope (`/scoped-models`)
+
+The picker's *scoped* set is what `Ctrl+P` cycles. `/scoped-models` opens an
+editor over the full catalog (including providers you haven't configured yet,
+so you can pre-select them): **Enter** toggles a model, **Ctrl+A**/**Ctrl+X**
+enable or clear (scoped to the active search), **Alt+↑/↓** reorders, and
+**Ctrl+S** saves. Until you save, changes are session-only. With no saved
+scope, `Ctrl+P` cycles every usable model.
 
 ## One shared conversation (terminal + app + channels)
 

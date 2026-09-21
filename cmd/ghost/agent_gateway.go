@@ -64,10 +64,15 @@ type gatewayRuntime struct {
 	modelActive  string
 	modelPresets []string
 	modelOptions []providers.ModelOption
+	modelAll     []providers.ModelOption
 	modelAt      time.Time
 	ctxCurrent   map[string]string
 	ctxList      []string
 	ctxAt        time.Time
+
+	// scoped is the enabled/ordered cycling set. The daemon owns the durable
+	// copy (kv_store); the gateway mirrors it for the session.
+	scoped providers.ScopedModels
 }
 
 const gatewayCacheTTL = 5 * time.Second
@@ -225,7 +230,9 @@ func (g *gatewayRuntime) modelCatalog() ([]string, []providers.ModelOption) {
 		Presets []struct {
 			Name string `json:"name"`
 		} `json:"presets"`
-		Options []providers.ModelOption `json:"options"`
+		Options    []providers.ModelOption `json:"options"`
+		AllOptions []providers.ModelOption `json:"all_options"`
+		Scope      []string                `json:"scope"`
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -238,15 +245,62 @@ func (g *gatewayRuntime) modelCatalog() ([]string, []providers.ModelOption) {
 			names = append(names, p.Name)
 		}
 	}
+	all := res.AllOptions
+	if len(all) == 0 {
+		all = res.Options // older daemon: fall back to the switchable set
+	}
 	g.mu.Lock()
 	if res.Active != "" {
 		g.modelActive = res.Active
 	}
 	g.modelPresets = append([]string{}, names...)
 	g.modelOptions = append([]providers.ModelOption{}, res.Options...)
+	g.modelAll = append([]providers.ModelOption{}, all...)
+	g.scoped.Set(res.Scope)
 	g.modelAt = time.Now()
 	g.mu.Unlock()
 	return names, append([]providers.ModelOption{}, res.Options...)
+}
+
+// AllModelOptions returns the full catalog the daemon reported, falling back
+// to the switchable set on an older daemon.
+func (g *gatewayRuntime) AllModelOptions() []providers.ModelOption {
+	g.modelCatalog()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.modelAll) > 0 {
+		return append([]providers.ModelOption{}, g.modelAll...)
+	}
+	return append([]providers.ModelOption{}, g.modelOptions...)
+}
+
+// GetScopedModels returns the cycling set the daemon reported (cached with
+// the model catalog).
+func (g *gatewayRuntime) GetScopedModels() providers.ScopedModels {
+	g.modelCatalog()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.scoped
+}
+
+// SetScopedModels persists the cycling set on the daemon (the durable copy)
+// and mirrors it locally. A nil slice clears the scope back to all-enabled.
+func (g *gatewayRuntime) SetScopedModels(ids []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	body := map[string]interface{}{}
+	if ids != nil {
+		body["scope"] = ids
+	} else {
+		body["all_enabled"] = true
+	}
+	if _, _, err := g.post(ctx, "/v1/model", body, ""); err != nil {
+		return err
+	}
+	g.mu.Lock()
+	g.scoped.Set(ids)
+	g.mu.Unlock()
+	return nil
 }
 
 // RefreshModels busts the cached model state so the picker always opens
@@ -257,6 +311,7 @@ func (g *gatewayRuntime) RefreshModels() {
 	g.modelAt = time.Time{}
 	g.modelPresets = nil
 	g.modelOptions = nil
+	g.modelAll = nil
 }
 
 func (g *gatewayRuntime) SetModel(target string) error {

@@ -38,14 +38,15 @@ type ModelOption struct {
 	Reason    string `json:"unavailable_reason,omitempty"`
 }
 
-// AvailableModelOptions lists everything the user can switch to: named
-// presets first, then named connections, then every provider with a
-// configured credential (so a configured-but-unlisted model like deepseek
-// is visible instead of silently missing). Within providers, entries
-// already covered by a preset or connection are skipped. Sorted for
-// stable pickers: presets and connections in config order, providers
-// alphabetical.
-func AvailableModelOptions(cfg *config.Config) []ModelOption {
+// AllModelOptions lists every switchable entry the runtime knows about:
+// named presets first, then named connections, then every provider that has
+// a recommended model. Unusable entries (no credential, unreachable local)
+// are included and marked Available=false with a Reason, so callers can show
+// what exists and resolve an explicitly requested target. Selection surfaces
+// use AvailableModelOptions instead. Within providers, entries already
+// covered by a preset or connection are skipped. Sorted for stable pickers:
+// presets and connections in config order, providers alphabetical.
+func AllModelOptions(cfg *config.Config) []ModelOption {
 	var out []ModelOption
 	if cfg == nil {
 		return out
@@ -83,27 +84,56 @@ func AvailableModelOptions(cfg *config.Config) []ModelOption {
 		if len(models) == 0 {
 			continue
 		}
-		provider, model := name, models[0]
-		if covered[provider+"\x00"+model] {
+		if covered[name+"\x00"+models[0]] {
 			continue
 		}
-		ok, reason := PresetAvailable(cfg, provider, model)
-		if !ok {
-			continue // no credential (or unreachable local): not selectable
-		}
-		_ = reason
 		providers = append(providers, name)
 	}
 	sort.Strings(providers)
 	for _, name := range providers {
 		model := KnownProviderModels[name][0]
+		ok, reason := PresetAvailable(cfg, name, model)
 		out = append(out, ModelOption{
 			Name: name, Provider: name, Model: model,
 			Target: name + ":" + model, Kind: "provider",
-			Available: true,
+			Available: ok, Reason: reason,
 		})
 	}
 	return out
+}
+
+// AvailableModelOptions lists only the entries that can actually serve right
+// now — a configured credential, or a reachable local engine. This is the
+// picker's default set (the "all" scope), so the terminal never offers a
+// model that would fail on selection. Use AllModelOptions when you need the
+// full catalog (exact-reference resolution, /scoped-models).
+func AvailableModelOptions(cfg *config.Config) []ModelOption {
+	all := AllModelOptions(cfg)
+	out := make([]ModelOption, 0, len(all))
+	for _, o := range all {
+		if o.Available {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+// FindModelOption resolves an exact target (preset/connection name or
+// "provider:model" / "provider/model") against the full catalog, so an
+// explicitly requested model is accepted even when its provider is not yet
+// configured. Matching uses the same loose base comparison the picker uses.
+func FindModelOption(cfg *config.Config, target string) (ModelOption, bool) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return ModelOption{}, false
+	}
+	base := optionTargetBase(target)
+	for _, o := range AllModelOptions(cfg) {
+		if o.Target == target || o.Name == target || optionTargetBase(o.Target) == base || optionTargetBase(o.Model) == base {
+			return o, true
+		}
+	}
+	return ModelOption{}, false
 }
 
 // optionTargetBase strips provider prefixes for loose current-model
