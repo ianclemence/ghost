@@ -241,22 +241,6 @@ func TestTUISendWhenIdleStartsTurn(t *testing.T) {
 	}
 }
 
-func TestTUIStatusLineShowsLocalityAndState(t *testing.T) {
-	f := newFakeRuntime()
-	m := readyForTest(newAgentTUI(f, "cli:test"))
-	line := m.statusLine()
-	for _, want := range []string{"deepseek-flash", "cloud", "cli:test", "ready"} {
-		if !strings.Contains(line, want) {
-			t.Errorf("status line %q must contain %q", line, want)
-		}
-	}
-	m.working = true
-	m.toolCount = 3
-	if !strings.Contains(m.statusLine(), "3 tools") {
-		t.Errorf("working status must show tool count")
-	}
-}
-
 func TestProviderLocality(t *testing.T) {
 	cases := map[string]string{
 		"deepseek-flash": "cloud",
@@ -838,8 +822,10 @@ func TestTUIComposerIsPIRules(t *testing.T) {
 	if strings.Contains(top, "thinking") {
 		t.Errorf("the rule must not say 'thinking' while a tool runs, got %q", top)
 	}
-	if !strings.Contains(top, "2 tools") {
-		t.Errorf("the rule must carry the tool count, got %q", top)
+	// The rule names the activity and elapsed time only — never a tool
+	// count (that detail lives in the /details trail).
+	if strings.Contains(top, "tool") || strings.Contains(top, "2 tool") {
+		t.Errorf("the rule must not carry a tool count, got %q", top)
 	}
 
 	// The dock preview must not repeat the activity: no tool row above the

@@ -2413,12 +2413,11 @@ func (m *agentTUI) activityWord() string {
 		return "waiting for you"
 	}
 	if m.working {
+		// The prompt names the live activity and elapsed time only — no
+		// tool count (that detail lives in the tool trail behind /details).
 		s := fmt.Sprintf("%s %s", m.spinner(), m.activeStepWord())
 		if m.elapsed > 0 {
 			s += fmt.Sprintf(" · %s", formatElapsed(m.elapsed))
-		}
-		if n := len(m.toolHistory); n > 0 {
-			s += fmt.Sprintf(" · %d tool%s", n, plural(n))
 		}
 		if len(m.queued) > 0 {
 			s += fmt.Sprintf(" · %d queued", len(m.queued))
@@ -2677,28 +2676,6 @@ func approvalRiskNote(risk string) string {
 	}
 }
 
-func (m *agentTUI) statusLine() string {
-	state := "ready"
-	if m.approval != nil {
-		state = "waiting for you"
-	}
-	if m.working {
-		state = "thinking"
-		if m.toolCount > 0 {
-			state = fmt.Sprintf("thinking · %d tool%s", m.toolCount, plural(m.toolCount))
-		}
-	}
-	if len(m.queued) > 0 {
-		state += fmt.Sprintf(" · %d queued", len(m.queued))
-	}
-	parts := []string{m.loop.GetCurrentModel(), providerLocality(m.loop.GetCurrentModel()), m.session, state}
-	line := " " + strings.Join(parts, " · ") + " "
-	if lipgloss.Width(line) > m.width {
-		line = " " + strings.Join(parts[:2], " · ") + " "
-	}
-	return styleStatus.Width(m.width).Render(line)
-}
-
 func plural(n int) string {
 	if n == 1 {
 		return ""
@@ -2732,7 +2709,6 @@ var (
 	cTool           = lipgloss.Color("#6f9c86")
 	cErr            = lipgloss.Color("#c86a5c")
 	cGold           = lipgloss.Color("#e8c06a")
-	cBgBar          = lipgloss.Color("#141210")
 	cBarIdle        = lipgloss.Color("#6e648a") // visible slate-violet composer bar
 	cGreen          = lipgloss.Color("#7fb08a")
 	cBlue           = lipgloss.Color("#7fa8c9")
@@ -2747,7 +2723,6 @@ var (
 	styleError      = lipgloss.NewStyle().Foreground(cErr)
 	styleWorking    = lipgloss.NewStyle().Foreground(cAccent)
 	styleApproval   = lipgloss.NewStyle().Foreground(cGold).Bold(true)
-	styleStatus     = lipgloss.NewStyle().Foreground(cMuted).Background(cBgBar)
 
 	styleUserName      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleAssistantName = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
