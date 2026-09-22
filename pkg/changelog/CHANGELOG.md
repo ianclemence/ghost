@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.8] - 2026-09-22
+
+- Streaming replies render markdown live, Scout-style: headings, lists,
+  quotes, code, and tables format as they arrive instead of raw `##` and
+  `**` markers, long lines wrap instead of breaking mid-word, and
+  paragraph gaps are preserved. Completion still prints only the
+  remaining tail.
+
 ## [0.24.7] - 2026-09-22
 
 - Replies now stream line-by-line into the conversation as they arrive,
