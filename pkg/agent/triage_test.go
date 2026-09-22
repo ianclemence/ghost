@@ -99,22 +99,48 @@ func TestFastPathPreferenceRecall(t *testing.T) {
 	}
 }
 
-func TestFastPathAnswerHonestWhenAbsent(t *testing.T) {
+func TestFastPathFallsThroughWhenNarrowLookupMisses(t *testing.T) {
+	// A narrow exact-predicate lookup is not proof of absence (the
+	// extractor's vocabulary is wider than any allowlist, and other sinks
+	// are invisible here). On a miss the fast path must NOT claim "not
+	// stored" — it falls through so the full loop retrieves semantically.
+	// Regression guard for cor-02, where "coffee is my favourite drink" was
+	// stored yet the fast path answered "I don't have that stored yet".
 	ws := t.TempDir()
 	store, err := personalcontext.Open(ws)
 	if err != nil {
 		t.Fatalf("open personal context: %v", err)
 	}
 	al := &AgentLoop{pcStore: store}
-	ans, ok := al.fastPathAnswer("what is my name", "")
-	if !ok {
-		t.Fatalf("expected fast path to handle a name question even with no data")
+	if ans, ok := al.fastPathAnswer("what is my name", ""); ok {
+		t.Fatalf("must fall through on empty store, got %q", ans)
 	}
-	if !strings.Contains(strings.ToLower(ans), "don") {
-		t.Fatalf("expected an honest 'I don't have that' answer, got %q", ans)
+}
+
+func TestFastPathNeverClaimsAbsenceForLikingFamily(t *testing.T) {
+	// cor-02 shape: belief stored under a liking-family predicate the old
+	// allowlist missed must either be answered or fall through — never met
+	// with a false "not stored".
+	ws := t.TempDir()
+	store, err := personalcontext.Open(ws)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(strings.ToLower(ans), "sam") {
-		t.Fatalf("must not fabricate a name, got %q", ans)
+	al := &AgentLoop{pcStore: store}
+	raw, _ := personalcontext.RawValue("Coffee is now their favourite drink")
+	_, err = al.pcStore.Create(personalcontext.Entry{
+		ID: "liking", Kind: personalcontext.KindPreference,
+		Subject: "user", Predicate: "preference/favorite_drink", Value: raw,
+		Status: personalcontext.StatusCurrent,
+		Sources: []personalcontext.Source{{Type: personalcontext.SourceCommand,
+			Kind: personalcontext.SourceUserDeclared, Ref: "t:1", Timestamp: time.Now().UTC()}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ans, ok := al.fastPathAnswer("what do i like to drink", "")
+	if !ok || !strings.Contains(ans, "Coffee") {
+		t.Fatalf("liking-family belief must be answered fast, got ok=%v ans=%q", ok, ans)
 	}
 }
 

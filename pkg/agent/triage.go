@@ -73,7 +73,30 @@ var fastSelfRegex = []*regexp.Regexp{
 
 // predicateForFast maps an intent to the Personal Context predicate(s) that
 // answer it, so the fast path looks up the exact belief rather than guessing.
+//
+// The extractor's predicate vocabulary is wider than the two generic
+// predicates: "my favorite drink is X" lands on preference/favorite_drink,
+// "I hate coffee" (via the semantic path) on preference/food, and so on.
+// A liking question must therefore consult the whole liking family —
+// otherwise a stored belief is missed and the turn wrongly reports absence
+// (the cor-02 shape: "coffee is my favourite drink" stored, yet the fast
+// path answered "I don't have that stored yet").
+//
+// Deliberately NOT included: coarse domain-fallback predicates
+// (preference/food, preference/general, ...) whose current rows may hold
+// dislikes, allergies, or unrelated facts — phrasing those as "You like …"
+// would fabricate. When the narrow lookup misses, fastPathAnswer reports
+// not-handled so the full loop retrieves semantically instead of asserting
+// an absence it cannot prove.
 func predicateForFast(m string) []string {
+	// likingPredicates is the unambiguous liking family: every predicate
+	// here means the user likes (or prefers, or names as favourite) the
+	// value. Domain-fallback and communication predicates are excluded by
+	// design (see above).
+	likingPredicates := []string{
+		"preference/likes", "preference/prefers",
+		"preference/favorite", "preference/favorite_food", "preference/favorite_drink",
+	}
 	switch {
 	case regexp.MustCompile(`\b(who am i|what(?:'s| is)? my name)\b`).MatchString(m):
 		return []string{"identity/name"}
@@ -84,18 +107,25 @@ func predicateForFast(m string) []string {
 	case regexp.MustCompile(`\bwhat is my email\b`).MatchString(m):
 		return []string{"identity/email"}
 	case regexp.MustCompile(`\bwhat do i (prefer|like|enjoy)\b`).MatchString(m):
-		return []string{"preference/prefers", "preference/likes"}
+		return likingPredicates
 	case regexp.MustCompile(`\bwhat(?:'s| is) my (favorite|favourite)\b`).MatchString(m):
-		return []string{"preference/likes", "preference/prefers"}
+		return likingPredicates
 	}
 	return nil
 }
 
 // fastPathAnswer answers a Fast-effort request deterministically from Personal
-// Context. It returns (answer, handled). When the belief is stored it answers
-// precisely; when it isn't, it is honest ("I don't have that yet") rather than
-// inventing one. If this isn't a fast-path request, it reports not-handled so
-// the normal loop runs.
+// Context. It returns (answer, handled). When the belief is stored under one
+// of the looked-up predicates it answers precisely; when the narrow lookup
+// finds nothing it reports not-handled so the full loop runs semantic
+// retrieval (memory_search across every sink) instead of asserting an
+// absence the lookup cannot prove. A narrow exact-predicate lookup is not
+// proof of absence: the extractor's vocabulary is wider than any allowlist
+// (favorite_drink, domain fallbacks, ...), and other sinks (MEMORY.md, RAG,
+// curated profile) are invisible to this lookup. Claiming "not stored" here
+// produced false absences (cor-02); falling through lets the loop answer
+// from retrieved evidence — or honestly from empty retrieval. If this isn't
+// a fast-path request, it reports not-handled so the normal loop runs.
 func (al *AgentLoop) fastPathAnswer(m, session string) (string, bool) {
 	if al.pcStore == nil {
 		return "", false
@@ -117,9 +147,9 @@ func (al *AgentLoop) fastPathAnswer(m, session string) (string, bool) {
 		}
 	}
 	if len(values) == 0 {
-		// Honest, non-fabricated response — the exact opposite of a model
-		// inventing an answer.
-		return "I don\u2019t have that stored yet. Tell me and I\u2019ll remember it.", true
+		// Not proven absent — just not found by the narrow lookup. Fall
+		// through to the deliberate loop for semantic retrieval.
+		return "", false
 	}
 	// Phrase the stored value as an answer to the question that was asked.
 	// The stored form is a third-person note ("The user's name is Maya",
@@ -142,7 +172,8 @@ func phraseFastAnswer(predicate string, values []string) string {
 		return "Your phone number is " + first + "."
 	case "identity/email":
 		return "Your email is " + first + "."
-	case "preference/likes", "preference/prefers":
+	case "preference/likes", "preference/prefers",
+		"preference/favorite", "preference/favorite_food", "preference/favorite_drink":
 		if len(values) == 1 {
 			return "You like " + first + "."
 		}

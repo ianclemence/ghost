@@ -1603,9 +1603,11 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 		}
 	}
 	// Phase 1 — intent/effort triage: keep trivial self-fact recall cheap and
-	// deterministic (no model, no tools) and be honest when the fact isn't
-	// stored. Only extremely clear, harmless cases; everything else falls
-	// through to the full loop unchanged.
+	// deterministic (no model, no tools) when the belief is found; otherwise
+	// fall through to the full loop for semantic retrieval rather than
+	// asserting an absence a narrow lookup cannot prove. Only extremely
+	// clear, harmless cases; everything else falls through to the full loop
+	// unchanged.
 	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" {
 		if effort := classifyEffort(msg.Content); effort == EffortFast {
 			if ans, ok := al.fastPathAnswer(msg.Content, msg.SessionKey); ok {
