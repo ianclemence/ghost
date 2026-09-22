@@ -110,7 +110,7 @@ func updateReleaseChannel(scope appliance.ScopePaths, dryRun, force bool) {
 		fmt.Printf("[dry-run] would %s and install into %s (scope: %s, root: %v)\n", kind, scope.BinDir, scope.Scope, scope.NeedsRoot())
 		return
 	}
-	fmt.Printf("Deploying %s (scope: %s)%s...\n", target, scope.Scope, rootNote(scope))
+	fmt.Printf("Deploying %s...\n", target)
 
 	if asset, ok := pickGhostAsset(rel); ok {
 		if err := installReleaseAsset(scope, rel, asset); err != nil {
@@ -272,13 +272,6 @@ func updateDevChannel(scope appliance.ScopePaths, dryRun, force bool) {
 		return
 	}
 	buildAndDeploy(scope, ghostDir, force)
-}
-
-func rootNote(scope appliance.ScopePaths) string {
-	if scope.NeedsRoot() {
-		return " (system install: sudo used only for the binary swap and services)"
-	}
-	return " (no sudo needed)"
 }
 
 // ghostVersion reports the installed Ghost's version without ever starting an
