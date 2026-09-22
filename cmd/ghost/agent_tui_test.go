@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -1387,5 +1389,143 @@ func TestTUIFinalWinsOverStream(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("assistant entry missing: %+v", m.entries)
+	}
+}
+
+// A reply that lands after /clear, /thread, or a history reload must still
+// reach the scrollback. The flush cursor (printed) tracks positions in the
+// entry slice; resetting the slice without resetting the cursor silently
+// swallows every later reply — the "user messages with no Ghost response"
+// shape. Regression test for the 2026-09-22 terminal incident (two turns
+// completed server-side, zero replies displayed).
+func TestTUIReplyAfterEntriesResetStillFlushes(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+
+	// Two entries flushed: the cursor advances past them.
+	m.append(entry{kind: entryUser, text: "good morning", at: time.Now()})
+	m.append(entry{kind: entryAssistant, text: "Good morning!", at: time.Now()})
+	if cmd := m.flushScrollback(); cmd == nil {
+		t.Fatal("expected initial entries to flush")
+	}
+	if m.printed != 2 {
+		t.Fatalf("printed=%d, want 2", m.printed)
+	}
+
+	// /clear wipes the transcript mid-turn (the reply below simulates a
+	// turnDone that lands after the reset).
+	m.runCommand("/clear")
+
+	// Late reply + next user message must both reach the scrollback.
+	m.append(entry{kind: entryAssistant, text: "late reply", at: time.Now()})
+	m.append(entry{kind: entryUser, text: "what is the status today?", at: time.Now()})
+	content := m.pendingScrollback()
+	if !strings.Contains(content, "late reply") {
+		t.Errorf("reply after /clear must flush, got %q", content)
+	}
+	if !strings.Contains(content, "what is the status today?") {
+		t.Errorf("message after /clear must flush, got %q", content)
+	}
+	if cmd := m.flushScrollback(); cmd == nil {
+		t.Errorf("flush after reset must emit, not swallow")
+	}
+}
+
+// /thread starts a fresh transcript epoch: the cursor must restart too,
+// or the first turns of the side thread never display.
+func TestTUIThreadResetsFlushCursor(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, mainConversationKey))
+	m.width, m.height = 80, 24
+	m.append(entry{kind: entryUser, text: "before", at: time.Now()})
+	if cmd := m.flushScrollback(); cmd == nil {
+		t.Fatal("expected initial entry to flush")
+	}
+	m.runCommand("/thread")
+	if m.printed != 1 {
+		t.Fatalf("/thread notice must flush immediately, printed=%d", m.printed)
+	}
+	m.append(entry{kind: entryUser, text: "thread question", at: time.Now()})
+	if content := m.pendingScrollback(); !strings.Contains(content, "thread question") {
+		t.Errorf("first thread message must flush, got %q", content)
+	}
+}
+
+// TestTUIDumpStatesForJevReview renders real transcript states for the
+// external JEV terminal review. It only runs when GHOST_TUI_DUMP is set to
+// a file path, and writes one JSON object per scenario: the rendered
+// scrollback plus the deterministic facts (entries, printed cursor) the
+// reviewer correlates against.
+func TestTUIDumpStatesForJevReview(t *testing.T) {
+	path := os.Getenv("GHOST_TUI_DUMP")
+	if path == "" {
+		t.Skip("set GHOST_TUI_DUMP to dump review states")
+	}
+	type state struct {
+		ID      string   `json:"id"`
+		Title   string   `json:"title"`
+		Render  string   `json:"render"`
+		Entries []string `json:"entries"`
+		Printed int      `json:"printed"`
+	}
+	var out []state
+	emit := func(id, title string, m *agentTUI) {
+		kinds := map[entryKind]string{
+			entryUser: "user", entryAssistant: "assistant", entryTool: "tool",
+			entryNotice: "notice", entryError: "error",
+		}
+		var ks []string
+		for _, e := range m.entries {
+			ks = append(ks, kinds[e.kind])
+		}
+		out = append(out, state{ID: id, Title: title, Render: m.pendingScrollback(), Entries: ks, Printed: m.printed})
+	}
+	newM := func() *agentTUI {
+		m := readyForTest(newAgentTUI(newFakeRuntime(), "cli:test"))
+		m.width, m.height = 80, 24
+		return m
+	}
+	now := time.Now()
+
+	m1 := newM()
+	m1.append(entry{kind: entryUser, text: "hello", at: now.AddDate(0, 0, -1)})
+	m1.append(entry{kind: entryAssistant, text: "Hello!", at: now.AddDate(0, 0, -1)})
+	m1.append(entry{kind: entryUser, text: "good morning", at: now})
+	m1.append(entry{kind: entryAssistant, text: "Good morning!", at: now})
+	emit("dividers-mixed-days", "preloaded yesterday rows plus live today rows", m1)
+
+	m2 := newM()
+	m2.append(entry{kind: entryUser, text: "q1", at: now})
+	m2.append(entry{kind: entryAssistant, text: "a1", at: now})
+	m2.flushScrollback()
+	m2.runCommand("/clear")
+	m2.append(entry{kind: entryAssistant, text: "late reply", at: now})
+	m2.append(entry{kind: entryUser, text: "q2", at: now})
+	emit("clear-then-late-reply", "reply landing after /clear plus next question", m2)
+
+	m3 := newM()
+	m3.working = true
+	before := m3.printed
+	m3.updateInner(turnDoneMsg{err: fmt.Errorf("boom")})
+	m3.printed = before
+	emit("turn-error", "failed turn", m3)
+
+	m4 := newM()
+	m4.working = true
+	m4.streaming = ""
+	before4 := m4.printed
+	m4.updateInner(turnDoneMsg{text: "  ", err: nil})
+	m4.printed = before4
+	emit("empty-response", "turn returning empty text with empty stream", m4)
+
+	m5 := newM()
+	m5.append(entry{kind: entryUser, text: "x", at: time.Time{}})
+	m5.append(entry{kind: entryAssistant, text: "y", at: time.Time{}})
+	emit("zero-timestamps", "entries with unknown time", m5)
+
+	raw, _ := json.MarshalIndent(out, "", " ")
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
 	}
 }

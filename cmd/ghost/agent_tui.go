@@ -1388,17 +1388,13 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	case "clear":
-		m.entries = nil
-		m.toolHistory = nil
-		m.streaming = ""
+		m.resetTranscript()
 		m.renderTranscript()
 	case "thread":
 		// Ghost is one conversation. /thread does not wipe it — it opens a
 		// side thread so a tangent never pollutes the main thread.
 		m.session = "cli:" + fmt.Sprintf("%d", time.Now().UnixNano())
-		m.entries = nil
-		m.toolHistory = nil
-		m.streaming = ""
+		m.resetTranscript()
 		m.turnCount = 0
 		m.append(entry{kind: entryNotice, text: "side thread opened: " + m.session + "\nthis is a separate thread; /main returns to the shared conversation"})
 		m.renderTranscript()
@@ -1406,9 +1402,7 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		// Return to the one shared conversation (the default every surface
 		// talks into).
 		m.session = mainConversationKey
-		m.entries = nil
-		m.toolHistory = nil
-		m.streaming = ""
+		m.resetTranscript()
 		m.turnCount = 0
 		m.append(entry{kind: entryNotice, text: "back to the shared conversation: " + m.session})
 		m.loadHistory()
@@ -1548,6 +1542,20 @@ func (m *agentTUI) setModel(name string) {
 		m.append(entry{kind: entryNotice, text: "model → " + m.loop.GetCurrentModel()})
 	}
 	m.renderTranscript()
+}
+
+// resetTranscript starts a fresh transcript epoch: entries are dropped and
+// the scrollback cursor (printed) plus the day-divider cursor
+// (lastPrintedDay) restart with them. Resetting the slice without the
+// cursors silently swallows every later reply — committed entries sit past
+// a stale cursor and flushScrollback considers them already printed (the
+// "user messages with no Ghost response" shape).
+func (m *agentTUI) resetTranscript() {
+	m.entries = nil
+	m.toolHistory = nil
+	m.streaming = ""
+	m.printed = 0
+	m.lastPrintedDay = ""
 }
 
 // loadHistory refills the transcript from the current conversation's stored
