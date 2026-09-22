@@ -119,11 +119,15 @@ type agentTUI struct {
 
 	input   textarea.Model
 	entries []entry
-	// printed is how many entries have been flushed to the terminal's own
-	// scrollback (main screen). The transcript lives in the scrollback, not
-	// in an app-owned viewport, so the terminal's native scrolling reaches
-	// every previous message — the same model the opencode CLI uses.
-	printed        int
+	// entries is a pending buffer, not the transcript: flushScrollback
+	// prints everything pending and drains it (Scout's flushCmds model), so
+	// there is no print cursor that can desync and silently swallow replies.
+	// The transcript lives in the terminal's own scrollback (main screen),
+	// not in an app-owned viewport, so the terminal's native scrolling
+	// reaches every previous message.
+	// lastFlush is the most recent block printed to the scrollback. It lets
+	// tests assert on committed output after the buffer drains.
+	lastFlush      string
 	lastPrintedDay string
 
 	width, height int
@@ -1544,17 +1548,13 @@ func (m *agentTUI) setModel(name string) {
 	m.renderTranscript()
 }
 
-// resetTranscript starts a fresh transcript epoch: entries are dropped and
-// the scrollback cursor (printed) plus the day-divider cursor
-// (lastPrintedDay) restart with them. Resetting the slice without the
-// cursors silently swallows every later reply — committed entries sit past
-// a stale cursor and flushScrollback considers them already printed (the
-// "user messages with no Ghost response" shape).
+// resetTranscript starts a fresh transcript epoch: pending entries are
+// dropped and the day-divider cursor (lastPrintedDay) restarts with them.
+// The flush path drains the buffer, so no print cursor exists to desync.
 func (m *agentTUI) resetTranscript() {
 	m.entries = nil
 	m.toolHistory = nil
 	m.streaming = ""
-	m.printed = 0
 	m.lastPrintedDay = ""
 }
 
@@ -1633,6 +1633,16 @@ func (m *agentTUI) rewind() {
 			return
 		}
 	}
+	// Flushed entries are already in the scrollback, so fall back to the
+	// sent-message history (slash commands never reach it).
+	for i := len(m.history) - 1; i >= 0; i-- {
+		if strings.TrimSpace(m.history[i]) != "" {
+			m.input.SetValue(m.history[i])
+			m.append(entry{kind: entryNotice, text: "rewound the last message into the editor"})
+			m.renderTranscript()
+			return
+		}
+	}
 	m.append(entry{kind: entryNotice, text: "nothing to rewind"})
 	m.renderTranscript()
 }
@@ -1694,21 +1704,22 @@ func (m *agentTUI) renderDayDivider(label string) string {
 // live View() below renders just the streaming preview, composer and
 // footer.
 func (m *agentTUI) flushScrollback() tea.Cmd {
-	if !m.ready || m.printed >= len(m.entries) {
+	if !m.ready || len(m.entries) == 0 {
 		return nil
 	}
 	text := m.pendingScrollback()
-	m.printed = len(m.entries)
+	m.lastFlush = text
+	m.entries = nil
 	return tea.Println(text)
 }
 
-// pendingScrollback renders the not-yet-printed entries (with day dividers)
-// and advances the printed-day cursor. Split out so it can be asserted in
+// pendingScrollback renders the pending entries (with day dividers) and
+// advances the printed-day cursor. Split out so it can be asserted in
 // tests without a running tea.Program.
 func (m *agentTUI) pendingScrollback() string {
 	var b strings.Builder
 	prevDay := m.lastPrintedDay
-	for i := m.printed; i < len(m.entries); i++ {
+	for i := 0; i < len(m.entries); i++ {
 		e := m.entries[i]
 		if d := dayLabel(e.at); d != "" && d != prevDay {
 			if b.Len() > 0 {
@@ -1731,7 +1742,7 @@ func (m *agentTUI) pendingScrollback() string {
 // welcomeScrollback prints the welcome card into the scrollback for a
 // genuinely new conversation, so it behaves like the first printed entry.
 func (m *agentTUI) welcomeScrollback() tea.Cmd {
-	if len(m.entries) > 0 || m.printed > 0 {
+	if len(m.entries) > 0 {
 		return nil
 	}
 	return tea.Println(m.welcomeCard())

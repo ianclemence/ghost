@@ -292,7 +292,7 @@ func hasNotice(m *agentTUI, sub string) bool {
 			return true
 		}
 	}
-	return false
+	return strings.Contains(m.lastFlush, sub)
 }
 func hasError(m *agentTUI, sub string) bool {
 	for _, e := range m.entries {
@@ -300,7 +300,7 @@ func hasError(m *agentTUI, sub string) bool {
 			return true
 		}
 	}
-	return false
+	return strings.Contains(m.lastFlush, sub)
 }
 func hasUser(m *agentTUI, sub string) bool {
 	for _, e := range m.entries {
@@ -308,7 +308,7 @@ func hasUser(m *agentTUI, sub string) bool {
 			return true
 		}
 	}
-	return false
+	return strings.Contains(m.lastFlush, sub)
 }
 
 // A turn that ends blocked on a durable approval shows a card, not prose, and
@@ -711,14 +711,14 @@ func TestTUITranscriptPrintsToScrollback(t *testing.T) {
 	m.append(entry{kind: entryUser, text: "first question", at: time.Now()})
 	m.append(entry{kind: entryAssistant, text: "first answer", at: time.Now()})
 
-	if m.printed != 0 {
-		t.Fatalf("nothing should be printed before a flush, got %d", m.printed)
+	if len(m.entries) != 2 {
+		t.Fatalf("nothing should flush before a flush, entries=%d", len(m.entries))
 	}
 	if cmd := m.flushScrollback(); cmd == nil {
 		t.Fatalf("committed entries must flush to the scrollback")
 	}
-	if m.printed != 2 {
-		t.Errorf("flush must mark both entries printed, got %d", m.printed)
+	if len(m.entries) != 0 {
+		t.Errorf("flush must drain the buffer (Scout flushCmds model), left %d", len(m.entries))
 	}
 	// A second flush with nothing new is a no-op (never reprints history).
 	if cmd := m.flushScrollback(); cmd != nil {
@@ -1378,39 +1378,33 @@ func TestTUIFinalWinsOverStream(t *testing.T) {
 	m.working = true
 	m.streaming = "Hel"
 	m.Update(turnDoneMsg{text: "Hello!", err: nil})
-	found := false
-	for _, e := range m.entries {
-		if e.kind == entryAssistant {
-			found = true
-			if e.text != "Hello!" {
-				t.Fatalf("final must win verbatim, got %q", e.text)
-			}
-		}
+	if !strings.Contains(m.lastFlush, "Hello!") {
+		t.Fatalf("final must win verbatim, flushed %q", m.lastFlush)
 	}
-	if !found {
-		t.Fatalf("assistant entry missing: %+v", m.entries)
+	if strings.Contains(m.lastFlush, "HelHello!") {
+		t.Fatalf("stream must not concatenate with final, flushed %q", m.lastFlush)
 	}
 }
 
 // A reply that lands after /clear, /thread, or a history reload must still
-// reach the scrollback. The flush cursor (printed) tracks positions in the
-// entry slice; resetting the slice without resetting the cursor silently
-// swallows every later reply — the "user messages with no Ghost response"
-// shape. Regression test for the 2026-09-22 terminal incident (two turns
-// completed server-side, zero replies displayed).
+// reach the scrollback. The buffer drains on flush (no print cursor exists
+// to desync), so nothing appended can be silently skipped — the "user
+// messages with no Ghost response" shape. Regression test for the
+// 2026-09-22 terminal incident (two turns completed server-side, zero
+// replies displayed).
 func TestTUIReplyAfterEntriesResetStillFlushes(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.width, m.height = 80, 24
 
-	// Two entries flushed: the cursor advances past them.
+	// Two entries flushed: the buffer drains.
 	m.append(entry{kind: entryUser, text: "good morning", at: time.Now()})
 	m.append(entry{kind: entryAssistant, text: "Good morning!", at: time.Now()})
 	if cmd := m.flushScrollback(); cmd == nil {
 		t.Fatal("expected initial entries to flush")
 	}
-	if m.printed != 2 {
-		t.Fatalf("printed=%d, want 2", m.printed)
+	if len(m.entries) != 0 {
+		t.Fatalf("flush must drain, left %d", len(m.entries))
 	}
 
 	// /clear wipes the transcript mid-turn (the reply below simulates a
@@ -1432,8 +1426,8 @@ func TestTUIReplyAfterEntriesResetStillFlushes(t *testing.T) {
 	}
 }
 
-// /thread starts a fresh transcript epoch: the cursor must restart too,
-// or the first turns of the side thread never display.
+// /thread starts a fresh transcript epoch: the buffer already drained, so
+// the notice and the first turns of the side thread always display.
 func TestTUIThreadResetsFlushCursor(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, mainConversationKey))
@@ -1443,8 +1437,8 @@ func TestTUIThreadResetsFlushCursor(t *testing.T) {
 		t.Fatal("expected initial entry to flush")
 	}
 	m.runCommand("/thread")
-	if m.printed != 1 {
-		t.Fatalf("/thread notice must flush immediately, printed=%d", m.printed)
+	if len(m.entries) != 0 {
+		t.Fatalf("/thread notice must flush immediately, pending=%d", len(m.entries))
 	}
 	m.append(entry{kind: entryUser, text: "thread question", at: time.Now()})
 	if content := m.pendingScrollback(); !strings.Contains(content, "thread question") {
@@ -1467,7 +1461,7 @@ func TestTUIDumpStatesForJevReview(t *testing.T) {
 		Title   string   `json:"title"`
 		Render  string   `json:"render"`
 		Entries []string `json:"entries"`
-		Printed int      `json:"printed"`
+		Pending int      `json:"pending"`
 	}
 	var out []state
 	emit := func(id, title string, m *agentTUI) {
@@ -1479,7 +1473,7 @@ func TestTUIDumpStatesForJevReview(t *testing.T) {
 		for _, e := range m.entries {
 			ks = append(ks, kinds[e.kind])
 		}
-		out = append(out, state{ID: id, Title: title, Render: m.pendingScrollback(), Entries: ks, Printed: m.printed})
+		out = append(out, state{ID: id, Title: title, Render: m.pendingScrollback(), Entries: ks, Pending: len(ks)})
 	}
 	newM := func() *agentTUI {
 		m := readyForTest(newAgentTUI(newFakeRuntime(), "cli:test"))
@@ -1506,17 +1500,15 @@ func TestTUIDumpStatesForJevReview(t *testing.T) {
 
 	m3 := newM()
 	m3.working = true
-	before := m3.printed
+	m3.ready = false // hold the flush: emit reads exactly what it would print
 	m3.updateInner(turnDoneMsg{err: fmt.Errorf("boom")})
-	m3.printed = before
 	emit("turn-error", "failed turn", m3)
 
 	m4 := newM()
 	m4.working = true
 	m4.streaming = ""
-	before4 := m4.printed
+	m4.ready = false // hold the flush: emit reads exactly what it would print
 	m4.updateInner(turnDoneMsg{text: "  ", err: nil})
-	m4.printed = before4
 	emit("empty-response", "turn returning empty text with empty stream", m4)
 
 	m5 := newM()
