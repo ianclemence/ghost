@@ -3,6 +3,11 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.4] - 2026-09-22
+
+- `ghost update` no longer prints scope and sudo notes on the Deploying
+  line.
+
 ## [0.24.3] - 2026-09-22
 
 Evaluation-driven fixes (Golden Suite 58/59 → 59/59, confirmed by external
