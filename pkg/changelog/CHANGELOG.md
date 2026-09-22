@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.6] - 2026-09-22
+
+- The terminal transcript can no longer silently drop replies. Committed
+  lines now print and drain like Scout's transcript (no print cursor left
+  to desync), so `/clear`, `/thread`, and history reloads cannot swallow
+  later responses.
+
 ## [0.24.5] - 2026-09-22
 
 - The terminal no longer loses Ghost replies after `/clear`, `/thread`,
