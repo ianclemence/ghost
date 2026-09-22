@@ -3,6 +3,23 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.3] - 2026-09-22
+
+Evaluation-driven fixes (Golden Suite 58/59 → 59/59, confirmed by external
+JEV evaluation before and after).
+
+- **Memory recall no longer falsely reports absence.** Asking what you
+  like or prefer could answer "I don't have that stored yet" even when the
+  preference was stored, because the fast recall path only looked up two
+  predicates while stored beliefs use a wider vocabulary. The fast path now
+  covers the liking family and falls through to full retrieval instead of
+  asserting an absence it cannot prove.
+- **Computer actions report dispatch honestly.** Control actions that were
+  dispatched but not independently screen-verified used to report "executor
+  reported false", which read as failure and contradicted the recorded
+  success evidence. They now report "dispatched but not independently
+  screen-verified".
+
 ## [0.24.2] - 2026-09-21
 
 Reasoning-hygiene release.
