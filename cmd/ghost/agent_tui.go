@@ -615,6 +615,11 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
+	m.clampPalette()
+	// Typing must relayout every keystroke: the composer grows with the
+	// wrapped content (Pi editor parity: grow to cap, then scroll). Without
+	// this the box stays one row no matter how long the message gets.
+	m.layout()
 	return m, cmd
 }
 
@@ -1849,17 +1854,28 @@ func (m *agentTUI) renderEntry(e entry) string {
 	tw := m.textWidth()
 	switch e.kind {
 	case entryUser:
-		// User bubble: a name line, then a left-bar panel with the raw
-		// text (never markdown-rendered), paragraphs preserved.
+		// User bubble: the name shares its row with the pipe and the first
+		// text line ("You ┃ hello"), continuations keep the pipe. Raw text,
+		// never markdown-rendered; paragraphs preserved.
 		var lines []string
-		lines = append(lines, styleUserName.Render("You"))
+		first := true
+		emit := func(txt string) {
+			if first {
+				lines = append(lines, styleUserName.Render("You")+" "+styleUserBar.Render("┃")+txt)
+				first = false
+				return
+			}
+			// Three spaces keep the pipe under the first row's pipe
+			// ("You " is four cells wide; the panel adds the fourth).
+			lines = append(lines, styleUserPanel.Render("   "+styleUserBar.Render("┃")+txt))
+		}
 		for _, para := range strings.Split(e.text, "\n") {
 			if strings.TrimSpace(para) == "" {
-				lines = append(lines, styleUserPanel.Render(styleUserBar.Render("┃")))
+				emit("")
 				continue
 			}
 			for _, wl := range wrapText(para, w-4) {
-				lines = append(lines, styleUserPanel.Render(styleUserBar.Render("┃")+" "+styleUserText.Render(wl)))
+				emit(" " + styleUserText.Render(wl))
 			}
 		}
 		return strings.Join(lines, "\n")

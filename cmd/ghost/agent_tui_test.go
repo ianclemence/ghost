@@ -1538,6 +1538,29 @@ func TestTUIDumpStatesForJevReview(t *testing.T) {
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
+
+	// Composer states for the input-area review: the painted box plus its
+	// height at short, long, and over-cap input.
+	type cstate struct {
+		ID     string `json:"id"`
+		Title  string `json:"title"`
+		Render string `json:"render"`
+		Height int    `json:"height"`
+	}
+	var cout []cstate
+	cemit := func(id, title, value string) {
+		m := newM()
+		m.input.SetValue(value)
+		m.layout()
+		cout = append(cout, cstate{id, title, m.promptBox(), m.input.Height()})
+	}
+	cemit("composer-short", "short message stays one row", "hi")
+	cemit("composer-long", "long message grows the box", "word word word word word word word word word word word word word word word word word word word word word word word word ")
+	cemit("composer-capped", "over-cap message stops at seven rows", "word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word\nsecond para")
+	craw, _ := json.MarshalIndent(cout, "", " ")
+	if err := os.WriteFile(path+".composer", craw, 0600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // nextStreamBlock is pure accounting: the header prints once, completed
@@ -1636,5 +1659,43 @@ func TestTUIProgressiveNoDuplication(t *testing.T) {
 		if e.kind == entryAssistant {
 			t.Errorf("streamed reply must not commit a duplicate entry, entries=%v", m.entries)
 		}
+	}
+}
+
+// Typing a long message must grow the composer box rune by rune (Pi editor
+// parity: grow to cap, then scroll). Regression test: the typing path once
+// skipped layout, so the box stayed one row no matter the message length.
+func TestTUIComposerGrowsWhileTyping(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	m.layout()
+	for _, r := range "word word word word word word word word word word word word word word word word word word word word " {
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+		m.updateInner(msg)
+	}
+	if h := m.input.Height(); h <= 1 {
+		t.Fatalf("composer must grow while typing long input, height=%d value=%q", h, m.input.Value())
+	}
+	if got := m.estimatedInputHeight(); got != m.input.Height()+2 {
+		t.Errorf("estimate must track the grown box, estimate=%d height=%d", got, m.input.Height())
+	}
+}
+
+// The name shares its row with the pipe and the first text line.
+func TestTUIUserBubbleSameRow(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	out := m.renderEntry(entry{kind: entryUser, text: "hello"})
+	rows := strings.Split(out, "\n")
+	if len(rows) != 1 {
+		t.Fatalf("single-line message must render one row, got %q", out)
+	}
+	you, bar := strings.Index(rows[0], "You"), strings.Index(rows[0], "┃")
+	if you < 0 || bar < 0 || you > bar {
+		t.Fatalf("name and pipe must share the first row in order, got %q", out)
+	}
+	if !strings.Contains(rows[0], "hello") {
+		t.Fatalf("first text line must share the row, got %q", out)
 	}
 }
