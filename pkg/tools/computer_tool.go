@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/computer"
@@ -212,6 +211,10 @@ func describeComputerResult(action string, res computer.Result) string {
 			return fmt.Sprintf("Computer action completed and verified: %s", res.Output)
 		}
 		// Dispatched but not independently observed is reported honestly.
-		return fmt.Sprintf("Computer action %s (executor reported %s; not independently screen-verified).", action, strconv.FormatBool(res.Verified))
+		// The wording must never read as executor failure: Verified=false
+		// means "not independently observed", while a real failure returns
+		// an error. ("executor reported false" misled models into hedging
+		// a success the runtime had recorded — cc-01.)
+		return fmt.Sprintf("Computer action %s dispatched but not independently screen-verified.", action)
 	}
 }
