@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.7] - 2026-09-22
+
+- Replies now stream line-by-line into the conversation as they arrive,
+  opencode style — no more watching a one-row preview and getting the
+  whole answer at the end. Completion prints only the remaining tail,
+  never the full text again.
+- The idle footer is trimmed to `/ commands` (left) and `esc quit`
+  (right), matching Scout.
+
 ## [0.24.6] - 2026-09-22
 
 - The terminal transcript can no longer silently drop replies. Committed
