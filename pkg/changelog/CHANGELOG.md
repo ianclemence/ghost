@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.5] - 2026-09-22
+
+- The terminal no longer loses Ghost replies after `/clear`, `/thread`,
+  or returning with `/main`. Replacing the transcript used to leave the
+  scrollback cursor behind, silently swallowing later replies; the cursor
+  now restarts with the transcript.
+
 ## [0.24.4] - 2026-09-22
 
 - `ghost update` no longer prints scope and sudo notes on the Deploying
