@@ -1525,10 +1525,11 @@ func TestTUIDumpStatesForJevReview(t *testing.T) {
 
 	m6 := newM()
 	m6.working = true
+	m6.streamSty = streamStyler{width: m6.textWidth()}
 	m6.ready = false // hold the entry flush; progressive prints bypass it
-	m6.updateInner(streamChunkMsg{text: "First line\n"})
+	m6.updateInner(streamChunkMsg{text: "## Model releases\n"})
 	first := m6.lastFlush
-	m6.updateInner(streamChunkMsg{text: "Second line\nPartial"})
+	m6.updateInner(streamChunkMsg{text: "- **Claude Mythos 5.1** ships today\n- Gemini 3.8 Flash follows\n\n```go\nfmt.Println()\n```\n| a | b |\n|---|---|\n| 1 | 2 |\nTail."})
 	// Progressive blocks print straight to the scrollback (not via entries):
 	// join both blocks to show what the user saw grow.
 	out = append(out, state{ID: "mid-stream", Title: "reply growing line by line while the turn runs", Render: first + "\n" + m6.lastFlush, Entries: []string{"stream:2-blocks"}, Pending: 0})
@@ -1551,7 +1552,7 @@ func TestNextStreamBlockAccounting(t *testing.T) {
 		t.Fatalf("partial line: header due, no lines, got %v %v %d", wh, lines, flushed)
 	}
 	wh, lines, flushed = nextStreamBlock("Hello\nWorld", false, 0)
-	if !wh || len(lines) != 1 || lines[0] != " Hello" || flushed != 1 {
+	if !wh || len(lines) != 1 || lines[0] != "Hello" || flushed != 1 {
 		t.Fatalf("first line completes, got %v %q %d", wh, lines, flushed)
 	}
 	wh, lines, flushed = nextStreamBlock("Hello\nWorld", true, 1)
@@ -1559,8 +1560,8 @@ func TestNextStreamBlockAccounting(t *testing.T) {
 		t.Fatalf("same buffer twice must emit nothing new, got %v %v %d", wh, lines, flushed)
 	}
 	wh, lines, flushed = nextStreamBlock("Hello\n\nWorld\nTail", true, 1)
-	if wh || len(lines) != 1 || lines[0] != " World" || flushed != 3 {
-		t.Fatalf("blanks skipped but counted, got %v %q %d", wh, lines, flushed)
+	if wh || len(lines) != 2 || lines[0] != "" || lines[1] != "World" || flushed != 3 {
+		t.Fatalf("blanks pass through and count, got %v %q %d", wh, lines, flushed)
 	}
 }
 
@@ -1599,5 +1600,41 @@ func TestTUINoChunksStillCommitsFullReply(t *testing.T) {
 	m.updateInner(turnDoneMsg{text: "Instant answer", err: nil})
 	if !strings.Contains(m.lastFlush, "Instant answer") {
 		t.Errorf("chunkless reply must commit whole, lastFlush=%q", m.lastFlush)
+	}
+}
+
+// TestTUIProgressiveNoDuplication drives a realistic multi-chunk markdown
+// reply through chunks + turnDone and records every printed block. It fails
+// if any content line prints twice (progressive + final duplication).
+func TestTUIProgressiveNoDuplication(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	m.working = true
+	var blocks []string
+	feed := func(s string) {
+		m.updateInner(streamChunkMsg{text: s})
+		if m.lastFlush != "" {
+			blocks = append(blocks, m.lastFlush)
+			m.lastFlush = ""
+		}
+	}
+	feed("## Head\n")
+	feed("Body line one\nBody line two\n")
+	feed("Tail.")
+	m.updateInner(turnDoneMsg{text: "## Head\nBody line one\nBody line two\nTail.", err: nil})
+	if m.lastFlush != "" {
+		blocks = append(blocks, m.lastFlush)
+	}
+	joined := strings.Join(blocks, "\n")
+	for _, want := range []string{"Head", "Body line one", "Body line two", "Tail."} {
+		if n := strings.Count(joined, want); n != 1 {
+			t.Errorf("content %q printed %d times, want exactly once\nblocks=%q", want, n, joined)
+		}
+	}
+	for _, e := range m.entries {
+		if e.kind == entryAssistant {
+			t.Errorf("streamed reply must not commit a duplicate entry, entries=%v", m.entries)
+		}
 	}
 }

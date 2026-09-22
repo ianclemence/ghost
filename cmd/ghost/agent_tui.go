@@ -142,6 +142,7 @@ type agentTUI struct {
 	// (opencode/Pi/ChatGPT style) with no reprint at completion.
 	streamHeaderShown bool
 	streamFlushedLines int
+	streamSty streamStyler // markdown state for progressive lines (fences, tables)
 	toolLine  string // current tool activity
 	toolCount int
 
@@ -381,6 +382,7 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streaming = ""
 		m.streamHeaderShown = false
 		m.streamFlushedLines = 0
+		m.streamSty = streamStyler{width: m.textWidth()}
 		m.toolCount = 0
 		flush := m.renderTranscript()
 		if tailCmd != nil {
@@ -664,6 +666,7 @@ func (m *agentTUI) send(text string) tea.Cmd {
 	m.streaming = ""
 	m.streamHeaderShown = false
 	m.streamFlushedLines = 0
+	m.streamSty = streamStyler{width: m.textWidth()}
 	m.turnStart = time.Now()
 	m.elapsed = 0
 	// A new turn always follows: the owner just acted. The user message is
@@ -1590,6 +1593,7 @@ func (m *agentTUI) resetTranscript() {
 	m.streaming = ""
 	m.streamHeaderShown = false
 	m.streamFlushedLines = 0
+	m.streamSty = streamStyler{width: m.textWidth()}
 	m.lastPrintedDay = ""
 }
 
@@ -1886,21 +1890,27 @@ func (m *agentTUI) assistantHead() string {
 }
 
 // flushStreamLines prints the reply's newly completed lines into the
-// scrollback as they arrive, so the answer grows in the conversation area
-// instead of appearing whole at the end. Returns nil when nothing new is
-// printable yet.
+// scrollback as they arrive, styled exactly like committed replies, so the
+// answer grows in the conversation area instead of appearing whole at the
+// end. A blank line separates the reply from the user's message above.
+// Returns nil when nothing new is printable yet.
 func (m *agentTUI) flushStreamLines() tea.Cmd {
-	wantHeader, lines, flushed := nextStreamBlock(m.streaming, m.streamHeaderShown, m.streamFlushedLines)
-	if !wantHeader && len(lines) == 0 {
+	wantHeader, raws, flushed := nextStreamBlock(m.streaming, m.streamHeaderShown, m.streamFlushedLines)
+	var styled []string
+	for _, raw := range raws {
+		styled = append(styled, m.streamSty.line(raw)...)
+	}
+	if !wantHeader && len(styled) == 0 {
 		return nil
 	}
 	m.streamHeaderShown = true
 	m.streamFlushedLines = flushed
 	var b strings.Builder
 	if wantHeader {
+		b.WriteString("\n")
 		b.WriteString(m.assistantHead())
 	}
-	for _, ln := range lines {
+	for _, ln := range styled {
 		if b.Len() > 0 {
 			b.WriteString("\n")
 		}
@@ -1911,28 +1921,115 @@ func (m *agentTUI) flushStreamLines() tea.Cmd {
 	return tea.Println(text)
 }
 
-// streamTail returns the not-yet-printed remainder of the streaming buffer
-// (the trailing partial line), rendered like the progressive lines.
+// streamTail returns the not-yet-printed remainder of the streaming buffer,
+// styled, with a trailing blank line separating the reply from what follows.
+// Buffered table rows render before the trailing partial line: the buffer
+// only ever holds a trailing run of table rows, so this preserves order.
 func (m *agentTUI) streamTail() string {
 	parts := strings.Split(m.streaming, "\n")
-	var out []string
-	for i, ln := range parts {
+	var tail []string
+	for i, raw := range parts {
 		if i < m.streamFlushedLines {
 			continue
 		}
-		if strings.TrimSpace(ln) == "" {
-			continue
-		}
-		out = append(out, " "+ln)
+		tail = append(tail, raw)
 	}
-	return strings.Join(out, "\n")
+	var out []string
+	out = append(out, m.streamSty.flush()...)
+	for _, raw := range tail {
+		out = append(out, m.streamSty.line(raw)...)
+	}
+	out = append(out, m.streamSty.flush()...)
+	for len(out) > 0 && strings.TrimSpace(out[len(out)-1]) == "" {
+		out = out[:len(out)-1]
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	return strings.Join(out, "\n") + "\n"
+}
+
+// streamStyler renders progressive reply lines with the same markdown as
+// committed replies (Scout parity for live text). Code fences toggle a
+// running state (fences concealed, like the full renderer); table rows
+// buffer until a non-row line or the turn end decides them. Single lines
+// go through renderMarkdownLine, so live text matches committed text.
+type streamStyler struct {
+	width  int
+	inCode bool
+	table  []string
+}
+
+func (s *streamStyler) line(raw string) []string {
+	if s.width < 20 {
+		s.width = 20 // same floor as the full renderer; never wrap per-rune
+	}
+	trim := strings.TrimSpace(raw)
+	if strings.HasPrefix(trim, "```") {
+		out := s.flushTable()
+		s.inCode = !s.inCode // conceal fences and language tags entirely
+		return out
+	}
+	if s.inCode {
+		var out []string
+		for _, wl := range wrapText(raw, s.width) {
+			out = append(out, " "+styleMDCodeBlock.Render(wl))
+		}
+		return out
+	}
+	if isTableRow(trim) {
+		s.table = append(s.table, raw)
+		return nil
+	}
+	out := s.flushTable()
+	for _, ln := range renderMarkdownLine(trim, raw, s.width) {
+		if ln == "" {
+			out = append(out, "")
+		} else {
+			out = append(out, " "+ln)
+		}
+	}
+	return out
+}
+
+// flushTable renders buffered table rows as a grid when they form one,
+// otherwise as plain lines. Always empties the buffer.
+func (s *streamStyler) flushTable() []string {
+	if len(s.table) == 0 {
+		return nil
+	}
+	buf := s.table
+	s.table = nil
+	if len(buf) >= 2 && isTableDelimiter(strings.TrimSpace(buf[1])) {
+		var out []string
+		for _, ln := range renderTable(buf, s.width) {
+			out = append(out, " "+ln)
+		}
+		return out
+	}
+	var out []string
+	for _, raw := range buf {
+		trim := strings.TrimSpace(raw)
+		for _, ln := range renderMarkdownLine(trim, raw, s.width) {
+			if ln == "" {
+				out = append(out, "")
+			} else {
+				out = append(out, " "+ln)
+			}
+		}
+	}
+	return out
+}
+
+// flush ends the turn: any pending table is decided, fences reset.
+func (s *streamStyler) flush() []string {
+	defer func() { s.inCode = false }()
+	return s.flushTable()
 }
 
 // nextStreamBlock decides what the progressive printer may emit for the
 // current streaming buffer: whether the header is due, and which completed
-// lines have not been printed yet. Lines print raw (opencode style) — live
-// markdown on an append-only scrollback cannot re-render, and half-rendered
-// fences are worse than plain text. The trailing partial line is never
+// raw lines have not been printed yet. The trailing partial line is never
 // emitted here; turnDone prints it. Pure so turns can be asserted without
 // a running program.
 func nextStreamBlock(streaming string, headerShown bool, flushedLines int) (wantHeader bool, lines []string, flushed int) {
@@ -1945,10 +2042,7 @@ func nextStreamBlock(streaming string, headerShown bool, flushedLines int) (want
 		if i < flushedLines {
 			continue
 		}
-		if strings.TrimSpace(ln) == "" {
-			continue
-		}
-		lines = append(lines, " "+ln)
+		lines = append(lines, ln)
 	}
 	return wantHeader, lines, len(complete)
 }
@@ -2118,62 +2212,72 @@ func renderAssistantBody(text string, width int) string {
 			i = end - 1
 			continue
 		}
-		if level, rest, ok := parseHeading(trim); ok {
-			body := cellTruncate(rest, width)
-			if level == 1 {
-				out = append(out, styleMDHead1.Render(body))
-			} else {
-				out = append(out, styleMDHead.Render(body))
-			}
-			continue
-		}
-		switch {
-		case trim == "---" || trim == "***" || trim == "___":
-			out = append(out, styleMDHR.Render(strings.Repeat("─", width)))
-		case strings.HasPrefix(trim, "> "):
-			for _, wl := range wrapText(strings.TrimPrefix(trim, "> "), width-4) {
-				out = append(out, styleMDQuoteMark.Render("> ")+styleMDQuote.Render(renderInline(wl)))
-			}
-		case strings.HasPrefix(trim, "- [ ] ") || strings.HasPrefix(trim, "* [ ] "):
-			rest := strings.TrimSpace(trim[6:])
-			for _, wl := range wrapText(rest, width-6) {
-				out = append(out, styleMDUncheck.Render("  ○ "+renderInline(wl)))
-			}
-		case strings.HasPrefix(trim, "- [x] ") || strings.HasPrefix(trim, "- [X] ") ||
-			strings.HasPrefix(trim, "* [x] ") || strings.HasPrefix(trim, "* [X] "):
-			rest := trim[6:]
-			for _, wl := range wrapText(rest, width-6) {
-				out = append(out, styleMDCheck.Render("  ● "+renderInline(wl)))
-			}
-		case strings.HasPrefix(trim, "- ") || strings.HasPrefix(trim, "* ") || strings.HasPrefix(trim, "+ "):
-			body := strings.TrimSpace(trim[2:])
-			parts := wrapText(body, width-4)
-			for i, wl := range parts {
-				if i == 0 {
-					out = append(out, styleMDList.Render(trim[:1]+" ")+styleAssistant.Render(renderInline(wl)))
-				} else {
-					out = append(out, "  "+styleAssistant.Render(renderInline(wl)))
-				}
-			}
-		case isOrderedList(trim):
-			dot := strings.Index(trim, ".")
-			parts := wrapText(strings.TrimSpace(trim[dot+1:]), width-6)
-			for i, wl := range parts {
-				if i == 0 {
-					out = append(out, styleMDEnum.Render(trim[:dot+1]+" ")+styleAssistant.Render(renderInline(wl)))
-				} else {
-					out = append(out, "  "+styleAssistant.Render(renderInline(wl)))
-				}
-			}
-		case trim == "":
-			out = append(out, "")
-		default:
-			for _, wl := range wrapText(ln, width) {
-				out = append(out, styleAssistant.Render(renderInline(wl)))
-			}
-		}
+		out = append(out, renderMarkdownLine(trim, ln, width)...)
 	}
 	return strings.Join(out, "\n")
+}
+
+// renderMarkdownLine renders one non-table, non-fence markdown line: the
+// single-line cases of renderAssistantBody shared by the full renderer and
+// the progressive stream styler, so live lines look exactly like committed
+// ones.
+func renderMarkdownLine(trim, ln string, width int) []string {
+	var out []string
+	if level, rest, ok := parseHeading(trim); ok {
+		body := cellTruncate(rest, width)
+		if level == 1 {
+			out = append(out, styleMDHead1.Render(body))
+		} else {
+			out = append(out, styleMDHead.Render(body))
+		}
+		return out
+	}
+	switch {
+	case trim == "---" || trim == "***" || trim == "___":
+		out = append(out, styleMDHR.Render(strings.Repeat("─", width)))
+	case strings.HasPrefix(trim, "> "):
+		for _, wl := range wrapText(strings.TrimPrefix(trim, "> "), width-4) {
+			out = append(out, styleMDQuoteMark.Render("> ")+styleMDQuote.Render(renderInline(wl)))
+		}
+	case strings.HasPrefix(trim, "- [ ] ") || strings.HasPrefix(trim, "* [ ] "):
+		rest := strings.TrimSpace(trim[6:])
+		for _, wl := range wrapText(rest, width-6) {
+			out = append(out, styleMDUncheck.Render("  ○ "+renderInline(wl)))
+		}
+	case strings.HasPrefix(trim, "- [x] ") || strings.HasPrefix(trim, "- [X] ") ||
+		strings.HasPrefix(trim, "* [x] ") || strings.HasPrefix(trim, "* [X] "):
+		rest := trim[6:]
+		for _, wl := range wrapText(rest, width-6) {
+			out = append(out, styleMDCheck.Render("  ● "+renderInline(wl)))
+		}
+	case strings.HasPrefix(trim, "- ") || strings.HasPrefix(trim, "* ") || strings.HasPrefix(trim, "+ "):
+		body := strings.TrimSpace(trim[2:])
+		parts := wrapText(body, width-4)
+		for i, wl := range parts {
+			if i == 0 {
+				out = append(out, styleMDList.Render(trim[:1]+" ")+styleAssistant.Render(renderInline(wl)))
+			} else {
+				out = append(out, "  "+styleAssistant.Render(renderInline(wl)))
+			}
+		}
+	case isOrderedList(trim):
+		dot := strings.Index(trim, ".")
+		parts := wrapText(strings.TrimSpace(trim[dot+1:]), width-6)
+		for i, wl := range parts {
+			if i == 0 {
+				out = append(out, styleMDEnum.Render(trim[:dot+1]+" ")+styleAssistant.Render(renderInline(wl)))
+			} else {
+				out = append(out, "  "+styleAssistant.Render(renderInline(wl)))
+			}
+		}
+	case trim == "":
+		out = append(out, "")
+	default:
+		for _, wl := range wrapText(ln, width) {
+			out = append(out, styleAssistant.Render(renderInline(wl)))
+		}
+	}
+	return out
 }
 
 // ─── markdown tables (opencode-style) ───────────────────────────────────
