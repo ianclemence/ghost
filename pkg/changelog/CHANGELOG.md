@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.10] - 2026-09-22
+
+- Inline styling no longer leaks when the model breaks a line mid-span.
+  Bold, italic, and code split across line breaks now rejoin before
+  rendering, on both the live stream and the committed reply — without
+  touching fences, tables, headings, quotes, or lists.
+
 ## [0.24.9] - 2026-09-22
 
 - Your messages show as `You ┃ text` on one row, with continuation pipes
