@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.9] - 2026-09-22
+
+- Your messages show as `You ┃ text` on one row, with continuation pipes
+  aligned beneath.
+- The input box now grows while you type a long message (up to its cap,
+  then it scrolls) instead of staying one row.
+
 ## [0.24.8] - 2026-09-22
 
 - Streaming replies render markdown live, Scout-style: headings, lists,
