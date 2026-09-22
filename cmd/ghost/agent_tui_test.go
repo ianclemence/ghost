@@ -1699,3 +1699,95 @@ func TestTUIUserBubbleSameRow(t *testing.T) {
 		t.Fatalf("first text line must share the row, got %q", out)
 	}
 }
+
+// Inline spans split across the model's own line breaks must conceal on
+// both paths: a completed line ending inside an unclosed span waits for
+// its continuation instead of leaking markers.
+func TestTUIContinuedSpansConcealed(t *testing.T) {
+	in := "The **Supreme Court blocked Trump's effort to restrict\nmail-in voting** ahead of November's midterms, in a brief\nunsigned order upholding a lower court ruling *(Democracy\nNow, Sep 15)*."
+	if out := renderAssistantBody(in, 76); strings.Contains(out, "**") || strings.Contains(out, "*(") {
+		t.Errorf("full render leaked markers:\n%s", out)
+	}
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	m.working = true
+	m.streamSty = streamStyler{width: m.textWidth()}
+	var shown strings.Builder
+	feed := func(s string) {
+		m.updateInner(streamChunkMsg{text: s})
+		shown.WriteString(m.lastFlush + "\n")
+		m.lastFlush = ""
+	}
+	for _, ln := range strings.Split(in, "\n") {
+		feed(ln + "\n")
+	}
+	m.updateInner(turnDoneMsg{text: in, err: nil})
+	shown.WriteString(m.lastFlush + "\n")
+	got := shown.String()
+	for _, bad := range []string{"**", "*("} {
+		if strings.Contains(got, bad) {
+			t.Errorf("progressive render leaked %q:\n%s", bad, got)
+		}
+	}
+	for _, want := range []string{"mail-in voting", "Democracy Now, Sep 15", "unsigned order"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("progressive render lost %q:\n%s", want, got)
+		}
+	}
+}
+
+// Buffered lines (span repair, table rows) count as consumed: re-feeding
+// them self-joins against the buffer and duplicates.
+func TestTUIBufferedLinesAdvanceAccounting(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	m.working = true
+	m.streamSty = streamStyler{width: m.textWidth()}
+	var shown strings.Builder
+	feed := func(s string) {
+		m.updateInner(streamChunkMsg{text: s})
+		shown.WriteString(m.lastFlush + "\n")
+		m.lastFlush = ""
+	}
+	feed("unsigned order upholding a lower court ruling *(Democracy\n")
+	feed("Now, Sep 15)*.\n")
+	m.updateInner(turnDoneMsg{text: "unsigned order upholding a lower court ruling *(Democracy\nNow, Sep 15)*.", err: nil})
+	shown.WriteString(m.lastFlush + "\n")
+	got := shown.String()
+	if n := strings.Count(got, "unsigned order"); n != 1 {
+		t.Errorf("buffered line printed %d times, want once:\n%s", n, got)
+	}
+}
+
+// Span repair never crosses block structure: fences, tables, headings,
+// quotes, and lists keep their boundaries even after an unclosed span.
+func TestJoinContinuedLinesRespectsBlocks(t *testing.T) {
+	// Fence lines never donate, even with odd backticks.
+	if got := joinContinuedLines("```go\nfmt.Println()\n```\ncode `x` here"); strings.Contains(got, "```go fmt") {
+		t.Errorf("fence must not join forward: %q", got)
+	}
+	// A closing fence never absorbs the next line.
+	if got := joinContinuedLines("text **bold\n```\ncode"); !strings.Contains(got, "\n```\n") {
+		t.Errorf("closing fence must stand alone: %q", got)
+	}
+	// Table rows never donate to the delimiter lookahead.
+	if got := joinContinuedLines("| a **b |\n| --- |\n| c |"); strings.Contains(got, "| a **b | | --- |") {
+		t.Errorf("table rows must not merge: %q", got)
+	}
+	// Headings, quotes, list items are not absorbed from above...
+	if got := joinContinuedLines("open **span\n# Head"); strings.Contains(got, "open **span # Head") {
+		t.Errorf("heading must stand alone: %q", got)
+	}
+	if got := joinContinuedLines("open **span\n> quoted"); strings.Contains(got, "open **span > quoted") {
+		t.Errorf("quote must stand alone: %q", got)
+	}
+	if got := joinContinuedLines("open **span\n- item"); strings.Contains(got, "open **span - item") {
+		t.Errorf("list item must stand alone: %q", got)
+	}
+	// ...but a list item's own continued span still repairs.
+	if got := renderAssistantBody("- **bold item\ncontinued** end", 60); strings.Contains(got, "**") {
+		t.Errorf("list continuation must repair: %q", got)
+	}
+}

@@ -1916,11 +1916,14 @@ func (m *agentTUI) flushStreamLines() tea.Cmd {
 	for _, raw := range raws {
 		styled = append(styled, m.streamSty.line(raw)...)
 	}
+	// Consumed lines always advance past, even when they buffered inside
+	// the styler (pending span, table rows) and printed nothing: re-feeding
+	// them would self-join against the buffer and duplicate.
+	m.streamFlushedLines = flushed
 	if !wantHeader && len(styled) == 0 {
 		return nil
 	}
 	m.streamHeaderShown = true
-	m.streamFlushedLines = flushed
 	var b strings.Builder
 	if wantHeader {
 		b.WriteString("\n")
@@ -1943,16 +1946,11 @@ func (m *agentTUI) flushStreamLines() tea.Cmd {
 // only ever holds a trailing run of table rows, so this preserves order.
 func (m *agentTUI) streamTail() string {
 	parts := strings.Split(m.streaming, "\n")
-	var tail []string
+	var out []string
 	for i, raw := range parts {
 		if i < m.streamFlushedLines {
 			continue
 		}
-		tail = append(tail, raw)
-	}
-	var out []string
-	out = append(out, m.streamSty.flush()...)
-	for _, raw := range tail {
 		out = append(out, m.streamSty.line(raw)...)
 	}
 	out = append(out, m.streamSty.flush()...)
@@ -1974,6 +1972,10 @@ type streamStyler struct {
 	width  int
 	inCode bool
 	table  []string
+	// pending holds a completed line that ended inside an unclosed inline
+	// span: it is prepended to the next line (span repair, mirroring
+	// joinContinuedLines) rather than emitted with leaking markers.
+	pending string
 }
 
 func (s *streamStyler) line(raw string) []string {
@@ -1981,6 +1983,21 @@ func (s *streamStyler) line(raw string) []string {
 		s.width = 20 // same floor as the full renderer; never wrap per-rune
 	}
 	trim := strings.TrimSpace(raw)
+	// A pending span repair resolves against prose continuations only.
+	// Block structure wins: a fence, table row, or other block opener
+	// flushes the pending line as-is (markers may show, exactly like the
+	// full renderer on unrepaired input).
+	if s.pending != "" && (strings.HasPrefix(trim, "```") || isTableRow(trim) || isBlockStart(trim)) {
+		out := s.renderSingle(s.pending)
+		s.pending = ""
+		out = append(out, s.line(raw)...)
+		return out
+	}
+	if s.pending != "" {
+		raw = s.pending + " " + trim
+		s.pending = ""
+		trim = strings.TrimSpace(raw)
+	}
 	if strings.HasPrefix(trim, "```") {
 		out := s.flushTable()
 		s.inCode = !s.inCode // conceal fences and language tags entirely
@@ -1997,7 +2014,21 @@ func (s *streamStyler) line(raw string) []string {
 		s.table = append(s.table, raw)
 		return nil
 	}
+	// A line ending inside an unclosed span waits for its continuation
+	// instead of emitting leaking markers.
+	if hasOpenSpan(trim) {
+		s.pending = raw
+		return s.flushTable()
+	}
 	out := s.flushTable()
+	out = append(out, s.renderSingle(raw)...)
+	return out
+}
+
+// renderSingle renders one complete logical line with the reply inset.
+func (s *streamStyler) renderSingle(raw string) []string {
+	trim := strings.TrimSpace(raw)
+	var out []string
 	for _, ln := range renderMarkdownLine(trim, raw, s.width) {
 		if ln == "" {
 			out = append(out, "")
@@ -2040,7 +2071,12 @@ func (s *streamStyler) flushTable() []string {
 // flush ends the turn: any pending table is decided, fences reset.
 func (s *streamStyler) flush() []string {
 	defer func() { s.inCode = false }()
-	return s.flushTable()
+	out := s.flushTable()
+	if s.pending != "" {
+		out = append(out, s.renderSingle(s.pending)...)
+		s.pending = ""
+	}
+	return out
 }
 
 // nextStreamBlock decides what the progressive printer may emit for the
@@ -2197,13 +2233,99 @@ func wrapFirst(s string, w int) string {
 // headings bold violet (h1 underlined), **bold** orange, *italic*/quotes
 // sand italic, code green with no background, bullets peach, ordered
 // numbers cyan, checked green.
+// hasOpenSpan reports whether s ends inside an unclosed inline span
+// (code, bold, italic). Models hard-wrap mid-span; without joining, the
+// markers leak verbatim on both fragments.
+func hasOpenSpan(s string) bool {
+	var inCode, bold, italic bool
+	rs := []rune(s)
+	for i := 0; i < len(rs); i++ {
+		if rs[i] == '\\' {
+			i++
+			continue
+		}
+		if rs[i] == '`' {
+			inCode = !inCode
+			continue
+		}
+		if inCode {
+			continue
+		}
+		if rs[i] == '*' {
+			if i+1 < len(rs) && rs[i+1] == '*' {
+				bold = !bold
+				i++
+			} else {
+				italic = !italic
+			}
+		}
+	}
+	return inCode || bold || italic
+}
+
+// isBlockStart reports whether a line opens a block construct. Continued
+// spans never join across these: block structure wins over span repair.
+func isBlockStart(s string) bool {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return false
+	}
+	if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "> ") {
+		return true
+	}
+	if t == "---" || t == "***" || t == "___" {
+		return true
+	}
+	for _, p := range []string{"- [ ] ", "* [ ] ", "- [x] ", "- [X] ", "* [x] ", "* [X] ", "- ", "* ", "+ "} {
+		if strings.HasPrefix(t, p) {
+			return true
+		}
+	}
+	if isOrderedList(t) || isTableRow(t) {
+		return true
+	}
+	return false
+}
+
+// joinableFrom reports whether a line may donate a continued span to its
+// successor. Fences flip code mode and table rows feed the grid lookahead:
+// joining from them corrupts structure, so only prose-like lines (including
+// list items and quotes, whose spans genuinely continue) join.
+func joinableFrom(cur string) bool {
+	t := strings.TrimSpace(cur)
+	if strings.HasPrefix(t, "```") || isTableRow(t) {
+		return false
+	}
+	return true
+}
+
+// joinContinuedLines joins a physical line with its successor when it ends
+// inside an unclosed inline span, so CommonMark-correct soft breaks (which
+// emphasis may span) don't leak markers. Only triggers on actually-broken
+// spans; all other text passes through byte-identical.
+func joinContinuedLines(text string) string {
+	lines := strings.Split(text, "\n")
+	var out []string
+	i := 0
+	for i < len(lines) {
+		cur := lines[i]
+		for i+1 < len(lines) && joinableFrom(cur) && hasOpenSpan(cur) && !isBlockStart(lines[i+1]) {
+			cur += " " + strings.TrimSpace(lines[i+1])
+			i++
+		}
+		out = append(out, cur)
+		i++
+	}
+	return strings.Join(out, "\n")
+}
+
 func renderAssistantBody(text string, width int) string {
 	if width < 20 {
 		width = 20
 	}
 	var out []string
 	inCode := false
-	lines := strings.Split(text, "\n")
+	lines := strings.Split(joinContinuedLines(text), "\n")
 	for i := 0; i < len(lines); i++ {
 		ln := lines[i]
 		trim := strings.TrimSpace(ln)
