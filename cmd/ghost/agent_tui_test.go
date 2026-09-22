@@ -502,17 +502,24 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	if strings.Contains(view, ghostTagline) {
 		t.Errorf("the live view must not carry the welcome card, got %q", view)
 	}
-	// The idle hint lists the command surface first and the exit last, and
-	// never spells out the obvious Enter-to-send.
+	// The idle hint leads with the command surface left and the exit right,
+	// and never spells out the obvious Enter-to-send.
 	keys := m.footerKeysLine()
 	if strings.Contains(keys, "enter send") {
 		t.Errorf("idle footer must not spell out enter send, got %q", keys)
 	}
-	if !strings.HasPrefix(keys, "/ commands · tab complete") {
+	trimmed := keys
+	if !strings.Contains(trimmed, "/ commands") {
 		t.Errorf("idle keys must lead with the command surface, got %q", keys)
 	}
-	if !strings.HasSuffix(keys, "esc quit") {
+	if !strings.Contains(trimmed, "esc quit") {
 		t.Errorf("esc quit must come last, got %q", keys)
+	}
+	if strings.Index(trimmed, "/ commands") > strings.Index(trimmed, "esc quit") {
+		t.Errorf("/ commands must sit left, esc quit right, got %q", keys)
+	}
+	if strings.Contains(keys, "tab complete") || strings.Contains(keys, "ctrl+l") || strings.Contains(keys, "ctrl+p") {
+		t.Errorf("idle keys must not carry shortcut cruft, got %q", keys)
 	}
 }
 
@@ -1516,8 +1523,81 @@ func TestTUIDumpStatesForJevReview(t *testing.T) {
 	m5.append(entry{kind: entryAssistant, text: "y", at: time.Time{}})
 	emit("zero-timestamps", "entries with unknown time", m5)
 
+	m6 := newM()
+	m6.working = true
+	m6.ready = false // hold the entry flush; progressive prints bypass it
+	m6.updateInner(streamChunkMsg{text: "First line\n"})
+	first := m6.lastFlush
+	m6.updateInner(streamChunkMsg{text: "Second line\nPartial"})
+	// Progressive blocks print straight to the scrollback (not via entries):
+	// join both blocks to show what the user saw grow.
+	out = append(out, state{ID: "mid-stream", Title: "reply growing line by line while the turn runs", Render: first + "\n" + m6.lastFlush, Entries: []string{"stream:2-blocks"}, Pending: 0})
+
 	raw, _ := json.MarshalIndent(out, "", " ")
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// nextStreamBlock is pure accounting: the header prints once, completed
+// lines print once each, the trailing partial line is always held back.
+func TestNextStreamBlockAccounting(t *testing.T) {
+	wh, lines, flushed := nextStreamBlock("", false, 0)
+	if wh || len(lines) != 0 || flushed != 0 {
+		t.Fatalf("empty stream must emit nothing, got %v %v %d", wh, lines, flushed)
+	}
+	wh, lines, flushed = nextStreamBlock("Hello", false, 0)
+	if !wh || len(lines) != 0 || flushed != 0 {
+		t.Fatalf("partial line: header due, no lines, got %v %v %d", wh, lines, flushed)
+	}
+	wh, lines, flushed = nextStreamBlock("Hello\nWorld", false, 0)
+	if !wh || len(lines) != 1 || lines[0] != " Hello" || flushed != 1 {
+		t.Fatalf("first line completes, got %v %q %d", wh, lines, flushed)
+	}
+	wh, lines, flushed = nextStreamBlock("Hello\nWorld", true, 1)
+	if wh || len(lines) != 0 || flushed != 1 {
+		t.Fatalf("same buffer twice must emit nothing new, got %v %v %d", wh, lines, flushed)
+	}
+	wh, lines, flushed = nextStreamBlock("Hello\n\nWorld\nTail", true, 1)
+	if wh || len(lines) != 1 || lines[0] != " World" || flushed != 3 {
+		t.Fatalf("blanks skipped but counted, got %v %q %d", wh, lines, flushed)
+	}
+}
+
+// A streamed reply grows in the scrollback and is never reprinted whole at
+// completion: chunks print completed lines, turnDone prints only the tail.
+func TestTUIStreamsReplyProgressively(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	m.working = true
+	m.updateInner(streamChunkMsg{text: "Hello\n"})
+	m.updateInner(streamChunkMsg{text: "World"})
+	if !m.streamHeaderShown || m.streamFlushedLines != 1 {
+		t.Fatalf("header + first line must print progressively, shown=%v flushed=%d", m.streamHeaderShown, m.streamFlushedLines)
+	}
+	m.updateInner(turnDoneMsg{text: "Hello\nWorld", err: nil})
+	for _, e := range m.entries {
+		if e.kind == entryAssistant {
+			t.Fatalf("streamed reply must not be committed again, entries=%v", m.entries)
+		}
+	}
+	if !strings.Contains(m.lastFlush, "World") {
+		t.Errorf("turn tail must print, lastFlush=%q", m.lastFlush)
+	}
+	if n := strings.Count(m.lastFlush, "Hello"); n != 1 {
+		t.Errorf("completed lines must print exactly once, lastFlush=%q", m.lastFlush)
+	}
+}
+
+// A turn with no streamed chunks still commits the full rendered reply.
+func TestTUINoChunksStillCommitsFullReply(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	m.working = true
+	m.updateInner(turnDoneMsg{text: "Instant answer", err: nil})
+	if !strings.Contains(m.lastFlush, "Instant answer") {
+		t.Errorf("chunkless reply must commit whole, lastFlush=%q", m.lastFlush)
 	}
 }

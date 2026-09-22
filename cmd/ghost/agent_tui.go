@@ -135,6 +135,13 @@ type agentTUI struct {
 
 	working   bool
 	streaming string // in-progress assistant text (not yet committed)
+	// streamHeaderShown tracks whether the assistant header line has been
+	// printed for the current turn; streamFlushedLines counts how many
+	// completed streaming lines already reached the scrollback. Together
+	// they let the reply grow line-by-line in the conversation area
+	// (opencode/Pi/ChatGPT style) with no reprint at completion.
+	streamHeaderShown bool
+	streamFlushedLines int
 	toolLine  string // current tool activity
 	toolCount int
 
@@ -294,8 +301,16 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case streamChunkMsg:
 		m.streaming += msg.text
-		m.renderTranscript()
-		return m, nil
+		prog := m.flushStreamLines()
+		flush := m.renderTranscript()
+		switch {
+		case prog != nil && flush != nil:
+			return m, tea.Batch(prog, flush)
+		case prog != nil:
+			return m, prog
+		default:
+			return m, flush
+		}
 
 	case toolCallMsg:
 		m.pushToolStep(msg.tool, msg.label)
@@ -323,6 +338,7 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case turnDoneMsg:
 		m.working = false
 		m.clarify = nil
+		var tailCmd tea.Cmd
 		now := time.Now()
 		for i := range m.toolHistory {
 			if !m.toolHistory[i].done {
@@ -342,6 +358,13 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if id, title, risk, ok := m.loop.PendingApproval(m.session); ok {
 				m.approval = &pendingApproval{id: id, title: title, risk: risk}
 				m.append(entry{kind: entryNotice, text: "needs your approval"})
+			} else if m.streamHeaderShown {
+				// The reply already grew line-by-line in the scrollback;
+				// print only the unprinted tail, never the whole text again.
+				if tail := m.streamTail(); tail != "" {
+					m.lastFlush += "\n" + tail
+					tailCmd = tea.Println(tail)
+				}
 			} else {
 				// The final response wins. The stream buffer is a live
 				// preview only — never concatenated with the final.
@@ -356,9 +379,17 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.streaming = ""
+		m.streamHeaderShown = false
+		m.streamFlushedLines = 0
 		m.toolCount = 0
-		m.renderTranscript()
-		return m, nil
+		flush := m.renderTranscript()
+		if tailCmd != nil {
+			if flush != nil {
+				return m, tea.Batch(tailCmd, flush)
+			}
+			return m, tailCmd
+		}
+		return m, flush
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -631,6 +662,8 @@ func (m *agentTUI) send(text string) tea.Cmd {
 	m.toolLine = ""
 	m.toolHistory = nil
 	m.streaming = ""
+	m.streamHeaderShown = false
+	m.streamFlushedLines = 0
 	m.turnStart = time.Now()
 	m.elapsed = 0
 	// A new turn always follows: the owner just acted. The user message is
@@ -1555,6 +1588,8 @@ func (m *agentTUI) resetTranscript() {
 	m.entries = nil
 	m.toolHistory = nil
 	m.streaming = ""
+	m.streamHeaderShown = false
+	m.streamFlushedLines = 0
 	m.lastPrintedDay = ""
 }
 
@@ -1763,20 +1798,13 @@ func (m *agentTUI) renderTranscript() tea.Cmd {
 const dockPreviewRows = 1
 
 // dockPreview is the live area above the composer, always exactly
-// dockPreviewRows lines: the tail of the streaming reply with a caret while
-// a turn runs, blank when idle. The active step is named in the composer's
+// dockPreviewRows lines and always blank: the reply itself streams
+// line-by-line into the scrollback (see flushStreamLines), so echoing its
+// tail here would duplicate it. The active step is named in the composer's
 // top rule; the full tool trail is behind /details (Ctrl+O).
 func (m *agentTUI) dockPreview() string {
-	w := m.contentWidth()
-	line := ""
-	if m.working && m.streaming != "" {
-		lines := wrapText(strings.ReplaceAll(m.streaming, "\n", " ")+"▍", w)
-		if len(lines) > 0 {
-			line = styleAssistant.Render(lines[len(lines)-1])
-		}
-	}
 	// Pad to exactly dockPreviewRows lines so the dock height is constant.
-	rows := []string{line}
+	rows := []string{""}
 	for len(rows) < dockPreviewRows {
 		rows = append(rows, "")
 	}
@@ -1832,7 +1860,7 @@ func (m *agentTUI) renderEntry(e entry) string {
 		}
 		return strings.Join(lines, "\n")
 	case entryAssistant:
-		head := " " + styleAssistantName.Render(logo+" Ghost · "+m.loop.GetCurrentModel())
+		head := m.assistantHead()
 		if e.dur > 0 {
 			head += styleAssistantMeta.Render(" · " + formatElapsed(e.dur))
 		}
@@ -1851,9 +1879,81 @@ func (m *agentTUI) renderEntry(e entry) string {
 	return e.text
 }
 
+// assistantHead is the reply header line (no duration; the turn length is
+// only known at completion and is appended by renderEntry).
+func (m *agentTUI) assistantHead() string {
+	return " " + styleAssistantName.Render(logo+" Ghost · "+m.loop.GetCurrentModel())
+}
+
+// flushStreamLines prints the reply's newly completed lines into the
+// scrollback as they arrive, so the answer grows in the conversation area
+// instead of appearing whole at the end. Returns nil when nothing new is
+// printable yet.
+func (m *agentTUI) flushStreamLines() tea.Cmd {
+	wantHeader, lines, flushed := nextStreamBlock(m.streaming, m.streamHeaderShown, m.streamFlushedLines)
+	if !wantHeader && len(lines) == 0 {
+		return nil
+	}
+	m.streamHeaderShown = true
+	m.streamFlushedLines = flushed
+	var b strings.Builder
+	if wantHeader {
+		b.WriteString(m.assistantHead())
+	}
+	for _, ln := range lines {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(ln)
+	}
+	text := b.String()
+	m.lastFlush = text
+	return tea.Println(text)
+}
+
+// streamTail returns the not-yet-printed remainder of the streaming buffer
+// (the trailing partial line), rendered like the progressive lines.
+func (m *agentTUI) streamTail() string {
+	parts := strings.Split(m.streaming, "\n")
+	var out []string
+	for i, ln := range parts {
+		if i < m.streamFlushedLines {
+			continue
+		}
+		if strings.TrimSpace(ln) == "" {
+			continue
+		}
+		out = append(out, " "+ln)
+	}
+	return strings.Join(out, "\n")
+}
+
+// nextStreamBlock decides what the progressive printer may emit for the
+// current streaming buffer: whether the header is due, and which completed
+// lines have not been printed yet. Lines print raw (opencode style) — live
+// markdown on an append-only scrollback cannot re-render, and half-rendered
+// fences are worse than plain text. The trailing partial line is never
+// emitted here; turnDone prints it. Pure so turns can be asserted without
+// a running program.
+func nextStreamBlock(streaming string, headerShown bool, flushedLines int) (wantHeader bool, lines []string, flushed int) {
+	parts := strings.Split(streaming, "\n")
+	complete := parts[:len(parts)-1]
+	if !headerShown && (len(complete) > flushedLines || strings.TrimSpace(streaming) != "") {
+		wantHeader = true
+	}
+	for i, ln := range complete {
+		if i < flushedLines {
+			continue
+		}
+		if strings.TrimSpace(ln) == "" {
+			continue
+		}
+		lines = append(lines, " "+ln)
+	}
+	return wantHeader, lines, len(complete)
+}
+
 // assistantBlock renders markdown at the transcript text column and insets
-// it by one cell so assistant prose lines up with the user bubble's inner
-// text.
 func (m *agentTUI) assistantBlock(text string) string {
 	body := renderAssistantBody(text, m.textWidth())
 	lines := strings.Split(body, "\n")
@@ -2733,11 +2833,22 @@ func (m *agentTUI) footerKeysLine() string {
 	case strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/"):
 		keys = "↑↓ pick · tab/enter complete · esc dismiss"
 	default:
-		// Ordered by frequency: discover commands, complete, switch model,
-		// then the exit route last so it is never the first thing hit.
-		keys = "/ commands · tab complete · ctrl+l model · ctrl+p cycle · esc quit"
+		// Idle: Scout parity — command hint left, exit hint right, the same
+		// pairing as the stats line (digest left, model right).
+		return m.footerEnds("/ commands", "esc quit")
 	}
 	return styleFooterHint.Render(cellTruncate(keys, m.width))
+}
+
+// footerEnds renders a left hint and a right hint on one line, separated by
+// the remaining width — the alignment used for the idle key bar (mirrored
+// by footerStatsLine for the digest/model pair).
+func (m *agentTUI) footerEnds(left, right string) string {
+	lw, rw := lipgloss.Width(left), lipgloss.Width(right)
+	if lw+1+rw <= m.width {
+		return styleFooterHint.Render(left + strings.Repeat(" ", m.width-lw-rw) + right)
+	}
+	return styleFooterHint.Render(cellTruncate(left+" · "+right, m.width))
 }
 
 // footerSummary is the quiet left half of the stats line: a stable,
