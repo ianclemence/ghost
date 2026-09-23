@@ -3,6 +3,11 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.17] - 2026-09-23
+
+- Reply headers name Ghost only: the model tag moves out of the
+  transcript and stays in the footer status line.
+
 ## [0.24.16] - 2026-09-23
 
 - Replies never glue words to clock times: the output path repairs
