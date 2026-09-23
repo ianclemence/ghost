@@ -10,10 +10,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/permissions"
+	"github.com/ianclemence/ghost/pkg/provider"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/utils"
 )
@@ -150,8 +152,16 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 			}
 		}
 
-		// 3. Call LLM
-		response, err := config.Provider.Chat(ctx, messages, providerToolDefs, config.Model, llmOpts)
+		// 3. Call LLM (transient provider blips retry with backoff; auth and
+		// config failures return immediately).
+		response, err := provider.DoWithRetry(ctx, []time.Duration{2 * time.Second, 4 * time.Second},
+			func(attempt int, class provider.FailureClass) {
+				logger.WarnCF("toolloop", "LLM call transient failure, retrying",
+					map[string]any{"iteration": iteration, "attempt": attempt, "class": string(class)})
+			},
+			func() (*providers.LLMResponse, error) {
+				return config.Provider.Chat(ctx, messages, providerToolDefs, config.Model, llmOpts)
+			})
 		if err != nil {
 			logger.ErrorCF("toolloop", "LLM call failed",
 				map[string]any{

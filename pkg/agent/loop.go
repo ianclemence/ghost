@@ -2731,7 +2731,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				"tools_json":    formatToolsForLog(providerToolDefs),
 			})
 
-		response, err := al.callLLM(ctx, selectedModel, messages, providerToolDefs, opts)
+		response, err := callLLMWithRetry(ctx, iteration, func() (*providers.LLMResponse, error) {
+			return al.callLLM(ctx, selectedModel, messages, providerToolDefs, opts)
+		})
 		if response != nil && response.Usage != nil {
 			promptTokens += response.Usage.PromptTokens
 			completionTokens += response.Usage.CompletionTokens

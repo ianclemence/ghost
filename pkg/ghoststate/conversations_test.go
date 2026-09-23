@@ -31,7 +31,12 @@ func conversationWorkspace(t *testing.T) string {
 	exec(`INSERT INTO messages (id, session_id, role, content, meta, archived, created_at) VALUES ('m-1', 'sess-1', 'user', 'I love spaghetti', '{"tool_call_id":"t1"}', 0, '2026-01-01T00:00:01.000Z')`)
 	exec(`INSERT INTO messages (id, session_id, role, content, meta, archived, created_at) VALUES ('m-2', 'sess-1', 'assistant', 'Let me remember that.', NULL, 0, '2026-01-01T00:00:02.000Z')`)
 	exec(`INSERT INTO messages (id, session_id, role, content, meta, archived, created_at) VALUES ('m-3', 'sess-1', 'user', 'Add parmesan too', NULL, 0, '2026-01-01T00:00:02.000Z')`)
-	exec(`INSERT INTO messages (id, session_id, role, content, meta, archived, created_at) VALUES ('m-4', 'sess-1', 'tool', '{"name":"remember"}', '{"tool_calls":[]}', 1, '2026-01-01T00:00:03.000Z')`)
+	// m-4 lives alone in sess-2 as a deliberately archived row. A lone
+	// archived row is a single message delete, which the v8 compaction
+	// restore explicitly leaves alone — unlike an archived row mixed with
+	// live rows, which v8 repairs by design.
+	exec(`INSERT INTO sessions (id, summary) VALUES ('sess-2', 'deleted tool call')`)
+	exec(`INSERT INTO messages (id, session_id, role, content, meta, archived, created_at) VALUES ('m-4', 'sess-2', 'tool', '{"name":"remember"}', '{"tool_calls":[]}', 1, '2026-01-01T00:00:03.000Z')`)
 	exec(`INSERT INTO sessions (id, summary) VALUES ('sess-empty', 'archived session with no messages')`)
 	if err := d.Close(); err != nil {
 		t.Fatalf("close db: %v", err)
@@ -91,8 +96,8 @@ func TestConversationsExportDeterministic(t *testing.T) {
 			convoFiles = append(convoFiles, name)
 		}
 	}
-	if len(convoFiles) != 3 { // format.json + two session files
-		t.Fatalf("expected format.json + 2 session files, got %v", convoFiles)
+	if len(convoFiles) != 4 { // format.json + three session files
+		t.Fatalf("expected format.json + 3 session files, got %v", convoFiles)
 	}
 
 	for _, name := range convoFiles {
@@ -137,8 +142,8 @@ func TestConversationsRoundTripFreshDatabase(t *testing.T) {
 	if err := d.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&sessions); err != nil {
 		t.Fatalf("count sessions: %v", err)
 	}
-	if sessions != 2 {
-		t.Fatalf("sessions: got %d, want 2", sessions)
+	if sessions != 3 {
+		t.Fatalf("sessions: got %d, want 3", sessions)
 	}
 	var summary string
 	if err := d.QueryRow(`SELECT summary FROM sessions WHERE id = 'sess-1'`).Scan(&summary); err != nil {
@@ -178,7 +183,7 @@ func TestConversationsRoundTripFreshDatabase(t *testing.T) {
 		order = append(order, id)
 	}
 	rows.Close()
-	want := []string{"m-1", "m-2", "m-3", "m-4"}
+	want := []string{"m-1", "m-2", "m-3"}
 	if len(order) != len(want) {
 		t.Fatalf("order = %v, want %v", order, want)
 	}

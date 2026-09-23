@@ -15,8 +15,12 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
+	"net/url"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -52,9 +56,108 @@ func (f FailureClass) Retryable() bool {
 	}
 }
 
-// ClassifyHTTP maps an HTTP status to a failure class.
-func ClassifyHTTP(status int) FailureClass {
+var llmStatusRe = regexp.MustCompile(`(?i)\bstatus:\s*(\d{3})\b`)
+
+// ClassifyError maps a model/provider call error onto the failure taxonomy,
+// so every layer retries exactly the same transient classes: timeouts, rate
+// limits, network blips, unavailable servers. Auth, config, validation, and
+// caller cancellation yield "" or a non-retryable class and never retry.
+func ClassifyError(err error) FailureClass {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return FailTimeout
+	}
+	if errors.Is(err, context.Canceled) {
+		return ""
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		if urlErr.Timeout() {
+			return FailTimeout
+		}
+		msg := strings.ToLower(urlErr.Error())
+		switch {
+		case strings.Contains(msg, "no such host"), strings.Contains(msg, "dns"):
+			return FailDNS
+		case strings.Contains(msg, "refused"):
+			return FailNetwork
+		case strings.Contains(msg, "reset"), strings.Contains(msg, "broken pipe"):
+			return FailNetwork
+		}
+		return FailNetwork
+	}
+	if m := llmStatusRe.FindStringSubmatch(err.Error()); m != nil {
+		switch m[1] {
+		case "429":
+			return FailRateLimited
+		case "401":
+			return FailAuth
+		case "403":
+			return FailAuthorization
+		case "502", "503", "504":
+			return FailUnavailable
+		}
+		if strings.HasPrefix(m[1], "5") {
+			return FailServer
+		}
+		return FailInvalid
+	}
+	msg := strings.ToLower(err.Error())
 	switch {
+	case strings.Contains(msg, "rate limit"), strings.Contains(msg, "too many requests"):
+		return FailRateLimited
+	case strings.Contains(msg, "unauthorized"), strings.Contains(msg, "invalid api key"), strings.Contains(msg, "authentication"):
+		return FailAuth
+	case strings.Contains(msg, "forbidden"):
+		return FailAuthorization
+	case strings.Contains(msg, "timeout"), strings.Contains(msg, "deadline exceeded"):
+		return FailTimeout
+	case strings.Contains(msg, "connection reset"), strings.Contains(msg, "connection refused"),
+		strings.Contains(msg, "no such host"), strings.Contains(msg, "network is unreachable"):
+		return FailNetwork
+	}
+	return FailServer
+}
+
+// DoWithRetry runs fn, retrying transient-class failures with the given
+// backoff delays. Non-retryable classes return immediately, context
+// cancellation is honored between attempts, and onRetry (may be nil)
+// observes each scheduled retry.
+func DoWithRetry[T any](ctx context.Context, delays []time.Duration, onRetry func(attempt int, class FailureClass), fn func() (T, error)) (T, error) {
+	resp, err := fn()
+	if err == nil {
+		return resp, nil
+	}
+	class := ClassifyError(err)
+	if class == "" || !class.Retryable() {
+		return resp, err
+	}
+	for attempt, delay := range delays {
+		select {
+		case <-ctx.Done():
+			return resp, err
+		case <-time.After(delay):
+		}
+		if onRetry != nil {
+			onRetry(attempt+2, class)
+		}
+		resp, err = fn()
+		if err == nil {
+			return resp, nil
+		}
+		if next := ClassifyError(err); next == "" || !next.Retryable() {
+			return resp, err
+		} else {
+			class = next
+		}
+	}
+	return resp, err
+}
+
+// ClassifyHTTP maps an HTTP status to a failure class.
+func ClassifyHTTP(status int) FailureClass {	switch {
 	case status == 429:
 		return FailRateLimited
 	case status == 401:

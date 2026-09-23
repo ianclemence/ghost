@@ -30,6 +30,8 @@ func healthFixture(t *testing.T) (*Doctor, string) {
 
 func TestHealthCheckCount(t *testing.T) {
 	d, _ := healthFixture(t)
+	// See TestDoctorRunAll: pin PATH so checkBinaries omits itself here too.
+	t.Setenv("PATH", t.TempDir())
 	results := d.RunAll(context.Background())
 	// 14 registered minus 4 empty-info omissions on a bare workspace
 	// (unbound vault, no service skills, no golden history, no spend).

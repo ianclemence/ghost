@@ -26,6 +26,11 @@ func TestDoctorRunAll(t *testing.T) {
 	}
 	defer database.Close()
 
+	// checkBinaries scans PATH: an empty PATH means no binaries found, so
+	// the row omits itself and the count stays deterministic on any machine
+	// (machines with shadowed ghost installs report an 11th row live).
+	t.Setenv("PATH", t.TempDir())
+
 	reg := tools.NewToolRegistry()
 	reg.Register(tools.NewSessionSearchTool(database.DB))
 

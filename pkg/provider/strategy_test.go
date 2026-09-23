@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -225,5 +226,70 @@ func TestAllFailHonest(t *testing.T) {
 	}
 	if fmt.Sprint(r.Failure) == "" {
 		t.Fatal("must carry failure class")
+	}
+}
+
+func TestClassifyErrorTransient(t *testing.T) {
+	transient := []error{
+		context.DeadlineExceeded,
+		&url.Error{Op: "Post", URL: "https://x", Err: errors.New("connection reset by peer")},
+		errors.New("API request failed:\n  Status: 429\n  Body: {}"),
+		errors.New("API request failed:\n  Status: 503\n  Body: {}"),
+		errors.New("read timeout"),
+	}
+	for _, err := range transient {
+		c := ClassifyError(err)
+		if c == "" || !c.Retryable() {
+			t.Errorf("ClassifyError(%v) = %q, want retryable", err, c)
+		}
+	}
+	terminal := []error{
+		context.Canceled,
+		errors.New("API request failed:\n  Status: 401\n  Body: {}"),
+		errors.New("API request failed:\n  Status: 403\n  Body: {}"),
+		errors.New("invalid api key"),
+	}
+	for _, err := range terminal {
+		c := ClassifyError(err)
+		if c != "" && c.Retryable() {
+			t.Errorf("ClassifyError(%v) = %q, want non-retryable", err, c)
+		}
+	}
+}
+
+func TestDoWithRetryRecoversTransient(t *testing.T) {
+	calls := 0
+	resp, err := DoWithRetry(context.Background(), []time.Duration{time.Millisecond, time.Millisecond},
+		nil, func() (string, error) {
+			calls++
+			if calls < 3 {
+				return "", context.DeadlineExceeded
+			}
+			return "ok", nil
+		})
+	if err != nil || resp != "ok" || calls != 3 {
+		t.Fatalf("retry must recover: resp=%q err=%v calls=%d", resp, err, calls)
+	}
+}
+
+func TestDoWithRetryStopsOnAuth(t *testing.T) {
+	calls := 0
+	_, err := DoWithRetry(context.Background(), []time.Duration{time.Millisecond},
+		nil, func() (string, error) {
+			calls++
+			return "", errors.New("API request failed:\n  Status: 401\n  Body: {}")
+		})
+	if err == nil || calls != 1 {
+		t.Fatalf("auth failure must not retry: calls=%d err=%v", calls, err)
+	}
+}
+
+func TestDoWithRetryHonorsCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := DoWithRetry(ctx, []time.Duration{time.Hour},
+		nil, func() (string, error) { return "", context.DeadlineExceeded })
+	if err == nil {
+		t.Fatal("cancelled context must stop retries")
 	}
 }
