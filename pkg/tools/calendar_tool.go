@@ -17,10 +17,13 @@ import (
 
 // CalendarTool is the semantic calendar surface: the model asks for a
 // calendar operation, not for an API endpoint. Google Calendar executes
-// through the direct API provider; the gcalcli subprocess remains for one
-// release as an opt-out fallback (GHOST_CALENDAR_GCALCLI=0 disables it)
-// and is removed afterwards. Consequential actions (create/delete) carry
-// runtime evidence.
+// through the direct API provider. The gcalcli subprocess remains as a
+// fallback for device-flow-connected users, whose pickle-format tokens
+// belong to gcalcli's OAuth client and cannot feed the direct API (refresh
+// tokens are client-bound; no sound bridge exists). Removal waits on a
+// Ghost-managed OAuth client, at which point device flow, pickle tokens,
+// and this fallback go together. Consequential actions (create/delete)
+// carry runtime evidence.
 type CalendarTool struct {
 	workspace string
 	// run executes gcalcli with args and returns stdout. Overridable in tests.
@@ -43,9 +46,13 @@ func (t *CalendarTool) svc() *calprov.Service {
 	return calprov.New(calprov.Config{})
 }
 
-// legacyFallback reports whether the one-release gcalcli fallback may run.
-// Default on for continuity; GHOST_CALENDAR_GCALCLI=0 disables it. Removed
-// next release along with the subprocess path.
+// legacyFallback reports whether the gcalcli fallback may run. Default on:
+// device-flow-connected users hold pickle-format tokens bound to gcalcli's
+// OAuth client, which the direct API cannot redeem, so removing the
+// fallback would break their working calendar with no recourse.
+// GHOST_CALENDAR_GCALCLI=0 disables it. Full removal waits on a
+// Ghost-managed OAuth client (org decision + Google verification), at
+// which point device flow, pickle tokens, and this fallback go together.
 func legacyFallback() bool {
 	return strings.TrimSpace(os.Getenv("GHOST_CALENDAR_GCALCLI")) != "0"
 }
@@ -176,10 +183,10 @@ func (t *CalendarTool) Parameters() map[string]interface{} {
 
 func (t *CalendarTool) Timeout() time.Duration { return 45 * time.Second }
 
-// legacyExecute runs one action through the gcalcli subprocess. One-release
-// fallback only: it runs when the direct API path errors and the operator
-// has not disabled it. Returns ok=false when gcalcli is absent or fails,
-// so the direct API's honest error stands.
+// legacyExecute runs one action through the gcalcli subprocess. Fallback
+// for device-flow-connected users, whose pickle-format tokens belong to
+// gcalcli's OAuth client and cannot feed the direct API. Returns ok=false
+// when gcalcli is absent or fails, so the direct API's honest error stands.
 func (t *CalendarTool) legacyExecute(ctx context.Context, args map[string]interface{}) (*ToolResult, bool) {
 	action := strings.ToLower(sarg(args, "action"))
 	var out string

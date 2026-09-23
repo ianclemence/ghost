@@ -10,21 +10,20 @@ import (
 	"time"
 )
 
-// Calendar integration via gcalcli (retained as execution layer).
+// Calendar integration: execution runs through the direct Google Calendar
+// API (pkg/providers/calendar); gcalcli remains the zero-config connect
+// mechanism (device flow) only.
 //
-// Decision: Ghost keeps gcalcli as the Calendar execution layer rather than
-// reimplementing Google OAuth + Calendar API directly. Reasons:
-//   - gcalcli already handles OAuth device flow, token refresh, and agenda
-//     parsing; a direct integration would require a Ghost-managed OAuth
-//     client ID, public HTTPS callback, and token lifecycle — large surface
-//     for a BYO-hardware product behind NAT with no public inbound.
-//   - The Pi has no reliable public HTTPS endpoint for Google redirect URIs.
-//     Google rejects plain-http LAN callbacks. gcalcli's --auth-device flow
-//     (user visits google.com/device, enters code) works behind NAT with
-//     zero inbound, matching Ghost's relay/LAN-only reality.
-//   - Migration path stays open: if Ghost later ships a managed OAuth app +
-//     relay callback, only this file + readiness change; skills/SKILL.md and
-//     chat behavior are unchanged.
+// Why both: gcalcli stores pickle-format tokens bound to its own OAuth
+// client, which no other client can redeem — there is no sound token
+// bridge, so device-flow-connected users can only execute through gcalcli
+// until they reconnect under Ghost's OAuth client. Web OAuth (relay/LAN
+// callback, sealed tokens) is the path for configured deployments; the
+// device flow is the path where no Google Cloud project exists. Full
+// removal of gcalcli waits on a Ghost-managed OAuth client (org decision +
+// Google verification, notably restricted-scope review for gmail.send),
+// at which point device flow, pickle tokens, and the execution fallback
+// go together.
 //
 // Security: token lives in CalendarConfigDir (/var/lib/ghost/.calendar,
 // 0600, outside workspace/config backup roots, never in chat/SSE/logs/

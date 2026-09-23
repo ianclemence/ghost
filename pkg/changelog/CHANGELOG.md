@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.13] - 2026-09-23
+
+- Calendar runs on the direct Google Calendar API: agenda, natural
+  language quick-add, and delete-by-query with real event evidence.
+  gcalcli stays for device-flow-connected users, whose client-bound
+  tokens only it can redeem; full removal waits on a Ghost-managed
+  OAuth client.
+
 ## [0.24.12] - 2026-09-23
 
 Follow-through fixes, same trust story.
