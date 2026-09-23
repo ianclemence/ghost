@@ -2028,3 +2028,50 @@ func TestTUIAssistantHeadHasNoModel(t *testing.T) {
 		t.Fatalf("header must not carry the model, got %q", head)
 	}
 }
+
+// Bold-bullet memory lists must survive rendering with items on separate
+// rows and spacing intact: regression lock for the glued-list report.
+func TestTUIAssistantBoldListKeepsRows(t *testing.T) {
+	in := "Here is what is on file:\n\n- **Name:** ian\n- **Favorite language:** Rust\n- **Considering:** buying an NVMe drive\n- **Timezone:** Asia/Bangkok\n\nThat is the durable stuff."
+	body := renderAssistantBody(in, 78)
+	rows := strings.Split(body, "\n")
+	var bullets []string
+	for _, r := range rows {
+		if strings.HasPrefix(strings.TrimSpace(r), "- ") {
+			bullets = append(bullets, strings.TrimSpace(r))
+		}
+	}
+	if len(bullets) != 4 {
+		t.Fatalf("expected 4 bullet rows, got %d:\n%s", len(bullets), body)
+	}
+	for _, want := range []string{"- Name: ian", "- Favorite language: Rust", "- Considering: buying an NVMe drive", "- Timezone: Asia/Bangkok"} {
+		found := false
+		for _, b := range bullets {
+			if strings.HasPrefix(b, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("missing spaced bullet %q in:\n%s", want, body)
+		}
+	}
+	// Streaming path must agree row-for-row with the committed render.
+	sty := streamStyler{width: 78}
+	var streamed []string
+	for _, raw := range strings.Split(in, "\n") {
+		streamed = append(streamed, sty.line(raw)...)
+	}
+	streamed = append(streamed, sty.flush()...)
+	strip := func(s string) string { return strings.TrimSpace(s) }
+	var sc, cc []string
+	for _, r := range streamed {
+		sc = append(sc, strip(r))
+	}
+	for _, r := range strings.Split(renderAssistantBody(in, 78), "\n") {
+		cc = append(cc, strip(r))
+	}
+	if strings.Join(sc, "\n") != strings.Join(cc, "\n") {
+		t.Errorf("stream vs committed diverged:\nstream:\n%s\ncommitted:\n%s", strings.Join(sc, "\n"), strings.Join(cc, "\n"))
+	}
+}
