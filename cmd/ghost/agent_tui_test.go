@@ -2014,3 +2014,17 @@ func TestTUIUserBubbleBarGrowsWithWrap(t *testing.T) {
 		}
 	}
 }
+
+// The reply header names Ghost only: the model lives in the footer stats
+// line, so the transcript reads as a conversation, not a process log.
+func TestTUIAssistantHeadHasNoModel(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	head := m.assistantHead()
+	if !strings.Contains(head, "Ghost") {
+		t.Fatalf("header must name Ghost, got %q", head)
+	}
+	if strings.Contains(head, "deepseek") || strings.Contains(head, "test-model") || strings.Contains(head, "·") {
+		t.Fatalf("header must not carry the model, got %q", head)
+	}
+}

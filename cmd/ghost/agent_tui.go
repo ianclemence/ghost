@@ -2072,10 +2072,12 @@ func (m *agentTUI) renderEntry(e entry) string {
 	return e.text
 }
 
-// assistantHead is the reply header line (no duration; the turn length is
-// only known at completion and is appended by renderEntry).
+// assistantHead is the reply header line (no model: the model lives in
+// the footer stats line, so the transcript reads as a conversation, not
+// a process log; the turn length is only known at completion and is
+// appended by renderEntry).
 func (m *agentTUI) assistantHead() string {
-	return " " + styleAssistantName.Render(logo+" Ghost · "+m.loop.GetCurrentModel())
+	return " " + styleAssistantName.Render(logo + " Ghost")
 }
 
 // flushStreamLines prints the reply's newly completed lines into the
