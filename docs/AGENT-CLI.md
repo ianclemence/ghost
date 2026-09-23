@@ -88,14 +88,14 @@ debug trail while chatting. One-shot `ghost -m` keeps stderr logs.
   You
   ┃ What do you remember about me?
 
-  👻 Ghost · deepseek-flash
-  Here's what I keep about you...
+  👻 Ghost
+  Here's what I remember about you...
 
 ── ▘ Searching: weather in Bangkok · 4s · 2 tools ────────
 
 ────────────────────────────────────────────────────────────
 3 turns                                  (cloud) deepseek-flash
-/ commands · tab complete · ctrl+l model · ctrl+p cycle · esc quit
+↑↓ pick · tab complete · enter run · esc dismiss
 ```
 
 - **No top header:** the transcript owns the full height. State and model
