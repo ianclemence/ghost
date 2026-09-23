@@ -384,6 +384,38 @@ func LoadCalendarToken() (*CalendarToken, error) {
 	return &tok, nil
 }
 
+// CalendarAccessToken returns a usable access token, refreshing via the
+// deployment OAuth client when the stored one is stale. Mirrors
+// GmailAccessToken: callers pass needWrite=true for event mutations.
+func CalendarAccessToken(ctx context.Context, needWrite bool) (string, error) {
+	tok, err := LoadCalendarToken()
+	if err != nil || tok == nil {
+		return "", errors.New("calendar_oauth_not_connected")
+	}
+	if strings.TrimSpace(tok.AccessToken) != "" && time.Now().Add(60*time.Second).Before(tok.Expiry) {
+		return tok.AccessToken, nil
+	}
+	cfg := CalendarOAuthConfig{
+		ClientID:     strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_ID")),
+		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_SECRET")),
+		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_CALENDAR_REDIRECT_URL")),
+	}
+	if cfg.ClientID == "" || cfg.ClientSecret == "" {
+		return "", errors.New("calendar_oauth_not_configured")
+	}
+	if strings.TrimSpace(tok.RefreshToken) == "" {
+		return "", errors.New("calendar_oauth_needs_reauth")
+	}
+	refreshed, err := RefreshCalendarToken(cfg, needWrite)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(refreshed.AccessToken) == "" {
+		return "", errors.New("calendar_oauth_needs_reauth")
+	}
+	return refreshed.AccessToken, nil
+}
+
 // CalendarWebStatus reports product state for the web OAuth path.
 func CalendarWebStatus() CalendarState {
 	tok, err := LoadCalendarToken()
