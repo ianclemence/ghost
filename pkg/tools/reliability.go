@@ -24,6 +24,14 @@ type RetryableTool interface {
 	RetryPolicy() (maxRetries int, wait time.Duration)
 }
 
+// TimeoutCleanupTool lets a tool release external resources after one of
+// its calls times out (stale sessions, leaked subprocesses). It runs
+// best-effort after a timeout only — never on success, so warm sessions
+// and user-watched surfaces are untouched.
+type TimeoutCleanupTool interface {
+	OnTimeout(ctx context.Context)
+}
+
 // defaultToolTimeout is a generous safety net so a genuinely hung tool never
 // blocks a turn forever. It sits above the shorter per-tool timeouts.
 const defaultToolTimeout = 5 * time.Minute
@@ -96,6 +104,11 @@ func executeWithReliability(ctx context.Context, tool Tool, args map[string]inte
 	// Make the failure actionable for the model and the user.
 	if result.TimedOut {
 		result.ForLLM = fmt.Sprintf("tool %q timed out after %s", tool.Name(), timeout)
+		if ct, ok := tool.(TimeoutCleanupTool); ok {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			ct.OnTimeout(cleanupCtx)
+			cancel()
+		}
 	}
 	return result
 }

@@ -263,6 +263,7 @@ var corpusRedTeamClean = []string{
 	"I will take care of it.",
 	"I cancelled it as requested.", // routine.cancel carries no evidence by design
 	"The routine is now active.",   // activation state, not execution
+	"It's a common pattern on phishing pages designed to make you believe a harmful action completed.", // discursive third-party description, not Ghost's act
 }
 
 func TestCorpusRedTeam(t *testing.T) {

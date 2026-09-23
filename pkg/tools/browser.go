@@ -87,6 +87,30 @@ func (t *BrowserTool) Name() string {
 	return "browser_" + t.action
 }
 
+// Timeout bounds one browser operation well under the turn budget: a hung
+// Chromium subprocess must fail honestly instead of eating the whole turn.
+// (No retry opt-in here: click/type/submit can carry side effects, and
+// retrying a write could duplicate an action.)
+func (t *BrowserTool) Timeout() time.Duration {
+	return 90 * time.Second
+}
+
+// OnTimeout closes the browser session after a hung call so leaked Chromium
+// processes cannot accumulate and starve later turns. Best-effort: failures
+// only log. Warm sessions from successful calls are never touched.
+func (t *BrowserTool) OnTimeout(ctx context.Context) {
+	cmd := exec.CommandContext(ctx, "agent-browser", "close", "--json")
+	cmd.Env = browserEnvironment()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		logger.DebugCF("browser", "timeout cleanup close failed",
+			map[string]interface{}{"error": err.Error(), "stderr": stderr.String()})
+		return
+	}
+	logger.InfoCF("browser", "timeout cleanup closed the browser session", nil)
+}
+
 func (t *BrowserTool) Description() string {
 	switch t.action {
 	case "navigate":

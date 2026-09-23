@@ -859,6 +859,8 @@ var externalNouns = map[string]bool{
 	"page": true, "webpage": true, "site": true, "website": true, "system": true, "server": true,
 	"service": true, "they": true, "them": true, "company": true, "google": true,
 	"attacker": true, "sender": true,
+	"pages": true, "webpages": true, "sites": true, "websites": true,
+	"servers": true, "services": true, "attackers": true, "companies": true,
 }
 
 // agentNouns name actors other than Ghost. A clause governed by one
@@ -872,6 +874,8 @@ var agentNouns = map[string]bool{
 	"service": true, "attacker": true, "contact": true, "contacts": true,
 	"friend": true, "colleague": true, "they": true, "them": true,
 	"he": true, "she": true,
+	"pages": true, "webpages": true, "sites": true, "websites": true,
+	"servers": true, "services": true, "attackers": true, "companies": true,
 }
 
 func isExternalNoun(w string) bool { return externalNouns[w] }
@@ -1050,10 +1054,18 @@ func isCompletionFrame(span string) bool {
 	}
 	// "is/are/was/done" task predicates: it/this/that/all/I/we + be +
 	// completion. First-person included ("I'm done" reports Ghost's task).
+	// The completion word must sit next to the predicate ("it's done",
+	// "it is complete"): a completion word fifteen tokens later belongs to
+	// a different clause ("it's a common pattern ... action completed"
+	// describes phishing pages, not Ghost's task).
 	if len(toks) >= 2 {
 		subj := toks[0]
 		if (subj == "it" || subj == "this" || subj == "that" || subj == "all" || subj == "i" || subj == "we" || subj == "i'm" || subj == "we're") && isBeForm(toks[1]) {
-			for _, w := range toks[2:] {
+			end := 5
+			if end > len(toks) {
+				end = len(toks)
+			}
+			for _, w := range toks[2:end] {
 				if isCompletionWord(w) {
 					return true
 				}

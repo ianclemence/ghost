@@ -128,3 +128,43 @@ type nilTool struct {
 func (s *nilTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	return nil
 }
+
+// A hung browser subprocess must fail on a bounded timeout, not eat the
+// whole turn: BrowserTool declares 90s, far under the 5-minute default.
+func TestBrowserToolBoundedTimeout(t *testing.T) {
+	tool := &BrowserTool{action: "navigate"}
+	if got := tool.Timeout(); got != 90*time.Second {
+		t.Fatalf("browser timeout = %v, want 90s", got)
+	}
+	hang := &stubTool{name: "hang", hang: 300 * time.Millisecond, timeout: 50 * time.Millisecond}
+	start := time.Now()
+	res := executeWithReliability(context.Background(), hang, nil)
+	if !res.TimedOut || !res.IsError {
+		t.Fatalf("hung tool must time out as error, got %+v", res)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("bounded timeout took too long: %v", time.Since(start))
+	}
+}
+
+// Timeout cleanup runs once after a timed-out call and never after success.
+func TestTimeoutCleanupRunsOnTimeoutOnly(t *testing.T) {
+	cleaned := 0
+	tool := &cleanupStub{stubTool: stubTool{name: "x", hang: 300 * time.Millisecond, timeout: 50 * time.Millisecond}, cleaned: &cleaned}
+	res := executeWithReliability(context.Background(), tool, nil)
+	if !res.TimedOut || cleaned != 1 {
+		t.Fatalf("cleanup must run once on timeout: %+v cleaned=%d", res, cleaned)
+	}
+	ok := &cleanupStub{stubTool: stubTool{name: "y"}}
+	res = executeWithReliability(context.Background(), ok, nil)
+	if res.IsError || cleaned != 1 {
+		t.Fatalf("cleanup must not run on success: %+v cleaned=%d", res, cleaned)
+	}
+}
+
+type cleanupStub struct {
+	stubTool
+	cleaned *int
+}
+
+func (s *cleanupStub) OnTimeout(ctx context.Context) { *s.cleaned++ }
