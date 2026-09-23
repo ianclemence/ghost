@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.16] - 2026-09-23
+
+- Replies never glue words to clock times: the output path repairs
+  "the2:00 PM" style spacing before saving.
+- Ghost sounds like a person texting: contractions, plain warmth, an
+  emoji only where a human would put one (never on evidence), and an
+  honest sentence instead of a dead-end when a turn comes back empty.
+- Thin sourcing is flagged unverified AND paired with the
+  primary-source next step — never laundered into fact.
+
 ## [0.24.15] - 2026-09-23
 
 - Long sent messages no longer fold the pipe onto the text: the user
