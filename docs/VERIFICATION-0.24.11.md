@@ -1,12 +1,12 @@
 # Verification — Ghost 0.24.11
 
-2026-09-23 · commit `b504d20` · dynamic suites against `deepseek/deepseek-flash`
+2026-09-23 · commit `c46c6af` · dynamic suites against `deepseek/deepseek-flash`
 
 What ran, what passed, what failed, and what was not exercised. Every number below comes from Ghost's own checks; nothing here is asserted from prose.
 
-## Verdict: FAIL
+## Verdict: PASS
 
-Ran: verify PASS; benchmark PASS (100.0); golden 58/59 pass. Failing: golden.
+All suites that ran passed: verify PASS; benchmark PASS (100.0); golden 59/59 pass.
 
 ## Verification (`ghost verify`)
 
@@ -33,7 +33,7 @@ Ran as: `ghost eval benchmark (attached /tmp/opencode/bench_02411.json)`
 
 ## Golden Conversation Suite (`ghost eval golden`)
 
-58/59 conversations pass, 1 with hard failures (suite v1, model `deepseek/deepseek-flash`).
+59/59 conversations pass (suite v1, model `deepseek/deepseek-flash`).
 
 | Category | Pass | Fail | Skipped |
 |---|---|---|---|
@@ -41,7 +41,7 @@ Ran as: `ghost eval benchmark (attached /tmp/opencode/bench_02411.json)`
 | companion | 4 | 0 | 0 |
 | context_isolation | 3 | 0 | 0 |
 | contradiction | 3 | 0 | 0 |
-| conversation | 5 | 1 | 0 |
+| conversation | 6 | 0 | 0 |
 | correction | 2 | 0 | 0 |
 | cross_user | 2 | 0 | 0 |
 | denial | 2 | 0 | 0 |
@@ -54,9 +54,8 @@ Ran as: `ghost eval benchmark (attached /tmp/opencode/bench_02411.json)`
 | tool_failure | 2 | 0 | 0 |
 | truthfulness | 10 | 0 | 0 |
 
-- **bc-01** (conversation): environment; tool_browser_navigate: expected 1 successful browser_navigate executions, got 0; tool_browser_snapshot: expected 2 successful browser_snapshot executions, got 0; tool_browser_click: expected 1 successful browser_click executions, got 0; tool_any: expected one of [browser_type browser_fill] with a successful execution, got none
 
-Ran as: `ghost eval golden (attached /tmp/opencode/golden_full_2411.json)`
+Ran as: `ghost eval golden (attached /tmp/opencode/golden_v2.json)`
 
 ## What's new
 
@@ -84,5 +83,5 @@ Trust you can read, delight you can feel.
 ```
 ghost verify (attached /tmp/opencode/verify_02411.json)
 ghost eval benchmark (attached /tmp/opencode/bench_02411.json)
-ghost eval golden (attached /tmp/opencode/golden_full_2411.json)
+ghost eval golden (attached /tmp/opencode/golden_v2.json)
 ```
