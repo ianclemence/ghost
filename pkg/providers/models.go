@@ -104,9 +104,9 @@ func AllModelOptions(cfg *config.Config) []ModelOption {
 
 // AvailableModelOptions lists only the entries that can actually serve right
 // now — a configured credential, or a reachable local engine. This is the
-// picker's default set (the "all" scope), so the terminal never offers a
-// model that would fail on selection. Use AllModelOptions when you need the
-// full catalog (exact-reference resolution, /scoped-models).
+// picker's set, so the terminal never offers a model that would fail on
+// selection. Use AllModelOptions when you need the full catalog
+// (exact-reference resolution).
 func AvailableModelOptions(cfg *config.Config) []ModelOption {
 	all := AllModelOptions(cfg)
 	out := make([]ModelOption, 0, len(all))
@@ -144,4 +144,30 @@ func optionTargetBase(s string) string {
 		s = s[i+1:]
 	}
 	return s
+}
+
+// CycleOption returns the next option after the current one, wrapping.
+// ok is false when there is nothing to cycle to (fewer than two options).
+func CycleOption(options []ModelOption, cur string, delta int) (ModelOption, bool) {
+	if len(options) < 2 {
+		return ModelOption{}, false
+	}
+	base := optionTargetBase(cur)
+	idx := -1
+	for i, o := range options {
+		if o.Target == cur || o.Name == cur || optionTargetBase(o.Target) == base || optionTargetBase(o.Model) == base {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		idx = 0
+		// First press with no known current lands on the first candidate.
+		if delta > 0 {
+			return options[0], true
+		}
+		return options[len(options)-1], true
+	}
+	next := options[((idx+delta)%len(options)+len(options))%len(options)]
+	return next, true
 }

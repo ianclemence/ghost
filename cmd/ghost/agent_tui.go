@@ -186,10 +186,6 @@ type agentTUI struct {
 	// modelCycleIdx is our own position in the preset rotation, so Ctrl+L
 	// advances even when the canonical active model matches no preset.
 	modelCycleIdx int
-	// scoped is the owner's enabled/ordered cycling set (nil = all enabled).
-	// Loaded from the runtime on first use and persisted on Ctrl+S.
-	scoped    providers.ScopedModels
-	scopedSet bool // whether scoped has been loaded from the runtime
 	// clarify is set when the running turn asks a clarification question
 	// (the event the mobile app renders as an interactive card). The next
 	// Enter answers it in-band instead of starting a new turn.
@@ -551,8 +547,7 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case tea.KeyCtrlL:
-		// Ctrl+L opens the picker; Ctrl+P cycles the enabled scope (the
-		// model-picker convention).
+		// Ctrl+L opens the picker; Ctrl+P cycles the usable models.
 		m.openModelModal()
 		return m, nil
 
@@ -567,10 +562,7 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyTab:
 		if items := m.paletteMatches(); len(items) > 0 {
-			if m.paletteSel < 0 || m.paletteSel >= len(items) {
-				m.paletteSel = 0
-			}
-			m.completePalette(items[m.paletteSel])
+			m.completePalette(palettePick(items, m.input.Value(), m.paletteSel))
 			return m, nil
 		}
 		return m, nil
@@ -603,16 +595,20 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// With the palette open, Enter accepts the highlighted completion
-		// AND runs it immediately — every slash command is valid with
-		// zero args, so there is no dead complete-only state. (Tab is
-		// the compose-first key: it completes without running, for
-		// adding arguments.)
+		// AND runs it immediately — except commands that need arguments
+		// (/task), which stay composed so the pick never errors on an
+		// empty arg list. (Tab is the compose-first key for the rest:
+		// it completes without running, for adding arguments.)
 		if items := m.paletteMatches(); len(items) > 0 && m.paletteVisible() {
-			sel := m.paletteSel
-			if sel < 0 || sel >= len(items) {
-				sel = 0
+			picked := palettePick(items, m.input.Value(), m.paletteSel)
+			m.completePalette(picked)
+			// Compose-first only when no arguments were typed: a fully
+			// typed "/task pause 1" still runs.
+			if paletteNeedsArgs(picked.name) && len(strings.Fields(m.input.Value())) < 2 {
+				m.append(entry{kind: entryNotice, text: "add arguments: " + paletteUsage(picked.name)})
+				m.renderTranscript()
+				return m, nil
 			}
-			m.completePalette(items[sel])
 		}
 		line := strings.TrimSpace(m.input.Value())
 		m.input.Reset()
@@ -784,7 +780,6 @@ var paletteCommands = []paletteItem{
 	{"help", "list commands and keys"},
 	{"session", "where this terminal is + model"},
 	{"model", "show or switch model"},
-	{"scoped-models", "pick models to cycle (ctrl+p)"},
 	{"context", "topic space (scoped memory/tools)"},
 	{"memory", "ask what Ghost remembers"},
 	{"routines", "ask what Ghost has scheduled"},
@@ -798,6 +793,40 @@ var paletteCommands = []paletteItem{
 	{"details", "toggle tool step details"},
 	{"clear", "clear the screen"},
 	{"quit", "exit"},
+}
+
+// palettePick resolves which palette row a pick key means: an exactly typed
+// command name always wins over the highlight, so "/task pause 1" + Enter
+// runs task — never the alphabetically-earlier "tasks" sitting on row zero.
+func palettePick(items []paletteItem, typed string, sel int) paletteItem {
+	if fields := strings.Fields(typed); len(fields) > 0 {
+		if want := strings.ToLower(strings.TrimPrefix(fields[0], "/")); want != "" {
+			for _, it := range items {
+				if it.name == want {
+					return it
+				}
+			}
+		}
+	}
+	if sel < 0 || sel >= len(items) {
+		sel = 0
+	}
+	return items[sel]
+}
+
+// paletteNeedsArgs reports whether picking a command bare from the palette
+// must stay composed instead of running: running it with zero args would
+// only print a usage error, which reads as a broken command.
+func paletteNeedsArgs(name string) bool {
+	return name == "task"
+}
+
+// paletteUsage is the one-line arg hint shown when a pick stays composed.
+func paletteUsage(name string) string {
+	if name == "task" {
+		return "/task <pause|resume|cancel> <number> (see /tasks)"
+	}
+	return "/" + name
 }
 
 // paletteMatches filters commands by the current "/xyz" input.
@@ -853,34 +882,12 @@ type modalItem struct {
 	usable bool
 }
 
-// modalMode selects the interaction semantics a modal uses. The default
-// (modalSelect) confirms one row; modalScoped edits the enabled cycling set.
-type modalMode int
-
-const (
-	modalSelect modalMode = iota // Enter picks the row (model picker, etc.)
-	modalScoped                  // Enter toggles; ctrl+a/x all|clear; alt+↑↓ reorder
-)
-
-// pickerScope is the model picker's catalog scope: all usable models, or the
-// owner's enabled subset. It mirrors Pi's "all" / "scoped" toggle.
-type pickerScope int
-
-const (
-	scopeAll pickerScope = iota
-	scopeScoped
-)
-
 type selectModal struct {
 	title  string
 	items  []modalItem
 	sel    int
 	filter string
 	pick   func(label string)
-
-	mode  modalMode
-	scope pickerScope // model picker only
-	dirty bool        // scoped mode: unsaved changes
 }
 
 func (m *agentTUI) modalMatches() []modalItem {
@@ -898,27 +905,6 @@ func (m *agentTUI) modalMatches() []modalItem {
 		}
 	}
 	return out
-}
-
-// scopedModels returns the owner's enabled/ordered cycling set, loading it
-// from the runtime once. A runtime without persistence keeps it in memory.
-func (m *agentTUI) scopedModels() providers.ScopedModels {
-	if !m.scopedSet {
-		if ss, ok := m.loop.(scopedStore); ok {
-			m.scoped = ss.GetScopedModels()
-		}
-		m.scopedSet = true
-	}
-	return m.scoped
-}
-
-// allModelOptions is the full catalog (unusable entries included) when the
-// runtime exposes it, else the switchable set.
-func (m *agentTUI) allModelOptions() []providers.ModelOption {
-	if po, ok := m.loop.(allModelOptionProvider); ok {
-		return po.AllModelOptions()
-	}
-	return m.modelOptions()
 }
 
 // modelItem builds one picker row from an option.
@@ -942,9 +928,8 @@ func (m *agentTUI) modelItem(o providers.ModelOption, cur string) modalItem {
 	return modalItem{label: o.Name, desc: desc, current: current, target: o.Target, usable: o.Available}
 }
 
-// openModelModal opens the model picker in Pi style: it offers only models
-// from configured providers, and Tab switches between that set (all) and the
-// owner's enabled subset (scoped). Enter switches the active model.
+// openModelModal opens the model picker over every usable model from
+// configured providers. Enter switches the active model.
 func (m *agentTUI) openModelModal() {
 	m.loop.RefreshModels()
 	available := m.modelOptions()
@@ -953,20 +938,12 @@ func (m *agentTUI) openModelModal() {
 		m.renderTranscript()
 		return
 	}
-	scope := scopeAll
-	opts := available
-	if sc := m.scopedModels(); !sc.AllEnabled() {
-		if scopedOpts := providers.FilterScoped(available, sc); len(scopedOpts) > 0 && len(scopedOpts) < len(available) {
-			scope = scopeScoped
-			opts = scopedOpts
-		}
-	}
-	m.modal = m.modelModal(scope, opts)
+	m.modal = m.modelModal(available)
 	m.renderTranscript()
 }
 
-// modelModal builds the picker modal for a given scope.
-func (m *agentTUI) modelModal(scope pickerScope, opts []providers.ModelOption) *selectModal {
+// modelModal builds the picker modal.
+func (m *agentTUI) modelModal(opts []providers.ModelOption) *selectModal {
 	cur := m.loop.GetCurrentModel()
 	items := make([]modalItem, 0, len(opts))
 	seen := map[string]bool{}
@@ -980,124 +957,8 @@ func (m *agentTUI) modelModal(scope pickerScope, opts []providers.ModelOption) *
 	return &selectModal{
 		title: "Models",
 		items: items,
-		scope: scope,
 		pick:  func(target string) { m.setModel(target) },
 	}
-}
-
-// applyModelScope rebuilds the open model modal for the other scope.
-func (m *agentTUI) applyModelScope(scope pickerScope) {
-	available := m.modelOptions()
-	opts := available
-	if scope == scopeScoped {
-		opts = providers.FilterScoped(available, m.scopedModels())
-		if len(opts) == 0 {
-			opts = available
-			scope = scopeAll
-		}
-	}
-	m.modal = m.modelModal(scope, opts)
-	m.renderTranscript()
-}
-
-// openScopedModal opens the enable/disable + reorder selector for the cycling
-// set. It lists the full catalog so a model can be enabled before its provider
-// is configured. Enter toggles, ctrl+a/ctrl+x all|clear, alt+↑/↓ reorder, and
-// ctrl+s saves.
-func (m *agentTUI) openScopedModal() {
-	all := m.allModelOptions()
-	if len(all) == 0 {
-		m.append(entry{kind: entryNotice, text: "no models known — configure a provider first"})
-		m.renderTranscript()
-		return
-	}
-	m.modal = m.scopedModal(all)
-	m.renderTranscript()
-}
-
-// scopedModal builds the scoped-models modal from the full catalog.
-func (m *agentTUI) scopedModal(all []providers.ModelOption) *selectModal {
-	sc := m.scopedModels()
-	items := make([]modalItem, 0, len(all))
-	for _, o := range all {
-		enabled := sc.AllEnabled() || sc.IsEnabled(o.Target)
-		desc := o.Provider
-		if o.Model != "" && o.Model != o.Provider {
-			desc += " · " + shortModel(o.Model)
-		}
-		if !o.Available {
-			desc += " · unavailable"
-		}
-		items = append(items, modalItem{
-			label:   o.Name,
-			desc:    desc,
-			target:  o.Target,
-			usable:  o.Available,
-			current: enabled,
-		})
-	}
-	return &selectModal{
-		title: "Models to cycle (ctrl+s saves)",
-		items: items,
-		mode:  modalScoped,
-	}
-}
-
-// modelTargets maps the current scoped items (enabled order) to targets.
-func scopedTargets(items []modalItem) []string {
-	out := make([]string, 0, len(items))
-	for _, it := range items {
-		if it.current { // current marks "enabled" in scoped mode
-			t := it.target
-			if t == "" {
-				t = it.label
-			}
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
-// toggleScoped flips one entry's enabled flag in the open scoped modal.
-func (m *agentTUI) toggleScoped() {
-	items := m.modalMatches()
-	if len(items) == 0 {
-		return
-	}
-	sel := items[m.modal.sel]
-	// Find the row in the base slice and flip it.
-	for i := range m.modal.items {
-		if m.modal.items[i].target == sel.target && m.modal.items[i].label == sel.label {
-			m.modal.items[i].current = !m.modal.items[i].current
-			break
-		}
-	}
-	m.modal.dirty = true
-}
-
-// saveScoped persists the scoped set (nil when every model is enabled).
-func (m *agentTUI) saveScoped() {
-	all := m.allModelOptions()
-	ids := providers.NormalizeScoped(scopedTargets(m.modal.items), all)
-	if ss, ok := m.loop.(scopedStore); ok {
-		if err := ss.SetScopedModels(ids); err != nil {
-			m.append(entry{kind: entryError, text: "could not save model scope: " + err.Error()})
-			m.renderTranscript()
-			return
-		}
-	}
-	m.scoped.Set(ids)
-	m.scopedSet = true
-	if m.modal != nil {
-		m.modal.dirty = false
-	}
-	n := len(ids)
-	msg := fmt.Sprintf("model scope saved: %d enabled", n)
-	if ids == nil {
-		msg = "model scope saved: all enabled"
-	}
-	m.append(entry{kind: entryNotice, text: msg})
-	m.renderTranscript()
 }
 
 func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1115,26 +976,10 @@ func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.Type {
 	case tea.KeyEsc:
-		// Scoped edits are session-local until saved (ctrl+s), matching the
-		// model picker's scope toggle; leaving discards unsaved changes.
 		m.modal = nil
 		m.renderTranscript()
 		return m, nil
 	case tea.KeyTab:
-		if m.modal.mode == modalSelect {
-			// The scope toggle only exists once a scoped set is saved (Pi
-			// gates it the same way); otherwise there is nothing to toggle.
-			if m.scopedModels().AllEnabled() {
-				m.append(entry{kind: entryNotice, text: "no scoped set yet — /scoped-models to enable a subset"})
-				m.renderTranscript()
-				return m, nil
-			}
-			next := scopeAll
-			if m.modal.scope == scopeAll {
-				next = scopeScoped
-			}
-			m.applyModelScope(next)
-		}
 		return m, nil
 	case tea.KeyEnter:
 		items := m.modalMatches()
@@ -1143,12 +988,6 @@ func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		chosen := items[m.modal.sel]
-		if m.modal.mode == modalScoped {
-			// Toggle enable state; nothing persists until ctrl+s.
-			m.toggleScoped()
-			m.renderTranscript()
-			return m, nil
-		}
 		if !chosen.usable {
 			m.append(entry{kind: entryNotice, text: "that model isn't usable right now — " + chosen.desc})
 			m.modal = nil
@@ -1164,18 +1003,10 @@ func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		pick(target)
 		return m, nil
 	case tea.KeyUp:
-		if msg.Alt && m.modal.mode == modalScoped {
-			m.moveScoped(-1)
-			return m, nil
-		}
 		m.modal.sel--
 		clamp()
 		return m, nil
 	case tea.KeyDown:
-		if msg.Alt && m.modal.mode == modalScoped {
-			m.moveScoped(1)
-			return m, nil
-		}
 		m.modal.sel++
 		clamp()
 		return m, nil
@@ -1227,70 +1058,8 @@ func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+n":
 		m.modal.sel++
 		clamp()
-	case "ctrl+s":
-		if m.modal.mode == modalScoped {
-			m.saveScoped()
-		}
-	case "ctrl+a":
-		if m.modal.mode == modalScoped {
-			m.setScopedAll(true)
-		}
-	case "ctrl+x":
-		if m.modal.mode == modalScoped {
-			m.setScopedAll(false)
-		}
 	}
 	return m, nil
-}
-
-// moveScoped reorders the selected enabled row within the base item order.
-func (m *agentTUI) moveScoped(delta int) {
-	items := m.modalMatches()
-	if len(items) == 0 {
-		return
-	}
-	sel := items[m.modal.sel]
-	idx := -1
-	for i := range m.modal.items {
-		if m.modal.items[i].target == sel.target && m.modal.items[i].label == sel.label {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 || !m.modal.items[idx].current {
-		return
-	}
-	// Find the neighbouring enabled row in the same direction and swap.
-	for j := idx + delta; j >= 0 && j < len(m.modal.items); j += delta {
-		if !m.modal.items[j].current {
-			continue
-		}
-		m.modal.items[idx], m.modal.items[j] = m.modal.items[j], m.modal.items[idx]
-		m.modal.sel += delta
-		m.modal.dirty = true
-		return
-	}
-}
-
-// setScopedAll enables or clears every row (scoped to the filter when one is
-// active, matching the model picker's filtered all/clear).
-func (m *agentTUI) setScopedAll(on bool) {
-	filtered := map[string]bool{}
-	if strings.TrimSpace(m.modal.filter) != "" {
-		for _, it := range m.modalMatches() {
-			filtered[it.target+"\x00"+it.label] = true
-		}
-	}
-	for i := range m.modal.items {
-		if len(filtered) > 0 {
-			if !filtered[m.modal.items[i].target+"\x00"+m.modal.items[i].label] {
-				continue
-			}
-		}
-		m.modal.items[i].current = on
-	}
-	m.modal.dirty = true
-	m.renderTranscript()
 }
 
 // ─── inline selector (model picker) ──────────────────────────────────────
@@ -1332,28 +1101,10 @@ func (m *agentTUI) modalWindow() (items []modalItem, off int) {
 	return all[off:end], off
 }
 
-// modalStatus is the honest status line under a modal's header. It states the
-// model picker's scope (and that it is configured-only), or the scoped
-// editor's save state.
+// modalStatus is the honest status line under a modal's header: the model
+// picker shows configured-only models; Enter selects.
 func (m *agentTUI) modalStatus() string {
-	switch {
-	case m.modal.mode == modalScoped:
-		enabled := 0
-		for _, it := range m.modal.items {
-			if it.current {
-				enabled++
-			}
-		}
-		s := fmt.Sprintf("enter toggle · ctrl+a all · ctrl+x clear · alt+↑↓ reorder · ctrl+s save · %d/%d enabled", enabled, len(m.modal.items))
-		if m.modal.dirty {
-			s += " (unsaved)"
-		}
-		return s
-	case m.modal.scope == scopeScoped:
-		return "scope: scoped (your enabled set) · tab to switch · enter selects"
-	default:
-		return "scope: all · showing models from configured providers · tab to switch · enter selects"
-	}
+	return "showing models from configured providers · enter selects"
 }
 
 func (m *agentTUI) modalView() string {
@@ -1395,14 +1146,9 @@ func (m *agentTUI) modalView() string {
 		if selected {
 			prefix = "→ "
 		}
-		// Scoped mode: current means enabled (✓). Model picker: current means
-		// the active model (●); unavailable rows are dimmed.
+		// current means the active model (●); unavailable rows are dimmed.
 		mark := "  "
-		if m.modal.mode == modalScoped {
-			if it.current {
-				mark = "✓ "
-			}
-		} else if it.current {
+		if it.current {
 			mark = "● "
 		}
 		primary := cellTruncate(it.label, 26)
@@ -1415,7 +1161,7 @@ func (m *agentTUI) modalView() string {
 		switch {
 		case selected:
 			put(stylePaletteSel.Render(row))
-		case m.modal.mode == modalSelect && !it.usable:
+		case !it.usable:
 			put(stylePaletteNoMatch.Render(row))
 		default:
 			put(row)
@@ -1476,8 +1222,6 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		} else {
 			m.setModel(strings.Join(args, " "))
 		}
-	case "scoped-models":
-		m.openScopedModal()
 	case "details":
 		m.showTools = !m.showTools
 		m.append(entry{kind: entryNotice, text: fmt.Sprintf("tool details %s", onOff(m.showTools))})
@@ -1664,25 +1408,15 @@ func (m *agentTUI) cycleModel() {
 		m.renderTranscript()
 		return
 	}
-	// Cycle within the owner's enabled subset (Pi's scoped rotation). When no
-	// scope is saved, every usable model is eligible.
-	sc := m.scopedModels()
-	eligible := providers.FilterScoped(opts, sc)
-	if len(eligible) == 0 {
-		eligible = opts
-	}
+	// Cycle across every usable model, in catalog order.
 	cur := m.loop.GetCurrentModel()
-	next, ok := providers.CycleScoped(eligible, providers.ScopedModels{}, cur, 1)
+	next, ok := providers.CycleOption(opts, cur, 1)
 	if !ok {
-		msg := "no usable model configured"
-		if !sc.AllEnabled() && len(eligible) < 2 {
-			msg = "only one model in scope — /scoped-models to enable more"
-		}
-		m.append(entry{kind: entryNotice, text: msg})
+		m.append(entry{kind: entryNotice, text: "no usable model configured"})
 		m.renderTranscript()
 		return
 	}
-	for i, o := range eligible {
+	for i, o := range opts {
 		if o.Target == next.Target {
 			m.modelCycleIdx = i
 			break
@@ -1696,20 +1430,6 @@ func (m *agentTUI) cycleModel() {
 // preset names.
 type modelOptionProvider interface {
 	ModelOptions() []providers.ModelOption
-}
-
-// allModelOptionProvider exposes the complete catalog (including unusable
-// entries) so /scoped-models can pre-enable models for providers that will be
-// configured later. Runtimes without it use the switchable set instead.
-type allModelOptionProvider interface {
-	AllModelOptions() []providers.ModelOption
-}
-
-// scopedStore persists the enabled/ordered cycling set. A nil slice means all
-// enabled. Runtimes without it keep the scope in memory for the session.
-type scopedStore interface {
-	GetScopedModels() providers.ScopedModels
-	SetScopedModels(ids []string) error
 }
 
 // modelOptions returns the selectable set the picker and cycling use: only
@@ -2077,7 +1797,7 @@ func (m *agentTUI) renderEntry(e entry) string {
 // a process log; the turn length is only known at completion and is
 // appended by renderEntry).
 func (m *agentTUI) assistantHead() string {
-	return " " + styleAssistantName.Render(logo + " Ghost")
+	return " " + styleAssistantName.Render(logo+" Ghost")
 }
 
 // flushStreamLines prints the reply's newly completed lines into the
@@ -3237,10 +2957,8 @@ func (m *agentTUI) footerStatsLine() string {
 func (m *agentTUI) footerKeysLine() string {
 	var keys string
 	switch {
-	case m.modal != nil && m.modal.mode == modalScoped:
-		keys = "type to filter · enter toggle · ctrl+a/x all/clear · alt+↑↓ reorder · ctrl+s save · esc close"
 	case m.modal != nil:
-		keys = "type to filter · ↑↓ pick · tab scope · enter select · esc close"
+		keys = "type to filter · ↑↓ pick · enter select · esc close"
 	case m.clarify != nil:
 		keys = "type your answer · enter sends · esc aborts the question"
 	case m.approval != nil:
@@ -3248,7 +2966,7 @@ func (m *agentTUI) footerKeysLine() string {
 	case m.working:
 		keys = "enter queues steering · esc aborts · ctrl+o details · / commands"
 	case strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/"):
-		keys = "↑↓ pick · tab/enter complete · esc dismiss"
+		keys = "↑↓ pick · tab complete · enter run · esc dismiss"
 	default:
 		// Idle: Scout parity — command hint left, exit hint right, the same
 		// pairing as the stats line (digest left, model right).
@@ -3719,7 +3437,6 @@ func agentHelpText() string {
 		"  /help              this help",
 		"  /session           where this terminal is, the model, and turn count",
 		"  /model [name]      show or switch the active model (configured providers)",
-		"  /scoped-models     pick models to cycle with Ctrl+P (Ctrl+S saves)",
 		"  /context [name]    show or switch topic context (scoped memory/tools)",
 		"  /memory [query]    ask Ghost in a turn what it remembers",
 		"  /routines          ask Ghost in a turn what it has scheduled",

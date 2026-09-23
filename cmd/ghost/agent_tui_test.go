@@ -26,7 +26,6 @@ type fakeRuntime struct {
 	aborted  []string // sessions aborted via Esc
 	answered map[string]string
 	options  []providers.ModelOption // nil = derive from presets
-	scoped   providers.ScopedModels  // enabled cycling set
 	turns    []string
 	setCalls []string
 	pending  *pendingApproval
@@ -78,12 +77,6 @@ func (f *fakeRuntime) AllModelOptions() []providers.ModelOption {
 	return f.ModelOptions()
 }
 
-func (f *fakeRuntime) GetScopedModels() providers.ScopedModels { return f.scoped }
-
-func (f *fakeRuntime) SetScopedModels(ids []string) error {
-	f.scoped.Set(ids)
-	return nil
-}
 func (f *fakeRuntime) RespondClarify(questionID, response string) bool {
 	f.answered[questionID] = response
 	return true
@@ -627,8 +620,8 @@ func TestTUIFooterKeysContextual(t *testing.T) {
 	m.approval = nil
 	m.input.SetValue("/mod")
 	m.paletteSel = 0
-	if !strings.Contains(m.footerKeysLine(), "tab/enter complete") {
-		t.Errorf("palette keys must name tab, got %q", m.footerKeysLine())
+	if !strings.Contains(m.footerKeysLine(), "tab complete") || !strings.Contains(m.footerKeysLine(), "enter run") {
+		t.Errorf("palette keys must name tab-complete and enter-run, got %q", m.footerKeysLine())
 	}
 }
 
@@ -797,7 +790,7 @@ func TestTUIPaletteOrderMatchesHelp(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/")
-	want := []string{"help", "session", "model", "scoped-models", "context", "memory", "routines", "tasks", "task", "ideas", "idea", "thread", "main", "rewind", "details", "clear", "quit"}
+	want := []string{"help", "session", "model", "context", "memory", "routines", "tasks", "task", "ideas", "idea", "thread", "main", "rewind", "details", "clear", "quit"}
 	items := m.paletteMatches()
 	if len(items) != len(want) {
 		t.Fatalf("palette has %d commands, want %d", len(items), len(want))
@@ -1185,84 +1178,91 @@ func TestTUIModelOptionsIncludeProviders(t *testing.T) {
 	}
 }
 
-// Tab toggles the picker between the full usable set (all) and the owner's
-// enabled subset (scoped).
-func TestTUIModelPickerScopeToggle(t *testing.T) {
+// The picker lists every usable model with no scope toggle: Tab is a
+// no-op and Enter switches.
+func TestTUIModelPickerShowsAll(t *testing.T) {
 	f := newFakeRuntime()
 	f.options = []providers.ModelOption{
 		{Name: "local", Provider: "ollama", Model: "ollama/qwen3:0.6b", Target: "local", Kind: "preset", Available: true},
 		{Name: "deepseek", Provider: "deepseek", Model: "deepseek-flash", Target: "deepseek:deepseek-flash", Kind: "provider", Available: true},
 	}
-	f.scoped.Set([]string{"deepseek:deepseek-flash"})
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.runCommand("/model")
-	if m.modal.scope != scopeScoped {
-		t.Fatalf("saved scope should open the picker on 'scoped', got %v", m.modal.scope)
+	if m.modal == nil {
+		t.Fatalf("/model should open the picker")
 	}
-	if len(m.modalMatches()) != 1 {
-		t.Fatalf("scoped picker should show the enabled subset, got %d", len(m.modalMatches()))
+	if len(m.modalMatches()) != 2 {
+		t.Fatalf("picker should show all usable models, got %d", len(m.modalMatches()))
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
-	if m.modal.scope != scopeAll || len(m.modalMatches()) != 2 {
-		t.Fatalf("tab should switch to all usable models, scope=%v n=%d", m.modal.scope, len(m.modalMatches()))
+	if m.modal == nil || len(m.modalMatches()) != 2 {
+		t.Fatalf("tab must not change the picker")
 	}
 }
 
-// The scoped-models selector toggles rows, saves to the runtime, and Ctrl+P
-// then cycles only the enabled set.
-func TestTUIScopedModelsSelector(t *testing.T) {
+// Cycling covers every usable model and wraps; a single usable model
+// reports honestly instead of switching nowhere.
+func TestTUICycleAcrossAll(t *testing.T) {
 	f := newFakeRuntime()
 	f.options = []providers.ModelOption{
 		{Name: "local", Provider: "ollama", Model: "ollama/qwen3:0.6b", Target: "local", Kind: "preset", Available: true},
 		{Name: "deepseek", Provider: "deepseek", Model: "deepseek-flash", Target: "deepseek:deepseek-flash", Kind: "provider", Available: true},
-		{Name: "kimi", Provider: "moonshot", Model: "kimi-k3", Target: "moonshot:kimi-k3", Kind: "provider", Available: true},
 	}
 	m := readyForTest(newAgentTUI(f, "cli:test"))
-	m.runCommand("/scoped-models")
-	if m.modal == nil || m.modal.mode != modalScoped {
-		t.Fatalf("/scoped-models should open the scoped editor")
-	}
-	// Disable the first row (local), leaving deepseek + kimi enabled.
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
-	if !m.modal.dirty {
-		t.Fatal("toggling must mark the scope dirty")
-	}
-	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlS})
-	if f.scoped.AllEnabled() {
-		t.Fatalf("saving must persist an explicit set, got all-enabled")
-	}
-	if got := f.scoped.IDs(); len(got) != 2 {
-		t.Fatalf("saved scope wrong: %v", got)
-	}
-	// Cycling now stays within the enabled set (never back to local).
 	f.model = "weird:thing"
+	m.cycleModel()
+	if f.model != "local" {
+		t.Fatalf("first press should take the first usable option, got %q", f.model)
+	}
 	m.cycleModel()
 	if f.model != "deepseek:deepseek-flash" {
-		t.Fatalf("cycle should start in the enabled set, got %q", f.model)
+		t.Fatalf("cycle must reach the provider target, got %q", f.model)
 	}
 	m.cycleModel()
-	if f.model != "moonshot:kimi-k3" {
-		t.Fatalf("cycle should advance within the enabled set, got %q", f.model)
+	if f.model != "local" {
+		t.Fatalf("cycle must wrap, got %q", f.model)
+	}
+	f.options = f.options[:1]
+	f.model = "local"
+	m.cycleModel()
+	if f.model != "local" {
+		t.Fatalf("single usable model must not switch, got %q", f.model)
+	}
+	if !hasNotice(m, "no usable model configured") {
+		t.Fatalf("expected an honest notice, entries: %+v", m.entries)
 	}
 }
 
-// A scope that leaves a single model reports that there is nothing to cycle
-// to rather than silently failing.
-func TestTUIScopedSingleModelCycleNotice(t *testing.T) {
+// Picking /task bare from the palette must stay composed with an arg hint:
+// running it with zero args only errors, which reads as a broken command.
+func TestTUIPaletteEnterComposesTask(t *testing.T) {
 	f := newFakeRuntime()
-	f.options = []providers.ModelOption{
-		{Name: "local", Provider: "ollama", Model: "ollama/qwen3:0.6b", Target: "local", Kind: "preset", Available: true},
-		{Name: "deepseek", Provider: "deepseek", Model: "deepseek-flash", Target: "deepseek:deepseek-flash", Kind: "provider", Available: true},
-	}
-	f.scoped.Set([]string{"deepseek:deepseek-flash"})
 	m := readyForTest(newAgentTUI(f, "cli:test"))
-	f.model = "weird:thing"
-	m.cycleModel()
-	if f.model != "weird:thing" {
-		t.Fatalf("single-model scope must not switch, got %q", f.model)
+	m.input.SetValue("/task")
+	m.updateInner(tea.KeyMsg{Type: tea.KeyEnter})
+	if got := m.input.Value(); got != "/task " {
+		t.Fatalf("bare /task must stay composed, input=%q", got)
 	}
-	if !hasNotice(m, "only one model in scope") {
-		t.Fatalf("expected a one-in-scope notice, entries: %+v", m.entries)
+	if !hasNotice(m, "add arguments") {
+		t.Fatalf("expected an arg hint, entries: %+v", m.entries)
+	}
+	if hasError(m, "usage") {
+		t.Fatalf("composing must not print the usage error")
+	}
+}
+
+// A fully typed /task with args still runs from the palette path.
+func TestTUIPaletteEnterRunsTaskWithArgs(t *testing.T) {
+	f := newFakeRuntime()
+	f.routineList = []*routines.Routine{{ID: "abc123", Name: "Morning brief"}}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.input.SetValue("/task pause 1")
+	m.updateInner(tea.KeyMsg{Type: tea.KeyEnter})
+	if got := m.input.Value(); got != "" {
+		t.Fatalf("ran command must clear the input, input=%q", got)
+	}
+	if len(f.managed) != 1 || f.managed[0] != "pause abc123" {
+		t.Fatalf("expected pause to run, managed=%v", f.managed)
 	}
 }
 

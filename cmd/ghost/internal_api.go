@@ -4544,42 +4544,20 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				// existing clients ignore it.
 				"options": providers.AvailableModelOptions(agentLoop.Config()),
 				// Full catalog (unusable entries marked) so clients can resolve
-				// exact references and pre-scope models before configuring a
-				// provider.
+				// exact references even when a provider is not yet configured.
 				"all_options": providers.AllModelOptions(agentLoop.Config()),
-				// The owner's enabled/ordered cycling set (null = all enabled).
-				"scope": agentLoop.GetScopedModels().IDs(),
 			})
 		case http.MethodPost:
 			var req struct {
-				Model      string    `json:"model"`
-				Scope      *[]string `json:"scope"`
-				AllEnabled bool      `json:"all_enabled"`
+				Model string `json:"model"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
 				return
 			}
-			// A scope write persists the cycling set without switching. An empty
-			// scope means "none enabled"; all_enabled clears back to the default.
-			if req.Scope != nil || req.AllEnabled {
-				var ids []string
-				if !req.AllEnabled && req.Scope != nil {
-					ids = *req.Scope
-				}
-				if err := agentLoop.SetScopedModels(ids); err != nil {
-					jsonError(w, http.StatusInternalServerError, "scope_failed", err.Error())
-					return
-				}
-				jsonResponse(w, http.StatusOK, map[string]interface{}{
-					"ok":    true,
-					"scope": agentLoop.GetScopedModels().IDs(),
-				})
-				return
-			}
 			req.Model = strings.TrimSpace(req.Model)
 			if req.Model == "" {
-				jsonError(w, http.StatusBadRequest, "invalid_request", "model or scope is required")
+				jsonError(w, http.StatusBadRequest, "invalid_request", "model is required")
 				return
 			}
 			if err := agentLoop.SetModel(req.Model); err != nil {

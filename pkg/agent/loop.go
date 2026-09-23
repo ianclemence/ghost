@@ -3658,8 +3658,8 @@ func (al *AgentLoop) ModelOptions() []providers.ModelOption {
 }
 
 // AllModelOptions lists the full catalog including unusable entries (marked
-// unavailable). Used by /scoped-models and exact-reference resolution, which
-// must be able to name a model whose provider is not yet configured.
+// unavailable). Used by exact-reference resolution, which must be able to
+// name a model whose provider is not yet configured.
 func (al *AgentLoop) AllModelOptions() []providers.ModelOption {
 	if al == nil || al.cfg == nil {
 		return nil
@@ -3674,50 +3674,6 @@ func (al *AgentLoop) ResolveModel(target string) bool {
 	}
 	_, ok := providers.FindModelOption(al.cfg, target)
 	return ok
-}
-
-// scopedModelsKey is the kv_store key holding the owner's enabled/ordered
-// cycling set (a JSON array of option targets). Absent = all enabled.
-const scopedModelsKey = "agent.scoped_models"
-
-// GetScopedModels reads the persisted cycling set. A missing row (or any read
-// error) yields the zero value, which means "all enabled".
-func (al *AgentLoop) GetScopedModels() providers.ScopedModels {
-	var sc providers.ScopedModels
-	d := al.DB()
-	if d == nil {
-		return sc
-	}
-	var raw []byte
-	if err := d.QueryRow(`SELECT value FROM kv_store WHERE key = ?`, scopedModelsKey).Scan(&raw); err != nil {
-		return sc
-	}
-	var ids []string
-	if json.Unmarshal(raw, &ids) != nil {
-		return sc
-	}
-	sc.Set(ids)
-	return sc
-}
-
-// SetScopedModels persists the cycling set. A nil slice clears the row so the
-// default (all enabled) applies again.
-func (al *AgentLoop) SetScopedModels(ids []string) error {
-	d := al.DB()
-	if d == nil {
-		return fmt.Errorf("model scope needs the SQLite workspace store")
-	}
-	if ids == nil {
-		_, err := d.Exec(`DELETE FROM kv_store WHERE key = ?`, scopedModelsKey)
-		return err
-	}
-	raw, err := json.Marshal(ids)
-	if err != nil {
-		return err
-	}
-	_, err = d.Exec(`INSERT INTO kv_store (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, scopedModelsKey, raw)
-	return err
 }
 
 // refreshActiveProvider rebuilds the loop's active provider and points the

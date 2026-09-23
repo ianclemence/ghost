@@ -173,10 +173,6 @@ type gatewayRuntime struct {
 	ctxCurrent   map[string]string
 	ctxList      []string
 	ctxAt        time.Time
-
-	// scoped is the enabled/ordered cycling set. The daemon owns the durable
-	// copy (kv_store); the gateway mirrors it for the session.
-	scoped providers.ScopedModels
 }
 
 const gatewayCacheTTL = 5 * time.Second
@@ -434,7 +430,6 @@ func (g *gatewayRuntime) modelCatalog() ([]string, []providers.ModelOption) {
 		} `json:"presets"`
 		Options    []providers.ModelOption `json:"options"`
 		AllOptions []providers.ModelOption `json:"all_options"`
-		Scope      []string                `json:"scope"`
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -458,7 +453,6 @@ func (g *gatewayRuntime) modelCatalog() ([]string, []providers.ModelOption) {
 	g.modelPresets = append([]string{}, names...)
 	g.modelOptions = append([]providers.ModelOption{}, res.Options...)
 	g.modelAll = append([]providers.ModelOption{}, all...)
-	g.scoped.Set(res.Scope)
 	g.modelAt = time.Now()
 	g.mu.Unlock()
 	return names, append([]providers.ModelOption{}, res.Options...)
@@ -474,35 +468,6 @@ func (g *gatewayRuntime) AllModelOptions() []providers.ModelOption {
 		return append([]providers.ModelOption{}, g.modelAll...)
 	}
 	return append([]providers.ModelOption{}, g.modelOptions...)
-}
-
-// GetScopedModels returns the cycling set the daemon reported (cached with
-// the model catalog).
-func (g *gatewayRuntime) GetScopedModels() providers.ScopedModels {
-	g.modelCatalog()
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.scoped
-}
-
-// SetScopedModels persists the cycling set on the daemon (the durable copy)
-// and mirrors it locally. A nil slice clears the scope back to all-enabled.
-func (g *gatewayRuntime) SetScopedModels(ids []string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	body := map[string]interface{}{}
-	if ids != nil {
-		body["scope"] = ids
-	} else {
-		body["all_enabled"] = true
-	}
-	if _, _, err := g.post(ctx, "/v1/model", body, ""); err != nil {
-		return err
-	}
-	g.mu.Lock()
-	g.scoped.Set(ids)
-	g.mu.Unlock()
-	return nil
 }
 
 // RefreshModels busts the cached model state so the picker always opens
