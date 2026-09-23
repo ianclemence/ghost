@@ -46,7 +46,7 @@ func (t *ScheduleTool) Name() string {
 func (t *ScheduleTool) Description() string {
 	return `Create reminders and recurring automations from natural language. THIS IS THE PREFERRED TOOL FOR ALL SCHEDULING REQUESTS.
 
-Use this tool when the user asks to be reminded of something, wants a recurring task, or describes a schedule. ALWAYS use this tool instead of the cron tool for user scheduling requests.
+Use this tool only when the user asks to be reminded of something or to automate something recurring. Mentioning a habit or a schedule is not a request — narration ("every morning I feel groggy") must never create a schedule. ALWAYS use this tool instead of the cron tool for user scheduling requests.
 
 Examples of valid requests:
 - "Remind me tomorrow at 9 AM to send the report"

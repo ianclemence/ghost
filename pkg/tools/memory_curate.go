@@ -62,11 +62,11 @@ func (t *MemoryCurateTool) Name() string {
 func (t *MemoryCurateTool) Description() string {
 	return `Save durable information to persistent curated memory that survives across sessions and is always injected into context.
 
-WHEN TO SAVE (do this proactively, don't wait to be asked):
+WHEN TO SAVE (on conversational grounding, not on mention):
 - User corrects you or says "remember this" / "don't do that again"
-- User shares a preference, habit, or personal detail (name, role, timezone, coding style)
-- You discover something about the environment (OS, installed tools, project structure)
-- You learn a convention, API quirk, or workflow specific to this user's setup
+- User states a lasting fact about themselves and moves on (name, role, timezone, a settled preference) — not a passing remark
+- You learn a convention, API quirk, or workflow specific to this user's setup that they would otherwise repeat
+- Environment facts only when they change answers (OS, installed tools, project structure)
 
 PRIORITY: User preferences and corrections > environment facts > procedural knowledge.
 The most valuable memory prevents the user from having to repeat themselves.

@@ -198,3 +198,21 @@ func TestWorkspaceContract_AstraLearningsPresent(t *testing.T) {
 		}
 	}
 }
+
+// Interaction contract (audit P1/P5/C5): narration is not a request,
+// thin evidence is flagged with a next step, questions serve a purpose.
+// These sentences are load-bearing voice rules; guards against silent
+// deletion during prompt edits.
+func TestWorkspaceContract_InteractionRulesPresent(t *testing.T) {
+	main := string(readWorkspaceFile(t, "GHOST.md"))
+	for _, marker := range []string{
+		"Narration is not a request",
+		"Answer the human first",
+		"Never launder weak evidence into stated fact",
+		"Never end with a question unless the answer changes what you do next",
+	} {
+		if !strings.Contains(main, marker) {
+			t.Errorf("workspace/GHOST.md missing interaction marker %q", marker)
+		}
+	}
+}

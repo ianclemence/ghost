@@ -49,18 +49,26 @@ func TestRoutineProposalAndConfirm(t *testing.T) {
 
 func TestRoutineClarifyTask(t *testing.T) {
 	al := testRoutineLoop(t)
-	ans, ok := al.tryRoutineTurn(routineMsg("sess-c", "Every Monday at 9"))
+	// Bare schedule mention without an ask is narration, not delegation:
+	// it falls through to the model instead of clarifying deterministically.
+	if ans, ok := al.tryRoutineTurn(routineMsg("sess-c", "Every Monday at 9")); ok {
+		t.Fatalf("bare schedule must fall through, got: %q", ans)
+	}
+	// A genuine ask with missing details still clarifies.
+	ans, ok := al.tryRoutineTurn(routineMsg("sess-c2", "remind me every Monday around lunchtime"))
 	if !ok || !strings.Contains(ans, "What should happen") {
-		t.Fatalf("must clarify task: %q", ans)
+		t.Fatalf("ask without details must clarify task: %q", ans)
 	}
 	// User supplies the task → proposal.
-	ans2, ok := al.tryRoutineTurn(routineMsg("sess-c", "review my finances"))
+	ans2, ok := al.tryRoutineTurn(routineMsg("sess-c2", "review my finances"))
 	if !ok || !strings.Contains(ans2, "Say yes to confirm") {
 		t.Fatalf("must propose after task: %q", ans2)
 	}
-	ans3, ok := al.tryRoutineTurn(routineMsg("sess-c", "yes"))
-	if !ok || !strings.Contains(ans3, "Done.") {
-		t.Fatalf("must create: %q", ans3)
+	// The timing was never parseable, so confirming fails honestly
+	// instead of creating a broken routine.
+	ans3, ok := al.tryRoutineTurn(routineMsg("sess-c2", "yes"))
+	if !ok || !strings.Contains(ans3, "couldn't schedule") {
+		t.Fatalf("unclear timing must fail honestly: %q", ans3)
 	}
 }
 
@@ -137,11 +145,14 @@ func TestStandingGoalSkipsRoutineTurn(t *testing.T) {
 
 func TestProposalTaskQuestionFallsThrough(t *testing.T) {
 	al := testRoutineLoop(t)
-	if _, ok := al.tryRoutineTurn(routineMsg("sess-q", "Every Monday at 9")); !ok {
-		t.Fatal("must clarify task")
-	}
 	// A question about existing state is not task content: it must fall
 	// through to the model, never become "remind you to What are my goals?".
+	// (Setup builds the task-pending directly: fresh bare schedules no
+	// longer clarify, so only an explicit ask creates one.)
+	store := skills.NewPendingStore(al.workspace)
+	store.Create("sess-q", routinePendingCapability, "routines", "task",
+		"What should happen every Monday?", "remind me every Monday", 0,
+		map[string]string{"schedule_text": "every Monday", "timezone": "UTC"})
 	if _, ok := al.tryRoutineTurn(routineMsg("sess-q", "What are my goals?")); ok {
 		t.Fatal("state question must not become routine task text")
 	}

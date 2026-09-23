@@ -60,6 +60,29 @@ func isStateQuestion(text string) bool {
 	return false
 }
 
+// hasSchedulingAsk reports whether the text explicitly asks Ghost to set
+// up recurrence. The routine fast-path runs pre-LLM with no semantic
+// understanding, so a bare recurring pattern ("every morning I feel
+// groggy", "daily standup is painful") must NOT propose: describing a
+// schedule is not delegating one. Only explicit ask verbs route here;
+// everything else falls through to the model, which answers
+// conversationally or uses the governed schedule tool. Same guard family
+// as isStandingGoalText: conservative syntactic gates on deterministic
+// paths that would otherwise write durable state from vague chat. The
+// confirmation question ("Say yes to confirm") remains the backstop, so
+// the residual edge (reminiscing that happens to contain an ask verb)
+// still needs a yes.
+func hasSchedulingAsk(text string) bool {
+	lower := strings.ToLower(text)
+	for _, ask := range []string{"remind", "notify", "alert", "wake", "nudge",
+		"schedul", "recur", "set up", "don't forget", "don't let me forget", "make sure"} {
+		if strings.Contains(lower, ask) {
+			return true
+		}
+	}
+	return false
+}
+
 // tryRoutineTurn handles routine intents deterministically. Returns
 // (answer, handled).
 func (al *AgentLoop) tryRoutineTurn(msg bus.InboundMessage) (string, bool) {
@@ -90,7 +113,9 @@ func (al *AgentLoop) tryRoutineTurn(msg bus.InboundMessage) (string, bool) {
 		// the stale open proposal. Without this, an abandoned proposal
 		// hijacked the next routine request and its text was appended to the
 		// old intent ("prepare my brief. Please create it now Every Monday").
-		if intent := routines.ParseIntent(text, time.Now(), routineTimezone(msg)); intent.IsRoutine && !intent.NeedsClarification && intent.Task != "" {
+		// The superseding intent needs the same explicit ask as a fresh one:
+		// narration must not seize an open proposal either.
+		if intent := routines.ParseIntent(text, time.Now(), routineTimezone(msg)); intent.IsRoutine && !intent.NeedsClarification && intent.Task != "" && hasSchedulingAsk(text) {
 			store.Cancel(pending.ID)
 			return al.proposeRoutine(store, nil, msg, intent.Task, intent)
 		}
@@ -104,10 +129,19 @@ func (al *AgentLoop) tryRoutineTurn(msg bus.InboundMessage) (string, bool) {
 		return "", false
 	}
 
-	// 2. Fresh intent.
+	// 2. Fresh intent. A recurring pattern alone is never enough: without
+	// an explicit scheduling ask the text is narration, not delegation,
+	// and falls through to the model (audit C3), which answers
+	// conversationally or uses the governed schedule tool. The
+	// "What should happen?" clarify below now only follows a genuine ask
+	// with missing details ("remind me every Monday"), never a bare
+	// schedule mention ("Every Monday at 9").
 	tz := routineTimezone(msg)
 	intent := routines.ParseIntent(text, time.Now(), tz)
 	if !intent.IsRoutine {
+		return "", false
+	}
+	if !hasSchedulingAsk(text) {
 		return "", false
 	}
 	if intent.NeedsClarification || intent.Task == "" {

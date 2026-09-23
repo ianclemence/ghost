@@ -3,6 +3,7 @@ package agent
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 )
@@ -165,7 +166,7 @@ func phraseFastAnswer(predicate string, values []string) string {
 	first := stripThirdPersonPrefix(values[0])
 	switch predicate {
 	case "identity/name":
-		return "You're " + first + "."
+		return "You're " + displayPersonName(first) + "."
 	case "identity/location", "fact/location":
 		return "You live in " + first + "."
 	case "identity/phone":
@@ -201,4 +202,16 @@ func stripThirdPersonPrefix(v string) string {
 		}
 	}
 	return s
+}
+
+// displayPersonName capitalizes a stored name for display only; the stored value
+// stays the source of truth. Stored values are often lowercase ("ian"),
+// and rendering them raw reads chatbot-cheap ("Hello, ian").
+func displayPersonName(v string) string {
+	if v == "" {
+		return v
+	}
+	r := []rune(v)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
 }
