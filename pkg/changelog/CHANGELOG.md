@@ -3,6 +3,22 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.12] - 2026-09-23
+
+Follow-through fixes, same trust story.
+
+- Transient provider blips (timeouts, rate limits, network) retry with
+  bounded backoff in model and tool calls; auth and config failures
+  still fail fast.
+- The browser declares a 90-second bound and closes its session after a
+  hung call, so leaked Chromium can no longer starve later turns.
+- The Golden grader no longer mistakes distant completion words for
+  Ghost's act (p-11 class), and its plural nouns cover third parties.
+- Doctor and state suites are hermetic again (PATH pinning, v8-aware
+  fixture).
+- The web console has an Ideas section; the mobile app stays focused
+  (ideas live in conversation).
+
 ## [0.24.11] - 2026-09-23
 
 Trust you can read, delight you can feel.
