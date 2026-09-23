@@ -477,7 +477,7 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleModalKey(msg)
 	}
 	// While an approval is pending, the keyboard is the approval panel:
-	// 1/2/3 (or a/A/d) answer directly; ←/→ (h/l) moves the
+	// 1/2/3 (or a/A/d) answer directly; arrow keys or h/j/k/l move the
 	// cursor and Enter confirms it. A stray keystroke can never approve.
 	if m.approval != nil {
 		switch msg.String() {
@@ -487,12 +487,12 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.resolveApproval("always allow")
 		case "3", "d":
 			return m.resolveApproval("deny")
-		case "left", "h":
+		case "left", "h", "up", "k":
 			if m.approvalSel > 0 {
 				m.approvalSel--
 			}
 			return m, nil
-		case "right", "l":
+		case "right", "l", "down", "j":
 			if m.approvalSel < 2 {
 				m.approvalSel++
 			}
@@ -3239,7 +3239,7 @@ func (m *agentTUI) footerKeysLine() string {
 	case m.clarify != nil:
 		keys = "type your answer · enter sends · esc aborts the question"
 	case m.approval != nil:
-		keys = "1 allow once · 2 always allow · 3 deny · esc leaves pending"
+		keys = "1 allow once · 2 always allow · 3 deny · ↑↓←→ select · esc leaves pending"
 	case m.working:
 		keys = "enter queues steering · esc aborts · ctrl+o details · / commands"
 	case strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/"):
@@ -3529,7 +3529,7 @@ func (m *agentTUI) approvalCard() string {
 		}
 	}
 	labels := []string{"[1] allow once", "[2] always allow", "[3] deny"}
-	hints := "←→ select · enter confirm · esc leaves pending"
+	hints := "↑↓←→ select · enter confirm · esc leaves pending"
 	// Lay out the options: one row when it fits, stacked rows when narrow.
 	oneLine := "  " + strings.Join(labels, "    ") + "  " + hints
 	var row strings.Builder
@@ -3556,7 +3556,7 @@ func (m *agentTUI) approvalCard() string {
 			}
 		}
 		row.WriteString("\n")
-		row.WriteString(bar.Render("┃") + " " + styleNotice.Render("←→ select · enter confirm · esc leaves pending"))
+		row.WriteString(bar.Render("┃") + " " + styleNotice.Render("↑↓←→ select · enter confirm · esc leaves pending"))
 	}
 	b.WriteString(row.String())
 	return b.String()

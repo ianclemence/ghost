@@ -1933,3 +1933,52 @@ func TestTUIIdeasUnavailableHonest(t *testing.T) {
 		t.Errorf("/ideas must fail visibly, entries=%v", m.entries)
 	}
 }
+
+// All four arrows plus vim keys move the approval cursor; the card lists
+// options vertically, so up/down must work, not just left/right.
+func TestTUIApprovalArrowKeys(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
+	arrow := func(typ tea.KeyType) {
+		m.handleKey(tea.KeyMsg{Type: typ})
+		if m.approval == nil {
+			t.Fatalf("arrow key must move, never resolve")
+		}
+	}
+	arrow(tea.KeyDown)
+	if m.approvalSel != 1 {
+		t.Fatalf("down must move to 1, got %d", m.approvalSel)
+	}
+	arrow(tea.KeyDown)
+	if m.approvalSel != 2 {
+		t.Fatalf("down must move to 2, got %d", m.approvalSel)
+	}
+	arrow(tea.KeyDown)
+	if m.approvalSel != 2 {
+		t.Fatalf("down must clamp at 2, got %d", m.approvalSel)
+	}
+	arrow(tea.KeyUp)
+	if m.approvalSel != 1 {
+		t.Fatalf("up must move to 1, got %d", m.approvalSel)
+	}
+	m.handleKey(keyMsgFor('k'))
+	if m.approvalSel != 0 {
+		t.Fatalf("k must move to 0, got %d", m.approvalSel)
+	}
+	m.handleKey(keyMsgFor('j'))
+	if m.approvalSel != 1 {
+		t.Fatalf("j must move to 1, got %d", m.approvalSel)
+	}
+	m.handleKey(keyMsgFor('l'))
+	if m.approvalSel != 2 {
+		t.Fatalf("l must move to 2, got %d", m.approvalSel)
+	}
+	m.handleKey(keyMsgFor('h'))
+	if m.approvalSel != 1 {
+		t.Fatalf("h must move to 1, got %d", m.approvalSel)
+	}
+	if len(f.turns) != 0 {
+		t.Fatalf("cursor moves must never start turns, got %v", f.turns)
+	}
+}

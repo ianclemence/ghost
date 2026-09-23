@@ -1683,10 +1683,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError, toolResult.Obs)
 			}
 			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
-			text := toolResult.ForLLM
-			if toolResult.IsError {
-				text = "That didn't work: " + toolResult.ForLLM
-			}
+			text := resumeReceiptText(toolResult)
 			if al.sessions != nil {
 				al.sessions.AddMessage(msg.SessionKey, "assistant", text)
 				al.sessions.Save(msg.SessionKey)
