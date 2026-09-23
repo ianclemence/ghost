@@ -28,7 +28,11 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/ghoststate"
+	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/routines"
+	"github.com/ianclemence/ghost/pkg/scheduled"
 )
 
 // embeddedRuntime adapts the in-process AgentLoop to agentRuntime, adding the
@@ -48,6 +52,106 @@ func (e embeddedRuntime) LoadHistory(sessionKey string) ([]historyEntry, error) 
 		}
 	}
 	return out, nil
+}
+
+// embeddedRoutines opens the routines service over the loop's own database,
+// the same authority the gateway serves when a daemon runs.
+func (e embeddedRuntime) embeddedRoutines() (*routines.Service, string, error) {
+	db := e.AgentLoop.DB()
+	if db == nil {
+		return nil, "", fmt.Errorf("database unavailable")
+	}
+	ws := ""
+	if cfg := e.AgentLoop.Config(); cfg != nil {
+		ws = cfg.Agents.Defaults.Workspace
+	}
+	gid := "ghost-local"
+	if id, err := ghoststate.LoadIdentity(ws); err == nil && id != nil && id.GhostID != "" {
+		gid = id.GhostID
+	}
+	store := scheduled.NewStore(db)
+	if err := store.InitSchema(); err != nil {
+		return nil, "", err
+	}
+	svc, err := routines.New(db, store)
+	if err != nil {
+		return nil, "", err
+	}
+	return svc, gid, nil
+}
+
+// ListRoutines serves the TUI Tasks surface from the embedded service.
+func (e embeddedRuntime) ListRoutines() ([]*routines.Routine, error) {
+	svc, gid, err := e.embeddedRoutines()
+	if err != nil {
+		return nil, err
+	}
+	return svc.List(gid, 100), nil
+}
+
+// ManageRoutine resolves pause/resume/cancel/delete through the service.
+func (e embeddedRuntime) ManageRoutine(op, id string) error {
+	svc, _, err := e.embeddedRoutines()
+	if err != nil {
+		return err
+	}
+	switch strings.ToLower(strings.TrimSpace(op)) {
+	case "pause":
+		return svc.Pause(id)
+	case "resume":
+		return svc.Resume(id)
+	case "cancel":
+		return svc.Cancel(id)
+	case "delete":
+		return svc.Delete(id)
+	}
+	return fmt.Errorf("unknown routine action %q", op)
+}
+
+// embeddedIdeas opens the ideas store in the loop's workspace.
+func (e embeddedRuntime) embeddedIdeas() (*ideas.Store, error) {
+	ws := ""
+	if cfg := e.AgentLoop.Config(); cfg != nil {
+		ws = cfg.Agents.Defaults.Workspace
+	}
+	if ws == "" {
+		return nil, fmt.Errorf("workspace unavailable")
+	}
+	return ideas.New(ws)
+}
+
+// ListIdeas serves the TUI Ideas surface from the embedded store.
+func (e embeddedRuntime) ListIdeas() ([]*ideas.Idea, error) {
+	store, err := e.embeddedIdeas()
+	if err != nil {
+		return nil, err
+	}
+	list, err := store.List(ideas.StatusPending, 50)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*ideas.Idea, 0, len(list))
+	for i := range list {
+		out = append(out, &list[i])
+	}
+	return out, nil
+}
+
+// DecideIdea records accept or dismiss in the embedded store.
+func (e embeddedRuntime) DecideIdea(id string, accept bool) (*ideas.Idea, error) {
+	store, err := e.embeddedIdeas()
+	if err != nil {
+		return nil, err
+	}
+	got, err := store.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	decided, err := store.Decide(got.ID, accept)
+	if err != nil {
+		return nil, err
+	}
+	return &decided, nil
 }
 
 // gatewayRuntime is agentRuntime over HTTP+SSE to a local ghost gateway.
@@ -180,6 +284,104 @@ func (g *gatewayRuntime) getJSON(ctx context.Context, path string, sessionKey st
 }
 
 // ─── agentRuntime ────────────────────────────────────────────────────────
+
+// ListIdeas serves the TUI Ideas surface from the gateway's ideas API.
+func (g *gatewayRuntime) ListIdeas() ([]*ideas.Idea, error) {
+	var res struct {
+		Ideas []*ideas.Idea `json:"ideas"`
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := g.getJSON(ctx, "/v1/ideas", "", &res); err != nil {
+		return nil, err
+	}
+	return res.Ideas, nil
+}
+
+// DecideIdea records accept or dismiss through the gateway.
+func (g *gatewayRuntime) DecideIdea(id string, accept bool) (*ideas.Idea, error) {
+	verb := "dismiss"
+	if accept {
+		verb = "accept"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("%s/v1/ideas/%s/%s", g.baseURL, id, verb), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Client-Type", "cli")
+	resp, err := g.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	out, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if msg := gatewayErrorMessage(out); msg != "" {
+			return nil, fmt.Errorf("%s", msg)
+		}
+		return nil, fmt.Errorf("gateway answered %d", resp.StatusCode)
+	}
+	var res struct {
+		Idea *ideas.Idea `json:"idea"`
+	}
+	if err := json.Unmarshal(out, &res); err != nil {
+		return nil, err
+	}
+	return res.Idea, nil
+}
+
+// ListRoutines serves the TUI Tasks surface from the gateway's routines API.
+func (g *gatewayRuntime) ListRoutines() ([]*routines.Routine, error) {
+	var res struct {
+		Routines []*routines.Routine `json:"routines"`
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := g.getJSON(ctx, "/v1/routines", "", &res); err != nil {
+		return nil, err
+	}
+	return res.Routines, nil
+}
+
+// ManageRoutine resolves pause/resume/cancel/delete through the gateway.
+func (g *gatewayRuntime) ManageRoutine(op, id string) error {
+	op = strings.ToLower(strings.TrimSpace(op))
+	switch op {
+	case "pause", "resume", "cancel", "delete":
+	default:
+		return fmt.Errorf("unknown routine action %q", op)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("%s/v1/routines/%s/%s", g.baseURL, id, op), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Client-Type", "cli")
+	resp, err := g.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	out, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if msg := gatewayErrorMessage(out); msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
+		return fmt.Errorf("gateway answered %d", resp.StatusCode)
+	}
+	return nil
+}
 
 func (g *gatewayRuntime) GetCurrentModel() string {
 	g.mu.Lock()

@@ -154,6 +154,9 @@ func evalCmd() {
 	case "replay":
 		os.Args = append([]string{os.Args[0], "replay"}, os.Args[3:]...)
 		replayCmd()
+	case "release-notes":
+		os.Args = append([]string{os.Args[0], "release-notes"}, os.Args[3:]...)
+		releaseNotesCmd()
 	default:
 		fmt.Printf("Unknown eval command: %s\n", os.Args[2])
 		evalHelp()
@@ -167,6 +170,7 @@ func evalHelp() {
 	fmt.Println("  golden [flags]      Run the Golden Conversation Suite")
 	fmt.Println("  benchmark [flags]   Run the personal AI benchmark + core score")
 	fmt.Println("  replay <id> [--json] Show a recorded trajectory (execution evidence)")
+	fmt.Println("  release-notes [flags] Assemble docs/VERIFICATION-<version>.md from evaluation outputs")
 }
 
 func printVersion() {
@@ -309,6 +313,10 @@ func main() {
 	switch command {
 	case "onboard":
 		onboard()
+	case "tasks":
+		tasksCmd()
+	case "ideas":
+		ideasCmd()
 	case "serve", "gateway":
 		gatewayCmd()
 	case "dev":
@@ -519,6 +527,8 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Talk")
 	fmt.Println("  ghost       Chat with Ghost in the terminal")
+	fmt.Println("  tasks       Show and manage durable routines (pause, resume, cancel)")
+	fmt.Println("  ideas       Suggestions with evidence (list, refresh, accept, dismiss, draft)")
 	fmt.Println()
 	fmt.Println("Run")
 	fmt.Println("  serve       Start the Ghost daemon (API + channels + scheduler + heartbeat)")
@@ -2397,7 +2407,7 @@ func isApplianceOpsCommand(command string) bool {
 // commands whose config MUST match the console and the daemon.
 func isInteractiveCommand(command string) bool {
 	switch command {
-	case "serve", "gateway", "model", "golden", "benchmark":
+	case "serve", "gateway", "model", "golden", "benchmark", "tasks", "ideas":
 		return true
 	}
 	return false

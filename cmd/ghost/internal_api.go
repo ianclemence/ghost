@@ -51,6 +51,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/goals"
+	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/modes"
 	"github.com/ianclemence/ghost/pkg/pairing"
@@ -2397,6 +2398,70 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			"ok":       true,
 			"routines": buildRoutineFeed(scheduledService),
 		})
+	}))
+	mux.HandleFunc("/v1/ideas", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if apiWorkspaceDir == "" {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "ideas are unavailable right now")
+			return
+		}
+		store, err := ideas.New(apiWorkspaceDir)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "ideas are unavailable right now")
+			return
+		}
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		status := ideas.StatusPending
+		if q := r.URL.Query().Get("status"); q != "" {
+			switch q {
+			case "accepted":
+				status = ideas.StatusAccepted
+			case "dismissed":
+				status = ideas.StatusDismissed
+			case "all":
+				status = ""
+			}
+		}
+		list, err := store.List(status, 50)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "ideas are unavailable right now")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "ideas": list})
+	}))
+	mux.HandleFunc("/v1/ideas/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		if apiWorkspaceDir == "" {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "ideas are unavailable right now")
+			return
+		}
+		rest := strings.TrimPrefix(r.URL.Path, "/v1/ideas/")
+		parts := strings.Split(strings.Trim(rest, "/"), "/")
+		if len(parts) != 2 || (parts[1] != "accept" && parts[1] != "dismiss") {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "use /v1/ideas/{id}/{accept,dismiss}")
+			return
+		}
+		store, err := ideas.New(apiWorkspaceDir)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "ideas are unavailable right now")
+			return
+		}
+		idea, err := store.Get(parts[0])
+		if err != nil {
+			jsonError(w, http.StatusNotFound, "not_found", "no such idea")
+			return
+		}
+		decided, err := store.Decide(idea.ID, parts[1] == "accept")
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "could not record the decision")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "idea": decided})
 	}))
 
 	// Scheduled item by ID

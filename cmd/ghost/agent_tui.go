@@ -23,6 +23,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/ideas"
+	"github.com/ianclemence/ghost/pkg/routines"
 )
 
 // ─── messages ─────────────────────────────────────────────────────────────
@@ -111,6 +113,16 @@ type agentRuntime interface {
 	// threads (e.g. back to the shared main conversation) and show the
 	// same rows every other surface sees.
 	LoadHistory(sessionKey string) ([]historyEntry, error)
+	// ListRoutines returns durable routines for the Tasks surface;
+	// ManageRoutine pauses, resumes, cancels, or deletes one by id.
+	// Both resolve through the routines service — the same authority the
+	// gateway API and the CLI serve.
+	ListRoutines() ([]*routines.Routine, error)
+	ManageRoutine(op, id string) error
+	// ListIdeas returns ideas with evidence for the Ideas surface;
+	// DecideIdea records accept (true) or dismiss (false) by id.
+	ListIdeas() ([]*ideas.Idea, error)
+	DecideIdea(id string, accept bool) (*ideas.Idea, error)
 }
 
 type agentTUI struct {
@@ -776,6 +788,10 @@ var paletteCommands = []paletteItem{
 	{"context", "topic space (scoped memory/tools)"},
 	{"memory", "ask what Ghost remembers"},
 	{"routines", "ask what Ghost has scheduled"},
+	{"tasks", "list durable routines with status"},
+	{"task", "pause, resume, or cancel a routine (/task pause 1)"},
+	{"ideas", "suggestions with evidence"},
+	{"idea", "read, accept, or dismiss one (/idea accept 1)"},
 	{"thread", "open a side thread"},
 	{"main", "return to the shared conversation"},
 	{"rewind", "edit and resend last message"},
@@ -1473,11 +1489,165 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		m.rewind()
 	case "routines":
 		return m, m.showRoutines()
+	case "tasks":
+		m.showTasks()
+	case "task":
+		m.manageTask(args)
+	case "ideas":
+		m.showIdeas()
+	case "idea":
+		m.decideIdea(args)
 	default:
 		m.append(entry{kind: entryError, text: "unknown command: /" + cmd + " (try /help)"})
 	}
 	m.renderTranscript()
 	return m, nil
+}
+
+// showTasks lists durable routines with plan → progress → receipt state,
+// resolving through the routines service behind the loop. Numbers address
+// rows for /task.
+func (m *agentTUI) showTasks() {
+	all, err := m.loop.ListRoutines()
+	if err != nil {
+		m.append(entry{kind: entryError, text: "tasks unavailable: " + friendlyAgentError(err)})
+		return
+	}
+	if len(all) == 0 {
+		m.append(entry{kind: entryNotice, text: "No routines. Say \"every Monday at 9 remind me to…\" and Ghost figures out the rest."})
+		return
+	}
+	var b strings.Builder
+	for i, r := range all {
+		when := ""
+		if r.NextRun != nil {
+			when = " · next " + r.NextRun.Local().Format("Mon 15:04")
+		}
+		fmt.Fprintf(&b, "%d  %s %s%s\n", i+1, r.Status, r.Name, when)
+	}
+	b.WriteString("manage with /task <pause|resume|cancel> <number>")
+	m.append(entry{kind: entryNotice, text: strings.TrimRight(b.String(), "\n")})
+}
+
+// manageTask pauses, resumes, or cancels the routine at the given
+// /tasks row number (or id prefix), through the same service authority.
+func (m *agentTUI) manageTask(args []string) {
+	if len(args) != 2 {
+		m.append(entry{kind: entryError, text: "usage: /task <pause|resume|cancel> <number> (see /tasks)"})
+		return
+	}
+	op := strings.ToLower(strings.TrimSpace(args[0]))
+	if op != "pause" && op != "resume" && op != "cancel" {
+		m.append(entry{kind: entryError, text: "usage: /task <pause|resume|cancel> <number> (see /tasks)"})
+		return
+	}
+	all, err := m.loop.ListRoutines()
+	if err != nil {
+		m.append(entry{kind: entryError, text: "tasks unavailable: " + friendlyAgentError(err)})
+		return
+	}
+	id := ""
+	if n, nerr := strconv.Atoi(strings.TrimSpace(args[1])); nerr == nil && n >= 1 && n <= len(all) {
+		id = all[n-1].ID
+	} else {
+		for _, r := range all {
+			if r.ID == args[1] || strings.HasPrefix(r.ID, args[1]) {
+				id = r.ID
+				break
+			}
+		}
+	}
+	if id == "" {
+		m.append(entry{kind: entryError, text: fmt.Sprintf("no routine %q (see /tasks)", args[1])})
+		return
+	}
+	if err := m.loop.ManageRoutine(op, id); err != nil {
+		m.append(entry{kind: entryError, text: friendlyAgentError(err)})
+		return
+	}
+	m.append(entry{kind: entryNotice, text: fmt.Sprintf("%s %s", op, shortRoutineRef(id))})
+}
+
+func shortRoutineRef(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
+}
+
+// showIdeas lists pending ideas with their evidence excerpts. Each idea
+// cites the rows behind it; unverified drafts say so explicitly.
+func (m *agentTUI) showIdeas() {
+	all, err := m.loop.ListIdeas()
+	if err != nil {
+		m.append(entry{kind: entryError, text: "ideas unavailable: " + friendlyAgentError(err)})
+		return
+	}
+	if len(all) == 0 {
+		m.append(entry{kind: entryNotice, text: "No ideas right now. Ghost will suggest some when it notices something — each one says why."})
+		return
+	}
+	var b strings.Builder
+	for i, idea := range all {
+		unver := ""
+		if idea.Unverified {
+			unver = " [needs checking]"
+		}
+		fmt.Fprintf(&b, "%d  %s%s\n", i+1, idea.Title, unver)
+	}
+	b.WriteString("read one with /idea <number>; accept or dismiss with /idea accept|dismiss <number>")
+	m.append(entry{kind: entryNotice, text: strings.TrimRight(b.String(), "\n")})
+}
+
+// decideIdea reads, accepts, or dismisses an idea by /ideas row number.
+func (m *agentTUI) decideIdea(args []string) {
+	if len(args) == 0 {
+		m.showIdeas()
+		return
+	}
+	verb := "read"
+	ref := args[0]
+	if len(args) == 2 && (args[0] == "accept" || args[0] == "dismiss") {
+		verb, ref = args[0], args[1]
+	} else if len(args) != 1 {
+		m.append(entry{kind: entryError, text: "usage: /idea <number> | /idea <accept|dismiss> <number>"})
+		return
+	}
+	all, err := m.loop.ListIdeas()
+	if err != nil {
+		m.append(entry{kind: entryError, text: "ideas unavailable: " + friendlyAgentError(err)})
+		return
+	}
+	var idea *ideas.Idea
+	if n, nerr := strconv.Atoi(strings.TrimSpace(ref)); nerr == nil && n >= 1 && n <= len(all) {
+		idea = all[n-1]
+	}
+	if idea == nil {
+		m.append(entry{kind: entryError, text: fmt.Sprintf("no idea %q (see /ideas)", ref)})
+		return
+	}
+	if verb == "read" {
+		var b strings.Builder
+		b.WriteString(idea.Title + "\n" + idea.Body + "\n")
+		for _, s := range idea.Sources {
+			fmt.Fprintf(&b, "why: %s\n", s.Excerpt)
+		}
+		if idea.Unverified {
+			b.WriteString("needs checking: Ghost could not verify this one — treat with care.")
+		}
+		m.append(entry{kind: entryNotice, text: strings.TrimRight(b.String(), "\n")})
+		return
+	}
+	decided, err := m.loop.DecideIdea(idea.ID, verb == "accept")
+	if err != nil {
+		m.append(entry{kind: entryError, text: friendlyAgentError(err)})
+		return
+	}
+	past := "Dismissed"
+	if verb == "accept" {
+		past = "Accepted"
+	}
+	m.append(entry{kind: entryNotice, text: fmt.Sprintf("%s: %s", past, decided.Title)})
 }
 
 func onOff(b bool) string {
@@ -3548,6 +3718,10 @@ func agentHelpText() string {
 		"  /context [name]    show or switch topic context (scoped memory/tools)",
 		"  /memory [query]    ask Ghost in a turn what it remembers",
 		"  /routines          ask Ghost in a turn what it has scheduled",
+		"  /tasks             list durable routines with status",
+		"  /task <op> <n>     pause, resume, or cancel routine number n",
+		"  /ideas             suggestions with evidence",
+		"  /idea <n>          read one; /idea <accept|dismiss> <n> decides",
 		"  /thread            open a side thread (a tangent, not the main one)",
 		"  /main              return to the shared conversation",
 		"  /rewind            put the last message back in the editor",

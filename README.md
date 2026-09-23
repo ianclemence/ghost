@@ -267,6 +267,8 @@ automatically, and `ghost status` warns if one is ever found.
 | Command | Description |
 |---------|-------------|
 | `ghost` | Chat with Ghost in the terminal |
+| `ghost tasks` | Show and manage durable routines (pause, resume, cancel) |
+| `ghost ideas` | Suggestions with evidence (list, refresh, accept, dismiss, draft) |
 | `ghost serve` | Start Ghost (main service) |
 | `ghost status` | Show system status |
 | `ghost update` | Pull latest changes and rebuild |
@@ -293,6 +295,7 @@ automatically, and `ghost status` warns if one is ever found.
 | `ghost verify` | Real personal AI checks: identity, memory, capabilities, governance, automation, events, activity, credentials, offline, security |
 | `ghost benchmark` | Personal AI benchmark + Ghost Core Score + hard governance gates + local history |
 | `ghost golden` | Golden Conversation Suite — model-agnostic natural-language evaluation (`--model --suite --cases --offline --json --compare`) |
+| `ghost eval release-notes` | Assemble docs/VERIFICATION-\<version\>.md from verify, benchmark, golden, and changelog outputs |
 
 ### Relay Commands
 

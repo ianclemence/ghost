@@ -3,6 +3,21 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.11] - 2026-09-23
+
+Trust you can read, delight you can feel.
+
+- **Verification pages.** `ghost eval release-notes` assembles
+  `docs/VERIFICATION-<version>.md` from Ghost's own checks — verify,
+  benchmark, golden results, and limits — committed per release.
+- **Tasks surface.** `ghost tasks`, `/tasks`, and `/task` show and manage
+  durable routines (pause, resume, cancel) through the same routines
+  service the gateway and mobile app use.
+- **Ideas with evidence.** `ghost ideas`, `/ideas`, and `/idea` surface
+  suggestions that cite their sources, with accept/dismiss receipts.
+  `refresh` derives them deterministically; `draft` asks the model and
+  verifies every citation, marking failures unverified.
+
 ## [0.24.10] - 2026-09-22
 
 - Inline styling no longer leaks when the model breaks a line mid-span.

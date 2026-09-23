@@ -12,7 +12,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/routines"
 )
 
 // fakeRuntime records calls and simulates a runtime for TUI tests.
@@ -30,6 +32,15 @@ type fakeRuntime struct {
 	context  string
 	contexts []string
 	history  map[string][]historyEntry // session key -> transcript rows
+	// Tasks surface state.
+	routineList []*routines.Routine
+	routinesErr error
+	managed     []string
+	manageErr   error
+	// Ideas surface state.
+	ideaList []*ideas.Idea
+	ideasErr error
+	decided  []string
 }
 
 func newFakeRuntime() *fakeRuntime {
@@ -112,6 +123,41 @@ func (f *fakeRuntime) ProcessDirectWithChannel(ctx context.Context, content, ses
 		onChunk("ok")
 	}
 	return "ok", nil
+}
+
+func (f *fakeRuntime) ListRoutines() ([]*routines.Routine, error) {
+	if f.routinesErr != nil {
+		return nil, f.routinesErr
+	}
+	return f.routineList, nil
+}
+
+func (f *fakeRuntime) ManageRoutine(op, id string) error {
+	f.managed = append(f.managed, op+" "+id)
+	return f.manageErr
+}
+
+func (f *fakeRuntime) ListIdeas() ([]*ideas.Idea, error) {
+	if f.ideasErr != nil {
+		return nil, f.ideasErr
+	}
+	return f.ideaList, nil
+}
+
+func (f *fakeRuntime) DecideIdea(id string, accept bool) (*ideas.Idea, error) {
+	for _, idea := range f.ideaList {
+		if idea.ID == id {
+			cp := *idea
+			if accept {
+				cp.Status = ideas.StatusAccepted
+			} else {
+				cp.Status = ideas.StatusDismissed
+			}
+			f.decided = append(f.decided, id)
+			return &cp, nil
+		}
+	}
+	return nil, errTestNoIdea
 }
 
 func readyForTest(m *agentTUI) *agentTUI {
@@ -387,6 +433,10 @@ func TestApprovalRiskNote(t *testing.T) {
 }
 
 var errUnknownContext = fmtError("unknown context")
+
+var errTestRoutinesDown = fmtError("routines down")
+
+var errTestNoIdea = fmtError("no idea")
 
 func fmtError(s string) error { return &simpleErr{s} }
 
@@ -746,7 +796,7 @@ func TestTUIPaletteOrderMatchesHelp(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/")
-	want := []string{"help", "session", "model", "scoped-models", "context", "memory", "routines", "thread", "main", "rewind", "details", "clear", "quit"}
+	want := []string{"help", "session", "model", "scoped-models", "context", "memory", "routines", "tasks", "task", "ideas", "idea", "thread", "main", "rewind", "details", "clear", "quit"}
 	items := m.paletteMatches()
 	if len(items) != len(want) {
 		t.Fatalf("palette has %d commands, want %d", len(items), len(want))
@@ -1789,5 +1839,97 @@ func TestJoinContinuedLinesRespectsBlocks(t *testing.T) {
 	// ...but a list item's own continued span still repairs.
 	if got := renderAssistantBody("- **bold item\ncontinued** end", 60); strings.Contains(got, "**") {
 		t.Errorf("list continuation must repair: %q", got)
+	}
+}
+
+// /tasks lists durable routines with status through the loop, never a chat turn.
+func TestTUITasksListsRoutines(t *testing.T) {
+	f := newFakeRuntime()
+	f.routineList = []*routines.Routine{
+		{ID: "r1", Name: "Water", Status: routines.StatusActive},
+		{ID: "r2", Name: "Brief", Status: routines.StatusPaused},
+	}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/tasks")
+	if len(f.turns) != 0 {
+		t.Fatalf("/tasks must not start a chat turn, got %v", f.turns)
+	}
+	if !hasNotice(m, "Water") || !hasNotice(m, "active") {
+		t.Errorf("/tasks must show routines with status, entries=%v", m.entries)
+	}
+}
+
+// /task pause 1 resolves through the routines service.
+func TestTUITaskManageResolves(t *testing.T) {
+	f := newFakeRuntime()
+	f.routineList = []*routines.Routine{{ID: "abc123", Name: "Water", Status: routines.StatusActive}}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/task")
+	if !hasError(m, "usage") {
+		t.Errorf("/task without args must show usage, entries=%v", m.entries)
+	}
+	m.runCommand("/task pause 1")
+	if len(f.managed) != 1 || f.managed[0] != "pause abc123" {
+		t.Fatalf("/task pause 1 must manage by row number, got %v", f.managed)
+	}
+	m.runCommand("/task resume abc")
+	if len(f.managed) != 2 || f.managed[1] != "resume abc123" {
+		t.Fatalf("/task must resolve id prefixes, got %v", f.managed)
+	}
+	m.runCommand("/task pause 9")
+	if !hasError(m, "no routine") {
+		t.Errorf("unknown rows must fail visibly, entries=%v", m.entries)
+	}
+}
+
+// /tasks degrades visibly when routines are unavailable.
+func TestTUITasksUnavailableHonest(t *testing.T) {
+	f := newFakeRuntime()
+	f.routinesErr = errTestRoutinesDown
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/tasks")
+	if !hasError(m, "tasks unavailable") {
+		t.Errorf("/tasks must fail visibly, entries=%v", m.entries)
+	}
+}
+
+// /ideas lists pending ideas with evidence; /idea reads and decides.
+func TestTUIIdeasSurface(t *testing.T) {
+	f := newFakeRuntime()
+	f.ideaList = []*ideas.Idea{{
+		ID: "idea-1", Title: "Pause Water?", Body: "It failed twice.",
+		Sources: []ideas.Source{{Kind: ideas.SourceRoutine, Ref: "run-9", Excerpt: "status=error"}},
+		Status:  ideas.StatusPending,
+	}}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/ideas")
+	if !hasNotice(m, "Pause Water?") {
+		t.Errorf("/ideas must list pending ideas, entries=%v", m.entries)
+	}
+	m.runCommand("/idea 1")
+	if !hasNotice(m, "status=error") {
+		t.Errorf("/idea must show why, entries=%v", m.entries)
+	}
+	m.runCommand("/idea accept 1")
+	if len(f.decided) != 1 || f.decided[0] != "idea-1" {
+		t.Fatalf("accept must decide by row, got %v", f.decided)
+	}
+	if !hasNotice(m, "Accepted") {
+		t.Errorf("accept must receipt, entries=%v", m.entries)
+	}
+	m.runCommand("/idea bogus")
+	if !hasError(m, "usage") && !hasError(m, "no idea") {
+		t.Errorf("bad /idea args must fail visibly, entries=%v", m.entries)
+	}
+}
+
+// /ideas degrades visibly when the surface is unavailable.
+func TestTUIIdeasUnavailableHonest(t *testing.T) {
+	f := newFakeRuntime()
+	f.ideasErr = errTestNoIdea
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/ideas")
+	if !hasError(m, "ideas unavailable") {
+		t.Errorf("/ideas must fail visibly, entries=%v", m.entries)
 	}
 }
