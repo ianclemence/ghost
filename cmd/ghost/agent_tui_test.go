@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -1980,5 +1981,36 @@ func TestTUIApprovalArrowKeys(t *testing.T) {
 	}
 	if len(f.turns) != 0 {
 		t.Fatalf("cursor moves must never start turns, got %v", f.turns)
+	}
+}
+
+// Long user messages must keep the pipe on its own column: every row fits
+// the width and every bar sits at the same cell, so the rule never lands
+// on the text.
+func TestTUIUserBubbleBarGrowsWithWrap(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	long := "i would like you to remind me to also send an email to Maria about the quarterly report and the follow-up call tomorrow morning please"
+	out := m.renderEntry(entry{kind: entryUser, text: long})
+	rows := strings.Split(out, "\n")
+	if len(rows) < 2 {
+		t.Fatalf("long message must wrap, got %q", out)
+	}
+	barCol := -1
+	ansi := regexp.MustCompile("\x1b\\[[0-9;]*m")
+	for _, r := range rows {
+		plain := ansi.ReplaceAllString(r, "")
+		if lipgloss.Width(plain) > m.contentWidth() {
+			t.Fatalf("row overflows width %d: %q", m.contentWidth(), plain)
+		}
+		col := strings.Index(plain, "┃")
+		if col < 0 {
+			t.Fatalf("every bubble row must carry the pipe, got %q", plain)
+		}
+		if barCol < 0 {
+			barCol = col
+		} else if col != barCol {
+			t.Fatalf("pipe column drifted %d -> %d in %q", barCol, col, out)
+		}
 	}
 }

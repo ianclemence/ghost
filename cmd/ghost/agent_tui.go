@@ -2044,7 +2044,10 @@ func (m *agentTUI) renderEntry(e entry) string {
 				emit("")
 				continue
 			}
-			for _, wl := range wrapText(para, w-4) {
+			// Prefix is 6 cells ("You ┃ " / padded "   ┃ "), so text
+			// wraps at w-6: w-4 overflows by 2 and the terminal
+			// soft-wrap drops the bar onto the message.
+			for _, wl := range wrapText(para, w-6) {
 				emit(" " + styleUserText.Render(wl))
 			}
 		}
