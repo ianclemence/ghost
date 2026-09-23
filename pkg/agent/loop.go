@@ -1274,7 +1274,7 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 		ChatID:          chatID,
 		ToolProfile:     tools.ProfileHeartbeatSafe,
 		UserMessage:     content,
-		DefaultResponse: "I've completed processing but have no response to give.",
+		DefaultResponse: "Hmm — that came back empty. Could you say it another way?",
 		EnableSummary:   false,
 		SendResponse:    false,
 		NoHistory:       true, // Don't load session history for heartbeat
@@ -1697,7 +1697,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 		ToolProfile:     profile,
 		IsCronTriggered: isCronTriggered,
 		UserMessage:     msg.Content,
-		DefaultResponse: "I've completed processing but have no response to give.",
+		DefaultResponse: "Hmm — that came back empty. Could you say it another way?",
 		EnableSummary:   true,
 		SendResponse:    false,
 		Media:           msg.Media,
@@ -2534,6 +2534,12 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		finalContent = sanitized
 	}
 
+	// 5c. Prose repair BEFORE persistence: small models glue words to
+	// clock times ("the2:00 PM", "is7:00 AM"). No prompt fully prevents
+	// it, so the output path fixes the spacing deterministically and the
+	// stored reply never carries the typo.
+	finalContent = repairTimeSpacing(finalContent)
+
 	// 6. Save final assistant message to session (only if it's a real response, not a tool result turn or slash command)
 	// We don't save iterations that were just tool calls here because runLLMIteration
 	// already handles AddFullMessage for tool turns.
@@ -3057,8 +3063,8 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	}
 
 	// Grace call: a small or weak model can exhaust the tool budget while
-	// still calling tools, leaving no final answer. Rather than return a
-	// dead-end ("no response to give"), give the model one final turn with
+	// still calling tools, leaving no final answer. Rather than return an
+	// assistant-shaped dead-end, give the model one final turn with
 	// tools disabled so it must answer from what it already gathered.
 	if strings.TrimSpace(finalContent) == "" && len(usedTools) > 0 {
 		graceMessages := append([]providers.Message{}, messages...)
