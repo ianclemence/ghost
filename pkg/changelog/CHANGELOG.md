@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.14] - 2026-09-23
+
+- Approval cards answer to all arrow keys (plus vim keys), not just
+  left and right.
+- Approved turns always leave a receipt: resumed executions that
+  produce no text now say Done (or admit failure) instead of
+  replying blank.
+
 ## [0.24.13] - 2026-09-23
 
 - Calendar runs on the direct Google Calendar API: agenda, natural
