@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -85,5 +86,26 @@ func TestRegistryForwardsOuterCallback(t *testing.T) {
 	}
 	if len(r.DrainBackgroundDone("sess")) != 1 {
 		t.Fatal("recording must happen alongside the outer callback")
+	}
+}
+
+// The lifecycle sink observes starts and finishes even though no caller
+// callback was passed: the recording wrapper feeds it.
+func TestRegistryEmitsBackgroundEvents(t *testing.T) {
+	r := NewToolRegistry()
+	var events []BackgroundEvent
+	r.SetEventSink(func(ev BackgroundEvent) { events = append(events, ev) })
+	stub := &bgStubTool{}
+	r.Register(stub)
+	res := r.ExecuteWithContext(context.Background(), "bgstub", map[string]interface{}{"label": "dig"}, "cli", "c", "sess", nil)
+	if res == nil || !res.Async || stub.cb == nil {
+		t.Fatalf("stub must detach, got %+v", res)
+	}
+	if len(events) != 1 || events[0].Type != BackgroundEventStarted || events[0].Label != "dig" || events[0].Session != "sess" {
+		t.Fatalf("start event wrong: %+v", events)
+	}
+	stub.cb(context.Background(), &ToolResult{ForLLM: "dug up", ForUser: "dug up"})
+	if len(events) != 2 || events[1].Type != BackgroundEventDone || !strings.Contains(events[1].Result, "dug up") {
+		t.Fatalf("done event wrong: %+v", events)
 	}
 }

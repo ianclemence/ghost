@@ -11,6 +11,25 @@ import (
 // governed paths (bus announce, session history).
 const maxBackgroundResultChars = 4000
 
+// BackgroundEventType names the lifecycle observations the log emits.
+const (
+	BackgroundEventStarted = "background_started"
+	BackgroundEventDone    = "background_done"
+)
+
+// BackgroundEvent is one lifecycle observation: a detached task started
+// or finished. Sinks (WS bridge, status surfaces) subscribe; the log
+// itself stays presentation-free.
+type BackgroundEvent struct {
+	Type      string
+	Session   string
+	Label     string
+	Tool      string
+	OK        bool
+	Result    string
+	ElapsedMs int64
+}
+
 // BackgroundTask is one in-flight detached execution.
 type BackgroundTask struct {
 	ID        string
@@ -39,6 +58,19 @@ type BackgroundLog struct {
 	seq     uint64
 	running map[string][]BackgroundTask
 	done    map[string][]BackgroundDone
+	// sink observes starts and finishes (WS bridge, status surfaces).
+	// Nil = log only. Set once by the owning runtime.
+	sink func(BackgroundEvent)
+}
+
+// SetEventSink installs the lifecycle observer. Nil disables.
+func (l *BackgroundLog) SetEventSink(fn func(BackgroundEvent)) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.sink = fn
 }
 
 // NewBackgroundLog returns an empty log.
@@ -58,11 +90,15 @@ func (l *BackgroundLog) Start(session, tool, label string) string {
 		label = tool
 	}
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	l.seq++
 	id := "bg-" + strconv.FormatUint(l.seq, 10)
 	t := BackgroundTask{ID: id, Label: label, Tool: tool, Session: session, StartedAt: time.Now().UTC()}
+	sink := l.sink
 	l.running[session] = append(l.running[session], t)
+	l.mu.Unlock()
+	if sink != nil {
+		sink(BackgroundEvent{Type: BackgroundEventStarted, Session: session, Label: t.Label, Tool: tool})
+	}
 	return id
 }
 
@@ -97,7 +133,6 @@ func (l *BackgroundLog) Finish(session, id string, ok bool, result string) {
 	}
 	now := time.Now().UTC()
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	var task BackgroundTask
 	found := false
 	kept := l.running[session][:0]
@@ -113,13 +148,23 @@ func (l *BackgroundLog) Finish(session, id string, ok bool, result string) {
 	} else {
 		l.running[session] = kept
 	}
-	if !found {
-		return
+	var finished BackgroundDone
+	if found {
+		finished = BackgroundDone{
+			BackgroundTask: task, OK: ok, Result: result,
+			Elapsed: now.Sub(task.StartedAt), FinishedAt: now,
+		}
+		l.done[session] = append(l.done[session], finished)
 	}
-	l.done[session] = append(l.done[session], BackgroundDone{
-		BackgroundTask: task, OK: ok, Result: result,
-		Elapsed: now.Sub(task.StartedAt), FinishedAt: now,
-	})
+	sink := l.sink
+	l.mu.Unlock()
+	if found && sink != nil {
+		sink(BackgroundEvent{
+			Type: BackgroundEventDone, Session: session, Label: task.Label,
+			Tool: task.Tool, OK: ok, Result: result,
+			ElapsedMs: finished.Elapsed.Milliseconds(),
+		})
+	}
 }
 
 // Running returns a copy of the session's in-flight tasks.

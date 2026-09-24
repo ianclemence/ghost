@@ -71,6 +71,18 @@ func (r *ToolRegistry) DrainBackgroundDone(session string) []BackgroundDone {
 	return r.bg.DrainDone(session)
 }
 
+// SetEventSink installs the detached-execution lifecycle observer (WS
+// bridge, status surfaces). Nil disables. Mirrors SetVerifySink.
+func (r *ToolRegistry) SetEventSink(fn func(BackgroundEvent)) {
+	if r == nil {
+		return
+	}
+	if r.bg == nil {
+		r.bg = NewBackgroundLog()
+	}
+	r.bg.SetEventSink(fn)
+}
+
 // SetVerifySink installs an observer for VerifiableTool world-state
 // verification outcomes. The runtime bridges these to the canonical event
 // stream (verification.completed/failed on the turn's trajectory).

@@ -426,7 +426,7 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 				metaType, _ := msg.Metadata["type"].(string)
 				interactive := false
 				switch metaType {
-				case "canvas_update", "cron_update", "clarify_request", "progress_event", "card_update", "surface_update":
+				case "canvas_update", "cron_update", "clarify_request", "progress_event", "card_update", "surface_update", "background_started", "background_done":
 					interactive = true
 				}
 				if !interactive && !conversationEvent(msg) {

@@ -746,6 +746,25 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 	doctorRunner.SetRetrievalSource(al.retrieval.snapshot)
 
+	// Detached-task lifecycle joins the bus for surfaces: the registry
+	// observes starts/finishes where they happen, the loop routes them.
+	// Read-only reporting — the event authorizes nothing. The history note
+	// is written here (once per completion, surface-independent) so the
+	// model continues from results on its next turn no matter which
+	// surface drains the transcript entry.
+	al.tools.SetEventSink(func(ev tools.BackgroundEvent) {
+		publishBackgroundEvent(al.bus, ev)
+		if ev.Type == tools.BackgroundEventDone {
+			al.noteBackgroundDone(ev.Session, tools.BackgroundDone{
+				BackgroundTask: tools.BackgroundTask{
+					Label: ev.Label, Tool: ev.Tool, Session: ev.Session,
+				},
+				OK:      ev.OK,
+				Result:  ev.Result,
+				Elapsed: time.Duration(ev.ElapsedMs) * time.Millisecond,
+			})
+		}
+	})
 	// World-state verification outcomes join the turn's trajectory: the
 	// registry observes them where they happen, governance records them.
 	// Session and trajectory resolve from the tool context (server-set,
