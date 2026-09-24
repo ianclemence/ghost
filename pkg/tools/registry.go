@@ -28,7 +28,10 @@ type ToolRegistry struct {
 	// session and trajectory for correlation. Set by the agent runtime;
 	// nil = no observation.
 	verifySink func(ctx context.Context, tool string, latencyMs int64, verifyErr error)
-	mu         sync.RWMutex
+	// bg tracks detached (Async) executions per session so surfaces can
+	// show "still running" and deliver completions. Observational only.
+	bg *BackgroundLog
+	mu sync.RWMutex
 }
 
 func NewToolRegistry() *ToolRegistry {
@@ -38,7 +41,34 @@ func NewToolRegistry() *ToolRegistry {
 		hiddenTools:       make(map[string]time.Time),
 		channelToolPolicy: make(map[string]map[string]bool),
 		sessionToolPolicy: make(map[string]map[string]bool),
+		bg:                NewBackgroundLog(),
 	}
+}
+
+// backgroundLabel prefers a caller-supplied label (spawn's "label" arg)
+// over the tool name for the running indicator.
+func backgroundLabel(args map[string]interface{}) string {
+	if label, _ := args["label"].(string); strings.TrimSpace(label) != "" {
+		return strings.TrimSpace(label)
+	}
+	return ""
+}
+
+// BackgroundRunning returns the session's in-flight detached executions.
+func (r *ToolRegistry) BackgroundRunning(session string) []BackgroundTask {
+	if r == nil {
+		return nil
+	}
+	return r.bg.Running(session)
+}
+
+// DrainBackgroundDone returns and clears the session's finished detached
+// executions.
+func (r *ToolRegistry) DrainBackgroundDone(session string) []BackgroundDone {
+	if r == nil {
+		return nil
+	}
+	return r.bg.DrainDone(session)
 }
 
 // SetVerifySink installs an observer for VerifiableTool world-state
@@ -257,6 +287,31 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	// tools (memory visibility). Server-side value, never model input.
 	ctx = WithSessionKey(ctx, sessionKey)
 
+	// Detached-execution tracking: an AsyncTool may finish after the turn.
+	// Record the launch so surfaces can show it running; the wrapped
+	// callback records the finish. A recording callback is ALWAYS
+	// installed — even when the caller passes nil — so completions are
+	// never silently lost; the caller's callback still runs first.
+	var bgID string
+	if _, ok := tool.(AsyncTool); ok {
+		bgID = r.bg.Start(sessionKey, name, backgroundLabel(args))
+		outer := asyncCallback
+		asyncCallback = func(ctx context.Context, result *ToolResult) {
+			if result == nil {
+				r.bg.Finish(sessionKey, bgID, false, "")
+			} else {
+				text := result.ForUser
+				if text == "" {
+					text = result.ForLLM
+				}
+				r.bg.Finish(sessionKey, bgID, !result.IsError, text)
+			}
+			if outer != nil {
+				outer(ctx, result)
+			}
+		}
+	}
+
 	// If tool implements AsyncTool and callback is provided, set callback
 	if asyncTool, ok := tool.(AsyncTool); ok && asyncCallback != nil {
 		asyncTool.SetCallback(asyncCallback)
@@ -269,6 +324,12 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	start := time.Now()
 	result := executeWithReliability(ctx, tool, args)
 	duration := time.Since(start)
+
+	// A tool that implements AsyncTool but finished inline never detached:
+	// drop its running entry so the indicator can't stick.
+	if bgID != "" && (result == nil || !result.Async) {
+		r.bg.Unstart(sessionKey, bgID)
+	}
 
 	// Phase 3 — Verify: a successful, non-async execution of a VerifiableTool
 	// isn't proof the outcome actually happened. Confirm it and, if verification

@@ -16,6 +16,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/routines"
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 // fakeRuntime records calls and simulates a runtime for TUI tests.
@@ -32,6 +33,10 @@ type fakeRuntime struct {
 	context  string
 	contexts []string
 	history  map[string][]historyEntry // session key -> transcript rows
+	// Background surface state.
+	bgRunning []tools.BackgroundTask
+	bgDone    []tools.BackgroundDone
+	bgPolls   int
 	// Tasks surface state.
 	routineList []*routines.Routine
 	routinesErr error
@@ -48,7 +53,16 @@ func newFakeRuntime() *fakeRuntime {
 }
 
 func (f *fakeRuntime) GetCurrentModel() string { return f.model }
-func (f *fakeRuntime) ModelPresets() []string  { return f.presets }
+
+// PollBackground serves scripted background state, draining completions
+// exactly once like the real loop.
+func (f *fakeRuntime) PollBackground(sessionKey string) ([]tools.BackgroundTask, []tools.BackgroundDone) {
+	f.bgPolls++
+	done := f.bgDone
+	f.bgDone = nil
+	return f.bgRunning, done
+}
+func (f *fakeRuntime) ModelPresets() []string { return f.presets }
 
 func (f *fakeRuntime) LoadHistory(sessionKey string) ([]historyEntry, error) {
 	return f.history[sessionKey], nil
@@ -2073,5 +2087,63 @@ func TestTUIAssistantBoldListKeepsRows(t *testing.T) {
 	}
 	if strings.Join(sc, "\n") != strings.Join(cc, "\n") {
 		t.Errorf("stream vs committed diverged:\nstream:\n%s\ncommitted:\n%s", strings.Join(sc, "\n"), strings.Join(cc, "\n"))
+	}
+}
+
+// The dock shows in-flight detached work with elapsed time, and hides the
+// line when nothing runs.
+func TestTUIBackgroundIndicator(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	if got := m.bgLine(); got != "" {
+		t.Fatalf("quiet background must render no line, got %q", got)
+	}
+	f.bgRunning = []tools.BackgroundTask{
+		{ID: "bg-1", Label: "research", Tool: "spawn", StartedAt: time.Now().Add(-42 * time.Second)},
+		{ID: "bg-2", Label: "fetch", Tool: "spawn", StartedAt: time.Now()},
+	}
+	m.updateInner(bgTickMsg{})
+	if got := m.bgLine(); !strings.Contains(got, "research") || !strings.Contains(got, "+1 more") {
+		t.Fatalf("indicator must name the task and count overflow, got %q", got)
+	}
+}
+
+// A drained completion lands in the transcript as a status line plus the
+// findings, exactly once across polls.
+func TestTUIBackgroundDelivery(t *testing.T) {
+	f := newFakeRuntime()
+	f.bgDone = []tools.BackgroundDone{{
+		BackgroundTask: tools.BackgroundTask{ID: "bg-1", Label: "research"},
+		OK:             true, Result: "found it", Elapsed: 5 * time.Second,
+	}}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.updateInner(bgTickMsg{})
+	if !hasNotice(m, "research finished") {
+		t.Fatalf("delivery must append the status line: entries=%+v flush=%q", m.entries, m.lastFlush)
+	}
+	if !strings.Contains(m.lastFlush, "found it") {
+		t.Fatalf("delivery must carry the findings: flush=%q", m.lastFlush)
+	}
+	flushed := m.lastFlush
+	m.updateInner(bgTickMsg{})
+	if m.lastFlush != flushed {
+		t.Fatal("second poll must not re-deliver")
+	}
+}
+
+// Failures report honestly, never as success.
+func TestTUIBackgroundDeliveryFailure(t *testing.T) {
+	f := newFakeRuntime()
+	f.bgDone = []tools.BackgroundDone{{
+		BackgroundTask: tools.BackgroundTask{ID: "bg-1", Label: "research"},
+		OK:             false, Result: "boom", Elapsed: 5 * time.Second,
+	}}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.updateInner(bgTickMsg{})
+	if !hasNotice(m, "research failed") {
+		t.Fatalf("failure must say failed: entries=%+v flush=%q", m.entries, m.lastFlush)
+	}
+	if hasNotice(m, "finished") {
+		t.Fatalf("failure must never read as success: flush=%q", m.lastFlush)
 	}
 }

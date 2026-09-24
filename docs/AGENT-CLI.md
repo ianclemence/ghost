@@ -210,6 +210,27 @@ deepseek-flash · cloud · main · ready
 
 While thinking: `… · Thinking · 4s`. On a held approval: `waiting for you`.
 
+## Background tasks
+
+Work the model delegates to a subagent keeps running after its turn ends.
+While anything is in flight the dock shows a live line:
+
+```
+◌ deep research · 42s
+```
+
+When a task finishes, Ghost reports back in the conversation — a status
+line plus what it found — and files the result where the next turn can
+continue from it. Failures are stated as failures.
+
+Policy, kept deliberately narrow:
+
+- Only subagent spawns detach today. Nothing else runs in the background.
+- At most 2 run at once; each is killed at 5 minutes.
+- Spawning goes through the same approval as any other tool call — the
+  report-back is read-only and grants nothing.
+- Completions deliver exactly once per session and never re-fire.
+
 ## Approvals
 
 When Ghost needs permission for something consequential, the composer is

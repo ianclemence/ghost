@@ -25,6 +25,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/routines"
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 // ─── messages ─────────────────────────────────────────────────────────────
@@ -54,6 +55,11 @@ type clarifyRequestMsg struct {
 
 // spinnerTickMsg advances the activity spinner (the Ghost thinking pulse).
 type spinnerTickMsg struct{}
+
+// bgTickMsg polls detached background tasks: running state for the
+// indicator, completions for delivery. The tick self-sustains only while
+// work is in flight — no background work, no wakeups.
+type bgTickMsg struct{}
 
 // turnDoneMsg carries the final response of a turn.
 type turnDoneMsg struct {
@@ -123,6 +129,10 @@ type agentRuntime interface {
 	// DecideIdea records accept (true) or dismiss (false) by id.
 	ListIdeas() ([]*ideas.Idea, error)
 	DecideIdea(id string, accept bool) (*ideas.Idea, error)
+	// PollBackground returns running detached tasks and drains completions
+	// (persisting a history note per completion for the model's next turn).
+	// Gateway runtimes report none: the daemon keeps its own bus rail.
+	PollBackground(sessionKey string) ([]tools.BackgroundTask, []tools.BackgroundDone)
 }
 
 type agentTUI struct {
@@ -157,6 +167,8 @@ type agentTUI struct {
 	streamSty streamStyler // markdown state for progressive lines (fences, tables)
 	toolLine  string // current tool activity
 	toolCount int
+
+	bgRunning []tools.BackgroundTask // detached tasks for the indicator line
 
 	showTools bool // expand tool detail (Ctrl+O)
 
@@ -273,6 +285,13 @@ func spinnerTick() tea.Cmd {
 	})
 }
 
+// bgTick schedules one background poll a second out.
+func bgTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return bgTickMsg{}
+	})
+}
+
 type teaMsg = tea.Msg
 
 // Update handles one message and then flushes any newly-committed entries
@@ -307,6 +326,9 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, spinnerTick()
 		}
 		return m, nil
+
+	case bgTickMsg:
+		return m, m.pollBackground()
 
 	case streamChunkMsg:
 		m.streaming += msg.text
@@ -393,13 +415,17 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streamSty = streamStyler{width: m.textWidth()}
 		m.toolCount = 0
 		flush := m.renderTranscript()
-		if tailCmd != nil {
-			if flush != nil {
-				return m, tea.Batch(tailCmd, flush)
-			}
-			return m, tailCmd
+		cmds := []tea.Cmd{}
+		if flush != nil {
+			cmds = append(cmds, flush)
 		}
-		return m, flush
+		if tailCmd != nil {
+			cmds = append(cmds, tailCmd)
+		}
+		if bg := m.pollBackground(); bg != nil {
+			cmds = append(cmds, bg)
+		}
+		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -2902,6 +2928,10 @@ func (m *agentTUI) View() string {
 		b.WriteString(m.modalView())
 		b.WriteString("\n")
 	}
+	if line := m.bgLine(); line != "" {
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
 	for i, ln := range m.footerLines() {
 		if i > 0 {
 			b.WriteString("\n")
@@ -3075,6 +3105,73 @@ func shortModel(s string) string {
 		return s[:27] + "…"
 	}
 	return s
+}
+
+// ─── background tasks ────────────────────────────────────────────────────
+// Detached executions (today: subagent spawns) outlive the turn that
+// started them. The registry tracks them per session; this loop polls on a
+// self-sustaining 1s tick while work is in flight and goes quiet after.
+// Running tasks read in the dock indicator; completions land in the
+// transcript AND in session history (via PollBackground's system note),
+// so the user sees the report and the model continues from it next turn.
+
+// maxBackgroundTranscriptChars caps a delivered result in scrollback. The
+// history note carries the same budget; anything longer was already
+// summarized by the subagent's own final turn.
+const maxBackgroundTranscriptChars = 2000
+
+// pollBackground refreshes the running indicator and delivers completions.
+// Returns a flush when anything landed and a reschedule tick while work
+// remains — nil when the background is fully quiet.
+func (m *agentTUI) pollBackground() tea.Cmd {
+	running, done := m.loop.PollBackground(m.session)
+	m.bgRunning = running
+	for _, d := range done {
+		m.deliverBackgroundDone(d)
+	}
+	var cmds []tea.Cmd
+	if len(done) > 0 {
+		if flush := m.renderTranscript(); flush != nil {
+			cmds = append(cmds, flush)
+		}
+	}
+	if len(m.bgRunning) > 0 {
+		cmds = append(cmds, bgTick())
+	}
+	return tea.Batch(cmds...)
+}
+
+// deliverBackgroundDone reports one finished task the way the agent itself
+// would: a status line, then the findings as a Ghost reply so they read in
+// place. Failures are stated plainly, never softened into success.
+func (m *agentTUI) deliverBackgroundDone(d tools.BackgroundDone) {
+	elapsed := formatElapsed(d.Elapsed)
+	if d.OK {
+		m.append(entry{kind: entryNotice, text: "✓ " + d.Label + " finished in " + elapsed, at: time.Now()})
+	} else {
+		m.append(entry{kind: entryNotice, text: "✗ " + d.Label + " failed after " + elapsed, at: time.Now()})
+	}
+	if result := strings.TrimSpace(d.Result); result != "" {
+		if len(result) > maxBackgroundTranscriptChars {
+			result = result[:maxBackgroundTranscriptChars] + "…"
+		}
+		m.append(entry{kind: entryAssistant, text: result, at: time.Now()})
+	}
+}
+
+// bgLine is the dock indicator for in-flight detached work: first task
+// plus elapsed, with overflow counted. Empty when nothing runs, so the
+// dock keeps its usual height.
+func (m *agentTUI) bgLine() string {
+	if len(m.bgRunning) == 0 {
+		return ""
+	}
+	first := m.bgRunning[0]
+	s := fmt.Sprintf("◌ %s · %s", first.Label, formatElapsed(time.Since(first.StartedAt)))
+	if n := len(m.bgRunning) - 1; n > 0 {
+		s += fmt.Sprintf(" · +%d more", n)
+	}
+	return styleNotice.Render(cellTruncate(s, m.width))
 }
 
 // ─── prompt composer ───────────────────────────────────────────────────

@@ -33,6 +33,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 // embeddedRuntime adapts the in-process AgentLoop to agentRuntime, adding the
@@ -330,6 +331,13 @@ func (g *gatewayRuntime) DecideIdea(id string, accept bool) (*ideas.Idea, error)
 		return nil, err
 	}
 	return res.Idea, nil
+}
+
+// PollBackground reports no background tasks over the gateway: the daemon
+// owns its async rail (bus announce) and this client must not double-report
+// completions the daemon already delivers.
+func (g *gatewayRuntime) PollBackground(sessionKey string) ([]tools.BackgroundTask, []tools.BackgroundDone) {
+	return nil, nil
 }
 
 // ListRoutines serves the TUI Tasks surface from the gateway's routines API.

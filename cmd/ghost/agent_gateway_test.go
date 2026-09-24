@@ -454,3 +454,14 @@ func TestGatewayUnreachableSurfaces(t *testing.T) {
 		t.Errorf("set must fail cleanly")
 	}
 }
+
+// The gateway client must never report background completions: the daemon
+// owns that rail (bus announce) and client-side reporting would double
+// every daemon delivery.
+func TestGatewayPollBackgroundAlwaysEmpty(t *testing.T) {
+	gw := &gatewayRuntime{baseURL: "http://127.0.0.1:1", http: http.DefaultClient}
+	running, done := gw.PollBackground("cli:test")
+	if len(running) != 0 || len(done) != 0 {
+		t.Fatalf("gateway must report no background state, got %v %v", running, done)
+	}
+}
