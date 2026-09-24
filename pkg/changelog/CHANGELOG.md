@@ -3,6 +3,12 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.19] - 2026-09-24
+
+- Background tasks report back: delegated subagent work shows a live
+  dock line while running, then Ghost tells you what it found —
+  failures stated plainly. Max 2 at once, approval unchanged.
+
 ## [0.24.18] - 2026-09-24
 
 - Slash palette fixed: the command you type always wins over the
