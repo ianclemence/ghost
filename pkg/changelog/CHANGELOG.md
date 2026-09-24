@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.18] - 2026-09-24
+
+- Slash palette fixed: the command you type always wins over the
+  highlight, and /task stays composed with an arg hint instead of
+  erroring. Scoped-models picker removed; /model covers everything.
+- Ghost sounds more human: narration is answered, not taskified;
+  questions only when the answer changes what happens next; memory
+  answers never talk about files.
+- Recurring reminders need an explicit ask: describing a habit
+  ("every morning I feel groggy") no longer proposes a routine.
+
 ## [0.24.17] - 2026-09-23
 
 - Reply headers name Ghost only: the model tag moves out of the
