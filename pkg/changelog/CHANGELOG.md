@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.20] - 2026-09-24
+
+- Background work reaches every surface: the daemon announces task
+  starts and finishes over the live channel, so the mobile
+  conversation shows the same running indicator and report-back as
+  the terminal. One history note per finish, no double-reporting.
+
 ## [0.24.19] - 2026-09-24
 
 - Background tasks report back: delegated subagent work shows a live
