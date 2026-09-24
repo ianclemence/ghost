@@ -1,0 +1,62 @@
+{"conversations": [
+{"id": "A-ordinary", "category": "ordinary", "turns": [
+"Hey Ghost.",
+"How's it going?",
+"I'm tired today.",
+"Today actually went pretty well.",
+"I finally finished that thing.",
+"That meeting was ridiculous."]},
+{"id": "B-thinking", "category": "thinking-aloud", "turns": [
+"I should probably finish the hardware stuff today.",
+"Maybe I should just leave this until tomorrow.",
+"I don't know if this is worth doing.",
+"I keep putting this off.",
+"I could probably solve this another way."]},
+{"id": "C-delegate-explicit", "category": "delegation", "turns": [
+"Make sure I remember to email Maria tomorrow.",
+"Remind me at 10 to stretch."]},
+{"id": "C-delegate-vague", "category": "delegation", "turns": [
+"Keep an eye on this for me.",
+"Take care of that."]},
+{"id": "E-repair", "category": "correction", "turns": [
+"Remind me tomorrow at 10 to email Maria.",
+"Actually make that 7.",
+"Not Maria \u2014 Jas."]},
+{"id": "F-social", "category": "social-ordinary", "turns": [
+"Today was rough.",
+"That actually made me happy.",
+"I'm annoyed.",
+"I just don't feel like doing anything tonight."]},
+{"id": "G-humor", "category": "humor-casual", "turns": [
+"lmao",
+"bro that's crazy",
+"nah",
+"okay that's actually funny"]},
+{"id": "H-short", "category": "short-replies", "turns": [
+"yeah",
+"whatever"]},
+{"id": "D-mixed-5", "category": "trajectory-mixed", "turns": [
+"I'm pretty tired today.",
+"I still need to finish the Ghost hardware stuff.",
+"I'll probably forget about it if I don't do it tonight.",
+"Actually, remind me at 8.",
+"Did you set that?"]},
+{"id": "T-long-8", "category": "trajectory-long", "turns": [
+"I barely slept last night.",
+"Still have that meeting this afternoon.",
+"Hopefully I can survive it.",
+"Oh, and remind me to call Jas at 5.",
+"Actually make it 5:30.",
+"Did that go through?",
+"Thanks.",
+"Anyway, back to work."]},
+{"id": "P-notools", "category": "personality-no-tools", "turns": [
+"I finally figured out the Rust bug.",
+"That took way longer than it should have.",
+"I'm never touching that code again.",
+"Anyway, what are you up to?"]},
+{"id": "X-delegate-extreme", "category": "delegation-extreme", "turns": [
+"Remind me at 10.",
+"Go ahead.",
+"Did you do it?"]}
+]}
