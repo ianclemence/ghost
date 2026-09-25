@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -391,6 +392,9 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 			})
 			return "Which city should I check?", true
 		}
+		if strings.TrimSpace(metadata["resume_field"]) == "location" {
+			al.rememberHomeLocation(session, inputs["location"], msg)
+		}
 		return "", false
 	}
 
@@ -761,5 +765,55 @@ func deterministicCapability(tool string) string {
 		return "flight.status"
 	default:
 		return tool
+	}
+}
+
+// rememberHomeLocation records the place the owner just gave us so "here"
+// resolves on later turns instead of asking again. Best-effort and quiet:
+// failing to remember must never break the answer.
+func (al *AgentLoop) rememberHomeLocation(session, loc, message string) {
+	if al == nil || al.pcStore == nil {
+		return
+	}
+	loc = strings.TrimSpace(loc)
+	if loc == "" {
+		return
+	}
+	value, err := personalcontext.RawValue(loc)
+	if err != nil {
+		return
+	}
+	_, err = al.pcStore.Supersede("user", "fact/location", personalcontext.Entry{
+		ID:         personalcontext.NewEntryID(),
+		Kind:       personalcontext.KindFact,
+		Subject:    "user",
+		Predicate:  "fact/location",
+		Value:      value,
+		Status:     personalcontext.StatusCurrent,
+		Scopes:     al.sessionScopes(session),
+		Confidence: 0.9,
+		Sources: []personalcontext.Source{{
+			Type: personalcontext.SourceConversation, Kind: personalcontext.SourceUserDeclared,
+			Ref: session, Timestamp: time.Now().UTC(),
+		}},
+		Quote: strings.TrimSpace(message),
+	})
+	if err != nil {
+		// First time there is nothing to supersede: create the belief.
+		_, _ = al.pcStore.Create(personalcontext.Entry{
+			ID:         personalcontext.NewEntryID(),
+			Kind:       personalcontext.KindFact,
+			Subject:    "user",
+			Predicate:  "fact/location",
+			Value:      value,
+			Status:     personalcontext.StatusCurrent,
+			Scopes:     al.sessionScopes(session),
+			Confidence: 0.9,
+			Sources: []personalcontext.Source{{
+				Type: personalcontext.SourceConversation, Kind: personalcontext.SourceUserDeclared,
+				Ref: session, Timestamp: time.Now().UTC(),
+			}},
+			Quote: strings.TrimSpace(message),
+		})
 	}
 }

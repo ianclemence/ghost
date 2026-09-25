@@ -65,3 +65,7 @@ func bitsValue(b []byte, bit, n int) uint8 {
 	}
 	return v
 }
+
+// NewEntryID mints an ec_-prefixed id for callers outside the extractor (the
+// runtime records its own beliefs too, e.g. the owner's location).
+func NewEntryID() string { return newEntryID() }

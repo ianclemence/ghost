@@ -32,11 +32,15 @@ import (
 
 // Current is the validated capability result (vendor-neutral).
 type Current struct {
-	TemperatureC float64   `json:"temperature_c"`
-	HumidityPct  *float64  `json:"humidity_pct,omitempty"`
-	Description  string    `json:"description,omitempty"`
-	ObservedAt   time.Time `json:"observed_at"`
-	Provenance   string    `json:"provenance"`
+	TemperatureC float64  `json:"temperature_c"`
+	HumidityPct  *float64 `json:"humidity_pct,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	// Emoji is the condition as one weather glyph. wttr's JSON carries no
+	// emoji (only its text renderer does), so the glyph is derived from the
+	// description and works for every provider.
+	Emoji      string    `json:"emoji,omitempty"`
+	ObservedAt time.Time `json:"observed_at"`
+	Provenance string    `json:"provenance"`
 }
 
 // Validate enforces semantic sanity: finite temperature in a plausible
@@ -225,6 +229,7 @@ func (s *Service) openMeteoProvider(lat, lon float64) provider.Provider[Current]
 				return Current{}, meta, err
 			}
 			cur.Provenance = "open-meteo"
+			cur.Emoji = EmojiForDescription(cur.Description)
 			return cur, meta, nil
 		},
 		Validate: func(c Current) error { return c.Validate() },
@@ -271,6 +276,7 @@ func (s *Service) openWeatherProvider(lat, lon float64) *provider.Provider[Curre
 				return Current{}, meta, err
 			}
 			cur.Provenance = "openweather"
+			cur.Emoji = EmojiForDescription(cur.Description)
 			return cur, meta, nil
 		},
 		Validate: func(c Current) error { return c.Validate() },
@@ -502,6 +508,7 @@ func (s *Service) wttrProvider(lat, lon float64) provider.Provider[Current] {
 				return Current{}, meta, err
 			}
 			cur.Provenance = "wttr.in"
+			cur.Emoji = EmojiForDescription(cur.Description)
 			return cur, meta, nil
 		},
 		Validate: func(c Current) error { return c.Validate() },
@@ -553,4 +560,31 @@ func parseWttr(body []byte) (Current, error) {
 		return Current{}, err
 	}
 	return cur, nil
+}
+
+// EmojiForDescription maps a condition description to one weather glyph.
+func EmojiForDescription(desc string) string {
+	d := strings.ToLower(strings.TrimSpace(desc))
+	switch {
+	case d == "":
+		return ""
+	case strings.Contains(d, "thunder") || strings.Contains(d, "storm"):
+		return "⛈️"
+	case strings.Contains(d, "snow") || strings.Contains(d, "sleet") || strings.Contains(d, "blizzard"):
+		return "❄️"
+	case strings.Contains(d, "drizzle"):
+		return "🌦️"
+	case strings.Contains(d, "rain") || strings.Contains(d, "shower"):
+		return "🌧️"
+	case strings.Contains(d, "fog") || strings.Contains(d, "mist"):
+		return "🌫️"
+	case strings.Contains(d, "overcast"):
+		return "☁️"
+	case strings.Contains(d, "cloud"):
+		return "⛅"
+	case strings.Contains(d, "clear") || strings.Contains(d, "sun"):
+		return "☀️"
+	default:
+		return ""
+	}
 }

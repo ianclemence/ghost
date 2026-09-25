@@ -295,3 +295,22 @@ func TestWttrIsPrimary(t *testing.T) {
 		t.Fatalf("parsed = %+v, want 22C Cloudy", cur)
 	}
 }
+
+func TestEmojiForDescription(t *testing.T) {
+	cases := map[string]string{
+		"Light rain shower":  "🌧️",
+		"Patchy rain nearby": "🌧️",
+		"Overcast":           "☁️",
+		"Partly cloudy":      "⛅",
+		"Sunny":              "☀️",
+		"Thundery outbreaks": "⛈️",
+		"Light snow":         "❄️",
+		"Fog":                "🌫️",
+		"":                   "",
+	}
+	for desc, want := range cases {
+		if got := EmojiForDescription(desc); got != want {
+			t.Errorf("EmojiForDescription(%q) = %q, want %q", desc, got, want)
+		}
+	}
+}

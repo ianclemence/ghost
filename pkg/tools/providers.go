@@ -147,8 +147,8 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]interface{}) 
 		o := product.OutcomeForProviderFailure("weather", r.Failure, r.Err)
 		return providerError(o.UserMessage)
 	}
-	return NewToolResult(fmt.Sprintf("Weather in %s: %.1f°C%s (via %s, observed %s).",
-		loc, cur.TemperatureC, descSuffix(cur.Description), r.Provider, cur.ObservedAt.Format("15:04")))
+	return NewToolResult(fmt.Sprintf("Weather in %s: %s%.1f°C%s (via %s, observed %s).",
+		loc, emojiPrefix(cur.Emoji), cur.TemperatureC, descSuffix(cur.Description), r.Provider, cur.ObservedAt.Format("15:04")))
 }
 
 func descSuffix(d string) string {
@@ -574,4 +574,12 @@ func (t *HassTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	default:
 		return ErrorResult("hass needs action list, state, status, turn_on, or turn_off.")
 	}
+}
+
+// emojiPrefix renders a condition glyph for the user-facing weather line.
+func emojiPrefix(e string) string {
+	if strings.TrimSpace(e) == "" {
+		return ""
+	}
+	return e + " "
 }

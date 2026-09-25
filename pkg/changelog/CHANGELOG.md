@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.41] - 2026-09-26
+
+- "Here" is remembered. Answer "bangkok" once to "which city should I
+  check?", and Ghost keeps it — the next "what's the weather here"
+  answers straight away instead of asking again. (The first save
+  silently did nothing before: the store only knew how to replace an
+  existing location, not create one.)
+- Weather shows the emoji you expect from wttr. wttr's JSON carries no
+  emoji — only its text mode does — so Ghost maps the condition to the
+  glyph itself, which works for every provider.
+
 ## [0.24.40] - 2026-09-26
 
 - No more "allow once" that gets refused. Shell (`exec`) is hidden by
