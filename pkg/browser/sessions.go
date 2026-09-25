@@ -307,3 +307,35 @@ func (s *SessionStore) PurgeProfile(owner, contextID, profile string) (int64, er
 	}
 	return closed, nil
 }
+
+// PurgeProfiles signs the browser out everywhere on this Ghost: it closes
+// every session row and deletes every profile directory (cookie jars, local
+// storage). Profiles are listed from disk, not the session table, because a
+// profile deliberately outlives an expired session — that is what makes a
+// sign-in persist. Returns (sessions closed, profiles removed).
+func (s *SessionStore) PurgeProfiles() (int64, int, error) {
+	res, err := s.db.Exec(`DELETE FROM browser_sessions`)
+	if err != nil {
+		return 0, 0, err
+	}
+	closed, _ := res.RowsAffected()
+
+	removed := 0
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return closed, 0, nil
+		}
+		return closed, removed, err
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(s.baseDir, e.Name())); err != nil {
+			return closed, removed, err
+		}
+		removed++
+	}
+	return closed, removed, nil
+}

@@ -5259,6 +5259,23 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	registerActivityStream(mux)
 	registerConnectionsRoutes(mux)
 	registerWebsiteLoginRoutes(mux)
+	// Sign out everywhere: close every browser session and delete every
+	// profile (cookies, storage). The revocation counterpart to persistent
+	// browser profiles.
+	mux.HandleFunc("/v1/browser/signout", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use POST")
+			return
+		}
+		closed, removed, err := agentLoop.PurgeBrowserProfiles()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "io_error", "couldn't sign out of the browser")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "sessions_closed": closed, "profiles_removed": removed,
+		})
+	}))
 
 	// ── Phone/Pod cooperation: protocol, capabilities, catalog, sync ───
 	registerLocalGhostRoutes(mux, agentLoop)

@@ -88,3 +88,41 @@ func TestGetOrCreateReusesProfileAcrossSessionsForSameContext(t *testing.T) {
 		t.Fatalf("session profile = %q, want the context dir %q", first.Profile, dir)
 	}
 }
+
+// Sign-out-everywhere: every profile directory goes and every session closes,
+// including profiles whose sessions already expired (that is why profiles are
+// listed from disk, not the session table).
+func TestPurgeProfilesSignsOutEverywhere(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.GetOrCreate("owner-1", "personal", "task-1", "default", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetOrCreate("owner-1", "work", "task-2", "default", 0); err != nil {
+		t.Fatal(err)
+	}
+	// A profile with no live session (expired): still must be removed.
+	orphan, err := EnsureProfileDir(s.BaseDir(), "old-context", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(orphan, "Cookies"), []byte("cookie"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	closed, removed, err := s.PurgeProfiles()
+	if err != nil {
+		t.Fatalf("PurgeProfiles: %v", err)
+	}
+	if closed == 0 || removed < 3 {
+		t.Fatalf("purge = (%d closed, %d removed), want sessions closed and all profiles removed", closed, removed)
+	}
+	entries, err := os.ReadDir(s.BaseDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			t.Fatalf("profile directory survived sign-out: %s", e.Name())
+		}
+	}
+}

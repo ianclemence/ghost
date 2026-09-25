@@ -528,3 +528,15 @@ func (al *AgentLoop) publishBrowserEvidence(requestID, sessionKey, tool string, 
 	logger.DebugCF("browser-gate", "governed browser execution",
 		map[string]interface{}{"tool": tool, "session": sessionKey})
 }
+
+// PurgeBrowserProfiles signs the browser out everywhere on this Ghost: every
+// session is closed and every profile directory (cookies, storage) is
+// deleted. It is the owner-facing "sign out of all sites" action — the
+// revocation counterpart to persistent profiles.
+func (al *AgentLoop) PurgeBrowserProfiles() (int64, int, error) {
+	s, err := al.browserSessionLedger()
+	if err != nil {
+		return 0, 0, err
+	}
+	return s.PurgeProfiles()
+}

@@ -536,6 +536,11 @@ function manageWebLogins(logins) {
   const passInp = mk('Password', 'stored encrypted, never shown', true);
 
   GhostUI.modal('Website logins', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
+      if (!(await GhostUI.confirmModal('Sign out of all sites?', 'Ghost will forget every saved browser session and cookie. You will need to sign in again.', 'Sign out'))) return;
+      try { await GhostAPI.proxyPost('/v1/browser/signout', {}); GhostUI.toast('Signed out of all sites'); }
+      catch (err) { GhostUI.toast('Couldn\u2019t sign out.', 'err'); }
+    } }, 'Sign out of all sites'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
       const url = urlInp.value.trim(), username = userInp.value.trim(), password = passInp.value;
