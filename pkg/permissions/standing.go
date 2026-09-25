@@ -107,17 +107,10 @@ func isBroadScope(lower string) bool {
 	// is usually a knowledge question, not a permission statement. Only
 	// treat it as standing-permission intent when a grant verb is present —
 	// otherwise memory questions get hijacked by the permission fast-path.
-	hasGrantVerb := false
-	for _, verb := range []string{
-		"allow", "let", "grant", "access", "control", "manage",
-		"permission", "approve", "authoriz", "always", "never",
-	} {
-		if strings.Contains(lower, verb) {
-			hasGrantVerb = true
-			break
-		}
-	}
-	if !hasGrantVerb {
+	// Verbs match on word boundaries: substring matching let "newsLETter"
+	// read as "let" and hijack an ordinary message that also said
+	// "anything" (e.g. a browser form-fill instruction).
+	if !broadScopeVerbRE.MatchString(lower) {
 		return false
 	}
 	for _, phrase := range []string{
@@ -134,6 +127,12 @@ func isBroadScope(lower string) bool {
 // broadAccountRE catches "do anything on my account"-style phrasing even
 // when isBroadScope's substrings don't appear verbatim.
 var broadAccountRE = regexp.MustCompile(`(?i)\b(do|access|control|manage|use|change|touch)\s+(anything|whatever|everything|all)\b.*\b(account|google|data|things)\b`)
+
+// broadScopeVerbRE is the grant-verb gate for the broad-scope veto.
+// Bounded on BOTH sides so ordinary words that merely embed a verb
+// ("newsletter", "letter", "wallet", "manager") never read as permission
+// language; "authoriz" stays a stem to cover authorize/authorization.
+var broadScopeVerbRE = regexp.MustCompile(`(?i)(\b(allow|let|grant|access|control|manage|permission|approve|always|never)\b|\bauthoriz)`)
 
 func containsAll(lower string, words []string) bool {
 	for _, w := range words {

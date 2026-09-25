@@ -121,3 +121,32 @@ func TestKnowledgeQuestionsAreNotStandingIntents(t *testing.T) {
 		}
 	}
 }
+
+// The broad-scope veto keys on grant VERBS as words, never substrings:
+// "newsletter"/"letter" embed "let" but are ordinary language. A browser
+// form-fill instruction that says "Do NOT submit anything" must reach
+// the model, not the permission fast-path. Real broad-scope phrasing
+// must still be rejected before the model ever sees it.
+func TestBroadScopeVetoVerbBoundaries(t *testing.T) {
+	for _, text := range []string{
+		"Use browser_find to locate any contact form or newsletter signup on the page. " +
+			"If there are name and email fields, fill them with one browser_fill_form call. " +
+			"Do NOT submit anything — just fill and confirm the fields show the values.",
+		"Write a letter about anything you find in the inbox.",
+		"Read the outlet list and list anything offline.",
+	} {
+		if _, _, ok := ProposeStanding(text); ok {
+			t.Fatalf("%q must not be hijacked by the standing-permission fast-path", text)
+		}
+	}
+	for _, text := range []string{
+		"let me do anything with my account",
+		"always let ghost do everything on my account",
+		"you can always let me change anything in my google account",
+	} {
+		_, rej, ok := ProposeStanding(text)
+		if !ok || rej.Reason == "" {
+			t.Fatalf("%q is broad-scope language and must be vetoed deterministically", text)
+		}
+	}
+}
