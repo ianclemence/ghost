@@ -11,6 +11,13 @@ changelog: Tightened formula anchoring, recalculation, and model traceability af
 
 Use when the main artifact is a Microsoft Excel workbook or spreadsheet file, especially when formulas, dates, formatting, merged cells, workbook structure, or cross-platform behavior matter.
 
+## Setup
+
+- Requires Python with `openpyxl` (and optionally `pandas` for analysis).
+- If `import openpyxl` fails, tell the user: "Spreadsheets need a small
+  Python library — it's a one-line install (`pip install --user
+  --break-system-packages openpyxl`)." Never install packages silently.
+
 ## Core Rules
 
 ### 1. Choose the workflow by job, not by habit

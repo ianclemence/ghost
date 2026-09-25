@@ -51,12 +51,12 @@ function humanizeSkillDesc(desc) {
 }
 
 // skillGroups buckets skills so everyday capabilities come first and dev
-// tools don't drown them. Unknown/custom skills land in More.
-// Core primitives (weather, aqi, currency, crypto, find-nearby) are hidden:
-// they are always-on Ghost verbs, not user choices. Connector skills stay
-// visible because they carry the Connect affordance.
+// tools don't drown them. Unknown/custom skills — including the core
+// primitives (weather, aqi, currency, crypto, find-nearby), which are
+// always-on Ghost verbs — land in More. Connector skills stay visible
+// because they carry the Connect affordance.
 const SKILL_GROUPS = [
-  { title: 'Everyday', sub: 'Schedule, notes, email, and daily tasks.', skills: ['daily-briefing', 'calendar', 'email', 'notion', 'reminders', 'shopping', 'recipe', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'travel', 'flight', 'summarize', 'organizer'] },
+  { title: 'Everyday', sub: 'Schedule, notes, email, and daily tasks.', skills: ['daily-briefing', 'calendar', 'email', 'notion', 'reminders', 'shopping', 'recipe', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'travel', 'flight', 'summarize', 'organizer', 'pdf', 'word-docx', 'excel-xlsx', 'content-creator', 'gog', 'slack', 'proactive-agent-lite'] },
   { title: 'Smart home & media', sub: 'Devices and content that may need setup.', skills: ['homeassistant', 'camera', 'mobile', 'spotify', 'internet-reading', 'document-convert'] },
   { title: 'System & developer', sub: 'Machine tools and skill building. Enabling may change this machine.', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'github', 'skill-creator', 'ascii-art', 'healthcheck', 'hardware'] },
 ];

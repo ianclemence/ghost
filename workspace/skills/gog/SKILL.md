@@ -2,16 +2,28 @@
 name: gog
 description: Google Workspace CLI for Gmail, Calendar, Drive, Contacts, Sheets, and Docs.
 homepage: https://gogcli.sh
+prerequisites:
+  commands: [gog]
 ---
 
 # gog
 
 Use `gog` for Gmail/Calendar/Drive/Contacts/Sheets/Docs. Requires OAuth setup.
 
-Setup (once)
-- `gog auth credentials /path/to/client_secret.json`
-- `gog auth add you@gmail.com --services gmail,calendar,drive,contacts,sheets,docs`
-- `gog auth list`
+Setup
+- Everyday use needs no terminal: mail and calendar already work through
+  Ghost's Connected Apps (Gmail + Google Calendar). For non-technical users,
+  say "connect it in Ghost settings under Connected Apps" — never hand them
+  setup commands.
+- The CLI extras (Drive, Sheets, Docs, Contacts) need a one-time Google
+  sign-in on this device — techies only:
+  - `gog auth credentials /path/to/client_secret.json`
+  - `gog auth add you@gmail.com --services gmail,calendar,drive,contacts,sheets,docs`
+  - `gog auth list` must show the account, not "No tokens stored"
+- If `gog auth list` reports "No tokens stored", stop and reply: "Google
+  Workspace isn't connected on this device yet — mail and calendar work from
+  Connected Apps; the Drive/Sheets/Docs extras need a one-time sign-in."
+  Never create credentials, tokens, or config files yourself.
 
 Common commands
 - Gmail search: `gog gmail search 'newer_than:7d' --max 10`

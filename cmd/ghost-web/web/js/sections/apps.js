@@ -7,7 +7,7 @@ async function loadIntegrations(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Apps'));
-  head.appendChild(GhostUI.h('p', {}, 'The apps and services Ghost can reach — Gmail, Google Calendar, flight tracking, Home Assistant, and camera.'));
+  head.appendChild(GhostUI.h('p', {}, 'The apps and services Ghost can reach — Gmail, Google Calendar, flight tracking, Home Assistant, web search, and camera.'));
   container.appendChild(head);
 
   const panel = GhostUI.h('div', { className: 'panel' });
@@ -41,6 +41,14 @@ async function loadIntegrations(container) {
   if (!document.body.contains(container)) return;
   const ints = (status && status.integrations) || {};
   listEl.innerHTML = '';
+
+  // Optional Brave search key (tools config → vault on save). Built-in
+  // DuckDuckGo already works with no setup, so this row never alarms:
+  // it shows the active provider and offers the upgrade.
+  let toolsCfg = null;
+  try { toolsCfg = await GhostAPI.get('/api/admin/tools'); } catch (e) { /* offline-safe */ }
+  const braveOn = !!(toolsCfg && toolsCfg.web && toolsCfg.web.brave &&
+    toolsCfg.web.brave.enabled && toolsCfg.web.brave.api_key);
 
   // Calendar
   const cal = ints.calendar || {};
@@ -97,6 +105,22 @@ async function loadIntegrations(container) {
   listEl.appendChild(intRow('Home Assistant', 'Smart home',
     haCfg ? 'ready' : 'neutral', haCfg ? 'Configured' : 'Not configured',
     () => editHass(haCfg)));
+
+  // Web search (built-in DuckDuckGo always works; Brave is an optional
+  // key pasted here — the normie surface for tools.web.brave).
+  const braveRow = GhostUI.h('div', { className: 'model-row' });
+  const brMain = GhostUI.h('div', { className: 'model-main' });
+  brMain.appendChild(GhostUI.h('div', { className: 'model-name' }, 'Web search'));
+  brMain.appendChild(GhostUI.h('div', { className: 'model-sub' },
+    braveOn ? 'Brave Search  ·  pro results' : 'Built-in search active  ·  optional Brave upgrade'));
+  braveRow.appendChild(brMain);
+  const brTr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+  brTr.appendChild(GhostUI.h('span', { className: 'status-pill' },
+    GhostUI.statusDot(braveOn ? 'ready' : 'neutral'), braveOn ? 'Brave on' : 'Built-in'));
+  brTr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary',
+    onClick: () => editBraveKey(braveOn) }, braveOn ? 'Edit' : 'Add Brave key'));
+  braveRow.appendChild(brTr);
+  listEl.appendChild(braveRow);
 
   // Camera mirrors the same readiness the Skills list uses — the two
   // screens can never disagree. Status already fetched above.
@@ -422,6 +446,40 @@ function editHass(configured) {
       } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
     } }, 'Save'),
   ]);
+}
+
+function editBraveKey(configured) {
+  const body = GhostUI.h('div');
+  body.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'margin-bottom:var(--s-4)' },
+    'Ghost already searches the web with its built-in free search — nothing to set up. A Brave API key is an optional upgrade for pro results: get one at brave.com/search/api, then paste it here. Stored securely on this device only.'));
+  const f = GhostUI.h('div', { className: 'field' });
+  f.appendChild(GhostUI.h('label', {}, configured ? 'New API key (leave blank to keep current)' : 'Brave API key'));
+  const inp = GhostUI.h('input', { className: 'ghost-input', type: 'password', placeholder: configured ? '••• current key saved •••' : 'BSA… key from brave.com', autocomplete: 'off' });
+  f.appendChild(inp); body.appendChild(f);
+  GhostUI.modal(configured ? 'Edit Brave key' : 'Add Brave key', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+      const key = inp.value.trim();
+      if (!key) { e.target.closest('.ghost-modal-backdrop').remove(); return; }
+      try {
+        await GhostAPI.post('/api/admin/tools/save', { web: { brave: { enabled: true, api_key: key, max_results: 5 } } });
+        e.target.closest('.ghost-modal-backdrop').remove();
+        GhostUI.toast('Brave Search connected');
+        loadIntegrations(document.getElementById('view'));
+      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+    } }, 'Save'),
+  ]);
+  if (configured) {
+    body.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async (e) => {
+      if (!(await GhostUI.confirmModal('Turn off Brave?', 'Ghost keeps the built-in free search working — nothing breaks.', 'Turn off'))) return;
+      try {
+        await GhostAPI.post('/api/admin/tools/save', { web: { brave: { enabled: false } } });
+        e.target.closest('.ghost-modal-backdrop').remove();
+        GhostUI.toast('Back to built-in search');
+        loadIntegrations(document.getElementById('view'));
+      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+    } }, 'Turn off Brave'));
+  }
 }
 
 GhostApp.registerSection('apps', loadIntegrations);
