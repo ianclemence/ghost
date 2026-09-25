@@ -4029,7 +4029,7 @@ func (al *AgentLoop) summarizeSession(sessionKey string) {
 		s2, _ := al.summarizeBatch(ctx, part2, "")
 
 		// Merge them
-		mergePrompt := fmt.Sprintf("Merge these two conversation summaries into one cohesive summary:\n\n1: %s\n\n2: %s", s1, s2)
+		mergePrompt := fmt.Sprintf("Merge these two conversation summaries into one cohesive summary. Keep every date absolute — never \"today\" or \"tomorrow\":\n\n1: %s\n\n2: %s", s1, s2)
 		resp, err := al.provider.Chat(ctx, []providers.Message{{Role: "user", Content: mergePrompt}}, nil, al.model, map[string]interface{}{
 			"max_tokens":  2048,
 			"temperature": 0.3,
@@ -4110,7 +4110,7 @@ func (al *AgentLoop) openSchedulesFooter() string {
 	}
 	var b strings.Builder
 	b.WriteString("[Open schedules @")
-	b.WriteString(time.Now().Format("15:04"))
+	b.WriteString(time.Now().Format("2006-01-02 15:04"))
 	b.WriteString(" — from scheduler rows, authoritative over chat text:]")
 	shown := 0
 	for _, it := range items {
@@ -4134,10 +4134,12 @@ func (al *AgentLoop) openSchedulesFooter() string {
 		if len(detail) > 90 {
 			detail = strings.TrimSpace(detail[:90]) + "…"
 		}
+		// Full date on every row: "Sat 21:00" alone means a different
+		// day on every later read; the summary outlives the day.
 		if detail != "" && !strings.EqualFold(detail, title) {
-			fmt.Fprintf(&b, "\n- %s → %s — %s", title, when.Format("Mon 15:04"), detail)
+			fmt.Fprintf(&b, "\n- %s → %s — %s", title, when.Format("Mon 2006-01-02 15:04"), detail)
 		} else {
-			fmt.Fprintf(&b, "\n- %s → %s", title, when.Format("Mon 15:04"))
+			fmt.Fprintf(&b, "\n- %s → %s", title, when.Format("Mon 2006-01-02 15:04"))
 		}
 		if shown++; shown >= 5 {
 			break
@@ -4149,17 +4151,40 @@ func (al *AgentLoop) openSchedulesFooter() string {
 	return b.String()
 }
 
-// summarizeBatch summarizes a batch of messages.
-func (al *AgentLoop) summarizeBatch(ctx context.Context, batch []providers.Message, existingSummary string) (string, error) {
+// summarizePrompt builds the summarizer's one-shot prompt. It pins the clock
+// and forbids relative dates on purpose: this text becomes the durable
+// "Summary of Previous Conversation" read days later, where a frozen
+// "tomorrow" silently points at whatever day the summarizer happened to run
+// (observed: a Sep 23 summary still calling Sep 24 "tomorrow" on Sep 25).
+// Message stamps give each line its true date when the store has one.
+func summarizePrompt(batch []providers.Message, existingSummary string, now time.Time) string {
 	prompt := "Provide a concise summary of this conversation segment, preserving core context and key points.\n" +
-		"This summary continues the same task — it is not a restart. Assume details missing from it, do not redo completed work, and treat the thread as one logical chain.\n"
+		"This summary continues the same task — it is not a restart. Assume details missing from it, do not redo completed work, and treat the thread as one logical chain.\n" +
+		"Current date and time: " + now.Format("Monday, 2006-01-02 15:04") + ".\n" +
+		"Write dates as absolute dates only — \"Thu, Sep 24, 2026 at 09:00\", never \"today\", \"tomorrow\", \"yesterday\", \"tonight\", or a bare \"later\". This summary will be read days or weeks from now, when those words would name the wrong day. Each message below is stamped with when it was written; convert every relative reference against the current date.\n"
 	if existingSummary != "" {
-		prompt += "Existing context: " + existingSummary + "\n"
+		prompt += "Existing context (rewrite any relative dates in it to absolute dates): " + existingSummary + "\n"
 	}
 	prompt += "\nCONVERSATION:\n"
 	for _, m := range batch {
-		prompt += fmt.Sprintf("%s: %s\n", m.Role, m.Content)
+		line := m.Content
+		if !m.CreatedAt.IsZero() {
+			line = "[" + m.CreatedAt.Format("2006-01-02 15:04") + "] " + line
+		}
+		prompt += fmt.Sprintf("%s: %s\n", m.Role, line)
 	}
+	return prompt
+}
+
+// summarizeBatch summarizes a batch of messages.
+func (al *AgentLoop) summarizeBatch(ctx context.Context, batch []providers.Message, existingSummary string) (string, error) {
+	loc := tools.DeviceLocation()
+	if tz := tools.RequestTimezone(ctx); tz != "" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			loc = l
+		}
+	}
+	prompt := summarizePrompt(batch, existingSummary, time.Now().In(loc))
 
 	response, err := al.provider.Chat(ctx, []providers.Message{{Role: "user", Content: prompt}}, nil, al.model, map[string]interface{}{
 		"max_tokens":  2048,
