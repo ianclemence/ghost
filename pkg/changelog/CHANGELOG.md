@@ -3,6 +3,21 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.25] - 2026-09-25
+
+- Twelve community skills added: Word documents, Excel spreadsheets,
+  PDFs, Google Workspace (Gmail, Calendar, Drive), GitHub, Notion,
+  Slack, calendar handling, content writing, a much fuller smart-home
+  guide (25 device areas), a proactive-assistant playbook, and
+  weather.
+- Where a new skill overlapped one Ghost already had — weather,
+  GitHub, Notion, calendar, smart home — the fresh version takes
+  over; the previous ones stay recoverable from history.
+- Nothing was installed blind: every skill was read end to end,
+  stripped of third-party branding and store plugs, and passed
+  Ghost's own skill checks before shipping. Google Workspace, Notion,
+  smart home and Slack will ask for a one-time setup when first used.
+
 ## [0.24.24] - 2026-09-25
 
 - Approvals answer out loud again: after you reply "allow once" or
