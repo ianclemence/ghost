@@ -56,9 +56,9 @@ function humanizeSkillDesc(desc) {
 // always-on Ghost verbs — land in More. Connector skills stay visible
 // because they carry the Connect affordance.
 const SKILL_GROUPS = [
-  { title: 'Everyday', sub: 'Schedule, notes, email, and daily tasks.', skills: ['daily-briefing', 'calendar', 'email', 'notion', 'reminders', 'shopping', 'recipe', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'travel', 'flight', 'summarize', 'organizer', 'pdf', 'word-docx', 'excel-xlsx', 'content-creator', 'gog', 'slack', 'proactive-agent-lite'] },
+  { title: 'Everyday', sub: 'Schedule, notes, email, and daily tasks.', skills: ['daily-briefing', 'calendar', 'email', 'notion', 'reminders', 'shopping', 'recipe', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'travel', 'flight', 'summarize', 'organizer', 'pdf', 'word-docx', 'excel-xlsx', 'content-creator', 'gog', 'slack', 'proactive-agent-lite', 'stocks', 'rss-feeds', 'reddit-reading', 'humanizer', 'simple-english', 'grounded-citations', 'weekly-review-planning', 'document-to-action-items', 'meeting-action-items', 'email-inbox-triage', 'gif-search', 'maps', 'blocked-page-recovery', 'meme-generation', 'ascii-video', 'songwriting-and-ai-music', 'one-three-one-rule', 'decision-questionnaire', 'creative-ideation'] },
   { title: 'Smart home & media', sub: 'Devices and content that may need setup.', skills: ['homeassistant', 'camera', 'mobile', 'spotify', 'internet-reading', 'document-convert'] },
-  { title: 'System & developer', sub: 'Machine tools and skill building. Enabling may change this machine.', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'github', 'skill-creator', 'ascii-art', 'healthcheck', 'hardware'] },
+  { title: 'System & developer', sub: 'Machine tools and skill building. Enabling may change this machine.', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'github', 'skill-creator', 'ascii-art', 'healthcheck', 'hardware', 'self-improvement', 'skill-gardener', 'self-improving-compound'] },
 ];
 
 // System-gated skills ask for confirmation before enabling. The permission
