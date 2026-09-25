@@ -31,8 +31,9 @@ Never ask for provider details.
 ## Fallback: himalaya CLI (IMAP/SMTP)
 
 Requires `himalaya` binary + `~/.config/himalaya/config.toml` with IMAP/SMTP
-credentials. See `email/himalaya/references/configuration.md` for setup and
-`email/himalaya/references/message-composition.md` for MML composition.
+credentials. With Connected Apps (Gmail or Outlook) there is nothing else to
+configure; if you use the himalaya CLI instead, see that project's own
+configuration and message-composition documentation.
 
 ```bash
 himalaya envelope list -m INBOX -n 20

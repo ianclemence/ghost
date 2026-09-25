@@ -13,6 +13,11 @@ metadata:
 
 An agent memory and learning system that replaces naive file-based memory with a structured pipeline: real-time capture, observable Candidate → Learning → Promotion queues, automated cron-based audit, and continuous promotion of lessons into skills and agent instructions.
 
+> **Ghost scheduling note.** In Ghost, scheduled work runs through the runtime
+> scheduler — the `schedule` tool and durable routines — never a shell cron.
+> The helper scripts under `scripts/` are optional and are not how Ghost
+> schedules its own work; prefer `schedule` for anything recurring.
+
 The system runs as four layers:
 - **Layer 0 — Observable memory pipeline**: ambiguous or high-value experience moves through `Candidate → Learning → Promotion → Done` using `scripts/memory-pipeline.py`, with `learning/pipeline/candidates.jsonl`, `promotion-queue.json`, `status.json`, and `dashboard.md` making backlog and coverage visible.
 - **Layer 1 — Real-time capture**: AGENTS.md final-before-reply gate logs corrections, errors, and workarounds to SQLite as they happen.
@@ -367,7 +372,7 @@ A quick in-between scan that reads recent conversation context and checks whethe
 
 #### Heavy Audit (09:00, 22:00)
 
-Full audit: system-failure check, cron-failure scan, `learning-audit.py --log`, and `learnings.py maintain --apply` for lifecycle promotion/demotion. Tools: `exec`, `read`, `cron`. Timeout: 240s.
+Full audit: system-failure check, cron-failure scan, `learning-audit.py --log`, and `learnings.py maintain --apply` for lifecycle promotion/demotion. Tools: `exec`, `read`, `schedule`. Timeout: 240s.
 
 #### Daily Memory Digest (23:50)
 

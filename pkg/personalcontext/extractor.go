@@ -412,6 +412,14 @@ func Extract(in Input) ([]Action, error) {
 		return nil, nil
 	}
 
+	// A question is not a declaration. "Why do you think my name is Ian?"
+	// contains a declaration pattern but asserts nothing, and filing it puts
+	// words in the owner's mouth (observed live: a question became a
+	// user-declared fact whose quote was the question itself).
+	if isInterrogative(text) {
+		return nil, nil
+	}
+
 	text, isCorrection := stripCorrection(text)
 	text = stripRemember(text)
 
@@ -765,4 +773,37 @@ func rejectLikesValue(v string) bool {
 	}
 	_, bad := likesStopwords[fields[0]]
 	return bad
+}
+
+// questionWords open an interrogative clause. Contractions ("what's") reduce
+// to their leading letters before lookup.
+var questionWords = map[string]bool{
+	"why": true, "what": true, "how": true, "who": true, "whom": true,
+	"whose": true, "where": true, "when": true, "which": true,
+	"do": true, "does": true, "did": true,
+	"is": true, "are": true, "was": true, "were": true, "am": true,
+	"can": true, "could": true, "would": true, "should": true,
+	"will": true, "shall": true, "may": true, "might": true, "must": true,
+	"have": true, "has": true, "had": true,
+}
+
+var leadingLettersRE = regexp.MustCompile(`^[a-z]+`)
+
+// isInterrogative reports whether a turn is a question rather than a
+// statement. Conservative: a declaration only needs to run when it is not
+// phrased as a question.
+func isInterrogative(text string) bool {
+	t := strings.TrimSpace(text)
+	if t == "" {
+		return false
+	}
+	if strings.HasSuffix(t, "?") {
+		return true
+	}
+	first := t
+	if i := strings.IndexAny(first, " \t\n"); i >= 0 {
+		first = first[:i]
+	}
+	lead := leadingLettersRE.FindString(strings.ToLower(first))
+	return lead != "" && questionWords[lead]
 }

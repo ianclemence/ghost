@@ -3,6 +3,21 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.34] - 2026-09-25
+
+- Ghost no longer files your questions as facts. "Why do you think my
+  name is Ian?" used to be read as if you had declared it — a question
+  asserts nothing. Questions are recognized and skipped now.
+- Ask "why do you think that?" and Ghost answers with the receipt by
+  default: your exact words, where they came from, and how confident it
+  is — or an honest "no quote was kept" for older memories.
+- The places skill works again. Its request footer carried a
+  placeholder contact that OpenStreetMap rejected, so every lookup
+  failed with a 403.
+- Housekeeping: the mail skill no longer points at documentation that
+  doesn't ship, and the self-improvement skill now describes scheduled
+  work the way Ghost actually schedules it.
+
 ## [0.24.33] - 2026-09-25
 
 - Backups can't be broken by a stray file anymore. A screenshot or a

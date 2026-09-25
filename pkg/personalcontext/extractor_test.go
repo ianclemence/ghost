@@ -645,3 +645,35 @@ func TestExtractCorrectionWithNoCurrentEntry(t *testing.T) {
 		t.Errorf("confidence = %v, want %v", a.Entry.Confidence, declaredConfidence)
 	}
 }
+
+// A question contains declaration patterns but asserts nothing. Filing one
+// puts words in the owner's mouth — observed live when "Why do you think my
+// name is Ian?" became a user-declared fact whose quote was the question.
+func TestExtractDoesNotFileQuestions(t *testing.T) {
+	questions := []string{
+		"Why do you think my name is Ian?",
+		"What is my favorite color?",
+		"Do you remember if I like tea?",
+		"Is my name Ian?",
+		"Can you tell me what my name is",
+		"How do you know my name is Ian?",
+	}
+	for _, q := range questions {
+		acts, err := Extract(Input{Text: q})
+		if err != nil {
+			t.Fatalf("Extract(%q): %v", q, err)
+		}
+		if len(acts) != 0 {
+			t.Errorf("question %q must not produce declarations, got %d", q, len(acts))
+		}
+	}
+	for _, s := range []string{"my name is Ian", "Remember that I prefer tea at noon"} {
+		acts, err := Extract(Input{Text: s})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(acts) == 0 {
+			t.Errorf("statement %q should still extract", s)
+		}
+	}
+}
