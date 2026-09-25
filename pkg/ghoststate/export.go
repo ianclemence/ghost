@@ -129,7 +129,9 @@ func Export(opts ExportOptions) (*Manifest, error) {
 		}
 	}
 
-	// Workspace walk. Every artifact is classified; unknown files abort.
+	// Workspace walk. Every artifact is classified; unknown folders are
+	// recorded as skipped and root-level files travel as user content, so a
+	// stray file can never abort a recovery point.
 	err = filepath.WalkDir(opts.Workspace, func(p string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -161,6 +163,9 @@ func Export(opts ExportOptions) (*Manifest, error) {
 		}
 		switch cat {
 		case CategoryDisposable:
+			return nil
+		case CategorySkipped:
+			manifest.Skipped = append(manifest.Skipped, rel)
 			return nil
 		case CategoryRebound:
 			manifest.Rebound = append(manifest.Rebound, rel)

@@ -37,6 +37,10 @@ const (
 	CategorySecret Category = "secret"
 	// CategoryDisposable is transient data that is skipped silently.
 	CategoryDisposable Category = "disposable"
+	// CategorySkipped is workspace content that is not Ghost State: it is
+	// recorded in the manifest for visibility and omitted from the archive,
+	// so a stray user file or folder can never abort a recovery point.
+	CategorySkipped Category = "skipped"
 )
 
 // FileEntry describes one artifact inside the archive.
@@ -72,6 +76,10 @@ type Manifest struct {
 	// best-effort: one unreadable file must not block a recovery point or a
 	// service update.
 	Unreadable []string `json:"unreadable,omitempty"`
+	// Skipped lists workspace paths that are not Ghost State (a stray user
+	// folder, a manual backup directory). They are omitted from the archive
+	// so a single unrecognized path can never block a recovery point.
+	Skipped []string `json:"skipped,omitempty"`
 }
 
 // Validate checks that a manifest is a well-formed Ghost State contract of a

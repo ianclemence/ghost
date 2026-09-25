@@ -286,22 +286,39 @@ func TestExportImportWithSecrets(t *testing.T) {
 	}
 }
 
-func TestExportFailsOnUnclassifiedArtifact(t *testing.T) {
+func TestExportToleratesUnknownWorkspaceContent(t *testing.T) {
 	ws := testWorkspace(t)
+	// A root-level unknown file is user content: it travels, never fatal.
 	if err := os.WriteFile(filepath.Join(ws, "random.bin"), []byte("?"), 0644); err != nil {
 		t.Fatalf("write random.bin: %v", err)
 	}
-	_, err := Export(ExportOptions{
+	// An unknown folder is recorded as skipped, never fatal.
+	if err := os.MkdirAll(filepath.Join(ws, "manual-export"), 0755); err != nil {
+		t.Fatalf("mkdir manual-export: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "manual-export", "dump.txt"), []byte("x"), 0644); err != nil {
+		t.Fatalf("write dump: %v", err)
+	}
+	manifest, err := Export(ExportOptions{
 		Workspace:   ws,
 		ConfigPath:  filepath.Join(t.TempDir(), "config.json"),
 		Destination: filepath.Join(t.TempDir(), "ghost.ghost"),
 		Passphrase:  testPassphrase,
 	})
-	if err == nil {
-		t.Fatal("export should fail on an unclassified artifact")
+	if err != nil {
+		t.Fatalf("user content must not abort a snapshot: %v", err)
 	}
-	if !strings.Contains(err.Error(), "random.bin") {
-		t.Fatalf("error should name the artifact, got: %v", err)
+	if manifest.File("random.bin") == nil {
+		t.Error("a root-level user file should travel in the snapshot")
+	}
+	skippedUnknown := false
+	for _, p := range manifest.Skipped {
+		if strings.HasPrefix(p, "manual-export/") {
+			skippedUnknown = true
+		}
+	}
+	if !skippedUnknown {
+		t.Errorf("unknown folder contents should be recorded as skipped, got %v", manifest.Skipped)
 	}
 
 	// Disposable artifacts (tmp/) are skipped silently by design.
@@ -466,8 +483,12 @@ func TestWorkspaceArtifactClassification(t *testing.T) {
 			t.Errorf("classifyWorkspaceFile(%q) = %q, %v; want disposable", p, cat, err)
 		}
 	}
-	if _, err := classifyWorkspaceFile("random.bin"); err == nil {
-		t.Error("classifyWorkspaceFile(random.bin) should fail")
+	// Root-level files are user content; unknown folders are skipped.
+	if cat, err := classifyWorkspaceFile("random.bin"); err != nil || cat != CategoryPortable {
+		t.Errorf("classifyWorkspaceFile(random.bin) = %q, %v; want portable user content", cat, err)
+	}
+	if cat, err := classifyWorkspaceFile("manual-export/dump.txt"); err != nil || cat != CategorySkipped {
+		t.Errorf("classifyWorkspaceFile(manual-export/dump.txt) = %q, %v; want skipped", cat, err)
 	}
 }
 

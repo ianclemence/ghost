@@ -112,7 +112,16 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 	case strings.HasPrefix(rel, "tmp/"):
 		return CategoryDisposable, nil
 	default:
-		return "", fmt.Errorf("unclassified workspace artifact %q is not part of Ghost State", rel)
+		// A live workspace accumulates user content (screenshots, notes) and
+		// occasionally folders Ghost does not own (manual backups, exports).
+		// Aborting the whole snapshot over one unrecognized path would silently
+		// end backups on a real device — which is exactly what happened. A
+		// root-level file is user-owned content and travels; anything else is
+		// recorded as skipped, never fatal.
+		if !strings.Contains(rel, "/") {
+			return CategoryPortable, nil
+		}
+		return CategorySkipped, nil
 	}
 }
 

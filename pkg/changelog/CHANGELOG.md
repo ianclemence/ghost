@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.33] - 2026-09-25
+
+- Backups can't be broken by a stray file anymore. A screenshot or a
+  folder Ghost doesn't recognise in your workspace used to fail the
+  whole weekly snapshot — silently, because the error only lived in
+  the service log. Unknown folders are now recorded as skipped, and a
+  file you drop at the workspace root travels in the snapshot as your
+  own content.
+- Release binaries no longer include a leftover development database,
+  making them about 6 MB smaller.
+
 ## [0.24.32] - 2026-09-25
 
 - Screenshots now use the same working browser engine as everything
