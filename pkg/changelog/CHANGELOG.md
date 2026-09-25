@@ -3,6 +3,23 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.22] - 2026-09-25
+
+- Failure replies stay in your language: instant answers no longer
+  leak model-only notes like "(completion: failed; do not present
+  fabricated data)" — you get the honest sentence, nothing else.
+- A weather lookup whose location lookup fails mid-network now says
+  so ("The network request failed. I'll try again shortly.")
+  instead of blaming the answer ("I got an unexpected response…").
+- Scheduled maintenance can actually ask for approval now: heartbeat
+  turns carry a request identity, so a due system check opens a
+  durable approval you can answer instead of dying with "couldn't
+  prepare the approval request".
+- "Check my reminders" works: the schedule tool can list pending
+  items (soonest first) plus recently completed and failed ones with
+  exact times, and fired one-shots are kept as completed history
+  (newest 100) instead of being deleted the moment they ran.
+
 ## [0.24.21] - 2026-09-25
 
 - Ghost can really drive a browser now: find, wait, screenshot,
