@@ -279,6 +279,9 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Submit declares purchase-class intent: quote + broker approval +
 	// receipt evidence. The gate treats it as high impact, always ask.
 	registerBrowser("submit")
+	// Sign in with an owner-saved website login (Apps → Website logins).
+	// Transact-class: the broker asks before authenticating as the owner.
+	registerBrowser("login")
 
 	// Sandbox Execution Tool (Safe code running)
 	registry.RegisterHidden(tools.NewSandboxTool(workspace), 2*time.Hour)

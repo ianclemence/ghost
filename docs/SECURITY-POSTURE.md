@@ -77,6 +77,29 @@ runs inside the OS isolation profile: no network, read-only root, private
 denied. If the sandbox is unavailable and required, the job refuses rather
 than running bare.
 
+## Website logins and browser profiles
+
+Two browser capabilities exist specifically so sign-in never becomes a chat
+secret:
+
+- **Saved website logins.** The owner saves a site's username and password
+  once in Ghost settings (Apps → Website logins), or over
+  `POST /v1/website-logins`. The entry is one sealed blob in the same vault as
+  every other credential. When Ghost signs in, it reads the secret inside the
+  browser tool, writes the **password to the CLI on stdin** (never argv,
+  never the model, never a log line), and scrubs the username and password
+  from everything it returns. The list endpoint returns host, URL, and a
+  masked username only; deleting the entry revokes it.
+- **Persistent, context-isolated browser profiles.** Ghost gives the browser a
+  per-context profile directory under
+  `workspace/state/browser-profiles/<context>/<profile>`, created 0700, so
+  cookies and logins survive restarts and service updates. Two contexts never
+  share a profile — a personal sign-in cannot leak into a work session — and
+  `PurgeProfile` closes the context's sessions and deletes the directory,
+  which is the revocation.
+
+Never do these paths accept a password typed into chat.
+
 ## What we deliberately do not do
 
 - No "agent computer in our datacenter" whose root filesystem is ours.

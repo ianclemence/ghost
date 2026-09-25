@@ -14,14 +14,15 @@ import (
 // registerConnectionsRoutes wires the device-facing connected-apps API.
 //
 // Canonical naming:
-//   Channels       = message transports (Telegram, WhatsApp, ...).
-//                    Managed via /v1/channels/status + /v1/channels/reconnect.
-//                    Never appear in connected-apps payloads.
-//   Connected apps = external systems Ghost acts on (Gmail, Calendar,
-//                    Home Assistant, Spotify, GitHub, ...).
-//                    Managed via /v1/connected-apps/* with key "connected_apps".
-//   Credentials    = secrets vault internals (.secrets.json, token files).
-//                    Never exposed; only status is surfaced via connected-apps.
+//
+//	Channels       = message transports (Telegram, WhatsApp, ...).
+//	                 Managed via /v1/channels/status + /v1/channels/reconnect.
+//	                 Never appear in connected-apps payloads.
+//	Connected apps = external systems Ghost acts on (Gmail, Calendar,
+//	                 Home Assistant, Spotify, GitHub, ...).
+//	                 Managed via /v1/connected-apps/* with key "connected_apps".
+//	Credentials    = secrets vault internals (.secrets.json, token files).
+//	                 Never exposed; only status is surfaced via connected-apps.
 func registerConnectionsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/connected-apps/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/connected-apps/"), "/")

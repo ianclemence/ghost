@@ -43,7 +43,8 @@ Some tools are primitives the model uses directly and no skill should wrap:
 `publish_artifact`, `memory_*`, `connections`, `session_search`,
 `context_get`, `compact_context`, `clarify`, `oracle`, `switch_lane`,
 `networking`, `update`, `skill_manage`, `batch_delegate`, `voice_wake`,
-`doc_parser`, `browser_*`, `computer_*`.
+`doc_parser`, `browser_*` (including `browser_login`, which uses a saved website login),
+`computer_*`.
 
 These are always available, always governed, and never need a skill to
 explain them — the model's tool descriptions are the interface.

@@ -33,6 +33,7 @@ import (
 //	console / network / a11y      read-only   observe the page
 //	browser.click / type / press / fill / fill_form / select /
 //	check / hover / drag / dialog / download   consequential   drive the page
+//	browser.login                 consequential signs in as the owner (saved credential)
 //	browser.upload                high impact   local files leave the device
 //	browser.submit                high impact   purchase-class intent
 //
@@ -49,7 +50,8 @@ func browserOp(tool string) (string, bool) {
 		"browser_wait", "browser_find", "browser_screenshot", "browser_scroll",
 		"browser_console", "browser_network", "browser_a11y",
 		"browser_select", "browser_check", "browser_hover", "browser_drag",
-		"browser_fill_form", "browser_dialog", "browser_upload", "browser_download":
+		"browser_fill_form", "browser_dialog", "browser_upload", "browser_download",
+		"browser_login":
 		return strings.TrimPrefix(tool, "browser_"), true
 	default:
 		return "", false

@@ -19,6 +19,11 @@ import (
 	"sort"
 )
 
+// ProfileEnv is the environment variable agent-browser honors for a persistent
+// Chrome profile directory. Ghost points it at the session's context-isolated
+// profile so cookies and logins survive restarts; an operator-set value wins.
+const ProfileEnv = "AGENT_BROWSER_PROFILE"
+
 // ExecutableEnv is the environment variable agent-browser honors for a
 // custom browser binary. Ghost uses it to steer agent-browser away from a
 // broken system Chromium without patching the CLI.

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sync"
@@ -149,7 +150,7 @@ func (s *SessionStore) GetOrCreate(owner, contextID, taskID, profile string, ttl
 		existing.ExpiresAt = now.Add(ttl)
 		return existing, nil
 	}
-	profileDir, err := ProfileDir(s.baseDir, contextID, profile)
+	profileDir, err := EnsureProfileDir(s.baseDir, contextID, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -253,4 +254,56 @@ func scanSession(row sessionRow) (*Session, error) {
 		return nil, err
 	}
 	return &s, nil
+}
+
+// EnsureProfileDir creates the isolated profile directory for a context with
+// owner-only permissions (0700). Cookies and local storage live here, so the
+// directory IS the sign-in: it must never be world-readable, and deleting it
+// revokes the login.
+func EnsureProfileDir(base, contextID, profile string) (string, error) {
+	dir, err := ProfileDir(base, contextID, profile)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	// MkdirAll honors umask; force the mode so a permissive umask cannot
+	// expose a cookie jar.
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// BaseDir returns the profile root (workspace/state/browser-profiles).
+func (s *SessionStore) BaseDir() string { return s.baseDir }
+
+// CloseContext closes every live session for an owner+context and reports how
+// many were closed.
+func (s *SessionStore) CloseContext(owner, contextID string) (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM browser_sessions WHERE owner=? AND context_id=?`, owner, contextID)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// PurgeProfile revokes a context's sign-in: it closes the context's sessions
+// and deletes the profile directory (cookie jar, storage). A missing directory
+// is not an error — the sign-in was already gone.
+func (s *SessionStore) PurgeProfile(owner, contextID, profile string) (int64, error) {
+	closed, err := s.CloseContext(owner, contextID)
+	if err != nil {
+		return 0, err
+	}
+	dir, derr := ProfileDir(s.baseDir, contextID, profile)
+	if derr != nil {
+		return closed, derr
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return closed, err
+	}
+	return closed, nil
 }

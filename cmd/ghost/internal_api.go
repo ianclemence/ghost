@@ -5258,6 +5258,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	registerDurableTurns(mux)
 	registerActivityStream(mux)
 	registerConnectionsRoutes(mux)
+	registerWebsiteLoginRoutes(mux)
 
 	// ── Phone/Pod cooperation: protocol, capabilities, catalog, sync ───
 	registerLocalGhostRoutes(mux, agentLoop)

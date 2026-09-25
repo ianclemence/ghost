@@ -122,6 +122,15 @@ async function loadIntegrations(container) {
   braveRow.appendChild(brTr);
   listEl.appendChild(braveRow);
 
+  // Website logins: sign-ins the browser can use without the model ever
+  // seeing a password. Same shape as connected apps — paste once, revoke here.
+  let webLogins = [];
+  try { const r = await GhostAPI.proxyGet('/v1/website-logins'); webLogins = (r && r.logins) || []; } catch (e) { /* offline-safe */ }
+  listEl.appendChild(intRow('Website logins', 'Browser sign-ins',
+    webLogins.length ? 'ready' : 'neutral',
+    webLogins.length ? webLogins.length + ' saved' : 'None saved',
+    () => manageWebLogins(webLogins)));
+
   // Camera mirrors the same readiness the Skills list uses — the two
   // screens can never disagree. Status already fetched above.
   const cam = (status && status.integrations && status.integrations.camera) || {};
@@ -480,6 +489,66 @@ function editBraveKey(configured) {
       } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
     } }, 'Turn off Brave'));
   }
+}
+
+// manageWebLogins lists saved website sign-ins and lets the owner add or
+// revoke one. Secrets are posted once and never rendered back.
+function manageWebLogins(logins) {
+  const body = GhostUI.h('div');
+  body.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'margin-bottom:var(--s-4)' },
+    'Ghost can sign in to a site for you. The password is stored encrypted on this device and is never shown in chat.'));
+
+  const list = GhostUI.h('div', { className: 'ghost-list' });
+  if (!logins.length) {
+    list.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, 'Nothing saved yet.'));
+  } else {
+    logins.forEach(l => {
+      const row = GhostUI.h('div', { className: 'ghost-row' });
+      const c = GhostUI.h('div', { className: 'ghost-row-content' });
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, l.host));
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, l.username ? l.username : 'saved'));
+      row.appendChild(c);
+      const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+      tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async (e) => {
+        try {
+          await GhostAPI.proxyDel('/v1/website-logins?host=' + encodeURIComponent(l.host));
+          e.target.closest('.ghost-modal-backdrop').remove();
+          GhostUI.toast('Removed');
+          loadIntegrations(document.getElementById('view'));
+        } catch (err) { GhostUI.toast('Couldn\u2019t remove that.', 'err'); }
+      } }, 'Remove'));
+      row.appendChild(tr);
+      list.appendChild(row);
+    });
+  }
+  body.appendChild(list);
+
+  const mk = (label, ph, pw) => {
+    const f = GhostUI.h('div', { className: 'field' });
+    f.appendChild(GhostUI.h('label', {}, label));
+    const i = GhostUI.h('input', { className: 'ghost-input', placeholder: ph, autocomplete: 'off' });
+    if (pw) i.type = 'password';
+    f.appendChild(i); body.appendChild(f); return i;
+  };
+  body.appendChild(GhostUI.h('div', { className: 'self-group', style: 'margin-top:var(--s-4)' }, 'Add a website'));
+  const urlInp = mk('Login page URL', 'https://example.com/login', false);
+  const userInp = mk('Username', 'you@example.com', false);
+  const passInp = mk('Password', 'stored encrypted, never shown', true);
+
+  GhostUI.modal('Website logins', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+      const url = urlInp.value.trim(), username = userInp.value.trim(), password = passInp.value;
+      if (!url || !username || !password) { GhostUI.toast('URL, username, and password are required.'); return; }
+      if (!/^https?:\/\//i.test(url)) { GhostUI.toast('URL must start with http:// or https://', 'err'); return; }
+      try {
+        await GhostAPI.proxyPost('/v1/website-logins', { url, username, password });
+        e.target.closest('.ghost-modal-backdrop').remove();
+        GhostUI.toast('Login saved');
+        loadIntegrations(document.getElementById('view'));
+      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+    } }, 'Save login'),
+  ]);
 }
 
 GhostApp.registerSection('apps', loadIntegrations);

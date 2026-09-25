@@ -3,6 +3,19 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.38] - 2026-09-26
+
+- Browser sign-ins now stick. Ghost keeps a per-context browser profile
+  (owner-only, and separated so a personal login can never leak into a
+  work session), so an account you sign into survives restarts and
+  updates. Deleting the profile is the sign-out.
+- New: Website logins. Save a site's login once in Ghost settings →
+  Apps (never in chat). Ghost signs in for you with the password read
+  from the encrypted vault and handed to the browser privately — it is
+  never shown to the model, never logged, and you can remove it any
+  time. Signing in asks for approval first, like any other consequential
+  action.
+
 ## [0.24.37] - 2026-09-25
 
 - Weather now runs on wttr.in first — the provider you asked for — with

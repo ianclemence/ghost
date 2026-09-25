@@ -22,8 +22,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/ideas"
+	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
@@ -162,11 +162,11 @@ type agentTUI struct {
 	// completed streaming lines already reached the scrollback. Together
 	// they let the reply grow line-by-line in the conversation area
 	// (opencode/Pi/ChatGPT style) with no reprint at completion.
-	streamHeaderShown bool
+	streamHeaderShown  bool
 	streamFlushedLines int
-	streamSty streamStyler // markdown state for progressive lines (fences, tables)
-	toolLine  string // current tool activity
-	toolCount int
+	streamSty          streamStyler // markdown state for progressive lines (fences, tables)
+	toolLine           string       // current tool activity
+	toolCount          int
 
 	bgRunning []tools.BackgroundTask // detached tasks for the indicator line
 

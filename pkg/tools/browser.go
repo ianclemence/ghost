@@ -41,6 +41,10 @@ type BrowserTool struct {
 	chatID  string
 	// publish emits the browser-recovery card; nil means text-only (CLI).
 	publish func(channel, chatID, sessionID string, c cards.Card)
+	// sessionProfile is the context-isolated Chrome profile directory for the
+	// current guarded call ("" = ephemeral). Set per call by executeGuarded;
+	// it makes cookies and logins survive restarts.
+	sessionProfile string
 }
 
 // BrowserPolicy binds a BrowserTool to Ghost's browser runtime contract:
@@ -115,7 +119,7 @@ func (t *BrowserTool) Classify() string {
 	switch t.action {
 	case "navigate", "snapshot", "wait", "find", "screenshot", "scroll", "console", "network", "a11y":
 		return "observe"
-	case "submit":
+	case "submit", "login":
 		return "transact"
 	default:
 		return "act"
@@ -139,7 +143,7 @@ func (t *BrowserTool) Timeout() time.Duration {
 // only log. Warm sessions from successful calls are never touched.
 func (t *BrowserTool) OnTimeout(ctx context.Context) {
 	cmd := exec.CommandContext(ctx, "agent-browser", "close", "--json")
-	cmd.Env = browserEnvironment()
+	cmd.Env = browserEnvironment(t.sessionProfile)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -394,6 +398,18 @@ func (t *BrowserTool) Parameters() map[string]interface{} {
 			"description": "The element reference ID whose click triggers the download (e.g. '@e10').",
 		}
 		required = []string{"ref"}
+	case "login":
+		props["host"] = map[string]interface{}{
+			"type":        "string",
+			"description": "Site host to sign in to (e.g. accounts.example.com). The credential comes from Ghost settings, never from you.",
+		}
+		props["url"] = map[string]interface{}{
+			"type":        "string",
+			"description": "Login page URL (defaults to the saved login's URL).",
+		}
+		props["username_selector"] = map[string]interface{}{"type": "string", "description": "Optional CSS selector for the username field."}
+		props["password_selector"] = map[string]interface{}{"type": "string", "description": "Optional CSS selector for the password field."}
+		props["submit_selector"] = map[string]interface{}{"type": "string", "description": "Optional CSS selector for the submit button."}
 	}
 
 	return map[string]interface{}{
@@ -408,12 +424,17 @@ func (t *BrowserTool) Parameters() map[string]interface{} {
 // headless_shell) and the operator has not chosen one, it is exported so
 // agent-browser steers clear of a system Chromium that may crash silently
 // under --remote-debugging-port. An operator-set value is never overridden.
-func browserEnvironment() []string {
+func browserEnvironment(profileDir ...string) []string {
 	env := os.Environ()
 	if os.Getenv(browser.ExecutableEnv) == "" {
 		if exe := browser.DiscoverExecutable(nil); exe != "" {
 			env = append(env, browser.ExecutableEnv+"="+exe)
 		}
+	}
+	// Persistent, context-isolated profile: cookies and logins survive a
+	// restart. An operator-set value always wins.
+	if len(profileDir) > 0 && strings.TrimSpace(profileDir[0]) != "" && os.Getenv(browser.ProfileEnv) == "" {
+		env = append(env, browser.ProfileEnv+"="+profileDir[0])
 	}
 	return env
 }
@@ -446,7 +467,7 @@ func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...str
 	})
 
 	cmd := exec.CommandContext(ctx, "agent-browser", cmdArgs...)
-	cmd.Env = browserEnvironment()
+	cmd.Env = browserEnvironment(t.sessionProfile)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -1335,6 +1356,13 @@ func (t *BrowserTool) executeGuarded(ctx context.Context, args map[string]interf
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("browser session unavailable: %v", err))
 	}
+	// Persist the context-isolated profile (0700) and point the browser at it,
+	// so a sign-in the owner performs survives restarts and cannot leak across
+	// contexts. Best-effort: a profile failure falls back to an ephemeral one.
+	if dir, derr := browser.EnsureProfileDir(p.Sessions.BaseDir(), p.ContextID, profile); derr == nil {
+		t.sessionProfile = dir
+		defer func() { t.sessionProfile = "" }()
+	}
 	started := time.Now().UTC()
 	detail := fmt.Sprintf("%s %v", t.action, args)
 	res := t.executeBare(ctx, args)
@@ -1387,6 +1415,9 @@ func (t *BrowserTool) executeBare(ctx context.Context, args map[string]interface
 
 	case "snapshot":
 		return t.run(ctx, "snapshot")
+
+	case "login":
+		return t.executeLogin(ctx, args)
 
 	case "click":
 		ref, _ := args["ref"].(string)
