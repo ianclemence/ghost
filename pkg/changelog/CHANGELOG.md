@@ -3,6 +3,21 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.23] - 2026-09-25
+
+- Ghost now knows when you said things: every earlier line in a
+  conversation carries the date and clock time it was written, so a
+  "later today" written last week can never be mistaken for now.
+- Summaries stay date-proof: the summarizer is told today's date,
+  writes only absolute dates ("Thu, Sep 24, 2026 at 09:00"), and
+  stamps every line with when it happened — no more a stale
+  "tomorrow" pointing at a day that already passed.
+- Open reminders inside summaries show full dates ("Sun 2026-09-27
+  07:00") instead of a bare weekday and clock time.
+- Ghost re-anchors old context: a new identity rule makes it read
+  relative words in older messages, summaries and memory against the
+  current clock — "today" in Monday's message means Monday.
+
 ## [0.24.22] - 2026-09-25
 
 - Failure replies stay in your language: instant answers no longer
