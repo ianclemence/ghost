@@ -15,6 +15,11 @@ prerequisites:
 
 # GitHub Code Search
 
+> **Preferred path:** call the `code_search` tool first. It is governed — evidence,
+> approvals, and honest provider failures — and needs no shell. Use it for searching code in the connected GitHub account; the `gh` CLI and the workflow skills below are the fallback for actions code search does not cover.
+>
+> The commands in this skill are the fallback, not the default.
+
 Call the `code_search` tool with `query` (and optional `repo: owner/name`)
 — it uses the connected GitHub token internally. Trust-user model: use a
 read-only token; the token's own scopes govern what Ghost can see.

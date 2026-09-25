@@ -201,9 +201,9 @@ type stub struct {
 	ev   map[string]interface{}
 }
 
-func (s *stub) Name() string                            { return s.name }
-func (s *stub) Description() string                     { return "stub" }
-func (s *stub) Parameters() map[string]interface{}      { return map[string]interface{}{"type": "object"} }
+func (s *stub) Name() string                       { return s.name }
+func (s *stub) Description() string                { return "stub" }
+func (s *stub) Parameters() map[string]interface{} { return map[string]interface{}{"type": "object"} }
 func (s *stub) Execute(ctx context.Context, args map[string]interface{}) *tools.ToolResult {
 	return &tools.ToolResult{ForLLM: "ok", Evidence: s.ev}
 }

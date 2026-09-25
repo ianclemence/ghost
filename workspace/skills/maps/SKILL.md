@@ -9,6 +9,12 @@ platforms: [linux, macos, windows]
 
 # Maps Skill
 
+> **Preferred path:** call the `places_nearby` tool first. It is governed — evidence,
+> approvals, and honest provider failures — and needs no shell. Use it for POI/nearby lookups; keep this skill's scripts for routing, distance, and timezone.
+>
+> The commands in this skill are the fallback, not the default.
+
+
 Location intelligence using free, open data sources. 8 commands, 44 POI
 categories, zero dependencies (Python stdlib only), no API key required.
 

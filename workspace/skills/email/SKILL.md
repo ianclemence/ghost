@@ -15,6 +15,12 @@ prerequisites:
 
 # Email
 
+> **Preferred path:** call the `email_search` / `email_send` tool first. It is governed — evidence,
+> approvals, and honest provider failures — and needs no shell. Connected Gmail/Outlook runs through the tools; the CLI below is only a fallback.
+>
+> The commands in this skill are the fallback, not the default.
+
+
 Email lives behind connected apps. Never ask for passwords in chat.
 
 ## Preferred: connected apps (Gmail / Outlook)

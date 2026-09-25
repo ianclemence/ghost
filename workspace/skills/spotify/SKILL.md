@@ -15,6 +15,12 @@ prerequisites:
 
 # Spotify Control
 
+> **Preferred path:** call the `media_play` tool first. It is governed — evidence,
+> approvals, and honest provider failures — and needs no shell. Playback goes through the governed tool.
+>
+> The commands in this skill are the fallback, not the default.
+
+
 Call the `media_play` tool with `action: status|play|pause|next|previous`
 — it uses the connected Spotify OAuth account internally. If Spotify isn't
 connected, direct the user to Connected Apps → browser sign-in.

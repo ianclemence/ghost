@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.35] - 2026-09-25
+
+- Tools and skills now move together. Every capability that has a native
+  tool names it at the top of its skill and treats the old shell
+  commands as a fallback: weather, air quality, crypto, currency,
+  flights, nearby places, maps, calendar, email, Spotify, Notion,
+  GitHub, and smart home. The governed path — evidence, approvals,
+  honest provider failures — is the default, and a build test keeps the
+  pairing from drifting. The full map lives in `docs/TOOL-SKILL-MAP.md`.
+
 ## [0.24.34] - 2026-09-25
 
 - Ghost no longer files your questions as facts. "Why do you think my

@@ -216,3 +216,44 @@ func TestWorkspaceContract_InteractionRulesPresent(t *testing.T) {
 		}
 	}
 }
+
+// Skills and tools move together, the same way connected apps and their skills
+// do: a skill that has a native tool must drive that tool from the top of the
+// file, so the governed path (evidence, approvals, honest provider failures)
+// is the default and any CLI is explicitly the fallback. The map is the
+// contract — a new tool means naming it in its skill, and a renamed tool
+// breaks this test instead of silently orphaning the skill.
+func TestWorkspaceContract_SkillsDriveTheirTools(t *testing.T) {
+	mapping := map[string][]string{
+		"weather":       {"weather_now"},
+		"aqi":           {"aqi_now"},
+		"crypto":        {"crypto_price"},
+		"currency":      {"currency_convert"},
+		"flight":        {"flight_status"},
+		"find-nearby":   {"places_nearby"},
+		"maps":          {"places_nearby"},
+		"calendar":      {"calendar"},
+		"email":         {"email_search", "email_send"},
+		"spotify":       {"media_play"},
+		"notion":        {"docs_search"},
+		"github":        {"code_search"},
+		"homeassistant": {"hass"},
+	}
+	for skill, tools := range mapping {
+		path := filepath.Join(repoRoot(t), "workspace", "skills", skill, "SKILL.md")
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("%s: %v", skill, err)
+			continue
+		}
+		text := string(src)
+		if !strings.Contains(text, "**Preferred path:**") {
+			t.Errorf("workspace/skills/%s/SKILL.md must state a Preferred path so its tool is driven first", skill)
+		}
+		for _, tool := range tools {
+			if !strings.Contains(text, tool) {
+				t.Errorf("workspace/skills/%s/SKILL.md must name its tool %q", skill, tool)
+			}
+		}
+	}
+}

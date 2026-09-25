@@ -14,6 +14,11 @@ prerequisites:
 
 # Notion Docs Search
 
+> **Preferred path:** call the `docs_search` tool first. It is governed — evidence,
+> approvals, and honest provider failures — and needs no shell. The tool uses the connected Notion integration token and only sees pages shared with it.
+>
+> The commands in this skill are the fallback, not the default.
+
 Call the `docs_search` tool with `query` — it uses the connected Notion
 integration token internally. Only pages shared with the integration are
 visible; sharing is the access control.

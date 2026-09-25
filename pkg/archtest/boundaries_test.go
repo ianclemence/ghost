@@ -67,10 +67,10 @@ func TestArchitecture_NoActiveCronScheduler(t *testing.T) {
 // the credential boundary reads or writes the raw secret store.
 func TestArchitecture_CredentialStorageOwnedByVault(t *testing.T) {
 	allowed := map[string]bool{
-		"pkg/credentials/credentials.go": true,
+		"pkg/credentials/credentials.go":   true,
 		"pkg/credentials/provider_keys.go": true,
-		"pkg/config/secrets.go":           true,
-		"pkg/config/vault.go":             true,
+		"pkg/config/secrets.go":            true,
+		"pkg/config/vault.go":              true,
 	}
 	scanGoFiles(t, func(path, rel string, src []byte) {
 		if allowed[rel] {

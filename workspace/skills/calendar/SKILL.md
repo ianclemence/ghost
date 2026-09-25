@@ -13,6 +13,12 @@ prerequisites:
 
 # Calendar
 
+> **Preferred path:** call the `calendar` tool first. It is governed — evidence,
+> approvals, and honest provider failures — and needs no shell. The tool owns the service-side sign-in; never reach for gcalcli directly unless the tool reports it is unavailable.
+>
+> The commands in this skill are the fallback, not the default.
+
+
 Google Calendar via gcalcli. Requires OAuth2 authentication (connected once
 via Ghost settings under Integrations — users never run auth commands).
 
