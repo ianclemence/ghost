@@ -53,6 +53,11 @@ A timeout or dropped connection ([browser.timeout], [browser.disconnected])
 means the action MAY ALREADY HAVE RUN. Do not repeat a mutating action
 until you re-observe and know its outcome.
 
+## Stuck browser
+A timeout on two different sites means the browser is wedged, not that the
+sites are down. Say the browser was stuck, offer a non-browser fallback, and
+never report a site as unreachable from a timeout alone.
+
 ## Sessions
 One task = one session. Sessions expire after 30m idle; an expired
 session means starting over, never borrowing another task's session.

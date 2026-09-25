@@ -384,6 +384,18 @@ func browserEnvironment() []string {
 	return env
 }
 
+// resetBrowserSession clears a wedged browser: a bounded close, then reap any
+// orphaned daemon/Chromium so the next action launches a fresh browser. Called
+// only after a timeout, never against a healthy session.
+func resetBrowserSession() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "agent-browser", "close", "--json")
+	cmd.Env = browserEnvironment()
+	_ = cmd.Run()
+	browser.ReapOrphans("")
+}
+
 // executeCLI runs the agent-browser CLI.
 func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...string) *ToolResult {
 	// Ensure temp directory exists for session tracking (agent-browser usually uses ~/.agent-browser)
@@ -412,6 +424,14 @@ func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...str
 		pathErr, isPathErr := err.(*exec.Error)
 		if isPathErr && pathErr.Err == exec.ErrNotFound {
 			return ErrorResult("The 'agent-browser' command is not installed. Please install it with: npm install -g agent-browser")
+		}
+
+		// A deadline on a browser action is almost never the site's fault:
+		// a wedged daemon makes every site time out. Reset the session and
+		// say so plainly instead of implying the site is unreachable.
+		if ctx.Err() == context.DeadlineExceeded {
+			resetBrowserSession()
+			return ErrorResult("[browser.stuck] My browser was stuck — every page was timing out, which is a problem on my side, not the site's. I've reset it; ask me again and it should work. If it fails again, say so and I'll fetch the content a different way. Do NOT tell the user the site is down from this timeout alone.")
 		}
 
 		return ErrorResult(browserFailureMessage(action, err, stderr.String(), ctx))

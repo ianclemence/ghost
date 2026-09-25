@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.30] - 2026-09-25
+
+- Ghost's browser doesn't get stuck anymore. Root cause found: a
+  browser helper left behind by an earlier run kept every page hanging
+  until the 90-second timeout, so Ghost blamed the websites. Chelsea
+  and the New York Times both load fine — the browser was wedged, not
+  the sites. Ghost now clears leftover browser helpers at startup,
+  resets itself mid-action if a page times out, and says "my browser
+  got stuck" instead of implying the site is down.
+
 ## [0.24.29] - 2026-09-25
 
 - Receipts reach your phone. Ask "why do you think that?" and the

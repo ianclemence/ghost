@@ -27,6 +27,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/auth"
 	"github.com/ianclemence/ghost/pkg/bench"
+	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
@@ -1403,6 +1404,14 @@ func gatewayCmd() {
 	// Sync bundled skills before starting so devices pick up new bundled
 	// skills after updates without ever stomping user edits.
 	syncEmbeddedSkills(cfg.WorkspacePath())
+
+	// A browser daemon orphaned by a previous run wedges every browser action
+	// until its timeout (new invocations attach to the stuck daemon). Reap
+	// orphans before serving so the browser subsystem starts clean.
+	if killed := browser.ReapOrphans(""); len(killed) > 0 {
+		logger.InfoCF("browser", "reaped orphaned browser processes from a previous run",
+			map[string]interface{}{"pids": killed})
+	}
 
 	// Mint or load the persistent, hardware-independent Ghost identity. This
 	// is idempotent: the ghost_id is created once and then preserved for the
