@@ -63,10 +63,11 @@ func iarg(args map[string]interface{}, key string, def int) int {
 }
 
 // providerError converts a failed strategy result into an honest,
-// product-language tool error.
+// product-language tool error. ForLLM carries the model-guidance suffix
+// (model-only; use UserFacing for anything shown to a human).
 func providerError(msg string) *ToolResult {
 	return &ToolResult{
-		ForLLM:  msg + " (completion: failed; do not present fabricated data)",
+		ForLLM:  msg + modelGuidanceSuffix,
 		Silent:  false,
 		IsError: true,
 	}

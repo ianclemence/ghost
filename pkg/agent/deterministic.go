@@ -675,9 +675,9 @@ func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metada
 }
 
 // execDeterministicTool runs a registered provider-backed tool with the
-// given args and returns its ForLLM text (validated data or an honest
-// product-language error). handled=true means the runtime produced the
-// answer — never fabricated.
+// given args and returns its text (validated data, or an honest
+// product-language error with model-only guidance stripped). handled=true
+// means the runtime produced the answer — never fabricated.
 func (al *AgentLoop) execDeterministicTool(name string, args map[string]interface{}, session string) (string, bool) {
 	if al.tools == nil {
 		return "", false
@@ -697,17 +697,22 @@ func (al *AgentLoop) execDeterministicTool(name string, args map[string]interfac
 	if res == nil {
 		return "I couldn't get that right now. Please try again in a bit.", true
 	}
+	if res.IsError {
+		// The tool returns product-language errors; never pass a raw
+		// stack through. This path answers the user directly — there is
+		// no model to interpret guidance aimed at one — so strip any
+		// model-only suffix (UserFacing) instead of showing ForLLM.
+		if text := res.UserFacing(); text != "" {
+			return text, true
+		}
+		return "I couldn't get that right now. Please try again in a bit.", true
+	}
 	text := strings.TrimSpace(res.ForLLM)
 	if text == "" && res.Err != nil {
 		text = res.Err.Error()
 	}
 	if text == "" {
 		return "I couldn't get that right now. Please try again in a bit.", true
-	}
-	if res.IsError {
-		// The tool returns product-language errors; never pass a raw
-		// stack through. ForLLM is already sanitized by the tool.
-		return text, true
 	}
 	return text, true
 }

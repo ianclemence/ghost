@@ -1,6 +1,14 @@
 package tools
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
+
+// modelGuidanceSuffix is appended to failed provider-completion results so
+// the model relays the failure instead of inventing data. It is addressed
+// TO THE MODEL and must never be shown to a user.
+const modelGuidanceSuffix = " (completion: failed; do not present fabricated data)"
 
 // ToolResult represents the structured return value from tool execution.
 // It provides clear semantics for different types of results and supports
@@ -149,6 +157,21 @@ func (tr *ToolResult) MarshalJSON() ([]byte, error) {
 	}{
 		Alias: (*Alias)(tr),
 	})
+}
+
+// UserFacing returns the text fit to show the owner: ForUser when set,
+// otherwise ForLLM with model-only guidance stripped. Deterministic paths
+// that answer the user WITHOUT a model in between (fast-path dispatch)
+// must surface this — never raw ForLLM, which may carry instructions that
+// only make sense to a model.
+func (tr *ToolResult) UserFacing() string {
+	if tr == nil {
+		return ""
+	}
+	if s := strings.TrimSpace(tr.ForUser); s != "" {
+		return s
+	}
+	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(tr.ForLLM), modelGuidanceSuffix))
 }
 
 // WithError sets the Err field and returns the result for chaining.
