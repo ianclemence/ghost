@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -46,6 +47,9 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Device control and handoff are legitimate mobile actions; the
 		// broker still governs the consequential ones.
 		"device", "calendar", "publish_artifact", "doc_parser",
+		// Browser surface on mobile: observe + act (broker-governed like
+		// exec, which is already here). Purchase-class submit and
+		// file-egress upload stay desktop/admin posture.
 	},
 	ProfileHeartbeatSafe: {
 		"read_file", "view", "session_search", "exec",
@@ -58,13 +62,17 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"web_search", "web_fetch",
 		"remember", "session_search",
 		"spawn", "subagent",
+		// Browser for local/dev page debugging: "why is my page broken"
+		// answers come from console + network + a11y without new
+		// authority (observe-class) and broker-governed interaction.
+		// No submit: purchases are not a coding action.
 	},
 	ProfileResearch: {
 		"read_file", "list_dir", "search_files", "grep_search",
 		"web_search", "web_fetch",
-		"browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_fill",
 		"vision", "image_generate", "video_frames",
 		"remember", "session_search",
+		// Browser set registered below (browserToolNames minus submit).
 	},
 	ProfileMinimal: {
 		"read_file", "list_dir",
@@ -87,11 +95,58 @@ var ProfileAllowlists = map[ToolProfile][]string{
 	ProfileFull: nil,
 }
 
+// Browser tool surfaces by class. pkg/agent/browser_gate.go (whitelist
+// + risk) must agree with these sets; TestBrowserGovernanceConsistency
+// pins the two together so a tool can never ship visible-but-ungated.
+var (
+	// browserObserveToolNames read the page (or move the viewport) and
+	// change nothing the broker cares about.
+	browserObserveToolNames = []string{
+		"browser_navigate", "browser_snapshot", "browser_wait", "browser_find",
+		"browser_screenshot", "browser_scroll", "browser_console",
+		"browser_network", "browser_a11y",
+	}
+	// browserActToolNames drive the page; the broker decides each call.
+	browserActToolNames = []string{
+		"browser_click", "browser_type", "browser_press", "browser_fill",
+		"browser_fill_form", "browser_select", "browser_check", "browser_hover",
+		"browser_drag", "browser_dialog", "browser_download",
+	}
+	// browserHighToolNames are high impact (never auto-authorized):
+	// purchase-class submit, and upload (local files leave the device).
+	browserHighToolNames = []string{"browser_submit", "browser_upload"}
+)
+
+func concatNames(groups ...[]string) []string {
+	var out []string
+	for _, g := range groups {
+		out = append(out, g...)
+	}
+	return out
+}
+
+// browserMobileToolNames: the mobile-safe browser posture — observe +
+// act under the broker, no submit/upload.
+func browserMobileToolNames() []string {
+	return concatNames(browserObserveToolNames, browserActToolNames)
+}
+
+// Profile membership for the shared browser sets: mobile and research
+// get observe+act (broker-governed), coding additionally gets upload
+// (no new authority beside the exec it already has; submit stays
+// admin/full posture). Heartbeat and minimal stay browser-free.
+func init() {
+	ProfileAllowlists[ProfileMobileSafe] = append(ProfileAllowlists[ProfileMobileSafe], browserMobileToolNames()...)
+	codingBrowser := concatNames(browserMobileToolNames(), []string{"browser_upload"})
+	ProfileAllowlists[ProfileCoding] = append(ProfileAllowlists[ProfileCoding], codingBrowser...)
+	ProfileAllowlists[ProfileResearch] = append(ProfileAllowlists[ProfileResearch], codingBrowser...)
+}
+
 var ProfileDescriptions = map[ToolProfile]string{
 	ProfileFull:          "All tools available",
 	ProfileMobileSafe:    "Safe subset for mobile access",
 	ProfileHeartbeatSafe: "Minimal set for background tasks",
-	ProfileCoding:        "File, shell, and search tools for coding",
+	ProfileCoding:        "File, shell, search, and browser tools for coding",
 	ProfileResearch:      "Web, browser, and media tools for research",
 	ProfileMinimal:       "Basic read-only and search tools",
 	ProfileAdmin:         "Full admin tools including hardware and delegation",
@@ -195,10 +250,33 @@ var turnIntentTools = []struct {
 	// Browser/computer tools are discovered by EXPLICIT exact tool names
 	// plus intent keywords (never brittle token overlap). The governing
 	// gates remain the authority; this only controls what the model sees.
-	{[]string{"browser", "open page", "open url", "open a page", "webpage", "web page", "navigate to", "fill in", "fill out", "form"}, []string{"browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press", "browser_fill"}},
+	// Submit stays checkout-keyword-gated, upload its own entry (file
+	// egress visibility is deliberate), everything else rides the base
+	// set — which bare web addresses also unlock (see webAddressPattern).
+	{[]string{"browser", "website", "web site", "open page", "open url", "open a page",
+		"webpage", "web page", "navigate to", "fill in", "fill out", "form",
+		"site", "visit", "landing page", "scroll", "click on", "dropdown",
+		"checkbox", "the page", "this page", "web app"},
+		browserIntentToolNames()},
 	{[]string{"checkout", "place order", "submit order", "buy now", "pay for"}, []string{"browser_submit"}},
+	{[]string{"upload", "attach a file", "file input", "attach a document"}, []string{"browser_upload"}},
 	{[]string{"computer", "desktop", "screen", "on the computer", "on the desktop", "computer screen", "settings window", "ui", "interface"}, []string{"computer_inspect_ui", "computer_screenshot", "computer_click", "computer_type", "computer_press_key"}},
 }
+
+// browserIntentToolNames is the browser surface any browser-intent
+// signal (keyword or bare web address) may expose: observe + act.
+// High-impact submit/upload need their own explicit intent keywords.
+func browserIntentToolNames() []string {
+	return browserMobileToolNames()
+}
+
+// webAddressPattern matches an explicit web address in a message —
+// scheme URLs, www hosts, and bare domains by TLD (nairobiunwind.com).
+// A shared address is a browser-intent signal by itself: the model
+// cannot be handed the page tools for "check out this site" while a
+// literal URL falls through to web_fetch.
+var webAddressPattern = regexp.MustCompile(
+	`(?:https?://|www\.)[^\s]+|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:com|org|net|io|ke|co|uk|us|ca|de|fr|jp|au|nz|in|br|za|ng|gh|eg|eu|dev|app|site|ai|gov|edu|xyz|me|info|blog|shop|store|tech|online|cloud)\b`)
 
 // FilterToolsForTurn narrows the tool surface to a core set plus any tools whose
 // intent keywords appear in the user message (media present always allows vision).
@@ -208,9 +286,16 @@ func FilterToolsForTurn(registry *ToolRegistry, profile ToolProfile, userMsg str
 		return NewToolRegistry()
 	}
 	lower := strings.ToLower(userMsg)
+	// A literal web address ("nairobiunwind.com", "https://…") is
+	// browser intent by itself — see webAddressPattern.
+	webAddress := webAddressPattern.MatchString(lower)
+	highImpact := map[string]bool{"browser_submit": true, "browser_upload": true}
 
 	include := func(name string) bool {
 		if coreToolNames[name] {
+			return true
+		}
+		if webAddress && strings.HasPrefix(name, "browser_") && !highImpact[name] {
 			return true
 		}
 		for _, it := range turnIntentTools {

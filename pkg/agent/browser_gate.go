@@ -29,41 +29,46 @@ import (
 //
 // Capability vocabulary (explicit operations, never model intent):
 //
-//	browser.navigate  read-only   go to a URL
-//	browser.observe   read-only   read page state (snapshot)
-//	browser.click     consequential   drive a page element
-//	browser.type      consequential   enter text into the page
-//	browser.press     consequential   send a key press to the page
+//	browser.navigate / snapshot / wait / find / screenshot / scroll /
+//	console / network / a11y      read-only   observe the page
+//	browser.click / type / press / fill / fill_form / select /
+//	check / hover / drag / dialog / download   consequential   drive the page
+//	browser.upload                high impact   local files leave the device
+//	browser.submit                high impact   purchase-class intent
 //
-// browser.download / browser.upload / browser.transact do not exist as
-// tool operations. If they ever do, they MUST be added here as
-// consequential-or-higher with explicit broker handling. Unknown
-// browser_* tool names are denied outright.
+// Unknown browser_* tool names are denied outright.
 
 // browserOp maps a tool name to its concrete browser operation. The
-// operation IS the tool action: navigate, snapshot (observe), click, type,
-// press, fill, submit. The tool layer re-verifies this word equals its own
-// action, so a gate binding authorized for one action can never drive a
-// different one.
+// operation IS the tool action, so a gate binding authorized for one
+// action can never drive a different one. The tool layer re-verifies
+// this word equals its own action before executing.
 func browserOp(tool string) (string, bool) {
 	switch tool {
-	case "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_press", "browser_fill", "browser_submit":
+	case "browser_navigate", "browser_snapshot", "browser_click", "browser_type",
+		"browser_press", "browser_fill", "browser_submit",
+		"browser_wait", "browser_find", "browser_screenshot", "browser_scroll",
+		"browser_console", "browser_network", "browser_a11y",
+		"browser_select", "browser_check", "browser_hover", "browser_drag",
+		"browser_fill_form", "browser_dialog", "browser_upload", "browser_download":
 		return strings.TrimPrefix(tool, "browser_"), true
 	default:
 		return "", false
 	}
 }
 
-// browserRisk derives risk from the operation, never from what the model
-// claims it is doing. Observation changes nothing; driving the page can
-// change the world; submit declares purchase-class intent and is always
-// high impact. The capability vocabulary declares its own risk
-// here — the runtime decides, not the model.
+// browserRisk derives risk from the operation, never from what the
+// model claims it is doing. Observation (including viewport-only
+// scroll) changes nothing; driving the page can change the world;
+// upload sends local data off-device and submit declares purchase-class
+// intent — both are high impact, never auto-authorized. The capability
+// vocabulary declares its own risk here — the runtime decides, not the
+// model.
 func browserRisk(op string) permissions.Risk {
 	switch op {
-	case "navigate", "snapshot":
+	case "navigate", "snapshot", "wait", "find", "screenshot", "scroll",
+		"console", "network", "a11y":
 		return permissions.RiskReadOnly
-	case "submit":
+	case "submit", "upload":
 		return permissions.RiskHighImpact
 	default:
 		return permissions.RiskConsequential
@@ -172,7 +177,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	}
 	op, ok := browserOp(tool)
 	if !ok {
-		return deny(denyText(permissions.CodePreconditionFailed, fmt.Sprintf("Unknown browser operation %q.", tool), "Use navigate, snapshot, click, type, fill, press, or submit."))
+		return deny(denyText(permissions.CodePreconditionFailed, fmt.Sprintf("Unknown browser operation %q.", tool), "Use one of the registered browser_* operations (see the browser tools)."))
 	}
 	if al == nil || al.governance == nil || al.governance.Broker == nil {
 		return deny(denyText(permissions.CodeUnavailable, "Browser is unavailable: governance is not wired.", "Try again in a moment; if it persists, the operator must check the gateway."))
@@ -296,7 +301,7 @@ func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, request
 	}
 	op, ok := browserOp(tool)
 	if !ok {
-		return refuse(denyText(permissions.CodePreconditionFailed, fmt.Sprintf("Unknown browser operation %q.", tool), "Use navigate, snapshot, click, type, fill, press, or submit."))
+		return refuse(denyText(permissions.CodePreconditionFailed, fmt.Sprintf("Unknown browser operation %q.", tool), "Use one of the registered browser_* operations (see the browser tools)."))
 	}
 	storedOp, _ := args[contBrowserOp].(string)
 	if storedOp != "" && storedOp != op {

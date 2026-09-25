@@ -244,6 +244,28 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewBrowserTool(workspace, "type"))
 	registry.Register(tools.NewBrowserTool(workspace, "press"))
 	registry.Register(tools.NewBrowserTool(workspace, "fill"))
+	// Observe-class surface: waiting, literal-text find, explicit
+	// screenshots, viewport scroll, and page introspection (console /
+	// network / accessibility) — read-only, no broker approval.
+	registry.Register(tools.NewBrowserTool(workspace, "wait"))
+	registry.Register(tools.NewBrowserTool(workspace, "find"))
+	registry.Register(tools.NewBrowserTool(workspace, "screenshot"))
+	registry.Register(tools.NewBrowserTool(workspace, "scroll"))
+	registry.Register(tools.NewBrowserTool(workspace, "console"))
+	registry.Register(tools.NewBrowserTool(workspace, "network"))
+	registry.Register(tools.NewBrowserTool(workspace, "a11y"))
+	// Interaction granularity: dropdowns, checkboxes, hover, drag, batch
+	// form fill, dialogs, and file transfer. All act-class (broker
+	// decides); upload is high impact because local files leave the
+	// device, and downloads land only in Ghost's managed directory.
+	registry.Register(tools.NewBrowserTool(workspace, "select"))
+	registry.Register(tools.NewBrowserTool(workspace, "check"))
+	registry.Register(tools.NewBrowserTool(workspace, "hover"))
+	registry.Register(tools.NewBrowserTool(workspace, "drag"))
+	registry.Register(tools.NewBrowserTool(workspace, "fill_form"))
+	registry.Register(tools.NewBrowserTool(workspace, "dialog"))
+	registry.Register(tools.NewBrowserTool(workspace, "upload"))
+	registry.Register(tools.NewBrowserTool(workspace, "download"))
 	// Submit declares purchase-class intent: quote + broker approval +
 	// receipt evidence. The gate treats it as high impact, always ask.
 	registry.Register(tools.NewBrowserTool(workspace, "submit"))
@@ -2700,6 +2722,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		activeProfile = al.toolProfile
 	}
 	activeTools := tools.FilterToolsForTurn(al.tools, activeProfile, opts.UserMessage, len(opts.Media) > 0)
+	// The version-pinned browser contract rides the stable prompt prefix
+	// exactly when this turn can call browser_* tools.
+	injectBrowserContract(messages, activeTools)
 
 	for iteration < maxIter {
 		iteration++
@@ -3037,6 +3062,16 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 
 			// Save tool result message to session
 			al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+
+			// Explicit browser screenshots enter the model's context as a
+			// turn-local image message (vision models see the page; the
+			// routing in selectModel follows the image to a vision-capable
+			// model). Not persisted — see screenshotImageMessage.
+			if tc.Name == "browser_screenshot" && toolResult != nil && toolResult.ScreenshotPath != "" {
+				if imgMsg, ok := screenshotImageMessage(toolResult.ScreenshotPath); ok {
+					messages = append(messages, imgMsg)
+				}
+			}
 
 			// Record tool usage for curator
 			al.curator.RecordUsage(tc.Name)

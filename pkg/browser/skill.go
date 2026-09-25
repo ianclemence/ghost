@@ -33,14 +33,25 @@ func SkillCore() string {
 	return `# Browser control (` + SkillVersion + `)
 
 ## The ref loop (mandatory)
-1. snapshot (or navigate, which snapshots). Note the @eN refs.
-2. Act on refs: click, type, fill, press, submit.
-3. After any page change, refs are DEAD. Re-snapshot before acting again.
-A stale ref fails closed with a re-snapshot instruction. Never guess.
+1. Observe first: navigate (returns the tree), snapshot, or find.
+2. Act on @eN refs: click, type, fill, press, fill_form, select, check,
+   hover, drag, upload, download, dialog, submit.
+3. After any page change, refs are DEAD. Re-observe before acting again.
+   A stale ref fails closed with a re-snapshot instruction. Never guess.
+Find returns fresh refs that SUPERSEDE the last snapshot's refs.
 
-## Waiting
-Prefer selector/text conditions over fixed sleeps. Never wait on
-network-idle; wait for the element or text you need.
+## Which tool
+- Reading: navigate/snapshot/find (refs), wait (conditions, never fixed
+  sleeps), screenshot (image to context), console/network/a11y (debug).
+- Scroll moves the viewport only; existing refs stay valid.
+- fill_form batches up to 10 fields in one governed call.
+- upload is high impact: local files leave the device; approval names
+  the exact paths. download writes only into Ghost's download directory.
+
+## Unknown outcomes
+A timeout or dropped connection ([browser.timeout], [browser.disconnected])
+means the action MAY ALREADY HAVE RUN. Do not repeat a mutating action
+until you re-observe and know its outcome.
 
 ## Sessions
 One task = one session. Sessions expire after 30m idle; an expired

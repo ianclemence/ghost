@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/contextcache"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
@@ -213,6 +214,12 @@ func buildBehaviorSection() string {
 `
 }
 
+// systemPromptCacheBoundary splits the version-cached stable prefix from
+// per-turn volatile state in every system prompt. Stable injected
+// sections (like the browser contract) are inserted BEFORE this marker
+// so they ride the provider prefix cache; volatile state follows it.
+const systemPromptCacheBoundary = "<!-- SYSTEM_PROMPT_CACHE_BOUNDARY -->"
+
 func (cb *ContextBuilder) BuildSystemPrompt(scopes []string) string {
 	// Bounded, versioned cache: the compiled prompt is stable across turns
 	// until an injected input changes. The version callback folds memory
@@ -273,6 +280,14 @@ CRITICAL — Skill is authoritative. After you READ a SKILL.md, you MUST:
 
 %s`, skillsSummary))
 	}
+
+	// Browser capability discovery: the version-pinned stub tells the
+	// model Ghost drives pages natively (prefer it over built-in browser
+	// automation). The FULL contract (SkillCore) is injected only on
+	// turns where browser_* tools are actually visible — see
+	// injectBrowserContract — so the cheap stub covers discovery without
+	// teaching a surface this turn cannot call.
+	parts = append(parts, browser.SkillStub())
 
 	// Active Context Digest: the bounded, deterministic, LLM-free rendering of
 	// current Personal Context. This replaces the old unbounded MEMORY.md +
@@ -361,7 +376,6 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 	// warm across turns. Everything below is volatile per-turn state that
 	// must never pollute the prefix: time, session, summary. Providers
 	// with prefix caching treat the boundary as the split point.
-	const systemPromptCacheBoundary = "<!-- SYSTEM_PROMPT_CACHE_BOUNDARY -->"
 	volatile := ""
 
 	// Fresh per-turn time in the user's timezone. The cached system prompt
