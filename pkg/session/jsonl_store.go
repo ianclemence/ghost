@@ -95,6 +95,7 @@ func (s *JSONLStore) readHistory(key string) []providers.Message {
 			MultiContent: entry.MultiContent,
 			ToolCallID:   entry.ToolCallID,
 			ToolCalls:    entry.ToolCalls,
+			CreatedAt:    entry.CreatedAt,
 		}
 		history = append(history, msg)
 	}

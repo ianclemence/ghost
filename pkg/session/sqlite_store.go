@@ -75,7 +75,7 @@ func (s *SQLiteStore) queryHistory(key string, excludeCompacted bool) []provider
 		where += ` AND (compacted IS NULL OR compacted = 0)`
 	}
 	rows, err := s.db.Query(`
-		SELECT role, content, meta FROM messages 
+		SELECT role, content, meta, created_at FROM messages 
 		WHERE `+where+`
 		ORDER BY created_at ASC
 	`, key)
@@ -88,7 +88,8 @@ func (s *SQLiteStore) queryHistory(key string, excludeCompacted bool) []provider
 	for rows.Next() {
 		var role, content string
 		var metaJSON []byte
-		if err := rows.Scan(&role, &content, &metaJSON); err != nil {
+		var createdAt sql.NullString
+		if err := rows.Scan(&role, &content, &metaJSON, &createdAt); err != nil {
 			continue
 		}
 
@@ -98,6 +99,16 @@ func (s *SQLiteStore) queryHistory(key string, excludeCompacted bool) []provider
 		msg := providers.Message{
 			Role:    role,
 			Content: content,
+		}
+		// When the row was written, so context building can date-stamp
+		// history for the model (relative words like "tomorrow" are only
+		// resolvable against the moment they were said). Unparseable or
+		// missing timestamps leave the field zero — the stamp is then
+		// simply skipped.
+		if createdAt.Valid {
+			if t, err := time.Parse(time.RFC3339Nano, createdAt.String); err == nil {
+				msg.CreatedAt = t
+			}
 		}
 
 		if val, ok := meta["tool_call_id"].(string); ok {

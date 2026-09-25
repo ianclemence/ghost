@@ -421,6 +421,15 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 	// Sanitize history to prevent LLM errors with missing tool outputs
 	history = cb.sanitizeHistory(history)
 
+	// Date-stamp history for the model. The current turn's clock lives in
+	// ## Current Time, but a bare "later today" from a week ago is
+	// undatable on its own — stale relative words in untimestamped
+	// context are how "tomorrow is Thursday" survived two days in one
+	// owner's chat. Only stored user/assistant prose is stamped; the
+	// current message is passed separately and never is, and tool
+	// payloads stay byte-exact for their consumers.
+	history = stampHistory(history)
+
 	messages = append(messages, providers.Message{
 		Role:         "system",
 		Content:      systemPrompt,
@@ -634,6 +643,25 @@ func (cb *ContextBuilder) GetSkillsInfo() map[string]interface{} {
 // Specifically:
 // 1. Assistant messages with tool calls that don't have corresponding tool response messages.
 // 2. Orphaned tool response messages that don't have a preceding assistant message with matching tool call ID.
+// stampHistory prefixes stored user/assistant messages with the wall-clock
+// time they were persisted ("[2006-01-02 15:04] …"), so the model can date
+// every historical "today"/"tomorrow" against Current Time instead of
+// guessing. Messages without a known time, non-prose roles (tool, system),
+// and media-only turns (Content empty) are left byte-exact. The returned
+// slice is the input slice, stamped in place.
+func stampHistory(history []providers.Message) []providers.Message {
+	for i, m := range history {
+		if m.CreatedAt.IsZero() || m.Content == "" {
+			continue
+		}
+		if m.Role != "user" && m.Role != "assistant" {
+			continue
+		}
+		history[i].Content = "[" + m.CreatedAt.Format("2006-01-02 15:04") + "] " + m.Content
+	}
+	return history
+}
+
 func (cb *ContextBuilder) sanitizeHistory(history []providers.Message) []providers.Message {
 	var sanitized []providers.Message
 
