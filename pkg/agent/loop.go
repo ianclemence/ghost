@@ -28,6 +28,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/capability"
+	"github.com/ianclemence/ghost/pkg/cards"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/commands"
@@ -388,8 +389,13 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Bounded Curated Memory — agent can maintain a persistent, curated profile of the user and project
 	registry.Register(tools.NewMemoryCurateTool(workspace))
 	// Receipts: explain any belief with its quote, source message, and
-	// lifecycle. Read-only, never invents evidence.
-	registry.Register(tools.NewMemoryExplainTool(workspace))
+	// lifecycle. Read-only, never invents evidence. When the surface renders
+	// cards (the phone), the receipt also ships as a memory_receipt card.
+	memoryExplain := tools.NewMemoryExplainTool(workspace)
+	memoryExplain.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
+		cards.Publish(msgBus, nil, channel, chatID, sessionID, c)
+	})
+	registry.Register(memoryExplain)
 
 	// Targeted long-tail memory retrieval: the agent searches its own notes
 	// (daily notes, MEMORY.md, captures) on demand, ranked by relevance+recency.

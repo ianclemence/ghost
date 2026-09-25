@@ -34,6 +34,9 @@ var catalog = map[Kind]kindSchema{
 	KindGoalUpdate:  {requireData: []string{"goal_id"}, maxActions: 2, styles: map[string]bool{"primary": true, "secondary": true}},
 	KindCart:        {requireData: []string{"items"}, maxActions: 4, styles: map[string]bool{"primary": true, "secondary": true, "destructive": true}},
 	KindBrowserView: {requireData: []string{"url"}, maxActions: 2, styles: map[string]bool{"primary": true, "secondary": true}},
+	// Memory receipts carry no actions: explaining is read-only, and
+	// forgetting stays an explicit owner act on the Memory screen.
+	KindMemoryReceipt: {requireData: []string{"claim_id"}, maxActions: 0},
 }
 
 // RenderSpec validates a model-emitted spec against the catalog and

@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.29] - 2026-09-25
+
+- Receipts reach your phone. Ask "why do you think that?" and the
+  answer arrives with a card right in the chat: the exact words you
+  said, how confident Ghost is, when it learned it, and which message
+  it came from. Older memories say plainly that no quote was saved,
+  instead of pretending.
+- Receipt cards never carry buttons on purpose: explaining is
+  read-only, and forgetting stays something you do deliberately on
+  the Memory screen.
+
 ## [0.24.28] - 2026-09-25
 
 - Ask Ghost why it believes something and it shows its work. Every

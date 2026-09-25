@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/cards"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 )
 
@@ -15,10 +16,28 @@ import (
 // edits memory and never invents evidence.
 type MemoryExplainTool struct {
 	workspace string
+	// channel/chatID are set per call by the registry (ContextualTool) so the
+	// receipt can also be published as a rich card to the surface in use.
+	channel string
+	chatID  string
+	// publish emits the receipt card; nil means text-only (CLI, tests).
+	publish func(channel, chatID, sessionID string, c cards.Card)
 }
 
 func NewMemoryExplainTool(workspace string) *MemoryExplainTool {
 	return &MemoryExplainTool{workspace: workspace}
+}
+
+// SetContext implements tools.ContextualTool: the registry hands each tool
+// the surface the turn came from.
+func (t *MemoryExplainTool) SetContext(channel, chatID string) {
+	t.channel = channel
+	t.chatID = chatID
+}
+
+// SetPublisher wires the card emitter (the agent loop supplies the bus).
+func (t *MemoryExplainTool) SetPublisher(fn func(channel, chatID, sessionID string, c cards.Card)) {
+	t.publish = fn
 }
 
 func (t *MemoryExplainTool) Name() string { return "memory_explain" }
@@ -58,6 +77,7 @@ func (t *MemoryExplainTool) Execute(ctx context.Context, args map[string]interfa
 		if err != nil {
 			return ErrorResult(fmt.Sprintf("I don't have a memory with id %q.", id))
 		}
+		t.publishReceipt(ctx, ex)
 		return NewToolResult(formatExplanation(ex))
 	}
 
@@ -83,6 +103,7 @@ func (t *MemoryExplainTool) Execute(ctx context.Context, args map[string]interfa
 		if err != nil {
 			return ErrorResult("I found the memory but couldn't read its receipt.")
 		}
+		t.publishReceipt(ctx, ex)
 		return NewToolResult(formatExplanation(ex))
 	}
 	var sb strings.Builder
@@ -124,4 +145,35 @@ func formatExplanation(ex personalcontext.Explanation) string {
 		sb.WriteString("Status: current\n")
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+// publishReceipt emits the receipt as a rich card for surfaces that render
+// cards (the phone). Text-only callers leave publish nil. The card is
+// informational: forgetting stays an explicit owner act, never a button.
+func (t *MemoryExplainTool) publishReceipt(ctx context.Context, ex personalcontext.Explanation) {
+	if t.publish == nil || t.channel == "" || t.chatID == "" {
+		return
+	}
+	card, err := cards.New(cards.KindMemoryReceipt, "Why Ghost knows this", ex.Quote)
+	if err != nil {
+		return
+	}
+	status := "current"
+	switch {
+	case ex.ForgottenAt != nil:
+		status = "forgotten"
+	case ex.SupersededBy != nil:
+		status = "replaced"
+	}
+	card.Data = map[string]interface{}{
+		"claim_id":   ex.Entry.ID,
+		"quote":      ex.Quote,
+		"confidence": ex.Confidence,
+		"status":     status,
+		"source":     strings.Join(ex.MessageIDs, ", "),
+		"value":      ex.Value,
+		"kind":       ex.Kind,
+		"learned":    ex.Entry.CreatedAt.Format("2006-01-02"),
+	}
+	t.publish(t.channel, t.chatID, SessionKeyFromContext(ctx), card)
 }

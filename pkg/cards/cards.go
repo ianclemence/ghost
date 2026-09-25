@@ -36,6 +36,11 @@ const (
 	KindCheckoutSheet Kind = "checkout_sheet"
 	// KindBrowserView deep-links a live browser surface.
 	KindBrowserView Kind = "browser_view"
+	// KindMemoryReceipt is the trust card: the verbatim quote, confidence,
+	// source message, and lifecycle behind a belief Ghost just explained.
+	// Informational only — it carries no actions, because forgetting stays
+	// an explicit owner act on the Memory screen, never a card button.
+	KindMemoryReceipt Kind = "memory_receipt"
 )
 
 // Action is one card button. Approve/deny actions carry the broker
@@ -83,7 +88,7 @@ func New(kind Kind, title, body string) (Card, error) {
 // Validate enforces the card contract.
 func (c Card) Validate() error {
 	switch c.Kind {
-	case KindSuggestion, KindGoalUpdate, KindCart, KindBrowserView:
+	case KindSuggestion, KindGoalUpdate, KindCart, KindBrowserView, KindMemoryReceipt:
 		// producible today
 	case KindCheckoutSheet:
 		return errors.New("checkout_sheet has no payment partner yet")
