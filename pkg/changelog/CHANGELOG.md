@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.36] - 2026-09-25
+
+- Ghost no longer asks "Which location should I check?" when you already
+  said it. "Find a coffee shop near Cebu City" reads the place from the
+  message — near, around, close to, not only "in" — and goes straight to
+  the nearby-places tool.
+
 ## [0.24.35] - 2026-09-25
 
 - Tools and skills now move together. Every capability that has a native

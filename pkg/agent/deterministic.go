@@ -717,7 +717,7 @@ func (al *AgentLoop) execDeterministicTool(name string, args map[string]interfac
 	return text, true
 }
 
-var locationFromTextRE = regexp.MustCompile(`(?i)\bin\s+([A-Z][a-zA-Z\s\-]{2,30})(?:\?|\.|$)`)
+var locationFromTextRE = regexp.MustCompile(`(?i)\b(?:in|near|around|close to|next to)\s+([A-Z][a-zA-Z'’\-]*(?:[\s\-][A-Z][a-zA-Z'’\-]*){0,3})`)
 
 func locationFromText(msg string) string {
 	m := locationFromTextRE.FindStringSubmatch(msg)
@@ -727,7 +727,7 @@ func locationFromText(msg string) string {
 	loc := strings.TrimSpace(m[1])
 	// Trim trailing verbs that leaked in. Longest phrases first so
 	// " right now" wins over " now", and repeat until stable.
-	stops := []string{" right now", " this afternoon", " this morning", " tomorrow", " today", " now", " later", " please"}
+	stops := []string{" right now", " this afternoon", " this morning", " tomorrow", " today", " now", " later", " please", " one line", " asap"}
 	for {
 		trimmed := loc
 		for _, stop := range stops {
@@ -743,6 +743,7 @@ func locationFromText(msg string) string {
 		}
 		loc = trimmed
 	}
+	loc = strings.TrimRight(loc, " .,!?;:")
 	if len(loc) < 3 || len(loc) > 40 {
 		return ""
 	}

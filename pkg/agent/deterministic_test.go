@@ -427,3 +427,23 @@ func TestSupersedeRefusesAmbiguousStore(t *testing.T) {
 		t.Fatal("ambiguous store-wide current must not be superseded")
 	}
 }
+
+// Locations people actually name: "near Cebu City", "around New York",
+// "in Bangkok" — not just "in <Place>" at the end of the sentence. Missing
+// these made the find-nearby fast-path ask for a location that was right
+// there in the message.
+func TestLocationFromTextPrepositions(t *testing.T) {
+	cases := map[string]string{
+		"Find a coffee shop near Cebu City. One line.": "Cebu City",
+		"cafes around New York today":                  "New York",
+		"what's the weather in Bangkok?":               "Bangkok",
+		"places close to Cebu City please":             "Cebu City",
+		"restaurants near me":                          "",
+		"show me something cool":                       "",
+	}
+	for msg, want := range cases {
+		if got := locationFromText(msg); got != want {
+			t.Errorf("locationFromText(%q) = %q, want %q", msg, got, want)
+		}
+	}
+}
