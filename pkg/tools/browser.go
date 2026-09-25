@@ -869,10 +869,19 @@ func captureBrowserShot(ctx context.Context, sessionID string) (string, bool) {
 // exact command surface belongs to the CLI; strict output acceptance in
 // captureBrowserShotWith keeps unknown CLIs harmless.
 func runBrowserScreenshot(ctx context.Context, path string) error {
-	cmd := exec.CommandContext(ctx, "agent-browser", "screenshot", path)
+	cmd := browserScreenshotCommand(ctx, path)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	return cmd.Run()
+}
+
+// browserScreenshotCommand builds the capture command with the same browser
+// steering as every other CLI call. Without it, a cold screenshot launches the
+// platform's system Chromium, which can hang until the caller's deadline.
+func browserScreenshotCommand(ctx context.Context, path string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "agent-browser", "screenshot", path)
+	cmd.Env = browserEnvironment()
+	return cmd
 }
 
 func defaultBrowserShotDir() string {

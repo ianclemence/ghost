@@ -41,4 +41,14 @@ func TestBrowserExecutorRealE2E(t *testing.T) {
 	if !strings.Contains(s.ForLLM, "snapshot") && !strings.Contains(s.ForLLM, "ref=e") {
 		t.Fatalf("snapshot missing accessibility tree: %.200s", s.ForLLM)
 	}
+	// Screens: Ghost's real capture path must produce a valid PNG from the
+	// live page, using the same executable steering as navigation.
+	shot, ok := captureBrowserShotWith(context.Background(), "e2e", defaultBrowserShotDir(), runBrowserScreenshot)
+	if !ok {
+		t.Fatalf("screenshot capture failed for %s", url)
+	}
+	if fi, err := os.Stat(shot); err != nil || fi.Size() <= 0 {
+		t.Fatalf("screenshot missing or empty: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(shot) })
 }

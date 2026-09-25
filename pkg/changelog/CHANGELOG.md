@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.32] - 2026-09-25
+
+- Screenshots now use the same working browser engine as everything
+  else. The capture command was the one code path that missed the
+  browser fix, so a first screenshot on a fresh session could hang on
+  a machine where the system browser is broken. It's steered now, and
+  the end-to-end test covers navigating, reading the page, and
+  capturing a screenshot from a real site.
+
 ## [0.24.31] - 2026-09-25
 
 - Follow-through on the stuck-browser fix, in three parts. First: the
