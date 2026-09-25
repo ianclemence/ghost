@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -134,7 +135,11 @@ func (t *ScheduleTool) Execute(ctx context.Context, args map[string]interface{})
 
 	parsed, err := scheduled.ParseNaturalLanguage(message, time.Now(), tz)
 	if err != nil {
-		return ErrorResult(fmt.Sprintf("I couldn't understand the schedule. Please specify a time. For example: 'Remind me tomorrow at 9 AM to %s'", content))
+		// Never echo the content back into the example: content often
+		// carries its own time phrase, and the splice produced garbage
+		// like "tomorrow at 9 AM to at 9pm tonight …". Name the accepted
+		// shapes instead — the model retries from them.
+		return ErrorResult("I couldn't understand when that should happen. Say the time with the day — for example \"tomorrow at 9 AM to call Sam\", \"at 8:30 PM today\", or \"tonight at 9\".")
 	}
 
 	// The owner cares WHAT Ghost does, not the schedule restated as a name.
@@ -447,7 +452,7 @@ func extractReminderContent(message string) string {
 				}
 			}
 
-			return strings.TrimSpace(content)
+			return stripSchedulePhrase(content)
 		}
 	}
 
@@ -456,7 +461,46 @@ func extractReminderContent(message string) string {
 		return strings.TrimSpace(message[idx+2:])
 	}
 
-	return message
+	return stripSchedulePhrase(message)
+}
+
+// stripSchedulePhrase cuts a leading schedule phrase and its connector
+// from reminder content so the title names the ACTION, not the clock:
+// "at 9pm tonight about dinner with Jas" → "Dinner with Jas". Only
+// day-anchored phrases are cut (time-then-day, day-then-time, a
+// parenthetical date, then a to/that/about/for connector) — a bare
+// "9 am meeting" is content, not a schedule. Returns the input unchanged
+// when nothing safe can be cut.
+var (
+	leadingTimeDayRe   = regexp.MustCompile(`(?i)^(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+(?:tonight|today|tomorrow)\b[\s,]*`)
+	leadingDayTimeRe   = regexp.MustCompile(`(?i)^(?:tonight|today|tomorrow|next\s+\w+day|[a-z]{3,9}day)\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b[\s,]*`)
+	leadingDateParenRe = regexp.MustCompile(`^\([^)]*\)\s*`)
+	leadingConnectorRe = regexp.MustCompile(`(?i)^(?:to|that|about|for)\s+`)
+)
+
+func stripSchedulePhrase(content string) string {
+	s := strings.TrimSpace(content)
+	for i := 0; i < 6 && s != ""; i++ {
+		var cut string
+		switch {
+		case leadingTimeDayRe.MatchString(s):
+			cut = leadingTimeDayRe.FindString(s)
+		case leadingDayTimeRe.MatchString(s):
+			cut = leadingDayTimeRe.FindString(s)
+		case leadingDateParenRe.MatchString(s):
+			cut = leadingDateParenRe.FindString(s)
+		case leadingConnectorRe.MatchString(s):
+			cut = leadingConnectorRe.FindString(s)
+		default:
+			return s
+		}
+		next := strings.TrimSpace(s[len(cut):])
+		if next == s { // no progress — never spin on the same text
+			return s
+		}
+		s = next
+	}
+	return s
 }
 
 func buildConfirmation(item *scheduled.ScheduledItem, parsed *scheduled.ParsedSchedule) string {

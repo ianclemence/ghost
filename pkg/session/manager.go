@@ -9,6 +9,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/rag"
 	"github.com/ianclemence/ghost/pkg/retrieval"
+	"github.com/ianclemence/ghost/pkg/utils"
 )
 
 type Session struct {
@@ -63,6 +64,13 @@ func (sm *SessionManager) AddMessage(sessionKey, role, content string) {
 func (sm *SessionManager) AddFullMessage(sessionKey string, msg providers.Message) {
 	if sm.store == nil {
 		return
+	}
+	// The history date label ("[2006-01-02 15:04] …") is internal
+	// bookkeeping for context building, never content. Strip it at the
+	// write boundary: a model that imitates the label must not store it,
+	// or it leaks into transcripts and doubles up on the next stamp.
+	if msg.Role == "assistant" {
+		msg.Content = utils.StripDateStamp(msg.Content)
 	}
 	sm.store.AddFullMessage(sessionKey, msg)
 

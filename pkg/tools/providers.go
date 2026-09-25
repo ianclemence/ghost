@@ -474,7 +474,7 @@ func (t *HassTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"action":    map[string]interface{}{"type": "string", "description": "list, state, turn_on, turn_off"},
+			"action":    map[string]interface{}{"type": "string", "description": "list, state, status, turn_on, turn_off"},
 			"entity_id": map[string]interface{}{"type": "string", "description": "e.g. light.bedroom"},
 			"domain":    map[string]interface{}{"type": "string", "description": "e.g. light (default from entity_id)"},
 		},
@@ -496,7 +496,7 @@ func (t *HassTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	defer cancel()
 	action := strings.ToLower(sarg(args, "action"))
 	switch action {
-	case "list", "states", "":
+	case "list", "states", "status", "":
 		ents, r := svc.States(ctx)
 		if r.Err != nil {
 			o := product.OutcomeForProviderFailure("hass", r.Failure, r.Err)
@@ -572,6 +572,6 @@ func (t *HassTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		res.Evidence = DeviceEvidence(entity, verb, observed)
 		return res
 	default:
-		return ErrorResult("hass needs action list, state, turn_on, or turn_off.")
+		return ErrorResult("hass needs action list, state, status, turn_on, or turn_off.")
 	}
 }

@@ -1433,6 +1433,19 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	if turnlog.TrajectoryIDFromContext(ctx) == "" {
 		ctx = turnlog.WithTrajectoryID(ctx, turnlog.NewTrajectoryID())
 	}
+	// Output hygiene: the model sees the internal date labels on its own
+	// history and sometimes imitates them in a reply. Streaming is an
+	// output boundary too — hold the leading bytes until proven not a
+	// label, so a live transcript never shows one (stamp_stream.go).
+	if onChunk != nil {
+		innerChunk := onChunk
+		ss := &stampStream{}
+		onChunk = func(s string) {
+			if out, ok := ss.feed(s); ok && out != "" {
+				innerChunk(out)
+			}
+		}
+	}
 	// Ensure request ID exists for tracing
 	if msg.Metadata == nil {
 		msg.Metadata = make(map[string]string)
@@ -1450,7 +1463,10 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 		if al.governance != nil {
 			al.governance.TurnEnded(requestID, msg.SessionKey, turnlog.TrajectoryIDFromContext(ctx), err)
 		}
-		return resp, err
+		// The returned response is a reply the owner reads (and the bus
+		// republishes): never let the internal history label leak into it,
+		// whichever path produced the text.
+		return utils.StripDateStamp(resp), err
 	}
 
 	// Record initial trace
@@ -1700,6 +1716,11 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	if al.governance != nil {
 		if resume := al.governance.CheckApprovalReply(msg.SessionKey, msg.Content); resume.Resumed || resume.Denied {
 			if resume.Denied {
+				// Stream like every other fast path: the denial text is a
+				// reply the owner must SEE, not only a row in storage.
+				if onChunk != nil && resume.Message != "" {
+					onChunk(resume.Message)
+				}
 				if al.sessions != nil {
 					al.sessions.AddMessage(msg.SessionKey, "assistant", resume.Message)
 					al.sessions.Save(msg.SessionKey)
@@ -1736,6 +1757,12 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 			}
 			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
 			text := resumeReceiptText(toolResult)
+			// The receipt must reach the live transcript, not just storage:
+			// a resumed approval that reports only to the database shows
+			// the owner "(no response)" while Ghost claims it acted.
+			if onChunk != nil && text != "" {
+				onChunk(text)
+			}
 			if al.sessions != nil {
 				al.sessions.AddMessage(msg.SessionKey, "assistant", text)
 				al.sessions.Save(msg.SessionKey)
@@ -4256,7 +4283,7 @@ func (al *AgentLoop) authorizeStandaloneTool(requestID, sessionKey, tool string,
 	if !ok || al == nil || al.governance == nil || al.governance.Broker == nil {
 		return AuthorizeResult{}, false
 	}
-	risk := permissions.Risk(ft.Risk)
+	risk := actionAwareRisk(tool, args, permissions.Risk(ft.Risk))
 	if risk == "" {
 		risk = permissions.RiskConsequential
 	}

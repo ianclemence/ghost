@@ -3,6 +3,31 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.24] - 2026-09-25
+
+- Approvals answer out loud again: after you reply "allow once" or
+  "deny" in chat, Ghost's receipt — the list you asked for, the
+  confirmation that it ran (or didn't) — now appears right on your
+  screen instead of "(no response)".
+- Reminders understand how people talk: "at 9pm tonight", "at 8:30 PM
+  today" and "tonight at 9" all schedule correctly. A reworded
+  request used to bounce off the parser, so the move to 8:30 never
+  happened and the reminder stayed at the old time.
+- Reminder names are clean: the dinner reminder is titled "Dinner
+  with Jas", never the raw sentence with its clock time repeated
+  inside. If Ghost can't read a schedule it now asks for a clearer
+  time with real examples instead of echoing your words back
+  garbled.
+- Looking is free: checking your reminder list no longer asks for
+  permission — only making, changing or cancelling a reminder does.
+- An honest stop first: asking about the system when Home Assistant
+  isn't connected now says "connect it first" right away, instead of
+  asking for an approval that could only end in a dead end.
+- Ghost's replies never begin with an internal date stamp: the date
+  labels it keeps for its own reading stay invisible, with a new
+  identity rule and protections at every layer — stream, reply,
+  save, history read.
+
 ## [0.24.23] - 2026-09-25
 
 - Ghost now knows when you said things: every earlier line in a

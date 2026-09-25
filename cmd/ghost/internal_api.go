@@ -65,6 +65,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/turnlog"
+	"github.com/ianclemence/ghost/pkg/utils"
 	"github.com/ianclemence/ghost/pkg/voice"
 )
 
@@ -73,6 +74,19 @@ var upgrader = websocket.Upgrader{
 }
 
 var apiStartTime = time.Now()
+
+// emitUnstreamedReply is the /v1/chat transcript's safety net: a turn
+// that produced text but streamed nothing (deterministic answers,
+// approval resumes and denials, non-streaming providers) would otherwise
+// reach the SSE client as silence — the saved reply travels only on the
+// bus, never over this stream. Emit it as one frame so the transcript
+// shows what Ghost actually said. Turns that already streamed skip this —
+// their chunks carry the reply.
+func emitUnstreamedReply(response string, streamed bool, emit func(string)) {
+	if response != "" && !streamed {
+		emit(response)
+	}
+}
 
 // apiDB is the agent database used by peer authorization. It is set once in
 // startInternalAPI so the auth middlewares (which have uniform signatures
@@ -2795,7 +2809,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		}
 
 		// onChunk — streams text tokens to the mobile app as JSON-encoded strings
+		streamedText := false
 		onChunk := func(chunk string) {
+			streamedText = true
 			escaped, _ := json.Marshal(chunk)
 			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
 			flusher.Flush()
@@ -2959,6 +2975,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			agentLoop.SettleSessionSurfaces(req.SessionKey, "failed")
 			return
 		}
+		emitUnstreamedReply(response, streamedText, onChunk)
 		// Terminal outcome (backend-stated, additive frame).
 		outcome := "success"
 		if clarifySeen {
@@ -3094,6 +3111,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			var metaJSON []byte
 			if err := rows.Scan(&m.ID, &m.Role, &m.Content, &createdAt, &metaJSON); err != nil {
 				continue
+			}
+			// An older model turn may have stored the internal date label
+			// with its reply; display surfaces never show it.
+			if m.Role == "assistant" {
+				m.Content = utils.StripDateStamp(m.Content)
 			}
 			if !isUserVisibleHistoryMessage(m.Role, m.Content, metaJSON) {
 				continue

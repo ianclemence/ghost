@@ -19,6 +19,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/utils"
 )
 
 type ContextBuilder struct {
@@ -646,18 +647,25 @@ func (cb *ContextBuilder) GetSkillsInfo() map[string]interface{} {
 // stampHistory prefixes stored user/assistant messages with the wall-clock
 // time they were persisted ("[2006-01-02 15:04] …"), so the model can date
 // every historical "today"/"tomorrow" against Current Time instead of
-// guessing. Messages without a known time, non-prose roles (tool, system),
-// and media-only turns (Content empty) are left byte-exact. The returned
-// slice is the input slice, stamped in place.
+// guessing. Any label already in the message (an older model turn that
+// echoed one) is normalized away first, so a message carries exactly one
+// stamp — or none when the row's time is unknown. Non-prose roles (tool,
+// system) and media-only turns (Content empty) are left byte-exact. The
+// returned slice is the input slice, stamped in place.
 func stampHistory(history []providers.Message) []providers.Message {
 	for i, m := range history {
-		if m.CreatedAt.IsZero() || m.Content == "" {
+		if m.Content == "" {
 			continue
 		}
 		if m.Role != "user" && m.Role != "assistant" {
 			continue
 		}
-		history[i].Content = "[" + m.CreatedAt.Format("2006-01-02 15:04") + "] " + m.Content
+		clean := utils.StripDateStamp(m.Content)
+		if m.CreatedAt.IsZero() {
+			history[i].Content = clean
+			continue
+		}
+		history[i].Content = "[" + m.CreatedAt.Format("2006-01-02 15:04") + "] " + clean
 	}
 	return history
 }

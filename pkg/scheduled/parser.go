@@ -287,6 +287,95 @@ func parseOneTimeSchedule(input string, referenceTime time.Time, timezone string
 		}, true
 	}
 
+	// Time-before-day: "at 8:30 PM today", "at 9pm tonight", "tonight at
+	// 9", "at 9 on Friday". Owners (and the model) naturally put the clock
+	// before the day word; before these shapes existed, every such
+	// phrasing failed with "I couldn't understand the schedule" — which
+	// broke live reminders ("set dinner at 9pm tonight" → error → a
+	// mangled retry).
+	timeTodayRe := regexp.MustCompile(`(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+today\b`)
+	if matches := timeTodayRe.FindStringSubmatch(input); len(matches) >= 4 {
+		hour := parseHour(matches[1], matches[3])
+		minute := 0
+		if matches[2] != "" {
+			minute, _ = strconv.Atoi(matches[2])
+		}
+
+		at := time.Date(ref.Year(), ref.Month(), ref.Day(), hour, minute, 0, 0, loc)
+
+		return &ParsedSchedule{
+			Schedule: Schedule{
+				Kind: ScheduleAt,
+				At:   &at,
+			},
+			Title:     fmt.Sprintf("Today at %s", formatTimeDisplay(hour, minute)),
+			Timezone:  timezone,
+			IsOneTime: true,
+		}, true
+	}
+
+	// "at 9pm tonight" / "tonight at 9" — tonight implies the evening, so
+	// a bare hour without am/pm lands on the PM side (9 tonight = 9 PM).
+	timeTonightRe := regexp.MustCompile(`(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+tonight\b`)
+	tonightAtRe := regexp.MustCompile(`tonight\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?`)
+	for _, matches := range [][]string{
+		timeTonightRe.FindStringSubmatch(input),
+		tonightAtRe.FindStringSubmatch(input),
+	} {
+		if len(matches) < 4 {
+			continue
+		}
+		hour := parseHour(matches[1], matches[3])
+		if matches[3] == "" && hour < 12 {
+			hour += 12
+		}
+		minute := 0
+		if matches[2] != "" {
+			minute, _ = strconv.Atoi(matches[2])
+		}
+
+		at := time.Date(ref.Year(), ref.Month(), ref.Day(), hour, minute, 0, 0, loc)
+
+		return &ParsedSchedule{
+			Schedule: Schedule{
+				Kind: ScheduleAt,
+				At:   &at,
+			},
+			Title:     fmt.Sprintf("Tonight at %s", formatTimeDisplay(hour, minute)),
+			Timezone:  timezone,
+			IsOneTime: true,
+		}, true
+	}
+
+	// "at 9 on Friday" — time before the weekday (optional "on").
+	timeWeekdayRe := regexp.MustCompile(`(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+(?:on\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b`)
+	if matches := timeWeekdayRe.FindStringSubmatch(input); len(matches) >= 5 {
+		targetDay := weekdayMap[matches[4]]
+		hour := parseHour(matches[1], matches[3])
+		minute := 0
+		if matches[2] != "" {
+			minute, _ = strconv.Atoi(matches[2])
+		}
+
+		// Find next occurrence of this weekday (same rule as above).
+		daysUntil := (int(targetDay) - int(ref.Weekday()) + 7) % 7
+		if daysUntil == 0 {
+			daysUntil = 7 // Next week if same day
+		}
+		nextDay := ref.AddDate(0, 0, daysUntil)
+		at := time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), hour, minute, 0, 0, loc)
+
+		return &ParsedSchedule{
+			Schedule: Schedule{
+				Kind: ScheduleAt,
+				At:   &at,
+			},
+			Title:     fmt.Sprintf("Next %s at %s", matches[4], formatTimeDisplay(hour, minute)),
+			Timezone:  timezone,
+			IsOneTime: true,
+		}, true
+	}
+
 	return nil, false
 }
 

@@ -287,7 +287,7 @@ type AuthorizeResult struct {
 // never bypass this: the gate sits between capability resolution and
 // ExecuteWithContext, not in a prompt.
 func (g *Governance) AuthorizeTool(requestID, sessionKey, capabilityID, tool string, args map[string]interface{}) AuthorizeResult {
-	return g.authorize(requestID, sessionKey, capabilityID, tool, args, authorizedToolRisk(capabilityID, tool))
+	return g.authorize(requestID, sessionKey, capabilityID, tool, args, actionAwareRisk(tool, args, authorizedToolRisk(capabilityID, tool)))
 }
 
 // authorizedToolRisk returns the broker risk class for one tool call inside a
@@ -313,6 +313,41 @@ func authorizedToolRisk(capabilityID, tool string) permissions.Risk {
 		return permissions.RiskReadOnly
 	}
 	return permissions.RiskOf(capabilityID)
+}
+
+// actionAwareRisk refines a capability's declared risk by what the call
+// actually does: a pure state lookup (schedule list, device status) runs
+// at read_only, so the broker allows it without an approval card — the
+// same class as read_file and calendar reads. The classification comes
+// from the tools' own action vocabulary at the runtime boundary, never
+// from model output.
+func actionAwareRisk(tool string, args map[string]interface{}, base permissions.Risk) permissions.Risk {
+	if isLookupAction(tool, args) {
+		return permissions.RiskReadOnly
+	}
+	return base
+}
+
+// isLookupAction reports whether a tool call only READS existing state.
+// Schedule exposes exactly one action, "list"; everything else in its
+// surface creates or reschedules. The device (Home Assistant) surface
+// reads on list/states/state/status and actuates on turn_on/turn_off; an
+// absent action is NOT treated as a lookup — a bare ungated device call
+// would weaken the standalone invariant (no device call runs without a
+// broker decision).
+func isLookupAction(tool string, args map[string]interface{}) bool {
+	action, _ := args["action"].(string)
+	action = strings.ToLower(strings.TrimSpace(action))
+	switch tool {
+	case "schedule":
+		return action == "list"
+	case "device", "hass":
+		switch action {
+		case "list", "states", "state", "status":
+			return true
+		}
+	}
+	return false
 }
 
 // AuthorizeStandalone authorizes a standalone consequential tool (one not
@@ -365,6 +400,14 @@ func (g *Governance) authorize(requestID, sessionKey, capabilityID, tool string,
 	case permissions.DecisionDeny:
 		return AuthorizeResult{Allowed: false, AskMessage: denial.Chat(), DenyCode: denial.Code}
 	case permissions.DecisionAsk:
+		// Connect-first honesty: an integration that isn't connected
+		// cannot run no matter what the owner approves, so admit it NOW.
+		// Opening an approval card whose only possible outcome is
+		// "isn't connected yet" makes the owner approve a dead end (seen
+		// live: a system check → device status → approval → dead end).
+		if msg := tools.NotConfigured(tool); msg != "" {
+			return AuthorizeResult{Allowed: false, AskMessage: msg}
+		}
 		req, err := g.Broker.RequireWithTrajectory(requestID, sessionKey, g.AgentID, g.trajectoryFor(requestID), capabilityID,
 			toolAction(tool, args), scopeTarget(args), humanReason(capabilityID, tool, args),
 			risk, continuationOf(args))

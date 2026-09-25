@@ -34,6 +34,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/utils"
 )
 
 // embeddedRuntime adapts the in-process AgentLoop to agentRuntime, adding the
@@ -49,7 +50,13 @@ func (e embeddedRuntime) LoadHistory(sessionKey string) ([]historyEntry, error) 
 	for _, m := range msgs {
 		switch m.Role {
 		case "user", "assistant":
-			out = append(out, historyEntry{Role: m.Role, Content: m.Content})
+			content := m.Content
+			if m.Role == "assistant" {
+				// Stored history may carry the internal date label from an
+				// older model turn; the transcript never shows it.
+				content = utils.StripDateStamp(content)
+			}
+			out = append(out, historyEntry{Role: m.Role, Content: content})
 		}
 	}
 	return out, nil
