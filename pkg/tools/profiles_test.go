@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 type testTool struct {
@@ -72,5 +73,48 @@ func TestFilterRegistryByProfile(t *testing.T) {
 	full := FilterRegistryByProfile(reg, ProfileFull)
 	if full.Count() != 3 {
 		t.Fatalf("expected 3 tools in full profile, got %d", full.Count())
+	}
+}
+
+// Hidden tools are never advertised: execution refuses them, so offering one
+// invites a call that can only fail. A committed capability promotes its tools,
+// which is what makes them both visible and executable.
+func TestHiddenToolsAreNotOffered(t *testing.T) {
+	reg := NewToolRegistry()
+	reg.Register(testTool{name: "web_search"})
+	reg.RegisterHidden(testTool{name: "exec"}, time.Hour)
+
+	for _, p := range []ToolProfile{ProfileMobileSafe, ProfileFull} {
+		got := FilterToolsForTurn(reg, p, "check imdb for a thriller", false)
+		if _, ok := got.Get("exec"); ok {
+			t.Fatalf("hidden exec must not be offered under profile %q", p)
+		}
+		if _, ok := got.Get("web_search"); !ok {
+			t.Fatalf("web_search must still be offered under profile %q", p)
+		}
+	}
+
+	reg.Promote("exec")
+	got := FilterToolsForTurn(reg, ProfileMobileSafe, "", false)
+	if _, ok := got.Get("exec"); !ok {
+		t.Fatal("a promoted tool must be offered again")
+	}
+	if !reg.AllowedFor("exec", "mobile", "s1") {
+		t.Fatal("a promoted tool must be executable, not just visible")
+	}
+}
+
+func TestRegistryAllowedFor(t *testing.T) {
+	r := NewToolRegistry()
+	if !r.AllowedFor("exec", "terminal", "s1") {
+		t.Error("with no policy, a tool is allowed by default")
+	}
+	r.SetToolEnabledForChannel("mobile", "exec", false)
+	if r.AllowedFor("exec", "mobile", "s1") {
+		t.Error("channel policy must be honored")
+	}
+	r.SetToolEnabledForSession("s2", "exec", false)
+	if r.AllowedFor("exec", "terminal", "s2") {
+		t.Error("session policy must be honored")
 	}
 }

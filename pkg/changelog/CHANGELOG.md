@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.40] - 2026-09-26
+
+- No more "allow once" that gets refused. Shell (`exec`) is hidden by
+  default, but the tool list still offered it — so Ghost would ask you to
+  approve a shell command from the phone, then the runtime refused it
+  ("disabled for this channel/session"). Hidden tools are never offered
+  now, a committed skill that needs one promotes it so it actually runs,
+  and Ghost says plainly what it will use instead.
+- Reading a website goes through web search, page fetch, or the browser —
+  never a shell command.
+
 ## [0.24.38] - 2026-09-26
 
 - Browser sign-ins now stick. Ghost keeps a per-context browser profile

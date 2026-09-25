@@ -187,12 +187,15 @@ func FilterRegistryByProfile(registry *ToolRegistry, profile ToolProfile) *ToolR
 	if registry == nil {
 		return NewToolRegistry()
 	}
-	if profile == "" || profile == ProfileFull {
-		return registry
-	}
 	filtered := NewToolRegistry()
 	for _, name := range registry.List() {
-		if !profile.Allows(name) {
+		// Hidden tools are never offered: execution refuses them (isAllowed),
+		// so advertising one invites a call that can only fail — the
+		// broken-promise bug where an approval was granted, then refused.
+		if !registry.visibleNow(name) {
+			continue
+		}
+		if profile != "" && profile != ProfileFull && !profile.Allows(name) {
 			continue
 		}
 		if tool, ok := registry.Get(name); ok {
@@ -333,4 +336,20 @@ func stringInSlice(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// FilterNamesByProfile returns the names a profile allows, order preserved.
+// Used when a capability lists the tools it needs: the surface profile still
+// decides which of them may be offered.
+func FilterNamesByProfile(p ToolProfile, names []string) []string {
+	if p == "" || p == ProfileFull {
+		return names
+	}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if p.Allows(n) {
+			out = append(out, n)
+		}
+	}
+	return out
 }

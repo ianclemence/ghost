@@ -2807,14 +2807,19 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		// confusion surface) with zero additional authority.
 		if capSkill := committedSkill(messages); capSkill != "" {
 			cap := skills.GetCapability(capSkill)
-			for _, toolName := range cap.AllowedTools {
+			for _, toolName := range tools.FilterNamesByProfile(activeProfile, cap.AllowedTools) {
+				// Promotion is symmetric: a capability-required tool becomes
+				// both visible AND executable (exec/sandbox register hidden by
+				// default). Without the promote, the model could call it, be
+				// approved, and then be refused at execution.
+				al.tools.Promote(toolName)
 				if _, ok := activeTools.Get(toolName); !ok {
 					if fullTool, ok := al.tools.Get(toolName); ok {
 						activeTools.Register(fullTool)
 					}
 				}
 			}
-			activeTools.RestrictTo(cap.AllowedTools)
+			activeTools.RestrictTo(tools.FilterNamesByProfile(activeProfile, cap.AllowedTools))
 		}
 		// Build tool definitions
 		providerToolDefs := activeTools.ToProviderDefs()
@@ -2981,6 +2986,21 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
 					continue
 				}
+			}
+
+			// Surface policy precedes authority: never ask the owner to allow a
+			// call this surface will refuse. A tool the profile withholds (or
+			// that the runtime has hidden) reports itself honestly and the
+			// model is told what to use instead.
+			if msg, blocked := surfaceToolBlocked(activeProfile, al.tools, tc.Name, opts.Channel, opts.SessionKey); blocked {
+				toolResultMsg := providers.Message{
+					Role:       "tool",
+					Content:    msg,
+					ToolCallID: tc.ID,
+				}
+				messages = append(messages, toolResultMsg)
+				al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+				continue
 			}
 
 			toolCtx := tools.WithSubagentDepth(ctx, tools.SubagentDepth(ctx))
@@ -4530,4 +4550,22 @@ func contentWords(text string) map[string]bool {
 		out[w] = true
 	}
 	return out
+}
+
+// surfaceToolBlocked reports whether this surface cannot run a tool at all,
+// with the honest message for the model. Asking the owner to approve a call
+// that execution will then refuse is a broken promise: the check happens
+// before any authorization request.
+func surfaceToolBlocked(profile tools.ToolProfile, reg *tools.ToolRegistry, name, channel, sessionKey string) (string, bool) {
+	where := strings.TrimSpace(channel)
+	if where == "" {
+		where = "this surface"
+	}
+	if profile != "" && !profile.Allows(name) {
+		return fmt.Sprintf("The %s tool isn't available on %s. Use a web tool (web_search, web_fetch) or the browser to read a page, or run it from the Ghost terminal.", name, where), true
+	}
+	if reg != nil && !reg.AllowedFor(name, channel, sessionKey) {
+		return fmt.Sprintf("The %s tool is disabled on %s. Use a web tool (web_search, web_fetch) or the browser instead, or run it from the Ghost terminal.", name, where), true
+	}
+	return "", false
 }

@@ -176,6 +176,13 @@ func (r *ToolRegistry) SetToolEnabledForSession(sessionKey, tool string, enabled
 	r.sessionToolPolicy[sessionKey][tool] = enabled
 }
 
+// AllowedFor reports whether a tool may run on this channel/session: the
+// runtime's single answer to that question. Authorization paths consult it so
+// an approval is never requested for a call execution will refuse.
+func (r *ToolRegistry) AllowedFor(name, channel, sessionKey string) bool {
+	return r.isAllowed(name, channel, sessionKey)
+}
+
 func (r *ToolRegistry) isAllowed(name, channel, sessionKey string) bool {
 	if until, ok := r.hiddenTools[name]; ok {
 		if time.Now().Before(until) {
@@ -196,6 +203,13 @@ func (r *ToolRegistry) isAllowed(name, channel, sessionKey string) bool {
 		}
 	}
 	return true
+}
+
+// visibleNow is isVisible under the write lock (it prunes expired hides).
+func (r *ToolRegistry) visibleNow(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.isVisible(name)
 }
 
 func (r *ToolRegistry) isVisible(name string) bool {
