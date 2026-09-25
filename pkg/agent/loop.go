@@ -1309,7 +1309,17 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 			resp, err = "", fmt.Errorf("internal error handling the heartbeat")
 		}
 	}()
-	return al.runAgentLoop(ctx, processOptions{
+	return al.runAgentLoop(ctx, heartbeatOptions(content, channel, chatID))
+}
+
+// heartbeatOptions builds the turn options for a heartbeat run. Every turn
+// must carry a request id: governance uses it as the identity of approval
+// requests, and the broker refuses empty ids — without one, a heartbeat
+// that touches a governed capability fails with "couldn't prepare the
+// approval request" before a request can even exist. Unattended turns must
+// be able to ASK durably (the card waits for the owner), not error out.
+func heartbeatOptions(content, channel, chatID string) processOptions {
+	return processOptions{
 		SessionKey:      "heartbeat",
 		Channel:         channel,
 		ChatID:          chatID,
@@ -1319,7 +1329,8 @@ func (al *AgentLoop) ProcessHeartbeat(ctx context.Context, content, channel, cha
 		EnableSummary:   false,
 		SendResponse:    false,
 		NoHistory:       true, // Don't load session history for heartbeat
-	})
+		RequestID:       fmt.Sprintf("req-hb-%d", time.Now().UnixNano()),
+	}
 }
 
 func (al *AgentLoop) SetGovernance(g *Governance) {
