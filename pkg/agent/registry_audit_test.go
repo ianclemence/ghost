@@ -73,6 +73,9 @@ func TestRegistryGovernanceAudit(t *testing.T) {
 //     connected apps (Gmail/Outlook, GitHub, Notion). No bodies are
 //     fetched beyond snippets/hits; writes use separate governed verbs
 //     (email_send). Unconnected → honest refusal, never fabricated data.
+//   - connections: read-only status of the connected-app catalog plus the
+//     one next setup step. Never returns, stores, or asks for secrets; the
+//     owner pastes secrets only into the secure screen or a CLI prompt.
 //
 // Workspace / product core (no external or privileged effect):
 //   - write_file, append_file, edit_file: filesystem writes confined to the
@@ -103,6 +106,7 @@ var allowedCoreAudit = map[string]bool{
 	"weather_now": true, "flight_status": true, "aqi_now": true,
 	"currency_convert": true, "crypto_price": true, "places_nearby": true,
 	"email_search": true, "code_search": true, "docs_search": true,
+	"connections": true,
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,
 	"todo": true, "canvas": true, "tts": true,

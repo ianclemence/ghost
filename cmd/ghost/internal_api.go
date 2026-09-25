@@ -683,190 +683,92 @@ func isUserVisibleHistoryMessage(role, content string, metaJSON []byte) bool {
 // Sent to the mobile app as a tool_status SSE event so the user can see
 // exactly what Ghost is doing during long multi-step operations.
 func toolStatusLabel(name, args string) string {
-	var a map[string]interface{}
-	_ = json.Unmarshal([]byte(args), &a)
-
-	// Browser actions get user-language labels on every surface — the
-	// TUI's collapsed rows and the mobile app's live tool line both read
-	// this same string, so raw tool names never reach the user.
+	// Streams show phases, never machinery: no tool names, file names,
+	// commands, queries, or URLs reach the user. The TUI's collapsed rows
+	// and the mobile app's live line both read this same string.
+	_ = args
 	if strings.HasPrefix(name, "browser_") {
-		return browserToolLabel(name[len("browser_"):], a)
+		return browserToolLabel(name[len("browser_"):])
 	}
-
 	switch name {
 	case "web_search":
-		if q, ok := a["query"].(string); ok && q != "" {
-			if len(q) > 40 {
-				q = q[:40] + "…"
-			}
-			return "Searching: " + q
-		}
 		return "Searching the web…"
 	case "web_fetch":
-		if u, ok := a["url"].(string); ok && u != "" {
-			if len(u) > 45 {
-				u = u[:45] + "…"
-			}
-			return "Fetching: " + u
-		}
-		return "Fetching page…"
-	case "exec":
-		if c, ok := a["command"].(string); ok && c != "" {
-			if len(c) > 40 {
-				c = c[:40] + "…"
-			}
-			return "Running: " + c
-		}
-		return "Running shell command…"
-	case "sandbox":
-		if c, ok := a["command"].(string); ok && c != "" {
-			if len(c) > 40 {
-				c = c[:40] + "…"
-			}
-			return "Sandbox: " + c
-		}
-		return "Running in sandbox…"
+		return "Reading the page…"
+	case "exec", "sandbox", "spawn", "subagent":
+		return "Working on it…"
 	case "read_file":
-		if p, ok := a["path"].(string); ok && p != "" {
-			parts := strings.Split(p, "/")
-			return "Reading: " + parts[len(parts)-1]
-		}
-		return "Reading file…"
+		return "Reading…"
 	case "write_file":
-		if p, ok := a["path"].(string); ok && p != "" {
-			parts := strings.Split(p, "/")
-			return "Writing: " + parts[len(parts)-1]
-		}
-		return "Writing file…"
-	case "list_dir":
-		if p, ok := a["path"].(string); ok && p != "" {
-			parts := strings.Split(strings.TrimRight(p, "/"), "/")
-			return "Listing: " + parts[len(parts)-1] + "/"
-		}
-		return "Listing directory…"
-	case "browser":
-		if u, ok := a["url"].(string); ok && u != "" {
-			if len(u) > 40 {
-				u = u[:40] + "…"
-			}
-			return "Browser: " + u
-		}
-		return "Opening browser…"
-	case "canvas":
-		return "Rendering canvas…"
-	case "oracle":
-		return "Loading context…"
-	case "remember":
-		return "Saving to memory…"
-	case "spawn", "subagent":
-		return "Spawning subagent…"
-	case "screenshot":
-		return "Capturing screenshot…"
+		return "Writing…"
 	case "edit_file":
-		if p, ok := a["path"].(string); ok && p != "" {
-			parts := strings.Split(p, "/")
-			return "Editing: " + parts[len(parts)-1]
-		}
-		return "Editing file…"
+		return "Editing…"
+	case "list_dir":
+		return "Looking through your files…"
+	case "canvas":
+		return "Putting it together…"
+	case "oracle":
+		return "Gathering context…"
+	case "remember", "memory_recall", "memory_curate", "session_search", "context_get":
+		return "Checking memory…"
+	case "screenshot":
+		return "Taking a screenshot…"
 	case "vision":
-		if u, ok := a["url"].(string); ok && u != "" {
-			if len(u) > 40 {
-				u = u[:40] + "…"
-			}
-			return "Analyzing: " + u
-		}
-		if p, ok := a["path"].(string); ok && p != "" {
-			parts := strings.Split(p, "/")
-			return "Analyzing: " + parts[len(parts)-1]
-		}
-		return "Analyzing image…"
+		return "Looking at the image…"
 	case "image_generate":
-		if p, ok := a["prompt"].(string); ok && p != "" {
-			if len(p) > 40 {
-				p = p[:40] + "…"
-			}
-			return "Generating image: " + p
-		}
-		return "Generating image…"
-	default:
-		return "Using " + name + "…"
+		return "Making an image…"
 	}
+	return "Working on it…"
 }
 
 // browserToolLabel names a browser_* action for the collapsed TUI row and
 // the mobile app's tool_status stream. Args surface only what helps the
 // user orient (target URL, field text, ref) and are truncated to one
 // line; everything else stays in the tool result the model reads.
-func browserToolLabel(action string, a map[string]interface{}) string {
-	clip := func(s string, n int) string {
-		if len(s) > n {
-			return s[:n] + "…"
-		}
-		return s
-	}
-	urlSuffix := func() string {
-		if u, _ := a["url"].(string); u != "" {
-			return ": " + clip(u, 40)
-		}
-		return ""
-	}
+func browserToolLabel(action string) string {
 	switch action {
 	case "navigate":
-		if s := urlSuffix(); s != "" {
-			return "Opening page" + s
-		}
-		return "Opening page…"
+		return "Browsing the web…"
 	case "snapshot":
 		return "Reading the page…"
 	case "wait":
 		return "Waiting for the page…"
 	case "find":
-		if s, _ := a["text"].(string); s != "" {
-			return "Finding: " + clip(s, 40)
-		}
 		return "Searching the page…"
 	case "screenshot":
 		return "Capturing the page…"
 	case "scroll":
-		return "Scrolling the page…"
-	case "console":
-		return "Checking page console…"
-	case "network":
-		return "Checking network requests…"
-	case "a11y":
-		return "Checking accessibility…"
+		return "Scrolling…"
+	case "console", "network", "a11y", "errors":
+		return "Checking the page…"
 	case "click":
-		if r, _ := a["ref"].(string); r != "" {
-			return "Clicking " + r
-		}
 		return "Clicking…"
+	case "fill_form":
+		return "Filling in a form…"
+	case "fill":
+		return "Filling a field…"
 	case "type":
 		return "Typing…"
 	case "press":
-		return "Pressing key…"
-	case "fill":
-		return "Filling field…"
-	case "fill_form":
-		return "Filling form…"
+		return "Pressing a key…"
 	case "select":
-		return "Selecting option…"
+		return "Choosing an option…"
 	case "check":
-		return "Toggling checkbox…"
+		return "Toggling a setting…"
 	case "hover":
 		return "Hovering…"
 	case "drag":
 		return "Dragging…"
 	case "dialog":
-		return "Handling dialog…"
+		return "Handling a dialog…"
 	case "submit":
 		return "Submitting…"
 	case "upload":
-		return "Uploading file…"
+		return "Uploading…"
 	case "download":
-		return "Downloading file…"
-	default:
-		return "Using browser_" + action + "…"
+		return "Downloading…"
 	}
+	return "Working on it…"
 }
 
 type internalAPIRequest struct {

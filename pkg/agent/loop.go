@@ -335,6 +335,9 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewCodeSearchTool())
 	// Docs surface: Notion connected app (integration token).
 	registry.Register(tools.NewDocsSearchTool())
+	// Connected-apps status + guided setup: answers "is my Gmail set up?"
+	// and hands the owner the exact next step. Read-only, never secrets.
+	registry.Register(tools.NewConnectionsTool())
 	// Standing goals: durable owner intents the heartbeat evaluates.
 	registry.Register(tools.NewGoalTool(workspace))
 

@@ -3,6 +3,31 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.27] - 2026-09-25
+
+- Progress lines sound human now. While Ghost works, phone and
+  terminal show calm phases — "Thinking…", "Searching the web…",
+  "Reading the page…" — and never tool names, file names, paths, or
+  commands. The backend and the phone app both enforce it, so nothing
+  internal can slip through even for a brand-new capability.
+- 22 new skills. Money and news: live stock and crypto quotes, RSS
+  and Reddit reading. Writing: an AI-speak stripper, a plain-English
+  rewriter, and sourced answers with citations. Planning: weekly
+  reviews, action items pulled from documents and meetings, inbox
+  triage, and a 1-3-1 decision brief. Everyday: maps and routes, GIF
+  search, meme maker, ASCII video, songwriting help, and a
+  creative-ideation coach.
+- Ghost now learns from itself. A new learning loop records only
+  verified fixes and mistakes, and promotes proven workflows into
+  skills — joined by skill-gardener and a compound memory pipeline
+  adapted for Ghost.
+- Asking about an app works like a person would expect: say "check my
+  Gmail" and Ghost tells you plainly whether it's connected and the
+  one next step — on the web console, your phone, or the terminal —
+  without ever asking you to paste a secret into chat.
+- Tone: ordinary, reversible work just happens; the hard line stays
+  exactly where it was for anything consequential.
+
 ## [0.24.26] - 2026-09-25
 
 - The Skills screen in the web console and on your phone now shows
