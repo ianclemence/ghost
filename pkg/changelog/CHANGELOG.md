@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.42] - 2026-09-26
+
+- The location you give once now really sticks. Answering "bangkok" to
+  "which city should I check?" remembers it, so further "what's the
+  weather here" questions answer straight away. (The remember step sat
+  on a path that resumed answers deliberately skip; it now lives where
+  the answer is resolved, which every location reply passes through.)
+
 ## [0.24.41] - 2026-09-26
 
 - "Here" is remembered. Answer "bangkok" once to "which city should I

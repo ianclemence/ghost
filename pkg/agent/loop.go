@@ -1573,6 +1573,13 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 				}
 				msg.Metadata["resume_field"] = rField
 				msg.Metadata["resume_answer"] = rAnswer
+				// The owner just told us where "here" is. Remember it so the
+				// next "what's the weather here" answers instead of asking —
+				// resumed turns skip the fast-paths, so this is the one place
+				// every location answer passes through.
+				if rField == "location" {
+					al.rememberHomeLocation(msg.SessionKey, rAnswer, msg.Content)
+				}
 			}
 		}
 	}
