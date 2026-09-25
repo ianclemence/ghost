@@ -426,11 +426,34 @@ func (s *Service) CurrentByCoords(ctx context.Context, lat, lon float64, allowSt
 }
 
 // CurrentByPlace resolves a place then fetches. Geocode failure is an
-// honest failure, never a guessed location.
+// honest failure, never a guessed location — classified by cause, so a
+// busy geocoder or a dropped connection reads as exactly that instead of
+// a misleading "unexpected response".
 func (s *Service) CurrentByPlace(ctx context.Context, place string, allowStale bool) (Current, provider.Result[Current]) {
 	lat, lon, _, err := geocode(ctx, s.cfg.HTTPClient, s.cfg.GeocodeBase, place)
 	if err != nil {
-		return Current{}, provider.Result[Current]{Failure: provider.FailInvalid, Err: fmt.Errorf("location lookup failed: %w", err)}
+		return Current{}, provider.Result[Current]{Failure: geocodeFailure(err), Err: fmt.Errorf("location lookup failed: %w", err)}
 	}
 	return s.CurrentByCoords(ctx, lat, lon, allowStale)
+}
+
+// geocodeFailure maps a location-lookup error onto the failure taxonomy.
+// Validation classes (no results / malformed payload) pass through as-is;
+// HTTP statuses map through the shared HTTP classifier; everything else
+// falls to the shared transport classifier (timeout, DNS, refused).
+func geocodeFailure(err error) provider.FailureClass {
+	var ve *provider.ValidationError
+	if errors.As(err, &ve) {
+		return ve.Class
+	}
+	var he *httpError
+	if errors.As(err, &he) {
+		return provider.ClassifyHTTP(he.Status)
+	}
+	var syn *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	if errors.As(err, &syn) || errors.As(err, &typ) {
+		return provider.FailMalformed
+	}
+	return provider.ClassifyError(err)
 }
