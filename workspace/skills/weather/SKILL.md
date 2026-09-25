@@ -1,6 +1,6 @@
 ---
 name: weather
-description: Get current weather conditions and forecasts for any location. Invoke when user asks "what's the weather", "is it going to rain", "weather forecast", "temperature in X", "will I need an umbrella", or "how hot will it be tomorrow". Uses wttr.in or open-meteo API — no API key required.
+description: Get current weather conditions and forecasts for any location. Invoke when user asks "what's the weather", "is it going to rain", "weather forecast", "temperature in X", "will I need an umbrella", or "how hot will it be tomorrow". Uses the weather_now tool (Open-Meteo primary; OpenWeather when a key is connected) and needs no API key.
 version: 1.1.0
 author: Ghost
 license: MIT
@@ -14,7 +14,7 @@ homepage: https://wttr.in/:help
 
 # Weather
 
-Uses wttr.in (default) or open-meteo as fallback. No API key required.
+Preferred path: the `weather_now` tool — Open-Meteo primary, OpenWeather when a key is connected. The `curl` fallback below uses wttr.in and needs no key.
 
 > **Preferred path:** Call the `weather_now` tool with `location` (or `latitude`+`longitude`). It returns validated data with provider fallback built in — use its output directly. Only use the `curl` commands below if the tool reports it is unavailable.
 
@@ -23,7 +23,7 @@ Uses wttr.in (default) or open-meteo as fallback. No API key required.
 | Task | Command |
 |------|---------|
 | Current (default) | `curl -s "wttr.in/New+York"` |
-| Current (open-meteo) | `curl -s "wttr.in/New+York?format=j1"` |
+| Current (wttr.in JSON) | `curl -s "wttr.in/New+York?format=j1"` |
 | 3-day forecast | `curl -s "wttr.in/New+York?format=j1"` |
 | JSON (open-meteo) | `curl -s "https://api.open-meteo.com/v1/forecast?latitude=40.71&longitude=-74.01&current_weather=true"` |
 | AQI (separate) | See `aqi` skill |
