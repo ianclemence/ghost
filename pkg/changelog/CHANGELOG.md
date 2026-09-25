@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.37] - 2026-09-25
+
+- Weather now runs on wttr.in first — the provider you asked for — with
+  Open-Meteo as the automatic keyless fallback and OpenWeather when a key
+  is connected. Answers still name their source ("via wttr.in"), the
+  skill says the same, and validation, retry, and the breaker are
+  unchanged.
+
 ## [0.24.36] - 2026-09-25
 
 - Ghost no longer asks "Which location should I check?" when you already

@@ -1,6 +1,6 @@
 ---
 name: weather
-description: Get current weather conditions and forecasts for any location. Invoke when user asks "what's the weather", "is it going to rain", "weather forecast", "temperature in X", "will I need an umbrella", or "how hot will it be tomorrow". Uses the weather_now tool (Open-Meteo primary; OpenWeather when a key is connected) and needs no API key.
+description: Get current weather conditions and forecasts for any location. Invoke when user asks "what's the weather", "is it going to rain", "weather forecast", "temperature in X", "will I need an umbrella", or "how hot will it be tomorrow". Uses the weather_now tool: wttr.in primary, Open-Meteo as the keyless fallback. No API key required.
 version: 1.1.0
 author: Ghost
 license: MIT
@@ -14,9 +14,9 @@ homepage: https://wttr.in/:help
 
 # Weather
 
-Preferred path: the `weather_now` tool — Open-Meteo primary, OpenWeather when a key is connected. The `curl` fallback below uses wttr.in and needs no key.
+Preferred path: the `weather_now` tool — wttr.in primary, Open-Meteo fallback. The `curl` commands below use wttr.in directly and need no key.
 
-> **Preferred path:** Call the `weather_now` tool with `location` (or `latitude`+`longitude`). It returns validated data with provider fallback built in — use its output directly. Only use the `curl` commands below if the tool reports it is unavailable.
+> **Preferred path:** Call the `weather_now` tool with `location` (or `latitude`+`longitude`). wttr.in serves by default; Open-Meteo is the keyless fallback. It returns validated data with provider fallback built in — use its output directly. Only use the `curl` commands below if the tool reports it is unavailable.
 
 ## Quick Reference
 

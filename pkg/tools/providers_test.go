@@ -28,7 +28,7 @@ func fakeServer(body string, status int) *httptest.Server {
 func TestWeatherToolCoords(t *testing.T) {
 	m := fakeServer(`{"current":{"temperature_2m":21.5,"weather_code":1,"time":"2026-09-05T10:00"}}`, 200)
 	defer m.Close()
-	tool := &WeatherTool{cfg: &weather.Config{OpenMeteoBase: m.URL, GeocodeBase: m.URL, CacheTTL: time.Minute, BreakerCooldown: time.Second}}
+	tool := &WeatherTool{cfg: &weather.Config{WttrBase: m.URL, OpenMeteoBase: m.URL, GeocodeBase: m.URL, CacheTTL: time.Minute, BreakerCooldown: time.Second}}
 	res := tool.Execute(context.Background(), map[string]interface{}{"latitude": 13.7, "longitude": 100.5})
 	if res.IsError {
 		t.Fatalf("unexpected error: %s", res.ForLLM)
@@ -49,7 +49,7 @@ func TestWeatherToolNeedsLocation(t *testing.T) {
 func TestWeatherToolProviderFailureHonest(t *testing.T) {
 	m := fakeServer(`x`, 500)
 	defer m.Close()
-	tool := &WeatherTool{cfg: &weather.Config{OpenMeteoBase: m.URL, GeocodeBase: m.URL, CacheTTL: time.Minute, BreakerCooldown: time.Second}}
+	tool := &WeatherTool{cfg: &weather.Config{WttrBase: m.URL, OpenMeteoBase: m.URL, GeocodeBase: m.URL, CacheTTL: time.Minute, BreakerCooldown: time.Second}}
 	res := tool.Execute(context.Background(), map[string]interface{}{"location": "Nowhere"})
 	// Geocode hits the same fake (500) -> honest failure, product language.
 	if !res.IsError {

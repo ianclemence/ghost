@@ -345,7 +345,7 @@ func checkWeatherStrategy(e *Env) Check {
 		w.Write([]byte(`{"current":{"temperature_2m":20.0,"time":"2026-09-05T10:00"}}`))
 	}))
 	defer srv.Close()
-	svc := weather.New(weather.Config{OpenMeteoBase: srv.URL, GeocodeBase: srv.URL, CacheTTL: time.Minute, BreakerCooldown: time.Second})
+	svc := weather.New(weather.Config{WttrBase: srv.URL, OpenMeteoBase: srv.URL, GeocodeBase: srv.URL, CacheTTL: time.Minute, BreakerCooldown: time.Second})
 	cur, res := svc.CurrentByCoords(e.Ctx, 13.75, 100.5, false)
 	if res.Err != nil || cur.TemperatureC != 20.0 {
 		return fail("Capabilities", "weather", "strategy failed", false)
@@ -633,7 +633,7 @@ func checkFallback(e *Env) Check {
 		w.Write([]byte(`{"current":{"temperature_2m":19.0,"time":"2026-09-05T10:00"}}`))
 	}))
 	defer up.Close()
-	svc := weather.New(weather.Config{OpenMeteoBase: down.URL, GeocodeBase: down.URL,
+	svc := weather.New(weather.Config{WttrBase: down.URL, OpenMeteoBase: down.URL, GeocodeBase: down.URL,
 		CacheTTL: time.Minute, BreakerCooldown: time.Second})
 	_ = svc
 	// Primary-down fallback is covered by weather unit tests; here assert

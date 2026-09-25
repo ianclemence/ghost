@@ -239,7 +239,7 @@ func benchResponsiveness(e *Env) []Metric {
 		w.Write([]byte(`{"current":{"temperature_2m":20.0,"time":"2026-09-05T10:00"}}`))
 	}))
 	defer srv.Close()
-	svc := weather.New(weather.Config{OpenMeteoBase: srv.URL, GeocodeBase: srv.URL, CacheTTL: 0, BreakerCooldown: time.Second})
+	svc := weather.New(weather.Config{WttrBase: srv.URL, OpenMeteoBase: srv.URL, GeocodeBase: srv.URL, CacheTTL: 0, BreakerCooldown: time.Second})
 	ds = ds[:0]
 	for i := 0; i < 20; i++ {
 		start := time.Now()
@@ -266,7 +266,7 @@ func benchCapability(e *Env) []Metric {
 		w.Write([]byte(`{"current":{"temperature_2m":"banana"}}`))
 	}))
 	defer bad.Close()
-	svc := weather.New(weather.Config{OpenMeteoBase: bad.URL, GeocodeBase: bad.URL,
+	svc := weather.New(weather.Config{WttrBase: bad.URL, OpenMeteoBase: bad.URL, GeocodeBase: bad.URL,
 		CacheTTL: time.Minute, BreakerCooldown: time.Second})
 	_, r := svc.CurrentByCoords(e.Ctx, 13.75, 100.5, false)
 	out = append(out, Metric{Dimension: "capability", Name: "invalid_rejected", Value: 1, Unit: "bool",

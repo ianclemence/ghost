@@ -25,7 +25,7 @@ const meteoOK = `{"current":{"temperature_2m":21.5,"relative_humidity_2m":60,"we
 const owOK = `{"main":{"temp":22.0,"humidity":55},"weather":[{"description":"clear sky"}],"dt":1780000000}`
 
 func coordsSvc(meteo *httptest.Server, ow *httptest.Server, key string) *Service {
-	cfg := Config{OpenMeteoBase: meteo.URL, GeocodeBase: meteo.URL, BreakerCooldown: time.Second, CacheTTL: time.Minute}
+	cfg := Config{WttrBase: "http://127.0.0.1:1", OpenMeteoBase: meteo.URL, GeocodeBase: meteo.URL, BreakerCooldown: time.Second, CacheTTL: time.Minute}
 	if ow != nil {
 		cfg.OpenWeatherBase = ow.URL
 		cfg.OpenWeatherKey = key
@@ -119,7 +119,7 @@ func TestFallbackFailureHonest(t *testing.T) {
 func TestOfflineStaleSemantics(t *testing.T) {
 	m := testServer(meteoOK, 200)
 	defer m.Close()
-	s := New(Config{OpenMeteoBase: m.URL, GeocodeBase: m.URL, CacheTTL: 50 * time.Millisecond, BreakerCooldown: time.Second})
+	s := New(Config{WttrBase: "http://127.0.0.1:1", OpenMeteoBase: m.URL, GeocodeBase: m.URL, CacheTTL: 50 * time.Millisecond, BreakerCooldown: time.Second})
 	ctx := context.Background()
 	if _, r := s.CurrentByCoords(ctx, 1, 1, false); r.Err != nil {
 		t.Fatal(r.Err)
@@ -166,7 +166,7 @@ func TestProviderRecoveryAfterCooldown(t *testing.T) {
 		fmt.Fprint(w, meteoOK)
 	}))
 	defer m.Close()
-	s := New(Config{OpenMeteoBase: m.URL, GeocodeBase: m.URL, CacheTTL: time.Minute, BreakerCooldown: 60 * time.Millisecond})
+	s := New(Config{WttrBase: "http://127.0.0.1:1", OpenMeteoBase: m.URL, GeocodeBase: m.URL, CacheTTL: time.Minute, BreakerCooldown: 60 * time.Millisecond})
 	ctx := context.Background()
 	// Trip the breaker with direct strategy using one provider.
 	p := s.openMeteoProvider(0, 0)
@@ -224,7 +224,7 @@ func TestOpenWeatherRequestFormation(t *testing.T) {
 		fmt.Fprint(w, "down")
 	}))
 	defer dead.Close()
-	s := New(Config{OpenMeteoBase: dead.URL, GeocodeBase: dead.URL, OpenWeatherBase: m.URL, OpenWeatherKey: "test-key",
+	s := New(Config{WttrBase: "http://127.0.0.1:1", OpenMeteoBase: dead.URL, GeocodeBase: dead.URL, OpenWeatherBase: m.URL, OpenWeatherKey: "test-key",
 		CacheTTL: time.Minute, BreakerCooldown: time.Second})
 	if _, r := s.CurrentByCoords(context.Background(), 13.75, 100.5, false); r.Err != nil || r.Provider != "openweather" {
 		t.Fatalf("fallback must engage: %+v", r)
@@ -253,7 +253,7 @@ func TestGeocodeHyphenFallback(t *testing.T) {
 	defer geo.Close()
 	m := testServer(meteoOK, 200)
 	defer m.Close()
-	cfg := Config{OpenMeteoBase: m.URL, GeocodeBase: geo.URL, BreakerCooldown: time.Second, CacheTTL: time.Minute}
+	cfg := Config{WttrBase: "http://127.0.0.1:1", OpenMeteoBase: m.URL, GeocodeBase: geo.URL, BreakerCooldown: time.Second, CacheTTL: time.Minute}
 	s := New(cfg)
 	cur, r := s.CurrentByPlace(context.Background(), "Phang-Nga", false)
 	if r.Err != nil {
@@ -272,5 +272,26 @@ func TestGeocodeVariants(t *testing.T) {
 	}
 	if got := geocodeVariants("Bangkok"); len(got) != 1 {
 		t.Fatalf("plain names need no fallback: %q", got)
+	}
+}
+
+// wttr.in is the product default: it must win when healthy, and Open-Meteo
+// stays behind it as the keyless fallback.
+func TestWttrIsPrimary(t *testing.T) {
+	stub := testServer(`{"current_condition":[{"temp_C":"22","humidity":"39","weatherDesc":[{"value":"Cloudy"}],"localObsDateTime":"2026-09-25 07:45 PM"}]}`, 200)
+	defer stub.Close()
+	meteo := testServer(`{"current":{"temperature_2m":99,"weather_code":0}}`, 200)
+	defer meteo.Close()
+
+	s := New(Config{WttrBase: stub.URL, OpenMeteoBase: meteo.URL, GeocodeBase: meteo.URL, CacheTTL: time.Minute})
+	cur, res := s.CurrentByCoords(context.Background(), -1.29, 36.82, false)
+	if res.Err != nil {
+		t.Fatalf("CurrentByCoords: %v", res.Err)
+	}
+	if cur.Provenance != "wttr.in" {
+		t.Fatalf("provenance = %q, want wttr.in (wttr must be primary)", cur.Provenance)
+	}
+	if cur.TemperatureC != 22 || cur.Description != "Cloudy" {
+		t.Fatalf("parsed = %+v, want 22C Cloudy", cur)
 	}
 }

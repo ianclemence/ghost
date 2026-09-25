@@ -1,8 +1,8 @@
 // Package weather is the provider-resilience reference implementation
 // for Ghost capabilities.
 //
-// Capability: Weather. Providers: Open-Meteo (keyless primary) and
-// OpenWeather (keyed fallback). Neither vendor is hard-coded into the
+// Capability: Weather. Providers: wttr.in (keyless primary), Open-Meteo
+// (keyless fallback), and OpenWeather (keyed fallback). Neither vendor is hard-coded into the
 // capability abstraction: the capability declares an ordered provider
 // list, and pkg/provider.Strategy owns selection, timeout, bounded
 // retry, validation, fallback, and honest failure.
@@ -23,6 +23,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -133,6 +134,9 @@ func (e *httpError) Error() string { return fmt.Sprintf("http %d", e.Status) }
 type Config struct {
 	// HTTPClient defaults to a 10s-timeout client.
 	HTTPClient *http.Client
+	// WttrBase defaults to https://wttr.in — the keyless PRIMARY provider.
+	// It serves current conditions plus a forecast and needs no API key.
+	WttrBase string
 	// OpenMeteoBase defaults to https://api.open-meteo.com.
 	OpenMeteoBase string
 	// GeocodeBase defaults to https://geocoding-api.open-meteo.com.
@@ -155,6 +159,9 @@ func (c *Config) withDefaults() Config {
 	}
 	if out.OpenMeteoBase == "" {
 		out.OpenMeteoBase = "https://api.open-meteo.com"
+	}
+	if out.WttrBase == "" {
+		out.WttrBase = "https://wttr.in"
 	}
 	if out.GeocodeBase == "" {
 		out.GeocodeBase = "https://geocoding-api.open-meteo.com"
@@ -183,7 +190,7 @@ func New(cfg Config) *Service {
 	return &Service{cfg: cfg, cache: provider.NewCache[Current](cfg.CacheTTL)}
 }
 
-// openMeteoProvider builds the keyless primary.
+// openMeteoProvider builds the keyless second provider.
 func (s *Service) openMeteoProvider(lat, lon float64) provider.Provider[Current] {
 	return provider.Provider[Current]{
 		Name: "open-meteo",
@@ -406,7 +413,7 @@ func (s *Service) CurrentByCoords(ctx context.Context, lat, lon float64, allowSt
 			return v, provider.Result[Current]{Value: v, Provider: v.Provenance, FromCache: true, Stale: true}
 		}
 	}
-	provs := []provider.Provider[Current]{s.openMeteoProvider(lat, lon)}
+	provs := []provider.Provider[Current]{s.wttrProvider(lat, lon), s.openMeteoProvider(lat, lon)}
 	if fb := s.openWeatherProvider(lat, lon); fb != nil {
 		provs = append(provs, *fb)
 	}
@@ -456,4 +463,94 @@ func geocodeFailure(err error) provider.FailureClass {
 		return provider.FailMalformed
 	}
 	return provider.ClassifyError(err)
+}
+
+// wttrProvider builds the keyless PRIMARY: wttr.in's j1 JSON. It needs no API
+// key and carries current conditions plus a forecast. wttr.in is community
+// run, so the keyless Open-Meteo provider stays directly behind it as a
+// resilient fallback, and the strategy owns retry/breaker/validation.
+func (s *Service) wttrProvider(lat, lon float64) provider.Provider[Current] {
+	return provider.Provider[Current]{
+		Name: "wttr.in",
+		Do: func(ctx context.Context) (Current, *provider.CallMeta, error) {
+			u := fmt.Sprintf("%s/%f,%f?format=j1", s.cfg.WttrBase, lat, lon)
+			req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+			if err != nil {
+				return Current{}, nil, err
+			}
+			resp, err := s.cfg.HTTPClient.Do(req)
+			if err != nil {
+				return Current{}, nil, err
+			}
+			defer resp.Body.Close()
+			meta := &provider.CallMeta{StatusCode: resp.StatusCode}
+			if resp.StatusCode == 429 {
+				meta.Failure = provider.FailRateLimited
+				return Current{}, meta, &httpError{Status: 429}
+			}
+			if cl := provider.ClassifyHTTP(resp.StatusCode); cl != "" {
+				meta.Failure = cl
+				return Current{}, meta, &httpError{Status: resp.StatusCode}
+			}
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			if err != nil {
+				return Current{}, meta, err
+			}
+			cur, err := parseWttr(body)
+			if err != nil {
+				meta.Failure = failureOf(err)
+				return Current{}, meta, err
+			}
+			cur.Provenance = "wttr.in"
+			return cur, meta, nil
+		},
+		Validate: func(c Current) error { return c.Validate() },
+		Breaker:  provider.NewBreaker(3, s.cfg.BreakerCooldown),
+	}
+}
+
+// parseWttr parses wttr.in's j1 payload. A missing or mistyped temperature is
+// a provider failure, never a success.
+func parseWttr(body []byte) (Current, error) {
+	if len(strings.TrimSpace(string(body))) == 0 {
+		return Current{}, provider.Empty("empty wttr.in response")
+	}
+	var raw struct {
+		Current []struct {
+			TempC       *string `json:"temp_C"`
+			Humidity    *string `json:"humidity"`
+			WeatherDesc []struct {
+				Value string `json:"value"`
+			} `json:"weatherDesc"`
+			LocalObsDateTime string `json:"localObsDateTime"`
+		} `json:"current_condition"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return Current{}, provider.Malformed("wttr.in: invalid JSON")
+	}
+	if len(raw.Current) == 0 || raw.Current[0].TempC == nil {
+		return Current{}, provider.Empty("wttr.in: no current conditions")
+	}
+	tc, err := strconv.ParseFloat(strings.TrimSpace(*raw.Current[0].TempC), 64)
+	if err != nil {
+		return Current{}, provider.Invalid("wttr.in: temperature not numeric")
+	}
+	cur := Current{TemperatureC: tc, ObservedAt: time.Now().UTC()}
+	if raw.Current[0].Humidity != nil {
+		if h, herr := strconv.ParseFloat(strings.TrimSpace(*raw.Current[0].Humidity), 64); herr == nil {
+			cur.HumidityPct = &h
+		}
+	}
+	if len(raw.Current[0].WeatherDesc) > 0 {
+		cur.Description = strings.TrimSpace(raw.Current[0].WeatherDesc[0].Value)
+	}
+	if ts := strings.TrimSpace(raw.Current[0].LocalObsDateTime); ts != "" {
+		if t, perr := time.ParseInLocation("2006-01-02 03:04 PM", ts, time.Local); perr == nil {
+			cur.ObservedAt = t
+		}
+	}
+	if err := cur.Validate(); err != nil {
+		return Current{}, err
+	}
+	return cur, nil
 }
