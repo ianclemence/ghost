@@ -387,6 +387,9 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 
 	// Bounded Curated Memory — agent can maintain a persistent, curated profile of the user and project
 	registry.Register(tools.NewMemoryCurateTool(workspace))
+	// Receipts: explain any belief with its quote, source message, and
+	// lifecycle. Read-only, never invents evidence.
+	registry.Register(tools.NewMemoryExplainTool(workspace))
 
 	// Targeted long-tail memory retrieval: the agent searches its own notes
 	// (daily notes, MEMORY.md, captures) on demand, ranked by relevance+recency.

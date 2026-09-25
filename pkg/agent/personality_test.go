@@ -11,12 +11,12 @@ import (
 func styleEntry(predicate, value string) personalcontext.Entry {
 	raw, _ := personalcontext.RawValue(value)
 	return personalcontext.Entry{
-		ID:        "e-" + predicate,
-		Kind:      personalcontext.KindPreference,
-		Subject:   "user",
-		Predicate: predicate,
-		Value:     raw,
-		Status:    personalcontext.StatusCurrent,
+		ID:         "e-" + predicate,
+		Kind:       personalcontext.KindPreference,
+		Subject:    "user",
+		Predicate:  predicate,
+		Value:      raw,
+		Status:     personalcontext.StatusCurrent,
 		Confidence: 0.9,
 		Sources: []personalcontext.Source{{
 			Type:      personalcontext.SourceConversation,

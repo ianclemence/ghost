@@ -25,18 +25,18 @@ type attemptBudget struct {
 // low-risk capabilities are uncapped (absent = unlimited).
 func DefaultAttemptCaps() map[string]int {
 	return map[string]int{
-		"browser.transact":  5,
-		"email.send":        20,
-		"exec.shell":        50,
-		"exec.sandbox":      50,
-		"message.send":      50,
-		"device.control":    100,
-		"computer.control":  100,
-		"calendar.modify":   50,
-		"routine.create":    20,
-		"routine.modify":    20,
-		"skills.manage":     10,
-		"system.update":     3,
+		"browser.transact": 5,
+		"email.send":       20,
+		"exec.shell":       50,
+		"exec.sandbox":     50,
+		"message.send":     50,
+		"device.control":   100,
+		"computer.control": 100,
+		"calendar.modify":  50,
+		"routine.create":   20,
+		"routine.modify":   20,
+		"skills.manage":    10,
+		"system.update":    3,
 	}
 }
 

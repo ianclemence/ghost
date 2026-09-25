@@ -76,17 +76,21 @@ func TestEveningReflectionWritesOnce(t *testing.T) {
 	if !al.WriteEveningReflection(evening) {
 		t.Fatal("reflection must write inside the evening window")
 	}
-	data, err := os.ReadFile(filepath.Join(ws, "memory", "2026-09-13.md"))
-	if err != nil {
-		// Device timezone may shift the local date; accept the local file.
-		matches, _ := filepath.Glob(filepath.Join(ws, "memory", "2026-*.md"))
-		if len(matches) == 0 {
-			t.Fatalf("reflection must write a daily note: %v", err)
-		}
-		data, _ = os.ReadFile(matches[0])
+	matches, _ := filepath.Glob(filepath.Join(ws, "dreams", "2026-*.md"))
+	if len(matches) == 0 {
+		t.Fatal("reflection must write a dream artifact")
 	}
+	data, _ := os.ReadFile(matches[0])
 	if !strings.Contains(string(data), "take care of school emails") {
 		t.Fatalf("reflection must name active goals, got:\n%s", data)
+	}
+	if !strings.Contains(string(data), "prompt_hoisted: false") {
+		t.Fatal("reflection must carry the prompt_hoisted: false leash marker")
+	}
+	// The leash: a reflection is recorded for review, never hoisted into the
+	// prompt-facing memory notes.
+	if notes, _ := filepath.Glob(filepath.Join(ws, "memory", "2026-*.md")); len(notes) != 0 {
+		t.Fatalf("reflection must not write into memory/: %v", notes)
 	}
 	if al.WriteEveningReflection(evening.Add(5 * time.Minute)) {
 		t.Fatal("reflection must not repeat the same day")

@@ -90,9 +90,21 @@ func (t *VideoFramesTool) Execute(ctx context.Context, args map[string]interface
 	// -vframes 1 : extract only one frame
 	// -q:v 2 : quality (2-5 is good)
 	// -y : overwrite output
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-ss", timestamp, "-i", resolvedVideoPath, "-vframes", "1", "-q:v", "2", "-y", outputPath)
+	//
+	// Media jobs run sandboxed: no network, read-only root, private /tmp,
+	// only the workspace bound writable. Decoding untrusted media is the
+	// classic parser attack surface, so it never runs unwrapped.
+	cwd := t.workspace
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+	wrapped, err := mediaSandboxArgv([]string{"ffmpeg", "-ss", timestamp, "-i", resolvedVideoPath, "-vframes", "1", "-q:v", "2", "-y", outputPath}, cwd, t.workspace)
+	if err != nil {
+		return ErrorResult("I can't process video safely on this machine right now — the sandbox that isolates media work isn't available.")
+	}
+	cmd := exec.CommandContext(ctx, wrapped[0], wrapped[1:]...)
 
-	logger.InfoCF("video_frames", "Executing ffmpeg", map[string]interface{}{
+	logger.InfoCF("video_frames", "Executing ffmpeg (sandboxed)", map[string]interface{}{
 		"video": resolvedVideoPath,
 		"out":   outputPath,
 		"time":  timestamp,
@@ -105,4 +117,15 @@ func (t *VideoFramesTool) Execute(ctx context.Context, args map[string]interface
 
 	relPath, _ := filepath.Rel(t.workspace, outputPath)
 	return NewToolResult(fmt.Sprintf("Frame successfully extracted from %s at %s and saved to %s", videoPath, timestamp, relPath))
+}
+
+// mediaSandboxArgv wraps a media binary (ffmpeg/ffprobe) in the OS isolation
+// profile with network access denied. It is the single decision point for
+// media sandboxing so the policy can be tested without spawning a process.
+func mediaSandboxArgv(base []string, cwd, workspace string) ([]string, error) {
+	wrapped, _, err := WrapArgv(base, cwd, workspace, false)
+	if err != nil {
+		return nil, err
+	}
+	return wrapped, nil
 }

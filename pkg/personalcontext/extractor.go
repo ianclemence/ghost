@@ -452,7 +452,20 @@ func Apply(store *Store, in Input) ([]Action, error) {
 	if err != nil {
 		return nil, err
 	}
-	return store.applyActions(actions)
+	// Forgotten beliefs stay forgotten: an action is dropped when the same
+	// subject+predicate+value was tombstoned and this evidence is older than
+	// the forgetting. A message that arrives after the forget is a new
+	// declaration — the owner changed their mind — and goes through.
+	kept := actions[:0:0]
+	for _, a := range actions {
+		if ts, ok := store.IsTombstoned(a.Entry.Subject, a.Entry.Predicate, a.Entry.Value); ok {
+			if !a.Entry.newestSourceTime().After(ts.At) {
+				continue
+			}
+		}
+		kept = append(kept, a)
+	}
+	return store.applyActions(kept)
 }
 
 // stripCorrection removes a leading correction marker and reports whether one
@@ -609,11 +622,23 @@ func buildAction(mode ActionMode, c candidate, in Input, correction bool) Action
 				Ref:       in.SessionID + ":" + in.MessageID,
 				Timestamp: ts,
 			}},
+			Quote:     quoteFromMessage(in.Text),
 			CreatedAt: ts,
 			UpdatedAt: ts,
 		},
 		Rule: c.rule,
 	}
+}
+
+// quoteFromMessage keeps a compact verbatim receipt of the message a belief
+// came from: one line, trimmed, bounded. Enough to recognize the moment it was
+// said, never a dump of the conversation.
+func quoteFromMessage(text string) string {
+	q := strings.Join(strings.Fields(text), " ")
+	if len(q) > 400 {
+		q = q[:400] + "…"
+	}
+	return q
 }
 
 // currentEntry returns the current entry for subject "user" and the predicate,

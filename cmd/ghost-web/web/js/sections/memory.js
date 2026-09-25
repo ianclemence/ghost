@@ -58,6 +58,7 @@ function renderFacts(container, facts, curated) {
 
   const forgetBtn = async (payload) => {
     try {
+      if (payload && payload.id) payload = Object.assign({ reason: 'forgotten from the Memory screen' }, payload);
       await GhostAPI.proxyPost('/v1/memory/self/forget', payload);
       GhostUI.toast('Forgotten');
       loadMemory(container);
@@ -80,7 +81,37 @@ function renderFacts(container, facts, curated) {
     return parts.join('  \u00b7  ');
   }
 
+  // explainInto renders the receipt for one memory: the owner's own words,
+  // how confident Ghost is, where it came from, and whether it was replaced
+  // or forgotten. Plain language — this is the trust feature, not a debug view.
+  async function explainInto(host, id) {
+    host.innerHTML = '';
+    host.appendChild(GhostUI.loading('Checking\u2026'));
+    let res;
+    try { res = await GhostAPI.proxyGet('/v1/memory/explain?id=' + encodeURIComponent(id)); }
+    catch (err) {
+      host.innerHTML = '';
+      host.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, 'Couldn\u2019t fetch the receipt right now.'));
+      return;
+    }
+    const ex = (res && res.explanation) || {};
+    host.innerHTML = '';
+    if (ex.quote) {
+      host.appendChild(GhostUI.h('div', { className: 'type-body', style: 'margin-bottom:var(--s-1)' }, 'You said: \u201c' + ex.quote + '\u201d'));
+    } else {
+      host.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-bottom:var(--s-1)' }, 'Saved before Ghost kept quotes, so there are no exact words on file.'));
+    }
+    const bits = [];
+    if (typeof ex.confidence === 'number' && ex.confidence > 0) bits.push(Math.round(ex.confidence * 100) + '% confident');
+    if (ex.entry && ex.entry.created_at) bits.push('learned ' + GhostUI.timeAgo(Math.floor(new Date(ex.entry.created_at).getTime() / 1000)));
+    if (ex.message_ids && ex.message_ids.length) bits.push('from message ' + ex.message_ids.join(', '));
+    if (bits.length) host.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, bits.join('  \u00b7  ')));
+    if (ex.superseded_by) host.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, 'Replaced by a newer memory: ' + (ex.superseded_by.value || '')));
+    if (ex.forgotten_at) host.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, 'Forgotten' + (ex.forgotten_reason ? ' \u2014 ' + ex.forgotten_reason : '') + '.'));
+  }
+
   function factRow(e) {
+    const wrap = GhostUI.h('div', { className: 'self-entry-wrap' });
     const row = GhostUI.h('div', { className: 'ghost-row self-entry' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
     const title = GhostSemantic.memoryTitleFor(e);
@@ -94,11 +125,26 @@ function renderFacts(container, facts, curated) {
     c.appendChild(sub);
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+    const why = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button' }, 'Why?');
+    const detail = GhostUI.h('div', { className: 'receipt', style: 'display:none;padding:var(--s-2) var(--s-4) var(--s-3);background:var(--paper-sunken);border-radius:var(--r-sm);margin:0 0 var(--s-2)' });
+    why.addEventListener('click', async () => {
+      if (detail.style.display === 'none') {
+        detail.style.display = 'block';
+        why.textContent = 'Hide';
+        await explainInto(detail, e.id);
+      } else {
+        detail.style.display = 'none';
+        why.textContent = 'Why?';
+      }
+    });
     const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button' }, 'Forget');
     btn.addEventListener('click', () => forgetBtn({ id: e.id }));
+    tr.appendChild(why);
     tr.appendChild(btn);
     row.appendChild(tr);
-    return row;
+    wrap.appendChild(row);
+    wrap.appendChild(detail);
+    return wrap;
   }
 
   KIND_ORDER.forEach(k => {

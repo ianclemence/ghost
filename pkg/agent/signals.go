@@ -339,7 +339,7 @@ func (al *AgentLoop) WriteEveningReflection(now time.Time) bool {
 		entry += "- Goal: " + name + "\n"
 	}
 	ms := NewMemoryStore(al.workspace)
-	if err := ms.AppendToday(entry); err != nil {
+	if _, err := ms.AppendReflection(now.In(loc), entry); err != nil {
 		logger.InfoCF("agent", "evening reflection append failed",
 			map[string]interface{}{"error": err.Error()})
 		return false

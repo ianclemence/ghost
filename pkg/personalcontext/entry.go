@@ -117,8 +117,15 @@ type Entry struct {
 	ValidUntil   *time.Time `json:"valid_until,omitempty"`
 	SupersededBy *string    `json:"superseded_by,omitempty"`
 	Sources      []Source   `json:"sources"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	// Quote is the verbatim span the belief was read from, kept so a person
+	// can check the receipt without opening the conversation store. One line,
+	// bounded. Empty for beliefs recorded before receipts existed.
+	Quote string `json:"quote,omitempty"`
+	// RetractReason and RetractedAt record an owner-forgetting: why and when.
+	RetractReason string     `json:"retract_reason,omitempty"`
+	RetractedAt   *time.Time `json:"retracted_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 	// ReinforceCount is how many times this belief was restated after creation
 	// (nudge-style reinforcement). ReinforcedAt is the last time it was restated,
 	// so a consolidated memory can answer "when was this last reinforced".

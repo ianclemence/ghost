@@ -72,7 +72,8 @@ func TestRoutineClarifyTask(t *testing.T) {
 	}
 }
 
-func TestRoutineDecline(t *testing.T) {	al := testRoutineLoop(t)
+func TestRoutineDecline(t *testing.T) {
+	al := testRoutineLoop(t)
 	al.tryRoutineTurn(routineMsg("sess-d", "Every Friday at 5 remind me to stop work"))
 	ans, ok := al.tryRoutineTurn(routineMsg("sess-d", "no"))
 	if !ok || !strings.Contains(ans, "didn't schedule") {

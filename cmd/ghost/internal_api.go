@@ -4030,6 +4030,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			Label          string     `json:"label"`
 			Title          string     `json:"title"`
 			Summary        string     `json:"summary"`
+			Quote          string     `json:"quote,omitempty"`
+			Confidence     float64    `json:"confidence,omitempty"`
+			Status         string     `json:"status,omitempty"`
+			Source         string     `json:"source,omitempty"`
+			SupersededBy   string     `json:"superseded_by,omitempty"`
+			RetractedAt    *time.Time `json:"retracted_at,omitempty"`
+			RetractReason  string     `json:"retract_reason,omitempty"`
 			Domain         string     `json:"domain"`
 			DomainLabel    string     `json:"domain_label"`
 			Value          string     `json:"value"`
@@ -4066,6 +4073,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				Label:          personalcontext.Label(e.Predicate),
 				Title:          personalcontext.Title(e),
 				Summary:        personalcontext.Summary(e),
+				Quote:          e.Quote,
+				Confidence:     e.Confidence,
+				Status:         string(e.Status),
+				Source:         firstSourceRef(e.Sources),
+				SupersededBy:   derefString(e.SupersededBy),
+				RetractedAt:    e.RetractedAt,
+				RetractReason:  e.RetractReason,
 				Domain:         string(domain),
 				DomainLabel:    personalcontext.DomainLabel(domain),
 				Value:          personalcontext.Value(e),
@@ -4084,6 +4098,25 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		})
 	}))
 
+	mux.HandleFunc("/v1/memory/explain", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.URL.Query().Get("id"))
+		if id == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "id required")
+			return
+		}
+		store, err := personalcontext.Open(workspaceDir)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "io_error", "could not read saved facts")
+			return
+		}
+		ex, err := store.Explain(id)
+		if err != nil {
+			jsonError(w, http.StatusNotFound, "not_found", "that memory wasn't found")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "explanation": ex})
+	}))
+
 	mux.HandleFunc("/v1/memory/self/forget", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -4093,22 +4126,19 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			ID     string `json:"id"`     // auto-extracted personal-context entry
 			Target string `json:"target"` // "user" or "memory" for curated notes
 			Entry  string `json:"entry"`
+			Reason string `json:"reason"` // optional owner reason, recorded on the receipt
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
 			return
 		}
 		if req.ID != "" {
-			store, err := personalcontext.Open(workspaceDir)
+			report, err := personalcontext.ForgetPipeline(workspaceDir, req.ID, req.Reason)
 			if err != nil {
-				jsonError(w, http.StatusInternalServerError, "io_error", "could not read saved facts")
-				return
-			}
-			if err := store.Forget(req.ID); err != nil {
 				jsonError(w, http.StatusNotFound, "not_found", "that fact wasn't found")
 				return
 			}
-			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "forget": report})
 			return
 		}
 		curate := tools.NewMemoryCurateTool(workspaceDir)

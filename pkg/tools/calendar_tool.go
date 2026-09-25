@@ -153,11 +153,11 @@ func (t *CalendarTool) delete(ctx context.Context, query string) *ToolResult {
 	}
 	res := NewToolResult(fmt.Sprintf("Removed from your calendar: %s.", ev.Summary))
 	res.Evidence = map[string]interface{}{
-		"type":       "acknowledgement",
-		"operation":  "delete",
-		"summary":    ev.Summary,
-		"event_id":   ev.ID,
-		"timestamp":  time.Now().UTC().Format(time.RFC3339),
+		"type":      "acknowledgement",
+		"operation": "delete",
+		"summary":   ev.Summary,
+		"event_id":  ev.ID,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 	return res
 }

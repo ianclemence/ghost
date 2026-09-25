@@ -3,6 +3,25 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.28] - 2026-09-25
+
+- Ask Ghost why it believes something and it shows its work. Every
+  memory now keeps the exact words you said, the message they came
+  from, how confident Ghost is, and when it learned it. Ask "why do
+  you think that?" in chat, or tap **Why?** on the Memory screen.
+- Forgetting now really forgets. It retracts the memory, records that
+  it's gone so nothing can quietly bring it back, and rebuilds the
+  notes derived from it. The only thing that can restore it is you
+  saying it again — which is you changing your mind, not a bug.
+- Evening reflections moved into a private journal that never feeds
+  back into Ghost's behavior on its own. Insight gets recorded; it
+  doesn't silently rewrite how Ghost acts. A test enforces it.
+- Video processing runs sandboxed: no network, read-only system, a
+  private temp folder. Untrusted media can't become a way out.
+- New docs: the Ghost Pod home specification (Matter/Thread, BLE
+  pairing, signed updates, per-device receipts) and the security
+  posture — plain answers to "what can leave my machine?"
+
 ## [0.24.27] - 2026-09-25
 
 - Progress lines sound human now. While Ghost works, phone and
