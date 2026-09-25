@@ -60,6 +60,46 @@ func TestResolveApiWorkspaceMemoryOverride(t *testing.T) {
 	}
 }
 
+// The content views (Skills/Memory/Files screens, personal context) must
+// follow the AGENT's configured workspace even when the unit env override
+// points elsewhere (state/turns live there and must not move). The bug this
+// guards against: /v1/skills and /v1/memory/self resolved from
+// GHOST_WORKSPACE_DIR first, so the console/mobile showed zero skills and
+// empty memory while the agent ran 51 skills from the configured workspace.
+func TestResolveContentWorkspacePrefersConfigOverEnv(t *testing.T) {
+	t.Setenv("GHOST_WORKSPACE_DIR", "/srv/state-ws")
+	t.Setenv("HOME", "/home/testuser")
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = "/var/lib/ghost/workspace"
+
+	if got := resolveContentWorkspace(cfg); got != "/var/lib/ghost/workspace" {
+		t.Fatalf("content workspace = %q, want configured /var/lib/ghost/workspace (env is state-only)", got)
+	}
+}
+
+func TestResolveContentWorkspaceEnvFallback(t *testing.T) {
+	t.Setenv("GHOST_WORKSPACE_DIR", "/srv/state-ws")
+	t.Setenv("HOME", "/home/testuser")
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = ""
+
+	if got := resolveContentWorkspace(cfg); got != "/srv/state-ws" {
+		t.Fatalf("content workspace = %q, want env fallback /srv/state-ws", got)
+	}
+}
+
+func TestResolveContentWorkspaceNilConfigFallsBack(t *testing.T) {
+	t.Setenv("GHOST_WORKSPACE_DIR", "")
+	t.Setenv("HOME", "/home/testuser")
+
+	want := filepath.Join("/home/testuser", "ghost", "workspace")
+	if got := resolveContentWorkspace(nil); got != want {
+		t.Fatalf("content workspace = %q, want %q", got, want)
+	}
+}
+
 func TestResolveApiWorkspaceNilConfigFallsBack(t *testing.T) {
 	t.Setenv("GHOST_WORKSPACE_DIR", "")
 	t.Setenv("MEMORY_DIR", "")

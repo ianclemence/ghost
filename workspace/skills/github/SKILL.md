@@ -1,47 +1,24 @@
 ---
 name: github
-description: "Interact with GitHub using the `gh` CLI. Use `gh issue`, `gh pr`, `gh run`, and `gh api` for issues, PRs, CI runs, and advanced queries."
+description: Search code across the repositories your connected GitHub account can see. Invoke when user asks to "find where X is defined", "search the codebase for Y", or "look at repo Z". Prefers the connected GitHub account (read-only token) when available; falls back to gh CLI.
+version: 1.0.0
+author: Ghost
+license: MIT
+metadata:
+  ghost:
+    tags: [github, code, search, repository]
+    connector: true
+prerequisites:
+  connected_apps: [github]
+  commands: [gh]
 ---
 
-# GitHub Skill
+# GitHub Code Search
 
-Use the `gh` CLI to interact with GitHub. Always specify `--repo owner/repo` when not in a git directory, or use URLs directly.
+Call the `code_search` tool with `query` (and optional `repo: owner/name`)
+— it uses the connected GitHub token internally. Trust-user model: use a
+read-only token; the token's own scopes govern what Ghost can see.
 
-## Pull Requests
-
-Check CI status on a PR:
-```bash
-gh pr checks 55 --repo owner/repo
-```
-
-List recent workflow runs:
-```bash
-gh run list --repo owner/repo --limit 10
-```
-
-View a run and see which steps failed:
-```bash
-gh run view <run-id> --repo owner/repo
-```
-
-View logs for failed steps only:
-```bash
-gh run view <run-id> --repo owner/repo --log-failed
-```
-
-## API for Advanced Queries
-
-The `gh api` command is useful for accessing data not available through other subcommands.
-
-Get PR with specific fields:
-```bash
-gh api repos/owner/repo/pulls/55 --jq '.title, .state, .user.login'
-```
-
-## JSON Output
-
-Most commands support `--json` for structured output.  You can use `--jq` to filter:
-
-```bash
-gh issue list --repo owner/repo --json number,title --jq '.[] | "\(.number): \(.title)"'
-```
+If GitHub isn't connected, direct the user to Connected Apps → paste a
+personal access token, or fall back to `gh` CLI (`gh search code`, `gh repo
+view`) when authenticated locally.

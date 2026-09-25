@@ -1883,14 +1883,12 @@ func pullGatewayOllamaModel(model string) error {
 	return cmd.Run()
 }
 
-// resolveApiWorkspace resolves the workspace and memory directories the
-// owner-facing Memory/files API reads.
+// resolveApiWorkspace resolves the runtime STATE workspace (turns,
+// device-ops, artifacts, desk): the env override wins so live conversation
+// history never moves when config and units disagree.
 //
-// It must return the SAME workspace the agent writes to. The earlier code
-// resolved from $HOME, which silently split the owner's memory view from
-// reality whenever the configured workspace differed from the default
-// (e.g. /var/lib/ghost/workspace on a Pod): the agent wrote memories to the
-// configured path while /v1/memory/self read an empty default.
+// Content the agent reads and writes (skills, memory, personal context,
+// workspace files) must NOT come from here — see resolveContentWorkspace.
 //
 // Precedence: explicit env override (GHOST_WORKSPACE_DIR / MEMORY_DIR),
 // then the loaded config's workspace, then $HOME/ghost/workspace.
@@ -1910,6 +1908,25 @@ func resolveApiWorkspace(cfg *config.Config) (workspaceDir, memoryDir string) {
 	return workspaceDir, memoryDir
 }
 
+// resolveContentWorkspace returns the workspace the agent's CONTENT lives
+// in (skills, memory, personal context, files). Config first, matching the
+// agent's own resolution (cfg.WorkspacePath): the owner-facing Skills,
+// Memory, and Files views and the model must never split. The env override
+// applies only when config leaves the workspace empty. Runtime state
+// (turns, device-ops) intentionally stays on resolveApiWorkspace so
+// conversation history never moves.
+func resolveContentWorkspace(cfg *config.Config) string {
+	if cfg != nil {
+		if w := cfg.WorkspacePath(); w != "" {
+			return w
+		}
+	}
+	if w := os.Getenv("GHOST_WORKSPACE_DIR"); w != "" {
+		return w
+	}
+	return filepath.Join(os.Getenv("HOME"), "ghost", "workspace")
+}
+
 func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Service, channelManager *channels.Manager) {
 	port := agentLoop.Config().Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
@@ -1922,7 +1939,16 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	}
 	screenshotCmd := os.Getenv("SCREENSHOT_CMD")
 
-	workspaceDir, memoryDir := resolveApiWorkspace(agentLoop.Config())
+	// State (turns/device-ops/artifacts) keeps the env-first workspace so
+	// live conversation history never moves. Content views (skills,
+	// memory, files, personal context) follow the agent's configured
+	// workspace so the owner's screens and the model can't split.
+	stateWorkspace, _ := resolveApiWorkspace(agentLoop.Config())
+	workspaceDir := resolveContentWorkspace(agentLoop.Config())
+	memoryDir := os.Getenv("MEMORY_DIR")
+	if memoryDir == "" {
+		memoryDir = filepath.Join(workspaceDir, "memory")
+	}
 	skillsDir := filepath.Join(workspaceDir, "skills")
 
 	db := agentLoop.DB()
@@ -1934,7 +1960,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			logger.InfoCF("lifecycle", "expired stale permission requests", map[string]interface{}{"count": n})
 		}
 	}
-	apiWorkspaceDir = workspaceDir
+	apiWorkspaceDir = stateWorkspace
 	// Connect the agent loop to the substrate: canonical identity,
 	// permission broker, canonical event stream. Turns now emit events
 	// and consequential tools gate on the broker (nil-safe elsewhere).
