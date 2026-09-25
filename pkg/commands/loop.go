@@ -136,7 +136,9 @@ func loopsHandler(ctx context.Context, req Request, rt *Runtime) error {
 	sb.WriteString("### Active loops\n\n")
 	count := 0
 	for _, it := range items {
-		if it == nil || it.Source != "loop" {
+		// Completed rows are retained history (what already fired), not
+		// an active loop.
+		if it == nil || it.Source != "loop" || it.State == scheduled.StateCompleted {
 			continue
 		}
 		count++

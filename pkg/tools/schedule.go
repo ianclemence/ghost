@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -59,7 +60,9 @@ IMPORTANT: This tool requires a time specification. If the user says "remind me 
 
 MOVING a reminder: when the user says move/change/postpone/shift/delay an existing reminder, pass the "reschedule" parameter describing the OLD reminder. The old item is cancelled and replaced — never duplicated. Example: user said "move my 9pm Chelsea reminder to 7:45" → reschedule="9pm Chelsea reminder", message="Remind me at 7:45pm to watch Chelsea".
 
-The tool will parse the natural language and create the appropriate scheduled item. It returns a human-readable confirmation. The confirmation always states the EXACT stored time including minutes — quote it back verbatim, never round it.`
+The tool will parse the natural language and create the appropriate scheduled item. It returns a human-readable confirmation. The confirmation always states the EXACT stored time including minutes — quote it back verbatim, never round it.
+
+CHECKING what is scheduled: pass action="list" when the user asks what's scheduled, what reminders are pending, or to check whether reminders already fired ("check my reminders", "what's on today", "did X go off"). It returns pending items plus recently completed and failed ones with exact times — one-time reminders stay visible as completed after they fire. No message is needed for a list.`
 }
 
 // Parameters returns the tool parameters schema.
@@ -79,8 +82,12 @@ func (t *ScheduleTool) Parameters() map[string]interface{} {
 				"type":        "string",
 				"description": "MOVE an existing reminder instead of adding one: describe the old reminder (e.g. \"the 9pm Chelsea reminder\" or its item id). The old item is cancelled and replaced. ALWAYS use this when the user says move/change/postpone/shift a reminder.",
 			},
+			"action": map[string]interface{}{
+				"type":        "string",
+				"enum":        []string{"create", "list"},
+				"description": "create (default): store the request in message. list: return what is scheduled (pending, recently completed, failed) — message is not needed.",
+			},
 		},
-		"required": []string{"message"},
 	}
 }
 
@@ -96,6 +103,12 @@ func (t *ScheduleTool) SetContext(channel, chatID string) {
 // The timezone prefers the per-request device timezone carried on ctx (set by
 // the chat handler from client metadata) and falls back to the tool default.
 func (t *ScheduleTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
+	// Read side first: listing needs no session context and no message,
+	// so "check my reminders" works wherever the turn runs.
+	if action, _ := args["action"].(string); strings.EqualFold(strings.TrimSpace(action), "list") {
+		return t.listSchedules()
+	}
+
 	t.mu.RLock()
 	channel := t.channel
 	chatID := t.chatID
@@ -202,6 +215,140 @@ func (t *ScheduleTool) Execute(ctx context.Context, args map[string]interface{})
 		confirm = fmt.Sprintf("Moved it — cancelled the old reminder (%s). %s", movedFrom, confirm)
 	}
 	return SilentResult(confirm)
+}
+
+// listSchedules returns what is on the schedule: pending items first,
+// then recently completed and failed ones. Fired one-shots are retained
+// as completed (scheduled.Service.handleSuccess), so "check my reminders"
+// has a real answer — what will still fire, and what already did — instead
+// of "I can't read the schedule back".
+func (t *ScheduleTool) listSchedules() *ToolResult {
+	lister, ok := t.service.(scheduleLister)
+	if !ok {
+		return ErrorResult("I can't read the schedule back from this store.")
+	}
+	pending, err := lister.ListItems("", scheduled.StateScheduled, 100)
+	if err != nil {
+		return ErrorResult("I couldn't read the schedule right now. Please try again.")
+	}
+	completed, err := lister.ListItems("", scheduled.StateCompleted, 10)
+	if err != nil {
+		completed = nil
+	}
+	failed, err := lister.ListItems("", scheduled.StateFailed, 10)
+	if err != nil {
+		failed = nil
+	}
+	if len(pending) == 0 && len(completed) == 0 && len(failed) == 0 {
+		return SilentResult("Nothing is scheduled — no pending, completed, or failed items on file.")
+	}
+
+	// Soonest first for pending; most recent first for history.
+	sort.SliceStable(pending, func(i, j int) bool {
+		a, b := pending[i].NextRunAt, pending[j].NextRunAt
+		switch {
+		case a == nil:
+			return false
+		case b == nil:
+			return true
+		default:
+			return a.Before(*b)
+		}
+	})
+	sort.SliceStable(completed, func(i, j int) bool {
+		a, b := completed[i].LastRunAt, completed[j].LastRunAt
+		switch {
+		case a == nil:
+			return false
+		case b == nil:
+			return true
+		default:
+			return a.After(*b)
+		}
+	})
+
+	var b strings.Builder
+	if len(pending) == 0 {
+		b.WriteString("No pending schedules.\n")
+	} else {
+		fmt.Fprintf(&b, "%d pending:\n", len(pending))
+		for _, it := range pending {
+			fmt.Fprintf(&b, "- %s — %s\n", scheduleHeadline(it), scheduleWhen(it))
+		}
+	}
+	if len(completed) > 0 {
+		b.WriteString("Recently completed:\n")
+		for _, it := range completed {
+			fmt.Fprintf(&b, "- %s — fired %s\n", scheduleHeadline(it), storedTimeLabel(it.LastRunAt, it.Timezone))
+		}
+	}
+	if len(failed) > 0 {
+		b.WriteString("Failed:\n")
+		for _, it := range failed {
+			msg := strings.TrimSpace(it.LastError)
+			if i := strings.IndexByte(msg, '\n'); i >= 0 {
+				msg = strings.TrimSpace(msg[:i])
+			}
+			if msg == "" {
+				msg = "no error detail"
+			}
+			fmt.Fprintf(&b, "- %s — last attempt failed: %s\n", scheduleHeadline(it), msg)
+		}
+	}
+	return SilentResult(strings.TrimSpace(b.String()))
+}
+
+// scheduleHeadline names an item for a listing.
+func scheduleHeadline(it *scheduled.ScheduledItem) string {
+	if title := strings.TrimSpace(it.Title); title != "" {
+		return title
+	}
+	if d := strings.TrimSpace(it.Description); d != "" {
+		return d
+	}
+	return "untitled item"
+}
+
+// scheduleWhen renders when a stored item will fire, exactly (minutes are
+// load-bearing — see formatScheduleForUser), in the item's own timezone.
+func scheduleWhen(it *scheduled.ScheduledItem) string {
+	switch it.Schedule.Kind {
+	case scheduled.ScheduleAt:
+		if it.Schedule.At == nil {
+			return "time unknown"
+		}
+		return storedTimeLabel(it.Schedule.At, it.Timezone)
+	case scheduled.ScheduleCron:
+		if it.Timezone != "" && it.Timezone != "UTC" {
+			return fmt.Sprintf("recurring (cron %s) — %s", it.Schedule.Expr, it.Timezone)
+		}
+		return "recurring (cron " + it.Schedule.Expr + ")"
+	case scheduled.ScheduleEvery:
+		return "every " + it.Schedule.Every.String()
+	default:
+		return "no schedule"
+	}
+}
+
+// storedTimeLabel renders an instant in the given IANA timezone with the
+// zone named, so a stored UTC row still reads as the owner's local time.
+func storedTimeLabel(t *time.Time, tz string) string {
+	if t == nil {
+		return "unknown time"
+	}
+	when := *t
+	label := ""
+	if tz != "" && tz != "UTC" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			when = when.In(loc)
+			label = " (" + tz + ")"
+		} else {
+			label = " (UTC)"
+		}
+	} else {
+		label = " (UTC)"
+	}
+	return when.Format("Mon Jan 2, 3:04 PM") + label
 }
 
 // findDuplicateSchedule returns an active item matching the new one by

@@ -242,8 +242,8 @@ func (s *Service) executeItem(item *ScheduledItem) {
 
 // handleSuccess processes a successful execution.
 func (s *Service) handleSuccess(item *ScheduledItem) {
-	if item.IsOneTime() || item.DeleteAfterRun {
-		// One-time item: delete after successful execution
+	// Explicit opt-in only: the row really is consumed after one run.
+	if item.DeleteAfterRun {
 		if err := s.store.Delete(item.ID); err != nil {
 			log.Printf("[scheduled] failed to delete one-time item: %v", err)
 		}
@@ -257,13 +257,36 @@ func (s *Service) handleSuccess(item *ScheduledItem) {
 		return
 	}
 
+	// Fired work stays on the record: a one-shot becomes StateCompleted
+	// instead of vanishing, so "check my reminders" can show what already
+	// fired — not just what is still pending. ListDue only ever selects
+	// scheduled/due, so a completed row can never re-fire. Retention is
+	// bounded by pruneCompleted.
+	if item.IsOneTime() {
+		item.State = StateCompleted
+		if err := s.store.Update(item); err != nil {
+			log.Printf("[scheduled] failed to mark item completed: %v", err)
+		}
+		s.pruneCompleted()
+		if s.events != nil {
+			s.events.Publish("schedule.completed", map[string]interface{}{
+				"item_id": item.ID,
+				"type":    item.Type,
+				"title":   item.Title,
+			})
+		}
+		return
+	}
+
 	// Recurring item: compute next run
 	nextRun := s.computeNextRun(item)
 	if nextRun == nil {
-		// No more runs: delete
-		if err := s.store.Delete(item.ID); err != nil {
-			log.Printf("[scheduled] failed to delete exhausted item: %v", err)
+		// No more runs: everything it ever will do, it has done.
+		item.State = StateCompleted
+		if err := s.store.Update(item); err != nil {
+			log.Printf("[scheduled] failed to mark exhausted item completed: %v", err)
 		}
+		s.pruneCompleted()
 		return
 	}
 
@@ -280,6 +303,23 @@ func (s *Service) handleSuccess(item *ScheduledItem) {
 			"title":   item.Title,
 			"next_at": nextRun,
 		})
+	}
+}
+
+// completedHistoryKeep bounds how many completed items stay on the
+// schedule table. Enough for "did it fire?" answers, never unbounded.
+const completedHistoryKeep = 100
+
+// pruneCompleted keeps retained completed history bounded. Best-effort:
+// a prune failure never affects scheduling, only table size.
+func (s *Service) pruneCompleted() {
+	n, err := s.store.PruneCompleted(completedHistoryKeep)
+	if err != nil {
+		log.Printf("[scheduled] failed to prune completed items: %v", err)
+		return
+	}
+	if n > 0 {
+		log.Printf("[scheduled] pruned %d old completed items", n)
 	}
 }
 

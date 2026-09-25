@@ -264,6 +264,28 @@ func (s *Store) ListDue(now time.Time) ([]*ScheduledItem, error) {
 	return items, nil
 }
 
+// PruneCompleted keeps only the most recent `keep` completed rows, so
+// retained one-shot history stays bounded. Returns rows removed.
+func (s *Store) PruneCompleted(keep int) (int64, error) {
+	if keep < 1 {
+		keep = 1
+	}
+	res, err := s.db.Exec(`
+		DELETE FROM scheduled_items
+		WHERE state = 'completed'
+		  AND id NOT IN (
+			SELECT id FROM scheduled_items
+			WHERE state = 'completed'
+			ORDER BY updated_at DESC
+			LIMIT ?
+		  )
+	`, keep)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // Update modifies an existing ScheduledItem.
 func (s *Store) Update(item *ScheduledItem) error {
 	item.UpdatedAt = time.Now().UTC()
