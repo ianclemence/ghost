@@ -3,6 +3,30 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.26] - 2026-09-25
+
+- The Skills screen in the web console and on your phone now shows
+  everything Ghost knows how to do. It was reading the wrong folder
+  and came up empty even while Ghost was using all 51 skills; the
+  same fix restores your saved notes and files on those screens.
+  Conversation history never moved.
+- Five skills went back to Ghost's own versions after trying the
+  community ones: weather, GitHub, Notion, calendar, and smart home.
+  The replacements talked to services directly from a terminal,
+  which only works for people comfortable with commands. Ghost's
+  versions sign in through Connected Apps instead — set up once
+  from the web console or your phone, then it just works. The
+  smart-home replacement was also flagged by our scan and used the
+  wrong settings names, so it's gone.
+- Web search setup now has a home in the console: the built-in free
+  search already works with nothing to set up, and a Brave key can
+  be pasted in under Apps when you want pro results — stored
+  encrypted on your device.
+- Google Workspace extras now say plainly when they need a
+  one-time sign-in instead of failing halfway through, and the
+  Excel skill checks for its spreadsheet library up front rather
+  than breaking mid-task.
+
 ## [0.24.25] - 2026-09-25
 
 - Twelve community skills added: Word documents, Excel spreadsheets,
