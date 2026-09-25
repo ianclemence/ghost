@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/browser"
+	"github.com/ianclemence/ghost/pkg/cards"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/redact"
@@ -33,6 +34,13 @@ type BrowserTool struct {
 
 	// run executes the CLI. Overridable in tests; production uses executeCLI.
 	run func(ctx context.Context, action string, args ...string) *ToolResult
+
+	// channel/chatID are set per call by the registry (ContextualTool) so a
+	// recovery notice can reach the surface the turn came from.
+	channel string
+	chatID  string
+	// publish emits the browser-recovery card; nil means text-only (CLI).
+	publish func(channel, chatID, sessionID string, c cards.Card)
 }
 
 // BrowserPolicy binds a BrowserTool to Ghost's browser runtime contract:
@@ -65,6 +73,32 @@ func NewBrowserTool(workspace string, action string) *BrowserTool {
 	t := &BrowserTool{workspace: workspace, action: action}
 	t.run = t.executeCLI
 	return t
+}
+
+// SetContext implements tools.ContextualTool: the registry hands each tool the
+// surface the turn came from.
+func (t *BrowserTool) SetContext(channel, chatID string) {
+	t.channel = channel
+	t.chatID = chatID
+}
+
+// SetPublisher wires the card emitter (the agent loop supplies the bus).
+func (t *BrowserTool) SetPublisher(fn func(channel, chatID, sessionID string, c cards.Card)) {
+	t.publish = fn
+}
+
+// publishRecovery tells the owner their browser was wedged and has been reset,
+// so a 90-second silence is followed by an explanation instead of a mystery.
+func (t *BrowserTool) publishRecovery(ctx context.Context) {
+	if t.publish == nil || t.channel == "" || t.chatID == "" {
+		return
+	}
+	card, err := cards.New(cards.KindBrowserRecovery, "My browser got stuck",
+		"Every page was timing out, so I reset it. Ask me again and it should work.")
+	if err != nil {
+		return
+	}
+	t.publish(t.channel, t.chatID, SessionKeyFromContext(ctx), card)
 }
 
 // Classify maps this tool's action to its risk class: observation (reads
@@ -431,6 +465,7 @@ func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...str
 		// say so plainly instead of implying the site is unreachable.
 		if ctx.Err() == context.DeadlineExceeded {
 			resetBrowserSession()
+			t.publishRecovery(ctx)
 			return ErrorResult("[browser.stuck] My browser was stuck — every page was timing out, which is a problem on my side, not the site's. I've reset it; ask me again and it should work. If it fails again, say so and I'll fetch the content a different way. Do NOT tell the user the site is down from this timeout alone.")
 		}
 

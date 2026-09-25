@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // Browser processes left behind by a previous Ghost run are the known cause of
@@ -79,14 +80,34 @@ func isBrowserProcess(cmd string) bool {
 	}
 }
 
-// ReapOrphans kills the orphaned browser processes and returns the PIDs it
-// killed. Safe to call at startup and after a browser timeout.
+// ReapOrphans kills orphaned browser processes, repeating until a pass finds
+// none. Children reparent only after their parent dies, so a single pass can
+// leave the Chromium tree behind; looping closes that gap.
+//
+// It kills every orphaned browser process, and browser daemons are normally
+// orphans, so call it only at startup or after a failed session — never while
+// a healthy session is in use.
 func ReapOrphans(procRoot string) []int {
+	return reapPasses(procRoot, 4, syscall.Kill, time.Sleep)
+}
+
+// reapPasses is the testable core: kill, settle, rescan, up to maxPasses.
+func reapPasses(procRoot string, maxPasses int, kill func(pid int, sig syscall.Signal) error, sleep func(time.Duration)) []int {
 	killed := []int{}
-	for _, pid := range OrphanBrowserPIDs(procRoot) {
-		if err := syscall.Kill(pid, syscall.SIGKILL); err == nil {
-			killed = append(killed, pid)
+	for pass := 0; pass < maxPasses; pass++ {
+		pids := OrphanBrowserPIDs(procRoot)
+		if len(pids) == 0 {
+			break
+		}
+		for _, pid := range pids {
+			if err := kill(pid, syscall.SIGKILL); err == nil {
+				killed = append(killed, pid)
+			}
+		}
+		if sleep != nil {
+			sleep(150 * time.Millisecond)
 		}
 	}
+	sort.Ints(killed)
 	return killed
 }

@@ -3,6 +3,21 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.31] - 2026-09-25
+
+- Follow-through on the stuck-browser fix, in three parts. First: the
+  browser cleanup at startup now repeats until no leftovers remain —
+  Chromium children can appear only after their parent dies, so one pass
+  used to miss them.
+- Second: updates refuse to start when the disk is too full, with a
+  plain sentence telling you to free space, install the binary
+  atomically, and verify it after installing before claiming success.
+  A full disk can no longer produce a silent failure or a half-written
+  binary.
+- Third: when the browser does recover, your phone shows a small card —
+  "My browser got stuck — I reset it" — so 90 seconds of quiet is
+  followed by an explanation instead of a mystery.
+
 ## [0.24.30] - 2026-09-25
 
 - Ghost's browser doesn't get stuck anymore. Root cause found: a

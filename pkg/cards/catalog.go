@@ -37,6 +37,8 @@ var catalog = map[Kind]kindSchema{
 	// Memory receipts carry no actions: explaining is read-only, and
 	// forgetting stays an explicit owner act on the Memory screen.
 	KindMemoryReceipt: {requireData: []string{"claim_id"}, maxActions: 0},
+	// Browser recovery is informational: the reset already happened.
+	KindBrowserRecovery: {maxActions: 0},
 }
 
 // RenderSpec validates a model-emitted spec against the catalog and

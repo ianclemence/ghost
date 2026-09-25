@@ -41,6 +41,9 @@ const (
 	// Informational only — it carries no actions, because forgetting stays
 	// an explicit owner act on the Memory screen, never a card button.
 	KindMemoryReceipt Kind = "memory_receipt"
+	// KindBrowserRecovery tells the owner their browser was stuck and has
+	// been reset. Informational; the recovery already happened.
+	KindBrowserRecovery Kind = "browser_recovery"
 )
 
 // Action is one card button. Approve/deny actions carry the broker
@@ -88,7 +91,7 @@ func New(kind Kind, title, body string) (Card, error) {
 // Validate enforces the card contract.
 func (c Card) Validate() error {
 	switch c.Kind {
-	case KindSuggestion, KindGoalUpdate, KindCart, KindBrowserView, KindMemoryReceipt:
+	case KindSuggestion, KindGoalUpdate, KindCart, KindBrowserView, KindMemoryReceipt, KindBrowserRecovery:
 		// producible today
 	case KindCheckoutSheet:
 		return errors.New("checkout_sheet has no payment partner yet")

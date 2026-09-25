@@ -3,6 +3,7 @@ package browser
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -81,5 +82,36 @@ func TestOrphanBrowserPIDsSelectsOnlyOrphanedBrowserProcesses(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("OrphanBrowserPIDs = %v, want %v", got, want)
 		}
+	}
+}
+
+// Reparenting happens after the parent dies, so a single scan misses the
+// Chromium tree. The loop must rescan and catch newly-orphaned children.
+func TestReapPassesCatchesChildrenReparentedAfterTheDaemonDies(t *testing.T) {
+	root := buildProc(t, []struct {
+		pid, ppid int
+		cmdline   string
+	}{
+		{201, 1, "/usr/local/lib/node_modules/agent-browser/bin/agent-browser-linux-arm64"},
+	})
+
+	killed := []int{}
+	kill := func(pid int, sig syscall.Signal) error {
+		killed = append(killed, pid)
+		// Simulate the daemon's death reparenting its Chromium child: remove
+		// the daemon and introduce a newly-orphaned Chromium on this pass.
+		os.RemoveAll(filepath.Join(root, itoa(pid)))
+		if pid == 201 {
+			dir := filepath.Join(root, "202")
+			os.MkdirAll(dir, 0o755)
+			os.WriteFile(filepath.Join(dir, "stat"), []byte("202 (chromium) S 1 0 0 0 0"), 0o644)
+			os.WriteFile(filepath.Join(dir, "cmdline"), []byte("/usr/lib/chromium/chromium --user-data-dir=/tmp/agent-browser-chrome-x\x00"), 0o644)
+		}
+		return nil
+	}
+
+	got := reapPasses(root, 4, kill, nil)
+	if len(got) != 2 || got[0] != 201 || got[1] != 202 {
+		t.Fatalf("reapPasses = %v, want [201 202] (the reparented child must be caught)", got)
 	}
 }

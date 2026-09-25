@@ -166,12 +166,23 @@ func installReleaseAsset(scope appliance.ScopePaths, rel *appliance.Release, ass
 	}
 	defer os.RemoveAll(stage)
 	dst := filepath.Join(stage, "ghost")
+	// Refuse to start when the install directory cannot hold the binary plus
+	// headroom: a full disk used to surface as a silent failure or a
+	// truncated install.
+	need := uint64(asset.Size)
+	if need < 64<<20 {
+		need = 64 << 20
+	}
+	if err := appliance.EnsureDiskSpace(scope.BinDir, need*2); err != nil {
+		return err
+	}
 	client := appliance.NewGitHubClient(ghostRepo)
 	fmt.Printf("  Downloading %s...\n", asset.Name)
 	if err := client.Download(asset.URL, dst); err != nil {
 		return err
 	}
 
+	var wantSum string
 	if sum, ok := pickAsset(rel, "checksums"); ok {
 		sumPath := filepath.Join(stage, sum.Name)
 		if err := client.Download(sum.URL, sumPath); err == nil {
@@ -180,6 +191,7 @@ func installReleaseAsset(scope appliance.ScopePaths, rel *appliance.Release, ass
 					if err := appliance.VerifySHA256(dst, want); err != nil {
 						return err
 					}
+					wantSum = want
 					fmt.Println("  Checksum verified.")
 				}
 			}
@@ -210,6 +222,15 @@ func installReleaseAsset(scope appliance.ScopePaths, rel *appliance.Release, ass
 		}
 	}
 	fmt.Printf("  Installed %s\n", target)
+
+	// AtomicInstall can still be raced by a full disk; prove the installed
+	// binary is the verified one before declaring success.
+	if wantSum != "" {
+		if err := appliance.VerifySHA256(target, wantSum); err != nil {
+			return fmt.Errorf("installed binary failed verification: %w", err)
+		}
+		fmt.Println("  Verified installed binary.")
+	}
 	restartScope(scope)
 	_ = changelog.MarkSeen(ghostDataDir(), rel.Version)
 	fmt.Printf("Updated %s → %s\n", ghostVersion(), rel.Version)

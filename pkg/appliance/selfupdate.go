@@ -296,7 +296,17 @@ func AtomicInstall(src, dst string) error {
 	}
 	tmp := dst + ".new"
 	if err := os.WriteFile(tmp, data, 0o755); err != nil {
+		os.Remove(tmp) // never leave a truncated .new behind
 		return err
+	}
+	// A short write (disk full) must fail loudly rather than install a
+	// truncated binary that then fails at exec time.
+	if fi, err := os.Stat(tmp); err != nil {
+		os.Remove(tmp)
+		return err
+	} else if fi.Size() != int64(len(data)) {
+		os.Remove(tmp)
+		return fmt.Errorf("install %s: truncated write (%d of %d bytes) — check free disk space", dst, fi.Size(), len(data))
 	}
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		os.Remove(tmp)

@@ -239,37 +239,46 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// signals browser use, so a short-lived agent reliably sees them. The
 	// gate still denies unknown ops and enforces broker/session/binding
 	// before any executor runs.
-	registry.Register(tools.NewBrowserTool(workspace, "navigate"))
-	registry.Register(tools.NewBrowserTool(workspace, "snapshot"))
-	registry.Register(tools.NewBrowserTool(workspace, "click"))
-	registry.Register(tools.NewBrowserTool(workspace, "type"))
-	registry.Register(tools.NewBrowserTool(workspace, "press"))
-	registry.Register(tools.NewBrowserTool(workspace, "fill"))
+	// Browser tools share one construction path so a wedged-browser
+	// recovery notice can reach the surface the turn came from.
+	registerBrowser := func(action string) {
+		bt := tools.NewBrowserTool(workspace, action)
+		bt.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
+			cards.Publish(msgBus, nil, channel, chatID, sessionID, c)
+		})
+		registry.Register(bt)
+	}
+	registerBrowser("navigate")
+	registerBrowser("snapshot")
+	registerBrowser("click")
+	registerBrowser("type")
+	registerBrowser("press")
+	registerBrowser("fill")
 	// Observe-class surface: waiting, literal-text find, explicit
 	// screenshots, viewport scroll, and page introspection (console /
 	// network / accessibility) — read-only, no broker approval.
-	registry.Register(tools.NewBrowserTool(workspace, "wait"))
-	registry.Register(tools.NewBrowserTool(workspace, "find"))
-	registry.Register(tools.NewBrowserTool(workspace, "screenshot"))
-	registry.Register(tools.NewBrowserTool(workspace, "scroll"))
-	registry.Register(tools.NewBrowserTool(workspace, "console"))
-	registry.Register(tools.NewBrowserTool(workspace, "network"))
+	registerBrowser("wait")
+	registerBrowser("find")
+	registerBrowser("screenshot")
+	registerBrowser("scroll")
+	registerBrowser("console")
+	registerBrowser("network")
 	registry.Register(tools.NewBrowserTool(workspace, "a11y"))
 	// Interaction granularity: dropdowns, checkboxes, hover, drag, batch
 	// form fill, dialogs, and file transfer. All act-class (broker
 	// decides); upload is high impact because local files leave the
 	// device, and downloads land only in Ghost's managed directory.
-	registry.Register(tools.NewBrowserTool(workspace, "select"))
-	registry.Register(tools.NewBrowserTool(workspace, "check"))
-	registry.Register(tools.NewBrowserTool(workspace, "hover"))
-	registry.Register(tools.NewBrowserTool(workspace, "drag"))
-	registry.Register(tools.NewBrowserTool(workspace, "fill_form"))
-	registry.Register(tools.NewBrowserTool(workspace, "dialog"))
-	registry.Register(tools.NewBrowserTool(workspace, "upload"))
-	registry.Register(tools.NewBrowserTool(workspace, "download"))
+	registerBrowser("select")
+	registerBrowser("check")
+	registerBrowser("hover")
+	registerBrowser("drag")
+	registerBrowser("fill_form")
+	registerBrowser("dialog")
+	registerBrowser("upload")
+	registerBrowser("download")
 	// Submit declares purchase-class intent: quote + broker approval +
 	// receipt evidence. The gate treats it as high impact, always ask.
-	registry.Register(tools.NewBrowserTool(workspace, "submit"))
+	registerBrowser("submit")
 
 	// Sandbox Execution Tool (Safe code running)
 	registry.RegisterHidden(tools.NewSandboxTool(workspace), 2*time.Hour)
