@@ -3,6 +3,24 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.21] - 2026-09-25
+
+- Ghost can really drive a browser now: find, wait, screenshot,
+  scroll, console, network and accessibility checks join
+  navigate/snapshot/click, plus select, check, hover, drag, batch
+  form fill, dialogs, upload and download — every action behind
+  the same approval gate, and a failed click states the outcome is
+  unknown instead of silently retrying.
+- Screenshots reach Ghost's eyes: the screenshot action attaches
+  the image to that turn only, and the browser playbook loads on
+  turns that can actually call the browser (a bare web address in
+  your message is enough to open the surface).
+- Terminal and mobile name browser work in human words — "Opening
+  page: …", "Finding: Log in", "Filling form…" — instead of raw
+  tool names.
+- A message about a "newsletter" that also says "anything" is no
+  longer mistaken for a request for blanket permissions.
+
 ## [0.24.20] - 2026-09-24
 
 - Background work reaches every surface: the daemon announces task
