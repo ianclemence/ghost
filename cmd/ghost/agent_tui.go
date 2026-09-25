@@ -1739,6 +1739,10 @@ func (m *agentTUI) dockPreview() string {
 // toolIcon maps Ghost tools to the collapsed-row icon language:
 // → read, ← write, ✱ search, % fetch, ◈ web search, $ shell, ⚙ generic.
 func toolIcon(name string) string {
+	// Every browser_* action reads as the fetch/browse glyph.
+	if strings.HasPrefix(name, "browser_") {
+		return "%"
+	}
 	switch name {
 	case "read_file", "list_dir", "screenshot", "vision":
 		return "→"

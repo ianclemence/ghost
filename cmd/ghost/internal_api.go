@@ -672,6 +672,13 @@ func toolStatusLabel(name, args string) string {
 	var a map[string]interface{}
 	_ = json.Unmarshal([]byte(args), &a)
 
+	// Browser actions get user-language labels on every surface — the
+	// TUI's collapsed rows and the mobile app's live tool line both read
+	// this same string, so raw tool names never reach the user.
+	if strings.HasPrefix(name, "browser_") {
+		return browserToolLabel(name[len("browser_"):], a)
+	}
+
 	switch name {
 	case "web_search":
 		if q, ok := a["query"].(string); ok && q != "" {
@@ -769,6 +776,82 @@ func toolStatusLabel(name, args string) string {
 		return "Generating image…"
 	default:
 		return "Using " + name + "…"
+	}
+}
+
+// browserToolLabel names a browser_* action for the collapsed TUI row and
+// the mobile app's tool_status stream. Args surface only what helps the
+// user orient (target URL, field text, ref) and are truncated to one
+// line; everything else stays in the tool result the model reads.
+func browserToolLabel(action string, a map[string]interface{}) string {
+	clip := func(s string, n int) string {
+		if len(s) > n {
+			return s[:n] + "…"
+		}
+		return s
+	}
+	urlSuffix := func() string {
+		if u, _ := a["url"].(string); u != "" {
+			return ": " + clip(u, 40)
+		}
+		return ""
+	}
+	switch action {
+	case "navigate":
+		if s := urlSuffix(); s != "" {
+			return "Opening page" + s
+		}
+		return "Opening page…"
+	case "snapshot":
+		return "Reading the page…"
+	case "wait":
+		return "Waiting for the page…"
+	case "find":
+		if s, _ := a["text"].(string); s != "" {
+			return "Finding: " + clip(s, 40)
+		}
+		return "Searching the page…"
+	case "screenshot":
+		return "Capturing the page…"
+	case "scroll":
+		return "Scrolling the page…"
+	case "console":
+		return "Checking page console…"
+	case "network":
+		return "Checking network requests…"
+	case "a11y":
+		return "Checking accessibility…"
+	case "click":
+		if r, _ := a["ref"].(string); r != "" {
+			return "Clicking " + r
+		}
+		return "Clicking…"
+	case "type":
+		return "Typing…"
+	case "press":
+		return "Pressing key…"
+	case "fill":
+		return "Filling field…"
+	case "fill_form":
+		return "Filling form…"
+	case "select":
+		return "Selecting option…"
+	case "check":
+		return "Toggling checkbox…"
+	case "hover":
+		return "Hovering…"
+	case "drag":
+		return "Dragging…"
+	case "dialog":
+		return "Handling dialog…"
+	case "submit":
+		return "Submitting…"
+	case "upload":
+		return "Uploading file…"
+	case "download":
+		return "Downloading file…"
+	default:
+		return "Using browser_" + action + "…"
 	}
 }
 
