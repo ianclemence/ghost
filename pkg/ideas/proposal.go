@@ -30,6 +30,11 @@ const (
 	ObsGoalStalled     ObsKind = "goal_stalled"
 	ObsTaskOverdue     ObsKind = "task_overdue"
 	ObsTaskFailed      ObsKind = "task_failed"
+
+	// Commitments: something the owner said they intend to do, that has now
+	// become relevant. These are the bridge from conversation to action.
+	ObsCommitmentDue     ObsKind = "commitment_due"
+	ObsCommitmentStalled ObsKind = "commitment_stalled"
 )
 
 // Category groups kinds for per-category throttling and owner controls.
@@ -43,6 +48,8 @@ func (k ObsKind) Category() string {
 		return "goals"
 	case ObsTaskOverdue, ObsTaskFailed:
 		return "tasks"
+	case ObsCommitmentDue, ObsCommitmentStalled:
+		return "commitments"
 	default:
 		return "other"
 	}
@@ -67,6 +74,10 @@ func (k ObsKind) Title() string {
 		return "a task past its due time"
 	case ObsTaskFailed:
 		return "a task that failed"
+	case ObsCommitmentDue:
+		return "a promise you made"
+	case ObsCommitmentStalled:
+		return "a promise still open"
 	default:
 		return "something"
 	}

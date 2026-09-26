@@ -101,6 +101,10 @@ var humanTitles = map[cevents.Type]string{
 	cevents.ProactiveSuperseded:     "Situation changed",
 	cevents.ProactiveCompleted:      "Handled it",
 	cevents.ProactiveFailed:         "Couldn't handle it",
+	cevents.CommitmentCreated:       "You promised",
+	cevents.CommitmentCompleted:     "Promise kept",
+	cevents.CommitmentFailed:        "Promise still open",
+	cevents.CommitmentBlocked:       "Promise blocked",
 }
 
 // skillNameTitle refines skill lifecycle chips with the skill name when the
@@ -166,13 +170,18 @@ func stateFor(t cevents.Type, status string) State {
 		return StateWaiting
 	case cevents.ProactiveDenied, cevents.ProactiveDismissed, cevents.ProactiveSuperseded:
 		return StateCancelled
+	case cevents.CommitmentCreated, cevents.CommitmentFailed:
+		return StateWaiting
+	case cevents.CommitmentBlocked:
+		return StateFailed
 	case cevents.AgentCompleted, cevents.MessageCreated, cevents.CapabilityCompleted,
 		cevents.ToolCompleted, cevents.PermissionApproved, cevents.MemoryCreated,
 		cevents.MemoryUpdated, cevents.IntegrationConnected, cevents.RoutineCreated,
 		cevents.RoutineCompleted, cevents.GhostReady,
 		cevents.SkillInstalled, cevents.SkillUpdated, cevents.SkillEnabled,
 		cevents.SkillDisabled, cevents.SkillRemoved,
-		cevents.ProactiveApproved, cevents.ProactiveCompleted:
+		cevents.ProactiveApproved, cevents.ProactiveCompleted,
+		cevents.CommitmentCompleted:
 		return StateSuccess
 	case cevents.AgentFailed, cevents.CapabilityFailed, cevents.ToolFailed,
 		cevents.PermissionDenied, cevents.IntegrationFailed, cevents.RoutineFailed,

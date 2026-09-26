@@ -3,6 +3,43 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.53] - 2026-09-26
+
+- **Ghost keeps your promises.** Tell Ghost "I need to send Alex those
+  photos Friday" in passing and it is no longer a sentence that dies in
+  the transcript. Ghost records the promise — your own words, kept
+  verbatim as the receipt — along with the day it resolves to. When that
+  day arrives, or when an undated promise has been sitting long enough,
+  Ghost offers exactly one thing: *"You said you'd send Alex those photos
+  Friday and it's still open. Want me to send it?"*
+- **It only records real promises.** "I might send those Friday", "maybe I
+  should email the landlord", a question, a request to Ghost, or an actual
+  "remind me to…" never become promises. When Ghost asks a model to help
+  read a message, every field it returns — the quote, the person, the time
+  — must appear in your own words or it is thrown away. Ghost never invents
+  who you meant or when.
+- **Ghost notices immediately, not half an hour later.** Meaningful change
+  — a promise you just made, a routine that just failed, a task that just
+  stopped — wakes the proactive engine straight away instead of waiting for
+  the next reconciliation pass. It is a local, deterministic check with no
+  model call, and repeated events collapse into one evaluation.
+- **Asking for permission happens when you approve, not when Ghost
+  suggests.** A suggestion no longer carries an authorization that quietly
+  expires while you are away. Approving mints and records the permission
+  decision at that moment, through the same broker as every other action, so
+  a suggestion you get to late still works instead of failing with "sorry,
+  that expired."
+- **One suggestion, one card.** A proactive offer is now a single
+  interaction on every surface: no duplicate approval card beside it, and
+  the phone decides it by identity rather than by a token.
+- **What actually happened, stated honestly.** Outcomes carry an evidence
+  level — verified (read back from real state), acknowledged, dispatched,
+  unavailable, or failed — and the sentence you read is derived from it. A
+  promise is only marked kept when the work really succeeded, a failure
+  leaves it open, and dismissing it never pretends it was done.
+- The Ideas screen lists the promises Ghost is holding, with the words you
+  said, and lets you close one.
+
 ## [0.24.52] - 2026-09-26
 
 - **Ghost notices things.** Ghost now watches the state it already

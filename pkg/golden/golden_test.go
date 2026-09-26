@@ -215,4 +215,3 @@ func TestHistory(t *testing.T) {
 		t.Fatal("compare must render")
 	}
 }
-

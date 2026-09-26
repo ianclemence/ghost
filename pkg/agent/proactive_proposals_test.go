@@ -10,6 +10,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/cards"
 	"github.com/ianclemence/ghost/pkg/cevents"
+	"github.com/ianclemence/ghost/pkg/commitments"
 	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/proactive"
@@ -62,15 +63,15 @@ func newProactiveLoopWith(t *testing.T, ws string, provider providers.LLMProvide
 func overdueReminder(t *testing.T, svc *scheduled.Service, title string, due time.Time) *scheduled.ScheduledItem {
 	t.Helper()
 	item := &scheduled.ScheduledItem{
-		Type:      scheduled.TypeReminder,
-		Title:     title,
-		State:     scheduled.StateScheduled,
-		Schedule:  scheduled.Schedule{Kind: scheduled.ScheduleAt, At: &due},
-		Timezone:  "UTC",
-		Action:    scheduled.Action{Kind: scheduled.ActionAgentTurn, Content: title, Deliver: true},
-		Source:    "user",
-		CreatedBy: "test",
-		NextRunAt: &due,
+		Type:       scheduled.TypeReminder,
+		Title:      title,
+		State:      scheduled.StateScheduled,
+		Schedule:   scheduled.Schedule{Kind: scheduled.ScheduleAt, At: &due},
+		Timezone:   "UTC",
+		Action:     scheduled.Action{Kind: scheduled.ActionAgentTurn, Content: title, Deliver: true},
+		Source:     "user",
+		CreatedBy:  "test",
+		NextRunAt:  &due,
 		MaxRetries: 3,
 	}
 	if err := svc.CreateItem(item); err != nil {
@@ -124,40 +125,36 @@ func TestProactiveProposalLifecycleReminder(t *testing.T) {
 	if idea.Plan == nil || idea.Plan.Op != opRemindNow {
 		t.Fatalf("proposal must carry the remind_now plan, got %+v", idea.Plan)
 	}
-	if idea.PermissionRequestID == "" {
-		t.Fatal("proposal must bind a broker request")
-	}
 	if len(idea.Sources) != 1 || idea.Sources[0].Ref != item.ID {
 		t.Fatalf("proposal must cite the reminder row, got %+v", idea.Sources)
 	}
-
-	// The ask exists in the broker as a real pending request.
+	// Authorization is minted at approval, not at surfacing, so a proposal
+	// that sits unread cannot accumulate a lapsed token.
 	broker := al.governance.Broker
-	req, ok := broker.PendingForRequest(idea.PermissionRequestID)
-	if !ok {
-		// PendingForRequest keys on the turn id; fall back to the row id.
-		list := broker.Requests(permissions.StatusPending, 10)
-		if len(list) == 0 {
-			t.Fatal("no pending broker request for the proposal")
-		}
-		req = list[0]
+	if idea.PermissionRequestID != "" {
+		t.Fatalf("surfacing must not mint an authorization, got %q", idea.PermissionRequestID)
 	}
-	if req.Risk != permissions.RiskLow {
-		t.Fatalf("reminder reschedule risk = %s, want low_risk", req.Risk)
+	if pending := broker.Requests(permissions.StatusPending, 10); len(pending) != 0 {
+		t.Fatalf("surfacing created %d broker requests; want none", len(pending))
 	}
 
-	// The owner-facing card carries the approve/deny actions bound to it.
+	// The owner-facing card carries the approve/deny actions addressed to the
+	// proposal itself (no perishable request id).
 	found := false
 	for _, c := range cards.DefaultStore.List("mobile") {
-		if c.RequestID == idea.PermissionRequestID {
-			found = true
-			if len(c.Actions) != 2 {
-				t.Fatalf("proposal card must carry approve+deny, got %+v", c.Actions)
-			}
+		if c.Data == nil || c.Data["idea_id"] != idea.ID {
+			continue
+		}
+		found = true
+		if c.RequestID != "" {
+			t.Fatalf("proposal card must not carry an authorization token, got %q", c.RequestID)
+		}
+		if len(c.Actions) != 2 {
+			t.Fatalf("proposal card must carry approve+deny, got %+v", c.Actions)
 		}
 	}
 	if !found {
-		t.Fatal("no delivered card bound to the proposal request")
+		t.Fatal("no delivered card addressed to the proposal")
 	}
 
 	// APPROVE → ACT → VERIFY → REMEMBER.
@@ -227,9 +224,9 @@ func TestProactiveProposalDismissedDoesNotExecute(t *testing.T) {
 	if got.NextRunAt == nil || !got.NextRunAt.Equal(*item.NextRunAt) {
 		t.Fatalf("dismiss must not reschedule the reminder, got %v", got.NextRunAt)
 	}
-	// The bound request is cancelled, so a stale card cannot execute it.
-	if req, ok := al.governance.Broker.PendingForRequest(idea.PermissionRequestID); ok {
-		t.Fatalf("dismissed proposal must not leave a resolvable request: %+v", req)
+	// Nothing was minted and nothing was left resolvable.
+	if pending := al.governance.Broker.Requests(permissions.StatusPending, 10); len(pending) != 0 {
+		t.Fatalf("a dismissed proposal must leave no live authorization: %+v", pending)
 	}
 	// Repeated evaluation stays quiet inside the dismissal cooldown.
 	if n := al.EvaluateProposals(now.Add(time.Minute)); n != 0 {
@@ -483,7 +480,6 @@ func TestProactiveProposalSurvivesRestart(t *testing.T) {
 	_ = al2
 }
 
-
 // The routine signal path: a routine whose runs keep failing becomes a
 // proposal with a real retry action, and pausing it is verified by read-back.
 func TestProactiveProposalRoutineFailure(t *testing.T) {
@@ -588,5 +584,404 @@ func TestProactiveRoutineProposalSupersededOnRecovery(t *testing.T) {
 	}
 	if !dead {
 		t.Fatalf("recovered routine must void its proposal, got %+v", findIdea(t, al.workspace, ideas.ObsRoutineFailed))
+	}
+}
+
+// Approval mints the authorization and records the broker's decision in the
+// same instant. This is what makes a proposal's lifetime independent of an
+// authorization token's lifetime: there is never a token sitting around
+// waiting to expire.
+func TestProactiveApprovalRecordsTheBrokerDecision(t *testing.T) {
+	al, svc, stream := newProactiveLoop(t)
+	now := time.Now().UTC()
+	overdueReminder(t, svc, "renew the car insurance", now.Add(-2*time.Hour))
+
+	if n := al.EvaluateProposals(now); n != 1 {
+		t.Fatalf("expected 1 proposal, got %d", n)
+	}
+	before := stream.Recent(200, cevents.Filter{})
+	countEvents := func(list []*cevents.Event, typ cevents.Type) int {
+		n := 0
+		for _, e := range list {
+			if e.Type == typ {
+				n++
+			}
+		}
+		return n
+	}
+	if countEvents(before, cevents.PermissionRequested) != 0 {
+		t.Fatal("merely surfacing a proposal must not ask the broker")
+	}
+
+	idea := findIdea(t, al.workspace, ideas.ObsReminderOverdue)
+	record, _, err := al.DecideIdea(context.Background(), idea.ID, "approve", 0)
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	after := stream.Recent(200, cevents.Filter{})
+	if countEvents(after, cevents.PermissionRequested) != 1 {
+		t.Fatalf("approval must record exactly one broker ask, got %d", countEvents(after, cevents.PermissionRequested))
+	}
+	if countEvents(after, cevents.PermissionApproved) != 1 {
+		t.Fatalf("approval must record exactly one broker approval, got %d", countEvents(after, cevents.PermissionApproved))
+	}
+	if record.PermissionRequestID == "" {
+		t.Fatal("the executed approval must be recorded on the proposal")
+	}
+	// Nothing is left pending: the authorization was consumed by the run.
+	if pending := al.governance.Broker.Requests(permissions.StatusPending, 10); len(pending) != 0 {
+		t.Fatalf("a completed approval must not leave a pending request: %+v", pending)
+	}
+}
+
+// The owner's words become durable state, with provenance, from a real turn.
+func TestCommitmentExtractionFromTurn(t *testing.T) {
+	al, _, _ := newProactiveLoop(t)
+	runTurn(t, al, "I need to send Alex those photos Friday", "main")
+
+	store, err := al.commitmentStoreFor()
+	if err != nil {
+		t.Fatalf("open commitments: %v", err)
+	}
+	list, err := store.List()
+	if err != nil || len(list) != 1 {
+		t.Fatalf("expected one durable commitment, got %d (%v)", len(list), err)
+	}
+	c := list[0]
+	if c.Kind != commitments.KindSend || c.Subject != "Alex" {
+		t.Fatalf("commitment = %+v, want a send to Alex", c)
+	}
+	if c.DueAt == nil {
+		t.Fatal("the named day must resolve to a due time")
+	}
+	if c.Provenance.Quote == "" || c.Provenance.Session != "main" {
+		t.Fatalf("commitment must carry provenance, got %+v", c.Provenance)
+	}
+	// A future promise is not yet worth interrupting anyone about.
+	if n := al.EvaluateProposals(time.Now().UTC()); n != 0 {
+		t.Fatalf("a future promise must not surface early, got %d", n)
+	}
+	// The lifecycle is in the canonical stream, and the commitment itself is
+	// never silently copied into preference memory.
+	found := false
+	for _, e := range al.observabilityEvents() {
+		if e.Type == cevents.CommitmentCreated {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("recording a commitment must be visible in the canonical stream")
+	}
+	if al.pcStore != nil {
+		for _, entry := range al.pcStore.Current() {
+			if strings.Contains(strings.ToLower(entryValueText(entry)), "photos") {
+				t.Fatalf("a promise is not a fact about the owner: %+v", entry)
+			}
+		}
+	}
+}
+
+// A promise whose day has arrived becomes a bounded proposal, then a real
+// action, then a settled obligation.
+func TestCommitmentBecomesAProposalAndSettles(t *testing.T) {
+	al, _, stream := newProactiveLoop(t)
+	now := time.Now().UTC()
+
+	store, err := al.commitmentStoreFor()
+	if err != nil {
+		t.Fatalf("open commitments: %v", err)
+	}
+	due := now.Add(-2 * time.Hour)
+	c, err := store.Create(commitments.Commitment{
+		Text: "send Alex those photos", Subject: "Alex", Kind: commitments.KindSend,
+		DueAt: &due, DueSource: "Friday", Confidence: 0.9, Origin: "deterministic",
+		Provenance: commitments.Provenance{
+			Session: "main", MessageID: "m1",
+			Quote: "I need to send Alex those photos Friday", At: now,
+		},
+		DedupeKey: commitments.DueKey("send Alex those photos", "Alex", &due),
+	})
+	if err != nil {
+		t.Fatalf("create commitment: %v", err)
+	}
+
+	if n := al.EvaluateProposals(now); n != 1 {
+		t.Fatalf("expected 1 proposal once the promise came due, got %d", n)
+	}
+	idea := findIdea(t, al.workspace, ideas.ObsCommitmentDue)
+	if idea.Plan == nil || idea.Plan.Args["id"] != c.ID {
+		t.Fatalf("proposal must be planned against the commitment, got %+v", idea.Plan)
+	}
+
+	// Approve: the delegated turn runs (mock provider answers), the result is
+	// recorded, and the obligation is settled from that real outcome.
+	record, result, err := al.DecideIdea(context.Background(), idea.ID, "approve", 0)
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if record.Status != ideas.StatusCompleted || record.EvidenceLevel == "" {
+		t.Fatalf("proposal not completed with an evidence level: %+v", record)
+	}
+	settled, err := store.Get(c.ID)
+	if err != nil {
+		t.Fatalf("reload commitment: %v", err)
+	}
+	if settled.Status != commitments.StatusCompleted {
+		t.Fatalf("a successful action must settle the promise, got %s (%s)", settled.Status, settled.OutcomeNote)
+	}
+	if settled.Attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", settled.Attempts)
+	}
+	if result == "" {
+		t.Fatal("the owner must be told what happened")
+	}
+	for _, want := range []cevents.Type{cevents.CommitmentCompleted, cevents.ProactiveCompleted} {
+		found := false
+		for _, e := range stream.Recent(200, cevents.Filter{}) {
+			if e.Type == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("canonical stream missing %s", want)
+		}
+	}
+	_ = stream
+}
+
+// Speculation never becomes durable state — the negative control for
+// commitment extraction at the runtime boundary.
+func TestSpeculationNeverBecomesACommitment(t *testing.T) {
+	al, _, _ := newProactiveLoop(t)
+	for _, msg := range []string{
+		"I might send Alex those photos Friday",
+		"Maybe I should email the landlord",
+		"Should I call the bank tomorrow?",
+		"Remind me to send Alex those photos Friday",
+	} {
+		runTurn(t, al, msg, "main")
+	}
+	store, err := al.commitmentStoreFor()
+	if err != nil {
+		t.Fatalf("open commitments: %v", err)
+	}
+	list, _ := store.List()
+	if len(list) != 0 {
+		t.Fatalf("speculation, questions and reminder requests must not create commitments: %+v", list)
+	}
+}
+
+// Without a channel that has ever carried a message, Ghost does not offer to
+// send something it cannot send: the offer degrades to a reminder, which it
+// really can create.
+func TestCommitmentDegradesWhenMessagingIsUnavailable(t *testing.T) {
+	al, _, _ := newProactiveLoop(t)
+	// Nothing has ever been delivered on any channel.
+	al.state.SetLastActiveSession("", "")
+
+	store, err := al.commitmentStoreFor()
+	if err != nil {
+		t.Fatalf("open commitments: %v", err)
+	}
+	now := time.Now().UTC()
+	due := now.Add(-time.Hour)
+	c, err := store.Create(commitments.Commitment{
+		Text: "email the landlord", Kind: commitments.KindEmail,
+		DueAt: &due, Confidence: 0.9, Origin: "deterministic",
+		Provenance: commitments.Provenance{Session: "main", MessageID: "m1", Quote: "I need to email the landlord tomorrow", At: now},
+	})
+	if err != nil {
+		t.Fatalf("create commitment: %v", err)
+	}
+	plan, ok := al.commitmentPlan(c)
+	if !ok || plan == nil {
+		t.Fatal("a reminder is always a real option")
+	}
+	if plan.Op != opCommitmentRemind {
+		t.Fatalf("without a channel the offer must degrade to a reminder, got %s", plan.Op)
+	}
+	// With a channel that has carried a message, the full offer is available.
+	if err := al.state.SetLastActiveSession("mobile", "owner-1"); err != nil {
+		t.Fatalf("set active session: %v", err)
+	}
+	plan2, _ := al.commitmentPlan(c)
+	if plan2 == nil || plan2.Op != opCommitmentTurn {
+		t.Fatalf("with a channel the offer should be to act, got %+v", plan2)
+	}
+}
+
+// The awareness filter is the cheap gate in front of every event: only a
+// state change that can alter what Ghost should notice gets through.
+func TestAwarenessEventFilter(t *testing.T) {
+	relevant := []cevents.Type{
+		cevents.CommitmentCreated, cevents.CommitmentCompleted,
+		cevents.RoutineFailed, cevents.RoutineWaiting, cevents.TaskFailed,
+		cevents.PermissionApproved, cevents.OperationFailed,
+	}
+	for _, typ := range relevant {
+		if !awarenessEvent(typ) {
+			t.Errorf("%s must trigger awareness", typ)
+		}
+	}
+	ignored := []cevents.Type{
+		cevents.AgentProgress, cevents.ToolStarted, cevents.MemoryRetrieved,
+		cevents.UsageRecorded, cevents.EffortSelected, cevents.MessageReceived,
+	}
+	for _, typ := range ignored {
+		if awarenessEvent(typ) {
+			t.Errorf("%s must not trigger awareness", typ)
+		}
+	}
+}
+
+// An event-driven runtime evaluates without waiting for the heartbeat: a
+// relevant state change produces a proposal promptly.
+func TestProactiveWatcherEvaluatesOnRelevantEvent(t *testing.T) {
+	al, svc, _ := newProactiveLoop(t)
+	now := time.Now().UTC()
+	// The reminder exists before the watcher starts; only the event drives
+	// evaluation from here.
+	overdueReminder(t, svc, "call the plumber", now.Add(-2*time.Hour))
+
+	al.StartProactiveWatcher()
+	al.governance.Events.Publish(&cevents.Event{
+		Type: cevents.RoutineFailed, SessionID: "main",
+		GhostID: "ghost-test", AgentID: "agent-test",
+		Payload: map[string]interface{}{"routine": "r1"},
+	})
+
+	deadline := time.Now().Add(6 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, i := range liveIdeas(t, al.workspace) {
+			if i.Kind == ideas.ObsReminderOverdue {
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("a relevant event did not trigger an evaluation")
+}
+
+// An irrelevant event must not cause work: the filter runs before any query.
+func TestProactiveWatcherIgnoresIrrelevantEvent(t *testing.T) {
+	al, svc, _ := newProactiveLoop(t)
+	now := time.Now().UTC()
+	overdueReminder(t, svc, "renew the licence", now.Add(-2*time.Hour))
+
+	al.StartProactiveWatcher()
+	for i := 0; i < 20; i++ {
+		al.governance.Events.Publish(&cevents.Event{
+			Type: cevents.AgentProgress, SessionID: "main",
+			GhostID: "ghost-test", AgentID: "agent-test",
+			Payload: map[string]interface{}{"i": i},
+		})
+	}
+	// Ignore the very first evaluation window; then the record must be bare.
+	time.Sleep(1200 * time.Millisecond)
+	for _, i := range liveIdeas(t, al.workspace) {
+		if i.Kind == ideas.ObsReminderOverdue {
+			t.Fatal("an irrelevant event must not trigger an evaluation")
+		}
+	}
+}
+
+// Requesting an evaluation when no watcher is running must never block.
+func TestRequestEvaluationWithoutWatcherIsSafe(t *testing.T) {
+	al, _, _ := newProactiveLoop(t)
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 1000; i++ {
+			al.RequestProactiveEvaluation()
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RequestProactiveEvaluation blocked")
+	}
+}
+
+// Shared helpers for the proactive fixtures used by the JEV dump and tests.
+func scheduledStore(t *testing.T, al *AgentLoop) *scheduled.Store {
+	t.Helper()
+	store := scheduled.NewStore(al.DB())
+	if err := store.InitSchema(); err != nil {
+		t.Fatalf("scheduled schema: %v", err)
+	}
+	return store
+}
+
+func routineService(t *testing.T, al *AgentLoop, store *scheduled.Store) *routines.Service {
+	t.Helper()
+	svc, err := routines.New(al.DB(), store)
+	if err != nil {
+		t.Fatalf("routines service: %v", err)
+	}
+	return svc
+}
+
+func mustRoutine(t *testing.T, svc *routines.Service, ghostID string) *routines.Routine {
+	t.Helper()
+	r, err := svc.Create(ghostID, "owner", "Nightly report", "send the nightly report",
+		"UTC", scheduled.Schedule{Kind: scheduled.ScheduleEvery, Every: 24 * time.Hour}, nil)
+	if err != nil {
+		t.Fatalf("create routine: %v", err)
+	}
+	return r
+}
+
+func failRoutineRun(t *testing.T, svc *routines.Service, id string) {
+	t.Helper()
+	if _, err := svc.Run(context.Background(), id, "run-1", func(ctx context.Context, rr *routines.Routine) routines.RunOutcome {
+		return routines.RunOutcome{Message: "smtp timeout", Completion: product.CompletionFailed}
+	}); err != nil {
+		t.Fatalf("routine run: %v", err)
+	}
+}
+
+func scheduledDelete(t *testing.T, al *AgentLoop, id string) error {
+	t.Helper()
+	return scheduled.NewStore(al.DB()).Delete(id)
+}
+
+// A verified outcome must settle the obligation it was about. Regression:
+// the reminder path returns "verified" (it reads the created row back), and a
+// settlement switch that only knew "succeeded" left the promise open forever.
+func TestVerifiedOutcomeSettlesTheCommitment(t *testing.T) {
+	al, _, _ := newProactiveLoop(t)
+	al.state.SetLastActiveSession("", "")
+	store, err := al.commitmentStoreFor()
+	if err != nil {
+		t.Fatalf("open commitments: %v", err)
+	}
+	now := time.Now().UTC()
+	due := now.Add(-time.Hour)
+	c, err := store.Create(commitments.Commitment{
+		Text: "email the landlord", Kind: commitments.KindEmail, DueAt: &due,
+		Confidence: 0.9, Origin: "deterministic",
+		Provenance: commitments.Provenance{Session: "main", MessageID: "m1", Quote: "I need to email the landlord tomorrow", At: now},
+	})
+	if err != nil {
+		t.Fatalf("create commitment: %v", err)
+	}
+	al.EvaluateProposals(now)
+	idea := findIdea(t, al.workspace, ideas.ObsCommitmentDue)
+	if idea.Plan.Op != opCommitmentRemind {
+		t.Fatalf("expected the reminder plan without a channel, got %s", idea.Plan.Op)
+	}
+	record, _, err := al.DecideIdea(context.Background(), idea.ID, "approve", 0)
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if record.EvidenceLevel != "verified" {
+		t.Fatalf("evidence level = %q, want verified", record.EvidenceLevel)
+	}
+	settled, err := store.Get(c.ID)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if settled.Status != commitments.StatusCompleted {
+		t.Fatalf("a verified outcome must settle the promise, got %s/%s", settled.Status, settled.Outcome)
 	}
 }

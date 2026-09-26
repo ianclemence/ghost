@@ -154,7 +154,7 @@ func Run(opts Options) Report {
 		checkFalseSuccess, checkBackupSecrets,
 		checkBrowserSubmitEvidence, checkScreencastSingleUse,
 		checkGoalFanout, checkSubagentCaps,
-		checkProactiveLifecycle,
+		checkProactiveLifecycle, checkCommitmentLedger,
 	}
 	var out []Check
 	for _, c := range checks {

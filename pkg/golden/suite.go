@@ -486,7 +486,7 @@ func Suite() []Conversation {
 				". Read the page, fill the name field with Ghost, submit the form with the Continue control, then look at the page again and tell me exactly what it shows now.")),
 			Expect: Expect{
 				ExpectedToolCalls:      []string{"browser_navigate", "browser_snapshot", "browser_click"},
-				ExpectedToolCallRepeat: map[string]int{"browser_snapshot": 2}, // observe before and after mutation
+				ExpectedToolCallRepeat: map[string]int{"browser_snapshot": 2},        // observe before and after mutation
 				ExpectedToolCallsAny:   [][]string{{"browser_type", "browser_fill"}}, // text entry either way
 				NoFalseSuccess:         true,
 			},
@@ -572,7 +572,45 @@ func Suite() []Conversation {
 				// grounded fact (a reminder that never reached the owner),
 				// turned it into a candidate, and surfaced it with a bound
 				// permission request. No model claim is involved.
-				RequiredEvents: []string{"proactive.candidate", "proactive.presented"},
+				RequiredEvents:     []string{"proactive.candidate", "proactive.presented"},
+				ProactiveLiveCount: 1,
+				ProactiveCountSet:  true,
+			},
+		},
+		{
+			ID: "pro-02", Category: CatRoutines, Title: "Proactive: a stated promise becomes durable state, not a lost sentence",
+			Severity: "high",
+			People:   onePerson("alex", "main", turn("I need to send Alex those photos Friday")),
+			Expect: Expect{
+				// The obligation is recorded with provenance, and it is NOT yet
+				// worth interrupting anyone about: its day has not arrived.
+				Commitments:      []CommitmentExpect{{Contains: "photos", Status: "open"}},
+				NoProactiveKinds: []string{"commitment_due"},
+				RequiredEvents:   []string{"commitment.created"},
+			},
+		},
+		{
+			ID: "pro-03", Category: CatRoutines, Title: "Proactive: speculation never becomes a durable promise",
+			Severity: "high",
+			People:   onePerson("alex", "main", turn("I might send Alex those photos Friday, not sure yet")),
+			Expect: Expect{
+				// Negative control: a maybe is not a promise.
+				NoCommitments:    true,
+				NoProactiveKinds: []string{"commitment_due", "commitment_stalled"},
+			},
+		},
+		{
+			ID: "pro-04", Category: CatRoutines, Title: "Proactive: a failing routine becomes a grounded recovery offer",
+			Severity: "high",
+			People:   onePerson("alex", "main", turn("what's on today?")),
+			Fixture:  FixtureProactiveRoutineFailure,
+			Expect: Expect{
+				// The offer cites the real failing run, and repeated
+				// evaluation converges on exactly one live proposal.
+				ProactiveKinds:     []string{"routine_failed"},
+				ProactiveLiveCount: 1,
+				ProactiveCountSet:  true,
+				RequiredEvents:     []string{"proactive.candidate", "proactive.presented"},
 			},
 		},
 		{

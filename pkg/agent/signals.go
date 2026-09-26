@@ -178,6 +178,9 @@ func (al *AgentLoop) ProactiveStatus() proactive.Status {
 	waiting := heldCount(al.workspace, now)
 	st := proactive.BuildStatus(pol, now, loc, used, waiting)
 	st.OpenProposals = al.OpenProposalCount()
+	if open, blocked := al.CommitmentCounts(); open+blocked > 0 {
+		st.OpenCommitments = open + blocked
+	}
 	return st
 }
 

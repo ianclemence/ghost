@@ -25,9 +25,10 @@ const (
 	SourceRoutine SourceKind = "routine"
 	SourceModel   SourceKind = "model"
 	// Proactive observations cite the subsystem rows they were derived from.
-	SourceSchedule SourceKind = "schedule"
-	SourceGoal     SourceKind = "goal"
-	SourceTask     SourceKind = "task"
+	SourceSchedule   SourceKind = "schedule"
+	SourceGoal       SourceKind = "goal"
+	SourceTask       SourceKind = "task"
+	SourceCommitment SourceKind = "commitment"
 )
 
 // Source is one cited row behind an idea.
@@ -70,15 +71,15 @@ func (s Status) Undecided() bool {
 // block carries the proactive lifecycle: a structured, runtime-verified
 // proposal rather than a bare sentence of advice.
 type Idea struct {
-	ID         string    `json:"id"`
-	Title      string    `json:"title"`
-	Body       string    `json:"body"`
-	Sources    []Source  `json:"sources"`
-	Status     Status    `json:"status"`
-	Action     string    `json:"action,omitempty"` // safe reversible op the CLI may run on accept, e.g. "pause:routine-id"
-	CreatedAt  time.Time `json:"created_at"`
+	ID         string     `json:"id"`
+	Title      string     `json:"title"`
+	Body       string     `json:"body"`
+	Sources    []Source   `json:"sources"`
+	Status     Status     `json:"status"`
+	Action     string     `json:"action,omitempty"` // safe reversible op the CLI may run on accept, e.g. "pause:routine-id"
+	CreatedAt  time.Time  `json:"created_at"`
 	DecidedAt  *time.Time `json:"decided_at,omitempty"`
-	Unverified bool      `json:"unverified,omitempty"` // Phase B: citations failed verification
+	Unverified bool       `json:"unverified,omitempty"` // Phase B: citations failed verification
 
 	// --- proactive proposal lifecycle ---
 
@@ -117,6 +118,12 @@ type Idea struct {
 	// Outcome/Result are written only from runtime evidence after execution.
 	Outcome string `json:"outcome,omitempty"`
 	Result  string `json:"result,omitempty"`
+	// EvidenceLevel states honestly how strong the proof is: verified (read
+	// back from real state), acknowledged (the capability/provider reported
+	// success), dispatched (handed off, final state unconfirmed), failed, or
+	// unavailable. The owner-facing text is derived from this, never from a
+	// model's claim.
+	EvidenceLevel string `json:"evidence_level,omitempty"`
 }
 
 // Store is a workspace-scoped JSONL idea store.
@@ -223,9 +230,9 @@ func Generate(sig Signals, existing []Idea) []Idea {
 			body += " Reported: " + truncate(latest.Error, 160)
 		}
 		out = append(out, Idea{
-			ID:     newID(),
-			Title:  fmt.Sprintf("Your %q routine keeps failing — pause it?", name),
-			Body:   body + " Accepting pauses it; you can resume anytime with /task.",
+			ID:    newID(),
+			Title: fmt.Sprintf("Your %q routine keeps failing — pause it?", name),
+			Body:  body + " Accepting pauses it; you can resume anytime with /task.",
 			Sources: []Source{{
 				Kind: SourceRoutine, Ref: latest.RunID,
 				Excerpt: fmt.Sprintf("run %s status=%s", shortRef(latest.RunID), latest.Status),
@@ -247,7 +254,7 @@ func Generate(sig Signals, existing []Idea) []Idea {
 		out = append(out, Idea{
 			ID:    newID(),
 			Title: fmt.Sprintf("Want check-ins for %q?", truncate(m.Value, 60)),
-			Body: "Accepting suggests a weekly check-in routine (you confirm the schedule before anything is created — Ghost never automates silently).",
+			Body:  "Accepting suggests a weekly check-in routine (you confirm the schedule before anything is created — Ghost never automates silently).",
 			Sources: []Source{{
 				Kind: SourceMemory, Ref: m.ID,
 				Excerpt: fmt.Sprintf("%s: %s", m.Predicate, truncate(m.Value, 80)),

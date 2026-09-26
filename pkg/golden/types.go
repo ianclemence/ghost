@@ -66,6 +66,10 @@ const (
 	FixtureLight       Fixture = "skill:light" // consequential device fixture
 	FixtureBrowserPage Fixture = "browser:page"
 	FixtureComputerUI  Fixture = "computer:ui" // deterministic desktop/settings executor
+	// FixtureProactiveRoutineFailure seeds a routine whose latest run failed,
+	// so the recovery path (observe → propose → approve → verify) can be
+	// exercised without an external service.
+	FixtureProactiveRoutineFailure Fixture = "proactive:routine-failure"
 	// FixtureProactiveOverdue plants a one-shot reminder that was due in the
 	// past and never fired, then evaluates the proactive pipeline. It proves
 	// NOTICE → PROPOSE end to end without any external service: the
@@ -96,6 +100,12 @@ type Person struct {
 	Context      string // context id for the session; default "personal"
 	SeedMemories []MemorySeed
 	Turns        []Turn
+}
+
+// CommitmentExpect asserts one durable obligation exists.
+type CommitmentExpect struct {
+	Contains string
+	Status   string
 }
 
 // Match is a loose memory-row match (substring on predicate+value).
@@ -139,6 +149,20 @@ type Expect struct {
 	GrantAction     string
 	GrantScope      string
 	ExpectDenied    bool
+	// Commitments: durable obligations that must exist in the run's
+	// workspace when the conversation ends. Contains is a case-insensitive
+	// substring of the obligation text; Status is the lifecycle state.
+	Commitments []CommitmentExpect
+	// NoCommitments asserts nothing was recorded — the negative control for
+	// speculation that must not become durable state.
+	NoCommitments bool
+	// ProactiveKinds: opportunity kinds that must exist in the workspace's
+	// proposal store. ProactiveCount, when set, pins how many proposals are
+	// live (deduplication must converge on one).
+	ProactiveKinds     []string
+	NoProactiveKinds   []string
+	ProactiveLiveCount int
+	ProactiveCountSet  bool
 	// RequiredCanonicalEvents: each type must appear in the run's DB.
 	RequiredEvents []string
 	// ExpectedToolCalls: each tool must appear as a SUCCESSFUL governed

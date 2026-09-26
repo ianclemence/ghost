@@ -1877,6 +1877,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			// selects a provider; the resolver does.
 			gov.Resolver = buildCapabilityResolver(agentLoop.Config())
 			agentLoop.SetGovernance(gov)
+			// Event-driven awareness: from here on, meaningful state changes
+			// ask for an evaluation immediately instead of waiting for the
+			// heartbeat's reconciliation pass.
+			agentLoop.StartProactiveWatcher()
 		}
 	}
 	if channelManager != nil {
@@ -2424,6 +2428,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			"routines": buildRoutineFeed(scheduledService),
 		})
 	}))
+	registerCommitmentRoutes(mux, apiWorkspaceDir, agentLoop, authMiddleware)
 	mux.HandleFunc("/v1/ideas", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if apiWorkspaceDir == "" {
 			jsonError(w, http.StatusInternalServerError, "unavailable", "ideas are unavailable right now")
@@ -3652,20 +3657,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		// Once the owner approves it from any surface, the runtime executes the
 		// exact bound action and reports the verified result. Ordinary in-chat
 		// asks are untouched: their continuation still belongs to the turn.
-		body := map[string]interface{}{"ok": true, "request": resolved}
-		if grant != permissions.GrantDeny && agentLoop != nil {
-			if idea, ok := agentLoop.ProposalForRequest(resolved.ID); ok {
-				if settled, result, execErr := agentLoop.DecideIdea(r.Context(), idea.ID, "approve", 0); execErr != nil {
-					body["idea"] = settled
-					body["result"] = result
-					body["error"] = execErr.Error()
-				} else {
-					body["idea"] = settled
-					body["result"] = result
-				}
-			}
-		}
-		jsonResponse(w, http.StatusOK, body)
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "request": resolved})
 	}))
 
 	mux.HandleFunc("/v1/permissions/grants", authMiddleware(func(w http.ResponseWriter, r *http.Request) {

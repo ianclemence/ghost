@@ -529,10 +529,6 @@ type ResumeOutcome struct {
 	Args       map[string]interface{}
 	Grant      permissions.GrantType
 	Message    string
-	// RequestID is the broker row id this resume consumed. It lets a resume
-	// executed by the chat path settle the proactive proposal record (if any)
-	// that the same request was bound to.
-	RequestID string
 }
 
 // CheckApprovalReply interprets a chat message as an answer to the
@@ -607,7 +603,7 @@ func resumeFrom(r *permissions.Request, grant permissions.GrantType) ResumeOutco
 	if idx := strings.Index(tool, ":"); idx > 0 {
 		tool = tool[:idx]
 	}
-	return ResumeOutcome{Resumed: true, Capability: r.Capability, Tool: tool, Args: args, Grant: grant, RequestID: r.ID}
+	return ResumeOutcome{Resumed: true, Capability: r.Capability, Tool: tool, Args: args, Grant: grant}
 }
 
 // NewGovernance builds the substrate handle and wires broker lifecycle

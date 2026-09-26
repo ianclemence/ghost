@@ -49,7 +49,7 @@ func addMinutes(hm string, delta int) string {
 		t += 24 * 60
 	}
 	t %= 24 * 60
-	return itoa2(t / 60) + ":" + itoa2(t%60)
+	return itoa2(t/60) + ":" + itoa2(t%60)
 }
 
 func sscanf2(s string, h, m *int) {

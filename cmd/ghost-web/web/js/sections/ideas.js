@@ -54,13 +54,16 @@ async function loadIdeas(container) {
 
   let open;
   let resolved;
+  let promises;
   try {
     const results = await Promise.all([
       GhostAPI.proxyGet('/v1/ideas?status=open'),
       GhostAPI.proxyGet('/v1/ideas?status=resolved'),
+      GhostAPI.proxyGet('/v1/commitments').catch(() => ({ commitments: [] })),
     ]);
     open = results[0];
     resolved = results[1];
+    promises = results[2];
   } catch (e) {
     if (!document.body.contains(container)) return;
     listEl.innerHTML = '';
@@ -70,11 +73,56 @@ async function loadIdeas(container) {
   if (!document.body.contains(container)) return;
   renderIdeas(listEl, container,
     Array.isArray(open && open.ideas) ? open.ideas : [],
-    Array.isArray(resolved && resolved.ideas) ? resolved.ideas : []);
+    Array.isArray(resolved && resolved.ideas) ? resolved.ideas : [],
+    Array.isArray(promises && promises.commitments) ? promises.commitments : []);
 }
 
-function renderIdeas(listEl, container, openItems, resolvedItems) {
+function renderPromises(listEl, container, promises) {
+  const live = promises.filter(c => c.status === 'open' || c.status === 'blocked');
+  if (live.length === 0) return;
+  const head = GhostUI.h('div', { className: 'page-head' });
+  head.appendChild(GhostUI.h('h2', { style: 'font-size:var(--t-h3)' }, 'Promises Ghost is holding'));
+  listEl.appendChild(head);
+
+  live.forEach(c => {
+    const card = GhostUI.h('div', { className: 'ghost-card' });
+    const titleRow = GhostUI.h('div', { className: 'ghost-card-title' });
+    titleRow.appendChild(document.createTextNode(c.text));
+    titleRow.appendChild(GhostUI.h('span', {
+      className: 'type-foot', style: 'margin-left:var(--s-2);font-weight:600',
+    }, c.status === 'blocked' ? 'Blocked' : 'Open'));
+    card.appendChild(titleRow);
+
+    const when = c.due_at
+      ? 'Due ' + new Date(c.due_at).toLocaleString()
+      : 'No date on it';
+    card.appendChild(GhostUI.h('div', { className: 'ghost-card-sub' }, when));
+    if (c.provenance && c.provenance.quote) {
+      card.appendChild(GhostUI.h('div', { className: 'ghost-card-meta' },
+        'You said: “' + c.provenance.quote + '”'));
+    }
+    if (c.outcome_note) {
+      card.appendChild(GhostUI.h('div', { className: 'ghost-card-meta' }, 'Last try: ' + c.outcome_note));
+    }
+    const row = GhostUI.h('div', { className: 'btn-row' });
+    row.appendChild(GhostUI.btn('Close it', 'secondary', async () => {
+      try {
+        await GhostAPI.proxyPost('/v1/commitments/' + encodeURIComponent(c.id) + '/cancel', {});
+        GhostUI.toast('Closed. Ghost will stop holding it.', 'ok');
+      } catch (e) {
+        GhostUI.toast('Couldn’t close that — try again.', 'err');
+      }
+      loadIdeas(container);
+    }));
+    card.appendChild(row);
+    listEl.appendChild(card);
+  });
+}
+
+function renderIdeas(listEl, container, openItems, resolvedItems, promises) {
   listEl.innerHTML = '';
+
+  renderPromises(listEl, container, promises || []);
 
   if (openItems.length === 0) {
     listEl.appendChild(GhostUI.emptyState(

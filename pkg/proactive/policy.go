@@ -45,9 +45,9 @@ type Policy struct {
 func defaults() Policy {
 	return Policy{
 		QuietStart: 23 * 60, QuietEnd: 8 * 60,
-		MaxPushesPerDay: 5,
-		CooldownPerTopic: 6 * time.Hour,
-		DedupeWindow:     24 * time.Hour,
+		MaxPushesPerDay:   5,
+		CooldownPerTopic:  6 * time.Hour,
+		DedupeWindow:      24 * time.Hour,
 		MorningBriefing:   "08:00",
 		EveningReflection: "22:00",
 
@@ -66,10 +66,10 @@ var (
 	mornRE    = regexp.MustCompile("(?m)`morning_briefing:\\s*([0-9]{1,2}:[0-9]{2})`")
 	eveRE     = regexp.MustCompile("(?m)`evening_reflection:\\s*([0-9]{1,2}:[0-9]{2})`")
 
-	enabledRE  = regexp.MustCompile("(?m)`enabled:\\s*(true|false)`")
-	catsRE     = regexp.MustCompile("(?m)`categories:\\s*([a-z_,\\s]+)`")
-	channelRE  = regexp.MustCompile("(?m)`preferred_channel:\\s*([a-z_]+)`")
-	propTTLRE  = regexp.MustCompile("(?m)`proposal_ttl_hours:\\s*(\\d+)`")
+	enabledRE = regexp.MustCompile("(?m)`enabled:\\s*(true|false)`")
+	catsRE    = regexp.MustCompile("(?m)`categories:\\s*([a-z_,\\s]+)`")
+	channelRE = regexp.MustCompile("(?m)`preferred_channel:\\s*([a-z_]+)`")
+	propTTLRE = regexp.MustCompile("(?m)`proposal_ttl_hours:\\s*(\\d+)`")
 )
 
 func toMin(h, m string) (int, bool) {

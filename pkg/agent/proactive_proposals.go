@@ -49,6 +49,11 @@ const (
 	opPauseRoutine  = "pause_routine"
 	opGoalTurn      = "goal_turn"
 	opTaskTurn      = "task_turn"
+
+	// Commitment operations. Both are always executable as stated: a
+	// delegated governed turn, or a reminder Ghost really creates.
+	opCommitmentTurn   = "commitment_turn"
+	opCommitmentRemind = "commitment_remind"
 )
 
 // Capability ids for local operations. They exist so the broker can reason
@@ -70,7 +75,7 @@ const proposalSession = "main"
 // observed situation. Every plan names its capability and risk up front: the
 // broker sees exactly what the owner is being asked to allow, and nothing
 // here can be widened later.
-func planForObservation(o ideas.Observation) *ideas.Plan {
+func (al *AgentLoop) planForObservation(o ideas.Observation) *ideas.Plan {
 	switch o.Kind {
 	case ideas.ObsReminderOverdue:
 		return &ideas.Plan{
@@ -114,6 +119,25 @@ func planForObservation(o ideas.Observation) *ideas.Plan {
 			Args: map[string]string{"id": o.Subject}, Risk: ideas.RiskLow,
 			Describe: "take care of it",
 		}
+	case ideas.ObsCommitmentDue, ideas.ObsCommitmentStalled:
+		// The capability-aware planner owns obligation actions: it decides
+		// whether Ghost can honestly offer anything at all.
+		if al == nil || al.workspace == "" {
+			return nil
+		}
+		store, err := al.commitmentStoreFor()
+		if err != nil {
+			return nil
+		}
+		c, err := store.Get(o.Subject)
+		if err != nil {
+			return nil
+		}
+		plan, ok := al.commitmentPlan(c)
+		if !ok {
+			return nil
+		}
+		return plan
 	default:
 		return nil
 	}
@@ -244,7 +268,7 @@ func (al *AgentLoop) EvaluateProposals(now time.Time) int {
 	fresh := ideas.Candidates(allowed, existing, now, ideas.DefaultDedupeWindow())
 	for i := range fresh {
 		if o, ok := byKey[fresh[i].DedupeKey]; ok {
-			fresh[i].Plan = planForObservation(o)
+			fresh[i].Plan = al.planForObservation(o)
 		}
 		exp := now.Add(ttl).UTC()
 		fresh[i].ExpiresAt = &exp
@@ -313,15 +337,26 @@ func (al *AgentLoop) expireProposal(store *ideas.Store, idea ideas.Idea, now tim
 	al.publishProactive(cevents.ProactiveExpired, updated, "window closed")
 }
 
-// surfaceProposal routes one candidate through the broker and the gate, then
+// surfaceProposal decides whether a candidate may reach the owner, then
 // delivers it or acts on it. It returns true when the owner was actually
 // reached (or an autonomous action completed and was reported).
+//
+// Two things happen here, and neither creates an authorization:
+//
+//   - A dry-run policy check. A proposal Ghost's own policy forbids is never
+//     shown as an offer it cannot keep. Nothing is written and no request is
+//     created, so a suggestion that is never answered leaves no residue and
+//     cannot go stale.
+//   - The gate (priority, confidence, budget, cooldown, quiet hours).
+//
+// Authorization is deliberately NOT created here. An approval request minted
+// now would expire long before an owner gets to it, which is how a product
+// ends up saying "want me to do this?" and then "sorry, that silently
+// expired". Authorization belongs to the moment of approval.
 func (al *AgentLoop) surfaceProposal(store *ideas.Store, idea ideas.Idea, pol proactive.Policy, now time.Time) bool {
-	// REASON: the broker decides, before the owner is ever bothered. A policy
-	// denial is not surfaced as an offer Ghost cannot keep.
-	decision, _, reqID := al.authorizeProposal(idea)
-	switch decision {
-	case proposalDenied:
+	verdict := al.proposalVerdict(idea)
+	switch verdict {
+	case permissions.DecisionDeny:
 		failed, err := store.Fail(idea.ID, "I'm not allowed to do that, so I didn't suggest it.", now)
 		if err == nil {
 			al.publishProactive(cevents.ProactiveFailed, failed, "denied by policy")
@@ -329,23 +364,13 @@ func (al *AgentLoop) surfaceProposal(store *ideas.Store, idea ideas.Idea, pol pr
 		logger.InfoCF("agent", "proactive proposal denied by policy",
 			map[string]interface{}{"idea": idea.ID, "capability": planCapability(idea)})
 		return false
-	case proposalAutoAllowed:
-		// Only reachable when the permission policy explicitly allows this
-		// category without asking (e.g. auto/full mode). Act, verify, report.
+	case permissions.DecisionAllow:
+		// The permission policy explicitly permits this category without
+		// asking (auto/full mode, or an existing standing grant). Act, verify,
+		// report — and still record what happened.
 		channel, chatID := al.proposalTarget(pol)
 		_, _, err := al.runProposal(store, idea, channel, chatID, now)
 		return err == nil
-	}
-
-	// ASK: bind the exact request to this proposal and surface it.
-	idea.PermissionRequestID = reqID
-	idea.Risk = string(planRisk(idea))
-	if updated, err := store.Transition(idea.ID, []ideas.Status{ideas.StatusPending}, func(x *ideas.Idea) error {
-		x.PermissionRequestID = reqID
-		x.Risk = string(planRisk(idea))
-		return nil
-	}); err == nil {
-		idea = updated
 	}
 
 	label := "Approve"
@@ -356,40 +381,82 @@ func (al *AgentLoop) surfaceProposal(store *ideas.Store, idea ideas.Idea, pol pr
 	return true
 }
 
-type proposalDecision int
-
-const (
-	proposalAsk proposalDecision = iota
-	proposalDenied
-	proposalAutoAllowed
-)
-
-// authorizeProposal asks the Permission Broker what may happen. This is the
-// only source of authority: the model does not appear in this call at all.
-func (al *AgentLoop) authorizeProposal(idea ideas.Idea) (proposalDecision, string, string) {
+// proposalVerdict is a dry-run policy read: allow, ask, or deny. It writes
+// nothing and creates no request. Unknown inputs fail closed (ask).
+func (al *AgentLoop) proposalVerdict(idea ideas.Idea) permissions.Decision {
 	if idea.Plan == nil {
-		// Informational: nothing executes, so there is nothing to authorize.
-		return proposalAutoAllowed, "", ""
+		return permissions.DecisionAllow // informational, nothing executes
 	}
 	if al.governance == nil || al.governance.Broker == nil {
-		// Unwired/disabled governance fails closed for anything actionable.
-		return proposalDenied, "", ""
+		return permissions.DecisionDeny // unwired governance fails closed
+	}
+	scope := scopeFor(proposalSession, argsToMap(idea.Plan.Args))
+	return permissions.VerdictDecision(al.governance.Broker.Evaluate(
+		idea.Plan.Capability, planAction(idea), scope, riskToBroker(idea.Plan.Risk)))
+}
+
+// planAction is the capability action a plan resolves to. It matches exactly
+// what the broker will be asked at approval time, so a dry run and the real
+// decision can never disagree about identity.
+func planAction(idea ideas.Idea) string {
+	if idea.Plan == nil {
+		return ""
+	}
+	if strings.TrimSpace(idea.Plan.Tool) != "" {
+		return toolAction(idea.Plan.Tool, argsToMap(idea.Plan.Args))
+	}
+	return idea.Plan.Op
+}
+
+// authorizeAndConsent converts the owner's approval into an authorized
+// execution.
+//
+// The owner consented on an authenticated surface. The broker still decides —
+// it may deny, or allow outright under a standing grant — and when it asks,
+// this records that ask and the owner's answer exactly once, under the same
+// identity a future identical action is evaluated under. That is the same
+// transaction a chat "yes" performs; the consent simply arrived through the
+// proposal instead of a phrase.
+func (al *AgentLoop) authorizeAndConsent(idea ideas.Idea, store *ideas.Store) (bool, string, error) {
+	if idea.Plan == nil {
+		return true, "", nil
+	}
+	if al.governance == nil || al.governance.Broker == nil {
+		return false, "", fmt.Errorf("permission governance is unavailable")
 	}
 	tool := idea.Plan.Tool
 	if tool == "" {
 		tool = idea.Plan.Op
 	}
+	args := argsToMap(idea.Plan.Args)
 	res := al.governance.AuthorizeStandalone(
-		idea.ID, proposalSession, idea.Plan.Capability, tool,
-		argsToMap(idea.Plan.Args), riskToBroker(idea.Plan.Risk),
-	)
+		idea.ID, proposalSession, idea.Plan.Capability, tool, args, riskToBroker(idea.Plan.Risk))
 	if res.Allowed {
-		return proposalAutoAllowed, "", ""
+		return true, "", nil
 	}
-	if res.PendingID != "" {
-		return proposalAsk, res.AskMessage, res.PendingID
+	if res.PendingID == "" {
+		msg := strings.TrimSpace(res.AskMessage)
+		if msg == "" {
+			msg = "I couldn't prepare that action."
+		}
+		return false, "", fmt.Errorf("%s", msg)
 	}
-	return proposalDenied, res.AskMessage, ""
+	// The ask exists so the decision is durable, scoped and auditable; the
+	// owner has already consented, so it is resolved now — exactly once, via
+	// the same code path as every other approval.
+	if _, err := al.governance.Broker.ResolveAuto(res.PendingID, permissions.GrantOnce); err != nil {
+		return false, "", err
+	}
+	if _, ok := al.governance.Broker.ConsumeApproved(idea.ID); !ok {
+		return false, "", fmt.Errorf("that approval could not be recorded")
+	}
+	if _, err := store.Transition(idea.ID, []ideas.Status{idea.Status}, func(x *ideas.Idea) error {
+		x.PermissionRequestID = res.PendingID
+		return nil
+	}); err == nil {
+		idea.PermissionRequestID = res.PendingID
+	}
+	return true, res.PendingID, nil
 }
 
 func planCapability(idea ideas.Idea) string {
@@ -419,11 +486,15 @@ func (al *AgentLoop) notifyProposal(idea ideas.Idea, label string, pol proactive
 			return
 		}
 	}
+	// The card's buttons address the proposal by identity. No authorization
+	// token rides on the card: it would expire while the proposal stayed
+	// valid, and the owner would be asked to approve something that had
+	// already lapsed. Approving mints and records the authorization then.
 	actions := []cards.Action{}
-	if idea.PermissionRequestID != "" {
+	if idea.Plan != nil {
 		actions = append(actions,
-			cards.Action{ID: "approve", Label: label, Style: "primary", RequestID: idea.PermissionRequestID},
-			cards.Action{ID: "deny", Label: "No thanks", Style: "destructive", RequestID: idea.PermissionRequestID},
+			cards.Action{ID: "approve", Label: label, Style: "primary"},
+			cards.Action{ID: "deny", Label: "No thanks", Style: "destructive"},
 		)
 	}
 	nt := Notice{
@@ -434,7 +505,6 @@ func (al *AgentLoop) notifyProposal(idea ideas.Idea, label string, pol proactive
 		DedupeKey:  idea.DedupeKey,
 		Message:    ideas.Render(idea),
 		ProposalID: idea.ID,
-		RequestID:  idea.PermissionRequestID,
 		Actions:    actions,
 	}
 	if al.MaybeNotify(nt) != DecisionNotify {
@@ -445,7 +515,7 @@ func (al *AgentLoop) notifyProposal(idea ideas.Idea, label string, pol proactive
 	// and must never reach the canonical stream.
 	if store, err := ideas.New(al.workspace); err == nil {
 		if updated, err := store.MarkPresented(idea.ID, time.Now().UTC()); err == nil {
-			al.publishProactive(cevents.ProactivePresented, updated, "surfaced with a bound approval request")
+			al.publishProactive(cevents.ProactivePresented, updated, "surfaced")
 		}
 	}
 }
@@ -533,6 +603,7 @@ func (al *AgentLoop) DecideIdea(ctx context.Context, ref string, decision string
 			return idea, "", err
 		}
 		al.cancelBound(idea)
+		al.settleCommitmentFromProposal(updated, "dismissed", "owner said no for now")
 		al.publishProactive(cevents.ProactiveDismissed, updated, "owner said no")
 		return updated, "", nil
 	case "snooze":
@@ -583,6 +654,16 @@ func (al *AgentLoop) approveProposal(ctx context.Context, store *ideas.Store, id
 		return superseded, "", fmt.Errorf("the situation changed, so I didn't act on it")
 	}
 
+	// Authorize now, not when the proposal was surfaced: the owner consented
+	// just now, so the broker's decision is recorded just now and can never be
+	// a lapsed token. A policy denial still stops execution here.
+	allowed, _, authErr := al.authorizeAndConsent(idea, store)
+	if !allowed {
+		failed, _ := store.Fail(idea.ID, authErr.Error(), now)
+		al.publishProactive(cevents.ProactiveFailed, failed, "not authorized")
+		return failed, authErr.Error(), authErr
+	}
+
 	channel, chatID := al.proposalTarget(proactive.Load(al.workspace))
 	record, result, err := al.runProposal(store, idea, channel, chatID, now)
 	return record, result, err
@@ -618,39 +699,11 @@ func (al *AgentLoop) runProposal(store *ideas.Store, idea ideas.Idea, channel, c
 		return idea, "", err
 	}
 	idea = claimed
-
-	// Resolve the broker request if this proposal had one. The row id lives on
-	// the idea (it is what the owner's card resolves); the broker's own
-	// request id is the idea id, so consume/approved lookups use that.
-	// allow_once is consumed exactly once; a request that cannot be confirmed
-	// as approved must not execute.
-	if idea.PermissionRequestID != "" && al.governance != nil && al.governance.Broker != nil {
-		broker := al.governance.Broker
-		if _, err := broker.ResolveAuto(idea.PermissionRequestID, permissions.GrantOnce); err != nil {
-			// Not pending: already resolved by another surface, or gone.
-			// The approval check below decides.
-		}
-		approved, ok := broker.ApprovedRequest(idea.ID)
-		if !ok || approved == nil {
-			failed, _ := store.Fail(idea.ID, "That approval is no longer valid, so I didn't act.", now)
-			al.publishProactive(cevents.ProactiveFailed, failed, "approval not resolvable")
-			return failed, "That approval is no longer valid, so I didn't act.", fmt.Errorf("approval is no longer valid")
-		}
-		if approved.Grant == permissions.GrantOnce {
-			if _, ok := broker.ConsumeApproved(idea.ID); !ok {
-				// Consumed elsewhere (a chat "yes" already ran it): never run
-				// the same approved action twice.
-				failed, _ := store.Fail(idea.ID, "That approval was already used, so I didn't act again.", now)
-				al.publishProactive(cevents.ProactiveFailed, failed, "approval already consumed")
-				return failed, "That approval was already used, so I didn't act again.", fmt.Errorf("approval already consumed")
-			}
-		}
-	}
-
 	al.publishProactive(cevents.ProactiveApproved, idea, "authorized")
 
 	outcome, result, ev, err := al.executePlan(context.Background(), idea, channel, chatID)
-	if err != nil || (outcome != outcomeSucceeded && outcome != outcomeDispatched) {
+	done := outcome == outcomeVerified || outcome == outcomeSucceeded || outcome == outcomeDispatched || outcome == outcomeNeedsApproval
+	if err != nil || !done {
 		msg := result
 		if msg == "" {
 			msg = "It didn't work. Nothing was changed."
@@ -658,6 +711,7 @@ func (al *AgentLoop) runProposal(store *ideas.Store, idea ideas.Idea, channel, c
 		failed, ferr := store.Fail(idea.ID, msg, time.Now().UTC())
 		if ferr == nil {
 			al.publishProactive(cevents.ProactiveFailed, failed, msg)
+			al.settleCommitmentFromProposal(failed, string(outcome), msg)
 			al.reportProposalOutcome(failed, msg, channel, chatID)
 			return failed, msg, err
 		}
@@ -668,7 +722,16 @@ func (al *AgentLoop) runProposal(store *ideas.Store, idea ideas.Idea, channel, c
 	if cerr != nil {
 		return idea, result, cerr
 	}
+	if updated, uerr := store.Transition(completed.ID, []ideas.Status{ideas.StatusCompleted}, func(x *ideas.Idea) error {
+		x.EvidenceLevel = evidenceLevel(outcome)
+		return nil
+	}); uerr == nil {
+		completed = updated
+	}
 	al.publishProactiveWithEvidence(cevents.ProactiveCompleted, completed, result, ev)
+	// Memory half of the loop: the obligation this proposal was about is
+	// settled from the real outcome, never from the plan.
+	al.settleCommitmentFromProposal(completed, string(outcome), result)
 	al.reportProposalOutcome(completed, result, channel, chatID)
 	return completed, result, nil
 }
@@ -676,11 +739,32 @@ func (al *AgentLoop) runProposal(store *ideas.Store, idea ideas.Idea, channel, c
 type planOutcome string
 
 const (
-	outcomeSucceeded  planOutcome = "succeeded"
-	outcomeFailed     planOutcome = "failed"
-	outcomeDispatched planOutcome = "dispatched"
+	// outcomeVerified: the runtime read the result back from real state.
+	outcomeVerified    planOutcome = "verified"
+	outcomeSucceeded   planOutcome = "succeeded"
+	outcomeDispatched  planOutcome = "dispatched"
+	outcomeFailed      planOutcome = "failed"
 	outcomeUnavailable planOutcome = "unavailable"
+	// outcomeNeedsApproval: the work stopped on a permission request of its
+	// own, which is progress, not failure.
+	outcomeNeedsApproval planOutcome = "needs_approval"
 )
+
+// evidenceLevel maps an execution outcome to the honest strength of proof.
+func evidenceLevel(o planOutcome) string {
+	switch o {
+	case outcomeVerified:
+		return "verified"
+	case outcomeSucceeded:
+		return "acknowledged"
+	case outcomeDispatched:
+		return "dispatched"
+	case outcomeUnavailable:
+		return "unavailable"
+	default:
+		return "failed"
+	}
+}
 
 // executePlan runs the stored plan. Tool plans go through the registry
 // (schema validation, grant check, evidence contract, verification); local
@@ -799,6 +883,10 @@ func (al *AgentLoop) executeLocalPlan(ctx context.Context, idea ideas.Idea, chan
 	case opTaskTurn:
 		return al.executeDelegatedTurn(ctx, idea, channel, chatID,
 			"You have a background task waiting on a human. Look at it, do the smallest useful thing you can, and if you need something from me say exactly what.")
+	case opCommitmentTurn:
+		return al.executeCommitmentTurn(ctx, idea, channel, chatID)
+	case opCommitmentRemind:
+		return al.executeCommitmentRemind(ctx, idea, channel, chatID)
 	default:
 		return outcomeFailed, "I don't know how to do that, so I didn't.", nil, fmt.Errorf("unknown op %q", idea.Plan.Op)
 	}
@@ -828,12 +916,24 @@ func (al *AgentLoop) reportProposalOutcome(idea ideas.Idea, result, channel, cha
 	if result == "" {
 		return
 	}
+	// The sentence the owner reads is derived from how strong the proof is,
+	// never from a model's claim. A dispatched action is not called done.
 	prefix := "Done — "
-	switch idea.Outcome {
+	switch idea.EvidenceLevel {
+	case "verified":
+		prefix = "Done — "
+	case "acknowledged":
+		prefix = "Done — "
+	case "dispatched":
+		prefix = "I've set that in motion. "
+	case "unavailable":
+		prefix = "I couldn't do that. "
 	case "failed":
 		prefix = "That didn't go through. "
-	case "dispatched":
-		prefix = ""
+	default:
+		if idea.Outcome == "failed" {
+			prefix = "That didn't go through. "
+		}
 	}
 	msg := prefix + result
 	if channel != "" && chatID != "" && al.bus != nil {
@@ -863,75 +963,51 @@ func (al *AgentLoop) publishProactiveWithEvidence(typ cevents.Type, idea ideas.I
 	})
 }
 
-// resumeOutcomeText derives the honest one-line result of a resumed tool call
-// from the tool result itself, never from a model claim.
-func resumeOutcomeText(res *tools.ToolResult) string {
-	if res == nil {
-		return ""
-	}
-	if text := strings.TrimSpace(res.ForUser); text != "" {
-		return text
-	}
-	if res.IsError || res.Err != nil {
-		return "That didn't work. Nothing was changed."
-	}
-	return strings.TrimSpace(res.ForLLM)
-}
-
-// ProposalForRequest returns the live proposal bound to a broker request row,
-// so any surface that resolves a request (card button, console, chat) can tell
-// whether the request belongs to a proactive proposal.
-func (al *AgentLoop) ProposalForRequest(requestRowID string) (ideas.Idea, bool) {
-	if al == nil || al.workspace == "" || strings.TrimSpace(requestRowID) == "" {
+// pendingProposalFor returns the newest undecided proposal waiting on the
+// owner. Proposals are delivered to the owner's main conversation, so that is
+// the session a chat reply is answered in.
+func (al *AgentLoop) pendingProposalFor(sessionKey string) (ideas.Idea, bool) {
+	if al == nil || al.workspace == "" || sessionKey != proposalSession {
 		return ideas.Idea{}, false
 	}
 	store, err := ideas.New(al.workspace)
 	if err != nil {
 		return ideas.Idea{}, false
 	}
-	live, err := store.Live(500)
+	open, err := store.Open(50)
 	if err != nil {
 		return ideas.Idea{}, false
 	}
-	for i := range live {
-		if live[i].PermissionRequestID == requestRowID && live[i].Status.Undecided() {
-			return live[i], true
+	for i := range open {
+		if open[i].Status == ideas.StatusPresented || open[i].Status == ideas.StatusPending {
+			return open[i], true
 		}
 	}
 	return ideas.Idea{}, false
 }
 
-// SettleBoundProposal records the outcome of a proposal whose broker request
-// was executed by the chat-resume path rather than by the proposal executor.
-// It is the bridge that keeps one proposal record coherent no matter which
-// surface the owner approved from.
-func (al *AgentLoop) SettleBoundProposal(requestRowID string, failed bool, text string) {
-	idea, ok := al.ProposalForRequest(requestRowID)
+// CheckProposalReply interprets a chat message as an answer to a surfaced
+// proposal. It is the counterpart to CheckApprovalReply: proposals mint no
+// authorization until they are approved, so there is no pending broker request
+// for the phrase table to find — this looks up the proposal itself.
+//
+// Only a short, standalone phrase counts, so ordinary conversation containing
+// the word "no" is never hijacked into a decision.
+func (al *AgentLoop) CheckProposalReply(sessionKey, text string) (ideas.Idea, string, bool) {
+	trimmed := strings.ToLower(strings.TrimSpace(text))
+	if trimmed == "" || len(trimmed) > 24 || len(strings.Fields(trimmed)) > 3 {
+		return ideas.Idea{}, "", false
+	}
+	grant, ok := approvalPhrases[trimmed]
 	if !ok {
-		return
+		return ideas.Idea{}, "", false
 	}
-	store, err := ideas.New(al.workspace)
-	if err != nil {
-		return
+	idea, ok := al.pendingProposalFor(sessionKey)
+	if !ok {
+		return ideas.Idea{}, "", false
 	}
-	now := time.Now().UTC()
-	text = strings.TrimSpace(text)
-	if text == "" {
-		if failed {
-			text = "That didn't work. Nothing was changed."
-		} else {
-			text = "Done."
-		}
+	if grant == permissions.GrantDeny {
+		return idea, "dismiss", true
 	}
-	if failed {
-		settled, err := store.Fail(idea.ID, text, now)
-		if err == nil {
-			al.publishProactive(cevents.ProactiveFailed, settled, text)
-		}
-		return
-	}
-	settled, err := store.Complete(idea.ID, "", text, now)
-	if err == nil {
-		al.publishProactive(cevents.ProactiveCompleted, settled, text)
-	}
+	return idea, "approve", true
 }

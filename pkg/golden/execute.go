@@ -19,7 +19,9 @@ import (
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
+	"github.com/ianclemence/ghost/pkg/product"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/schema"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -363,8 +365,11 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 			turnMarks = append(turnMarks, mark)
 		}
 		// Proactive cases: run the deterministic opportunity pipeline after
-		// the conversation, exactly as the heartbeat does in production.
-		if c.Fixture == FixtureProactiveOverdue {
+		// the conversation, exactly as the heartbeat does in production — and
+		// run it twice, because repeated evaluation must converge on the same
+		// state rather than accumulating duplicates.
+		if fixtureTriggersProactive(c.Fixture) {
+			loop.EvaluateProposals(time.Now().UTC())
 			loop.EvaluateProposals(time.Now().UTC())
 		}
 		cancel()
@@ -598,8 +603,43 @@ func wireGovernance(loop *agent.AgentLoop, ws string, fx Fixture) (*agent.Govern
 
 // applyFixture overrides provider-backed tools with a simulated provider
 // behind the SAME tool name/boundary (no runtime bypass).
+// fixtureTriggersProactive reports whether a fixture runs the opportunity
+// pipeline after the conversation.
+func fixtureTriggersProactive(fx Fixture) bool {
+	return strings.HasPrefix(string(fx), "proactive:")
+}
+
 func applyFixture(loop *agent.AgentLoop, fx Fixture) error {
 	switch fx {
+	case FixtureProactiveRoutineFailure:
+		store := scheduled.NewStore(loop.DB())
+		if err := store.InitSchema(); err != nil {
+			return err
+		}
+		svc := scheduled.NewService(store, &scheduled.SimpleEventBus{},
+			func(ctx context.Context, it *scheduled.ScheduledItem) error { return nil })
+		routineSvc, err := routines.New(loop.DB(), store)
+		if err != nil {
+			return err
+		}
+		loop.SetRoutineSignals(routineSvc, svc)
+		_ = loop.RecordLastActiveSession("web", "chat")
+		gid := "ghost-local"
+		if id, ierr := ghoststate.LoadIdentity(loop.Config().WorkspacePath()); ierr == nil && id != nil {
+			gid = id.GhostID
+		}
+		r, err := routineSvc.Create(gid, "owner", "Nightly report", "send the nightly report",
+			"UTC", scheduled.Schedule{Kind: scheduled.ScheduleEvery, Every: 24 * time.Hour}, nil)
+		if err != nil {
+			return err
+		}
+		if _, err := routineSvc.Run(context.Background(), r.ID, "golden-run-1",
+			func(ctx context.Context, rr *routines.Routine) routines.RunOutcome {
+				return routines.RunOutcome{Message: "smtp timeout", Completion: product.CompletionFailed}
+			}); err != nil {
+			return err
+		}
+		return nil
 	case FixtureProactiveOverdue:
 		store := scheduled.NewStore(loop.DB())
 		if err := store.InitSchema(); err != nil {
@@ -613,16 +653,16 @@ func applyFixture(loop *agent.AgentLoop, fx Fixture) error {
 		_ = loop.RecordLastActiveSession("web", "chat")
 		due := time.Now().UTC().Add(-3 * time.Hour)
 		return store.Create(&scheduled.ScheduledItem{
-			ID:        "golden-overdue-reminder",
-			Type:      scheduled.TypeReminder,
-			Title:     "send Alex the document",
-			State:     scheduled.StateScheduled,
-			Schedule:  scheduled.Schedule{Kind: scheduled.ScheduleAt, At: &due},
-			Timezone:  "UTC",
-			Action:    scheduled.Action{Kind: scheduled.ActionAgentTurn, Content: "send Alex the document", Deliver: true},
-			Source:    "user",
-			CreatedBy: "golden",
-			NextRunAt: &due,
+			ID:         "golden-overdue-reminder",
+			Type:       scheduled.TypeReminder,
+			Title:      "send Alex the document",
+			State:      scheduled.StateScheduled,
+			Schedule:   scheduled.Schedule{Kind: scheduled.ScheduleAt, At: &due},
+			Timezone:   "UTC",
+			Action:     scheduled.Action{Kind: scheduled.ActionAgentTurn, Content: "send Alex the document", Deliver: true},
+			Source:     "user",
+			CreatedBy:  "golden",
+			NextRunAt:  &due,
 			MaxRetries: 3,
 		})
 	case FixtureWeatherOK, FixtureWeatherFail, FixtureWeatherBad:

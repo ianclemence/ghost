@@ -35,6 +35,8 @@ type Status struct {
 	// OpenProposals counts grounded opportunities waiting on the owner. Set
 	// by the runtime after assembly; it is a count, never a claim.
 	OpenProposals int `json:"open_proposals,omitempty"`
+	// OpenCommitments counts promises the owner made that Ghost is holding.
+	OpenCommitments int `json:"open_commitments,omitempty"`
 }
 
 // Active reports whether Ghost is doing anything proactive the owner should

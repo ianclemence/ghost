@@ -53,6 +53,7 @@ func (al *AgentLoop) CollectObservations(now time.Time) []ideas.Observation {
 	out = append(out, al.observeRoutines(now)...)
 	out = append(out, al.observeGoals(now)...)
 	out = append(out, al.observeTasks(now)...)
+	out = append(out, al.observeCommitments(now)...)
 	return out
 }
 

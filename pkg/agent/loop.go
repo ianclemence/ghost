@@ -32,6 +32,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/commands"
+	"github.com/ianclemence/ghost/pkg/commitments"
 	"github.com/ianclemence/ghost/pkg/computer"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/constants"
@@ -175,6 +176,14 @@ type AgentLoop struct {
 
 	// noticer is the value gate for proactive behaviour ("proactive ≠ noisy").
 	noticer *Noticer
+	// commitmentExtractor turns "I need to…" into durable obligation state.
+	// Nil when no provider is configured: the deterministic patterns still run.
+	commitmentExtractor *commitments.SemanticExtractor
+	// Event-driven awareness: a coalescing wake-up channel fed by the
+	// canonical stream, started explicitly by production wiring.
+	proactiveWatchOnce sync.Once
+	proactiveWake      chan struct{}
+	proactiveStop      chan struct{}
 	// routineSvc/schedSvc feed the proactive signal scan (routine waits
 	// and failures). Nil when automation is disabled — scan yields none.
 	routineSvc *routines.Service
@@ -719,38 +728,39 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 
 	al := &AgentLoop{
-		bus:               msgBus,
-		provider:          provider,
-		workspace:         workspace,
-		model:             cfg.Agents.Defaults.Model,
-		temperature:       cfg.Agents.Defaults.Temperature,
-		maxTokens:         cfg.Agents.Defaults.MaxTokens,
-		contextWindow:     cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
-		maxIterations:     cfg.Agents.Defaults.MaxToolIterations,
-		sessions:          sessionsManager,
-		state:             stateManager,
-		media:             mediaStore,
-		contextBuilder:    contextBuilder,
-		tools:             toolsRegistry,
-		toolProfile:       tools.ProfileFull,
-		commands:          cmdRegistry,
-		router:            router,
-		fallback:          fallback,
-		fallbackModels:    fallbackCandidates,
-		installer:         installer,
-		providersByModel:  providersByModel,
-		cfg:               cfg,
-		doctor:            doctorRunner,
-		summarizing:       sync.Map{},
-		curator:           curator,
-		nudge:             nudgeMgr,
-		evolution:         evolutionMgr,
-		steering:          NewSteeringManager(),
-		pcStore:           pcStore,
-		semanticExtractor: semanticExtractor,
-		rag:               ragStore,
-		db:                database,
-		affect:            loadAffect(workspace),
+		bus:                 msgBus,
+		provider:            provider,
+		workspace:           workspace,
+		model:               cfg.Agents.Defaults.Model,
+		temperature:         cfg.Agents.Defaults.Temperature,
+		maxTokens:           cfg.Agents.Defaults.MaxTokens,
+		contextWindow:       cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
+		maxIterations:       cfg.Agents.Defaults.MaxToolIterations,
+		sessions:            sessionsManager,
+		state:               stateManager,
+		media:               mediaStore,
+		contextBuilder:      contextBuilder,
+		tools:               toolsRegistry,
+		toolProfile:         tools.ProfileFull,
+		commands:            cmdRegistry,
+		router:              router,
+		fallback:            fallback,
+		fallbackModels:      fallbackCandidates,
+		installer:           installer,
+		providersByModel:    providersByModel,
+		cfg:                 cfg,
+		doctor:              doctorRunner,
+		summarizing:         sync.Map{},
+		curator:             curator,
+		nudge:               nudgeMgr,
+		evolution:           evolutionMgr,
+		steering:            NewSteeringManager(),
+		pcStore:             pcStore,
+		semanticExtractor:   semanticExtractor,
+		commitmentExtractor: commitments.NewSemanticExtractor(provider, cfg.Agents.Defaults.Model),
+		rag:                 ragStore,
+		db:                  database,
+		affect:              loadAffect(workspace),
 	}
 
 	cmdRuntime := &commands.Runtime{
@@ -1594,6 +1604,13 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 
 	// Process as user message
 	isCronTriggered := strings.HasPrefix(msg.SessionKey, "cron-")
+	// A machine turn is one whose "message" Ghost generated itself: a
+	// scheduler-fired automation, a routine's instruction, the heartbeat, or a
+	// delegated turn from the proactive runtime. Owner-intent fast paths
+	// (routine capture, standing-permission capture, readiness probes,
+	// deterministic command routing) must never read those, or a runtime
+	// prompt gets reinterpreted as something the owner asked for.
+	machineTurn := isMachineTurn(msg.SessionKey)
 	profile := channels.DetectToolProfile(msg.Channel, "", msg.SessionKey, false)
 	if isCronTriggered {
 		profile = tools.ProfileHeartbeatSafe
@@ -1601,7 +1618,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	// Deterministic local ops (shopping add/list): Intent -> Capability ->
 	// execute with zero LLM calls. Works even when the provider is
 	// rate-limited and never leaks internals.
-	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+	if !resumedTurn && !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.tryDeterministicTurn(msg.Content, msg.SessionKey); ok {
 			logger.InfoCF("agent", "deterministic: handled locally",
 				map[string]interface{}{"session_key": msg.SessionKey})
@@ -1619,7 +1636,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	// Skill toggle fast-path: "disable X" / "enable Y" executes directly
 	// (mirrors the Web Console toggle). Before the disabled-skill check so
 	// "enable X" still works when X is currently off.
-	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+	if !resumedTurn && !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.trySkillToggleFastPath(msg.Content); ok {
 			logger.InfoCF("agent", "skill-toggle fast-path",
 				map[string]interface{}{"session_key": msg.SessionKey})
@@ -1636,7 +1653,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	}
 	// Disabled-skill fast-path first: a toggle is a promise. If the user
 	// asks for a disabled skill, say so honestly instead of improvising.
-	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+	if !resumedTurn && !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.tryDisabledSkillFastPath(msg.Content, msg.SessionKey); ok {
 			logger.InfoCF("agent", "disabled-skill fast-path",
 				map[string]interface{}{"session_key": msg.SessionKey})
@@ -1655,7 +1672,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	// narrowly scoped grants through runtime validation — never the LLM.
 	// Runs BEFORE the readiness fast-path so grant-management phrases are
 	// never intercepted by a capability's "not connected" readiness reply.
-	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+	if !resumedTurn && !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.tryStandingTurn(msg); ok {
 			logger.InfoCF("agent", "standing-permission fast-path",
 				map[string]interface{}{"session_key": msg.SessionKey})
@@ -1673,7 +1690,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	// Generic readiness fast-path: Intent -> Capability -> Readiness.
 	// Missing input / not-configured returns a product message with zero
 	// LLM calls and sets a pending continuation for natural resume.
-	if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+	if !resumedTurn && !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.tryReadinessFastPath(msg.Content, msg.SessionKey, msg.Metadata); ok {
 			logger.InfoCF("agent", "readiness fast-path",
 				map[string]interface{}{"session_key": msg.SessionKey})
@@ -1694,7 +1711,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	// never invents live data (weather/AQI/flight). Runs for direct asks
 	// and for resumed continuations (the structured answer arrives via
 	// resume_field/resume_answer metadata).
-	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+	if !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.tryDeterministicNetworkDispatch(msg.Content, msg.SessionKey, msg.Metadata); ok {
 			logger.InfoCF("agent", "deterministic network dispatch",
 				map[string]interface{}{"session_key": msg.SessionKey})
@@ -1715,7 +1732,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	// asserting an absence a narrow lookup cannot prove. Only extremely
 	// clear, harmless cases; everything else falls through to the full loop
 	// unchanged.
-	if !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" {
+	if !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" {
 		if effort := classifyEffort(msg.Content); effort == EffortFast {
 			if ans, ok := al.fastPathAnswer(msg.Content, msg.SessionKey); ok {
 				logger.InfoCF("agent", "fast path: answered from memory",
@@ -1733,7 +1750,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 		// Routine fast-path: recurring natural language ("every Monday at 9
 		// remind me to…") proposes/confirms durable routines through the
 		// existing routine domain — never the LLM, never scheduler internals.
-		if !resumedTurn && !thinking && !isCronTriggered && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+		if !resumedTurn && !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 			if ans, ok := al.tryRoutineTurn(msg); ok {
 				logger.InfoCF("agent", "routine fast-path",
 					map[string]interface{}{"session_key": msg.SessionKey})
@@ -1747,6 +1764,31 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 				}
 				return endTurn(ans, nil)
 			}
+		}
+	}
+	// Proposal decision: "yes" or "no" in the owner's main conversation is an
+	// answer to the newest surfaced proposal. Proposals create no
+	// authorization until they are approved, so nothing is pending in the
+	// broker for the phrase table below to find — the decision is applied
+	// here, through the same governed path every surface uses.
+	if al.governance != nil {
+		if idea, decision, ok := al.CheckProposalReply(msg.SessionKey, msg.Content); ok {
+			_, result, derr := al.DecideIdea(ctx, idea.ID, decision, 0)
+			text := strings.TrimSpace(result)
+			if derr != nil {
+				text = derr.Error()
+			}
+			if text == "" {
+				text = "Noted."
+			}
+			if onChunk != nil {
+				onChunk(text)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "assistant", text)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return endTurn(text, nil)
 		}
 	}
 	// Approval continuation: a reply to a pending approval card resumes
@@ -1797,10 +1839,6 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError, toolResult.Obs)
 			}
 			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
-			// If this approval was for a proactive proposal, settle that
-			// record from the real execution result: one proposal always has
-			// one outcome, whichever surface approved it.
-			al.SettleBoundProposal(resume.RequestID, toolResult.IsError, resumeOutcomeText(toolResult))
 			// The resumed result is evidence for the model, never Ghost's
 			// own words. Piping a page or a command's stdout straight into
 			// the reply is what turned "approve it and I'll give you the
@@ -1819,9 +1857,9 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 					ContinuationOutput: toolResult.ForLLM,
 					DefaultResponse:    "Hmm — that came back empty. Could you say it another way?",
 					EnableSummary:      true,
-					OnChunk:             onChunk,
-					OnToolCall:          onToolCall,
-					RequestID:           requestID,
+					OnChunk:            onChunk,
+					OnToolCall:         onToolCall,
+					RequestID:          requestID,
 				})
 				if cerr == nil && strings.TrimSpace(response) != "" {
 					return endTurn(response, nil)
@@ -2327,6 +2365,12 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 	// directives so the note persists even when the model only acknowledges it.
 	al.captureQuickNote(opts.UserMessage, opts.Channel)
 
+	// Durable obligations: "I need to send Alex those photos Friday" becomes
+	// structured state the proactive runtime can watch, instead of a sentence
+	// that dies in the transcript. Runs independently of preference memory:
+	// a promise is not a fact about the owner.
+	al.extractCommitments(opts)
+
 	if al.pcStore == nil {
 		return
 	}
@@ -2524,6 +2568,19 @@ var quickCaptureRE = regexp.MustCompile(`(?i)^\s*(?:remember this|note that|note
 func isAutomationSession(sessionKey string) bool {
 	return strings.HasPrefix(sessionKey, "automation:") ||
 		strings.HasPrefix(sessionKey, "routine:")
+}
+
+// isMachineTurn reports whether a session belongs to a timer rather than the
+// owner: scheduler-fired automation, cron-fired work, and the heartbeat. Their
+// prose is Ghost talking to itself, so it can never be the owner's promise.
+// It deliberately does not widen isAutomationSession, which other guards rely
+// on for its narrower meaning.
+func isMachineTurn(sessionKey string) bool {
+	return isAutomationSession(sessionKey) ||
+		strings.HasPrefix(sessionKey, "cron-") ||
+		strings.HasPrefix(sessionKey, "commitment:") ||
+		strings.HasPrefix(sessionKey, "proactive:") ||
+		sessionKey == "heartbeat"
 }
 
 // automationIntentRE matches utterances whose durable form is a scheduled

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/commitments"
 	"github.com/ianclemence/ghost/pkg/ideas"
 )
 
@@ -101,4 +102,80 @@ func checkProactiveLifecycle(e *Env) Check {
 	}
 
 	return pass("Proactive", "opportunity lifecycle (dedupe, gate, cooldown, stale-approval)")
+}
+
+// The durable commitment ledger: the bridge from conversation to proactive
+// action. This check proves the grounding rules that keep Ghost from turning
+// speculation or paraphrase into an obligation, and the settlement rules that
+// keep a failed action from closing a promise.
+func checkCommitmentLedger(e *Env) Check {
+	store, err := commitments.New(e.Workspace)
+	if err != nil {
+		return fail("Commitments", "ledger opens", err.Error(), true)
+	}
+	now := time.Now().UTC()
+	due := now.Add(-time.Hour)
+
+	// A real promise is recorded with provenance.
+	c, err := store.Create(commitments.Commitment{
+		Text: "send Alex those photos", Subject: "Alex", Kind: commitments.KindSend,
+		DueAt: &due, Confidence: 0.9, Origin: "deterministic",
+		Provenance: commitments.Provenance{Session: "main", MessageID: "m1", Quote: "I need to send Alex those photos Friday", At: now},
+		DedupeKey:  commitments.DueKey("send Alex those photos", "Alex", &due),
+	})
+	if err != nil {
+		return fail("Commitments", "promise recorded", err.Error(), true)
+	}
+
+	// No owner words, no obligation.
+	if _, err := store.Create(commitments.Commitment{Text: "do the thing", Origin: "model"}); err == nil {
+		return fail("Commitments", "provenance required", "an obligation without the owner's words was accepted", true)
+	}
+
+	// A restatement is the same promise, not a second one.
+	again, err := store.Create(commitments.Commitment{
+		Text: "send Alex those photos", Subject: "Alex", Kind: commitments.KindSend, DueAt: &due,
+		Confidence: 0.9, Origin: "deterministic",
+		Provenance: commitments.Provenance{Session: "main", MessageID: "m2", Quote: "I need to send Alex those photos Friday", At: now},
+		DedupeKey:  commitments.DueKey("send Alex those photos", "Alex", &due),
+	})
+	if err != nil || again.ID != c.ID {
+		return fail("Commitments", "restatement dedupes", "the same promise was recorded twice", true)
+	}
+
+	// Extraction grounding: speculation, questions, requests to Ghost and
+	// explicit reminder asks never become obligations.
+	for _, msg := range []string{
+		"I might send Alex those photos Friday",
+		"Maybe I should email the landlord",
+		"Can you send the report tomorrow",
+		"Remind me to send Alex those photos Friday",
+	} {
+		if got := commitments.ExtractDeterministic(msg, now, "UTC"); len(got) != 0 {
+			return fail("Commitments", "speculation is not a promise", msg, true)
+		}
+	}
+	// A real one is, with the day resolved by the runtime.
+	good := commitments.ExtractDeterministic("I need to call the bank tomorrow", now, "UTC")
+	if len(good) != 1 || good[0].DueAt == nil || good[0].Kind != commitments.KindCall {
+		return fail("Commitments", "a real promise is extracted with its date", "extraction did not produce a dated call", true)
+	}
+
+	// A failed action leaves the promise open, not complete.
+	if _, err := store.Settle(c.ID, commitments.StatusOpen, "failed", "the channel was unavailable"); err != nil {
+		return fail("Commitments", "failure keeps the promise open", err.Error(), true)
+	}
+	got, _ := store.Get(c.ID)
+	if got.Status != commitments.StatusOpen {
+		return fail("Commitments", "failure keeps the promise open", "a failed action completed the promise", true)
+	}
+	// Completion is terminal.
+	if _, err := store.Settle(c.ID, commitments.StatusCompleted, "completed", "sent"); err != nil {
+		return fail("Commitments", "completion settles", err.Error(), true)
+	}
+	if _, err := store.Settle(c.ID, commitments.StatusOpen, "failed", "late failure"); err == nil {
+		return fail("Commitments", "completion is terminal", "a settled promise reopened", true)
+	}
+
+	return pass("Commitments", "durable obligations (provenance, dedupe, grounding, settlement)")
 }

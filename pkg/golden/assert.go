@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/capability"
+	"github.com/ianclemence/ghost/pkg/commitments"
+	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	_ "modernc.org/sqlite"
@@ -1059,6 +1061,56 @@ func (r *Runner) evaluate(c Conversation, runs []personRun) (bool, []AssertionRe
 		}
 	}
 
+	// Commitment assertions: durable obligations, and the negative control
+	// that speculation never became one.
+	if len(runs) > 0 {
+		ws := runs[len(runs)-1].ws
+		rows := readCommitments(ws)
+		for i, want := range exp.Commitments {
+			found := false
+			for _, c := range rows {
+				if want.Contains != "" && !strings.Contains(strings.ToLower(c.Text), strings.ToLower(want.Contains)) {
+					continue
+				}
+				if want.Status != "" && string(c.Status) != want.Status {
+					continue
+				}
+				found = true
+			}
+			if found {
+				pass(fmt.Sprintf("commitment[%d]", i))
+			} else {
+				fail(fmt.Sprintf("commitment[%d]", i), fmt.Sprintf("no commitment matching %+v (have %d)", want, len(rows)), false)
+			}
+		}
+		if exp.NoCommitments && len(rows) != 0 {
+			fail("no_commitments", fmt.Sprintf("speculation became durable state: %+v", rows), true)
+		} else if exp.NoCommitments {
+			pass("no_commitments")
+		}
+		for i, kind := range exp.ProactiveKinds {
+			if hasProactiveKind(ws, kind) {
+				pass(fmt.Sprintf("proactive_kind[%d]", i))
+			} else {
+				fail(fmt.Sprintf("proactive_kind[%d]", i), "no proposal of kind "+kind, false)
+			}
+		}
+		for i, kind := range exp.NoProactiveKinds {
+			if hasProactiveKind(ws, kind) {
+				fail(fmt.Sprintf("no_proactive_kind[%d]", i), "unexpected proposal of kind "+kind, true)
+			} else {
+				pass(fmt.Sprintf("no_proactive_kind[%d]", i))
+			}
+		}
+		if exp.ProactiveCountSet {
+			if n := liveProposalCount(ws); n != exp.ProactiveLiveCount {
+				fail("proactive_live_count", fmt.Sprintf("live proposals = %d, want %d", n, exp.ProactiveLiveCount), true)
+			} else {
+				pass("proactive_live_count")
+			}
+		}
+	}
+
 	// Memory assertions against the LAST person's workspace (or shared).
 	var memRows []memoryRow
 	if len(runs) > 0 {
@@ -1590,3 +1642,48 @@ func noUnauthorizedExec(runs []personRun) bool {
 }
 
 var _ = personalcontext.StatusCurrent
+
+// readCommitments loads the durable obligations recorded in a workspace.
+func readCommitments(ws string) []commitments.Commitment {
+	store, err := commitments.New(ws)
+	if err != nil {
+		return nil
+	}
+	list, err := store.List()
+	if err != nil {
+		return nil
+	}
+	return list
+}
+
+// readProposals loads the opportunity store for a workspace.
+func readProposals(ws string) []ideas.Idea {
+	store, err := ideas.New(ws)
+	if err != nil {
+		return nil
+	}
+	list, err := store.Live(200)
+	if err != nil {
+		return nil
+	}
+	return list
+}
+
+func hasProactiveKind(ws, kind string) bool {
+	for _, i := range readProposals(ws) {
+		if string(i.Kind) == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func liveProposalCount(ws string) int {
+	n := 0
+	for _, i := range readProposals(ws) {
+		if i.Status.Undecided() {
+			n++
+		}
+	}
+	return n
+}

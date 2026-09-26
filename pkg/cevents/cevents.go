@@ -131,6 +131,13 @@ const (
 	ProactiveSuperseded Type = "proactive.superseded"
 	ProactiveCompleted  Type = "proactive.completed"
 	ProactiveFailed     Type = "proactive.failed"
+	// Commitments: durable obligations the owner stated, and what happened to
+	// them. The lifecycle is durable because it is the record of whether Ghost
+	// kept its side of a promise it noticed.
+	CommitmentCreated   Type = "commitment.created"
+	CommitmentCompleted Type = "commitment.completed"
+	CommitmentFailed    Type = "commitment.failed"
+	CommitmentBlocked   Type = "commitment.blocked"
 	// Effort / routing decisions (observability for why a turn was cheap or deep)
 	EffortSelected Type = "effort.selected"
 )
@@ -170,6 +177,7 @@ func (t Type) DefaultVisibility() product.Visibility {
 		ProactivePresented, ProactiveApproved, ProactiveDenied, ProactiveDismissed,
 		ProactiveSnoozed, ProactiveExpired, ProactiveSuperseded,
 		ProactiveCompleted, ProactiveFailed,
+		CommitmentCreated, CommitmentCompleted, CommitmentFailed, CommitmentBlocked,
 		OperationFailed:
 		return product.VisUserMessage
 	default:
