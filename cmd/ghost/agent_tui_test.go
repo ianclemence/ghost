@@ -1857,6 +1857,28 @@ func TestJoinContinuedLinesRespectsBlocks(t *testing.T) {
 	}
 }
 
+// A section title wraps; it is never cut short behind an ellipsis. Truncating
+// headings dropped the back half of every long title in a narrow window —
+// the one line the owner reads first lost content with no way to expand it.
+func TestRenderAssistantBodyWrapsHeadings(t *testing.T) {
+	const title = "## Anthropic IPO — timeline confirmed, now firmer"
+	for _, w := range []int{24, 30, 40, 48, 64} {
+		got := renderAssistantBody(title+"\n\n- first bullet stays intact", w)
+		if strings.Contains(got, "…") {
+			t.Errorf("width %d truncated a heading: %q", w, got)
+		}
+		// Every word of the heading survives across the wrapped lines.
+		flat := strings.NewReplacer("—", " ", ",", "").Replace(got)
+		joined := strings.Join(strings.Fields(flat), " ")
+		if !strings.Contains(joined, "Anthropic IPO timeline confirmed now firmer") {
+			t.Errorf("width %d lost part of the heading: %q", w, got)
+		}
+		if !strings.Contains(joined, "first bullet stays intact") {
+			t.Errorf("width %d lost the body line: %q", w, got)
+		}
+	}
+}
+
 // /tasks lists durable routines with status through the loop, never a chat turn.
 func TestTUITasksListsRoutines(t *testing.T) {
 	f := newFakeRuntime()

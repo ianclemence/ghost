@@ -3,6 +3,21 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.51] - 2026-09-26
+
+- Ghost no longer asks "Which city should I check?" when the answer is
+  already in the conversation. Talking about Phuket and then asking
+  about the weather "there" used to bounce straight back into that
+  question, because the quick path that handles a weather ask never
+  looked at what had just been said. A request that points back at the
+  conversation now reaches Ghost with the conversation attached, so the
+  place you just named is the place it uses. A plain "what's the
+  weather?" with no place anywhere still asks once, as before.
+- Section titles are no longer cut short. In a narrow window, every
+  heading in a reply came back truncated behind an ellipsis with the
+  rest of the line dropped — no way to expand it. Titles now wrap like
+  the rest of the text, so nothing is lost.
+
 ## [0.24.50] - 2026-09-26
 
 - Fixed Ghost answering with raw web page markup. Approving a read of

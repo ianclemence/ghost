@@ -483,3 +483,30 @@ func TestLocationFromTextIgnoresHerePhrases(t *testing.T) {
 		}
 	}
 }
+
+// The readiness fast-path must never ask a question the conversation already
+// answered. "the weather like there" names no place, so nothing local can
+// resolve it — but the previous turn did. Hand it to the model (which holds
+// the history) instead of short-circuiting into "Which city should I check?".
+func TestWeatherAnaphoraDefersToModel(t *testing.T) {
+	al := newTestAgentLoop(t, t.TempDir())
+
+	// An anaphoric reference reaches the model, unhandled.
+	if answer, handled := al.tryReadinessFastPath("what's the weather like there", "s-anaphora", map[string]string{}); handled {
+		t.Fatalf("anaphoric weather ask was short-circuited to %q", answer)
+	}
+	if answer, handled := al.tryReadinessFastPath("find coffee near that city", "s-anaphora-nearby", map[string]string{}); handled {
+		t.Fatalf("anaphoric nearby ask was short-circuited to %q", answer)
+	}
+
+	// A bare ask with no place and no reference still asks, once, durably.
+	answer, handled := al.tryReadinessFastPath("what's the weather", "s-bare", map[string]string{})
+	if !handled || answer != "Which city should I check?" {
+		t.Fatalf("bare weather ask = (%q, %v), want the city question", answer, handled)
+	}
+
+	// A named place is never turned into a question.
+	if _, handled := al.tryReadinessFastPath("what's the weather in phuket", "s-named", map[string]string{}); handled {
+		t.Fatal("a named place must not be asked about")
+	}
+}

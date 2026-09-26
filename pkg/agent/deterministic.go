@@ -363,6 +363,11 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 	if isNearbyIntent(lower) || isTravelIntent(lower) {
 		inputs := al.locationWithMemoryFallback(msg, session, capabilityInputsFromMessage(msg, metadata))
 		if strings.TrimSpace(inputs["location"]) == "" {
+			// Same as weather: an anaphoric reference ("near that city")
+			// is answered from the conversation, not re-asked.
+			if locationRefersBack(msg) {
+				return "", false
+			}
 			skill := "find-nearby"
 			if isTravelIntent(lower) {
 				skill = "travel"
@@ -385,6 +390,13 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 	if isWeatherIntent(lower) {
 		inputs := al.locationWithMemoryFallback(msg, session, capabilityInputsFromMessage(msg, metadata))
 		if strings.TrimSpace(inputs["location"]) == "" {
+			// "…like there" points back at a place this conversation just
+			// named. Nothing here can resolve it, but asking again ignores
+			// the turn we are in — hand it to the model, which has the
+			// history and can use the antecedent.
+			if locationRefersBack(msg) {
+				return "", false
+			}
 			skills.SetPendingDurable(al.workspace, session, skills.PendingContinuation{
 				CapabilityID: "weather.current", Skill: "weather",
 				MissingField: "location", Question: "Which city should I check?",
@@ -516,6 +528,21 @@ var hereRefRE = regexp.MustCompile(`(?i)\b(here|my location|my city|my town|my a
 // location without naming a place.
 func locationRefersHere(msg string) bool {
 	return hereRefRE.MatchString(strings.TrimSpace(msg))
+}
+
+// backRefRE matches an anaphoric place reference: the owner is pointing back
+// at something the conversation just established — "weather like there",
+// "parking near that city". The message names no place, so no stored or
+// device location can resolve it, and substituting one would answer a
+// different place than the one on the table.
+var backRefRE = regexp.MustCompile(`(?i)\b(?:there|over\s+there|that\s+(?:one|city|place|town|country|area|region|spot)|same\s+(?:place|city|town))\b`)
+
+// locationRefersBack reports whether the message locates itself by pointing
+// at prior conversation rather than naming a place. Such a request must
+// reach the model, which holds the history: the deterministic fast-path
+// would otherwise ask a question the previous turn already answered.
+func locationRefersBack(msg string) bool {
+	return backRefRE.MatchString(strings.TrimSpace(msg))
 }
 
 // knownLocation returns the user's stored city/place (personal context,
