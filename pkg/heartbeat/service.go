@@ -225,6 +225,12 @@ func (hs *HeartbeatService) executeHeartbeat() {
 		return
 	}
 
+	// The model-backed tick ran, so record it — including when it reports
+	// nothing to do. A silent result is the normal case, and without this the
+	// cadence gate would see an empty marker and re-run every section on every
+	// tick, which is exactly the waste it exists to remove.
+	MarkRan(hs.workspace, time.Now())
+
 	// Handle different result types
 	if result.IsError {
 		hs.logError("Heartbeat error: %s", result.ForLLM)
@@ -253,9 +259,6 @@ func (hs *HeartbeatService) executeHeartbeat() {
 		hs.sendResponse(result.ForLLM)
 	}
 
-	if !result.Silent || result.ForUser != "" || result.Async || result.IsError {
-		MarkRan(hs.workspace, time.Now())
-	}
 	hs.logInfo("Heartbeat completed: %s", result.ForLLM)
 }
 

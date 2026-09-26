@@ -99,3 +99,24 @@ func TestLastRunRoundTrip(t *testing.T) {
 		t.Fatalf("last run = %v, want %v", got, now)
 	}
 }
+
+// The cadence gate is only correct if a run is recorded even when it reports
+// nothing — a silent tick is the normal case, and an unrecorded run would make
+// every section due again on the next tick.
+func TestCadenceGateStopsRepeatingAfterASilentRun(t *testing.T) {
+	ws := t.TempDir()
+	loc := time.UTC
+	now := time.Date(2026, 9, 26, 9, 0, 0, 0, loc)
+
+	// Nothing recorded yet: the morning window and the daily section are due.
+	first := DueContent(cadenceDoc, now, loc, LoadLastRun(ws))
+	if !strings.Contains(first, "Morning Routine") {
+		t.Fatalf("the first tick of the day must run the morning window: %q", first)
+	}
+	// The run is recorded even though it reported nothing.
+	MarkRan(ws, now)
+	second := DueContent(cadenceDoc, now.Add(30*time.Minute), loc, LoadLastRun(ws))
+	if strings.TrimSpace(second) != "" {
+		t.Fatalf("the next tick has nothing due but produced %q", second)
+	}
+}
