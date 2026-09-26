@@ -218,6 +218,71 @@ action needs, but it never grants permission, never declares success, and
 never decides whether Ghost should speak. See
 [Permission Broker](PERMISSION-BROKER.md) for where authority is enforced.
 
+## Turn latency
+
+A turn does as little as it can and still be correct. The order is fixed:
+
+```
+request
+  → deterministic gates (existing)
+  → is the answer authoritative runtime state?
+        yes → direct runtime response (no model, no retrieval)
+        no  → does this turn need durable memory?
+                 yes → embed query → vector search → minimal memory
+                 no  → skip retrieval entirely
+  → compact context (behavioural core + request-dependent extras)
+  → relevant tools
+  → model → stream
+  → capability (if asked) → broker → execution → evidence → verification
+  → runtime-authored outcome
+```
+
+**Authoritative state answers.** Reminders, open opportunities, pending
+approvals, routine health, stuck tasks, recent activity, device health, the
+active model and the proactive policy are read from the stores that own them
+and answered directly. Every renderer is state-bound: it prints only fields
+read from those stores, falls through to the normal path when a store is
+unwired, and never invents a name, id, date, count or completion state. The
+model is still free to answer these questions in its own words when the
+deterministic path does not match; this is an optimisation, not a gate.
+
+**Memory is retrieved only when the turn needs it.** Deciding whether a
+message depends on durable memory is deterministic: explicit recall intent, a
+temporal back-reference, or a possessive reference to something the owner
+owns that is not runtime state. Greetings, actions, and state questions skip
+the embedding entirely. `memory_recall` and `session_search` remain available
+to the model as the fallback for anything the classifier does not anticipate,
+which is what makes a conservative gate safe. Retrieval counts and deliberate
+skips are visible through `/v1/doctor`.
+
+**Context is tiered, statically.** The behavioural core of `GHOST.md` —
+invariants, identity, authority and permissions, execution and evidence,
+memory, routines, time, personality, interacting, safety, recovery, final
+rules — always ships. Operational reference (the per-tool operating manual,
+skills prose, channels, browser/computer surfaces, credentials setup,
+artifacts) is read on demand with `read_file`, and the core says so.
+`AGENTS.md` and `HEARTBEAT.md` are not conversation context and are not
+injected. Tiering is deliberately static rather than per-turn: varying the
+prefix would invalidate the provider's prompt-prefix cache and cost more than
+it saves.
+
+**Work that does not shape the reply happens after it.** Model-backed
+personal-context and commitment extraction ride a bounded, durable queue
+drained once the answer is on the wire, with single-flight protection,
+bounded retries, restart recovery and an interactive-priority gate.
+Deterministic extraction stays inline because it is free.
+
+**Interactive work outranks background work.** Heartbeat, journaling,
+summarization and deferred extraction all check a shared interactive gate and
+yield to the owner. The heartbeat additionally runs only the `HEARTBEAT.md`
+sections whose own cadence is due, so a tick with nothing to do costs no model
+call at all.
+
+**Observability is local and honest.** Each turn logs total duration,
+time-to-first-byte, iteration count, token counts and where those counts came
+from (`measured` from the provider, `estimated` when a streamed response
+reports none, or `unknown`). An estimate is never presented as a measurement.
+
 ## Why this design
 
 If reasoning were authoritative, a model mistake or a malicious instruction

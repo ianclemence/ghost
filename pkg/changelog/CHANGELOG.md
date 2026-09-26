@@ -3,6 +3,38 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.56] - 2026-09-26
+
+- **Ghost stopped doing work it did not need.** A local memory lookup cost
+  about three seconds and ran on every message, including "hey Ghost". Ghost
+  now looks things up only when what you said actually depends on something
+  you told it before; a greeting, a request, or a question about right now
+  goes straight to the answer.
+- **Questions Ghost already knows the answer to are answered instantly.**
+  "What reminders do I have?", "what needs me?", "is my routine okay?", "how
+  much disk space is left?", "which model are you using?", "what did you just
+  do?" come from the records Ghost already keeps — no model call, no waiting.
+  Every answer is drawn only from those records, so it cannot invent a name,
+  a time or a count.
+- **The prompt is a third smaller.** The behaviour and safety rules ship in
+  full; the operational reference — the long per-tool manual, credentials
+  setup, browser and channel details — is read on demand when a task needs it
+  instead of being sent on every message.
+- **Ghost tells you what it is doing.** While it is retrieving memory or
+  waiting on the model, the app is told that, so you are not watching a still
+  screen. It never says something is finished before it is.
+- **Background work waits its turn.** Reminders, journaling and upkeep no
+  longer compete with you while you are talking to Ghost, and the half-hourly
+  heartbeat only runs the parts of its checklist that are actually due —
+  instead of spending a large model call every 30 minutes to report that
+  nothing needed doing.
+- **Memory still settles, just not in your way.** Reading a message for things
+  worth remembering now happens after you have your answer; the work is queued
+  durably, retried, and recovered if Ghost restarts.
+- Every turn now records how long it took, how long until the first word, and
+  whether the token counts are measured or estimated — locally, with no
+  telemetry leaving the device.
+
 ## [0.24.53] - 2026-09-26
 
 - **Ghost keeps your promises.** Tell Ghost "I need to send Alex those
