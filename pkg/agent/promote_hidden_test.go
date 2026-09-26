@@ -83,3 +83,39 @@ func TestAttemptHiddenPrimitive(t *testing.T) {
 		}
 	})
 }
+
+// The owner asking for a command must be detectable deterministically: this
+// is what makes exec offerable at turn start. False positives would merely
+// widen visibility (the broker still gates execution); false negatives leave
+// the model refusing again.
+func TestOwnerRequestsCommand(t *testing.T) {
+	yes := []string{
+		"run df -h on this machine",
+		"run the command uname -a and show me the output",
+		"execute `ls -la`",
+		"can you run df -h?",
+		"please execute /var/tmp/report.sh",
+		"df -h",
+		"ls -la /var/lib/ghost",
+		"now run ps aux | head",
+	}
+	no := []string{
+		"check the free disk space",
+		"what is the status of the device",
+		"run a business",
+		"run it",
+		"run the server and tell me when it's up",
+		"please run tests", // no flag/path shape; model may still attempt exec itself
+		"hello",
+	}
+	for _, m := range yes {
+		if !ownerRequestsCommand(m) {
+			t.Errorf("expected command request: %q", m)
+		}
+	}
+	for _, m := range no {
+		if ownerRequestsCommand(m) {
+			t.Errorf("must not treat as command request: %q", m)
+		}
+	}
+}

@@ -24,6 +24,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/product"
+	"github.com/ianclemence/ghost/pkg/provider"
 	"github.com/ianclemence/ghost/pkg/providers/aqi"
 	"github.com/ianclemence/ghost/pkg/providers/crypto"
 	"github.com/ianclemence/ghost/pkg/providers/currency"
@@ -144,6 +145,14 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]interface{}) 
 	}
 	cur, r := svc.CurrentByPlace(ctx, loc, false)
 	if r.Err != nil {
+		// A place the geocoder can't resolve is a lookup miss, not an
+		// execution failure: say that plainly instead of the transactional
+		// "Nothing was changed" line (which reads as if something broke).
+		// Transport/rate failures during the lookup keep their classified
+		// product message — only a genuine no-results ends here.
+		if r.Failure == provider.FailEmpty && strings.Contains(r.Err.Error(), "location lookup failed") {
+			return providerError(fmt.Sprintf("I couldn't find a place called %q. Check the spelling or add the country.", loc))
+		}
 		o := product.OutcomeForProviderFailure("weather", r.Failure, r.Err)
 		return providerError(o.UserMessage)
 	}

@@ -154,8 +154,17 @@ var capabilityHints = map[string]map[ErrorClass]string{
 		ErrAuthRequired:   "Your Notion connection needs to be renewed.",
 	},
 	"weather": {
-		ErrProvider: "Weather data is temporarily unavailable. I'll try again shortly.",
-		ErrOffline:  "Ghost is offline, so I can't fetch fresh weather right now.",
+		ErrProvider:    "Weather data is temporarily unavailable. I'll try again shortly.",
+		ErrRateLimited: "The weather service is busy right now. I'll try again shortly.",
+		// A weather read never "changes" anything — the generic
+		// execution_error line is transactional and reads as if something
+		// broke. Reads get read language.
+		ErrExecution: "The weather service didn't come back with a reading. Please try again in a moment.",
+		ErrOffline:   "Ghost is offline, so I can't fetch fresh weather right now.",
+	},
+	"aqi": {
+		ErrExecution: "The air quality service didn't come back with a reading. Please try again in a moment.",
+		ErrOffline:   "Ghost is offline, so I can't fetch fresh air quality right now.",
 	},
 	"reminder": {
 		ErrClarification: "What time should I remind you?",

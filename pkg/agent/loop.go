@@ -2794,6 +2794,13 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		activeProfile = al.toolProfile
 	}
 	activeTools := tools.FilterToolsForTurn(al.tools, activeProfile, opts.UserMessage, len(opts.Media) > 0)
+	// The owner explicitly asked for a command: offer exec for this turn so
+	// the model can actually attempt it. Visibility only — the broker still
+	// decides execution (exec is high-impact, never auto-authorized).
+	// Profiles that withhold exec keep it hidden; nothing widens authority.
+	if ownerRequestsCommand(opts.UserMessage) {
+		attemptHiddenPrimitive(activeProfile, al.tools, activeTools, "exec", opts.Channel, opts.SessionKey)
+	}
 	// The version-pinned browser contract rides the stable prompt prefix
 	// exactly when this turn can call browser_* tools.
 	injectBrowserContract(messages, activeTools)
@@ -4621,4 +4628,30 @@ func attemptHiddenPrimitive(profile tools.ToolProfile, reg, active *tools.ToolRe
 	logger.InfoCF("agent", "hidden primitive promoted on attempt",
 		map[string]interface{}{"tool": name, "channel": channel})
 	return true
+}
+
+// commandRequestRE matches an owner explicitly asking Ghost to run a shell
+// command: "run df -h on this machine", "run the command uname -a",
+// "execute `ls -la`", or a bare command line with a flag/path ("ls -la /var").
+// Vague follow-ups ("run it") are deliberately NOT matches: those are answered
+// by the approval-reply path or by an honest "what do you mean", never by
+// widening the offered tool set on a guess.
+var commandRequestRE = regexp.MustCompile("(?i)(?:" +
+	`\b(?:run|execute)\s+(?:(?:the|a|this|following)\s+)?(?:shell\s+|terminal\s+)?command\b|` + // run the command uname -a
+	`\b(?:run|execute)\s+\x60[^\x60\n]+\x60|` + // run `ls -la`
+	`(?:^|[\s.!?,])(?:(?:can|could)\s+you\s+|please\s+|go\s+ahead\s+and\s+|just\s+)*(?:run|execute)\s+(?:` +
+	`[a-z0-9_][\w./-]*(?:\s+(?:-{1,2}[a-z0-9][\w-]*|/[^\s]+|[a-z0-9_-]+\.[a-z0-9]+))+|` + // run df -h / run ./x.sh args
+	`/[^\s]+|` + // execute /var/tmp/report.sh (path is the command)
+	`[a-z0-9_./][\w./-]*[^\n]*[|;&>]` + // run ps aux | head (shell metachar present)
+	`)|` +
+	`^\s*[a-z0-9_./][\w./-]*(?:\s+(?:-{1,2}[a-z0-9][\w-]*|/[^\s]+))+\s*[?.!]?\s*$` + // bare: df -h
+	`)`)
+
+// ownerRequestsCommand reports whether the owner's message is an explicit
+// request to run a command. It only drives VISIBILITY (exec is offered for
+// the turn); authority stays with the permission broker, which asks before
+// anything executes. Without this, models never attempt a tool they cannot
+// see — the exact three-refusals failure the owner reported.
+func ownerRequestsCommand(msg string) bool {
+	return commandRequestRE.MatchString(strings.TrimSpace(msg))
 }

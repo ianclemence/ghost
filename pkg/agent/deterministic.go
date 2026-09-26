@@ -723,6 +723,14 @@ func (al *AgentLoop) execDeterministicTool(name string, args map[string]interfac
 
 var locationFromTextRE = regexp.MustCompile(`(?i)\b(?:in|near|around|close to|next to)\s+([A-Z][a-zA-Z'’\-]*(?:[\s\-][A-Z][a-zA-Z'’\-]*){0,3})`)
 
+// herePhraseRE matches captures that reference the user's OWN location rather
+// than a named place. The preposition regex is case-insensitive, so "weather
+// in my city" captures the phrase "my city" — sending that to a geocoder
+// guarantees a no-results failure and never the user's actual location. Such
+// captures return "" so locationWithMemoryFallback resolves them through the
+// stored location (knownLocation), or the readiness fast-path asks once.
+var herePhraseRE = regexp.MustCompile(`(?i)^(?:me|here|my\s+(?:city|town|location|area|place)|this\s+(?:city|place)|where\s+i\s+(?:am|live))$`)
+
 func locationFromText(msg string) string {
 	m := locationFromTextRE.FindStringSubmatch(msg)
 	if m == nil {
@@ -749,6 +757,9 @@ func locationFromText(msg string) string {
 	}
 	loc = strings.TrimRight(loc, " .,!?;:")
 	if len(loc) < 3 || len(loc) > 40 {
+		return ""
+	}
+	if herePhraseRE.MatchString(loc) {
 		return ""
 	}
 	return loc

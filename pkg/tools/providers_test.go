@@ -38,6 +38,26 @@ func TestWeatherToolCoords(t *testing.T) {
 	}
 }
 
+// A place the geocoder cannot resolve must read as a lookup miss in plain
+// language — never the transactional "That didn't complete. Nothing was
+// changed." line, which reads as if something broke during a pure read.
+func TestWeatherToolPlaceNotFoundSpeaksPlainly(t *testing.T) {
+	m := fakeServer(`{}`, 200) // geocoder returns no results
+	defer m.Close()
+	tool := &WeatherTool{cfg: &weather.Config{WttrBase: m.URL, OpenMeteoBase: m.URL, GeocodeBase: m.URL, CacheTTL: time.Minute, BreakerCooldown: time.Second}}
+	res := tool.Execute(context.Background(), map[string]interface{}{"location": "Narnia"})
+	if !res.IsError {
+		t.Fatalf("expected an error for an unresolvable place: %+v", res)
+	}
+	got := res.UserFacing()
+	if !strings.Contains(got, "couldn't find") {
+		t.Fatalf("place-not-found must speak plainly, got %q", got)
+	}
+	if strings.Contains(got, "Nothing was changed") {
+		t.Fatalf("a read must never claim something was changed: %q", got)
+	}
+}
+
 func TestWeatherToolNeedsLocation(t *testing.T) {
 	tool := NewWeatherTool("")
 	res := tool.Execute(context.Background(), map[string]interface{}{})

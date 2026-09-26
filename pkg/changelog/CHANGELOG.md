@@ -3,6 +3,24 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.45] - 2026-09-26
+
+- "Weather in my city" works instead of failing. The place
+  extractor was capturing the phrase "my city" literally and handing
+  it to a geocoder that could never resolve it — a plain weather read
+  came back "That didn't complete. Nothing was changed." Here-phrases
+  (my city / my location / my town / near me) now resolve through
+  the location Ghost has on file, and a genuinely unknown place says
+  so plainly: "I couldn't find a place called …"
+- Weather reads speak read language. A failed lookup never claims
+  something "was changed" — it says the weather service didn't come
+  back with a reading, or that the place couldn't be found.
+- Asking for a command offers the command tool. When your message
+  explicitly asks Ghost to run something ("run df -h", "run the
+  command uname -a", a bare "ls -la"), the command tool is offered
+  for that turn. Visibility only — the permission broker still asks
+  before anything runs, exactly as before.
+
 ## [0.24.44] - 2026-09-26
 
 - The status tool actually reaches the model now. It was registered

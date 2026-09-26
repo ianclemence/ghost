@@ -349,6 +349,17 @@ func TestLocationFallbackFillsHere(t *testing.T) {
 	if got := al.locationWithMemoryFallback("What's the current weather?", "s", plain); got["location"] != "" {
 		t.Fatalf("must not invent a location, got %q", got["location"])
 	}
+	// "my city" phrasing: extraction yields no literal place, and the
+	// fallback resolves it through memory — the live bug where "my city"
+	// was geocoded as a place and failed.
+	msg := "What is the weather in my city?"
+	inputs = capabilityInputsFromMessage(msg, nil)
+	if inputs["location"] != "" {
+		t.Fatalf("here-phrase must not be extracted as a place, got %q", inputs["location"])
+	}
+	if got := al.locationWithMemoryFallback(msg, "s", inputs); got["location"] != "Phang-Nga" {
+		t.Fatalf("my city must resolve from memory, got %q", got["location"])
+	}
 }
 
 func TestSupersedeSemanticCorrection(t *testing.T) {
@@ -443,6 +454,28 @@ func TestLocationFromTextPrepositions(t *testing.T) {
 		"places close to Cebu City please":             "Cebu City",
 		"restaurants near me":                          "",
 		"show me something cool":                       "",
+	}
+	for msg, want := range cases {
+		if got := locationFromText(msg); got != want {
+			t.Errorf("locationFromText(%q) = %q, want %q", msg, got, want)
+		}
+	}
+}
+
+// Here-phrases must never be extracted as literal places: "weather in my
+// city" captures "my city" (the preposition regex is case-insensitive), and
+// geocoding that literal phrase guarantees a no-results failure instead of
+// the user's actual location. Returning "" lets locationWithMemoryFallback
+// resolve through the stored location instead.
+func TestLocationFromTextIgnoresHerePhrases(t *testing.T) {
+	cases := map[string]string{
+		"what is the weather in my city?":   "",
+		"weather in my location":            "",
+		"find parks around my town":         "",
+		"cafes near my place":               "",
+		"what's the weather in my area now": "",
+		// Real places still extract (case-insensitive capture included).
+		"what's the weather in chiang mai?": "chiang mai",
 	}
 	for msg, want := range cases {
 		if got := locationFromText(msg); got != want {
