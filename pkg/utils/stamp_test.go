@@ -10,6 +10,10 @@ func TestStripDateStamp(t *testing.T) {
 		"[2026-09-25 15:59] Set — dinner Friday":      "Set — dinner Friday",
 		"[2026-09-25 15:59]Set — dinner":              "Set — dinner",
 		"[2026-09-25 15:59] [2026-09-25 16:00] Twice": "Twice",
+		// Space-dropped label (model artifact: no space before numbers):
+		// the invisible label must not become a visible date prefix.
+		"[2026-09-2515:59] Approval needed":        "Approval needed",
+		"[2026-09-2515:59][2026-09-2516:00] Twice": "Twice",
 		"No label here":                     "No label here",
 		"[Done] ready":                      "[Done] ready",
 		"mid text [2026-09-25 15:59] stays": "mid text [2026-09-25 15:59] stays",
@@ -34,6 +38,12 @@ func TestCouldStartHistoryStamp(t *testing.T) {
 		"[2026-09-25 15",
 		"[2026-09-25 15:59",
 		"[2026-09-25 15:59] ",
+		// Space-dropped shape: held the same way, or the strip regex
+		// alone could never catch a label streamed in pieces.
+		"[2026-09-251",
+		"[2026-09-2515",
+		"[2026-09-2515:59",
+		"[2026-09-2515:59] ",
 	}
 	for _, s := range hold {
 		if !CouldStartHistoryStamp(s) {
@@ -46,6 +56,7 @@ func TestCouldStartHistoryStamp(t *testing.T) {
 		"2026 was fine",
 		"[2026-09-25 15:59] done", // past the template length
 		"x[2026-09-25 15:59]",
+		"[2026-09-251 plans", // spaceless shape diverging must flush too
 	}
 	for _, s := range pass {
 		if CouldStartHistoryStamp(s) {

@@ -39,6 +39,24 @@ func TestStampStreamStripsLeadingLabel(t *testing.T) {
 	if !ok || out != "Set" {
 		t.Fatalf("doubled label: got (%q, %v), want (\"Set\", true)", out, ok)
 	}
+
+	// Space-dropped label (model artifact: "[2026-09-2515:59] …"): the
+	// shape is still a label imitation, so it strips too — in one chunk…
+	s5 := &stampStream{}
+	out, ok = s5.feed("[2026-09-2515:59] Approval")
+	if !ok || out != "Approval" {
+		t.Fatalf("spaceless label: got (%q, %v), want (\"Approval\", true)", out, ok)
+	}
+
+	// …and split across chunks, which is where the live leak happened.
+	s6 := &stampStream{}
+	if out, ok := s6.feed("[2026-09-251"); ok {
+		t.Fatalf("partial spaceless label must be held, got (%q, %v)", out, ok)
+	}
+	out, ok = s6.feed("5:59] Approval")
+	if !ok || out != "Approval" {
+		t.Fatalf("split spaceless label: got (%q, %v), want (\"Approval\", true)", out, ok)
+	}
 }
 
 // A reply that only LOOKS like the start of a label flushes the moment

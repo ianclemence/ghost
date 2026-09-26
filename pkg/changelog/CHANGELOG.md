@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.46] - 2026-09-26
+
+- No more stray date stamps. When a model echoed the internal
+  history label in a reply — with its characteristic dropped space
+  ("[2026-09-2610:04] Approval needed…") — it slipped past the
+  stripper and showed up as a visible date prefix on your chat.
+  Both label shapes now strip at every output boundary: the live
+  stream, the final reply, and history reads.
+
 ## [0.24.45] - 2026-09-26
 
 - "Weather in my city" works instead of failing. The place
