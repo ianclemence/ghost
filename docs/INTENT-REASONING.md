@@ -144,6 +144,34 @@ automatic withdrawal (supersession) when the situation resolves or
 changes before the owner answers. A stale approval is refused rather than
 executed.
 
+### Controls
+
+Observations, candidates, gating and delivery are all governed by
+`PROACTIVE_PREFERENCES.md` in the workspace, parsed deterministically
+(never interpreted by a model). Missing file means the conservative
+defaults; malformed values are ignored rather than failing closed on a
+preferences file.
+
+| Key | Meaning | Default |
+|---|---|---|
+| `enabled` | Master switch for notices **and** opportunities. Off silences Ghost volunteering things; it never disables work the owner explicitly asked for. | `true` |
+| `quiet_hours` | Window in which non-urgent delivery is held, in the owner's timezone. | `23:00-08:00` |
+| `max_pushes_per_day` | Daily cap on non-urgent check-ins. | `5` |
+| `cooldown_per_topic` | Per-topic silence after a push. | `6h` |
+| `dedupe_window` | Identical-content suppression. | `24h` |
+| `categories` | Which opportunity categories may surface (`reminders`, `routines`, `goals`, `tasks`). Empty means all. | all |
+| `preferred_channel` | Deliver offers on one channel only. Empty means the last active channel. | last active |
+| `proposal_ttl_hours` | How long an unanswered offer stays on the owner's list. | `24` |
+
+A permissioned offer is additionally bounded by the broker's own approval
+request lifetime: if the owner answers after that request lapses, nothing
+executes and Ghost says so.
+
+Forgetting is not a control here: dismissing an opportunity records a
+receipt and suppresses that opportunity for the dismissal cooldown; it
+never deletes memory. See [User](USER.md) for what the owner can change
+about Ghost's memory.
+
 The model's role here is unchanged: it may interpret what an approved
 action needs, but it never grants permission, never declares success, and
 never decides whether Ghost should speak. See
