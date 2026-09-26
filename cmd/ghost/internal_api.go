@@ -2141,12 +2141,21 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			}
 		}
 
+		// Retrieval observations were already collected by the runtime; until
+		// now nothing read them. Exposing them makes the memory gate visible:
+		// a query count with a large skip count is the embedding cost Ghost
+		// did not pay.
+		retrieval := map[string]interface{}{}
+		if src := doctorRunner.RetrievalStats(); src != nil {
+			retrieval = map[string]interface{}{"rag": src.RAG, "memo": src.Memo}
+		}
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":    overall,
 			"checks":    checks,
 			"timestamp": time.Now().Unix(),
 			"uptime":    int64(time.Since(apiStartTime).Seconds()),
 			"version":   version,
+			"retrieval": retrieval,
 			"profile": ProfileInfo{
 				Name:        string(profileName),
 				Permissions: permissions,
@@ -2829,7 +2838,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		// "Ghost is searching…", "Reading file…" etc. in real time.
 		// These are JSON objects, NOT text chunks — the app routes them
 		// to the status badge, not the message bubble.
-		onToolCall := func(name string, args string) {
+		onToolCall := func(name, args string) {
 			label := toolStatusLabel(name, args)
 			payload, _ := json.Marshal(map[string]string{
 				"type":  "tool_status",
@@ -2906,6 +2915,19 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		// restatement against them (scheduling never stores a time the owner
 		// did not name).
 		ctx = tools.WithRequestMessage(ctx, req.Content)
+		// Honest progress: the client is told when Ghost is genuinely
+		// retrieving memory or waiting on the model, so the silent stretch
+		// between "processing" and the first token is never a blank screen.
+		// No phase claims completion — that stays bound to evidence.
+		ctx = agent.WithPhaseSink(ctx, func(phase, detail string) {
+			frame := map[string]string{"type": "phase", "phase": phase}
+			if detail != "" {
+				frame["detail"] = detail
+			}
+			payload, _ := json.Marshal(frame)
+			fmt.Fprintf(w, "data: %s\n\n", string(payload))
+			flusher.Flush()
+		})
 		if req.Metadata != nil {
 			ctx = tools.WithRequestTimezone(ctx, strings.TrimSpace(req.Metadata["timezone"]))
 			// Carry the device location on the turn context so the runtime

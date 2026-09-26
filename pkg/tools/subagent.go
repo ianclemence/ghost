@@ -106,6 +106,17 @@ type SubagentManager struct {
 	allowedCapabilities []string
 }
 
+// SetDefaultModel updates the model subagents run on. A runtime model switch
+// must reach them, or they keep calling the boot-time model (a second model to
+// load, and a split brain about which one is active).
+func (sm *SubagentManager) SetDefaultModel(model string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if strings.TrimSpace(model) != "" {
+		sm.defaultModel = model
+	}
+}
+
 func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace string, bus *bus.MessageBus) *SubagentManager {
 	return &SubagentManager{
 		tasks:         make(map[string]*SubagentTask),

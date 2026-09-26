@@ -42,17 +42,12 @@ func (al *AgentLoop) commitmentStoreFor() (*commitments.Store, error) {
 	return commitments.New(al.workspace)
 }
 
-// extractCommitments runs inside the turn's memory pass. It persists durable
-// obligations with provenance, and is deliberately silent on every other
-// outcome: an extraction failure must never break or slow a turn.
-//
-// Explicit reminder requests are skipped — the scheduler already owns those,
-// and storing them twice would create two durable records of one intent.
-func (al *AgentLoop) extractCommitments(opts processOptions) {
-	if al.workspace == "" || isMachineTurn(opts.SessionKey) {
-		return
-	}
-	if isAutomationIntent(opts.UserMessage) {
+// extractCommitmentsInline is the deterministic half of commitment
+// extraction: patterns are free, so they run inside the turn and the durable
+// record exists even if the process stops right after the reply. The
+// model-backed half runs from the deferred queue (see deferred.go).
+func (al *AgentLoop) extractCommitmentsInline(opts processOptions) {
+	if al.workspace == "" || isMachineTurn(opts.SessionKey) || isAutomationIntent(opts.UserMessage) {
 		return
 	}
 	store, err := al.commitmentStoreFor()
@@ -60,59 +55,40 @@ func (al *AgentLoop) extractCommitments(opts processOptions) {
 		return
 	}
 	now := time.Now().UTC()
-	tz := al.scheduleTimezone()
-
 	msgID := opts.RequestID
 	if msgID == "" {
 		msgID = fmt.Sprintf("msg-%d", now.UnixNano())
 	}
-	quoteOf := func(c commitments.Candidate) commitments.Provenance {
-		return commitments.Provenance{
-			Session: opts.SessionKey, MessageID: msgID,
-			Quote: c.Quote, At: now,
-		}
+	for _, c := range commitments.ExtractDeterministic(opts.UserMessage, now, al.scheduleTimezone()) {
+		al.persistCommitment(store, c, opts.SessionKey, msgID, now)
+		return
 	}
-	persist := func(c commitments.Candidate) {
-		// Provenance is re-checked here rather than trusted from the caller:
-		// the stored quote must be a verbatim span of what the owner wrote.
-		if p := quoteOf(c); p.Quote == "" || !strings.Contains(normalizeForMatch(opts.UserMessage), normalizeForMatch(p.Quote)) {
-			logger.InfoCF("agent", "commitment skipped: provenance not verbatim",
-				map[string]interface{}{"origin": c.Origin})
-			return
-		}
-		created, err := store.Create(commitments.Commitment{
-			Text: c.Text, Subject: c.Subject, Kind: c.Kind,
-			DueAt: c.DueAt, DueSource: c.DuePhrase,
-			Confidence: c.Confidence, Origin: c.Origin,
-			Provenance: quoteOf(c),
-			DedupeKey:  commitments.DueKey(c.Text, c.Subject, c.DueAt),
-		})
-		if err != nil {
-			logger.InfoCF("agent", "commitment not stored", map[string]interface{}{"error": err.Error()})
-			return
-		}
-		al.publishCommitment(cevents.CommitmentCreated, created, "noticed a promise")
-		logger.InfoCF("agent", "commitment recorded", map[string]interface{}{
-			"id": created.ID, "kind": string(created.Kind), "origin": created.Origin,
-		})
-		// A new obligation is a state change: evaluate awareness immediately
-		// instead of waiting for the next reconciliation tick.
-		al.RequestProactiveEvaluation()
-	}
+}
 
-	for _, c := range commitments.ExtractDeterministic(opts.UserMessage, now, tz) {
-		persist(c)
+// persistCommitment stores one extracted obligation after checking that its
+// provenance really is a verbatim span of what the owner wrote.
+func (al *AgentLoop) persistCommitment(store *commitments.Store, c commitments.Candidate, session, msgID string, now time.Time) {
+	if c.Quote == "" {
 		return
 	}
-	// Deterministic patterns found nothing. The model runs only here, only for
-	// messages that could be obligations, and every field it returns is
-	// verified against the owner's words before anything is stored.
-	if al.commitmentExtractor == nil {
+	created, err := store.Create(commitments.Commitment{
+		Text: c.Text, Subject: c.Subject, Kind: c.Kind,
+		DueAt: c.DueAt, DueSource: c.DuePhrase,
+		Confidence: c.Confidence, Origin: c.Origin,
+		Provenance: commitments.Provenance{Session: session, MessageID: msgID, Quote: c.Quote, At: now},
+		DedupeKey:  commitments.DueKey(c.Text, c.Subject, c.DueAt),
+	})
+	if err != nil {
+		logger.InfoCF("agent", "commitment not stored", map[string]interface{}{"error": err.Error()})
 		return
 	}
-	if c, ok := al.commitmentExtractor.Extract(context.Background(), opts.UserMessage, now, tz); ok {
-		persist(c)
-	}
+	al.publishCommitment(cevents.CommitmentCreated, created, "noticed a promise")
+	logger.InfoCF("agent", "commitment recorded", map[string]interface{}{
+		"id": created.ID, "kind": string(created.Kind), "origin": created.Origin,
+	})
+	// A new obligation is a state change: evaluate awareness immediately
+	// instead of waiting for the next reconciliation tick.
+	al.RequestProactiveEvaluation()
 }
 
 func normalizeForMatch(s string) string {

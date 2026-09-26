@@ -118,6 +118,12 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		// receives no content even though the response is generated.
 		"stream": onChunk != nil,
 	}
+	if onChunk != nil {
+		// Ask for the usage block on the final stream chunk. Providers that
+		// support it return real token counts, so a streamed turn is measured
+		// rather than estimated; providers that ignore it are unaffected.
+		requestBody["stream_options"] = map[string]interface{}{"include_usage": true}
+	}
 
 	if len(tools) > 0 {
 		requestBody["tools"] = tools
@@ -218,10 +224,21 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		nativeBody := map[string]interface{}{
 			"model":    model,
 			"messages": nativeMsgs,
-			// The native /api/chat endpoint streams NDJSON by default, but
-			// we read the whole body and decode a single JSON object below,
-			// so request a non-streaming response.
-			"stream": false,
+			// /api/chat streams NDJSON when asked. Hardcoding false meant a
+			// local chat model produced no output until the whole completion
+			// was generated: the owner waited in silence for the entire
+			// generation. Stream whenever the caller wants chunks, and fall
+			// back to a single object otherwise.
+			"stream": onChunk != nil,
+		}
+		// Residency and context are policy, not defaults to inherit blindly.
+		// A local model that Ollama evicts costs a full reload (~2.9 s
+		// measured on the Pi for a 274 MB model) before the next token.
+		if ka, ok := options["keep_alive"].(string); ok && ka != "" {
+			nativeBody["keep_alive"] = ka
+		}
+		if nc, ok := options["num_ctx"].(int); ok && nc > 0 {
+			nativeBody["num_ctx"] = nc
 		}
 		if thinkParam != nil {
 			nativeBody["think"] = thinkParam
@@ -262,12 +279,16 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 			return nil, fmt.Errorf("failed to send request: %w", err)
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("API request failed:\n  Status: %d\n  Body:   %s", resp.StatusCode, string(body))
+		}
+		if onChunk != nil {
+			return p.readNativeStream(resp.Body, onChunk)
+		}
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read response: %w", err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("API request failed:\n  Status: %d\n  Body:   %s", resp.StatusCode, string(body))
 		}
 		return p.parseNativeResponse(body)
 	} else {
@@ -312,6 +333,7 @@ func (p *HTTPProvider) readOpenAIStream(r io.Reader, onChunk func(string)) (*LLM
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 
 	var sb, reasoning strings.Builder
+	var streamUsage *UsageInfo
 	filter := &reasoningStreamFilter{}
 	var toolCalls []ToolCall // accumulated by index
 	var rawArgs []string     // raw argument fragments, parallel to toolCalls
@@ -354,6 +376,9 @@ func (p *HTTPProvider) readOpenAIStream(r io.Reader, onChunk func(string)) (*LLM
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			// Ignore non-JSON events (e.g. keepalive comments).
 			continue
+		}
+		if chunk.Usage != nil {
+			streamUsage = chunk.Usage
 		}
 		if len(chunk.Choices) == 0 {
 			continue
@@ -429,7 +454,66 @@ func (p *HTTPProvider) readOpenAIStream(r io.Reader, onChunk func(string)) (*LLM
 		ReasoningContent: reasoning.String(),
 		ToolCalls:        toolCalls,
 		FinishReason:     finishReason,
+		Usage:            streamUsage,
 	}, nil
+}
+
+// nativeStreamChunk is one NDJSON line from Ollama's /api/chat stream.
+type nativeStreamChunk struct {
+	Message struct {
+		Content string `json:"content"`
+	} `json:"message"`
+	Done            bool           `json:"done"`
+	DoneReason      string         `json:"done_reason"`
+	PromptEvalCount int            `json:"prompt_eval_count"`
+	EvalCount       int            `json:"eval_count"`
+	Error           string         `json:"error"`
+	Usage           map[string]any `json:"usage"`
+}
+
+// readNativeStream consumes Ollama's NDJSON chat stream, forwarding content
+// deltas as they arrive and returning the final response with whatever usage
+// the runtime reported.
+func (p *HTTPProvider) readNativeStream(r io.Reader, onChunk func(string)) (*LLMResponse, error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	var content strings.Builder
+	resp := &LLMResponse{}
+	var promptEval, evalCount int
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var chunk nativeStreamChunk
+		if err := json.Unmarshal(line, &chunk); err != nil {
+			continue
+		}
+		if chunk.Error != "" {
+			return nil, fmt.Errorf("ollama stream error: %s", chunk.Error)
+		}
+		if chunk.Message.Content != "" {
+			content.WriteString(chunk.Message.Content)
+			onChunk(chunk.Message.Content)
+		}
+		if chunk.PromptEvalCount > 0 {
+			promptEval = chunk.PromptEvalCount
+		}
+		if chunk.EvalCount > 0 {
+			evalCount = chunk.EvalCount
+		}
+		if chunk.Done {
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read stream: %w", err)
+	}
+	resp.Content = content.String()
+	if promptEval > 0 || evalCount > 0 {
+		resp.Usage = &UsageInfo{PromptTokens: promptEval, CompletionTokens: evalCount, TotalTokens: promptEval + evalCount}
+	}
+	return resp, nil
 }
 
 func (p *HTTPProvider) parseNativeResponse(body []byte) (*LLMResponse, error) {

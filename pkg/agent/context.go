@@ -160,15 +160,14 @@ func (cb *ContextBuilder) buildToolsSection() string {
 		return ""
 	}
 
-	// Compact surface: just the tool names. Full descriptions + parameter
-	// schemas are already sent through the function-calling API, so repeating
-	// "name - description" here only costs tokens and adds noise (the model
-	// reasons better over a concise list).
+	// The function-calling API carries the authoritative tool list with its
+	// schemas. Enumerating the names here duplicated that catalogue on every
+	// turn for no behavioural gain: what prose adds is the selection rule.
+	_ = names
 	var sb strings.Builder
 	sb.WriteString("## Tools\n\n")
-	sb.WriteString("You have tools available through the function-calling API. Available tools:\n\n")
-	sb.WriteString(strings.Join(names, ", "))
-	sb.WriteString("\n\nPick the ONE tool that best matches the task. Do not invent tools or claim to have run a command you didn't actually execute.")
+	sb.WriteString("The tools available to you are in the function-calling API, and that list is authoritative for this turn. ")
+	sb.WriteString("Pick the ONE tool that best matches the task. Do not invent tools, and never claim to have run a command you didn't actually execute.")
 	return sb.String()
 }
 
@@ -341,29 +340,126 @@ CRITICAL — Skill is authoritative. After you READ a SKILL.md, you MUST:
 	return out
 }
 
-func (cb *ContextBuilder) LoadBootstrapFiles() string {
-	// Ghost Operational and Identity Files:
-	// - GHOST.md: The core system identity, personality, and directives (consolidated).
-	// - USER.md: Persistent facts and preferences about the user (updated at runtime).
-	// - HEARTBEAT.md: The autonomic nervous system schedule (periodic tasks).
-	// - AGENTS.md: Project-level agent instructions and conventions.
-	// - SOUL.md: Persona and personality override.
-	bootstrapFiles := []string{
-		"GHOST.md",
-		"USER.md",
-		"HEARTBEAT.md",
-		"AGENTS.md",
-		"SOUL.md",
-	}
+// promptTier selects how much of the workspace documentation is injected.
+//
+// The full bootstrap set is ~66 KB, and the measured prompt on the live device
+// was ~22.6k tokens — around 61% of it GHOST.md alone, sent on every call
+// whether or not the turn needed it. Every byte of that is a stable prefix, so
+// the reduction must be STATIC (the same content every turn) rather than
+// request-dependent: varying the prefix per turn would invalidate the
+// provider's prompt-prefix cache and cost more than it saved.
+//
+// Tiering is therefore by document section, not by turn:
+//
+//   - Behavioural core (invariants, identity, authority, evidence, memory,
+//     routines, time, personality, interacting, safety, recovery, final
+//     rules) is always present. Nothing that governs how Ghost behaves or
+//     what it may do is ever dropped.
+//   - Operational reference (the per-tool operating manual, the skills index,
+//     channels, browser/computer surfaces, credentials setup, artifacts) is
+//     read on demand with read_file when a task needs it. The core keeps a
+//     pointer so the model knows it exists.
+//
+// HEARTBEAT.md and AGENTS.md are not conversation context: the heartbeat
+// schedule is materialised into the scheduler at boot, and AGENTS.md is
+// advisory workspace conventions for agentic coding work. Both stay readable
+// on demand.
+type promptTier int
 
-	var result string
-	for _, filename := range bootstrapFiles {
-		filePath := filepath.Join(cb.workspace, filename)
-		if data, err := os.ReadFile(filePath); err == nil {
-			result += fmt.Sprintf("## %s\n\n%s\n\n", filename, string(data))
+const (
+	promptTierCore promptTier = iota
+	promptTierFull
+)
+
+// bootstrapCoreFiles are injected on every turn: identity, the owner's facts,
+// and persona.
+var bootstrapCoreFiles = []string{"GHOST.md", "USER.md", "SOUL.md"}
+
+// bootstrapReferenceFiles are injected only for the full tier.
+var bootstrapReferenceFiles = []string{"HEARTBEAT.md", "AGENTS.md"}
+
+// ghostReferenceSections are GHOST.md level-1 sections that are operational
+// reference rather than behavioural core. Anything not listed here is CORE, so
+// a newly added section is always injected until it is deliberately tiered.
+var ghostReferenceSections = map[string]bool{
+	"tools the operating manual":         true,
+	"skills":                             true,
+	"artifacts and activity":             true,
+	"channels and surfaces":              true,
+	"browser computer and live surfaces": true,
+	"credentials and setup":              true,
+}
+
+// normalizeHeading lowercases a markdown heading and strips punctuation so the
+// tier map is robust to em dashes and casing.
+func normalizeHeading(h string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(h)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == ' ':
+			b.WriteRune(r)
+		default:
+			b.WriteRune(' ')
 		}
 	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
 
+// tieredGhostDoc returns the portion of GHOST.md that belongs in the prompt
+// for the requested tier. The preamble before the first level-1 heading is
+// always kept.
+func tieredGhostDoc(doc string, tier promptTier) string {
+	if tier == promptTierFull || doc == "" {
+		return doc
+	}
+	lines := strings.Split(doc, "\n")
+	var out []string
+	drop := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "# ") {
+			drop = ghostReferenceSections[normalizeHeading(strings.TrimPrefix(line, "# "))]
+		}
+		if !drop {
+			out = append(out, line)
+		}
+	}
+	trimmed := strings.TrimRight(strings.Join(out, "\n"), "\n")
+	if trimmed == "" {
+		return doc
+	}
+	return trimmed + "\n\n_(Operational reference — the per-tool operating manual, skills, channels, browser/computer surfaces, credentials setup and artifacts — lives in GHOST.md. Read it with read_file when a task needs that detail.)_"
+}
+
+// LoadBootstrapFiles injects the always-on behavioural core.
+func (cb *ContextBuilder) LoadBootstrapFiles() string {
+	var result string
+	for _, filename := range bootstrapCoreFiles {
+		filePath := filepath.Join(cb.workspace, filename)
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+		content := string(data)
+		if filename == "GHOST.md" {
+			content = tieredGhostDoc(content, promptTierCore)
+		}
+		result += fmt.Sprintf("## %s\n\n%s\n\n", filename, content)
+	}
+	return result
+}
+
+// LoadBootstrapFilesTiered injects the core plus, for the full tier, the
+// operational reference documents.
+func (cb *ContextBuilder) LoadBootstrapFilesTiered(tier promptTier) string {
+	result := cb.LoadBootstrapFiles()
+	if tier == promptTierFull {
+		for _, filename := range bootstrapReferenceFiles {
+			filePath := filepath.Join(cb.workspace, filename)
+			if data, err := os.ReadFile(filePath); err == nil {
+				result += fmt.Sprintf("## %s\n\n%s\n\n", filename, string(data))
+			}
+		}
+	}
 	return result
 }
 

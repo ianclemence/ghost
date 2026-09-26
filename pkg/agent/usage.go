@@ -10,7 +10,7 @@ import (
 // (per-call provider figures), static-estimate second, unknown last —
 // never silent zero. Best-effort by design: metering must not fail
 // turns, so every error path returns silently.
-func recordTurnUsage(al *AgentLoop, opts processOptions, model string, iterations, prompt, completion, total int, measuredSum float64, usageResponses, unmeasuredResponses int) {
+func recordTurnUsage(al *AgentLoop, opts processOptions, model string, iterations, prompt, completion, total int, measuredSum float64, usageResponses, unmeasuredResponses int, usageSource string) {
 	if al == nil || al.governance == nil || al.governance.Events == nil {
 		return
 	}
@@ -33,6 +33,7 @@ func recordTurnUsage(al *AgentLoop, opts processOptions, model string, iteration
 			"prompt_tokens":     prompt,
 			"completion_tokens": completion,
 			"total_tokens":      total,
+			"usage_source":      usageSource,
 			"cost_usd":          cost,
 			"cost_unknown":      unknown,
 			"pricing":           providers.PricingVersion,

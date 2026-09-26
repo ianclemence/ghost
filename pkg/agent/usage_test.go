@@ -32,7 +32,7 @@ func TestRecordTurnUsage(t *testing.T) {
 	al := &AgentLoop{governance: &Governance{Events: s, GhostID: "g", AgentID: "a"}}
 	opts := processOptions{SessionKey: "sess-1", RequestID: "req-1"}
 	// Measured turn: exact dollars recorded.
-	recordTurnUsage(al, opts, "deepseek:deepseek-flash", 2, 1000, 500, 1500, 0.004, 2, 0)
+	recordTurnUsage(al, opts, "deepseek:deepseek-flash", 2, 1000, 500, 1500, 0.004, 2, 0, "measured")
 	var cost float64
 	var unknown int64
 	var model string
@@ -44,7 +44,7 @@ func TestRecordTurnUsage(t *testing.T) {
 		t.Fatalf("row wrong: %v %v %v", cost, unknown, model)
 	}
 	// Unpriced provider: unknown recorded, never zero-claimed.
-	recordTurnUsage(al, opts, "mystery:m9", 1, 100, 50, 150, 0, 1, 1)
+	recordTurnUsage(al, opts, "mystery:m9", 1, 100, 50, 150, 0, 1, 1, "measured")
 	var n int
 	db.QueryRow(`SELECT COUNT(*) FROM canonical_events WHERE type='usage.recorded'`).Scan(&n)
 	if n != 2 {
@@ -56,9 +56,9 @@ func TestRecordTurnUsage(t *testing.T) {
 		t.Fatal("unpriced turn must record unknown")
 	}
 	// Zero-usage turn writes nothing; nil governance never panics.
-	recordTurnUsage(al, opts, "x:y", 0, 0, 0, 0, 0, 0, 0)
-	recordTurnUsage(nil, opts, "x:y", 1, 1, 1, 2, 0, 1, 1)
-	recordTurnUsage(&AgentLoop{}, opts, "x:y", 1, 1, 1, 2, 0, 1, 1)
+	recordTurnUsage(al, opts, "x:y", 0, 0, 0, 0, 0, 0, 0, "unknown")
+	recordTurnUsage(nil, opts, "x:y", 1, 1, 1, 2, 0, 1, 1, "measured")
+	recordTurnUsage(&AgentLoop{}, opts, "x:y", 1, 1, 1, 2, 0, 1, 1, "measured")
 	db.QueryRow(`SELECT COUNT(*) FROM canonical_events WHERE type='usage.recorded'`).Scan(&n)
 	if n != 2 {
 		t.Fatalf("empty/nil turns must not record, got %d", n)

@@ -32,8 +32,33 @@ var secretKeyParts = []string{
 	"authorization", "auth_token", "private_key", "access_key", "client_secret",
 }
 
+// measurementKeys are the exact field names Ghost uses for NUMERIC
+// measurements. "prompt_tokens": 45512 is a reading, not a credential, and
+// masking it broke usage observability while protecting nothing.
+//
+// This is an explicit allow-list rather than a pattern on purpose: a suffix
+// rule like "ends in token" would have un-masked X-Auth-Token and leaked a
+// real credential. Anything not named here stays secret-shaped.
+var measurementKeys = map[string]bool{
+	"prompt_tokens": true, "completion_tokens": true, "total_tokens": true,
+	"input_tokens": true, "output_tokens": true, "cached_tokens": true,
+	"reasoning_tokens": true, "tokens": true, "max_tokens": true,
+	"count": true, "iterations": true, "attempts": true,
+	"ms": true, "duration_ms": true, "latency_ms": true, "elapsed_ms": true,
+	"cost_usd": true, "usd": true, "bytes": true, "mb": true, "gb": true,
+	"num_predict": true, "num_ctx": true, "seq": true, "progress": true,
+}
+
+// isMeasurementKey reports whether a key names a numeric reading.
+func isMeasurementKey(name string) bool {
+	return measurementKeys[strings.ToLower(strings.TrimSpace(name))]
+}
+
 func isSecretKey(name string) bool {
 	lower := strings.ToLower(name)
+	if isMeasurementKey(lower) {
+		return false
+	}
 	for _, p := range secretKeyParts {
 		if strings.Contains(lower, p) {
 			return true
@@ -71,6 +96,13 @@ func Any(v interface{}) interface{} {
 		out := make(map[string]interface{}, len(tv))
 		for k, val := range tv {
 			if isSecretKey(k) {
+				// A numeric value is a measurement, never a credential, even
+				// when the key looks secret-shaped (e.g. "token_count": 12).
+				switch val.(type) {
+				case int, int64, int32, float64, float32:
+					out[k] = val
+					continue
+				}
 				if s, ok := val.(string); ok {
 					out[k] = mask(s)
 				} else {

@@ -3,6 +3,7 @@ package session
 import (
 	"database/sql"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -69,15 +70,28 @@ func (s *SQLiteStore) GetDisplayHistory(key string) []providers.Message {
 	return s.queryHistory(key, false)
 }
 
+// historyReadLimit bounds how many stored turns are assembled into one model
+// context. Compaction already collapses long sessions into a summary; this is
+// the backstop that keeps a session which never crossed the compaction
+// threshold from loading its entire lifetime into every request. It is far
+// above the compaction trigger (20 messages), so normal conversations are
+// unaffected.
+const historyReadLimit = 400
+
 func (s *SQLiteStore) queryHistory(key string, excludeCompacted bool) []providers.Message {
 	where := `session_id = ? AND (archived IS NULL OR archived = 0)`
 	if excludeCompacted {
 		where += ` AND (compacted IS NULL OR compacted = 0)`
 	}
+	// Newest-last window: select the most recent N and restore ascending order,
+	// so the model always sees the turns closest to the current message.
 	rows, err := s.db.Query(`
-		SELECT role, content, meta, created_at FROM messages 
-		WHERE `+where+`
-		ORDER BY created_at ASC
+		SELECT role, content, meta, created_at FROM (
+			SELECT role, content, meta, created_at FROM messages
+			WHERE `+where+`
+			ORDER BY created_at DESC
+			LIMIT `+strconv.Itoa(historyReadLimit)+`
+		) ORDER BY created_at ASC
 	`, key)
 	if err != nil {
 		return []providers.Message{}

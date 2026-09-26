@@ -129,13 +129,20 @@ func TestPickEmbedProviderPrefersReachableOllama(t *testing.T) {
 	}
 }
 
-func TestPickEmbedProviderFallsBackWhenOllamaDown(t *testing.T) {
+// Embedding and chat are separate roles. When no embedding model is
+// available, vector memory is disabled rather than pointed at the chat model —
+// a chat endpoint cannot embed, so the fallback would fail on every retrieval
+// (or bill a completion endpoint for work it cannot do).
+func TestPickEmbedProviderDisablesRAGWhenOllamaDown(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Providers.Ollama.APIBase = "http://127.0.0.1:1"
 	chat := &mockProvider{}
 	got := pickEmbedProvider(cfg, chat)
-	if got != providers.LLMProvider(chat) {
-		t.Error("unreachable Ollama must fall back to the chat provider")
+	if got != nil {
+		t.Errorf("unreachable Ollama must disable vector memory, got %#v", got)
+	}
+	if got == providers.LLMProvider(chat) {
+		t.Error("the chat model must never be used as the embedding model")
 	}
 }
 

@@ -182,8 +182,17 @@ type AgentLoop struct {
 	// Event-driven awareness: a coalescing wake-up channel fed by the
 	// canonical stream, started explicitly by production wiring.
 	proactiveWatchOnce sync.Once
-	proactiveWake      chan struct{}
-	proactiveStop      chan struct{}
+	// interactive counts user-facing turns in flight; background work yields
+	// to them so a heartbeat or extraction never competes for the model.
+	interactive atomic.Int64
+	// subagents is kept so a runtime model switch can reach it.
+	subagents *tools.SubagentManager
+	// deferredRunning guards the single-flight deferred extraction drain, and
+	// deferredFlush serializes an explicit synchronous drain.
+	deferredRunning atomic.Bool
+	deferredFlush   sync.Mutex
+	proactiveWake   chan struct{}
+	proactiveStop   chan struct{}
 	// routineSvc/schedSvc feed the proactive signal scan (routine waits
 	// and failures). Nil when automation is disabled — scan yields none.
 	routineSvc *routines.Service
@@ -195,7 +204,10 @@ type AgentLoop struct {
 
 // processOptions configures how a message is processed
 type processOptions struct {
-	SessionKey      string // Session identifier for history/context
+	SessionKey string // Session identifier for history/context
+	// TurnStartedAt is when the user-facing turn began, used for total-turn
+	// and time-to-first-byte measurement (not for any decision).
+	TurnStartedAt   time.Time
 	Channel         string // Target channel for tool execution
 	ChatID          string // Target chat ID for tool execution
 	ToolProfile     tools.ToolProfile
@@ -635,7 +647,26 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// file changes, not on every internal turn. The version is a cheap string
 	// of counters/mtimes; caching is disabled if pcStore is nil and no files
 	// change (still correct, just less reuse).
-	contextBuilder.SetPromptCache(contextcache.New(10*time.Minute, 64), func() string {
+	// The version callback runs on every turn (it is the cache key). Its
+	// expensive component is the skills hash, which walks every installed
+	// SKILL.md — a filesystem scan per turn for a value that changes only when
+	// a skill is installed, edited, or removed. Only that component is
+	// memoized, and only briefly: memory state and file mtimes stay live, so a
+	// fact written this turn still invalidates the prompt this turn.
+	var skillsMu sync.Mutex
+	var skillsAt time.Time
+	var skillsVer string
+	cachedSkillsVersion := func() string {
+		skillsMu.Lock()
+		defer skillsMu.Unlock()
+		if skillsVer != "" && time.Since(skillsAt) < 3*time.Second {
+			return skillsVer
+		}
+		skillsVer = contextBuilder.SkillsVersion()
+		skillsAt = time.Now()
+		return skillsVer
+	}
+	promptVersionFn := func() string {
 		var b strings.Builder
 		if pcStore != nil {
 			fmt.Fprintf(&b, "pc:%d;", pcStore.Version())
@@ -646,10 +677,10 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 			}
 		}
 		fmt.Fprintf(&b, "tools:%d;persona:%s", len(toolsRegistry.List()), contextBuilder.personalityName)
-		// Skill installs/edits/removals rebuild the prompt exactly once.
-		fmt.Fprintf(&b, ";skills:%s", contextBuilder.SkillsVersion())
+		fmt.Fprintf(&b, ";skills:%s", cachedSkillsVersion())
 		return b.String()
-	})
+	}
+	contextBuilder.SetPromptCache(contextcache.New(10*time.Minute, 64), promptVersionFn)
 
 	// Create skill installer
 	installer := skills.NewSkillInstaller(workspace)
@@ -1468,6 +1499,10 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage,
 			err = fmt.Errorf("internal error handling the request")
 		}
 	}()
+	// Mark the interactive window: background model work (heartbeat,
+	// journaling, summarization, deferred extraction) yields to it.
+	al.beginInteractive()
+	defer al.endInteractive()
 	return al.processMessageInner(ctx, msg, onChunk, onToolCall)
 }
 
@@ -1621,6 +1656,28 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	if !resumedTurn && !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
 		if ans, ok := al.tryDeterministicTurn(msg.Content, msg.SessionKey); ok {
 			logger.InfoCF("agent", "deterministic: handled locally",
+				map[string]interface{}{"session_key": msg.SessionKey})
+			if onChunk != nil && ans != "" {
+				onChunk(ans)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return endTurn(ans, nil)
+		}
+	}
+	// Authoritative state queries: "what reminders do I have", "what needs
+	// me", "is Ghost healthy", "how much disk is left". SQLite and the event
+	// stream already hold the answer, so a model turn (a ~0.9 s cloud round
+	// trip plus a ~22k-token prompt) buys nothing but a paraphrase. Every
+	// renderer is state-bound: if the store is unwired or the data cannot be
+	// read, the question falls through to the normal path rather than being
+	// answered from a guess.
+	if !resumedTurn && !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+		if ans, ok := al.tryStateQueryTurn(msg.Content, msg.SessionKey); ok {
+			logger.InfoCF("agent", "deterministic: answered from runtime state",
 				map[string]interface{}{"session_key": msg.SessionKey})
 			if onChunk != nil && ans != "" {
 				onChunk(ans)
@@ -2059,6 +2116,7 @@ func (al *AgentLoop) consolidatePersonalContext() {
 // it answers a quick reachability probe; otherwise the chat provider
 // is used unchanged (previous behavior).
 func pickEmbedProvider(cfg *config.Config, chatProvider providers.LLMProvider) providers.LLMProvider {
+	_ = chatProvider // deliberately unused: see the fallback comment below
 	base := strings.TrimSpace(cfg.Providers.Ollama.APIBase)
 	if base == "" {
 		base = "http://localhost:11434"
@@ -2079,8 +2137,13 @@ func pickEmbedProvider(cfg *config.Config, chatProvider providers.LLMProvider) p
 		})
 		return local
 	}
-	logger.InfoC("agent", "Ollama unreachable, RAG embeddings follow the chat provider")
-	return chatProvider
+	// No local embedder available. A chat model is not an embedding model:
+	// pointing RAG at it would fail on every retrieval, or quietly bill a
+	// completion endpoint for work it cannot do. Vector memory is switched off
+	// and says so, while lexical recall (memory_recall, session_search) keeps
+	// working.
+	logger.WarnC("agent", "Ollama unreachable; vector memory disabled (no embedding model available)")
+	return nil
 }
 
 // ollamaReachable probes only TCP reachability (no model load, no
@@ -2367,9 +2430,9 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 
 	// Durable obligations: "I need to send Alex those photos Friday" becomes
 	// structured state the proactive runtime can watch, instead of a sentence
-	// that dies in the transcript. Runs independently of preference memory:
-	// a promise is not a fact about the owner.
-	al.extractCommitments(opts)
+	// that dies in the transcript. The deterministic pass is free and runs
+	// inline; the semantic pass is deferred with the rest of the model work.
+	al.extractCommitmentsInline(opts)
 
 	if al.pcStore == nil {
 		return
@@ -2436,86 +2499,10 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 		"pcStore":            al.pcStore != nil,
 	})
 
-	// If regex didn't find anything, try semantic extraction (slow path).
-	// Scheduling requests are excluded: their durable form is the
-	// scheduled item, and a refused ask ("every 5 seconds") must never
-	// become a stored preference. Deterministic rules above still ran.
-	if al.semanticExtractor != nil && al.pcStore != nil && !isAutomationIntent(opts.UserMessage) &&
-		(len(actions) == 0 || shouldComplement(opts.UserMessage, actions)) {
-		logger.InfoCF("agent", "Attempting semantic extraction", map[string]interface{}{
-			"message": opts.UserMessage,
-		})
-		existing := al.pcStore.Current()
-		if al.governance != nil {
-			existing = al.pcStore.CurrentInScope(al.governance.SessionScopes(opts.SessionKey))
-		}
-		result := al.semanticExtractor.Extract(context.Background(), opts.UserMessage, existing)
-		if result.ShouldRemember && len(result.Entries) > 0 {
-			// Persist semantic extraction results, deduplicated: an entry
-			// identical in kind+predicate+value to one already current is a
-			// restatement, not a new memory. Deterministic guard so a weak or
-			// over-eager extractor can never accumulate duplicate rows.
-			current := al.pcStore.CurrentInScope(al.sessionScopes(opts.SessionKey))
-			for _, entry := range result.Entries {
-				logger.InfoCF("agent", "semantic entry candidate", map[string]interface{}{
-					"predicate": entry.Predicate,
-					"value":     entryValueText(entry),
-					"status":    string(entry.Status),
-				})
-				if personalcontext.DirectiveEcho(entryValueText(entry)) {
-					logger.InfoCF("agent", "semantic extraction: directive echo, skipped",
-						map[string]interface{}{"predicate": entry.Predicate})
-					continue
-				}
-				if personalcontext.HasCurrent(current, entry) {
-					logger.InfoCF("agent", "semantic extraction: duplicate of current memory, skipped",
-						map[string]interface{}{"predicate": entry.Predicate})
-					continue
-				}
-				entry.Sources[0].Ref = fmt.Sprintf("%s:%s", opts.SessionKey, msgID)
-				if al.governance != nil {
-					entry.Scopes = al.governance.SessionWriteScopes(opts.SessionKey)
-				}
-				// Correction, not accumulation: a current entry for the same
-				// belief with a different value means the user changed their
-				// mind. Retire it via supersede so exactly one current row
-				// survives — the same rule the deterministic extractor
-				// enforces. Only current-status extractions supersede, and
-				// only when the conflicting row is the unambiguous
-				// store-wide current (never retire a fact from a context we
-				// cannot see).
-				if entry.Status == personalcontext.StatusCurrent &&
-					al.supersedeSemanticCorrection(current, entry) {
-					if al.events != nil {
-						al.events.emit(EventMemoryUpdated, "", map[string]interface{}{
-							"session_key": opts.SessionKey,
-							"method":      "semantic",
-						})
-					}
-					continue
-				}
-				if _, err := al.pcStore.Create(entry); err != nil {
-					logger.WarnCF("agent", "Failed to persist semantic extraction", map[string]interface{}{
-						"error": err.Error(),
-					})
-				} else {
-					logger.InfoCF("agent", "semantic extraction persisted", map[string]interface{}{
-						"predicate": entry.Predicate,
-					})
-					if al.events != nil {
-						al.events.emit(EventMemoryCreated, "", map[string]interface{}{
-							"session_key": opts.SessionKey,
-							"method":      "semantic",
-						})
-					}
-				}
-			}
-		} else {
-			logger.InfoCF("agent", "Semantic extraction: no memory worth remembering", map[string]interface{}{
-				"reason": result.Reason,
-			})
-		}
-	}
+	// The model-backed work (semantic memory, semantic commitments) does not
+	// affect this reply. It is recorded durably and drained after the answer is
+	// on the wire, so the owner never waits on a second and third model call.
+	al.deferExtraction(opts.SessionKey, opts.RequestID, opts.UserMessage, opts.Channel)
 }
 
 // shouldComplement reports whether a message the grammar partially captured
@@ -2646,6 +2633,7 @@ func previousUserMessage(history []providers.Message) string {
 // It handles context building, LLM calls, tool execution, and response handling.
 func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (string, error) {
 	startTime := time.Now()
+	opts.TurnStartedAt = startTime
 	// Heartbeat/background callers bypass processMessage; give them a
 	// trajectory too so their events are attributable.
 	if turnlog.TrajectoryIDFromContext(ctx) == "" {
@@ -2678,10 +2666,24 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		summary = al.sessions.GetSummary(opts.SessionKey)
 
 		// Inject RAG context into summary (scope-filtered: cross-context
-		// memories never reach the model's context).
-		ragStart := time.Now()
-		ragContext := al.sessions.GetContext(ctx, opts.UserMessage, al.sessionScopes(opts.SessionKey))
-		al.retrieval.observe("rag", time.Since(ragStart).Milliseconds())
+		// memories never reach the model's context) — but only when the
+		// message could depend on durable memory. The vector search is
+		// sub-millisecond; the local query embedding costs ~2.8 s, and a gate
+		// that skips it on greetings, actions and runtime-state questions is
+		// the single largest latency saving in the runtime. `memory_recall`
+		// and `session_search` remain available to the model as the fallback
+		// for anything the gate does not anticipate.
+		ragContext := ""
+		if memoryRetrievalNeeded(opts.UserMessage) {
+			// Announced only when retrieval actually runs, so the progress the
+			// owner sees matches the work being done.
+			emitPhase(ctx, "retrieving", "memory")
+			ragStart := time.Now()
+			ragContext = al.sessions.GetContext(ctx, opts.UserMessage, al.sessionScopes(opts.SessionKey))
+			al.retrieval.observe("rag", time.Since(ragStart).Milliseconds())
+		} else {
+			al.retrieval.observeSkip("rag")
+		}
 		if ragContext != "" {
 			if summary != "" {
 				summary += "\n\n" + ragContext
@@ -2827,11 +2829,16 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			"final_length": len(finalContent),
 		})
 
-	// 10. Auto-journaling
+	// 10. Auto-journaling. Derived work: it yields to an interactive turn
+	// rather than competing with the owner for the model, and the next turn
+	// picks it up.
 	if !opts.NoHistory && opts.SessionKey != "heartbeat" && !strings.HasPrefix(opts.UserMessage, "/") {
 		al.backgroundWG.Add(1)
 		go func() {
 			defer al.backgroundWG.Done()
+			if !al.waitForQuiet(2 * time.Second) {
+				return
+			}
 			al.autoJournal(opts.SessionKey)
 		}()
 	}
@@ -2856,12 +2863,27 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 
 	telemetry.Global.Record(opts.SessionKey, opts.RequestID, "agent_completed", opts.Channel, opts.ChatID, "")
 
+	// The reply is complete. Anything durable that the answer did not need —
+	// personal-context and commitment extraction — drains now, behind it.
+	al.kickDeferredWorker()
+
 	return finalContent, nil
 }
 
 // runLLMIteration executes the LLM call loop with tool handling.
 // Returns the final content, iteration count, and any error.
 func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions) (string, int, error) {
+	// First-token latency is the number the owner actually feels. Capture it
+	// where the stream begins, not where the turn ends.
+	var firstChunkAt time.Time
+	if inner := opts.OnChunk; inner != nil {
+		var once sync.Once
+		opts.OnChunk = func(chunk string) {
+			once.Do(func() { firstChunkAt = time.Now() })
+			inner(chunk)
+		}
+	}
+	iterStart := time.Now()
 	iteration := 0
 
 	// Effort controller: choose an execution budget for this turn and record
@@ -2975,6 +2997,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				"tools_json":    formatToolsForLog(providerToolDefs),
 			})
 
+		if iteration == 1 {
+			emitPhase(ctx, "thinking", "")
+		}
 		response, err := callLLMWithRetry(ctx, iteration, func() (*providers.LLMResponse, error) {
 			return al.callLLM(ctx, selectedModel, messages, providerToolDefs, opts)
 		})
@@ -3357,6 +3382,34 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 
 	// Per-turn telemetry (P8): record token cost and tool choices so quality
 	// and cost can be observed and improved with data.
+	// Usage honesty: a streamed response does not carry provider usage, and a
+	// flat zero would read as "this turn was free". Mark the source instead,
+	// and estimate from the prompt we actually sent when nothing was measured.
+	usageSource := "measured"
+	if usageResponses == 0 {
+		usageSource = "estimated"
+		if est := estimatePromptTokens(messages); est > promptTokens {
+			promptTokens = est
+			if totalTokens < promptTokens+completionTokens {
+				totalTokens = promptTokens + completionTokens
+			}
+		}
+		if completionTokens == 0 && finalContent != "" {
+			completionTokens = len([]rune(finalContent))/4 + 1
+			totalTokens = promptTokens + completionTokens
+		}
+	}
+	if promptTokens == 0 && completionTokens == 0 {
+		usageSource = "unknown"
+	}
+	ttfbMs := int64(-1)
+	turnStart := opts.TurnStartedAt
+	if turnStart.IsZero() {
+		turnStart = iterStart
+	}
+	if !firstChunkAt.IsZero() {
+		ttfbMs = firstChunkAt.Sub(turnStart).Milliseconds()
+	}
 	logger.InfoCF("agent", "turn telemetry",
 		map[string]interface{}{
 			"session_key":       opts.SessionKey,
@@ -3365,6 +3418,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			"prompt_tokens":     promptTokens,
 			"completion_tokens": completionTokens,
 			"total_tokens":      totalTokens,
+			"usage_source":      usageSource,
+			"ttfb_ms":           ttfbMs,
+			"duration_ms":       time.Since(turnStart).Milliseconds(),
 			"tools_used":        usedTools,
 			"final_chars":       len(finalContent),
 		})
@@ -3373,7 +3429,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	// queryable per session/task instead of log-scraped. Measured totals
 	// win; otherwise the static table estimates; otherwise unknown (never
 	// zero). Best-effort: never fails the turn.
-	recordTurnUsage(al, opts, turnModel, iteration, promptTokens, completionTokens, totalTokens, measuredCost, usageResponses, unmeasuredResponses)
+	recordTurnUsage(al, opts, turnModel, iteration, promptTokens, completionTokens, totalTokens, measuredCost, usageResponses, unmeasuredResponses, usageSource)
 
 	// Relational bookkeeping: score the user's turn, fold it into the
 	// affect aggregate, persist best-effort. Never fails the turn.
@@ -3385,6 +3441,23 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	}
 
 	return finalContent, iteration, nil
+}
+
+// estimatePromptTokens approximates the prompt size we actually sent when the
+// provider did not report usage (every streamed turn today). It is explicitly
+// an estimate: the four-runes-per-token rule matches the retrieval budget's own
+// convention, and callers label it as such.
+func estimatePromptTokens(messages []providers.Message) int {
+	total := 0
+	for _, m := range messages {
+		total += len([]rune(m.Content))
+		for _, part := range m.MultiContent {
+			if part.Text != "" {
+				total += len([]rune(part.Text))
+			}
+		}
+	}
+	return total/4 + 1
 }
 
 // loadAffect reads the persisted relational aggregate; a corrupt file
@@ -3917,6 +3990,25 @@ func (al *AgentLoop) SetModel(target string) error {
 	// Rebuild the runtime provider + doctor from the NEW default so live
 	// turns and health checks use the selected model, not the boot-time one.
 	_ = al.refreshActiveProvider()
+
+	// Every other runtime reference to "the model" must follow, or a switch
+	// leaves extraction, subagents and routing on the boot-time model — a
+	// second model to load, and a split brain about which one is active.
+	// The embedding model is deliberately NOT touched: it is a separate role
+	// served by the local runtime, and pointing it at the chat model would
+	// break vector memory.
+	if al.provider != nil {
+		al.semanticExtractor = personalcontext.NewSemanticExtractor(al.provider, model)
+		al.commitmentExtractor = commitments.NewSemanticExtractor(al.provider, model)
+		if al.subagents != nil {
+			al.subagents.SetDefaultModel(model)
+		}
+		if al.router != nil {
+			al.router.SetLightModel(strings.TrimSpace(al.cfg.Agents.Routing.LightModel))
+		}
+	}
+	logger.InfoCF("agent", "model switched; runtime references refreshed",
+		map[string]interface{}{"model": model})
 	return nil
 }
 

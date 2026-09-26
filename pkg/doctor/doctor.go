@@ -51,13 +51,27 @@ type RetrievalStats struct {
 // RetrievalPath aggregates one retrieval path ("rag", "memo").
 type RetrievalPath struct {
 	Queries int64
-	AvgMs   float64
-	LastMs  int64
+	// Skips counts deliberate decisions not to run this path, so a gate that
+	// saves work is visible instead of looking like inactivity.
+	Skips  int64
+	AvgMs  float64
+	LastMs int64
 }
 
 // SetRetrievalSource installs the agent runtime's retrieval observer.
 // Nil-safe and optional: without it the intelligence check reports counts
 // only and marks retrieval latency unobserved.
+// RetrievalStats returns the latest retrieval observations, or nil when no
+// source is wired. Owner-facing diagnostics read this so a gate that avoids
+// work is visible.
+func (d *Doctor) RetrievalStats() *RetrievalStats {
+	if d == nil || d.RetrievalSource == nil {
+		return nil
+	}
+	s := d.RetrievalSource()
+	return &s
+}
+
 func (d *Doctor) SetRetrievalSource(fn func() RetrievalStats) {
 	if d == nil {
 		return

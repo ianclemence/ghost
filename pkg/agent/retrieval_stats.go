@@ -13,6 +13,7 @@ import (
 // no payloads.
 type retrievalStat struct {
 	Queries int64
+	Skips   int64
 	TotalMs int64
 	LastMs  int64
 }
@@ -29,6 +30,22 @@ func (s *retrievalStat) avg() float64 {
 type retrievalRecorder struct {
 	mu    sync.Mutex
 	paths map[string]*retrievalStat
+}
+
+// observeSkip records that a retrieval path was deliberately not run, so the
+// owner-facing diagnostics can show the saving rather than hiding it.
+func (r *retrievalRecorder) observeSkip(path string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.paths == nil {
+		r.paths = map[string]*retrievalStat{}
+	}
+	st, ok := r.paths[path]
+	if !ok {
+		st = &retrievalStat{}
+		r.paths[path] = st
+	}
+	st.Skips++
 }
 
 // observe records one retrieval call of path ("rag", "memo") in milliseconds.
@@ -58,7 +75,7 @@ func (r *retrievalRecorder) snapshot() doctor.RetrievalStats {
 		if st == nil {
 			return doctor.RetrievalPath{}
 		}
-		return doctor.RetrievalPath{Queries: st.Queries, AvgMs: st.avg(), LastMs: st.LastMs}
+		return doctor.RetrievalPath{Queries: st.Queries, Skips: st.Skips, AvgMs: st.avg(), LastMs: st.LastMs}
 	}
 	return doctor.RetrievalStats{RAG: path("rag"), Memo: path("memo")}
 }

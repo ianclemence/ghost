@@ -364,6 +364,10 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 			turnRequests = append(turnRequests, rid)
 			turnMarks = append(turnMarks, mark)
 		}
+		// Deferred extraction runs behind the reply in production. The runner
+		// drains it synchronously so memory assertions observe the settled
+		// state rather than racing the background worker.
+		loop.FlushDeferred()
 		// Proactive cases: run the deterministic opportunity pipeline after
 		// the conversation, exactly as the heartbeat does in production — and
 		// run it twice, because repeated evaluation must converge on the same

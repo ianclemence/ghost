@@ -191,6 +191,21 @@ func (hs *HeartbeatService) executeHeartbeat() {
 		return
 	}
 
+	// Cadence gate: only the sections whose own cadence is due reach the
+	// model. A tick with nothing due costs no model call at all, instead of
+	// spending tens of thousands of prompt tokens to report HEARTBEAT_OK.
+	// The scheduler is untouched — it still owns every timed task.
+	// The device zone is the Go process zone; HEARTBEAT.md states its windows
+	// in the owner's local time.
+	loc := time.Local
+	lastRun := LoadLastRun(hs.workspace)
+	due := DueContent(prompt, time.Now(), loc, lastRun)
+	if strings.TrimSpace(due) == "" {
+		logger.DebugC("heartbeat", "Nothing due this tick (cadence gate)")
+		return
+	}
+	prompt = due
+
 	if handler == nil {
 		hs.logError("Heartbeat handler not configured")
 		return
@@ -238,6 +253,9 @@ func (hs *HeartbeatService) executeHeartbeat() {
 		hs.sendResponse(result.ForLLM)
 	}
 
+	if !result.Silent || result.ForUser != "" || result.Async || result.IsError {
+		MarkRan(hs.workspace, time.Now())
+	}
 	hs.logInfo("Heartbeat completed: %s", result.ForLLM)
 }
 
