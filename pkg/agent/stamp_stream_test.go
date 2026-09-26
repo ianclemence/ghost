@@ -79,6 +79,63 @@ func TestStampStreamFlushesOnDivergence(t *testing.T) {
 	}
 }
 
+// The gate runs BEFORE the dump filter. Filtering first dropped the "["
+// that opens the label (models emit it as its own chunk), the gate only
+// ever saw the body, and "2026-09-2610:04] …" reached the live
+// transcript as a bare date fragment (observed on v0.24.46).
+func TestStampFilterStreamGateBeforeFilter(t *testing.T) {
+	var got []string
+	sink := stampFilterStream(func(s string) { got = append(got, s) })
+
+	// Split label: "[" is held by the gate, not eaten by the filter;
+	// the body completes it and only its content reaches the sink.
+	sink("[")
+	sink("2026-09-2610:04] Hello")
+	if len(got) != 1 || got[0] != "Hello" {
+		t.Fatalf("split label: got %q, want [Hello]", got)
+	}
+
+	// A whole label in one chunk strips the same way.
+	got = nil
+	sink = stampFilterStream(func(s string) { got = append(got, s) })
+	sink("[2026-09-26 10:04] Hello")
+	if len(got) != 1 || got[0] != "Hello" {
+		t.Fatalf("single-chunk label: got %q, want [Hello]", got)
+	}
+
+	// Dump suppression still applies, before the gate and after it.
+	got = nil
+	sink = stampFilterStream(func(s string) { got = append(got, s) })
+	sink("tool_call: read_file")
+	sink("[Reading file...]")
+	if len(got) != 0 {
+		t.Fatalf("dumps must stay filtered, got %q", got)
+	}
+	// …including dump text riding behind a stripped label.
+	sink("[2026-09-26 10:04] [Reading file...]")
+	if len(got) != 0 {
+		t.Fatalf("label + dump must stay filtered, got %q", got)
+	}
+
+	// Whitespace must not settle the gate (it used to be filtered
+	// before ever reaching it): a label arriving after it still strips.
+	got = nil
+	sink = stampFilterStream(func(s string) { got = append(got, s) })
+	sink(" ")
+	sink("[2026-09-26 15:59] Set")
+	if len(got) != 1 || got[0] != "Set" {
+		t.Fatalf("label after whitespace: got %q, want [Set]", got)
+	}
+
+	// Normal text passes untouched.
+	got = nil
+	sink = stampFilterStream(func(s string) { got = append(got, s) })
+	sink("Here is the forecast.")
+	if len(got) != 1 || got[0] != "Here is the forecast." {
+		t.Fatalf("normal text: got %q", got)
+	}
+}
+
 // The hold applies only to the START of one reply: once the stream is
 // settled, a later bracketed date is ordinary content and passes.
 func TestStampStreamSettledPassesEverything(t *testing.T) {

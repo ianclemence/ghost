@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.47] - 2026-09-26
+
+- Date-stamp fix reaches the live chat. v0.24.46 stripped the
+  label from saved replies, but on a streaming reply the internal
+  dump filter still ate the label's opening "[" before the gate
+  could recognize it — the stream showed "2026-09-2610:04] …" as a
+  bare date fragment. The label gate now runs first and the filter
+  sees only what survives, so the live transcript, the saved reply,
+  and history reads all agree: no date prefixes, anywhere.
+
 ## [0.24.46] - 2026-09-26
 
 - No more stray date stamps. When a model echoed the internal

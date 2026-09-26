@@ -13,11 +13,12 @@ import (
 // shape test (pkg/agent) and the history endpoints need the same strip
 // (cmd/ghost).
 //
-// The space between date and time is optional: a model that drops spaces
-// before numbers (a known DeepSeek artifact) echoes the label as
-// "[2026-09-2610:04] …", and that shape must strip too — otherwise the
-// invisible label becomes a visible date prefix on a live transcript.
-var HistoryStampRe = regexp.MustCompile(`^\[\d{4}-\d{2}-\d{2} ?\d{2}:\d{2}\] ?`)
+// Two artifacts are tolerated: the space between date and time is
+// optional (a model that drops spaces before numbers echoes the label as
+// "[2026-09-2610:04] …"), and the opening "[" is optional (the dump
+// filter may have eaten it before this boundary — the body must strip
+// too, or the invisible label becomes a visible date prefix).
+var HistoryStampRe = regexp.MustCompile(`^\[?\d{4}-\d{2}-\d{2} ?\d{2}:\d{2}\] ?`)
 
 // StripDateStamp removes a leading internal history date label from text,
 // repeatedly (a model can echo one twice). Only the anchored prefix is

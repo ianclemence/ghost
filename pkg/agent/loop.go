@@ -1463,15 +1463,12 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	// Output hygiene: the model sees the internal date labels on its own
 	// history and sometimes imitates them in a reply. Streaming is an
 	// output boundary too — hold the leading bytes until proven not a
-	// label, so a live transcript never shows one (stamp_stream.go).
+	// label, so a live transcript never shows one, THEN run the dump
+	// filter over what survives. The order matters: filtering first ate
+	// the label's "[" (a model emits it as its own chunk) and leaked the
+	// body as a bare date fragment (stamp_stream.go).
 	if onChunk != nil {
-		innerChunk := onChunk
-		ss := &stampStream{}
-		onChunk = func(s string) {
-			if out, ok := ss.feed(s); ok && out != "" {
-				innerChunk(out)
-			}
-		}
+		onChunk = stampFilterStream(onChunk)
 	}
 	// Ensure request ID exists for tracing
 	if msg.Metadata == nil {
@@ -3457,19 +3454,15 @@ func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMP
 	// Safeguard: Ensure OnChunk is only used for assistant content streaming.
 	// We pass it to the provider, which is responsible for streaming the response.
 	// The provider should NOT stream tool inputs/outputs, only the assistant's generation.
+	// The dump filter is deliberately NOT applied here: filtering before
+	// the stamp gate dropped the "[" that opens the internal history
+	// label (models emit it as its own chunk) and leaked the label's
+	// body as a bare date fragment. opts.OnChunk is the
+	// stampFilterStream sink built in processMessageInner — gate first,
+	// filter on what survives, same suppression either way.
 	if opts.OnChunk != nil {
 		if sp, ok := provider.(providers.StreamingProvider); ok {
-			safeOnChunk := func(chunk string) {
-				if shouldFilterAssistantChunk(chunk) {
-					return
-				}
-				opts.OnChunk(chunk)
-			}
-			// Only pass OnChunk if we are NOT in a thinking/tool-use phase that might leak.
-			// Ideally, we should pass safeOnChunk, but if the provider is "chatty" with tools,
-			// we might want to disable streaming for tool-heavy iterations.
-			// For now, we use safeOnChunk.
-			return sp.StreamChat(ctx, messages, tools, model, options, safeOnChunk)
+			return sp.StreamChat(ctx, messages, tools, model, options, opts.OnChunk)
 		}
 	}
 	resp, err := provider.Chat(ctx, messages, tools, model, options)

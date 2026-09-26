@@ -1,6 +1,10 @@
 package agent
 
-import "github.com/ianclemence/ghost/pkg/utils"
+import (
+	"strings"
+
+	"github.com/ianclemence/ghost/pkg/utils"
+)
 
 // stampStream holds the leading bytes of one streamed reply until it can
 // prove they are (or are not) the model imitating the internal history
@@ -41,4 +45,48 @@ func (s *stampStream) feed(chunk string) (out string, ok bool) {
 	s.settled = true
 	s.buf = nil
 	return candidate, true
+}
+
+// couldStartHistoryLabel reports whether text is (or could still grow
+// into) the internal history date label — the one "["-shape that must
+// reach the stamp gate instead of the dump filter.
+func couldStartHistoryLabel(s string) bool {
+	if s == "" {
+		return false
+	}
+	return utils.HistoryStampRe.MatchString(s) || utils.CouldStartHistoryStamp(s)
+}
+
+// stampFilterStream is the model-chunk sink for one turn. The order is
+// load-bearing: a chunk the dump filter would drop is still fed to the
+// stamp gate when it could be the internal history label, and what the
+// gate emits is filtered again — so every byte that reaches the
+// transcript clears the dump filter, but nothing can eat the label
+// before the gate sees it.
+//
+// The failure this fixes: the label opens with "[", and a model emits
+// that bracket as its own chunk. Filtering first dropped it, the gate
+// only ever saw the body ("2026-09-2610:04] …"), could not match a
+// label without "[", and the invisible bookkeeping became a visible
+// date fragment on the live transcript.
+func stampFilterStream(inner func(string)) func(string) {
+	ss := &stampStream{}
+	return func(s string) {
+		trimmed := strings.TrimSpace(s)
+		// Internal dumps are suppressed before the gate, exactly as
+		// before, so a dump chunk can never settle the gate's decision
+		// about a label that has not finished arriving. The label
+		// itself is the exception: it must get through to strip.
+		if shouldFilterAssistantChunk(s) && !couldStartHistoryLabel(trimmed) {
+			return
+		}
+		out, ok := ss.feed(s)
+		if !ok || out == "" {
+			return
+		}
+		if shouldFilterAssistantChunk(out) {
+			return
+		}
+		inner(out)
+	}
 }
