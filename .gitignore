@@ -72,6 +72,11 @@ workspace/*
 !workspace/data/README.md
 !workspace/GHOST.md
 !workspace/HEARTBEAT.md
+# Prompt contract files — persona, identity, and conventions ship with the
+# embed like GHOST.md; only USER.md stays per-installation.
+!workspace/SOUL.md
+!workspace/IDENTITY.md
+!workspace/AGENTS.md
 
 # Per-installation identity docs — personalized at runtime, never commit.
 # (Tracking these is what made every release build report -dirty.)

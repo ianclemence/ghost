@@ -3,6 +3,27 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.48] - 2026-09-26
+
+- Ghost's operating contract is now a complete system prompt.
+  `GHOST.md` gained a per-family operating manual — status, web
+  reading, live lookups, connected apps, memory, files, commands,
+  routines, artifacts, delegation, clarifying, skills — each with
+  when to reach for it, how to call it, and what to say on success
+  or failure. Plus a dedicated skills section, channel-by-channel
+  presentation rules (phone vs console vs CLI), reply-formatting
+  guidance, and a "common failures to avoid" list drawn from the
+  bugs that actually shipped: date-label leaks, "I can't run
+  commands", success claimed without evidence, timezone mistaken
+  for location, and permission theater.
+- Persona and workspace notes deepened to match: `SOUL.md` now
+  carries the values layer (truth, respect, warmth, play) and a
+  voice card; `AGENTS.md` the skill, state-boundary, and
+  reporting conventions for agentic work.
+- Docs cleanup: retired evaluation and audit artifacts removed
+  (demo evaluation, interaction audit, live eval, restore drill,
+  tool-skill map, verification reports, security posture).
+
 ## [0.24.47] - 2026-09-26
 
 - Date-stamp fix reaches the live chat. v0.24.46 stripped the

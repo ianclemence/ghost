@@ -92,7 +92,7 @@ Device-specific verbs are expressed as capabilities (e.g. `light.set`,
 - **No secrets in the OS image.** We do not bake credentials into firmware or
   filesystem images. Provisioning is an explicit, owner-driven step.
 - **Outbound is a capability.** Nothing the Pod sees is exportable without a
-  per-action approval and a scoped payload (see `SECURITY-POSTURE.md`).
+  per-action approval and a scoped payload.
 - **Approval is not access.** A granted capability authorizes an action; it
   never grants ambient reach.
 - **Receipts are local.** The audit trail lives on the Pod. If you reset it,
@@ -100,7 +100,7 @@ Device-specific verbs are expressed as capabilities (e.g. `light.set`,
 
 ## Phased plan
 
-1. **Spec + threat model** (this document + `SECURITY-POSTURE.md`), reviewed
+1. **Spec + threat model** (this document), reviewed
    against the export failure class before any hardware.
 2. **BLE pairing + `device.health`/`discover`** on reference hardware, local
    only, no cloud.
