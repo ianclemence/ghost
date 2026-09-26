@@ -228,6 +228,11 @@ var coreToolNames = map[string]bool{
 	"message": true, "skill_manage": true,
 	"schedule": true,
 	"spawn":    true, "subagent": true,
+	// Status phrasings vary too much to keyword-gate ("is the device
+	// healthy", "how much space is left", "what's the temperature") and a
+	// missed offer is a refused question — always present, read-only,
+	// one small schema.
+	"system_status": true,
 }
 
 // turnIntentTools maps message keyword signals to niche tools to include so a

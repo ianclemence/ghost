@@ -99,3 +99,33 @@ func TestHumanBytes(t *testing.T) {
 		}
 	}
 }
+
+// The offer path is intent-gated: a registered tool that never reaches the
+// model's offered list is a question Ghost will refuse to answer. Status
+// phrasings vary too much to keyword-match, so system_status must be in the
+// always-offered core set — verified through the real turn filter.
+func TestSystemStatusIsOfferedEveryTurn(t *testing.T) {
+	reg := NewToolRegistry()
+	reg.Register(NewSystemStatusTool())
+	reg.Register(testTool{name: "web_search"})
+
+	phrasings := []string{
+		"check the free disk space",
+		"what is the status of the device",
+		"how much space is left",
+		"is the machine healthy",
+		"what's the temperature",
+		"hello",
+	}
+	for _, msg := range phrasings {
+		for _, profile := range []ToolProfile{ProfileFull, ProfileMobileSafe, ProfileMinimal} {
+			offered := FilterToolsForTurn(reg, profile, msg, false)
+			if _, ok := offered.Get("system_status"); !ok {
+				t.Errorf("system_status not offered (profile=%q msg=%q)", profile, msg)
+			}
+		}
+	}
+	if !coreToolNames["system_status"] {
+		t.Error("system_status must be core — keyword gating status questions loses")
+	}
+}

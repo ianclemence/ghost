@@ -3,6 +3,19 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.44] - 2026-09-26
+
+- The status tool actually reaches the model now. It was registered
+  in 0.24.43 but the per-turn intent filter kept it off the offered
+  list, so Ghost still said "that tool isn't available in this
+  session". It joins the always-offered core set — status phrasings
+  vary too much to keyword-gate, and a lost offer is a refused
+  question.
+- The persona now names `exec` for owner-commanded runs. "Attempt
+  the call" wasn't enough without saying which call: hidden means
+  unadvertised, not unavailable, so Ghost calls it and the approval
+  gate does the rest.
+
 ## [0.24.43] - 2026-09-26
 
 - Machine status and free disk space in one call. Ghost now has a
