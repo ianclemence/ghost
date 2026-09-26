@@ -17,8 +17,6 @@ import (
 // logs) and file sizes — a file manager, not a product. The Desk shows only
 // what Ghost produced on the owner's behalf, which is what a person actually
 // wants to look at.
-//
-// See docs/DESK.md.
 func registerDeskRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 	mux.HandleFunc("/v1/desk", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

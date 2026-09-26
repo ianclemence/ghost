@@ -3,6 +3,20 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.49] - 2026-09-26
+
+- `docs/` is now exactly the architecture chain and nothing else:
+  this README plus the nine layer documents (User → Ghost →
+  Intent/Reasoning → Capability → Permission Broker → Execution →
+  Evidence → Canonical Event → Memory/Activity/Routines/Artifacts).
+  Retired the side documents — agent CLI contract, Desk, golden run
+  report, and Pod home — and the code comments that pointed at them
+  now stand on their own.
+- Removed `ghost eval release-notes`. Its only job was assembling
+  `docs/VERIFICATION-<version>.md`, which no longer belongs in the
+  docs directory; `verify`, `benchmark`, `golden`, and `replay` are
+  unchanged.
+
 ## [0.24.48] - 2026-09-26
 
 - Ghost's operating contract is now a complete system prompt.

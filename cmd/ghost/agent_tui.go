@@ -7,8 +7,6 @@ package main
 // top and bottom, a command palette and pickers that open below the box,
 // provenance ("where did this run"), memory, routines, and inline
 // approvals.
-//
-// See docs/AGENT-CLI.md for the behavior contract.
 
 import (
 	"context"

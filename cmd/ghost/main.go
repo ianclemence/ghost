@@ -155,9 +155,6 @@ func evalCmd() {
 	case "replay":
 		os.Args = append([]string{os.Args[0], "replay"}, os.Args[3:]...)
 		replayCmd()
-	case "release-notes":
-		os.Args = append([]string{os.Args[0], "release-notes"}, os.Args[3:]...)
-		releaseNotesCmd()
 	default:
 		fmt.Printf("Unknown eval command: %s\n", os.Args[2])
 		evalHelp()
@@ -171,7 +168,6 @@ func evalHelp() {
 	fmt.Println("  golden [flags]      Run the Golden Conversation Suite")
 	fmt.Println("  benchmark [flags]   Run the personal AI benchmark + core score")
 	fmt.Println("  replay <id> [--json] Show a recorded trajectory (execution evidence)")
-	fmt.Println("  release-notes [flags] Assemble docs/VERIFICATION-<version>.md from evaluation outputs")
 }
 
 func printVersion() {

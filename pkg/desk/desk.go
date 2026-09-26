@@ -3,7 +3,7 @@
 //
 // It owns no tables, no execution, no authority, and no credentials. The
 // artifact authority has already validated existence and provenance; this
-// package only normalizes and orders. See docs/DESK.md.
+// package only normalizes and orders.
 //
 // Scope note: an earlier version also surfaced workspace files, built tools,
 // and live surfaces. That made the Desk a file manager — the owner saw

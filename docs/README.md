@@ -9,6 +9,9 @@ Ghost actually does today. It is written for engineers and architects who need
 to understand where authority lives and why the boundaries are drawn where
 they are.
 
+It holds exactly ten files: this README and the nine documents linked at the
+end — one per layer of the chain below. Nothing else lives here.
+
 ---
 
 ## What Ghost Is
