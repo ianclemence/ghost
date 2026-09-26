@@ -20,6 +20,7 @@ const (
 
 var ProfileAllowlists = map[ToolProfile][]string{
 	ProfileMobileSafe: {
+		"system_status",
 		"read_file", "write_file", "list_dir", "edit_file", "append_file",
 		"search_files", "session_search", "grep_search",
 		"view", "read",
@@ -52,10 +53,12 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// file-egress upload stay desktop/admin posture.
 	},
 	ProfileHeartbeatSafe: {
+		"system_status",
 		"read_file", "view", "session_search", "exec",
 		"write_file", "append_file", "remember",
 	},
 	ProfileCoding: {
+		"system_status",
 		"read_file", "write_file", "list_dir", "edit_file", "append_file",
 		"search_files", "grep_search",
 		"exec", "sandbox",
@@ -68,6 +71,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// No submit: purchases are not a coding action.
 	},
 	ProfileResearch: {
+		"system_status",
 		"read_file", "list_dir", "search_files", "grep_search",
 		"web_search", "web_fetch",
 		"vision", "image_generate", "video_frames",
@@ -75,11 +79,13 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Browser set registered below (browserToolNames minus submit).
 	},
 	ProfileMinimal: {
+		"system_status",
 		"read_file", "list_dir",
 		"web_search", "web_fetch",
 		"remember",
 	},
 	ProfileAdmin: {
+		"system_status",
 		"read_file", "write_file", "list_dir", "edit_file", "append_file",
 		"search_files", "grep_search",
 		"exec", "sandbox",

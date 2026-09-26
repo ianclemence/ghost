@@ -44,6 +44,11 @@ func TestToolProfileAllows(t *testing.T) {
 		{"mobile allows memory_recall", ProfileMobileSafe, "memory_recall", true},
 		{"mobile allows context_get", ProfileMobileSafe, "context_get", true},
 		{"mobile allows clarify", ProfileMobileSafe, "clarify", true},
+		// Status questions (free disk space, device health) are answerable
+		// on every surface without shell.
+		{"mobile allows system_status", ProfileMobileSafe, "system_status", true},
+		{"heartbeat allows system_status", ProfileHeartbeatSafe, "system_status", true},
+		{"minimal allows system_status", ProfileMinimal, "system_status", true},
 		{"mobile allows todo", ProfileMobileSafe, "todo", true},
 	}
 

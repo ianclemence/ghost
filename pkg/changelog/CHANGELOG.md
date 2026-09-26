@@ -3,6 +3,35 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.43] - 2026-09-26
+
+- Machine status and free disk space in one call. Ghost now has a
+  read-only `system_status` check — temperature, memory, load,
+  uptime, and df-style disk rows with real free space — available on
+  every surface including subagents. Status questions never needed
+  shell, and free space never needed df: it comes from statvfs
+  directly.
+- Asked to run a command? Ghost attempts it. When you explicitly ask
+  for a command (or grant permission for one), the call is made and
+  the runtime shows an approval — it runs on your yes. Ghost no
+  longer refuses on principle while claiming the capability "isn't
+  exposed"; surfaces that truly forbid a tool still say so plainly.
+- Direct requests win over narration rules. When you ask for command
+  output, a path, or a raw number on your own machine, you get it —
+  the "no machinery" style rule is how Ghost narrates its own work,
+  never a reason to refuse what you asked for.
+- A timezone is not a location. The clock zone is labeled as time
+  only in Ghost's context, and the persona rule now forbids
+  inferring a city or country from a zone — no more "08:25 in
+  Bangkok" from Asia/Bangkok.
+- "Weather here / in my city / in my location" resolves from the
+  location on file (asked once, remembered), and declarations like
+  "my city is Bangkok" are stored as your location too.
+- Website sign-ins offer Website logins. Asking Ghost to sign in to
+  a site now points at the sealed-login flow (you seal it in
+  Connected Apps; the password never passes through chat) instead
+  of a flat refusal.
+
 ## [0.24.42] - 2026-09-26
 
 - The location you give once now really sticks. Answering "bangkok" to

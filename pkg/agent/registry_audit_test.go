@@ -66,6 +66,10 @@ func TestRegistryGovernanceAudit(t *testing.T) {
 //   - web_search, web_fetch: read-only external retrieval (GET / search
 //     providers) with URL safety + secret checks. web_fetch is GET-only.
 //   - networking: LAN/service discovery, read-only enumeration.
+//   - system_status: read-only machine health (thermal zone, /proc
+//     mem/load/uptime, statvfs disk sizing). It changes nothing, reaches
+//     nothing external, and exists so status questions — free disk space
+//     above all — are answerable on every surface without shell.
 //   - vision, video_frames, doc_parser: read local media/files.
 //   - weather_now, flight_status, aqi_now, currency_convert, crypto_price,
 //     places_nearby: read-only lookups against provider APIs.
@@ -110,6 +114,7 @@ var allowedCoreAudit = map[string]bool{
 	"currency_convert": true, "crypto_price": true, "places_nearby": true,
 	"email_search": true, "code_search": true, "docs_search": true,
 	"connections":    true,
+	"system_status":  true,
 	"memory_explain": true,
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,

@@ -138,6 +138,15 @@ var declarationRules = []declarationRule{
 		stripNow:  true,
 	},
 	{
+		// "my city is Bangkok" — the same declaration as "I live in ...",
+		// so "here"/"my city" resolves without another question.
+		name:      "location",
+		kind:      KindFact,
+		predicate: "fact/location",
+		re:        regexp.MustCompile(`(?i)\bmy (?:city|town|location) is\s+([^;.,!?]+)`),
+		stripNow:  true,
+	},
+	{
 		name:      "communication_style",
 		kind:      KindPreference,
 		predicate: "preference/communication.style",

@@ -244,6 +244,9 @@ func TestLocationRefersHere(t *testing.T) {
 		"find cafes near me",
 		"anything good around here?",
 		"local weather",
+		"What is the weather in my city?",
+		"weather in my location",
+		"is it hot where I am?",
 	}
 	for _, m := range yes {
 		if !locationRefersHere(m) {

@@ -389,7 +389,7 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 			loc = l
 		}
 	}
-	volatile += fmt.Sprintf("\n\n## Current Time\n%s (%s)", time.Now().In(loc).Format("2006-01-02 15:04 Monday"), loc.String())
+	volatile += fmt.Sprintf("\n\n## Current Time\n%s (device clock zone: %s — time only, never a statement of where the owner is)", time.Now().In(loc).Format("2006-01-02 15:04 Monday"), loc.String())
 
 	// Add Current Session info if provided
 	if channel != "" && chatID != "" {

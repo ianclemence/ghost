@@ -102,6 +102,7 @@ func TestExtractDeclarationTable(t *testing.T) {
 		{"my favorite color is blue", "favorite_color", KindPreference, "preference/favorite_color", "blue"},
 		{"my name is Ian", "name", KindIdentity, "identity/name", "Ian"},
 		{"I live in Bangkok", "location", KindFact, "fact/location", "Bangkok"},
+		{"my city is Bangkok", "location", KindFact, "fact/location", "Bangkok"},
 		{"I prefer concise answers", "communication_style", KindPreference, "preference/communication.style", "concise"},
 		{"I like dark chocolate", "likes", KindPreference, "preference/likes", "dark chocolate"},
 		{"my goal is to launch X", "goal", KindGoal, "goal/primary", "launch X"},
@@ -201,6 +202,7 @@ func TestExtractCorrectionTable(t *testing.T) {
 	}{
 		{"actually, my favorite color is green", "preference/favorite_color", "green"},
 		{"actually I live in Bangkok now", "fact/location", "Bangkok"},
+		{"actually my town is Chiang Mai now", "fact/location", "Chiang Mai"},
 		{"that's wrong, my name is Ian", "identity/name", "Ian"},
 		{"correction: I prefer concise answers", "preference/communication.style", "concise"},
 		{"no, my favorite color is green", "preference/favorite_color", "green"},

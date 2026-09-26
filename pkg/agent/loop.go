@@ -288,6 +288,9 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 
 	// Networking & Discovery Tool (Tailscale, Bonjour)
 	registry.Register(tools.NewNetworkingTool(workspace))
+	// Read-only machine health: status/disk questions on every surface
+	// (including subagents) without shell or approval.
+	registry.Register(tools.NewSystemStatusTool())
 
 	// Voice Wake Word Control (Always-Listening)
 	registry.Register(tools.NewVoiceWakeTool(func(active bool) {
@@ -2999,15 +3002,27 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			// call this surface will refuse. A tool the profile withholds (or
 			// that the runtime has hidden) reports itself honestly and the
 			// model is told what to use instead.
+			//
+			// One exception, symmetric with capability promotion: a primitive
+			// that is merely HIDDEN (registered, kept out of the advertised
+			// set) while both the profile and explicit channel/session policy
+			// allow it. The owner may have just asked for a command or granted
+			// permission — promoting makes the call real, and the broker still
+			// asks before anything executes (exec is never auto-authorized).
+			// Refusing here would be a promise the runtime keeps the model
+			// from even making. Profile refusals and explicit policy denials
+			// still hard-block before any approval request.
 			if msg, blocked := surfaceToolBlocked(activeProfile, al.tools, tc.Name, opts.Channel, opts.SessionKey); blocked {
-				toolResultMsg := providers.Message{
-					Role:       "tool",
-					Content:    msg,
-					ToolCallID: tc.ID,
+				if !attemptHiddenPrimitive(activeProfile, al.tools, activeTools, tc.Name, opts.Channel, opts.SessionKey) {
+					toolResultMsg := providers.Message{
+						Role:       "tool",
+						Content:    msg,
+						ToolCallID: tc.ID,
+					}
+					messages = append(messages, toolResultMsg)
+					al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+					continue
 				}
-				messages = append(messages, toolResultMsg)
-				al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
-				continue
 			}
 
 			toolCtx := tools.WithSubagentDepth(ctx, tools.SubagentDepth(ctx))
@@ -4575,4 +4590,35 @@ func surfaceToolBlocked(profile tools.ToolProfile, reg *tools.ToolRegistry, name
 		return fmt.Sprintf("The %s tool is disabled on %s. Use a web tool (web_search, web_fetch) or the browser instead, or run it from the Ghost terminal.", name, where), true
 	}
 	return "", false
+}
+
+// attemptHiddenPrimitive promotes a hidden-but-allowed primitive (exec,
+// sandbox) when the model attempts it, making the call both visible and
+// executable for this turn — then the permission broker still asks the owner
+// before anything runs. It returns false when the attempt must stay blocked:
+// the tool is not merely hidden, the profile withholds it, or an explicit
+// channel/session policy denies it. The distinction is the whole point —
+// hidden is visibility, policy is authority, and only the owner's approval
+// crosses the second.
+func attemptHiddenPrimitive(profile tools.ToolProfile, reg, active *tools.ToolRegistry, name, channel, sessionKey string) bool {
+	if reg == nil || !reg.IsHidden(name) {
+		return false
+	}
+	if profile != "" && !profile.Allows(name) {
+		return false
+	}
+	if !reg.PolicyAllows(name, channel, sessionKey) {
+		return false
+	}
+	reg.Promote(name)
+	if active != nil {
+		if _, ok := active.Get(name); !ok {
+			if fullTool, ok := reg.Get(name); ok {
+				active.Register(fullTool)
+			}
+		}
+	}
+	logger.InfoCF("agent", "hidden primitive promoted on attempt",
+		map[string]interface{}{"tool": name, "channel": channel})
+	return true
 }

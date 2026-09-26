@@ -510,7 +510,7 @@ func capabilityInputsFromMessage(msg string, metadata map[string]string) map[str
 // "nearby", or "local" attached to a place noun. When one matches and no
 // explicit place is present, the runtime resolves it against device metadata
 // first, then the user's stored location, before ever asking.
-var hereRefRE = regexp.MustCompile(`(?i)\b(here|my location|near me|around here|around me|close by|local weather|local aqi|weather here|here\?)\b|\bnearby\s*[?.!]?$`)
+var hereRefRE = regexp.MustCompile(`(?i)\b(here|my location|my city|my town|my area|my place|where i am|where i live|near me|around here|around me|close by|local weather|local aqi|weather here|here\?)\b|\bnearby\s*[?.!]?$`)
 
 // locationRefersHere reports whether the message asks about the user's own
 // location without naming a place.

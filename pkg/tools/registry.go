@@ -190,6 +190,16 @@ func (r *ToolRegistry) isAllowed(name, channel, sessionKey string) bool {
 		}
 		delete(r.hiddenTools, name)
 	}
+	return r.PolicyAllows(name, channel, sessionKey)
+}
+
+// PolicyAllows reports the explicit channel/session policy answer for a tool,
+// ignoring hidden-state. Hidden is a visibility state — the tool is registered
+// and merely kept out of the advertised set — while a policy denial is an
+// explicit "no" for this surface. The two must stay distinguishable: a hidden
+// primitive may be promoted on an owner-requested attempt (then governed by
+// the broker), an explicit denial never may.
+func (r *ToolRegistry) PolicyAllows(name, channel, sessionKey string) bool {
 	channel = strings.ToLower(strings.TrimSpace(channel))
 	sessionKey = strings.TrimSpace(sessionKey)
 	if sessionPolicy, ok := r.sessionToolPolicy[sessionKey]; ok {
@@ -203,6 +213,19 @@ func (r *ToolRegistry) isAllowed(name, channel, sessionKey string) bool {
 		}
 	}
 	return true
+}
+
+// IsHidden reports whether the registry currently withholds a tool from
+// advertisement (RegisterHidden). It expires the entry lazily, exactly like
+// AllowedFor, so a stale hide heals on inspection.
+func (r *ToolRegistry) IsHidden(name string) bool {
+	if until, ok := r.hiddenTools[name]; ok {
+		if time.Now().Before(until) {
+			return true
+		}
+		delete(r.hiddenTools, name)
+	}
+	return false
 }
 
 // visibleNow is isVisible under the write lock (it prunes expired hides).
