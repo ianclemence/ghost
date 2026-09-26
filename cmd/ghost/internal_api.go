@@ -2902,6 +2902,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		// Carry the client's device timezone (IANA name, validated) into the
 		// agent turn so scheduling parses "9 AM" in the user's zone. Falls
 		// back to the tool default (UTC) when absent or unknown.
+		// Carry the owner's own words so tools can check a model's
+		// restatement against them (scheduling never stores a time the owner
+		// did not name).
+		ctx = tools.WithRequestMessage(ctx, req.Content)
 		if req.Metadata != nil {
 			ctx = tools.WithRequestTimezone(ctx, strings.TrimSpace(req.Metadata["timezone"]))
 			// Carry the device location on the turn context so the runtime

@@ -100,6 +100,111 @@ func (t *ScheduleTool) SetContext(channel, chatID string) {
 	t.chatID = chatID
 }
 
+// resolveScheduleTime decides when a reminder happens.
+//
+// A model normally restates the request in cleaner language, and that
+// restatement is fine when it agrees with what the owner said. It is not
+// licence to choose a time the owner never named. Live, this is exactly how
+// "remind me about the chelsea game a day before" became "tomorrow at 9 AM",
+// and then snapped to the nearest Friday twice: the parser could not express
+// the intended date, so the model filled the gap and the wrong time was
+// stored three times.
+//
+// The rule: if the owner's message yields a time, that time wins, and the
+// model's phrasing is only used to carry the content. If it does not, the tool
+// asks instead of guessing — the one exception being a short confirmation of a
+// time Ghost has already proposed out loud, which is agreement, not invention.
+func (t *ScheduleTool) resolveScheduleTime(ctx context.Context, message, tz string) (*scheduled.ParsedSchedule, error) {
+	// No owner message on this request (direct tool use, background work).
+	// Keep the long-standing behaviour of trusting the supplied phrasing.
+	owner := strings.TrimSpace(RequestMessage(ctx))
+	if owner != "" {
+		// The owner's own words, when they carry a time, are the answer.
+		if parsed, err := scheduled.ParseNaturalLanguage(owner, time.Now(), tz); err == nil && parsed != nil {
+			return parsed, nil
+		}
+		// A short yes to a time Ghost already proposed out loud is agreement,
+		// not invention: the supplied phrasing is what was agreed.
+		if isShortConfirmation(owner) {
+			if parsed, err := scheduled.ParseNaturalLanguage(message, time.Now(), tz); err == nil && parsed != nil {
+				return parsed, nil
+			}
+		}
+		// The owner referenced time in a way this parser cannot turn into a
+		// date. Say so, quoting their words, instead of guessing.
+		if word := ownerTimeReference(owner); word != "" {
+			return nil, fmt.Errorf("You said %q, and I can't turn that into a date on my own — I won't guess one. "+
+				"Give me the day and the time, for example \"9 October at 9 AM\" or \"tomorrow at 9 AM\".", word)
+		}
+	} else if parsed, err := scheduled.ParseNaturalLanguage(message, time.Now(), tz); err == nil && parsed != nil {
+		return parsed, nil
+	}
+	// Never echo the content back into the example: content often carries its
+	// own time phrase, and the splice produced garbage like "tomorrow at 9 AM
+	// to at 9pm tonight …". Name the accepted shapes instead — the model
+	// retries from them.
+	return nil, fmt.Errorf("I couldn't understand when that should happen. Say the time with the day — " +
+		"for example \"tomorrow at 9 AM to call Sam\", \"at 8:30 PM today\", \"tonight at 9\", or \"9 October at 9 AM\".")
+}
+
+// ownerConfirmationStems are short replies that agree to something Ghost has
+// already put in front of the owner. They carry no time of their own, which is
+// why the supplied phrasing is allowed to supply one.
+var ownerConfirmationStems = []string{
+	"yes", "yeah", "yep", "yup", "ok", "okay", "sure", "please", "confirm",
+	"confirmed", "correct", "right", "do it", "set it", "go ahead", "sounds good",
+	"that works", "fine", "good", "please do", "yes please",
+	// Approval replies. An approved call re-runs with the owner's answer as
+	// the turn text; the exact schedule was already shown on the approval card
+	// and agreed to, so this is consent rather than a fresh instruction.
+	"allow", "allow once", "approve", "always allow", "allow always",
+}
+
+// isShortConfirmation reports whether the owner's message is a bare yes to a
+// proposal rather than a fresh instruction.
+func isShortConfirmation(owner string) bool {
+	normalized := strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(owner))), " ")
+	if normalized == "" || len(strings.Fields(normalized)) > 4 {
+		return false
+	}
+	// Naming a day is not a bare confirmation: "yes on friday" carries the
+	// owner's own time, and that path is resolved from their words, never from
+	// the supplied phrasing.
+	if ownerTimeReference(owner) != "" {
+		return false
+	}
+	for _, r := range normalized {
+		if r >= '0' && r <= '9' {
+			return false // a number is the owner naming a time themselves
+		}
+	}
+	for _, stem := range ownerConfirmationStems {
+		if normalized == stem || strings.HasPrefix(normalized, stem+" ") {
+			return true
+		}
+	}
+	return false
+}
+
+// ownerTimeReference returns the first time-ish word in the owner's message,
+// so the clarifying question can quote what they actually said. It exists to
+// name the problem, never to resolve it.
+func ownerTimeReference(owner string) string {
+	lower := strings.ToLower(owner)
+	for _, word := range []string{
+		"before", "after", "weekend", "next week", "this week", "next month",
+		"today", "tonight", "tomorrow", "morning", "afternoon", "evening",
+		"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+		"january", "february", "march", "april", "may", "june", "july", "august",
+		"september", "october", "november", "december",
+	} {
+		if strings.Contains(lower, word) {
+			return word
+		}
+	}
+	return ""
+}
+
 // Execute runs the tool with the given arguments.
 // The timezone prefers the per-request device timezone carried on ctx (set by
 // the chat handler from client metadata) and falls back to the tool default.
@@ -133,13 +238,10 @@ func (t *ScheduleTool) Execute(ctx context.Context, args map[string]interface{})
 		content = extractReminderContent(message)
 	}
 
-	parsed, err := scheduled.ParseNaturalLanguage(message, time.Now(), tz)
+	// The owner's own words are the only source of the time.
+	parsed, err := t.resolveScheduleTime(ctx, message, tz)
 	if err != nil {
-		// Never echo the content back into the example: content often
-		// carries its own time phrase, and the splice produced garbage
-		// like "tomorrow at 9 AM to at 9pm tonight …". Name the accepted
-		// shapes instead — the model retries from them.
-		return ErrorResult("I couldn't understand when that should happen. Say the time with the day — for example \"tomorrow at 9 AM to call Sam\", \"at 8:30 PM today\", or \"tonight at 9\".")
+		return ErrorResult(err.Error())
 	}
 
 	// The owner cares WHAT Ghost does, not the schedule restated as a name.
