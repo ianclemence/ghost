@@ -201,6 +201,14 @@ type processOptions struct {
 	OnChunk         func(string)                   // New: callback for streaming chunks
 	OnToolCall      func(name string, args string) // New: callback for tool calls
 	RequestID       string                         // Unique request identifier for tracing
+	// ContinuationOutput carries the raw output of a just-approved
+	// execution into the single model turn that owes the owner an answer.
+	// Non-empty marks an approval continuation: the owner's message was an
+	// approval reply ("always allow"), so no user turn is persisted and
+	// none of the memory/journal/affect machinery runs on it. The payload
+	// rides the current-message slot only — evidence for the model, never
+	// speech by the owner and never Ghost's reply.
+	ContinuationOutput string
 }
 
 // createToolRegistry creates a tool registry with common tools.
@@ -1742,8 +1750,10 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 		}
 	}
 	// Approval continuation: a reply to a pending approval card resumes
-	// the EXACT paused call deterministically — no LLM restart, no
-	// repeated request. Ordinary chat passes through untouched.
+	// the EXACT paused call deterministically — the request is never
+	// repeated. Ordinary chat passes through untouched. The result then
+	// returns to the model, because the reply the owner reads is the
+	// model's answer, never the payload itself.
 	if al.governance != nil {
 		if resume := al.governance.CheckApprovalReply(msg.SessionKey, msg.Content); resume.Resumed || resume.Denied {
 			if resume.Denied {
@@ -1787,10 +1797,40 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError, toolResult.Obs)
 			}
 			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
+			// The resumed result is evidence for the model, never Ghost's
+			// own words. Piping a page or a command's stdout straight into
+			// the reply is what turned "approve it and I'll give you the
+			// rundown" into a wall of markup: raw payload is context, not
+			// an answer. Hand it back for one model turn so the owner gets
+			// what was promised, and store that reply as the assistant
+			// message. The paused call itself still runs exactly once — the
+			// request is never repeated.
+			if al.canContinueResume() {
+				response, cerr := al.runAgentLoop(ctx, processOptions{
+					SessionKey:         msg.SessionKey,
+					Channel:            msg.Channel,
+					ChatID:             msg.ChatID,
+					ToolProfile:        profile,
+					UserMessage:        resumeContinuationLabel(resume.Tool),
+					ContinuationOutput: toolResult.ForLLM,
+					DefaultResponse:    "Hmm — that came back empty. Could you say it another way?",
+					EnableSummary:      true,
+					OnChunk:             onChunk,
+					OnToolCall:          onToolCall,
+					RequestID:           requestID,
+				})
+				if cerr == nil && strings.TrimSpace(response) != "" {
+					return endTurn(response, nil)
+				}
+				logger.WarnCF("agent", "approval continuation failed, reporting receipt",
+					map[string]interface{}{"session_key": msg.SessionKey, "error": fmt.Sprint(cerr)})
+			}
+			// No model turn available (or it failed): the receipt must still
+			// reach the live transcript, not just storage — a resumed
+			// approval that reports only to the database shows the owner
+			// "(no response)" while Ghost claims it acted. It is bounded so
+			// a payload can never be pasted at the owner as Ghost's words.
 			text := resumeReceiptText(toolResult)
-			// The receipt must reach the live transcript, not just storage:
-			// a resumed approval that reports only to the database shows
-			// the owner "(no response)" while Ghost claims it acted.
 			if onChunk != nil && text != "" {
 				onChunk(text)
 			}
@@ -2589,11 +2629,19 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			}
 		}
 	}
+	// An approval continuation answers with the resumed run's output as
+	// its current message. The owner's approval reply is not the question
+	// and the raw payload is not the answer: the model reads the payload
+	// here and replies in its own words.
+	currentMessage := opts.UserMessage
+	if opts.ContinuationOutput != "" {
+		currentMessage = resumeContinuationPrompt(opts.UserMessage, opts.ContinuationOutput)
+	}
 	messages := al.contextBuilder.BuildMessages(
 		ctx,
 		history,
 		summary,
-		opts.UserMessage,
+		currentMessage,
 		opts.Media,
 		opts.Channel,
 		opts.ChatID,
@@ -2601,9 +2649,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		al.sessionScopes(opts.SessionKey),
 	)
 
-	// 3. Save user message to session (only if not a slash command)
+	// 3. Save user message to session (only if not a slash command and not
+	// an approval continuation — "always allow" is an approval, not speech,
+	// and the payload beside it is evidence, not something the owner said).
 	isSlashCommand := strings.HasPrefix(opts.UserMessage, "/")
-	if !isSlashCommand {
+	if !isSlashCommand && opts.ContinuationOutput == "" {
 		// Persist the originating surface as provenance. The message lives
 		// in the one shared conversation; the channel only notes where the
 		// owner spoke from (mobile, cli, telegram, voice, …).
@@ -2658,7 +2708,10 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		al.sessions.Save(opts.SessionKey)
 		// If the model asked a natural follow-up for a known missing input,
 		// record a pending continuation so the next short reply resumes.
-		maybeSetPendingFromAnswer(al.workspace, opts.SessionKey, opts.UserMessage, finalContent)
+		// An approval continuation is not a question, so it mints none.
+		if opts.ContinuationOutput == "" {
+			maybeSetPendingFromAnswer(al.workspace, opts.SessionKey, opts.UserMessage, finalContent)
+		}
 	}
 
 	// 7. Optional: summarization
@@ -2723,7 +2776,9 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	}
 
 	// 11. Record turn for the evolution pipeline (autonomous skill creation)
-	if !isSlashCommand && al.evolution != nil {
+	// — an approval continuation is one turn's evidence, not a new task
+	// pattern to learn from, so it is not recorded as one.
+	if !isSlashCommand && al.evolution != nil && opts.ContinuationOutput == "" {
 		al.evolution.RecordTurn(evolution.LearningRecord{
 			TaskKind:   classifyTaskKind(opts.UserMessage),
 			Summary:    utils.Truncate(opts.UserMessage, 300),

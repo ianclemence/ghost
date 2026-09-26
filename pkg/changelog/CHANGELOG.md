@@ -3,6 +3,22 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.50] - 2026-09-26
+
+- Fixed Ghost answering with raw web page markup. Approving a read of
+  a web page used to hand the fetched bytes straight back as Ghost's
+  reply, so an owner who said yes got a wall of HTML and JSON-LD
+  streamed and saved as something Ghost said — and never got the
+  answer that was promised. The approved run's output now returns to
+  the model, which replies in its own words; the raw bytes are the
+  evidence for that turn, never the turn itself.
+- The approval reply ("always allow") is no longer treated as
+  something the owner said: it is not saved as a chat message and is
+  not fed to memory, journaling, note capture, or the follow-up
+  question tracker.
+- The receipt shown when a resumed run cannot be written up is now
+  bounded, so a long payload can never be pasted at the owner again.
+
 ## [0.24.49] - 2026-09-26
 
 - `docs/` is now exactly the architecture chain and nothing else:

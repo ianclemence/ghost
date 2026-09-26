@@ -515,9 +515,10 @@ var approvalPhrases = map[string]permissions.GrantType{
 	"no": permissions.GrantDeny, "cancel": permissions.GrantDeny,
 }
 
-// ResumeOutcome is a deterministically resumed approval: no LLM restart,
-// no repeated request — the paused call re-executes with its preserved
-// continuation and the runtime reports the verified result. Grant records
+// ResumeOutcome is a deterministically resumed approval: no repeated
+// request — the paused call re-executes exactly once with its preserved
+// continuation, and the result goes back to the model for the reply the
+// owner reads (a raw payload is evidence, never the answer). Grant records
 // how the approval was given so the resume path can re-verify standing
 // grants (revocation) instead of treating every resume identically.
 type ResumeOutcome struct {
