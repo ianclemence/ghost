@@ -26,6 +26,20 @@ type Policy struct {
 	// MorningBriefing / EveningReflection are HH:MM in user timezone.
 	MorningBriefing   string
 	EveningReflection string
+
+	// Enabled is the master switch for proactive suggestions and notices.
+	// A disabled policy still lets explicitly requested work (reminders the
+	// owner asked for) run — it only silences Ghost volunteering things.
+	Enabled bool
+	// Categories limits which opportunity categories may surface. Empty means
+	// all categories; names match ideas.ObsKind.Category() (reminders,
+	// routines, goals, tasks).
+	Categories []string
+	// PreferredChannel, when set, overrides the last-active channel for
+	// proactive delivery. Empty means "wherever the owner was last".
+	PreferredChannel string
+	// ProposalTTLHours bounds how long a surfaced proposal stays answerable.
+	ProposalTTLHours int
 }
 
 func defaults() Policy {
@@ -36,6 +50,11 @@ func defaults() Policy {
 		DedupeWindow:     24 * time.Hour,
 		MorningBriefing:   "08:00",
 		EveningReflection: "22:00",
+
+		Enabled:          true,
+		Categories:       nil,
+		PreferredChannel: "",
+		ProposalTTLHours: 24,
 	}
 }
 
@@ -46,6 +65,11 @@ var (
 	dedupeRE  = regexp.MustCompile("(?m)`dedupe_window:\\s*(\\d+)h`")
 	mornRE    = regexp.MustCompile("(?m)`morning_briefing:\\s*([0-9]{1,2}:[0-9]{2})`")
 	eveRE     = regexp.MustCompile("(?m)`evening_reflection:\\s*([0-9]{1,2}:[0-9]{2})`")
+
+	enabledRE  = regexp.MustCompile("(?m)`enabled:\\s*(true|false)`")
+	catsRE     = regexp.MustCompile("(?m)`categories:\\s*([a-z_,\\s]+)`")
+	channelRE  = regexp.MustCompile("(?m)`preferred_channel:\\s*([a-z_]+)`")
+	propTTLRE  = regexp.MustCompile("(?m)`proposal_ttl_hours:\\s*(\\d+)`")
 )
 
 func toMin(h, m string) (int, bool) {
@@ -95,7 +119,44 @@ func Load(workspace string) Policy {
 	if m := eveRE.FindStringSubmatch(s); m != nil && validHM(m[1]) {
 		p.EveningReflection = m[1]
 	}
+	if m := enabledRE.FindStringSubmatch(s); m != nil {
+		p.Enabled = m[1] == "true"
+	}
+	if m := catsRE.FindStringSubmatch(s); m != nil {
+		var cats []string
+		for _, c := range strings.Split(m[1], ",") {
+			c = strings.ToLower(strings.TrimSpace(c))
+			if c != "" {
+				cats = append(cats, c)
+			}
+		}
+		p.Categories = cats
+	}
+	if m := channelRE.FindStringSubmatch(s); m != nil {
+		p.PreferredChannel = strings.ToLower(strings.TrimSpace(m[1]))
+	}
+	if m := propTTLRE.FindStringSubmatch(s); m != nil {
+		if n, err := strconv.Atoi(m[1]); err == nil && n >= 1 && n <= 168 {
+			p.ProposalTTLHours = n
+		}
+	}
 	return p
+}
+
+// CategoryAllowed reports whether a category may surface under this policy.
+// An empty category list means every category is allowed.
+func (p Policy) CategoryAllowed(category string) bool {
+	if len(p.Categories) == 0 {
+		// A single "none" entry is how an owner turns off every category
+		// while leaving the master switch on.
+		return true
+	}
+	for _, c := range p.Categories {
+		if c == category {
+			return true
+		}
+	}
+	return false
 }
 
 func validHM(s string) bool {

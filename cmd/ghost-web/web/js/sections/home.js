@@ -178,6 +178,11 @@ function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, mem
 function proactiveSummary(res) {
   if (!res || res.status !== 'fulfilled' || !res.value || !res.value.proactive) return '\u2014';
   const p = res.value.proactive;
+  if (p.enabled === false) return 'Not watching for things';
+  const open = Number(p.open_proposals || 0);
+  if (open > 0) {
+    return open + (open === 1 ? ' thing to review' : ' things to review');
+  }
   if (p.waiting > 0) {
     return p.quiet
       ? p.waiting + ' waiting until ' + (p.quiet_end || 'morning')

@@ -11,6 +11,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/goals"
+	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/proactive"
 	"github.com/ianclemence/ghost/pkg/routines"
@@ -83,6 +84,10 @@ func (al *AgentLoop) PollProactive() int {
 			al.consumeDeliveredSensor(nt)
 		}
 	}
+	// Opportunities: grounded observations turned into actionable proposals.
+	// Deterministic and cheap (bounded queries, no model), and gated by the
+	// same noticer, so running it on every tick cannot spam.
+	delivered += al.EvaluateProposals(time.Now())
 	return delivered
 }
 
@@ -136,6 +141,17 @@ func (al *AgentLoop) deliverNotice(nt Notice) {
 	// Text fallback rides in Content, so plain surfaces read fine.
 	if card, err := cards.New(cards.KindSuggestion, "Suggestion", nt.Message); err == nil {
 		card.Topic = nt.Topic
+		if nt.ProposalID != "" {
+			// A proposal card carries the proposal identity and the exact
+			// broker request its approve action resolves. The client posts the
+			// request id to the approvals endpoint; authority is unchanged.
+			card.Data = map[string]interface{}{
+				"idea_id": nt.ProposalID,
+				"reason":  nt.Message,
+			}
+			card.RequestID = nt.RequestID
+			card.Actions = nt.Actions
+		}
 		cards.Publish(al.bus, nil, channel, chatID, "", card)
 	}
 }
@@ -160,7 +176,27 @@ func (al *AgentLoop) ProactiveStatus() proactive.Status {
 		used, _ = al.noticer.Budget()
 	}
 	waiting := heldCount(al.workspace, now)
-	return proactive.BuildStatus(pol, now, loc, used, waiting)
+	st := proactive.BuildStatus(pol, now, loc, used, waiting)
+	st.OpenProposals = al.OpenProposalCount()
+	return st
+}
+
+// OpenProposalCount reports how many grounded opportunities are waiting on the
+// owner. Read-only and bounded: a missing or corrupt store reports zero rather
+// than failing the status surface.
+func (al *AgentLoop) OpenProposalCount() int {
+	if al == nil || al.workspace == "" {
+		return 0
+	}
+	store, err := ideas.New(al.workspace)
+	if err != nil {
+		return 0
+	}
+	list, err := store.Open(100)
+	if err != nil {
+		return 0
+	}
+	return len(list)
 }
 
 func (al *AgentLoop) ghostID() string {

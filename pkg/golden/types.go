@@ -66,6 +66,12 @@ const (
 	FixtureLight       Fixture = "skill:light" // consequential device fixture
 	FixtureBrowserPage Fixture = "browser:page"
 	FixtureComputerUI  Fixture = "computer:ui" // deterministic desktop/settings executor
+	// FixtureProactiveOverdue plants a one-shot reminder that was due in the
+	// past and never fired, then evaluates the proactive pipeline. It proves
+	// NOTICE → PROPOSE end to end without any external service: the
+	// observation, the candidate, the bound permission request and the
+	// canonical lifecycle events are all real runtime state.
+	FixtureProactiveOverdue Fixture = "proactive:overdue-reminder"
 )
 
 // MemorySeed pre-seeds a memory in the person's fresh store.

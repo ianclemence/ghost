@@ -1797,6 +1797,10 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError, toolResult.Obs)
 			}
 			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
+			// If this approval was for a proactive proposal, settle that
+			// record from the real execution result: one proposal always has
+			// one outcome, whichever surface approved it.
+			al.SettleBoundProposal(resume.RequestID, toolResult.IsError, resumeOutcomeText(toolResult))
 			// The resumed result is evidence for the model, never Ghost's
 			// own words. Piping a page or a command's stdout straight into
 			// the reply is what turned "approve it and I'll give you the

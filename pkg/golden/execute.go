@@ -20,6 +20,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
+	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/schema"
 	"github.com/ianclemence/ghost/pkg/tools"
 	_ "modernc.org/sqlite"
@@ -361,6 +362,11 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 			turnRequests = append(turnRequests, rid)
 			turnMarks = append(turnMarks, mark)
 		}
+		// Proactive cases: run the deterministic opportunity pipeline after
+		// the conversation, exactly as the heartbeat does in production.
+		if c.Fixture == FixtureProactiveOverdue {
+			loop.EvaluateProposals(time.Now().UTC())
+		}
 		cancel()
 		cr.Responses = append(cr.Responses, perTurn...)
 		runs = append(runs, personRun{responses: perTurn, ws: ws, TurnRequests: turnRequests, TurnMarks: turnMarks, Session: session, UserTurns: userTurns})
@@ -594,6 +600,31 @@ func wireGovernance(loop *agent.AgentLoop, ws string, fx Fixture) (*agent.Govern
 // behind the SAME tool name/boundary (no runtime bypass).
 func applyFixture(loop *agent.AgentLoop, fx Fixture) error {
 	switch fx {
+	case FixtureProactiveOverdue:
+		store := scheduled.NewStore(loop.DB())
+		if err := store.InitSchema(); err != nil {
+			return err
+		}
+		svc := scheduled.NewService(store, &scheduled.SimpleEventBus{},
+			func(ctx context.Context, it *scheduled.ScheduledItem) error { return nil })
+		loop.SetRoutineSignals(nil, svc)
+		// The owner was last reachable on the web channel, so the proposal is
+		// delivered (and its card stored) rather than held for offline later.
+		_ = loop.RecordLastActiveSession("web", "chat")
+		due := time.Now().UTC().Add(-3 * time.Hour)
+		return store.Create(&scheduled.ScheduledItem{
+			ID:        "golden-overdue-reminder",
+			Type:      scheduled.TypeReminder,
+			Title:     "send Alex the document",
+			State:     scheduled.StateScheduled,
+			Schedule:  scheduled.Schedule{Kind: scheduled.ScheduleAt, At: &due},
+			Timezone:  "UTC",
+			Action:    scheduled.Action{Kind: scheduled.ActionAgentTurn, Content: "send Alex the document", Deliver: true},
+			Source:    "user",
+			CreatedBy: "golden",
+			NextRunAt: &due,
+			MaxRetries: 3,
+		})
 	case FixtureWeatherOK, FixtureWeatherFail, FixtureWeatherBad:
 		var body string
 		switch fx {

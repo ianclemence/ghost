@@ -3,6 +3,36 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.52] - 2026-09-26
+
+- **Ghost notices things.** Ghost now watches the state it already
+  keeps — reminders that never reached you, routines that keep failing,
+  routines waiting on your approval, goals that went quiet, background
+  tasks parked on a human — and turns what it finds into one concrete
+  offer: *"Your reminder "send Alex the document" was due 2 hours ago
+  and never reached you. Want me to run it now?"* Each one shows the
+  exact rows behind it and why it matters now. Nothing is invented:
+  if Ghost cannot point at the evidence, there is no suggestion.
+- **Ghost asks, then does it, then proves it.** Approving a suggestion
+  goes through the same Permission Broker as any other action; Ghost
+  then runs it through the same capability path, checks the result
+  against real state, and tells you what actually happened — never
+  what it hoped happened. Approve, Later, and No thanks all work from
+  chat, the phone card, and the Web console.
+- **It will not nag.** One live suggestion per situation, a cooldown
+  after you dismiss one, a backoff after a failure, and a hard stop
+  when the situation changes: if your routine recovers or the reminder
+  fires before you answer, the offer is withdrawn instead of executed.
+  Quiet hours, a daily limit, per-category controls, and a master
+  switch all live in `PROACTIVE_PREFERENCES.md` and are shown on the
+  Home screen.
+- **Nothing about this costs a model call.** Deciding whether to
+  interrupt you is entirely local and deterministic. The model is only
+  involved if you approve something that needs judgement — and even
+  then, anything consequential still goes through the broker.
+- The Ideas screen is now "what needs you": open suggestions with their
+  evidence and one action each, followed by what Ghost recently handled.
+
 ## [0.24.51] - 2026-09-26
 
 - Ghost no longer asks "Which city should I check?" when the answer is

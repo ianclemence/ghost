@@ -99,6 +99,56 @@ A reasoning error can produce a bad capability request. It cannot, by itself,
 produce a consequential execution: authorization still stands between the
 request and the action.
 
+## Proactive opportunities
+
+Reasoning also runs without a request. Ghost watches the state it already
+keeps — reminders that never reached the owner, routines whose latest run
+failed, routines parked waiting on an approval, goals that went quiet,
+background tasks waiting on a human — and turns what it finds into one
+actionable offer.
+
+The shape is fixed and deterministic:
+
+```
+observation → candidate → gate → proposal → approval → broker → execution
+            → evidence → verification → canonical event → result → memory
+```
+
+- **Observation.** Derived from real rows (the scheduler, the routine
+  sidecar, the goal store, the durable job store). No model output is
+  involved, and an observation that cannot cite its rows is not made.
+- **Candidate.** One live opportunity per subject, keyed stably. The
+  state digest is carried separately, so a change invalidates the
+  existing proposal instead of spawning a second one.
+- **Gate.** Priority, confidence, freshness, actionability, the existing
+  noticer budget/cooldown/dedupe, quiet hours, and a category filter. All
+  local and cheap — deciding whether to interrupt the owner never costs a
+  model call.
+- **Proposal.** Rendered from structured fields: the observation, why it
+  matters now, and exactly one action. Delivery rides the existing
+  outbound + suggestion-card path, with the approve action bound to a real
+  broker request.
+- **Approval.** The owner answers once — card button, console, or a chat
+  reply. The approval is bound to the proposal id, the capability, the
+  arguments, and the state the proposal was built from.
+- **Broker.** The proposal asks the broker *before* it is shown, so an
+  offer Ghost cannot keep is never made. There is no proactive bypass.
+- **Execution and verification.** The action runs through the same
+  registry (or the same service the API calls) as any other work, then the
+  runtime reads the state back. The result the owner sees is derived from
+  runtime evidence, and a failure says so.
+
+Interruptions are bounded in the runtime, not in a prompt: one live
+opportunity per situation, a dismissal cooldown, a failure backoff, and
+automatic withdrawal (supersession) when the situation resolves or
+changes before the owner answers. A stale approval is refused rather than
+executed.
+
+The model's role here is unchanged: it may interpret what an approved
+action needs, but it never grants permission, never declares success, and
+never decides whether Ghost should speak. See
+[Permission Broker](PERMISSION-BROKER.md) for where authority is enforced.
+
 ## Why this design
 
 If reasoning were authoritative, a model mistake or a malicious instruction

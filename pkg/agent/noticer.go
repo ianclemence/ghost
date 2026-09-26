@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/cards"
 )
 
 // Decision is the outcome of a proactive gating check.
@@ -28,6 +30,14 @@ type Notice struct {
 	Confidence float64 // 0-1: how sure Ghost is it's genuinely useful
 	DedupeKey  string  // unique content key (duplicate suppression)
 	Message    string
+
+	// Proposal binding. When ProposalID is set the notice is a proactive
+	// proposal: delivery attaches a rich suggestion card whose actions carry
+	// RequestID, so the owner's approval resolves the exact broker request
+	// the runtime created for this proposal — no separate approval path.
+	ProposalID string
+	RequestID  string
+	Actions    []cards.Action
 }
 
 // Noticer is the value gate for proactive behaviour. The principle: "proactive

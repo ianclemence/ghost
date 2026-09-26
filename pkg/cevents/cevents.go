@@ -116,6 +116,21 @@ const (
 	TaskCancelled    Type = "task.cancelled"
 	TaskExpired      Type = "task.expired"
 	TaskInterrupted  Type = "task.interrupted"
+	// Proactive opportunities: the NOTICE → PROPOSE → APPROVE → ACT → VERIFY
+	// lifecycle. Marked durable because the proposal record is the audit trail
+	// of why Ghost interrupted the owner, what the owner decided, what actually
+	// executed, and what evidence proved it. "candidate" is internal trace;
+	// everything from "presented" on is owner-visible.
+	ProactiveCandidate  Type = "proactive.candidate"
+	ProactivePresented  Type = "proactive.presented"
+	ProactiveApproved   Type = "proactive.approved"
+	ProactiveDenied     Type = "proactive.denied"
+	ProactiveDismissed  Type = "proactive.dismissed"
+	ProactiveSnoozed    Type = "proactive.snoozed"
+	ProactiveExpired    Type = "proactive.expired"
+	ProactiveSuperseded Type = "proactive.superseded"
+	ProactiveCompleted  Type = "proactive.completed"
+	ProactiveFailed     Type = "proactive.failed"
 	// Effort / routing decisions (observability for why a turn was cheap or deep)
 	EffortSelected Type = "effort.selected"
 )
@@ -152,6 +167,9 @@ func (t Type) DefaultVisibility() product.Visibility {
 		RoutineCreated, RoutineWaiting, RoutineCompleted, RoutineFailed,
 		SkillInstalled, SkillUpdated, SkillEnabled, SkillDisabled, SkillRemoved,
 		GhostReady, GhostDegraded, GhostOffline, GhostRecovering,
+		ProactivePresented, ProactiveApproved, ProactiveDenied, ProactiveDismissed,
+		ProactiveSnoozed, ProactiveExpired, ProactiveSuperseded,
+		ProactiveCompleted, ProactiveFailed,
 		OperationFailed:
 		return product.VisUserMessage
 	default:

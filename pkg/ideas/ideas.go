@@ -24,6 +24,10 @@ const (
 	SourceMemory  SourceKind = "memory"
 	SourceRoutine SourceKind = "routine"
 	SourceModel   SourceKind = "model"
+	// Proactive observations cite the subsystem rows they were derived from.
+	SourceSchedule SourceKind = "schedule"
+	SourceGoal     SourceKind = "goal"
+	SourceTask     SourceKind = "task"
 )
 
 // Source is one cited row behind an idea.
@@ -33,16 +37,38 @@ type Source struct {
 	Excerpt string     `json:"excerpt,omitempty"` // short human-readable evidence
 }
 
-// Status is the decision state of an idea.
+// Status is the decision state of an idea. The first three are the original
+// owner-decision vocabulary; the rest are the durable opportunity lifecycle
+// the proactive runtime drives. "pending" and "presented" both mean the owner
+// has not decided yet — pending is a candidate the runtime has not surfaced.
 type Status string
 
 const (
 	StatusPending   Status = "pending"
 	StatusAccepted  Status = "accepted"
 	StatusDismissed Status = "dismissed"
+
+	// Proactive lifecycle. Persisted transitions only; every move is a
+	// record, never a rewrite of history.
+	StatusPresented  Status = "presented"  // surfaced to the owner, awaiting decision
+	StatusSnoozed    Status = "snoozed"    // deliberately deferred until SnoozedUntil
+	StatusExpired    Status = "expired"    // its window closed before it was answered
+	StatusExecuting  Status = "executing"  // approved and running right now
+	StatusCompleted  Status = "completed"  // the action ran and runtime evidence proved it
+	StatusFailed     Status = "failed"     // the action ran and failed, or verification failed
+	StatusSuperseded Status = "superseded" // the underlying state changed; the proposal is void
 )
 
+// Undecided reports whether the owner can still act on an idea.
+func (s Status) Undecided() bool {
+	return s == StatusPending || s == StatusPresented || s == StatusSnoozed
+}
+
 // Idea is one suggestion with its evidence and decision receipt.
+//
+// The first block is the original Phase A/B shape (unchanged). The second
+// block carries the proactive lifecycle: a structured, runtime-verified
+// proposal rather than a bare sentence of advice.
 type Idea struct {
 	ID         string    `json:"id"`
 	Title      string    `json:"title"`
@@ -53,6 +79,44 @@ type Idea struct {
 	CreatedAt  time.Time `json:"created_at"`
 	DecidedAt  *time.Time `json:"decided_at,omitempty"`
 	Unverified bool      `json:"unverified,omitempty"` // Phase B: citations failed verification
+
+	// --- proactive proposal lifecycle ---
+
+	// Kind is the opportunity category (see ObsKind). It drives per-category
+	// throttling and owner controls.
+	Kind ObsKind `json:"kind,omitempty"`
+	// Reason states why this matters now, in the runtime's own words. It is
+	// never model prose: it is rendered from the observation.
+	Reason string `json:"reason,omitempty"`
+	// Plan is the concrete action the runtime will take on approval. Nil means
+	// the idea is informational only and nothing can execute from it.
+	Plan *Plan `json:"plan,omitempty"`
+	// Priority/Urgency/Confidence are the deterministic scoring inputs, kept
+	// on the record so the runtime can explain every interruption.
+	Priority   int     `json:"priority,omitempty"`
+	Urgency    bool    `json:"urgency,omitempty"`
+	Confidence float64 `json:"confidence,omitempty"`
+	// DedupeKey identifies the underlying opportunity. The same key never
+	// produces a second live idea.
+	DedupeKey string `json:"dedupe_key,omitempty"`
+	// ExpiresAt bounds how long the proposal is answerable. Past it the idea
+	// is expired and cannot execute.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// StateVer is a digest of the runtime state the proposal was built from.
+	// If the state changes materially, the approval is void (superseded).
+	StateVer string `json:"state_version,omitempty"`
+	// PermissionRequestID is the broker request bound to this proposal. The
+	// owner's approval resolves that exact request; the capability executes
+	// through the same governed path as any other authorized action.
+	PermissionRequestID string `json:"permission_request_id,omitempty"`
+	// Risk is the runtime-classified risk of the plan (never model-declared).
+	Risk string `json:"risk,omitempty"`
+
+	PresentedAt  *time.Time `json:"presented_at,omitempty"`
+	SnoozedUntil *time.Time `json:"snoozed_until,omitempty"`
+	// Outcome/Result are written only from runtime evidence after execution.
+	Outcome string `json:"outcome,omitempty"`
+	Result  string `json:"result,omitempty"`
 }
 
 // Store is a workspace-scoped JSONL idea store.

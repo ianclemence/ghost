@@ -2438,16 +2438,46 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 			return
 		}
-		status := ideas.StatusPending
-		if q := r.URL.Query().Get("status"); q != "" {
-			switch q {
-			case "accepted":
-				status = ideas.StatusAccepted
-			case "dismissed":
-				status = ideas.StatusDismissed
-			case "all":
-				status = ""
+		status := ideas.Status("")
+		switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status"))) {
+		case "", "open":
+			// Default: everything the owner can still act on. Proactive
+			// proposals are "presented", so a pending-only filter would hide
+			// exactly the things this surface exists to show.
+			list, err := store.Open(50)
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, "unavailable", "ideas are unavailable right now")
+				return
 			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "ideas": list})
+			return
+		case "resolved":
+			list, err := store.Resolved(50)
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, "unavailable", "ideas are unavailable right now")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "ideas": list})
+			return
+		case "accepted":
+			status = ideas.StatusAccepted
+		case "dismissed":
+			status = ideas.StatusDismissed
+		case "pending":
+			status = ideas.StatusPending
+		case "presented":
+			status = ideas.StatusPresented
+		case "snoozed":
+			status = ideas.StatusSnoozed
+		case "completed":
+			status = ideas.StatusCompleted
+		case "failed":
+			status = ideas.StatusFailed
+		case "all":
+			status = ""
+		default:
+			jsonError(w, http.StatusBadRequest, "invalid_request", "status must be open, resolved, all, or a known idea status")
+			return
 		}
 		list, err := store.List(status, 50)
 		if err != nil {
@@ -2467,8 +2497,15 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		}
 		rest := strings.TrimPrefix(r.URL.Path, "/v1/ideas/")
 		parts := strings.Split(strings.Trim(rest, "/"), "/")
-		if len(parts) != 2 || (parts[1] != "accept" && parts[1] != "dismiss") {
-			jsonError(w, http.StatusBadRequest, "invalid_request", "use /v1/ideas/{id}/{accept,dismiss}")
+		if len(parts) != 2 {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "use /v1/ideas/{id}/{approve,dismiss,snooze}")
+			return
+		}
+		verb := strings.ToLower(parts[1])
+		switch verb {
+		case "approve", "accept", "dismiss", "snooze":
+		default:
+			jsonError(w, http.StatusBadRequest, "invalid_request", "use /v1/ideas/{id}/{approve,dismiss,snooze}")
 			return
 		}
 		store, err := ideas.New(apiWorkspaceDir)
@@ -2481,7 +2518,45 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			jsonError(w, http.StatusNotFound, "not_found", "no such idea")
 			return
 		}
-		decided, err := store.Decide(idea.ID, parts[1] == "accept")
+
+		// Proactive proposals carry a lifecycle and an action. Deciding one
+		// goes through the runtime, which revalidates the situation, resolves
+		// the bound broker request and executes through the real path.
+		// Legacy advice ideas keep the original, side-effect-free behaviour.
+		if idea.Kind != "" && agentLoop != nil {
+			decision := verb
+			if decision == "accept" {
+				decision = "approve"
+			}
+			snoozeFor := time.Duration(0)
+			if decision == "snooze" {
+				if h := strings.TrimSpace(r.URL.Query().Get("hours")); h != "" {
+					if n, convErr := strconv.Atoi(h); convErr == nil && n > 0 && n <= 168 {
+						snoozeFor = time.Duration(n) * time.Hour
+					}
+				}
+			}
+			decided, result, decErr := agentLoop.DecideIdea(r.Context(), idea.ID, decision, snoozeFor)
+			if decErr != nil {
+				// A refused decision (stale, expired, already used) is a real
+				// product answer, not a server fault: report it with the
+				// record so the owner sees what happened.
+				resp := map[string]interface{}{"ok": false, "idea": decided, "error": decErr.Error()}
+				if result != "" {
+					resp["result"] = result
+				}
+				jsonResponse(w, http.StatusOK, resp)
+				return
+			}
+			body := map[string]interface{}{"ok": true, "idea": decided}
+			if result != "" {
+				body["result"] = result
+			}
+			jsonResponse(w, http.StatusOK, body)
+			return
+		}
+
+		decided, err := store.Decide(idea.ID, verb == "accept")
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, "unavailable", "could not record the decision")
 			return
@@ -3573,7 +3648,24 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			jsonError(w, http.StatusBadRequest, "resolve_failed", "that approval is no longer answerable")
 			return
 		}
-		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "request": resolved})
+		// A proactive proposal's card resolves that proposal's broker request.
+		// Once the owner approves it from any surface, the runtime executes the
+		// exact bound action and reports the verified result. Ordinary in-chat
+		// asks are untouched: their continuation still belongs to the turn.
+		body := map[string]interface{}{"ok": true, "request": resolved}
+		if grant != permissions.GrantDeny && agentLoop != nil {
+			if idea, ok := agentLoop.ProposalForRequest(resolved.ID); ok {
+				if settled, result, execErr := agentLoop.DecideIdea(r.Context(), idea.ID, "approve", 0); execErr != nil {
+					body["idea"] = settled
+					body["result"] = result
+					body["error"] = execErr.Error()
+				} else {
+					body["idea"] = settled
+					body["result"] = result
+				}
+			}
+		}
+		jsonResponse(w, http.StatusOK, body)
 	}))
 
 	mux.HandleFunc("/v1/permissions/grants", authMiddleware(func(w http.ResponseWriter, r *http.Request) {

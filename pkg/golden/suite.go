@@ -563,6 +563,19 @@ func Suite() []Conversation {
 			},
 		},
 		{
+			ID: "pro-01", Category: CatRoutines, Title: "Proactive: an overdue reminder becomes an actionable proposal",
+			Severity: "high",
+			People:   onePerson("alex", "main", turn("what's on today?")),
+			Fixture:  FixtureProactiveOverdue,
+			Expect: Expect{
+				// The lifecycle must be real runtime state: Ghost noticed a
+				// grounded fact (a reminder that never reached the owner),
+				// turned it into a candidate, and surfaced it with a bound
+				// permission request. No model claim is involved.
+				RequiredEvents: []string{"proactive.candidate", "proactive.presented"},
+			},
+		},
+		{
 			ID: "mem-05", Category: CatMemory, Title: "Contradictory facts both retained, none silently merged",
 			Severity: "high",
 			People: onePerson("maya", "maya",

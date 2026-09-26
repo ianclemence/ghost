@@ -29,6 +29,12 @@ type Status struct {
 	// NextBriefing / NextReflection are "HH:MM" when configured.
 	NextBriefing   string `json:"next_briefing,omitempty"`
 	NextReflection string `json:"next_reflection,omitempty"`
+	// Enabled mirrors the master proactivity switch, so a surface can say
+	// "Ghost is not watching for things" instead of showing a false zero.
+	Enabled bool `json:"enabled"`
+	// OpenProposals counts grounded opportunities waiting on the owner. Set
+	// by the runtime after assembly; it is a count, never a claim.
+	OpenProposals int `json:"open_proposals,omitempty"`
 }
 
 // Active reports whether Ghost is doing anything proactive the owner should
@@ -47,6 +53,7 @@ func BuildStatus(p Policy, now time.Time, loc *time.Location, used, waiting int)
 		Waiting:        waiting,
 		NextBriefing:   p.MorningBriefing,
 		NextReflection: p.EveningReflection,
+		Enabled:        p.Enabled,
 	}
 	if p.QuietStart != p.QuietEnd {
 		s.QuietStart = clock(p.QuietStart)

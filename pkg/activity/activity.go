@@ -92,6 +92,15 @@ var humanTitles = map[cevents.Type]string{
 	cevents.SkillDisabled:           "Disabled skill",
 	cevents.SkillUpdated:            "Updated skill",
 	cevents.SkillRemoved:            "Removed skill",
+	cevents.ProactivePresented:      "Ghost noticed something",
+	cevents.ProactiveApproved:       "You approved it",
+	cevents.ProactiveDenied:         "You declined it",
+	cevents.ProactiveDismissed:      "You dismissed it",
+	cevents.ProactiveSnoozed:        "Snoozed",
+	cevents.ProactiveExpired:        "Suggestion expired",
+	cevents.ProactiveSuperseded:     "Situation changed",
+	cevents.ProactiveCompleted:      "Handled it",
+	cevents.ProactiveFailed:         "Couldn't handle it",
 }
 
 // skillNameTitle refines skill lifecycle chips with the skill name when the
@@ -152,18 +161,22 @@ func capabilityTitle(e *cevents.Event, base string) string {
 // stateFor maps event types to chip states.
 func stateFor(t cevents.Type, status string) State {
 	switch t {
-	case cevents.AgentWaiting, cevents.PermissionRequested, cevents.RoutineWaiting:
+	case cevents.AgentWaiting, cevents.PermissionRequested, cevents.RoutineWaiting,
+		cevents.ProactivePresented, cevents.ProactiveSnoozed, cevents.ProactiveExpired:
 		return StateWaiting
+	case cevents.ProactiveDenied, cevents.ProactiveDismissed, cevents.ProactiveSuperseded:
+		return StateCancelled
 	case cevents.AgentCompleted, cevents.MessageCreated, cevents.CapabilityCompleted,
 		cevents.ToolCompleted, cevents.PermissionApproved, cevents.MemoryCreated,
 		cevents.MemoryUpdated, cevents.IntegrationConnected, cevents.RoutineCreated,
 		cevents.RoutineCompleted, cevents.GhostReady,
 		cevents.SkillInstalled, cevents.SkillUpdated, cevents.SkillEnabled,
-		cevents.SkillDisabled, cevents.SkillRemoved:
+		cevents.SkillDisabled, cevents.SkillRemoved,
+		cevents.ProactiveApproved, cevents.ProactiveCompleted:
 		return StateSuccess
 	case cevents.AgentFailed, cevents.CapabilityFailed, cevents.ToolFailed,
 		cevents.PermissionDenied, cevents.IntegrationFailed, cevents.RoutineFailed,
-		cevents.OperationFailed, cevents.GhostOffline:
+		cevents.OperationFailed, cevents.GhostOffline, cevents.ProactiveFailed:
 		return StateFailed
 	case cevents.PermissionExpired, cevents.IntegrationExpired:
 		return StateWaiting
