@@ -406,13 +406,16 @@ func (s *Store) Complete(id, outcome, result string, now time.Time) (Idea, error
 
 // Fail records a real failure (or a failed verification). The message is the
 // runtime's honest statement of what happened.
-func (s *Store) Fail(id, result string, now time.Time) (Idea, error) {
+func (s *Store) Fail(id, outcome, result string, now time.Time) (Idea, error) {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+	if outcome == "" {
+		outcome = "failed"
+	}
 	return s.Transition(id, []Status{StatusExecuting, StatusAccepted, StatusPending, StatusPresented}, func(i *Idea) error {
 		i.Status = StatusFailed
-		i.Outcome = "failed"
+		i.Outcome = outcome
 		i.Result = result
 		t := now.UTC()
 		i.DecidedAt = &t

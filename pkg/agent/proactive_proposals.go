@@ -269,6 +269,9 @@ func (al *AgentLoop) EvaluateProposals(now time.Time) int {
 	for i := range fresh {
 		if o, ok := byKey[fresh[i].DedupeKey]; ok {
 			fresh[i].Plan = al.planForObservation(o)
+			// The risk class is decided by the runtime's plan, so the record
+			// and every surface report what the broker will actually be asked.
+			fresh[i].Risk = string(planRisk(fresh[i]))
 		}
 		exp := now.Add(ttl).UTC()
 		fresh[i].ExpiresAt = &exp
@@ -357,7 +360,7 @@ func (al *AgentLoop) surfaceProposal(store *ideas.Store, idea ideas.Idea, pol pr
 	verdict := al.proposalVerdict(idea)
 	switch verdict {
 	case permissions.DecisionDeny:
-		failed, err := store.Fail(idea.ID, "I'm not allowed to do that, so I didn't suggest it.", now)
+		failed, err := store.Fail(idea.ID, "denied", "I'm not allowed to do that, so I didn't suggest it.", now)
 		if err == nil {
 			al.publishProactive(cevents.ProactiveFailed, failed, "denied by policy")
 		}
@@ -553,6 +556,11 @@ func (al *AgentLoop) publishProactive(typ cevents.Type, idea ideas.Idea, note st
 	if note != "" {
 		payload["note"] = note
 	}
+	// The activity chip reads "summary"; the observation itself is the most
+	// honest one-line description of what was noticed or done.
+	if summary := strings.TrimSpace(idea.Body); summary != "" {
+		payload["summary"] = summary
+	}
 	if idea.Plan != nil {
 		payload["capability"] = idea.Plan.Capability
 		payload["risk"] = string(idea.Plan.Risk)
@@ -659,7 +667,7 @@ func (al *AgentLoop) approveProposal(ctx context.Context, store *ideas.Store, id
 	// a lapsed token. A policy denial still stops execution here.
 	allowed, _, authErr := al.authorizeAndConsent(idea, store)
 	if !allowed {
-		failed, _ := store.Fail(idea.ID, authErr.Error(), now)
+		failed, _ := store.Fail(idea.ID, "denied", authErr.Error(), now)
 		al.publishProactive(cevents.ProactiveFailed, failed, "not authorized")
 		return failed, authErr.Error(), authErr
 	}
@@ -708,8 +716,14 @@ func (al *AgentLoop) runProposal(store *ideas.Store, idea ideas.Idea, channel, c
 		if msg == "" {
 			msg = "It didn't work. Nothing was changed."
 		}
-		failed, ferr := store.Fail(idea.ID, msg, time.Now().UTC())
+		failed, ferr := store.Fail(idea.ID, string(outcome), msg, time.Now().UTC())
 		if ferr == nil {
+			if updated, uerr := store.Transition(failed.ID, []ideas.Status{ideas.StatusFailed}, func(x *ideas.Idea) error {
+				x.EvidenceLevel = evidenceLevel(outcome)
+				return nil
+			}); uerr == nil {
+				failed = updated
+			}
 			al.publishProactive(cevents.ProactiveFailed, failed, msg)
 			al.settleCommitmentFromProposal(failed, string(outcome), msg)
 			al.reportProposalOutcome(failed, msg, channel, chatID)
@@ -748,6 +762,10 @@ const (
 	// outcomeNeedsApproval: the work stopped on a permission request of its
 	// own, which is progress, not failure.
 	outcomeNeedsApproval planOutcome = "needs_approval"
+	// outcomeBlocked: the work did not happen, and nothing failed either —
+	// Ghost needs something from the owner (a recipient, a file, a channel).
+	// It is not success and must never be recorded as one.
+	outcomeBlocked planOutcome = "blocked"
 )
 
 // evidenceLevel maps an execution outcome to the honest strength of proof.
@@ -761,6 +779,10 @@ func evidenceLevel(o planOutcome) string {
 		return "dispatched"
 	case outcomeUnavailable:
 		return "unavailable"
+	case outcomeBlocked:
+		return "blocked"
+	case outcomeNeedsApproval:
+		return "waiting"
 	default:
 		return "failed"
 	}
@@ -897,6 +919,7 @@ func (al *AgentLoop) executeLocalPlan(ctx context.Context, idea ideas.Idea, chan
 // step only decides that Ghost should look.
 func (al *AgentLoop) executeDelegatedTurn(ctx context.Context, idea ideas.Idea, channel, chatID, prompt string) (planOutcome, string, map[string]interface{}, error) {
 	session := "proactive:" + idea.ID
+	before := al.sessionMaxEventSeq(session)
 	reply, err := al.ProcessDirectWithChannel(ctx, prompt, session, channel, chatID, nil, nil, nil)
 	if err != nil {
 		return outcomeFailed, "I couldn't finish looking into that.", nil, err
@@ -905,7 +928,20 @@ func (al *AgentLoop) executeDelegatedTurn(ctx context.Context, idea ideas.Idea, 
 	if reply == "" {
 		return outcomeFailed, "I looked but couldn't find anything useful to do.", nil, nil
 	}
-	return outcomeSucceeded, reply, map[string]interface{}{"type": "action", "session": session}, nil
+	if al.governance != nil && al.governance.Broker != nil {
+		if _, pending := al.governance.Broker.PendingForSession(session); pending {
+			return outcomeNeedsApproval, reply, map[string]interface{}{
+				"type": "action", "session": session, "waiting": "permission",
+			}, nil
+		}
+	}
+	// Talking is not doing: without a mutating tool the work did not happen.
+	if !al.turnDidRealWork(session, before) {
+		return outcomeBlocked, reply, map[string]interface{}{
+			"type": "action", "session": session, "blocked": "needed input from the owner",
+		}, nil
+	}
+	return outcomeVerified, reply, map[string]interface{}{"type": "action", "session": session}, nil
 }
 
 // reportProposalOutcome tells the owner what actually happened, in the
@@ -928,6 +964,10 @@ func (al *AgentLoop) reportProposalOutcome(idea ideas.Idea, result, channel, cha
 		prefix = "I've set that in motion. "
 	case "unavailable":
 		prefix = "I couldn't do that. "
+	case "blocked":
+		prefix = "I couldn't finish that yet. "
+	case "waiting":
+		prefix = ""
 	case "failed":
 		prefix = "That didn't go through. "
 	default:

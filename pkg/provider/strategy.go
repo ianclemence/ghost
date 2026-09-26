@@ -157,7 +157,8 @@ func DoWithRetry[T any](ctx context.Context, delays []time.Duration, onRetry fun
 }
 
 // ClassifyHTTP maps an HTTP status to a failure class.
-func ClassifyHTTP(status int) FailureClass {	switch {
+func ClassifyHTTP(status int) FailureClass {
+	switch {
 	case status == 429:
 		return FailRateLimited
 	case status == 401:

@@ -713,29 +713,33 @@ func TestCommitmentBecomesAProposalAndSettles(t *testing.T) {
 		t.Fatalf("proposal must be planned against the commitment, got %+v", idea.Plan)
 	}
 
-	// Approve: the delegated turn runs (mock provider answers), the result is
-	// recorded, and the obligation is settled from that real outcome.
+	// Approve. The delegated turn runs, but a provider that only talks has
+	// not done the work: the promise must NOT be marked kept. This is the
+	// false-completion guard, proven end to end.
 	record, result, err := al.DecideIdea(context.Background(), idea.ID, "approve", 0)
 	if err != nil {
 		t.Fatalf("approve: %v", err)
 	}
-	if record.Status != ideas.StatusCompleted || record.EvidenceLevel == "" {
-		t.Fatalf("proposal not completed with an evidence level: %+v", record)
+	if record.Status != ideas.StatusFailed || record.EvidenceLevel != "blocked" {
+		t.Fatalf("a turn that only talked must be recorded as blocked, got %s/%s", record.Status, record.EvidenceLevel)
+	}
+	if result == "" {
+		t.Fatal("the owner must be told what is missing")
 	}
 	settled, err := store.Get(c.ID)
 	if err != nil {
 		t.Fatalf("reload commitment: %v", err)
 	}
-	if settled.Status != commitments.StatusCompleted {
-		t.Fatalf("a successful action must settle the promise, got %s (%s)", settled.Status, settled.OutcomeNote)
+	if settled.Status == commitments.StatusCompleted {
+		t.Fatalf("a turn that only talked must never complete the promise: %+v", settled)
+	}
+	if settled.Status != commitments.StatusBlocked {
+		t.Fatalf("status = %s, want blocked (still open work)", settled.Status)
 	}
 	if settled.Attempts != 1 {
 		t.Fatalf("attempts = %d, want 1", settled.Attempts)
 	}
-	if result == "" {
-		t.Fatal("the owner must be told what happened")
-	}
-	for _, want := range []cevents.Type{cevents.CommitmentCompleted, cevents.ProactiveCompleted} {
+	for _, want := range []cevents.Type{cevents.CommitmentBlocked, cevents.ProactiveFailed} {
 		found := false
 		for _, e := range stream.Recent(200, cevents.Filter{}) {
 			if e.Type == want {
@@ -746,7 +750,41 @@ func TestCommitmentBecomesAProposalAndSettles(t *testing.T) {
 			t.Fatalf("canonical stream missing %s", want)
 		}
 	}
-	_ = stream
+	// A blocked promise is not abandoned: it becomes eligible again later,
+	// this time with what was missing on the record.
+	later := now.Add(commitmentBlockedRetryAfter + time.Hour)
+	if n := al.EvaluateProposals(later); n != 1 {
+		t.Fatalf("a blocked promise must come back with the missing piece, got %d", n)
+	}
+}
+
+// Real work, for the purposes of settling a promise, means a mutating governed
+// tool ran. A read-only lookup is not handling the owner's promise.
+func TestTurnDidRealWorkRequiresAMutation(t *testing.T) {
+	al, _, _ := newProactiveLoop(t)
+	session := "commitment:test-real-work"
+	publish := func(capability string) {
+		al.governance.Events.Publish(&cevents.Event{
+			Type: cevents.ToolCompleted, SessionID: session, Status: "success",
+			GhostID: "ghost-test", AgentID: "agent-test",
+			Payload: map[string]interface{}{"tool": "probe", "capability": capability, "status": "success"},
+		})
+	}
+
+	before := al.sessionMaxEventSeq(session)
+	publish("web.fetch") // a read-only lookup
+	if al.turnDidRealWork(session, before) {
+		t.Fatal("a read-only lookup is not handling the promise")
+	}
+	mark := al.sessionMaxEventSeq(session)
+	publish("schedule.create") // a mutating capability
+	if !al.turnDidRealWork(session, mark) {
+		t.Fatal("a mutating capability must count as real work")
+	}
+	// Work that happened before the turn does not count for this turn.
+	if al.turnDidRealWork(session, al.sessionMaxEventSeq(session)+1) {
+		t.Fatal("work outside the turn's window must not count")
+	}
 }
 
 // Speculation never becomes durable state — the negative control for

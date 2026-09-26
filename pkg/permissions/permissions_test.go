@@ -245,9 +245,9 @@ func TestApprovalCardShape(t *testing.T) {
 func TestApprovalCardExecutionTitles(t *testing.T) {
 	b := openTestBroker(t, ModeAsk)
 	cases := map[string]string{
-		"exec.shell":      "Run commands on this Ghost?",
-		"sandbox.exec":    "Run commands on this Ghost?",
-		"computer.click":  "Control this computer?",
+		"exec.shell":       "Run commands on this Ghost?",
+		"sandbox.exec":     "Run commands on this Ghost?",
+		"computer.click":   "Control this computer?",
 		"computer.inspect": "See this computer's screen?",
 		"browser.transact": "Control the browser?",
 	}

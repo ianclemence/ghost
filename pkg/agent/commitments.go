@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/commitments"
 	"github.com/ianclemence/ghost/pkg/ideas"
@@ -30,6 +31,10 @@ const (
 	// sit untouched before Ghost offers to pick it up. Long enough not to
 	// nag, short enough to be useful.
 	commitmentStallAfter = 72 * time.Hour
+	// commitmentBlockedRetryAfter is how long a promise Ghost could not move
+	// on its own stays quiet before it may ask again — this time with the
+	// missing piece stated.
+	commitmentBlockedRetryAfter = 24 * time.Hour
 )
 
 // commitmentStoreFor opens the ledger for the loop's workspace.
@@ -137,7 +142,7 @@ func (al *AgentLoop) observeCommitments(now time.Time) []ideas.Observation {
 	if err != nil {
 		return nil
 	}
-	attention, err := store.Attention(now, commitmentStallAfter)
+	attention, err := store.AttentionWith(now, commitmentStallAfter, commitmentBlockedRetryAfter)
 	if err != nil {
 		return nil
 	}
@@ -153,18 +158,19 @@ func (al *AgentLoop) observeCommitments(now time.Time) []ideas.Observation {
 		headline := ""
 		if due {
 			kind = ideas.ObsCommitmentDue
+			// The owner's own words already carry the time phrase ("…photos
+			// today"), so repeating it would read as a stutter.
 			headline = fmt.Sprintf("You said you'd %s", c.Text)
-			if c.DueSource != "" {
-				headline += " " + c.DueSource
+			if src := strings.TrimSpace(c.DueSource); src != "" && !strings.Contains(strings.ToLower(c.Text), strings.ToLower(src)) {
+				headline += " " + src
 			}
+		} else if c.Status == commitments.StatusBlocked {
+			headline = fmt.Sprintf("You said you'd %s — I still need a hand with it", c.Text)
 		} else {
 			headline = fmt.Sprintf("You said you'd %s — that was %d days ago",
 				c.Text, int(now.Sub(c.CreatedAt).Hours()/24))
 		}
 		summary := headline + " and it's still open"
-		if s := strings.TrimSpace(c.Subject); s != "" {
-			summary = headline + " and it's still open"
-		}
 		priority := 8
 		urgency := false
 		if due {
@@ -184,7 +190,7 @@ func (al *AgentLoop) observeCommitments(now time.Time) []ideas.Observation {
 				Kind: ideas.SourceCommitment, Ref: c.ID,
 				Excerpt: "you said: \"" + truncateReason(c.Provenance.Quote, 120) + "\"",
 			}},
-			StateVer:   ideas.StateVer(c.ID, string(c.Status), fmt.Sprint(c.Attempts), dueAtKey(c.DueAt)),
+			StateVer:   ideas.StateVer(c.ID, string(c.Status), fmt.Sprint(c.Attempts), dueAtKey(c.DueAt), c.Outcome),
 			Actionable: true,
 			Priority:   priority,
 			Urgency:    urgency,
@@ -321,6 +327,9 @@ func (al *AgentLoop) publishCommitment(typ cevents.Type, c commitments.Commitmen
 	if note != "" {
 		payload["note"] = note
 	}
+	if summary := strings.TrimSpace(c.Text); summary != "" {
+		payload["summary"] = summary
+	}
 	al.governance.Events.Publish(&cevents.Event{
 		Type: typ, SessionID: proposalSession,
 		GhostID: al.governance.GhostID, AgentID: al.governance.AgentID,
@@ -368,28 +377,77 @@ func (al *AgentLoop) executeCommitmentTurn(ctx context.Context, idea ideas.Idea,
 		return outcomeFailed, "I couldn't find that promise any more, so I left it alone.", nil, err
 	}
 	session := "commitment:" + c.ID
+	before := al.sessionMaxEventSeq(session)
 	reply, err := al.ProcessDirectWithChannel(ctx, commitmentTurnPrompt(c), session, channel, chatID, nil, nil, nil)
 	if err != nil {
 		return outcomeFailed, "I couldn't get anywhere with that. Nothing was changed.", nil, err
 	}
+	reply = strings.TrimSpace(reply)
 	// A turn that stopped on its own permission request is progress: the next
 	// step is an approval the owner already has in front of them.
 	if al.governance != nil && al.governance.Broker != nil {
 		if _, pending := al.governance.Broker.PendingForSession(session); pending {
-			text := strings.TrimSpace(reply)
-			if text == "" {
-				text = "I need your go-ahead for the next step."
+			if reply == "" {
+				reply = "I need your go-ahead for the next step."
 			}
-			return outcomeNeedsApproval, text, map[string]interface{}{
+			return outcomeNeedsApproval, reply, map[string]interface{}{
 				"type": "action", "session": session, "waiting": "permission",
 			}, nil
 		}
 	}
-	reply = strings.TrimSpace(reply)
 	if reply == "" {
 		return outcomeFailed, "I looked, but couldn't find a way to move it forward.", nil, nil
 	}
-	return outcomeSucceeded, reply, map[string]interface{}{"type": "action", "session": session}, nil
+	// The turn only counts as done if something was actually done. A reply
+	// that asks for a missing recipient or file is honest work planning, not
+	// a completed promise — and the promise must stay open.
+	if !al.turnDidRealWork(session, before) {
+		return outcomeBlocked, reply, map[string]interface{}{
+			"type": "action", "session": session, "blocked": "needed input from the owner",
+		}, nil
+	}
+	return outcomeVerified, reply, map[string]interface{}{"type": "action", "session": session}, nil
+}
+
+// sessionMaxEventSeq is the highest canonical sequence number recorded for a
+// session, so a delegated turn can be scoped to what it newly did.
+func (al *AgentLoop) sessionMaxEventSeq(session string) int64 {
+	if al.governance == nil || al.governance.Events == nil {
+		return 0
+	}
+	var max int64
+	for _, e := range al.governance.Events.Recent(300, cevents.Filter{SessionID: session}) {
+		if e.Seq > max {
+			max = e.Seq
+		}
+	}
+	return max
+}
+
+// turnDidRealWork reports whether a delegated turn actually executed a
+// mutating governed tool. Read-only lookups do not count: reading a file is
+// not handling the owner's promise, and claiming otherwise is exactly the
+// false-completion failure this product may not have.
+func (al *AgentLoop) turnDidRealWork(session string, sinceSeq int64) bool {
+	if al.governance == nil || al.governance.Events == nil {
+		return false
+	}
+	for _, e := range al.governance.Events.Recent(300, cevents.Filter{SessionID: session}) {
+		if e.Type != cevents.ToolCompleted || e.Seq <= sinceSeq {
+			continue
+		}
+		capID, _ := e.Payload["capability"].(string)
+		if capID == "" {
+			continue
+		}
+		// The capability registry is authoritative for what a tool can do.
+		// Unknown capabilities fail closed as mutating, so an unrecognised
+		// tool counts as work rather than silently passing as a read.
+		if spec, ok := capability.Get(capID); !ok || string(spec.Risk) != "read_only" {
+			return true
+		}
+	}
+	return false
 }
 
 // commitmentTurnPrompt states the obligation, its provenance, and the honesty

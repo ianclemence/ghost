@@ -319,16 +319,16 @@ func (tm *TunnelManager) AuthClientScope(deviceID, tokenHex string) (string, boo
 // self/model/health introspection. Everything else (exec, pairing,
 // permissions, schedules, config) needs a full-scope token.
 var scopeChatPaths = map[string]map[string]bool{
-	"/v1/chat":             {"GET": true, "POST": true},
-	"/v1/message":          {"GET": true, "POST": true},
-	"/v1/messages":         {"GET": true, "POST": true},
-	"/v1/history":          {"GET": true},
-	"/v1/recall":           {"GET": true, "POST": true},
-	"/v1/clarify/respond":  {"POST": true},
-	"/v1/health":           {"GET": true},
-	"/v1/identity":         {"GET": true},
-	"/v1/model":            {"GET": true},
-	"/v1/activity":         {"GET": true},
+	"/v1/chat":            {"GET": true, "POST": true},
+	"/v1/message":         {"GET": true, "POST": true},
+	"/v1/messages":        {"GET": true, "POST": true},
+	"/v1/history":         {"GET": true},
+	"/v1/recall":          {"GET": true, "POST": true},
+	"/v1/clarify/respond": {"POST": true},
+	"/v1/health":          {"GET": true},
+	"/v1/identity":        {"GET": true},
+	"/v1/model":           {"GET": true},
+	"/v1/activity":        {"GET": true},
 }
 
 // scopeSensitivePrefixes are credential-adjacent paths even readonly

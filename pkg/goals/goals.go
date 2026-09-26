@@ -56,9 +56,9 @@ type Goal struct {
 	// Status lifecycle; ExpiresAt auto-pauses via Evaluate.
 	Status Status `json:"status"`
 	// ExpiresAt zero means no expiry.
-	ExpiresAt time.Time `json:"expires_at,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ExpiresAt time.Time      `json:"expires_at,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 	Progress  []ProgressNote `json:"progress,omitempty"`
 }
 

@@ -117,10 +117,10 @@ func checkStatus(resp *http.Response, what string) provider.FailureClass {
 }
 
 type apiEvent struct {
-	ID      string `json:"id"`
-	Summary string `json:"summary"`
+	ID       string `json:"id"`
+	Summary  string `json:"summary"`
 	HTMLLink string `json:"htmlLink"`
-	Start   struct {
+	Start    struct {
 		DateTime string `json:"dateTime"`
 		Date     string `json:"date"`
 	} `json:"start"`

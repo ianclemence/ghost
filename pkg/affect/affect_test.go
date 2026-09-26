@@ -141,7 +141,8 @@ func TestPersistenceRoundtrip(t *testing.T) {
 	}
 }
 
-func TestLoadMissingIsNeutral(t *testing.T) {	got, err := Load(t.TempDir())
+func TestLoadMissingIsNeutral(t *testing.T) {
+	got, err := Load(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

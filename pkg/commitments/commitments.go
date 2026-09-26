@@ -294,6 +294,13 @@ func (s *Store) List() ([]Commitment, error) {
 // Attention returns the commitments that may produce a proactive
 // opportunity: open, and either past due or waiting without a time.
 func (s *Store) Attention(now time.Time, stallAfter time.Duration) ([]Commitment, error) {
+	return s.AttentionWith(now, stallAfter, 0)
+}
+
+// AttentionWith additionally re-opens a blocked commitment after blockedAfter,
+// so a promise Ghost could not move on its own is not silently abandoned —
+// the next offer can state what was missing.
+func (s *Store) AttentionWith(now time.Time, stallAfter, blockedAfter time.Duration) ([]Commitment, error) {
 	list, err := s.List()
 	if err != nil {
 		return nil, err
@@ -301,6 +308,10 @@ func (s *Store) Attention(now time.Time, stallAfter time.Duration) ([]Commitment
 	var out []Commitment
 	for _, c := range list {
 		if c.Overdue(now) || c.Stalled(now, stallAfter) {
+			out = append(out, c)
+			continue
+		}
+		if c.Status == StatusBlocked && blockedAfter > 0 && now.Sub(c.UpdatedAt) >= blockedAfter {
 			out = append(out, c)
 		}
 	}

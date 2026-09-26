@@ -86,9 +86,9 @@ func VerifyDraft(d Draft, ev Evidence, now time.Time) Idea {
 	}
 	idea := Idea{
 		ID:        newID(),
-		Title:   strings.TrimSpace(d.Title),
-		Body:    strings.TrimSpace(d.Body),
-		Status:  StatusPending,
+		Title:     strings.TrimSpace(d.Title),
+		Body:      strings.TrimSpace(d.Body),
+		Status:    StatusPending,
 		CreatedAt: now,
 	}
 	seen := map[string]bool{}

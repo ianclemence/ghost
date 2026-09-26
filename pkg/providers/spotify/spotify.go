@@ -71,9 +71,11 @@ type playerResp struct {
 		Name string `json:"name"`
 	} `json:"device"`
 	Item struct {
-		Name      string `json:"name"`
-		Artists   []struct{ Name string `json:"name"` } `json:"artists"`
-		DurationMs int   `json:"duration_ms"`
+		Name    string `json:"name"`
+		Artists []struct {
+			Name string `json:"name"`
+		} `json:"artists"`
+		DurationMs int `json:"duration_ms"`
 	} `json:"item"`
 }
 

@@ -37,6 +37,12 @@ Newest first. Ghost shows new entries on first launch after an update;
   unavailable, or failed — and the sentence you read is derived from it. A
   promise is only marked kept when the work really succeeded, a failure
   leaves it open, and dismissing it never pretends it was done.
+- **Talking is not doing.** When Ghost takes on a promise through a real
+  turn, the promise is only marked kept if a mutating capability actually
+  ran. A turn that asks you for the missing photo or address records the
+  promise as *blocked* — still open, with what is missing written down —
+  and never as done. It comes back to you later, this time saying what it
+  needs.
 - The Ideas screen lists the promises Ghost is holding, with the words you
   said, and lets you close one.
 
