@@ -532,12 +532,12 @@ func (s *Stream) Recent(limit int, f Filter) []*Event {
 		return nil
 	}
 	defer rows.Close()
-	out := scanAll(rows)
-	// scanAll returns seq-ascending per query; Recent asked DESC — reverse.
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
-	}
-	return out
+	// scanAll preserves the query's row order, which is already
+	// seq DESC — newest first. (An earlier reversal here assumed scanAll
+	// re-sorted ascending; it does not, so the flip was returning the
+	// OLDEST rows first and a limited read kept the oldest instead of the
+	// latest — the web console renders this order directly.)
+	return scanAll(rows)
 }
 
 // Since returns events after a sequence cursor for resumable

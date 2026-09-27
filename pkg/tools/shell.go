@@ -171,6 +171,12 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 			return fmt.Sprintf("working directory outside the allowed roots: %s", err.Error())
 		}
 	}
+	// Ghost's runtime home beside the workspace (backups, install
+	// snapshots) is never a working area: the sandbox does not mount it,
+	// and naming it as a working directory is refused outright.
+	if ghostRuntimeHomePath(t.workingDir, cwd) {
+		return "that working directory belongs to Ghost's own runtime; choose a project directory instead"
+	}
 	return ""
 }
 

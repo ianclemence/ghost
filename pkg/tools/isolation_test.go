@@ -38,18 +38,29 @@ func TestWrapArgvRequireFailsWithoutBwrap(t *testing.T) {
 	}
 }
 
-// The exec tool must still run ordinary commands and write inside the
-// workspace under isolation.
+// The exec tool must still run ordinary commands under isolation, and the
+// writable scratch area must work, while the workspace root (Ghost's own
+// tree) is read-only to executed code.
 func TestExecToolRunsUnderIsolation(t *testing.T) {
 	ws := t.TempDir()
 	tool := NewExecTool(ws, false)
 	res := tool.Execute(context.Background(), map[string]interface{}{
-		"command": "echo isolated-ok && echo data > out.txt && cat out.txt",
+		"command": "echo isolated-ok && echo data > tmp/out.txt && cat tmp/out.txt",
 	})
 	if res.IsError {
 		t.Fatalf("exec failed: %s", res.ForLLM)
 	}
 	if !strings.Contains(res.ForLLM, "isolated-ok") || !strings.Contains(res.ForLLM, "data") {
 		t.Fatalf("unexpected output: %s", res.ForLLM)
+	}
+	if !IsolationActive() {
+		return
+	}
+	// The workspace root is Ghost's own tree: a plain redirect there fails.
+	res = tool.Execute(context.Background(), map[string]interface{}{
+		"command": "echo nope > out.txt",
+	})
+	if !res.IsError {
+		t.Fatalf("a write into Ghost's own tree must fail under isolation: %s", res.ForLLM)
 	}
 }

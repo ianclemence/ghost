@@ -65,6 +65,116 @@ func primaryDeny(name, what string) error {
 	return fmt.Errorf("access denied: %s is a Ghost primary file (%s); primary files are never overwritten or deleted through file tools", name, what)
 }
 
+// Runtime-owned estate guard.
+//
+// AGENTS.md states the contract in words: state/, sessions/, events/ and
+// ghost.db are runtime-owned — never hand-edited, moved, or deleted.
+// guardGhostEstateWrite enforces the same contract in code, for the whole
+// runtime estate, at every write-class file tool. The estate is the
+// machine's memory of itself (session logs, the scheduler, the event
+// trail, the personal-context journal, reflection/in-flight state, the
+// runtime journal, and portable conversation artifacts); each store is
+// written only by the subsystem that owns it, through a governed tool or
+// an in-process writer. Owner content — memory notes, knowledge, data
+// captures, scratch, learning stores — is not in this set and stays
+// writable, so note-taking keeps working.
+var runtimeOwnedDirs = []string{
+	"sessions", "commitments", "cron", "events", "dreams", "proactive",
+	"pending", "personal-context", "state", "journal", "conversations",
+}
+
+// runtimeOwnedFiles are top-level runtime files with no governed edit
+// path. The prompt/identity contract is already a primary file; these are
+// the heartbeat log and the shipped docs the installer and runtime own.
+var runtimeOwnedFiles = []string{"heartbeat.log", "README.md", "USER.md"}
+
+// guardGhostEstateWrite refuses a write-class file-tool operation that
+// targets Ghost's runtime-owned estate, whether inside the workspace or in
+// the runtime home beside it (backups, install snapshots). Reads are
+// governed separately by the ScopeGuard privacy boundary; this guard is
+// about never creating, changing, or destroying Ghost's own files.
+func guardGhostEstateWrite(workspace, resolvedPath string) error {
+	if workspace == "" {
+		return nil
+	}
+	ws, err := filepath.Abs(workspace)
+	if err != nil {
+		return nil
+	}
+	p, err := filepath.Abs(resolvedPath)
+	if err != nil {
+		return nil
+	}
+	if under(ws, p) {
+		rel, err := filepath.Rel(ws, p)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		top := rel
+		if i := strings.Index(rel, "/"); i >= 0 {
+			top = rel[:i]
+		}
+		for _, d := range runtimeOwnedDirs {
+			if top == d {
+				return estateDeny(top)
+			}
+		}
+		for _, f := range runtimeOwnedFiles {
+			if rel == f {
+				return estateDeny(f)
+			}
+		}
+		return nil
+	}
+	if ghostRuntimeHomePath(workspace, p) {
+		return estateDeny(filepath.Base(p))
+	}
+	return nil
+}
+
+func estateDeny(name string) error {
+	return fmt.Errorf("access denied: %s is part of Ghost's own runtime state; only Ghost's own subsystem tools change it, never raw file writes", name)
+}
+
+// runtimeHomeSibling reports whether a directory beside workspace/ is one
+// of Ghost's own runtime-home entries rather than a user project.
+func runtimeHomeSibling(name string) bool {
+	return name == "backups" ||
+		strings.HasPrefix(name, "workspace-orig") ||
+		strings.HasPrefix(name, "skills-backup")
+}
+
+// ghostRuntimeHomePath reports whether p is Ghost's runtime home itself or
+// one of its own entries (backups, install snapshots) — the directories
+// beside workspace/ that are never a working area or a write target for
+// the model. User projects anywhere else are unaffected.
+func ghostRuntimeHomePath(workspace, p string) bool {
+	if workspace == "" || p == "" {
+		return false
+	}
+	ws, err := filepath.Abs(workspace)
+	if err != nil {
+		return false
+	}
+	home := filepath.Dir(ws)
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return false
+	}
+	if abs == home {
+		return true
+	}
+	if !under(home, abs) {
+		return false
+	}
+	rel, err := filepath.Rel(home, abs)
+	if err != nil {
+		return false
+	}
+	return runtimeHomeSibling(strings.SplitN(filepath.ToSlash(rel), "/", 2)[0])
+}
+
 func hasDirSegment(p, seg string) bool {
 	for _, part := range strings.Split(filepath.ToSlash(p), "/") {
 		if part == seg {

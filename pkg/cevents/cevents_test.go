@@ -203,3 +203,33 @@ func TestSkillLifecycleVisibility(t *testing.T) {
 		}
 	}
 }
+
+// TestRecentReturnsNewestFirst pins the feed contract every activity
+// surface relies on: Recent serves the latest events, newest first, and a
+// limited read keeps the NEWEST rows — the limit is a promise about the
+// latest activity, never the oldest. The web console renders this order
+// directly, so a regression here reorders the owner's activity feed (and
+// previously made brand-new activity fall outside the limit entirely).
+func TestRecentReturnsNewestFirst(t *testing.T) {
+	s := openTestStream(t)
+	for _, id := range []string{"a", "b", "c", "d", "e"} {
+		s.Publish(&Event{Type: MessageCreated, RequestID: id, GhostID: "g"})
+	}
+	all := s.Recent(10, Filter{GhostID: "g"})
+	if len(all) != 5 {
+		t.Fatalf("got %d events, want 5", len(all))
+	}
+	want := []string{"e", "d", "c", "b", "a"}
+	for i, id := range want {
+		if all[i].RequestID != id {
+			t.Fatalf("position %d: got %q want %q (Recent must be newest first)", i, all[i].RequestID, id)
+		}
+	}
+	latest := s.Recent(2, Filter{GhostID: "g"})
+	if len(latest) != 2 {
+		t.Fatalf("limited read: got %d events, want 2", len(latest))
+	}
+	if latest[0].RequestID != "e" || latest[1].RequestID != "d" {
+		t.Fatalf("limited read must keep the newest events, got [%s, %s]", latest[0].RequestID, latest[1].RequestID)
+	}
+}

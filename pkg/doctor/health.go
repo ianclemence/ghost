@@ -2,7 +2,6 @@ package doctor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,7 +13,7 @@ import (
 )
 
 // Health checks: disk pressure with remedies, vault openability,
-// last golden score, eval spend, and failing routines. Each follows the
+// eval spend, and failing routines. Each follows the
 // checkFoo pattern (start/latency, ok/warning/error/info) and carries a
 // next action in the message — health output is read by owners, not
 // engineers.
@@ -78,55 +77,6 @@ func (d *Doctor) checkVault(ctx context.Context) CheckResult {
 		}
 	}
 	return done("ok", "sealed secrets open with the resolved key")
-}
-
-// goldenScore is the minimal history-file shape the health check reads.
-// Parsed locally (not via pkg/golden) because golden imports the agent
-// loop, which transitively imports doctor — a direct import would cycle.
-// The file format is stable JSON; unknown fields are ignored.
-type goldenScore struct {
-	At       string `json:"at"`
-	Model    string `json:"model"`
-	Provider string `json:"provider"`
-	Summary  struct {
-		Total     int `json:"total"`
-		Passed    int `json:"passed"`
-		Failed    int `json:"failed"`
-		HardFails int `json:"hard_fails"`
-	} `json:"summary"`
-}
-
-// checkLastGolden reports the newest golden score for the workspace, or
-// info when no run exists yet. A score with hard fails is a warning even
-// at 100%: hard fails are never clean.
-func (d *Doctor) checkLastGolden(ctx context.Context) CheckResult {
-	start := time.Now()
-	done := func(status, msg string) CheckResult {
-		return CheckResult{Name: "last_golden", Label: "Golden", Status: status, Message: msg, Latency: time.Since(start).Milliseconds()}
-	}
-	_ = ctx
-	raw, err := os.ReadFile(filepath.Join(d.workspace, "state", "golden-history.json"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return done("info", "no golden runs recorded yet")
-		}
-		return done("warning", fmt.Sprintf("cannot read golden history: %v", err))
-	}
-	var entries []goldenScore
-	if err := json.Unmarshal(raw, &entries); err != nil || len(entries) == 0 {
-		return done("warning", "golden history unreadable")
-	}
-	last := entries[len(entries)-1]
-	if last.Summary.Total == 0 {
-		return done("info", "golden history holds no completed runs")
-	}
-	if last.Summary.HardFails > 0 {
-		return done("warning", fmt.Sprintf("last golden: %d/%d with %d HARD FAILS (%s)", last.Summary.Passed, last.Summary.Total, last.Summary.HardFails, last.At))
-	}
-	if last.Summary.Passed < last.Summary.Total {
-		return done("warning", fmt.Sprintf("last golden: %d/%d (%s, %s) — some cases failing, see `ghost golden --compare`", last.Summary.Passed, last.Summary.Total, last.Model, last.At))
-	}
-	return done("ok", fmt.Sprintf("last golden: %d/%d (%s, %s)", last.Summary.Passed, last.Summary.Total, last.Model, last.At))
 }
 
 // checkEvalSpend sums recorded turn costs from canonical events. Empty

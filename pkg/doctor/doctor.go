@@ -121,7 +121,6 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkVault,
 		d.checkRoutinesFailing,
 		d.checkConnectedServices,
-		d.checkLastGolden,
 		d.checkEvalSpend,
 		d.checkBinaries,
 	}
@@ -130,14 +129,14 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		results = append(results, check(ctx))
 	}
 	// Diagnostics is health, not inventory: a row with nothing to report is
-	// omitted rather than rendered as permanent info noise. Golden and spend
-	// appear once runs/turns exist; the vault row appears once a config is
+	// omitted rather than rendered as permanent info noise. Spend appears
+	// once turns exist; the vault row appears once a config is
 	// bound (unbound means the check didn't run, not that all is well); the
 	// connected-services aggregate appears once at least one service skill
 	// is enabled.
 	kept := results[:0]
 	for _, r := range results {
-		if r.Status == "info" && (r.Name == "last_golden" || r.Name == "eval_spend" || r.Name == "vault" || r.Name == "connected_services" || r.Name == "binaries") {
+		if r.Status == "info" && (r.Name == "eval_spend" || r.Name == "vault" || r.Name == "connected_services" || r.Name == "binaries") {
 			continue
 		}
 		kept = append(kept, r)

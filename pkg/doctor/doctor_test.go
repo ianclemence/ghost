@@ -41,9 +41,10 @@ func TestDoctorRunAll(t *testing.T) {
 
 	runner := New(database.DB, &testProvider{}, reg, t.TempDir())
 	results := runner.RunAll(context.Background())
-	// 14 registered checks minus 4 empty-info omissions on a bare workspace:
-	// unbound vault, no connected-service skills, no golden history, no
-	// metered turns. Diagnostics length scales with problems, not inventory.
+	// 13 registered checks minus 3 empty-info omissions on a bare workspace:
+	// unbound vault, no connected-service skills, no metered turns. The
+	// golden suite is not part of health. Diagnostics length scales with
+	// problems, not inventory.
 	if len(results) != 10 {
 		t.Fatalf("expected 10 checks, got %d", len(results))
 	}

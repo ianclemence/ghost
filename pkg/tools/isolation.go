@@ -43,8 +43,11 @@ func isolationMode() IsolationMode {
 //
 // The isolation (Linux/bubblewrap) gives a read-only root, a private /tmp,
 // process/IPC/UTS namespaces, and — critically — does NOT bind the config
-// directory, so provider credentials are not reachable from the sandbox. The
-// workspace is bound read-write because tools legitimately operate there.
+// directory, so provider credentials are not reachable from the sandbox.
+// Ghost's own workspace is bound read-only: only the scratch directory and
+// the owner-content areas (memory notes, knowledge, captures, learning)
+// are writable, and HOME points at scratch. A user project outside the
+// workspace is bound read-write so real work can happen there.
 func WrapArgv(base []string, cwd, workspace string, allowNetwork bool) ([]string, bool, error) {
 	if len(base) == 0 {
 		return base, false, nil

@@ -33,8 +33,9 @@ func TestHealthCheckCount(t *testing.T) {
 	// See TestDoctorRunAll: pin PATH so checkBinaries omits itself here too.
 	t.Setenv("PATH", t.TempDir())
 	results := d.RunAll(context.Background())
-	// 14 registered minus 4 empty-info omissions on a bare workspace
-	// (unbound vault, no service skills, no golden history, no spend).
+	// 13 registered minus 3 empty-info omissions on a bare workspace
+	// (unbound vault, no service skills, no spend). The golden suite is
+	// not a registered check at all: health never reports test scores.
 	if len(results) != 10 {
 		t.Fatalf("expected 10 checks, got %d", len(results))
 	}
@@ -57,7 +58,10 @@ func TestHealthCheckCount(t *testing.T) {
 	}
 }
 
-func TestHealthSeededRowsAppear(t *testing.T) {
+// TestHealthNeverSurfacesGolden pins the owner-facing rule: the golden
+// test suite is not part of health. Even with a history file on disk,
+// the doctor must not render a Golden row — spend still surfaces.
+func TestHealthNeverSurfacesGolden(t *testing.T) {
 	d, ws := healthFixture(t)
 	state := filepath.Join(ws, "state")
 	if err := os.MkdirAll(state, 0755); err != nil {
@@ -74,8 +78,8 @@ func TestHealthSeededRowsAppear(t *testing.T) {
 	for _, r := range d.RunAll(context.Background()) {
 		names[r.Name] = true
 	}
-	if !names["last_golden"] {
-		t.Fatal("seeded golden history must surface a Golden row")
+	if names["last_golden"] {
+		t.Fatal("golden history must never surface a Golden row in health")
 	}
 	if !names["eval_spend"] {
 		t.Fatal("metered turns must surface a Spend row")
@@ -119,31 +123,6 @@ func TestVaultUnboundAndAbsent(t *testing.T) {
 	_ = ws
 	if got := d.checkVault(context.Background()); got.Status != "error" {
 		t.Fatalf("corrupt secrets must error, got %+v", got)
-	}
-}
-
-func TestLastGoldenAbsentAndScored(t *testing.T) {
-	d, ws := healthFixture(t)
-	if got := d.checkLastGolden(context.Background()); got.Status != "info" {
-		t.Fatalf("absent history must be info, got %+v", got)
-	}
-	state := filepath.Join(ws, "state")
-	if err := os.MkdirAll(state, 0755); err != nil {
-		t.Fatal(err)
-	}
-	hist := `[{"at":"2026-09-15T00:00:00Z","model":"deepseek-flash","provider":"deepseek","suite_version":1,"summary":{"suite_version":1,"model":"deepseek-flash","provider":"deepseek","total":59,"passed":59,"failed":0,"hard_fails":0}}]`
-	if err := os.WriteFile(filepath.Join(state, "golden-history.json"), []byte(hist), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if got := d.checkLastGolden(context.Background()); got.Status != "ok" {
-		t.Fatalf("clean score must be ok, got %+v", got)
-	}
-	bad := `[{"at":"2026-09-15T00:00:00Z","model":"m","provider":"p","suite_version":1,"summary":{"total":59,"passed":59,"failed":0,"hard_fails":2}}]`
-	if err := os.WriteFile(filepath.Join(state, "golden-history.json"), []byte(bad), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if got := d.checkLastGolden(context.Background()); got.Status != "warning" {
-		t.Fatalf("hard fails must warn even at full pass, got %+v", got)
 	}
 }
 
