@@ -2801,10 +2801,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 			return
 		}
+		// Every frame — turn, keep-alive, clarify forwarder — goes through
+		// one serialized writer; the seal on return makes a straggling
+		// goroutine unable to write into a finished response.
+		sw := &sseWriter{w: w, flush: flusher}
+		defer sw.seal()
 		emitObject := func(payload interface{}) {
-			raw, _ := json.Marshal(payload)
-			fmt.Fprintf(w, "data: %s\n\n", string(raw))
-			flusher.Flush()
+			sw.event(payload)
 		}
 		emitObject(map[string]interface{}{
 			"type":       "lifecycle",
@@ -2829,9 +2832,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		streamedText := false
 		onChunk := func(chunk string) {
 			streamedText = true
-			escaped, _ := json.Marshal(chunk)
-			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
-			flusher.Flush()
+			sw.event(chunk)
 		}
 
 		// onToolCall — sends a tool_status event so the app can show
@@ -2840,13 +2841,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		// to the status badge, not the message bubble.
 		onToolCall := func(name, args string) {
 			label := toolStatusLabel(name, args)
-			payload, _ := json.Marshal(map[string]string{
+			sw.event(map[string]string{
 				"type":  "tool_status",
 				"tool":  name,
 				"label": label,
 			})
-			fmt.Fprintf(w, "data: %s\n\n", string(payload))
-			flusher.Flush()
 		}
 
 		// Keep-alive ticker — prevents the mobile HTTP client from timing out
@@ -2859,8 +2858,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			for {
 				select {
 				case <-ticker.C:
-					fmt.Fprintf(w, ": keepalive\n\n")
-					flusher.Flush()
+					sw.keepalive()
 				case <-keepAliveDone:
 					return
 				}
@@ -2924,9 +2922,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			if detail != "" {
 				frame["detail"] = detail
 			}
-			payload, _ := json.Marshal(frame)
-			fmt.Fprintf(w, "data: %s\n\n", string(payload))
-			flusher.Flush()
+			sw.event(frame)
 		})
 		if req.Metadata != nil {
 			ctx = tools.WithRequestTimezone(ctx, strings.TrimSpace(req.Metadata["timezone"]))
@@ -2999,9 +2995,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				`, req.SessionKey)
 			}
 
-			escaped, _ := json.Marshal("Error: " + err.Error())
-			fmt.Fprintf(w, "data: %s\n\n", string(escaped))
-			flusher.Flush()
+			sw.event("Error: " + err.Error())
 			lifecycleCompleted("failed")
 			if chatTurns != nil {
 				_, _ = chatTurns.Set(req.SessionKey, req.RequestID, "failed", "failed")
@@ -3069,8 +3063,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			"state":      "channel_delivery",
 		})
 		lifecycleCompleted(outcome)
-		fmt.Fprintf(w, "data: [DONE]\n\n")
-		flusher.Flush()
+		sw.finish()
 	}))
 
 	// ── 3. History ────────────────────────────────────────────────────────

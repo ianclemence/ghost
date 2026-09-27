@@ -2150,6 +2150,36 @@ func wrapFirst(s string, w int) string {
 	return strings.Join(wrapText(s, w), "\n")
 }
 
+// wrapRepaired wraps s to w cells like wrapText, then repairs inline spans
+// that cross the break: markers still open at the end of a wrapped slice
+// are closed for that slice's rendering and reopened on the next slice.
+// Every returned slice is therefore self-contained — a span split by the
+// terminal wrap can neither leak raw markers nor drop its styling, which
+// is exactly where "styles applied sometimes, missed sometimes" came from.
+func wrapRepaired(s string, w int) []string {
+	slices := wrapText(s, w)
+	out := make([]string, 0, len(slices))
+	carry := ""
+	for _, sl := range slices {
+		cur := carry + sl
+		open := scanSpans(cur)
+		if len(open) == 0 {
+			carry = ""
+			out = append(out, cur)
+			continue
+		}
+		// Reopen outermost-first on the next slice; close innermost-first
+		// here so each marker token pairs up for the renderer.
+		carry = strings.Join(open, "")
+		var closers []string
+		for i := len(open) - 1; i >= 0; i-- {
+			closers = append(closers, open[i])
+		}
+		out = append(out, cur+strings.Join(closers, ""))
+	}
+	return out
+}
+
 // ─── markdown (Ghost theme, no new deps) ────────────────────────────────
 // Ghost's TUI markdown roles: markers are concealed (no ``` fences, no
 // #/backtick/bracket noise, URLs hidden behind cyan underlined labels),
@@ -2159,8 +2189,23 @@ func wrapFirst(s string, w int) string {
 // hasOpenSpan reports whether s ends inside an unclosed inline span
 // (code, bold, italic). Models hard-wrap mid-span; without joining, the
 // markers leak verbatim on both fragments.
-func hasOpenSpan(s string) bool {
-	var inCode, bold, italic bool
+// scanSpans walks s with the renderers' own parsing rules (backslash
+// escapes; markers inside a code span are literal) and returns the inline
+// span markers still open at the end of s — `code`, **bold**, *italic*,
+// ~~strike~~ — in the order they were opened. Empty means everything
+// closed. It powers both the line-continuation join (hasOpenSpan) and the
+// wrap-boundary repair (wrapRepaired), so the two never disagree.
+func scanSpans(s string) []string {
+	var stack []string
+	toggle := func(m string) {
+		for i, mk := range stack {
+			if mk == m {
+				stack = append(stack[:i], stack[i+1:]...)
+				return
+			}
+		}
+		stack = append(stack, m)
+	}
 	rs := []rune(s)
 	for i := 0; i < len(rs); i++ {
 		if rs[i] == '\\' {
@@ -2168,22 +2213,33 @@ func hasOpenSpan(s string) bool {
 			continue
 		}
 		if rs[i] == '`' {
-			inCode = !inCode
+			// A code span opens even inside another span; markers inside
+			// code are literal, so nothing else is parsed while it is open.
+			toggle("`")
 			continue
 		}
-		if inCode {
+		if len(stack) > 0 && stack[len(stack)-1] == "`" {
 			continue
 		}
 		if rs[i] == '*' {
 			if i+1 < len(rs) && rs[i+1] == '*' {
-				bold = !bold
+				toggle("**")
 				i++
 			} else {
-				italic = !italic
+				toggle("*")
 			}
+			continue
+		}
+		if rs[i] == '~' && i+1 < len(rs) && rs[i+1] == '~' {
+			toggle("~~")
+			i++
 		}
 	}
-	return inCode || bold || italic
+	return stack
+}
+
+func hasOpenSpan(s string) bool {
+	return len(scanSpans(s)) > 0
 }
 
 // isBlockStart reports whether a line opens a block construct. Continued
@@ -2282,6 +2338,21 @@ func renderAssistantBody(text string, width int) string {
 // single-line cases of renderAssistantBody shared by the full renderer and
 // the progressive stream styler, so live lines look exactly like committed
 // ones.
+// nestStyle applies an outer line role to text that already carries
+// inline styles: the outer role is re-applied after every inner reset, so
+// an inline span inside a styled line (a heading, say) never drops the
+// line's own style for the rest of the row.
+func nestStyle(outer lipgloss.Style, inner string) string {
+	if !strings.Contains(inner, "\x1b[0m") {
+		return outer.Render(inner)
+	}
+	var b strings.Builder
+	for _, part := range strings.Split(inner, "\x1b[0m") {
+		b.WriteString(outer.Render(part))
+	}
+	return b.String()
+}
+
 func renderMarkdownLine(trim, ln string, width int) []string {
 	var out []string
 	if level, rest, ok := parseHeading(trim); ok {
@@ -2293,8 +2364,8 @@ func renderMarkdownLine(trim, ln string, width int) []string {
 		if level == 1 {
 			headStyle = styleMDHead1
 		}
-		for _, wl := range wrapText(rest, width) {
-			out = append(out, headStyle.Render(wl))
+		for _, wl := range wrapRepaired(rest, width) {
+			out = append(out, nestStyle(headStyle, renderInline(wl)))
 		}
 		return out
 	}
@@ -2302,23 +2373,23 @@ func renderMarkdownLine(trim, ln string, width int) []string {
 	case trim == "---" || trim == "***" || trim == "___":
 		out = append(out, styleMDHR.Render(strings.Repeat("─", width)))
 	case strings.HasPrefix(trim, "> "):
-		for _, wl := range wrapText(strings.TrimPrefix(trim, "> "), width-4) {
+		for _, wl := range wrapRepaired(strings.TrimPrefix(trim, "> "), width-4) {
 			out = append(out, styleMDQuoteMark.Render("> ")+styleMDQuote.Render(renderInline(wl)))
 		}
 	case strings.HasPrefix(trim, "- [ ] ") || strings.HasPrefix(trim, "* [ ] "):
 		rest := strings.TrimSpace(trim[6:])
-		for _, wl := range wrapText(rest, width-6) {
+		for _, wl := range wrapRepaired(rest, width-6) {
 			out = append(out, styleMDUncheck.Render("  ○ "+renderInline(wl)))
 		}
 	case strings.HasPrefix(trim, "- [x] ") || strings.HasPrefix(trim, "- [X] ") ||
 		strings.HasPrefix(trim, "* [x] ") || strings.HasPrefix(trim, "* [X] "):
 		rest := trim[6:]
-		for _, wl := range wrapText(rest, width-6) {
+		for _, wl := range wrapRepaired(rest, width-6) {
 			out = append(out, styleMDCheck.Render("  ● "+renderInline(wl)))
 		}
 	case strings.HasPrefix(trim, "- ") || strings.HasPrefix(trim, "* ") || strings.HasPrefix(trim, "+ "):
 		body := strings.TrimSpace(trim[2:])
-		parts := wrapText(body, width-4)
+		parts := wrapRepaired(body, width-4)
 		for i, wl := range parts {
 			if i == 0 {
 				out = append(out, styleMDList.Render(trim[:1]+" ")+styleAssistant.Render(renderInline(wl)))
@@ -2328,7 +2399,7 @@ func renderMarkdownLine(trim, ln string, width int) []string {
 		}
 	case isOrderedList(trim):
 		dot := strings.Index(trim, ".")
-		parts := wrapText(strings.TrimSpace(trim[dot+1:]), width-6)
+		parts := wrapRepaired(strings.TrimSpace(trim[dot+1:]), width-6)
 		for i, wl := range parts {
 			if i == 0 {
 				out = append(out, styleMDEnum.Render(trim[:dot+1]+" ")+styleAssistant.Render(renderInline(wl)))
@@ -2339,7 +2410,7 @@ func renderMarkdownLine(trim, ln string, width int) []string {
 	case trim == "":
 		out = append(out, "")
 	default:
-		for _, wl := range wrapText(ln, width) {
+		for _, wl := range wrapRepaired(ln, width) {
 			out = append(out, styleAssistant.Render(renderInline(wl)))
 		}
 	}
