@@ -453,13 +453,33 @@ func isTravelIntent(lower string) bool {
 	return false
 }
 
+// weatherBareRE matches a capability-shaped utterance: the owner typed the
+// thing they want and nothing else ("weather", "temperature outside?"). On
+// its own a capability word is unambiguous — there is no other subject it
+// could belong to.
+var weatherBareRE = regexp.MustCompile(`(?i)^\s*(?:the\s+|whats\s+|what's\s+)?(?:weather|temperature|temp)(?:\s+(?:outside|inside|now|today|there|please))?\s*[?.!]*\s*$`)
+
+// weatherAskRE matches an explicit request for current conditions.
+//
+// It exists because "temperature" and "weather" are also ordinary words in
+// other people's sentences. Matching them anywhere sent a product-spec ask
+// ("…read room temperature and humidity … manufacture it in China") to
+// weather_now for China, and sent the owner's complaint about that answer
+// ("why are you telling me the weather, I did not ask you about it") into the
+// readiness fast-path — which asked "Which city should I check?", stored a
+// location continuation, and then rewrote the owner's next message into
+// "… Location answer: are you dumb" and geocoded it. The deterministic path
+// exists to save an LLM call on an unambiguous ask, so the bar is an ask, not
+// the presence of a topic word: when in doubt the turn belongs to the model.
+var weatherAskRE = regexp.MustCompile(`(?i)(?:what(?:'?s| is)?\s+(?:the\s+|some\s+)?(?:current\s+)?(?:weather|temperature)|how(?:'?s| is)?\s+the\s+weather|weather\s+(?:in|at|for|like|today|now|report)|check\s+(?:the\s+)?weather|current\s+temperature|temperature\s+(?:in|at|outside|now|today)|how\s+hot|how\s+cold|is\s+it\s+going\s+to\s+rain|will\s+i\s+need\s+an\s+umbrella|degrees\s+(?:outside|now))`)
+
+// isWeatherIntent reports whether the message is actually asking for current
+// conditions — see weatherAskRE for why a bare keyword match was not enough.
 func isWeatherIntent(lower string) bool {
-	for _, k := range []string{"weather", "temperature", "is it going to rain", "will i need an umbrella", "how hot"} {
-		if strings.Contains(lower, k) {
-			return true
-		}
+	if weatherBareRE.MatchString(lower) {
+		return true
 	}
-	return false
+	return weatherAskRE.MatchString(lower)
 }
 
 func isCalendarIntent(lower string) bool {

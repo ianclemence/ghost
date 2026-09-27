@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 func testMessagesWithSkillRead(args string) []providers.Message {
@@ -508,5 +510,130 @@ func TestWeatherAnaphoraDefersToModel(t *testing.T) {
 	// A named place is never turned into a question.
 	if _, handled := al.tryReadinessFastPath("what's the weather in phuket", "s-named", map[string]string{}); handled {
 		t.Fatal("a named place must not be asked about")
+	}
+}
+
+// TestCapabilityFastPathNeedsWeatherAsk, not the words "temperature" and
+// "weather" appearing anywhere in a message.
+//
+// Both of these came from one substring match. isWeatherIntent returned true
+// for any message containing "temperature" or "weather", so:
+//
+//  1. a product-spec ask — "…read room temperature and humidity … manufacture
+//     it in China" — matched on "room temperature", locationFromText matched
+//     "in China", and the deterministic dispatch answered with wttr.in for
+//     China without ever consulting the model;
+//  2. the owner's complaint about that answer matched on "weather", the
+//     readiness fast-path asked "Which city should I check?" and stored a
+//     durable location continuation — which then swallowed the owner's next
+//     message, rewriting it to "<original task> Location answer: are you dumb"
+//     and geocoding it as a place.
+//
+// The fast path exists to save an LLM call on an unambiguous ask. It must not
+// fire on a message whose subject is something else; when in doubt the turn
+// belongs to the model, which is the safe default anyway.
+func TestCapabilityFastPathNeedsWeatherAsk(t *testing.T) {
+	notWeather := []string{
+		// The two real turns, verbatim.
+		"great. assuming you were to design your Ghost Pod and want to manufacture it in China. What specifications do you need fo the pod assuming it can also read room temperature and humidity for the first version. i also bought a KLYSTR Kit to learn hardware and sensors stuff to build you",
+		"why are you tellingnme the weather i did not ask you aboht it",
+		// Same shape, so the fix is not a lookup table of these strings.
+		"does the pod read room temperature and humidity?",
+		"list the operating temperature range for the sensor",
+		"i did not ask you about the weather",
+		"the weather was nice today so we went hiking",
+	}
+	for _, m := range notWeather {
+		if isWeatherIntent(strings.ToLower(m)) {
+			t.Errorf("isWeatherIntent(%q) = true, but this is not a weather ask", m)
+		}
+	}
+
+	// Genuine asks must keep firing: this is a recall trade, not a shutdown.
+	stillWeather := []string{
+		"what's the weather in tokyo",
+		"temperature in manila",
+		"how hot is it today",
+		"will i need an umbrella",
+		"is it going to rain",
+		"whats the temperature",
+		"weather",
+	}
+	for _, m := range stillWeather {
+		if !isWeatherIntent(strings.ToLower(m)) {
+			t.Errorf("isWeatherIntent(%q) = false, but this is a genuine weather ask", m)
+		}
+	}
+}
+
+// TestWeatherComplaintNeverStoresContinuation locks down the full second
+// symptom: the complaint must not ask for a city, must not leave a pending
+// location continuation behind, and the owner's next message must arrive at
+// resolvePendingResume untouched rather than rewritten into a geocode query.
+func TestWeatherComplaintNeverStoresContinuation(t *testing.T) {
+	ws := t.TempDir()
+	al := newTestAgentLoop(t, ws)
+	const session = "s-complaint"
+
+	complaint := "why are you tellingnme the weather i did not ask you aboht it"
+	if answer, handled := al.tryReadinessFastPath(complaint, session, map[string]string{}); handled {
+		t.Fatalf("a complaint about weather was turned into %q", answer)
+	}
+	if p, ok := skills.GetPendingDurable(ws, session); ok {
+		t.Fatalf("a complaint must not store a pending continuation: %+v", p)
+	}
+
+	// The next message the owner sent in the real transcript.
+	eff, resumed, _, _ := resolvePendingResume(ws, session, "are you dumb")
+	if resumed {
+		t.Fatalf("short reply hijacked as %q", eff)
+	}
+}
+
+// recordWeatherTool stands in for the provider-backed weather tool so the real
+// dispatch path can be driven end to end without a network call. Every
+// invocation is recorded, which is what makes the assertion below the user's
+// symptom itself rather than a proxy for it.
+type recordWeatherTool struct {
+	calls *[]map[string]interface{}
+}
+
+func (r *recordWeatherTool) Name() string { return "weather_now" }
+func (r *recordWeatherTool) Description() string {
+	return "records invocation for the dispatch test"
+}
+func (r *recordWeatherTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
+}
+func (r *recordWeatherTool) Execute(_ context.Context, args map[string]interface{}) *tools.ToolResult {
+	*r.calls = append(*r.calls, args)
+	return tools.NewToolResult("Weather in test: 1.0°C (via stub, observed 00:00).")
+}
+
+// TestDispatchNeverWeatherOnSpecQuestion drives the real dispatch path with a
+// stub tool, so the loop asserts the reported symptom directly: a product-spec
+// question mentioning "room temperature" and "in China" must never reach the
+// weather tool, while a genuine ask must still take the fast path. The
+// classifier test above pins the decision; this pins the call site, so a later
+// gate added around it cannot silently reintroduce the bug.
+func TestDispatchNeverWeatherOnSpecQuestion(t *testing.T) {
+	var calls []map[string]interface{}
+	reg := tools.NewToolRegistry()
+	reg.Register(&recordWeatherTool{calls: &calls})
+	al := &AgentLoop{tools: reg}
+
+	spec := "great. assuming you were to design your Ghost Pod and want to manufacture it in China. What specifications do you need fo the pod assuming it can also read room temperature and humidity for the first version. i also bought a KLYSTR Kit to learn hardware and sensors stuff to build you"
+	if ans, ok := al.tryDeterministicNetworkDispatch(spec, "s-spec", nil); ok {
+		t.Fatalf("a product-spec question was answered deterministically: %q", ans)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("weather tool invoked %d time(s) for a spec question: %+v", len(calls), calls)
+	}
+
+	if _, ok := al.tryDeterministicNetworkDispatch("what's the weather in tokyo", "s-ask", nil); !ok {
+		t.Fatal("a genuine weather ask must still take the fast path")
+	}
+	if len(calls) != 1 {
+		t.Fatalf("a genuine ask must invoke the tool exactly once, got %d", len(calls))
 	}
 }
