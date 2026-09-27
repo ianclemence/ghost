@@ -24,6 +24,7 @@ import (
 type narrationHold struct {
 	buf      []byte
 	released bool
+	gate     bool
 	emit     func(string)
 }
 
@@ -47,6 +48,13 @@ func (h *narrationHold) feed(chunk string) {
 		return
 	}
 	h.buf = append(h.buf, chunk...)
+	if h.gate {
+		// Gated turns hold the WHOLE iteration: once the turn has run a
+		// consequential action, completion language must not reach the owner
+		// until the runtime has checked it against evidence. The caller
+		// emits the gated final content instead (see runLLMIteration).
+		return
+	}
 	if utf8.RuneCountInString(string(h.buf)) >= narrationFlushAt {
 		h.released = true
 		out := string(h.buf)
@@ -56,9 +64,13 @@ func (h *narrationHold) feed(chunk string) {
 }
 
 // flush releases whatever was held. Call it when the iteration produced no
-// tool calls: the prose was the answer after all.
+// tool calls: the prose was the answer after all. A gated hold never emits
+// here — the caller runs the evidence gate and emits the checked content.
 func (h *narrationHold) flush() {
 	if h == nil || h.released || len(h.buf) == 0 {
+		return
+	}
+	if h.gate {
 		return
 	}
 	out := string(h.buf)

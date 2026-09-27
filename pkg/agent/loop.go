@@ -2941,6 +2941,10 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	streamSink := opts.OnChunk
 	iterStart := time.Now()
 	iteration := 0
+	// Once this turn has run a consequential (evidence-requiring) action, the
+	// rest of the turn's prose is held in full so the evidence gate can run
+	// before any completion language streams. See completion_gate.go.
+	gateStream := false
 
 	// Effort controller: choose an execution budget for this turn and record
 	// it on the trajectory. Quick is a hard small tool-call cap; Normal/Deep
@@ -3063,6 +3067,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		var hold *narrationHold
 		if streamSink != nil {
 			hold = newNarrationHold(streamSink)
+			if gateStream {
+				hold.gate = true
+			}
 			opts.OnChunk = hold.feed
 		}
 		response, err := callLLMWithRetry(ctx, iteration, func() (*providers.LLMResponse, error) {
@@ -3121,6 +3128,12 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		for _, tc := range response.ToolCalls {
 			toolNames = append(toolNames, tc.Name)
 			usedTools = append(usedTools, tc.Name)
+			// A consequential tool makes the turn's completion language
+			// answerable to runtime evidence: hold subsequent prose and gate
+			// it before the owner sees it.
+			if toolIsConsequential(tc.Name) {
+				gateStream = true
+			}
 			if opts.OnToolCall != nil {
 				argsJSON, _ := json.Marshal(tc.Arguments)
 				opts.OnToolCall(tc.Name, string(argsJSON))
@@ -4071,6 +4084,11 @@ func (al *AgentLoop) SetModel(target string) error {
 	// Rebuild the runtime provider + doctor from the NEW default so live
 	// turns and health checks use the selected model, not the boot-time one.
 	_ = al.refreshActiveProvider()
+	// The fallback chain is derived from the config; without a rebuild it
+	// still leads with the boot-time model, so a failover would reload the
+	// model the owner just switched away from. The embedding role stays
+	// deliberately separate (below).
+	al.rebuildFallbackChain()
 
 	// Every other runtime reference to "the model" must follow, or a switch
 	// leaves extraction, subagents and routing on the boot-time model — a
@@ -4091,6 +4109,44 @@ func (al *AgentLoop) SetModel(target string) error {
 	logger.InfoCF("agent", "model switched; runtime references refreshed",
 		map[string]interface{}{"model": model})
 	return nil
+}
+
+// rebuildFallbackChain re-derives the fallback candidates and the
+// model→provider map from the current config. Called after the active model
+// changes so the chain leads with the model that is actually active and the
+// provider cache does not pin a boot-time binding. The embedding provider is
+// a separate role and is never touched here.
+func (al *AgentLoop) rebuildFallbackChain() {
+	if al == nil || al.cfg == nil {
+		return
+	}
+	active := strings.TrimSpace(al.cfg.Agents.Defaults.Model)
+	byModel := map[string]providers.LLMProvider{}
+	cands := make([]providers.FallbackCandidate, 0, 1+len(al.cfg.Agents.Defaults.FallbackModels))
+	if al.provider != nil && active != "" {
+		byModel[active] = al.provider
+		cands = append(cands, providers.FallbackCandidate{Name: active, Provider: al.provider, Model: active})
+	}
+	for _, model := range al.cfg.Agents.Defaults.FallbackModels {
+		if model == "" || byModel[model] != nil {
+			continue
+		}
+		p, err := providers.CreateProviderForModel(al.cfg, model)
+		if err != nil {
+			continue
+		}
+		byModel[model] = p
+		cands = append(cands, providers.FallbackCandidate{Name: model, Provider: p, Model: model})
+	}
+	if lm := strings.TrimSpace(al.cfg.Agents.Routing.LightModel); lm != "" {
+		if _, ok := byModel[lm]; !ok {
+			if p, err := providers.CreateProviderForModel(al.cfg, lm); err == nil {
+				byModel[lm] = p
+			}
+		}
+	}
+	al.fallbackModels = cands
+	al.providersByModel = byModel
 }
 
 // ModelOptions lists the selectable set: named presets, named connections,

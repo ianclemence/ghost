@@ -90,3 +90,21 @@ func TestSetModelAllowsLocal(t *testing.T) {
 		t.Fatal("local model must be available")
 	}
 }
+
+// A model switch must re-derive the fallback chain so it leads with the
+// active model; otherwise failover reloads the model the owner switched away
+// from (a second model to load and a split brain about which is active).
+func TestSetModelRebuildsFallbackChain(t *testing.T) {
+	al := pinTestLoop(t, nil)
+	al.fallbackModels = []providers.FallbackCandidate{
+		{Name: "ollama/qwen3:0.6b"},
+	}
+	al.cfg.Agents.Defaults.Model = "ollama/qwen3:1.5b"
+	al.rebuildFallbackChain()
+	if len(al.fallbackModels) == 0 || al.fallbackModels[0].Model != "ollama/qwen3:1.5b" {
+		t.Fatalf("fallback chain must lead with the active model, got %+v", al.fallbackModels)
+	}
+	if p, ok := al.providersByModel["ollama/qwen3:1.5b"]; !ok || p == nil {
+		t.Fatal("provider cache must resolve the active model after rebuild")
+	}
+}

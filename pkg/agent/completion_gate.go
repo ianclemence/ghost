@@ -69,6 +69,14 @@ func applyCompletionGate(reply string, hadConsequentialFailure, hadConsequential
 		"completion claimed after a failed or denied consequential action"
 }
 
+// toolIsConsequential reports whether a tool resolves to a capability whose
+// outcome requires runtime evidence. A turn that ran one must not stream
+// completion language without the evidence gate.
+func toolIsConsequential(tool string) bool {
+	spec, ok := capability.ForTool(tool)
+	return ok && spec.RequiresEvidence()
+}
+
 // turnConsequentialOutcomes scans this turn's canonical events for
 // consequential (evidence-requiring) tool outcomes. succeeded is true only
 // for a successful completed call; failed is true for a failed call or a

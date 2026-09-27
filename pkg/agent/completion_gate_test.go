@@ -89,3 +89,25 @@ func TestCompletionSignal(t *testing.T) {
 		}
 	}
 }
+
+// A gated hold must never stream: once a turn has run a consequential action,
+// completion language is withheld until the evidence gate has run.
+func TestGatedHoldWithholdsCompletionFromStream(t *testing.T) {
+	var emitted []string
+	h := newNarrationHold(func(s string) { emitted = append(emitted, s) })
+	h.gate = true
+	h.feed("Done — I've sent the email to Sarah and everything is confirmed.")
+	h.flush()
+	if len(emitted) != 0 {
+		t.Fatalf("gated hold streamed %d chunks, want 0: %v", len(emitted), emitted)
+	}
+
+	// Control: an ungated hold still flushes the answer.
+	emitted = nil
+	u := newNarrationHold(func(s string) { emitted = append(emitted, s) })
+	u.feed("Here is your answer.")
+	u.flush()
+	if len(emitted) == 0 {
+		t.Fatal("ungated hold must still stream the answer")
+	}
+}

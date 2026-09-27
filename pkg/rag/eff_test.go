@@ -190,3 +190,27 @@ func BenchmarkRetrieveCachedQuery(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkRetrieveEmptyIndex measures the interactive path when the memory
+// index is empty: it must return without touching the embedder.
+func BenchmarkRetrieveEmptyIndex(b *testing.B) {
+	emb := &countingEmbedder{vec: []float32{1, 0, 0}}
+	database, err := db.NewDB(b.TempDir())
+	if err != nil {
+		b.Fatal(err)
+	}
+	s := NewStore(database, emb, config.RAGConfig{})
+	if err := s.LoadIndex(context.Background()); err != nil {
+		b.Fatal(err)
+	}
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := s.RetrieveScoped(ctx, "what tea does the owner like?", 5, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+	if emb.callCount() != 0 {
+		b.Fatalf("empty index embedded %d times", emb.callCount())
+	}
+}
