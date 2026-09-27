@@ -498,15 +498,9 @@ func convertWithPandoc(filePath, format string) (string, error) {
 }
 
 func isAccessible(filePath, workspace string) bool {
-	absPath, err := filepath.Abs(filePath)
-	if err != nil {
-		return false
-	}
-
-	absWorkspace, err := filepath.Abs(workspace)
-	if err != nil {
-		return false
-	}
-
-	return strings.HasPrefix(absPath, absWorkspace) || !strings.HasPrefix(absPath, "/")
+	// Same confinement as the file tools: workspace, its project root,
+	// and media temp, matched on a path-separator boundary (a sibling
+	// like "workspace-evil" must not pass a raw prefix check).
+	_, err := validatePath(filePath, workspace, true)
+	return err == nil
 }

@@ -158,6 +158,19 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 	if msg, denied := execDeniedByPrivacy(command); denied {
 		return msg
 	}
+	// Primary-file protection is the same second layer for integrity:
+	// no command may name the database/config at all or take a
+	// destructive shape anywhere near Ghost's primary estate.
+	if msg, denied := execDeniedPrimaryFiles(command); denied {
+		return msg
+	}
+	// The working directory honors the same roots as the file tools, so
+	// exec cannot mount an arbitrary directory writable into the sandbox.
+	if t.restrictToWorkspace && t.workingDir != "" {
+		if _, err := validatePath(cwd, t.workingDir, true); err != nil {
+			return fmt.Sprintf("working directory outside the allowed roots: %s", err.Error())
+		}
+	}
 	return ""
 }
 

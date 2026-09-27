@@ -177,6 +177,9 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
+	if err := guardPrimaryFile(resolvedPath); err != nil {
+		return ErrorResult(err.Error())
+	}
 	if err := t.guard.Check(SessionKeyFromContext(ctx), OpWrite, resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}

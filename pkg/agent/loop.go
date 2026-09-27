@@ -242,22 +242,23 @@ type processOptions struct {
 func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msgBus *bus.MessageBus) *tools.ToolRegistry {
 	registry := tools.NewToolRegistry()
 
-	// File system tools
-	registry.Register(tools.NewReadFileTool(workspace, false))
-	registry.Register(tools.NewWriteFileTool(workspace, false))
-	registry.Register(tools.NewListDirTool(workspace, false))
-	registry.Register(tools.NewEditFileTool(workspace, false))
-	registry.Register(tools.NewAppendFileTool(workspace, false))
+	// File system tools — the workspace restriction reaches every
+	// constructor here (the config flag used to be passed in and ignored).
+	registry.Register(tools.NewReadFileTool(workspace, restrict))
+	registry.Register(tools.NewWriteFileTool(workspace, restrict))
+	registry.Register(tools.NewListDirTool(workspace, restrict))
+	registry.Register(tools.NewEditFileTool(workspace, restrict))
+	registry.Register(tools.NewAppendFileTool(workspace, restrict))
 
 	// Shell execution
-	registry.RegisterHidden(tools.NewExecTool(workspace, false), 6*time.Hour)
+	registry.RegisterHidden(tools.NewExecTool(workspace, restrict), 6*time.Hour)
 	registry.Register(tools.NewUpdateTool(workspace))
 
 	// Oracle context bundling
-	registry.Register(tools.NewOracleTool(workspace, false))
+	registry.Register(tools.NewOracleTool(workspace, restrict))
 
 	// Video frames extraction
-	registry.Register(tools.NewVideoFramesTool(workspace, false))
+	registry.Register(tools.NewVideoFramesTool(workspace, restrict))
 
 	// Lanes (Isolated Contexts)
 	registry.Register(tools.NewLaneTool(func(lane string) {
