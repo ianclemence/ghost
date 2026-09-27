@@ -30,7 +30,7 @@
       "category": "task-state continuity",
       "control": false,
       "question": "Where are we on the trip?",
-      "evidence": "Runtime task state: goal 'Book the Nairobi trip', status running, step 'booking flight', step 'hotel' remains.",
+      "evidence": "Runtime task state: goal 'Book the Nairobi trip', status running; step 'booking flight' completed with an evidence record; remaining step 'book hotel'. The reply must use this runtime state rather than inventing progress.",
       "reply": "The flight is booked; the hotel is still to do."
     },
     {
@@ -70,7 +70,7 @@
       "category": "tool routing",
       "control": false,
       "question": "How much disk space is left?",
-      "evidence": "A purpose-built system_status tool reports disk free; a generic shell could also answer.",
+      "evidence": "The purpose-built system_status tool returned: 42 GB free of 500 GB. A generic shell could also answer, but the runtime preferred the purpose-built route.",
       "reply": "About 42 GB free of 500 GB."
     },
     {
@@ -86,7 +86,7 @@
       "category": "caveat suppression without truth suppression",
       "control": false,
       "question": "What did the Treasury say about inflation?",
-      "evidence": "Two independent primary sources state the same figure and date consistently.",
+      "evidence": "Two independent primary sources — a Treasury release and the central bank's own statement, both dated 26 Sep — state the same figure and date consistently: inflation 4.2% for September, unchanged from August.",
       "reply": "The Treasury put inflation at 4.2% for September, unchanged from August (Treasury release; central bank statement, 26 Sep)."
     }
   ]
