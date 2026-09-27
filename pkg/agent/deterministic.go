@@ -178,10 +178,16 @@ func isShoppingAdd(lower string) bool {
 	return strings.Contains(lower, "add ") && strings.Contains(lower, "shopping")
 }
 
+// shoppingListAskRE matches a request to hear the list. The old guard was
+// `contains("shopping list") && (contains("what") || contains("show") ||
+// contains("list"))` — "shopping list" itself contains "list", so any sentence
+// with the phrase satisfied it and read the list back instead of answering
+// ("how do i add shopping list export to my notes app" → "Your shopping
+// list: …").
+var shoppingListAskRE = regexp.MustCompile(`(?i)(?:what'?s?\s+(?:on|is\s+on)\s+(?:my|the)\s+shopping|show\s+(?:me\s+)?(?:my|the\s+)?\s*shopping\s+list|read\s+(?:me\s+)?(?:my\s+)?shopping\s+list|check\s+(?:my|the)\s+shopping\s+list|shopping\s+list\s+please)`)
+
 func isShoppingList(lower string) bool {
-	return strings.Contains(lower, "what") && strings.Contains(lower, "shopping") ||
-		strings.Contains(lower, "show") && strings.Contains(lower, "shopping") ||
-		strings.Contains(lower, "shopping list") && (strings.Contains(lower, "what") || strings.Contains(lower, "show") || strings.Contains(lower, "list"))
+	return shoppingListAskRE.MatchString(lower) || skills.IsBareUtterance(lower, "shopping list")
 }
 
 func parseShoppingItems(msg string) []string {
@@ -431,17 +437,30 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 	return "", false
 }
 
+// flightAskRE matches an explicit request to check a flight's status. A bare
+// "flight" anywhere in a sentence is a topic — a comparison of booking sites
+// or a drone flight controller is not a flight-status request, and firing the
+// fast path on those answered with a key-setup message (or, once configured,
+// stored a flight-number continuation that swallowed the next message).
+var flightAskRE = regexp.MustCompile(`(?i)(?:flight\s+status|status\s+of\s+(?:the\s+|my\s+)?flight|track\s+(?:my\s+|the\s+)?flight|flight\s+number|where(?:'s| is)\s+(?:my\s+|the\s+)?flight|(?:is|has)\s+(?:my|the)\s+flight|my\s+flight\s+(?:status|number|landed|delayed|boarding|arrived|departed|on\s+time)|flight\s+(?:landed|delayed|boarding|arrived|departed|on\s+time))`)
+
 func isFlightIntent(lower string) bool {
-	return strings.Contains(lower, "flight")
+	return flightAskRE.MatchString(lower) || skills.IsBareUtterance(lower, "flight")
 }
 
+// nearbyAskRE matches a request for places around a location. The original
+// list matched the bare nouns ("cafe", "coffee shop", "cafes"), so "i want to
+// open a cafe, what equipment do i need" was treated as a nearby search —
+// which stored a location continuation and turned the owner's next message
+// into "… Location answer: …". The noun only counts with a proximity term or
+// an explicit find/search frame.
+var nearbyAskRE = regexp.MustCompile(`(?i)(?:nearby|near\s+me|around\s+me|close\s+to\s+me|near\s+here|around\s+here|(?:caf[eé]s?|coffee\s+shops?|restaurants?|places?|shops?|stores?|gas\s+stations?|bars?|pharmac(?:y|ies))\s+(?:near|around|close\s+to|nearby)|(?:find|search\s+(?:for\s+)?)\s+(?:a\s+|an\s+|some\s+|me\s+(?:a\s+)?)?(?:caf[eé]s?|coffee|restaurants?|places|shops|stores))`)
+
 func isNearbyIntent(lower string) bool {
-	for _, k := range []string{"nearby", "near me", "coffee shop", "cafes", "cafe", "restaurant nearby"} {
-		if strings.Contains(lower, k) {
-			return true
-		}
-	}
-	return false
+	return nearbyAskRE.MatchString(lower) ||
+		skills.IsBareUtterance(lower, "cafe") ||
+		skills.IsBareUtterance(lower, "cafes") ||
+		skills.IsBareUtterance(lower, "coffee shop")
 }
 
 func isTravelIntent(lower string) bool {
@@ -453,11 +472,11 @@ func isTravelIntent(lower string) bool {
 	return false
 }
 
-// weatherBareRE matches a capability-shaped utterance: the owner typed the
-// thing they want and nothing else ("weather", "temperature outside?"). On
-// its own a capability word is unambiguous — there is no other subject it
-// could belong to.
-var weatherBareRE = regexp.MustCompile(`(?i)^\s*(?:the\s+|whats\s+|what's\s+)?(?:weather|temperature|temp)(?:\s+(?:outside|inside|now|today|there|please))?\s*[?.!]*\s*$`)
+// The bare-capability half of every matcher below lives in one place:
+// skills.IsBareUtterance — a capability word standing alone ("weather",
+// "flight", "calendar") is unambiguous, because there is no other subject in
+// the sentence for it to belong to. The ask-frame regexes handle everything
+// longer.
 
 // weatherAskRE matches an explicit request for current conditions.
 //
@@ -476,28 +495,46 @@ var weatherAskRE = regexp.MustCompile(`(?i)(?:what(?:'?s| is)?\s+(?:the\s+|some\
 // isWeatherIntent reports whether the message is actually asking for current
 // conditions — see weatherAskRE for why a bare keyword match was not enough.
 func isWeatherIntent(lower string) bool {
-	if weatherBareRE.MatchString(lower) {
+	if skills.IsBareUtterance(lower, "weather") ||
+		skills.IsBareUtterance(lower, "temperature") ||
+		skills.IsBareUtterance(lower, "temp") {
 		return true
 	}
 	return weatherAskRE.MatchString(lower)
 }
 
-func isCalendarIntent(lower string) bool {
-	for _, k := range []string{"calendar", "meetings today", "do i have meetings", "schedule a meeting", "add an event", "is tomorrow free"} {
-		if strings.Contains(lower, k) {
-			return true
-		}
-	}
-	return false
+// aqiAskRE matches an explicit air-quality request. The AQI branch of the
+// dispatch path sat beside the weather branch with the same bare-word test
+// ("air quality", " aqi"), so a sensor-spec sentence geocoded whatever
+// followed "in" — "what does an aqi sensor cost in bulk" queried aqi_now for
+// a place called "bulk" — the exact defect class the weather fix closed.
+var aqiAskRE = regexp.MustCompile(`(?i)(?:air\s+quality\s+(?:in|at|near|index|today|now)|(?:what'?s|how(?:'s| is)|check|current)\s+(?:the\s+)?(?:air\s+quality|aqi)|(?:air\s+quality|aqi)\s+(?:in|at|near|now|today|for|of)|aqi\s+(?:is|reading))`)
+
+// isAQIIntent reports whether the message is actually asking for air quality.
+func isAQIIntent(lower string) bool {
+	return aqiAskRE.MatchString(lower) ||
+		skills.IsBareUtterance(lower, "aqi") ||
+		skills.IsBareUtterance(lower, "air quality")
 }
 
+// calendarAskRE matches a request about the owner's schedule. The bare word
+// "calendar" is a common product topic — "design a calendar app for doctors"
+// got answered with the calendar-connection setup message instead.
+var calendarAskRE = regexp.MustCompile(`(?i)(?:what'?s?\s+(?:on|in)\s+(?:my|the)\s+calendar|on\s+(?:my|the)\s+calendar|in\s+(?:my|the)\s+calendar|check\s+(?:my|the)\s+calendar|show\s+(?:my|the)\s+calendar|my\s+calendar\s+(?:for|today|tomorrow)|calendar\s+(?:today|tomorrow)|meetings?\s+(?:today|tomorrow)|do\s+i\s+have\s+(?:any\s+)?meetings|schedule\s+(?:a|an|the)\s+meeting|add\s+(?:an?\s+)?(?:event|meeting)|is\s+tomorrow\s+free|am\s+i\s+free)`)
+
+func isCalendarIntent(lower string) bool {
+	return calendarAskRE.MatchString(lower) || skills.IsBareUtterance(lower, "calendar")
+}
+
+// hassAskRE matches a home-control request: an imperative device action or a
+// device-state question. Bare "thermostat" and "home assistant" were shopping
+// and explanation topics too — "which thermostat should i buy" and "explain
+// how home assistant works" each got answered with the Home Assistant
+// connection setup message.
+var hassAskRE = regexp.MustCompile(`(?i)(?:turn\s+(?:on|off)\s+(?:the\s+)?(?:lights?|lamps?|fans?)|set\s+(?:the\s+)?thermostat|thermostat\s+(?:to|at|set)|what'?s\s+(?:the\s+)?thermostat|turn\s+(?:up|down)\s+(?:the\s+)?thermostat|front\s+door\s+locked|lock\s+(?:the\s+)?(?:front\s+)?door|unlock\s+(?:the\s+)?(?:front\s+)?door|trigger\s+(?:the\s+)?scene|activate\s+(?:the\s+)?scene|home\s+assistant\s+(?:is|status|not))`)
+
 func isHassIntent(lower string) bool {
-	for _, k := range []string{"turn on the lights", "thermostat", "front door locked", "trigger scene", "home assistant"} {
-		if strings.Contains(lower, k) {
-			return true
-		}
-	}
-	return false
+	return hassAskRE.MatchString(lower) || skills.IsBareUtterance(lower, "thermostat")
 }
 
 func hasAviationKey() bool {
@@ -692,8 +729,8 @@ func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metada
 	// provider tool. Missing location is handled by the readiness
 	// fast-path (it asks, durably). Forecast-style asks are out of the
 	// capability's scope: answer honestly, never fabricate.
-	if isWeatherIntent(lower) || strings.Contains(lower, "air quality") || strings.Contains(lower, " aqi") || strings.HasPrefix(lower, "aqi") {
-		isAQI := strings.Contains(lower, "air quality") || strings.Contains(lower, " aqi") || strings.HasPrefix(lower, "aqi")
+	if isWeatherIntent(lower) || isAQIIntent(lower) {
+		isAQI := isAQIIntent(lower)
 		if isAQI && hasFutureIntent(lower) {
 			return "I can check current air quality, not a forecast for it yet.", true
 		}

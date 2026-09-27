@@ -250,19 +250,86 @@ func ListDisabled(workspace string) []string {
 	return out
 }
 
+// IsBareUtterance reports whether lower (a lowercased message) is nothing but
+// the given phrase, optionally wrapped in an article or ask verb at the front
+// and a politeness particle at the end: "recipe", "the recipe?", "check the
+// recipe please". "what's your recipe for success" is not — there the word is
+// a topic belonging to somebody else's sentence.
+//
+// This is the test every capability fast path needs in addition to its
+// request frames. A capability phrase standing alone is unambiguous (there is
+// no other subject it could belong to), while the same word inside a longer
+// sentence means nothing about what is being asked.
+func IsBareUtterance(lower, phrase string) bool {
+	s := strings.TrimSpace(strings.TrimRight(strings.TrimSpace(lower), "?.!;,:\n\t"))
+	phrase = strings.ToLower(strings.TrimSpace(phrase))
+	for {
+		cut := false
+		for _, pre := range []string{"the ", "my ", "a ", "an ", "whats ", "what's ", "what ", "check ", "show ", "read ", "use ", "open ", "is ", "hey ghost ", "ghost "} {
+			if strings.HasPrefix(s, pre) && len(s) > len(pre) {
+				s = strings.TrimSpace(s[len(pre):])
+				cut = true
+			}
+		}
+		for _, suf := range []string{" please", " now", " today", " tomorrow", " outside", " there", " thanks"} {
+			if strings.HasSuffix(s, suf) && len(s) > len(suf) {
+				s = strings.TrimSpace(s[:len(s)-len(suf)])
+				cut = true
+			}
+		}
+		if !cut {
+			break
+		}
+	}
+	return s == phrase
+}
+
 // MatchDisabledSkill reports whether the message is asking for a disabled
-// skill, by normalized name match (hyphens ≈ spaces, case-insensitive).
-// Returns the skill name or "".
+// skill, by normalized name match (hyphens ≈ spaces, case-insensitive) AND a
+// request cue. Returns the skill name or "".
 func MatchDisabledSkill(workspace, msg string) string {
 	lower := strings.ToLower(msg)
 	norm := strings.NewReplacer("-", " ", "_", " ").Replace(lower)
 	for _, name := range ListDisabled(workspace) {
 		n := strings.ToLower(name)
-		if strings.Contains(lower, n) || strings.Contains(norm, strings.ReplaceAll(n, "-", " ")) {
-			return name
+		if !strings.Contains(lower, n) && !strings.Contains(norm, strings.ReplaceAll(n, "-", " ")) {
+			continue
 		}
+		if !skillRequestCue(lower, n) {
+			continue
+		}
+		return name
 	}
 	return ""
+}
+
+// skillRequestCue separates a request to use or ask about a skill from a
+// mention of its name. Skill names are ordinary English words ("recipe",
+// "network", "system"), so a bare Contains match answered "The X skill is
+// currently disabled" to sentences whose subject was something else — the
+// same defect that turned a product-spec question into a weather report. The
+// cue is what makes the reply address an actual request; when in doubt the
+// turn goes to the model.
+func skillRequestCue(lower, name string) bool {
+	if IsBareUtterance(lower, name) {
+		return true
+	}
+	// "<name> skill" is a reference to the capability, not to the word.
+	if strings.Contains(lower, name+" skill") || strings.Contains(lower, name+"s skill") {
+		return true
+	}
+	for _, cue := range []string{
+		"use ", "use the ", "run ", "run the ", "open ", "open the ",
+		"invoke", "start the ", "enable", "disable", "why is", "why does",
+		"why won", "why isn", "not working", "doesn't work", "isn't working",
+		"is disabled", "isn't available", "is off", "turn it on",
+		"switch it on", "try the ",
+	} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
 }
 
 // hasCameraDevice reports whether a video capture device exists.
