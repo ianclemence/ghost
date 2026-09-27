@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/product"
 )
@@ -38,6 +39,79 @@ func TestProductNarrative(t *testing.T) {
 		}
 		if chip.Title != want {
 			t.Fatalf("%s: got %q want %q", typ, chip.Title, want)
+		}
+	}
+}
+
+// An answered approval must never read as something still waiting on the
+// owner: the feed would otherwise report decisions nobody owes.
+func TestAnsweredApprovalsAreNotWaiting(t *testing.T) {
+	ask := &cevents.Event{ID: "p1", Seq: 9, RequestID: "req-1", Type: cevents.PermissionRequested,
+		Timestamp: time.Now(), Visibility: product.VisUserMessage,
+		Payload: map[string]interface{}{"capability": "exec.shell"}}
+
+	if rows := WithoutAnsweredApprovals([]*cevents.Event{ask}, map[string]bool{"req-1": true}); len(rows) != 1 {
+		t.Fatalf("a request the owner still owes an answer to must stay in the feed, got %d rows", len(rows))
+	}
+	if rows := WithoutAnsweredApprovals([]*cevents.Event{ask}, map[string]bool{}); len(rows) != 0 {
+		t.Fatalf("an answered request must not be replayed as waiting, got %d rows", len(rows))
+	}
+	// Unknown (no broker) keeps the row: filtering on a guess is worse.
+	if rows := WithoutAnsweredApprovals([]*cevents.Event{ask}, nil); len(rows) != 1 {
+		t.Fatalf("with no broker nothing may be dropped, got %d rows", len(rows))
+	}
+	// A request with no id cannot be checked, so it is never silently deleted.
+	noid := *ask
+	noid.RequestID = ""
+	if rows := WithoutAnsweredApprovals([]*cevents.Event{&noid}, map[string]bool{}); len(rows) != 1 {
+		t.Fatalf("an unidentifiable request must be kept, got %d rows", len(rows))
+	}
+	// Non-permission events are never touched.
+	done := &cevents.Event{ID: "p2", Type: cevents.CapabilityCompleted, Timestamp: time.Now(),
+		Visibility: product.VisUserMessage, Payload: map[string]interface{}{"capability": "weather.current"}}
+	if rows := WithoutAnsweredApprovals([]*cevents.Event{done}, map[string]bool{}); len(rows) != 1 {
+		t.Fatalf("completed work must survive the filter, got %d rows", len(rows))
+	}
+}
+
+// A refusal and an expiry both end the request; showing "waiting" for a
+// settled decision is a false claim about the present.
+func TestSettledApprovalsAreNotWaiting(t *testing.T) {
+	for _, typ := range []cevents.Type{cevents.PermissionDenied, cevents.PermissionExpired} {
+		chip, ok := Project(ev(typ, map[string]interface{}{"capability": "email.send"}))
+		if !ok {
+			t.Fatalf("%s: no chip", typ)
+		}
+		if chip.State == StateWaiting {
+			t.Fatalf("%s must not claim to be waiting, got %q", typ, chip.State)
+		}
+	}
+}
+
+// The capability registry is the product's own catalogue of owner-facing
+// names. Not one of them may fall through to the neutral fallback — a row
+// that says only "Finished a step" tells the owner nothing about their own
+// system, which is exactly the class of row this feed must never show.
+func TestRegisteredCapabilitiesNeverRenderVagueTitles(t *testing.T) {
+	vague := []string{"Done", "Step failed", "Finished a step", "Starting",
+		"Unavailable right now", "Couldn't finish that", "Approved", "Declined"}
+	for _, id := range capability.IDs() {
+		for _, typ := range []cevents.Type{cevents.CapabilityStarted,
+			cevents.CapabilityCompleted, cevents.CapabilityFailed} {
+			chip, ok := Project(&cevents.Event{ID: "e", Type: typ, Timestamp: time.Now(),
+				Visibility: product.VisUserMessage,
+				Payload:    map[string]interface{}{"capability": id}})
+			if !ok {
+				t.Fatalf("%s %s: expected a chip", typ, id)
+			}
+			for _, word := range vague {
+				if chip.Title == word {
+					t.Errorf("%s %s rendered the vague title %q", typ, id, chip.Title)
+				}
+			}
+			if strings.TrimSpace(chip.Title) == "" {
+				t.Errorf("%s %s rendered an empty title", typ, id)
+			}
 		}
 	}
 }

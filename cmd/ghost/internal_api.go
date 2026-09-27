@@ -3583,6 +3583,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
 			fmt.Sscanf(v, "%d", &limit)
 		}
+		if limit < 1 {
+			limit = 1
+		}
+		if limit > 500 {
+			limit = 500
+		}
 		// Resumable subscription: ?since_seq=N returns only newer events
 		// (read-only replay — never executes).
 		var events []*cevents.Event
@@ -3595,10 +3601,34 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			fmt.Sscanf(since, "%d", &seq)
 			events = st.Since(seq, limit, f)
 		} else {
-			events = st.Recent(limit, f)
+			// `limit` is a promise about ROWS, not events: most canonical
+			// events are lifecycle or telemetry and never become a row, so
+			// reading only `limit` events and then projecting them could
+			// answer a request for 50 chips with three. Over-read, then cut
+			// to the number of chips asked for.
+			fetch := limit * 6
+			if fetch < 100 {
+				fetch = 100
+			}
+			if fetch > 500 {
+				fetch = 500
+			}
+			events = st.Recent(fetch, f)
 		}
+		// "Waiting for approval" is a claim about now, not about then: the
+		// event only records that Ghost asked. Drop the asks the owner has
+		// already answered so the feed never says eight things need them
+		// when none do — the decision event tells that half of the story.
+		var openApprovals map[string]bool
+		if b, err := permBroker(); err == nil {
+			openApprovals = permissions.OpenRequests(b)
+		}
+		events = activity.WithoutAnsweredApprovals(events, openApprovals)
 		chips := make([]*activity.Chip, 0, len(events))
 		for _, e := range events {
+			if len(chips) >= limit {
+				break
+			}
 			if chip, ok := activity.Project(e); ok {
 				chips = append(chips, chip)
 			}

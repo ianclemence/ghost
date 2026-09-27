@@ -280,6 +280,11 @@ func (al *AgentLoop) renderActivity() (string, bool) {
 		return "", false
 	}
 	events := al.governance.Events.Recent(120, cevents.Filter{})
+	// Same honesty rule the console gets: a request the owner has already
+	// answered is not something still waiting on them. Without this, a
+	// resolved approval survives in the recent trail and Ghost would report
+	// itself as waiting when it is not.
+	events = activity.WithoutAnsweredApprovals(events, permissions.OpenRequests(al.governance.Broker))
 	type row struct {
 		at    time.Time
 		title string

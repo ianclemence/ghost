@@ -553,6 +553,24 @@ func (b *Broker) Requests(status RequestStatus, limit int) []*Request {
 	return out
 }
 
+// OpenRequests returns the ids of the requests the owner still owes an answer
+// to. It is the read-only "what is waiting on me right now" lookup that
+// presentation layers need in order not to describe a settled decision as an
+// open one. A nil broker yields nil, which callers read as "unknown" rather
+// than "none" — never filter on a guess.
+func OpenRequests(b *Broker) map[string]bool {
+	if b == nil {
+		return nil
+	}
+	open := map[string]bool{}
+	for _, r := range b.Requests(StatusPending, 100) {
+		if r != nil && r.RequestID != "" {
+			open[r.RequestID] = true
+		}
+	}
+	return open
+}
+
 // Grants lists standing grants for UI/revocation (no secret content).
 func (b *Broker) Grants() []Grant {
 	rows, err := b.db.Query(`SELECT capability, action, scope, created_at, expires_at FROM permission_grants ORDER BY created_at`)
