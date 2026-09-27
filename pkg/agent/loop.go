@@ -2795,6 +2795,27 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// failure — silent false success never stands. See completion_gate.go.
 	if opts.RequestID != "" {
 		succeeded, failed := al.turnConsequentialOutcomes(opts.RequestID)
+		// Unearned attestation: a capability phrased as a completed
+		// confirmation ("I can confirm the message was sent") when nothing
+		// consequential succeeded is a success claim the runtime cannot back.
+		if repaired, reason := repairUnearnedAttestation(finalContent, succeeded); reason != "" {
+			if al.governance != nil && al.governance.Events != nil {
+				al.governance.Events.Publish(&cevents.Event{
+					Type:      cevents.VerificationFailed,
+					RequestID: opts.RequestID,
+					SessionID: opts.SessionKey,
+					GhostID:   al.governance.GhostID,
+					AgentID:   al.governance.AgentID,
+					Status:    "failed",
+					Payload:   map[string]interface{}{"reason": reason, "stage": "attestation"},
+				})
+			}
+			logger.WarnCF("agent", "unearned attestation repaired", map[string]interface{}{
+				"session_key": opts.SessionKey,
+				"reason":      reason,
+			})
+			finalContent = repaired
+		}
 		if corrected, violation := applyCompletionGate(finalContent, failed, succeeded); violation != "" {
 			if al.governance != nil && al.governance.Events != nil {
 				al.governance.Events.Publish(&cevents.Event{

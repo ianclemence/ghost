@@ -77,6 +77,31 @@ func toolIsConsequential(tool string) bool {
 	return ok && spec.RequiresEvidence()
 }
 
+// unearnedAttestationRE matches a capability phrased as a present
+// confirmation of a completed act ("I can confirm the message was sent").
+// With no consequential execution this turn, the runtime rewrites it into an
+// honest future frame: the sentence reads as a success claim, and a model's
+// wording must not outrun the runtime's evidence.
+var unearnedAttestationRE = regexp.MustCompile(`(?i)\b(i|we)\s+can\s+(confirm|verify|guarantee|assure|certify)\s+(that\s+)?`)
+
+// repairUnearnedAttestation rewrites present-tense confirmations of actions
+// into future frames when nothing consequential succeeded this turn. It never
+// touches a reply whose action was actually executed (hadSuccess), and it
+// never matches a denial ("I can't confirm", "I cannot confirm").
+func repairUnearnedAttestation(reply string, hadSuccess bool) (string, string) {
+	if hadSuccess || reply == "" {
+		return reply, ""
+	}
+	if !unearnedAttestationRE.MatchString(reply) {
+		return reply, ""
+	}
+	repaired := unearnedAttestationRE.ReplaceAllString(reply, `${1}'ll be able to ${2} whether `)
+	if repaired == reply {
+		return reply, ""
+	}
+	return repaired, "present-tense confirmation of an action with no execution evidence"
+}
+
 // turnConsequentialOutcomes scans this turn's canonical events for
 // consequential (evidence-requiring) tool outcomes. succeeded is true only
 // for a successful completed call; failed is true for a failed call or a

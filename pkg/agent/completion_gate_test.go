@@ -111,3 +111,36 @@ func TestGatedHoldWithholdsCompletionFromStream(t *testing.T) {
 		t.Fatal("ungated hold must still stream the answer")
 	}
 }
+
+// A capability phrased as a completed confirmation, with no execution, is
+// rewritten into a future frame; denials and earned confirmations are not.
+func TestRepairUnearnedAttestation(t *testing.T) {
+	got, reason := repairUnearnedAttestation(
+		"I can confirm the message was sent and report the channel's delivery status.", false)
+	if reason == "" {
+		t.Fatal("uneared attestation must be repaired")
+	}
+	if strings.Contains(strings.ToLower(got), "i can confirm") {
+		t.Fatalf("present-tense confirmation survived: %q", got)
+	}
+	if !strings.Contains(got, "be able to confirm whether the message was sent") {
+		t.Fatalf("repair must become a future frame, got %q", got)
+	}
+
+	// An executed action keeps its confirmation.
+	earned := "I can confirm the message was sent."
+	if got, reason := repairUnearnedAttestation(earned, true); reason != "" || got != earned {
+		t.Fatalf("earned confirmation must pass through, got %q reason %q", got, reason)
+	}
+
+	// Denials never match.
+	for _, s := range []string{
+		"I can't confirm the message was sent.",
+		"I cannot guarantee it went out.",
+		"Here is your answer.",
+	} {
+		if got, reason := repairUnearnedAttestation(s, false); reason != "" || got != s {
+			t.Fatalf("must not rewrite %q, got %q reason %q", s, got, reason)
+		}
+	}
+}
