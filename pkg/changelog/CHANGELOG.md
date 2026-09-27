@@ -3,7 +3,7 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
-## [0.24.58] - 2026-09-26
+## [0.24.58] - 2026-09-27
 
 - **Ghost stopped explaining its own plumbing.** Asking what was happening
   somewhere no longer ends with a note about which pages loaded. The answer
@@ -21,6 +21,10 @@ Newest first. Ghost shows new entries on first launch after an update;
 - **Answers end when they end.** The automatic "Want me to…?" after an
   information answer is gone; it survives only when something actually failed
   and a retry is a real next step.
+- **No throat-clearing.** "I don't have a live news feed wired up for this, so
+  let me search" used to arrive as if it were the answer. Ghost now holds back
+  the sentence a model says before it goes and gets something, and shows you
+  the answer itself.
 - **Activity shows provenance, not apologies.** Entries read like "Searched the
   web: …" with the sources listed, instead of commentary on what Ghost could
   not reach.

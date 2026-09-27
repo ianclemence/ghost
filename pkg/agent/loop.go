@@ -2906,6 +2906,10 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			inner(chunk)
 		}
 	}
+	// The sink every iteration streams into. Each iteration wraps it in a
+	// narrationHold, then restores it, so a turn that mixes prose and tool
+	// calls only shows the owner the prose that was the answer.
+	streamSink := opts.OnChunk
 	iterStart := time.Now()
 	iteration := 0
 
@@ -3023,6 +3027,15 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		if iteration == 1 {
 			emitPhase(ctx, "thinking", "")
 		}
+		// Hold this iteration's prose until the iteration settles. The
+		// provider streams content first and returns tool calls last, so
+		// nothing during the stream says whether the words are the answer or
+		// the sentence a model says before it goes and gets something.
+		var hold *narrationHold
+		if streamSink != nil {
+			hold = newNarrationHold(streamSink)
+			opts.OnChunk = hold.feed
+		}
 		response, err := callLLMWithRetry(ctx, iteration, func() (*providers.LLMResponse, error) {
 			return al.callLLM(ctx, selectedModel, messages, providerToolDefs, opts)
 		})
@@ -3048,6 +3061,19 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					"error":     err.Error(),
 				})
 			return "", iteration, fmt.Errorf("LLM call failed: %w", err)
+		}
+
+		// The iteration has settled. Prose that went on to call tools was a
+		// throat-clear between tool calls — it was never part of the stored
+		// reply, so it must not be part of the live one either. Prose that
+		// ended the turn was the answer, and is released in full.
+		if hold != nil {
+			if len(response.ToolCalls) > 0 {
+				hold.discard()
+			} else {
+				hold.flush()
+			}
+			opts.OnChunk = streamSink
 		}
 
 		// Check if no tool calls - we're done
