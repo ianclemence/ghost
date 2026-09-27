@@ -24,7 +24,9 @@ const GhostApp = (() => {
         { name: 'memory', title: 'Memory', glyph: 'memory' },
         { name: 'activity', title: 'Activity', glyph: 'activity' },
         { name: 'routines', title: 'Routines', glyph: 'automation' },
-        { name: 'ideas', title: 'Ideas', glyph: 'sparkle' },
+        // No "Ideas" destination: what Ghost noticed travels as a
+        // suggestion on Home and in Activity, so a separate list the owner
+        // had to read and dismiss was pure noise.
         { name: 'intelligence', title: 'Intelligence', glyph: 'ai' },
         { name: 'skills', title: 'Skills', glyph: 'skill' },
       ],
@@ -86,6 +88,9 @@ const GhostApp = (() => {
   }
 
   function render(name) {
+    // A bookmarked hash for a section that no longer exists (or never did)
+    // must land on Home, not throw before anything renders.
+    if (!sections.has(name)) name = 'home';
     current = name;
     const view = document.getElementById('view');
     if (!view) return;
