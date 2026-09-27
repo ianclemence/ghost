@@ -17,6 +17,18 @@ set -uo pipefail
 
 SINCE="${1:-24 hours ago}"
 
+# Version-tagged: a benchmark run is only comparable to another run when the
+# software version is identified. Telemetry from a different build must never
+# be attributed to this one.
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VERSION="$(/usr/local/bin/ghost version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+[^ ]*' | head -1)"
+COMMIT="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo "ghost version: ${VERSION:-unknown}"
+echo "git commit:    ${COMMIT}"
+echo "timestamp:     $(date -Is)"
+echo "config:        since='${SINCE}' unit=ghost.service"
+echo
+
 journalctl -u ghost --since "$SINCE" --no-pager 2>/dev/null \
   | grep 'turn telemetry' \
   | python3 -c '

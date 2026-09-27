@@ -164,3 +164,47 @@ func contains(list []string, s string) bool {
 	}
 	return false
 }
+
+// Active-task-by-session returns only in-flight jobs for that session; terminal
+// jobs and other sessions are excluded. This is the query the agent loop uses
+// to surface durable task state to the model.
+func TestListActiveBySession(t *testing.T) {
+	var events []string
+	s := newTestStore(t, &events)
+
+	open, err := s.CreateWithScope("task", "sess-1", "owner", "personal", map[string]interface{}{"goal": "book travel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Start(open.ID); err != nil {
+		t.Fatal(err)
+	}
+	done, err := s.CreateWithScope("task", "sess-1", "owner", "personal", map[string]interface{}{"goal": "old"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Start(done.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Succeed(done.ID); err != nil {
+		t.Fatal(err)
+	}
+	other, err := s.CreateWithScope("task", "sess-2", "owner", "personal", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Start(other.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ListActiveBySession("sess-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != open.ID {
+		t.Fatalf("active-by-session = %+v, want only %s", got, open.ID)
+	}
+	if empty, err := s.ListActiveBySession(""); err != nil || len(empty) != 0 {
+		t.Fatalf("blank session must return nothing, got %v err %v", empty, err)
+	}
+}

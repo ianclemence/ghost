@@ -2710,6 +2710,26 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 				summary = ragContext
 			}
 		}
+
+		// Durable task state is runtime-authoritative. Surface a compact
+		// summary so multi-step work continues without the model having to
+		// reconstruct it from conversation history.
+		if taskSummary := al.activeTaskSummaryForSession(opts.SessionKey); taskSummary != "" {
+			if summary != "" {
+				summary += "\n\n"
+			}
+			summary += taskSummary
+		}
+
+		// Offline capability signal: only when the runtime is degraded to local
+		// mode, so the model prefers local paths and is honest about tasks that
+		// need the internet — without a banner on ordinary cloud turns.
+		if note := offlineCapabilityNote(modes.Resolve(al.workspace, al.hasCloudKey())); note != "" {
+			if summary != "" {
+				summary += "\n\n"
+			}
+			summary += note
+		}
 	}
 	// An approval continuation answers with the resumed run's output as
 	// its current message. The owner's approval reply is not the question
@@ -2730,6 +2750,12 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		al.provider,
 		al.sessionScopes(opts.SessionKey),
 	)
+
+	// Model-aware context budget: bound the assembled request so a long
+	// session cannot overflow the selected model's window. The behavioural
+	// core (identity, permission and evidence rules) and the current request
+	// are never trimmed — only history is, oldest-first.
+	messages = FitContext(messages, ContextBudgetFor(al.model).InputLimit())
 
 	// 3. Save user message to session (only if not a slash command and not
 	// an approval continuation — "always allow" is an approval, not speech,
@@ -2794,7 +2820,8 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// evidence. The runtime corrects the reply and records the verification
 	// failure — silent false success never stands. See completion_gate.go.
 	if opts.RequestID != "" {
-		succeeded, failed := al.turnConsequentialOutcomes(opts.RequestID)
+		outcome := al.turnOutcome(opts.RequestID)
+		succeeded := outcome.Completed > 0
 		// Unearned attestation: a capability phrased as a completed
 		// confirmation ("I can confirm the message was sent") when nothing
 		// consequential succeeded is a success claim the runtime cannot back.
@@ -2816,7 +2843,16 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			})
 			finalContent = repaired
 		}
-		if corrected, violation := applyCompletionGate(finalContent, failed, succeeded); violation != "" {
+		// Partial completion: the runtime owns the counts, so a mixed result
+		// is never flattened into binary success/failure prose.
+		if withOutcome, reason := applyPartialOutcome(finalContent, outcome); reason != "" {
+			logger.InfoCF("agent", "partial outcome reported from runtime state", map[string]interface{}{
+				"session_key": opts.SessionKey,
+				"outcome":     outcome.Summary(),
+			})
+			finalContent = withOutcome
+		}
+		if corrected, violation := applyCompletionGate(finalContent, outcome.AllFailed(), succeeded); violation != "" {
 			if al.governance != nil && al.governance.Events != nil {
 				al.governance.Events.Publish(&cevents.Event{
 					Type:      cevents.VerificationFailed,

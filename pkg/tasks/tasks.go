@@ -499,6 +499,32 @@ func (s *Store) Get(id string) (Job, error) {
 	return scanJob(row)
 }
 
+// ListActiveBySession returns the durable jobs for a session that are still in
+// flight (not terminal), newest first. The agent loop surfaces a compact
+// summary of these to the model instead of letting it reconstruct task state
+// from conversation history.
+func (s *Store) ListActiveBySession(sessionKey string) ([]Job, error) {
+	if s == nil || sessionKey == "" {
+		return nil, nil
+	}
+	rows, err := s.db.Query(
+		`SELECT `+jobColumns+` FROM jobs WHERE session_key=? AND status NOT IN (?,?,?,?) ORDER BY updated_at DESC LIMIT 20`,
+		sessionKey, string(StatusSucceeded), string(StatusFailed), string(StatusCancelled), string(StatusExpired))
+	if err != nil {
+		return nil, fmt.Errorf("list active jobs: %w", err)
+	}
+	defer rows.Close()
+	var out []Job
+	for rows.Next() {
+		j, err := scanJob(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
 // List returns jobs, optionally filtered by exact status.
 func (s *Store) List(status Status) ([]Job, error) {
 	query := `SELECT ` + jobColumns + ` FROM jobs`

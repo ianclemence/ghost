@@ -305,6 +305,17 @@ func FilterToolsForTurn(registry *ToolRegistry, profile ToolProfile, userMsg str
 	webAddress := webAddressPattern.MatchString(lower)
 	highImpact := map[string]bool{"browser_submit": true, "browser_upload": true}
 
+	// High-confidence intent: prefer the purpose-built capability and suppress
+	// generic overlap (shell/sandbox) for this turn. Ambiguous input routes
+	// nothing, so the model keeps the safe fallback.
+	route, routed := PreferredIntentRoute(userMsg)
+	excluded := map[string]bool{}
+	if routed {
+		for _, n := range route.Exclude {
+			excluded[n] = true
+		}
+	}
+
 	include := func(name string) bool {
 		if coreToolNames[name] {
 			return true
@@ -331,7 +342,10 @@ func FilterToolsForTurn(registry *ToolRegistry, profile ToolProfile, userMsg str
 
 	out := NewToolRegistry()
 	for _, name := range base.List() {
-		if include(name) {
+		if excluded[name] {
+			continue
+		}
+		if include(name) || (routed && stringInSlice(route.Tools, name)) {
 			if tool, ok := base.Get(name); ok {
 				out.Register(tool)
 			}

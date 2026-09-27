@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/capability"
-	"github.com/ianclemence/ghost/pkg/cevents"
 )
 
 // completionClaimRE matches prose that asserts Ghost completed an action:
@@ -102,34 +101,4 @@ func repairUnearnedAttestation(reply string, hadSuccess bool) (string, string) {
 	return repaired, "present-tense confirmation of an action with no execution evidence"
 }
 
-// turnConsequentialOutcomes scans this turn's canonical events for
-// consequential (evidence-requiring) tool outcomes. succeeded is true only
-// for a successful completed call; failed is true for a failed call or a
-// permission denial.
-func (al *AgentLoop) turnConsequentialOutcomes(requestID string) (succeeded, failed bool) {
-	if al == nil || al.governance == nil || al.governance.Events == nil || requestID == "" {
-		return false, false
-	}
-	for _, e := range al.governance.Events.ByRequest(requestID) {
-		if e == nil || e.Payload == nil {
-			continue
-		}
-		capID, _ := e.Payload["capability"].(string)
-		if capID == "" {
-			continue
-		}
-		spec, ok := capability.Get(capID)
-		if !ok || !spec.RequiresEvidence() {
-			continue
-		}
-		switch e.Type {
-		case cevents.ToolCompleted:
-			if e.Status == "success" {
-				succeeded = true
-			}
-		case cevents.ToolFailed, cevents.PermissionDenied:
-			failed = true
-		}
-	}
-	return succeeded, failed
-}
+// turnOutcome in outcome.go supersedes the earlier boolean scan.

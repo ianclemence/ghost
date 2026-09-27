@@ -225,6 +225,24 @@ func Suite() []Conversation {
 				turn("Can you explain what machine learning is?")),
 			Expect: Expect{NoFalseSuccess: true},
 		},
+		{
+			ID: "off-03", Category: CatOffline, Title: "Internet-required request offline is honest",
+			Severity: "high", Offline: true,
+			People: onePerson("maya", "maya",
+				turn("What's the latest news about the Nairobi port?")),
+			Expect: Expect{NoFalseSuccess: true},
+		},
+		{
+			ID: "off-04", Category: CatOffline, Title: "Seeded identity recall works offline",
+			Severity: "high", Offline: true,
+			People: []Person{{Name: "maya", Session: "maya",
+				SeedMemories: []MemorySeed{pref("identity/name", "ana")},
+				Turns:        []Turn{{User: "What's my name?"}}}},
+			Expect: Expect{
+				LastResponseContainsAny: []string{"ana", "Ana"},
+				MemoryPresent:           []Match{{Predicate: "", Value: "ana"}},
+			},
+		},
 		// ---------- I. Tool failures ----------
 		{
 			ID: "tf-01", Category: CatToolFailure, Title: "Weather provider down honest",
