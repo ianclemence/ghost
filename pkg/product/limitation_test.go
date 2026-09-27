@@ -154,6 +154,36 @@ func TestTrimClosingOffer(t *testing.T) {
 	}
 }
 
+// An offer welded onto the end of a real sentence: only the offer goes, and
+// the observation that carried it keeps its full stop. Observed live on a
+// news answer, where the trailing paragraph began with content.
+func TestTrimClosingOfferCutsAnOfferAttachedToARealSentence(t *testing.T) {
+	reply := "Flooding leads the news today.\n\nSources: Bangkok Post, The Thaiger.\n\n" +
+		"If you're out and about today, the eastern side of the city is the worst hit " +
+		"— want me to check the current rain and AQI for your area?"
+	got := TrimClosingOffer(reply, false)
+	if !strings.Contains(got, "worst hit") {
+		t.Fatalf("the observation was lost: %q", got)
+	}
+	if !strings.Contains(got, "Sources: Bangkok Post, The Thaiger.") {
+		t.Fatalf("the sources line was lost: %q", got)
+	}
+	if strings.Contains(strings.ToLower(got), "want me to") {
+		t.Fatalf("the attached offer survived: %q", got)
+	}
+	if !strings.HasSuffix(got, "worst hit.") {
+		t.Fatalf("the cut left the sentence unfinished: %q", got)
+	}
+}
+
+// A conditional that points at content is content, not an offer.
+func TestTrimClosingOfferKeepsAConditionalPointer(t *testing.T) {
+	reply := "Flooding leads the news today.\n\nIf you want the raw listings, they are in the activity feed."
+	if got := TrimClosingOffer(reply, false); got != reply {
+		t.Fatalf("content was trimmed: %q", got)
+	}
+}
+
 // Trimming must never remove a qualification the model wrote.
 func TestTrimClosingOfferKeepsQualifiers(t *testing.T) {
 	reply := "Reports are conflicting: Reuters says X, the Post says Y. I wouldn't treat it as confirmed yet. Want me to keep watching?"

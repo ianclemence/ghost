@@ -3,6 +3,7 @@ package product
 import (
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -127,8 +128,17 @@ const CaveatRule = "Be honest about uncertainty and never pretend something was 
 
 // closingOfferStartRE matches a sentence that is only an offer of further
 // work. Deliberately narrow: it must open with the offer itself, so a sentence
-// that happens to contain "want me to" mid-way is left alone.
-var closingOfferStartRE = regexp.MustCompile(`(?i)^(want me to|would you like me to|i can also|i could also|if you (want|like|prefer)|say the word|let me know if you|happy to|shall i|should i)\b`)
+// that happens to contain "want me to" mid-way is left alone. The conditional
+// opener is held to the same standard — "If you want, I can…" is an offer,
+// "If you want the raw data, it's below" is content and must never be eaten.
+var closingOfferStartRE = regexp.MustCompile(`(?i)^(?:want me to|would you like me to|i can also|i could also|say the word|let me know if you|happy to|shall i|should i)\b|^if you (?:want|like|prefer)(?:,|[[:space:]]+(?:i|i'?d|i'?ll|me)\b)`)
+
+// closingOfferClauseRE matches an offer welded onto the end of a sentence that
+// is otherwise content: "…the eastern side of the city is the worst hit —
+// want me to check the current rain and AQI for your area?" The lead is a real
+// observation and stays; only the offered work goes. End-anchored,
+// dash-introduced and short, so it can only ever take a trailing courtesy.
+var closingOfferClauseRE = regexp.MustCompile(`(?i)[[:space:]]+(?:—|–|-)[[:space:]]+(?:want me to|would you like me to|shall i|should i|i can also|i could also|let me know if|happy to|say the word)[^?\n]{0,160}\?[[:space:]]*$`)
 
 // closingOfferMaxRunes bounds what may be dropped: a closing courtesy, never a
 // paragraph.
@@ -144,7 +154,8 @@ const closingOfferMaxRunes = 200
 //
 //   - only the FINAL sentence is a candidate, and only when the reply has more
 //     than one sentence (a bare offer is the whole reply and is left alone);
-//   - the candidate must begin with an offer, and be short;
+//   - the candidate must begin with an offer, and be short — or end with one
+//     attached after a dash, in which case only the attached clause goes;
 //   - if any tool failed, nothing is trimmed: "Want me to retry?" after a
 //     failure is material and must survive.
 //
@@ -159,8 +170,12 @@ func TrimClosingOffer(reply string, toolFailed bool) string {
 		return reply
 	}
 	// A model that offers twice gets both removed, but only ever from the end
-	// and only offer-shaped sentences — bounded so this can never eat prose.
+	// and only offer-shaped — bounded so this can never eat prose.
 	for i := 0; i < 3; i++ {
+		if cut, ok := cutOfferClause(trimmed); ok {
+			trimmed = cut
+			continue
+		}
 		start := lastSentenceStart(trimmed)
 		if start <= 0 {
 			return trimmed // a single sentence: leave it alone
@@ -179,6 +194,28 @@ func TrimClosingOffer(reply string, toolFailed bool) string {
 		trimmed = kept
 	}
 	return trimmed
+}
+
+// cutOfferClause removes a trailing "…content — offer?" tail, keeping the
+// content clause and giving it back its full stop. ok=false means there is
+// nothing offer-shaped to remove and the reply is returned untouched.
+func cutOfferClause(s string) (string, bool) {
+	loc := closingOfferClauseRE.FindStringIndex(s)
+	if loc == nil {
+		return s, false
+	}
+	if utf8.RuneCountInString(s[loc[0]:]) > closingOfferMaxRunes {
+		return s, false
+	}
+	kept := strings.TrimRight(s[:loc[0]], " \t\r\n")
+	if strings.TrimSpace(kept) == "" {
+		return s, false // never trim the whole reply away
+	}
+	// The sentence that carried the offer was cut short, so finish it.
+	if r, _ := utf8.DecodeLastRuneInString(kept); unicode.IsLetter(r) || unicode.IsDigit(r) {
+		kept += "."
+	}
+	return kept, true
 }
 
 // lastSentenceStart returns the index where the final sentence begins, or 0
