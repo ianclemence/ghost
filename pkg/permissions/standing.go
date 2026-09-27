@@ -36,6 +36,20 @@ type StandingRejection struct {
 var standingAllowRE = regexp.MustCompile(`(?i)(^\s*(always\s+(let|allow)\s+ghost|let\s+ghost\s+always|allow\s+ghost\s+to\s+always|you can always|i can always|you (can|may) (let|allow) (ghost|me))\b)|(\b(your|always)\s*:\s*(let|allow))`)
 var standingDenyRE = regexp.MustCompile(`(?i)^\s*(never\s+(let|allow)\s+ghost|don't\s+(ever\s+)?let\s+ghost|stop\s+asking\s+me\s+about)\b`)
 
+// standingMaxLen bounds what can count as a standing-permission directive. A
+// request is a short imperative ("Always let Ghost add calendar events"), not
+// prose. Without this bound, a brief, a pasted document, or any long question
+// that merely mentioned "access", "permissions" and "everything" was hijacked
+// by the broad-scope veto and answered with grant boilerplate instead of being
+// answered. Longer messages are always ordinary chat.
+const standingMaxLen = 240
+
+// broadScopeSentenceSplit separates a message into clauses so broad-scope
+// language must occur in the SAME clause as the grant verb. "I gave you access
+// to my drive. Tell me everything about it." is two clauses and is not a
+// permission request; "Always let Ghost do everything" is one and is.
+var broadScopeSentenceSplit = regexp.MustCompile(`[.!?;\n]+`)
+
 // scopePhrase maps user language to narrow capability grants. Deliberately
 // small: unknown phrasing rejects with guidance instead of guessing.
 var scopePhraseTable = []struct {
@@ -66,6 +80,12 @@ var scopePhraseTable = []struct {
 // after explicit confirmation.
 func ProposeStanding(text string) (StandingProposal, StandingRejection, bool) {
 	trimmed := strings.TrimSpace(text)
+	// A standing-permission request is a short directive. Long messages are
+	// prose (a brief, a pasted document, a multi-part question) and always
+	// reach the model as ordinary chat — never the grant fast-path.
+	if len([]rune(trimmed)) > standingMaxLen {
+		return StandingProposal{}, StandingRejection{}, false
+	}
 	lower := strings.ToLower(trimmed)
 	// Broad/anything phrasing is a standing-permission intent that must be
 	// rejected deterministically — never routed to the model as ordinary
@@ -110,15 +130,21 @@ func isBroadScope(lower string) bool {
 	// Verbs match on word boundaries: substring matching let "newsLETter"
 	// read as "let" and hijack an ordinary message that also said
 	// "anything" (e.g. a browser form-fill instruction).
-	if !broadScopeVerbRE.MatchString(lower) {
-		return false
-	}
-	for _, phrase := range []string{
-		"entire", "whole account", "everything", "all my data",
-		"full access", "anything", "whatever it wants",
-	} {
-		if strings.Contains(lower, phrase) {
-			return true
+	//
+	// Verb and broad noun must share a clause: a message that mentions
+	// "access" in one sentence and "everything" in the next is two ordinary
+	// thoughts, not a request for blanket permission.
+	for _, clause := range broadScopeSentenceSplit.Split(lower, -1) {
+		if !broadScopeVerbRE.MatchString(clause) {
+			continue
+		}
+		for _, phrase := range []string{
+			"entire", "whole account", "everything", "all my data",
+			"full access", "anything", "whatever it wants",
+		} {
+			if strings.Contains(clause, phrase) {
+				return true
+			}
 		}
 	}
 	return false

@@ -150,3 +150,33 @@ func TestBroadScopeVetoVerbBoundaries(t *testing.T) {
 		}
 	}
 }
+
+// A long brief that merely mentions access, permissions and "everything" is
+// ordinary chat: it must reach the model, not be answered with grant
+// boilerplate. This is the failure that made a self-assessment brief get
+// "I can't grant access to an entire account."
+func TestLongBriefIsNotAStandingIntent(t *testing.T) {
+	brief := strings.Join([]string{
+		"You do not have access to your source repository yet.",
+		"Do not assume you have seen anything you were not given.",
+		"Identify where you are over-engineered and where you are under-engineered.",
+		"Separate model problems from system problems, and do not say \"use a better model\".",
+		"Tell us what parts of yourself an engineer should inspect first.",
+		"Give us the uncomfortable answers about permissions, evidence and everything else.",
+	}, "\n\n")
+	if _, _, ok := ProposeStanding(brief); ok {
+		t.Fatal("a long brief must be ordinary chat, never the permission fast-path")
+	}
+}
+
+// Broad-account language split across two clauses is two ordinary thoughts,
+// not a blanket-permission request; a single clause that really combines them
+// is still vetoed.
+func TestCrossClauseBroadScopeIsNotAStandingIntent(t *testing.T) {
+	if _, _, ok := ProposeStanding("I gave you access to my drive. Tell me everything about it."); ok {
+		t.Fatal("cross-clause broad language must not be vetoed as a permission request")
+	}
+	if _, rej, ok := ProposeStanding("Always let Ghost do everything on my account"); !ok || rej.Reason == "" {
+		t.Fatal("a real broad-scope directive must still be vetoed deterministically")
+	}
+}

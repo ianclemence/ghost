@@ -34,8 +34,9 @@ func TestHealthCheckCount(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	results := d.RunAll(context.Background())
 	// 13 registered minus 3 empty-info omissions on a bare workspace
-	// (unbound vault, no service skills, no spend). The golden suite is
-	// not a registered check at all: health never reports test scores.
+	// (unbound vault, no service skills, no binaries on PATH). Neither the
+	// golden suite nor spend is a registered check: health never reports
+	// test scores or cost.
 	if len(results) != 10 {
 		t.Fatalf("expected 10 checks, got %d", len(results))
 	}
@@ -59,8 +60,8 @@ func TestHealthCheckCount(t *testing.T) {
 }
 
 // TestHealthNeverSurfacesGolden pins the owner-facing rule: the golden
-// test suite is not part of health. Even with a history file on disk,
-// the doctor must not render a Golden row — spend still surfaces.
+// test suite and spend are not part of health. Even with a history file and
+// metered turns on disk, the doctor must render neither row.
 func TestHealthNeverSurfacesGolden(t *testing.T) {
 	d, ws := healthFixture(t)
 	state := filepath.Join(ws, "state")
@@ -81,8 +82,8 @@ func TestHealthNeverSurfacesGolden(t *testing.T) {
 	if names["last_golden"] {
 		t.Fatal("golden history must never surface a Golden row in health")
 	}
-	if !names["eval_spend"] {
-		t.Fatal("metered turns must surface a Spend row")
+	if names["eval_spend"] {
+		t.Fatal("metered turns must never surface a Spend row in health")
 	}
 }
 
@@ -123,12 +124,5 @@ func TestVaultUnboundAndAbsent(t *testing.T) {
 	_ = ws
 	if got := d.checkVault(context.Background()); got.Status != "error" {
 		t.Fatalf("corrupt secrets must error, got %+v", got)
-	}
-}
-
-func TestEvalSpendEmpty(t *testing.T) {
-	d, _ := healthFixture(t)
-	if got := d.checkEvalSpend(context.Background()); got.Status != "info" {
-		t.Fatalf("uninstrumented spend must be info, got %+v", got)
 	}
 }

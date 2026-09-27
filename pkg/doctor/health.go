@@ -12,8 +12,8 @@ import (
 	"github.com/ianclemence/ghost/pkg/hardware"
 )
 
-// Health checks: disk pressure with remedies, vault openability,
-// eval spend, and failing routines. Each follows the
+// Health checks: disk pressure with remedies, vault openability, and
+// failing routines. Each follows the
 // checkFoo pattern (start/latency, ok/warning/error/info) and carries a
 // next action in the message — health output is read by owners, not
 // engineers.
@@ -77,29 +77,6 @@ func (d *Doctor) checkVault(ctx context.Context) CheckResult {
 		}
 	}
 	return done("ok", "sealed secrets open with the resolved key")
-}
-
-// checkEvalSpend sums recorded turn costs from canonical events. Empty
-// means uninstrumented-or-idle, reported as info — never as spend.
-func (d *Doctor) checkEvalSpend(ctx context.Context) CheckResult {
-	start := time.Now()
-	done := func(status, msg string) CheckResult {
-		return CheckResult{Name: "eval_spend", Label: "Spend", Status: status, Message: msg, Latency: time.Since(start).Milliseconds()}
-	}
-	_ = ctx
-	if d.db == nil {
-		return done("info", "no database bound; spend unknown")
-	}
-	var total float64
-	var turns int64
-	err := d.db.QueryRow(`SELECT COALESCE(SUM(CAST(json_extract(payload,'$.cost_usd') AS REAL)),0), COUNT(*) FROM canonical_events WHERE type='usage.recorded'`).Scan(&total, &turns)
-	if err != nil {
-		return done("info", "usage not recorded yet (cost accounting lands with turn persistence)")
-	}
-	if turns == 0 {
-		return done("info", "no metered turns yet")
-	}
-	return done("ok", fmt.Sprintf("$%.4f across %d metered turns", total, turns))
 }
 
 // checkRoutinesFailing lists scheduled items in failed state with the
