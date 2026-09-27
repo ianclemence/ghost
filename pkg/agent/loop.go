@@ -2788,6 +2788,33 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	finalContent = product.TrimLabelledCaveat(finalContent, toolFailed)
 	finalContent = product.TrimClosingOffer(finalContent, toolFailed)
 
+	// 5d. Evidence-gated completion (runtime safety net): if this turn ran a
+	// consequential action that failed or was denied and nothing consequential
+	// succeeded, a success claim in the reply is not backed by runtime
+	// evidence. The runtime corrects the reply and records the verification
+	// failure — silent false success never stands. See completion_gate.go.
+	if opts.RequestID != "" {
+		succeeded, failed := al.turnConsequentialOutcomes(opts.RequestID)
+		if corrected, violation := applyCompletionGate(finalContent, failed, succeeded); violation != "" {
+			if al.governance != nil && al.governance.Events != nil {
+				al.governance.Events.Publish(&cevents.Event{
+					Type:      cevents.VerificationFailed,
+					RequestID: opts.RequestID,
+					SessionID: opts.SessionKey,
+					GhostID:   al.governance.GhostID,
+					AgentID:   al.governance.AgentID,
+					Status:    "failed",
+					Payload:   map[string]interface{}{"reason": violation, "stage": "completion_claim"},
+				})
+			}
+			logger.WarnCF("agent", "completion claim contradicted by runtime evidence", map[string]interface{}{
+				"session_key": opts.SessionKey,
+				"reason":      violation,
+			})
+			finalContent = corrected
+		}
+	}
+
 	// 6. Save final assistant message to session (only if it's a real response, not a tool result turn or slash command)
 	// We don't save iterations that were just tool calls here because runLLMIteration
 	// already handles AddFullMessage for tool turns.
@@ -3041,7 +3068,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		response, err := callLLMWithRetry(ctx, iteration, func() (*providers.LLMResponse, error) {
 			return al.callLLM(ctx, selectedModel, messages, providerToolDefs, opts)
 		})
-		if response != nil && response.Usage != nil {
+		if response != nil && usageMeasured(response.Usage) {
 			promptTokens += response.Usage.PromptTokens
 			completionTokens += response.Usage.CompletionTokens
 			totalTokens += response.Usage.TotalTokens

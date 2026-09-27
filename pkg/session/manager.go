@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -186,8 +187,9 @@ func (sm *SessionManager) GetContext(ctx context.Context, userQuery string, scop
 	// fits the memory-context budget so a long tail of weak matches cannot
 	// crowd out the model's actual task.
 	items := make([]string, 0, len(results))
+	now := time.Now()
 	for _, r := range results {
-		items = append(items, "- "+r.Content+" (Source: "+r.Source+")")
+		items = append(items, "- "+r.Content+" ("+memoryProvenance(r, now)+")")
 	}
 	items = retrieval.DefaultBudget().Fit(items)
 	if len(items) == 0 {
@@ -205,4 +207,38 @@ func (sm *SessionManager) GetContext(ctx context.Context, userQuery string, scop
 		}
 	}
 	return "Relevant Context from Memory:\n" + strings.Join(items, "\n")
+}
+
+// memoryProvenance renders the internal provenance a retrieved memory carries
+// so the model can tell fresh, sourced material from stale or unknown-origin
+// material and discount it. The scope tag stays internal: only the base
+// source leaves the memory layer.
+func memoryProvenance(r rag.SearchResult, now time.Time) string {
+	base := r.Source
+	if i := strings.Index(base, "@context:"); i >= 0 {
+		base = base[:i]
+	}
+	parts := []string{"Source: " + base}
+	if !r.CreatedAt.IsZero() {
+		parts = append(parts, "age: "+humanAge(now.Sub(r.CreatedAt)))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func humanAge(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return strconv.Itoa(int(d.Minutes())) + "m"
+	case d < 24*time.Hour:
+		return strconv.Itoa(int(d.Hours())) + "h"
+	case d < 30*24*time.Hour:
+		return strconv.Itoa(int(d.Hours()/24)) + "d"
+	default:
+		return strconv.Itoa(int(d.Hours()/(24*7))) + "w"
+	}
 }

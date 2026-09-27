@@ -5,6 +5,20 @@ import (
 	"github.com/ianclemence/ghost/pkg/providers"
 )
 
+// usageMeasured reports whether a provider usage block carries a real
+// measurement. Some providers — Anthropic streaming in particular — always
+// return a non-nil Usage, sometimes with every field zero. Counting a
+// zero-filled block as "measured" recorded the turn as free and skipped the
+// estimate, so a streamed turn reported usage_source "measured" with zero
+// tokens instead of honestly estimating. A block with no signal is not a
+// measurement.
+func usageMeasured(u *providers.UsageInfo) bool {
+	if u == nil {
+		return false
+	}
+	return u.PromptTokens > 0 || u.CompletionTokens > 0 || u.TotalTokens > 0 || u.CostUSD > 0
+}
+
 // recordTurnUsage persists one metered row per user turn: session,
 // model, tokens, and cost. Cost resolution is measured-first
 // (per-call provider figures), static-estimate second, unknown last —

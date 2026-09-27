@@ -25,6 +25,29 @@ type Store struct {
 	config     config.RAGConfig
 	mu         sync.RWMutex
 	ready      bool
+
+	// embedCache memoizes recent query embeddings for a short, bounded TTL.
+	// Interactive turns frequently repeat a query (retries, re-asks, the
+	// same greeting), and a warm Ollama embedding round-trip costs ~2-3s
+	// against the 1-2ms a cache hit costs. Bounded by both TTL and capacity
+	// so it can never grow without limit or serve a stale vector forever.
+	embedMu    sync.Mutex
+	embedCache map[string]embedCacheEntry
+	embedHits  int64
+	embedMiss  int64
+}
+
+// Query-embedding cache bounds. The TTL is short because the underlying
+// embedder can change between restarts; the capacity is small because only
+// the most recent interactive queries are worth memoizing.
+const (
+	embedCacheTTL     = 90 * time.Second
+	embedCacheMaxSize = 64
+)
+
+type embedCacheEntry struct {
+	vec []float32
+	at  time.Time
 }
 
 type SearchResult struct {
@@ -50,6 +73,7 @@ func NewStore(database *db.DB, provider providers.EmbeddingProvider, cfg config.
 		chromemDB:  chromemDB,
 		collection: collection,
 		config:     cfg,
+		embedCache: make(map[string]embedCacheEntry),
 	}
 }
 
@@ -114,18 +138,85 @@ func (s *Store) LoadIndex(ctx context.Context) error {
 
 // Reset drops the in-memory vector index (fresh-install state). The DB rows
 // are deleted separately; without this, Retrieve keeps serving embeddings
-// for deleted memories until restart.
+// for deleted memories until restart. The query-embedding cache is dropped
+// too — a fresh index must never answer from a vector computed before it.
 func (s *Store) Reset() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.chromemDB = chromem.NewDB()
 	collection, err := s.chromemDB.CreateCollection("memory", nil, nil)
 	if err != nil {
+		s.mu.Unlock()
 		logger.ErrorCF("rag", "Failed to recreate vector collection", map[string]interface{}{"error": err.Error()})
 		return
 	}
 	s.collection = collection
 	s.ready = false
+	s.mu.Unlock()
+
+	s.embedMu.Lock()
+	s.embedCache = make(map[string]embedCacheEntry)
+	s.embedMu.Unlock()
+}
+
+// cachedEmbed returns the query embedding, memoized for a short bounded TTL.
+// A nil provider (vector memory disabled, e.g. Ollama unreachable) is an
+// honest "no retrieval" rather than a panic.
+func (s *Store) cachedEmbed(ctx context.Context, query string) ([]float32, error) {
+	if s.provider == nil {
+		return nil, fmt.Errorf("no embedding provider configured")
+	}
+	key := strings.ToLower(strings.TrimSpace(query))
+	if key != "" {
+		s.embedMu.Lock()
+		if e, ok := s.embedCache[key]; ok && time.Since(e.at) < embedCacheTTL {
+			s.embedHits++
+			vec := e.vec
+			s.embedMu.Unlock()
+			return vec, nil
+		}
+		s.embedMu.Unlock()
+	}
+	vec, err := s.provider.Embed(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if key == "" || len(vec) == 0 {
+		return vec, nil
+	}
+	s.embedMu.Lock()
+	s.embedMiss++
+	if len(s.embedCache) >= embedCacheMaxSize {
+		s.evictEmbedLocked()
+	}
+	s.embedCache[key] = embedCacheEntry{vec: vec, at: time.Now()}
+	s.embedMu.Unlock()
+	return vec, nil
+}
+
+// evictEmbedLocked drops an expired entry, or the oldest when none expired.
+// Callers hold embedMu.
+func (s *Store) evictEmbedLocked() {
+	oldestKey := ""
+	var oldestAt time.Time
+	for k, e := range s.embedCache {
+		if time.Since(e.at) >= embedCacheTTL {
+			delete(s.embedCache, k)
+			return
+		}
+		if oldestKey == "" || e.at.Before(oldestAt) {
+			oldestKey, oldestAt = k, e.at
+		}
+	}
+	if oldestKey != "" {
+		delete(s.embedCache, oldestKey)
+	}
+}
+
+// EmbedStats reports query-embedding cache hits and misses since startup.
+func (s *Store) EmbedStats() (hits, misses int) {
+	s.embedMu.Lock()
+	defer s.embedMu.Unlock()
+	return int(s.embedHits), int(s.embedMiss)
 }
 
 // scopeTagSep separates a chunk's source from its scope tag. Chunks
@@ -247,6 +338,9 @@ func (s *Store) Retrieve(ctx context.Context, query string, limit int) ([]Search
 // with one of the caller's scopes. Cross-context facts never reach a
 // context that does not own them.
 func (s *Store) RetrieveScoped(ctx context.Context, query string, limit int, scopes []string) ([]SearchResult, error) {
+	if strings.TrimSpace(query) == "" {
+		return []SearchResult{}, nil
+	}
 	s.mu.RLock()
 	isReady := s.ready
 	collection := s.collection
@@ -258,19 +352,34 @@ func (s *Store) RetrieveScoped(ctx context.Context, query string, limit int, sco
 		logger.WarnC("rag", "Index not ready, returning empty results")
 		return []SearchResult{}, nil
 	}
+	// Empty index: LoadIndex marks the store ready even with zero chunks, so
+	// without this an interactive turn would pay a full embedding round-trip
+	// to search nothing. Retrieval with nothing to retrieve is a no-op.
+	if collection.Count() == 0 {
+		return []SearchResult{}, nil
+	}
 
-	queryEmbedding, err := s.provider.Embed(ctx, query)
+	queryEmbedding, err := s.cachedEmbed(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to embed query: %w", err)
 	}
 
-	// Over-fetch so scope filtering cannot starve a legitimate query.
+	// Over-fetch so scope filtering cannot starve a legitimate query — but
+	// never ask for more results than the index holds: chromem rejects
+	// nResults > document count, which silently turned "a small memory" into
+	// "no retrieval at all".
 	fetchN := limit * 5
 	if fetchN < 10 {
 		fetchN = 10
 	}
 	if fetchN > 100 {
 		fetchN = 100
+	}
+	if docs := collection.Count(); fetchN > docs {
+		fetchN = docs
+	}
+	if fetchN <= 0 {
+		return []SearchResult{}, nil
 	}
 
 	// Search vector index
