@@ -209,3 +209,83 @@ func TestLimitationIsRecordedNotOnlySpoken(t *testing.T) {
 		t.Fatal("LimitationNone must never surface")
 	}
 }
+
+// The prompt bans the disclaimer frame; the model still produces it on roughly
+// one news answer in fifteen, and a prompt rule cannot know whether anything
+// failed. The runtime can, so the runtime decides.
+func TestTrimLabelledCaveat(t *testing.T) {
+	cases := []struct {
+		name     string
+		reply    string
+		failed   bool
+		wantSame bool
+		wantKeep string
+	}{
+		{
+			name:     "a trailing caveat about the shape of the sources goes",
+			reply:    "Flooding leads the news today (The Star, 27 Sep).\n\nSources: The Star, Tuko.\n\nOne caveat: these come from The Star and Kenyans.co.ke homepages, so it's a snapshot of what they're covering.",
+			wantKeep: "Sources: The Star, Tuko.",
+		},
+		{
+			name:     "after a failure the caveat is earned and stays",
+			reply:    "I could not reach the ministry's page.\n\nOne caveat: this comes from a homepage listing only.",
+			failed:   true,
+			wantSame: true,
+		},
+		{
+			name:     "an inability is material and stays",
+			reply:    "AP and Nation Thailand both report the flood order.\n\nOne caveat: I couldn't read the Bangkok Post's own coverage of this.",
+			wantSame: true,
+		},
+		{
+			name:     "a conflict is material and stays",
+			reply:    "Reuters says the subsidy was announced.\n\nOne caveat: sources disagree — the ministry denied it.",
+			wantSame: true,
+		},
+		{
+			name:     "a single source is material and stays",
+			reply:    "The rail line is reported to open in November.\n\nOne caveat: only The Star's headline carried this, so it's one outlet's account.",
+			wantSame: true,
+		},
+		{
+			name:     "a note in the middle of an answer is left where it is",
+			reply:    "Flooding leads today.\n\nOne caveat: these come from homepages.\n\nSources: The Star.",
+			wantSame: true,
+		},
+		{
+			name:     "a caveat that is not about retrieval shape is left alone",
+			reply:    "Treasury put inflation at 4.2% for September.\n\nOne caveat: the figures are provisional until the final revision.",
+			wantSame: true,
+		},
+		{
+			name:     "a reply that is only the caveat is left alone",
+			reply:    "One caveat: these come from homepages.",
+			wantSame: true,
+		},
+	}
+	for _, c := range cases {
+		got := TrimLabelledCaveat(c.reply, c.failed)
+		if c.wantSame {
+			if got != c.reply {
+				t.Errorf("%s: reply was modified:\n got %q\nwant %q", c.name, got, c.reply)
+			}
+			continue
+		}
+		if !strings.Contains(got, c.wantKeep) {
+			t.Errorf("%s: the body was lost: got %q, want it to contain %q", c.name, got, c.wantKeep)
+		}
+		if strings.Contains(strings.ToLower(got), "caveat") {
+			t.Errorf("%s: the caveat frame survived: %q", c.name, got)
+		}
+	}
+}
+
+// The cut must land cleanly: the sentence that carried the frame keeps its full
+// stop and nothing after it is left dangling.
+func TestTrimLabelledCaveatFinishesTheSentence(t *testing.T) {
+	reply := "Kenya's headlines lead with the refinery story (The Star).\n\nOne caveat: these are homepages, not the articles"
+	got := TrimLabelledCaveat(reply, false)
+	if !strings.HasSuffix(got, "(The Star).") {
+		t.Fatalf("cut left the sentence unfinished: %q", got)
+	}
+}

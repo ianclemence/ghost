@@ -91,7 +91,7 @@ func (s *stampStream) flush() string {
 	held := string(s.tail)
 	s.tail = nil
 	failed := s.toolFailed != nil && s.toolFailed()
-	return product.TrimClosingOffer(held, failed)
+	return product.TrimClosingOffer(product.TrimLabelledCaveat(held, failed), failed)
 }
 
 // couldStartHistoryLabel reports whether text is (or could still grow

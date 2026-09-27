@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.59] - 2026-09-27
+
+- **The last "One caveat:" is gone.** The rule was in the prompt, but the model
+  still opened an answer with a labelled note about which pages it had looked
+  at on roughly one news answer in fifteen. The decision now lives where it can
+  be made properly: the runtime knows whether anything failed during the turn,
+  so it drops a trailing note about the *shape* of the sources and leaves alone
+  anything that names what went wrong, a conflict between sources, an outcome
+  it could not confirm, or a single source.
+
 ## [0.24.58] - 2026-09-27
 
 - **Ghost stopped explaining its own plumbing.** Asking what was happening

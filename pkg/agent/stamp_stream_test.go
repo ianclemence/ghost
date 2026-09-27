@@ -211,3 +211,30 @@ func TestStreamDropsClosingOfferUnlessSomethingFailed(t *testing.T) {
 		t.Fatalf("body lost: %q", got3.String())
 	}
 }
+
+// A prompt rule was not enough to stop the disclaimer frame: the model still
+// opens with "One caveat:" on roughly one news answer in fifteen, and the
+// stream is where the owner would see it.
+func TestStreamDropsLabelledCaveatFrameUnlessMaterial(t *testing.T) {
+	var got strings.Builder
+	emit, flush := stampFilterStream(func(s string) { got.WriteString(s) }, nil)
+	emit("Flooding leads the news today (The Star, 27 Sep).\n\nSources: The Star, Tuko.\n\n")
+	emit("One caveat: these come from The Star and Kenyans.co.ke homepages, so it's a snapshot of what they're covering.")
+	flush()
+	if strings.Contains(strings.ToLower(got.String()), "caveat") {
+		t.Fatalf("the caveat frame reached the owner: %q", got.String())
+	}
+	if !strings.Contains(got.String(), "Sources: The Star, Tuko.") {
+		t.Fatalf("the attribution was lost: %q", got.String())
+	}
+
+	// Something the owner needs — a source Ghost could not read — is untouched.
+	var got2 strings.Builder
+	emit2, flush2 := stampFilterStream(func(s string) { got2.WriteString(s) }, nil)
+	emit2("AP and Nation Thailand both report the flood order.\n\n")
+	emit2("One caveat: I couldn't read the Bangkok Post's own coverage of this.")
+	flush2()
+	if !strings.Contains(got2.String(), "couldn't read the Bangkok Post") {
+		t.Fatalf("a material limitation was removed: %q", got2.String())
+	}
+}

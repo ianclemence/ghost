@@ -218,6 +218,94 @@ func cutOfferClause(s string) (string, bool) {
 	return kept, true
 }
 
+// labelledCaveatStartRE matches the disclaimer frame itself: a paragraph that
+// opens by announcing that a caveat follows. Group 1 is the label, so a cut can
+// start exactly there and leave the sentence before it alone.
+var labelledCaveatStartRE = regexp.MustCompile(`(?i)(?:^|[.!?\n]\s*|\s)((?:one caveat|caveat|sourcing note|note on sources|please note(?: that)?|for transparency|to be transparent|note that)\s*:)`)
+
+// caveatSourceShapeRE names the thing that makes a caveat about shape rather
+// than substance: how the retrieved material was cut, not what it says. This is
+// `source_access` — internal metadata the task keeps inside Ghost — showing up
+// in prose.
+var caveatSourceShapeRE = regexp.MustCompile(`(?i)\b(homepages?|front pages?|headlines?|listings?|snippets?|summaries|summari[sz]ed|previews?|excerpts?|abstracts?|above the fold|listing text)\b`)
+
+// caveatMaterialRE marks a caveat that carries something the owner needs. A
+// paragraph containing any of these is never touched: it names what went wrong,
+// how thin the evidence is, or that sources cannot both be right.
+var caveatMaterialRE = regexp.MustCompile(`(?i)\b(couldn'?t|could not|unable|not able|failed|failure|denied|blocked|inaccessible|unavailable|no access|cannot|can't|can’t|disagree|conflicting|conflict|disputed|contradictory|unconfirmed|not confirmed|unverified|not verified|uncorroborated|unsourced|no source|single|sole|only one|one outlet|one source|no other|unreachable|didn't load|didn’t load|wouldn't load|wouldn’t load|no readable|not read|requested|paywall|behind a subscription|missing|unclear|alleged|rumou?rs?|only\s+(?:one|two|three|the|a))\b`)
+
+// labelledCaveatMaxRunes bounds the block, and is deliberately no larger than
+// the stream's tail window (closingOfferHoldMax): a block that would not fit
+// the window cannot be cut on both paths, and history and transcript must
+// agree.
+const labelledCaveatMaxRunes = 200
+
+// TrimLabelledCaveat removes a trailing paragraph that opens with the
+// disclaimer frame the prompt bans — the sentence this whole change exists to
+// stop: "One caveat: these come from The Star and Kenyans.co.ke homepages, so
+// it's a snapshot of what they're covering."
+//
+// A prompt rule was not enough: the model still produced it on roughly one
+// news answer in fifteen. The runtime is the layer that can decide this
+// correctly, because it is the only one that knows whether anything failed.
+//
+// Every one of these conditions must hold, and each is there to protect honesty
+// rather than to catch phrases:
+//
+//   - nothing failed this turn — after a failure a caveat is earned;
+//   - the label opens the FINAL block, so a note in the middle of an answer is
+//     left where it is;
+//   - it is short — a paragraph is not a courtesy;
+//   - it talks about the shape of what was retrieved (homepages, headlines,
+//     listings), which is internal detail, never about what went wrong;
+//   - it contains nothing the owner needs: no inability, no conflict, no
+//     unverified outcome, no single source;
+//   - removing it does not empty the reply.
+//
+// A material limitation fails at least one of those and survives untouched.
+func TrimLabelledCaveat(reply string, toolFailed bool) string {
+	if toolFailed || reply == "" {
+		return reply
+	}
+	trimmed := strings.TrimRight(reply, " \t\r\n")
+	if trimmed == "" {
+		return reply
+	}
+	// The last label that starts a block with nothing but that block after it.
+	var labelAt []int
+	for _, m := range labelledCaveatStartRE.FindAllStringSubmatchIndex(trimmed, -1) {
+		if m[1] < 0 {
+			continue
+		}
+		if strings.Contains(trimmed[m[1]:], "\n\n") {
+			continue // something real follows it; not the trailing block
+		}
+		labelAt = m
+	}
+	if labelAt == nil {
+		return reply
+	}
+	start := labelAt[2]
+	after := trimmed[start:]
+	if utf8.RuneCountInString(after) > labelledCaveatMaxRunes {
+		return reply
+	}
+	if !caveatSourceShapeRE.MatchString(after) {
+		return reply // not about how it was retrieved: leave it
+	}
+	if caveatMaterialRE.MatchString(after) {
+		return reply // carries something the owner needs
+	}
+	kept := strings.TrimRight(trimmed[:start], " \t\r\n")
+	if strings.TrimSpace(kept) == "" {
+		return reply // never trim the whole reply away
+	}
+	if r, _ := utf8.DecodeLastRuneInString(kept); unicode.IsLetter(r) || unicode.IsDigit(r) {
+		kept += "."
+	}
+	return kept
+}
+
 // lastSentenceStart returns the index where the final sentence begins, or 0
 // when there is only one sentence.
 func lastSentenceStart(s string) int {

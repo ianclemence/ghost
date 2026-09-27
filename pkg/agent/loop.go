@@ -2781,9 +2781,10 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// stored reply never carries the typo.
 	finalContent = repairTimeSpacing(finalContent)
 
-	// The stream already dropped a courtesy offer before the owner saw it;
-	// drop it here too so history and the transcript agree.
+	// The stream already dropped a caveat frame and a courtesy offer before
+	// the owner saw them; drop them here too so history and transcript agree.
 	toolFailed := opts.ToolFailed != nil && opts.ToolFailed.Load()
+	finalContent = product.TrimLabelledCaveat(finalContent, toolFailed)
 	finalContent = product.TrimClosingOffer(finalContent, toolFailed)
 
 	// 6. Save final assistant message to session (only if it's a real response, not a tool result turn or slash command)
