@@ -16,6 +16,14 @@ type Observation struct {
 	Reconstructable bool      `json:"reconstructable"`
 	ObservedAt      time.Time `json:"observed_at"`
 	Summary         string    `json:"summary,omitempty"` // bounded, redaction-safe
+	// Sources names the publications or pages behind a read-only result.
+	// Recorded so activity and audit can attribute without the answer having
+	// to narrate its retrieval. Bounded and secret-free.
+	Sources []string `json:"sources,omitempty"`
+	// SourceAccess records how the evidence was obtained (full text, partial,
+	// listings, or failed). Internal: the limitation policy decides whether it
+	// ever reaches the owner.
+	SourceAccess string `json:"source_access,omitempty"`
 }
 
 // ErrorClass is a normalized failure category. Retry policy keys off this, not
@@ -97,6 +105,15 @@ func NewObservation(tool string, res *ToolResult) Observation {
 	}
 	o.Reconstructable = isReconstructableOutput(res.ForLLM)
 	o.Summary = summarize(res.ForLLM, 240)
+	// A tool that described its own sources overrides the truncated-prose
+	// fallback: its summary is written for a human and its sources are exact.
+	if declared := EvidenceSummary(res); declared != "" {
+		o.Summary = declared
+	}
+	if srcs := EvidenceSources(res); len(srcs) > 0 {
+		o.Sources = srcs
+	}
+	o.SourceAccess = EvidenceSourceAccess(res)
 	return o
 }
 

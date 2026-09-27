@@ -118,10 +118,12 @@ func (p *HTTPProvider) StreamChat(ctx context.Context, messages []Message, tools
 		// receives no content even though the response is generated.
 		"stream": onChunk != nil,
 	}
+
 	if onChunk != nil {
 		// Ask for the usage block on the final stream chunk. Providers that
 		// support it return real token counts, so a streamed turn is measured
 		// rather than estimated; providers that ignore it are unaffected.
+		// Without it, usage_source stays "estimated" and is labelled as such.
 		requestBody["stream_options"] = map[string]interface{}{"include_usage": true}
 	}
 

@@ -349,12 +349,64 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 
 	result, err := t.provider.Search(ctx, query, count)
 	if err != nil {
-		return ErrorResult(fmt.Sprintf("search failed: %v", err))
+		return ErrorResult(fmt.Sprintf("I couldn't search the web just now (%s).", shortReason(err))).WithError(err)
 	}
 
-	return &ToolResult{
-		ForLLM:  result,
-		ForUser: result,
+	// Search listings are usually title + URL + snippet, not article bodies.
+	// Record that shape structurally so nothing has to narrate it, and pull
+	// the outlet names out for attribution and activity.
+	sources := SourceNamesFromListings(result)
+	res := NewToolResult(result)
+	res.Evidence = DescribeSources(nil,
+		fmt.Sprintf("Searched the web: %q", strings.TrimSpace(query)),
+		sources, SourceAccessListings)
+	return res
+}
+
+// SourceNamesFromListings pulls readable outlet names out of a search result
+// blob (URLs are the reliable part; titles vary by provider).
+func SourceNamesFromListings(listing string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(listing, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "http://") && !strings.HasPrefix(line, "https://") {
+			continue
+		}
+		u, err := url.Parse(line)
+		if err != nil || u.Host == "" {
+			continue
+		}
+		name := strings.TrimPrefix(u.Host, "www.")
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+		if len(out) >= 6 {
+			break
+		}
+	}
+	return out
+}
+
+// shortReason reduces a transport error to one product-safe clause. The raw
+// error stays on the result for logs; it never becomes something the owner
+// reads, and it never gives the model plumbing to relay.
+func shortReason(err error) string {
+	if err == nil {
+		return "unknown reason"
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "timeout"), strings.Contains(msg, "deadline"):
+		return "it timed out"
+	case strings.Contains(msg, "no such host"), strings.Contains(msg, "dns"):
+		return "the site couldn't be found"
+	case strings.Contains(msg, "connection refused"), strings.Contains(msg, "connect:"):
+		return "the site refused the connection"
+	default:
+		return "the request failed"
 	}
 }
 
@@ -402,7 +454,7 @@ func (t *WebFetchTool) Timeout() time.Duration { return 45 * time.Second }
 func (t *WebFetchTool) RetryPolicy() (int, time.Duration) { return 1, 500 * time.Millisecond }
 
 func (t *WebFetchTool) Description() string {
-	return "Fetch one exact URL and return its readable text. Only for URLs you already have."
+	return "Fetch one exact URL and return its readable text. This is how Ghost reads a page — use it rather than a shell command. Only for URLs you already have."
 }
 
 func (t *WebFetchTool) Parameters() map[string]interface{} {
@@ -482,36 +534,32 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return ErrorResult(fmt.Sprintf("request failed: %v", err))
+		return ErrorResult(fmt.Sprintf("I couldn't read that page (%s).", shortReason(err))).WithError(err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return ErrorResult(fmt.Sprintf("failed to read response: %v", err))
+		return ErrorResult(fmt.Sprintf("I couldn't read that page (%s).", shortReason(err))).WithError(err)
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 
-	var text, extractor string
+	var text string
 
 	if strings.Contains(contentType, "application/json") {
 		var jsonData interface{}
 		if err := json.Unmarshal(body, &jsonData); err == nil {
 			formatted, _ := json.MarshalIndent(jsonData, "", "  ")
 			text = string(formatted)
-			extractor = "json"
 		} else {
 			text = string(body)
-			extractor = "raw"
 		}
 	} else if strings.Contains(contentType, "text/html") || len(body) > 0 &&
 		(strings.HasPrefix(string(body), "<!DOCTYPE") || strings.HasPrefix(strings.ToLower(string(body)), "<html")) {
 		text = t.extractText(string(body))
-		extractor = "text"
 	} else {
 		text = string(body)
-		extractor = "raw"
 	}
 
 	truncated := len(text) > maxChars
@@ -535,25 +583,31 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 		}
 	}
 
-	result := map[string]interface{}{
-		"url":       urlStr,
-		"status":    resp.StatusCode,
-		"extractor": extractor,
-		"truncated": truncated,
-		"length":    len(text),
-		"text":      text,
+	// The model gets the content, not the plumbing: no byte counts, no
+	// extractor names, no cache paths. The single exception is truncation,
+	// because not knowing a page was cut short is how a summary quietly
+	// becomes wrong.
+	forLLM := text
+	if truncated {
+		forLLM = text + "\n\n[the page was longer than shown; more of it is available with a larger maxChars]"
 	}
+	host := parsedURL.Host
+	if strings.HasPrefix(host, "www.") {
+		host = strings.TrimPrefix(host, "www.")
+	}
+	access := SourceAccessFullText
+	if truncated {
+		access = SourceAccessPartial
+	}
+	res := NewToolResult(forLLM)
+	// ForUser is deliberately empty: a fetched page is evidence for the
+	// model's answer, never a message a channel should deliver verbatim. The
+	// structured facts below are what the runtime and activity read.
+	res.Evidence = DescribeSources(nil, "Read "+host, []string{host}, access)
 	if fullTextPath != "" {
-		result["full_text_path"] = fullTextPath
-		result["footer"] = fmt.Sprintf("Full text saved to: %s. Use read_file with offset to read omitted content.", fullTextPath)
+		res.Evidence["full_text_path"] = fullTextPath
 	}
-
-	resultJSON, _ := json.MarshalIndent(result, "", "  ")
-
-	return &ToolResult{
-		ForLLM:  fmt.Sprintf("Fetched %d bytes from %s (extractor: %s, truncated: %v)", len(text), urlStr, extractor, truncated),
-		ForUser: string(resultJSON),
-	}
+	return res
 }
 
 func (t *WebFetchTool) extractText(htmlContent string) string {

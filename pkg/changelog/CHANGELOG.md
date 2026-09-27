@@ -3,6 +3,33 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.58] - 2026-09-26
+
+- **Ghost stopped explaining its own plumbing.** Asking what was happening
+  somewhere no longer ends with a note about which pages loaded. The answer
+  leads, sources are named where they belong, and the retrieval mechanics stay
+  where they belong — inside Ghost.
+- **It only mentions a limitation when it changes the answer.** If you asked
+  for a specific publication and Ghost couldn't read it, it says so. If sources
+  disagree, it says that. If what it has is thin, it says "early reports
+  indicate" and moves on. A page that wouldn't parse while other outlets
+  confirm the same facts is Ghost's business, not yours.
+- **No more "Caveat:" blocks.** The guidance that used to tell Ghost to flag
+  thin sourcing and pair it with an offer has been replaced with the rule
+  itself: be honest, attribute naturally, and don't narrate how you got
+  anything.
+- **Answers end when they end.** The automatic "Want me to…?" after an
+  information answer is gone; it survives only when something actually failed
+  and a retry is a real next step.
+- **Activity shows provenance, not apologies.** Entries read like "Searched the
+  web: …" with the sources listed, instead of commentary on what Ghost could
+  not reach.
+- Reading a page goes through the page reader, not a shell command, so a
+  routine lookup no longer turns into an approval prompt.
+- Internally, Ghost still records everything about the shape of its evidence —
+  what was read, how, and what stood behind it — for audit, activity and
+  evaluation. It just no longer says it all out loud.
+
 ## [0.24.56] - 2026-09-26
 
 - **Ghost stopped doing work it did not need.** A local memory lookup cost

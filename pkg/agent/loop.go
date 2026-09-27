@@ -52,6 +52,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/proactive"
+	"github.com/ianclemence/ghost/pkg/product"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/rag"
 	"github.com/ianclemence/ghost/pkg/routines"
@@ -207,7 +208,11 @@ type processOptions struct {
 	SessionKey string // Session identifier for history/context
 	// TurnStartedAt is when the user-facing turn began, used for total-turn
 	// and time-to-first-byte measurement (not for any decision).
-	TurnStartedAt   time.Time
+	TurnStartedAt time.Time
+	// ToolFailed reports whether any tool in this turn failed. The closing
+	// courtesy-offer trim reads it: an offer to retry after a failure is
+	// material and must survive.
+	ToolFailed      *atomic.Bool
 	Channel         string // Target channel for tool execution
 	ChatID          string // Target chat ID for tool execution
 	ToolProfile     tools.ToolProfile
@@ -1520,8 +1525,20 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	// filter over what survives. The order matters: filtering first ate
 	// the label's "[" (a model emits it as its own chunk) and leaked the
 	// body as a bare date fragment (stamp_stream.go).
+	// toolFailed mirrors whether anything the turn tried actually failed. The
+	// closing-offer trim reads it at the end of the stream: an offer to retry
+	// after a failure is material and must survive.
+	var toolFailed atomic.Bool
+	var flushStream func()
 	if onChunk != nil {
-		onChunk = stampFilterStream(onChunk)
+		var emit func(string)
+		emit, flushStream = stampFilterStream(onChunk, toolFailed.Load)
+		onChunk = emit
+		defer func() {
+			if flushStream != nil {
+				flushStream()
+			}
+		}()
 	}
 	// Ensure request ID exists for tracing
 	if msg.Metadata == nil {
@@ -1946,6 +1963,7 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 		ToolProfile:     profile,
 		IsCronTriggered: isCronTriggered,
 		UserMessage:     msg.Content,
+		ToolFailed:      &toolFailed,
 		DefaultResponse: "Hmm — that came back empty. Could you say it another way?",
 		EnableSummary:   true,
 		SendResponse:    false,
@@ -2763,6 +2781,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// stored reply never carries the typo.
 	finalContent = repairTimeSpacing(finalContent)
 
+	// The stream already dropped a courtesy offer before the owner saw it;
+	// drop it here too so history and the transcript agree.
+	toolFailed := opts.ToolFailed != nil && opts.ToolFailed.Load()
+	finalContent = product.TrimClosingOffer(finalContent, toolFailed)
+
 	// 6. Save final assistant message to session (only if it's a real response, not a tool result turn or slash command)
 	// We don't save iterations that were just tool calls here because runLLMIteration
 	// already handles AddFullMessage for tool turns.
@@ -3253,6 +3276,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				}
 			} else if al.governance != nil {
 				al.governance.ToolRan(opts.RequestID, opts.SessionKey, tc.Name, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError, toolResult.Obs)
+				if toolResult != nil && toolResult.IsError && opts.ToolFailed != nil {
+					opts.ToolFailed.Store(true)
+				}
 			}
 
 			// Send ForUser content to user immediately if not Silent

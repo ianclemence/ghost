@@ -1,6 +1,9 @@
 package agent
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The label must die at the stream: a reply starting with it emits only
 // its content, whether the label arrives in one chunk or split across
@@ -85,7 +88,11 @@ func TestStampStreamFlushesOnDivergence(t *testing.T) {
 // transcript as a bare date fragment (observed on v0.24.46).
 func TestStampFilterStreamGateBeforeFilter(t *testing.T) {
 	var got []string
-	sink := stampFilterStream(func(s string) { got = append(got, s) })
+	sink := func(text string) {
+		emit, flush := stampFilterStream(func(s string) { got = append(got, s) }, nil)
+		emit(text)
+		flush()
+	}
 
 	// Split label: "[" is held by the gate, not eaten by the filter;
 	// the body completes it and only its content reaches the sink.
@@ -97,7 +104,11 @@ func TestStampFilterStreamGateBeforeFilter(t *testing.T) {
 
 	// A whole label in one chunk strips the same way.
 	got = nil
-	sink = stampFilterStream(func(s string) { got = append(got, s) })
+	sink = func(text string) {
+		emit, flush := stampFilterStream(func(s string) { got = append(got, s) }, nil)
+		emit(text)
+		flush()
+	}
 	sink("[2026-09-26 10:04] Hello")
 	if len(got) != 1 || got[0] != "Hello" {
 		t.Fatalf("single-chunk label: got %q, want [Hello]", got)
@@ -105,7 +116,11 @@ func TestStampFilterStreamGateBeforeFilter(t *testing.T) {
 
 	// Dump suppression still applies, before the gate and after it.
 	got = nil
-	sink = stampFilterStream(func(s string) { got = append(got, s) })
+	sink = func(text string) {
+		emit, flush := stampFilterStream(func(s string) { got = append(got, s) }, nil)
+		emit(text)
+		flush()
+	}
 	sink("tool_call: read_file")
 	sink("[Reading file...]")
 	if len(got) != 0 {
@@ -120,7 +135,11 @@ func TestStampFilterStreamGateBeforeFilter(t *testing.T) {
 	// Whitespace must not settle the gate (it used to be filtered
 	// before ever reaching it): a label arriving after it still strips.
 	got = nil
-	sink = stampFilterStream(func(s string) { got = append(got, s) })
+	sink = func(text string) {
+		emit, flush := stampFilterStream(func(s string) { got = append(got, s) }, nil)
+		emit(text)
+		flush()
+	}
 	sink(" ")
 	sink("[2026-09-26 15:59] Set")
 	if len(got) != 1 || got[0] != "Set" {
@@ -129,7 +148,11 @@ func TestStampFilterStreamGateBeforeFilter(t *testing.T) {
 
 	// Normal text passes untouched.
 	got = nil
-	sink = stampFilterStream(func(s string) { got = append(got, s) })
+	sink = func(text string) {
+		emit, flush := stampFilterStream(func(s string) { got = append(got, s) }, nil)
+		emit(text)
+		flush()
+	}
 	sink("Here is the forecast.")
 	if len(got) != 1 || got[0] != "Here is the forecast." {
 		t.Fatalf("normal text: got %q", got)
@@ -146,5 +169,45 @@ func TestStampStreamSettledPassesEverything(t *testing.T) {
 	out, ok := s.feed("[2026-09-25 15:59] quoted")
 	if !ok || out != "[2026-09-25 15:59] quoted" {
 		t.Fatalf("settled stream: got (%q, %v), want pass-through", out, ok)
+	}
+}
+
+// A courtesy offer must not reach the owner, and a material offer after a
+// failure must. The hold must also be bounded: a long reply streams as it
+// arrives, it is not buffered to the end.
+func TestStreamDropsClosingOfferUnlessSomethingFailed(t *testing.T) {
+	var got strings.Builder
+	emit, flush := stampFilterStream(func(s string) { got.WriteString(s) }, nil)
+	emit("Flooding leads the news today (Bangkok Post).\n\nSources: Bangkok Post, AP.\n\n")
+	emit("Want me to pull the full article?")
+	flush()
+	if strings.Contains(got.String(), "Want me to") {
+		t.Fatalf("a courtesy offer reached the owner: %q", got.String())
+	}
+	if !strings.Contains(got.String(), "Sources: Bangkok Post, AP.") {
+		t.Fatalf("the attribution was lost: %q", got.String())
+	}
+
+	// After a failed action the same shape is material and stays.
+	var got2 strings.Builder
+	failed := true
+	emit2, flush2 := stampFilterStream(func(s string) { got2.WriteString(s) }, func() bool { return failed })
+	emit2("I couldn't reschedule it. Want me to try again?")
+	flush2()
+	if !strings.Contains(got2.String(), "Want me to try again?") {
+		t.Fatalf("a material retry offer was removed: %q", got2.String())
+	}
+
+	// The hold is bounded: text older than the window has already streamed.
+	var got3 strings.Builder
+	emit3, flush3 := stampFilterStream(func(s string) { got3.WriteString(s) }, nil)
+	long := strings.Repeat("Flooding continues across the city. ", 20) // ~700 chars
+	emit3(long)
+	if got3.Len() == 0 {
+		t.Fatal("a long reply must stream as it arrives, not buffer to the end")
+	}
+	flush3()
+	if !strings.Contains(got3.String(), "Flooding continues") {
+		t.Fatalf("body lost: %q", got3.String())
 	}
 }

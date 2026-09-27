@@ -3,8 +3,14 @@ package agent
 import (
 	"strings"
 
+	"github.com/ianclemence/ghost/pkg/product"
 	"github.com/ianclemence/ghost/pkg/utils"
 )
+
+// closingOfferHoldMax bounds the trailing text held back while the runtime
+// decides whether a reply is about to end with a courtesy offer. Small enough
+// to be imperceptible, large enough to cover a closing sentence.
+const closingOfferHoldMax = 240
 
 // stampStream holds the leading bytes of one streamed reply until it can
 // prove they are (or are not) the model imitating the internal history
@@ -20,6 +26,15 @@ import (
 type stampStream struct {
 	buf     []byte
 	settled bool // label resolved (or proven absent): pass everything through
+
+	// tail holds back the end of the reply until the stream finishes, so a
+	// courtesy offer can be dropped before the owner ever sees it. The prompt
+	// already forbids ending with an engagement question; a small model does it
+	// anyway, and streaming is an output boundary — once it is on screen, the
+	// model's politeness has already cost the owner a paragraph.
+	tail       []byte
+	holdTail   bool
+	toolFailed func() bool
 }
 
 // feed returns the bytes safe to emit now. ok=false means "hold" — the
@@ -47,6 +62,38 @@ func (s *stampStream) feed(chunk string) (out string, ok bool) {
 	return candidate, true
 }
 
+// hold releases text into the tail buffer and returns whatever is now safe to
+// emit (everything older than the held window).
+func (s *stampStream) hold(text string) string {
+	if !s.holdTail || text == "" {
+		return text
+	}
+	s.tail = append(s.tail, text...)
+	if len(s.tail) <= closingOfferHoldMax {
+		return ""
+	}
+	cut := len(s.tail) - closingOfferHoldMax
+	// Never split a rune.
+	for cut < len(s.tail) && (s.tail[cut]&0xC0) == 0x80 {
+		cut++
+	}
+	out := string(s.tail[:cut])
+	s.tail = s.tail[cut:]
+	return out
+}
+
+// flush emits the held tail, with a courtesy offer removed. It is called once
+// the turn has finished producing text.
+func (s *stampStream) flush() string {
+	if !s.holdTail || len(s.tail) == 0 {
+		return ""
+	}
+	held := string(s.tail)
+	s.tail = nil
+	failed := s.toolFailed != nil && s.toolFailed()
+	return product.TrimClosingOffer(held, failed)
+}
+
 // couldStartHistoryLabel reports whether text is (or could still grow
 // into) the internal history date label — the one "["-shape that must
 // reach the stamp gate instead of the dump filter.
@@ -69,9 +116,9 @@ func couldStartHistoryLabel(s string) bool {
 // only ever saw the body ("2026-09-2610:04] …"), could not match a
 // label without "[", and the invisible bookkeeping became a visible
 // date fragment on the live transcript.
-func stampFilterStream(inner func(string)) func(string) {
-	ss := &stampStream{}
-	return func(s string) {
+func stampFilterStream(inner func(string), toolFailed func() bool) (emit func(string), flush func()) {
+	ss := &stampStream{holdTail: true, toolFailed: toolFailed}
+	emit = func(s string) {
 		trimmed := strings.TrimSpace(s)
 		// Internal dumps are suppressed before the gate, exactly as
 		// before, so a dump chunk can never settle the gate's decision
@@ -87,6 +134,14 @@ func stampFilterStream(inner func(string)) func(string) {
 		if shouldFilterAssistantChunk(out) {
 			return
 		}
-		inner(out)
+		if safe := ss.hold(out); safe != "" {
+			inner(safe)
+		}
 	}
+	flush = func() {
+		if tail := ss.flush(); tail != "" {
+			inner(tail)
+		}
+	}
+	return emit, flush
 }

@@ -237,3 +237,35 @@ func TestWhyForConsequentialActions(t *testing.T) {
 		})
 	}
 }
+
+// Activity reports what Ghost did, with provenance. It is not a place for
+// defensive prose: a source list is useful, a caveat is noise.
+func TestActivityCarriesSourcesWithoutCaveatProse(t *testing.T) {
+	ev := &cevents.Event{
+		ID: "e1", Type: cevents.ToolCompleted, Timestamp: time.Now(),
+		Visibility: product.VisUserMessage, Status: "success",
+		Payload: map[string]interface{}{
+			"tool":     "web_search",
+			"summary":  "Searched the web: \"latest news in bangkok\"",
+			"sources":  []interface{}{"nationthailand.com", "apnews.com"},
+			"status":   "success",
+			"provider": "brave",
+		},
+	}
+	chip, ok := Project(ev)
+	if !ok {
+		t.Fatal("a completed web search must project to a chip")
+	}
+	if !strings.Contains(chip.Summary, "Searched the web") {
+		t.Errorf("summary = %q, want the action", chip.Summary)
+	}
+	if !strings.Contains(chip.Detail, "nationthailand.com") || !strings.Contains(chip.Detail, "apnews.com") {
+		t.Errorf("detail must carry the sources, got %q", chip.Detail)
+	}
+	joined := strings.ToLower(chip.Title + " " + chip.Summary + " " + chip.Detail)
+	for _, banned := range []string{"caveat", "note that", "please note", "for transparency", "unavailable"} {
+		if strings.Contains(joined, banned) {
+			t.Errorf("activity must not carry defensive prose (%q): %q", banned, joined)
+		}
+	}
+}

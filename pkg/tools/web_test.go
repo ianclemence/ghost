@@ -31,14 +31,29 @@ func TestWebTool_WebFetch_Success(t *testing.T) {
 		t.Errorf("Expected success, got IsError=true: %s", result.ForLLM)
 	}
 
-	// ForUser should contain the fetched content
-	if !strings.Contains(result.ForUser, "Test Page") {
-		t.Errorf("Expected ForUser to contain 'Test Page', got: %s", result.ForUser)
+	// The model gets the content itself.
+	if !strings.Contains(result.ForLLM, "Test Page") || !strings.Contains(result.ForLLM, "Content here") {
+		t.Errorf("Expected ForLLM to carry the readable page text, got: %s", result.ForLLM)
 	}
-
-	// ForLLM should contain summary
-	if !strings.Contains(result.ForLLM, "bytes") && !strings.Contains(result.ForLLM, "extractor") {
-		t.Errorf("Expected ForLLM to contain summary, got: %s", result.ForLLM)
+	// And not the plumbing: no byte counts, extractor names or cache paths —
+	// that is how a reply ends up explaining Ghost's retrieval instead of
+	// answering.
+	for _, plumbing := range []string{"bytes", "extractor:", "Fetched ", "full_text_path"} {
+		if strings.Contains(result.ForLLM, plumbing) {
+			t.Errorf("ForLLM must not carry retrieval plumbing (%q): %s", plumbing, result.ForLLM)
+		}
+	}
+	// A fetched page is evidence for the model's answer, never a message a
+	// channel delivers verbatim.
+	if result.ForUser != "" {
+		t.Errorf("a fetched page must not be published as a user message, got: %s", result.ForUser)
+	}
+	// The facts about the source are recorded structurally instead.
+	if got := EvidenceSourceAccess(result); got != SourceAccessFullText {
+		t.Errorf("source access = %q, want %q", got, SourceAccessFullText)
+	}
+	if got := EvidenceSummary(result); !strings.Contains(got, "Read ") {
+		t.Errorf("evidence summary = %q, want a record of what was read", got)
 	}
 }
 
@@ -67,9 +82,13 @@ func TestWebTool_WebFetch_JSON(t *testing.T) {
 		t.Errorf("Expected success, got IsError=true: %s", result.ForLLM)
 	}
 
-	// ForUser should contain formatted JSON
-	if !strings.Contains(result.ForUser, "key") && !strings.Contains(result.ForUser, "value") {
-		t.Errorf("Expected ForUser to contain JSON data, got: %s", result.ForUser)
+	// JSON bodies are content too: the model reads them, the user does not
+	// receive them as a message.
+	if !strings.Contains(result.ForLLM, "key") || !strings.Contains(result.ForLLM, "value") {
+		t.Errorf("Expected ForLLM to contain the JSON body, got: %s", result.ForLLM)
+	}
+	if result.ForUser != "" {
+		t.Errorf("a fetched body must not be published as a user message, got: %s", result.ForUser)
 	}
 }
 
@@ -158,18 +177,18 @@ func TestWebTool_WebFetch_Truncation(t *testing.T) {
 		t.Errorf("Expected success, got IsError=true: %s", result.ForLLM)
 	}
 
-	// ForUser should contain truncated content (not the full 20000 chars)
-	resultMap := make(map[string]interface{})
-	json.Unmarshal([]byte(result.ForUser), &resultMap)
-	if text, ok := resultMap["text"].(string); ok {
-		if len(text) > 1100 { // Allow some margin
-			t.Errorf("Expected content to be truncated to ~1000 chars, got: %d", len(text))
-		}
+	// The content handed to the model is bounded...
+	if len([]rune(result.ForLLM)) > 1300 {
+		t.Errorf("Expected the page to be truncated to ~1000 chars, got: %d", len([]rune(result.ForLLM)))
 	}
-
-	// Should be marked as truncated
-	if truncated, ok := resultMap["truncated"].(bool); !ok || !truncated {
-		t.Errorf("Expected 'truncated' to be true in result")
+	// ...and the model is told it was cut short, because a summary of a
+	// truncated page that does not know it was truncated is silently wrong.
+	if !strings.Contains(result.ForLLM, "longer than shown") {
+		t.Errorf("a truncated page must say so in the model-facing text: %s", result.ForLLM)
+	}
+	// The truncation is recorded structurally for audit and activity.
+	if got := EvidenceSourceAccess(result); got != SourceAccessPartial {
+		t.Errorf("source access = %q, want %q", got, SourceAccessPartial)
 	}
 }
 
@@ -219,14 +238,12 @@ func TestWebTool_WebFetch_HTMLExtraction(t *testing.T) {
 		t.Errorf("Expected success, got IsError=true: %s", result.ForLLM)
 	}
 
-	// ForUser should contain extracted text (without script/style tags)
-	if !strings.Contains(result.ForUser, "Title") && !strings.Contains(result.ForUser, "Content") {
-		t.Errorf("Expected ForUser to contain extracted text, got: %s", result.ForUser)
+	// Extracted text reaches the model, without script/style noise.
+	if !strings.Contains(result.ForLLM, "Title") || !strings.Contains(result.ForLLM, "Content") {
+		t.Errorf("Expected ForLLM to contain extracted text, got: %s", result.ForLLM)
 	}
-
-	// Should NOT contain script or style tags
-	if strings.Contains(result.ForUser, "<script>") || strings.Contains(result.ForUser, "<style>") {
-		t.Errorf("Expected script/style tags to be removed, got: %s", result.ForUser)
+	if strings.Contains(result.ForLLM, "<script>") || strings.Contains(result.ForLLM, "<style>") {
+		t.Errorf("Expected script/style tags to be removed, got: %s", result.ForLLM)
 	}
 }
 

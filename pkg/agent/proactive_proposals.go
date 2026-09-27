@@ -864,7 +864,7 @@ func (al *AgentLoop) executeLocalPlan(ctx context.Context, idea ideas.Idea, chan
 		// Verify by read-back, not by the write returning.
 		check, err := al.schedSvc.GetItem(id)
 		if err != nil || check == nil || check.NextRunAt == nil || check.State != scheduled.StateScheduled {
-			return outcomeFailed, "I scheduled it but couldn't confirm it, so treat it as unconfirmed.", nil, fmt.Errorf("verification failed")
+			return outcomeFailed, "I scheduled it but couldn't confirm it.", nil, fmt.Errorf("verification failed")
 		}
 		return outcomeDispatched, fmt.Sprintf("Done — %q will go off within the minute.", itemTitle(check)),
 			map[string]interface{}{"type": "state_transition", "entity": id, "requested": "scheduled", "observed": string(check.State)}, nil

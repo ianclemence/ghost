@@ -183,6 +183,18 @@ func (g *Governance) ToolRan(requestID, sessionKey, tool, trajectoryID string, f
 		}
 		payload["retryable"] = obs.Retryable
 		payload["reconstructable"] = obs.Reconstructable
+		// What the tool actually read, in its own words, plus the sources
+		// behind it. Structured and bounded: activity can attribute an answer
+		// without the reply having to narrate its retrieval.
+		if obs.Summary != "" {
+			payload["summary"] = obs.Summary
+		}
+		if len(obs.Sources) > 0 {
+			payload["sources"] = obs.Sources
+		}
+		if obs.SourceAccess != "" {
+			payload["source_access"] = obs.SourceAccess
+		}
 	}
 	// ToolStarted is transient by taxonomy (never persisted); completed
 	// and failed are durable outcomes.

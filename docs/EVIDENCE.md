@@ -95,6 +95,41 @@ Absence or invalidity of evidence produces a non-success outcome — typically
 `failed`, `waiting`, `temporarily unavailable`, or `offline` — depending on the
 actual runtime semantics. It is never silently collapsed into success.
 
+## Evidence strength and user-facing language
+
+Evidence has a shape, and Ghost records that shape separately from the prose it
+writes. What was read, whether a page was read through or only listed, which
+publications stand behind an answer, and whether a source the owner asked for
+could be read are all facts the runtime keeps — for audit, activity, replay and
+evaluation.
+
+Whether those facts *reach the owner* is a separate decision, and it is
+deterministic:
+
+| Level | When | What the owner sees |
+|---|---|---|
+| `none` | the limitation is true about the retrieval and does not change the answer | nothing. A page that would not parse while other sources corroborate the same facts stays internal. |
+| `contextual` | the evidence is thin enough that the wording should be more careful | attribution and calibrated phrasing ("early reports indicate"), not a note |
+| `material` | the owner asked for a source that could not be read; sources disagree; an action ran but its outcome is unconfirmed | the limitation stated plainly, in the sentence it matters to |
+| `blocking` | the action failed, or no usable evidence exists | the honest statement of what could not be done, and why |
+
+The policy lives in `pkg/product` (the package that owns Ghost's
+LLM-independent user-facing language) and the prompt states the same rule
+verbatim, so the model's prose and the runtime's decision cannot drift apart.
+
+Attribution is not a caveat. Naming a source, quoting its figure, and saying
+when sources disagree is how an answer carries its own confidence; a separate
+disclaimer block explaining the retrieval adds nothing the attribution did not
+already convey. Internal mechanics — byte counts, extractors, cache paths,
+whether a page was a listing — are never part of an answer, and tools record
+them as structured facts rather than as prose the model can relay.
+
+A closing question is not a caveat either, but it has the same cost: it spends
+the owner's attention on Ghost's willingness to continue rather than on what
+was asked. The runtime drops a purely conversational closing offer at the
+output boundary unless a tool failed, in which case "want me to retry?" is
+information.
+
 ## Relationship to canonical events
 
 ```

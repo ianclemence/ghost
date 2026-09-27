@@ -285,6 +285,12 @@ func expandDetail(e *cevents.Event) string {
 	if prov, _ := e.Payload["provider"].(string); prov != "" {
 		parts = append(parts, utils.Prettify(prov))
 	}
+	// Sources are provenance, not a limitation: they belong on the activity
+	// entry so the owner can see where something came from, without the reply
+	// having to explain how it was retrieved.
+	if srcs := payloadStrings(e.Payload["sources"]); len(srcs) > 0 {
+		parts = append(parts, "sources: "+strings.Join(srcs, ", "))
+	}
 	if cap, _ := e.Payload["capability"].(string); cap != "" && !strings.Contains(strings.ToLower(strings.Join(parts, "")), strings.ToLower(cap)) {
 		parts = append(parts, utils.Prettify(cap))
 	}
@@ -295,6 +301,24 @@ func expandDetail(e *cevents.Event) string {
 		return ""
 	}
 	return strings.Join(parts, " · ")
+}
+
+// payloadStrings reads a bounded string list out of an event payload, which
+// may have been through JSON ([]interface{}) or not ([]string).
+func payloadStrings(v interface{}) []string {
+	switch tv := v.(type) {
+	case []string:
+		return tv
+	case []interface{}:
+		out := make([]string, 0, len(tv))
+		for _, item := range tv {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimSpace(s))
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 func humanizeIntegration(name string) string {
