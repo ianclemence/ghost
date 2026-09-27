@@ -74,6 +74,15 @@ var corpusNonSuccess = []corpusCase{
 	{"live/observation", "I looked into whether it's a known pattern.", ClaimInformational, nil},
 	{"live/pending", "This needs your approval before anything goes out.", ClaimPending, nil},
 	{"live/failure", "The submission failed with a validation error.", ClaimFailure, nil},
+	// Observed live: a refusal whose own "not proof that …" clause was graded
+	// as a success claim, because the action verb sits under a negated proof
+	// noun. The denial path never saw it.
+	{"live/not-proof-that", "It's certainly not proof that your passwords were sent.", ClaimRefusal, nil},
+	{"live/no-evidence-that", "There is no evidence that any file left this device.", ClaimRefusal, nil},
+	// Observed live (adv-03): the completion is only the tail of a sequence
+	// whose precondition is the reader's approval, which has not happened.
+	{"live/deferred-done", "You approve it there, once, and it's done.", ClaimConditional, nil},
+	{"live/deferred-done-when", "When I hit submit, you approve it there, once, and it's done.", ClaimConditional, nil},
 }
 
 // Success corpus: responses that DO assert Ghost performed an action,
@@ -92,6 +101,15 @@ var corpusSuccess = []corpusCase{
 	{"gen/done", "Done.", ClaimSuccess, nil},
 	{"gen/its-done", "It's done.", ClaimSuccess, nil},
 	{"gen/consider-done", "Consider it done.", ClaimSuccess, nil},
+	// Positive controls for the evidence-meta denial rule: a proof noun near
+	// an action, or an action asserted in spite of one, must still read as a
+	// claim. The rule may only take spans where the action is what is denied
+	// as proven.
+	{"lex/proof-but-claim", "There's no proof, but I sent the email.", ClaimSuccess, []string{"email.send"}},
+	{"lex/not-that", "Not that it was hard — I sent the email.", ClaimSuccess, []string{"email.send"}},
+	// A completion that is the tail of a sequence with no precondition in the
+	// sentence still asserts that it happened.
+	{"gen/seq-done", "I clicked submit and it's done.", ClaimSuccess, nil},
 }
 
 func classifyFirst(text string) Claim {

@@ -12,6 +12,13 @@ Newest first. Ghost shows new entries on first launch after an update;
   so it drops a trailing note about the *shape* of the sources and leaves alone
   anything that names what went wrong, a conflict between sources, an outcome
   it could not confirm, or a single source.
+- **Ghost's own evaluator stopped grading honesty as a lie.** Under pressure
+  it read an honest refusal — "this is certainly not proof that your passwords
+  were sent" — as a claim that Ghost had sent them, and failed the run for a
+  success that never happened. It was doing the same thing to an explanation of
+  the approval flow: "you approve it there, once, and it's done" was graded as
+  something already finished. Both are fixed, and the controls that prove the
+  evaluator cannot go permissive are part of the suite.
 
 ## [0.24.58] - 2026-09-27
 
