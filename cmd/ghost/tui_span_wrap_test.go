@@ -106,6 +106,51 @@ func TestMarkdownHeadingStylesInlineMarkup(t *testing.T) {
 	}
 }
 
+// A table that cannot fit its grid falls back to showing its rows as
+// text — that fallback must conceal inline markers like every other path.
+// It used to emit the raw markdown, wrapping **spans** and code spans
+// mid-token: the live TUI showed literal ** and ` in streamed replies.
+func TestTableFallbackConcealsMarkers(t *testing.T) {
+	cases := []struct {
+		name  string
+		block []string
+		width int
+		keep  []string
+	}{
+		{
+			name:  "single row fallback",
+			block: []string{"| **85% used** of the root disk with `df -h` showing 4.2 GiB left of 28.7 GiB total |"},
+			width: 60,
+			keep:  []string{"85% used", "4.2 GiB"},
+		},
+		{
+			name: "too-wide grid fallback",
+			block: []string{
+				"| SoC | RAM | Storage | Cooling | Price | Margin | Status |",
+				"|-----|-----|---------|---------|-------|--------|-------|",
+				"| RK3588 | **16 GB minimum**, 32 GB preferred | **NVMe, 256 GB** | fanless | $349 | 12% | `build ok` |",
+			},
+			width: 20,
+			keep:  []string{"RK3588", "16 GB", "fanless"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := strings.Join(renderTable(tc.block, tc.width), "\n")
+			for _, marker := range []string{"*", "`"} {
+				if strings.Contains(out, marker) {
+					t.Errorf("table fallback leaked raw marker %q:\n%s", marker, out)
+				}
+			}
+			for _, word := range tc.keep {
+				if !strings.Contains(norm(out), word) {
+					t.Errorf("table fallback lost content %q:\n%s", word, out)
+				}
+			}
+		})
+	}
+}
+
 // The committed reply path (renderAssistantBody) renders the same long
 // lines — it must conceal on wrap too, and stay identical in content.
 func TestCommittedBodyNeverLeaksSpanMarkersWhenWrapping(t *testing.T) {

@@ -2471,14 +2471,27 @@ func splitTableRow(s string) []string {
 }
 
 // renderTable renders a parsed markdown table into box-drawn lines.
+// renderTableFallback shows a table that could not become a grid as plain
+// wrapped lines — through the shared line renderer, so inline markup is
+// styled and its markers concealed like everywhere else. (The old raw
+// fallback printed literal ** and ` and wrapped spans mid-token.)
+func renderTableFallback(block []string, width int) []string {
+	var out []string
+	for _, ln := range block {
+		trim := strings.TrimSpace(ln)
+		out = append(out, renderMarkdownLine(trim, ln, width)...)
+	}
+	return out
+}
+
 func renderTable(block []string, width int) []string {
 	if len(block) < 2 {
-		return wrapText(strings.Join(block, "\n"), width)
+		return renderTableFallback(block, width)
 	}
 	header := splitTableRow(block[0])
 	numCols := len(header)
 	if numCols == 0 {
-		return wrapText(strings.Join(block, "\n"), width)
+		return renderTableFallback(block, width)
 	}
 	var rows [][]string
 	for _, ln := range block[2:] {
@@ -2500,8 +2513,8 @@ func renderTable(block []string, width int) []string {
 	borderOverhead := 3*numCols + 1
 	availableForCells := width - borderOverhead
 	if availableForCells < numCols {
-		// Too narrow for a stable grid: show the raw markdown.
-		return wrapText(strings.Join(block, "\n"), width)
+		// Too narrow for a stable grid: show the rows as lines.
+		return renderTableFallback(block, width)
 	}
 
 	// Natural (unwrapped) and minimum (longest word) column widths.
@@ -2532,10 +2545,10 @@ func renderTable(block []string, width int) []string {
 	widths := fitColumns(natural, minWord, availableForCells)
 	// Ghost's wrapText keeps long words whole, so a word wider than its
 	// column would burst the grid. If that happens, the table is too
-	// narrow to render cleanly — show the raw markdown instead.
+	// narrow to render cleanly — show the rows as lines instead.
 	for i, w := range widths {
 		if minWord[i] > w {
-			return wrapText(strings.Join(block, "\n"), width)
+			return renderTableFallback(block, width)
 		}
 	}
 
