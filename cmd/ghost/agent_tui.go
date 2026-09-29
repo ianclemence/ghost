@@ -247,7 +247,14 @@ func newAgentTUI(loop agentRuntime, session string) *agentTUI {
 	ta.Placeholder = ""
 	ta.Prompt = ""
 	ta.CharLimit = 0
-	ta.SetHeight(composerMinRows) // grows to fit content; cap applied in layout()
+	// The textarea manages its own height: it grows with the wrapped
+	// content and, past MaxHeight, scrolls to keep the caret visible.
+	// Hand-rolling this (measure rows -> SetHeight) drifted the internal
+	// viewport, so a two-row message showed only its last row. MaxHeight is
+	// tightened to the per-terminal cap in layout().
+	ta.DynamicHeight = true
+	ta.MinHeight = composerMinRows
+	ta.MaxHeight = composerMaxRows
 	ta.ShowLineNumbers = false
 	// Transparent composer: the cursor is the only affordance. The stock
 	// textarea paints the cursor line with a background and tints placeholder
@@ -1732,11 +1739,16 @@ func (m *agentTUI) welcomeScrollback() tea.Cmd {
 	return tea.Println(m.welcomeCard())
 }
 
-// renderTranscript is kept as the callers' "content changed" signal. With
-// the scrollback model it simply flushes newly-committed entries; the live
-// View() picks up streaming/composer changes on the next frame.
+// renderTranscript is the callers' "content changed" signal. It is a no-op
+// that returns nil on purpose: the Update wrapper is the SOLE flusher of
+// committed entries into the scrollback (see Update). Earlier this flushed
+// directly, but most callers invoke it as a statement and discarded the
+// tea.Println it returned — which consumed the pending entries and dropped
+// the print, so slash-command output (e.g. /help) never appeared. Leaving
+// the flush to the wrapper means every committed entry is printed exactly
+// once, no matter which handler produced it.
 func (m *agentTUI) renderTranscript() tea.Cmd {
-	return m.flushScrollback()
+	return nil
 }
 
 // dockPreviewRows is the fixed height of the live preview area directly
@@ -2992,16 +3004,11 @@ func renderSpan(s, delim string, fn func(...string) string) string {
 // here: it is printed once into the terminal's scrollback (see
 // flushScrollback), so there is no app-owned viewport to size.
 func (m *agentTUI) layout() {
+	// Cap the visible rows to the per-terminal maximum, then let the
+	// textarea recompute its own height and viewport from the wrapped
+	// content (SetWidth triggers the recalculation under DynamicHeight).
+	m.input.MaxHeight = m.composerCapRows()
 	m.input.SetWidth(m.inputWidth())
-	m.input.SetHeight(m.composerRows())
-	// SetHeight changes the visible window but does not reposition the
-	// textarea's internal viewport, and repositioning only works once the
-	// wrapped content has been rebuilt against the new height. Render once
-	// (to rebuild the viewport content), then nudge so repositionView runs
-	// against the new geometry — the caret stays in view (the whole text
-	// while it fits, the last rows once past the cap).
-	_ = m.input.View()
-	m.input, _ = m.input.Update(tea.KeyPressMsg{})
 }
 
 // The composer is responsive, exactly like a real terminal editor: it opens
@@ -3028,72 +3035,10 @@ func (m *agentTUI) composerCapRows() int {
 	return n
 }
 
-// composerContentRows is the number of visual rows the current input needs
-// when wrapped to the composer width. It must match how the textarea
-// actually wraps — word wrap, but hard-breaking a word longer than the
-// width (a long URL or a long token still grows the box). Measuring with
-// wrapText alone undercounts such input and the composer fails to grow.
-func (m *agentTUI) composerContentRows() int {
-	w := m.inputWidth()
-	v := m.input.Value()
-	if v == "" {
-		return composerMinRows
-	}
-	n := 0
-	for _, line := range strings.Split(v, "\n") {
-		n += visualRowCount(line, w)
-	}
-	if n < composerMinRows {
-		n = composerMinRows
-	}
-	return n
-}
-
-// visualRowCount is how many terminal rows one logical line occupies at
-// width w, word-wrapping and hard-breaking words longer than w — the
-// wrapping the composer's textarea applies.
-func visualRowCount(s string, w int) int {
-	if w < 1 {
-		w = 1
-	}
-	if s == "" {
-		return 1
-	}
-	rows := 1
-	col := 0
-	for _, word := range strings.Fields(s) {
-		ww := lipgloss.Width(word)
-		if col == 0 {
-			// A word wider than the row hard-breaks across rows.
-			for ww > w {
-				rows++
-				ww -= w
-			}
-			col = ww
-			continue
-		}
-		if col+1+ww > w {
-			rows++
-			col = 0
-			for ww > w {
-				rows++
-				ww -= w
-			}
-			col = ww
-			continue
-		}
-		col += 1 + ww
-	}
-	return rows
-}
-
-// composerRows is the visible text height: content clamped to the cap.
+// composerRows is the composer's visible text height, as the textarea
+// itself sized it (content up to the cap, then scrolling).
 func (m *agentTUI) composerRows() int {
-	n := m.composerContentRows()
-	if cap := m.composerCapRows(); n > cap {
-		n = cap
-	}
-	return n
+	return m.input.Height()
 }
 
 // estimatedInputHeight measures the composer exactly as promptBox paints
@@ -3128,15 +3073,7 @@ func (m *agentTUI) paletteHeight() int {
 	if !m.paletteVisible() {
 		return 0
 	}
-	items, _, more := m.paletteWindow()
-	n := len(items)
-	if n == 0 {
-		n = 1 // "No matching commands" row
-	}
-	if more {
-		n++ // the `(n/total)` scroll footer
-	}
-	return n // bare rows, no border, no side bar
+	return m.paletteFixedRows()
 }
 
 // paletteOffset returns the first visible row so the selection stays in a
@@ -3526,27 +3463,40 @@ func (m *agentTUI) paletteView() string {
 	if w < 20 {
 		w = 20
 	}
-	var b strings.Builder
+	var rows []string
 	put := func(row string) {
 		pad := w - lipgloss.Width(row)
 		if pad < 0 {
 			pad = 0
 		}
-		b.WriteString(row + strings.Repeat(" ", pad))
-		b.WriteString("\n")
+		rows = append(rows, row+strings.Repeat(" ", pad))
 	}
 	if len(items) == 0 {
 		put(stylePaletteNoMatch.Render("  No matching commands"))
-		return strings.TrimRight(b.String(), "\n")
+	} else {
+		for i, it := range items {
+			selected := off+i == m.paletteSel
+			put(m.paletteRow(it, selected, w))
+		}
+		if total := len(m.paletteMatches()); total > paletteMaxRows {
+			put(stylePaletteScroll.Render(fmt.Sprintf("  (%d/%d)", m.paletteSel+1, total)))
+		}
 	}
-	for i, it := range items {
-		selected := off+i == m.paletteSel
-		put(m.paletteRow(it, selected, w))
+	// Constant height while open: pad with blank full-width rows so that
+	// narrowing the matches (e.g. "/" -> "/help") never shrinks the dock.
+	// A shrinking dock left stale rows on screen — the "duplicate input"
+	// the owner saw. paletteHeight() reports this same fixed height.
+	for len(rows) < m.paletteFixedRows() {
+		rows = append(rows, strings.Repeat(" ", w))
 	}
-	if total := len(m.paletteMatches()); total > paletteMaxRows {
-		put(stylePaletteScroll.Render(fmt.Sprintf("  (%d/%d)", m.paletteSel+1, total)))
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return strings.Join(rows, "\n")
+}
+
+// paletteFixedRows is the constant on-screen height of the open palette:
+// the visible window plus the scroll footer. Constant so the dock never
+// changes height while the owner types a command.
+func (m *agentTUI) paletteFixedRows() int {
+	return paletteMaxRows + 1
 }
 
 // paletteRow lays out one row: `→ `/`  ` prefix; when a description fits

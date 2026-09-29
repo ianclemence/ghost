@@ -763,9 +763,13 @@ func TestTUIComposerScrollsToCaretPastCap(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.width, m.height = 80, 40
-	first, last := "FIRSTSENTENCE", "LASTWORD"
-	m.input.SetValue(first + " " + strings.Repeat("more words here ", 80) + last)
-	m.layout()
+	// Type like a user: rune by rune through the real key path, so the
+	// textarea tracks the caret and scrolls to it (SetValue does not move
+	// the visual caret, so it can't stand in for typing here).
+	last := "LASTWORD"
+	for _, r := range "FIRST " + strings.Repeat("more words here ", 40) + last {
+		m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
 	view := m.input.View()
 	if !strings.Contains(view, last) {
 		t.Errorf("past the cap the caret's text must be visible\n%s", view)
@@ -1526,8 +1530,9 @@ func TestTUIThreadResetsFlushCursor(t *testing.T) {
 		t.Fatal("expected initial entry to flush")
 	}
 	m.runCommand("/thread")
+	m.flushScrollback() // the Update wrapper is the sole flusher
 	if len(m.entries) != 0 {
-		t.Fatalf("/thread notice must flush immediately, pending=%d", len(m.entries))
+		t.Fatalf("/thread notice must flush, pending=%d", len(m.entries))
 	}
 	m.append(entry{kind: entryUser, text: "thread question", at: time.Now()})
 	if content := m.pendingScrollback(); !strings.Contains(content, "thread question") {
@@ -1702,7 +1707,7 @@ func TestTUINoChunksStillCommitsFullReply(t *testing.T) {
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.width, m.height = 80, 24
 	m.working = true
-	m.updateInner(turnDoneMsg{text: "Instant answer", err: nil})
+	m.Update(turnDoneMsg{text: "Instant answer", err: nil})
 	if !strings.Contains(m.lastFlush, "Instant answer") {
 		t.Errorf("chunkless reply must commit whole, lastFlush=%q", m.lastFlush)
 	}
@@ -2156,7 +2161,7 @@ func TestTUIBackgroundDelivery(t *testing.T) {
 		OK:             true, Result: "found it", Elapsed: 5 * time.Second,
 	}}
 	m := readyForTest(newAgentTUI(f, "cli:test"))
-	m.updateInner(bgTickMsg{})
+	m.Update(bgTickMsg{})
 	if !hasNotice(m, "research finished") {
 		t.Fatalf("delivery must append the status line: entries=%+v flush=%q", m.entries, m.lastFlush)
 	}
@@ -2164,7 +2169,7 @@ func TestTUIBackgroundDelivery(t *testing.T) {
 		t.Fatalf("delivery must carry the findings: flush=%q", m.lastFlush)
 	}
 	flushed := m.lastFlush
-	m.updateInner(bgTickMsg{})
+	m.Update(bgTickMsg{})
 	if m.lastFlush != flushed {
 		t.Fatal("second poll must not re-deliver")
 	}
@@ -2178,7 +2183,7 @@ func TestTUIBackgroundDeliveryFailure(t *testing.T) {
 		OK:             false, Result: "boom", Elapsed: 5 * time.Second,
 	}}
 	m := readyForTest(newAgentTUI(f, "cli:test"))
-	m.updateInner(bgTickMsg{})
+	m.Update(bgTickMsg{})
 	if !hasNotice(m, "research failed") {
 		t.Fatalf("failure must say failed: entries=%+v flush=%q", m.entries, m.lastFlush)
 	}
@@ -2200,5 +2205,51 @@ func TestTUINamesFallbackThatAnswered(t *testing.T) {
 	}
 	if got := m.viaFor(nil); got != "" {
 		t.Fatalf("unknown stays unknown: %q", got)
+	}
+}
+
+// A slash command's output must reach the scrollback exactly once. The bug:
+// runCommand called renderTranscript() as a statement, which flushed and
+// returned a tea.Println that was discarded — consuming the entry so the
+// Update wrapper's flush found nothing, and /help (and every command) showed
+// no output. The wrapper is now the sole flusher.
+func TestTUISlashCommandOutputReachesScrollback(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	m.lastFlush = ""
+	// Drive the real key path: type "/help" then Enter.
+	for _, r := range "/help" {
+		m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !strings.Contains(m.lastFlush, "Commands") {
+		t.Fatalf("/help output must reach the scrollback, got %q", m.lastFlush)
+	}
+	if len(m.entries) != 0 {
+		t.Fatalf("no entry may be left unflushed after a command, pending=%d", len(m.entries))
+	}
+}
+
+// Typing a slash command must not leave a stale, shrinking palette on
+// screen (the "duplicate input" the owner reported): the open palette holds
+// a constant height so narrowing matches never shrinks the dock.
+func TestTUIPaletteHoldsConstantHeight(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	for _, r := range "/" {
+		m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	wide := m.paletteHeight() // many matches
+	for _, r := range "help" {
+		m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	narrow := m.paletteHeight() // one match
+	if wide != narrow {
+		t.Fatalf("palette height must stay constant while typing: %d then %d", wide, narrow)
+	}
+	if lines := len(strings.Split(m.paletteView(), "\n")); lines != m.paletteHeight() {
+		t.Fatalf("paletteView lines %d must equal paletteHeight %d", lines, m.paletteHeight())
 	}
 }
