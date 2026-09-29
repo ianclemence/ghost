@@ -37,6 +37,14 @@ type Status struct {
 	OpenProposals int `json:"open_proposals,omitempty"`
 	// OpenCommitments counts promises the owner made that Ghost is holding.
 	OpenCommitments int `json:"open_commitments,omitempty"`
+	// ActiveWatches counts watches of external state (flights,
+	// appointments, deliveries) Ghost is polling right now. Watched
+	// checks-per-day is reported through BudgetMax's sibling below.
+	ActiveWatches int `json:"active_watches,omitempty"`
+	// WatchChecksUsed / WatchChecksMax are today's background watch
+	// probes (max_watch_checks_per_day). Max is 0 only when unwired.
+	WatchChecksUsed int `json:"watch_checks_used,omitempty"`
+	WatchChecksMax  int `json:"watch_checks_max,omitempty"`
 }
 
 // Active reports whether Ghost is doing anything proactive the owner should

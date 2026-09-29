@@ -191,7 +191,7 @@ func TestSinceHonorsConversationFilter(t *testing.T) {
 	}
 }
 
-// Skill lifecycle events are durable and user-visible so the owner has an
+// TestSkillLifecycleVisibility pins that skill lifecycle events are durable and user-visible so the owner has an
 // audit trail; publishers may rely on the default.
 func TestSkillLifecycleVisibility(t *testing.T) {
 	for _, typ := range []Type{SkillInstalled, SkillEnabled, SkillDisabled, SkillUpdated, SkillRemoved} {
@@ -200,6 +200,29 @@ func TestSkillLifecycleVisibility(t *testing.T) {
 		}
 		if !typ.DefaultVisibility().UserVisible() {
 			t.Fatalf("%s must default to user-visible", typ)
+		}
+	}
+}
+
+// Watch lifecycle: what the owner must see (a watch started, a change that
+// reached them, a cancellation) versus poll/diff internals that only feed
+// diagnostics. Every watch type is durable — the lifecycle is the audit
+// trail of an interruption.
+func TestWatchLifecycleVisibility(t *testing.T) {
+	for _, typ := range []Type{WatchCreated, WatchNotified, WatchCancelled} {
+		if !typ.Durable() {
+			t.Fatalf("%s must be durable", typ)
+		}
+		if !typ.DefaultVisibility().UserVisible() {
+			t.Fatalf("%s must default to user-visible", typ)
+		}
+	}
+	for _, typ := range []Type{WatchChanged, WatchSuppressed, WatchFailed, WatchExpired} {
+		if !typ.Durable() {
+			t.Fatalf("%s must be durable", typ)
+		}
+		if typ.DefaultVisibility().UserVisible() {
+			t.Fatalf("%s must default to internal trace", typ)
 		}
 	}
 }

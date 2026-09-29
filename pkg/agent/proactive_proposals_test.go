@@ -32,6 +32,14 @@ func newProactiveLoop(t *testing.T) (*AgentLoop, *scheduled.Service, *cevents.St
 
 func newProactiveLoopWith(t *testing.T, ws string, provider providers.LLMProvider) (*AgentLoop, *scheduled.Service, *cevents.Stream) {
 	t.Helper()
+	// Pin quiet hours off before the loop reads preferences: the default
+	// window (23:00-08:00 local) would hold every non-urgent delivery in
+	// tests run late in the evening, making assertions wall-clock dependent.
+	// Tests that exercise quiet hours write their own window afterwards.
+	if err := os.WriteFile(filepath.Join(ws, "PROACTIVE_PREFERENCES.md"),
+		[]byte("# test\n`quiet_hours: 00:00 - 00:00`\n"), 0600); err != nil {
+		t.Fatalf("write default prefs: %v", err)
+	}
 	al := newTestAgentLoopWithProvider(t, ws, provider)
 
 	broker, err := permissions.Open(al.DB(), permissions.ModeAsk, 0)

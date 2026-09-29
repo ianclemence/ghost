@@ -21,7 +21,8 @@ package golden
 // SuiteVersion identifies the expected semantics of the conversations.
 // Bump when a case's expected behavior intentionally changes so a
 // regression can be distinguished from a spec change.
-const SuiteVersion = 1
+// v2: added the watches category (25 proactive-watch conversations).
+const SuiteVersion = 2
 
 // Category groups golden conversations.
 type Category string
@@ -43,6 +44,7 @@ const (
 	CatCrossUser        Category = "cross_user"
 	CatCompanion        Category = "companion"
 	CatGoals            Category = "goals"
+	CatWatches          Category = "watches"
 )
 
 // SupportedCategories lists categories the suite covers.
@@ -50,7 +52,7 @@ var SupportedCategories = []Category{
 	CatConversation, CatMemory, CatCorrection, CatAmbiguity, CatPermission,
 	CatDenial, CatRoutines, CatOffline, CatToolFailure, CatProvider,
 	CatContradiction, CatTruthfulness, CatContextIsolation, CatCrossUser,
-	CatCompanion, CatGoals,
+	CatCompanion, CatGoals, CatWatches,
 }
 
 // Fixture selects a simulated provider/tool for a conversation so no
@@ -76,6 +78,10 @@ const (
 	// observation, the candidate, the bound permission request and the
 	// canonical lifecycle events are all real runtime state.
 	FixtureProactiveOverdue Fixture = "proactive:overdue-reminder"
+	// FixtureWatchSource connects the local sandbox watch source (a file
+	// per watched thing) and pins the fetch path to it, so watch cases see
+	// a deterministic world with no external provider and no network.
+	FixtureWatchSource Fixture = "watch:source"
 )
 
 // MemorySeed pre-seeds a memory in the person's fresh store.
@@ -112,6 +118,27 @@ type CommitmentExpect struct {
 type Match struct {
 	Predicate string
 	Value     string
+}
+
+// WatchExpect asserts one durable watch read back from the run's
+// watches/watches.json. Everything here is runtime state — the ledger the
+// store wrote, never a claim from the conversation.
+type WatchExpect struct {
+	// Kind is the exact watch kind ("flight", "appointment", …); "" matches
+	// any kind.
+	Kind string
+	// Entity is a case-insensitive substring of the watched entity; "" matches
+	// any entity.
+	Entity string
+	// Status, when set, is the exact lifecycle status the watch must be in.
+	Status string
+	// NotifiedFields are state fields that must each appear in at least one
+	// delivered notice fingerprint (watch:<id>:<field>:<from>→<to>).
+	NotifiedFields []string
+	// MinProbes / MaxProbes bound the successful probes recorded as
+	// evidence. Zero means "no assertion".
+	MinProbes int
+	MaxProbes int
 }
 
 // Expect holds the semantic/behavioral assertions for a conversation.
@@ -163,6 +190,20 @@ type Expect struct {
 	NoProactiveKinds   []string
 	ProactiveLiveCount int
 	ProactiveCountSet  bool
+	// Watches: durable observations of external state that must exist after
+	// the run (kind/entity/status/fingerprints). WatchCount pins the total;
+	// NoWatches is the negative control (a guarded sentence must not become
+	// a watch). EventCounts pins exact canonical watch.* event counts;
+	// HeldNotices pins how many approved notices the outbox is holding;
+	// WatchNotifiedEntities pins which entities actually reached the owner.
+	Watches               []WatchExpect
+	WatchCount            int
+	WatchCountSet         bool
+	NoWatches             bool
+	EventCounts           map[string]int
+	HeldNotices           int
+	HeldNoticesSet        bool
+	WatchNotifiedEntities []string
 	// RequiredCanonicalEvents: each type must appear in the run's DB.
 	RequiredEvents []string
 	// ExpectedToolCalls: each tool must appear as a SUCCESSFUL governed
@@ -222,6 +263,16 @@ type Conversation struct {
 	SharedWorkspace bool
 	People          []Person
 	Expect          Expect
+	// Prefs, when set, is written to the workspace's
+	// PROACTIVE_PREFERENCES.md BEFORE the loop is constructed, so the
+	// noticer and the watch policy read this exact policy at startup
+	// (quiet hours, push budget, probe budget, master switch). Empty means
+	// product defaults — except watch fixtures, which default to no quiet
+	// hours so a case runs identically at any hour of the day.
+	Prefs string
+	// WatchScript runs deterministic background steps after the turns: the
+	// scripted half of "time passed, the world changed". See watchscript.go.
+	WatchScript []string
 	// Behavioral tags a conversation as a Behavioral Golden scenario. Nil
 	// for the original capability/security suite.
 	Behavioral *BehavioralMeta

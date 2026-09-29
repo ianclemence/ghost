@@ -6,7 +6,7 @@ package golden
 
 // Suite returns the canonical conversations in stable order.
 func Suite() []Conversation {
-	return []Conversation{
+	cs := []Conversation{
 		// ---------- A. Normal conversation ----------
 		{
 			ID: "conv-01", Category: CatConversation, Title: "First hello",
@@ -646,6 +646,7 @@ func Suite() []Conversation {
 			},
 		},
 	}
+	return append(cs, watchConversations()...)
 }
 
 // Counts reports the suite composition.

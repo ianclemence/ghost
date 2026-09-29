@@ -138,6 +138,19 @@ const (
 	CommitmentCompleted Type = "commitment.completed"
 	CommitmentFailed    Type = "commitment.failed"
 	CommitmentBlocked   Type = "commitment.blocked"
+	// Watches: durable observations of external mutable state. The
+	// lifecycle is durable because it is the record of what Ghost decided
+	// to watch (and why — Provenance cites the owner's own words), what
+	// changed in the world, what reached the owner, and what was held
+	// back. "checked" stays a logger line: it would otherwise flood the
+	// warehouse (up to max_watch_checks_per_day rows per watch).
+	WatchCreated    Type = "watch.created"
+	WatchChanged    Type = "watch.changed"
+	WatchNotified   Type = "watch.notified"
+	WatchSuppressed Type = "watch.suppressed"
+	WatchFailed     Type = "watch.failed"
+	WatchExpired    Type = "watch.expired"
+	WatchCancelled  Type = "watch.cancelled"
 	// Effort / routing decisions (observability for why a turn was cheap or deep)
 	EffortSelected Type = "effort.selected"
 )
@@ -178,6 +191,7 @@ func (t Type) DefaultVisibility() product.Visibility {
 		ProactiveSnoozed, ProactiveExpired, ProactiveSuperseded,
 		ProactiveCompleted, ProactiveFailed,
 		CommitmentCreated, CommitmentCompleted, CommitmentFailed, CommitmentBlocked,
+		WatchCreated, WatchNotified, WatchCancelled,
 		OperationFailed:
 		return product.VisUserMessage
 	default:

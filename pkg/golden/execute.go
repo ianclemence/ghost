@@ -25,6 +25,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/schema"
 	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/watch"
 	_ "modernc.org/sqlite"
 )
 
@@ -299,6 +300,21 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 		if err := seedContextAndMemory(ws, p, sessionKey, r.Target); err != nil {
 			return failOut(TestHarness, "seed: "+err.Error())
 		}
+		// Case-specific proactive preferences must exist before the loop
+		// is constructed: the noticer reads budget/cooldown/quiet hours at
+		// NewAgentLoop time, so writing them later would be too late.
+		// Watch cases default to quiet hours OFF (the product default is
+		// 23:00–08:00) so a scripted delivery behaves identically at any
+		// hour the suite runs; an explicit case Prefs overrides entirely.
+		prefs := c.Prefs
+		if prefs == "" && c.Category == CatWatches {
+			prefs = watchDefaultPrefs
+		}
+		if prefs != "" {
+			if err := writeCasePrefs(ws, prefs); err != nil {
+				return failOut(TestHarness, "prefs: "+err.Error())
+			}
+		}
 
 		cfg, err := r.configFor(ws)
 		if err != nil {
@@ -368,6 +384,16 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 		// drains it synchronously so memory assertions observe the settled
 		// state rather than racing the background worker.
 		loop.FlushDeferred()
+		// Watch cases: the conversation created (or refused) watches; the
+		// script now plays the deterministic half of the lifecycle — due
+		// checks, changed state, injected failures, time passing — through
+		// the production poll path (never a model turn).
+		if len(c.WatchScript) > 0 {
+			if err := runWatchScript(loop, ws, c.WatchScript); err != nil {
+				cancel()
+				return failOut(TestHarness, "watch script: "+err.Error())
+			}
+		}
 		// Proactive cases: run the deterministic opportunity pipeline after
 		// the conversation, exactly as the heartbeat does in production — and
 		// run it twice, because repeated evaluation must converge on the same
@@ -558,6 +584,14 @@ func seedEntry(st *personalcontext.Store, m MemorySeed) error {
 
 // wireGovernance attaches broker/events/contexts and applies the case
 // fixture (simulated provider tool behind the real tool boundary).
+// writeCasePrefs writes a case's PROACTIVE_PREFERENCES.md verbatim (the
+// markdown, backticked key: value format proactive.Load parses). It runs
+// before NewAgentLoop because the noticer snapshots budget and quiet hours
+// at construction; the watch policy re-reads the file on every check.
+func writeCasePrefs(ws, body string) error {
+	return os.WriteFile(filepath.Join(ws, "PROACTIVE_PREFERENCES.md"), []byte(body), 0644)
+}
+
 func wireGovernance(loop *agent.AgentLoop, ws string, fx Fixture) (*agent.Governance, *sql.DB, error) {
 	db := loop.DB()
 	broker, err := permissions.Open(db, permissions.ModeAsk, 0)
@@ -669,6 +703,21 @@ func applyFixture(loop *agent.AgentLoop, fx Fixture) error {
 			NextRunAt:  &due,
 			MaxRetries: 3,
 		})
+	case FixtureWatchSource:
+		// The sandbox directory IS the external watch source: the
+		// directory's presence gates availability, its files are the
+		// polled state. Installing the override also pins the probe so a
+		// real aviation key in the environment can never make a golden
+		// watch poll nondeterministic.
+		ws := loop.Config().WorkspacePath()
+		if err := os.MkdirAll(filepath.Join(ws, "state", "watch-source"), 0755); err != nil {
+			return err
+		}
+		loop.SetWatchProbeOverride(watch.NewSandbox(ws))
+		// Notices need an external last-active session (fail-safe), the
+		// same setup the other proactive fixtures apply.
+		_ = loop.RecordLastActiveSession("web", "chat")
+		return nil
 	case FixtureWeatherOK, FixtureWeatherFail, FixtureWeatherBad:
 		var body string
 		switch fx {
@@ -735,6 +784,10 @@ var runtimeAssertionNames = map[string]bool{
 	"no_unauthorized_exec":      true,
 	"cross_user_isolation":      true,
 	"privacy_context_isolation": true,
+	"no_watches":                true, "watch_count": true,
+	"watches": true, "watch_notified": true,
+	"watch_event":  true,
+	"held_notices": true,
 }
 
 func classifyFailure(c Conversation, asserts []AssertionResult, runs []personRun) Classification {

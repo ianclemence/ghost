@@ -40,6 +40,11 @@ type Policy struct {
 	PreferredChannel string
 	// ProposalTTLHours bounds how long a surfaced proposal stays answerable.
 	ProposalTTLHours int
+	// MaxWatchChecksPerDay (max_watch_checks_per_day) is the hard ceiling
+	// on background watch probes across every watch in one day. It is the
+	// outer bound on polling work no matter how many watches exist or how
+	// close their events are.
+	MaxWatchChecksPerDay int
 }
 
 func defaults() Policy {
@@ -55,6 +60,8 @@ func defaults() Policy {
 		Categories:       nil,
 		PreferredChannel: "",
 		ProposalTTLHours: 24,
+
+		MaxWatchChecksPerDay: 40,
 	}
 }
 
@@ -70,6 +77,7 @@ var (
 	catsRE    = regexp.MustCompile("(?m)`categories:\\s*([a-z_,\\s]+)`")
 	channelRE = regexp.MustCompile("(?m)`preferred_channel:\\s*([a-z_]+)`")
 	propTTLRE = regexp.MustCompile("(?m)`proposal_ttl_hours:\\s*(\\d+)`")
+	watchRRE  = regexp.MustCompile("(?m)`max_watch_checks_per_day:\\s*(\\d+)`")
 )
 
 func toMin(h, m string) (int, bool) {
@@ -138,6 +146,11 @@ func Load(workspace string) Policy {
 	if m := propTTLRE.FindStringSubmatch(s); m != nil {
 		if n, err := strconv.Atoi(m[1]); err == nil && n >= 1 && n <= 168 {
 			p.ProposalTTLHours = n
+		}
+	}
+	if m := watchRRE.FindStringSubmatch(s); m != nil {
+		if n, err := strconv.Atoi(m[1]); err == nil && n >= 1 && n <= 500 {
+			p.MaxWatchChecksPerDay = n
 		}
 	}
 	return p

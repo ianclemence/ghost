@@ -16,6 +16,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/proactive"
 	"github.com/ianclemence/ghost/pkg/routines"
+	"github.com/ianclemence/ghost/pkg/watch"
 )
 
 // Deterministic state answers.
@@ -98,6 +99,12 @@ var (
 		`what (?:promises|commitments)|my (?:promises|commitments)|` +
 		`what did i promise|anything i (?:said i'?d|promised)|what am i (?:supposed|meant) to do` +
 		`)\b`)
+
+	watchQueryRE = regexp.MustCompile(`(?i)\b(` +
+		`what am i (?:watching|tracking)|what (?:are|is) (?:you|ghost) watching|` +
+		`my watches|list watches|show (?:me )?my watches|any watches|` +
+		`which flights? (?:are|am) (?:you|ghost) watching|am i watching` +
+		`)\b`)
 )
 
 // tryStateQueryTurn answers questions whose answer is already authoritative
@@ -128,6 +135,8 @@ func (al *AgentLoop) tryStateQueryTurn(msg, session string) (string, bool) {
 		return al.renderProactivePolicy()
 	case commitmentQueryRE.MatchString(lower):
 		return al.renderCommitments()
+	case watchQueryRE.MatchString(lower):
+		return al.renderWatches()
 	}
 	return "", false
 }
@@ -384,6 +393,33 @@ func (al *AgentLoop) renderCommitments() (string, bool) {
 		fmt.Fprintf(&b, "- %s%s\n", c.Text, when)
 	}
 	return strings.TrimRight(b.String(), "\n"), true
+}
+
+// renderWatches reports the watchlist from the durable store. Every line
+// is projected from stored state (status, next check, delivered changes) —
+// this renderer never remembers what it thinks is being watched.
+func (al *AgentLoop) renderWatches() (string, bool) {
+	if al.workspace == "" {
+		return "", false
+	}
+	store, err := al.watchStoreFor()
+	if err != nil {
+		return "", false
+	}
+	list, err := store.List()
+	if err != nil {
+		return "", false
+	}
+	// Show what is being watched plus anything that stopped with a problem
+	// the owner should know about; settled watches (cancelled, expired)
+	// are history and would only clutter the answer.
+	var shown []watch.Watch
+	for _, w := range list {
+		if w.Live() || w.Status == watch.StatusFailed {
+			shown = append(shown, w)
+		}
+	}
+	return watch.RenderList(shown, time.Now()), true
 }
 
 func clockLabel(mins int) string {

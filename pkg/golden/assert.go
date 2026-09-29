@@ -1264,6 +1264,107 @@ func (r *Runner) evaluate(c Conversation, runs []personRun) (bool, []AssertionRe
 		}
 	}
 
+	// Watches: ledger state, canonical event counts, notification
+	// evidence, and held notices — all read from runtime state, never
+	// from narration.
+	if exp.NoWatches || exp.WatchCountSet || len(exp.Watches) > 0 ||
+		len(exp.EventCounts) > 0 || exp.HeldNoticesSet || len(exp.WatchNotifiedEntities) > 0 {
+		ws := wsOf(runs)
+		rows, werr := readWatchRows(ws)
+		matched := make([]bool, len(rows))
+		if exp.NoWatches {
+			if werr == nil && len(rows) == 0 {
+				pass("no_watches")
+			} else {
+				fail("no_watches", fmt.Sprintf("watch ledger rows=%d (%v)", len(rows), werr), false)
+			}
+		}
+		if exp.WatchCountSet {
+			if werr == nil && len(rows) == exp.WatchCount {
+				pass("watch_count")
+			} else {
+				fail("watch_count", fmt.Sprintf("watches=%d want %d (%v)", len(rows), exp.WatchCount, werr), false)
+			}
+		}
+		for i, spec := range exp.Watches {
+			// Order-insensitive: specs describe which watches must exist,
+			// not the file layout the store happened to write. Each spec
+			// consumes one distinct row so two specs can never match the
+			// same watch.
+			okW := false
+			detail := "missing"
+			for j, r := range rows {
+				if matched[j] {
+					continue
+				}
+				if ok, why := matchWatch(r, spec); ok {
+					matched[j] = true
+					okW = true
+					break
+				} else if detail == "missing" {
+					detail = why
+				}
+			}
+			if okW {
+				pass(fmt.Sprintf("watches[%d]", i))
+			} else {
+				fail(fmt.Sprintf("watches[%d]", i), detail, false)
+			}
+		}
+		for _, ent := range exp.WatchNotifiedEntities {
+			found := false
+			for _, r := range rows {
+				if !strings.EqualFold(r.Entity, ent) || len(r.Fingerprints) == 0 {
+					continue
+				}
+				found = true
+			}
+			if found {
+				pass("watch_notified[" + ent + "]")
+			} else {
+				fail("watch_notified["+ent+"]", "no notified fingerprint for entity "+ent, false)
+			}
+		}
+		if len(exp.EventCounts) > 0 {
+			okE := true
+			var gotE []string
+			for _, typ := range []string{"watch.created", "watch.changed", "watch.notified",
+				"watch.suppressed", "watch.expired", "watch.failed", "watch.cancelled"} {
+				want, ok := exp.EventCounts[typ]
+				if !ok {
+					continue
+				}
+				got := ev.EventTypes[typ]
+				if got != want {
+					okE = false
+					gotE = append(gotE, fmt.Sprintf("%s=%d want %d", typ, got, want))
+				}
+			}
+			for typ := range exp.EventCounts {
+				switch typ {
+				case "watch.created", "watch.changed", "watch.notified", "watch.suppressed",
+					"watch.expired", "watch.failed", "watch.cancelled":
+				default:
+					okE = false
+					gotE = append(gotE, "unknown event type "+typ)
+				}
+			}
+			if okE {
+				pass("watch_event[counts]")
+			} else {
+				fail("watch_event[counts]", strings.Join(gotE, "; "), false)
+			}
+		}
+		if exp.HeldNoticesSet {
+			got := countHeldNotices(ws)
+			if got == exp.HeldNotices {
+				pass("held_notices")
+			} else {
+				fail("held_notices", fmt.Sprintf("held=%d want %d", got, exp.HeldNotices), false)
+			}
+		}
+	}
+
 	// Expected tool calls must be proven by successful governed executions
 	// (tool.completed events), not by the model's narration.
 	if len(exp.ExpectedToolCalls) > 0 {

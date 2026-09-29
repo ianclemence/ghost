@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/providers"
@@ -246,19 +246,18 @@ func newAgentTUI(loop agentRuntime, session string) *agentTUI {
 	// textarea paints the cursor line with a background and tints placeholder
 	// grammar; both are stripped here so Ghost text sits on the terminal
 	// untouched, per the "only the cursor, transparent background" rule.
-	focused, blurred := textarea.DefaultStyles()
-	for _, s := range []*textarea.Style{&focused, &blurred} {
-		s.Base = lipgloss.NewStyle()
-		s.CursorLine = lipgloss.NewStyle()
-		s.CursorLineNumber = lipgloss.NewStyle()
-		s.EndOfBuffer = lipgloss.NewStyle()
-		s.LineNumber = lipgloss.NewStyle()
-		s.Placeholder = lipgloss.NewStyle().Foreground(cFaint)
-		s.Prompt = lipgloss.NewStyle()
-		s.Text = lipgloss.NewStyle().Foreground(cInk)
+	// (bubbles v2 styles arrive via SetStyles, not per-state fields.)
+	transparent := textarea.StyleState{
+		Base:             lipgloss.NewStyle(),
+		CursorLine:       lipgloss.NewStyle(),
+		CursorLineNumber: lipgloss.NewStyle(),
+		EndOfBuffer:      lipgloss.NewStyle(),
+		LineNumber:       lipgloss.NewStyle(),
+		Placeholder:      lipgloss.NewStyle().Foreground(cFaint),
+		Prompt:           lipgloss.NewStyle(),
+		Text:             lipgloss.NewStyle().Foreground(cInk),
 	}
-	ta.FocusedStyle = focused
-	ta.BlurredStyle = blurred
+	ta.SetStyles(textarea.Styles{Focused: transparent, Blurred: transparent})
 	ta.Focus()
 
 	return &agentTUI{
@@ -425,7 +424,7 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	}
 
@@ -491,7 +490,7 @@ func renderClarifyPrompt(question string, choices []string, width int) string {
 	return b.String()
 }
 
-func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *agentTUI) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// A modal dialog owns the keyboard until picked or dismissed.
 	if m.modal != nil {
 		return m.handleModalKey(msg)
@@ -530,8 +529,8 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	switch msg.Type {
-	case tea.KeyCtrlC:
+	switch msg.String() {
+	case "ctrl+c":
 		if strings.TrimSpace(m.input.Value()) != "" {
 			m.input.Reset()
 			return m, nil
@@ -539,7 +538,7 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 
-	case tea.KeyEsc:
+	case "esc":
 		// Escape is contextual cancel at every level: palette first, then
 		// the running
 		// turn. Idle with an empty editor, it closes the TUI — the
@@ -570,28 +569,28 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 
-	case tea.KeyCtrlL:
+	case "ctrl+l":
 		// Ctrl+L opens the picker; Ctrl+P cycles the usable models.
 		m.openModelModal()
 		return m, nil
 
-	case tea.KeyCtrlP:
+	case "ctrl+p":
 		m.cycleModel()
 		return m, nil
 
-	case tea.KeyCtrlO:
+	case "ctrl+o":
 		m.showTools = !m.showTools
 		m.renderTranscript()
 		return m, nil
 
-	case tea.KeyTab:
+	case "tab":
 		if items := m.paletteMatches(); len(items) > 0 {
 			m.completePalette(palettePick(items, m.input.Value(), m.paletteSel))
 			return m, nil
 		}
 		return m, nil
 
-	case tea.KeyUp:
+	case "up":
 		if m.paletteVisible() {
 			// The select list wraps top↔bottom.
 			if n := len(m.paletteMatches()); n > 0 {
@@ -601,7 +600,7 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.recallHistory(-1)
 		return m, nil
-	case tea.KeyDown:
+	case "down":
 		if m.paletteVisible() {
 			if n := len(m.paletteMatches()); n > 0 {
 				m.paletteSel = (m.paletteSel + 1) % n
@@ -611,7 +610,7 @@ func (m *agentTUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.recallHistory(1)
 		return m, nil
 
-	case tea.KeyEnter:
+	case "enter":
 		// An in-flight clarification owns Enter: the answer goes to the
 		// blocked turn (like the mobile card), never a new turn.
 		if m.clarify != nil {
@@ -888,7 +887,7 @@ func (m *agentTUI) completePalette(it paletteItem) {
 	if !strings.HasSuffix(m.input.Value(), " ") {
 		m.input.SetValue(m.input.Value() + " ")
 	}
-	m.input.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	m.input.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
 	m.paletteSel = 0
 }
 
@@ -985,7 +984,7 @@ func (m *agentTUI) modelModal(opts []providers.ModelOption) *selectModal {
 	}
 }
 
-func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *agentTUI) handleModalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	n := len(m.modalMatches())
 	clamp := func() {
 		if m.modal.sel < 0 {
@@ -998,14 +997,14 @@ func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.modal.sel = 0
 		}
 	}
-	switch msg.Type {
-	case tea.KeyEsc:
+	switch msg.String() {
+	case "esc":
 		m.modal = nil
 		m.renderTranscript()
 		return m, nil
-	case tea.KeyTab:
+	case "tab":
 		return m, nil
-	case tea.KeyEnter:
+	case "enter":
 		items := m.modalMatches()
 		clamp()
 		if len(items) == 0 {
@@ -1026,64 +1025,46 @@ func (m *agentTUI) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.modal = nil
 		pick(target)
 		return m, nil
-	case tea.KeyUp:
+	case "up", "ctrl+p":
 		m.modal.sel--
 		clamp()
 		return m, nil
-	case tea.KeyDown:
+	case "down", "ctrl+n":
 		m.modal.sel++
 		clamp()
 		return m, nil
-	case tea.KeyPgUp:
+	case "pgup":
 		m.modal.sel -= 5
 		clamp()
 		return m, nil
-	case tea.KeyPgDown:
+	case "pgdown":
 		m.modal.sel += 5
 		clamp()
 		return m, nil
-	case tea.KeyHome:
+	case "home":
 		m.modal.sel = 0
 		return m, nil
-	case tea.KeyEnd:
+	case "end":
 		m.modal.sel = n - 1
 		clamp()
 		return m, nil
-	case tea.KeyBackspace:
+	case "backspace":
 		r := []rune(m.modal.filter)
 		if len(r) > 0 {
 			m.modal.filter = string(r[:len(r)-1])
 		}
 		clamp()
 		return m, nil
-	case tea.KeyRunes:
-		// ctrl+p / ctrl+n move; other runes filter.
-		if len(msg.Runes) == 1 {
-			switch msg.Runes[0] {
-			case 0x10: // ctrl+p
-				m.modal.sel--
-				clamp()
-				return m, nil
-			case 0x0e: // ctrl+n
-				m.modal.sel++
-				clamp()
-				return m, nil
-			}
+	default:
+		// Typing filters the list. Control keys carry no printable text
+		// in v2 (Text is empty), so they fall through harmlessly.
+		if msg.Text == "" {
+			return m, nil
 		}
-		m.modal.filter += string(msg.Runes)
+		m.modal.filter += msg.Text
 		clamp()
 		return m, nil
 	}
-	s := msg.String()
-	switch s {
-	case "ctrl+p":
-		m.modal.sel--
-		clamp()
-	case "ctrl+n":
-		m.modal.sel++
-		clamp()
-	}
-	return m, nil
 }
 
 // ─── inline selector (model picker) ──────────────────────────────────────
@@ -2342,13 +2323,29 @@ func renderAssistantBody(text string, width int) string {
 // inline styles: the outer role is re-applied after every inner reset, so
 // an inline span inside a styled line (a heading, say) never drops the
 // line's own style for the rest of the row.
+//
+// Bubble Tea v2's renderer styles rune-by-rune and emits `\x1b[m` resets,
+// and its Render treats input as plain text — feeding it bytes that already
+// contain escapes would style the escape bytes themselves. So the inner
+// string is tokenized first: SGR sequences pass through untouched, only
+// text runs are wrapped in the outer role.
+var ansiSGRRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
 func nestStyle(outer lipgloss.Style, inner string) string {
-	if !strings.Contains(inner, "\x1b[0m") {
+	if !strings.Contains(inner, "\x1b[") {
 		return outer.Render(inner)
 	}
 	var b strings.Builder
-	for _, part := range strings.Split(inner, "\x1b[0m") {
-		b.WriteString(outer.Render(part))
+	last := 0
+	for _, loc := range ansiSGRRe.FindAllStringIndex(inner, -1) {
+		if text := inner[last:loc[0]]; text != "" {
+			b.WriteString(outer.Render(text))
+		}
+		b.WriteString(inner[loc[0]:loc[1]])
+		last = loc[1]
+	}
+	if tail := inner[last:]; tail != "" {
+		b.WriteString(outer.Render(tail))
 	}
 	return b.String()
 }
@@ -2825,7 +2822,7 @@ func (m *agentTUI) layout() {
 	// against the new geometry — the caret stays in view (the whole text
 	// while it fits, the last rows once past the cap).
 	_ = m.input.View()
-	m.input, _ = m.input.Update(tea.KeyMsg{})
+	m.input, _ = m.input.Update(tea.KeyPressMsg{})
 }
 
 // The composer is responsive, exactly like a real terminal editor: it opens
@@ -2991,12 +2988,14 @@ func (m *agentTUI) paletteOffset(total, maxRows int) int {
 // turn commits. Bubbletea only repaints the lines the view occupies; a view
 // that shrinks in the same tick as tea.Println can clobber the just-printed
 // reply — which is why a response sometimes only appeared after reopening.
-func (m *agentTUI) View() string {
+func (m *agentTUI) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
 	if !m.ready {
-		return "starting Ghost…"
+		v := tea.NewView("starting Ghost…")
+		v.WindowTitle = "Ghost"
+		return v
 	}
 	var b strings.Builder
 	// The preview area is ALWAYS present and always dockPreviewRows tall,
@@ -3029,7 +3028,12 @@ func (m *agentTUI) View() string {
 		}
 		b.WriteString(ln)
 	}
-	return b.String()
+	// Bubble Tea v2 renders a declarative View: the dock content plus the
+	// terminal window title. Ghost keeps the main screen (no alt-screen, no
+	// mouse capture) so the transcript stays in the terminal's scrollback.
+	v := tea.NewView(b.String())
+	v.WindowTitle = "Ghost"
+	return v
 }
 
 // ─── footer ─────────────────────────────────────────────────────────────

@@ -88,6 +88,10 @@ func (al *AgentLoop) PollProactive() int {
 	// Deterministic and cheap (bounded queries, no model), and gated by the
 	// same noticer, so running it on every tick cannot spam.
 	delivered += al.EvaluateProposals(time.Now())
+	// Watches of external state: same tick, same gate. Each cycle is
+	// bounded (max 3 probes, 10s timeouts, daily budget) and never calls a
+	// model, so a heartbeat can carry it without contention.
+	delivered += al.PollWatches(time.Now())
 	return delivered
 }
 
@@ -181,6 +185,13 @@ func (al *AgentLoop) ProactiveStatus() proactive.Status {
 	if open, blocked := al.CommitmentCounts(); open+blocked > 0 {
 		st.OpenCommitments = open + blocked
 	}
+	// Watches: what Ghost is quietly polling, and how much of today's
+	// probe budget it has spent. Counts only — never a claim about state.
+	st.ActiveWatches = al.ActiveWatchCount()
+	if b := al.watchBudget(); b != nil {
+		st.WatchChecksUsed = b.Used(now)
+	}
+	st.WatchChecksMax = pol.MaxWatchChecksPerDay
 	return st
 }
 

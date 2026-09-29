@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/providers"
@@ -452,8 +452,23 @@ type simpleErr struct{ s string }
 
 func (e *simpleErr) Error() string { return e.s }
 
-func keyMsgFor(r rune) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+// stripANSI removes SGR escape sequences so content assertions read the
+// visible text. Bubble Tea v2's cell renderer styles rune-by-rune (v1
+// emitted single runs and stripped color entirely without a TTY), so raw
+// styled output no longer contains plain substrings — the terminal shows
+// identical cells either way.
+var ansiStripRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func stripANSI(s string) string { return ansiStripRe.ReplaceAllString(s, "") }
+
+func keyMsgFor(r rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: r, Text: string(r)}
+}
+
+// keyCodeFor builds a v2 key press for a non-printable key code
+// (enter, esc, tab, arrows, paging, home/end).
+func keyCodeFor(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: code}
 }
 
 // waitForTurns waits briefly for the async turn goroutine to record its turn.
@@ -524,7 +539,7 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.renderTranscript()
-	view := m.View()
+	view := m.View().Content
 	// No "prompt" title label above the box (the box is its own label).
 	if strings.Contains(view, " prompt\n") || strings.Contains(view, "\n prompt ") {
 		t.Errorf("view must not label the prompt box, got %q", view)
@@ -709,7 +724,7 @@ func TestTUIDockHeightStableAcrossTurn(t *testing.T) {
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.width, m.height = 80, 24
 	m.layout()
-	height := func() int { return len(strings.Split(m.View(), "\n")) }
+	height := func() int { return len(strings.Split(m.View().Content, "\n")) }
 	idle := height()
 
 	m.send("hello")
@@ -792,7 +807,7 @@ func TestTUITranscriptPrintsToScrollback(t *testing.T) {
 
 	// The live view must not contain the committed transcript.
 	m.renderTranscript()
-	view := m.View()
+	view := m.View().Content
 	if strings.Contains(view, "first question") || strings.Contains(view, "first answer") {
 		t.Errorf("committed entries must not be in the live view, got %q", view)
 	}
@@ -865,7 +880,7 @@ func TestTUIComposerIsPIRules(t *testing.T) {
 			t.Errorf("composer row %d must span the full width (80), got %d: %q", i, got, ln)
 		}
 	}
-	if !strings.HasPrefix(rows[0], "──") && strings.Trim(rows[0], "─") != "" {
+	if plain := stripANSI(rows[0]); !strings.HasPrefix(plain, "──") && strings.Trim(plain, "─") != "" {
 		t.Errorf("top rule must be all ─ when idle, got %q", rows[0])
 	}
 	if strings.Contains(box, "│") || strings.Contains(box, "┃") {
@@ -927,7 +942,7 @@ func TestTUIModelPickerIsInlineBelowBox(t *testing.T) {
 	}
 	m.layout()
 	m.renderTranscript()
-	view := m.View()
+	view := m.View().Content
 	viewRows := strings.Split(strings.TrimRight(view, "\n"), "\n")
 	box := strings.Split(m.promptBox(), "\n")
 	bottomRule := box[len(box)-1]
@@ -993,7 +1008,7 @@ func TestTUIEnterAcceptsPaletteCompletion(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/mod")
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m.handleKey(keyCodeFor(tea.KeyEnter))
 	if m.modal == nil {
 		t.Fatalf("enter on /mod should run the completed /model picker, modal=%v input=%q", m.modal, m.input.Value())
 	}
@@ -1007,7 +1022,7 @@ func TestTUITabCompletesPalette(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/mem")
-	m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	m.handleKey(keyCodeFor(tea.KeyTab))
 	if got := m.input.Value(); got != "/memory " {
 		t.Fatalf("tab should complete to /memory, got %q", got)
 	}
@@ -1021,7 +1036,7 @@ func TestTUICompletionPreservesArgs(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/mod deep")
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m.handleKey(keyCodeFor(tea.KeyEnter))
 	if f.model != "deep" {
 		t.Fatalf("completed /model deep must switch the model, got %q (input %q)", f.model, m.input.Value())
 	}
@@ -1034,7 +1049,7 @@ func TestTUIEscPriorityChain(t *testing.T) {
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	// Palette open: Esc dismisses it without quitting.
 	m.input.SetValue("/mod")
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m.handleKey(keyCodeFor(tea.KeyEsc))
 	if m.input.Value() != "" {
 		t.Errorf("esc must dismiss the palette, input=%q", m.input.Value())
 	}
@@ -1043,7 +1058,7 @@ func TestTUIEscPriorityChain(t *testing.T) {
 	}
 	// Working: Esc aborts the turn.
 	m.working = true
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m.handleKey(keyCodeFor(tea.KeyEsc))
 	if len(f.aborted) != 1 {
 		t.Errorf("esc must abort the running turn, got %v", f.aborted)
 	}
@@ -1052,7 +1067,7 @@ func TestTUIEscPriorityChain(t *testing.T) {
 	}
 	// Idle and empty: Esc closes the TUI.
 	m.working = false
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m.handleKey(keyCodeFor(tea.KeyEsc))
 	if !m.quitting {
 		t.Errorf("idle esc must close the TUI")
 	}
@@ -1104,12 +1119,12 @@ func TestTUIModelModal(t *testing.T) {
 		t.Errorf("modal title should be Models, got %q", m.modal.title)
 	}
 	// Filter narrows to one preset.
-	m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a', 's', 't'}})
+	m.handleKey(tea.KeyPressMsg{Text: "ast"})
 	items := m.modalMatches()
 	if len(items) != 1 || items[0].label != "fast" {
 		t.Fatalf("filter 'ast' should match fast only, got %+v", items)
 	}
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m.handleKey(keyCodeFor(tea.KeyEnter))
 	if m.modal != nil {
 		t.Errorf("picking must close the modal")
 	}
@@ -1122,7 +1137,7 @@ func TestTUIModelModalEscCloses(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.runCommand("/model")
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m.handleKey(keyCodeFor(tea.KeyEsc))
 	if m.modal != nil {
 		t.Errorf("esc must close the modal")
 	}
@@ -1137,11 +1152,11 @@ func TestTUIApprovalEnterConfirmsSelection(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
-	m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}}) // → always allow
+	m.handleKey(keyMsgFor('l')) // → always allow
 	if m.approvalSel != 1 {
 		t.Fatalf("right should move to index 1, got %d", m.approvalSel)
 	}
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m.handleKey(keyCodeFor(tea.KeyEnter))
 	if !waitForTurns(f, 1) || f.turns[0] != "always allow" {
 		t.Fatalf("enter should confirm the selection, got %v", f.turns)
 	}
@@ -1208,7 +1223,7 @@ func TestTUIModelPickerShowsAll(t *testing.T) {
 	if len(m.modalMatches()) != 2 {
 		t.Fatalf("picker should show all usable models, got %d", len(m.modalMatches()))
 	}
-	m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	m.handleKey(keyCodeFor(tea.KeyTab))
 	if m.modal == nil || len(m.modalMatches()) != 2 {
 		t.Fatalf("tab must not change the picker")
 	}
@@ -1253,7 +1268,7 @@ func TestTUIPaletteEnterComposesTask(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/task")
-	m.updateInner(tea.KeyMsg{Type: tea.KeyEnter})
+	m.updateInner(keyCodeFor(tea.KeyEnter))
 	if got := m.input.Value(); got != "/task " {
 		t.Fatalf("bare /task must stay composed, input=%q", got)
 	}
@@ -1271,7 +1286,7 @@ func TestTUIPaletteEnterRunsTaskWithArgs(t *testing.T) {
 	f.routineList = []*routines.Routine{{ID: "abc123", Name: "Morning brief"}}
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/task pause 1")
-	m.updateInner(tea.KeyMsg{Type: tea.KeyEnter})
+	m.updateInner(keyCodeFor(tea.KeyEnter))
 	if got := m.input.Value(); got != "" {
 		t.Fatalf("ran command must clear the input, input=%q", got)
 	}
@@ -1294,7 +1309,7 @@ func TestTUIClarifyFlow(t *testing.T) {
 		t.Errorf("question must appear in the transcript")
 	}
 	m.input.SetValue("2")
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m.handleKey(keyCodeFor(tea.KeyEnter))
 	if !waitForAnswer(f, "q-1") || f.answered["q-1"] != "blue" {
 		t.Fatalf("number must map to the choice, got %q", f.answered["q-1"])
 	}
@@ -1326,7 +1341,7 @@ func TestTUIEscClearsClarify(t *testing.T) {
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.working = true
 	m.clarify = &pendingClarify{questionID: "q-1", question: "Q?", choices: nil}
-	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m.handleKey(keyCodeFor(tea.KeyEsc))
 	if m.clarify != nil {
 		t.Errorf("abort must clear the pending question")
 	}
@@ -1352,7 +1367,7 @@ func TestTUIComposerHasNoNewlineBinding(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("line one")
-	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	m.handleKey(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 	if got := m.input.Value(); strings.Contains(got, "\n") {
 		t.Fatalf("ctrl+j must not insert a newline, got %q", got)
 	}
@@ -1382,14 +1397,15 @@ func TestTUIUserBubbleMultiline(t *testing.T) {
 // Markdown follows the Ghost theme: markers concealed, semantic colors.
 func TestTUIMarkdownRoles(t *testing.T) {
 	body := renderAssistantBody("# Title\nSome **bold** and *em* with `code`\n```go\nfmt.Println()\n```\n[docs](https://x.test/y) and https://bare.test/z\n- item\n1. first\n> quote\n---", 60)
+	plain := stripANSI(body)
 	for _, concealed := range []string{"```go", "# Title", "`code`", "(https://x.test/y)"} {
-		if strings.Contains(body, concealed) {
-			t.Errorf("markers must be concealed, found %q in %q", concealed, body)
+		if strings.Contains(plain, concealed) {
+			t.Errorf("markers must be concealed, found %q in %q", concealed, plain)
 		}
 	}
 	for _, want := range []string{"Title", "bold", "em", "code", "docs", "https://bare.test/z", "item", "first", "quote"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("content %q must survive, got %q", want, body)
+		if !strings.Contains(plain, want) {
+			t.Errorf("content %q must survive, got %q", want, plain)
 		}
 	}
 	// Task lists get semantic markers.
@@ -1736,7 +1752,7 @@ func TestTUIComposerGrowsWhileTyping(t *testing.T) {
 	m.width, m.height = 80, 24
 	m.layout()
 	for _, r := range "word word word word word word word word word word word word word word word word word word word word " {
-		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+		msg := keyMsgFor(r)
 		m.updateInner(msg)
 	}
 	if h := m.input.Height(); h <= 1 {
@@ -1868,7 +1884,7 @@ func TestRenderAssistantBodyWrapsHeadings(t *testing.T) {
 			t.Errorf("width %d truncated a heading: %q", w, got)
 		}
 		// Every word of the heading survives across the wrapped lines.
-		flat := strings.NewReplacer("—", " ", ",", "").Replace(got)
+		flat := strings.NewReplacer("—", " ", ",", "").Replace(stripANSI(got))
 		joined := strings.Join(strings.Fields(flat), " ")
 		if !strings.Contains(joined, "Anthropic IPO timeline confirmed now firmer") {
 			t.Errorf("width %d lost part of the heading: %q", w, got)
@@ -1977,8 +1993,8 @@ func TestTUIApprovalArrowKeys(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
-	arrow := func(typ tea.KeyType) {
-		m.handleKey(tea.KeyMsg{Type: typ})
+	arrow := func(code rune) {
+		m.handleKey(keyCodeFor(code))
 		if m.approval == nil {
 			t.Fatalf("arrow key must move, never resolve")
 		}
@@ -2070,7 +2086,7 @@ func TestTUIAssistantHeadHasNoModel(t *testing.T) {
 func TestTUIAssistantBoldListKeepsRows(t *testing.T) {
 	in := "Here is what is on file:\n\n- **Name:** ian\n- **Favorite language:** Rust\n- **Considering:** buying an NVMe drive\n- **Timezone:** Asia/Bangkok\n\nThat is the durable stuff."
 	body := renderAssistantBody(in, 78)
-	rows := strings.Split(body, "\n")
+	rows := strings.Split(stripANSI(body), "\n")
 	var bullets []string
 	for _, r := range rows {
 		if strings.HasPrefix(strings.TrimSpace(r), "- ") {

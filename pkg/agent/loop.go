@@ -180,6 +180,9 @@ type AgentLoop struct {
 	// commitmentExtractor turns "I need to…" into durable obligation state.
 	// Nil when no provider is configured: the deterministic patterns still run.
 	commitmentExtractor *commitments.SemanticExtractor
+	// watchRT is the watch runtime (probe registry, daily budget, metrics,
+	// poll single-flight, wake timer). Zero value ready.
+	watchRT watchRuntime
 	// Event-driven awareness: a coalescing wake-up channel fed by the
 	// canonical stream, started explicitly by production wiring.
 	proactiveWatchOnce sync.Once
@@ -1708,6 +1711,27 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 			return endTurn(ans, nil)
 		}
 	}
+	// Watch control fast-path: "track my flight BA123" / "stop watching my
+	// package" start and stop durable watches over runtime state. It sits
+	// here deliberately — after the state-query turn (which owns the
+	// read-only list), and BEFORE the skill-toggle and readiness paths,
+	// which would otherwise answer "track my flight" with a capability's
+	// "not connected" reply instead of creating the watch.
+	if !resumedTurn && !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" && !strings.HasPrefix(msg.Content, "/") {
+		if ans, ok := al.tryWatchTurn(msg.Content, msg.SessionKey); ok {
+			logger.InfoCF("agent", "deterministic: watch control handled",
+				map[string]interface{}{"session_key": msg.SessionKey})
+			if onChunk != nil && ans != "" {
+				onChunk(ans)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return endTurn(ans, nil)
+		}
+	}
 	// Skill toggle fast-path: "disable X" / "enable Y" executes directly
 	// (mirrors the Web Console toggle). Before the disabled-skill check so
 	// "enable X" still works when X is currently off.
@@ -2452,6 +2476,11 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 	// that dies in the transcript. The deterministic pass is free and runs
 	// inline; the semantic pass is deferred with the rest of the model work.
 	al.extractCommitmentsInline(opts)
+
+	// Durable watches: "I'm flying BA123 tomorrow" becomes an observation of
+	// external state the runtime polls on a clock — same rule, different
+	// primitive (a promise is work; a watch is the world changing).
+	al.extractWatchesInline(opts)
 
 	if al.pcStore == nil {
 		return

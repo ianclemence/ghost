@@ -6,8 +6,10 @@ import (
 )
 
 // norm collapses wrap-induced line breaks so content assertions can look
-// across rows (styling may split a phrase between two wrapped lines).
-func norm(s string) string { return strings.Join(strings.Fields(s), " ") }
+// across rows (styling may split a phrase between two wrapped lines). ANSI
+// is stripped first: Bubble Tea v2 styles rune-by-rune, so raw output no
+// longer contains plain substrings.
+func norm(s string) string { return strings.Join(strings.Fields(stripANSI(s)), " ") }
 
 // An inline span that crosses the terminal-width wrap boundary must still
 // conceal. The renderer wraps the RAW line first and styles each wrapped

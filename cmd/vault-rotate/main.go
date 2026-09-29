@@ -5,7 +5,9 @@
 //
 // Usage (as root): go run ./cmd/vault-rotate /var/ghost/config
 // Check mode (proves the on-disk key is dead after cleanup):
-//   go run ./cmd/vault-rotate check /var/ghost/config
+//
+//	go run ./cmd/vault-rotate check /var/ghost/config
+//
 // prints "old key rejected: ok" when the file key no longer unseals the
 // vault, "old key file absent: ok" when it is gone, and fails otherwise.
 // Never prints key material.

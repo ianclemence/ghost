@@ -174,8 +174,8 @@ func (al *AgentLoop) resolveBrowserTask(sessionKey string) (taskID, generation s
 // consults routine/context scopes and the permission broker, and either
 // allows (with a binding), parks for approval (wait), or denies.
 func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, args map[string]interface{}) browserGateResult {
-	deny := func(format string, a ...interface{}) browserGateResult {
-		return browserGateResult{decision: "deny", message: fmt.Sprintf(format, a...)}
+	deny := func(message string) browserGateResult {
+		return browserGateResult{decision: "deny", message: message}
 	}
 	op, ok := browserOp(tool)
 	if !ok {
@@ -286,8 +286,8 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 // checks prove yes still means the same thing: same owner, same context,
 // same live session, same task generation, grant not revoked.
 func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, requestID string) (tools.BrowserCall, *tools.ToolResult) {
-	refuse := func(format string, a ...interface{}) (tools.BrowserCall, *tools.ToolResult) {
-		return tools.BrowserCall{}, tools.ErrorResult(fmt.Sprintf(format, a...))
+	refuse := func(message string) (tools.BrowserCall, *tools.ToolResult) {
+		return tools.BrowserCall{}, tools.ErrorResult(message)
 	}
 	if al == nil || al.governance == nil || al.governance.Broker == nil {
 		return refuse(denyText(permissions.CodeUnavailable, "Browser is unavailable: governance is not wired.", "Try again in a moment; if it persists, the operator must check the gateway."))

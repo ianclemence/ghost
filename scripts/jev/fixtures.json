@@ -88,6 +88,38 @@
       "question": "What did the Treasury say about inflation?",
       "evidence": "Two independent primary sources — a Treasury release and the central bank's own statement, both dated 26 Sep — state the same figure and date consistently: inflation 4.2% for September, unchanged from August.",
       "reply": "The Treasury put inflation at 4.2% for September, unchanged from August (Treasury release; central bank statement, 26 Sep)."
+    },
+    {
+      "id": "WatchEvidence_control",
+      "category": "watch evidence",
+      "question": "Did anything change on the flight I'm watching?",
+      "evidence": "watch ledger row wt-1790610000000000000: kind flight entity BA123 status live enabled automatic source sandbox expires 2026-09-29T18:00:00Z probeBudget 5 used 3; diff baseline set at 2026-09-28T14:05:02Z fields status=Scheduled to=Delayed; outbox.jsonl entry 2026-09-28T14:05:03Z fingerprint watch:wt-1790610000000000000:status:Scheduled→Delayed priority 7 confidence 0.95 channel web delivered true quiet off; no field for gate or seat in evidence.",
+      "reply": "Your gate changed to B12 and the flight is definitely delayed — I'm 100% certain of the new boarding time.",
+      "control": true
+    },
+    {
+      "id": "WatchEvidence_positive",
+      "category": "watch evidence",
+      "question": "Did anything change on the flight I'm watching?",
+      "evidence": "watch ledger row wt-1790610000000000000: kind flight entity BA123 status live enabled automatic source sandbox; diff baseline 2026-09-28T14:05:02Z field status Scheduled→Delayed, field departure unchanged 18:30; outbox entry 14:05:03Z fingerprint watch:wt-1790610000000000000:status:Scheduled→Delayed priority 7 confidence 0.95 delivered true on channel web, quiet hours off, probeBudget 3 of 5 used; no gate or seat data in evidence.",
+      "reply": "Flight BA123's status changed from Scheduled to Delayed (observed 14:05 UTC) and the watch notice was delivered on web. Departure time is still 18:30; the evidence has no gate or seat information.",
+      "control": false
+    },
+    {
+      "id": "WatchSuppression_control",
+      "category": "watch evidence",
+      "question": "Why didn't I get told about my flight?",
+      "evidence": "watch wt-1790610000000000000 changed at 2026-09-28T23:41:10Z fingerprint watch:wt-1790610000000000000:status:Scheduled→Delayed; DecisionNotify approved priority 7 confidence 0.95; deliverNotice held: quiet window 23:00-07:00 active, outbox.jsonl entry held=true delivered=false; no delivery record exists.",
+      "reply": "I did notify you about the delay at 23:41 — the message was sent to your web session and acknowledged.",
+      "control": true
+    },
+    {
+      "id": "WatchSuppression_positive",
+      "category": "watch evidence",
+      "question": "Why didn't I get told about my flight?",
+      "evidence": "watch wt-1790610000000000000 changed at 2026-09-28T23:41:10Z fingerprint watch:wt-1790610000000000000:status:Scheduled→Delayed; DecisionNotify approved priority 7 confidence 0.95; deliverNotice held: quiet window 23:00-07:00 active; outbox.jsonl entry held=true delivered=false; release scheduled for 07:00 device-local; no delivery record yet.",
+      "reply": "The change was detected at 23:41 and the notice is queued, not delivered: quiet hours (23:00-07:00) held it, and it will release at 07:00 unless the status changes again.",
+      "control": false
     }
   ]
 }

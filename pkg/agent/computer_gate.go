@@ -141,8 +141,8 @@ type computerGateResult struct {
 }
 
 func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, args map[string]interface{}) computerGateResult {
-	deny := func(format string, a ...interface{}) computerGateResult {
-		return computerGateResult{decision: "deny", message: fmt.Sprintf(format, a...)}
+	deny := func(message string) computerGateResult {
+		return computerGateResult{decision: "deny", message: message}
 	}
 	op, ok := computerOp(tool)
 	if !ok {
@@ -263,8 +263,8 @@ func (al *AgentLoop) bindComputer(owner, contextID, sessionKey, taskID, generati
 // before executing a computer operation (owner, context, generation,
 // grant, lease/authority).
 func (al *AgentLoop) resumeComputerCall(resume ResumeOutcome, sessionKey, requestID string) (tools.ComputerCall, *tools.ToolResult) {
-	refuse := func(format string, a ...interface{}) (tools.ComputerCall, *tools.ToolResult) {
-		return tools.ComputerCall{}, tools.ErrorResult(fmt.Sprintf(format, a...))
+	refuse := func(message string) (tools.ComputerCall, *tools.ToolResult) {
+		return tools.ComputerCall{}, tools.ErrorResult(message)
 	}
 	if al == nil || al.governance == nil || al.governance.Broker == nil {
 		return refuse(denyText(permissions.CodeUnavailable, "Computer is unavailable: this runtime is not governed.", "Try again in a moment; if it persists, the operator must check the gateway."))

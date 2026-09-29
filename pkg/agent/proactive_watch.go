@@ -115,7 +115,15 @@ func (al *AgentLoop) proactiveEvalLoop() {
 			default:
 			}
 			last = time.Now()
-			al.EvaluateProposals(time.Now())
+			al.EvaluateProposals(last)
+			// Watch polling rides the same coalesced wake. It yields to an
+			// owner's turn in flight (never probe while they are typing),
+			// but re-arms its own timer so the check still happens.
+			if al.interactiveBusy() {
+				al.scheduleWatchWake(last)
+			} else {
+				al.PollWatches(last)
+			}
 		}
 	}
 }

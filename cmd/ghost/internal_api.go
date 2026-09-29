@@ -2438,6 +2438,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		})
 	}))
 	registerCommitmentRoutes(mux, apiWorkspaceDir, agentLoop, authMiddleware)
+	registerWatchRoutes(mux, apiWorkspaceDir, agentLoop, authMiddleware)
 	mux.HandleFunc("/v1/ideas", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if apiWorkspaceDir == "" {
 			jsonError(w, http.StatusInternalServerError, "unavailable", "ideas are unavailable right now")
