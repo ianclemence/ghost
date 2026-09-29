@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/agent"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -463,5 +464,26 @@ func TestGatewayPollBackgroundAlwaysEmpty(t *testing.T) {
 	running, done := gw.PollBackground("cli:test")
 	if len(running) != 0 || len(done) != 0 {
 		t.Fatalf("gateway must report no background state, got %v %v", running, done)
+	}
+}
+
+// The daemon's served_by frame reaches the caller's sink through the
+// gateway client, so the remote TUI learns where a turn ran exactly like
+// the embedded one; phase frames are progress, never reply text.
+func TestGatewayRelaysServedBy(t *testing.T) {
+	sse := "data: {\"type\":\"phase\",\"phase\":\"retrieving\",\"detail\":\"memory\"}\n\n" +
+		"data: \"Hi\"\n\n" +
+		"data: {\"type\":\"served_by\",\"provider\":\"ollama\",\"model\":\"qwen3:8b\",\"local\":true}\n\n" +
+		"data: {\"type\":\"lifecycle\",\"state\":\"completed\",\"outcome\":\"success\"}\n\n" +
+		"data: [DONE]\n\n"
+	gw, _ := newTestGateway(t, sse)
+	var got []agent.ServedBy
+	ctx := agent.WithServedBySink(context.Background(), func(s agent.ServedBy) { got = append(got, s) })
+	text, err := gw.ProcessDirectWithChannel(ctx, "hi", "main", "cli", "direct", nil, func(string) {}, nil)
+	if err != nil || text != "Hi" {
+		t.Fatalf("text=%q err=%v", text, err)
+	}
+	if len(got) != 1 || got[0].Model != "qwen3:8b" || !got[0].Local {
+		t.Fatalf("served_by not relayed: %+v", got)
 	}
 }

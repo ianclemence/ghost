@@ -151,7 +151,12 @@ function computeOverall(doctorRes, healthRes) {
 function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, memoryRes, jobsRes, devicesRes, ollamaRes, activeModelRes, proactiveRes) {
   dotEl.className = 'home-status-dot home-status-dot-' + overall.state;
   titleEl.textContent = overall.label;
-  sublineEl.textContent = overall.detail;
+  // Healthy needs no second sentence saying so: say what Ghost thinks with
+  // instead (runtime's active model), so the line carries information.
+  const active = activeModelRes.status === 'fulfilled' && activeModelRes.value && activeModelRes.value.active;
+  sublineEl.textContent = overall.state === 'ok' && active
+    ? 'Thinking with ' + active + '.'
+    : overall.detail;
   bodyEl.setAttribute('aria-busy', 'false');
 
   bodyEl.innerHTML = '';
@@ -272,7 +277,13 @@ function renderActivity(container, activityRes) {
 
   const list = GhostUI.h('ul', { className: 'home-activity-list', role: 'list' });
   const top = items.slice(0, 7);
+  let day = '';
   for (const it of top) {
+    const label = homeDayLabel(it.ts);
+    if (label !== day) {
+      day = label;
+      list.appendChild(GhostUI.h('li', { className: 'home-activity-day', role: 'presentation' }, label));
+    }
     list.appendChild(renderActivityRow(it));
   }
   container.appendChild(list);
@@ -289,11 +300,17 @@ function collectActivityItems(activityRes) {
   for (const a of arr) {
     const ts = unixOf(a.timestamp);
     if (!ts) continue;
+    const word = activityState(a.state);
+    const summary = (a.summary || '').trim();
+    // Never say the same thing twice ("No change · No change").
+    const parts = [summary];
+    if (word && word.toLowerCase() !== summary.toLowerCase()) parts.unshift(word);
     items.push({
       kind: 'activity',
       ts,
       title: a.title || 'Activity',
-      meta: activityState(a.state) + (a.summary ? '  \u00b7  ' + a.summary : ''),
+      meta: parts.filter(Boolean).join('  \u00b7  '),
+      why: (a.why || '').trim(),
     });
   }
   // /v1/activity returns newest first and is already user-safe; no further
@@ -308,32 +325,32 @@ function unixOf(ts) {
 }
 
 function activityState(st) {
-  const map = { running: 'Running', waiting: 'Waiting', success: 'Done', failed: 'Failed', cancelled: 'Cancelled', paused: 'Paused' };
-  return map[st] || st || '';
+  return GhostUI.activityWord(st);
 }
 
 function renderActivityRow(it) {
   const row = GhostUI.h('li', { className: 'home-activity-row' });
-  row.appendChild(GhostUI.h('div', { className: 'home-activity-when' }, formatWhen(it.ts)));
+  row.appendChild(GhostUI.h('div', { className: 'home-activity-when' }, formatTime(new Date(it.ts * 1000))));
   const body = GhostUI.h('div', { className: 'home-activity-body-col' });
   body.appendChild(GhostUI.h('div', { className: 'home-activity-title' }, it.title));
-  body.appendChild(GhostUI.h('div', { className: 'home-activity-meta' }, it.meta));
+  if (it.meta) body.appendChild(GhostUI.h('div', { className: 'home-activity-meta' }, it.meta));
+  if (it.why) body.appendChild(GhostUI.h('div', { className: 'home-activity-why' }, it.why));
   row.appendChild(body);
   return row;
 }
 
-function formatWhen(unixSec) {
-  if (!unixSec) return '';
+// Day label for grouping ("Today", "Yesterday", "Mon 28 Sep").
+function homeDayLabel(unixSec) {
   const d = new Date(unixSec * 1000);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return formatTime(d);
-  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday \u00b7 ' + formatTime(d);
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' \u00b7 ' + formatTime(d);
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 function formatTime(d) {
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 function renderAttention(container, doctorRes, channelsRes, devicesRes, ollamaRes, consoleRes) {

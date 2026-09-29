@@ -26,8 +26,12 @@ func splitModelSpec(spec string) (string, string) {
 	return "", spec
 }
 
+// CreateProviderForModel builds the provider for a model spec. It works on a
+// copy: callers pass the live runtime config, and rewriting its active
+// provider/model here would silently re-point (and, on the next save,
+// persist) the owner's primary model to a fallback candidate.
 func CreateProviderForModel(cfg *config.Config, model string) (LLMProvider, error) {
-	c := cfg
+	c := cfg.Clone()
 	provider, mdl := splitModelSpec(model)
 	if provider != "" {
 		c.Agents.Defaults.Provider = provider

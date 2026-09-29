@@ -87,3 +87,24 @@ func (h *narrationHold) discard() {
 	}
 	h.buf = nil
 }
+
+// attemptRestartNotice marks, in the live stream only, that text the owner
+// already saw belonged to a model attempt that failed and the answer is
+// starting over. The stored reply is built from the successful attempt and
+// never carries it.
+const attemptRestartNotice = "\n\n(Interrupted — starting the answer again.)\n\n"
+
+// abandonAttempt handles a model attempt that streamed text and then
+// failed. Held text is dropped (the owner never saw it); if text was
+// already released, the restart is marked so the next attempt's answer is
+// not read as a continuation of the broken one.
+func (h *narrationHold) abandonAttempt() {
+	if h == nil {
+		return
+	}
+	if !h.released || h.gate {
+		h.buf = nil
+		return
+	}
+	h.emit(attemptRestartNotice)
+}

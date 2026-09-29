@@ -72,9 +72,17 @@ func DescribeEstate(cfg *config.Config) []ProviderInfo {
 func providerKey(cfg *config.Config, name string) string {
 	p := cfg.Providers
 	switch strings.ToLower(name) {
-	case "anthropic":
+	case "anthropic", "claude":
+		// An OAuth/token login is a credential too: the key lives in the
+		// auth store, not in config. Presence is all callers test.
+		if p.Anthropic.APIKey == "" && p.Anthropic.AuthMethod != "" {
+			return "auth:" + p.Anthropic.AuthMethod
+		}
 		return p.Anthropic.APIKey
-	case "openai":
+	case "openai", "gpt":
+		if p.OpenAI.APIKey == "" && p.OpenAI.AuthMethod != "" {
+			return "auth:" + p.OpenAI.AuthMethod
+		}
 		return p.OpenAI.APIKey
 	case "openrouter":
 		return p.OpenRouter.APIKey

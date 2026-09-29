@@ -264,6 +264,7 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 				Role:       "tool",
 				Content:    contentForLLM,
 				ToolCallID: tc.ID,
+				ToolError:  toolResult.IsError,
 			}
 			messages = append(messages, toolResultMsg)
 		}

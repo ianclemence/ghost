@@ -221,7 +221,7 @@ func buildBehaviorSection() string {
 // per-turn volatile state in every system prompt. Stable injected
 // sections (like the browser contract) are inserted BEFORE this marker
 // so they ride the provider prefix cache; volatile state follows it.
-const systemPromptCacheBoundary = "<!-- SYSTEM_PROMPT_CACHE_BOUNDARY -->"
+const systemPromptCacheBoundary = providers.SystemPromptCacheBoundary
 
 func (cb *ContextBuilder) BuildSystemPrompt(scopes []string) string {
 	// Bounded, versioned cache: the compiled prompt is stable across turns

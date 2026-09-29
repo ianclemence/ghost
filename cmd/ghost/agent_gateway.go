@@ -809,6 +809,20 @@ func (g *gatewayRuntime) loadSessionHistory(sessionKey string, limit, offset int
 	return out, res.HasMore, nil
 }
 
+// tuiPhaseLabel maps a runtime phase frame onto owner words.
+func tuiPhaseLabel(phase, detail string) string {
+	switch phase {
+	case "retrieving":
+		if detail == "memory" {
+			return "checking memory"
+		}
+		return "looking that up"
+	case "thinking":
+		return "thinking"
+	}
+	return ""
+}
+
 // ProcessDirectWithChannel runs one turn on the daemon over SSE. Chunks flow
 // to onChunk (live rendering, exactly like the embedded loop); server-side
 // tool labels arrive complete, so they bypass onToolCall and are forwarded
@@ -900,6 +914,11 @@ func (g *gatewayRuntime) ProcessDirectWithChannel(ctx context.Context, content, 
 			QuestionID string   `json:"question_id"`
 			Question   string   `json:"question"`
 			Choices    []string `json:"choices"`
+			Phase      string   `json:"phase"`
+			Detail     string   `json:"detail"`
+			Provider   string   `json:"provider"`
+			Model      string   `json:"model"`
+			Local      bool     `json:"local"`
 		}
 		if err := json.Unmarshal([]byte(payload), &obj); err != nil {
 			continue
@@ -923,6 +942,15 @@ func (g *gatewayRuntime) ProcessDirectWithChannel(ctx context.Context, content, 
 			}
 		case "assistant_message":
 			// Text already arrived as chunks; metadata only.
+		case "phase":
+			// Honest progress before the first token (same words as the app).
+			if label := tuiPhaseLabel(obj.Phase, obj.Detail); label != "" && agentProgram != nil {
+				agentProgram.Send(toolProgressMsg{tool: "phase", label: label})
+			}
+		case "served_by":
+			if obj.Model != "" {
+				agent.ReportServedBy(ctx, agent.ServedBy{Provider: obj.Provider, Model: obj.Model, Local: obj.Local})
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil && !isStreamClosedError(err) {

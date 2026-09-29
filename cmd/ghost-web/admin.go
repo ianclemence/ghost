@@ -669,23 +669,11 @@ func handleConfigSet(w http.ResponseWriter, r *http.Request) {
 
 // ---------- Provider models & testing ----------
 
-// knownModels returns the recommended models for each provider.
-// These come from the factory.go validation logic and provider docs.
-var knownModels = map[string][]string{
-	"openai":       {"gpt-5.4", "gpt-5.4-mini", "gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini", "gpt-4o", "gpt-4o-mini"},
-	"anthropic":    {"claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"},
-	"moonshot":     {"kimi-k3", "kimi-k2.7-code", "kimi-k2.6"},
-	"groq":         {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"},
-	"deepseek":     {"deepseek-flash", "deepseek-v4-pro"},
-	"qwen":         {"qwen3.8-max", "qwen3.7-plus", "qwen3.8-flash", "qwen3.5-omni-plus"},
-	"gemini":       {"gemini-3.6-flash", "gemini-3.1-pro", "gemini-3-flash"},
-	"zhipu":        {"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-4.7", "glm-4.7-flash"},
-	"openrouter":   {},
-	"ollama":       {},
-	"nvidia":       {"deepseek-ai/deepseek-v4-flash", "meta/llama-3.3-70b-instruct", "qwen/qwq-32b"},
-	"shengsuanyun": {},
-}
-
+// handleProviderModels lists, per provider, the models it actually serves —
+// asked of the provider's own API (cached; ?refresh=1 re-asks now). A
+// provider that can't be reached falls back to Ghost's built-in list and
+// says so ("source":"catalog" plus the reason), so the console never
+// presents a guess as the provider's answer.
 func handleProviderModels(w http.ResponseWriter, r *http.Request) {
 	if !requireSession(w, r) {
 		return
@@ -695,33 +683,36 @@ func handleProviderModels(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-
-	// For Ollama, list actual installed models
-	ollamaModels := []string{}
-	if models, err := listOllamaModels(); err == nil {
-		ollamaModels = models
+	if r.URL.Query().Get("refresh") == "1" {
+		providers.InvalidateModelDiscovery()
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	lists := providers.DiscoverAll(ctx, cfg)
+	cancel()
 
-	providers := map[string]interface{}{}
-	for name, models := range knownModels {
-		pc := getProviderConfig(cfg, name)
-		configured := pc != nil && pc.APIKey != ""
-		providerModels := models
-		if name == "ollama" {
-			providerModels = ollamaModels
+	out := map[string]interface{}{}
+	for name, pm := range lists {
+		models := pm.Models
+		if models == nil {
+			models = []string{}
 		}
-		providers[name] = map[string]interface{}{
-			"configured": configured,
-			"models":     providerModels,
+		entry := map[string]interface{}{
+			"configured": providers.ProviderConfigured(cfg, name),
+			"models":     models,
 			"local":      name == "ollama" || name == "vllm",
+			"source":     pm.Source,
 		}
+		if pm.Error != "" && providers.ProviderConfigured(cfg, name) && name != "ollama" {
+			entry["error"] = pm.Error
+		}
+		out[name] = entry
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":        true,
 		"provider":  cfg.Agents.Defaults.Provider,
 		"model":     cfg.Agents.Defaults.Model,
-		"providers": providers,
+		"providers": out,
 	})
 }
 
@@ -798,7 +789,7 @@ func handleProviderTest(w http.ResponseWriter, r *http.Request) {
 	// Pick a test model
 	testModel := req.Model
 	if testModel == "" {
-		if models, ok := knownModels[req.Provider]; ok && len(models) > 0 {
+		if models, ok := providers.KnownProviderModels[req.Provider]; ok && len(models) > 0 {
 			testModel = models[0]
 		}
 	}

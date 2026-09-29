@@ -610,8 +610,6 @@ Key HTTP endpoints the app uses on port `8766`:
 | `/v1/connected-apps` | GET/POST | Connected services |
 | `/v1/intelligence/config` | GET/POST | AI config (masked keys, routing) |
 | `/v1/ollama/models` + `/v1/ollama/pull` | GET/POST | Local model management |
-| `/v1/models/catalog` | GET | Phone-local model catalog (Mini only) |
-| `/v1/sync/ops` | GET/POST | Memory-sync op push/pull |
 | `/v1/voice/turn` | POST | Voice message transcription + reply |
 
 All mobile API endpoints require device credentials (`X-Ghost-Device-ID` +

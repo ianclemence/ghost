@@ -44,19 +44,49 @@ const (
 	FailUnavailable   FailureClass = "service_unavailable"
 	FailNotConfigured FailureClass = "provider_not_configured"
 	FailCredentialBad FailureClass = "credential_failure"
+	// FailBilling: the account is out of credit or over its quota. The
+	// same request fails identically until the owner acts; never retried.
+	FailBilling FailureClass = "billing"
+	// FailRejected: the provider refused the request itself (a 4xx such as
+	// 400, 404, 413, 422) — retrying the identical request cannot succeed.
+	FailRejected FailureClass = "request_rejected"
 )
 
 // Retryable reports whether the class merits a bounded retry.
 func (f FailureClass) Retryable() bool {
 	switch f {
-	case FailAuth, FailAuthorization, FailCredentialBad, FailNotConfigured:
+	case FailAuth, FailAuthorization, FailCredentialBad, FailNotConfigured, FailBilling, FailRejected:
 		return false
 	default:
 		return true
 	}
 }
 
-var llmStatusRe = regexp.MustCompile(`(?i)\bstatus:\s*(\d{3})\b`)
+// Status codes as model providers report them: Ghost's HTTP provider
+// ("Status: 402") and the Anthropic SDK (`POST "https://…": 402 Payment
+// Required`).
+var (
+	llmStatusRe = regexp.MustCompile(`(?i)\bstatus:\s*(\d{3})\b`)
+	sdkStatusRe = regexp.MustCompile(`"[a-zA-Z]+://[^"]*":\s*(\d{3})\b`)
+)
+
+// billingMarkers identify out-of-credit / over-quota bodies. Some providers
+// send these with 429 (OpenAI insufficient_quota) or 400 (Anthropic's
+// "credit balance is too low"), so the body wins over the status code.
+var billingMarkers = []string{
+	"insufficient balance", "insufficient_quota", "insufficient quota",
+	"credit balance is too low", "exceeded your current quota",
+	"payment required", "billing",
+}
+
+func isBillingError(msg string) bool {
+	for _, m := range billingMarkers {
+		if strings.Contains(msg, m) {
+			return true
+		}
+	}
+	return false
+}
 
 // ClassifyError maps a model/provider call error onto the failure taxonomy,
 // so every layer retries exactly the same transient classes: timeouts, rate
@@ -88,23 +118,37 @@ func ClassifyError(err error) FailureClass {
 		}
 		return FailNetwork
 	}
-	if m := llmStatusRe.FindStringSubmatch(err.Error()); m != nil {
+	msg := strings.ToLower(err.Error())
+	if isBillingError(msg) {
+		return FailBilling
+	}
+	m := llmStatusRe.FindStringSubmatch(err.Error())
+	if m == nil {
+		m = sdkStatusRe.FindStringSubmatch(err.Error())
+	}
+	if m != nil {
 		switch m[1] {
 		case "429":
 			return FailRateLimited
 		case "401":
 			return FailAuth
+		case "402":
+			return FailBilling
 		case "403":
 			return FailAuthorization
+		case "408", "409", "425":
+			return FailTimeout // request timeout / conflict / too early: transient
 		case "502", "503", "504":
 			return FailUnavailable
 		}
 		if strings.HasPrefix(m[1], "5") {
 			return FailServer
 		}
+		if strings.HasPrefix(m[1], "4") {
+			return FailRejected
+		}
 		return FailInvalid
 	}
-	msg := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(msg, "rate limit"), strings.Contains(msg, "too many requests"):
 		return FailRateLimited
@@ -466,4 +510,59 @@ func Malformed(msg string) *ValidationError {
 // Empty marks a valid-but-empty response (capability decides legitimacy).
 func Empty(msg string) *ValidationError {
 	return &ValidationError{Class: FailEmpty, Message: msg}
+}
+
+// Explain turns a model-call failure into one sentence the owner can act
+// on. It never echoes provider response bodies (they can carry request
+// ids, internal URLs, or prompt fragments). provider names who failed
+// when known ("deepseek"); empty is fine.
+func Explain(err error, provider string) string {
+	if err == nil {
+		return ""
+	}
+	who := "the AI provider"
+	if p := strings.TrimSpace(provider); p != "" {
+		who = p
+	}
+	switch ClassifyError(err) {
+	case FailBilling:
+		return "Your " + who + " account is out of credit or over its quota. Top it up, or switch to another model with /model."
+	case FailAuth, FailCredentialBad:
+		return who + " rejected Ghost's credentials. Reconnect it in settings, then try again."
+	case FailAuthorization:
+		return who + " refused access for this key or model. Check the key's permissions, or pick another model with /model."
+	case FailRateLimited:
+		return who + " is rate-limiting requests right now. Try again in a moment."
+	case FailTimeout, FailNetwork, FailDNS:
+		return "Ghost couldn't reach " + who + ". Check the connection (or that your local AI is running), then try again."
+	case FailUnavailable, FailServer:
+		return who + " is having trouble right now. Try again shortly, or switch models with /model."
+	case FailRejected:
+		return who + " rejected the request (the model may not exist or may not support it). Try another model with /model."
+	}
+	return "The model call failed. Try again, or switch models with /model."
+}
+
+// IsModelCallFailure reports whether a turn error came from the model call
+// (as opposed to a store or tool error).
+func IsModelCallFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "llm call failed") || strings.Contains(msg, "cooling down") ||
+		strings.Contains(msg, "no available providers") || ClassifyError(err) == FailBilling
+}
+
+// TurnErrorText is what every surface (terminal, web, app, evaluation)
+// shows for a failed turn: model failures explained in the owner's terms,
+// anything else as-is. One function so the surfaces cannot disagree.
+func TurnErrorText(err error, providerName string) string {
+	if err == nil {
+		return ""
+	}
+	if IsModelCallFailure(err) {
+		return Explain(err, providerName)
+	}
+	return err.Error()
 }

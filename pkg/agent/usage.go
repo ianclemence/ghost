@@ -24,7 +24,11 @@ func usageMeasured(u *providers.UsageInfo) bool {
 // (per-call provider figures), static-estimate second, unknown last —
 // never silent zero. Best-effort by design: metering must not fail
 // turns, so every error path returns silently.
-func recordTurnUsage(al *AgentLoop, opts processOptions, model string, iterations, prompt, completion, total int, measuredSum float64, usageResponses, unmeasuredResponses int, usageSource string) {
+// turnCache is the turn's prompt-cache usage (tokens read from and written
+// to the provider's cache), zero for providers without one.
+type turnCache struct{ read, write int }
+
+func recordTurnUsage(al *AgentLoop, opts processOptions, model string, iterations, prompt, completion, total int, measuredSum float64, usageResponses, unmeasuredResponses int, usageSource string, cache turnCache) {
 	if al == nil || al.governance == nil || al.governance.Events == nil {
 		return
 	}
@@ -32,7 +36,7 @@ func recordTurnUsage(al *AgentLoop, opts processOptions, model string, iteration
 		return
 	}
 	provider, name := splitProviderModel(model)
-	cost, unknown := providers.CostForTurn(provider, name, int64(prompt), int64(completion), measuredSum, usageResponses > 0 && unmeasuredResponses == 0)
+	cost, unknown := providers.CostForTurn(provider, name, int64(prompt), int64(completion), int64(cache.read), int64(cache.write), measuredSum, usageResponses > 0 && unmeasuredResponses == 0)
 	al.governance.Events.Publish(&cevents.Event{
 		Type:      cevents.UsageRecorded,
 		RequestID: opts.RequestID,
@@ -40,17 +44,19 @@ func recordTurnUsage(al *AgentLoop, opts processOptions, model string, iteration
 		GhostID:   al.governance.GhostID,
 		AgentID:   al.governance.AgentID,
 		Payload: map[string]interface{}{
-			"session_key":       opts.SessionKey,
-			"model":             name,
-			"provider":          provider,
-			"iterations":        iterations,
-			"prompt_tokens":     prompt,
-			"completion_tokens": completion,
-			"total_tokens":      total,
-			"usage_source":      usageSource,
-			"cost_usd":          cost,
-			"cost_unknown":      unknown,
-			"pricing":           providers.PricingVersion,
+			"session_key":        opts.SessionKey,
+			"model":              name,
+			"provider":           provider,
+			"iterations":         iterations,
+			"prompt_tokens":      prompt,
+			"completion_tokens":  completion,
+			"total_tokens":       total,
+			"cache_read_tokens":  cache.read,
+			"cache_write_tokens": cache.write,
+			"usage_source":       usageSource,
+			"cost_usd":           cost,
+			"cost_unknown":       unknown,
+			"pricing":            providers.PricingVersion,
 		},
 	})
 }

@@ -51,6 +51,15 @@ func (p *ClaudeProvider) Chat(
 	return resp, nil
 }
 
+// StreamChat streams through the native provider. Without it the agent's
+// streaming type check fails and OAuth users see nothing until the whole
+// reply has been generated.
+func (p *ClaudeProvider) StreamChat(
+	ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]any, onChunk func(string),
+) (*LLMResponse, error) {
+	return p.delegate.StreamChat(ctx, messages, tools, model, options, onChunk)
+}
+
 func (p *ClaudeProvider) GetDefaultModel() string {
 	return p.delegate.GetDefaultModel()
 }

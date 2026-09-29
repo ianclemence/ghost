@@ -38,13 +38,19 @@ func TestAvailableModelOptions(t *testing.T) {
 	for _, o := range opts {
 		byName[o.Name] = o
 	}
+	ok := false
 	if _, ok := byName["local"]; !ok {
 		t.Errorf("usable presets must be listed, got %+v", opts)
 	}
 	if _, ok := byName["stale"]; ok {
 		t.Errorf("keyless preset must not be selectable, got %+v", byName["stale"])
 	}
-	ds, ok := byName["deepseek"]
+	var ds ModelOption
+	for _, o := range opts {
+		if o.Target == "deepseek:deepseek-flash" {
+			ds, ok = o, true
+		}
+	}
 	if !ok {
 		t.Fatalf("keyed provider must appear without a preset, got %+v", opts)
 	}

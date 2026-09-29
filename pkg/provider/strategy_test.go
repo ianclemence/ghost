@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -291,5 +292,49 @@ func TestDoWithRetryHonorsCancel(t *testing.T) {
 		nil, func() (string, error) { return "", context.DeadlineExceeded })
 	if err == nil {
 		t.Fatal("cancelled context must stop retries")
+	}
+}
+
+// Permanent provider refusals are not transient: out-of-credit and
+// rejected requests fail the same way on every retry. Before, a 402 was
+// retried three times per turn (and then masked by the cooldown).
+func TestClassifyPermanentModelFailures(t *testing.T) {
+	cases := map[string]FailureClass{
+		"API request failed:\n  Status: 402\n  Body: {}":                                                                       FailBilling,
+		"API request failed:\n  Status: 429\n  Body: {\"error\":{\"code\":\"insufficient_quota\"}}":                            FailBilling,
+		"API request failed:\n  Status: 400\n  Body: {\"message\":\"Insufficient Balance\"}":                                   FailBilling,
+		`POST "https://api.anthropic.com/v1/messages": 400 Bad Request {"error":{"message":"Your credit balance is too low"}}`: FailBilling,
+		"API request failed:\n  Status: 400\n  Body: {}":                                                                       FailRejected,
+		"API request failed:\n  Status: 404\n  Body: {\"error\":\"model not found\"}":                                          FailRejected,
+		`POST "https://api.anthropic.com/v1/messages": 401 Unauthorized {}`:                                                    FailAuth,
+		`POST "https://api.anthropic.com/v1/messages": 529 status code 529 {"type":"overloaded_error"}`:                        FailServer,
+		`POST "https://api.anthropic.com/v1/messages": 429 Too Many Requests {}`:                                               FailRateLimited,
+	}
+	for msg, want := range cases {
+		if got := ClassifyError(errors.New(msg)); got != want {
+			t.Errorf("%q: got %q want %q", msg, got, want)
+		}
+	}
+	for _, c := range []FailureClass{FailBilling, FailRejected} {
+		if c.Retryable() {
+			t.Errorf("%s must not retry", c)
+		}
+	}
+	calls := 0
+	_, _ = DoWithRetry(context.Background(), []time.Duration{time.Millisecond, time.Millisecond}, nil, func() (string, error) {
+		calls++
+		return "", errors.New("API request failed:\n  Status: 402\n  Body: {}")
+	})
+	if calls != 1 {
+		t.Fatalf("billing failure retried: %d calls", calls)
+	}
+}
+
+// The owner learns what to do, and never sees the provider's raw body.
+func TestExplainIsActionableAndRedacted(t *testing.T) {
+	err := errors.New("LLM call failed: API request failed:\n  Status: 402\n  Body: {\"message\":\"Insufficient Balance (request_id: 9769f3ce)\"}")
+	got := Explain(err, "deepseek")
+	if !strings.Contains(got, "deepseek account is out of credit") || strings.Contains(got, "9769f3ce") {
+		t.Fatalf("explain = %q", got)
 	}
 }

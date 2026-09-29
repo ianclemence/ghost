@@ -475,13 +475,26 @@ func (r *ToolRegistry) GetDefinitions() []map[string]interface{} {
 	defer r.mu.RUnlock()
 
 	definitions := make([]map[string]interface{}, 0, len(r.tools))
-	for name, tool := range r.tools {
+	for _, name := range r.sortedNamesLocked() {
 		if !r.isVisible(name) {
 			continue
 		}
-		definitions = append(definitions, ToolToSchema(tool))
+		definitions = append(definitions, ToolToSchema(r.tools[name]))
 	}
 	return definitions
+}
+
+// sortedNamesLocked returns registered tool names in a stable order.
+// Tool definitions open every prompt: a map-ordered list reshuffles on
+// every call, which defeats provider prefix caching and makes tool choice
+// order-dependent. Caller holds r.mu.
+func (r *ToolRegistry) sortedNamesLocked() []string {
+	names := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // ToProviderDefs converts tool definitions to provider-compatible format.
@@ -491,11 +504,11 @@ func (r *ToolRegistry) ToProviderDefs() []providers.ToolDefinition {
 	defer r.mu.RUnlock()
 
 	definitions := make([]providers.ToolDefinition, 0, len(r.tools))
-	for name, tool := range r.tools {
+	for _, name := range r.sortedNamesLocked() {
 		if !r.isVisible(name) {
 			continue
 		}
-		schema := ToolToSchema(tool)
+		schema := ToolToSchema(r.tools[name])
 
 		// Safely extract nested values with type checks
 		fn, ok := schema["function"].(map[string]interface{})

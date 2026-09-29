@@ -3,7 +3,12 @@ package providers
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/ianclemence/ghost/pkg/provider"
 )
 
 func TestFallbackTriesNextOnEmptyResponse(t *testing.T) {
@@ -73,4 +78,28 @@ func (s *stubProvider) Chat(ctx context.Context, messages []Message, tools []Too
 		return &LLMResponse{Content: "", FinishReason: "stop"}, nil
 	}
 	return &LLMResponse{Content: s.reply, FinishReason: "stop"}, nil
+}
+
+// When every candidate is cooling down, the turn must report why (here:
+// out of credit) instead of "no available providers" — and the cause must
+// stay classifiable so the retry layer stops retrying a billing failure.
+func TestFallbackReportsCooldownCause(t *testing.T) {
+	chain := NewFallbackChain(time.Minute)
+	cands := []FallbackCandidate{{Name: "deepseek-flash"}}
+	billing := fmt.Errorf("API request failed:\n  Status: 402\n  Body:   {\"error\":{\"message\":\"Insufficient Balance\"}}")
+	_, err := chain.Execute(context.Background(), cands, func(FallbackCandidate) (*LLMResponse, error) { return nil, billing })
+	if err == nil {
+		t.Fatal("want failure")
+	}
+	calls := 0
+	_, err = chain.Execute(context.Background(), cands, func(FallbackCandidate) (*LLMResponse, error) { calls++; return nil, billing })
+	if calls != 0 {
+		t.Fatal("cooling candidate must be skipped")
+	}
+	if err == nil || !strings.Contains(err.Error(), "Insufficient Balance") {
+		t.Fatalf("cooldown must carry the cause, got %v", err)
+	}
+	if c := provider.ClassifyError(err); c != provider.FailBilling || c.Retryable() {
+		t.Fatalf("wrapped cause must classify as non-retryable billing, got %q", c)
+	}
 }

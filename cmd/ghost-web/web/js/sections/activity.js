@@ -35,44 +35,43 @@ async function loadActivity(container) {
     return;
   }
 
-  const stateDot = { running: 'neutral', waiting: 'warn', success: 'ready', failed: 'bad', cancelled: 'neutral', paused: 'neutral' };
+  // Grouped by day; each row: what Ghost did, the outcome the runtime
+  // recorded, and why it acted. The same words as the phone and Home.
+  let day = '';
   items.forEach(item => {
+    const t = item.timestamp ? new Date(item.timestamp) : null;
+    const label = t && !isNaN(t.getTime()) ? activityDayLabel(t) : 'Earlier';
+    if (label !== day) {
+      day = label;
+      listEl.appendChild(GhostUI.h('div', { className: 'activity-day' }, label));
+    }
     const row = GhostUI.h('div', { className: 'ghost-row' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    const title = GhostUI.h('div', { className: 'ghost-row-title' });
-    title.appendChild(document.createTextNode(item.title || 'Activity'));
-    c.appendChild(title);
-    const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
-    if (item.summary) sub.appendChild(document.createTextNode(item.summary));
-    if (item.summary && item.timestamp) sub.appendChild(document.createTextNode('  \u00b7  '));
-    if (item.timestamp) sub.appendChild(document.createTextNode(activityTime(item.timestamp)));
-    c.appendChild(sub);
-    // Revelation: why Ghost asked or acted. Only present for consequential
-    // work, so routine reads stay quiet.
-    if (item.why) {
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle type-foot text-tertiary', style: 'font-style:italic;margin-top:2px' }, item.why));
-    }
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, item.title || 'Activity'));
+    const word = GhostUI.activityWord(item.state);
+    const summary = (item.summary || '').trim();
+    const bits = [];
+    if (summary) bits.push(summary);
+    if (t && !isNaN(t.getTime())) bits.push(t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+    if (bits.length) c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, bits.join('  ·  ')));
+    // Revelation: why Ghost asked or acted.
+    if (item.why) c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle type-foot text-tertiary', style: 'margin-top:2px' }, item.why));
     row.appendChild(c);
-    const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
-    const st = item.state || '';
-    tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(stateDot[st] || 'neutral'), humanState(st)));
-    row.appendChild(tr);
+    if (word && word.toLowerCase() !== summary.toLowerCase()) {
+      const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+      tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(GhostUI.activityTone(item.state)), word));
+      row.appendChild(tr);
+    }
     listEl.appendChild(row);
   });
 }
 
-function humanState(st) {
-  const map = { running: 'Running', waiting: 'Waiting', success: 'Done', failed: 'Failed', cancelled: 'Cancelled', paused: 'Paused' };
-  return map[st] || (st || '');
-}
-
-function activityTime(ts) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return '';
+function activityDayLabel(d) {
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' \u00b7 ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' });
 }
 
 GhostApp.registerSection('activity', loadActivity);

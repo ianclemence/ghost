@@ -273,7 +273,27 @@ const GhostUI = (() => {
     if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
     const d = Math.floor(diff / 86400);
     if (d < 30) return d + 'd ago';
-    return new Date(unixSec * 1000).toLocaleDateString();
+    const when = new Date(unixSec * 1000);
+    const sameYear = when.getFullYear() === new Date().getFullYear();
+    return when.toLocaleDateString([], sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  // Outcome words for an activity state, from the runtime's own record.
+  // One vocabulary for every surface (the phone app uses the same words).
+  const ACTIVITY_WORDS = {
+    running: ['Working', 'neutral'], waiting: ['Waiting on you', 'warn'], pending: ['Waiting on you', 'warn'],
+    success: ['Done', 'ready'], done: ['Done', 'ready'], completed: ['Done', 'ready'], succeeded: ['Done', 'ready'],
+    verified: ['Verified', 'ready'], changed: ['Changed', 'warn'], unchanged: ['No change', 'neutral'],
+    denied: ['You said no', 'neutral'], failed: ['Didn\u2019t work', 'bad'], error: ['Didn\u2019t work', 'bad'],
+    cancelled: ['Stopped', 'neutral'], paused: ['Paused', 'neutral'],
+  };
+  function activityWord(state) {
+    const w = ACTIVITY_WORDS[(state || '').toLowerCase()];
+    return w ? w[0] : '';
+  }
+  function activityTone(state) {
+    const w = ACTIVITY_WORDS[(state || '').toLowerCase()];
+    return w ? w[1] : 'neutral';
   }
 
   function clockTime(unixSec) {
@@ -454,5 +474,7 @@ const GhostUI = (() => {
     return html;
   }
 
-  return { el, h, ghostMark, statusDot, badge, btn, input, textarea, select, toggle, row, linkRow, sectionGroup, emptyState, loading, errorState, modal, toast, confirmModal, downloadBackup, fmtNum, timeAgo, clockTime, dayLabel, md, modelFriendly, stripFrontmatter, frontmatterValue };
+  return { el, h, ghostMark, statusDot, badge, btn, input, textarea, select, toggle, row, linkRow, sectionGroup, emptyState, loading, errorState, modal, toast, confirmModal, downloadBackup, fmtNum, activityWord,
+    activityTone,
+    timeAgo, clockTime, dayLabel, md, modelFriendly, stripFrontmatter, frontmatterValue };
 })();

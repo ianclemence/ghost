@@ -227,9 +227,13 @@ type processOptions struct {
 	NoHistory       bool   // If true, don't load session history (for heartbeat)
 	Media           []string
 	Thinking        bool
-	OnChunk         func(string)                   // New: callback for streaming chunks
-	OnToolCall      func(name string, args string) // New: callback for tool calls
-	RequestID       string                         // Unique request identifier for tracing
+	OnChunk         func(string) // New: callback for streaming chunks
+	// OnAttemptAbandoned is called when a model attempt that already
+	// streamed text then failed (error, refusal, empty) and a retry or
+	// fallback candidate will restart the answer.
+	OnAttemptAbandoned func()
+	OnToolCall         func(name string, args string) // New: callback for tool calls
+	RequestID          string                         // Unique request identifier for tracing
 	// ContinuationOutput carries the raw output of a just-approved
 	// execution into the single model turn that owes the owner an answer.
 	// Non-empty marks an approval continuation: the owner's message was an
@@ -1041,6 +1045,14 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		al.RegisterTool(ct)
 	}
 
+	// Warm the provider model lists so the first picker open is live.
+	// Metadata reads only (no prompt, no user data), cached for hours.
+	go func(snapshot *config.Config) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		providers.DiscoverAll(ctx, snapshot)
+	}(cfg.Clone())
+
 	return al, nil
 }
 
@@ -1097,10 +1109,18 @@ func (al *AgentLoop) AbortTurn(sessionKey string) {
 	al.steering.HardAbort(sessionKey)
 }
 
-// RefreshModels busts cached model state. The embedded loop reads its
-// config live, so this is a no-op kept for the agentRuntime contract
-// (the gateway client actually caches).
-func (al *AgentLoop) RefreshModels() {}
+// RefreshModels gives the provider model lists a short, bounded chance to
+// fill before a picker reads them. Lists are cached for hours, so this is
+// normally instant; a cold or offline provider costs at most the budget and
+// then shows its built-in catalog, marked as such.
+func (al *AgentLoop) RefreshModels() {
+	if al == nil || al.cfg == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
+	defer cancel()
+	providers.DiscoverAll(ctx, al.cfg)
+}
 
 // RespondClarify answers an in-flight clarification question for the
 // embedded loop, mirroring POST /v1/clarify/respond on the gateway. It
@@ -3058,6 +3078,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	// Turn telemetry: accumulate token usage and tools chosen so quality and
 	// cost can be observed (P8), not guessed.
 	var promptTokens, completionTokens, totalTokens int
+	var cacheUse turnCache
 	var measuredCost float64
 	usageResponses, unmeasuredResponses := 0, 0
 	turnModel := al.model
@@ -3158,6 +3179,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 			opts.OnChunk = hold.feed
 		}
+		if hold != nil {
+			opts.OnAttemptAbandoned = hold.abandonAttempt
+		}
 		response, err := callLLMWithRetry(ctx, iteration, func() (*providers.LLMResponse, error) {
 			return al.callLLM(ctx, selectedModel, messages, providerToolDefs, opts)
 		})
@@ -3165,6 +3189,8 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			promptTokens += response.Usage.PromptTokens
 			completionTokens += response.Usage.CompletionTokens
 			totalTokens += response.Usage.TotalTokens
+			cacheUse.read += response.Usage.CacheReadTokens
+			cacheUse.write += response.Usage.CacheWriteTokens
 			// Measured cost threads through per call; a single call
 			// without cost info voids turn-level measured totals (the
 			// resolver falls back to estimates, then unknown).
@@ -3486,6 +3512,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				Role:       "tool",
 				Content:    contentForLLM,
 				ToolCallID: tc.ID,
+				ToolError:  toolResult.IsError,
 			}
 			messages = append(messages, toolResultMsg)
 
@@ -3598,6 +3625,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			"prompt_tokens":     promptTokens,
 			"completion_tokens": completionTokens,
 			"total_tokens":      totalTokens,
+			"cache_read_tokens": cacheUse.read,
 			"usage_source":      usageSource,
 			"ttfb_ms":           ttfbMs,
 			"duration_ms":       time.Since(turnStart).Milliseconds(),
@@ -3609,7 +3637,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	// queryable per session/task instead of log-scraped. Measured totals
 	// win; otherwise the static table estimates; otherwise unknown (never
 	// zero). Best-effort: never fails the turn.
-	recordTurnUsage(al, opts, turnModel, iteration, promptTokens, completionTokens, totalTokens, measuredCost, usageResponses, unmeasuredResponses, usageSource)
+	recordTurnUsage(al, opts, turnModel, iteration, promptTokens, completionTokens, totalTokens, measuredCost, usageResponses, unmeasuredResponses, usageSource, cacheUse)
 
 	// Relational bookkeeping: score the user's turn, fold it into the
 	// affect aggregate, persist best-effort. Never fails the turn.
@@ -3787,12 +3815,22 @@ func (al *AgentLoop) callLLM(ctx context.Context, model string, messages []provi
 					turnlog.TrajectoryIDFromContext(ctx), from, c.Name, escalated)
 			}
 			attempted++
-			return al.invokeProvider(ctx, c.Provider, c.Model, messages, tools, opts)
+			r, e := al.invokeProvider(ctx, c.Provider, c.Model, messages, tools, opts)
+			if e == nil && r != nil && (strings.TrimSpace(r.Content) != "" || len(r.ToolCalls) > 0) {
+				emitServedBy(ctx, al.servedBy(c.Name, c.Model))
+			}
+			return r, e
 		})
 	} else if len(candidates) == 0 {
 		resp, err = al.invokeProvider(ctx, al.provider, model, messages, tools, opts)
+		if err == nil && resp != nil {
+			emitServedBy(ctx, al.servedBy(model, model))
+		}
 	} else {
 		resp, err = al.invokeProvider(ctx, candidates[0].Provider, candidates[0].Model, messages, tools, opts)
+		if err == nil && resp != nil {
+			emitServedBy(ctx, al.servedBy(candidates[0].Name, candidates[0].Model))
+		}
 	}
 
 	// Typed model-health events (observability + future reaction).
@@ -3802,6 +3840,38 @@ func (al *AgentLoop) callLLM(ctx context.Context, model string, messages []provi
 		al.events.emit(EventModelRecovered, model, nil)
 	}
 	return resp, err
+}
+
+// servedBy names the provider behind a candidate. Bare model names belong
+// to the configured default provider; locality is a property of the
+// provider (Ollama, vLLM, local), never of the model string.
+func (al *AgentLoop) servedBy(name, model string) ServedBy {
+	p, m := splitProviderModel(name)
+	// Only a known provider counts as a prefix: Ollama tags carry a colon
+	// of their own ("qwen3:0.6b" is a model, not provider "qwen3").
+	if p != "" && !knownProviderName(p) {
+		p, m = "", name
+	}
+	if p == "" && al.cfg != nil {
+		p = al.cfg.Agents.Defaults.Provider
+	}
+	if m == "" {
+		m = model
+	}
+	return ServedBy{Provider: p, Model: m, Local: p != "" && !modes.IsCloudProvider(p)}
+}
+
+func knownProviderName(p string) bool {
+	switch strings.ToLower(p) {
+	case "claude", "gpt", "kimi", "google", "glm", "zai", "copilot", "github_copilot", "claude-cli", "claudecode", "claude-code":
+		return true
+	}
+	for _, n := range providers.DiscoverableProviders() {
+		if strings.EqualFold(n, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMProvider, model string, messages []providers.Message, tools []providers.ToolDefinition, opts processOptions) (*providers.LLMResponse, error) {
@@ -3831,7 +3901,23 @@ func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMP
 	// filter on what survives, same suppression either way.
 	if opts.OnChunk != nil {
 		if sp, ok := provider.(providers.StreamingProvider); ok {
-			return sp.StreamChat(ctx, messages, tools, model, options, opts.OnChunk)
+			streamed := false
+			sink := opts.OnChunk
+			resp, err := sp.StreamChat(ctx, messages, tools, model, options, func(s string) {
+				if s != "" {
+					streamed = true
+				}
+				sink(s)
+			})
+			// A retry or the next fallback candidate restarts the answer
+			// from scratch; the failed attempt's text must not be glued
+			// onto it.
+			failed := err != nil || resp == nil || resp.FinishReason == "refusal" ||
+				(strings.TrimSpace(resp.Content) == "" && len(resp.ToolCalls) == 0)
+			if streamed && failed && opts.OnAttemptAbandoned != nil {
+				opts.OnAttemptAbandoned()
+			}
+			return resp, err
 		}
 	}
 	resp, err := provider.Chat(ctx, messages, tools, model, options)

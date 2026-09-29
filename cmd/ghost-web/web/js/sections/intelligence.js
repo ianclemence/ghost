@@ -89,48 +89,80 @@ function renderDefaultModel(panel, currentProvider, currentModel, providerModels
 
 function changeDefaultModal(currentProvider, currentModel, providerModels, ollamaModels) {
   const body = GhostUI.h('div');
+  const currentVal = currentProvider + ':' + currentModel;
+  let selected = currentVal;
+  let query = '';
 
-  // Collect all available models grouped by provider
-  const groups = [];
-
-  // Ollama (local)
-  if (ollamaModels.length > 0) {
-    groups.push({ provider: 'ollama', label: 'Ollama \u00b7 Local', models: ollamaModels, local: true });
+  // Groups come from what each provider says it serves (the server asks
+  // the provider APIs). The current default's provider leads; any other
+  // configured provider follows in a stable order.
+  function buildGroups(pmap) {
+    const groups = [];
+    if (ollamaModels.length > 0) {
+      groups.push({ provider: 'ollama', label: 'Ollama \u00b7 Local', models: ollamaModels, local: true });
+    }
+    const known = ['openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter', 'nvidia', 'vllm'];
+    const order = known.concat(Object.keys(pmap).filter((k) => !known.includes(k) && k !== 'ollama').sort());
+    order.sort((a, b) => (a === currentProvider ? -1 : 0) - (b === currentProvider ? -1 : 0));
+    for (const key of order) {
+      const pm = pmap[key];
+      if (!pm || !pm.configured || !pm.models || pm.models.length === 0) continue;
+      const label = key.charAt(0).toUpperCase() + key.slice(1);
+      groups.push({ provider: key, label, models: pm.models, local: key === 'vllm', catalog: pm.source === 'catalog', error: pm.error || '' });
+    }
+    return groups;
   }
+  let groups = buildGroups(providerModels);
 
-  // Cloud providers — the current default sorts first so the owner's
-  // choice leads, instead of a fixed vendor order.
-  const order = ['openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter'];
-  order.sort((a, b) => (a === currentProvider ? -1 : 0) - (b === currentProvider ? -1 : 0));
-  for (const key of order) {
-    const pm = providerModels[key];
-    if (!pm || !pm.configured || !pm.models || pm.models.length === 0) continue;
-    groups.push({ provider: key, label: key.charAt(0).toUpperCase() + key.slice(1), models: pm.models, local: false });
-  }
+  const search = GhostUI.h('input', { className: 'ghost-input', type: 'search', placeholder: 'Search models or providers', 'aria-label': 'Search models' });
+  const list = GhostUI.h('div', { style: 'max-height:55vh;overflow-y:auto;margin-top:var(--s-2)' });
+  body.appendChild(search);
+  body.appendChild(list);
 
-  if (groups.length === 0) {
-    body.appendChild(GhostUI.emptyState('No models available', 'Configure a provider first.'));
-    GhostUI.modal('Change default model', body, [
-      GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
-    ]);
-    return;
-  }
-
-  let selected = currentProvider + ':' + currentModel;
-
-  for (const g of groups) {
-    const groupLabel = GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3);margin-bottom:var(--s-1);font-weight:600;text-transform:uppercase;letter-spacing:0.05em' }, g.label);
-    body.appendChild(groupLabel);
-    for (const m of g.models) {
-      body.appendChild(modelOptionRow(g, m, selected, currentProvider + ':' + currentModel, (val) => {
-        selected = val;
-        body.innerHTML = '';
-        changeDefaultModalBody(body, groups, selected, currentProvider, currentModel);
-      }));
+  function render() {
+    list.innerHTML = '';
+    const q = query.trim().toLowerCase();
+    let shown = 0;
+    for (const g of groups) {
+      const models = q ? g.models.filter((m) => m.toLowerCase().includes(q) || g.provider.includes(q) || g.label.toLowerCase().includes(q)) : g.models;
+      if (models.length === 0) continue;
+      list.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3);margin-bottom:var(--s-1);font-weight:600;text-transform:uppercase;letter-spacing:0.05em' }, g.label));
+      if (g.catalog) {
+        // Honest provenance: the provider couldn't be asked, so these are
+        // Ghost's built-in suggestions, not the provider's own list.
+        list.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-bottom:var(--s-1)' },
+          'Built-in list \u2014 couldn\u2019t reach ' + g.label + (g.error ? ' (' + g.error + ')' : '')));
+      }
+      for (const m of models) {
+        shown++;
+        list.appendChild(modelOptionRow(g, m, selected, currentVal, (val) => { selected = val; render(); }));
+      }
+    }
+    if (groups.length === 0) {
+      list.appendChild(GhostUI.emptyState('No models available', 'Configure a provider first.'));
+    } else if (shown === 0) {
+      list.appendChild(GhostUI.emptyState('No matches', 'Try a different search.'));
     }
   }
+  search.addEventListener('input', () => { query = search.value; render(); });
+  render();
+
+  const refreshBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = 'Refreshing\u2026';
+    try {
+      const res = await GhostAPI.get('/api/admin/providers/models?refresh=1');
+      groups = buildGroups((res && res.providers) || {});
+      render();
+    } catch (err) {
+      GhostUI.toast('Couldn\u2019t refresh model lists.', 'err');
+    }
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = 'Refresh lists';
+  } }, 'Refresh lists');
 
   GhostUI.modal('Change default model', body, [
+    refreshBtn,
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
       const [provider, ...modelParts] = selected.split(':');
@@ -146,24 +178,12 @@ function changeDefaultModal(currentProvider, currentModel, providerModels, ollam
       } catch (err) { GhostUI.toast('Couldn\u2019t set model.', 'err'); e.target.disabled = false; }
     } }, 'Set default'),
   ]);
-}
-
-function changeDefaultModalBody(body, groups, selected, currentProvider, currentModel) {
-  for (const g of groups) {
-    const groupLabel = GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3);margin-bottom:var(--s-1);font-weight:600;text-transform:uppercase;letter-spacing:0.05em' }, g.label);
-    body.appendChild(groupLabel);
-    for (const m of g.models) {
-      body.appendChild(modelOptionRow(g, m, selected, currentProvider + ':' + currentModel, (val) => {
-        selected = val;
-        body.innerHTML = '';
-        changeDefaultModalBody(body, groups, selected, currentProvider, currentModel);
-      }));
-    }
-  }
+  setTimeout(() => search.focus(), 0);
 }
 
 // modelOptionRow renders a selectable model in the "Change default model" modal.
-// It shows a friendly name with the raw model id as a subtle secondary line.
+// The model id is the title (a provider can list dozens, and a coarse class
+// like "Fast" can't tell them apart); the class is the secondary line.
 function modelOptionRow(g, m, selected, currentVal, onPick) {
   const val = g.provider + ':' + m;
   const f = GhostUI.modelFriendly(val);
@@ -171,8 +191,8 @@ function modelOptionRow(g, m, selected, currentVal, onPick) {
   const dot = GhostUI.h('span', { className: 'status-dot ' + (val === selected ? 'ready' : 'neutral'), style: 'flex-shrink:0' });
   row.appendChild(dot);
   const content = GhostUI.h('div', { style: 'margin-left:var(--s-2);min-width:0;flex:1' });
-  content.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-size:var(--t-body);font-weight:' + (val === selected ? '600' : '400') }, f.name));
-  content.appendChild(GhostUI.h('div', { className: 'model-id', 'aria-hidden': 'true' }, f.model));
+  content.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-size:var(--t-body);overflow-wrap:anywhere;font-weight:' + (val === selected ? '600' : '400') }, f.model));
+  content.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, f.name));
   row.appendChild(content);
   if (val === currentVal) {
     row.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary', style: 'margin-left:auto' }, 'Current'));
@@ -191,7 +211,7 @@ function renderProviders(panel, cfg, providerModels, ollamaModels) {
   h.appendChild(text);
   panel.appendChild(h);
 
-  const order = ['ollama', 'openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter'];
+  const order = ['ollama', 'openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter', 'nvidia'];
   const currentProvider = cfg ? (cfg.provider || '') : '';
   order.sort((a, b) => (a === currentProvider ? -1 : 0) - (b === currentProvider ? -1 : 0));
 

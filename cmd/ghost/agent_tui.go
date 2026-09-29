@@ -11,9 +11,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/agent"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"charm.land/bubbles/v2/textarea"
@@ -63,6 +65,8 @@ type bgTickMsg struct{}
 type turnDoneMsg struct {
 	text string
 	err  error
+	// served is where the runtime says the turn ran (nil when unknown).
+	served *agent.ServedBy
 }
 
 // ─── transcript entries ──────────────────────────────────────────────────
@@ -81,7 +85,10 @@ type entry struct {
 	kind entryKind
 	text string
 	dur  time.Duration // assistant turns only (`· duration` trailing meta)
-	at   time.Time     // when the message landed; zero = unknown (no divider)
+	// via names the model that answered when it isn't the footer's model
+	// (a fallback served), so the transcript never implies the wrong one.
+	via string
+	at  time.Time // when the message landed; zero = unknown (no divider)
 }
 
 // ─── model ───────────────────────────────────────────────────────────────
@@ -403,7 +410,7 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if text == "" {
 					text = "(no response)"
 				}
-				m.append(entry{kind: entryAssistant, text: text, dur: time.Since(m.turnStart), at: time.Now()})
+				m.append(entry{kind: entryAssistant, text: text, dur: time.Since(m.turnStart), at: time.Now(), via: m.viaFor(msg.served)})
 			}
 		}
 		m.streaming = ""
@@ -712,6 +719,23 @@ func (m *agentTUI) send(text string) tea.Cmd {
 	return spinnerTick()
 }
 
+// viaFor reports the answering model only when it differs from the model
+// the footer names (a fallback served the turn); otherwise the footer is
+// already true and repeating it would be noise.
+func (m *agentTUI) viaFor(s *agent.ServedBy) string {
+	if s == nil || s.Model == "" {
+		return ""
+	}
+	if modelBase(s.Model) == modelBase(m.loop.GetCurrentModel()) {
+		return ""
+	}
+	where := "cloud"
+	if s.Local {
+		where = "on your Pod"
+	}
+	return s.Model + " (" + where + ")"
+}
+
 func (m *agentTUI) runTurn(text string) {
 	send := func(msg tea.Msg) {
 		if agentProgram != nil {
@@ -722,9 +746,23 @@ func (m *agentTUI) runTurn(text string) {
 	onTool := func(tool, args string) {
 		send(toolCallMsg{tool: tool, label: toolStatusLabel(tool, args)})
 	}
+	var mu sync.Mutex
+	var served []agent.ServedBy
+	ctx := agent.WithServedBySink(context.Background(), func(s agent.ServedBy) {
+		mu.Lock()
+		served = append(served, s)
+		mu.Unlock()
+	})
 	resp, err := m.loop.ProcessDirectWithChannel(
-		context.Background(), text, m.session, "cli", "direct", nil, chunk, onTool)
-	send(turnDoneMsg{text: resp, err: err})
+		ctx, text, m.session, "cli", "direct", nil, chunk, onTool)
+	mu.Lock()
+	agg, ok := agent.AggregateServedBy(served)
+	mu.Unlock()
+	done := turnDoneMsg{text: resp, err: err}
+	if ok {
+		done.served = &agg
+	}
+	send(done)
 }
 
 // answerClarify posts the editor text as the answer to the in-flight
@@ -923,7 +961,9 @@ func (m *agentTUI) modalMatches() []modalItem {
 	}
 	var out []modalItem
 	for _, it := range m.modal.items {
-		if strings.Contains(strings.ToLower(it.label), q) {
+		// Label or description: typing a provider name ("anthropic")
+		// narrows to the models it serves.
+		if strings.Contains(strings.ToLower(it.label), q) || strings.Contains(strings.ToLower(it.desc), q) {
 			out = append(out, it)
 		}
 	}
@@ -933,8 +973,13 @@ func (m *agentTUI) modalMatches() []modalItem {
 // modelItem builds one picker row from an option.
 func (m *agentTUI) modelItem(o providers.ModelOption, cur string) modalItem {
 	desc := o.Provider
-	if o.Model != "" && o.Model != o.Provider {
+	if o.Model != "" && o.Model != o.Provider && o.Model != o.Name {
 		desc += " · " + shortModel(o.Model)
+	}
+	if o.Kind == "provider" && o.Source == providers.ModelSourceCatalog && o.Available {
+		// The provider couldn't be asked for its list; say this row is
+		// from Ghost's built-in list rather than implying it's live.
+		desc += " · built-in list"
 	}
 	if loc := providerLocality(o.Provider + ":" + o.Model); loc != "" {
 		desc += " · " + loc
@@ -1109,7 +1154,7 @@ func (m *agentTUI) modalWindow() (items []modalItem, off int) {
 // modalStatus is the honest status line under a modal's header: the model
 // picker shows configured-only models; Enter selects.
 func (m *agentTUI) modalStatus() string {
-	return "showing models from configured providers · enter selects"
+	return "models your providers serve · type to filter · enter selects"
 }
 
 func (m *agentTUI) modalView() string {
@@ -1785,6 +1830,9 @@ func (m *agentTUI) renderEntry(e entry) string {
 		head := m.assistantHead()
 		if e.dur > 0 {
 			head += styleAssistantMeta.Render(" · " + formatElapsed(e.dur))
+		}
+		if e.via != "" {
+			head += styleAssistantMeta.Render(" · answered by " + e.via)
 		}
 		return head + "\n" + m.assistantBlock(e.text)
 	case entryTool:

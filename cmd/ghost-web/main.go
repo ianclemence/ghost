@@ -890,8 +890,17 @@ func handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Copy headers from original request
+	// Copy headers from original request, minus the browser context. The
+	// owner's session was verified above; the gateway trusts this hop as a
+	// local program and refuses loopback requests that look like a foreign
+	// web page (cross-site Origin / Sec-Fetch-Site), which the console's
+	// own page would when reached by a name the gateway doesn't know
+	// (an mDNS alias, a remote-access domain). The console cookie is
+	// meaningless to the gateway and is not passed on.
 	for key, values := range r.Header {
+		if proxyDropsHeader(key) {
+			continue
+		}
 		for _, v := range values {
 			proxyReq.Header.Add(key, v)
 		}
@@ -928,6 +937,16 @@ func handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+}
+
+// proxyDropsHeader reports headers the gateway proxy must not forward.
+func proxyDropsHeader(key string) bool {
+	k := http.CanonicalHeaderKey(key)
+	switch k {
+	case "Origin", "Referer", "Cookie":
+		return true
+	}
+	return strings.HasPrefix(k, "Sec-Fetch-")
 }
 
 func handleScanWiFi(w http.ResponseWriter, r *http.Request) {

@@ -268,6 +268,19 @@ func Suite() []Conversation {
 				NoFalseSuccess: true,
 			},
 		},
+		{
+			// The provider refuses every call for billing (out of credit).
+			// The owner must be told that, in words they can act on — not
+			// "no available providers" or a raw 402 body.
+			ID: "prov-02", Category: CatProvider, Title: "Out-of-credit provider is explained, not masked",
+			Severity: "high", ProviderFault: "billing",
+			People: onePerson("maya", "maya",
+				turn("Suggest a name for my new cat.")),
+			Expect: Expect{
+				LastResponseContains: []string{"out of credit"},
+				NoFalseSuccess:       true,
+			},
+		},
 		// ---------- K. Contradictory instructions ----------
 		{
 			ID: "cont-01", Category: CatContradiction, Title: "Coffee contradiction resolved",

@@ -57,6 +57,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/pairing"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
+	"github.com/ianclemence/ghost/pkg/provider"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/routinefeed"
 	"github.com/ianclemence/ghost/pkg/routines"
@@ -70,7 +71,13 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	// Browsers apply no CORS to WebSockets, so the origin check is the
+	// only thing standing between a cross-site page and the owner's live
+	// conversation stream. Native clients send no Origin.
+	CheckOrigin: func(r *http.Request) bool {
+		o := r.Header.Get("Origin")
+		return o == "" || isTrustedLocalOrigin(o)
+	},
 }
 
 var apiStartTime = time.Now()
@@ -247,13 +254,51 @@ func eventLogDir() string {
 	return "./events"
 }
 
+// isLoopbackRequest reports whether a request may be trusted as a local
+// program (TUI, CLI, relay client, the console's server-side proxy). A
+// loopback TCP peer is necessary but not sufficient: a web page open in the
+// owner's browser reaches 127.0.0.1 too. Two browser contexts are refused:
+//   - cross-site: an Origin that isn't this machine, or Sec-Fetch-Site
+//     "cross-site". CORS only hides responses; without this a no-preflight
+//     text/plain POST would run a chat turn (and its tools) as the owner.
+//   - DNS rebinding: a Host that names something other than this machine.
+//     After rebinding the attacker's page is same-origin with the gateway,
+//     so no CORS rule applies at all.
 func isLoopbackRequest(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return false
 	}
 	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	if ip == nil || !ip.IsLoopback() {
+		return false
+	}
+	return !foreignBrowserContext(r)
+}
+
+// foreignBrowserContext reports whether a request carries the marks of a
+// web page that is not this machine's own.
+func foreignBrowserContext(r *http.Request) bool {
+	if o, ok := r.Header["Origin"]; ok && (len(o) == 0 || !isTrustedLocalOrigin(o[0])) {
+		return true // includes the opaque "null" origin
+	}
+	if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") {
+		return true
+	}
+	return !isLocalHostHeader(r.Host)
+}
+
+// isLocalHostHeader reports whether a Host header names this machine. An
+// empty Host (HTTP/1.0, some native clients) carries no rebinding risk.
+func isLocalHostHeader(hostport string) bool {
+	if hostport == "" {
+		return true
+	}
+	h := hostport
+	if hh, _, err := net.SplitHostPort(hostport); err == nil {
+		h = hh
+	}
+	return isTrustedLocalOrigin("http://" + h)
 }
 
 // Trusted CORS origins. Ghost binds to 0.0.0.0 and treats loopback peers as
@@ -314,8 +359,8 @@ func isTrustedLocalOrigin(origin string) bool {
 	if ip := net.ParseIP(hostname); ip != nil && ip.IsLoopback() {
 		return true
 	}
-	if hostname == localHostname() {
-		return true
+	if hn := localHostname(); hn != "" && (hostname == hn || hostname == hn+".local") {
+		return true // mDNS name the console is reached by
 	}
 	if ip := net.ParseIP(hostname); ip != nil {
 		for _, l := range localInterfaceIPs() {
@@ -2918,6 +2963,16 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		// retrieving memory or waiting on the model, so the silent stretch
 		// between "processing" and the first token is never a blank screen.
 		// No phase claims completion — that stays bound to evidence.
+		// Where this turn actually ran, from execution: every model call
+		// that served reports itself, and the stream states the aggregate
+		// once the turn succeeds (never inferred from settings).
+		var servedMu sync.Mutex
+		var served []agent.ServedBy
+		ctx = agent.WithServedBySink(ctx, func(sb agent.ServedBy) {
+			servedMu.Lock()
+			served = append(served, sb)
+			servedMu.Unlock()
+		})
 		ctx = agent.WithPhaseSink(ctx, func(phase, detail string) {
 			frame := map[string]string{"type": "phase", "phase": phase}
 			if detail != "" {
@@ -2996,7 +3051,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				`, req.SessionKey)
 			}
 
-			sw.event("Error: " + err.Error())
+			// Model failures are explained in the owner's terms (out of
+			// credit, bad key, provider down) — never the raw provider body.
+			name := ""
+			if cfg := agentLoop.Config(); cfg != nil {
+				name = cfg.Agents.Defaults.Provider
+			}
+			sw.event("Error: " + provider.TurnErrorText(err, name))
 			lifecycleCompleted("failed")
 			if chatTurns != nil {
 				_, _ = chatTurns.Set(req.SessionKey, req.RequestID, "failed", "failed")
@@ -3005,6 +3066,18 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			return
 		}
 		emitUnstreamedReply(response, streamedText, onChunk)
+		servedMu.Lock()
+		agg, haveServed := agent.AggregateServedBy(served)
+		servedMu.Unlock()
+		if haveServed {
+			emitObject(map[string]interface{}{
+				"type":       "served_by",
+				"provider":   agg.Provider,
+				"model":      agg.Model,
+				"local":      agg.Local,
+				"request_id": req.RequestID,
+			})
+		}
 		// Terminal outcome (backend-stated, additive frame).
 		outcome := "success"
 		if clarifySeen {
@@ -4710,6 +4783,18 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	mux.HandleFunc("/v1/model", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
+			// Model lists come from the providers themselves (cached).
+			// Give a cold cache a short, bounded chance to fill so a
+			// picker opens on live lists; ?refresh=1 re-asks every
+			// provider now.
+			if cfg := agentLoop.Config(); cfg != nil {
+				if r.URL.Query().Get("refresh") == "1" {
+					providers.InvalidateModelDiscovery()
+				}
+				dctx, dcancel := context.WithTimeout(r.Context(), 3*time.Second)
+				providers.DiscoverAll(dctx, cfg)
+				dcancel()
+			}
 			type presetPayload struct {
 				Name     string `json:"name"`
 				Provider string `json:"provider"`
@@ -5410,9 +5495,6 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			"ok": true, "sessions_closed": closed, "profiles_removed": removed,
 		})
 	}))
-
-	// ── Phone/Pod cooperation: protocol, capabilities, catalog, sync ───
-	registerLocalGhostRoutes(mux, agentLoop)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	log.Printf("🤖 Ghost Internal API listening on %s (chat + tools; loopback trusted, LAN requires device credentials)", addr)

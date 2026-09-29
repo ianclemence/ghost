@@ -196,8 +196,8 @@ func TestClaudeProvider_ChatRoundTrip(t *testing.T) {
 
 func TestClaudeProvider_GetDefaultModel(t *testing.T) {
 	p := NewClaudeProvider("test-token")
-	if got := p.GetDefaultModel(); got != "claude-3-5-sonnet-20240620" {
-		t.Errorf("GetDefaultModel() = %q, want %q", got, "claude-3-5-sonnet-20240620")
+	if got := p.GetDefaultModel(); got != DefaultAnthropicModel {
+		t.Errorf("GetDefaultModel() = %q, want %q", got, DefaultAnthropicModel)
 	}
 }
 

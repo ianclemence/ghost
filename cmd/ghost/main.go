@@ -45,6 +45,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/nontty"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/product"
+	"github.com/ianclemence/ghost/pkg/provider"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/relayclient"
 	"github.com/ianclemence/ghost/pkg/routines"
@@ -836,20 +837,34 @@ func modelCmd() {
 				fmt.Println(s)
 			}
 		}
-		// Configured providers without a preset (e.g. a deepseek key but
-		// no deepseek preset): selectable via `ghost model use
-		// <provider:model>`, and listed in the terminal picker.
-		var prov []string
+		// Every model the configured providers serve, asked of the
+		// providers themselves; selectable via `ghost model use
+		// <provider:model>` and listed in the terminal picker.
+		dctx, dcancel := context.WithTimeout(context.Background(), 8*time.Second)
+		lists := providers.DiscoverAll(dctx, cfg)
+		dcancel()
+		byProvider := map[string][]string{}
+		var order []string
 		for _, o := range providers.AvailableModelOptions(cfg) {
 			if o.Kind != "provider" {
 				continue
 			}
-			prov = append(prov, fmt.Sprintf("  %-16s %s (%s)", o.Name, o.Provider, o.Model))
+			if _, ok := byProvider[o.Provider]; !ok {
+				order = append(order, o.Provider)
+			}
+			byProvider[o.Provider] = append(byProvider[o.Provider], o.Model)
 		}
-		if len(prov) > 0 {
-			fmt.Println("\nProviders (configured keys, no preset needed):")
-			for _, s := range prov {
-				fmt.Println(s)
+		for _, name := range order {
+			note := ""
+			if pm := lists[name]; pm.Source == providers.ModelSourceCatalog {
+				note = " — built-in list"
+				if pm.Error != "" {
+					note += " (couldn't list: " + pm.Error + ")"
+				}
+			}
+			fmt.Printf("\n%s%s:\n", name, note)
+			for _, m := range byProvider[name] {
+				fmt.Printf("  %s:%s\n", name, m)
 			}
 		}
 		return
@@ -4036,6 +4051,15 @@ func benchmarkCmd() {
 	}
 }
 
+// activeProviderName names the configured provider for error messages, or
+// "" when it can't be read.
+func activeProviderName() string {
+	if cfg, err := loadConfig(); err == nil && cfg != nil {
+		return cfg.Agents.Defaults.Provider
+	}
+	return ""
+}
+
 // friendlyAgentError maps a turn's transport/provider error to product
 // language the CLI user can act on, without hiding the underlying cause
 // when debugging. Provider errors may quote endpoints or timeouts, never
@@ -4043,6 +4067,9 @@ func benchmarkCmd() {
 func friendlyAgentError(err error) string {
 	if err == nil {
 		return "something went wrong."
+	}
+	if provider.IsModelCallFailure(err) {
+		return provider.TurnErrorText(err, activeProviderName())
 	}
 	msg := strings.ToLower(err.Error())
 	switch {

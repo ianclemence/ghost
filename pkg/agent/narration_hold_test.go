@@ -172,3 +172,26 @@ func TestProcessMessageDoesNotStreamThePreambleBeforeAToolCall(t *testing.T) {
 		t.Errorf("reply = %q, want %q", resp, answer)
 	}
 }
+
+// A failed attempt's text must never be glued onto the retry's answer.
+func TestNarrationHoldAbandonAttempt(t *testing.T) {
+	var out strings.Builder
+	h := newNarrationHold(func(s string) { out.WriteString(s) })
+	h.feed("Sure, here are some cat na") // attempt 1, still held
+	h.abandonAttempt()
+	h.feed("Sure, here are some cat names: Miso, Pepper.")
+	h.flush()
+	if got := out.String(); got != "Sure, here are some cat names: Miso, Pepper." {
+		t.Fatalf("held partial leaked into the retry: %q", got)
+	}
+
+	out.Reset()
+	h = newNarrationHold(func(s string) { out.WriteString(s) })
+	long := strings.Repeat("word ", 40) // past the flush threshold: owner saw it
+	h.feed(long)
+	h.abandonAttempt()
+	h.feed("Fresh answer.")
+	if got := out.String(); !strings.Contains(got, attemptRestartNotice) || !strings.HasSuffix(got, "Fresh answer.") {
+		t.Fatalf("released partial must be marked before the restart: %q", got)
+	}
+}

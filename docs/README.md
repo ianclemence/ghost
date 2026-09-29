@@ -124,9 +124,8 @@ Ghost's trust model rests on a small number of invariants:
 
 Supporting subsystems: `pkg/connectedapp` (authenticated external systems),
 `pkg/credentials` (the credential boundary), `pkg/live` (browser/computer
-surfaces), `pkg/skills` (knowledge and procedures), `pkg/memsync`
-(phone↔Pod operation sync), `pkg/infer` (capability-based inference contract
-shared with the phone runtime), `pkg/desk` (the read-only projection of the
+surfaces), `pkg/skills` (knowledge and procedures), `pkg/infer` (capability-based
+inference contract), `pkg/desk` (the read-only projection of the
 artifacts Ghost makes for the owner), `pkg/proactive` (proactive policy and
 the owner-facing status of Ghost's quiet work), `pkg/connector` (portable,
 signed connector manifests and their governed execution).

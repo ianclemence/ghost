@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/agent"
 	"os"
 	"regexp"
 	"strings"
@@ -2183,5 +2184,21 @@ func TestTUIBackgroundDeliveryFailure(t *testing.T) {
 	}
 	if hasNotice(m, "finished") {
 		t.Fatalf("failure must never read as success: flush=%q", m.lastFlush)
+	}
+}
+
+// The transcript never implies the wrong model answered: when a fallback
+// served the turn, the reply says which one; when the configured model
+// served, the footer already says so and the reply stays quiet.
+func TestTUINamesFallbackThatAnswered(t *testing.T) {
+	m := newAgentTUI(newFakeRuntime(), "main")
+	if got := m.viaFor(&agent.ServedBy{Provider: "deepseek", Model: "deepseek-flash"}); got != "" {
+		t.Fatalf("configured model served: want no note, got %q", got)
+	}
+	if got := m.viaFor(&agent.ServedBy{Provider: "ollama", Model: "qwen3:8b", Local: true}); got != "qwen3:8b (on your Pod)" {
+		t.Fatalf("local fallback: got %q", got)
+	}
+	if got := m.viaFor(nil); got != "" {
+		t.Fatalf("unknown stays unknown: %q", got)
 	}
 }

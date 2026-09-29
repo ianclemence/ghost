@@ -260,6 +260,10 @@ type Conversation struct {
 	Severity string // "high" cases gate overall on hard-fail categories
 	Fixture  Fixture
 	Offline  bool
+	// ProviderFault runs the conversation against a stub model endpoint
+	// that fails every call the given way ("billing": 402 Insufficient
+	// Balance), to grade what the owner is told when the provider refuses.
+	ProviderFault string
 	// SharedWorkspace runs all People against the SAME fresh workspace
 	// (different sessions/contexts), for context-isolation scenarios.
 	SharedWorkspace bool

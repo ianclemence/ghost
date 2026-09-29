@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -30,11 +31,45 @@ type UsageInfo struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+	// CacheReadTokens / CacheWriteTokens are the prompt tokens served
+	// from, or written to, the provider's prompt cache (both already
+	// counted in PromptTokens). Zero when the provider has no cache or
+	// does not report it.
+	CacheReadTokens  int `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
 	// CostUSD is measured cost when the provider reports it.
 	// CostUnknown means no measured cost and no estimate applied:
 	// unknown is never zero.
 	CostUSD     float64 `json:"cost_usd,omitempty"`
 	CostUnknown bool    `json:"cost_unknown,omitempty"`
+}
+
+// UnmarshalJSON reads the usage block of any OpenAI-compatible provider and
+// normalizes prompt-cache hits into CacheReadTokens: DeepSeek reports
+// "prompt_cache_hit_tokens", OpenAI "prompt_tokens_details.cached_tokens".
+// Ghost's own serialized form ("cache_read_tokens") round-trips unchanged.
+func (u *UsageInfo) UnmarshalJSON(b []byte) error {
+	type plain UsageInfo
+	var raw struct {
+		plain
+		DeepSeekCacheHit int `json:"prompt_cache_hit_tokens"`
+		Details          *struct {
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	*u = UsageInfo(raw.plain)
+	if u.CacheReadTokens == 0 {
+		switch {
+		case raw.DeepSeekCacheHit > 0:
+			u.CacheReadTokens = raw.DeepSeekCacheHit
+		case raw.Details != nil && raw.Details.CachedTokens > 0:
+			u.CacheReadTokens = raw.Details.CachedTokens
+		}
+	}
+	return nil
 }
 
 type Message struct {
@@ -44,7 +79,11 @@ type Message struct {
 	ReasoningContent string        `json:"reasoning_content,omitempty"`
 	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
 	ToolCallID       string        `json:"tool_call_id,omitempty"`
-	CacheControl     *CacheControl `json:"cache_control,omitempty"`
+	// ToolError marks a tool result as a failure, so providers with a
+	// native error flag (Anthropic's is_error) tell the model the call
+	// did not succeed instead of presenting the error text as output.
+	ToolError    bool          `json:"tool_error,omitempty"`
+	CacheControl *CacheControl `json:"cache_control,omitempty"`
 	// SourceChannel records which surface a message came in on (mobile,
 	// cli, telegram, voice, …). It is provenance, not conversation
 	// identity: every surface shares one conversation, and this field only
@@ -58,6 +97,13 @@ type Message struct {
 	// provenance only and is never serialized to providers.
 	CreatedAt time.Time `json:"-"`
 }
+
+// SystemPromptCacheBoundary separates the stable part of a system prompt
+// (identity, behavior, skills — identical across turns) from per-turn state
+// (current time, session, summary). Providers with explicit prompt caching
+// place their cache breakpoint here; the volatile tail must never sit inside
+// the cached prefix or the cache is rewritten on every turn.
+const SystemPromptCacheBoundary = "<!-- SYSTEM_PROMPT_CACHE_BOUNDARY -->"
 
 type CacheControl struct {
 	Type string `json:"type"` // e.g., "ephemeral"

@@ -323,9 +323,21 @@
   display: flex;
   flex-direction: column;
 }
+.home-activity-day {
+  font-size: var(--t-foot);
+  font-weight: 600;
+  color: var(--ink-faint);
+  padding: var(--s-3) 0 var(--s-1);
+}
+.home-activity-day:first-child { padding-top: 0; }
+.home-activity-why {
+  font-size: var(--t-foot);
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
 .home-activity-row {
   display: grid;
-  grid-template-columns: 132px 1fr;
+  grid-template-columns: 76px 1fr;
   gap: var(--s-4);
   align-items: start;
   padding: var(--s-2) 0;
@@ -333,7 +345,7 @@
 .home-activity-row-skel { padding: var(--s-2) 0; }
 .home-activity-when {
   font-size: var(--t-foot);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--ink-faint);
   letter-spacing: 0;
   white-space: nowrap;
@@ -734,3 +746,12 @@
   justify-content: flex-end;
 }
 #perm-grants { margin-top: var(--s-6); }
+
+/* Activity page: day groups */
+.activity-day {
+  font-size: var(--t-foot);
+  font-weight: 600;
+  color: var(--ink-faint);
+  padding: var(--s-4) var(--s-3) var(--s-1);
+}
+.activity-day:first-child { padding-top: 0; }

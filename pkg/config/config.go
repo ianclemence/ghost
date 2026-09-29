@@ -681,6 +681,22 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
+// Clone returns a copy that can be modified without touching c. Section
+// structs are copied by value; slices and maps inside them are shared, so
+// callers may reassign fields freely but must not mutate shared slices in
+// place. (Copying the struct itself would copy the embedded mutex.)
+func (c *Config) Clone() *Config {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return &Config{
+		Agents: c.Agents, Channels: c.Channels, Providers: c.Providers,
+		Gateway: c.Gateway, Relay: c.Relay, RAG: c.RAG, Tools: c.Tools,
+		Heartbeat: c.Heartbeat, Devices: c.Devices, Skills: c.Skills,
+		Nudge: c.Nudge, Personality: c.Personality, Toolsets: c.Toolsets,
+		STT: c.STT, TTS: c.TTS, Connectors: c.Connectors,
+	}
+}
+
 func (c *Config) WorkspacePath() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

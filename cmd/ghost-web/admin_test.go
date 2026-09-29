@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/config"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -539,5 +540,68 @@ func TestConfigureRequiresSetupCode(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, appliance.SetupCodeFileName)); !os.IsNotExist(err) {
 		t.Fatal("setup code must be cleared after a successful setup")
+	}
+}
+
+// The console's model lists carry their provenance: a configured provider
+// that can't be listed falls back to the built-in list and says why; an
+// unconfigured provider is marked as such with no error; the endpoint needs
+// a session.
+func TestProviderModelsReportsSource(t *testing.T) {
+	authTestEnv(t, "models-test-1")
+	fb.ConfigPath = filepath.Join(fb.ConfigDir, "config.json")
+	cfg := config.DefaultConfig()
+	cfg.Providers.Anthropic.APIKey = "sk-ant-test"
+	if err := config.SaveConfig(fb.ConfigPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	anon := httptest.NewRecorder()
+	handleProviderModels(anon, httptest.NewRequest(http.MethodGet, "/api/admin/providers/models", nil))
+	if anon.Code == http.StatusOK {
+		t.Fatal("model lists must require a session")
+	}
+
+	rec := doLogin(t, "models-test-1", false)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/providers/models", nil)
+	for _, c := range rec.Result().Cookies() {
+		req.AddCookie(c)
+	}
+	out := httptest.NewRecorder()
+	handleProviderModels(out, req)
+	var res struct {
+		Providers map[string]struct {
+			Configured bool     `json:"configured"`
+			Models     []string `json:"models"`
+			Source     string   `json:"source"`
+			Error      string   `json:"error"`
+		} `json:"providers"`
+	}
+	if err := json.NewDecoder(out.Body).Decode(&res); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	a := res.Providers["anthropic"]
+	if !a.Configured || a.Source != "catalog" || a.Error == "" || len(a.Models) == 0 || a.Models[0] != "claude-opus-5-5" {
+		t.Fatalf("unlistable configured provider must fall back with a reason: %+v", a)
+	}
+	g := res.Providers["groq"]
+	if g.Configured || g.Error != "" {
+		t.Fatalf("unconfigured provider must carry no error: %+v", g)
+	}
+}
+
+// The console proxy has authenticated the owner; it must not hand the
+// gateway browser context the gateway would (rightly) treat as a foreign
+// page, nor the console's own session cookie.
+func TestGatewayProxyDropsBrowserContext(t *testing.T) {
+	for _, h := range []string{"Origin", "referer", "Cookie", "Sec-Fetch-Site", "Sec-Fetch-Mode"} {
+		if !proxyDropsHeader(h) {
+			t.Errorf("%s must not be forwarded", h)
+		}
+	}
+	for _, h := range []string{"Content-Type", "Accept", "X-Ghost-Session"} {
+		if proxyDropsHeader(h) {
+			t.Errorf("%s must be forwarded", h)
+		}
 	}
 }

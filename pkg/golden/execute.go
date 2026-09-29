@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +22,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/product"
+	gprovider "github.com/ianclemence/ghost/pkg/provider"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
@@ -323,6 +326,11 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 		if c.Offline && !r.Offline {
 			setProviderUnreachable(cfg, r.Target.Provider)
 		}
+		if c.ProviderFault != "" {
+			stub := faultyProvider(c.ProviderFault)
+			defer stub.Close()
+			setProviderBase(cfg, r.Target.Provider, stub.URL)
+		}
 		provider, err := providers.CreateProvider(cfg)
 		if err != nil {
 			return failOut(Configuration, "provider: "+err.Error())
@@ -362,7 +370,8 @@ func (r *Runner) runCase(c Conversation) CaseResult {
 			rt, rerr := loop.ProcessDirectWithChannel(ctx, t.User, session, "web", "chat", nil, nil, nil)
 			resp := ""
 			if rerr != nil {
-				resp = "[error] " + rerr.Error()
+				// Graded as the owner sees it, not as the raw error.
+				resp = "[error] " + gprovider.TurnErrorText(rerr, cfg.Agents.Defaults.Provider)
 				if len(p.Turns) == ti+1 {
 					cr.Classification = Environment
 				}
@@ -499,20 +508,41 @@ func (r *Runner) configFor(ws string) (*config.Config, error) {
 }
 
 func setProviderUnreachable(cfg *config.Config, provider string) {
+	setProviderBase(cfg, provider, "http://127.0.0.1:1")
+}
+
+// setProviderBase points the target provider at base.
+func setProviderBase(cfg *config.Config, provider, base string) {
 	switch provider {
 	case "deepseek":
-		cfg.Providers.DeepSeek.APIBase = "http://127.0.0.1:1"
+		cfg.Providers.DeepSeek.APIBase = base
 	case "anthropic":
-		cfg.Providers.Anthropic.APIBase = "http://127.0.0.1:1"
+		cfg.Providers.Anthropic.APIBase = base
 	case "openai":
-		cfg.Providers.OpenAI.APIBase = "http://127.0.0.1:1"
+		cfg.Providers.OpenAI.APIBase = base
 	case "groq":
-		cfg.Providers.Groq.APIBase = "http://127.0.0.1:1"
+		cfg.Providers.Groq.APIBase = base
 	case "ollama":
-		cfg.Providers.Ollama.APIBase = "http://127.0.0.1:1"
+		cfg.Providers.Ollama.APIBase = base
 	default:
-		cfg.Providers.DeepSeek.APIBase = "http://127.0.0.1:1"
+		cfg.Providers.DeepSeek.APIBase = base
 	}
+}
+
+// faultyProvider is a stub model endpoint that fails every request the
+// named way, in a shape both OpenAI-compatible and Anthropic clients read.
+func faultyProvider(fault string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch fault {
+		case "billing":
+			w.WriteHeader(http.StatusPaymentRequired)
+			_, _ = w.Write([]byte(`{"type":"error","error":{"type":"billing_error","message":"Insufficient Balance (request_id: golden-stub)"}}`))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"type":"error","error":{"type":"api_error","message":"stub failure"}}`))
+		}
+	}))
 }
 
 // seedContextAndMemory creates any requested contexts + session mapping and

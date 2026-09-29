@@ -1,18 +1,19 @@
 package providers
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/config"
 )
 
-// KnownProviderModels is the recommended model per provider, mirrored by
-// the web console and the gateway. Single source: previously three copies
-// drifted (cmd/ghost duplicated it), so every surface reads this one.
+// KnownProviderModels is the curated recommendation per provider: the
+// first entry is the provider's default, and the list orders the top of the
+// picker. It is NOT the menu — the menu is whatever the provider's API says
+// it serves (discovery.go); this list only stands in, marked "catalog",
+// when a provider can't be reached. Single source for every surface.
 var KnownProviderModels = map[string][]string{
 	"openai":       {"gpt-5.4", "gpt-5.4-mini", "gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini", "gpt-4o", "gpt-4o-mini"},
-	"anthropic":    {"claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"},
+	"anthropic":    {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-haiku-4-5", "claude-opus-5", "claude-sonnet-5"},
 	"moonshot":     {"kimi-k3", "kimi-k2.7-code", "kimi-k2.6"},
 	"groq":         {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"},
 	"deepseek":     {"deepseek-flash", "deepseek-v4-pro"},
@@ -36,6 +37,9 @@ type ModelOption struct {
 	Kind      string `json:"kind"` // "preset" | "connection" | "provider"
 	Available bool   `json:"available"`
 	Reason    string `json:"unavailable_reason,omitempty"`
+	// Source says where a provider entry came from: "live" (the
+	// provider's own model list) or "catalog" (built-in fallback).
+	Source string `json:"source,omitempty"`
 }
 
 // AllModelOptions lists every switchable entry the runtime knows about:
@@ -79,24 +83,36 @@ func AllModelOptions(cfg *config.Config) []ModelOption {
 		})
 		covered[c.Provider+"\x00"+c.Model] = true
 	}
-	var providers []string
-	for name, models := range KnownProviderModels {
-		if len(models) == 0 {
+	// Configured providers contribute every model they serve (discovered
+	// from their API, cached; never blocks here). Unconfigured providers
+	// contribute one unavailable entry, so an exact reference still
+	// resolves and the reason is visible.
+	for _, name := range DiscoverableProviders() {
+		if providerConfigured(cfg, name) {
+			pm := CachedProviderModels(cfg, name)
+			for _, model := range pm.Models {
+				if covered[name+"\x00"+model] {
+					continue
+				}
+				covered[name+"\x00"+model] = true
+				ok, reason := PresetAvailable(cfg, name, model)
+				out = append(out, ModelOption{
+					Name: model, Provider: name, Model: model,
+					Target: name + ":" + model, Kind: "provider",
+					Available: ok, Reason: reason, Source: pm.Source,
+				})
+			}
 			continue
 		}
-		if covered[name+"\x00"+models[0]] {
+		models := KnownProviderModels[name]
+		if len(models) == 0 || covered[name+"\x00"+models[0]] {
 			continue
 		}
-		providers = append(providers, name)
-	}
-	sort.Strings(providers)
-	for _, name := range providers {
-		model := KnownProviderModels[name][0]
-		ok, reason := PresetAvailable(cfg, name, model)
+		ok, reason := PresetAvailable(cfg, name, models[0])
 		out = append(out, ModelOption{
-			Name: name, Provider: name, Model: model,
-			Target: name + ":" + model, Kind: "provider",
-			Available: ok, Reason: reason,
+			Name: name, Provider: name, Model: models[0],
+			Target: name + ":" + models[0], Kind: "provider",
+			Available: ok, Reason: reason, Source: ModelSourceCatalog,
 		})
 	}
 	return out

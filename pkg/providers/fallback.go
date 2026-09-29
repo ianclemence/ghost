@@ -20,13 +20,33 @@ type CooldownTracker struct {
 	mu       sync.Mutex
 	cooldown time.Duration
 	until    map[string]time.Time
+	// lastErr is why each candidate went into cooldown, so a turn that
+	// finds every candidate cooling down reports the real cause (out of
+	// credit, bad key, …) instead of a bare "no available providers".
+	lastErr map[string]error
 }
 
 func NewCooldownTracker(cooldown time.Duration) *CooldownTracker {
 	return &CooldownTracker{
 		cooldown: cooldown,
 		until:    make(map[string]time.Time),
+		lastErr:  make(map[string]error),
 	}
+}
+
+// markFailed records a failure and its cause.
+func (c *CooldownTracker) markFailed(name string, err error) {
+	c.MarkFailure(name)
+	c.mu.Lock()
+	c.lastErr[name] = err
+	c.mu.Unlock()
+}
+
+// cause returns the error that put a candidate into cooldown, if known.
+func (c *CooldownTracker) cause(name string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastErr[name]
 }
 
 func (c *CooldownTracker) IsAvailable(name string) bool {
@@ -48,6 +68,7 @@ func (c *CooldownTracker) MarkSuccess(name string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.until, name)
+	delete(c.lastErr, name)
 }
 
 type FallbackChain struct {
@@ -68,10 +89,13 @@ func usableResponse(resp *LLMResponse) bool {
 }
 
 func (f *FallbackChain) Execute(ctx context.Context, candidates []FallbackCandidate, run func(FallbackCandidate) (*LLMResponse, error)) (*LLMResponse, error) {
-	var lastErr error
+	var lastErr, coolingCause error
 	for _, c := range candidates {
 		if f.tracker != nil && !f.tracker.IsAvailable(c.Name) {
 			logger.DebugCF("fallback", "skipping candidate (cooldown)", map[string]interface{}{"name": c.Name})
+			if coolingCause == nil {
+				coolingCause = f.tracker.cause(c.Name)
+			}
 			continue
 		}
 		logger.InfoCF("fallback", "trying candidate", map[string]interface{}{"name": c.Name})
@@ -91,7 +115,7 @@ func (f *FallbackChain) Execute(ctx context.Context, candidates []FallbackCandid
 			logger.WarnCF("fallback", "candidate returned empty response", map[string]interface{}{"name": c.Name})
 		}
 		if f.tracker != nil {
-			f.tracker.MarkFailure(c.Name)
+			f.tracker.markFailed(c.Name, err)
 		}
 		lastErr = err
 		if ctx.Err() != nil {
@@ -100,6 +124,11 @@ func (f *FallbackChain) Execute(ctx context.Context, candidates []FallbackCandid
 	}
 	if lastErr != nil {
 		return nil, lastErr
+	}
+	if coolingCause != nil {
+		// Wrapped, not flattened: the retry layer classifies the cause
+		// (billing and auth stop retrying) and surfaces explain it.
+		return nil, fmt.Errorf("all models cooling down after a recent failure: %w", coolingCause)
 	}
 	return nil, fmt.Errorf("no available providers")
 }
