@@ -355,3 +355,41 @@ func BenchmarkRenderMermaidBlock(b *testing.B) {
 		renderMermaidBlock(lines, 76)
 	}
 }
+
+// A link immediately after inline code must render cleanly. Regression: the
+// link regex ran over already-styled text and its "[" matched the ANSI CSI
+// of the code span, so the escape bytes were printed as link text.
+func TestInlineCodeThenLinkNoEscapeLeak(t *testing.T) {
+	out := renderInline("`code` and a [link](https://x)")
+	// No raw CSI parameter bytes may appear as visible text: after stripping
+	// real escape sequences, nothing like "38;2;" should remain.
+	visible := stripANSITest(out)
+	if strings.Contains(visible, "38;2;") || strings.Contains(visible, "[m") {
+		t.Fatalf("escape bytes leaked into visible text: %q (raw %q)", visible, out)
+	}
+	if !strings.Contains(visible, "code") || !strings.Contains(visible, "link") {
+		t.Fatalf("code and link text must survive: %q", visible)
+	}
+	if strings.Contains(visible, "https://x") {
+		t.Fatalf("link URL must be concealed: %q", visible)
+	}
+}
+
+// stripANSITest removes CSI sequences so tests can assert on visible text.
+func stripANSITest(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
+			i += 2
+			for i < len(s) && s[i] != 'm' {
+				i++
+			}
+			continue
+		}
+		if s[i] == '\x00' {
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}

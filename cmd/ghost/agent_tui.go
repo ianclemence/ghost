@@ -2871,13 +2871,55 @@ func isOrderedList(s string) bool {
 // bare URLs peach underlined), **bold** orange, *italic* sand,
 // ~~strikethrough~~ muted.
 func renderInline(s string) string {
-	s = renderSpan(s, "`", styleMDCode.Render)
+	// Inline code is resolved FIRST into placeholders, before any other
+	// pass runs. Two reasons: its content is literal (a URL or ** inside
+	// backticks must not be linkified or bolded), and — the bug this
+	// prevents — once code is rendered to ANSI, the link regex's "[" would
+	// match the escape's CSI "[" and a link right after inline code would
+	// swallow the escape bytes and print them as text. Placeholders carry
+	// no [ ] ( ) * ~ or URL characters, so the structural passes skip them.
+	codes := make([]string, 0, 4)
+	s = protectInlineCode(s, &codes)
 	s = renderImages(s)
 	s = renderAutolinks(s)
 	s = renderLinks(s)
 	s = renderSpan(s, "**", styleMDStrong.Render)
 	s = renderEmphasis(s)
 	s = renderSpan(s, "~~", styleMDStrike.Render)
+	return restoreInlineCode(s, codes)
+}
+
+// codePlaceholder marks where a rendered inline-code span was lifted out.
+// NUL bytes never occur in model text and match none of the inline regexes.
+func codePlaceholder(i int) string { return "\x00c" + strconv.Itoa(i) + "\x00" }
+
+// protectInlineCode renders each `code` span and replaces it with a
+// placeholder, appending the rendered span to codes.
+func protectInlineCode(s string, codes *[]string) string {
+	var b strings.Builder
+	for {
+		a := strings.Index(s, "`")
+		if a < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		rest := s[a+1:]
+		c := strings.Index(rest, "`")
+		if c < 0 {
+			b.WriteString(s) // unbalanced backtick: leave literal
+			return b.String()
+		}
+		b.WriteString(s[:a])
+		b.WriteString(codePlaceholder(len(*codes)))
+		*codes = append(*codes, styleMDCode.Render(rest[:c]))
+		s = rest[c+1:]
+	}
+}
+
+func restoreInlineCode(s string, codes []string) string {
+	for i, rendered := range codes {
+		s = strings.Replace(s, codePlaceholder(i), rendered, 1)
+	}
 	return s
 }
 
@@ -3647,17 +3689,17 @@ func providerLocality(model string) string {
 // ─── styles ──────────────────────────────────────────────────────────────
 
 var (
-	cInk            = lipgloss.Color("#d8d4cc")
-	cMuted          = lipgloss.Color("#8a857c")
+	cInk            = lipgloss.Color("#f1e9dc") // Midnight ink (brand)
+	cMuted          = lipgloss.Color("#a3927f") // Midnight muted (brand)
 	cFaint          = lipgloss.Color("#5c574f")
 	cAccent         = lipgloss.Color("#8a86b8")
 	cTool           = lipgloss.Color("#6f9c86")
-	cErr            = lipgloss.Color("#c86a5c")
-	cGold           = lipgloss.Color("#e8c06a")
+	cErr            = lipgloss.Color("#e08667") // brand clay (error)
+	cGold           = lipgloss.Color("#ffb45c") // brand ember
 	cBarIdle        = lipgloss.Color("#6e648a") // visible slate-violet composer bar
-	cGreen          = lipgloss.Color("#7fb08a")
+	cGreen          = lipgloss.Color("#86b28f") // brand sage (ok)
 	cBlue           = lipgloss.Color("#7fa8c9")
-	cViolet         = lipgloss.Color("#a89bc7")
+	cViolet         = lipgloss.Color("#9b99c9") // brand accent violet
 	cCodeBg         = lipgloss.Color("#201c18")
 	cSelBg          = lipgloss.Color("#2a251f")
 	styleUser       = lipgloss.NewStyle().Foreground(cInk).Bold(true)
@@ -3725,31 +3767,33 @@ var (
 	styleWelcomeCmds  = lipgloss.NewStyle().Foreground(cMuted)
 	styleDayDivider   = lipgloss.NewStyle().Foreground(cFaint)
 
-	// Markdown roles (dark default): headings violet bold (h1 underlined),
-	// strong orange, emphasis/quotes sand italic, code green with no
-	// background, bullets peach, ordered numbers cyan, checked green,
-	// links cyan underlined with the URL concealed.
-	styleMDHead      = lipgloss.NewStyle().Foreground(lipgloss.Color("#9d7cd8")).Bold(true)
-	styleMDHead1     = lipgloss.NewStyle().Foreground(lipgloss.Color("#9d7cd8")).Bold(true).Underline(true)
-	styleMDStrong    = lipgloss.NewStyle().Foreground(lipgloss.Color("#f5a742")).Bold(true)
-	styleMDEmph      = lipgloss.NewStyle().Foreground(lipgloss.Color("#e5c07b")).Italic(true)
-	styleMDQuote     = lipgloss.NewStyle().Foreground(lipgloss.Color("#e5c07b")).Italic(true)
-	styleMDQuoteMark = lipgloss.NewStyle().Foreground(cMuted)
-	styleMDCode      = lipgloss.NewStyle().Foreground(lipgloss.Color("#7fd88f"))
+	// Markdown roles are keyed to Ghost's own Midnight palette — not a
+	// generic rainbow theme — so model replies read in the same two accents
+	// as the rest of the product: brand violet for structure (headings,
+	// links, ordered markers, table headers) and ember-gold for emphasis
+	// (strong, bullets). Sage green marks code and done; coral marks
+	// errors; everything else is ink or muted. This is the single markdown
+	// scheme shared conceptually with the mobile app and web console.
+	styleMDHead      = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
+	styleMDHead1     = lipgloss.NewStyle().Foreground(cViolet).Bold(true).Underline(true)
+	styleMDStrong    = lipgloss.NewStyle().Foreground(cGold).Bold(true)
+	styleMDEmph      = lipgloss.NewStyle().Foreground(cInk).Italic(true)
+	styleMDQuote     = lipgloss.NewStyle().Foreground(cMuted).Italic(true)
+	styleMDQuoteMark = lipgloss.NewStyle().Foreground(cViolet)
+	styleMDCode      = lipgloss.NewStyle().Foreground(cGreen)
 	styleMDCodeBlock = lipgloss.NewStyle().Foreground(cInk)
-	styleMDList      = lipgloss.NewStyle().Foreground(lipgloss.Color("#fab283"))
-	styleMDEnum      = lipgloss.NewStyle().Foreground(lipgloss.Color("#56b6c2"))
-	styleMDCheck     = lipgloss.NewStyle().Foreground(lipgloss.Color("#7fd88f"))
+	styleMDList      = lipgloss.NewStyle().Foreground(cGold)
+	styleMDEnum      = lipgloss.NewStyle().Foreground(cViolet)
+	styleMDCheck     = lipgloss.NewStyle().Foreground(cGreen)
 	styleMDUncheck   = lipgloss.NewStyle().Foreground(cMuted)
-	styleMDLinkText  = lipgloss.NewStyle().Foreground(lipgloss.Color("#56b6c2")).Underline(true)
-	styleMDLinkURL   = lipgloss.NewStyle().Foreground(lipgloss.Color("#fab283")).Underline(true)
+	styleMDLinkText  = lipgloss.NewStyle().Foreground(cViolet).Underline(true)
+	styleMDLinkURL   = lipgloss.NewStyle().Foreground(cMuted).Underline(true)
 	styleMDImage     = lipgloss.NewStyle().Foreground(cMuted).Italic(true)
 	styleMDStrike    = lipgloss.NewStyle().Foreground(cMuted).Strikethrough(true)
-	styleMDHR        = lipgloss.NewStyle().Foreground(cMuted)
-	// Table grid: dim box borders, violet bold header, plain body cells
-	// (matching the opencode CLI's box-drawn tables).
+	styleMDHR        = lipgloss.NewStyle().Foreground(cFaint)
+	// Table grid: dim box borders, brand-violet bold header, plain body.
 	styleMDTableBorder = lipgloss.NewStyle().Foreground(cFaint)
-	styleMDTableHead   = lipgloss.NewStyle().Foreground(lipgloss.Color("#9d7cd8")).Bold(true)
+	styleMDTableHead   = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
 	styleMDTableRow    = lipgloss.NewStyle().Foreground(cInk)
 )
 
