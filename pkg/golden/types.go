@@ -22,7 +22,8 @@ package golden
 // Bump when a case's expected behavior intentionally changes so a
 // regression can be distinguished from a spec change.
 // v2: added the watches category (25 proactive-watch conversations).
-const SuiteVersion = 2
+// v3: added the formatting category (6 markdown-appropriateness cases).
+const SuiteVersion = 3
 
 // Category groups golden conversations.
 type Category string
@@ -45,6 +46,7 @@ const (
 	CatCompanion        Category = "companion"
 	CatGoals            Category = "goals"
 	CatWatches          Category = "watches"
+	CatFormatting       Category = "formatting"
 )
 
 // SupportedCategories lists categories the suite covers.
@@ -52,7 +54,7 @@ var SupportedCategories = []Category{
 	CatConversation, CatMemory, CatCorrection, CatAmbiguity, CatPermission,
 	CatDenial, CatRoutines, CatOffline, CatToolFailure, CatProvider,
 	CatContradiction, CatTruthfulness, CatContextIsolation, CatCrossUser,
-	CatCompanion, CatGoals, CatWatches,
+	CatCompanion, CatGoals, CatWatches, CatFormatting,
 }
 
 // Fixture selects a simulated provider/tool for a conversation so no

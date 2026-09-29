@@ -313,18 +313,57 @@ const GhostUI = (() => {
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
-  // Markdown → HTML (escapes input first). Supports headings, paragraphs,
-  // bold, italic, inline code, fenced code blocks, ordered & unordered lists,
-  // blockquotes, horizontal rules, tables, and links.
+  // Markdown → HTML (escapes input first; model/content text is untrusted).
+  // Supports headings, paragraphs, bold, italic, strikethrough, inline code,
+  // fenced code blocks, ordered & unordered lists (incl. GFM task items),
+  // nested blockquotes, horizontal rules, tables, links, bare-URL autolinks,
+  // and image alt-text badges (images are never fetched).
+  //
+  // Two invariants keep this safe:
+  //  1. escape FIRST — every byte of content is HTML-escaped before any
+  //     markup is recognized, so raw HTML can never execute.
+  //  2. rendered fragments are STASHED behind placeholders — a link or code
+  //     span cannot be re-matched by a later rule, so `[x](url)` inside
+  //     `backticks` stays literal code and a URL inside an href is never
+  //     auto-linked twice.
   function md(src) {
-    const esc = (s) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    // Escape quotes as well as angle brackets: content quotes must never be
+    // able to terminate a generated attribute (href="...").
+    const esc = (s) => s.replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
     const lines = (src || '').replace(/\r\n/g, '\n').split('\n');
     let html = '', i = 0, inCode = false, listKind = null, blockquoteOpen = false;
-    const inline = (t) => esc(t)
-      .replace(/`([^`]+)`/g, (_, c) => '<code>' + c + '</code>')
-      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
-      .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, (_, c, url) => '<a href="' + url + '" target="_blank" rel="noopener">' + c + '</a>');
+    const inline = (t) => {
+      const stash = [];
+      const keep = (frag) => { stash.push(frag); return '\u0000' + (stash.length - 1) + '\u0000'; };
+      // A URL is only ever http(s) and stops at the first whitespace or
+      // quote, so nothing can be smuggled into the href attribute.
+      const safeUrl = (u) => {
+        const cut = String(u).split(/[\s"'<>]/)[0];
+        return /^https?:\/\/[^/]/i.test(cut) ? cut : '';
+      };
+      const anchor = (url, label) => {
+        const href = safeUrl(url);
+        if (!href) return label;
+        return '<a href="' + href + '" target="_blank" rel="noopener">' + label + '</a>';
+      };
+      let s = esc(t);
+      // Code spans first, stashed: literals win.
+      s = s.replace(/`([^`]+)`/g, (_, c) => keep('<code>' + c + '</code>'));
+      // Images before links: alt-text badge only, never a remote fetch.
+      s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,
+        (_, alt) => keep('<span class="md-image">◈ ' + (alt || 'image') + '</span>'));
+      // Explicit links, stashed so their URL is not auto-linked again.
+      s = s.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, (_, c, url) => keep(anchor(url, c)));
+      // Bare-URL autolinks.
+      s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m, pre, url) => pre + keep(anchor(url, url)));
+      // Emphasis.
+      s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+      s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+      s = s.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+      return s.replace(/\u0000(\d+)\u0000/g, (_, n) => stash[Number(n)] ?? '');
+    };
     const closeLists = () => { if (listKind) { html += listKind === 'ol' ? '</ol>' : '</ul>'; listKind = null; } };
     const closeBlockquote = () => { if (blockquoteOpen) { html += '</blockquote>'; blockquoteOpen = false; } };
 
@@ -353,18 +392,22 @@ const GhostUI = (() => {
       if (/^## /.test(line)) { closeLists(); closeBlockquote(); html += '<h2>' + inline(line.slice(3)) + '</h2>'; i++; continue; }
       if (/^# /.test(line)) { closeLists(); closeBlockquote(); html += '<h1>' + inline(line.slice(2)) + '</h1>'; i++; continue; }
 
-      // Blockquote
-      if (/^>\s?/.test(line)) {
+      // Blockquote (any nesting depth collapses to one level, like the CLI)
+      if (/^\s*>\s?/.test(line)) {
         closeLists();
         if (!blockquoteOpen) { html += '<blockquote>'; blockquoteOpen = true; }
-        html += '<p>' + inline(line.replace(/^>\s?/, '')) + '</p>';
+        html += '<p>' + inline(line.replace(/^(\s*>\s?)+/, '')) + '</p>';
         i++; continue;
       } else { closeBlockquote(); }
 
-      // Unordered list
-      if (/^\s*[-*] /.test(line)) {
+      // Unordered list (with optional GFM task marker)
+      const ul = line.match(/^\s*[-*] (\[([ xX])\] )?(.*)$/);
+      if (ul) {
         if (listKind !== 'ul') { closeLists(); html += '<ul>'; listKind = 'ul'; }
-        html += '<li>' + inline(line.replace(/^\s*[-*] /, '')) + '</li>';
+        const done = ul[2] && ul[2].toLowerCase() === 'x';
+        const box = ul[2] === undefined ? '' : (done ? '☑ ' : '☐ ');
+        const cls = ul[2] === undefined ? '' : (done ? ' class="task done"' : ' class="task"');
+        html += '<li' + cls + '>' + box + inline(ul[3]) + '</li>';
         i++; continue;
       }
 

@@ -610,6 +610,19 @@
 }
 .markdown-body td { color: var(--ink-soft); }
 .markdown-body tr:last-child td { border-bottom: 0; }
+.markdown-body del { color: var(--ink-faint, var(--ink-soft)); opacity: 0.75; }
+.markdown-body .md-image {
+  display: inline-block;
+  color: var(--ink-soft);
+  font-style: italic;
+  font-size: 0.94em;
+  background: var(--paper-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  padding: 0 6px;
+}
+.markdown-body li.task { list-style: none; margin-left: -18px; }
+.markdown-body li.task.done { color: var(--ink-soft); opacity: 0.7; }
 
 /* ── Skill list ── */
 .skill-desc {

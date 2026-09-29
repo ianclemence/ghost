@@ -646,7 +646,8 @@ func Suite() []Conversation {
 			},
 		},
 	}
-	return append(cs, watchConversations()...)
+	cs = append(cs, watchConversations()...)
+	return append(cs, formattingConversations()...)
 }
 
 // Counts reports the suite composition.

@@ -180,6 +180,9 @@ func buildBehaviorSection() string {
 	return `## Response Style
 
 - Default: concise, clear, well-structured Markdown. Lead with the answer, not an intro.
+- Use the simplest formatting that materially improves the answer. A one-sentence answer stays one sentence: no headings, no bullets, no bold, no table, no divider, no code fence.
+- Tables only for genuine comparisons across shared columns; headings only for multi-part answers with real sections; Mermaid diagrams only when a visual relationship materially improves understanding.
+- Diagrams: when a visual relationship genuinely helps (or the user asks for a diagram), use a fenced code block whose info string is exactly "mermaid", containing a valid diagram type (flowchart, sequenceDiagram, stateDiagram-v2, classDiagram, erDiagram). Keep them small and omit styling directives.
 - Match the user's language. No filler openers ("Sure!", "Here is...") — answer directly.
 - Use headings and short paragraphs for scannability; lists for enumerable items.
 - Templates:

@@ -1876,6 +1876,12 @@ type streamStyler struct {
 	width  int
 	inCode bool
 	table  []string
+	// inMermaid buffers a mermaid diagram until its fence closes, then
+	// emits the text fallback panel at once. Buffering (not progressive
+	// code lines) keeps the live view stable: no half-diagram flicker,
+	// and the committed render shows the same panel.
+	inMermaid  bool
+	mermaidBuf []string
 	// pending holds a completed line that ended inside an unclosed inline
 	// span: it is prepended to the next line (span repair, mirroring
 	// joinContinuedLines) rather than emitted with leaking markers.
@@ -1904,8 +1910,29 @@ func (s *streamStyler) line(raw string) []string {
 	}
 	if strings.HasPrefix(trim, "```") {
 		out := s.flushTable()
+		if s.inMermaid {
+			// Mermaid fence closed mid-stream: emit the fallback panel
+			// for the buffered diagram.
+			for _, pl := range renderMermaidBlock(s.mermaidBuf, s.width) {
+				out = append(out, " "+pl)
+			}
+			s.mermaidBuf = nil
+			s.inMermaid = false
+			s.inCode = false
+			return out
+		}
+		if !s.inCode && isMermaidFence(fenceLanguage(trim)) {
+			s.inCode = true
+			s.inMermaid = true
+			s.mermaidBuf = nil
+			return out
+		}
 		s.inCode = !s.inCode // conceal fences and language tags entirely
 		return out
+	}
+	if s.inMermaid {
+		s.mermaidBuf = append(s.mermaidBuf, raw)
+		return nil
 	}
 	if s.inCode {
 		var out []string
@@ -1974,8 +2001,18 @@ func (s *streamStyler) flushTable() []string {
 
 // flush ends the turn: any pending table is decided, fences reset.
 func (s *streamStyler) flush() []string {
-	defer func() { s.inCode = false }()
+	defer func() { s.inCode = false; s.inMermaid = false }()
 	out := s.flushTable()
+	if s.inMermaid {
+		// Turn ended with the mermaid fence still open (malformed):
+		// show the buffered source as code, matching the committed path.
+		for _, raw := range s.mermaidBuf {
+			for _, wl := range wrapText(raw, s.width) {
+				out = append(out, " "+styleMDCodeBlock.Render(wl))
+			}
+		}
+		s.mermaidBuf = nil
+	}
 	if s.pending != "" {
 		out = append(out, s.renderSingle(s.pending)...)
 		s.pending = ""
@@ -2230,7 +2267,7 @@ func isBlockStart(s string) bool {
 	if t == "" {
 		return false
 	}
-	if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "> ") {
+	if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "#") || isBlockquote(t) {
 		return true
 	}
 	if t == "---" || t == "***" || t == "___" {
@@ -2285,12 +2322,35 @@ func renderAssistantBody(text string, width int) string {
 	}
 	var out []string
 	inCode := false
+	inMermaid := false
+	var mermaidBuf []string
 	lines := strings.Split(joinContinuedLines(text), "\n")
 	for i := 0; i < len(lines); i++ {
 		ln := lines[i]
 		trim := strings.TrimSpace(ln)
 		if strings.HasPrefix(trim, "```") {
+			if inMermaid {
+				// Closing a mermaid block: render the fallback panel
+				// instead of raw diagram syntax.
+				for _, pl := range renderMermaidBlock(mermaidBuf, width) {
+					out = append(out, " "+pl)
+				}
+				mermaidBuf = nil
+				inMermaid = false
+				inCode = false
+				continue
+			}
+			if !inCode && isMermaidFence(fenceLanguage(trim)) {
+				inCode = true
+				inMermaid = true
+				mermaidBuf = nil
+				continue
+			}
 			inCode = !inCode // conceal fences and language tags entirely
+			continue
+		}
+		if inMermaid {
+			mermaidBuf = append(mermaidBuf, ln)
 			continue
 		}
 		if inCode {
@@ -2311,6 +2371,15 @@ func renderAssistantBody(text string, width int) string {
 			continue
 		}
 		out = append(out, renderMarkdownLine(trim, ln, width)...)
+	}
+	if inMermaid {
+		// Unclosed mermaid fence (malformed model output): show the
+		// buffered source as code rather than dropping it.
+		for _, raw := range mermaidBuf {
+			for _, wl := range wrapText(raw, width) {
+				out = append(out, " "+styleMDCodeBlock.Render(wl))
+			}
+		}
 	}
 	return strings.Join(out, "\n")
 }
@@ -2369,8 +2438,19 @@ func renderMarkdownLine(trim, ln string, width int) []string {
 	switch {
 	case trim == "---" || trim == "***" || trim == "___":
 		out = append(out, styleMDHR.Render(strings.Repeat("─", width)))
-	case strings.HasPrefix(trim, "> "):
-		for _, wl := range wrapRepaired(strings.TrimPrefix(trim, "> "), width-4) {
+	case isBlockquote(trim):
+		// Nested quotes (">> ...") collapse to one level: strip every
+		// leading marker run, then render a single quote. Depth is not
+		// meaningful enough in a terminal to earn nesting chrome.
+		body := trim
+		for {
+			next := strings.TrimSpace(strings.TrimPrefix(body, ">"))
+			if next == body {
+				break
+			}
+			body = next
+		}
+		for _, wl := range wrapRepaired(body, width-4) {
 			out = append(out, styleMDQuoteMark.Render("> ")+styleMDQuote.Render(renderInline(wl)))
 		}
 	case strings.HasPrefix(trim, "- [ ] ") || strings.HasPrefix(trim, "* [ ] "):
@@ -2711,6 +2791,12 @@ func parseHeading(s string) (int, string, bool) {
 	return i, strings.TrimSpace(s[i+1:]), true
 }
 
+// isBlockquote reports whether a line is a blockquote at any nesting
+// depth ("> ...", ">> ...", ">" alone).
+func isBlockquote(s string) bool {
+	return strings.HasPrefix(s, ">")
+}
+
 func isOrderedList(s string) bool {
 	i := 0
 	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
@@ -2720,11 +2806,14 @@ func isOrderedList(s string) bool {
 }
 
 // renderInline applies the inline roles in conceal-safe order:
-// code spans first (literals win), then links (label cyan underlined,
-// URL hidden; bare URLs peach underlined), **bold** orange,
-// *italic* sand, ~~strikethrough~~ muted.
+// code spans first (literals win), then images (attachment reference,
+// never fetched), autolinks, links (label cyan underlined, URL hidden;
+// bare URLs peach underlined), **bold** orange, *italic* sand,
+// ~~strikethrough~~ muted.
 func renderInline(s string) string {
 	s = renderSpan(s, "`", styleMDCode.Render)
+	s = renderImages(s)
+	s = renderAutolinks(s)
 	s = renderLinks(s)
 	s = renderSpan(s, "**", styleMDStrong.Render)
 	s = renderEmphasis(s)
@@ -2733,9 +2822,51 @@ func renderInline(s string) string {
 }
 
 var (
-	mdLinkRe = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
-	mdURLRe  = regexp.MustCompile(`https?://[^\s)>\]]+`)
+	mdLinkRe  = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
+	mdURLRe   = regexp.MustCompile(`https?://[^\s)>\]]+`)
+	mdImageRe = regexp.MustCompile(`!\[([^\]]*)\]\([^)]*\)`)
+	// Autolinks: <https://example.com> and <user@example.com>.
+	mdAutoLinkRe  = regexp.MustCompile(`<(https?://[^<>\s]+)>`)
+	mdAutoEmailRe = regexp.MustCompile(`<([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})>`)
 )
+
+// renderImages turns image syntax into a quiet attachment reference. The
+// terminal cannot display images and never fetches them; the alt text (or
+// a plain marker) is what survives, with no URL noise.
+func renderImages(s string) string {
+	return mdImageRe.ReplaceAllStringFunc(s, func(m string) string {
+		parts := mdImageRe.FindStringSubmatch(m)
+		if len(parts) != 2 {
+			return m
+		}
+		alt := strings.TrimSpace(parts[1])
+		if alt == "" {
+			alt = "image"
+		}
+		return styleMDImage.Render("◈ " + alt)
+	})
+}
+
+// renderAutolinks handles <url> and <email> forms. URLs render like links
+// (label only, destination concealed); emails render as plain text without
+// brackets. Other <html> is left literal (documented as unsupported).
+func renderAutolinks(s string) string {
+	s = mdAutoLinkRe.ReplaceAllStringFunc(s, func(m string) string {
+		parts := mdAutoLinkRe.FindStringSubmatch(m)
+		if len(parts) != 2 {
+			return m
+		}
+		return styleMDLinkText.Render(parts[1]) + " "
+	})
+	s = mdAutoEmailRe.ReplaceAllStringFunc(s, func(m string) string {
+		parts := mdAutoEmailRe.FindStringSubmatch(m)
+		if len(parts) != 2 {
+			return m
+		}
+		return styleAssistant.Render(parts[1])
+	})
+	return s
+}
 
 func renderLinks(s string) string {
 	s = mdLinkRe.ReplaceAllStringFunc(s, func(m string) string {
@@ -3614,6 +3745,7 @@ var (
 	styleMDUncheck   = lipgloss.NewStyle().Foreground(cMuted)
 	styleMDLinkText  = lipgloss.NewStyle().Foreground(lipgloss.Color("#56b6c2")).Underline(true)
 	styleMDLinkURL   = lipgloss.NewStyle().Foreground(lipgloss.Color("#fab283")).Underline(true)
+	styleMDImage     = lipgloss.NewStyle().Foreground(cMuted).Italic(true)
 	styleMDStrike    = lipgloss.NewStyle().Foreground(cMuted).Strikethrough(true)
 	styleMDHR        = lipgloss.NewStyle().Foreground(cMuted)
 	// Table grid: dim box borders, violet bold header, plain body cells
