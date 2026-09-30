@@ -159,6 +159,7 @@ var documentedNonsnapshotTables = map[string]string{
 	"permission_requests": "ephemeral approvals (15-minute TTL)",
 	"paired_devices":      "device credentials (re-pair after restore)",
 	"pending_pairings":    "ephemeral pairing handshakes",
+	"push_tokens":         "notification tokens belong to one phone's app install (paired devices re-register after restore)",
 	// Durable-work runtime state (migration v2/v3): never restored.
 	"computer_leases":  "lease holds die with the tasks that held them; every boot expires survivors via RecoverStale, so restoring old holds could only resurrect authority for dead tasks",
 	"browser_sessions": "session rows point at profile dirs and expire by TTL; sessions re-mint on demand after restore",
