@@ -238,3 +238,29 @@ func TestStreamDropsLabelledCaveatFrameUnlessMaterial(t *testing.T) {
 		t.Fatalf("a material limitation was removed: %q", got2.String())
 	}
 }
+
+// Line breaks the model streams as tokens of their own must survive: dropping
+// them glued list items and paragraphs together on every surface.
+func TestStampStreamKeepsWhitespaceOnlyChunks(t *testing.T) {
+	var got strings.Builder
+	emit, flush := stampFilterStream(func(s string) { got.WriteString(s) }, func() bool { return false })
+	for _, c := range []string{"Here is a list:", "\n\n", "- one", "\n", "- two", "\n\n", "Done, and this closing sentence is long enough to leave the held tail behind it."} {
+		emit(c)
+	}
+	flush()
+	want := "Here is a list:\n\n- one\n- two\n\nDone, and this closing sentence is long enough to leave the held tail behind it."
+	if got.String() != want {
+		t.Fatalf("streamed text lost its line breaks:\n got %q\nwant %q", got.String(), want)
+	}
+}
+
+func TestStampStreamDropsWhitespaceBeforeTheReplyStarts(t *testing.T) {
+	var got strings.Builder
+	emit, flush := stampFilterStream(func(s string) { got.WriteString(s) }, func() bool { return false })
+	emit("\n\n")
+	emit("Hello")
+	flush()
+	if got.String() != "Hello" {
+		t.Fatalf("a reply must not open with blank lines, got %q", got.String())
+	}
+}

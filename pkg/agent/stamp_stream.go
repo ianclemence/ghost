@@ -118,8 +118,26 @@ func couldStartHistoryLabel(s string) bool {
 // date fragment on the live transcript.
 func stampFilterStream(inner func(string), toolFailed func() bool) (emit func(string), flush func()) {
 	ss := &stampStream{holdTail: true, toolFailed: toolFailed}
+	started := false
 	emit = func(s string) {
 		trimmed := strings.TrimSpace(s)
+		// A chunk of only whitespace is the spacing between words, lines and
+		// paragraphs, never an internal dump. Models often emit "\n" or "\n\n"
+		// as a token of its own, and dropping it glued list items and
+		// paragraphs together on every surface ("sources- Remember…"). Only
+		// whitespace before the reply has begun is dropped.
+		if trimmed == "" {
+			if !started {
+				return
+			}
+			if out, ok := ss.feed(s); ok && out != "" {
+				if safe := ss.hold(out); safe != "" {
+					inner(safe)
+				}
+			}
+			return
+		}
+		started = true
 		// Internal dumps are suppressed before the gate, exactly as
 		// before, so a dump chunk can never settle the gate's decision
 		// about a label that has not finished arriving. The label
