@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.102] - 2026-10-01
+
+- **The phone can now connect Google Calendar, Gmail, Outlook and Spotify.** The
+  app only ever told you to "use the web console". The Pod now offers the same
+  guided sign-in to the app as to the console: set up your own app with the
+  provider once, sign in, and the app finishes the connection. Disconnecting
+  one of these from the phone works too.
+
 ## [0.24.101] - 2026-10-01
 
 - **You can now connect Google Calendar, Gmail, Outlook and Spotify.** They all

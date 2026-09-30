@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/connectedapp"
 	"github.com/ianclemence/ghost/pkg/credentials"
+	"github.com/ianclemence/ghost/pkg/skills"
 )
 
 // registerConnectionsRoutes wires the device-facing connected-apps API.
@@ -44,6 +46,16 @@ func serveConnectedAppAction(w http.ResponseWriter, r *http.Request, rest string
 			jsonError(w, http.StatusMethodNotAllowed, "invalid_request", "use POST")
 			return
 		}
+		if service, ok := skills.OAuthServiceForApp(id); ok {
+			if err := skills.OAuthDisconnect(service); err != nil {
+				jsonError(w, http.StatusBadRequest, "disconnect_failed", "couldn't disconnect that app")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "connected_app": map[string]interface{}{"id": id, "status": "disconnected"},
+			})
+			return
+		}
 		if err := appDisconnect(id); err != nil {
 			jsonError(w, http.StatusBadRequest, "disconnect_failed", err.Error())
 			return
@@ -54,6 +66,8 @@ func serveConnectedAppAction(w http.ResponseWriter, r *http.Request, rest string
 				"id": id, "status": "disconnected",
 			},
 		})
+	case len(parts) >= 2 && parts[1] == "oauth":
+		serveConnectedAppOAuth(w, r, id, parts[2:])
 	default:
 		// Connect: accept a secret once (never echo it). OAuth-only apps
 		// have no exportable secret and are refused here.
@@ -177,3 +191,81 @@ func errNotConnected(id string) error {
 type connError struct{ msg string }
 
 func (e *connError) Error() string { return e.msg }
+
+// serveConnectedAppOAuth is the phone's way to sign in to Google, Microsoft and
+// Spotify. It mirrors the web console's flow:
+//
+//	GET  {id}/oauth          what setup is needed, and whether it is done
+//	POST {id}/oauth/setup    {client_id, client_secret, tenant}: keep the owner's app, sealed
+//	POST {id}/oauth/start    the address to open in the browser (or needs_setup)
+//	POST {id}/oauth/paste    {url}: finish from the address the browser ended on
+func serveConnectedAppOAuth(w http.ResponseWriter, r *http.Request, appID string, rest []string) {
+	service, ok := skills.OAuthServiceForApp(appID)
+	if !ok {
+		jsonError(w, http.StatusNotFound, "not_found", "that app doesn't use a browser sign-in")
+		return
+	}
+	svc := skills.OAuthServices[service]
+	step := ""
+	if len(rest) > 0 {
+		step = rest[0]
+	}
+	switch {
+	case step == "" && r.Method == http.MethodGet:
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "name": svc.Name, "provider": svc.Provider,
+			"configured":   skills.OAuthClientConfigured(svc.Provider),
+			"redirect":     skills.DefaultRedirect(svc.Provider),
+			"steps":        svc.Steps,
+			"console_url":  svc.Console,
+			"needs_tenant": svc.Provider == skills.ProviderMicrosoft,
+		})
+	case step == "setup" && r.Method == http.MethodPost:
+		var body struct {
+			ClientID     string `json:"client_id"`
+			ClientSecret string `json:"client_secret"`
+			Tenant       string `json:"tenant"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body) != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "that wasn't readable")
+			return
+		}
+		if err := skills.SaveOAuthClient(svc.Provider, skills.OAuthClient{ClientID: body.ClientID, ClientSecret: body.ClientSecret, Tenant: body.Tenant}); err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
+	case step == "start" && r.Method == http.MethodPost:
+		session := strings.TrimSpace(r.Header.Get("X-Ghost-Device-ID"))
+		if session == "" {
+			session = "device"
+		}
+		authURL, needsSetup, err := skills.OAuthBegin(service, session)
+		switch {
+		case err != nil:
+			jsonError(w, http.StatusBadRequest, "start_failed", "couldn't start the sign-in")
+		case needsSetup:
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "needs_setup"})
+		default:
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "needs_authorization", "auth_url": authURL})
+		}
+	case step == "paste" && r.Method == http.MethodPost:
+		var body struct {
+			URL string `json:"url"`
+		}
+		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body)
+		msg, err := skills.OAuthFinish(service, body.URL)
+		if err != nil {
+			text := "That didn't work. Try again."
+			var se *skills.SignInError
+			if errors.As(err, &se) {
+				text = se.Message
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": false, "error": text})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "message": msg})
+	default:
+		jsonError(w, http.StatusNotFound, "not_found", "unknown sign-in step")
+	}
+}
