@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -63,6 +64,8 @@ MOVING a reminder: when the user says move/change/postpone/shift/delay an existi
 
 The tool will parse the natural language and create the appropriate scheduled item. It returns a human-readable confirmation. The confirmation always states the EXACT stored time including minutes — quote it back verbatim, never round it.
 
+CANCELLING: when the user says cancel/stop/remove/delete a reminder or a recurring routine, pass action="cancel" and target=<a few words describing it, or its id> ("the vitamins reminder", "my Monday brief"). It cancels exactly one item and says which; if several match it lists them and you ask which. A recurring item stops for good. No message is needed.
+
 CHECKING what is scheduled: pass action="list" when the user asks what's scheduled, what reminders are pending, or to check whether reminders already fired ("check my reminders", "what's on today", "did X go off"). It returns pending items plus recently completed and failed ones with exact times — one-time reminders stay visible as completed after they fire. No message is needed for a list.`
 }
 
@@ -73,7 +76,7 @@ func (t *ScheduleTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"message": map[string]interface{}{
 				"type":        "string",
-				"description": "The user's natural language scheduling request. Include the full original message.",
+				"description": "The user's scheduling request. Include the full original message. If the user wrote in a language other than English, state the timing in plain English (for example \"every weekday at 8am to take my vitamins\", \"tomorrow at 9am to call Amara\") because the scheduler reads English times; keep `content` in the user's own language.",
 			},
 			"content": map[string]interface{}{
 				"type":        "string",
@@ -85,8 +88,12 @@ func (t *ScheduleTool) Parameters() map[string]interface{} {
 			},
 			"action": map[string]interface{}{
 				"type":        "string",
-				"enum":        []string{"create", "list"},
-				"description": "create (default): store the request in message. list: return what is scheduled (pending, recently completed, failed) — message is not needed.",
+				"enum":        []string{"create", "list", "cancel"},
+				"description": "create (default): store the request in message. list: return what is scheduled (pending, recently completed, failed). cancel: stop one reminder or recurring routine described by target. message is not needed for list or cancel.",
+			},
+			"target": map[string]interface{}{
+				"type":        "string",
+				"description": "With action=cancel: a few words describing the reminder or routine to cancel, or its id. Example: \"the vitamins reminder\".",
 			},
 		},
 	}
@@ -123,6 +130,16 @@ func (t *ScheduleTool) resolveScheduleTime(ctx context.Context, message, tz stri
 		if parsed, err := scheduled.ParseNaturalLanguage(owner, time.Now(), tz); err == nil && parsed != nil {
 			return parsed, nil
 		}
+		// The owner wrote in another language, so the English parser cannot read
+		// their timing and the model's own English phrasing is the translation.
+		// It is accepted only if it agrees with any clock number the owner
+		// actually wrote ("a las 9" must mean nine), so a translation can never
+		// quietly become a different time.
+		if !looksEnglish(owner) {
+			if parsed, err := scheduled.ParseNaturalLanguage(message, time.Now(), tz); err == nil && parsed != nil && timeAgreesWithOwner(owner, parsed, tz) {
+				return parsed, nil
+			}
+		}
 		// A short yes to a time Ghost already proposed out loud is agreement,
 		// not invention: the supplied phrasing is what was agreed.
 		if isShortConfirmation(owner) {
@@ -153,6 +170,9 @@ func (t *ScheduleTool) resolveScheduleTime(ctx context.Context, message, tz stri
 var ownerConfirmationStems = []string{
 	"yes", "yeah", "yep", "yup", "ok", "okay", "sure", "please", "confirm",
 	"confirmed", "correct", "right", "do it", "set it", "go ahead", "sounds good",
+	// The same consent in the languages Ghost is spoken to in.
+	"sí", "si", "vale", "claro", "de acuerdo", "sim", "oui", "d'accord", "ja", "ndiyo", "ndio", "sawa",
+	"ใช่", "ตกลง", "ได้", "โอเค", "好", "好的", "可以", "是的", "はい", "네",
 	"that works", "fine", "good", "please do", "yes please",
 	// Approval replies. An approved call re-runs with the owner's answer as
 	// the turn text; the exact schedule was already shown on the approval card
@@ -213,6 +233,9 @@ func (t *ScheduleTool) Execute(ctx context.Context, args map[string]interface{})
 	// so "check my reminders" works wherever the turn runs.
 	if action, _ := args["action"].(string); strings.EqualFold(strings.TrimSpace(action), "list") {
 		return t.listSchedules()
+	} else if strings.EqualFold(strings.TrimSpace(action), "cancel") {
+		target, _ := args["target"].(string)
+		return t.cancelSchedule(target)
 	}
 
 	t.mu.RLock()
@@ -737,4 +760,168 @@ func matchScheduleQuery(items []*scheduled.ScheduledItem, query string) *schedul
 		return nil
 	}
 	return best
+}
+
+var englishWords = map[string]bool{
+	"the": true, "a": true, "an": true, "to": true, "and": true, "me": true, "my": true, "at": true, "on": true,
+	"in": true, "of": true, "for": true, "is": true, "it": true, "remind": true, "tomorrow": true, "today": true,
+	"tonight": true, "next": true, "every": true, "day": true, "week": true, "month": true, "before": true,
+	"after": true, "about": true, "call": true, "pm": true, "am": true, "this": true, "that": true, "with": true,
+	"by": true, "from": true, "please": true, "i": true, "you": true, "morning": true, "evening": true,
+}
+
+// looksEnglish reports whether a message is written in English, judged by how
+// many of its words are common English words. It only decides whose
+// interpretation of a time to trust, never what a message means.
+func looksEnglish(s string) bool {
+	words := strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && r != '\''
+	})
+	if len(words) == 0 {
+		return false
+	}
+	hits := 0
+	for _, w := range words {
+		if englishWords[w] {
+			hits++
+		}
+	}
+	return hits >= 2 && hits*4 >= len(words)
+}
+
+var clockNumberRE = regexp.MustCompile(`\d{1,2}`)
+
+// timeAgreesWithOwner checks that a translated time matches any clock number
+// the owner wrote. No number to check is not a disagreement; the owner still
+// sees the time stated back, and an approval card shows it before it is set.
+func timeAgreesWithOwner(owner string, p *scheduled.ParsedSchedule, tz string) bool {
+	nums := clockNumberRE.FindAllString(owner, -1)
+	if len(nums) == 0 {
+		return true
+	}
+	hour, ok := parsedHour(p, tz)
+	if !ok {
+		return true
+	}
+	for _, n := range nums {
+		v, _ := strconv.Atoi(n)
+		if v == hour || v == hour%12 || (hour%12 == 0 && v == 12) || v == hour+12 && hour < 12 {
+			return true
+		}
+	}
+	return false
+}
+
+// parsedHour is the hour of day (0-23, in tz) a parsed schedule fires, when it has one.
+func parsedHour(p *scheduled.ParsedSchedule, tz string) (int, bool) {
+	switch p.Schedule.Kind {
+	case scheduled.ScheduleCron:
+		f := strings.Fields(p.Schedule.Expr)
+		if len(f) >= 2 {
+			if h, err := strconv.Atoi(f[1]); err == nil {
+				return h, true
+			}
+		}
+	case scheduled.ScheduleAt:
+		if p.Schedule.At != nil {
+			loc := time.UTC
+			if l, err := time.LoadLocation(tz); err == nil {
+				loc = l
+			}
+			return p.Schedule.At.In(loc).Hour(), true
+		}
+	}
+	return 0, false
+}
+
+// cancelSchedule stops one reminder or recurring routine the owner described.
+// It cancels only when exactly one item clearly matches; several close matches
+// are listed so the owner can say which, and nothing is cancelled on a guess.
+func (t *ScheduleTool) cancelSchedule(target string) *ToolResult {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return ErrorResult("say which reminder or routine to cancel")
+	}
+	lister, ok := t.service.(scheduleLister)
+	canceller, ok2 := t.service.(scheduleCanceller)
+	if !ok || !ok2 {
+		return ErrorResult("I can't cancel schedules from here. It can be done under Routines in the console or with `ghost tasks`.")
+	}
+	items, err := lister.ListItems("", scheduled.StateScheduled, 200)
+	if err != nil {
+		return ErrorResult("I couldn't read what is scheduled just now. Try again in a moment.")
+	}
+	matches := scheduleMatches(items, target)
+	switch len(matches) {
+	case 0:
+		return ErrorResult(fmt.Sprintf("I couldn't find anything scheduled that matches %q. Ask me to list what's scheduled and pick from that.", target))
+	case 1:
+		it := matches[0]
+		if err := canceller.CancelItem(it.ID); err != nil {
+			return ErrorResult(fmt.Sprintf("I couldn't cancel %q: %v", it.Title, err))
+		}
+		when := describeScheduleTime(it)
+		note := ""
+		if it.Schedule.Kind != scheduled.ScheduleAt {
+			note = " It won't run again."
+		}
+		return NewToolResult(fmt.Sprintf("Cancelled %q (%s).%s", it.Title, when, note))
+	default:
+		var lines []string
+		for _, it := range matches {
+			lines = append(lines, fmt.Sprintf("- %s (%s)", it.Title, describeScheduleTime(it)))
+		}
+		return ErrorResult("More than one thing matches. I cancelled nothing. Ask the owner which:\n" + strings.Join(lines, "\n"))
+	}
+}
+
+// scheduleMatches returns the live items that match a description: the single
+// exact-id match if there is one, otherwise the best-scoring item and any other
+// that scores nearly as well (so an ambiguous request is never resolved by a
+// coin toss).
+func scheduleMatches(items []*scheduled.ScheduledItem, query string) []*scheduled.ScheduledItem {
+	q := strings.ToLower(strings.TrimSpace(query))
+	type scored struct {
+		it    *scheduled.ScheduledItem
+		score int
+	}
+	var all []scored
+	for _, it := range items {
+		if it == nil || it.State != scheduled.StateScheduled {
+			continue
+		}
+		if it.ID == query || strings.EqualFold(it.ID, q) {
+			return []*scheduled.ScheduledItem{it}
+		}
+		haystack := strings.ToLower(strings.TrimSpace(it.Title + " " + it.Description + " " + it.Action.Content))
+		score := 0
+		for _, w := range strings.Fields(q) {
+			w = strings.Trim(w, ".,!?;:'\"()")
+			if len(w) < 3 || rescheduleStopwords[w] || w == "routine" || w == "every" || w == "recurring" {
+				continue
+			}
+			if strings.Contains(haystack, w) {
+				score += len(w)
+			}
+		}
+		if score >= 5 {
+			all = append(all, scored{it, score})
+		}
+	}
+	if len(all) == 0 {
+		return nil
+	}
+	best := 0
+	for _, s := range all {
+		if s.score > best {
+			best = s.score
+		}
+	}
+	var out []*scheduled.ScheduledItem
+	for _, s := range all {
+		if s.score*3 >= best*2 { // within a third of the best: too close to choose between
+			out = append(out, s.it)
+		}
+	}
+	return out
 }

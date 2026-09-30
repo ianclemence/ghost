@@ -3,6 +3,21 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.97] - 2026-10-01
+
+- **Ghost works in your language.** Recall already crossed languages (tell it
+  something in English and ask in Swahili, French, Thai, Chinese or Spanish and
+  it answers correctly, in that language). Now confirming with "sí", "oui",
+  "ndiyo", "sawa", "好的", "ตกลง" or "はい" counts as a yes, and "non", "hapana",
+  "不要", "ไม่" as a no. A reminder asked for in another language is scheduled
+  correctly, with the time checked against the number you wrote.
+- **You can cancel a reminder or a recurring routine by talking.** "Cancel the
+  vitamins reminder" stops that one, says which it stopped, and if two things
+  match it asks which instead of guessing.
+- Weather questions in languages where one word means both weather and air now
+  give the conditions and mention the air quality, not only the air.
+- Weekday names read "every Monday", not "every monday".
+
 ## [0.24.96] - 2026-10-01
 
 - **Recurring reminders and routines understand how people talk.** "Remind me

@@ -66,7 +66,7 @@ func TestRoutineClarifyTask(t *testing.T) {
 	}
 	// "every Monday" is a complete schedule (the time defaults to 9 AM and is
 	// stated back), so confirming creates it.
-	if !strings.Contains(ans2, "every monday at 9 AM") {
+	if !strings.Contains(ans2, "every Monday at 9 AM") {
 		t.Fatalf("the assumed time must be stated back: %q", ans2)
 	}
 	ans3, ok := al.tryRoutineTurn(routineMsg("sess-c2", "yes"))
@@ -193,7 +193,40 @@ func TestNewScheduleIsNotTheAnswerToAnOldQuestion(t *testing.T) {
 	if strings.Contains(ans, "every day") || strings.Contains(strings.ToLower(ans), "remind you to every") {
 		t.Fatalf("the old question leaked into the new request: %q", ans)
 	}
-	if !strings.Contains(ans, "give you a short brief of your week") || !strings.Contains(ans, "monday at 8 AM") {
+	if !strings.Contains(ans, "give you a short brief of your week") || !strings.Contains(ans, "Monday at 8 AM") {
 		t.Fatalf("addressed to the owner with the right schedule: %q", ans)
+	}
+}
+
+// A confirmation in the owner's own language counts as a yes or a no; a longer
+// sentence that merely contains such a word does not.
+func TestConfirmingInOtherLanguages(t *testing.T) {
+	for _, yes := range []string{"sí", "Oui.", "d'accord", "ndiyo", "Sawa!", "好的", "ตกลง", "はい", "Yes", "ok"} {
+		if !isAffirmation(yes) {
+			t.Errorf("%q is a yes", yes)
+		}
+	}
+	for _, no := range []string{"non", "Hapana.", "ไม่", "不要", "nein", "cancel", "No"} {
+		if !isDenial(no) {
+			t.Errorf("%q is a no", no)
+		}
+	}
+	for _, neither := range []string{"no problem, the flight was fine", "si tu veux, demain", "I said yes to Sam", "tomorrow"} {
+		if isAffirmation(neither) || isDenial(neither) {
+			t.Errorf("%q is a sentence, not an answer", neither)
+		}
+	}
+	al := testRoutineLoop(t)
+	if _, ok := al.tryRoutineTurn(routineMsg("sess-es", "remind me every weekday at 8am to stretch")); !ok {
+		t.Fatal("proposal")
+	}
+	if done, ok := al.tryRoutineTurn(routineMsg("sess-es", "sí")); !ok || !strings.Contains(done, "Done.") {
+		t.Fatalf("a Spanish yes confirms: %q", done)
+	}
+	if _, ok := al.tryRoutineTurn(routineMsg("sess-fr", "remind me every weekday at 8am to stretch")); !ok {
+		t.Fatal("proposal")
+	}
+	if no, ok := al.tryRoutineTurn(routineMsg("sess-fr", "non")); !ok || !strings.Contains(no, "didn't schedule") {
+		t.Fatalf("a French no cancels: %q", no)
 	}
 }

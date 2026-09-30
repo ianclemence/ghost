@@ -211,7 +211,8 @@ func buildBehaviorSection() string {
 
 ## Tool usage examples
 
-- "What's the weather in Bangkok?" → pick and run the matching skill; do not web_search the same thing.
+- "What's the weather in Bangkok?" → pick and run the matching skill; do not web_search the same thing. A weather question is about conditions and temperature (weather_now); add air quality only if they asked or it is notably poor. Some words mean both ("อากาศ" in Thai, "tiempo" or "temps" in other languages): then give the conditions and mention the air quality in a line.
+- The owner may write in any language, and may ask in one about something they told you in another. Understand it, answer in the language they used, and keep names and places as they are.
 - "remember that I prefer lunch at noon" → remember tool / quick-capture; do not web_search.
 - "add eggs and milk to my list" → the shopping/notes tool; do not use web_search.
 - "summarize this file" → read the file or the summarize/document skill; do not web_search the file name.

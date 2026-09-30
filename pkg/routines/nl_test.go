@@ -58,7 +58,7 @@ func TestRoutineExtractsTaskFromDaypart(t *testing.T) {
 	if strings.Contains(strings.ToLower(in.Task), "monday") {
 		t.Fatalf("schedule clause leaked into task: %q", in.Task)
 	}
-	if in.ScheduleText != "every monday at 9 AM" {
+	if in.ScheduleText != "every Monday at 9 AM" {
 		t.Fatalf("schedule text must resolve morning to a time, got %q", in.ScheduleText)
 	}
 }

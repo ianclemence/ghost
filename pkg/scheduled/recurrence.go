@@ -80,6 +80,7 @@ func ParseRecurrence(text string, ref time.Time, timezone string) (*Recurrence, 
 			// "every day" resolves to, so it is never a surprise.
 			clause += " at " + formatTimeDisplay(h, m)
 		}
+		clause = capitalizeDays(clause)
 		return &Recurrence{
 			Parsed: &ParsedSchedule{
 				Schedule:    sched,
@@ -251,4 +252,11 @@ func RemoveSpans(text string, spans []string) string {
 		out = regexp.MustCompile(`(?i)`+regexp.QuoteMeta(s)).ReplaceAllString(out, " ")
 	}
 	return strings.Join(strings.Fields(out), " ")
+}
+
+var dayNameRE = regexp.MustCompile(`\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b`)
+
+// capitalizeDays writes weekday names the way people read them: "every Monday".
+func capitalizeDays(s string) string {
+	return dayNameRE.ReplaceAllStringFunc(s, func(d string) string { return strings.ToUpper(d[:1]) + d[1:] })
 }

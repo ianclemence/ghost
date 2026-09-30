@@ -107,11 +107,10 @@ func (al *AgentLoop) tryRoutineTurn(msg bus.InboundMessage) (string, bool) {
 
 	// 1. Open proposal for this session?
 	if pending, ok := store.OpenForSession(session); ok && pending.Capability == routinePendingCapability {
-		lower := strings.ToLower(strings.TrimSpace(text))
-		switch lower {
-		case "yes", "y", "confirm", "do it", "approve", "ok", "sure":
+		switch {
+		case isAffirmation(text) || normalizeReply(text) == "approve":
 			return al.confirmRoutineProposal(store, pending, msg)
-		case "no", "n", "cancel", "never mind", "nevermind":
+		case isDenial(text):
 			store.Cancel(pending.ID)
 			return "No problem — I didn't schedule anything.", true
 		}
