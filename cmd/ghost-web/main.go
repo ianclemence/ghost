@@ -602,6 +602,8 @@ func main() {
 	mux.HandleFunc("/api/admin/integrations/flight/save", handleIntegrationsFlightSave)
 	mux.HandleFunc("/api/admin/integrations/homeassistant/save", handleIntegrationsHassSave)
 	mux.HandleFunc("/api/admin/integrations/calendar/oauth/start", handleIntegrationsCalendarOAuthStart)
+	mux.HandleFunc("/api/admin/integrations/oauth-setup", handleOAuthSetup)
+	mux.HandleFunc("/api/admin/integrations/oauth/paste", handleOAuthPaste)
 	mux.HandleFunc("/api/admin/integrations/calendar/verify-packet", handleCalendarVerifyPacket)
 	mux.HandleFunc("/oauth/calendar/callback", handleCalendarOAuthCallback)
 	mux.HandleFunc("/api/admin/integrations/gmail/oauth/start", handleIntegrationsGmailOAuthStart)

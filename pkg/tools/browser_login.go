@@ -35,7 +35,7 @@ func (t *BrowserTool) executeLogin(ctx context.Context, args map[string]interfac
 			who = "that site"
 		}
 		return ErrorResult(fmt.Sprintf(
-			"No saved login for %s. Ask the owner to add it in Ghost settings under Apps → Website logins, then try again — never ask them for the password here.", who))
+			"No saved login for %s. Ask the owner to add it under Apps, Website logins in the web console, or Connected apps in the app, then try again — never ask them for the password here.", who))
 	}
 
 	pageURL := strings.TrimSpace(sarg(args, "url"))
@@ -70,7 +70,7 @@ func (t *BrowserTool) executeLogin(ctx context.Context, args map[string]interfac
 	defer cancel2()
 	if out, err := browserCLIRun(loginCtx, browserEnvironment(t.sessionProfile), "", "auth", "login", name, "--json"); err != nil {
 		return ErrorResult("The sign-in for " + login.Host + " didn't complete: " + scrubSecret(string(out), login) +
-			" The saved login is still there; the page may need a selector override in Ghost settings.")
+			" The saved login is still there; the page may need a different sign-in form to be picked.")
 	}
 	return NewToolResult("Signed in to " + login.Host + ".")
 }

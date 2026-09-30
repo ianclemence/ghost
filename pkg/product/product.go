@@ -105,7 +105,7 @@ var userMessages = map[ErrorClass]string{
 	ErrUserInput:      "I couldn't understand that well enough to act on it. Could you rephrase?",
 	ErrClarification:  "I need a bit more detail before I can do that.",
 	ErrAuthRequired:   "That connection needs to be renewed before I can continue.",
-	ErrConfigRequired: "That isn't connected yet. Connect it in Ghost settings to continue.",
+	ErrConfigRequired: "That isn't connected yet. Connect it under Apps in the web console, or Connected apps in the app to continue.",
 	ErrPermission:     "I don't have permission to do that yet.",
 	ErrNetwork:        "The network request failed. I'll try again shortly.",
 	ErrProvider:       "That data source is temporarily unavailable. I'll try again shortly.",
@@ -134,7 +134,7 @@ var capabilityHints = map[string]map[ErrorClass]string{
 		ErrRateLimited:    "Flight data is busy right now. I'll try again shortly.",
 	},
 	"email": {
-		ErrConfigRequired: "Gmail isn't connected yet. Connect Gmail in Ghost settings under Connected Apps to continue.",
+		ErrConfigRequired: "Gmail isn't connected yet. Connect Gmail under Apps in the web console, or Connected apps in the app to continue.",
 		ErrAuthRequired:   "Your Gmail connection needs to be renewed.",
 		ErrExpired:        "Your Gmail connection expired. Reconnect it to continue.",
 		ErrRevoked:        "Your Gmail access was revoked. Reconnect it to continue.",

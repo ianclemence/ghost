@@ -3,6 +3,33 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.101] - 2026-10-01
+
+- **You can now connect Google Calendar, Gmail, Outlook and Spotify.** They all
+  failed with "isn't set up on this Ghost yet", and there was no way to set them
+  up short of editing the server's environment. Connect now walks you through
+  registering a free app with the provider once (the steps are on screen), stores
+  its ID and secret sealed, and finishes the sign-in when you paste back the
+  address your browser ended on. Calendar no longer depends on a separate helper
+  that could not start. The buttons now say Connect and Disconnect.
+- **Modals and buttons redesigned.** Consistent button sizes, a working state,
+  clear focus, and a red button only where something can't be undone. Dialogs
+  close with Escape or the X, keep focus inside, hand it back, and become a
+  bottom sheet on a phone.
+- **Help and About rewritten** to answer what people ask first, including the
+  forgotten-password steps that Help still described the old way.
+- **One description of Ghost everywhere.** The READMEs, the GitHub descriptions,
+  the console and the app now say the same thing, and the README is a front door
+  with the reference material moved into `docs/` (`GUIDE.md`, `COMMANDS.md`,
+  `DEVELOPMENT.md`).
+- Error messages that told Ghost to send you to "Ghost settings under
+  Integrations" now name the real places: Apps in the web console, Connected
+  apps in the app.
+
+## [0.24.100] - 2026-10-01
+
+- Ghost builds for Windows again. It had stopped compiling there.
+
 ## [0.24.99] - 2026-10-01
 
 - **Ghost tells you when your Pod is too small, before it gets slow.** It now
@@ -14,7 +41,6 @@ Newest first. Ghost shows new entries on first launch after an update;
 - **Power cuts are noticed.** Ghost tells you when it restarted after being cut
   off instead of stopped, and that its memory checked out.
 - New page: what a Pod needs (`docs/HARDWARE.md`).
-- Ghost builds for Windows again. It had stopped compiling there.
 
 ## [0.24.98] - 2026-10-01
 

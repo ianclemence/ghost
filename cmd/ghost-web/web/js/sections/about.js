@@ -5,7 +5,7 @@ async function loadAbout(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'About'));
-  head.appendChild(GhostUI.h('p', {}, 'Your Ghost — who owns it, where it runs, and the open-source project behind it.'));
+  head.appendChild(GhostUI.h('p', {}, 'Your Ghost: who it belongs to and what it is.'));
   container.appendChild(head);
 
   const [identityRes] = await Promise.allSettled([
@@ -35,13 +35,15 @@ async function loadAbout(container) {
 
   const prose = GhostUI.h('div', { className: 'panel prose', style: 'margin-top:var(--s-3)' });
   prose.innerHTML = GhostUI.md(`
-Ghost is a personal AI that lives on your own hardware. It remembers what matters, works for you without being watched, and stays with you across your devices.
+Ghost is a personal AI that lives on a small computer in your home, called a Pod. It remembers the people and plans in your life, does things for you, and speaks up when something needs you.
 
-- **Ghost Web** is where you own, configure, understand, and take care of Ghost.
-- **Ghost Mobile** is where you talk to Ghost and take it with you.
-- **The Ghost Pod** is the hardware Ghost lives on.
+- **This console** is where you set Ghost up, connect it to things, and look after it.
+- **The Ghost app** is where you talk to it, approve what it wants to do, and step in when it needs you.
+- **The Pod** is the machine it lives on.
 
-Ghost is open-source. Source, documentation, and license are in the project repository. Configuration and secrets live only on your device \u2014 nothing here is sent to a central service unless you explicitly connect a cloud provider.
+Your memory, files and logins stay on this Pod. Nothing is sent to a central service. Only what you ask Ghost to think about goes to the AI model you chose, and only if that model is in the cloud.
+
+Ghost is open source. The code, the documentation and the license are at [github.com/ianclemence/ghost](https://github.com/ianclemence/ghost).
   `);
   container.appendChild(prose);
 }

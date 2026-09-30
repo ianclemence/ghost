@@ -332,10 +332,11 @@ func GmailRedactedDiagnostics() GmailDiagnostics {
 // client (same Cloud project as Calendar) plus the Gmail redirect URL.
 // Decision: one shared project, separate registered callbacks.
 func GmailClientConfigFromEnv() (GmailOAuthConfig, bool) {
+	c := LoadOAuthClient(ProviderGoogle)
 	cfg := GmailOAuthConfig{
-		ClientID:     strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_ID")),
-		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_SECRET")),
-		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_GMAIL_REDIRECT_URL")),
+		ClientID:     c.ClientID,
+		ClientSecret: c.ClientSecret,
+		RedirectURL:  redirectOr("GHOST_GMAIL_REDIRECT_URL", ProviderGoogle),
 	}
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RedirectURL == "" {
 		return GmailOAuthConfig{}, false

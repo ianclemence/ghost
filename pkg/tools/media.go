@@ -41,7 +41,7 @@ func (t *MediaPlayTool) Timeout() time.Duration { return providerToolTimeout }
 func (t *MediaPlayTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	svc := t.newSvc()
 	if !svc.Configured() {
-		return ErrorResult("Spotify isn't connected. Connect Spotify in Ghost settings under Connected Apps, then try again.")
+		return ErrorResult("Spotify isn't connected. Ask the owner to connect Spotify under Apps in the web console, or Connected apps in the app, then try again.")
 	}
 	action := strings.ToLower(strings.TrimSpace(sarg(args, "action")))
 	if action == "" {

@@ -67,28 +67,28 @@ async function loadIntegrations(container) {
   const calState = cal.connected ? 'connected' : 'neutral';
   listEl.appendChild(intRow('Google Calendar', 'Calendar',
     calState, cal.connected ? 'Connected' : 'Not connected',
-    cal.connected ? () => confirmDisconnectCalendar() : () => startCalendarConnect()));
+    cal.connected ? () => confirmDisconnectCalendar() : () => startCalendarConnect(), ['Connect', 'Disconnect']));
 
   // Gmail (OAuth product flow: consent URL in new tab, poll status)
   const gm = ints.gmail || {};
   const gmState = gm.connected ? 'connected' : 'neutral';
   listEl.appendChild(intRow('Gmail', 'Email',
     gmState, gm.connected ? 'Connected' : 'Not connected',
-    gm.connected ? () => confirmDisconnectGmail() : () => startGmailConnect()));
+    gm.connected ? () => confirmDisconnectGmail() : () => startGmailConnect(), ['Connect', 'Disconnect']));
 
   // Outlook (OAuth product flow: consent URL in new tab, poll status)
   const om = ints.outlook || {};
   const omState = om.connected ? 'connected' : 'neutral';
   listEl.appendChild(intRow('Outlook', 'Email + Calendar',
     omState, om.connected ? 'Connected' : 'Not connected',
-    om.connected ? () => confirmDisconnectOutlook() : () => startOutlookConnect()));
+    om.connected ? () => confirmDisconnectOutlook() : () => startOutlookConnect(), ['Connect', 'Disconnect']));
 
   // Spotify (OAuth product flow: consent URL in new tab, poll status)
   const sp = ints.spotify || {};
   const spState = sp.connected ? 'connected' : 'neutral';
   listEl.appendChild(intRow('Spotify', 'Music',
     spState, sp.connected ? 'Connected' : 'Not connected',
-    sp.connected ? () => confirmDisconnectSpotify() : () => startSpotifyConnect()));
+    sp.connected ? () => confirmDisconnectSpotify() : () => startSpotifyConnect(), ['Connect', 'Disconnect']));
 
   // GitHub (paste read-only PAT; trust-user: token scopes govern)
   const gh = ints.github || {};
@@ -172,7 +172,7 @@ async function loadIntegrations(container) {
   listEl.appendChild(camRow);
 }
 
-function intRow(name, kind, state, sub, onClick) {
+function intRow(name, kind, state, sub, onClick, labels) {
   const row = GhostUI.h('div', { className: 'model-row' });
   const main = GhostUI.h('div', { className: 'model-main' });
   main.appendChild(GhostUI.h('div', { className: 'model-name' }, name));
@@ -186,99 +186,141 @@ function intRow(name, kind, state, sub, onClick) {
   tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(state), label));
   if (onClick) {
     tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick },
-      state === 'connected' || state === 'ready' ? 'Edit' : 'Configure'));
+      state === 'connected' || state === 'ready' ? (labels ? labels[1] : 'Edit') : (labels ? labels[0] : 'Configure')));
   }
   row.appendChild(tr);
   return row;
 }
 
-async function startCalendarConnect() {
+// ── Signing in to Google, Microsoft and Spotify ─────────────────────────
+// Each needs an app registered with it. Ghost doesn't ship one, so the first
+// time the console walks the owner through registering their own and keeps its
+// ID and secret sealed on the Pod. Signing in then finishes by pasting back the
+// address the browser ended on; nothing needs a public address for the Pod.
+const OAUTH_SERVICES = {
+  calendar: { name: 'Google Calendar', who: 'Google', start: '/api/admin/integrations/calendar/oauth/start' },
+  gmail:    { name: 'Gmail',           who: 'Google', start: '/api/admin/integrations/gmail/oauth/start' },
+  outlook:  { name: 'Outlook',         who: 'Microsoft', start: '/api/admin/integrations/outlook/oauth/start' },
+  spotify:  { name: 'Spotify',         who: 'Spotify', start: '/api/admin/integrations/spotify/oauth/start' },
+};
+
+function closeModalOf(el) { GhostUI.dismiss(el.closest('.ghost-modal-backdrop')); }
+
+function setBusy(btn, on) { btn.classList.toggle('is-busy', !!on); btn.disabled = !!on; }
+
+async function connectOAuth(service) {
+  const svc = OAUTH_SERVICES[service];
   let res;
-  try { res = await GhostAPI.post('/api/admin/integrations/calendar/start', {}); }
-  catch (e) {
-    const msg = (e && e.message) || '';
-    if (msg) GhostUI.toast(msg, 'err');
-    else GhostUI.toast('Couldn’t start calendar setup.', 'err');
-    return;
-  }
-  if (res && res.status === 'ready') { GhostUI.toast('Calendar already connected'); loadIntegrations(document.getElementById('view')); return; }
-  if (res && res.status === 'needs_setup' && !res.setup_url) {
-    const body = GhostUI.h('div');
-    body.appendChild(GhostUI.h('p', {}, 'Calendar setup needs one admin step first:'));
-    body.appendChild(GhostUI.h('p', { className: 'type-mono', style: 'word-break:break-all' }, (res && res.message) || 'Install the calendar helper where the Ghost service can see it, then try again.'));
-    GhostUI.modal('Calendar setup', body, [
-      GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Got it'),
-    ]);
-    return;
-  }
+  try { res = await GhostAPI.post(svc.start, {}); }
+  catch (e) { GhostUI.toast((e && e.message) || ('Couldn’t start ' + svc.name + '.'), 'err'); return; }
+  if (res && res.status === 'ready') { GhostUI.toast(svc.name + ' is already connected'); loadIntegrations(document.getElementById('view')); return; }
+  if (res && res.status === 'needs_configuration') { openOAuthSetup(service, () => connectOAuth(service)); return; }
+  if (!res || !res.auth_url) { GhostUI.toast((res && res.message) || ('Couldn’t start ' + svc.name + '.'), 'err'); return; }
+  window.open(res.auth_url, '_blank', 'noopener');
+  openPasteBack(service, res.auth_url);
+}
+
+async function openOAuthSetup(service, then) {
+  const svc = OAUTH_SERVICES[service];
+  let info;
+  try { info = await GhostAPI.get('/api/admin/integrations/oauth-setup?service=' + service); }
+  catch (e) { GhostUI.toast('Couldn’t load the setup steps.', 'err'); return; }
   const body = GhostUI.h('div');
-  body.appendChild(GhostUI.h('p', {}, 'To connect Google Calendar:'));
-  const ol = GhostUI.h('ol', { style: 'margin:0 0 var(--s-3) 1.2em' });
-  ol.appendChild(GhostUI.h('li', {}, 'Open the setup link on any device and approve access.'));
-  ol.appendChild(GhostUI.h('li', {}, 'Come back here and press Check connection.'));
-  body.appendChild(ol);
-  if (res && res.setup_url) {
-    const link = GhostUI.h('a', { href: res.setup_url, target: '_blank', rel: 'noopener', style: 'word-break:break-all' }, res.setup_url);
-    body.appendChild(GhostUI.h('p', {}, link));
+  body.appendChild(GhostUI.h('p', {}, svc.who + ' lets you sign Ghost in through an app that you own. It takes a few minutes, is free, and only has to be done once.'));
+  const steps = GhostUI.h('ol');
+  (info.steps || []).forEach(t => steps.appendChild(GhostUI.h('li', {}, t)));
+  body.appendChild(steps);
+  body.appendChild(GhostUI.h('p', {}, GhostUI.h('a', { href: info.console_url, target: '_blank', rel: 'noopener' }, 'Open ' + svc.who + '’s page for this ↗')));
+  if (info.provider !== 'google') {
+    body.appendChild(GhostUI.h('p', {}, 'Register this address as the redirect:'));
+    const line = GhostUI.h('div', { className: 'ghost-copyline' });
+    line.appendChild(GhostUI.h('code', {}, info.redirect));
+    const copy = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary ghost-btn-sm', type: 'button', onClick: async () => {
+      try { await navigator.clipboard.writeText(info.redirect); GhostUI.toast('Copied'); } catch (e) { GhostUI.toast('Select it and copy by hand', 'err'); }
+    } }, 'Copy');
+    line.appendChild(copy);
+    body.appendChild(line);
   } else {
-    body.appendChild(GhostUI.h('p', { className: 'text-tertiary' }, 'No setup link was returned. Make sure the calendar helper is installed, then try again.'));
+    body.appendChild(GhostUI.h('p', { className: 'text-tertiary' }, 'A Desktop app needs no redirect address. Google allows this one automatically.'));
   }
-  GhostUI.modal('Connect Calendar', body, [
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
-      try {
-        const st = await GhostAPI.get('/api/admin/integrations/status');
-        const cal = st && st.integrations && st.integrations.calendar;
-        if (cal && cal.connected) {
-          e.target.closest('.ghost-modal-backdrop').remove();
-          GhostUI.toast('Calendar connected');
-          loadIntegrations(document.getElementById('view'));
-        } else {
-          GhostUI.toast('Not connected yet — approve access first.', 'err');
-        }
-      } catch (err) { GhostUI.toast('Couldn’t check status.', 'err'); }
-    } }, 'Check connection'),
+  const group = GhostUI.h('div', { className: 'ghost-fieldgroup' });
+  const idIn = GhostUI.input('Client ID', 'text'); idIn.autocomplete = 'off'; idIn.spellcheck = false;
+  const secIn = GhostUI.input('Client secret', 'password'); secIn.autocomplete = 'off';
+  group.appendChild(GhostUI.h('label', {}, 'Client ID', idIn));
+  group.appendChild(GhostUI.h('label', {}, 'Client secret', secIn));
+  let tenIn = null;
+  if (info.needs_tenant) {
+    tenIn = GhostUI.input('common', 'text'); tenIn.spellcheck = false;
+    group.appendChild(GhostUI.h('label', {}, 'Account type (optional: common, consumers, or a tenant ID)', tenIn));
+  }
+  body.appendChild(group);
+  const err = GhostUI.h('div', { className: 'ghost-modal-error', role: 'alert' });
+  body.appendChild(err);
+  body.appendChild(GhostUI.h('p', { className: 'text-tertiary', style: 'margin-top:var(--s-3)' }, 'These are stored sealed on your Pod, like your API keys. They never appear in a chat or a backup.'));
+  const save = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', type: 'button' }, 'Save and sign in');
+  save.addEventListener('click', async () => {
+    err.textContent = '';
+    if (!idIn.value.trim() || !secIn.value.trim()) { err.textContent = 'Paste both the client ID and the client secret.'; return; }
+    setBusy(save, true);
+    try {
+      await GhostAPI.post('/api/admin/integrations/oauth-setup', { service, client_id: idIn.value, client_secret: secIn.value, tenant: tenIn ? tenIn.value : '' });
+    } catch (e) { setBusy(save, false); err.textContent = (e && e.message) || 'Couldn’t save that.'; return; }
+    closeModalOf(save);
+    if (then) then();
+  });
+  GhostUI.modal('Set up ' + svc.name, body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button', onClick: (e) => closeModalOf(e.target) }, 'Cancel'),
+    save,
+  ], { wide: true });
+}
+
+function openPasteBack(service, authURL) {
+  const svc = OAUTH_SERVICES[service];
+  const body = GhostUI.h('div');
+  const ol = GhostUI.h('ol');
+  ol.appendChild(GhostUI.h('li', {}, 'Approve access in the tab that just opened.'));
+  ol.appendChild(GhostUI.h('li', {}, 'Afterwards that tab will say it can’t be reached. That is expected: it means the sign-in worked.'));
+  ol.appendChild(GhostUI.h('li', {}, 'Copy the whole address from the top of that tab and paste it here.'));
+  body.appendChild(ol);
+  const addr = GhostUI.input('Paste the address', 'text'); addr.autocomplete = 'off'; addr.spellcheck = false;
+  body.appendChild(addr);
+  const err = GhostUI.h('div', { className: 'ghost-modal-error', role: 'alert' });
+  body.appendChild(err);
+  body.appendChild(GhostUI.h('p', { className: 'text-tertiary', style: 'margin-top:var(--s-3)' },
+    GhostUI.h('a', { href: authURL, target: '_blank', rel: 'noopener' }, 'The tab didn’t open? Open the sign-in again ↗')));
+  const go = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', type: 'button' }, 'Connect');
+  const submit = async () => {
+    err.textContent = '';
+    if (!addr.value.trim()) { err.textContent = 'Paste the address first.'; return; }
+    setBusy(go, true);
+    let r;
+    try { r = await GhostAPI.post('/api/admin/integrations/oauth/paste', { service, url: addr.value }); }
+    catch (e) { setBusy(go, false); err.textContent = (e && e.message) || 'Couldn’t reach your Pod.'; return; }
+    setBusy(go, false);
+    if (!r || !r.ok) { err.textContent = (r && r.error) || 'That didn’t work. Try again.'; return; }
+    closeModalOf(go);
+    GhostUI.toast(r.message || (svc.name + ' is connected'), 'ok');
+    loadIntegrations(document.getElementById('view'));
+  };
+  go.addEventListener('click', submit);
+  addr.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  GhostUI.modal('Connect ' + svc.name, body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button', onClick: (e) => { closeModalOf(e.target); openOAuthSetup(service, () => connectOAuth(service)); } }, 'Change app details'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', type: 'button', onClick: (e) => closeModalOf(e.target) }, 'Cancel'),
+    go,
   ]);
 }
+
+const startCalendarConnect = () => connectOAuth('calendar');
+const startGmailConnect = () => connectOAuth('gmail');
+const startOutlookConnect = () => connectOAuth('outlook');
+const startSpotifyConnect = () => connectOAuth('spotify');
 
 async function confirmDisconnectCalendar() {
   if (!(await GhostUI.confirmModal('Disconnect Calendar?', 'Ghost will no longer read your calendar. You can reconnect anytime.', 'Disconnect'))) return;
   try { await GhostAPI.post('/api/admin/integrations/calendar/disconnect', {}); GhostUI.toast('Calendar disconnected'); }
   catch (e) { GhostUI.toast('Couldn’t disconnect.', 'err'); return; }
   loadIntegrations(document.getElementById('view'));
-}
-
-async function startGmailConnect() {
-  let res;
-  try { res = await GhostAPI.post('/api/admin/integrations/gmail/oauth/start', {}); }
-  catch (e) {
-    GhostUI.toast((e && e.message) || 'Couldn’t start Gmail setup.', 'err');
-    return;
-  }
-  if (res && res.status === 'ready') { GhostUI.toast('Gmail already connected'); loadIntegrations(document.getElementById('view')); return; }
-  if (!res || !res.auth_url) {
-    GhostUI.toast((res && res.message) || 'Gmail sign-in isn’t set up on this Ghost yet.', 'err');
-    return;
-  }
-  window.open(res.auth_url, '_blank', 'noopener');
-  const body = GhostUI.h('div');
-  body.appendChild(GhostUI.h('p', {}, 'Google’s sign-in screen opened in a new tab. Approve access, then come back here and press Check connection.'));
-  GhostUI.modal('Connect Gmail', body, [
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
-      try {
-        const st = await GhostAPI.get('/api/admin/integrations/status');
-        const gm = st && st.integrations && st.integrations.gmail;
-        if (gm && gm.connected) {
-          e.target.closest('.ghost-modal-backdrop').remove();
-          GhostUI.toast('Gmail connected');
-          loadIntegrations(document.getElementById('view'));
-        } else {
-          GhostUI.toast('Not connected yet — approve access first.', 'err');
-        }
-      } catch (err) { GhostUI.toast('Couldn’t check status.', 'err'); }
-    } }, 'Check connection'),
-  ]);
 }
 
 async function confirmDisconnectGmail() {
@@ -288,77 +330,11 @@ async function confirmDisconnectGmail() {
   loadIntegrations(document.getElementById('view'));
 }
 
-async function startOutlookConnect() {
-  let res;
-  try { res = await GhostAPI.post('/api/admin/integrations/outlook/oauth/start', {}); }
-  catch (e) {
-    GhostUI.toast((e && e.message) || 'Couldn’t start Outlook setup.', 'err');
-    return;
-  }
-  if (res && res.status === 'ready') { GhostUI.toast('Outlook already connected'); loadIntegrations(document.getElementById('view')); return; }
-  if (!res || !res.auth_url) {
-    GhostUI.toast((res && res.message) || 'Outlook sign-in isn’t set up on this Ghost yet.', 'err');
-    return;
-  }
-  window.open(res.auth_url, '_blank', 'noopener');
-  const body = GhostUI.h('div');
-  body.appendChild(GhostUI.h('p', {}, 'Microsoft’s sign-in screen opened in a new tab. Approve access, then come back here and press Check connection.'));
-  GhostUI.modal('Connect Outlook', body, [
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
-      try {
-        const st = await GhostAPI.get('/api/admin/integrations/status');
-        const om = st && st.integrations && st.integrations.outlook;
-        if (om && om.connected) {
-          e.target.closest('.ghost-modal-backdrop').remove();
-          GhostUI.toast('Outlook connected');
-          loadIntegrations(document.getElementById('view'));
-        } else {
-          GhostUI.toast('Not connected yet — approve access first.', 'err');
-        }
-      } catch (err) { GhostUI.toast('Couldn’t check status.', 'err'); }
-    } }, 'Check connection'),
-  ]);
-}
-
 async function confirmDisconnectOutlook() {
   if (!(await GhostUI.confirmModal('Disconnect Outlook?', 'Ghost will no longer read or send your email or calendar. You can reconnect anytime.', 'Disconnect'))) return;
   try { await GhostAPI.post('/api/admin/integrations/outlook/disconnect', {}); GhostUI.toast('Outlook disconnected'); }
   catch (e) { GhostUI.toast('Couldn’t disconnect.', 'err'); return; }
   loadIntegrations(document.getElementById('view'));
-}
-
-async function startSpotifyConnect() {
-  let res;
-  try { res = await GhostAPI.post('/api/admin/integrations/spotify/oauth/start', {}); }
-  catch (e) {
-    GhostUI.toast((e && e.message) || 'Couldn’t start Spotify setup.', 'err');
-    return;
-  }
-  if (res && res.status === 'ready') { GhostUI.toast('Spotify already connected'); loadIntegrations(document.getElementById('view')); return; }
-  if (!res || !res.auth_url) {
-    GhostUI.toast((res && res.message) || 'Spotify sign-in isn’t set up on this Ghost yet.', 'err');
-    return;
-  }
-  window.open(res.auth_url, '_blank', 'noopener');
-  const body = GhostUI.h('div');
-  body.appendChild(GhostUI.h('p', {}, 'Spotify’s sign-in screen opened in a new tab. Approve access, then come back here and press Check connection.'));
-  GhostUI.modal('Connect Spotify', body, [
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
-      try {
-        const st = await GhostAPI.get('/api/admin/integrations/status');
-        const sp = st && st.integrations && st.integrations.spotify;
-        if (sp && sp.connected) {
-          e.target.closest('.ghost-modal-backdrop').remove();
-          GhostUI.toast('Spotify connected');
-          loadIntegrations(document.getElementById('view'));
-        } else {
-          GhostUI.toast('Not connected yet — approve access first.', 'err');
-        }
-      } catch (err) { GhostUI.toast('Couldn’t check status.', 'err'); }
-    } }, 'Check connection'),
-  ]);
 }
 
 async function confirmDisconnectSpotify() {

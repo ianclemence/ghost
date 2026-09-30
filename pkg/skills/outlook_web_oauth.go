@@ -316,11 +316,12 @@ func OutlookWebDisconnect() error {
 // OutlookClientConfigFromEnv reads the deployment's Microsoft app
 // registration plus the Outlook redirect URL.
 func OutlookClientConfigFromEnv() (OutlookOAuthConfig, bool) {
+	c := LoadOAuthClient(ProviderMicrosoft)
 	cfg := OutlookOAuthConfig{
-		ClientID:     strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_CLIENT_ID")),
-		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_CLIENT_SECRET")),
-		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_REDIRECT_URL")),
-		Tenant:       strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_TENANT")),
+		ClientID:     c.ClientID,
+		ClientSecret: c.ClientSecret,
+		RedirectURL:  redirectOr("GHOST_OUTLOOK_REDIRECT_URL", ProviderMicrosoft),
+		Tenant:       c.Tenant,
 	}
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RedirectURL == "" {
 		return OutlookOAuthConfig{}, false

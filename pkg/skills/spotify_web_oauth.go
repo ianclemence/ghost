@@ -306,10 +306,11 @@ func SpotifyWebDisconnect() error {
 
 // SpotifyClientConfigFromEnv reads the deployment's Spotify app registration.
 func SpotifyClientConfigFromEnv() (SpotifyOAuthConfig, bool) {
+	c := LoadOAuthClient(ProviderSpotify)
 	cfg := SpotifyOAuthConfig{
-		ClientID:     strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_CLIENT_ID")),
-		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_CLIENT_SECRET")),
-		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_REDIRECT_URL")),
+		ClientID:     c.ClientID,
+		ClientSecret: c.ClientSecret,
+		RedirectURL:  redirectOr("GHOST_SPOTIFY_REDIRECT_URL", ProviderSpotify),
 	}
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RedirectURL == "" {
 		return SpotifyOAuthConfig{}, false

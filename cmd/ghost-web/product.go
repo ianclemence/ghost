@@ -18,11 +18,8 @@ import (
 // Client secret lives in server env/settings only — never in chat, SSE,
 // logs, or API responses.
 func calendarOAuthConfigFromEnv() skills.CalendarOAuthConfig {
-	return skills.CalendarOAuthConfig{
-		ClientID:     strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_ID")),
-		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_SECRET")),
-		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_CALENDAR_REDIRECT_URL")),
-	}
+	cfg, _ := skills.CalendarClientConfig()
+	return cfg
 }
 
 // handleIntegrationsCalendarOAuthStart begins the product web-server OAuth
@@ -45,7 +42,7 @@ func handleIntegrationsCalendarOAuthStart(w http.ResponseWriter, r *http.Request
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RedirectURL == "" {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok": true, "status": "needs_configuration",
-			"message": "Calendar sign-in isn't set up on this Ghost yet. Add your Google OAuth client in Ghost settings to enable one-click connect.",
+			"message": "Google Calendar needs a one-time setup before you can sign in.",
 			"action":  "configure_calendar_oauth",
 		})
 		return
@@ -56,7 +53,7 @@ func handleIntegrationsCalendarOAuthStart(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok": true, "status": "needs_configuration",
-			"message": "Calendar sign-in isn't set up on this Ghost yet.",
+			"message": "Google Calendar needs a one-time setup before you can sign in.",
 			"action":  "configure_calendar_oauth",
 		})
 		return
@@ -107,11 +104,8 @@ func handleCalendarOAuthCallback(w http.ResponseWriter, r *http.Request) {
 // project as Calendar) plus the Gmail redirect URL. One project, two
 // registered callbacks — simpler for consumers than two clients.
 func gmailOAuthConfigFromEnv() skills.GmailOAuthConfig {
-	return skills.GmailOAuthConfig{
-		ClientID:     strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_ID")),
-		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_SECRET")),
-		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_GMAIL_REDIRECT_URL")),
-	}
+	cfg, _ := skills.GmailClientConfigFromEnv()
+	return cfg
 }
 
 // handleIntegrationsGmailOAuthStart begins Gmail sign-in. Returns the Google
@@ -132,7 +126,7 @@ func handleIntegrationsGmailOAuthStart(w http.ResponseWriter, r *http.Request) {
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RedirectURL == "" {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok": true, "status": "needs_configuration",
-			"message": "Gmail sign-in isn't set up on this Ghost yet. Add your Google OAuth client (shared with Calendar) plus the Gmail redirect URL in Ghost settings.",
+			"message": "Gmail needs a one-time setup before you can sign in.",
 			"action":  "configure_gmail_oauth",
 		})
 		return
@@ -142,7 +136,7 @@ func handleIntegrationsGmailOAuthStart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok": true, "status": "needs_configuration",
-			"message": "Gmail sign-in isn't set up on this Ghost yet.",
+			"message": "Gmail needs a one-time setup before you can sign in.",
 			"action":  "configure_gmail_oauth",
 		})
 		return
@@ -190,12 +184,8 @@ func handleGmailOAuthCallback(w http.ResponseWriter, r *http.Request) {
 // outlookOAuthConfigFromEnv reads the deployment's Microsoft app
 // registration plus the Outlook redirect URL.
 func outlookOAuthConfigFromEnv() skills.OutlookOAuthConfig {
-	return skills.OutlookOAuthConfig{
-		ClientID:     strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_CLIENT_ID")),
-		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_CLIENT_SECRET")),
-		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_REDIRECT_URL")),
-		Tenant:       strings.TrimSpace(os.Getenv("GHOST_OUTLOOK_TENANT")),
-	}
+	cfg, _ := skills.OutlookClientConfigFromEnv()
+	return cfg
 }
 
 // handleIntegrationsOutlookOAuthStart begins Outlook sign-in (mail +
@@ -216,7 +206,7 @@ func handleIntegrationsOutlookOAuthStart(w http.ResponseWriter, r *http.Request)
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RedirectURL == "" {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok": true, "status": "needs_configuration",
-			"message": "Outlook sign-in isn't set up on this Ghost yet. Add your Microsoft app registration plus the Outlook redirect URL in Ghost settings.",
+			"message": "Outlook needs a one-time setup before you can sign in.",
 			"action":  "configure_outlook_oauth",
 		})
 		return
@@ -226,7 +216,7 @@ func handleIntegrationsOutlookOAuthStart(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok": true, "status": "needs_configuration",
-			"message": "Outlook sign-in isn't set up on this Ghost yet.",
+			"message": "Outlook needs a one-time setup before you can sign in.",
 			"action":  "configure_outlook_oauth",
 		})
 		return
@@ -271,11 +261,8 @@ func handleOutlookOAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 // spotifyOAuthConfigFromEnv reads the deployment's Spotify app registration.
 func spotifyOAuthConfigFromEnv() skills.SpotifyOAuthConfig {
-	return skills.SpotifyOAuthConfig{
-		ClientID:     strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_CLIENT_ID")),
-		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_CLIENT_SECRET")),
-		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_SPOTIFY_REDIRECT_URL")),
-	}
+	cfg, _ := skills.SpotifyClientConfigFromEnv()
+	return cfg
 }
 
 // handleIntegrationsSpotifyOAuthStart begins Spotify sign-in.
@@ -295,7 +282,7 @@ func handleIntegrationsSpotifyOAuthStart(w http.ResponseWriter, r *http.Request)
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RedirectURL == "" {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok": true, "status": "needs_configuration",
-			"message": "Spotify sign-in isn't set up on this Ghost yet. Add your Spotify app registration plus the redirect URL in Ghost settings.",
+			"message": "Spotify needs a one-time setup before you can sign in.",
 			"action":  "configure_spotify_oauth",
 		})
 		return
@@ -305,7 +292,7 @@ func handleIntegrationsSpotifyOAuthStart(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok": true, "status": "needs_configuration",
-			"message": "Spotify sign-in isn't set up on this Ghost yet.",
+			"message": "Spotify needs a one-time setup before you can sign in.",
 			"action":  "configure_spotify_oauth",
 		})
 		return

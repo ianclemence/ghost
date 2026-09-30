@@ -395,12 +395,8 @@ func CalendarAccessToken(ctx context.Context, needWrite bool) (string, error) {
 	if strings.TrimSpace(tok.AccessToken) != "" && time.Now().Add(60*time.Second).Before(tok.Expiry) {
 		return tok.AccessToken, nil
 	}
-	cfg := CalendarOAuthConfig{
-		ClientID:     strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_ID")),
-		ClientSecret: strings.TrimSpace(os.Getenv("GHOST_GOOGLE_CLIENT_SECRET")),
-		RedirectURL:  strings.TrimSpace(os.Getenv("GHOST_CALENDAR_REDIRECT_URL")),
-	}
-	if cfg.ClientID == "" || cfg.ClientSecret == "" {
+	cfg, ok := CalendarClientConfig()
+	if !ok {
 		return "", errors.New("calendar_oauth_not_configured")
 	}
 	if strings.TrimSpace(tok.RefreshToken) == "" {

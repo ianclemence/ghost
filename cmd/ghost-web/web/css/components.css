@@ -14,10 +14,12 @@
 .ghost-btn {
   appearance: none;
   border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  padding: 9px 18px;
+  border-radius: var(--r-md);
+  min-height: 38px;
+  padding: 0 var(--s-4);
+  font: inherit;
   font-size: var(--t-callout);
-  font-weight: 560;
+  font-weight: 600;
   letter-spacing: var(--ls-normal);
   cursor: pointer;
   transition: background var(--d-fast) var(--ease-out),
@@ -32,65 +34,68 @@
   line-height: 1;
   white-space: nowrap;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
-.ghost-btn:active {
-  transform: scale(0.97);
-}
+.ghost-btn:active { transform: scale(0.98); }
 .ghost-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--paper-raised), 0 0 0 4px var(--accent);
 }
 .ghost-btn:disabled {
-  opacity: .4;
+  opacity: .45;
   cursor: not-allowed;
   pointer-events: none;
 }
+/* Working: the label stays, a small ring says so, and it can't be pressed twice. */
+.ghost-btn.is-busy { pointer-events: none; color: transparent; position: relative; }
+.ghost-btn.is-busy::after {
+  content: "";
+  position: absolute;
+  width: 15px; height: 15px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-color: var(--busy-ink, var(--ink-soft)) transparent var(--busy-ink, var(--ink-soft)) transparent;
+  animation: btnSpin .8s linear infinite;
+}
+.ghost-btn-primary.is-busy, .ghost-btn-danger.is-busy { --busy-ink: var(--on-accent); }
+@keyframes btnSpin { to { transform: rotate(360deg); } }
 
-/* Primary */
+/* Primary: the one thing to do */
 .ghost-btn-primary {
   background: var(--accent);
   color: var(--on-accent);
   border-color: var(--accent);
 }
-.ghost-btn-primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-}
+.ghost-btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
-/* Secondary */
+/* Secondary: an equal alternative */
 .ghost-btn-secondary {
   background: var(--paper-raised);
   color: var(--ink);
   border-color: var(--line-strong);
 }
-.ghost-btn-secondary:hover {
-  background: var(--paper-hover);
-  border-color: var(--line);
-}
+.ghost-btn-secondary:hover { background: var(--paper-hover); }
 
-/* Ghost */
+/* Ghost: the way out (Cancel, Close) */
 .ghost-btn-ghost {
   background: transparent;
   color: var(--ink-soft);
 }
-.ghost-btn-ghost:hover {
-  background: var(--paper-hover);
-  color: var(--ink);
-}
+.ghost-btn-ghost:hover { background: var(--paper-hover); color: var(--ink); }
 
-/* Danger */
+/* Danger: only for what can't be undone */
 .ghost-btn-danger {
   background: var(--bad);
   color: #fff;
   border-color: var(--bad);
 }
-.ghost-btn-danger:hover {
-  filter: brightness(.9);
-}
+.ghost-btn-danger:hover { background: color-mix(in srgb, var(--bad) 86%, #000); border-color: transparent; }
+:root[data-theme="dark"] .ghost-btn-danger { color: #1a0604; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ghost-btn-danger { color: #1a0604; } }
 
 /* Sizes */
-.ghost-btn-lg { padding: 12px 24px; font-size: var(--t-body); }
-.ghost-btn-sm { padding: 5px 12px; font-size: var(--t-foot); }
+.ghost-btn-lg { min-height: 46px; padding: 0 var(--s-5); font-size: var(--t-body); }
+.ghost-btn-sm { min-height: 30px; padding: 0 var(--s-3); font-size: var(--t-foot); border-radius: var(--r-sm); }
 
 /* Icon-only button */
 .ghost-btn-icon {
@@ -359,51 +364,134 @@ textarea.ghost-input {
   inset: 0;
   z-index: 60;
   background: var(--paper-overlay);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--s-4);
   animation: fadeIn var(--d-base) var(--ease-out);
 }
+.ghost-modal-backdrop.is-leaving { animation: fadeOut var(--d-fast) var(--ease-out) forwards; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
 
 .ghost-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   background: var(--paper-raised);
-  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
   box-shadow: var(--shadow-xl);
   width: 100%;
-  max-width: 440px;
-  padding: var(--s-6);
+  max-width: 460px;
+  max-height: min(88vh, 720px);
+  padding: var(--s-5) var(--s-5) var(--s-4);
   animation: modalIn var(--d-moderate) var(--ease-out);
 }
+.ghost-modal-wide { max-width: 580px; }
+.is-leaving .ghost-modal { animation: modalOut var(--d-fast) var(--ease-out) forwards; }
 @keyframes modalIn {
-  from {
-    transform: translateY(12px) scale(0.97);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
+  from { transform: translateY(10px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+@keyframes modalOut {
+  to { transform: translateY(6px) scale(0.985); opacity: 0; }
 }
 
 .ghost-modal-title {
-  font-size: var(--t-head);
-  font-weight: 620;
+  font-size: 18px;
+  font-weight: 640;
   letter-spacing: var(--ls-snug);
+  line-height: var(--lh-snug);
+  padding-right: var(--s-6); /* room for the close button */
 }
+.ghost-modal-close {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border: 0; border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: background var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out);
+}
+.ghost-modal-close:hover { background: var(--paper-hover); color: var(--ink); }
+.ghost-modal-close:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent); }
+.ghost-modal-close svg { width: 16px; height: 16px; }
+
 .ghost-modal-body {
-  margin: var(--s-4) 0 var(--s-6);
+  margin: var(--s-3) calc(var(--s-2) * -1) var(--s-5);
+  padding: 0 var(--s-2);
+  overflow-y: auto;
   color: var(--ink-soft);
   font-size: var(--t-callout);
   line-height: var(--lh-body);
+}
+.ghost-modal-body p { margin: 0 0 var(--s-3); }
+.ghost-modal-body p:last-child { margin-bottom: 0; }
+.ghost-modal-body ol { margin: 0 0 var(--s-4); padding-left: 1.3em; }
+.ghost-modal-body li { margin-bottom: var(--s-2); padding-left: 2px; }
+.ghost-modal-body li::marker { color: var(--ink-faint); font-weight: 600; }
+.ghost-modal-body a { color: var(--accent); text-underline-offset: 3px; }
+.ghost-modal-body .type-mono, .ghost-modal-body code {
+  font-family: var(--font-mono);
+  font-size: var(--t-foot);
+  background: var(--paper-sunken);
+  border-radius: var(--r-sm);
+  padding: 2px 6px;
+  word-break: break-all;
 }
 .ghost-modal-actions,
 .ghost-modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: var(--s-3);
+  gap: var(--s-2);
+  flex-shrink: 0;
 }
+.ghost-modal-footer { margin-top: var(--s-5); }
+.ghost-modal-error {
+  color: var(--bad);
+  font-size: var(--t-foot);
+  margin-top: var(--s-2);
+}
+
+/* On a phone the modal is a sheet from the bottom, and its buttons fill the
+   width with the main action on top, where a thumb reaches. */
+@media (max-width: 560px) {
+  .ghost-modal-backdrop { align-items: flex-end; padding: 0; }
+  .ghost-modal {
+    max-width: none;
+    max-height: 92vh;
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    border-bottom: 0;
+    padding-bottom: calc(var(--s-4) + env(safe-area-inset-bottom, 0px));
+    animation-name: sheetIn;
+  }
+  .is-leaving .ghost-modal { animation-name: sheetOut; }
+  .ghost-modal-actions, .ghost-modal-footer { flex-direction: column-reverse; }
+  .ghost-modal-actions .ghost-btn, .ghost-modal-footer .ghost-btn { width: 100%; min-height: 46px; }
+}
+@keyframes sheetIn { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sheetOut { to { transform: translateY(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ghost-modal, .ghost-modal-backdrop, .ghost-btn { animation: none !important; transition: none !important; }
+}
+
+/* Numbered setup steps and a value to copy */
+.ghost-copyline {
+  display: flex; align-items: center; gap: var(--s-2);
+  background: var(--paper-sunken);
+  border-radius: var(--r-md);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-3);
+  margin: 0 0 var(--s-4);
+}
+.ghost-copyline code { flex: 1; background: none; padding: 0; user-select: all; }
+.ghost-fieldgroup { display: grid; gap: var(--s-3); margin-top: var(--s-4); }
+.ghost-fieldgroup label { display: grid; gap: var(--s-1); font-size: var(--t-foot); font-weight: 600; color: var(--ink-soft); }
 
 /* Legacy selectors — same styles, different names */
 .modal-backdrop {

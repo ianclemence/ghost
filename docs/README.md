@@ -1,21 +1,25 @@
 # Ghost
 
-Ghost is a persistent personal AI runtime. It gives a language model identity,
-memory, authority, capabilities, execution, evidence, and durable behavior —
-then keeps those things trustworthy even when the model is wrong.
+Ghost is a personal AI that lives on hardware you own. Underneath, it is a
+runtime: it gives a language model identity, memory, authority, capabilities,
+execution, evidence, and durable behavior, then keeps those things trustworthy
+even when the model is wrong.
 
-This directory is the canonical architecture reference. It describes what
-Ghost actually does today. It is written for engineers and architects who need
-to understand where authority lives and why the boundaries are drawn where
-they are.
+This directory explains how that works. It describes what Ghost actually does
+today, and is written for engineers and architects who need to understand where
+authority lives and why the boundaries are drawn where they are. If you just want
+to use Ghost, start with [Using Ghost](GUIDE.md).
 
 It holds this README, the nine documents linked at the end (one per layer of
 the chain below), and one reference, [Markdown & diagrams](markdown.md), on how
-responses render on every surface. Three operator guides sit beside them:
+responses render on every surface. Beside them are the guides for the person
+running Ghost: [Using Ghost](GUIDE.md),
 [What a Pod needs](HARDWARE.md),
 [Your Pod, from the box to your first conversation](POD-QUICKSTART.md),
 [Reaching your Ghost when you are away](CONNECT.md) (the relay decision record),
-and [The Ghost app and the gateway API](MOBILE-API.md). Nothing else lives here.
+and [Commands and configuration](COMMANDS.md); and for people building on it,
+[Developing Ghost](DEVELOPMENT.md) and
+[The Ghost app and the gateway API](MOBILE-API.md). Nothing else lives here.
 
 ---
 

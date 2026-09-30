@@ -5,40 +5,44 @@ async function loadHelp(container) {
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'Help'));
-  head.appendChild(GhostUI.h('p', {}, 'Guidance on what Ghost does and how to use it.'));
+  head.appendChild(GhostUI.h('p', {}, 'Answers to the things people ask first, in the order they tend to come up.'));
   container.appendChild(head);
 
   const prose = GhostUI.h('div', { className: 'panel prose' });
   prose.innerHTML = GhostUI.md(`
-## Connecting devices
-Open **Devices** and choose *Connect another device*. Ghost shows a code that expires after a few minutes and can be used once. Scan it with the Ghost app on your phone. Once paired, that device can reach your Ghost — but your Ghost itself stays on this hardware.
+## Connect your phone
+Open **Devices** and choose *Connect another device*. Ghost shows a QR code that works once and expires in five minutes. Scan it in the Ghost app. Each phone gets a credential of its own, and you can remove any phone from this page.
 
 ## Reach Ghost away from home
-The console lives on your home network: http://ghost.local (when name lookup works) or the address shown under **System → This console**. Away from home, join the same Tailscale network on your phone or laptop and open the same address — no extra setup, and nothing is exposed to the public internet.
+At home, your phone reaches Ghost directly. Away from home you need a way in, such as Tailscale on your phone and this Pod. Nothing is exposed to the public internet. Notifications work either way.
 
-## AI
-Ghost answers with your chosen AI model (see **Intelligence**) — running on your hardware, in the cloud, or a mix you control with the routing switches. Ghost picks per task based on capability, privacy, latency, cost, and availability.
+## Connect your apps
+Open **Apps**. Keys (GitHub, Notion, weather and flights) are tried against the service before Ghost says *connected*. Google Calendar, Gmail, Outlook and Spotify use a sign-in, and each needs an app of your own registered with the provider, once. Ghost walks you through it and stores what you paste sealed. After you approve access, the last page says it can't be reached. That is expected: copy its address and paste it back.
 
-## Memory
-Ghost remembers things that matter as plain notes on this device. Open **Memory** to browse, read, and forget them. Forgetting deletes a note from your Ghost.
+**Website logins** are saved the same way, once, and Ghost signs in without the password passing through the AI. If a site asks for a human check, Ghost stops and tells you. Open its browser card in the app, tap *Take over and steer*, do that step, then tap *Done*.
 
-## Your daily briefing
-Each morning Ghost writes a short **daily briefing** — a calm look at your day from what it remembers, what you captured, your reminders, and the weather — into **Memory**. Open Memory to read it. You can also ask for one anytime: *"what should I know today?"*
+## Choose how Ghost thinks
+Open **Intelligence**. Ghost can think on this Pod, in the cloud, or a mix you control. Every reply says where it ran.
+
+## What Ghost remembers
+Open **Memory** to read, search and forget what Ghost knows. Forgetting removes it from this Pod. Each morning Ghost also writes a short daily briefing there from what it remembers, your reminders and the weather. Ask for one any time: *what should I know today?*
+
+## Reminders and routines
+A *reminder* tells you something at a time. A *routine* is a job Ghost does on its own and reports back, like *every Monday at 8, give me a brief of my week*. Tell Ghost in a conversation and it sets it up. Manage both under **Routines**.
+
+## What Ghost is allowed to do
+Anything consequential waits for your yes, in the app or here under **Permissions**. You can allow something once, for a task, or always, and take an *always* back at any time.
 
 ## Skills
-Skills are capabilities Ghost has installed. Built-ins come with Ghost; you can add more from a GitHub repository. Disable a skill to turn it off without deleting it.
+Skills are things Ghost knows how to do. Some come with it, and you can add more from a GitHub repository. Turn one off without deleting it.
 
-## Routines
-Routines are things Ghost does on its own — a morning briefing, a weekly research roundup, a recurring reminder. Tell Ghost in a chat (“every Monday at 9, prepare my brief”) and it sets the routine up; manage them under **Routines**.
+## Back up, and if you forget your password
+**Security** offers an encrypted backup you can download. A backup is only readable with your passphrase, so keep it somewhere safe.
 
-## Backups
-A backup is a download containing your memory, skills, configuration, and routines. Secrets are kept out of backups for safety. Store the file somewhere you trust.
+If you forget this console's password, nothing is lost. On the sign-in page choose *Forgot your password?* and use the one-time code from the Ghost app (**Your Pod**, then **Web console**), or put a file named \`ghost-reset-password\` with the new password on the memory card's \`boot\` drive. Your memory, files and paired phones are not touched.
 
-## Diagnostics
-If something seems off, open **System** and run *Diagnostics*. It checks Ghost, its services, storage, and connections, and tells you what’s healthy and what isn’t.
-
-## Recovery
-If you’re locked out, you can re-run setup to reset owner access. Your memory and skills are preserved.
+## If something seems off
+Ghost tells you about problems itself: low storage, a hot Pod, a failed update. To check on demand, open **System** and run *Diagnostics*.
   `);
   container.appendChild(prose);
 }

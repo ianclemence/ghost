@@ -66,7 +66,7 @@ func (t *EmailSearchTool) Execute(ctx context.Context, args map[string]interface
 		}
 		return renderEmailList(msgs)
 	}
-	return ErrorResult("No mailbox connected. Connect Gmail or Outlook in Ghost settings under Connected Apps, then try again.")
+	return ErrorResult("No mailbox connected. Ask the owner to connect Gmail or Outlook under Apps in the web console, or Connected apps in the app, then try again.")
 }
 
 func renderEmailList(msgs []gmailprov.Message) *ToolResult {
@@ -142,7 +142,7 @@ func (t *EmailSendTool) Execute(ctx context.Context, args map[string]interface{}
 		}
 		return emailSentEvidence(to, subject, "", "outlook")
 	}
-	return ErrorResult("No mailbox connected. Connect Gmail or Outlook in Ghost settings under Connected Apps, then try again.")
+	return ErrorResult("No mailbox connected. Ask the owner to connect Gmail or Outlook under Apps in the web console, or Connected apps in the app, then try again.")
 }
 
 func emailSentEvidence(to, subject, messageID, provider string) *ToolResult {

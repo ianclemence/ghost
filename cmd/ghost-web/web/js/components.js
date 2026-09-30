@@ -160,8 +160,61 @@ const GhostUI = (() => {
     return e;
   }
 
-  function modal(title, body, actions) {
+  const CLOSE_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>';
+  let modalSeq = 0;
+
+  // dismiss takes a modal away with a short fade, and hands focus back to
+  // whatever opened it.
+  function dismiss(backdrop) {
+    if (!backdrop || !backdrop.isConnected || backdrop.classList.contains('is-leaving')) return;
+    backdrop.classList.add('is-leaving');
+    const opener = backdrop._opener;
+    const done = () => { Element.prototype.remove.call(backdrop); if (opener && opener.isConnected) { try { opener.focus({ preventScroll: true }); } catch (e) {} } };
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) done();
+    else setTimeout(done, 130);
+    document.removeEventListener('keydown', backdrop._onKey, true);
+  }
+
+  // mountModal is the one place a dialog is built, so modal and confirmModal
+  // behave the same: labelled, closable with Escape or the X, focus kept inside,
+  // focus returned on close.
+  function mountModal(box, title, onClose, wide) {
     const backdrop = h('div', { className: 'ghost-modal-backdrop' });
+    const id = 'ghost-modal-title-' + (++modalSeq);
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-labelledby', id);
+    if (wide) box.classList.add('ghost-modal-wide');
+    const heading = box.querySelector('.ghost-modal-title');
+    if (heading) heading.id = id;
+    const x = h('button', { className: 'ghost-modal-close', type: 'button', 'aria-label': 'Close' });
+    x.innerHTML = CLOSE_ICON;
+    box.insertBefore(x, box.firstChild);
+    backdrop.appendChild(box);
+    backdrop._opener = document.activeElement;
+    // Every existing way of closing a modal (.remove()) gets the fade and the cleanup.
+    backdrop.remove = () => dismiss(backdrop);
+    const close = () => { dismiss(backdrop); if (onClose) onClose(); };
+    x.addEventListener('click', close);
+    backdrop.addEventListener('mousedown', (e) => { if (e.target === backdrop) close(); });
+    backdrop._onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(); return; }
+      if (e.key !== 'Tab') return;
+      const f = Array.from(box.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(el => !el.disabled && el.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', backdrop._onKey, true);
+    document.body.appendChild(backdrop);
+    // Focus the first thing to type into, else the main action, else the dialog.
+    const target = box.querySelector('input:not([type=hidden]), textarea, select') || box.querySelector('.ghost-btn-primary, .ghost-btn-danger') || x;
+    setTimeout(() => { try { target.focus({ preventScroll: true }); } catch (e) {} }, 30);
+    return backdrop;
+  }
+
+  function modal(title, body, actions, opts) {
     const m = h('div', { className: 'ghost-modal' });
     m.appendChild(h('div', { className: 'ghost-modal-title' }, title));
     if (body) {
@@ -175,10 +228,7 @@ const GhostUI = (() => {
       actions.forEach(act => a.appendChild(act));
       m.appendChild(a);
     }
-    backdrop.appendChild(m);
-    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
-    document.body.appendChild(backdrop);
-    return backdrop;
+    return mountModal(m, title, null, opts && opts.wide);
   }
 
   function toast(msg, variant, duration) {
@@ -193,23 +243,26 @@ const GhostUI = (() => {
     setTimeout(() => t.remove(), duration || 3000);
   }
 
-  function confirmModal(title, message, confirmLabel) {
+  // confirmModal asks before something that matters. Pass tone 'primary' for a
+  // question that isn't destructive; the default is the red button.
+  function confirmModal(title, message, confirmLabel, tone) {
     return new Promise((resolve) => {
-      const backdrop = h('div', { className: 'ghost-modal-backdrop' });
       const box = h('div', { className: 'ghost-modal' });
       box.appendChild(h('div', { className: 'ghost-modal-title' }, title));
       if (typeof message === 'string') {
         box.appendChild(h('div', { className: 'ghost-modal-body' }, message));
       } else if (message) {
-        box.appendChild(message);
+        const b = h('div', { className: 'ghost-modal-body' });
+        b.appendChild(message);
+        box.appendChild(b);
       }
+      let backdrop;
+      const settle = (v) => { dismiss(backdrop); resolve(v); };
       const footer = h('div', { className: 'ghost-modal-footer' });
-      footer.appendChild(h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: () => { backdrop.remove(); resolve(false); } }, 'Cancel'));
-      footer.appendChild(h('button', { className: 'ghost-btn ghost-btn-danger', onClick: () => { backdrop.remove(); resolve(true); } }, confirmLabel || 'Confirm'));
+      footer.appendChild(h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button', onClick: () => settle(false) }, 'Cancel'));
+      footer.appendChild(h('button', { className: 'ghost-btn ' + (tone === 'primary' ? 'ghost-btn-primary' : 'ghost-btn-danger'), type: 'button', onClick: () => settle(true) }, confirmLabel || 'Confirm'));
       box.appendChild(footer);
-      backdrop.appendChild(box);
-      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { backdrop.remove(); resolve(false); } });
-      document.body.appendChild(backdrop);
+      backdrop = mountModal(box, title, () => resolve(false));
     });
   }
 
@@ -474,7 +527,7 @@ const GhostUI = (() => {
     return html;
   }
 
-  return { el, h, ghostMark, statusDot, badge, btn, input, textarea, select, toggle, row, linkRow, sectionGroup, emptyState, loading, errorState, modal, toast, confirmModal, downloadBackup, fmtNum, activityWord,
+  return { el, h, ghostMark, statusDot, badge, btn, input, textarea, select, toggle, row, linkRow, sectionGroup, emptyState, loading, errorState, modal, dismiss, toast, confirmModal, downloadBackup, fmtNum, activityWord,
     activityTone,
     timeAgo, clockTime, dayLabel, md, modelFriendly, stripFrontmatter, frontmatterValue };
 })();

@@ -1,7 +1,8 @@
 # Your Pod, from the box to your first conversation
 
-This is the path for someone who bought a Ghost Pod, or is putting Ghost on their
-own Raspberry Pi. It takes about ten minutes and needs a phone and a network.
+This is the path for someone who bought a Ghost Pod, or is turning their own
+computer into one (see [What a Pod needs](HARDWARE.md)). It takes about ten
+minutes and needs a phone and a network.
 
 ## 1. Plug it in
 

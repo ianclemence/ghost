@@ -265,5 +265,5 @@ func (t *CalendarTool) runGcalcli(ctx context.Context, args []string) (string, e
 // calendarUnavailable turns an integration failure into an honest,
 // product-language outcome: the model must not claim success.
 func calendarUnavailable(err error) *ToolResult {
-	return ErrorResult("Calendar isn't connected or is temporarily unavailable. Connect Google Calendar in Ghost settings under Integrations, then try again.")
+	return ErrorResult("Calendar isn't connected or is temporarily unavailable. Ask the owner to connect Google Calendar under Apps in the web console, or Connected apps in the app, then try again.")
 }
