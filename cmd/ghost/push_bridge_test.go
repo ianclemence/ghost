@@ -18,6 +18,7 @@ func TestPushCategoryFor(t *testing.T) {
 		{"a finished background task", bus.OutboundMessage{Channel: "system", Content: "done", Metadata: map[string]interface{}{"type": "background_done"}}, push.Update, true},
 		{"a reply in the shared conversation", bus.OutboundMessage{Channel: "mobile", Content: "Your reminder", Metadata: map[string]interface{}{"type": "assistant_message", "session_id": "main"}}, push.Update, true},
 		{"a proactive message on the terminal channel", bus.OutboundMessage{Channel: "cli", Content: "Heads up"}, push.Update, true},
+		{"a due reminder", bus.OutboundMessage{Channel: "mobile", Content: "Reminder: stretch.", Metadata: map[string]interface{}{"type": "assistant_message", "session_id": "main", "reminder": true}}, push.Reminder, true},
 		{"progress telemetry", bus.OutboundMessage{Channel: "mobile", Content: "x", Metadata: map[string]interface{}{"type": "progress_event"}}, "", false},
 		{"a surface update", bus.OutboundMessage{Channel: "mobile", Metadata: map[string]interface{}{"type": "surface_update"}}, "", false},
 		{"an empty reply", bus.OutboundMessage{Channel: "mobile", Metadata: map[string]interface{}{"type": "assistant_message"}}, "", false},

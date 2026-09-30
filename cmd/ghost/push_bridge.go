@@ -28,6 +28,9 @@ func pushCategoryFor(msg bus.OutboundMessage) (push.Category, bool) {
 	case "background_done":
 		return push.Update, true
 	case "assistant_message", "":
+		if reminder, _ := msg.Metadata["reminder"].(bool); reminder && msg.Content != "" {
+			return push.Reminder, true
+		}
 		if conversationEvent(msg) && msg.Content != "" {
 			return push.Update, true
 		}

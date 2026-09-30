@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.87] - 2026-09-30
+
+- **Reminders actually reach you.** A reminder that came due was worked out and
+  then filed in a private corner of Ghost that no screen looks at, so nothing
+  ever appeared. Reminders, and anything Ghost does on a timer, now arrive in your
+  conversation, live and in history, and as a notification when the app is
+  closed. A reminder no longer needs the AI to be reachable: it says
+  "Reminder: stretch." on time even if your model provider is down.
+
 ## [0.24.84] - 2026-09-30
 
 - **Ghost can reach your phone when the app is closed.** Reminders, questions,

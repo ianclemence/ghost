@@ -2597,6 +2597,13 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 		if item.Action.Kind == scheduled.ActionCommand && item.Action.Command != "" {
 			return executeScheduledCommand(ctx, agentLoop, item)
 		}
+		// A reminder says what it was asked to say. It needs no model, so it
+		// arrives on time even when the provider is down or out of credit,
+		// and it can't come back as "Stretching. 🧘".
+		if item.Type == scheduled.TypeReminder {
+			agentLoop.DeliverToOwner(item.Channel, item.ChatID, agent.ReminderText(item.Title), map[string]interface{}{"reminder": true})
+			return nil
+		}
 		if item.Action.Content == "" {
 			return fmt.Errorf("no message content")
 		}
@@ -3962,7 +3969,7 @@ func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus
 		}
 		// Deliver the result where the routine was created.
 		if strings.TrimSpace(resp) != "" && msgBus != nil && item.Channel != "" {
-			msgBus.PublishOutbound(bus.OutboundMessage{Channel: item.Channel, ChatID: item.ChatID, Content: resp})
+			agentLoop.DeliverToOwner(item.Channel, item.ChatID, resp, nil)
 		}
 		return routines.RunOutcome{Completion: product.CompletionSuccess, Message: resp}
 	})

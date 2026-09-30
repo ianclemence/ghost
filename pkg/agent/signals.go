@@ -5,6 +5,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/cards"
@@ -488,4 +489,53 @@ func (al *AgentLoop) CanonicalEvents() *cevents.Stream {
 		return nil
 	}
 	return al.governance.Events
+}
+
+// ownerConversation is the one shared conversation every surface shows.
+const ownerConversation = "main"
+
+// DeliverToOwner says something to the owner in the shared conversation, from
+// Ghost's own initiative (a reminder coming due, a scheduled result). It is
+// stored in the conversation, so the app and terminal find it in history, and
+// it is published live tagged as part of that conversation, so a connected
+// surface shows it at once. Before this, a timer's reply stayed in its private
+// automation session: processed, logged, and never seen by anyone.
+func (al *AgentLoop) DeliverToOwner(channel, chatID, text string, meta map[string]interface{}) {
+	text = strings.TrimSpace(text)
+	if al == nil || text == "" {
+		return
+	}
+	if al.sessions != nil {
+		al.sessions.AddMessage(ownerConversation, "assistant", text)
+	}
+	m := map[string]interface{}{"type": "assistant_message", "session_id": ownerConversation, "origin": "ghost"}
+	for k, v := range meta {
+		m[k] = v
+	}
+	if channel == "" {
+		channel = "mobile"
+	}
+	al.bus.PublishOutbound(bus.OutboundMessage{Channel: channel, ChatID: chatID, Content: text, Metadata: m})
+}
+
+// ReminderText is what a due reminder says: short, deterministic, and never
+// dependent on a model being reachable. "Stretch." becomes "Reminder: stretch."
+func ReminderText(title string) string {
+	t := strings.TrimSpace(title)
+	lower := strings.ToLower(t)
+	for _, p := range []string{"remind me to ", "remind me about ", "reminder: ", "remind me "} {
+		if strings.HasPrefix(lower, p) {
+			t = strings.TrimSpace(t[len(p):])
+			break
+		}
+	}
+	t = strings.TrimRight(t, " .!")
+	if t == "" {
+		return "Reminder."
+	}
+	if r := []rune(t); len(r) > 1 && unicode.IsUpper(r[0]) && !unicode.IsUpper(r[1]) {
+		r[0] = unicode.ToLower(r[0])
+		t = string(r)
+	}
+	return "Reminder: " + t + "."
 }

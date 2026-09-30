@@ -31,12 +31,16 @@ const (
 	Approval Category = "approval" // needs a decision
 	Question Category = "question" // needs an answer
 	Update   Category = "update"   // needs nothing
+	// Reminder is something the owner asked to be told at this time. It is
+	// never held for quiet hours: they set it, for this moment.
+	Reminder Category = "reminder"
 )
 
 var copyFor = map[Category]struct{ body, anchor string }{
 	Approval: {"Ghost needs your OK.", "approvals"},
 	Question: {"Ghost has a question for you.", "thread"},
 	Update:   {"Ghost has an update for you.", "thread"},
+	Reminder: {"Ghost has a reminder for you.", "thread"},
 }
 
 // minGap coalesces bursts: several messages in a minute are one nudge, not a
@@ -45,6 +49,7 @@ var minGap = map[Category]time.Duration{
 	Approval: 20 * time.Second,
 	Question: 20 * time.Second,
 	Update:   60 * time.Second,
+	Reminder: 15 * time.Second,
 }
 
 const defaultURL = "https://exp.host/--/api/v2/push/send"

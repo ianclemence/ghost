@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/uploads"
@@ -64,5 +65,48 @@ func TestScreenshotIsDeliveredToTheOwner(t *testing.T) {
 	got := uploads.List(ws)
 	if len(got) != 1 || got[0].Kind != "image" || got[0].Source != "browser" {
 		t.Fatalf("the screenshot must be stored as an image upload, got %+v", got)
+	}
+}
+
+func TestReminderTextIsShortAndDeterministic(t *testing.T) {
+	for in, want := range map[string]string{
+		"Stretch.":                 "Reminder: stretch.",
+		"stretch. confirm briefly": "Reminder: stretch. confirm briefly.",
+		"Remind me to call Jas":    "Reminder: call Jas.",
+		"Pay rent!":                "Reminder: pay rent.",
+		"NASA call at 3":           "Reminder: NASA call at 3.",
+		"":                         "Reminder.",
+	} {
+		if got := ReminderText(in); got != want {
+			t.Errorf("ReminderText(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A timer's message must land in the shared conversation, stored and live.
+// It used to stay in a private automation session and reach no one.
+func TestDeliverToOwnerStoresAndPublishes(t *testing.T) {
+	al := newTestAgentLoop(t, t.TempDir())
+	ch, unsub := al.Bus().SubscribeOutbound("test", false, 8)
+	defer unsub()
+
+	al.DeliverToOwner("mobile", "default", "Reminder: stretch.", map[string]interface{}{"reminder": true})
+
+	select {
+	case m := <-ch:
+		if m.Content != "Reminder: stretch." || m.Metadata["session_id"] != "main" || m.Metadata["reminder"] != true {
+			t.Fatalf("unexpected outbound: %+v", m)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("nothing was published to the owner")
+	}
+	found := false
+	for _, h := range al.sessions.GetHistory("main") {
+		if h.Role == "assistant" && h.Content == "Reminder: stretch." {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the reminder must be stored in the shared conversation so every surface finds it in history")
 	}
 }

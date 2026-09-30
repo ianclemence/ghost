@@ -159,7 +159,7 @@ try:
             uri = f"ws://{args.host}:{args.port}/v1/ws"
             async with websockets.connect(uri, additional_headers=hdr) as ws:
                 await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: chat(dev, "Remind me in 1 minute to stretch. Just confirm briefly.", session="main"))
+                    None, lambda: chat(dev, "Remind me in 1 minute to stretch", session="main"))
                 deadline = time.time() + 150
                 while time.time() < deadline:
                     try:
@@ -167,10 +167,8 @@ try:
                     except asyncio.TimeoutError:
                         continue
                     text = (msg.get("content") or "").lower()
-                    if "stretch" in text and msg.get("metadata", {}).get("type", "assistant_message") in ("assistant_message", ""):
-                        # the confirmation of the request also matches; the reminder is the later one
-                        if time.time() > deadline - 100:
-                            return msg
+                    if text.startswith("reminder:") and "stretch" in text:
+                        return msg
                 return None
 
         got = asyncio.run(reminder())

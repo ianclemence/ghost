@@ -157,3 +157,18 @@ func TestServiceErrorsAreReportedNotSwallowed(t *testing.T) {
 		t.Fatal("an outage must surface as an error")
 	}
 }
+
+func TestReminderCopyAndCategory(t *testing.T) {
+	s := testStore(t)
+	s.Register("phone", tokA, "ios")
+	e := &expo{resp: `{"data":[{"status":"ok"}]}`}
+	srv := e.server(t)
+	defer srv.Close()
+	t.Setenv("GHOST_EXPO_PUSH_URL", srv.URL)
+	if n, _ := NewNotifier(s).Notify(context.Background(), Reminder); n != 1 {
+		t.Fatal("a reminder must be sent")
+	}
+	if e.reqs[0]["body"] != "Ghost has a reminder for you." {
+		t.Fatalf("reminder copy: %v", e.reqs[0]["body"])
+	}
+}

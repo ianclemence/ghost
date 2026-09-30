@@ -1269,7 +1269,13 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 					}
 				}
 
-				if !alreadySent {
+				switch {
+				case alreadySent:
+				case isAutomationSession(msg.SessionKey):
+					// Ghost speaking on a timer speaks to the owner, in the
+					// one conversation, not into a private automation session.
+					al.DeliverToOwner(msg.Channel, msg.ChatID, response, nil)
+				default:
 					al.bus.PublishOutbound(bus.OutboundMessage{
 						Channel: msg.Channel,
 						ChatID:  msg.ChatID,
