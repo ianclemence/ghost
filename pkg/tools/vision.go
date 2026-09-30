@@ -72,7 +72,12 @@ func (t *VisionTool) Execute(ctx context.Context, args map[string]interface{}) *
 	} else if strings.HasPrefix(imageURL, "http://") || strings.HasPrefix(imageURL, "https://") {
 		imageData, mimeType, err = t.fetchFromURL(ctx, imageURL)
 	} else {
-		imageData, mimeType, err = t.loadFromFile(imageURL)
+		// Local files get the same confinement as every file tool: the
+		// workspace (and mobile uploads), never an arbitrary path on the host.
+		var resolved string
+		if resolved, err = validatePath(imageURL, t.workspace, true); err == nil {
+			imageData, mimeType, err = t.loadFromFile(resolved)
+		}
 	}
 
 	if err != nil {
@@ -131,6 +136,11 @@ func (t *VisionTool) fetchFromURL(ctx context.Context, imageURL string) ([]byte,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
 				return fmt.Errorf("stopped after 5 redirects")
+			}
+			// A public URL must not be able to bounce the fetch onto the
+			// local network or a metadata endpoint.
+			if safe, reason := t.urlSafety.IsSafe(req.URL.String()); !safe {
+				return fmt.Errorf("redirect blocked: %s", reason)
 			}
 			return nil
 		},

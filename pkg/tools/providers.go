@@ -87,7 +87,7 @@ type WeatherTool struct {
 func NewWeatherTool(openWeatherKey string) *WeatherTool { return &WeatherTool{key: openWeatherKey} }
 func (t *WeatherTool) Name() string                     { return "weather_now" }
 func (t *WeatherTool) Description() string {
-	return "Current weather for a place or coordinates."
+	return "Current weather (temperature, conditions, wind, humidity) for a named place or latitude/longitude. Prefer this over web search for present conditions."
 }
 func (t *WeatherTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
@@ -309,7 +309,7 @@ type CurrencyTool struct {
 func NewCurrencyTool() *CurrencyTool { return &CurrencyTool{} }
 func (t *CurrencyTool) Name() string { return "currency_convert" }
 func (t *CurrencyTool) Description() string {
-	return "Convert amounts between currencies at current rates."
+	return "Convert an amount between two currencies (ISO codes such as USD, EUR, KES) at current exchange rates. Prefer this over web search for conversions."
 }
 func (t *CurrencyTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{

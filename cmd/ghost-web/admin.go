@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/updaterun"
 	"io"
 	"net/http"
 	"net/url"
@@ -33,15 +34,6 @@ import (
 )
 
 // updateState tracks an in-flight "ghost update" run so the UI can poll it.
-type updateState struct {
-	mu      sync.Mutex
-	running bool
-	success bool
-	log     string
-}
-
-var currentUpdate updateState
-
 // requireSession aborts the request with 401 unless a valid admin session cookie is present.
 // On success it bumps last_seen so the sessions list stays accurate.
 func requireSession(w http.ResponseWriter, r *http.Request) bool {
@@ -279,34 +271,6 @@ func handleDoctor(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "checks": checks})
 }
 
-// runUpdate executes "ghost update" in the background, capturing output for polling.
-func runUpdate() {
-	currentUpdate.mu.Lock()
-	if currentUpdate.running {
-		currentUpdate.mu.Unlock()
-		return
-	}
-	currentUpdate.running = true
-	currentUpdate.success = false
-	currentUpdate.log = "Starting update...\n"
-	currentUpdate.mu.Unlock()
-
-	cmd := exec.Command("ghost", "update")
-	out, err := cmd.CombinedOutput()
-
-	currentUpdate.mu.Lock()
-	defer currentUpdate.mu.Unlock()
-	currentUpdate.running = false
-	currentUpdate.log += string(out)
-	if err != nil {
-		currentUpdate.success = false
-		currentUpdate.log += fmt.Sprintf("\nUpdate failed: %v\n", err)
-	} else {
-		currentUpdate.success = true
-		currentUpdate.log += "\nUpdate complete!\n"
-	}
-}
-
 func handleUpdateStart(w http.ResponseWriter, r *http.Request) {
 	if !requireSession(w, r) {
 		return
@@ -315,7 +279,12 @@ func handleUpdateStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	go runUpdate()
+	// The update runs as its own systemd unit: ghost-web's sandbox cannot write
+	// the binaries, and the update restarts this very process.
+	if err := updaterun.StartDetachedUpdate(); err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "message": "Update started"})
 }
 
@@ -323,13 +292,12 @@ func handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	if !requireSession(w, r) {
 		return
 	}
-	currentUpdate.mu.Lock()
-	defer currentUpdate.mu.Unlock()
+	p := updaterun.DetachedUpdateStatus()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":      true,
-		"running": currentUpdate.running,
-		"success": currentUpdate.success,
-		"log":     currentUpdate.log,
+		"running": p.Running,
+		"success": p.Success,
+		"log":     p.Log,
 	})
 }
 

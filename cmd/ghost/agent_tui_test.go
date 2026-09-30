@@ -1157,12 +1157,12 @@ func TestTUIApprovalEnterConfirmsSelection(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
-	m.handleKey(keyMsgFor('l')) // → allow for 1 hour
+	m.handleKey(keyMsgFor('l')) // → allow for this task
 	if m.approvalSel != 1 {
 		t.Fatalf("right should move to index 1, got %d", m.approvalSel)
 	}
 	m.handleKey(keyCodeFor(tea.KeyEnter))
-	if !waitForTurns(f, 1) || f.turns[0] != "allow for 1 hour" {
+	if !waitForTurns(f, 1) || f.turns[0] != "allow for this task" {
 		t.Fatalf("enter should confirm the selection, got %v", f.turns)
 	}
 }

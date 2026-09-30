@@ -544,7 +544,7 @@ func (t *SubagentTool) Name() string {
 }
 
 func (t *SubagentTool) Description() string {
-	return "Execute a subagent task synchronously and return the result. Use this for delegating specific tasks to an independent agent instance. Returns execution summary to user and full details to LLM."
+	return "Run a subagent on a task and WAIT for its result before you continue. Use for a bounded step you need the answer to now. For long work that should not block the conversation, use spawn instead."
 }
 
 func (t *SubagentTool) Parameters() map[string]interface{} {

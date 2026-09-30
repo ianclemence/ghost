@@ -166,6 +166,8 @@ func (t *BrowserTool) Description() string {
 		return "Type text into an input field on the current page. Requires the element reference ID."
 	case "press":
 		return "Press a keyboard key (e.g. 'Enter', 'Tab', 'Escape')."
+	case "login":
+		return "Sign in to a site with the login the owner saved in Ghost's settings. You give only the host; the username and password are filled in without you ever seeing them. Always needs the owner's approval."
 	case "fill":
 		return "Clear an input field and fill it with text (e.g. address, cardholder name). Requires the element reference ID. Prefer fill over type for forms."
 	case "submit":

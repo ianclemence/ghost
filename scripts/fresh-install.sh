@@ -2,6 +2,7 @@
 # Fresh-install dry run: run the real setup.sh against empty install roots.
 #
 #   scripts/fresh-install.sh install   # phase 1: setup.sh on a blank machine (no network)
+#   scripts/fresh-install.sh install-online   # same, with the network (downloads speech engines)
 #   scripts/fresh-install.sh shell CMD # run CMD inside the same blank machine
 #   scripts/fresh-install.sh clean
 #
@@ -35,6 +36,7 @@ box() { # box [--net] cmd...
 }
 case "${1:-}" in
   install) rm -rf $W; prep; box bash ./setup.sh --yes --no-service;;
+  install-online) rm -rf $W; prep; box --net bash ./setup.sh --yes --no-service;;
   shell) shift; box --net "$@";;
   web) # web PORT: start the installed console on blank state (detached), fresh /var/ghost
     for p in $(pgrep -x ghost-web); do tr "\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q -- "-port $2" && kill -9 $p; done; sleep 1

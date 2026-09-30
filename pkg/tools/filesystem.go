@@ -240,7 +240,7 @@ func (t *ListDirTool) Name() string {
 }
 
 func (t *ListDirTool) Description() string {
-	return "List files and directories in a path"
+	return "List the files and folders in a directory inside the workspace, marking which are directories. Use it to find a file before reading or editing it."
 }
 
 func (t *ListDirTool) Parameters() map[string]interface{} {

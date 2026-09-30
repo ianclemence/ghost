@@ -202,3 +202,23 @@ func TestDecodeDataURL(t *testing.T) {
 		t.Error("expected error for malformed data url")
 	}
 }
+
+// Local images are confined to the workspace like every other file tool; the
+// model must not be able to read a photo anywhere else on the host.
+func TestVisionRefusesPathsOutsideWorkspace(t *testing.T) {
+	outside := t.TempDir()
+	img := outside + "/private.png"
+	png := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89")
+	if err := os.WriteFile(img, png, 0644); err != nil {
+		t.Fatal(err)
+	}
+	// The workspace sits two levels down so its parent ("project root", which the
+	// file tools also allow) does not swallow the unrelated directory above.
+	ws := filepath.Join(t.TempDir(), "root", "workspace")
+	os.MkdirAll(ws, 0755)
+	tool := NewVisionTool(ws)
+	res := tool.Execute(context.Background(), map[string]interface{}{"image_url": img, "question": "what is this?"})
+	if !res.IsError {
+		t.Fatalf("an image outside the workspace must be refused, got %q", res.ForLLM)
+	}
+}

@@ -465,32 +465,50 @@ func TestRevokedGrantStopsAllow(t *testing.T) {
 	}
 }
 
-// "Allow for 1 hour" is a real grant that lapses, and it never weakens a
-// standing grant that already covers the action.
-func TestTaskGrantLapsesAndNeverDowngrades(t *testing.T) {
+// "Allow for this task" follows the work: each use keeps it alive, a quiet
+// spell ends it, and a hard cap stops it from becoming permanent. It never
+// weakens a standing grant that already covers the action.
+func TestTaskGrantFollowsTheWork(t *testing.T) {
 	b := openTestBroker(t, ModeAsk)
-	now := time.Now()
-	b.nowFunc = func() time.Time { return now }
+	start := time.Now()
+	at := func(d time.Duration) { b.nowFunc = func() time.Time { return start.Add(d) } }
+	at(0)
 	req, _ := b.Require("r-task", "s", "a", "email", "send", "owner", "Send?", RiskConsequential, nil)
 	if _, err := b.Resolve(req.ID, GrantTask, "owner"); err != nil {
 		t.Fatal(err)
 	}
-	if v := b.Evaluate("email", "send", "owner", RiskConsequential); v != VerdictAllow {
-		t.Fatalf("task grant must allow within the hour, got %v", v)
+	ask := func() Verdict { return b.Evaluate("email", "send", "owner", RiskConsequential) }
+
+	// Steady use every 5 minutes keeps it alive well past one idle window...
+	for m := 5; m <= 50; m += 5 {
+		at(time.Duration(m) * time.Minute)
+		if ask() != VerdictAllow {
+			t.Fatalf("active task must stay allowed at %dm", m)
+		}
 	}
-	b.nowFunc = func() time.Time { return now.Add(TaskGrantTTL + time.Minute) }
-	if v := b.Evaluate("email", "send", "owner", RiskConsequential); v != VerdictAsk {
-		t.Fatalf("task grant must lapse after its hour, got %v", v)
+	// ...but never past the hard cap.
+	at(TaskGrantTTL + time.Minute)
+	if ask() != VerdictAsk {
+		t.Fatal("task grant must end at its hard cap even while in use")
+	}
+
+	// A quiet spell ends it long before the cap.
+	at(2 * time.Hour)
+	req2, _ := b.Require("r-task2", "s", "a", "email", "send", "owner", "Send?", RiskConsequential, nil)
+	b.Resolve(req2.ID, GrantTask, "owner")
+	at(2*time.Hour + TaskIdleWindow + time.Minute)
+	if ask() != VerdictAsk {
+		t.Fatal("task grant must lapse after a quiet spell")
 	}
 
 	// A permanent grant is not shortened by a later task grant.
-	b.nowFunc = func() time.Time { return now }
+	at(0)
 	always, _ := b.Require("r-always", "s", "a", "email", "delete", "owner", "Delete?", RiskConsequential, nil)
 	b.Resolve(always.ID, GrantAlways, "owner")
 	again, _ := b.Require("r-again", "s", "a", "email", "delete", "owner", "Delete?", RiskConsequential, nil)
 	b.Resolve(again.ID, GrantTask, "owner")
-	b.nowFunc = func() time.Time { return now.Add(3 * TaskGrantTTL) }
-	if v := b.Evaluate("email", "delete", "owner", RiskConsequential); v != VerdictAllow {
-		t.Fatalf("task grant must not downgrade a standing grant, got %v", v)
+	at(3 * TaskGrantTTL)
+	if b.Evaluate("email", "delete", "owner", RiskConsequential) != VerdictAllow {
+		t.Fatal("task grant must not downgrade a standing grant")
 	}
 }

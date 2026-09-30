@@ -166,6 +166,10 @@ type Grant struct {
 	Scope      string     `json:"scope"`
 	CreatedAt  time.Time  `json:"created_at"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	// Task grants: IdleSecs > 0 means each use pushes ExpiresAt out by that
+	// long, never past HardExpiresAt.
+	IdleSecs      int        `json:"idle_secs,omitempty"`
+	HardExpiresAt *time.Time `json:"hard_expires_at,omitempty"`
 }
 
 // DefaultGrantTTL bounds how long a standing "always allow" grant remains
@@ -173,10 +177,14 @@ type Grant struct {
 // authority cannot accumulate indefinitely.
 const DefaultGrantTTL = 90 * 24 * time.Hour
 
-// TaskGrantTTL is how long an "allow for this task" grant lasts. A task is
-// not something the runtime can delimit exactly, so the grant is honest
-// about being a time box rather than pretending to track task boundaries.
-const TaskGrantTTL = time.Hour
+// A task grant follows the work, not the clock. The runtime has no task id
+// to bind to, so a task is "Ghost keeps using this": every use extends the
+// grant by TaskIdleWindow, and the grant ends when Ghost goes quiet for that
+// long, or at TaskGrantTTL after it was given, whichever comes first.
+const (
+	TaskIdleWindow = 10 * time.Minute
+	TaskGrantTTL   = time.Hour
+)
 
 // Emitter receives broker lifecycle events (wired to the canonical event
 // stream; nil-safe). Defined here to avoid import cycles.
@@ -231,6 +239,9 @@ func Open(db *sql.DB, mode Mode, ttl time.Duration) (*Broker, error) {
 	// derived from their creation time. Old authority is bounded, never
 	// carried forward indefinitely.
 	_, _ = db.Exec(`ALTER TABLE permission_grants ADD COLUMN expires_at TEXT`)
+	// Task grants slide: each use extends the idle window, up to a hard cap.
+	_, _ = db.Exec(`ALTER TABLE permission_grants ADD COLUMN idle_secs INTEGER`)
+	_, _ = db.Exec(`ALTER TABLE permission_grants ADD COLUMN hard_expires_at TEXT`)
 	b.backfillGrantExpiry()
 	// Migration for databases created before session linkage existed
 	// (must precede the session index below).
@@ -394,8 +405,9 @@ func (b *Broker) Resolve(id string, grant GrantType, scope string) (*Request, er
 		// Never downgrade: a standing grant that already covers this
 		// keeps its own (longer) life.
 		if !b.granted(r.Capability, r.Action, scope) {
-			exp := now.Add(TaskGrantTTL)
-			_ = b.storeGrant(Grant{Capability: r.Capability, Action: r.Action, Scope: scope, CreatedAt: now, ExpiresAt: &exp})
+			exp, hard := now.Add(TaskIdleWindow), now.Add(TaskGrantTTL)
+			_ = b.storeGrant(Grant{Capability: r.Capability, Action: r.Action, Scope: scope, CreatedAt: now,
+				ExpiresAt: &exp, IdleSecs: int(TaskIdleWindow.Seconds()), HardExpiresAt: &hard})
 		}
 		b.emitEvent("permission.approved", r)
 	case GrantDeny:
@@ -590,7 +602,7 @@ func OpenRequests(b *Broker) map[string]bool {
 
 // Grants lists standing grants for UI/revocation (no secret content).
 func (b *Broker) Grants() []Grant {
-	rows, err := b.db.Query(`SELECT capability, action, scope, created_at, expires_at FROM permission_grants ORDER BY created_at`)
+	rows, err := b.db.Query(`SELECT capability, action, scope, created_at, expires_at, idle_secs, hard_expires_at FROM permission_grants ORDER BY created_at`)
 	if err != nil {
 		return nil
 	}
@@ -599,9 +611,18 @@ func (b *Broker) Grants() []Grant {
 	for rows.Next() {
 		var g Grant
 		var ts string
-		var exp sql.NullString
-		if err := rows.Scan(&g.Capability, &g.Action, &g.Scope, &ts, &exp); err != nil {
+		var exp, hard sql.NullString
+		var idle sql.NullInt64
+		if err := rows.Scan(&g.Capability, &g.Action, &g.Scope, &ts, &exp, &idle, &hard); err != nil {
 			continue
+		}
+		if idle.Valid {
+			g.IdleSecs = int(idle.Int64)
+		}
+		if hard.Valid && hard.String != "" {
+			if t, ok := parseTime(hard.String); ok {
+				g.HardExpiresAt = &t
+			}
 		}
 		if t, ok := parseTime(ts); ok {
 			g.CreatedAt = t
@@ -676,10 +697,24 @@ func (b *Broker) emitEvent(t string, r *Request) {
 }
 
 func (b *Broker) granted(capability, action, scope string) bool {
-	var n int
-	_ = b.db.QueryRow(`SELECT COUNT(*) FROM permission_grants WHERE capability=? AND action=? AND scope=? AND (expires_at IS NULL OR expires_at = '' OR expires_at > ?)`,
-		capability, action, scope, b.now().Format(time.RFC3339)).Scan(&n)
-	return n > 0
+	now := b.now()
+	var idle sql.NullInt64
+	var hard sql.NullString
+	err := b.db.QueryRow(`SELECT idle_secs, hard_expires_at FROM permission_grants WHERE capability=? AND action=? AND scope=? AND (expires_at IS NULL OR expires_at = '' OR expires_at > ?) AND (hard_expires_at IS NULL OR hard_expires_at = '' OR hard_expires_at > ?)`,
+		capability, action, scope, now.Format(time.RFC3339), now.Format(time.RFC3339)).Scan(&idle, &hard)
+	if err != nil {
+		return false
+	}
+	// A task grant is being used: keep it alive while work continues.
+	if idle.Valid && idle.Int64 > 0 {
+		next := now.Add(time.Duration(idle.Int64) * time.Second)
+		if t, ok := parseTime(hard.String); ok && hard.Valid && next.After(t) {
+			next = t
+		}
+		_, _ = b.db.Exec(`UPDATE permission_grants SET expires_at=? WHERE capability=? AND action=? AND scope=?`,
+			next.Format(time.RFC3339), capability, action, scope)
+	}
+	return true
 }
 
 // backfillGrantExpiry gives pre-expiry grants a finite life so stale
@@ -779,8 +814,12 @@ func (b *Broker) storeGrant(g Grant) error {
 	if g.ExpiresAt != nil {
 		exp = g.ExpiresAt.Format(time.RFC3339)
 	}
-	_, err := b.db.Exec(`INSERT OR REPLACE INTO permission_grants (capability, action, scope, created_at, expires_at) VALUES (?,?,?,?,?)`,
-		g.Capability, g.Action, g.Scope, g.CreatedAt.Format(time.RFC3339), exp)
+	var hard interface{}
+	if g.HardExpiresAt != nil {
+		hard = g.HardExpiresAt.Format(time.RFC3339)
+	}
+	_, err := b.db.Exec(`INSERT OR REPLACE INTO permission_grants (capability, action, scope, created_at, expires_at, idle_secs, hard_expires_at) VALUES (?,?,?,?,?,?,?)`,
+		g.Capability, g.Action, g.Scope, g.CreatedAt.Format(time.RFC3339), exp, g.IdleSecs, hard)
 	return err
 }
 
@@ -869,7 +908,7 @@ func (r *Request) Card() (ApprovalCard, bool) {
 		ExpiresAt:   r.ExpiresAt.Format(time.RFC3339),
 		Actions: []CardAction{
 			{ID: "allow_once", Label: "Allow once", Style: "primary"},
-			{ID: "allow_task", Label: "Allow for 1 hour", Style: "secondary"},
+			{ID: "allow_task", Label: "Allow for this task", Style: "secondary"},
 			{ID: "allow_always", Label: "Always allow", Style: "secondary"},
 			{ID: "deny", Label: "Deny", Style: "danger"},
 		},

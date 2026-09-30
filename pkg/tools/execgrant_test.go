@@ -101,3 +101,11 @@ func TestRestrictToKeepsClosedPath(t *testing.T) {
 		t.Fatalf("provider defs must shrink to the closed path, got %d", len(defs))
 	}
 }
+
+// The Home Assistant tool is registered as "device"; the default-deny list
+// must name it, or its actuators would run without a grant.
+func TestDeviceToolNeedsAGrant(t *testing.T) {
+	if !GrantRequired("device") {
+		t.Fatal("device (Home Assistant) must require an execution grant")
+	}
+}

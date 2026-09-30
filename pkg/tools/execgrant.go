@@ -69,7 +69,7 @@ func execGranted(ctx context.Context, name string) bool {
 // needs a turn-scoped grant on top of broker authorization.
 func GrantRequired(name string) bool {
 	switch name {
-	case "exec", "sandbox", "update", "i2c", "spi", "hass":
+	case "exec", "sandbox", "update", "i2c", "spi", "hass", "device":
 		return true
 	}
 	for _, prefix := range []string{"computer_", "browser_", "mcp_"} {

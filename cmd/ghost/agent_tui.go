@@ -196,7 +196,7 @@ type agentTUI struct {
 	paletteSel  int        // selected index in the / palette popup
 
 	// approval is set when a turn ends with a durable permission request;
-	// the composer is replaced by Allow once / For 1 hour / Always allow / Deny choices.
+	// the composer is replaced by Allow once / This task / Always allow / Deny choices.
 	approval *pendingApproval
 	// approvalSel is the left/right cursor over those
 	// choices (1/2/3 still answer directly).
@@ -524,7 +524,7 @@ func (m *agentTUI) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "1", "a":
 			return m.resolveApproval("allow once")
 		case "2", "t":
-			return m.resolveApproval("allow for 1 hour")
+			return m.resolveApproval("allow for this task")
 		case "3", "A":
 			return m.resolveApproval("always allow")
 		case "4", "d":
@@ -540,7 +540,7 @@ func (m *agentTUI) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "enter":
-			return m.resolveApproval([]string{"allow once", "allow for 1 hour", "always allow", "deny"}[m.approvalSel])
+			return m.resolveApproval([]string{"allow once", "allow for this task", "always allow", "deny"}[m.approvalSel])
 		case "ctrl+c", "esc":
 			// Dismissing is a deny-by-inaction: leave the request pending and
 			// return to normal input without claiming anything ran.
@@ -3322,7 +3322,7 @@ func (m *agentTUI) footerKeysLine() string {
 	case m.clarify != nil:
 		keys = "type your answer · enter sends · esc aborts the question"
 	case m.approval != nil:
-		keys = "1 once · 2 for 1 hour · 3 always · 4 deny · ↑↓←→ select · esc leaves pending"
+		keys = "1 once · 2 this task · 3 always · 4 deny · ↑↓←→ select · esc leaves pending"
 	case m.working:
 		keys = "enter queues steering · esc aborts · ctrl+o details · / commands"
 	case strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/"):
@@ -3691,7 +3691,7 @@ func (m *agentTUI) approvalCard() string {
 			b.WriteString("\n")
 		}
 	}
-	labels := []string{"[1] allow once", "[2] for 1 hour", "[3] always allow", "[4] deny"}
+	labels := []string{"[1] allow once", "[2] this task", "[3] always allow", "[4] deny"}
 	hints := "↑↓←→ select · enter confirm · esc leaves pending"
 	// Lay out the options: one row when it fits, stacked rows when narrow.
 	oneLine := "  " + strings.Join(labels, "    ") + "  " + hints

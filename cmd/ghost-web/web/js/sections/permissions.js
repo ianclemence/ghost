@@ -129,7 +129,7 @@ function paintPending(el, pending, refresh) {
       c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub));
       card.appendChild(c);
       const tr = GhostUI.h('div', { className: 'ghost-row-trailing perm-actions' });
-      [['Allow once', 'allow_once'], ['Allow for 1 hour', 'allow_task'], ['Always allow', 'allow_always'], ['Deny', 'deny']].forEach(([label, grant]) => {
+      [['Allow once', 'allow_once'], ['Allow for this task', 'allow_task'], ['Always allow', 'allow_always'], ['Deny', 'deny']].forEach(([label, grant]) => {
         const b = GhostUI.btn(label, grant === 'deny' ? 'danger' : grant === 'allow_always' || grant === 'allow_task' ? 'secondary' : 'primary', async () => {
           try {
             // No scope is sent: the server stores the canonical scope the

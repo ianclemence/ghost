@@ -2,6 +2,10 @@
 Description=Ghost - Personal AI Assistant
 After=network-online.target ghost-web.service ghost-speech.service
 Wants=network-online.target
+# An appliance must come back on its own. (These keys used to sit in [Service],
+# where systemd ignores them; enforcing "3 in 5 minutes" would leave a Pod dead
+# after one bad boot, so rate limiting is explicitly off and RestartSec paces it.)
+StartLimitIntervalSec=0
 ConditionPathExists=__GHOST_DIR__/.setup-complete
 
 [Service]
@@ -14,8 +18,6 @@ Environment=GHOST_WORKSPACE_DIR=/var/lib/ghost/workspace
 ExecStart=__BIN_DIR__/ghost serve
 Restart=always
 RestartSec=5
-StartLimitIntervalSec=300
-StartLimitBurst=3
 
 # Security hardening
 NoNewPrivileges=true
