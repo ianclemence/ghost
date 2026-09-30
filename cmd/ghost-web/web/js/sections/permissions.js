@@ -30,21 +30,23 @@ async function loadPermissions(container, opts) {
       grants = gr.grants || [];
     } catch (e) { grants = 'error'; }
     if (!document.body.contains(container)) return;
-    paintPending(pendingEl, pending, refresh);
-    paintGrants(grantsEl, grants, refresh);
+    paintPending(pendingEl, pending, refresh, embedded);
+    paintGrants(grantsEl, grants, refresh, embedded);
   }
   await refresh();
 }
 
-function groupPanel() {
-  const panel = GhostUI.h('div', { className: 'panel' });
-  return panel;
+// On its own page each group is a panel. Embedded in System it already sits
+// inside a panel, so it becomes a plain group: a card inside a card squeezed
+// the rows to a sliver on a phone.
+function groupPanel(embedded) {
+  return GhostUI.h('div', { className: embedded ? 'perm-group' : 'panel' });
 }
 
-function groupHead(title, sub) {
-  const head = GhostUI.h('div', { className: 'panel-head' });
+function groupHead(title, sub, embedded) {
+  const head = GhostUI.h('div', { className: embedded ? 'perm-group-head' : 'panel-head' });
   const text = GhostUI.h('div');
-  text.appendChild(GhostUI.h('h2', {}, title));
+  text.appendChild(GhostUI.h(embedded ? 'h3' : 'h2', {}, title));
   if (sub) text.appendChild(GhostUI.h('p', {}, sub));
   head.appendChild(text);
   return head;
@@ -106,10 +108,10 @@ function permTitle(capability, action) {
   return 'Allow this action';
 }
 
-function paintPending(el, pending, refresh) {
+function paintPending(el, pending, refresh, embedded) {
   el.innerHTML = '';
-  const panel = groupPanel();
-  panel.appendChild(groupHead('Waiting for approval', 'Requests for actions Ghost wants to take. Approve one-off, always allow, or deny.'));
+  const panel = groupPanel(embedded);
+  panel.appendChild(groupHead('Waiting for approval', 'Requests for actions Ghost wants to take. Approve one-off, always allow, or deny.', embedded));
   const list = GhostUI.h('div', { className: 'ghost-list' });
   if (pending === 'error') {
     list.appendChild(GhostUI.errorState('Couldn\u2019t load approval requests', 'Ghost may still be starting.'));
@@ -117,18 +119,20 @@ function paintPending(el, pending, refresh) {
     list.appendChild(GhostUI.emptyState('Nothing waiting', 'When Ghost needs approval, it appears here.'));
   } else {
     pending.forEach(p => {
-      const card = GhostUI.h('div', { className: 'ghost-row' });
-      const c = GhostUI.h('div', { className: 'ghost-row-content' });
+      // Same look as the Needs you cards on Home: a warm card, the question,
+      // what it means, then the choices underneath.
+      const card = GhostUI.h('div', { className: 'perm-request' });
+      card.appendChild(GhostUI.h('span', { className: 'home-ember' }));
+      const c = GhostUI.h('div', { className: 'perm-request-text' });
       // Prefer the backend's native card (plain title + description), then
       // the request reason, then the local title map. Raw capability and
       // action ids are never shown.
       const title = (p.card && p.card.title) || p.reason || permTitle(p.capability, p.action);
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, title));
+      c.appendChild(GhostUI.h('div', { className: 'perm-request-title' }, title));
       const desc = (p.card && p.card.description) || '';
-      const sub = riskWords(p.risk) + (p.target ? ' \u00b7 ' + p.target : '') + (desc && desc !== title ? ' \u00b7 ' + desc : '');
-      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub));
-      card.appendChild(c);
-      const tr = GhostUI.h('div', { className: 'ghost-row-trailing perm-actions' });
+      if (desc && desc !== title) c.appendChild(GhostUI.h('div', { className: 'perm-request-desc' }, desc));
+      c.appendChild(GhostUI.h('div', { className: 'perm-request-meta' }, riskWords(p.risk) + (p.target ? ' \u00b7 ' + p.target : '')));
+      const tr = GhostUI.h('div', { className: 'perm-request-actions' });
       [['Allow once', 'allow_once'], ['Allow for this task', 'allow_task'], ['Always allow', 'allow_always'], ['Deny', 'deny']].forEach(([label, grant]) => {
         const b = GhostUI.btn(label, grant === 'deny' ? 'danger' : grant === 'allow_always' || grant === 'allow_task' ? 'secondary' : 'primary', async () => {
           try {
@@ -142,7 +146,8 @@ function paintPending(el, pending, refresh) {
         b.classList.add('ghost-btn-sm');
         tr.appendChild(b);
       });
-      card.appendChild(tr);
+      c.appendChild(tr);
+      card.appendChild(c);
       list.appendChild(card);
     });
   }
@@ -158,10 +163,10 @@ function scopeLabel(scope) {
   return scope;
 }
 
-function paintGrants(el, grants, refresh) {
+function paintGrants(el, grants, refresh, embedded) {
   el.innerHTML = '';
-  const panel = groupPanel();
-  panel.appendChild(groupHead('Always allowed', 'Standing permissions Ghost may use without asking. Revoke any time.'));
+  const panel = groupPanel(embedded);
+  panel.appendChild(groupHead('Always allowed', 'Standing permissions Ghost may use without asking. Revoke any time.', embedded));
   const list = GhostUI.h('div', { className: 'ghost-list' });
   if (grants === 'error') {
     list.appendChild(GhostUI.errorState('Couldn\u2019t load permissions', 'Ghost may still be starting.'));
@@ -182,7 +187,7 @@ function paintGrants(el, grants, refresh) {
       list.appendChild(GhostUI.emptyState('No standing permissions', 'Choose \u201cAlways allow\u201d on any approval to add one.'));
     }
     groups.forEach(gr => {
-      const row = GhostUI.h('div', { className: 'ghost-row' });
+      const row = GhostUI.h('div', { className: 'ghost-row perm-grant' });
       const c = GhostUI.h('div', { className: 'ghost-row-content' });
       c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, gr.title));
       // Standing grants carry no risk field; scope plus count plus earliest

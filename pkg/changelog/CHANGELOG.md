@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.93] - 2026-09-30
+
+- **Approvals and permissions fit on a phone.** In the console, each approval is
+  now a warm card like the ones on Home: the question, what it means, then the
+  four choices in a two-by-two grid. Under System, Permissions no longer sits
+  as a card inside a card, so nothing is squeezed or runs off the screen.
+
 ## [0.24.92] - 2026-09-30
 
 - **Ghost is not an "assistant."** It says so about itself, and the word is

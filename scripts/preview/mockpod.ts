@@ -21,7 +21,13 @@ const memory = { entries: [
 const routes: Record<string, unknown> = {
   "/v1/health": { status: "ok", uptime_s: 3 * D },
   "/v1/identity": { ghost: { ghost_id: "g1", name: "Ghost", owner: "Maya" } },
-  "/v1/permissions/requests": { requests: [{ id: "ap1", request_id: "r7", session_key: "main", capability: "email.send", action: "send", status: "pending", created_at: iso(now - 39 * 60), expires_at: iso(now + 3 * H), card: { title: "Send email to Sam", description: "“Hi Sam, my flight shifted by 45 minutes…” from your Gmail.", risk: "consequential", actions: [{ id: "allow_once", label: "Send", style: "primary" }, { id: "deny", label: "Don't send", style: "danger" }] } }] },
+  "/v1/permissions/grants": { grants: [
+    { capability: "exec.shell", action: "exec", scope: "owner", created_at: iso(now - 3 * D), expires_at: "" },
+    { capability: "schedule.create", action: "schedule", scope: "owner", created_at: iso(now - D), expires_at: "" },
+    { capability: "email.read", action: "email_search", scope: "session:main", created_at: iso(now - H), expires_at: iso(now + 2 * D) },
+    { capability: "calendar.modify", action: "create", scope: "contact:Sam Rivera-Thompson", created_at: iso(now - H), expires_at: "" },
+  ] },
+  "/v1/permissions/requests": { requests: [{ id: "ap2", request_id: "r8", session_key: "main", capability: "schedule.create", action: "schedule", status: "pending", created_at: iso(now - 5 * 60), expires_at: iso(now + 10 * 60), card: { title: "Schedule this?", description: "Ghost wants to set this up to run later, as you asked.", risk: "consequential", actions: [{ id: "allow_once", label: "Allow once", style: "primary" }, { id: "allow_task", label: "Allow for this task", style: "secondary" }, { id: "allow_always", label: "Always allow", style: "secondary" }, { id: "deny", label: "Deny", style: "danger" }] } }, { id: "ap1", request_id: "r7", session_key: "main", capability: "email.send", action: "send", status: "pending", created_at: iso(now - 39 * 60), expires_at: iso(now + 3 * H), card: { title: "Send email to Sam", description: "“Hi Sam, my flight shifted by 45 minutes…” from your Gmail.", risk: "consequential", actions: [{ id: "allow_once", label: "Send", style: "primary" }, { id: "deny", label: "Don't send", style: "danger" }] } }] },
   "/v1/activity": { activity }, "/v1/routinefeed": { routines }, "/v1/routines": { routines },
   "/v1/goals": { goals: [{ id: "g1", text: "Run a half marathon in March", status: "active" }] },
   "/v1/memory/self": memory, "/v1/memory/files": { files: [{ name: "MEMORY.md" }] },

@@ -615,11 +615,36 @@
 }
 .recall-msg .markdown-body { color: var(--ink-soft); }
 
-.perm-actions {
-  flex-wrap: wrap;
-  justify-content: flex-end;
+/* Approvals: warm cards like Home's Needs you, choices underneath */
+.perm-request {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  margin-bottom: var(--s-2);
+  background: var(--ember-soft);
+  border: 1px solid var(--ember-line);
+  border-radius: var(--r-md);
 }
+.perm-request .home-ember { margin-top: 8px; }
+.perm-request-text { flex: 1; min-width: 0; }
+.perm-request-title { font-weight: 620; }
+.perm-request-desc { font-size: var(--t-callout); color: var(--ink-soft); margin-top: 2px; overflow-wrap: anywhere; }
+.perm-request-meta { font-size: var(--t-foot); color: var(--ink-faint); margin-top: 2px; }
+.perm-request-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
+.perm-request-actions .ghost-btn { white-space: nowrap; }
+#perm-pending .ghost-list > * + *, #perm-grants .ghost-list > .perm-request + .perm-request { border-top: 0; }
 #perm-grants { margin-top: var(--s-6); }
+.perm-group-head { margin-bottom: var(--s-3); }
+.perm-group-head h3 { font-size: var(--t-body); font-weight: 620; color: var(--ink); }
+.perm-group-head p { margin-top: 2px; font-size: var(--t-callout); color: var(--ink-faint); }
+.perm-grant .ghost-row-content { overflow-wrap: anywhere; }
+.perm-grant .ghost-row-trailing { align-self: flex-start; }
+@media (max-width: 560px) {
+  .perm-request { padding: var(--s-3); }
+  /* Four choices as two by two: nothing runs off the edge, every target is wide. */
+  .perm-request-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .perm-request-actions .ghost-btn { width: 100%; justify-content: center; padding: 9px 10px; white-space: normal; text-align: center; line-height: 1.2; }
+  #perm-grants { margin-top: var(--s-5); }
+}
 
 /* Activity page: day groups */
 .activity-day {
