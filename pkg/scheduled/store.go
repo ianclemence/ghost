@@ -606,34 +606,10 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-func intToBool(i int) bool {
-	return i != 0
-}
-
 func formatTime(t time.Time) string {
 	return t.Format(time.RFC3339)
 }
 
 func parseTime(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
-}
-
-func nullTimePtr(t *time.Time) sql.NullTime {
-	if t == nil {
-		return sql.NullTime{}
-	}
-	return sql.NullTime{Time: *t, Valid: true}
-}
-
-func fmtDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	}
-	if d < 24*time.Hour {
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	}
-	return fmt.Sprintf("%dd", int(d.Hours()/24))
 }

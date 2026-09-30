@@ -3,7 +3,6 @@ package golden
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -156,12 +155,6 @@ type Runner struct {
 	Offline   bool   // run the whole suite with the provider unreachable (offline validation)
 	Suite     []Conversation
 	Log       func(format string, a ...interface{})
-}
-
-func (r *Runner) logf(format string, a ...interface{}) {
-	if r.Log != nil {
-		r.Log(format, a...)
-	}
 }
 
 func isQwen(t Target) bool {
@@ -791,12 +784,6 @@ func (f *fixtureTool) Execute(ctx context.Context, args map[string]interface{}) 
 
 func newFixtureTool(name string, run func() *tools.ToolResult) tools.Tool {
 	return &fixtureTool{name: name, run: run}
-}
-
-// json helpers kept local to avoid import churn in tests.
-func mustJSON(v interface{}) string {
-	b, _ := json.Marshal(v)
-	return string(b)
 }
 
 // responseAssertionNames are checks on model output (vs runtime state).

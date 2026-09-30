@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -71,43 +70,6 @@ func CheckSkillDependencies(workspace string) *DependencyReport {
 	return report
 }
 
-func CheckSkillDependenciesForSkill(skillName, workspace string) *DependencyCheckResult {
-	loader := NewSkillsLoader(workspace, "", "")
-	skillPath := findSkillPath(skillName, loader)
-	if skillPath == "" {
-		return nil
-	}
-
-	prereqs := parsePrerequisites(skillPath)
-	result := &DependencyCheckResult{
-		Skill:     skillName,
-		Missing:   []string{},
-		Available: []string{},
-	}
-
-	for _, cmd := range prereqs.Commands {
-		if cmd == "" {
-			continue
-		}
-		if isCommandAvailable(cmd) {
-			result.Available = append(result.Available, cmd)
-		} else {
-			result.Missing = append(result.Missing, cmd)
-		}
-	}
-
-	return result
-}
-
-func (r *DependencyReport) HasMissing() bool {
-	for _, res := range r.Results {
-		if len(res.Missing) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
 func (r *DependencyReport) Summary() string {
 	if len(r.Results) == 0 {
 		return "All skills have their dependencies satisfied."
@@ -128,66 +90,6 @@ func (r *DependencyReport) Summary() string {
 	}
 
 	buf.WriteString("\nRun `ghost doctor` for detailed installation instructions.")
-	return buf.String()
-}
-
-func (r *DependencyReport) DetailedReport() string {
-	if len(r.Results) == 0 {
-		return "All skills have their dependencies satisfied."
-	}
-
-	var buf bytes.Buffer
-	buf.WriteString("# Skill Dependency Report\n\n")
-
-	allGood := true
-	for _, res := range r.Results {
-		if len(res.Missing) > 0 {
-			allGood = false
-			buf.WriteString(fmt.Sprintf("## %s\n", res.Skill))
-			buf.WriteString(fmt.Sprintf("- **Missing**: `%s`\n", strings.Join(res.Missing, "`, `")))
-			if len(res.Available) > 0 {
-				buf.WriteString(fmt.Sprintf("- **Available**: `%s`\n", strings.Join(res.Available, "`, `")))
-			}
-			buf.WriteString("\n")
-		}
-	}
-
-	if allGood {
-		return "All skill dependencies are satisfied."
-	}
-
-	buf.WriteString("## Installation Quick Reference\n\n")
-	buf.WriteString("| Command | Install |\n")
-	buf.WriteString("|---------|---------|\n")
-
-	installHints := map[string]string{
-		"python":        "`pip install <package>` or `apt-get install python3`",
-		"curl":          "`apt-get install curl` or `winget install curl`",
-		"git":           "`apt-get install git` or `winget install Git`",
-		"gcalcli":       "`pip install gcalcli`",
-		"adb":           "`winget install Google.PlatformTools` (Windows) or `apt-get install adb` (Linux)",
-		"nmap":          "`apt-get install nmap` or download from nmap.org",
-		"ffmpeg":        "`apt-get install ffmpeg` or `winget install ffmpeg`",
-		"tmux":          "`apt-get install tmux`",
-		"spotify":       "Spotify CLI wrapper (platform-specific)",
-		"nano-pdf":      "`uv pip install nano-pdf` or `pip install nano-pdf`",
-		"himalaya":      "See https://github.com/pimalaya/himalaya",
-		"speedtest-cli": "`pip install speedtest-cli`",
-		"ddgs":          "`pip install ddgs`",
-		"i2cdetect":     "`apt-get install i2c-tools`",
-		"i2cget":        "`apt-get install i2c-tools`",
-	}
-
-	for _, res := range r.Results {
-		for _, cmd := range res.Missing {
-			if hint, ok := installHints[cmd]; ok {
-				buf.WriteString(fmt.Sprintf("| `%s` | %s |\n", cmd, hint))
-			} else {
-				buf.WriteString(fmt.Sprintf("| `%s` | Install via package manager or see skill documentation |\n", cmd))
-			}
-		}
-	}
-
 	return buf.String()
 }
 
@@ -317,19 +219,4 @@ func isCommandAvailable(cmd string) bool {
 	available := err == nil
 	commandCache[cmd] = available
 	return available
-}
-
-func GetCommandPath(cmd string) string {
-	if path, ok := commandPathCache[cmd]; ok {
-		return path
-	}
-
-	if path, err := exec.LookPath(cmd); err == nil {
-		absPath, _ := filepath.Abs(path)
-		commandPathCache[cmd] = absPath
-		return absPath
-	}
-
-	commandPathCache[cmd] = ""
-	return ""
 }

@@ -537,12 +537,6 @@ func isHassIntent(lower string) bool {
 	return hassAskRE.MatchString(lower) || skills.IsBareUtterance(lower, "thermostat")
 }
 
-func hasAviationKey() bool {
-	// Deprecated shim: use credentials.AviationKey (secrets-first). Kept for
-	// existing callers/tests; new code should call skills directly.
-	return credentials.AviationKey(nil) != ""
-}
-
 // capabilityInputsFromMessage extracts known inputs for readiness checks
 // from the user message and request metadata (device location).
 func capabilityInputsFromMessage(msg string, metadata map[string]string) map[string]string {

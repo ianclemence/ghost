@@ -92,6 +92,7 @@ const (
 	tagReminder = "reminder"
 	tagNotice   = "notice"
 	tagAlert    = "alert"
+	tagRoutine  = "routine"
 )
 
 type entry struct {
@@ -1255,23 +1256,6 @@ func (m *agentTUI) handleModalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // hidden.
 const modalMaxRows = 6
 
-func (m *agentTUI) modalHeight() int {
-	if m.modal == nil {
-		return 0
-	}
-	n := 3 // header + status + filter
-	items := m.modalMatches()
-	if len(items) == 0 {
-		n++
-	} else {
-		n += minInt(len(items), modalMaxRows)
-		if len(items) > modalMaxRows {
-			n++ // scroll footer
-		}
-	}
-	return n
-}
-
 func (m *agentTUI) modalWindow() (items []modalItem, off int) {
 	all := m.modalMatches()
 	if len(all) <= modalMaxRows {
@@ -2063,6 +2047,8 @@ func (m *agentTUI) taggedHead(tag string, at time.Time) string {
 		glyph, label, style = "◷", "Reminder", styleTagReminder
 	case tagAlert:
 		glyph, label, style = "△", "Ghost needs you", styleTagAlert
+	case tagRoutine:
+		glyph, label, style = "↻", "Routine", styleTagRoutine
 	}
 	head := " " + style.Render(glyph+" "+label)
 	if !at.IsZero() {
@@ -3924,6 +3910,7 @@ var (
 	styleTagReminder   = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
 	styleTagNotice     = lipgloss.NewStyle().Foreground(cBlue).Bold(true)
 	styleTagAlert      = lipgloss.NewStyle().Foreground(cGold).Bold(true)
+	styleTagRoutine    = lipgloss.NewStyle().Foreground(cGreen).Bold(true)
 	styleUserName      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleAssistantName = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
 	styleAssistantMeta = lipgloss.NewStyle().Foreground(cFaint)

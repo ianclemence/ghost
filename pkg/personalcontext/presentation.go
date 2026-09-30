@@ -1,7 +1,6 @@
 package personalcontext
 
 import (
-	"encoding/json"
 	"regexp"
 	"strings"
 	"unicode"
@@ -431,15 +430,6 @@ func relationshipEntity(e Entry) string {
 		return val
 	}
 	return name
-}
-
-// entryValueString reads a string entry value for display.
-func entryValueStringForDisplay(e Entry) string {
-	var s string
-	if err := json.Unmarshal(e.Value, &s); err == nil {
-		return s
-	}
-	return string(e.Value)
 }
 
 var (

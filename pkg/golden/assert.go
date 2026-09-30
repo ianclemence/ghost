@@ -296,24 +296,6 @@ type memoryRow struct {
 	SupersededBy string
 }
 
-// finalValue returns the newest current value for a predicate.
-func currentValues(rows []memoryRow) map[string][]string {
-	out := map[string][]string{}
-	seen := map[string]bool{}
-	for _, r := range rows {
-		if r.Status != "current" {
-			continue
-		}
-		key := r.Predicate + "\x00" + r.Value
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		out[r.Predicate] = append(out[r.Predicate], r.Value)
-	}
-	return out
-}
-
 // evidenceFromDB gathers runtime evidence for a workspace DB.
 type evidence struct {
 	ToolSuccess   int

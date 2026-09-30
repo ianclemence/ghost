@@ -510,14 +510,6 @@ func convertWithPandoc(filePath, format string) (string, error) {
 	return string(output), nil
 }
 
-func isAccessible(filePath, workspace string) bool {
-	// Same confinement as the file tools: workspace, its project root,
-	// and media temp, matched on a path-separator boundary (a sibling
-	// like "workspace-evil" must not pass a raw prefix check).
-	_, err := validatePath(filePath, workspace, true)
-	return err == nil
-}
-
 // extractPDFText pulls the text layer out of a PDF with pdftotext (poppler),
 // keeping the page layout so tables stay readable. A scanned PDF has no text
 // layer; that is reported instead of returning an empty document as success.

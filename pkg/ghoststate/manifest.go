@@ -3,9 +3,7 @@ package ghoststate
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"os"
 )
 
 // Format is the interchange format identifier carried by every Ghost State
@@ -115,24 +113,7 @@ func (m *Manifest) File(path string) *FileEntry {
 	return nil
 }
 
-func digestFile(path string) (string, int64, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", 0, err
-	}
-	sum := sha256.Sum256(data)
-	return "sha256:" + hex.EncodeToString(sum[:]), int64(len(data)), nil
-}
-
 func digestBytes(data []byte) string {
 	sum := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
-func writeManifestJSON(path string, m *Manifest) error {
-	data, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal manifest: %w", err)
-	}
-	return os.WriteFile(path, data, 0600)
 }

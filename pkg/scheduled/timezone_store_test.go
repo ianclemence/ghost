@@ -51,15 +51,6 @@ func containsUTC(s string) bool {
 	return strings.Contains(s, "+0000") || strings.HasSuffix(s, "Z")
 }
 
-func mustBangkok(t *testing.T) *time.Location {
-	t.Helper()
-	loc, err := time.LoadLocation("Asia/Bangkok")
-	if err != nil {
-		t.Fatalf("LoadLocation: %v", err)
-	}
-	return loc
-}
-
 // Legacy offset-shaped rows (incl. monotonic suffixes) migrate to UTC,
 // and a past-due migrated row becomes listable by ListDue.
 func TestNormalizeStoredTimesToUTCRepairsLegacyRows(t *testing.T) {

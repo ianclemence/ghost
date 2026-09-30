@@ -182,40 +182,6 @@ func printVersion() {
 	}
 }
 
-func copyDirectory(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-
-		dstPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-
-		srcFile, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer srcFile.Close()
-
-		dstFile, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
-		if err != nil {
-			return err
-		}
-		defer dstFile.Close()
-
-		_, err = io.Copy(dstFile, srcFile)
-		return err
-	})
-}
-
 func main() {
 	// Try loading .env files from various locations
 	// Priority: current dir > parent dir > config dir > ~/.ghost > ~/ghost
@@ -4007,6 +3973,19 @@ func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus
 	}
 	emit(cevents.RoutineStarted, "running", r.Name+" started")
 	outcome, err := routineSvc.Run(ctx, r.ID, execKey, func(ctx context.Context, r *routines.Routine) routines.RunOutcome {
+		// A recurring reminder is delivered directly, like a one-off one: no
+		// model call, so it arrives on time even if the provider is down, and
+		// it says so when the Pod was off at its time.
+		if task, ok := agent.ReminderInstructionTask(r.Instruction); ok {
+			text := agent.ReminderText(task)
+			if note := agent.LateNote(fireAt, time.Now(), item.Timezone); note != "" {
+				text += " " + note
+			}
+			if msgBus != nil && item.Channel != "" {
+				agentLoop.DeliverToOwner(item.Channel, item.ChatID, text, map[string]interface{}{"reminder": true})
+			}
+			return routines.RunOutcome{Completion: product.CompletionSuccess, Message: text}
+		}
 		agentLoop.SetRoutineContext(sessionKey, r.ID, r.AllowedCapabilities)
 		defer agentLoop.ClearRoutineContext(sessionKey)
 		resp, err := agentLoop.ProcessDirectWithChannel(ctx, r.Instruction, sessionKey, channel, item.ChatID, nil, nil, nil)
@@ -4022,7 +4001,7 @@ func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus
 		}
 		// Deliver the result where the routine was created.
 		if strings.TrimSpace(resp) != "" && msgBus != nil && item.Channel != "" {
-			agentLoop.DeliverToOwner(item.Channel, item.ChatID, resp, nil)
+			agentLoop.DeliverToOwner(item.Channel, item.ChatID, resp, map[string]interface{}{"routine": r.Name})
 		}
 		return routines.RunOutcome{Completion: product.CompletionSuccess, Message: resp}
 	})

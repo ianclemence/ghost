@@ -529,6 +529,9 @@ func messageKindFor(meta map[string]interface{}) string {
 	if r, _ := meta["reminder"].(bool); r {
 		return "reminder"
 	}
+	if _, ok := meta["routine"]; ok {
+		return "routine"
+	}
 	if _, ok := meta["announce"]; ok {
 		if urgent, _ := meta["urgent"].(bool); urgent {
 			return "alert"
@@ -536,6 +539,19 @@ func messageKindFor(meta map[string]interface{}) string {
 		return "notice"
 	}
 	return ""
+}
+
+// ReminderInstructionTask returns the task when a routine's instruction is a
+// plain reminder ("remind me to take my vitamins"). Such a routine needs no
+// model at all: it says the reminder on time, the same way a one-off reminder
+// does, even when the model provider is down or out of credit.
+func ReminderInstructionTask(instruction string) (string, bool) {
+	t := strings.TrimSpace(instruction)
+	const p = "remind me to "
+	if len(t) > len(p) && strings.EqualFold(t[:len(p)], p) {
+		return strings.TrimSpace(t[len(p):]), true
+	}
+	return "", false
 }
 
 // ReminderText is what a due reminder says: short, deterministic, and never

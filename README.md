@@ -1,683 +1,306 @@
 # Ghost
 
-> **Your AI. Your Memory. Your Machine.**
-> *A personal AI that belongs to you — it lives on your hardware, remembers you, and works for you.*
+**The internet in a box, learned around you.**
+
+Ghost is a small computer that lives in your home and keeps learning who you
+are. Ask it something and it finds the answer, browses the web for you, keeps
+your reminders and routines, remembers the people and plans in your life, and
+tells you when something needs you. It runs on hardware you own. Your memory,
+your files and your logins stay there.
+
+It is not a chatbot and not someone else's service. It is a way into information,
+shaped around one person: you.
+
+- **It runs on your hardware.** A Raspberry Pi 5 "Pod", or any Linux machine.
+  A single Go program, no cloud account needed to run it.
+- **It learns you.** It keeps a private, editable memory of the people, places,
+  habits and plans you tell it about, and uses it in every conversation.
+- **It does things, and shows its work.** It browses, reads and writes files,
+  signs in to sites you allow, connects to your apps. It asks before anything
+  consequential, and what it says it did is backed by evidence.
+- **It reaches out when it matters.** Reminders, something wrong with the Pod,
+  someone probing your network, a routine's result.
 
 ---
 
-## What Ghost does for you
+## What using it is like
 
-Ghost runs the recurring admin of your life, so you don't have to think about it:
+| You say | Ghost does |
+|---|---|
+| "Search for the cheapest flights from Bangkok to Shenzhen on 15 October." | Uses its browser when a plain search isn't enough, compares the results, cites where each came from, and says which sources blocked it. |
+| "Remind me tomorrow at 9 to look at the flights." | Sets a reminder that arrives on time as a notification, even with the app closed and the AI provider down. |
+| "Every weekday at 8, remind me to take my vitamins." | Confirms once, then does it. See [Reminders and routines](#reminders-and-routines). |
+| "Every Monday at 8, give me a brief of my week and the weather." | Runs it as a routine each Monday and delivers the result. |
+| "My friend Sam is a mechanic in Chiang Mai." | Remembers Sam as a person, with the place and the relationship. `/memory` shows exactly what it kept and lets you delete it. |
+| "Sign in to my site and check the dashboard." | Uses a login you saved. The password never passes through the model. |
+| "Delete the old shenzhen note." | Asks, then deletes it from its own workspace. It will never delete its own files. |
 
-- **It briefs you.** “Every Monday at 9, prepare my weekly brief.” Ghost reads your calendar and mail, writes the brief, and has it waiting for you.
-- **It remembers for you.** Birthdays, preferences, who's who, what you decided last month — Ghost keeps it and recalls it when it matters.
-- **It handles the follow-through.** Renewals, check-ins, reminders, the thing you'd otherwise forget — Ghost does them on time and tells you when it's done.
-- **It warns you ahead.** “Your sister's birthday is in a week.” Ghost notices and speaks up before it's too late.
-- **It makes things for you.** Reports, plans, checklists, links — Ghost produces durable work you can open and keep, and shows it as a card right in the conversation.
-
-You say what you want in plain language — in a chat, on your phone, or out loud.
-Ghost figures out the rest.
-
-And it asks before it does anything consequential, with proof it actually did it.
-That last part matters more than it sounds — see [Why trust is the point](#why-trust-is-the-point).
-
----
-
-## Why trust is the point
-
-Most “AI agents” say “Done” and hope you believe them. Ghost is built so you
-don't have to. The core rule: **the model is not the authority.** Runtime
-execution evidence decides whether an action happened — a model saying
-“Done” is a claim, not proof.
-
-- **It asks before consequential actions.** The model cannot self-grant authority; one Permission Broker decides *allow / ask / deny*, and unknown risk fails closed.
-- **Every answer says where it ran.** Local model, home Pod, or cloud — you always know.
-- **Every action leaves proof.** What Ghost says it did is backed by runtime evidence, not a language model's optimism.
-- **Your data stays on your machine.** Memory, permissions, and identity live on your hardware; cloud models are optional intelligence providers, and offline-local capabilities keep working when the network does not.
-
-You get a capable AI that is yours. You keep the guarantees.
+And unprompted: it tells you when the Pod is running hot or nearly out of
+storage, when the room gets too damp or cold (with a sensor attached), when a
+model provider stops working, when a new version is out, and when something on
+your network keeps trying to get in.
 
 ---
 
-## How it works
+## Trust is the design
 
-You express a goal. Ghost interprets it against your memory and context, picks a
-capability, and asks the Permission Broker whether it may proceed. Authorized
-work executes through a replaceable implementation. Runtime evidence proves what
-actually happened. A canonical event records it, and memory, activity, and
-routines all consume that one record.
+The model is never the authority. A model saying "done" is a claim. Runtime
+evidence decides whether something happened.
 
-```
-User → Ghost → intent/memory/context → Permission Broker → capability
-     → execution → evidence → events/activity → response
-```
+- **One Permission Broker** decides allow, ask or deny. Unknown risk is denied.
+  The model cannot grant itself anything. Approvals offer *once*, *for this
+  task* (which ends after ten quiet minutes, or an hour at most), *always*, or
+  *deny*.
+- **Every reply says where it ran**: on the Pod, or on which cloud model.
+- **Secrets are sealed** (AES-256-GCM) and are write-only from every screen.
+  Site logins, API keys and tool-server keys are never shown back, never logged,
+  and scrubbed from anything that could reach the model or a transcript.
+- **Ghost's own files are protected**, from the model and from the shell. Its
+  identity, memory, skills and database cannot be deleted or overwritten by a
+  request, however it is phrased.
+- **Strangers get nothing.** A messaging channel answers only the people you
+  list. Everyone else is refused, and you are told they knocked.
 
-You choose an outcome — **Local / Hybrid / Cloud** — and the runtime derives the
-details (models, fallbacks, context sizes). RAG is always enabled. You never need
-to configure temperature, top-p, quantization, or routing tables.
-
-**One product, two surfaces.** The **Ghost app** is the daily driver — talk,
-approve, review, connect. The **Web Console** is the owner control plane —
-system, security, devices, skills, channels, memory. They overlap only where
-they must (pairing, first-run setup, model selection), so the same task never
-has two different homes.
+Details: [docs/PERMISSION-BROKER.md](docs/PERMISSION-BROKER.md).
 
 ---
 
-## Core features
+## Get started
 
-- **Routines** — one place for everything Ghost runs for you: recurring instructions, reminders, and scheduled actions. You say it in chat (“every Monday at 9…”); Ghost figures out the rest.
-- **Artifacts** — reports, plans, checklists, and links Ghost produces on your behalf. A runtime-validated handoff shown as a card in the conversation; acting on one is a normal approved request.
-- Persistent memory with retrieval and context isolation
-- Consequential actions governed by a permission broker (the model can't self-grant)
-- Deterministic capability execution — no fabricated live data
-- Durable routines with duplicate prevention and idempotency
-- Canonical event evidence with user-safe activity
-- Provider fallback, retries, circuit breaking, honest unavailability
-- Credential vault with redaction and backup exclusion
-- Offline-honest behaviour
-- `ghost verify`, `ghost benchmark`, and the Golden Conversation Suite
+### A Ghost Pod
 
----
+Plug it in, open `http://ghost.local` from a phone or computer on the same
+network, enter the setup code, choose how Ghost thinks, and you are done in about
+ten minutes. The whole path, including where the setup code is and what to do if
+`ghost.local` doesn't resolve, is in
+**[docs/POD-QUICKSTART.md](docs/POD-QUICKSTART.md)**.
 
-## Requirements
-
-### Hardware
-Ghost runs on any Linux device. These are the reference device targets:
-- Raspberry Pi 5 (8 GB+) or RK1 (16 GB)
-- 256 GB NVMe SSD (recommended) or 32 GB microSD storage
-- Mobile phone with Ghost app
-
-### Software
-
-Ghost is a single Go binary — no external runtime is required for the core
-system. For local AI, you can install Ollama (optional):
-
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-Or configure any OpenAI-compatible provider through the Web Console.
-
----
-
-## Quick Start
-
-### Raspberry Pi (Recommended)
-
-On a fresh device, install the prerequisites first (skip if you already have
-`git`, `make`, Go, and `ffmpeg`):
+### Your own Linux machine
 
 ```bash
 sudo apt install -y git make golang-go ffmpeg
-```
-
-`ffmpeg` is a hard dependency of the voice stack: local speech-to-text
-converts voice notes (ogg/m4a/mp3) with it, and local speech synthesis uses
-it to deliver mp3 replies. The voice engines and models are installed
-automatically by `make install-ghost` (verified against pinned checksums).
-
-**Optional cloud fallback for speech replies:** for languages without a
-local voice, Ghost can fall back to the keyless Edge TTS (an unofficial
-community client). Install it only if you want that:
-`pip install edge-tts`. Local speech does not need it and never phones home
-when the local voice is present.
-
-Then install Ghost:
-
-```bash
 git clone https://github.com/ianclemence/ghost.git
 cd ghost
 sudo make install-ghost
 sudo reboot
 ```
 
-After reboot, open `http://<pi-ip>` in a browser to complete setup:
-1. Enter the setup code printed on the device, name yourself and Ghost, and
-   create an owner password
-2. Choose what Ghost thinks with: a cloud provider and its API key (checked
-   with the provider before setup finishes), or the Pod itself
-3. Ghost is ready — sign in to the Web Console
-4. Connect your phone: run `ghost pair` for a QR, or use Devices in the console
+`ffmpeg` is required for voice notes and spoken replies. After the reboot open
+`http://<the machine's address>` and follow setup. It won't finish until Ghost
+has an AI it can actually start with, and a refused attempt leaves nothing behind,
+so you can correct it and retry.
 
-Setup does not complete until Ghost has an AI it can actually start with, and
-a refused attempt leaves nothing behind, so you can simply correct it and
-retry.
+Windows: run `setup.bat`. Developers who want an isolated instance that never
+touches an installed Ghost: `ghost dev`.
 
-### How setup works
+### Connect your phone
 
-**Before setup:** `ghost-web.service` starts the Web Console on port 80 (with
-the `-force` flag, so it stays running permanently). The first-run wizard
-appears automatically. Completing the wizard:
-1. Writes `/var/ghost/.setup-complete`
-2. Starts the `ghost` gateway service (port 8766)
-3. The Web Console transitions from wizard to login → control plane
+Run `ghost pair` on the Pod for a QR code, or use **Devices** in the console.
+Scan it in the Ghost app. Each phone gets its own credential, the code works
+once and lasts five minutes, and turning on notifications when asked is what lets
+Ghost reach you when the app is closed.
 
-**Setup code:** the first configure must present a one-time setup code, which
-proves you are at the device (not a host elsewhere on the network). While Ghost
-is unconfigured, `ghost-web` mints a fresh code on every start and prints it:
+---
+
+## Four ways to talk to it, one conversation
+
+| Surface | Good for |
+|---|---|
+| **The Ghost app** | Daily use: talk, approve, see what Ghost is doing in its browser, browse memory and files. |
+| **The web console** | The control plane: Apps, Channels, Devices, Memory, Files, Routines, System, Security. |
+| **The terminal** (`ghost`) | Fast and keyboard-first. `/memory`, `/activity`, `/devices`, `/files`, `/attach`. |
+| **Channels** | Telegram, Discord, Slack, WhatsApp and email, for the people you allow. |
+
+They are one conversation, not four. Send a message from the terminal and open
+the app: the question is there and the answer arrives as it is written. A reminder
+that comes due shows up in every open surface, labelled as a reminder.
+
+---
+
+## Reminders and routines
+
+Three things that sound alike, and are different.
+
+| | What it is | How it runs |
+|---|---|---|
+| **Reminder** | One time. "Remind me tomorrow at 9 to call Sam." | Delivered on time as plain text. No AI call, so it arrives even if the provider is down. If the Pod was off, it arrives late and says so. |
+| **Recurring reminder** | A reminder that repeats. "Every weekday at 8, remind me to take my vitamins." | The same deterministic delivery, on every occurrence. |
+| **Routine** | A job for Ghost that repeats. "Every Monday at 8, give me a brief of my week." | Ghost does the work each time (it may use tools) and reports the result, labelled as a routine. |
+
+Ghost understands recurrence in the way people say it: *every weekday*,
+*weekends*, *Mondays and Thursdays*, *every morning*, *8am every day*, *every
+other day*, *every 3 days*, *hourly*, *monthly on the 15th*. It always says the
+time back, including one it assumed (a bare "every day" is 9 AM), and asks for a
+yes before creating a routine. Manage them in **Routines** in the console or
+`ghost tasks` (pause, resume, cancel).
+
+If the Pod was off when a recurring **routine** came due, it is skipped, not
+replayed hours late (a morning brief at nine at night is noise), and Ghost tells
+you it skipped it. A missed **reminder** is a commitment, so it is still delivered,
+with a note saying it was due earlier.
+
+---
+
+## Files and the workspace
+
+Ghost has a workspace of its own. It can create folders, write notes, tidy them
+into place, move things, and delete what it made or what you ask it to remove.
+It cannot reach outside it, follow a link out of it, or touch its own foundations.
+
+- Screenshots and downloads are kept in the workspace, not in temporary folders.
+- Deleting always asks first, and cannot be undone.
+- Its default files and folders (its identity and prompt files, `memory`, `skills`,
+  `sessions`, `state`, `uploads`, and the rest) can never be deleted or moved,
+  through its tools or through the shell.
+- Files you send it are listed under **Files** in the app and console, and can be
+  opened, previewed or deleted there.
+
+---
+
+## Connecting things
+
+**Apps** (Gmail, Calendar, Outlook and Spotify by browser sign-in; GitHub,
+Notion, weather and flight data by key; Home Assistant by address and token).
+Keys are tried against the service before Ghost says "connected": a refused key
+is explained and not saved, and a service that can't be reached is saved with an
+honest note.
+
+**Website logins.** Save a login once under Apps. Ghost signs in with it without
+the password passing through the model, and only to the site it belongs to. If a
+site asks for a human check (a CAPTCHA, "Verify you are human"), Ghost says so
+and stops; it does not try to get around it.
+
+**Tool servers (MCP).** Add an outside server by address and key on the console's
+Apps page. The connection is tested before anything is saved, the key is sealed,
+and its tools appear at once with no restart. Servers that run a command on the Pod
+stay a terminal decision (`ghost mcp add`), because that is running code.
+
+**Channels.** Telegram, Discord, Slack, WhatsApp and email answer only the people
+you list under **Channels**. Empty means nobody.
+
+---
+
+## Away from home
+
+At home the phone talks straight to the Pod. Away from home you need a way in:
+Tailscale, your own relay, or (planned) **Ghost Connect**. The reasoning, what is
+free, and what must be true before anyone is charged are in
+[docs/CONNECT.md](docs/CONNECT.md). Push notifications do not need any of it.
+
+---
+
+## Backups, recovery and a forgotten password
 
 ```bash
-journalctl -u ghost-web | grep 'Setup code'
+ghost state backup                        # a recovery snapshot (the newest five are kept)
+GHOST_MASTER_KEY=<key> ghost state import <file>   # restore onto a fresh install
 ```
 
-Enter it in the wizard's first step. The code is cleared once setup completes;
-restarting `ghost-web` invalidates the previous one.
+A snapshot is made before every update. A backup on the Pod dies with the Pod,
+and it can only be opened with the Pod's key (`GHOST_MASTER_KEY`, in the Ghost
+config directory). Copy both somewhere safe, separately. Details in
+[docs/USER.md](docs/USER.md).
 
-**Web Console:** the `ghost-web` service runs on port 80 and serves as Ghost's
-persistent control plane — the place where you own, configure, understand, and
-take care of Ghost.
-- **Before setup:** shows the first-run wizard (setup code, identity, password, the AI to think with)
-- **After setup:** shows a login screen (your owner password) that opens the
-  **Web Console** with sections organized around the product:
+**Forgot the console password?** Nothing is lost and no terminal is needed.
+On the sign-in page choose *Forgot your password?* and either:
 
-  **Ghost** — what Ghost is and does:
-  - **Home** — is Ghost okay, what has it been doing, does it need you
-  - **Routines** — one list for everything Ghost runs for you: recurring instructions (“every Monday at 9…”), reminders, and scheduled tasks. You say it in chat; Ghost infers the shape. (Backed by `/v1/routinefeed`; the internal scheduler and routine models stay unified underneath.)
-  - **Memory** — browse, search, and manage what Ghost remembers
-  - **Files** — photos and documents you have sent Ghost, with delete (removes the file itself); kept 30 days unless you delete them first (`GHOST_UPLOAD_RETENTION_DAYS`)
-  - **Approvals** — what Ghost is waiting on; allow once, for this task (lapses after 10 quiet minutes, 1 hour at most), or always
-  - **Activity** — what Ghost has done, with the reason each consequential action asked or ran
-  - **Intelligence** — local and cloud AI, model management, routing
-  - **Abilities** — what Ghost can do, built in and ready; turn any off, or add your own
+- get a one-time code in the app (**Your Pod**, then **Web console**) and enter it
+  with a new password, or
+- take the SD card out, and on the `boot` drive create a text file named
+  `ghost-reset-password` with the new password on its first line.
 
-  **Connect** — how Ghost reaches people and services:
-  - **Devices** — paired phones, secure QR pairing flow
-  - **Channels** — Telegram, Discord, Slack, WhatsApp, and Email configuration
-  - **Apps** — the services Ghost can act on (Calendar, Gmail, Outlook, Spotify, Home Assistant, and more); connect and manage credentials here
-
-  **System** — how Ghost itself is maintained:
-  - **System** — hardware, services, updates, diagnostics
-  - **Security** — owner password, active sessions, failed sign-in visibility, backups, recovery, standing permissions
-  - **Help** — guidance for what Ghost actually does
-  - **About** — version and product information
-
-The Web Console and `ghost` gateway are separate services: console on port 80,
-API on port 8766. The console proxies authenticated requests to the gateway.
-
-If you ever want the Web Console turned off:
-```bash
-sudo systemctl disable --now ghost-web
-```
+Or, with a terminal: `sudo ghost reset-password --force`. Your memory, files and
+paired phones are never touched.
 
 ---
 
 ## Updating
 
-### On a device already running Ghost
-
 ```bash
-ghost update             # deploy the release; runs as you
-ghost update --check     # report installed vs available, change nothing
-ghost update --notes     # show the changelog / release notes
-ghost update --channel dev   # build the local checkout (developers)
+ghost update            # deploy the newest release
+ghost update --check    # installed, available, and what is actually running
+ghost update --notes    # what changed
 ```
 
-`ghost update`:
-1. Resolves the target release
-2. Builds (or, when a binary asset is published, downloads and verifies) it
-3. Atomically installs the binary
-4. Restarts the Ghost service(s)
-
-**No sudo for a user-scoped install.** When Ghost is installed per-user
-(`make install-user` → `~/.local/bin` + `systemctl --user`), the whole update
-runs unprivileged. For a system install (`/usr/local/bin` + system units) it
-escalates only the binary swap and the service restart — never the build or
-the read-only planning. Run `ghost update --check` to see which scope you are
-in. If you no longer have a repo clone on the device, clone one:
-
-```bash
-sudo apt install -y git make golang-go   # if not installed
-git clone https://github.com/ianclemence/ghost.git && cd ghost
-sudo make install-ghost
-```
-
-These commands run as root, and git exempts root from its repository-ownership
-check, so updating a user-owned clone works with no extra configuration. If you
-ever run git in the repo as a *different* non-root user and hit git's "dubious
-ownership" error, allow the path for that user:
-
-```bash
-git config --global --add safe.directory /home/<user>/ghost   # run as <user>, not root
-```
-
-### Auto-Update Daemon
-
-```bash
-sudo ghost updater
-```
-
-Checks for updates every 6 hours automatically (`git pull` + rebuild + redeploy + restart).
-
-### Developer Mode
-
-**Windows:** Double-click `setup.bat`
-
-**Linux / Raspberry Pi:**
-
-```bash
-chmod +x setup.sh
-./setup.sh
-```
-
-Developer Mode installs to the same canonical location as production
-(`/usr/local/bin/ghost`) and uses the same service. There is exactly **one**
-`ghost` binary: a second copy earlier in `PATH` used to shadow the installed
-one and make updates appear not to take. `ghost update` removes any stale copy
-automatically, and `ghost status` warns if one is ever found.
+Ghost tells you when a new version is out and never installs one on its own. You
+can also update from **Your Pod** in the app. A recovery snapshot is taken first,
+and if it can't be, the update stops and says why.
 
 ---
 
 ## Commands
 
-### Core Commands
+| Command | What it does |
+|---|---|
+| `ghost` | Chat in the terminal |
+| `ghost pair [name]` | Show a QR to connect the app |
+| `ghost tasks` | Routines: list, pause, resume, cancel |
+| `ghost ideas` | Suggestions with the evidence behind them |
+| `ghost model [list\|use provider:model]` | See or change the model |
+| `ghost mcp list\|add\|edit\|remove\|test` | Tool servers |
+| `ghost connector ...` | Portable connectors (validate, install, sign) |
+| `ghost skills ...` | List, add, remove, enable, disable skills |
+| `ghost state backup\|export\|import\|inspect\|prune` | Snapshots and portable state |
+| `ghost update` | Update Ghost |
+| `ghost auth reset-password` | Reset the console password |
+| `ghost status`, `ghost verify` | Health and the real product checks |
+| `ghost reset` | Factory reset (with exclusions) |
+| `ghost relay ...` | Your own relay |
 
-| Command | Description |
-|---------|-------------|
-| `ghost` | Chat with Ghost in the terminal |
-| `ghost tasks` | Show and manage durable routines (pause, resume, cancel) |
-| `ghost ideas` | Suggestions with evidence (list, refresh, accept, dismiss, draft) |
-| `ghost serve` | Start Ghost (main service) |
-| `ghost status` | Show system status |
-| `ghost update` | Pull latest changes and rebuild |
-| `ghost updater` | Run auto-update daemon |
-
-### Management Commands
-
-| Command | Description |
-|---------|-------------|
-| `ghost onboard` | Initialize configuration |
-| `ghost auth` | Manage authentication |
-| `ghost skills` | Manage skills |
-| `ghost state` | Export / import / inspect Ghost State archives |
-| `ghost model` | View or switch the active model |
-| `ghost reset` | Factory reset (`all --exclude=devices,secrets`, scopes, `--no-restart`) |
-| `ghost reset-password` | Reset the admin dashboard password (requires `--force`) |
-| `ghost replay` | Reconstruct an execution trace from canonical events (read-only) |
-| `ghost version` | Show version info |
-
-### Evaluation Commands
-
-| Command | Description |
-|---------|-------------|
-| `ghost verify` | Real personal AI checks: identity, memory, capabilities, governance, automation, events, activity, credentials, offline, security |
-| `ghost benchmark` | Personal AI benchmark + Ghost Core Score + hard governance gates + local history |
-| `ghost golden` | Golden Conversation Suite — model-agnostic natural-language evaluation (`--model --suite --cases --offline --json --compare`) |
-
-### Relay Commands
-
-| Command | Description |
-|---------|-------------|
-| `ghost relay run` | Connect to relay server for remote access |
-| `ghost relay pair` | Generate pairing token for phone |
-| `ghost relay clients` | List paired clients |
-| `ghost relay revoke <token>` | Revoke client access |
-
-### Setup
-
-| Command | Description |
-|---------|-------------|
-| `ghost-web` | Web Console — setup wizard + control plane (always-on service on port 80; wizard before setup, login after) |
-
-### Chat Slash Commands
-
-| Command | Description |
-|---------|-------------|
-| `/help` | Show help and tool list |
-| `/clear` | Clear current session history. `/clear all` clears all chat history |
-| `/reset` | Factory reset: `/reset all` wipes everything including secrets and paired devices. `/reset all --exclude=devices,secrets` spares scopes. Selective: `/reset <scope> [<scope>...]` with scopes `chats` `memory` `activity` `automations` `context` `devices` `secrets` `model` |
-| `/context` | Show what Ghost believes about you |
-| `/forget` | Forget a belief or session (`/forget <topic>` / `/forget session <id>`) |
-| `/remind` | Set a reminder (`/remind buy milk in 10m`) |
-| `/model` | Show or switch AI model |
-| `/attach <path>` | Terminal only: send a file (PDF, Word, sheet, text, image) with your next message; drag a file in or use `~`. `/attach clear` removes it |
-| `/files` | Terminal only: list the files you have sent; `/files delete <n>` removes one |
-| `/doctor` | Diagnostics |
-| `/status` | System status |
-| `/skills` | List skills |
-| `/install <url>` | Install skill |
-| `/tools` | Show tool schemas |
-| `/think <msg>` | Deep reasoning mode |
-| `/compress` | Summarize and compact context |
-| `/personality` | List or switch personality (`default` `hacker` `creative` `teacher` `minimal` `adaptive` — adaptive learns your style) |
-| `/affect` | Show relational state (affinity, mood) — aggregates only, cleared by `/reset context` |
+Inside a chat: `/memory`, `/activity`, `/devices`, `/files`, `/attach <path>`,
+`/model`, `/context`, `/routines`, `/tasks`, `/ideas`, `/thread`, `/main`, `/rewind`,
+`/details`, `/clear`, `/help`.
 
 ---
 
 ## Configuration
 
-### Configuration Precedence
+Precedence, highest first: environment variables, then `.secrets.json` (sealed;
+API keys and tokens), then `config.json` (model, providers, channels), then
+defaults. Secrets are set from the console or app, never by editing files. `.env`
+holds only system settings (`GHOST_API_PORT`, `TZ`).
 
-Ghost uses a clear precedence model for configuration:
+| Where | What |
+|---|---|
+| `/var/ghost/config/` | `config.json`, sealed secrets, the master key. Mode `0700`. |
+| `/var/lib/ghost/workspace/` | Identity, memory, skills, sessions, files. Owned by whoever installed Ghost. |
+| `/var/lib/ghost/backups/` | Recovery snapshots. |
 
-1. **Environment variables** (highest priority) — runtime overrides
-2. **`.secrets.json`** — sealed secrets (AES-256-GCM; API keys, channel tokens)
-3. **`config.json`** — persistent configuration (model, providers, channels)
-4. **Defaults** (lowest priority)
-
-### `.secrets.json` (Secrets)
-
-Secrets (API keys, channel tokens) are stored in `.secrets.json` with `0600` permissions. They are configured through the Web Console, not by editing files directly.
-
-**Never edit `.secrets.json` manually** — use the Web Console to configure providers and channels.
-
-### `.env` (System Overrides)
-
-The `.env` file contains only system-level configuration, not secrets:
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-```env
-GHOST_API_PORT=8766
-TZ=UTC
-```
-
-### `config.json` (Behavior)
-
-```bash
-cp config/config.example.json config/config.json
-```
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "model": "ollama/qwen3:0.6b",
-      "temperature": 0.7
-    },
-    "model_list": [
-      { "name": "local", "provider": "ollama", "model": "ollama/qwen3:0.6b" },
-      { "name": "claude", "provider": "anthropic", "model": "claude-sonnet-4" },
-      { "name": "gpt", "provider": "openai", "model": "gpt-4o" }
-    ]
-  },
-  "channels": {
-    "telegram": { "enabled": true }
-  }
-}
-```
-
-**Switching models at runtime** — use `/model` in any chat (e.g. Telegram):
-- `/model` — show the current model and list saved presets
-- `/model <preset-name>` — switch to a named preset from `model_list`
-- `/model <provider:model>` — switch to an arbitrary provider/model (e.g. `anthropic:claude-sonnet-4`, `ollama:qwen3:0.6b`)
-
-The selection is persisted to `config.json` and takes effect immediately for new turns.
+The services run as root; every file they create in your workspace and config is
+handed back to the account that installed Ghost, so your own terminal can always
+read them.
 
 ---
 
-## Skills Subcommands
-
-| Command | Description |
-|---------|-------------|
-| `ghost skills list` | List installed skills |
-| `ghost skills install <repo>` | Install from repository |
-| `ghost skills remove <name>` | Remove skill |
-| `ghost skills install-builtin` | Copy built-ins |
-| `ghost skills list-builtin` | List built-ins |
-| `ghost skills search` | Search registry |
-| `ghost skills show <name>` | Show details |
-| `ghost skills sync` | Sync bundled skills — update unchanged skills, preserve user edits |
-
----
-
-## Running as a Service
-
-### Raspberry Pi
+## Development
 
 ```bash
-sudo make install-ghost
+make build               # both binaries
+go vet ./... && go test ./...
+ghost dev                # an isolated instance: own directory and port
 ```
 
-Then:
-
-```bash
-ghost-web  # Start web console (setup wizard + admin dashboard)
-ghost      # Start Ghost (after setup)
-```
-
-### Service Commands
-
-```bash
-sudo systemctl status ghost
-sudo journalctl -u ghost -f
-sudo systemctl restart ghost
-```
-
-### Recovery Mode
-
-If Ghost fails to start, enable recovery mode:
-
-```bash
-GHOST_RECOVERY_MODE=1 ghost serve
-```
-
-This starts a web UI at `http://127.0.0.1:8766` (localhost only) with:
-- System status
-- Logs viewer
-- Config reset option
-- Password reset
-- Restart button
-
-**Security note:** Recovery mode is bound to `127.0.0.1` — it cannot be accessed from other devices on the network. This ensures only someone with physical access to the device can use recovery.
-
-The recovery server auto-shuts down after 15 minutes.
-
----
-
-## Security Architecture
-
-Ghost uses a layered security model designed for a self-hosted personal AI.
-
-Consequential actions pass through the **Permission Broker**; secrets live behind
-a **credential vault** boundary (write-only from the UI, presence-only in
-events); events/activity/API/logs/backups are redacted by construction; and
-context isolation is enforced at retrieval and execution — not by prompts.
-
-Model browser calls are additionally governed by a runtime **browser gate**
-that enforces server-side binding, the Permission Broker, session isolation,
-and runtime evidence. Computer control follows the same authority model:
-a bounded operation taxonomy with explicit placement and durable leases, all
-enforced by the broker before any executor runs.
-
-### Authentication
-
-| Mechanism | Purpose | Used By |
-|-----------|---------|---------|
-| Owner password | Protects the Web Console | Web browser (session cookie) |
-| Device credential | Authenticates mobile app and API access | Mobile app, CLI tools |
-
-### Secrets Storage
-
-| Secret | Location | Permissions |
-|--------|----------|-------------|
-| Admin password | `/var/ghost/data/admin.hash` | `0600` |
-| API keys, channel tokens | `/var/ghost/config/.secrets.json` | `0600` |
-| Device credentials | SQLite database | Database-level |
-| Pairing tokens | SQLite database | Database-level |
-
-Credential rules enforced at runtime:
-
-- secrets are never printed, logged, serialized to events/SSE/activity/APIs, or
-  archived in backups (backup walkers use the centralized exclusion boundary)
-- OAuth credentials are stored locally and only their presence/state is
-  exposed; tokens never travel to the UI or the model
-- the model cannot read, grant, or revoke permissions
-
-### How Pairing Works
-
-1. Owner opens admin dashboard → Devices → "Connect another device"
-2. Web UI generates a QR code (`ghost://pair?v=1&pod=...&token=...`)
-3. Mobile app scans QR code (token expires in 5 minutes)
-4. Ghost validates token (atomic delete to prevent replay)
-5. Ghost issues a unique device credential (shown once, stored in SecureStore)
-6. All future requests use `X-Ghost-Device-ID` + `X-Ghost-Credential` headers
-
-After pairing, the QR token disappears from the equation. Each device gets its own unique credential.
-
-### Gateway Binding
-
-The gateway listens on the LAN (`0.0.0.0:8766`) with a layered trust model. Loopback peers (web proxy, relay client, terminal agent) are trusted and need no credential headers. Other machines on the network must present valid per-device credentials on every request — unauthenticated LAN requests are rejected with structured errors. The only credential-free endpoint is pairing redemption, where the short-lived single-use token is the authorization. The relay server forwards remote app traffic to the gateway via localhost on the device.
-
-### Directory Permissions
-
-| Directory | Permissions | Contents |
-|-----------|-------------|----------|
-| `/var/ghost/` | `0700` | Ghost installation root |
-| `/var/ghost/config/` | `0700` | Configuration and secrets |
-| `/var/ghost/data/` | `0700` | Admin password hash, metadata |
-| `/var/lib/ghost/workspace/` | `0755` | Skills, memory, sessions (`/var/ghost/workspace` is a legacy fallback) |
-
----
-
-## Mobile App
-
-Ghost exposes a unified API on port **8766**:
-
-* Chat
-* Memory
-* Voice
-* Remote control
-
-### Connecting the Mobile App
-
-The mobile app connects via device pairing — no manual API key configuration is needed.
-
-#### Set up a brand-new Pod from the phone (phone-first)
-
-The app can bring a fresh Pod online without opening a browser:
-
-1. Start `ghost-web` on the Pod and read its setup code:
-   `journalctl -u ghost-web | grep 'Setup code'`
-2. In the app: **Connect a Ghost Pod → Set up a new Ghost Pod**
-3. Enter the Pod address, the setup code, your name, and an owner password
-4. The phone claims the Pod, then pairs automatically
-
-If the gateway is still starting, setup still succeeds and the app offers the
-manual pairing path as a fallback.
-
-#### Same Network (LAN)
-
-1. Open admin dashboard at `http://<pi-ip>` on any browser
-2. Log in with your admin password
-3. Navigate to Devices → "Connect another device"
-4. Scan the QR code with the Ghost app
-5. The app is now connected
-
-#### Remote (Relay)
-
-For when you're away from home:
-
-```bash
-ghost relay pair
-```
-
-This outputs a URI that you open on your phone. The relay tunnels traffic back to your Ghost device.
-
-### Run Mobile App
-
-```bash
-cd ghost-app
-npm install
-npx expo start
-```
-
-### Tailscale Setup
-
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
-tailscale ip -4
-```
-
-Use that IP in app settings. The gateway listens on the LAN
-(`0.0.0.0:8766`), so same-network and Tailscale connections reach it directly
-with device credentials; the relay tunnel is only needed off-network.
-
-### Mobile API Endpoints
-
-Key HTTP endpoints the app uses on port `8766`:
-
-| Endpoint | Method | Purpose |
-| --- | --- | --- |
-| `/v1/health` | GET | Connectivity + latency check (authed; loopback bypass) |
-| `/v1/chat` | POST | Send a chat message (SSE stream) |
-| `/v1/history` | GET | Conversation history |
-| `/v1/steering` | POST | Redirect / interrupt / abort the running agent loop |
-| `/v1/clarify/respond` | POST | Answer an in-flight clarification question |
-| `/v1/model` | GET/POST | Read active model + presets, switch model |
-| `/v1/doctor` | GET | Diagnostics and service health checks |
-| `/v1/tools` | GET | List available skills/tools |
-| `/v1/identity` | GET | Owner/Ghost identity |
-| `/v1/activity` | GET | User-safe activity |
-| `/v1/permissions/requests` + `/v1/permissions/resolve` | GET/POST | Pending approvals |
-| `/v1/routinefeed` | GET | The unified Routines feed (routines + scheduled items) |
-| `/v1/routines` | GET/POST | Routines (product view over scheduled automations) |
-| `/v1/goals` | GET/POST | Goals |
-| `/v1/connected-apps` | GET/POST | Connected services |
-| `/v1/intelligence/config` | GET/POST | AI config (masked keys, routing) |
-| `/v1/ollama/models` + `/v1/ollama/pull` | GET/POST | Local model management |
-| `/v1/voice/turn` | POST | Voice message transcription + reply (audio is never stored) |
-| `/v1/files` | GET | Files the owner has sent (name, kind, size, date) |
-| `/v1/files/{id}` | DELETE | Delete one uploaded file and its metadata |
-
-All mobile API endpoints require device credentials (`X-Ghost-Device-ID` +
-`X-Ghost-Credential` headers) unless the request arrives on loopback, which the
-gateway trusts. Auth failures return `401` (`authentication_required` /
-`authentication_failed`); the only public pairing endpoint is
-`POST /v1/pairing/complete`, where the short-lived token is the authorization.
-
-WebSocket messages on `/v1/ws` are broadcast per channel; `mobile` receives
-`assistant_message`, `clarify_request`, `canvas_update`, `cron_update`, and
-`progress_event` payloads. The app opens `/v1/ws` without auth headers
-(React Native WebSockets can't set them).
-
-### When the Pod is unreachable
-
-The phone carries no model. Offline, the app keeps the last conversation
-readable and holds new messages in an outbox that sends in order when the Pod
-is back. Routines, home control, files, notifications, and memory stay on the
-Pod. Each live reply shows where it ran: on your Pod, or which cloud model.
-
----
-
-## API Authentication
-
-### Device Authentication (Mobile App)
-
-After pairing, the mobile app authenticates using:
-
-```
-X-Ghost-Device-ID: <device_id>
-X-Ghost-Credential: <credential>
-```
-
-These headers must be included in every request to the gateway API.
-
-### Owner Authentication (Web Dashboard)
-
-The web dashboard uses session-based authentication:
-
-1. POST to `/api/login` with admin password
-2. Receive a session cookie (`ghost_admin_session`)
-3. All subsequent requests include the cookie automatically
-
-### Internal Authentication (Web Proxy, Relay, CLI)
-
-Internal components run on the device itself and connect via loopback, which the
-gateway trusts:
-- Web proxy forwards requests to `127.0.0.1:8766`
-- Relay client connects to `127.0.0.1:8766`
-- Terminal agent connects to `127.0.0.1:8766`
-
-No authentication headers are needed for loopback traffic. Requests arriving
-from other machines on the LAN require valid device credentials.
-
----
+| Tool | Use |
+|---|---|
+| `scripts/tui-pty.py COLS ROWS steps.json` | Drive the terminal in a real PTY and see what a user would see |
+| `scripts/phone-sim.py --host <ip>` | A simulated phone: pairs, checks auth, chat, files, push, the live connection, updates |
+| `scripts/preview/console.sh start` | The console on synthetic data, with screenshots |
+| `scripts/fresh-install.sh` | A clean-room install in a sandbox |
+
+The Ghost app is a separate repository: [ghost-app](https://github.com/ianclemence/ghost-app).
+
+## Documentation
+
+| | |
+|---|---|
+| [docs/README.md](docs/README.md) | How Ghost works, one document per layer |
+| [docs/POD-QUICKSTART.md](docs/POD-QUICKSTART.md) | From the box to the first conversation |
+| [docs/USER.md](docs/USER.md) | Using Ghost day to day, backups and recovery |
+| [docs/CONNECT.md](docs/CONNECT.md) | Reaching Ghost away from home; the relay decision |
+| [docs/PERMISSION-BROKER.md](docs/PERMISSION-BROKER.md) | The approval model |
+| [docs/MOBILE-API.md](docs/MOBILE-API.md) | How the app connects, and the gateway API |
+| [pkg/changelog/CHANGELOG.md](pkg/changelog/CHANGELOG.md) | What changed in every release |
 
 ## License
 
-MIT
+See [LICENSE](LICENSE).

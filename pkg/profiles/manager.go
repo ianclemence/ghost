@@ -26,10 +26,6 @@ func NewManager(homeDir string) *Manager {
 	}
 }
 
-func (m *Manager) ProfilesDir() string {
-	return m.profilesDir
-}
-
 func (m *Manager) List() ([]*Profile, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -205,44 +201,6 @@ func (m *Manager) ExportEnv(name string) (map[string]string, error) {
 		env[k] = v
 	}
 	return env, nil
-}
-
-func (m *Manager) LoadEnvFile(name string) (map[string]string, error) {
-	p, err := m.Get(name)
-	if err != nil {
-		return nil, err
-	}
-
-	envPath := p.EnvPath()
-	data, err := os.ReadFile(envPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return p.Env, nil
-		}
-		return nil, err
-	}
-
-	result := make(map[string]string)
-	for k, v := range p.Env {
-		result[k] = v
-	}
-
-	lines := splitLines(string(data))
-	for _, line := range lines {
-		line = trimSpace(line)
-		if line == "" || line[0] == '#' {
-			continue
-		}
-		eqPos := indexOf(line, "=")
-		if eqPos < 0 {
-			continue
-		}
-		key := trimSpace(line[:eqPos])
-		val := trimSpace(line[eqPos+1:])
-		result[key] = val
-	}
-
-	return result, nil
 }
 
 func (m *Manager) ListGroups() ([]string, error) {
@@ -481,25 +439,6 @@ func (m *Manager) ReadChannelHistory(channelID string, maxLines int) ([]ChannelM
 	}
 
 	return messages, nil
-}
-
-func (m *Manager) DeleteChannel(channelID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	channel, err := m.getChannelUnlocked(channelID)
-	if err != nil {
-		return err
-	}
-
-	for _, member := range channel.Members {
-		channelPath := filepath.Join(m.profilesDir, member, "channels", channelID+".json")
-		messagesPath := filepath.Join(m.profilesDir, member, "channels", channelID+".log")
-		os.Remove(channelPath)
-		os.Remove(messagesPath)
-	}
-
-	return nil
 }
 
 func (m *Manager) UpdateAvatar(name string, avatar *Avatar) error {

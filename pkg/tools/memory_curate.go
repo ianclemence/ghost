@@ -204,10 +204,6 @@ func readNoteFile(path string) []string {
 	return entries
 }
 
-func (t *MemoryCurateTool) writeEntries(target string, entries []string) error {
-	return t.writeEntriesFor(target, "", entries)
-}
-
 // writeEntriesFor persists to the session context's file (non-personal)
 // or the global file (personal/legacy). Writes never cross contexts.
 func (t *MemoryCurateTool) writeEntriesFor(target, contextID string, entries []string) error {

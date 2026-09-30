@@ -211,6 +211,7 @@ func TestOwnerMessagesCarryTheirKind(t *testing.T) {
 		{map[string]interface{}{"reminder": true}, "reminder"},
 		{map[string]interface{}{"announce": "storage", "urgent": true}, "alert"},
 		{map[string]interface{}{"announce": "update:v1", "urgent": false}, "notice"},
+		{map[string]interface{}{"routine": "Monday brief"}, "routine"},
 		{map[string]interface{}{}, ""},
 	}
 	for _, c := range cases {
@@ -238,5 +239,17 @@ func TestToolBudgetNeverStopsRealWorkInTheMiddle(t *testing.T) {
 	}
 	if toolIterationBudget(120) != 120 {
 		t.Fatal("an owner who set more keeps it")
+	}
+}
+
+func TestPlainReminderRoutinesNeedNoModel(t *testing.T) {
+	if task, ok := ReminderInstructionTask("remind me to take my vitamins"); !ok || task != "take my vitamins" {
+		t.Fatalf("%q %v", task, ok)
+	}
+	if _, ok := ReminderInstructionTask("give me a brief of my week"); ok {
+		t.Fatal("a brief is a job for Ghost, not a plain reminder")
+	}
+	if got := ReminderText("take my vitamins"); got != "Reminder: take my vitamins." {
+		t.Fatalf("%q", got)
 	}
 }

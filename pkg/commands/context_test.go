@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -17,15 +16,6 @@ func newContextStore(t *testing.T) *personalcontext.Store {
 		t.Fatalf("open personal context: %v", err)
 	}
 	return s
-}
-
-func ctxValue(t *testing.T, v interface{}) json.RawMessage {
-	t.Helper()
-	raw, err := personalcontext.RawValue(v)
-	if err != nil {
-		t.Fatalf("RawValue(%v): %v", v, err)
-	}
-	return raw
 }
 
 func ctxSource() personalcontext.Source {

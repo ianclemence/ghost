@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -111,13 +110,6 @@ func parseLoopArgs(text string) (time.Duration, string) {
 	}
 
 	return loopDefaultInterval, text
-}
-
-func computeDigest(response string) string {
-	normalized := strings.TrimSpace(response)
-	normalized = regexp.MustCompile(`\s+`).ReplaceAllString(normalized, " ")
-	h := sha256.Sum256([]byte(normalized))
-	return fmt.Sprintf("%x", h[:8])
 }
 
 func loopsHandler(ctx context.Context, req Request, rt *Runtime) error {

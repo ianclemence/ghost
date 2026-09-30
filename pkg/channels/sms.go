@@ -248,22 +248,3 @@ func (c *SMSChannel) downloadMMSAudio(m smsMedia) string {
 func (c *SMSChannel) SendSMS(ctx context.Context, to, body string) error {
 	return c.sendViaAPI(ctx, to, body)
 }
-
-func (c *SMSChannel) parseMetadata(msg bus.OutboundMessage) map[string]string {
-	metadata := make(map[string]string)
-	if msg.Metadata != nil {
-		for k, v := range msg.Metadata {
-			if s, ok := v.(string); ok {
-				metadata[k] = s
-			}
-		}
-	}
-	return metadata
-}
-
-func (c *SMSChannel) formatMessage(content string) string {
-	if len(content) > 1600 {
-		return content[:1600] + "..."
-	}
-	return content
-}

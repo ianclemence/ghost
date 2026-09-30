@@ -3,6 +3,29 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.96] - 2026-10-01
+
+- **Recurring reminders and routines understand how people talk.** "Remind me
+  every weekday at 8am to take my vitamins" used to be misread (Ghost asked
+  "what should happen?" about a request that already said). It now understands
+  weekdays, weekends, several days ("Mondays and Thursdays"), "every morning",
+  "8am every day", "every other day", "every 3 days", "hourly" and more, and
+  says the time back, including one it assumed. The confirmation is addressed to
+  you ("take your vitamins"), a question waiting for an answer no longer swallows
+  an unrelated new request, and "give me a brief" counts as an ask.
+- **A recurring reminder is delivered like a one-off one.** No AI call: it
+  arrives on time even if the model provider is down, and says so if the Pod was
+  off. A routine's result carries a "Routine" label.
+- **Clearer prompts.** Ghost's core instructions were rewritten: they had
+  corrupted text and a stray template marker, and "be professional" fought the
+  warm voice everywhere else. New rules: say what it can't do without being asked,
+  know its own situation, handle rudeness and distress well, and take corrections.
+- **A cleaner build.** About thirty unused functions and one unused file were
+  removed after checking each against every place it could be used.
+- The app labels reminders, notices, alerts and routine results and shows them the
+  moment they happen (it previously only saw them after a reload), true-black dark
+  mode and a new palette, and a smoother approval card.
+
 ## [0.24.95] - 2026-10-01
 
 - **Updates and backups can no longer be stopped by a private file.** Ghost's

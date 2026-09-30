@@ -92,10 +92,6 @@ func lineCount(t *testing.T, path string) int {
 	return strings.Count(string(fileBytes(t, path)), "\n")
 }
 
-func entriesPath(ws string) string {
-	return filepath.Join(ws, EntriesDir, EntriesFile)
-}
-
 // A. Create + reload: an entry persists and is reconstructed identically by a
 // fresh store.
 func TestCreateAndReload(t *testing.T) {

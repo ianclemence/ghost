@@ -70,18 +70,6 @@ func (b *ResultBudget) spillToFile(content string) string {
 	return fullPath
 }
 
-func (b *ResultBudget) FormatForLLM(trimmed string, spillPath *string) string {
-	if spillPath == nil {
-		return trimmed
-	}
-
-	return fmt.Sprintf(
-		"%s\n\n[Note: Full result available at %s. Use read_file to access the complete output if needed.]",
-		trimmed,
-		*spillPath,
-	)
-}
-
 func (b *ResultBudget) EstimateTokens(text string) int {
 	return len(text) / 4
 }

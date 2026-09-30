@@ -64,11 +64,14 @@ func TestRoutineClarifyTask(t *testing.T) {
 	if !ok || !strings.Contains(ans2, "Say yes to confirm") {
 		t.Fatalf("must propose after task: %q", ans2)
 	}
-	// The timing was never parseable, so confirming fails honestly
-	// instead of creating a broken routine.
+	// "every Monday" is a complete schedule (the time defaults to 9 AM and is
+	// stated back), so confirming creates it.
+	if !strings.Contains(ans2, "every monday at 9 AM") {
+		t.Fatalf("the assumed time must be stated back: %q", ans2)
+	}
 	ans3, ok := al.tryRoutineTurn(routineMsg("sess-c2", "yes"))
-	if !ok || !strings.Contains(ans3, "couldn't schedule") {
-		t.Fatalf("unclear timing must fail honestly: %q", ans3)
+	if !ok || !strings.Contains(ans3, "Done.") {
+		t.Fatalf("a complete schedule confirms: %q", ans3)
 	}
 }
 
@@ -160,5 +163,37 @@ func TestProposalTaskQuestionFallsThrough(t *testing.T) {
 	// Genuine task content still completes the proposal.
 	if _, ok := al.tryRoutineTurn(routineMsg("sess-q", "review my finances")); !ok {
 		t.Fatal("real task must still complete the proposal")
+	}
+}
+
+func TestWeekdayRoutineWithATaskIsUnderstood(t *testing.T) {
+	al := testRoutineLoop(t)
+	ans, ok := al.tryRoutineTurn(routineMsg("sess-w", "remind me every weekday at 8am to take my vitamins"))
+	if !ok || strings.Contains(ans, "What should happen") {
+		t.Fatalf("the task was in the sentence, it must not be asked for again: %q", ans)
+	}
+	if !strings.Contains(ans, "your vitamins") || strings.Contains(ans, "my vitamins") || !strings.Contains(ans, "every weekday at 8 AM") {
+		t.Fatalf("the confirmation is addressed to the owner: %q", ans)
+	}
+	if done, ok := al.tryRoutineTurn(routineMsg("sess-w", "yes")); !ok || !strings.Contains(done, "Done.") {
+		t.Fatalf("confirm: %q", done)
+	}
+}
+
+// A question waiting for a task must not swallow a new, unrelated schedule.
+func TestNewScheduleIsNotTheAnswerToAnOldQuestion(t *testing.T) {
+	al := testRoutineLoop(t)
+	if _, ok := al.tryRoutineTurn(routineMsg("sess-h", "remind me every day")); !ok {
+		t.Fatal("a bare ask clarifies")
+	}
+	ans, ok := al.tryRoutineTurn(routineMsg("sess-h", "every Monday at 8am give me a short brief of my week and the weather"))
+	if !ok {
+		t.Fatal("a delegation with a schedule is handled")
+	}
+	if strings.Contains(ans, "every day") || strings.Contains(strings.ToLower(ans), "remind you to every") {
+		t.Fatalf("the old question leaked into the new request: %q", ans)
+	}
+	if !strings.Contains(ans, "give you a short brief of your week") || !strings.Contains(ans, "monday at 8 AM") {
+		t.Fatalf("addressed to the owner with the right schedule: %q", ans)
 	}
 }

@@ -11,6 +11,7 @@ package agent
 // owns those.
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -75,7 +76,12 @@ func isStateQuestion(text string) bool {
 func hasSchedulingAsk(text string) bool {
 	lower := strings.ToLower(text)
 	for _, ask := range []string{"remind", "notify", "alert", "wake", "nudge",
-		"schedul", "recur", "set up", "don't forget", "don't let me forget", "make sure"} {
+		"schedul", "recur", "set up", "don't forget", "don't let me forget", "make sure",
+		// Asks aimed at Ghost as much as "remind me" is: "every Monday give me
+		// a brief". "me" makes them a request to Ghost, not a description of
+		// the owner's own habits.
+		"give me", "send me", "tell me", "brief me", "update me", "email me", "message me",
+		"text me", "ping me", "let me know", "show me", "read me", "summarize"} {
 		if strings.Contains(lower, ask) {
 			return true
 		}
@@ -119,14 +125,23 @@ func (al *AgentLoop) tryRoutineTurn(msg bus.InboundMessage) (string, bool) {
 			store.Cancel(pending.ID)
 			return al.proposeRoutine(store, nil, msg, intent.Task, intent)
 		}
-		// Awaiting-task proposal: the reply IS the task — unless it
-		// is a question about existing state ("what are my goals?"),
-		// which must fall through to the model instead of becoming
-		// a garbled reminder ("remind you to What are my goals?").
-		if pending.MissingField == "task" && len(text) > 2 && !isStateQuestion(text) {
-			return al.proposeRoutine(store, pending, msg, text)
+		// Awaiting-task proposal: the reply IS the task, unless it is a
+		// question about existing state ("what are my goals?") or is itself
+		// a new schedule ("every Monday at 8 give me a brief"): a new request
+		// is not the answer to the old question, and gluing the two together
+		// produced "remind you to every Monday at 8am give me a brief every
+		// weekday at 8am".
+		if pending.MissingField == "task" {
+			if routines.ParseIntent(text, time.Now(), routineTimezone(msg)).IsRoutine {
+				store.Cancel(pending.ID) // the old question is dropped; this is a fresh request
+			} else if len(text) > 2 && !isStateQuestion(text) {
+				return al.proposeRoutine(store, pending, msg, text)
+			} else {
+				return "", false
+			}
+		} else {
+			return "", false
 		}
-		return "", false
 	}
 
 	// 2. Fresh intent. A recurring pattern alone is never enough: without
@@ -178,9 +193,14 @@ func (al *AgentLoop) proposeRoutine(store *skills.PendingStore, old *skills.Pend
 	if old != nil {
 		store.Cancel(old.ID)
 	}
+	delegated := isDelegation(intent.Task)
+	instruction := "remind me to " + intent.Task
+	if delegated {
+		instruction = intent.Task // already an instruction for Ghost
+	}
 	cont := map[string]string{
 		"name":          truncateRoutine(intent.Task, 60),
-		"instruction":   "remind me to " + intent.Task,
+		"instruction":   instruction,
 		"timezone":      ifEmpty(intent.Timezone, tz),
 		"schedule_text": intent.ScheduleText,
 		"kind":          string(intent.Schedule.Kind),
@@ -196,7 +216,10 @@ func (al *AgentLoop) proposeRoutine(store *skills.PendingStore, old *skills.Pend
 	if clause == "" {
 		clause = "on that schedule"
 	}
-	question := "I'll remind you to " + intent.Task + " " + clause + ". Say yes to confirm."
+	question := "I'll remind you to " + toSecondPerson(intent.Task) + " " + clause + ". Say yes to confirm."
+	if delegated {
+		question = strings.ToUpper(clause[:1]) + clause[1:] + " I'll " + toSecondPerson(intent.Task) + ". Say yes to confirm."
+	}
 	store.Create(msg.SessionKey, routinePendingCapability, "routines", "",
 		question, msg.Content, 0, cont)
 	return question, true
@@ -284,7 +307,10 @@ func (al *AgentLoop) confirmRoutineProposal(store *skills.PendingStore, pending 
 	if clause == "" {
 		clause = "on schedule"
 	}
-	return "Done. I'll remind you to " + routineTask(instruction) + " " + clause + ".", true
+	if isDelegation(instruction) {
+		return "Done. " + strings.ToUpper(clause[:1]) + clause[1:] + " I'll " + toSecondPerson(instruction) + ".", true
+	}
+	return "Done. I'll remind you to " + toSecondPerson(routineTask(instruction)) + " " + clause + ".", true
 }
 
 func ifEmpty(s, fallback string) string {
@@ -372,4 +398,48 @@ func findMatchingRoutine(svc *routines.Service, ghostID, instruction string, sch
 		}
 	}
 	return nil
+}
+
+// delegationVerbs start a task that is an instruction to Ghost itself rather
+// than something for the owner to do.
+var delegationVerbs = []string{
+	"give me", "send me", "tell me", "brief me", "update me", "email me", "message me",
+	"text me", "ping me", "let me know", "show me", "read me", "summarize", "summarise",
+	"check ", "prepare ", "find ", "look up ", "pull up ", "compile ", "draft ",
+}
+
+// isDelegation reports whether a task is a job for Ghost ("give me a brief of
+// my week") rather than a nudge for the owner ("take my vitamins").
+func isDelegation(task string) bool {
+	lower := strings.ToLower(strings.TrimSpace(task))
+	for _, v := range delegationVerbs {
+		if strings.HasPrefix(lower, v) {
+			return true
+		}
+	}
+	return false
+}
+
+var secondPersonSwaps = []struct {
+	re *regexp.Regexp
+	to string
+}{
+	{regexp.MustCompile(`(?i)\bmyself\b`), "yourself"},
+	{regexp.MustCompile(`(?i)\bmine\b`), "yours"},
+	{regexp.MustCompile(`(?i)\bmy\b`), "your"},
+	{regexp.MustCompile(`(?i)\bme\b`), "you"},
+	{regexp.MustCompile(`\bI'm\b`), "you're"},
+	{regexp.MustCompile(`\bI'll\b`), "you'll"},
+	{regexp.MustCompile(`\bI've\b`), "you've"},
+	{regexp.MustCompile(`\bI\b`), "you"},
+}
+
+// toSecondPerson says the owner's words back to them: "take my vitamins"
+// becomes "take your vitamins". Ghost used to echo the owner's own "my" in a
+// sentence addressed to them.
+func toSecondPerson(s string) string {
+	for _, sw := range secondPersonSwaps {
+		s = sw.re.ReplaceAllString(s, sw.to)
+	}
+	return s
 }

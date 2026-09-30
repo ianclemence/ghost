@@ -986,11 +986,6 @@ func failRoutineRun(t *testing.T, svc *routines.Service, id string) {
 	}
 }
 
-func scheduledDelete(t *testing.T, al *AgentLoop, id string) error {
-	t.Helper()
-	return scheduled.NewStore(al.DB()).Delete(id)
-}
-
 // A verified outcome must settle the obligation it was about. Regression:
 // the reminder path returns "verified" (it reads the created row back), and a
 // settlement switch that only knew "succeeded" left the promise open forever.
