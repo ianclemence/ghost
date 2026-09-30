@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -22,6 +23,7 @@ import (
 
 // fakeRuntime records calls and simulates a runtime for TUI tests.
 type fakeRuntime struct {
+	media    [][]string
 	model    string
 	presets  []string
 	injected []string // steering messages queued while working
@@ -128,6 +130,7 @@ func (f *fakeRuntime) SwitchContext(_, id string) error {
 
 func (f *fakeRuntime) ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string, media []string, onChunk func(string), onToolCall func(string, string)) (string, error) {
 	f.turns = append(f.turns, content)
+	f.media = append(f.media, media)
 	if onChunk != nil {
 		onChunk("ok")
 	}
@@ -824,7 +827,7 @@ func TestTUIPaletteOrderMatchesHelp(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/")
-	want := []string{"help", "session", "model", "context", "memory", "routines", "tasks", "task", "ideas", "idea", "thread", "main", "rewind", "details", "clear", "quit"}
+	want := []string{"help", "session", "model", "context", "memory", "routines", "tasks", "task", "ideas", "idea", "thread", "main", "attach", "files", "rewind", "details", "clear", "quit"}
 	items := m.paletteMatches()
 	if len(items) != len(want) {
 		t.Fatalf("palette has %d commands, want %d", len(items), len(want))
@@ -2305,5 +2308,52 @@ func TestTUIBackspaceDeletesPlaceholderWhole(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if got := m.input.Value(); got != "look: " {
 		t.Fatalf("backspace must delete the whole placeholder, got %q", got)
+	}
+}
+
+// /attach stages a file, the next send carries it, and it is then forgotten so
+// it isn't re-sent with every later message.
+func TestTUIAttachStagesAndSendsOnce(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	path := filepath.Join(t.TempDir(), "lease agreement.pdf")
+	os.WriteFile(path, []byte("%PDF-1.4 test"), 0o644)
+
+	m.runCommand("/attach '" + path + "'")
+	if len(m.attachments) != 1 {
+		t.Fatalf("a quoted (dragged-in) path must stage one file, got %v", m.attachments)
+	}
+	m.send("what does clause 4 say?")
+	if !waitForTurns(f, 1) || len(f.media) == 0 || len(f.media[0]) != 1 || filepath.Base(f.media[0][0]) != "lease agreement.pdf" {
+		t.Fatalf("the turn must carry the staged file, got %v", f.media)
+	}
+	if len(m.attachments) != 0 {
+		t.Fatal("staged files must be cleared once sent")
+	}
+}
+
+func TestTUIAttachRefusesWhatCannotBeSent(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	dir := t.TempDir()
+	empty := filepath.Join(dir, "empty.txt")
+	os.WriteFile(empty, nil, 0o644)
+	for _, p := range []string{"/attach " + dir, "/attach " + empty, "/attach /no/such/file.pdf"} {
+		m.runCommand(p)
+	}
+	if len(m.attachments) != 0 {
+		t.Fatalf("folders, empty and missing files must not be staged: %v", m.attachments)
+	}
+}
+
+func TestCleanDroppedPath(t *testing.T) {
+	for in, want := range map[string]string{
+		`'/home/u/My File.pdf'`: "/home/u/My File.pdf",
+		`"/home/u/a.pdf"`:       "/home/u/a.pdf",
+		`/home/u/My\ File.pdf`:  "/home/u/My File.pdf",
+	} {
+		if got := cleanDroppedPath(in); got != want {
+			t.Errorf("%q -> %q, want %q", in, got, want)
+		}
 	}
 }

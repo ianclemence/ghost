@@ -18,10 +18,11 @@ The user interacts with Ghost in ordinary language — through a chat channel,
 the Web Console, or a paired device. They do not issue structured commands to
 internal machinery.
 
-A paired phone with Ghost Mini downloaded also works while the Pod is
-unreachable: it answers and collects (`remember ...` notes, queued messages),
-then syncs on reconnect. It never executes actions offline — routines, home
-control, and full memory stay on the Pod.
+A paired phone is how the user reaches the Pod; it carries no model of its
+own. While the Pod is unreachable the app says so plainly: the last
+conversation stays readable and new messages wait in an outbox, going out in
+order when the Pod returns. Nothing executes on the phone — routines, home
+control, memory, and every action stay on the Pod.
 
 Examples:
 

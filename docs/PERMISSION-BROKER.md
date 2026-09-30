@@ -51,8 +51,17 @@ Execution (only on ALLOW)
 | **ASK** | Pause and request the user's decision |
 | **DENY** | Refuse; do not execute |
 
-An `ASK` produces a durable, resumable approval request. The user's answer is
-recorded and, when it is "always", stored as a scoped standing grant.
+An `ASK` produces a durable, resumable approval request. The user answers in
+one of four ways:
+
+| Answer | Effect |
+|---|---|
+| **Allow once** | This one execution. A second reply finds nothing to consume. |
+| **Allow for this task** | A scoped grant that follows the work: each use extends it by 10 minutes, it ends after 10 quiet minutes, and it hard-stops one hour after it was given. The runtime has no task identifier to bind to, so "task" means "while Ghost keeps using this". |
+| **Always allow** | A scoped standing grant (see Grants). |
+| **Deny** | Refuse, and remember the refusal for this scope. |
+
+A task grant never shortens a standing grant that already covers the action.
 
 ## Risk levels
 

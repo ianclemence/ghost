@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -215,5 +217,25 @@ func TestExtractDocxText(t *testing.T) {
 	}
 	if text != "Hello World\nSecond paragraph" {
 		t.Fatalf("unexpected text: %s", text)
+	}
+}
+
+func TestDocParserReadsPDFsAndPlainFormats(t *testing.T) {
+	if _, err := exec.LookPath("pdftotext"); err != nil {
+		t.Skip("pdftotext not installed")
+	}
+	ws := t.TempDir()
+	pdf := "%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+		"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 100]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n" +
+		"4 0 obj<</Length 44>>stream\nBT /F1 18 Tf 20 50 Td (Quarterly total 4210) Tj ET\nendstream endobj\n" +
+		"5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R/Size 6>>\n%%EOF\n"
+	os.WriteFile(filepath.Join(ws, "report.pdf"), []byte(pdf), 0644)
+	os.WriteFile(filepath.Join(ws, "list.csv"), []byte("a,b\n1,2\n"), 0644)
+	tool := NewDocParserTool(ws)
+	for file, want := range map[string]string{"report.pdf": "4210", "list.csv": "a,b"} {
+		res := tool.Execute(context.Background(), map[string]interface{}{"file_path": file})
+		if res.IsError || !strings.Contains(res.ForLLM+res.ForUser, want) {
+			t.Errorf("%s: want %q, got %+v", file, want, res)
+		}
 	}
 }

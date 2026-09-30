@@ -129,6 +129,27 @@ A provider failure is not silently converted into success, and it is not
 necessarily a permanent capability failure — the resolver may select another
 available implementation.
 
+## Secrets never reach the model
+
+Credentials live in the vault and are used inside the tool that needs them
+(the browser fills a saved login without the model ever seeing the password).
+As a last line of defence the registry scrubs every tool result — the text the
+model reads, the text shown to the owner, and the evidence — of every secret
+value the vault holds (API keys, channel tokens, website-login passwords),
+so a tool that echoes a page, prints a file or logs a request still cannot
+carry one out. This is by exact value, on top of the shape-based masking in
+`pkg/redact`.
+
+## Files the owner sends
+
+An attachment is stored as an upload in the workspace (`uploads/<id>/<name>`)
+with its type detected from the bytes, never from the sender's claim. Ghost
+opens it with the ordinary workspace-confined tools (`doc_parser` for
+documents and spreadsheets, `read_file` for text, `video_frames` for video,
+the model itself for images); files Ghost cannot open are declared unreadable
+rather than guessed at. Uploads are listable and deletable from every surface
+and leave on their own after 30 days. Raw voice audio is never stored.
+
 ## Related concepts
 
 See [Evidence](EVIDENCE.md) for how outcomes are proven, and

@@ -66,6 +66,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/telemetry"
 	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/turnlog"
+	"github.com/ianclemence/ghost/pkg/uploads"
 	"github.com/ianclemence/ghost/pkg/utils"
 	"github.com/ianclemence/ghost/pkg/voice"
 )
@@ -820,7 +821,7 @@ type internalAPIRequest struct {
 	RequestID  string            `json:"request_id,omitempty"`
 	Content    string            `json:"content"`
 	SessionKey string            `json:"session_key"`
-	Media      []string          `json:"media,omitempty"`
+	Media      []MediaItem       `json:"media,omitempty"`
 	MediaItems []MediaItem       `json:"media_items,omitempty"`
 	Channel    string            `json:"channel,omitempty"`
 	ChatID     string            `json:"chat_id,omitempty"`
@@ -831,6 +832,24 @@ type MediaItem struct {
 	Base64   string `json:"base64"`
 	MimeType string `json:"mime_type,omitempty"`
 	Filename string `json:"filename,omitempty"`
+}
+
+// UnmarshalJSON accepts an attachment as a bare base64 string (the original
+// wire shape) or as an object. The phone app sends objects under "media";
+// decoding them into strings rejected every photo with a 400.
+func (m *MediaItem) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		*m = MediaItem{Base64: s}
+		return nil
+	}
+	type plain MediaItem
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*m = MediaItem(p)
+	return nil
 }
 
 type ExecRequest struct {
@@ -2773,8 +2792,17 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			return
 		}
 
+		// A chat body carries attachments as base64 (about a third larger than
+		// the file), so cap it well above the largest allowed upload but far
+		// below what could exhaust a Pod's memory.
+		r.Body = http.MaxBytesReader(w, r.Body, chatBodyLimit)
 		var req internalAPIRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			var tooBig *http.MaxBytesError
+			if errors.As(err, &tooBig) {
+				http.Error(w, fmt.Sprintf(`{"error":"That attachment is too large. The limit is %d MB per file."}`, uploads.MaxBytes>>20), http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, fmt.Sprintf(`{"error":"invalid request: %s"}`, err.Error()), http.StatusBadRequest)
 			return
 		}
@@ -2862,15 +2890,23 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		})
 
 		// Media handling
+		// Attachments are stored as real uploads (real name, detected type,
+		// listable and deletable), not anonymous temp files. A refused
+		// attachment is said out loud instead of silently dropped.
 		mediaPaths := []string{}
+		wsDir, _ := resolveApiWorkspace(agentLoop.Config())
 		for _, m := range req.Media {
-			if tmp, err := saveBase64ToTemp(m); err == nil {
-				mediaPaths = append(mediaPaths, tmp)
+			if it, err := storeUploadedBase64(wsDir, m.Base64, m.Filename, m.MimeType, req.Channel); err == nil {
+				mediaPaths = append(mediaPaths, filepath.Join(wsDir, it.Path))
+			} else {
+				sw.event("I couldn't take that attachment: " + err.Error() + "\n\n")
 			}
 		}
 		for _, item := range req.MediaItems {
-			if tmp, err := saveBase64ToTemp(item.Base64); err == nil {
-				mediaPaths = append(mediaPaths, tmp)
+			if it, err := storeUploadedBase64(wsDir, item.Base64, item.Filename, item.MimeType, req.Channel); err == nil {
+				mediaPaths = append(mediaPaths, filepath.Join(wsDir, it.Path))
+			} else {
+				sw.event("I couldn't take that attachment: " + err.Error() + "\n\n")
 			}
 		}
 
@@ -4057,6 +4093,47 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			},
 		})
 	}))
+
+	// ── 6c. Files: what the owner has sent to Ghost ─────────────────────
+	// Listable and deletable from every surface. Deleting removes the bytes and
+	// the metadata; nothing else keeps a copy of an upload.
+	mux.HandleFunc("/v1/files", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		ws, _ := resolveApiWorkspace(agentLoop.Config())
+		items := uploads.List(ws)
+		if items == nil {
+			items = []uploads.Item{}
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "files": items, "retention_days": int(uploadRetention() / (24 * time.Hour)),
+		})
+	}))
+	mux.HandleFunc("/v1/files/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/files/"), "/")
+		ws, _ := resolveApiWorkspace(agentLoop.Config())
+		switch r.Method {
+		case http.MethodDelete:
+			if err := uploads.Delete(ws, id); err != nil {
+				jsonError(w, http.StatusNotFound, "not_found", "That file isn't stored on this Ghost.")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		}
+	}))
+	go func() {
+		ws, _ := resolveApiWorkspace(agentLoop.Config())
+		for {
+			if n := uploads.Purge(ws, uploadRetention()); n > 0 {
+				log.Printf("uploads: removed %d file(s) older than the retention window", n)
+			}
+			time.Sleep(time.Hour)
+		}
+	}()
 
 	// ── 6d. Voice: push-to-talk into the SAME runtime ───────────────────	// Voice is a channel, not a brain: audio → transcript → canonical
 	// inbound → agent → response → optional speech. Raw audio is never
@@ -5506,22 +5583,35 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	}
 }
 
-func saveBase64ToTemp(b64 string) (string, error) {
-	// Strip data URL prefix if present (e.g., data:image/png;base64,)
-	if idx := strings.Index(b64, ","); idx != -1 {
+// uploadRetention is how long an upload is kept unless the owner deletes it.
+func uploadRetention() time.Duration {
+	if d, err := strconv.Atoi(strings.TrimSpace(os.Getenv("GHOST_UPLOAD_RETENTION_DAYS"))); err == nil && d > 0 {
+		return time.Duration(d) * 24 * time.Hour
+	}
+	return uploads.DefaultRetention
+}
+
+// chatBodyLimit bounds one chat request: the largest upload as base64, plus
+// room for the message and a few attachments' metadata.
+const chatBodyLimit = int64(uploads.MaxBytes)*4/3*3 + 1<<20
+
+// storeUploadedBase64 decodes an attachment (optionally a data: URL) and
+// stores it as an upload in the workspace.
+func storeUploadedBase64(workspace, b64, name, mime, source string) (uploads.Item, error) {
+	if idx := strings.Index(b64, ","); idx != -1 && strings.HasPrefix(b64, "data:") {
+		if mime == "" {
+			mime = strings.TrimPrefix(strings.SplitN(b64[:idx], ";", 2)[0], "data:")
+		}
 		b64 = b64[idx+1:]
 	}
-	data, err := base64.StdEncoding.DecodeString(b64)
+	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(b64))
 	if err != nil {
-		return "", err
+		return uploads.Item{}, errors.New("the file didn't arrive intact")
 	}
-	tmp, err := os.CreateTemp("", "ghost-media-*.bin")
-	if err != nil {
-		return "", err
+	if source == "" {
+		source = "mobile"
 	}
-	defer tmp.Close()
-	tmp.Write(data)
-	return tmp.Name(), nil
+	return uploads.Save(workspace, data, name, mime, source)
 }
 
 // buildCapabilityResolver constructs the runtime-owned capability→

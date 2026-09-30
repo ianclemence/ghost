@@ -17,11 +17,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -226,6 +228,54 @@ func gatewayErrorMessage(body []byte) string {
 		return env.Error.Message
 	}
 	return env.Error.Kind
+}
+
+// remoteFile mirrors one entry of GET /v1/files.
+type remoteFile struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Kind      string    `json:"kind"`
+	Size      int64     `json:"size"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListFiles returns the uploads stored on the daemon, newest first.
+func (g *gatewayRuntime) ListFiles() ([]remoteFile, error) {
+	req, err := http.NewRequest(http.MethodGet, g.baseURL+"/v1/files", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Client-Type", "cli")
+	resp, err := g.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Files []remoteFile `json:"files"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Files, nil
+}
+
+// DeleteFile removes one stored upload from the daemon.
+func (g *gatewayRuntime) DeleteFile(id string) error {
+	req, err := http.NewRequest(http.MethodDelete, g.baseURL+"/v1/files/"+id, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Client-Type", "cli")
+	resp, err := g.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("the daemon answered %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func (g *gatewayRuntime) post(ctx context.Context, path string, body interface{}, sessionKey string) ([]byte, int, error) {
@@ -839,6 +889,21 @@ func (g *gatewayRuntime) ProcessDirectWithChannel(ctx context.Context, content, 
 	}
 	if tz := localZoneName(); tz != "" {
 		body["metadata"] = map[string]string{"timezone": tz}
+	}
+	// Attachments travel with the turn; the daemon detects their type and
+	// stores them as uploads.
+	if len(media) > 0 {
+		items := make([]map[string]string, 0, len(media))
+		for _, p := range media {
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return "", fmt.Errorf("couldn't read %s: %w", filepath.Base(p), err)
+			}
+			items = append(items, map[string]string{
+				"base64": base64.StdEncoding.EncodeToString(data), "filename": filepath.Base(p),
+			})
+		}
+		body["media_items"] = items
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {

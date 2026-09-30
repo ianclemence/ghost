@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/uploads"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -610,15 +611,7 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 					},
 				})
 			} else {
-				// Add a very explicit tag for non-image files to grab the LLM's attention
-				tag := fmt.Sprintf("NEW ATTACHMENT: %s (%s).", filepath.Base(path), mimeType)
-				if strings.Contains(mimeType, "pdf") || strings.Contains(mimeType, "word") || strings.Contains(mimeType, "officedocument") {
-					tag += " This is a complex binary document. Please use the 'summarize' skill (e.g., via the shell tool) to extract its content instead of trying to read it directly with 'read_file'."
-				} else {
-					tag += " Please use the read_file tool to examine its contents if you need to describe or analyze it."
-				}
-				tag += fmt.Sprintf(" Full path: %s", path)
-				fileTags = append(fileTags, tag)
+				fileTags = append(fileTags, cb.attachmentTag(path, data))
 			}
 		}
 
@@ -632,6 +625,34 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 	messages = append(messages, userMsg)
 
 	return messages
+}
+
+// attachmentTag tells the model what an attached file is and which tool opens
+// it. The path is workspace-relative, which is exactly what the confined file
+// tools accept: an attachment must never require reaching outside the
+// workspace to read it.
+func (cb *ContextBuilder) attachmentTag(path string, data []byte) string {
+	name := filepath.Base(path)
+	mime := uploads.Sniff(data, name, "")
+	kind := uploads.Kind(name, mime)
+	ref := path
+	if rel, err := filepath.Rel(cb.workspace, path); err == nil && !strings.HasPrefix(rel, "..") {
+		ref = filepath.ToSlash(rel)
+	}
+	tag := fmt.Sprintf("NEW ATTACHMENT: %s (%s, %s), stored at %s.", name, kind, mime, ref)
+	switch kind {
+	case "document", "spreadsheet":
+		tag += fmt.Sprintf(" Read it with the doc_parser tool (file_path %q); it extracts the text.", ref)
+	case "text":
+		tag += fmt.Sprintf(" Read it with read_file (path %q).", ref)
+	case "video":
+		tag += fmt.Sprintf(" Look at it with video_frames (video_path %q).", ref)
+	case "audio":
+		tag += " You can't listen to audio files yet. Say so plainly and offer to help another way; do not guess at the contents."
+	default:
+		tag += " You have no tool that opens this kind of file. Say so plainly rather than guessing at its contents."
+	}
+	return tag
 }
 
 func (cb *ContextBuilder) AddToolResult(messages []providers.Message, toolCallID, toolName, result string) []providers.Message {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -91,5 +92,23 @@ func TestFriendlyAgentErrorExplainsBilling(t *testing.T) {
 	// Non-model errors keep their own text.
 	if got := friendlyAgentError(errors.New("tasks store locked")); got != "tasks store locked" {
 		t.Fatalf("non-model error rewritten: %q", got)
+	}
+}
+
+// The phone sends attachments as objects under "media"; the server once
+// decoded that field as strings and rejected every photo. Both shapes decode.
+func TestChatRequestAcceptsBothAttachmentShapes(t *testing.T) {
+	for name, body := range map[string]string{
+		"object": `{"content":"hi","media":[{"base64":"aGk=","mime_type":"image/jpeg"}]}`,
+		"string": `{"content":"hi","media":["aGk="]}`,
+		"items":  `{"content":"hi","media_items":[{"base64":"aGk=","filename":"a.txt"}]}`,
+	} {
+		var r internalAPIRequest
+		if err := json.Unmarshal([]byte(body), &r); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+		if len(r.Media)+len(r.MediaItems) != 1 {
+			t.Errorf("%s: want one attachment, got %+v", name, r)
+		}
 	}
 }

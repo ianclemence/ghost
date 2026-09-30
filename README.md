@@ -133,10 +133,16 @@ sudo reboot
 ```
 
 After reboot, open `http://<pi-ip>` in a browser to complete setup:
-1. Set up Ghost — name yourself, name Ghost, create an owner password
-2. Ghost is ready — you're in the Web Console
-3. Optionally configure AI providers (Ollama, OpenAI, Anthropic, etc.)
-4. Optionally connect your phone by scanning a QR code
+1. Enter the setup code printed on the device, name yourself and Ghost, and
+   create an owner password
+2. Choose what Ghost thinks with: a cloud provider and its API key (checked
+   with the provider before setup finishes), or the Pod itself
+3. Ghost is ready — sign in to the Web Console
+4. Connect your phone: run `ghost pair` for a QR, or use Devices in the console
+
+Setup does not complete until Ghost has an AI it can actually start with, and
+a refused attempt leaves nothing behind, so you can simply correct it and
+retry.
 
 ### How setup works
 
@@ -161,7 +167,7 @@ restarting `ghost-web` invalidates the previous one.
 **Web Console:** the `ghost-web` service runs on port 80 and serves as Ghost's
 persistent control plane — the place where you own, configure, understand, and
 take care of Ghost.
-- **Before setup:** shows the first-run wizard (identity, password, AI, phone pairing)
+- **Before setup:** shows the first-run wizard (setup code, identity, password, the AI to think with)
 - **After setup:** shows a login screen (your owner password) that opens the
   **Web Console** with sections organized around the product:
 
@@ -169,9 +175,11 @@ take care of Ghost.
   - **Home** — is Ghost okay, what has it been doing, does it need you
   - **Routines** — one list for everything Ghost runs for you: recurring instructions (“every Monday at 9…”), reminders, and scheduled tasks. You say it in chat; Ghost infers the shape. (Backed by `/v1/routinefeed`; the internal scheduler and routine models stay unified underneath.)
   - **Memory** — browse, search, and manage what Ghost remembers
+  - **Files** — photos and documents you have sent Ghost, with delete (removes the file itself); kept 30 days unless you delete them first (`GHOST_UPLOAD_RETENTION_DAYS`)
+  - **Approvals** — what Ghost is waiting on; allow once, for this task (lapses after 10 quiet minutes, 1 hour at most), or always
   - **Activity** — what Ghost has done, with the reason each consequential action asked or ran
   - **Intelligence** — local and cloud AI, model management, routing
-  - **Skills** — installed capabilities, enable/disable, install from GitHub
+  - **Abilities** — what Ghost can do, built in and ready; turn any off, or add your own
 
   **Connect** — how Ghost reaches people and services:
   - **Devices** — paired phones, secure QR pairing flow
@@ -322,6 +330,8 @@ automatically, and `ghost status` warns if one is ever found.
 | `/forget` | Forget a belief or session (`/forget <topic>` / `/forget session <id>`) |
 | `/remind` | Set a reminder (`/remind buy milk in 10m`) |
 | `/model` | Show or switch AI model |
+| `/attach <path>` | Terminal only: send a file (PDF, Word, sheet, text, image) with your next message; drag a file in or use `~`. `/attach clear` removes it |
+| `/files` | Terminal only: list the files you have sent; `/files delete <n>` removes one |
 | `/doctor` | Diagnostics |
 | `/status` | System status |
 | `/skills` | List skills |
@@ -610,7 +620,9 @@ Key HTTP endpoints the app uses on port `8766`:
 | `/v1/connected-apps` | GET/POST | Connected services |
 | `/v1/intelligence/config` | GET/POST | AI config (masked keys, routing) |
 | `/v1/ollama/models` + `/v1/ollama/pull` | GET/POST | Local model management |
-| `/v1/voice/turn` | POST | Voice message transcription + reply |
+| `/v1/voice/turn` | POST | Voice message transcription + reply (audio is never stored) |
+| `/v1/files` | GET | Files the owner has sent (name, kind, size, date) |
+| `/v1/files/{id}` | DELETE | Delete one uploaded file and its metadata |
 
 All mobile API endpoints require device credentials (`X-Ghost-Device-ID` +
 `X-Ghost-Credential` headers) unless the request arrives on loopback, which the
@@ -623,12 +635,12 @@ WebSocket messages on `/v1/ws` are broadcast per channel; `mobile` receives
 `progress_event` payloads. The app opens `/v1/ws` without auth headers
 (React Native WebSockets can't set them).
 
-### Offline phone (travel cache)
+### When the Pod is unreachable
 
-With Ghost Mini downloaded, the phone answers and collects (`remember ...`
-notes + queued messages) while the Pod is unreachable, then syncs on
-reconnect. Routines, home control, files, notifications, and full memory stay
-on the Pod. Chat shows where each answer ran: phone vs home Pod.
+The phone carries no model. Offline, the app keeps the last conversation
+readable and holds new messages in an outbox that sends in order when the Pod
+is back. Routines, home control, files, notifications, and memory stay on the
+Pod. Each live reply shows where it ran: on your Pod, or which cloud model.
 
 ---
 

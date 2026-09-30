@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/uploads"
 	"net"
 	"net/url"
 	"os"
@@ -2034,6 +2035,11 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 				// or they are just raw paths here.
 				// For safety, we still do manual cleanup for paths not in media store
 				for _, path := range msg.Media {
+					// An owner's upload is theirs to keep or delete; only
+					// anonymous scratch files are cleaned up here.
+					if uploads.IsStored(al.workspace, path) {
+						continue
+					}
 					_ = os.Remove(path)
 				}
 			}

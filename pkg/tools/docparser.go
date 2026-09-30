@@ -75,9 +75,13 @@ func (t *DocParserTool) Execute(ctx context.Context, args map[string]interface{}
 		format = detectFormat(filePath)
 	}
 
-	if !isAccessible(filePath, t.workspace) {
+	// Resolve against the workspace, not the process's directory: the path an
+	// upload is announced under is workspace-relative.
+	resolved, verr := validatePath(filePath, t.workspace, true)
+	if verr != nil {
 		return ErrorResult("file path is not accessible")
 	}
+	filePath = resolved
 
 	info, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
@@ -96,6 +100,15 @@ func (t *DocParserTool) Execute(ctx context.Context, args map[string]interface{}
 		content, err = t.parseXlsx(filePath)
 	case "ipynb":
 		content, err = t.parseIpynb(filePath)
+	case "pdf":
+		// pandoc cannot read PDF at all; poppler's pdftotext is the reader.
+		content, err = extractPDFText(filePath)
+	case "txt", "csv", "json", "xml":
+		// Plain formats are read as they are. They used to be sent to pandoc as
+		// "-f plain", which is not a pandoc reader, so every one of them failed.
+		var raw []byte
+		raw, err = os.ReadFile(filePath)
+		content = string(raw)
 	default:
 		content, err = convertWithPandoc(filePath, format)
 	}
@@ -503,4 +516,27 @@ func isAccessible(filePath, workspace string) bool {
 	// like "workspace-evil" must not pass a raw prefix check).
 	_, err := validatePath(filePath, workspace, true)
 	return err == nil
+}
+
+// extractPDFText pulls the text layer out of a PDF with pdftotext (poppler),
+// keeping the page layout so tables stay readable. A scanned PDF has no text
+// layer; that is reported instead of returning an empty document as success.
+func extractPDFText(filePath string) (string, error) {
+	bin, err := exec.LookPath("pdftotext")
+	if err != nil {
+		return "", fmt.Errorf("reading PDFs needs poppler-utils (pdftotext), which isn't installed on this Ghost")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), pandocTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, bin, "-layout", "-enc", "UTF-8", filePath, "-").Output()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("reading the PDF timed out after %v", pandocTimeout)
+		}
+		return "", fmt.Errorf("couldn't read that PDF (it may be damaged or password-protected): %w", err)
+	}
+	if strings.TrimSpace(string(out)) == "" {
+		return "", fmt.Errorf("that PDF has no text layer (it looks scanned); I can't read images inside a PDF yet")
+	}
+	return string(out), nil
 }

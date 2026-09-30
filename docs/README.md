@@ -9,8 +9,9 @@ Ghost actually does today. It is written for engineers and architects who need
 to understand where authority lives and why the boundaries are drawn where
 they are.
 
-It holds exactly ten files: this README and the nine documents linked at the
-end — one per layer of the chain below. Nothing else lives here.
+It holds this README, the nine documents linked at the end (one per layer of
+the chain below), and one reference, [Markdown & diagrams](markdown.md), on how
+responses render on every surface. Nothing else lives here.
 
 ---
 
@@ -182,3 +183,5 @@ Read in order for a full picture, or jump to the layer you need.
 - [Evidence](EVIDENCE.md)
 - [Canonical Events](CANONICAL-EVENT.md)
 - [Memory, Activity, Routines & Artifacts](MEMORY-ACTIVITY-ROUTINES-ARTIFACTS.md)
+
+For how responses are rendered on every surface, see [Markdown & diagrams](markdown.md).

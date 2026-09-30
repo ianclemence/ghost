@@ -12,6 +12,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/ianclemence/ghost/pkg/agent"
+	"github.com/ianclemence/ghost/pkg/uploads"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -147,9 +150,11 @@ type agentTUI struct {
 	input textarea.Model
 	// pastes holds the full text behind each collapsed "[Pasted text #N
 	// +L lines]" placeholder in the composer; expanded on send.
-	pastes   map[int]string
-	pasteSeq int
-	entries  []entry
+	pastes map[int]string
+	// attachments are files staged with /attach, sent with the next message.
+	attachments []string
+	pasteSeq    int
+	entries     []entry
 	// entries is a pending buffer, not the transcript: flushScrollback
 	// prints everything pending and drains it (Scout's flushCmds model), so
 	// there is no print cursor that can desync and silently swallow replies.
@@ -799,7 +804,9 @@ func (m *agentTUI) send(text string) tea.Cmd {
 	// A new turn always follows: the owner just acted. The user message is
 	// flushed to the scrollback by Update's flush; the terminal shows it at
 	// the bottom.
-	go m.runTurn(full)
+	media := m.attachments
+	m.attachments = nil
+	go m.runTurn(full, media)
 	return spinnerTick()
 }
 
@@ -820,7 +827,7 @@ func (m *agentTUI) viaFor(s *agent.ServedBy) string {
 	return s.Model + " (" + where + ")"
 }
 
-func (m *agentTUI) runTurn(text string) {
+func (m *agentTUI) runTurn(text string, media []string) {
 	send := func(msg tea.Msg) {
 		if agentProgram != nil {
 			agentProgram.Send(msg)
@@ -838,7 +845,7 @@ func (m *agentTUI) runTurn(text string) {
 		mu.Unlock()
 	})
 	resp, err := m.loop.ProcessDirectWithChannel(
-		ctx, text, m.session, "cli", "direct", nil, chunk, onTool)
+		ctx, text, m.session, "cli", "direct", media, chunk, onTool)
 	mu.Lock()
 	agg, ok := agent.AggregateServedBy(served)
 	mu.Unlock()
@@ -934,6 +941,8 @@ var paletteCommands = []paletteItem{
 	{"idea", "read, accept, or dismiss one (/idea accept 1)"},
 	{"thread", "open a side thread"},
 	{"main", "return to the shared conversation"},
+	{"attach", "send a file with your next message (/attach ~/lease.pdf)"},
+	{"files", "files you have sent Ghost; /files delete 2 removes one"},
 	{"rewind", "edit and resend last message"},
 	{"details", "toggle tool step details"},
 	{"clear", "clear the screen"},
@@ -1363,6 +1372,10 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		return m, m.showMemory(args)
 	case "context":
 		m.handleContext(args)
+	case "attach":
+		m.attach(strings.TrimSpace(strings.TrimPrefix(line, fields[0])))
+	case "files":
+		m.files(args)
 	case "rewind":
 		m.rewind()
 	case "routines":
@@ -3889,6 +3902,8 @@ func agentHelpText() string {
 		"  /idea <n>          read one; /idea <accept|dismiss> <n> decides",
 		"  /thread            open a side thread (a tangent, not the main one)",
 		"  /main              return to the shared conversation",
+		"  /attach <path>     send a file with your next message (PDF, Word, sheet, text, image)",
+		"  /files             files you have sent; /files delete <n> removes one",
 		"  /rewind            put the last message back in the editor",
 		"  /details           toggle tool step details",
 		"  /clear             clear the screen (keeps the conversation)",
@@ -3905,4 +3920,118 @@ func agentHelpText() string {
 		"  Ctrl+O             toggle tool detail",
 		"  PgUp/PgDn          scroll transcript",
 	}, "\n")
+}
+
+// attach stages a local file to go with the next message. The path may be
+// dragged in from a file manager (quoted or backslash-escaped) or start with ~.
+func (m *agentTUI) attach(arg string) {
+	if arg == "" || arg == "list" {
+		if len(m.attachments) == 0 {
+			m.append(entry{kind: entryNotice, text: "Nothing attached. /attach <path> stages a file for your next message."})
+			return
+		}
+		var b strings.Builder
+		for _, p := range m.attachments {
+			b.WriteString("attached: " + filepath.Base(p) + "\n")
+		}
+		m.append(entry{kind: entryNotice, text: strings.TrimRight(b.String(), "\n") + "\n/attach clear removes them"})
+		return
+	}
+	if arg == "clear" {
+		m.attachments = nil
+		m.append(entry{kind: entryNotice, text: "attachments cleared"})
+		return
+	}
+	path := cleanDroppedPath(arg)
+	st, err := os.Stat(path)
+	switch {
+	case err != nil:
+		m.append(entry{kind: entryError, text: "can't find " + path})
+		return
+	case st.IsDir():
+		m.append(entry{kind: entryError, text: path + " is a folder; attach a file"})
+		return
+	case st.Size() > uploads.MaxBytes:
+		m.append(entry{kind: entryError, text: fmt.Sprintf("%s is %d MB; the limit is %d MB", filepath.Base(path), st.Size()>>20, uploads.MaxBytes>>20)})
+		return
+	case st.Size() == 0:
+		m.append(entry{kind: entryError, text: filepath.Base(path) + " is empty"})
+		return
+	}
+	abs, _ := filepath.Abs(path)
+	m.attachments = append(m.attachments, abs)
+	m.append(entry{kind: entryNotice, text: fmt.Sprintf("attached: %s (%s). It goes with your next message.", filepath.Base(abs), humanFileSize(st.Size()))})
+}
+
+// files lists what the owner has sent Ghost and deletes on request.
+func (m *agentTUI) files(args []string) {
+	fl, ok := m.loop.(interface {
+		ListFiles() ([]remoteFile, error)
+		DeleteFile(id string) error
+	})
+	if !ok {
+		m.append(entry{kind: entryNotice, text: "Files are kept by the Ghost daemon; this terminal isn't connected to one."})
+		return
+	}
+	list, err := fl.ListFiles()
+	if err != nil {
+		m.append(entry{kind: entryError, text: "files unavailable: " + friendlyAgentError(err)})
+		return
+	}
+	if len(args) >= 2 && args[0] == "delete" {
+		n, convErr := strconv.Atoi(args[1])
+		if convErr != nil || n < 1 || n > len(list) {
+			m.append(entry{kind: entryError, text: "no file number " + args[1] + " (see /files)"})
+			return
+		}
+		if err := fl.DeleteFile(list[n-1].ID); err != nil {
+			m.append(entry{kind: entryError, text: "couldn't delete: " + friendlyAgentError(err)})
+			return
+		}
+		m.append(entry{kind: entryNotice, text: "deleted " + list[n-1].Name})
+		return
+	}
+	if len(list) == 0 {
+		m.append(entry{kind: entryNotice, text: "No files. /attach <path> sends Ghost one."})
+		return
+	}
+	var b strings.Builder
+	for i, f := range list {
+		fmt.Fprintf(&b, "%2d  %-32s %-11s %8s  %s\n", i+1, truncateName(f.Name, 32), f.Kind, humanFileSize(f.Size), f.CreatedAt.Local().Format("Jan 2"))
+	}
+	m.append(entry{kind: entryNotice, text: strings.TrimRight(b.String(), "\n") + "\n/files delete <n> removes one"})
+}
+
+// cleanDroppedPath undoes what a terminal does to a dragged-in file: wraps it
+// in quotes, escapes spaces with backslashes, or leaves a leading ~.
+func cleanDroppedPath(p string) string {
+	p = strings.TrimSpace(p)
+	if len(p) >= 2 && (p[0] == '\'' || p[0] == '"') && p[len(p)-1] == p[0] {
+		p = p[1 : len(p)-1]
+	}
+	p = strings.NewReplacer("\\ ", " ", "\\(", "(", "\\)", ")").Replace(p)
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			p = filepath.Join(home, p[2:])
+		}
+	}
+	return p
+}
+
+func humanFileSize(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%d KB", n>>10)
+	}
+	return fmt.Sprintf("%d B", n)
+}
+
+func truncateName(s string, w int) string {
+	r := []rune(s)
+	if len(r) <= w {
+		return s
+	}
+	return string(r[:w-1]) + "…"
 }
