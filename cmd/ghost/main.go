@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -38,6 +39,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/devices"
 	"github.com/ianclemence/ghost/pkg/doctor"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
+	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/heartbeat"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/maintenance"
@@ -1440,6 +1442,19 @@ func gatewayCmd() {
 	} else {
 		fmt.Printf("  • Database integrity ok\n")
 	}
+
+	// A Pod loses power. Note whether the last run was cut off, and record a
+	// clean stop so the next start can tell the difference.
+	runMarker := filepath.Join(configDir(), "running")
+	uncleanStart = hardware.MarkRunning(runMarker)
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGTERM, syscall.SIGINT)
+		sig := <-c
+		hardware.MarkStopped(runMarker)
+		signal.Stop(c)
+		_ = syscall.Kill(os.Getpid(), sig.(syscall.Signal)) // then stop the way it would have
+	}()
 
 	// Print agent startup info
 	fmt.Println("\n📦 Agent Status:")

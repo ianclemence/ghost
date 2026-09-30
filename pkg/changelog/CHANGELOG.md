@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.99] - 2026-10-01
+
+- **Ghost tells you when your Pod is too small, before it gets slow.** It now
+  speaks at the first sign of low storage or memory, not only when critical, and
+  says what to do. If memory stays short for half an hour it tells you the Pod is
+  too small for how you use it. It also says so once if the Pod has less than
+  4 GB of memory or a drive under 64 GB, and if the system runs from a memory
+  card, which wears out.
+- **Power cuts are noticed.** Ghost tells you when it restarted after being cut
+  off instead of stopped, and that its memory checked out.
+- New page: what a Pod needs (`docs/HARDWARE.md`).
+
 ## [0.24.98] - 2026-10-01
 
 - **You can do the human steps.** When a site asks for something only a person

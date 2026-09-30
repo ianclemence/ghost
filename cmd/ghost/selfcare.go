@@ -30,13 +30,21 @@ func noteFailedAccess(r *http.Request, kind awareness.Kind) {
 // Thresholds. A Pod runs warm by design, so these are for "act on it", not "it
 // is a computer". Each has hysteresis through the announcer's cooldown.
 const (
-	cpuHotC        = 80.0
-	roomHotC       = 33.0
-	roomColdC      = 8.0
-	roomHumidPct   = 75.0
-	roomDryPct     = 20.0
-	selfCareEvery  = 5 * time.Minute
-	updateCheckGap = 6 * time.Hour
+	cpuHotC       = 80.0
+	roomHotC      = 33.0
+	roomColdC     = 8.0
+	roomHumidPct  = 75.0
+	roomDryPct    = 20.0
+	selfCareEvery = 5 * time.Minute
+	// Memory short on this many checks in a row (half an hour) is not a blip.
+	sustainedShortChecks = 6
+	updateCheckGap       = 6 * time.Hour
+)
+
+var (
+	memoryShortChecks int
+	// uncleanStart is set at boot when the last run did not stop cleanly.
+	uncleanStart bool
 )
 
 // startSelfCare runs the loop that lets Ghost be aware of itself and its
@@ -74,11 +82,19 @@ func selfCareOnce(al *agent.AgentLoop, workspace string, lastUpdateCheck *time.T
 	// a backup or an update fail; hand it back to the workspace's owner.
 	config.RepairOwnership(workspace)
 	snap := hardware.Snapshot(workspace)
-	if snap.Storage == hardware.PressureCritical {
-		al.Announce("storage-critical", fmt.Sprintf("I'm almost out of storage: %d GB left on the Pod. When it fills up I can't save memory or files. Clearing old downloads and backups would fix it.", snap.DiskFreeGB), 12*time.Hour, true)
+	// Tell the owner when the Pod is getting short of something, before it is
+	// slow, and when it has been short for so long that it is simply too small.
+	if snap.Memory != hardware.PressureNormal {
+		memoryShortChecks++
+	} else {
+		memoryShortChecks = 0
 	}
-	if snap.Memory == hardware.PressureCritical {
-		al.Announce("memory-critical", fmt.Sprintf("I'm short on memory (%d MB free of %d MB), so I may be slow or restart. If this keeps happening, something on the Pod is using too much.", snap.MemAvailableMB, snap.MemTotalMB), 12*time.Hour, false)
+	for _, a := range hardware.Assess(snap, hardware.OnMemoryCard(), memoryShortChecks >= sustainedShortChecks) {
+		al.Announce(a.Key, a.Text, a.Cooldown, a.Urgent)
+	}
+	if uncleanStart {
+		uncleanStart = false
+		al.Announce("unclean-stop", "I restarted after being cut off, most likely a power cut or a crash. I checked my memory and it's intact, so nothing was lost. If this happens often, a small battery backup for the Pod is worth it.", time.Minute, false)
 	}
 
 	rs := hardware.ReadEnvironment("")
