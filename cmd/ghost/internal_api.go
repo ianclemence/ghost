@@ -4112,8 +4112,31 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		})
 	}))
 	mux.HandleFunc("/v1/files/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/files/"), "/")
+		rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/files/"), "/")
+		id, action, _ := strings.Cut(rest, "/")
 		ws, _ := resolveApiWorkspace(agentLoop.Config())
+		if r.Method == http.MethodGet && (action == "preview" || action == "content") {
+			it, ok := uploads.Find(ws, id)
+			if !ok {
+				jsonError(w, http.StatusNotFound, "not_found", "That file isn't stored on this Ghost.")
+				return
+			}
+			if action == "content" {
+				// The original bytes, for the phone to hand to its own viewer.
+				data, err := os.ReadFile(filepath.Join(ws, it.Path))
+				if err != nil {
+					jsonError(w, http.StatusNotFound, "not_found", "That file isn't stored on this Ghost.")
+					return
+				}
+				jsonResponse(w, http.StatusOK, map[string]interface{}{
+					"ok": true, "name": it.Name, "mime": it.MIME, "size": it.Size,
+					"base64": base64.StdEncoding.EncodeToString(data),
+				})
+				return
+			}
+			jsonResponse(w, http.StatusOK, previewUpload(ws, it))
+			return
+		}
 		switch r.Method {
 		case http.MethodDelete:
 			if err := uploads.Delete(ws, id); err != nil {
@@ -5581,6 +5604,62 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Printf("❌ Internal API failed: %v", err)
 	}
+}
+
+// previewUpload says what can be shown of a stored file inside the app:
+// photos as themselves, text as text, and documents and spreadsheets as the
+// text Ghost itself reads from them. Anything else is honestly not previewable
+// (it can still be opened in the phone's own viewer).
+func previewUpload(ws string, it uploads.Item) map[string]interface{} {
+	const maxText = 256 * 1024
+	out := map[string]interface{}{"ok": true, "kind": it.Kind, "mime": it.MIME, "size": it.Size, "name": it.Name}
+	full := filepath.Join(ws, it.Path)
+	switch it.Kind {
+	case "image":
+		if it.Size > 4*1024*1024 {
+			out["previewable"], out["reason"] = false, "That photo is too large to preview here. Open it instead."
+			return out
+		}
+		data, err := os.ReadFile(full)
+		if err != nil {
+			out["previewable"], out["reason"] = false, "The file couldn't be read."
+			return out
+		}
+		out["previewable"], out["image_base64"] = true, base64.StdEncoding.EncodeToString(data)
+	case "text":
+		data, err := os.ReadFile(full)
+		if err != nil {
+			out["previewable"], out["reason"] = false, "The file couldn't be read."
+			return out
+		}
+		out["previewable"], out["truncated"] = true, len(data) > maxText
+		if len(data) > maxText {
+			data = data[:maxText]
+		}
+		out["content"] = strings.ToValidUTF8(string(data), "")
+	case "document", "spreadsheet":
+		res := tools.NewDocParserTool(ws).Execute(context.Background(), map[string]interface{}{"file_path": it.Path})
+		var parsed struct {
+			Content string `json:"content"`
+		}
+		if res.IsError || json.Unmarshal([]byte(res.ForUser), &parsed) != nil || strings.TrimSpace(parsed.Content) == "" {
+			reason := "Ghost couldn't read text out of this file. Open it instead."
+			if res.IsError && strings.Contains(res.ForLLM, "scanned") {
+				reason = "This PDF is a scan with no text to show. Open it instead."
+			}
+			out["previewable"], out["reason"] = false, reason
+			return out
+		}
+		out["previewable"], out["extracted"] = true, true
+		out["truncated"] = len(parsed.Content) > maxText
+		if len(parsed.Content) > maxText {
+			parsed.Content = parsed.Content[:maxText]
+		}
+		out["content"] = strings.ToValidUTF8(parsed.Content, "")
+	default:
+		out["previewable"], out["reason"] = false, "There is no preview for this kind of file. Open it instead."
+	}
+	return out
 }
 
 // uploadRetention is how long an upload is kept unless the owner deletes it.

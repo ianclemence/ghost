@@ -126,6 +126,22 @@ func List(workspace string) []Item {
 	return out
 }
 
+// Find returns one stored upload by id.
+func Find(workspace, id string) (Item, bool) {
+	if !idRe.MatchString(id) {
+		return Item{}, false
+	}
+	b, err := os.ReadFile(filepath.Join(Dir(workspace), id, "meta.json"))
+	if err != nil {
+		return Item{}, false
+	}
+	var it Item
+	if json.Unmarshal(b, &it) != nil || it.ID != id {
+		return Item{}, false
+	}
+	return it, true
+}
+
 // Delete removes one upload and everything stored with it.
 func Delete(workspace, id string) error {
 	if !idRe.MatchString(id) {
