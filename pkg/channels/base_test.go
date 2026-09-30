@@ -13,7 +13,7 @@ import (
 // sender ride along as provenance so the reply still routes correctly.
 func TestChannelMessageUsesSharedConversation(t *testing.T) {
 	b := bus.NewMessageBus()
-	ch := NewBaseChannel("telegram", nil, b, nil)
+	ch := NewBaseChannel("telegram", nil, b, []string{"123456"})
 
 	ch.HandleMessage("123456|alice", "chat-42", "hi from telegram", nil, nil)
 
@@ -57,10 +57,10 @@ func TestBaseChannelIsAllowed(t *testing.T) {
 		want      bool
 	}{
 		{
-			name:      "empty allowlist allows all",
+			name:      "empty allowlist allows nobody",
 			allowList: nil,
 			senderID:  "anyone",
-			want:      true,
+			want:      false,
 		},
 		{
 			name:      "compound sender matches numeric allowlist",
@@ -95,5 +95,24 @@ func TestBaseChannelIsAllowed(t *testing.T) {
 				t.Fatalf("IsAllowed(%q) = %v, want %v", tt.senderID, got, tt.want)
 			}
 		})
+	}
+}
+
+// A channel nobody was allowed on is closed, and the owner is told who knocked.
+func TestUnlistedSenderIsRefusedAndReported(t *testing.T) {
+	b := bus.NewMessageBus()
+	var gotChannel, gotSender string
+	old := OnUnknownSender
+	OnUnknownSender = func(ch, s string) { gotChannel, gotSender = ch, s }
+	defer func() { OnUnknownSender = old }()
+
+	NewBaseChannel("telegram", nil, b, nil).HandleMessage("777|stranger", "c", "hello?", nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, ok := b.ConsumeInbound(ctx); ok {
+		t.Fatal("a stranger must never reach the conversation")
+	}
+	if gotChannel != "telegram" || gotSender != "777|stranger" {
+		t.Fatalf("the owner must be told who knocked, got %q %q", gotChannel, gotSender)
 	}
 }

@@ -842,29 +842,34 @@ func handleChannelsGet(w http.ResponseWriter, r *http.Request) {
 		"ok": true,
 		"channels": map[string]interface{}{
 			"telegram": map[string]interface{}{
-				"enabled": cfg.Channels.Telegram.Enabled,
-				"token":   maskKey(cfg.Channels.Telegram.Token),
+				"enabled":    cfg.Channels.Telegram.Enabled,
+				"token":      maskKey(cfg.Channels.Telegram.Token),
+				"allow_from": []string(cfg.Channels.Telegram.AllowFrom),
 			},
 			"discord": map[string]interface{}{
-				"enabled": cfg.Channels.Discord.Enabled,
-				"token":   maskKey(cfg.Channels.Discord.Token),
+				"enabled":    cfg.Channels.Discord.Enabled,
+				"token":      maskKey(cfg.Channels.Discord.Token),
+				"allow_from": []string(cfg.Channels.Discord.AllowFrom),
 			},
 			"slack": map[string]interface{}{
-				"enabled":   cfg.Channels.Slack.Enabled,
-				"bot_token": maskKey(cfg.Channels.Slack.BotToken),
-				"app_token": maskKey(cfg.Channels.Slack.AppToken),
+				"enabled":    cfg.Channels.Slack.Enabled,
+				"bot_token":  maskKey(cfg.Channels.Slack.BotToken),
+				"app_token":  maskKey(cfg.Channels.Slack.AppToken),
+				"allow_from": []string(cfg.Channels.Slack.AllowFrom),
 			},
 			"email": map[string]interface{}{
-				"enabled":   cfg.Channels.Email.Enabled,
-				"smtp_host": cfg.Channels.Email.SMTPHost,
-				"smtp_port": cfg.Channels.Email.SMTPPort,
-				"username":  cfg.Channels.Email.Username,
-				"from":      cfg.Channels.Email.From,
-				"to":        cfg.Channels.Email.To,
+				"enabled":    cfg.Channels.Email.Enabled,
+				"smtp_host":  cfg.Channels.Email.SMTPHost,
+				"smtp_port":  cfg.Channels.Email.SMTPPort,
+				"username":   cfg.Channels.Email.Username,
+				"from":       cfg.Channels.Email.From,
+				"to":         cfg.Channels.Email.To,
+				"allow_from": []string(cfg.Channels.Email.AllowFrom),
 			},
 			"whatsapp": map[string]interface{}{
 				"enabled":    cfg.Channels.WhatsApp.Enabled,
 				"bridge_url": cfg.Channels.WhatsApp.BridgeURL,
+				"allow_from": []string(cfg.Channels.WhatsApp.AllowFrom),
 			},
 		},
 		"heartbeat": map[string]interface{}{
@@ -872,6 +877,21 @@ func handleChannelsGet(w http.ResponseWriter, r *http.Request) {
 			"interval": cfg.Heartbeat.Interval,
 		},
 	})
+}
+
+// cleanAllowList trims entries, drops blanks and duplicates, and keeps order.
+func cleanAllowList(in []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[strings.ToLower(v)] {
+			continue
+		}
+		seen[strings.ToLower(v)] = true
+		out = append(out, v)
+	}
+	return out
 }
 
 func handleChannelsSet(w http.ResponseWriter, r *http.Request) {
@@ -885,30 +905,35 @@ func handleChannelsSet(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Telegram *struct {
-			Enabled bool   `json:"enabled"`
-			Token   string `json:"token"`
+			Enabled   bool      `json:"enabled"`
+			Token     string    `json:"token"`
+			AllowFrom *[]string `json:"allow_from"`
 		} `json:"telegram"`
 		Discord *struct {
-			Enabled bool   `json:"enabled"`
-			Token   string `json:"token"`
+			Enabled   bool      `json:"enabled"`
+			Token     string    `json:"token"`
+			AllowFrom *[]string `json:"allow_from"`
 		} `json:"discord"`
 		Slack *struct {
-			Enabled  bool   `json:"enabled"`
-			BotToken string `json:"bot_token"`
-			AppToken string `json:"app_token"`
+			Enabled   bool      `json:"enabled"`
+			BotToken  string    `json:"bot_token"`
+			AppToken  string    `json:"app_token"`
+			AllowFrom *[]string `json:"allow_from"`
 		} `json:"slack"`
 		WhatsApp *struct {
-			Enabled   bool   `json:"enabled"`
-			BridgeURL string `json:"bridge_url"`
+			Enabled   bool      `json:"enabled"`
+			BridgeURL string    `json:"bridge_url"`
+			AllowFrom *[]string `json:"allow_from"`
 		} `json:"whatsapp"`
 		Email *struct {
-			Enabled  bool   `json:"enabled"`
-			SMTPHost string `json:"smtp_host"`
-			SMTPPort int    `json:"smtp_port"`
-			Username string `json:"username"`
-			Password string `json:"password"`
-			From     string `json:"from"`
-			To       string `json:"to"`
+			Enabled   bool      `json:"enabled"`
+			SMTPHost  string    `json:"smtp_host"`
+			SMTPPort  int       `json:"smtp_port"`
+			Username  string    `json:"username"`
+			Password  string    `json:"password"`
+			From      string    `json:"from"`
+			To        string    `json:"to"`
+			AllowFrom *[]string `json:"allow_from"`
 		} `json:"email"`
 		Heartbeat *struct {
 			Enabled  bool `json:"enabled"`
@@ -931,11 +956,17 @@ func handleChannelsSet(w http.ResponseWriter, r *http.Request) {
 		if req.Telegram.Token != "" && !strings.HasPrefix(req.Telegram.Token, "••") {
 			cfg.Channels.Telegram.Token = req.Telegram.Token
 		}
+		if req.Telegram.AllowFrom != nil {
+			cfg.Channels.Telegram.AllowFrom = cleanAllowList(*req.Telegram.AllowFrom)
+		}
 	}
 	if req.Discord != nil {
 		cfg.Channels.Discord.Enabled = req.Discord.Enabled
 		if req.Discord.Token != "" && !strings.HasPrefix(req.Discord.Token, "••") {
 			cfg.Channels.Discord.Token = req.Discord.Token
+		}
+		if req.Discord.AllowFrom != nil {
+			cfg.Channels.Discord.AllowFrom = cleanAllowList(*req.Discord.AllowFrom)
 		}
 	}
 	if req.Slack != nil {
@@ -946,11 +977,17 @@ func handleChannelsSet(w http.ResponseWriter, r *http.Request) {
 		if req.Slack.AppToken != "" && !strings.HasPrefix(req.Slack.AppToken, "••") {
 			cfg.Channels.Slack.AppToken = req.Slack.AppToken
 		}
+		if req.Slack.AllowFrom != nil {
+			cfg.Channels.Slack.AllowFrom = cleanAllowList(*req.Slack.AllowFrom)
+		}
 	}
 	if req.WhatsApp != nil {
 		cfg.Channels.WhatsApp.Enabled = req.WhatsApp.Enabled
 		if req.WhatsApp.BridgeURL != "" {
 			cfg.Channels.WhatsApp.BridgeURL = req.WhatsApp.BridgeURL
+		}
+		if req.WhatsApp.AllowFrom != nil {
+			cfg.Channels.WhatsApp.AllowFrom = cleanAllowList(*req.WhatsApp.AllowFrom)
 		}
 	}
 	if req.Email != nil {
@@ -972,6 +1009,9 @@ func handleChannelsSet(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Email.To != "" {
 			cfg.Channels.Email.To = req.Email.To
+		}
+		if req.Email.AllowFrom != nil {
+			cfg.Channels.Email.AllowFrom = cleanAllowList(*req.Email.AllowFrom)
 		}
 	}
 	if req.Heartbeat != nil {

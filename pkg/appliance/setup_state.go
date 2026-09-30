@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/ianclemence/ghost/pkg/config"
@@ -146,6 +147,15 @@ func isConfigCustomized(cfg *config.Config) bool {
 // while Ghost is unconfigured, so a code leaked in an older log is invalidated
 // by the next restart.
 func (fb *SetupState) RotateSetupCode() (string, error) {
+	// A code the factory put on the SD card's boot partition (and printed in
+	// the box) is fixed: it is not rotated, because its whole purpose is to be
+	// read by someone holding the card.
+	if code, ok := factorySetupCode(); ok {
+		if err := os.WriteFile(filepath.Join(fb.GhostDir, SetupCodeFileName), []byte(code+"\n"), 0600); err != nil {
+			return "", err
+		}
+		return code, nil
+	}
 	code, err := randomSetupCode()
 	if err != nil {
 		return "", err
@@ -153,6 +163,10 @@ func (fb *SetupState) RotateSetupCode() (string, error) {
 	if err := os.WriteFile(filepath.Join(fb.GhostDir, SetupCodeFileName), []byte(code+"\n"), 0600); err != nil {
 		return "", err
 	}
+	// A Pod with no screen and no shell needs another way to show the code.
+	// Put it where the owner can read it from any computer by taking out the SD
+	// card: whoever holds the card is, by definition, local.
+	mirrorSetupCode(code)
 	return code, nil
 }
 
@@ -174,6 +188,54 @@ func (fb *SetupState) VerifySetupCode(code string) bool {
 // ClearSetupCode removes the setup code once setup is complete.
 func (fb *SetupState) ClearSetupCode() {
 	os.Remove(filepath.Join(fb.GhostDir, SetupCodeFileName))
+	for _, p := range bootCodePaths {
+		os.Remove(p)
+	}
+}
+
+// bootCodePaths are where a setup code may live on the SD card's boot
+// partition (readable from any computer, and from the Pod's own shell). It is a
+// variable so tests can point it elsewhere.
+var bootCodePaths = []string{"/boot/firmware/ghost-setup-code", "/boot/ghost-setup-code"}
+
+const generatedMarker = "# generated"
+
+var setupCodeRE = regexp.MustCompile(`^[A-Za-z0-9-]{6,24}$`)
+
+// factorySetupCode returns a fixed code placed on the boot partition, if any. A
+// file this program wrote itself (marked "generated") is not fixed and is
+// replaced on the next start.
+func factorySetupCode() (string, bool) {
+	for _, p := range bootCodePaths {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+		code := strings.TrimSpace(lines[0])
+		if !setupCodeRE.MatchString(code) {
+			continue
+		}
+		if len(lines) > 1 && strings.TrimSpace(lines[1]) == generatedMarker {
+			continue
+		}
+		return code, true
+	}
+	return "", false
+}
+
+// mirrorSetupCode writes a generated code to the boot partition, best effort.
+func mirrorSetupCode(code string) {
+	for _, p := range bootCodePaths {
+		if st, err := os.Stat(filepath.Dir(p)); err != nil || !st.IsDir() {
+			continue
+		}
+		body := code + "\n" + generatedMarker + "\n" +
+			"# Your Ghost's one-time setup code. Enter it on the setup page. It is removed when setup finishes.\n"
+		if os.WriteFile(p, []byte(body), 0644) == nil {
+			return
+		}
+	}
 }
 
 // randomSetupCode returns a zero-padded 6-digit code from crypto/rand.

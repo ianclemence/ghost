@@ -31,6 +31,12 @@ func pushCategoryFor(msg bus.OutboundMessage) (push.Category, bool) {
 		if reminder, _ := msg.Metadata["reminder"].(bool); reminder && msg.Content != "" {
 			return push.Reminder, true
 		}
+		if _, announced := msg.Metadata["announce"]; announced && msg.Content != "" {
+			if urgent, _ := msg.Metadata["urgent"].(bool); urgent {
+				return push.Alert, true
+			}
+			return push.Update, true
+		}
 		if conversationEvent(msg) && msg.Content != "" {
 			return push.Update, true
 		}

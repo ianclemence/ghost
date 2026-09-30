@@ -34,6 +34,10 @@ const (
 	// Reminder is something the owner asked to be told at this time. It is
 	// never held for quiet hours: they set it, for this moment.
 	Reminder Category = "reminder"
+	// Alert is Ghost telling the owner something it cannot fix alone (an empty
+	// balance, someone probing the network, an overheating Pod). Never held for
+	// quiet hours.
+	Alert Category = "alert"
 )
 
 var copyFor = map[Category]struct{ body, anchor string }{
@@ -41,6 +45,7 @@ var copyFor = map[Category]struct{ body, anchor string }{
 	Question: {"Ghost has a question for you.", "thread"},
 	Update:   {"Ghost has an update for you.", "thread"},
 	Reminder: {"Ghost has a reminder for you.", "thread"},
+	Alert:    {"Ghost needs your attention.", "thread"},
 }
 
 // minGap coalesces bursts: several messages in a minute are one nudge, not a
@@ -50,6 +55,7 @@ var minGap = map[Category]time.Duration{
 	Question: 20 * time.Second,
 	Update:   60 * time.Second,
 	Reminder: 15 * time.Second,
+	Alert:    30 * time.Second,
 }
 
 const defaultURL = "https://exp.host/--/api/v2/push/send"

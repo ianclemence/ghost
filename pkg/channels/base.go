@@ -42,9 +42,19 @@ func (c *BaseChannel) IsRunning() bool {
 	return c.running
 }
 
+// OnUnknownSender is told when someone who is not on a channel's allowlist
+// writes to Ghost, so the owner can hear that a stranger knocked (and, if it
+// was a friend, allow them). It is set by the daemon; nil in tests.
+var OnUnknownSender func(channel, senderID string)
+
+// IsAllowed reports whether a sender may talk to Ghost through this channel.
+// An empty allowlist allows nobody: a messaging channel reaches the owner's own
+// conversation, memory and tools, so it must be opened to named people on
+// purpose. (It used to allow everyone, which meant anyone who found the bot's
+// name could talk to Ghost.)
 func (c *BaseChannel) IsAllowed(senderID string) bool {
 	if len(c.allowList) == 0 {
-		return true
+		return false
 	}
 
 	// Extract parts from compound senderID like "123456|username"
@@ -90,6 +100,9 @@ const SharedConversationKey = "main"
 
 func (c *BaseChannel) HandleMessage(senderID, chatID, content string, media []string, metadata map[string]string) {
 	if !c.IsAllowed(senderID) {
+		if hook := OnUnknownSender; hook != nil {
+			hook(c.name, senderID)
+		}
 		return
 	}
 

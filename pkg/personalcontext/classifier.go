@@ -248,8 +248,10 @@ func ValidateClassification(output ClassificationOutput) ClassificationResult {
 		Summary:        output.Summary,
 	}
 
-	// Validate kind
-	kind := MemoryKind(strings.ToLower(output.Kind))
+	// Validate kind. Models name the same idea several ways ("habit",
+	// "pet", "allergy"); mapping them to the controlled vocabulary keeps a
+	// good memory from being dropped over a synonym.
+	kind := MemoryKind(NormalizeKind(output.Kind))
 	if !ValidMemoryKinds[kind] {
 		result.Valid = false
 		result.Reason = fmt.Sprintf("invalid kind: %s (must be one of: %s)", output.Kind, memoryKindsList())
@@ -259,7 +261,7 @@ func ValidateClassification(output ClassificationOutput) ClassificationResult {
 	}
 
 	// Validate domain
-	domain := MemoryDomain(strings.ToLower(output.Domain))
+	domain := MemoryDomain(NormalizeDomain(output.Domain))
 	if !ValidMemoryDomains[domain] {
 		result.Valid = false
 		result.Reason = fmt.Sprintf("invalid domain: %s (must be one of: %s)", output.Domain, memoryDomainsList())
@@ -454,4 +456,45 @@ func FormatClassificationPrompt(text, subject, predicate, value string) string {
 	inputJSON, _ := json.Marshal(input)
 
 	return fmt.Sprintf("%s\n\nMessage to classify:\n%s", ClassificationPrompt, string(inputJSON))
+}
+
+var kindAliases = map[string]string{
+	"habit": "routine", "habits": "routine", "ritual": "routine", "schedule": "routine",
+	"pet": "person", "friend": "person", "family": "relationship", "contact": "person",
+	"hobby": "interest", "topic": "interest", "passion": "interest",
+	"belonging": "possession", "asset": "possession", "item": "possession", "vehicle": "possession", "property": "possession",
+	"medical": "health", "allergy": "health", "condition": "health", "medication": "health", "fitness": "health",
+	"language": "skill", "ability": "skill", "talent": "skill", "expertise": "skill",
+	"belief": "opinion", "view": "opinion", "value": "opinion", "stance": "opinion",
+	"date": "event", "appointment": "event", "trip": "event", "plan": "event", "deadline": "event", "birthday": "event",
+	"like": "preference", "dislike": "preference", "favorite": "preference", "favourite": "preference",
+}
+
+// NormalizeKind lower-cases a model-supplied kind and maps common synonyms onto
+// the controlled vocabulary. Unknown words are returned unchanged so validation
+// still rejects them.
+func NormalizeKind(k string) string {
+	k = strings.ToLower(strings.TrimSpace(k))
+	if a, ok := kindAliases[k]; ok {
+		return a
+	}
+	return k
+}
+
+var domainAliases = map[string]string{
+	"pet": "pets", "animal": "pets", "animals": "pets", "dog": "pets", "cat": "pets",
+	"sport": "sports", "football": "sports", "soccer": "sports", "fitness": "health", "medical": "health", "wellness": "health",
+	"car": "vehicles", "vehicle": "vehicles", "transport": "vehicles",
+	"hobby": "hobbies", "leisure": "hobbies", "house": "home", "housing": "home", "money": "finance",
+	"tech": "technology", "career": "work", "job": "work", "school": "education", "learning": "education",
+	"friends": "relationship", "friendship": "relationship", "people": "relationship", "music": "entertainment", "movies": "entertainment",
+}
+
+// NormalizeDomain does the same for the area of life.
+func NormalizeDomain(d string) string {
+	d = strings.ToLower(strings.TrimSpace(d))
+	if a, ok := domainAliases[d]; ok {
+		return a
+	}
+	return d
 }

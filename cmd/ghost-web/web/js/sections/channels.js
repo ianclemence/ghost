@@ -111,6 +111,27 @@ function channelRow(name, kind, state, sub, onClick) {
   return row;
 }
 
+
+// Who may talk to Ghost through a channel. Empty means nobody: a channel reaches
+// Ghost's own conversation, memory and tools, so it is opened to named people.
+const ALLOW_HELP = {
+  telegram: 'Your Telegram user number (message @userinfobot on Telegram to see it), or your @username.',
+  discord: 'Your Discord user ID (turn on Developer Mode, then right-click your name and choose Copy User ID).',
+  slack: 'Your Slack member ID (open your profile, choose More, then Copy member ID).',
+  whatsapp: 'Your phone number with country code, for example 15551234567.',
+  email: 'The email addresses Ghost may take instructions from, such as your own.',
+};
+
+function allowField(channel, current) {
+  const f = GhostUI.h('div', { className: 'field', style: 'margin-top:var(--s-4)' });
+  f.appendChild(GhostUI.h('label', {}, 'Who can talk to Ghost here'));
+  const input = GhostUI.h('input', { className: 'ghost-input', placeholder: 'Separate several with commas', value: (current || []).join(', ') });
+  f.appendChild(input);
+  f.appendChild(GhostUI.h('div', { className: 'type-footnote text-tertiary', style: 'margin-top:4px' },
+    ALLOW_HELP[channel] + ' Nobody else gets an answer. If this is empty, Ghost ignores everyone here.'));
+  return { el: f, value: () => input.value.split(/[,\n]/).map(x => x.trim()).filter(Boolean) };
+}
+
 function saveChannels(payload) {
   return GhostAPI.post('/api/admin/channels/save', payload);
 }
@@ -127,12 +148,14 @@ function editTelegram(cur) {
   const body = GhostUI.h('div');
   body.appendChild(secretField('Bot token', cur.token, 'Telegram bot token'));
   const field = body.querySelector('input');
+  const allow = allowField('telegram', cur.allow_from);
+  body.appendChild(allow.el);
   GhostUI.modal('Configure Telegram', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: e => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async e => {
       const token = field.value.trim();
       if (!token) { GhostUI.toast('Enter a token.'); return; }
-      try { await saveChannels({ telegram: { enabled: true, token } }); e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('Telegram saved'); loadChannels(document.getElementById('view')); }
+      try { await saveChannels({ telegram: { enabled: true, token, allow_from: allow.value() } }); e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('Telegram saved'); loadChannels(document.getElementById('view')); }
       catch (err) { GhostUI.toast('Couldn’t save.', 'err'); }
     } }, 'Save'),
   ]);
@@ -142,12 +165,14 @@ function editDiscord(cur) {
   const body = GhostUI.h('div');
   body.appendChild(secretField('Bot token', cur.token, 'Discord bot token'));
   const field = body.querySelector('input');
+  const allow = allowField('discord', cur.allow_from);
+  body.appendChild(allow.el);
   GhostUI.modal('Configure Discord', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: e => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async e => {
       const token = field.value.trim();
       if (!token) { GhostUI.toast('Enter a token.'); return; }
-      try { await saveChannels({ discord: { enabled: true, token } }); e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('Discord saved'); loadChannels(document.getElementById('view')); }
+      try { await saveChannels({ discord: { enabled: true, token, allow_from: allow.value() } }); e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('Discord saved'); loadChannels(document.getElementById('view')); }
       catch (err) { GhostUI.toast('Couldn’t save.', 'err'); }
     } }, 'Save'),
   ]);
@@ -166,13 +191,15 @@ function editSlack(cur) {
   const appField = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: cur.app_token ? 'Enter a new app token to replace the current one' : 'xapp-…' });
   appWrap.appendChild(appField);
   body.appendChild(appWrap);
+  const allow = allowField('slack', cur.allow_from);
+  body.appendChild(allow.el);
   GhostUI.modal('Configure Slack', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: e => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async e => {
       const bot = botField.value.trim();
       const app = appField.value.trim();
       if (!bot || !app) { GhostUI.toast('Both tokens are required.'); return; }
-      try { await saveChannels({ slack: { enabled: true, bot_token: bot, app_token: app } }); e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('Slack saved'); loadChannels(document.getElementById('view')); }
+      try { await saveChannels({ slack: { enabled: true, bot_token: bot, app_token: app, allow_from: allow.value() } }); e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('Slack saved'); loadChannels(document.getElementById('view')); }
       catch (err) { GhostUI.toast('Couldn’t save.', 'err'); }
     } }, 'Save'),
   ]);
@@ -186,12 +213,14 @@ function editWhatsApp(cur) {
   const urlField = GhostUI.h('input', { className: 'ghost-input', placeholder: 'http://localhost:3000', value: cur.bridge_url || '' });
   wrap.appendChild(urlField);
   body.appendChild(wrap);
+  const allow = allowField('whatsapp', cur.allow_from);
+  body.appendChild(allow.el);
   GhostUI.modal('Configure WhatsApp', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: e => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async e => {
       const url = urlField.value.trim();
       if (!url) { GhostUI.toast('Enter a bridge URL.'); return; }
-      try { await saveChannels({ whatsapp: { enabled: true, bridge_url: url } }); e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('WhatsApp saved'); loadChannels(document.getElementById('view')); }
+      try { await saveChannels({ whatsapp: { enabled: true, bridge_url: url, allow_from: allow.value() } }); e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('WhatsApp saved'); loadChannels(document.getElementById('view')); }
       catch (err) { GhostUI.toast('Couldn’t save.', 'err'); }
     } }, 'Save'),
   ]);
@@ -204,11 +233,13 @@ function editEmail(cur) {
   const f3 = GhostUI.h('div', { className: 'field' }); f3.appendChild(GhostUI.h('label', {}, 'From address')); const from = GhostUI.input(cur.from || ''); f3.appendChild(from); body.appendChild(f3);
   const f4 = GhostUI.h('div', { className: 'field' }); f4.appendChild(GhostUI.h('label', {}, 'Deliver to')); const to = GhostUI.input(cur.to || ''); f4.appendChild(to); body.appendChild(f4);
   const f5 = GhostUI.h('div', { className: 'field' }); f5.appendChild(GhostUI.h('label', {}, 'Password')); const pw = GhostUI.h('input', { className: 'ghost-input secret-field', type: 'password', placeholder: cur.username ? 'Enter to replace' : 'Email password / app password' }); f5.appendChild(pw); body.appendChild(f5);
+  const allow = allowField('email', cur.allow_from);
+  body.appendChild(allow.el);
   GhostUI.modal('Configure Email', body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: e => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async e => {
       try {
-        await saveChannels({ email: { enabled: true, smtp_host: host.value.trim(), smtp_port: parseInt(port.value, 10) || 587, from: from.value.trim(), to: to.value.trim(), password: pw.value } });
+        await saveChannels({ email: { enabled: true, smtp_host: host.value.trim(), smtp_port: parseInt(port.value, 10) || 587, from: from.value.trim(), to: to.value.trim(), password: pw.value, allow_from: allow.value() } });
         e.target.closest('.ghost-modal-backdrop').remove(); GhostUI.toast('Email saved'); loadChannels(document.getElementById('view'));
       } catch (err) { GhostUI.toast('Couldn’t save.', 'err'); }
     } }, 'Save'),

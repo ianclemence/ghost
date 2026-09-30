@@ -196,8 +196,12 @@ type AgentLoop struct {
 	// deferredFlush serializes an explicit synchronous drain.
 	deferredRunning atomic.Bool
 	deferredFlush   sync.Mutex
-	proactiveWake   chan struct{}
-	proactiveStop   chan struct{}
+	// deferredMu makes every change to the queue file one atomic
+	// read-modify-write. Without it a drain rewrote the file from a stale copy
+	// and erased any job queued while it ran.
+	deferredMu    sync.Mutex
+	proactiveWake chan struct{}
+	proactiveStop chan struct{}
 	// routineSvc/schedSvc feed the proactive signal scan (routine waits
 	// and failures). Nil when automation is disabled — scan yields none.
 	routineSvc *routines.Service
@@ -3225,6 +3229,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					"iteration": iteration,
 					"error":     err.Error(),
 				})
+			// If Ghost's own background work hit something only the owner can
+			// fix (an empty balance), say so instead of failing in silence.
+			al.noteModelFailure(opts.SessionKey, err)
 			return "", iteration, fmt.Errorf("LLM call failed: %w", err)
 		}
 

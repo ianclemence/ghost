@@ -85,6 +85,14 @@ var (
 		`ghost status|system status` +
 		`)\b`)
 
+	environmentQueryRE = regexp.MustCompile(`(?i)\b(` +
+		`(?:what'?s|how'?s|what is|how is) (?:the )?(?:temperature|humidity|room|air|climate|weather (?:in|inside) (?:here|the room))|` +
+		`(?:how|is it) (?:hot|cold|humid|warm|dry|damp) (?:is it )?(?:in here|inside|in the room)?|` +
+		`(?:room|indoor|inside) (?:temp|temperature|humidity)|` +
+		`(?:temp|temperature|humidity) (?:in here|in the room|right now|reading)|` +
+		`what can you (?:feel|sense)|are you (?:hot|overheating|too hot)` +
+		`)\b`)
+
 	modelQueryRE = regexp.MustCompile(`(?i)\b(` +
 		`what model (?:are you|do you use|is (?:active|running|set))|` +
 		`which model|what (?:ai|llm) (?:are you|is running)|` +
@@ -146,6 +154,8 @@ func (al *AgentLoop) tryStateQueryTurn(msg, session string) (string, bool) {
 		return al.renderJobs()
 	case activityQueryRE.MatchString(lower):
 		return al.renderActivity()
+	case environmentQueryRE.MatchString(lower):
+		return al.renderEnvironment()
 	case healthQueryRE.MatchString(lower):
 		return al.renderHealth()
 	case modelQueryRE.MatchString(lower):
@@ -397,6 +407,12 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// renderEnvironment says what the Pod can feel: the room, if a sensor is
+// connected, and its own processor. With no sensor it says so plainly.
+func (al *AgentLoop) renderEnvironment() (string, bool) {
+	return hardware.Describe(hardware.ReadEnvironment("")), true
 }
 
 // renderModelState reports the active model and mode from live configuration.

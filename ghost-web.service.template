@@ -16,7 +16,7 @@ Environment=GHOST_WORKSPACE_DIR=/var/lib/ghost/workspace
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=__GHOST_DIR__ /var/lib/ghost /run
+ReadWritePaths=__GHOST_DIR__ /var/lib/ghost /run -/boot/firmware -/boot
 PrivateTmp=true
 
 # Logging

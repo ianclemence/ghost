@@ -85,7 +85,7 @@ const GhostWizard = (() => {
     }
     screen.appendChild(codeInput);
     const hint = GhostUI.h('div', { className: 'wizard-code-hint type-footnote text-tertiary' },
-      'The code is printed on the device. Read it with:');
+      'This proves you are at the device. Use the code on the card in the box, or read the file named ghost-setup-code on the Pod\u2019s SD card from any computer. With a keyboard on the Pod:');
     hint.appendChild(document.createElement('br'));
     hint.appendChild(GhostUI.h('code', {}, 'journalctl -u ghost-web | grep "Setup code"'));
     screen.appendChild(hint);

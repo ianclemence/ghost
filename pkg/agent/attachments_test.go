@@ -130,3 +130,51 @@ func TestLateNoteOnlyWhenActuallyLate(t *testing.T) {
 		t.Fatal("an unknown zone must still produce a note, in UTC")
 	}
 }
+
+// A job queued while a drain is running must survive it. The drain used to
+// rewrite the queue from a stale snapshot, erasing the new record: Ghost said
+// "saved" for a memory it never stored.
+func TestDeferredQueueKeepsJobsQueuedDuringADrain(t *testing.T) {
+	al := newTestAgentLoop(t, t.TempDir())
+	al.deferExtraction("main", "r1", "first fact", "cli")
+	snapshot := al.readDeferredQueue()
+	// A new message arrives while the drain is still working through the snapshot.
+	al.deferExtraction("main", "r2", "second fact", "cli")
+	// The drain finishes the first job and commits.
+	al.commitDeferred(snapshot, nil)
+	left := al.readDeferredQueue()
+	if len(left) != 1 || left[0].RequestID != "r2" {
+		t.Fatalf("the job queued during the drain must remain, got %+v", left)
+	}
+}
+
+// Ghost tells the owner once and keeps its word about not repeating itself,
+// even across a restart.
+func TestAnnounceSaysItOnceAndRemembersAcrossRestarts(t *testing.T) {
+	ws := t.TempDir()
+	al := newTestAgentLoop(t, ws)
+	ch, unsub := al.Bus().SubscribeOutbound("t", false, 16)
+	defer unsub()
+	if !al.Announce("storage-critical", "I'm almost out of storage.", time.Hour, true) {
+		t.Fatal("the first announcement must be said")
+	}
+	if al.Announce("storage-critical", "I'm almost out of storage.", time.Hour, true) {
+		t.Fatal("the same thing must not be repeated inside its cooldown")
+	}
+	select {
+	case m := <-ch:
+		if m.Metadata["announce"] != "storage-critical" || m.Metadata["urgent"] != true || m.Metadata["session_id"] != "main" {
+			t.Fatalf("announcement metadata: %+v", m.Metadata)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("nothing published")
+	}
+	// A new process (same workspace) still remembers.
+	al2 := newTestAgentLoop(t, ws)
+	if al2.Announce("storage-critical", "I'm almost out of storage.", time.Hour, true) {
+		t.Fatal("a restart must not make Ghost repeat itself")
+	}
+	if !al2.Announce("pod-hot", "The Pod is running hot.", time.Hour, true) {
+		t.Fatal("a different matter is announced")
+	}
+}

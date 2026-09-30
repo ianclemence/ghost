@@ -86,6 +86,31 @@ func (al *AgentLoop) readDeferredQueue() []deferredJob {
 	return out
 }
 
+// jobKey identifies one queued record across reads.
+func jobKey(j deferredJob) string {
+	return j.Session + "|" + j.RequestID + "|" + j.At.Format(time.RFC3339Nano)
+}
+
+// commitDeferred replaces the part of the queue a drain worked from with what
+// is still to do, keeping every record queued in the meantime. The drain holds
+// a snapshot taken earlier; writing that snapshot back verbatim is what lost
+// memories ("Got it, saved" for a fact that was never stored).
+func (al *AgentLoop) commitDeferred(snapshot, remaining []deferredJob) {
+	al.deferredMu.Lock()
+	defer al.deferredMu.Unlock()
+	seen := make(map[string]bool, len(snapshot))
+	for _, j := range snapshot {
+		seen[jobKey(j)] = true
+	}
+	merged := append([]deferredJob(nil), remaining...)
+	for _, j := range al.readDeferredQueue() {
+		if !seen[jobKey(j)] {
+			merged = append(merged, j)
+		}
+	}
+	al.writeDeferredQueue(merged)
+}
+
 func (al *AgentLoop) writeDeferredQueue(jobs []deferredJob) {
 	path := al.deferredPath()
 	if len(jobs) == 0 {
@@ -120,6 +145,8 @@ func (al *AgentLoop) deferExtraction(session, requestID, message, channel string
 	if isMachineTurn(session) || message == "" {
 		return
 	}
+	al.deferredMu.Lock()
+	defer al.deferredMu.Unlock()
 	jobs := al.readDeferredQueue()
 	// A retry of the same turn must not enqueue twice.
 	for _, j := range jobs {
@@ -180,7 +207,7 @@ func (al *AgentLoop) FlushDeferred() int {
 		}
 		j := jobs[0]
 		al.runDeferredExtraction(j.Session, j.Message, j.RequestID)
-		al.writeDeferredQueue(jobs[1:])
+		al.commitDeferred(jobs, jobs[1:])
 		n++
 		if n > deferredQueueMax {
 			return n
@@ -226,7 +253,7 @@ func (al *AgentLoop) drainDeferred() bool {
 		// Interactive work always wins: stop and leave the rest queued.
 		if processed >= deferredDrainBatch || al.interactiveBusy() {
 			remaining = append(remaining, jobs[i:]...)
-			al.writeDeferredQueue(remaining)
+			al.commitDeferred(jobs, remaining)
 			return true
 		}
 		if al.runDeferredExtraction(j.Session, j.Message, j.RequestID) {
@@ -241,8 +268,16 @@ func (al *AgentLoop) drainDeferred() bool {
 				map[string]interface{}{"session": j.Session, "attempts": j.Attempts})
 		}
 	}
-	al.writeDeferredQueue(remaining)
-	return len(remaining) > 0
+	al.commitDeferred(jobs, remaining)
+	return al.deferredPending()
+}
+
+// deferredPending reports whether anything is still queued, including records
+// that arrived while the drain ran.
+func (al *AgentLoop) deferredPending() bool {
+	al.deferredMu.Lock()
+	defer al.deferredMu.Unlock()
+	return len(al.readDeferredQueue()) > 0
 }
 
 // StartDeferredWorker drains anything left over from a previous process. Safe

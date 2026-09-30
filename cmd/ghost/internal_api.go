@@ -40,6 +40,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/ianclemence/ghost/pkg/activity"
 	"github.com/ianclemence/ghost/pkg/agent"
+	"github.com/ianclemence/ghost/pkg/awareness"
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/cards"
@@ -266,6 +267,16 @@ func eventLogDir() string {
 //     After rebinding the attacker's page is same-origin with the gateway,
 //     so no CORS rule applies at all.
 func isLoopbackRequest(r *http.Request) bool {
+	// Traffic the relay client replays arrives from 127.0.0.1, but it came from
+	// the internet through a relay server. If that counted as "this machine" the
+	// relay would be the only thing between the world and owner-level access,
+	// and a hosted relay would hold the keys to every Pod. The relay client sets
+	// this header itself after copying the remote headers, so a relay cannot
+	// remove it: relayed requests must present valid device credentials like any
+	// other remote peer.
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Ghost-Via")), "relay") {
+		return false
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return false
@@ -433,10 +444,12 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 		credential := r.Header.Get("X-Ghost-Credential")
 		if !isLoopbackRequest(r) {
 			if deviceID == "" || credential == "" {
+				noteFailedAccess(r, awareness.AuthFailed)
 				http.Error(w, `{"error":{"code":"authentication_required","message":"Device authentication required."}}`, http.StatusUnauthorized)
 				return
 			}
 			if valid, _ := pairing.ValidateCredential(agentLoop.DB(), deviceID, credential); !valid {
+				noteFailedAccess(r, awareness.AuthFailed)
 				http.Error(w, `{"error":{"code":"authentication_failed","message":"Invalid device credentials."}}`, http.StatusUnauthorized)
 				return
 			}
@@ -587,6 +600,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 		// Loopback peers are trusted; LAN peers must present device credentials.
 		if !peerAuthorized(r) {
+			noteFailedAccess(r, awareness.AuthFailed)
 			jsonResponse(w, http.StatusUnauthorized, map[string]interface{}{
 				"error": map[string]string{
 					"code":    pairing.ErrCodeAuthRequired,
@@ -5419,6 +5433,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 
 		result, err := pairing.RedeemPairing(db, req.Token, req.DisplayName, req.Platform)
 		if err != nil {
+			noteFailedAccess(r, awareness.PairFailed)
 			pairingErrorResponse(w, http.StatusUnauthorized, err)
 			return
 		}
@@ -5597,6 +5612,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	registerLiveSurfaceRoutes(mux, agentLoop)
 	registerPushRoutes(mux, startPushBridge(agentLoop))
 	registerSystemUpdateRoutes(mux)
+	startSelfCare(agentLoop, workspaceDir)
 	registerBrowserStreamRoutes(mux, agentLoop)
 	registerLiveVoiceRoutes(mux, agentLoop)
 

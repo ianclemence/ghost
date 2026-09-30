@@ -112,3 +112,24 @@ func TestChatRequestAcceptsBothAttachmentShapes(t *testing.T) {
 		}
 	}
 }
+
+// A request the relay replays on the Pod's own loopback came from the internet.
+// It must not inherit "this is the owner" trust.
+func TestRelayedRequestsAreNotTrustedAsLocal(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/files", nil)
+	req.RemoteAddr = "127.0.0.1:41000"
+	req.Host = "127.0.0.1:8766"
+	if !isLoopbackRequest(req) {
+		t.Fatal("a genuine local request is the owner")
+	}
+	req.Header.Set("X-Ghost-Via", "relay")
+	if isLoopbackRequest(req) {
+		t.Fatal("a relayed request must not count as loopback")
+	}
+	h := authMiddleware(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	rec := httptest.NewRecorder()
+	h(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("a relayed request without device credentials must be refused, got %d", rec.Code)
+	}
+}

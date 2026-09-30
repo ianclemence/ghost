@@ -790,3 +790,15 @@ func TestUnderstoodMemoriesReadNaturallyAndKeepTheirDomain(t *testing.T) {
 		t.Fatalf("the owner's own memories carry no prefix: %q", got)
 	}
 }
+
+func TestSynonymsMapOntoTheVocabulary(t *testing.T) {
+	for in, want := range map[string]string{"Habit": "routine", "pet": "person", "allergy": "health", "language": "skill", "belief": "opinion", "trip": "event", "fact": "fact"} {
+		if got := NormalizeKind(in); got != want {
+			t.Errorf("NormalizeKind(%q) = %q, want %q", in, got, want)
+		}
+	}
+	res := ValidateClassification(ClassificationOutput{ShouldRemember: true, Kind: "habit", Domain: "fitness", Confidence: 0.9, Summary: "Runs 5k every morning"})
+	if !res.Valid || res.Kind != MemoryKindRoutine || res.Domain != MemoryDomainHealth {
+		t.Fatalf("a habit about fitness is a health routine, not a dropped memory: %+v", res)
+	}
+}

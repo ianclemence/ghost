@@ -3,6 +3,32 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.90] - 2026-09-30
+
+- **Ghost tells you what you need to know, unasked.** If its balance runs out
+  or a key is rejected while it is working in the background, if the Pod is
+  overheating or nearly out of storage, if the room gets unusually hot, cold,
+  damp or dry, or if a newer Ghost is out, it says so once, and pushes it to
+  your phone even when the app is closed.
+- **It notices when someone is poking at it.** Repeated attempts to reach Ghost
+  without valid credentials, wrong pairing codes, or a sweep across your network
+  are reported with where they came from. Everything is turned away first.
+- **It can feel the room.** With a temperature and humidity sensor attached,
+  "what's the temperature in here?" gets a real reading. With none, Ghost says
+  so and reports the Pod's own temperature instead of inventing one.
+- **Messaging channels are closed until you open them.** Telegram, Discord,
+  Slack, WhatsApp and email used to answer anyone who found the bot. They now
+  answer only the people listed under Channels in the console, and Ghost tells
+  you when a stranger writes. **If a channel goes quiet after this update, add
+  your own ID there.**
+- **A relay can no longer act as you.** Traffic replayed by the relay is treated
+  like any other remote request and needs the device's credentials.
+- **Setting up a Pod with no screen.** The setup code is also written to the SD
+  card's boot partition (and a factory can preset one), so it can be read from
+  any computer. Finishing setup removes it.
+- Memories are filed under the right kind and domain more reliably, and a
+  memory is no longer lost when two are saved at the same moment.
+
 ## [0.24.89] - 2026-09-30
 
 - **Ghost understands before it files.** Memories used to be sorted into a
