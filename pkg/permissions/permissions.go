@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -896,8 +897,10 @@ func (r *Request) Card() (ApprovalCard, bool) {
 	}
 	title := cardTitle(r.Capability, r.Action)
 	desc := strings.TrimSpace(r.Reason)
-	if desc == "" {
-		desc = "Ghost needs your approval to continue."
+	if desc == "" || machineReason.MatchString(desc) {
+		// "email.read via email_search" is how the broker labels a request, not
+		// something an owner should have to decode.
+		desc = plainReason(r.Capability, r.Action, title)
 	}
 	return ApprovalCard{
 		RequestID:   r.ID,
@@ -952,10 +955,18 @@ func cardTitle(capability, action string) string {
 	case strings.Contains(capability, "telegram") || strings.Contains(capability, "message"):
 		return "Send this message?"
 	case strings.Contains(capability, "mail") || strings.Contains(capability, "email"):
+		if has("read", "search", "list", "inbox", "fetch", "get") {
+			return "Read your email?"
+		}
 		return "Send this email?"
+	case has("schedule", "reminder", "cron", "routine"):
+		return "Schedule this?"
 	case strings.Contains(capability, "hass") || strings.Contains(capability, "home"):
 		return "Control a home device?"
 	case strings.Contains(capability, "file") || strings.Contains(capability, "delete"):
+		if has("read", "list", "search", "open") && !has("delete", "write", "edit", "remove") {
+			return "Read your files?"
+		}
 		return "Change files?"
 	default:
 		if act != "" && act != capability {
@@ -969,4 +980,38 @@ func prettifyAction(act string) string {
 	act = strings.ReplaceAll(act, "_", " ")
 	act = strings.ReplaceAll(act, ".", " ")
 	return strings.TrimSpace(act)
+}
+
+// machineReason matches the broker's own "capability via action" label.
+var machineReason = regexp.MustCompile(`^[a-z0-9_.:-]+ via [a-z0-9_.:-]+$`)
+
+// plainReason says, in a sentence, what approving this would let Ghost do.
+func plainReason(capability, action, title string) string {
+	lc := strings.ToLower(capability + " " + action)
+	has := func(words ...string) bool {
+		for _, w := range words {
+			if strings.Contains(lc, w) {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case has("exec", "shell", "sandbox"):
+		return "Ghost wants to run a command on your Pod."
+	case has("mail"):
+		if title == "Read your email?" {
+			return "Ghost wants to look through your inbox."
+		}
+		return "Ghost wants to send an email from your account."
+	case has("schedule", "reminder", "cron", "routine"):
+		return "Ghost wants to set this up to run later, as you asked."
+	case has("calendar"):
+		return "Ghost wants to use your calendar."
+	case has("browser"):
+		return "Ghost wants to use the web browser."
+	case has("file"):
+		return "Ghost wants to work with your files."
+	}
+	return "Ghost needs your approval to continue."
 }

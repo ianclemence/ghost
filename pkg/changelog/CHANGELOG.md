@@ -3,6 +3,24 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.91] - 2026-09-30
+
+- **Backups now back up the right Ghost, and can be restored.** `sudo ghost
+  state backup` used to save an empty workspace and report success. It now
+  targets the running Ghost, and restoring a snapshot no longer asks for a
+  passphrase nobody has. `ghost state backup` also says plainly that the backup
+  lives on the Pod and that the Pod's key is needed to open it. Recovery steps
+  are in the user guide.
+- **If Ghost was off, it says what it skipped.** A routine that came due while
+  the Pod was off is no longer replayed hours late (a morning brief at 9pm);
+  Ghost skips it, tells you, and carries on at the next time. Reminders still
+  arrive late with a note.
+- **Approval cards say what you are approving.** Reading your inbox no longer
+  asks "Send this email?", scheduling says so, and the internal label under the
+  title is now a sentence.
+- Ghost re-reads the clock each turn, so a change of timezone mid-conversation
+  no longer leaves it repeating an earlier time.
+
 ## [0.24.90] - 2026-09-30
 
 - **Ghost tells you what you need to know, unasked.** If its balance runs out

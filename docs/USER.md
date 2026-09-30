@@ -127,3 +127,25 @@ strength.
 See [Ghost](GHOST.md) for the runtime that owns the relationship, and
 [Intent & Reasoning](INTENT-REASONING.md) for how requests become capability
 requests.
+
+## Backups and recovery
+
+Ghost saves a recovery snapshot of its memory, files, settings and secrets
+before every update, and `ghost state backup` takes one on demand (the newest
+five are kept, in the Pod's `backups` folder). Two things to know:
+
+- **A backup on the Pod dies with the Pod.** Copy the newest `.gst` file to
+  another computer now and then.
+- **A backup can only be opened with the Pod's key.** The key is
+  `GHOST_MASTER_KEY` in `.master-env` in the Ghost config directory. Keep a copy
+  of it somewhere safe and separate from the backup, such as a password manager.
+
+To restore onto a fresh install of Ghost:
+
+```bash
+GHOST_MASTER_KEY=<your key> ghost state import ghost-20260930-081926.gst
+```
+
+Memory, conversation history, files and settings come back. Paired phones do not
+(re-pair with `ghost pair`), and neither do notification tokens; the app
+registers again on its own.

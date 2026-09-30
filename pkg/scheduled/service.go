@@ -31,6 +31,9 @@ type Service struct {
 	// means wall time is untrustworthy and due items must not fire this
 	// cycle. Nil means always fire (tests, callers without a clock).
 	ClockGate func() bool
+	// MissedNotice, when set, is told about a recurring run that was skipped
+	// because Ghost was off when it came due, so the owner can be told.
+	MissedNotice func(item *ScheduledItem, due time.Time)
 	// clockBlocked remembers the gate state to log transitions once
 	// instead of every second.
 	clockBlocked bool
@@ -121,6 +124,21 @@ func (s *Service) tick() {
 	}
 
 	for _, item := range items {
+		// A recurring run that came due while Ghost was off is not replayed
+		// hours later (a morning brief at 9pm is noise). Commitments to the
+		// owner, such as reminders, are delivered late with a note instead; that
+		// is the policy table's call, not ours.
+		if !item.IsOneTime() && item.NextRunAt != nil && now.Sub(*item.NextRunAt) > missedRecurringGrace {
+			d := ClassifyMissed(item.Type, "", *item.NextRunAt, now)
+			if !d.ShouldRun && !d.NotifyUser {
+				due := *item.NextRunAt
+				s.handleMissedRecurring(item, now)
+				if s.MissedNotice != nil {
+					s.MissedNotice(item, due)
+				}
+				continue
+			}
+		}
 		// Transition the item to running synchronously so a subsequent tick can
 		// never re-list it and fire it a second time while execution is in flight.
 		if err := s.store.UpdateState(item.ID, StateRunning); err != nil {
@@ -132,6 +150,10 @@ func (s *Service) tick() {
 		go s.runItemSafely(item)
 	}
 }
+
+// missedRecurringGrace is how late a recurring run may be and still run: enough
+// for a slow boot or a busy tick, not enough to replay yesterday.
+const missedRecurringGrace = 30 * time.Minute
 
 // runItemSafely runs one scheduled item in its own goroutine and contains a
 // panic so a single failing executor cannot crash the whole personal AI. The

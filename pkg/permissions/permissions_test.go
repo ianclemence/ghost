@@ -512,3 +512,31 @@ func TestTaskGrantFollowsTheWork(t *testing.T) {
 		t.Fatal("task grant must not downgrade a standing grant")
 	}
 }
+
+// An approval card must say what approving does. Reading a mailbox is not
+// sending an email, and the broker's internal label is not for people.
+func TestApprovalCardsSayWhatApprovingDoes(t *testing.T) {
+	cases := []struct{ capability, action, title, descHas string }{
+		{"email.read", "email_search", "Read your email?", "inbox"},
+		{"email.send", "email_send", "Send this email?", "send an email"},
+		{"schedule.create", "schedule", "Schedule this?", "run later"},
+		{"exec.shell", "exec", "Run commands on this Ghost?", "run a command"},
+		{"file.read", "read_file", "Read your files?", "files"},
+		{"file.delete", "delete_file", "Change files?", "files"},
+	}
+	for _, c := range cases {
+		r := &Request{Status: StatusPending, Capability: c.capability, Action: c.action, Reason: c.capability + " via " + c.action}
+		card, ok := r.Card()
+		if !ok || card.Title != c.title || !strings.Contains(strings.ToLower(card.Description), c.descHas) {
+			t.Errorf("%s/%s: title %q description %q", c.capability, c.action, card.Title, card.Description)
+		}
+		if strings.Contains(card.Description, " via ") {
+			t.Errorf("%s: the broker label leaked into the card: %q", c.capability, card.Description)
+		}
+	}
+	// A reason someone wrote is kept as written.
+	r := &Request{Status: StatusPending, Capability: "email.send", Action: "email_send", Reason: "Reply to your landlord about the deposit."}
+	if card, _ := r.Card(); card.Description != "Reply to your landlord about the deposit." {
+		t.Errorf("a real reason must be kept: %q", card.Description)
+	}
+}

@@ -291,6 +291,15 @@ func main() {
 	// are unaffected.
 	if isApplianceOpsCommand(command) {
 		applyApplianceTarget()
+	} else if command == "state" {
+		// Backup, export and import must act on the Ghost that is actually
+		// running. Run as root they used to fall through to /root/.ghost, so
+		// `sudo ghost state backup` saved an empty workspace and said "Snapshot".
+		if os.Geteuid() == 0 {
+			applyApplianceTarget()
+		} else {
+			applyInstalledConfig()
+		}
 	} else if isInteractiveCommand(command) {
 		// Interactive commands read the SAME config the Web Console and
 		// the daemon use when an installed Ghost exists and this user can
@@ -2638,6 +2647,14 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 	events := &scheduled.SimpleEventBus{}
 
 	service := scheduled.NewService(store, events, executor)
+	// A recurring routine that came due while Ghost was off is skipped, not
+	// replayed hours later; say so, so its silence is not a mystery.
+	service.MissedNotice = func(item *scheduled.ScheduledItem, due time.Time) {
+		when := scheduled.InZone(due, item.Timezone).Format("Mon 3:04 PM")
+		agentLoop.Announce("missed:"+item.ID+":"+due.UTC().Format("20060102"),
+			fmt.Sprintf("I was offline when %q was due (%s), so I skipped that run. It will go again at its next scheduled time.", item.Title, when),
+			24*time.Hour, false)
+	}
 	// Feed the proactive signal scan: routine waits/failures propose
 	// gated, reason-carrying notices on heartbeat ticks.
 	agentLoop.SetRoutineSignals(routineSvc, service)
@@ -3149,7 +3166,7 @@ func stateImportCmd(cfg *config.Config) {
 		}
 	}
 
-	passphrase, err := readPassphrase("Passphrase (to decrypt the archive): ", false)
+	passphrase, err := archivePassphrase(src)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
@@ -3171,11 +3188,6 @@ func stateImportCmd(cfg *config.Config) {
 	if importContext != "" {
 		fmt.Printf("  Untagged memories assigned to context %q.\n", importContext)
 	}
-	if err != nil {
-		fmt.Printf("Error importing Ghost State: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("✓ Imported Ghost State (%s) into %s\n", manifest.GhostID, cfg.WorkspacePath())
 	if manifest.SecretsIncluded {
 		fmt.Println("  Secrets restored from the archive.")
 	} else {
@@ -3190,7 +3202,7 @@ func stateInspectCmd(cfg *config.Config) {
 		os.Exit(2)
 	}
 	src := os.Args[3]
-	passphrase, err := readPassphrase("Passphrase (to decrypt the archive): ", false)
+	passphrase, err := archivePassphrase(src)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
@@ -3262,6 +3274,16 @@ func stateBackupCmd(cfg *config.Config) {
 	for _, r := range removed {
 		fmt.Printf("Pruned: %s\n", r)
 	}
+	// Scheduled runs stay quiet. A person running it should know the limit of
+	// what was just saved: the archive sits on this same disk, and it can only
+	// be opened with this Pod's key, which sits here too.
+	if !contains(os.Args, "--cron") {
+		fmt.Println("\nThis backup lives on this Pod. If the SD card fails it goes with it.")
+		fmt.Println("Copy the file to another computer, and keep GHOST_MASTER_KEY (in the")
+		fmt.Println("Ghost config directory, file .master-env) somewhere safe: the backup")
+		fmt.Println("cannot be opened without it. Restore on a fresh install with:")
+		fmt.Println("  GHOST_MASTER_KEY=<key> ghost state import <file>")
+	}
 }
 
 // statePruneCmd enforces snapshot retention without taking a new one.
@@ -3286,6 +3308,22 @@ func statePruneCmd(cfg *config.Config) {
 	for _, r := range removed {
 		fmt.Printf("Pruned: %s\n", r)
 	}
+}
+
+// archivePassphrase returns the passphrase for reading an archive. Recovery
+// snapshots (the .gst files Ghost takes itself, before updates and on backup)
+// are locked with a key derived from this Ghost's vault, so nobody has a
+// passphrase to type; use that key when it opens the archive, and ask only when
+// it does not (an archive exported by hand, or from another Ghost).
+func archivePassphrase(src string) (string, error) {
+	if strings.HasPrefix(filepath.Base(src), ghoststate.SnapshotPrefix) {
+		if pass, err := ghoststate.SnapshotPassphrase(getConfigPath()); err == nil {
+			if _, ierr := ghoststate.Inspect(src, pass); ierr == nil {
+				return pass, nil
+			}
+		}
+	}
+	return readPassphrase("Passphrase (to decrypt the archive): ", false)
 }
 
 // readPassphrase reads a passphrase from the terminal without echoing, or
@@ -4102,4 +4140,13 @@ func friendlyAgentError(err error) string {
 		// secret; keep CLI honest but terse.
 		return err.Error()
 	}
+}
+
+func contains(list []string, want string) bool {
+	for _, v := range list {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }
