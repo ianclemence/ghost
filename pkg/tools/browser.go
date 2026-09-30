@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/config"
 	"net/url"
 	"os"
 	"os/exec"
@@ -1048,6 +1049,7 @@ func captureBrowserShotWith(
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", false
 	}
+	config.MatchOwnerUnder(filepath.Dir(dir), dir)
 	path := filepath.Join(dir, "shot-"+safe+".png")
 	// Remove any stale file first so a failed capture can never serve
 	// a previous page as the current observation.
@@ -1076,6 +1078,7 @@ func captureBrowserShotWith(
 		_ = os.Remove(path)
 		return "", false
 	}
+	config.MatchOwnerUnder(filepath.Dir(dir), path)
 	pruneBrowserShots(dir)
 	return path, true
 }
@@ -1878,10 +1881,12 @@ func (t *BrowserTool) downloadBare(ctx context.Context, args map[string]interfac
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return ErrorResult(fmt.Sprintf("download directory unavailable: %v", err))
 	}
+	config.MatchOwnerUnder(t.workspace, dir)
 	dest := filepath.Join(dir, fmt.Sprintf("download-%d", time.Now().UnixNano()))
 	res := t.run(ctx, "download", ref, dest)
 	if res.IsError {
 		return res
 	}
+	config.MatchOwnerUnder(t.workspace, dest)
 	return NewToolResult(fmt.Sprintf("Download saved: %s (verify the file exists before telling the user it succeeded).", dest))
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/awareness"
 	"github.com/ianclemence/ghost/pkg/channels"
+	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/hardware"
 )
 
@@ -69,6 +70,9 @@ func startSelfCare(al *agent.AgentLoop, workspace string) {
 }
 
 func selfCareOnce(al *agent.AgentLoop, workspace string, lastUpdateCheck *time.Time) {
+	// Anything the daemon left readable only by the service account would make
+	// a backup or an update fail; hand it back to the workspace's owner.
+	config.RepairOwnership(workspace)
 	snap := hardware.Snapshot(workspace)
 	if snap.Storage == hardware.PressureCritical {
 		al.Announce("storage-critical", fmt.Sprintf("I'm almost out of storage: %d GB left on the Pod. When it fills up I can't save memory or files. Clearing old downloads and backups would fix it.", snap.DiskFreeGB), 12*time.Hour, true)

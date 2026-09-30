@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.95] - 2026-10-01
+
+- **Updates and backups can no longer be stopped by a private file.** Ghost's
+  service account could leave a screenshot folder that only it could read, and
+  the safety backup before an update then (correctly) refused to continue.
+  Files and folders Ghost creates now belong to the workspace's owner, and Ghost
+  repairs any it finds.
+
 ## [0.24.94] - 2026-10-01
 
 - **Your terminal no longer stops working after you save a login.** When Ghost

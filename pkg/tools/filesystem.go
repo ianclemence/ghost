@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/config"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,6 +220,7 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 	if err := os.WriteFile(resolvedPath, []byte(content), 0644); err != nil {
 		return ErrorResult(fmt.Sprintf("failed to write file: %v", err))
 	}
+	config.MatchOwnerUnder(t.workspace, resolvedPath)
 
 	res := SilentResult(fmt.Sprintf("File written: %s", path))
 	res.Evidence = FileWriteEvidence(resolvedPath, []byte(content))

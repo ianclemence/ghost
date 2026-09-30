@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/config"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -230,6 +231,7 @@ func (t *MoveFileTool) Execute(ctx context.Context, args map[string]interface{})
 	if err := os.Rename(src, dst); err != nil {
 		return ErrorResult(fmt.Sprintf("could not move %q: %v", from, err))
 	}
+	config.MatchOwnerUnder(t.workspace, dst)
 	return SilentResult(fmt.Sprintf("Moved %s to %s.", from, to))
 }
 
