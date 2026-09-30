@@ -567,6 +567,10 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 			},
 		}
 		var fileTags []string
+		// Everything attached, in the order sent, images included: the model
+		// can only answer "compare these" or "the second one" if it is told
+		// what "these" are.
+		var attached []string
 
 		for _, path := range media {
 			data, err := os.ReadFile(path)
@@ -575,6 +579,7 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 				continue
 			}
 			mimeType := http.DetectContentType(data)
+			attached = append(attached, cb.attachmentLine(path, data))
 
 			// Special handling for Kimi Provider (file upload for large assets/videos)
 			if uploader, ok := provider.(providers.FileUploader); ok {
@@ -629,9 +634,27 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 			}
 		}
 
-		if len(fileTags) > 0 {
-			// Prepend tags to the text part so they are seen first
-			contentParts[0].Text = "I have attached new files to this message. Please prioritize them over any previous context if asked to describe 'this' or 'it'.\n\n" + strings.Join(fileTags, "\n") + "\n\nUser Message: " + currentMessage
+		if len(fileTags) > 0 || len(attached) > 1 {
+			// Prepend what was attached to the text part so it is seen first
+			var b strings.Builder
+			if len(attached) > 1 {
+				fmt.Fprintf(&b, "The owner attached %d files to this message, in this order:\n", len(attached))
+				for i, line := range attached {
+					fmt.Fprintf(&b, "%d. %s\n", i+1, line)
+				}
+				b.WriteString("\nDo what they ask with these files. \"These\", \"them\" and \"the files\" mean all of them together; \"this\" or \"it\" means the newest. Open every file you need before you answer, and say which file each part of your answer comes from.")
+			} else {
+				b.WriteString("I have attached new files to this message. Please prioritize them over any previous context if asked to describe 'this' or 'it'.")
+			}
+			if strings.TrimSpace(currentMessage) == "" {
+				b.WriteString(" They wrote nothing with them: say in a line what each one is, and ask what they would like done.")
+			}
+			b.WriteString("\n\n")
+			if len(fileTags) > 0 {
+				b.WriteString(strings.Join(fileTags, "\n"))
+				b.WriteString("\n\n")
+			}
+			contentParts[0].Text = b.String() + "User Message: " + currentMessage
 		}
 		userMsg.MultiContent = contentParts
 	}
@@ -639,6 +662,12 @@ func (cb *ContextBuilder) BuildMessages(ctx context.Context, history []providers
 	messages = append(messages, userMsg)
 
 	return messages
+}
+
+// attachmentLine names one attachment for the list the model is given.
+func (cb *ContextBuilder) attachmentLine(path string, data []byte) string {
+	name := filepath.Base(path)
+	return fmt.Sprintf("%s (%s)", name, uploads.Kind(name, uploads.Sniff(data, name, "")))
 }
 
 // attachmentTag tells the model what an attached file is and which tool opens

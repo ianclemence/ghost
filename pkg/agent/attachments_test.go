@@ -253,3 +253,41 @@ func TestPlainReminderRoutinesNeedNoModel(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+// Several files sent together: the model is told exactly what was sent, in
+// order, and what "these" means, including photos, so a question about all of
+// them (or about none in particular) can be answered.
+func TestSeveralAttachmentsAreListedForTheModel(t *testing.T) {
+	ws := t.TempDir()
+	cb := NewContextBuilder(ws)
+	csv, _ := uploads.Save(ws, []byte("item,cost\ncoffee,4\n"), "spend.csv", "text/csv", "mobile")
+	txt, _ := uploads.Save(ws, []byte("remember the milk"), "note.txt", "text/plain", "mobile")
+	png := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89")
+	pic, _ := uploads.Save(ws, png, "receipt.png", "image/png", "mobile")
+
+	text := func(msg string, files ...string) string {
+		var paths []string
+		for _, f := range files {
+			paths = append(paths, filepath.Join(ws, f))
+		}
+		m := cb.BuildMessages(context.Background(), nil, "", msg, paths, "mobile", "c", nil, nil)
+		return m[len(m)-1].MultiContent[0].Text
+	}
+
+	got := text("compare these", csv.Path, pic.Path, txt.Path)
+	for _, want := range []string{"attached 3 files", "1. spend.csv", "2. receipt.png (image)", "3. note.txt", "mean all of them", "doc_parser", "read_file", "User Message: compare these"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "wrote nothing") {
+		t.Error("they did write something")
+	}
+	if got := text("", csv.Path, pic.Path); !strings.Contains(got, "wrote nothing") || !strings.Contains(got, "ask what they would like done") {
+		t.Errorf("a message with no words must ask what to do:\n%s", got)
+	}
+	// One photo and a question keeps the plain shape: nothing extra to say.
+	if got := text("what is this?", pic.Path); strings.Contains(got, "attached") {
+		t.Errorf("a single photo needs no list:\n%s", got)
+	}
+}

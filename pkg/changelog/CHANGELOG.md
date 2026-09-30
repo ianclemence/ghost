@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.103] - 2026-10-01
+
+- **Send several files at once and Ghost answers what you ask about them.** The
+  app now takes up to ten files or photos in one message. Ghost is given a list
+  of everything you sent, in order, photos included, so "compare these", "the
+  second one" and "summarise them all" work. If you send files with no words, it
+  says in a line what each one is and asks what you want done.
+
 ## [0.24.102] - 2026-10-01
 
 - **The phone can now connect Google Calendar, Gmail, Outlook and Spotify.** The
