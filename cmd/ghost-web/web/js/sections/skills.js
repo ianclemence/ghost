@@ -37,6 +37,13 @@ async function loadSkills(container) {
   renderSkillsList(container, skills, integ && integ.integrations);
 }
 
+// prettySkillName shows "unit-converter" as "Unit converter". The slug stays
+// the identity everywhere else; this is display only.
+function prettySkillName(name) {
+  const t = String(name || '').replace(/[-_]+/g, ' ').trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : name;
+}
+
 // humanizeSkillDesc turns a routing-oriented SKILL.md description into
 // user-facing copy: cut the "Invoke when user asks ..." trigger block,
 // strip workspace paths and binary names.
@@ -175,7 +182,7 @@ function buildSkillRow(s, integ) {
   const badge = skillBadge(s, integ);
   row.appendChild(GhostUI.h('span', { className: 'status-dot ' + badge.state }));
   const c = GhostUI.h('div', { className: 'ghost-row-content' });
-  c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, s.name));
+  c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, prettySkillName(s.name)));
   c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle skill-desc' }, humanizeSkillDesc(s.description)));
   row.appendChild(c);
   const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });

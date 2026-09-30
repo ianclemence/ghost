@@ -373,8 +373,8 @@
   font-size: var(--t-body);
   line-height: var(--lh-body);
   color: var(--ink-soft);
-  max-width: 64ch;
 }
+.prose > * { max-width: 68ch; }
 .prose h2 {
   color: var(--ink);
   font-size: var(--t-head);

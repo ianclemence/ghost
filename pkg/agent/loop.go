@@ -420,9 +420,14 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 		registry.Register(imageGen)
 	}
 
-	// Hardware tools (I2C, SPI) - Linux only, returns error on other platforms
-	registry.Register(tools.NewI2CTool())
-	registry.Register(tools.NewSPITool())
+	// Hardware buses are offered only where the device nodes exist, so a
+	// laptop or server doesn't spend prompt tokens on tools that can only fail.
+	if hardwareBusPresent("/dev/i2c-*") {
+		registry.Register(tools.NewI2CTool())
+	}
+	if hardwareBusPresent("/dev/spidev*") {
+		registry.Register(tools.NewSPITool())
+	}
 
 	// Message tool - available to both agent and subagent
 	// Subagent uses it to communicate directly with user
@@ -5164,4 +5169,10 @@ var commandRequestRE = regexp.MustCompile("(?i)(?:" +
 // see — the exact three-refusals failure the owner reported.
 func ownerRequestsCommand(msg string) bool {
 	return commandRequestRE.MatchString(strings.TrimSpace(msg))
+}
+
+// hardwareBusPresent reports whether any device node matches the pattern.
+func hardwareBusPresent(pattern string) bool {
+	m, _ := filepath.Glob(pattern)
+	return len(m) > 0
 }

@@ -29,6 +29,7 @@ const routes: Record<string, unknown> = {
   "/v1/doctor": { status: "ok", checks: [{ name: "Model provider", status: "ok", message: "deepseek reachable" }, { name: "Memory", status: "ok", message: "3 memories" }, { name: "Scheduler", status: "ok", message: "3 routines" }] },
   "/v1/channels/status": { channels: [{ name: "telegram", enabled: false }, { name: "whatsapp", enabled: false }] },
   "/v1/pairing/devices": { devices: [] }, "/v1/model": { active: "deepseek:deepseek-flash", provider: "deepseek", presets: [] },
+  "/v1/skills": JSON.parse(await Bun.file(new URL("./fixtures/skills.json", import.meta.url)).text()),
   "/v1/artifacts": { artifacts: [] }, "/v1/cards": { cards: [] },
 };
 Bun.serve({ port: Number(process.env.PORT ?? 8392), fetch(req) {

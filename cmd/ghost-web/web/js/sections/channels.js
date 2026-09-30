@@ -97,7 +97,8 @@ function channelRow(name, kind, state, sub, onClick) {
   const row = GhostUI.h('div', { className: 'model-row' });
   const main = GhostUI.h('div', { className: 'model-main' });
   main.appendChild(GhostUI.h('div', { className: 'model-name' }, name));
-  main.appendChild(GhostUI.h('div', { className: 'model-sub' }, kind + '  ·  ' + sub));
+  const stateOnly = /^(not )?(connected|configured)$/i.test(sub);
+  main.appendChild(GhostUI.h('div', { className: 'model-sub' }, stateOnly ? kind : kind + '  ·  ' + sub));
   row.appendChild(main);
   const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
   const label = state === 'connected' ? 'Connected' : state === 'ready' ? 'Configured' : 'Not connected';
