@@ -258,11 +258,16 @@ func (se *SemanticExtractor) extractWithLLM(ctx context.Context, text string, ex
 			if value == "" {
 				continue
 			}
+			subject := memorySubject(item.About)
 			entry := Entry{
 				ID:         generateSemanticID(),
 				Kind:       Kind(validatedItem.Kind),
-				Subject:    "user",
-				Predicate:  buildPredicate(string(validatedItem.Kind), string(validatedItem.Domain), value),
+				Subject:    subject,
+				Domain:     string(validatedItem.Domain),
+				Sensitive:  item.Sensitive || validatedItem.Domain == MemoryDomainHealth || validatedItem.Kind == MemoryKindHealth,
+				Quote:      verbatimQuote(text, item.Quote),
+				ValidUntil: validityEnd(item.Lasting, item.ValidUntil, now),
+				Predicate:  predicateFor(string(validatedItem.Kind), string(validatedItem.Domain), item.Topic, subject, value),
 				Value:      json.RawMessage(fmt.Sprintf("%q", value)),
 				Status:     StatusCurrent,
 				Confidence: validatedItem.Confidence,
@@ -324,41 +329,33 @@ func (se *SemanticExtractor) buildExtractionPrompt(text string, existing []Entry
 }
 
 // extractionSystemPrompt is the system prompt for semantic extraction.
-const extractionSystemPrompt = `You are a memory extractor for Ghost, a personal AI assistant.
+//
+// The model is asked to understand the statement before filing it: who it is
+// about, what specifically it says, whether it will still be true next month,
+// and whether it is private. Only then does it choose a kind and domain. A
+// person's life is not a list of "favorites"; it is people, places, dates,
+// habits, health, things they own, things they can do, and views they hold.
+const extractionSystemPrompt = `You are the memory of Ghost, a personal AI that lives with one person for years. Decide what is worth remembering about them, and record it the way a thoughtful friend would understand it.
 
-Analyze the user message and return a JSON object with these fields:
-- should_remember: true if the message contains durable personal information about the user, false otherwise
-- memories: an array of one or more discrete memories. Split compound statements and contradictory/independent facts into separate items. Each item has:
-  - kind: one of "identity", "preference", "fact", "goal", "relationship", "routine", "decision", "consent", "project", "constraint", "interest"
-  - domain: one of "identity", "food", "location", "work", "family", "health", "finance", "technology", "travel", "lifestyle", "communication", "education", "entertainment", "relationship", "other"
-  - confidence: a number between 0 and 1
-  - summary: a short, clean, self-contained statement of the fact in the third person about the user. Write what should be remembered, not what the user said: strip command language like "remember that", and do not include two facts in one item.
+First understand the message. For each thing worth keeping, work out:
+- about: who or what it concerns. "user" for the owner. For anyone else use their name or role ("Jas", "Mum", "Biscuit the dog", "Nairobi office"). A fact about someone else is a fact about that person, not about the owner.
+- topic: a short key for the specific thing it is about, 1 to 3 lowercase words joined by hyphens: "home-city", "partner", "jas-birthday", "diet", "car", "ghost-project". The same topic later REPLACES this memory (I moved: home-city changes). A different topic sits beside it (two people, two projects, two allergies never overwrite each other). Never use a generic key like "general" or "fact".
+- summary: one clean sentence, third person, in the owner's frame ("Jas is their girlfriend", "Is allergic to peanuts", "Flies to Paris on 12 Oct 2026"). Never "user said". One fact per memory.
+- lasting: "lasting" if it will probably be true for a long time; "dated" if it is tied to a date (a trip, an appointment, a deadline, a birthday is lasting-and-yearly so use lasting); "temporary" if it is true only for a while (a cold this week, staying at a hotel).
+- valid_until: for dated or temporary, the date it stops mattering, as YYYY-MM-DD. Empty for lasting.
+- sensitive: true for health, medication, money, legal trouble, sexuality, religion, or anything the person would not want said aloud in front of others.
+- quote: the exact words from the message this came from (copied verbatim, short).
+Only then choose:
+- kind: identity (who they are), person (something about someone in their life), relationship (how someone relates to them), event (a dated happening), possession (something they own: car, device, home), health (condition, allergy, medication, injury, fitness), skill (something they can do, a language they speak), opinion (a view or value they hold), preference (likes and dislikes), interest (topics they follow), habit is a routine, goal, project, decision, constraint (rules they live by), fact (only if nothing else fits).
+- domain: identity, food, location, work, family, health, finance, technology, travel, lifestyle, communication, education, entertainment, sports, hobbies, pets, home, vehicles, relationship, other.
+- confidence: 0 to 1.
 
-Example: for "remember that I never take meetings before 10am and I always order oat milk lattes", return TWO memories:
-  {"kind":"constraint","domain":"work","confidence":0.95,"summary":"Does not take meetings before 10am"}
-  {"kind":"preference","domain":"food","confidence":0.95,"summary":"Always orders oat milk lattes"}
+Split compound statements: "my girlfriend Jas has a birthday on March 3 and is allergic to peanuts" is three memories (Jas is their girlfriend; Jas's birthday is March 3; Jas is allergic to peanuts), each about Jas.
 
-If should_remember is true, memories must contain at least one item. Extract EVERY distinct durable fact the message states — a sentence introducing the user ("I'm Maya"), where they live, and what they do are three separate memories. Do not collapse them into one. It is better to return several precise memories than one imprecise one.
-
-ONLY remember explicit, persistent information:
-- Identity: "My name is X", "I am X years old"
-- Preferences: "I prefer X", "I like X", "My favorite X is Y"
-- Facts: "I live in X", "I work at Y", "I am building Z"
-- Goals: "My goal is to X", "I want to launch Y"
-- Relationships: "Sarah is my wife", "I work with John"
-
-Do NOT remember:
-- Shopping errands and wishes: "Wants to buy a keyboard", "is looking for a flight"
-- Permissions or consent: "has granted access to X" (permissions are never memories)
-- Transient requests: "What's the weather?"
-- Questions about the world
-- Temporary context: "I'm going to the store", "I'm eating pizza tonight"
-- Emotional states: "I'm happy today"
-
-If unsure, set should_remember to false.
+Do NOT remember: questions, requests, small talk, moods, what someone is doing right now ("eating pizza"), shopping errands ("wants to buy a keyboard"), anything about permissions or consent (permissions are never memories), or insults and asides. If nothing durable is stated, return should_remember false. If unsure, do not remember.
 
 Respond with ONLY a JSON object, no explanation:
-{"should_remember": true, "memories": [{"kind": "preference", "domain": "food", "confidence": 0.9, "summary": "Prefers tea over coffee"}]}`
+{"should_remember": true, "memories": [{"about":"Jas","topic":"jas-allergy","kind":"health","domain":"health","confidence":0.95,"summary":"Jas is allergic to peanuts","lasting":"lasting","valid_until":"","sensitive":true,"quote":"allergic to peanuts"}]}`
 
 // generateSemanticID generates a unique ID for semantic extractions.
 func generateSemanticID() string {
@@ -572,4 +569,85 @@ var transientPurchaseRE = regexp.MustCompile(`(?i)\b(?:wants?|would like|is look
 // rather than a lasting fact about the owner.
 func transientPurchaseIntent(summary string) bool {
 	return transientPurchaseRE.MatchString(summary)
+}
+
+var slugRE = regexp.MustCompile(`[^a-z0-9]+`)
+
+func slug(s string) string {
+	return strings.Trim(slugRE.ReplaceAllString(strings.ToLower(strings.TrimSpace(s)), "-"), "-")
+}
+
+// memorySubject normalises who a memory is about: the owner is "user", anyone
+// else keeps the name the model gave them.
+func memorySubject(about string) string {
+	a := strings.TrimSpace(about)
+	switch strings.ToLower(a) {
+	case "", "user", "me", "owner", "self", "i", "the user":
+		return "user"
+	}
+	if len([]rune(a)) > 60 {
+		a = string([]rune(a)[:60])
+	}
+	return a
+}
+
+// predicateFor is the key under which a memory lives. Two memories with the
+// same key are the same belief (the newer replaces the older); different keys
+// coexist. It is the model's topic when it gave one, so "home-city" updates but
+// two people, two projects or two allergies never overwrite each other. The
+// old kind-wide keys ("fact/general", "project/current") made unrelated facts
+// collide and dissolve into "conflicting".
+func predicateFor(kind, domain, topic, subject, value string) string {
+	t := slug(topic)
+	switch t {
+	case "", "general", "fact", "other", "misc", "memory", "info":
+		t = ""
+	}
+	if t == "" && subject != "user" {
+		t = slug(subject)
+	}
+	if t == "" {
+		return buildPredicate(kind, domain, value)
+	}
+	if len(t) > 48 {
+		t = t[:48]
+	}
+	return kind + "/" + t
+}
+
+// validityEnd turns the model's "lasting / dated / temporary" and date into a
+// ValidUntil. A dated memory stays through its day; a temporary one with no date
+// lapses after a week. Lasting memories never expire.
+func validityEnd(lasting, until string, now time.Time) *time.Time {
+	switch strings.ToLower(strings.TrimSpace(lasting)) {
+	case "dated", "temporary":
+	default:
+		return nil
+	}
+	if d, err := time.Parse("2006-01-02", strings.TrimSpace(until)); err == nil {
+		end := d.Add(36 * time.Hour).UTC()
+		if end.After(now) {
+			return &end
+		}
+		return nil // already past: not worth remembering as current
+	}
+	if strings.EqualFold(strings.TrimSpace(lasting), "temporary") {
+		end := now.Add(7 * 24 * time.Hour)
+		return &end
+	}
+	return nil
+}
+
+// verbatimQuote keeps the model's quote only if it really is a span of what the
+// owner wrote: a receipt that can be checked, never a paraphrase in quotation
+// marks.
+func verbatimQuote(text, quote string) string {
+	q := strings.TrimSpace(quote)
+	if q == "" || len([]rune(q)) > 200 {
+		return ""
+	}
+	if strings.Contains(strings.ToLower(text), strings.ToLower(q)) {
+		return q
+	}
+	return ""
 }

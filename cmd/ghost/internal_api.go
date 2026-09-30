@@ -4377,6 +4377,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			RetractReason  string     `json:"retract_reason,omitempty"`
 			Domain         string     `json:"domain"`
 			DomainLabel    string     `json:"domain_label"`
+			About          string     `json:"about,omitempty"`
+			Sensitive      bool       `json:"sensitive,omitempty"`
+			ValidUntil     *time.Time `json:"valid_until,omitempty"`
 			Value          string     `json:"value"`
 			CreatedAt      time.Time  `json:"created_at,omitempty"`
 			ReinforceCount int        `json:"reinforce_count,omitempty"`
@@ -4420,6 +4423,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				RetractReason:  e.RetractReason,
 				Domain:         string(domain),
 				DomainLabel:    personalcontext.DomainLabel(domain),
+				About:          aboutOf(e),
+				Sensitive:      e.Sensitive,
+				ValidUntil:     e.ValidUntil,
 				Value:          personalcontext.Value(e),
 				CreatedAt:      e.CreatedAt,
 				ReinforceCount: e.ReinforceCount,
@@ -5892,4 +5898,12 @@ func connectedAppsList() []map[string]interface{} {
 		})
 	}
 	return out
+}
+
+// aboutOf names who a memory concerns when that is someone other than the owner.
+func aboutOf(e personalcontext.Entry) string {
+	if s := strings.TrimSpace(e.Subject); s != "" && !strings.EqualFold(s, "user") {
+		return s
+	}
+	return ""
 }

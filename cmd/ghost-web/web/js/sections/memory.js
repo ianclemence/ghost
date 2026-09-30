@@ -65,8 +65,16 @@ function renderFacts(container, facts, curated) {
     } catch (e) { GhostUI.toast('Couldn\u2019t forget that.', 'err'); }
   };
 
-  const KIND_ORDER = ['identity', 'preference', 'fact', 'goal', 'relationship', 'routine'];
-  const KIND_LABEL = { identity: 'Identity', preference: 'Preferences', fact: 'About you', goal: 'Goals', relationship: 'People', routine: 'Routines' };
+  // Grouped by what a memory *is*, in the order a person thinks of their own
+  // life: who they are, the people around them, what is coming up, what they
+  // have and can do, what they care about, what they are working toward.
+  const KIND_ORDER = ['identity', 'person', 'relationship', 'event', 'health', 'possession', 'skill', 'preference', 'interest', 'opinion', 'routine', 'goal', 'project', 'decision', 'constraint', 'fact'];
+  const KIND_LABEL = {
+    identity: 'Identity', person: 'People in your life', relationship: 'People', event: 'Dates and events',
+    health: 'Health (private)', possession: 'What you own', skill: 'What you can do',
+    preference: 'Preferences', interest: 'Interests', opinion: 'Views', routine: 'Routines',
+    goal: 'Goals', project: 'Projects', decision: 'Decisions', constraint: 'Rules you live by', fact: 'About you',
+  };
   const kindOf = (k) => (KIND_LABEL[k] ? k : 'fact');
   const byKind = {};
   facts.forEach(e => {
@@ -121,7 +129,13 @@ function renderFacts(container, facts, curated) {
     const tag = GhostSemantic.domainTag(dom, e.kind);
     if (tag) sub.appendChild(GhostUI.h('span', { className: 'tag', style: 'text-transform:capitalize;font-size:0.75rem;padding:0.1em 0.4em;border-radius:var(--r-sm);background:var(--paper-sunken);color:var(--ink-muted);margin-right:var(--s-2)' }, tag));
     const meta = metaFor(e);
+    if (e.about) sub.appendChild(document.createTextNode('About ' + e.about + '  \u00b7  '));
     if (meta) sub.appendChild(document.createTextNode(meta));
+    if (e.valid_until) {
+      const until = new Date(e.valid_until);
+      if (!isNaN(until)) sub.appendChild(document.createTextNode('  \u00b7  until ' + until.toLocaleDateString([], { month: 'short', day: 'numeric' })));
+    }
+    if (e.sensitive) sub.appendChild(GhostUI.h('span', { className: 'tag', style: 'margin-left:var(--s-2);font-size:0.75rem;padding:0.1em 0.4em;border-radius:var(--r-sm);background:var(--warn-soft);color:var(--warn)' }, 'Private'));
     c.appendChild(sub);
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });

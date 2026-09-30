@@ -3,6 +3,7 @@ package personalcontext
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // The extractor is pure rule matching over explicit statements: none of these
@@ -713,5 +714,79 @@ func TestShoppingErrandsAndConsentAreNotMemories(t *testing.T) {
 		if transientPurchaseIntent(s) {
 			t.Errorf("%q is a lasting fact and must be kept", s)
 		}
+	}
+}
+
+func TestTitlesDoNotStutter(t *testing.T) {
+	for in, want := range map[string]string{
+		"Prefers Prefers responses without dashes":    "Prefers responses without dashes",
+		"Favorite: Favorite football club is Chelsea": "Favorite football club is Chelsea",
+		"Lives in Bangkok":                            "Lives in Bangkok",
+		"Food: Always orders oat milk lattes":         "Food: Always orders oat milk lattes",
+		"Likes cats":                                  "Likes cats",
+	} {
+		if got := tidyTitle(in); got != want {
+			t.Errorf("tidyTitle(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Different people, projects and allergies must live side by side; the same
+// topic must update in place. The old kind-wide keys collapsed distinct facts
+// into "conflicting".
+func TestPredicatesKeepDifferentThingsApartAndSameThingsTogether(t *testing.T) {
+	a := predicateFor("person", "family", "jas-birthday", "Jas", "Jas's birthday is March 3")
+	b := predicateFor("health", "health", "jas-allergy", "Jas", "Jas is allergic to peanuts")
+	if a == b || a != "person/jas-birthday" {
+		t.Fatalf("distinct topics need distinct keys: %q %q", a, b)
+	}
+	if predicateFor("fact", "location", "home-city", "user", "Lives in Nairobi") != predicateFor("fact", "location", "Home City", "user", "Lives in Bangkok") {
+		t.Fatal("the same topic must share a key so a move replaces the old home")
+	}
+	if got := predicateFor("fact", "other", "general", "Biscuit the dog", "Is a golden retriever"); got != "fact/biscuit-the-dog" {
+		t.Fatalf("a generic topic falls back to who it is about: %q", got)
+	}
+	if got := predicateFor("fact", "other", "", "user", "Likes tea"); got != "fact/general" {
+		t.Fatalf("with nothing better the legacy key applies: %q", got)
+	}
+}
+
+func TestValidityDatesAndReceipts(t *testing.T) {
+	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	if v := validityEnd("lasting", "2026-12-01", now); v != nil {
+		t.Fatal("lasting memories never expire")
+	}
+	if v := validityEnd("dated", "2026-10-12", now); v == nil || !v.After(time.Date(2026, 10, 12, 23, 0, 0, 0, time.UTC)) {
+		t.Fatalf("a dated memory must outlive its day, got %v", v)
+	}
+	if v := validityEnd("dated", "2026-09-01", now); v != nil {
+		t.Fatal("a date already past is not current")
+	}
+	if v := validityEnd("temporary", "", now); v == nil || v.Sub(now) != 7*24*time.Hour {
+		t.Fatalf("temporary with no date lapses after a week, got %v", v)
+	}
+	if q := verbatimQuote("I have a dog named Biscuit", "dog named biscuit"); q != "dog named biscuit" {
+		t.Fatalf("a real span is kept: %q", q)
+	}
+	if q := verbatimQuote("I have a dog named Biscuit", "owns a labrador"); q != "" {
+		t.Fatalf("a paraphrase must never be presented as a quote: %q", q)
+	}
+	if memorySubject("Me") != "user" || memorySubject("Jas") != "Jas" {
+		t.Fatal("subject normalisation")
+	}
+}
+
+func TestUnderstoodMemoriesReadNaturallyAndKeepTheirDomain(t *testing.T) {
+	raw, _ := RawValue("Is allergic to peanuts")
+	e := Entry{Kind: KindHealth, Subject: "Jas", Predicate: "health/jas-allergy", Value: raw, Domain: "health"}
+	if got := Title(e); got != "Jas: Is allergic to peanuts" {
+		t.Fatalf("title: %q", got)
+	}
+	if d := ClassifyEntryDomain(Entry{Predicate: "fact/general", Domain: "sports"}); DomainLabel(d) != "Sports" {
+		t.Fatalf("the domain understood at learning time must survive, got %q", DomainLabel(d))
+	}
+	own, _ := RawValue("always orders oat milk lattes")
+	if got := Title(Entry{Kind: KindPreference, Subject: "user", Predicate: "preference/oat-latte", Value: own, Domain: "food"}); got != "Always orders oat milk lattes" {
+		t.Fatalf("the owner's own memories carry no prefix: %q", got)
 	}
 }

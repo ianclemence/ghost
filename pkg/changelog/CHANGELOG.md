@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.89] - 2026-09-30
+
+- **Ghost understands before it files.** Memories used to be sorted into a
+  handful of buckets and mostly landed under "Other". Ghost now works out who a
+  statement is about (you, Jas, your dog), whether it will last or is tied to a
+  date, whether it is private, and what specifically it is, and keeps your
+  own words as the receipt. People, dates and events, health, things you own,
+  skills, views and habits each have a place, and different facts about
+  different things no longer overwrite each other.
+- Health, money and similar memories are marked private, and a dated memory
+  (a trip, an appointment) retires itself after the day.
+
 ## [0.24.88] - 2026-09-30
 
 - **See what Ghost knows, right in the terminal.** `/memory` lists what is

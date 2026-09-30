@@ -300,11 +300,14 @@ const GhostSemantic = (() => {
     communication: 'Communication', technology: 'Technology', health: 'Health',
     education: 'Education', entertainment: 'Entertainment', finance: 'Finance',
     family: 'Family', travel: 'Travel', other: 'Other',
+    sports: 'Sports', hobbies: 'Hobbies', pets: 'Pets', home: 'Home', vehicles: 'Vehicles',
   };
   const KIND_WORD = {
     identity: 'Identity', preference: 'Preference', fact: 'Fact', goal: 'Goal',
     relationship: 'People', routine: 'Routine', decision: 'Decision',
     consent: 'Consent', project: 'Project', constraint: 'Constraint', interest: 'Interest',
+    person: 'Person', event: 'Event', possession: 'Belonging', health: 'Health',
+    skill: 'Skill', opinion: 'View',
   };
 
   function domainWord(d) { return DOMAIN_WORD[d] || ''; }

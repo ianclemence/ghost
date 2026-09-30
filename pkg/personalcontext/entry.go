@@ -34,6 +34,15 @@ const (
 	KindProject      Kind = "project"
 	KindConstraint   Kind = "constraint"
 	KindInterest     Kind = "interest"
+	// The kinds below let a memory say what it actually is instead of being
+	// filed as a generic "fact": someone in the owner's life, a dated event, a
+	// thing they own, a health matter, something they can do, a view they hold.
+	KindPerson     Kind = "person"
+	KindEvent      Kind = "event"
+	KindPossession Kind = "possession"
+	KindHealth     Kind = "health"
+	KindSkill      Kind = "skill"
+	KindOpinion    Kind = "opinion"
 )
 
 // Status is the lifecycle state of an entry. Only StatusCurrent entries are
@@ -129,6 +138,13 @@ type Entry struct {
 	// ReinforceCount is how many times this belief was restated after creation
 	// (nudge-style reinforcement). ReinforcedAt is the last time it was restated,
 	// so a consolidated memory can answer "when was this last reinforced".
+	// Domain is the area of life the memory concerns, as understood when it
+	// was learned (sports, pets, health…). It used to be re-derived from the
+	// predicate text and mostly came out as "Other".
+	Domain string `json:"domain,omitempty"`
+	// Sensitive marks a memory the owner would want handled with care (health,
+	// money, legal). It is shown as private and never volunteered.
+	Sensitive      bool       `json:"sensitive,omitempty"`
 	ReinforceCount int        `json:"reinforce_count,omitempty"`
 	ReinforcedAt   *time.Time `json:"reinforced_at,omitempty"`
 }
@@ -162,7 +178,8 @@ func ValidKind(k Kind) bool {
 	switch k {
 	case KindIdentity, KindFact, KindPreference, KindRelationship,
 		KindGoal, KindDecision, KindConsent, KindRoutine,
-		KindProject, KindConstraint, KindInterest:
+		KindProject, KindConstraint, KindInterest,
+		KindPerson, KindEvent, KindPossession, KindHealth, KindSkill, KindOpinion:
 		return true
 	}
 	return false

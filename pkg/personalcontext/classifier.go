@@ -25,6 +25,12 @@ const (
 	MemoryKindProject      MemoryKind = "project"
 	MemoryKindConstraint   MemoryKind = "constraint"
 	MemoryKindInterest     MemoryKind = "interest"
+	MemoryKindPerson       MemoryKind = "person"
+	MemoryKindEvent        MemoryKind = "event"
+	MemoryKindPossession   MemoryKind = "possession"
+	MemoryKindHealth       MemoryKind = "health"
+	MemoryKindSkill        MemoryKind = "skill"
+	MemoryKindOpinion      MemoryKind = "opinion"
 )
 
 // MemoryDomain is the controlled vocabulary for memory domains.
@@ -45,6 +51,11 @@ const (
 	MemoryDomainEducation     MemoryDomain = "education"
 	MemoryDomainEntertainment MemoryDomain = "entertainment"
 	MemoryDomainRelationship  MemoryDomain = "relationship"
+	MemoryDomainSports        MemoryDomain = "sports"
+	MemoryDomainHobbies       MemoryDomain = "hobbies"
+	MemoryDomainPets          MemoryDomain = "pets"
+	MemoryDomainHome          MemoryDomain = "home"
+	MemoryDomainVehicles      MemoryDomain = "vehicles"
 	MemoryDomainOther         MemoryDomain = "other"
 )
 
@@ -61,6 +72,12 @@ var ValidMemoryKinds = map[MemoryKind]bool{
 	MemoryKindProject:      true,
 	MemoryKindConstraint:   true,
 	MemoryKindInterest:     true,
+	MemoryKindPerson:       true,
+	MemoryKindEvent:        true,
+	MemoryKindPossession:   true,
+	MemoryKindHealth:       true,
+	MemoryKindSkill:        true,
+	MemoryKindOpinion:      true,
 }
 
 // ValidMemoryDomains is the set of valid memory domains.
@@ -78,6 +95,11 @@ var ValidMemoryDomains = map[MemoryDomain]bool{
 	MemoryDomainCommunication: true,
 	MemoryDomainEducation:     true,
 	MemoryDomainEntertainment: true,
+	MemoryDomainSports:        true,
+	MemoryDomainHobbies:       true,
+	MemoryDomainPets:          true,
+	MemoryDomainHome:          true,
+	MemoryDomainVehicles:      true,
 	MemoryDomainRelationship:  true,
 	MemoryDomainOther:         true,
 }
@@ -110,6 +132,17 @@ type ClassificationOutput struct {
 // Summary is the stored value; it must be a clean statement of the fact,
 // never the user's command language ("remember that …").
 type MemoryItem struct {
+	// About is who or what the memory concerns: "user", or a named person,
+	// pet, place or organisation. Topic is a short key for the specific thing
+	// ("home-city", "jas", "ghost"): the same topic updates in place, a
+	// different topic coexists. Lasting is "lasting", "dated" or "temporary";
+	// ValidUntil is the date a dated or temporary memory stops being true.
+	About      string  `json:"about,omitempty"`
+	Topic      string  `json:"topic,omitempty"`
+	Lasting    string  `json:"lasting,omitempty"`
+	ValidUntil string  `json:"valid_until,omitempty"`
+	Sensitive  bool    `json:"sensitive,omitempty"`
+	Quote      string  `json:"quote,omitempty"`
 	Kind       string  `json:"kind"`
 	Domain     string  `json:"domain"`
 	Confidence float64 `json:"confidence"`

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // Domain classifies what area of life a memory concerns. It is a controlled
@@ -25,6 +26,11 @@ const (
 	DomainEducation     Domain = "education"
 	DomainEntertainment Domain = "entertainment"
 	DomainFamily        Domain = "family"
+	DomainSports        Domain = "sports"
+	DomainHobbies       Domain = "hobbies"
+	DomainPets          Domain = "pets"
+	DomainHome          Domain = "home"
+	DomainVehicles      Domain = "vehicles"
 	DomainOther         Domain = "other"
 )
 
@@ -92,6 +98,11 @@ func ClassifyDomain(predicate string) Domain {
 // catch-all Lifestyle. It never invents a new domain — values it cannot place
 // fall back to the predicate-derived classification.
 func ClassifyEntryDomain(e Entry) Domain {
+	// What the memory was understood to be about when it was learned wins
+	// over a guess re-derived from its predicate text.
+	if known := Domain(strings.ToLower(e.Domain)); known != "" && known != DomainOther && knownDomain(known) {
+		return known
+	}
 	d := ClassifyDomain(e.Predicate)
 	if d != DomainLifestyle {
 		return d
@@ -140,6 +151,18 @@ func DomainLabel(d Domain) string {
 		return "Education"
 	case DomainEntertainment:
 		return "Entertainment"
+	case DomainFamily:
+		return "Family"
+	case DomainSports:
+		return "Sports"
+	case DomainHobbies:
+		return "Hobbies"
+	case DomainPets:
+		return "Pets"
+	case DomainHome:
+		return "Home"
+	case DomainVehicles:
+		return "Vehicles"
 	default:
 		return "Other"
 	}
@@ -155,6 +178,36 @@ func DomainLabel(d Domain) string {
 //	goal/primary "build a house" → "Goal: build a house"
 //	relationship/partner "Sam"   → "Partner: Sam"
 func Title(e Entry) string {
+	if e.Domain != "" {
+		return understoodLine(e)
+	}
+	return tidyTitle(rawTitle(e))
+}
+
+// understoodLine presents a memory whose meaning was worked out when it was
+// learned: the clear sentence the model wrote, prefixed with who it concerns
+// when that is not the owner. Rule-templated phrasing is only for older
+// entries that carry no such understanding.
+func understoodLine(e Entry) string {
+	v := strings.TrimSpace(entryValueString(e))
+	if v == "" {
+		return rawTitle(e)
+	}
+	if subj := strings.TrimSpace(e.Subject); subj != "" && !strings.EqualFold(subj, "user") {
+		return subj + ": " + v
+	}
+	return upperFirst(v)
+}
+
+func upperFirst(s string) string {
+	r := []rune(s)
+	if len(r) > 0 {
+		r[0] = unicode.ToUpper(r[0])
+	}
+	return string(r)
+}
+
+func rawTitle(e Entry) string {
 	val := entryValueString(e)
 	label := Label(e.Predicate)
 
@@ -268,6 +321,13 @@ func Title(e Entry) string {
 //	goal/primary "build a house" → "Your goal is to build a house."
 func Summary(e Entry) string {
 	val := entryValueString(e)
+	if e.Domain != "" {
+		line := understoodLine(e)
+		if !strings.HasSuffix(line, ".") && !strings.HasSuffix(line, "!") && !strings.HasSuffix(line, "?") {
+			line += "."
+		}
+		return line
+	}
 
 	if e.Kind == KindIdentity {
 		if strings.Contains(e.Predicate, "name") {
@@ -380,4 +440,33 @@ func entryValueStringForDisplay(e Entry) string {
 		return s
 	}
 	return string(e.Value)
+}
+
+var (
+	repeatedLeadRE  = regexp.MustCompile(`(?i)^(\S+)\s+(\S+)`)
+	labelRepeatedRE = regexp.MustCompile(`(?i)^(\w+): (\w+)`)
+)
+
+// tidyTitle removes the stutter a deterministic title picks up when the stored
+// value is already a sentence: "Prefers Prefers responses…" and "Favorite:
+// Favorite football club is Chelsea" say the same word twice.
+func tidyTitle(t string) string {
+	if m := repeatedLeadRE.FindStringSubmatch(t); m != nil && strings.EqualFold(m[1], m[2]) {
+		t = m[1] + t[len(m[0]):]
+	}
+	if m := labelRepeatedRE.FindStringSubmatch(t); m != nil && strings.EqualFold(m[1], m[2]) {
+		t = t[len(m[1])+2:]
+	}
+	return t
+}
+
+func knownDomain(d Domain) bool {
+	switch d {
+	case DomainIdentity, DomainFood, DomainLocation, DomainWork, DomainTravel, DomainTechnology,
+		DomainCommunication, DomainLifestyle, DomainRelationship, DomainHealth, DomainFinance,
+		DomainEducation, DomainEntertainment, DomainFamily, DomainSports, DomainHobbies,
+		DomainPets, DomainHome, DomainVehicles:
+		return true
+	}
+	return false
 }
