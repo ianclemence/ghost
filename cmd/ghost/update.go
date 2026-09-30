@@ -601,8 +601,53 @@ func installScope(scope appliance.ScopePaths, ghostDir string, force bool) error
 		}
 		fmt.Printf("  Installed %s\n", webTarget)
 	}
+	if scope.Scope == appliance.ScopeSystem {
+		refreshSystemUnits(ghostDir, scope.BinDir)
+	}
 	restartScope(scope)
 	return nil
+}
+
+// refreshSystemUnits re-renders the system unit files from this release's
+// templates. Binaries used to be the only thing an update replaced, so a fix to
+// a unit (a hardening flag, a restart policy) never reached an installed Pod.
+// A unit that differs is backed up to <unit>.bak first; a unit that isn't
+// installed is left alone (this is not how services get created).
+func refreshSystemUnits(ghostDir, binDir string) {
+	for _, name := range []string{"ghost", "ghost-web"} {
+		tpl, err := os.ReadFile(filepath.Join(ghostDir, name+".service.template"))
+		if err != nil {
+			continue
+		}
+		want := renderUnit(string(tpl), binDir)
+		path := "/etc/systemd/system/" + name + ".service"
+		have, err := os.ReadFile(path)
+		if err != nil || string(have) == want {
+			continue
+		}
+		tmp, err := os.CreateTemp("", name+"-unit-*")
+		if err != nil {
+			continue
+		}
+		tmp.WriteString(want)
+		tmp.Close()
+		_ = runSudo("cp", path, path+".bak")
+		if err := runSudo("install", "-m", "0644", tmp.Name(), path); err != nil {
+			fmt.Printf("  Could not refresh %s.service: %v\n", name, err)
+		} else {
+			fmt.Printf("  Refreshed %s.service (previous kept as %s.service.bak)\n", name, name)
+		}
+		os.Remove(tmp.Name())
+	}
+}
+
+// renderUnit fills a unit template exactly as `make install-ghost` does for a
+// system install.
+func renderUnit(tpl, binDir string) string {
+	return strings.NewReplacer(
+		"__USER__", "root", "__GROUP__", "root",
+		"__GHOST_DIR__", appliance.DefaultGhostDir, "__BIN_DIR__", binDir,
+	).Replace(tpl)
 }
 
 // buildGhostBinary builds the ghost binary for the current platform into a
