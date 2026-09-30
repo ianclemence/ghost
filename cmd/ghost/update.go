@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -266,6 +268,54 @@ func restartScope(scope appliance.ScopePaths) {
 	} else {
 		_ = runSudo("systemctl", "daemon-reload")
 		_ = runSudo("systemctl", "restart", "ghost")
+		if systemUnitExists("ghost-web") {
+			_ = runSudo("systemctl", "restart", "ghost-web")
+		}
+	}
+}
+
+// systemUnitExists reports whether a system systemd unit is known.
+func systemUnitExists(name string) bool {
+	return exec.Command("systemctl", "cat", name).Run() == nil
+}
+
+// servingVersion asks the daemon that is actually answering what version it
+// is, so "installed" can never again disagree silently with "running".
+func servingVersion() string {
+	port := 8766
+	if cfg, err := loadConfig(); err == nil && cfg.Gateway.Port != 0 {
+		port = cfg.Gateway.Port
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/health", port))
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var h struct {
+		Version string `json:"version"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&h) != nil {
+		return ""
+	}
+	return h.Version
+}
+
+// reportServing prints what is really running and flags the two situations
+// that make an update look like it worked when it didn't.
+func reportServing(installed string) {
+	if v := servingVersion(); v != "" {
+		fmt.Printf("Running:   %s\n", v)
+		if installed != "" && v != installed && appliance.IsNewer(installed, v) {
+			fmt.Printf("  The running daemon is older than the installed binary. Run `ghost update --force`\n  (or restart the service) so the running Ghost picks it up.\n")
+		}
+	} else {
+		fmt.Println("Running:   not responding")
+	}
+	if appliance.BothDaemonsRunning() {
+		fmt.Println("  Two Ghost daemons are running: the system service and a per-user service.")
+		fmt.Println("  They compete for one port. Keep one: `systemctl --user disable --now ghost`")
+		fmt.Println("  (keeps the system service), or `sudo systemctl disable --now ghost` (keeps the user one).")
 	}
 }
 
@@ -346,6 +396,7 @@ func ghostCheck(scope appliance.ScopePaths) {
 		fmt.Printf("Available: %s\n", target)
 	}
 	fmt.Printf("Scope: %s (%s, root: %v)\n", scope.Scope, scope.BinDir, scope.NeedsRoot())
+	reportServing(current)
 	if target == "" {
 		fmt.Println("No release channel reachable; run `ghost update --channel dev` to build locally.")
 		return
@@ -535,6 +586,21 @@ func installScope(scope appliance.ScopePaths, ghostDir string, force bool) error
 		}
 	}
 	fmt.Printf("  Installed %s\n", target)
+	// The web console is a second binary that runs as its own root-owned
+	// system unit from the same directory. Leaving it behind meant an
+	// updated daemon served by an old console.
+	if scope.Scope == appliance.ScopeSystem && systemUnitExists("ghost-web") {
+		web, cleanWeb, err := buildBinary(ghostDir, tag, "./cmd/ghost-web")
+		if err != nil {
+			return err
+		}
+		defer cleanWeb()
+		webTarget := scope.BinDir + "/ghost-web"
+		if err := runSudo("install", "-m", "0755", web, webTarget); err != nil {
+			return err
+		}
+		fmt.Printf("  Installed %s\n", webTarget)
+	}
 	restartScope(scope)
 	return nil
 }
@@ -543,6 +609,12 @@ func installScope(scope appliance.ScopePaths, ghostDir string, force bool) error
 // temp file and returns its path plus a cleanup func. It injects the version
 // so the installed binary reports the tag, not a bare hash.
 func buildGhostBinary(ghostDir, tag string) (string, func(), error) {
+	return buildBinary(ghostDir, tag, "./cmd/ghost")
+}
+
+// buildBinary builds one of Ghost's binaries (./cmd/ghost, ./cmd/ghost-web)
+// into a temp file, stamping the release version into it.
+func buildBinary(ghostDir, tag, pkg string) (string, func(), error) {
 	f, err := os.CreateTemp("", "ghost-build-*")
 	if err != nil {
 		return "", func() {}, err
@@ -554,7 +626,7 @@ func buildGhostBinary(ghostDir, tag string) (string, func(), error) {
 	if tag != "" {
 		ldflags += " -X main.version=" + tag
 	}
-	cmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", path, "./cmd/ghost")
+	cmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", path, pkg)
 	cmd.Dir = ghostDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

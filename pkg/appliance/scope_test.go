@@ -18,6 +18,9 @@ func TestDetectScopeUserBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", "") // ensure no systemctl discovery interferes
+	// Isolate from any real /usr/local/bin install on the test machine: a
+	// system binary now (correctly) outranks a lone user binary.
+	t.Setenv("GHOST_SYSTEM_BIN_DIR", t.TempDir())
 
 	p := DetectScope()
 	if p.Scope != ScopeUser {
@@ -69,5 +72,30 @@ func TestScopeNeedsRootAndPaths(t *testing.T) {
 	}
 	if u.Scope.String() != "user" || p.Scope.String() != "system" {
 		t.Fatalf("scope strings wrong: %s %s", u.Scope, p.Scope)
+	}
+}
+
+// The bug: a system service serves Ghost from /usr/local/bin, but a stray
+// ~/.local/bin/ghost (created by an earlier user-scope update) made every
+// later update land in the wrong place. The serving daemon must win.
+func TestDecideScopeServingDaemonWins(t *testing.T) {
+	cases := []struct {
+		name string
+		p    scopeProbes
+		want InstallScope
+	}{
+		{"running system service beats a stray user binary", scopeProbes{sysUnit: true, sysUnitLive: true, sysBin: true, userBin: true}, ScopeSystem},
+		{"running system service beats an idle user unit", scopeProbes{sysUnit: true, sysUnitLive: true, userUnit: true, userBin: true}, ScopeSystem},
+		{"running user service beats an idle system unit", scopeProbes{sysUnit: true, sysBin: true, userUnit: true, userUnitLive: true}, ScopeUser},
+		{"system binary and unit, user binary only: system", scopeProbes{sysUnit: true, sysBin: true, userBin: true}, ScopeSystem},
+		{"system binary alone beats a stray user binary", scopeProbes{sysBin: true, userBin: true}, ScopeSystem},
+		{"user binary alone: user", scopeProbes{userBin: true}, ScopeUser},
+		{"explicit user unit: user", scopeProbes{userUnit: true}, ScopeUser},
+		{"nothing installed: user", scopeProbes{}, ScopeUser},
+	}
+	for _, tc := range cases {
+		if got := decideScope(tc.p); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }

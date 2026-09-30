@@ -55,15 +55,10 @@ func homeDir() string {
 	return h
 }
 
-// DetectScope inspects the machine and returns the install layout, preferring
-// the user layout so updates stay unprivileged.
-//
-// Rules:
-//   - A per-user ghost.service (`systemctl --user`) or a ghost binary in
-//     ~/.local/bin => ScopeUser.
-//   - Otherwise a system ghost.service or /usr/local/bin/ghost => ScopeSystem.
-//   - On a fresh machine with neither, default to user scope so the first
-//     install is unprivileged.
+// DetectScope inspects the machine and returns the install layout an update
+// must target. The rules live in decideScope: what is actually serving wins,
+// then an explicit unit, then which binaries exist. A fresh machine defaults
+// to the unprivileged user layout.
 func DetectScope() ScopePaths {
 	home := homeDir()
 	userBin := filepath.Join(home, ".local", "bin")
@@ -80,26 +75,57 @@ func DetectScope() ScopePaths {
 		Home:         home,
 	}
 
-	userUnit := userServiceExists("ghost")
-	userBinPresent := fileExists(filepath.Join(userBin, "ghost"))
-	if userUnit || userBinPresent {
-		p.Scope = ScopeUser
-		p.BinDir = userBin
-		return p
+	probes := scopeProbes{
+		userUnit:     userServiceExists("ghost"),
+		userUnitLive: userServiceActive("ghost"),
+		userBin:      fileExists(filepath.Join(userBin, "ghost")),
+		sysUnit:      systemServiceExists("ghost"),
+		sysUnitLive:  systemServiceActive("ghost"),
+		sysBin:       fileExists(filepath.Join(sysBin, "ghost")),
 	}
-
-	sysUnit := systemServiceExists("ghost")
-	sysBinPresent := fileExists(filepath.Join(sysBin, "ghost"))
-	if sysUnit || sysBinPresent {
-		p.Scope = ScopeSystem
+	p.Scope = decideScope(probes)
+	if p.Scope == ScopeSystem {
 		p.BinDir = sysBin
-		return p
+	} else {
+		p.BinDir = userBin
 	}
-
-	// Nothing installed yet: default to the unprivileged layout.
-	p.Scope = ScopeUser
-	p.BinDir = userBin
 	return p
+}
+
+// scopeProbes is everything DetectScope learns about the machine, so the
+// decision itself is a pure function that tests can drive.
+type scopeProbes struct {
+	userUnit, userUnitLive bool // per-user ghost.service: present / running
+	sysUnit, sysUnitLive   bool // system ghost.service: present / running
+	userBin, sysBin        bool // a ghost binary in ~/.local/bin, /usr/local/bin
+}
+
+// decideScope picks where an update must land. What is actually SERVING wins:
+// a running system service owns the port and runs /usr/local/bin/ghost, so an
+// update installed anywhere else never reaches it. A stray ~/.local/bin/ghost
+// must not outvote that: the first user-scope update creates it, which made the
+// old rule ("a user binary means user scope") self-perpetuating and left the
+// real daemon on an old release.
+func decideScope(p scopeProbes) InstallScope {
+	switch {
+	case p.sysUnitLive:
+		return ScopeSystem
+	case p.userUnitLive:
+		return ScopeUser
+	case p.userUnit:
+		return ScopeUser
+	case p.sysUnit || p.sysBin:
+		return ScopeSystem
+	default:
+		// Only a user binary, or nothing installed yet: unprivileged.
+		return ScopeUser
+	}
+}
+
+// BothDaemonsRunning reports the case that needs the owner's attention: a
+// system and a per-user ghost service both active, competing for one port.
+func BothDaemonsRunning() bool {
+	return systemServiceActive("ghost") && userServiceActive("ghost")
 }
 
 // NeedsRoot reports whether an update of this layout requires root.
@@ -137,6 +163,15 @@ func systemServiceExists(name string) bool {
 		return false
 	}
 	return exec.Command("systemctl", "cat", name).Run() == nil
+}
+
+// systemServiceActive / userServiceActive report a unit that is running now.
+func systemServiceActive(name string) bool {
+	return hasSystemctl() && exec.Command("systemctl", "is-active", "--quiet", name).Run() == nil
+}
+
+func userServiceActive(name string) bool {
+	return hasSystemctl() && exec.Command("systemctl", "--user", "is-active", "--quiet", name).Run() == nil
 }
 
 func hasSystemctl() bool {
