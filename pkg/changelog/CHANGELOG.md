@@ -9,6 +9,8 @@ Newest first. Ghost shows new entries on first launch after an update;
   approvals and finished tasks now arrive as push notifications, worded the same
   fixed way every time and never carrying what was said. They wait for quiet
   hours if it is only an update, and never double up while the app is open.
+- **Closed phones are noticed.** Ghost now hears when a phone's connection drops
+  instead of counting it as connected, which would have silenced notifications.
 - **Screenshots come back to you.** Ask Ghost for a screenshot of the browser and
   it appears as an image in the conversation and in Files, instead of a file name
   you could not open.

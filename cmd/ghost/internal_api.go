@@ -461,10 +461,37 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 		wsClients.Add(1)
 		defer wsClients.Add(-1)
 
+		// Read side. A connection that is never read can't answer pings or
+		// notice the phone going away, so a dead phone stayed "connected"
+		// (and suppressed push notifications) until some later write failed.
+		// The client sends nothing we act on; reading is how a close and a
+		// pong are seen.
+		const pongWait = 70 * time.Second
+		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+		conn.SetPongHandler(func(string) error {
+			return conn.SetReadDeadline(time.Now().Add(pongWait))
+		})
+		go func() {
+			defer cancel()
+			for {
+				if _, _, err := conn.ReadMessage(); err != nil {
+					return
+				}
+				_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+			}
+		}()
+		pinger := time.NewTicker(25 * time.Second)
+		defer pinger.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case <-pinger.C:
+				_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					return
+				}
 			case msg, ok := <-outboundCh:
 				if !ok {
 					return

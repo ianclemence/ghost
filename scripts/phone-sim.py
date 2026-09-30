@@ -24,6 +24,7 @@ results = []
 
 
 def check(name, ok, detail=""):
+    ok = bool(ok)
     results.append(ok)
     print(("PASS  " if ok else "FAIL  ") + name + (f"  ({detail})" if detail and not ok else ""))
     return ok
@@ -123,6 +124,23 @@ try:
     check("the phone can register a push token", code == 200 and st.get("registered", 0) >= 1, str(st))
     code, _ = call("POST", "/v1/push/register", {"token": "junk", "platform": "sim"}, dev=dev)
     check("a malformed push token is refused", code == 400)
+
+    # 5b. The live connection is counted while open and released when it closes.
+    if args.host not in ("127.0.0.1", "localhost"):
+        import websockets
+
+        async def live_count():
+            hdr = [("X-Ghost-Device-ID", dev["device_id"]), ("X-Ghost-Credential", dev["credential"])]
+            _, before = call("GET", "/v1/push/status", dev=dev)
+            async with websockets.connect(f"ws://{args.host}:{args.port}/v1/ws", additional_headers=hdr):
+                await asyncio.sleep(0.5)
+                _, during = call("GET", "/v1/push/status", dev=dev)
+            await asyncio.sleep(1.5)
+            _, after = call("GET", "/v1/push/status", dev=dev)
+            return before.get("live_connections", -1), during.get("live_connections", -1), after.get("live_connections", -1)
+
+        b, d, a = asyncio.run(live_count())
+        check("an open phone connection is counted, and released when it closes", d == b + 1 and a == b, f"{b}->{d}->{a}")
 
     # 6. Live surfaces (what the browser card reads).
     code, sf = call("GET", "/v1/live/surfaces?kind=browser", dev=dev)

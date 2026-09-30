@@ -82,7 +82,7 @@ func startPushBridge(al *agent.AgentLoop) *push.Store {
 //
 //	POST   /v1/push/register   {"token": "...", "platform": "ios|android"}
 //	DELETE /v1/push/register   forget this device's token
-//	GET    /v1/push/status     {"registered": n}
+//	GET    /v1/push/status     {"registered": n, "live_connections": n}
 func registerPushRoutes(mux *http.ServeMux, store *push.Store) {
 	if store == nil {
 		return
@@ -116,6 +116,6 @@ func registerPushRoutes(mux *http.ServeMux, store *push.Store) {
 		}
 	}))
 	mux.HandleFunc("/v1/push/status", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "registered": len(store.Tokens())})
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "registered": len(store.Tokens()), "live_connections": wsClients.Load()})
 	}))
 }
