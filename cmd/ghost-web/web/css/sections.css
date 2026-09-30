@@ -4,35 +4,42 @@
    results, key-value groups) uses a hairline-divided list or a subtle .card.
    Responsive is structural: the drawer collapses, grids reflow, nothing hangs. */
 
-/* ── Section blocks — the "card" is gone ── */
+/* ── Panels: the one grouping unit. A raised card with a real title. ── */
 .panel {
-  background: transparent;
-  border-radius: 0;
-  padding: 0;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s-5) var(--s-5) var(--s-4);
+  box-shadow: var(--shadow-xs);
 }
 .panel + .panel {
-  margin-top: var(--s-6);
+  margin-top: var(--s-4);
 }
 
 .panel-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--s-4);
-  margin-bottom: var(--s-4);
+  margin-bottom: var(--s-3);
 }
 .panel-head h2 {
-  font-size: var(--t-micro);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  font-weight: 600;
+  font-size: var(--t-body);
+  line-height: var(--lh-snug);
+  color: var(--ink);
+  font-weight: 620;
+  letter-spacing: var(--ls-snug);
 }
 .panel-head p {
-  margin-top: var(--s-0);
-  font-size: var(--t-foot);
+  margin-top: 2px;
+  font-size: var(--t-callout);
   color: var(--ink-faint);
 }
+
+/* Rows inside a panel: hairline-divided, generous, tappable. */
+.panel .ghost-row { padding: var(--s-3) 0; }
+.panel .ghost-row + .ghost-row { border-top: 1px solid var(--line); }
+.panel .ghost-row-title { font-size: var(--t-body); }
 
 /* ── Nested card (genuinely grouped content) ── */
 .card {
@@ -202,262 +209,129 @@
   .diag-msg { flex: 1 1 100%; text-align: left; }
 }
 
-/* ── Home — the editorial model ── */
-.home-header {
-  margin-bottom: var(--s-7);
-}
-.home-greet {
-  font-size: var(--t-title);
-  font-weight: 640;
-  letter-spacing: var(--ls-snug);
-}
-.home-subline {
-  margin-top: var(--s-2);
-  color: var(--ink-soft);
-  font-size: var(--t-callout);
-}
-.home-section {
-  margin-top: var(--s-7);
-}
-.home-section:first-of-type {
-  margin-top: var(--s-7);
-}
-.home-section-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s-3);
-  margin-bottom: var(--s-4);
-}
-.home-section-title {
-  font-size: var(--t-micro);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  font-weight: 600;
-  margin: 0;
-}
-.home-link {
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--t-callout);
-  color: var(--accent);
-  transition: color var(--d-fast) var(--ease-out);
-}
-.home-link:hover { color: var(--accent-hover); }
-.home-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  border-radius: 3px;
-}
-
-/* Primary status */
-.home-status-head {
+/* ── Home: a calm briefing in cards ── */
+.home-head { margin-bottom: var(--s-5); }
+.home-statusline {
   display: flex;
   align-items: center;
-  gap: var(--s-3);
-  margin-bottom: var(--s-3);
-}
-.home-status-title {
-  font-size: var(--t-head);
-  font-weight: 620;
-  letter-spacing: var(--ls-snug);
-  color: var(--ink);
-  margin: 0;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  color: var(--ink-soft);
+  font-size: var(--t-body);
 }
 .home-status-dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+  width: 9px; height: 9px; border-radius: 50%; flex: none;
   background: var(--off);
-  flex: none;
 }
-.home-status-dot-ok    { background: var(--ok); }
-.home-status-dot-warn  { background: var(--warn); }
-.home-status-dot-bad   { background: var(--bad); }
-.home-status-dot-offline {
-  background: var(--off);
-  outline: 2px solid var(--bad-line);
-  outline-offset: -1px;
-}
-.home-status-body { margin-top: var(--s-4); }
+.home-status-dot-ok      { background: var(--ok); }
+.home-status-dot-warn    { background: var(--warn); }
+.home-status-dot-bad     { background: var(--bad); }
+.home-status-dot-offline { background: var(--off); }
 
-.home-status-summary {
+.home-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--s-4) var(--s-4);
-  margin: 0;
-  padding: 0;
-}
-.home-summary-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-}
-.home-summary-key {
-  font-size: var(--t-micro);
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  font-weight: 600;
-  margin: 0;
-}
-.home-summary-val {
-  font-size: var(--t-callout);
-  color: var(--ink);
-  font-weight: 540;
-  margin: 0;
-  line-height: var(--lh-snug);
-}
-
-/* Recent activity */
-.home-activity-body { margin-top: var(--s-2); }
-.home-activity-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-.home-activity-day {
-  font-size: var(--t-foot);
-  font-weight: 600;
-  color: var(--ink-faint);
-  padding: var(--s-3) 0 var(--s-1);
-}
-.home-activity-day:first-child { padding-top: 0; }
-.home-activity-why {
-  font-size: var(--t-foot);
-  color: var(--ink-faint);
-  margin-top: 2px;
-}
-.home-activity-row {
-  display: grid;
-  grid-template-columns: 76px 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--s-4);
   align-items: start;
-  padding: var(--s-2) 0;
 }
+.home-grid > .panel + .panel { margin-top: 0; }
+.home-card-wide { grid-column: 1 / -1; }
+.home-link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: var(--t-callout); font-weight: 560;
+  color: var(--accent); white-space: nowrap;
+}
+.home-link:hover { color: var(--accent-hover); }
+.home-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+.home-empty { color: var(--ink-faint); font-size: var(--t-callout); line-height: var(--lh-body); padding: var(--s-1) 0 var(--s-2); }
+
+/* Needs you: Ghost's decisions, answerable in place */
+.home-clear { display: flex; align-items: center; gap: var(--s-3); color: var(--ink-soft); padding: var(--s-1) 0 var(--s-2); }
+.home-approval {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  margin-bottom: var(--s-2);
+  background: var(--ember-soft);
+  border: 1px solid var(--ember-line);
+  border-radius: var(--r-md);
+}
+.home-ember { width: 9px; height: 9px; border-radius: 50%; background: var(--ember-deep); flex: none; }
+.home-approval-text { flex: 1; min-width: 0; }
+.home-approval-title { font-weight: 620; }
+.home-approval-desc {
+  font-size: var(--t-callout); color: var(--ink-soft); margin-top: 2px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.home-approval-actions { display: flex; gap: var(--s-2); flex: none; }
+
+/* Coming up */
+.home-list { list-style: none; margin: 0; padding: 0; }
+.home-list-row { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-3) 0; }
+.home-list-row + .home-list-row { border-top: 1px solid var(--line); }
+.home-list-main { flex: 1; min-width: 0; }
+.home-list-title { font-weight: 560; }
+.home-list-sub { font-size: var(--t-foot); color: var(--ink-faint); margin-top: 1px; }
+.home-list-when { font-size: var(--t-callout); color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* At a glance */
+.home-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
+.home-tile {
+  text-align: left; cursor: pointer; font: inherit; color: inherit;
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-md);
+  transition: border-color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+}
+.home-tile:hover { border-color: var(--line-strong); background: var(--paper-hover); }
+.home-tile-key { font-size: var(--t-micro); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; color: var(--ink-faint); }
+.home-tile-val { font-size: 22px; font-weight: 650; letter-spacing: var(--ls-snug); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.home-tile-sub { font-size: var(--t-foot); color: var(--ink-faint); }
+.home-watching { margin-top: var(--s-3); font-size: var(--t-foot); color: var(--ink-faint); }
+
+/* What Ghost did */
+.home-activity-list { list-style: none; margin: 0; padding: 0; }
+.home-activity-day { font-size: var(--t-foot); font-weight: 600; color: var(--ink-faint); padding: var(--s-3) 0 var(--s-1); }
+.home-activity-day:first-child { padding-top: 0; }
+.home-activity-row { display: grid; grid-template-columns: 76px 1fr; gap: var(--s-4); padding: var(--s-2) 0; }
 .home-activity-row-skel { padding: var(--s-2) 0; }
-.home-activity-when {
-  font-size: var(--t-foot);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-faint);
-  letter-spacing: 0;
-  white-space: nowrap;
-  padding-top: var(--s-0);
-}
+.home-activity-when { font-size: var(--t-foot); color: var(--ink-faint); font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 2px; }
 .home-activity-body-col { min-width: 0; }
-.home-activity-title {
-  font-size: var(--t-body);
-  color: var(--ink);
-  font-weight: 540;
-  line-height: var(--lh-snug);
-  word-break: break-word;
-}
-.home-activity-meta {
-  font-size: var(--t-foot);
-  color: var(--ink-faint);
-  margin-top: var(--s-0);
-}
-.home-activity-title-skel,
-.home-activity-meta-skel {
-  height: 12px;
-  border-radius: var(--r-xs);
+.home-activity-title { font-weight: 560; line-height: var(--lh-snug); word-break: break-word; }
+.home-activity-meta { font-size: var(--t-foot); color: var(--ink-soft); margin-top: 1px; }
+.home-activity-why { font-size: var(--t-foot); color: var(--ink-faint); margin-top: 1px; }
+.home-activity-title-skel, .home-activity-meta-skel {
+  height: 12px; border-radius: var(--r-xs);
   background: linear-gradient(90deg, var(--paper-sunken) 0%, var(--paper-hover) 50%, var(--paper-sunken) 100%);
-  background-size: 200% 100%;
-  animation: homeShimmer 1.6s ease-in-out infinite;
+  background-size: 200% 100%; animation: homeShimmer 1.6s ease-in-out infinite;
 }
 .home-activity-title-skel { width: 60%; margin-bottom: 6px; height: 14px; }
 .home-activity-meta-skel  { width: 30%; height: 10px; }
-@keyframes homeShimmer {
-  0%   { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
-}
+@keyframes homeShimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 
-/* Needs attention */
-.home-attention-body { margin-top: var(--s-2); }
-.home-attention-empty {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  padding: var(--s-2) 0;
-  color: var(--ink-soft);
-  font-size: var(--t-callout);
-}
-.home-attention-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--off);
-  flex: none;
-}
+/* Setup / health items inside Needs you */
+.home-attention-list { list-style: none; margin: 0; padding: 0; }
+.home-attention-item { padding: var(--s-3) 0; }
+.home-attention-item + .home-attention-item { border-top: 1px solid var(--line); }
+.home-attention-head { display: flex; align-items: center; gap: var(--s-3); }
+.home-attention-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--off); flex: none; }
 .home-attention-dot-ok { background: var(--ok); }
-.home-attention-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-.home-attention-item {
-  padding: var(--s-2) 0;
-}
-.home-attention-head {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-}
-.home-attention-title {
-  font-size: var(--t-body);
-  font-weight: 540;
-  color: var(--ink);
-}
-.home-attention-detail {
-  margin-top: var(--s-0);
-  font-size: var(--t-foot);
-  color: var(--ink-soft);
-  line-height: var(--lh-body);
-}
+.home-attention-title { font-weight: 560; }
+.home-attention-detail { margin-top: 2px; font-size: var(--t-callout); color: var(--ink-soft); line-height: var(--lh-body); }
 .home-attention-cta {
-  margin-top: var(--s-2);
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--t-callout);
-  color: var(--accent);
-  transition: color var(--d-fast) var(--ease-out);
+  margin-top: var(--s-2); background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: var(--t-callout); font-weight: 560; color: var(--accent);
 }
 .home-attention-cta:hover { color: var(--accent-hover); }
-.home-attention-cta:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  border-radius: 3px;
-}
+.home-attention-cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
 
-/* Home responsive */
-@media (max-width: 720px) {
-  .home { max-width: 100%; }
-  .home-greet { font-size: 30px; }
-  .home-status-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--s-4) var(--s-4);
-  }
-  .home-activity-row {
-    grid-template-columns: 96px 1fr;
-    gap: var(--s-3);
-  }
-  .home-activity-when { font-size: var(--t-micro); }
+@media (max-width: 800px) {
+  .home-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-card-wide { grid-column: auto; }
+  .home-approval { flex-wrap: wrap; }
+  .home-approval-actions { width: 100%; }
 }
 @media (max-width: 420px) {
-  .home-status-summary { grid-template-columns: 1fr; }
+  .home-tiles { grid-template-columns: minmax(0, 1fr); }
+  .home-activity-row { grid-template-columns: 68px 1fr; gap: var(--s-3); }
 }
 
 /* ── Filter chips ── */
@@ -755,3 +629,14 @@
   padding: var(--s-4) var(--s-3) var(--s-1);
 }
 .activity-day:first-child { padding-top: 0; }
+
+/* Intelligence: add-a-provider chips */
+.provider-add-label { margin-top: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--line); font-size: var(--t-foot); font-weight: 600; color: var(--ink-faint); }
+.provider-add { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+.provider-chip {
+  font: inherit; font-size: var(--t-callout); font-weight: 540; cursor: pointer;
+  padding: 6px 14px; border-radius: var(--r-pill);
+  background: var(--paper); color: var(--ink-soft); border: 1px solid var(--line-strong);
+  transition: background var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out), border-color var(--d-fast) var(--ease-out);
+}
+.provider-chip:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }

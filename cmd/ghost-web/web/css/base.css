@@ -59,25 +59,30 @@ button { font-family: inherit; }
 /* ── Layout ── */
 #app { min-height: 100%; }
 
+/* One content column for every page. width:100% is what pins it: as a flex
+   child, auto side margins alone shrink-wrap the column to its content, which
+   gave each page a different width and left edge. */
 .view {
+  width: 100%;
   max-width: var(--maxw);
   margin: 0 auto;
-  padding: var(--s-6) var(--s-5) var(--s-9);
+  padding: var(--s-4) var(--s-6) var(--s-9);
 }
 
 .page-head {
   margin-bottom: var(--s-6);
 }
 .page-head h1 {
-  font-size: var(--t-title);
-  font-weight: 640;
-  letter-spacing: var(--ls-snug);
+  font-size: 30px;
+  line-height: var(--lh-tight);
+  font-weight: 650;
+  letter-spacing: var(--ls-tight);
 }
 .page-head p {
-  margin-top: var(--s-3);
+  margin-top: var(--s-2);
   color: var(--ink-soft);
-  max-width: 56ch;
-  font-size: var(--t-callout);
+  max-width: 60ch;
+  font-size: var(--t-body);
 }
 
 .section-label {
@@ -106,7 +111,7 @@ button { font-family: inherit; }
 * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 *::-webkit-scrollbar       { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 2px solid var(--paper); }
+*::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
 *::-webkit-scrollbar-thumb:hover { background: var(--ink-ghost); }
 
 /* ── Focus ring ── */

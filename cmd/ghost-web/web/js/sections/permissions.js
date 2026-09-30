@@ -6,8 +6,8 @@ async function loadPermissions(container, opts) {
   container.innerHTML = '';
   if (!embedded) {
     const head = GhostUI.h('div', { className: 'page-head' });
-    head.appendChild(GhostUI.h('h1', {}, 'Permissions'));
-    head.appendChild(GhostUI.h('p', {}, 'Approvals waiting for your decision, and permissions you\u2019ve made standing — revoke any time.'));
+    head.appendChild(GhostUI.h('h1', {}, 'Approvals'));
+    head.appendChild(GhostUI.h('p', {}, 'Ghost asks before anything consequential. Decide what\u2019s waiting, and review or revoke permissions you\u2019ve made standing.'));
     container.appendChild(head);
   }
 
@@ -215,3 +215,5 @@ function paintGrants(el, grants, refresh) {
   panel.appendChild(list);
   el.appendChild(panel);
 }
+
+GhostApp.registerSection('approvals', c => loadPermissions(c));

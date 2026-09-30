@@ -5,11 +5,13 @@ async function loadSkills(container) {
   if (GhostApp.currentSection() !== 'skills') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
-  head.appendChild(GhostUI.h('h1', {}, 'Skills'));
-  head.appendChild(GhostUI.h('p', {}, 'What Ghost knows how to do — enable, disable, or install skills.'));
+  head.appendChild(GhostUI.h('h1', {}, 'What Ghost can do'));
+  head.appendChild(GhostUI.h('p', {}, 'Built in and ready to use, nothing to install. Turn off anything you don\u2019t want Ghost to use.'));
   container.appendChild(head);
 
-  const installBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showInstall() }, 'Install skill');
+  // Built-ins are the product; adding your own is the power-user path, so it
+  // is a quiet secondary action rather than the page's headline button.
+  const installBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => showInstall() }, 'Add your own');
   GhostApp.setActions(installBtn);
 
   const loadingPanel = GhostUI.h('div', { className: 'panel' });
@@ -149,7 +151,7 @@ function skillGroupPanel(container, title, sub, items, integ) {
 function renderSkillsList(container, skills, integ) {
   if (!skills || skills.length === 0) {
     const panel = GhostUI.h('div', { className: 'panel' });
-    panel.appendChild(GhostUI.emptyState('No skills installed yet', 'Add your first skill from a GitHub repository, or Ghost comes with built-in skills ready to enable. Skills are the things Ghost can do for you.'));
+    panel.appendChild(GhostUI.emptyState('Nothing loaded yet', 'Ghost\u2019s built-in skills load when it starts. If this stays empty, restart Ghost from System.'));
     container.appendChild(panel);
     return;
   }

@@ -2,42 +2,49 @@
    Warm, crafted, confident. A personal AI that belongs to you. */
 
 :root {
-  /* ── Color: warm paper ── */
-  --paper:           #f5f3ee;
-  --paper-raised:    #faf8f5;
-  --paper-sunken:    #ece8e1;
-  --paper-hover:     #f0ede7;
-  --paper-overlay:   rgba(24,23,20,.48);
+  /* ── Color: warm paper (brand: light-first) ── */
+  --paper:           #f6f4ef;   /* page */
+  --paper-raised:    #fdfcf9;   /* cards, sidebar */
+  --paper-sunken:    #ece9e2;   /* wells, inputs */
+  --paper-hover:     #f0ede6;
+  --paper-overlay:   rgba(26,22,17,.48);
 
-  /* ── Ink ── */
-  --ink:             #1a1917;
-  --ink-soft:        #4a4742;
-  --ink-faint:       #8a857c;
-  --ink-ghost:       #b5b0a6;
+  /* ── Ink (brand #1A1611) ── */
+  --ink:             #1a1611;
+  --ink-soft:        #5a544c;
+  --ink-faint:       #766f65;
+  --ink-ghost:       #b5aea3;
 
   /* ── Lines ── */
-  --line:            #e0dbd3;
-  --line-strong:     #cdc7bc;
+  --line:            #e4dfd6;
+  --line-strong:     #d0c9bd;
   --line-focus:      var(--accent);
 
-  /* ── Accent: deep warm indigo — restrained, never loud ── */
+  /* ── Accent: brand indigo — structure, selection, links ── */
   --accent:          #3d3b5c;
   --accent-hover:    #2e2c4a;
   --accent-soft:     #e8e7f0;
   --accent-line:     #c4c3d6;
   --accent-glow:     rgba(61,59,92,.12);
+  --on-accent:       #faf9f6;
 
-  /* ── Status ── */
+  /* ── Ember: Ghost's presence light — Ghost is working, or asking ── */
+  --ember:           #ffb45c;
+  --ember-deep:      #d88a33;
+  --ember-soft:      #fbeed9;
+  --ember-line:      #efcf9d;
+
+  /* ── Status (brand) ── */
   --ok:              #2d7a4a;
   --ok-soft:         #e4f1e9;
   --ok-line:         #b4d8c0;
-  --warn:            #8a6210;
-  --warn-soft:       #f5edd5;
+  --warn:            #8f6520;
+  --warn-soft:       #f6ecd7;
   --warn-line:       #dcc89a;
-  --bad:             #b83230;
-  --bad-soft:        #f5e3e2;
-  --bad-line:        #dea5a3;
-  --off:             #8a857c;
+  --bad:             #c24b3c;
+  --bad-soft:        #f7e4e0;
+  --bad-line:        #e2aaa2;
+  --off:             #766f65;
   --off-soft:        #ede9e2;
   --info:            #2e5a7a;
   --info-soft:       #e2ecf3;
@@ -85,11 +92,11 @@
   --r-pill: 999px;
 
   /* ── Elevation ── */
-  --shadow-xs:  0 1px 2px rgba(26,25,23,.06);
-  --shadow-sm:  0 1px 3px rgba(26,25,23,.08), 0 1px 2px rgba(26,25,23,.04);
-  --shadow-md:  0 4px 12px rgba(26,25,23,.08), 0 2px 4px rgba(26,25,23,.04);
-  --shadow-lg:  0 12px 32px rgba(26,25,23,.12), 0 4px 8px rgba(26,25,23,.06);
-  --shadow-xl:  0 20px 48px rgba(26,25,23,.16), 0 8px 16px rgba(26,25,23,.08);
+  --shadow-xs:  0 1px 2px rgba(26,22,17,.06);
+  --shadow-sm:  0 1px 3px rgba(26,22,17,.08), 0 1px 2px rgba(26,22,17,.04);
+  --shadow-md:  0 4px 12px rgba(26,22,17,.08), 0 2px 4px rgba(26,22,17,.04);
+  --shadow-lg:  0 12px 32px rgba(26,22,17,.12), 0 4px 8px rgba(26,22,17,.06);
+  --shadow-xl:  0 20px 48px rgba(26,22,17,.16), 0 8px 16px rgba(26,22,17,.08);
 
   /* ── Motion ── */
   --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
@@ -105,7 +112,49 @@
   --d-drawer:       280ms;
 
   /* ── Layout ── */
-  --nav-w:          256px;
-  --topbar-h:       56px;
-  --maxw:           920px;
+  --nav-w:          252px;
+  --topbar-h:       52px;
+  --maxw:           1000px;
+}
+
+/* ── Midnight: the warm dark theme (brand). Follows the system unless the
+   owner pinned a theme with data-theme on <html>. ── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:         #14100d;
+    --paper-raised:  #1c1712;
+    --paper-sunken:  #100d0a;
+    --paper-hover:   #251f18;
+    --paper-overlay: rgba(0,0,0,.6);
+    --ink:           #f1e9dc;
+    --ink-soft:      #c3b6a6;
+    --ink-faint:     #a3927f;
+    --ink-ghost:     #6f6252;
+    --line:          rgba(240,233,223,.09);
+    --line-strong:   rgba(240,233,223,.17);
+    --accent:        #a5a3d2;
+    --accent-hover:  #c0bee6;
+    --accent-soft:   rgba(165,163,210,.14);
+    --accent-line:   rgba(165,163,210,.32);
+    --accent-glow:   rgba(165,163,210,.16);
+    --on-accent:     #14100d;
+    --ember-deep:    #ffb45c;
+    --ember-soft:    rgba(255,180,92,.13);
+    --ember-line:    rgba(255,180,92,.34);
+    --ok:            #86b28f;  --ok-soft:   rgba(134,178,143,.14); --ok-line:   rgba(134,178,143,.34);
+    --warn:          #e8c06a;  --warn-soft: rgba(232,192,106,.13); --warn-line: rgba(232,192,106,.32);
+    --bad:           #e08667;  --bad-soft:  rgba(224,134,103,.14); --bad-line:  rgba(224,134,103,.34);
+    --off:           #a3927f;  --off-soft:  rgba(240,233,223,.07);
+    --info:          #7fa8c9;  --info-soft: rgba(127,168,201,.14); --info-line: rgba(127,168,201,.32);
+    --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.45);
+    --shadow-md: 0 4px 14px rgba(0,0,0,.45);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,.55);
+    --shadow-xl: 0 20px 48px rgba(0,0,0,.6);
+  }
 }

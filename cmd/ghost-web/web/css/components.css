@@ -49,7 +49,7 @@
 /* Primary */
 .ghost-btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 .ghost-btn-primary:hover {
@@ -85,8 +85,7 @@
   border-color: var(--bad);
 }
 .ghost-btn-danger:hover {
-  background: #a02b2a;
-  border-color: #a02b2a;
+  filter: brightness(.9);
 }
 
 /* Sizes */
@@ -459,7 +458,7 @@ textarea.ghost-input {
 }
 .ghost-toast {
   background: var(--ink);
-  color: #fff;
+  color: var(--paper);
   padding: 10px 20px;
   border-radius: var(--r-pill);
   font-size: var(--t-callout);
@@ -477,7 +476,7 @@ textarea.ghost-input {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: rgba(255,255,255,.7);
+  background: var(--ember);
 }
 @keyframes toastIn {
   from {
@@ -537,3 +536,38 @@ textarea.ghost-input {
 .ghost-toggle.on::after {
   transform: translateX(18px);
 }
+
+/* ── Cards, chips, button rows: the shared primitives that Routines,
+   Approvals, Devices and Apps are built from. ── */
+.ghost-card {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s-4) var(--s-5);
+  box-shadow: var(--shadow-xs);
+}
+.ghost-list > .ghost-card + .ghost-card { margin-top: var(--s-3); }
+.ghost-card-title {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2);
+  font-weight: 620; letter-spacing: var(--ls-snug);
+}
+.ghost-card-meta { font-size: var(--t-foot); color: var(--ink-faint); margin-top: 2px; }
+.ghost-card-sub  { font-size: var(--t-callout); color: var(--ink-soft); margin-top: var(--s-2); line-height: var(--lh-body); }
+.btn-row { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
+.btn-row .ghost-btn { padding: 6px 14px; font-size: var(--t-foot); }
+
+.state-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 9px; border-radius: var(--r-pill);
+  font-size: var(--t-foot); font-weight: 600; line-height: 18px;
+  background: var(--off-soft); color: var(--ink-soft);
+}
+.state-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .85; }
+.state-chip-ok   { background: var(--ok-soft);   color: var(--ok); }
+.state-chip-warn { background: var(--ember-soft); color: var(--warn); }
+.state-chip-bad  { background: var(--bad-soft);  color: var(--bad); }
+.state-chip-off  { background: var(--off-soft);  color: var(--ink-faint); }
+
+.text-ok      { color: var(--ok); }
+.text-warning { color: var(--warn); }
+.text-danger  { color: var(--bad); }

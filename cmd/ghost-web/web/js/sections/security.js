@@ -272,7 +272,7 @@ async function loadSessions(body) {
   sessions.forEach(s => {
     const row = GhostUI.h('div', { className: 'ghost-row' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, s.current ? 'This browser' : (s.user_agent || 'Unknown device').slice(0, 50)));
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, (s.current ? 'This browser' : friendlyAgent(s.user_agent)) + (s.current ? ' \u00b7 ' + friendlyAgent(s.user_agent) : '')));
     c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, 'Signed in ' + GhostUI.timeAgo(Math.floor(new Date(s.issued_at).getTime() / 1000)) + (s.ip ? '  \u00b7  ' + s.ip : '')));
     row.appendChild(c);
     if (!s.current) {
@@ -298,3 +298,15 @@ async function loadSessions(body) {
 }
 
 GhostApp.registerSection('security', loadSecurity);
+
+// friendlyAgent turns a raw User-Agent into "Chrome on Linux". Sessions are
+// something an owner reviews to spot a stranger; a 90-character UA hides that.
+function friendlyAgent(ua) {
+  const u = String(ua || '');
+  if (!u) return 'Unknown device';
+  const browser = /Edg\//.test(u) ? 'Edge' : /OPR\/|Opera/.test(u) ? 'Opera' : /Firefox\//.test(u) ? 'Firefox'
+    : /Chrome\/|Chromium\//.test(u) ? 'Chrome' : /Safari\//.test(u) ? 'Safari' : /curl|python|Go-http/i.test(u) ? 'Command line' : 'Browser';
+  const os = /iPhone|iPad|iOS/.test(u) ? 'iOS' : /Android/.test(u) ? 'Android' : /Windows/.test(u) ? 'Windows'
+    : /Mac OS X|Macintosh/.test(u) ? 'macOS' : /Linux|X11/.test(u) ? 'Linux' : '';
+  return os ? browser + ' on ' + os : browser;
+}

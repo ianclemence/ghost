@@ -21,6 +21,7 @@ const GhostApp = (() => {
       label: 'Ghost',
       items: [
         { name: 'home', title: 'Home', glyph: 'home' },
+        { name: 'approvals', title: 'Approvals', glyph: 'approve', badge: true },
         { name: 'memory', title: 'Memory', glyph: 'memory' },
         { name: 'activity', title: 'Activity', glyph: 'activity' },
         { name: 'routines', title: 'Routines', glyph: 'automation' },
@@ -28,7 +29,7 @@ const GhostApp = (() => {
         // suggestion on Home and in Activity, so a separate list the owner
         // had to read and dismiss was pure noise.
         { name: 'intelligence', title: 'Intelligence', glyph: 'ai' },
-        { name: 'skills', title: 'Skills', glyph: 'skill' },
+        { name: 'skills', title: 'Abilities', glyph: 'skill' },
       ],
     },
     {
@@ -61,6 +62,7 @@ const GhostApp = (() => {
     channel: '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     apps: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     system: '<rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="10" y="10" width="4" height="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+    approve: '<path d="M9 11l3 3 8-8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     ai: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
     sparkle: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
     security: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/>',
@@ -143,10 +145,17 @@ const GhostApp = (() => {
     const shell = GhostUI.h('div', { className: 'shell' });
 
     const nav = GhostUI.h('nav', { className: 'shell-nav', id: 'shell-nav' });
-    const brand = GhostUI.h('div', { className: 'shell-brand' });
-    brand.appendChild(GhostUI.ghostMark('md'));
-    brand.appendChild(GhostUI.h('span', { className: 'shell-brand-name' }, 'Ghost'));
-    nav.appendChild(brand);
+    // Presence: Ghost's mark, a status light, and one live line.
+    const presence = GhostUI.h('div', { className: 'presence', id: 'presence', dataset: { tone: 'idle' } });
+    const pmark = GhostUI.h('div', { className: 'presence-mark' });
+    pmark.appendChild(GhostUI.ghostMark('md'));
+    pmark.appendChild(GhostUI.h('span', { className: 'presence-light' }));
+    presence.appendChild(pmark);
+    const ptext = GhostUI.h('div');
+    ptext.appendChild(GhostUI.h('div', { className: 'presence-name', id: 'presence-name' }, 'Ghost'));
+    ptext.appendChild(GhostUI.h('div', { className: 'presence-line', id: 'presence-line', role: 'status', 'aria-live': 'polite' }, 'Checking in\u2026'));
+    presence.appendChild(ptext);
+    nav.appendChild(presence);
 
     NAV.forEach(group => {
       const g = GhostUI.h('div', { className: 'nav-group' });
@@ -158,6 +167,7 @@ const GhostApp = (() => {
         });
         btn.innerHTML = glyph(item.glyph);
         btn.appendChild(GhostUI.h('span', {}, item.title));
+        if (item.badge) btn.appendChild(GhostUI.h('span', { className: 'nav-badge hidden', id: 'badge-' + item.name }));
         g.appendChild(btn);
       });
       nav.appendChild(g);
@@ -188,6 +198,34 @@ const GhostApp = (() => {
     shell.appendChild(main);
     root.appendChild(shell);
     root.appendChild(scrim);
+  }
+
+  // Presence: derived only from what the runtime reports right now, never
+  // guessed. Priority: down > waiting on the owner > working > idle.
+  async function refreshPresence() {
+    const el = document.getElementById('presence');
+    if (!el) return;
+    const [health, pending, routines, identity] = await Promise.allSettled([
+      GhostAPI.proxyGet('/v1/health'),
+      GhostAPI.proxyGet('/v1/permissions/requests?status=pending'),
+      GhostAPI.proxyGet('/v1/routinefeed'),
+      GhostAPI.proxyGet('/v1/identity'),
+    ]);
+    if (!document.getElementById('presence')) return;
+    const ok = health.status === 'fulfilled';
+    const waiting = pending.status === 'fulfilled' ? ((pending.value && pending.value.requests) || []).length : 0;
+    const running = routines.status === 'fulfilled'
+      ? ((routines.value && routines.value.routines) || []).filter(r => r.state === 'active').length : 0;
+    let tone = 'idle', line = 'On this Pod';
+    if (!ok) { tone = 'offline'; line = 'Not responding'; }
+    else if (waiting > 0) { tone = 'attention'; line = waiting === 1 ? 'Waiting for your OK' : 'Waiting for your OK on ' + waiting; }
+    else if (running > 0) { line = 'Keeping an eye on ' + running + (running === 1 ? ' thing' : ' things'); }
+    el.dataset.tone = tone;
+    document.getElementById('presence-line').textContent = line;
+    const g = identity.status === 'fulfilled' && identity.value && identity.value.ghost;
+    if (g && g.name) document.getElementById('presence-name').textContent = g.name;
+    const badge = document.getElementById('badge-approvals');
+    if (badge) { badge.textContent = String(waiting); badge.classList.toggle('hidden', waiting === 0); }
   }
 
   function toggleNav(force) {
@@ -277,6 +315,8 @@ const GhostApp = (() => {
       if (nav && nav.classList.contains('open') && !nav.contains(e.target) && !e.target.closest('.nav-toggle')) toggleNav(false);
     });
     render(location.hash.replace('#', '') || 'home');
+    refreshPresence();
+    setInterval(() => { if (!document.hidden) refreshPresence(); }, 20000);
   }
 
   function buildWizardScreen() {
@@ -291,7 +331,7 @@ const GhostApp = (() => {
 
   function currentSection() { return current; }
 
-  return { registerSection, navigate, start, setActions, render, lock, currentSection };
+  return { registerSection, navigate, start, setActions, render, lock, currentSection, refreshPresence };
 })();
 
 window.addEventListener('DOMContentLoaded', () => GhostApp.start());

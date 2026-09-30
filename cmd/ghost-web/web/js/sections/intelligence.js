@@ -207,51 +207,48 @@ function renderProviders(panel, cfg, providerModels, ollamaModels) {
   const h = GhostUI.h('div', { className: 'panel-head' });
   const text = GhostUI.h('div');
   text.appendChild(GhostUI.h('h2', {}, 'Providers'));
-  text.appendChild(GhostUI.h('p', {}, 'Connect to cloud AI services. Ghost only uses what you configure.'));
+  text.appendChild(GhostUI.h('p', {}, 'The AI services Ghost can think with. It only uses what you connect.'));
   h.appendChild(text);
   panel.appendChild(h);
 
-  const order = ['ollama', 'openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter', 'nvidia'];
+  const all = ['ollama', 'openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter', 'nvidia'];
   const currentProvider = cfg ? (cfg.provider || '') : '';
-  order.sort((a, b) => (a === currentProvider ? -1 : 0) - (b === currentProvider ? -1 : 0));
+  const labelOf = k => ({ openai: 'OpenAI', deepseek: 'DeepSeek', openrouter: 'OpenRouter', nvidia: 'NVIDIA', zhipu: 'Zhipu' }[k] || (k.charAt(0).toUpperCase() + k.slice(1)));
+  const isLocal = k => k === 'ollama' || k === 'vllm';
+  const connected = all.filter(k => { const pm = providerModels[k]; return isLocal(k) ? ollamaModels.length > 0 : !!(pm && pm.configured); })
+    .sort((a, b) => (a === currentProvider ? -1 : 0) - (b === currentProvider ? -1 : 0));
+  const available = all.filter(k => !connected.includes(k));
 
-  for (const key of order) {
+  if (connected.length === 0) {
+    panel.appendChild(GhostUI.emptyState('No provider connected', 'Connect one below so Ghost has something to think with.'));
+  }
+  for (const key of connected) {
     const pm = providerModels[key];
-    const name = key.charAt(0).toUpperCase() + key.slice(1);
-    const isConfigured = pm && pm.configured;
-    const isLocal = key === 'ollama' || key === 'vllm';
-    const modelCount = isLocal ? ollamaModels.length : (pm && pm.models ? pm.models.length : 0);
-    const isDefault = key === currentProvider;
-
+    const modelCount = isLocal(key) ? ollamaModels.length : (pm && pm.models ? pm.models.length : 0);
     const row = GhostUI.h('div', { className: 'ghost-row' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, name));
-    const sub = GhostUI.h('div', { className: 'ghost-row-subtitle' });
-    if (isConfigured) {
-      sub.appendChild(document.createTextNode('Connected'));
-      if (modelCount > 0) {
-        sub.appendChild(document.createTextNode(' \u00b7 ' + modelCount + ' model' + (modelCount !== 1 ? 's' : '')));
-      }
-    } else {
-      sub.appendChild(document.createTextNode(isLocal ? 'Running locally' : 'Not configured'));
-    }
-    c.appendChild(sub);
+    const title = GhostUI.h('div', { className: 'ghost-row-title' }, labelOf(key));
+    if (key === currentProvider) title.appendChild(GhostUI.h('span', { className: 'state-chip state-chip-ok', style: 'margin-left:var(--s-2)' }, 'Default'));
+    c.appendChild(title);
+    const sub = modelCount > 0 ? modelCount + ' model' + (modelCount !== 1 ? 's' : '') + (isLocal(key) ? ' on your Pod' : '') : 'Connected';
+    c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub + (pm && pm.source === 'catalog' && !isLocal(key) ? ' · built-in list (couldn’t reach the provider)' : '')));
     row.appendChild(c);
-
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
-    if (isDefault) {
-      // The pill must reflect the REAL status, not just "is the default": a
-      // default provider without a working key is a setup gap, not a green
-      // ready state.
-      const state = isConfigured ? 'ready' : (isLocal ? 'neutral' : 'warn');
-      const label = isConfigured ? 'Default' : (isLocal ? 'Default \u00b7 local' : 'Default \u00b7 needs key');
-      tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(state), label));
-    }
-    tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => {
-      configureProviderModal(key, name, isLocal, cfg);
-    } }, isConfigured ? 'Configure' : 'Set up'));
+    tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary ghost-btn-sm', onClick: () => configureProviderModal(key, labelOf(key), isLocal(key), cfg) }, 'Configure'));
     row.appendChild(tr);
     panel.appendChild(row);
+  }
+
+  if (available.length > 0) {
+    panel.appendChild(GhostUI.h('div', { className: 'provider-add-label' }, connected.length ? 'Add another' : 'Add a provider'));
+    const chips = GhostUI.h('div', { className: 'provider-add' });
+    for (const key of available) {
+      chips.appendChild(GhostUI.h('button', {
+        className: 'provider-chip',
+        onClick: () => configureProviderModal(key, labelOf(key), isLocal(key), cfg),
+      }, '+ ' + labelOf(key)));
+    }
+    panel.appendChild(chips);
   }
 }
 

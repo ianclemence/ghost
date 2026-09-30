@@ -1,60 +1,40 @@
-/* Ghost Section: Home — "Is Ghost okay? What has Ghost been doing? Does it need me?"
-   Calm, personal, intentional. Not a server dashboard.
-
-   Three questions answered top-to-bottom:
-   1. Is Ghost okay?
-   2. What has Ghost been doing?
-   3. Does Ghost need anything from me? */
+/* Ghost Section: Home — "What needs me? What's coming? What did you do? Are you okay?"
+   Not a server dashboard: a calm briefing, with Ghost's decisions
+   (approvals) answerable right here. */
 
 'use strict';
 
 async function loadHome(container) {
   container.innerHTML = '';
-
   const view = GhostUI.h('div', { className: 'home' });
 
-  // Header: greeting + ghost-level state sentence.
-  const header = GhostUI.h('header', { className: 'home-header' });
-  const greet = GhostUI.h('h1', { className: 'home-greet', id: 'home-greet' }, greetingFor(new Date().getHours()) + '.');
+  // Header: greeting + one honest status line.
+  const header = GhostUI.h('header', { className: 'page-head home-head' });
+  const greet = GhostUI.h('h1', { id: 'home-greet' }, greetingFor(new Date().getHours()) + '.');
   header.appendChild(greet);
-  const subline = GhostUI.h('p', { className: 'home-subline', id: 'home-subline', role: 'status', 'aria-live': 'polite' }, 'Reading Ghost\u2026');
-  header.appendChild(subline);
+  const statusLine = GhostUI.h('p', { className: 'home-statusline', role: 'status', 'aria-live': 'polite' });
+  const dot = GhostUI.h('span', { className: 'home-status-dot', 'aria-hidden': 'true' });
+  const statusText = GhostUI.h('span', {}, 'Reading Ghost…');
+  statusLine.appendChild(dot);
+  statusLine.appendChild(statusText);
+  header.appendChild(statusLine);
   view.appendChild(header);
 
-  // Primary status — one calm sentence + a quiet summary line.
-  const statusSection = GhostUI.h('section', { className: 'home-section home-status', 'aria-labelledby': 'home-status-title' });
-  const statusHead = GhostUI.h('div', { className: 'home-status-head' });
-  const statusDot = GhostUI.h('span', { className: 'home-status-dot', 'aria-hidden': 'true' });
-  const statusTitle = GhostUI.h('h2', { className: 'home-status-title', id: 'home-status-title' });
-  statusHead.appendChild(statusDot);
-  statusHead.appendChild(statusTitle);
-  statusSection.appendChild(statusHead);
-  const statusBody = GhostUI.h('div', { className: 'home-status-body', 'aria-busy': 'true' });
-  statusSection.appendChild(statusBody);
-  view.appendChild(statusSection);
+  const needs = homeCard('Needs you', null);
+  const upcoming = homeCard('Coming up', { label: 'All routines', to: 'routines' });
+  const glance = homeCard('At a glance', null);
+  const recent = homeCard('What Ghost did', { label: 'All activity', to: 'activity' });
+  needs.card.classList.add('home-card-wide');
+  recent.card.classList.add('home-card-wide');
+  [needs, upcoming, glance, recent].forEach(c => c.body.appendChild(GhostUI.loading('…')));
 
-  // Recent activity — quiet list with timestamps.
-  const activitySection = GhostUI.h('section', { className: 'home-section home-activity', 'aria-labelledby': 'home-activity-title' });
-  const activityHead = GhostUI.h('div', { className: 'home-section-head' });
-  activityHead.appendChild(GhostUI.h('h2', { className: 'home-section-title', id: 'home-activity-title' }, 'Recent activity'));
-  activitySection.appendChild(activityHead);
-  const activityBody = GhostUI.h('div', { className: 'home-activity-body', 'aria-busy': 'true' });
-  activityBody.appendChild(activitySkeleton());
-  activitySection.appendChild(activityBody);
-  view.appendChild(activitySection);
-
-  // Needs your attention — empty state or list of actionable items.
-  const attentionSection = GhostUI.h('section', { className: 'home-section home-attention', 'aria-labelledby': 'home-attention-title' });
-  attentionSection.appendChild(GhostUI.h('h2', { className: 'home-section-title', id: 'home-attention-title' }, 'Needs your attention'));
-  const attentionBody = GhostUI.h('div', { className: 'home-attention-body', 'aria-busy': 'true' });
-  attentionBody.appendChild(GhostUI.loading('Checking\u2026'));
-  attentionSection.appendChild(attentionBody);
-  view.appendChild(attentionSection);
-
+  const grid = GhostUI.h('div', { className: 'home-grid' });
+  [needs, upcoming, glance, recent].forEach(c => grid.appendChild(c.card));
+  view.appendChild(grid);
   container.appendChild(view);
 
-  // Independent fetches — a single failure shouldn't blank the page.
-  const [meta, doctor, health, channels, activity, jobs, memory, selfMem, devices, ollama, activeModel, identity, consoleStatus, proactive] = await Promise.allSettled([
+  // Independent fetches: one failure never blanks the page.
+  const [meta, doctor, health, channels, activity, jobs, memory, selfMem, devices, ollama, activeModel, identity, consoleStatus, proactive, pending] = await Promise.allSettled([
     GhostAPI.get('/api/admin/auth/meta'),
     GhostAPI.proxyGet('/v1/doctor'),
     GhostAPI.proxyGet('/v1/health'),
@@ -69,30 +49,162 @@ async function loadHome(container) {
     GhostAPI.proxyGet('/v1/identity'),
     GhostAPI.get('/api/status'),
     GhostAPI.proxyGet('/v1/proactive'),
+    GhostAPI.proxyGet('/v1/permissions/requests?status=pending'),
   ]);
-
   if (!document.body.contains(container)) return;
 
-  // Personal greeting: append owner name when known.
   const ownerName = (meta.status === 'fulfilled' && meta.value && meta.value.owner_name || '').trim();
   if (ownerName) greet.textContent = greetingFor(new Date().getHours()) + ', ' + ownerName + '.';
 
-  // Agent-as-contact: the Ghost introduces itself by name (one entity,
-  // not a model picker). Falls back silently when identity is missing.
-  const ghostInfo = (identity.status === 'fulfilled' && identity.value && identity.value.ghost) || {};
-  if (ghostInfo.name && ghostInfo.name !== 'Ghost') {
-    subline.textContent = 'You\u2019re talking to ' + ghostInfo.name + '.';
-  }
-
-  // Compose state.
   const overall = computeOverall(doctor, health);
-  renderStatus(statusTitle, statusDot, subline, statusBody, overall, doctor, selfMem, jobs, devices, ollama, activeModel, proactive);
+  dot.className = 'home-status-dot home-status-dot-' + overall.state;
+  const active = activeModel.status === 'fulfilled' && activeModel.value && activeModel.value.active;
+  const ghostInfo = (identity.status === 'fulfilled' && identity.value && identity.value.ghost) || {};
+  const who = ghostInfo.name && ghostInfo.name !== 'Ghost' ? ghostInfo.name : 'Ghost';
+  statusText.textContent = overall.state === 'ok'
+    ? who + ' is healthy' + (active ? ', thinking with ' + (GhostUI.modelFriendly(active).model || active) + '.' : '.')
+    : overall.label + '. ' + overall.detail;
 
-  // Recent activity (canonical, user-safe Ghost activity — never a chat list).
-  renderActivity(activityBody, activity);
+  const approvals = pending.status === 'fulfilled' ? ((pending.value && pending.value.requests) || []) : [];
+  renderNeeds(needs.body, approvals, doctor, channels, devices, ollama, consoleStatus, () => loadHome(container));
+  renderUpcoming(upcoming.body, jobs);
+  renderGlance(glance.body, memory, jobs, devices, ollama, activeModel, proactive);
+  renderActivity(recent.body, activity);
+}
 
-  // Needs your attention.
-  renderAttention(attentionBody, doctor, channels, devices, ollama, consoleStatus);
+// homeCard builds a titled card; `link` adds a quiet "see all" affordance.
+function homeCard(title, link) {
+  const card = GhostUI.h('section', { className: 'panel home-card' });
+  const head = GhostUI.h('div', { className: 'panel-head' });
+  head.appendChild(GhostUI.h('h2', {}, title));
+  if (link) {
+    head.appendChild(GhostUI.h('button', { className: 'home-link', onClick: () => GhostApp.navigate(link.to) }, link.label + ' →'));
+  }
+  card.appendChild(head);
+  const body = GhostUI.h('div', { className: 'home-card-body' });
+  card.appendChild(body);
+  return { card, body };
+}
+
+// Ghost's pending decisions, answerable in place; then anything else that
+// needs the owner (setup gaps, health warnings). Empty means genuinely clear.
+function renderNeeds(body, approvals, doctorRes, channelsRes, devicesRes, ollamaRes, consoleRes, reload) {
+  body.innerHTML = '';
+  const items = collectAttentionItems(doctorRes, channelsRes, devicesRes, consoleRes);
+  if (approvals.length === 0 && items.length === 0) {
+    const ok = GhostUI.h('div', { className: 'home-clear' });
+    ok.appendChild(GhostUI.h('span', { className: 'home-attention-dot home-attention-dot-ok', 'aria-hidden': 'true' }));
+    ok.appendChild(GhostUI.h('span', {}, 'All clear. Nothing is waiting on you.'));
+    body.appendChild(ok);
+    return;
+  }
+  approvals.forEach(p => body.appendChild(approvalRow(p, reload)));
+  if (items.length > 0) {
+    const list = GhostUI.h('ul', { className: 'home-attention-list', role: 'list' });
+    items.forEach(it => list.appendChild(renderAttentionItem(it)));
+    body.appendChild(list);
+  }
+}
+
+function approvalRow(p, reload) {
+  const card = p.card || {};
+  const row = GhostUI.h('div', { className: 'home-approval' });
+  row.appendChild(GhostUI.h('span', { className: 'home-ember', 'aria-hidden': 'true' }));
+  const text = GhostUI.h('div', { className: 'home-approval-text' });
+  text.appendChild(GhostUI.h('div', { className: 'home-approval-title' }, card.title || 'Ghost is asking'));
+  if (card.description) text.appendChild(GhostUI.h('div', { className: 'home-approval-desc' }, card.description));
+  row.appendChild(text);
+  const acts = GhostUI.h('div', { className: 'home-approval-actions' });
+  const decide = async (grant) => {
+    acts.querySelectorAll('button').forEach(b => { b.disabled = true; });
+    try {
+      // No scope is sent: the server stores the canonical scope the request
+      // was asked under, so the grant matches exactly what it authorizes.
+      await GhostAPI.proxyPost('/v1/permissions/resolve', { id: p.id, grant });
+      GhostApp.refreshPresence();
+      reload();
+    } catch (e) {
+      GhostUI.toast('Couldn’t record that choice. Try again.');
+      acts.querySelectorAll('button').forEach(b => { b.disabled = false; });
+    }
+  };
+  const allow = GhostUI.btn('Allow', 'primary', () => decide('allow_once'));
+  allow.classList.add('ghost-btn-sm');
+  const deny = GhostUI.btn('Deny', 'secondary', () => decide('deny'));
+  deny.classList.add('ghost-btn-sm');
+  acts.appendChild(allow);
+  acts.appendChild(deny);
+  row.appendChild(acts);
+  return row;
+}
+
+// The next things Ghost will do, soonest first.
+function renderUpcoming(body, jobsRes) {
+  body.innerHTML = '';
+  const arr = jobsRes.status === 'fulfilled' && jobsRes.value && Array.isArray(jobsRes.value.routines) ? jobsRes.value.routines : [];
+  const live = arr.filter(r => r.state === 'active' || r.state === 'waiting')
+    .sort((a, b) => (Date.parse(a.next_run_at) || Infinity) - (Date.parse(b.next_run_at) || Infinity))
+    .slice(0, 4);
+  if (live.length === 0) {
+    body.appendChild(GhostUI.h('p', { className: 'home-empty' }, 'Nothing scheduled. Tell Ghost “every Monday at 8, brief me on my week” and it appears here.'));
+    return;
+  }
+  const list = GhostUI.h('ul', { className: 'home-list', role: 'list' });
+  live.forEach(r => {
+    const li = GhostUI.h('li', { className: 'home-list-row' });
+    const main = GhostUI.h('div', { className: 'home-list-main' });
+    main.appendChild(GhostUI.h('div', { className: 'home-list-title' }, r.title));
+    if (r.schedule) main.appendChild(GhostUI.h('div', { className: 'home-list-sub' }, r.schedule));
+    li.appendChild(main);
+    const when = whenAhead(r.next_run_at);
+    if (when) li.appendChild(GhostUI.h('div', { className: 'home-list-when' }, when));
+    list.appendChild(li);
+  });
+  body.appendChild(list);
+}
+
+// "in 20 min", "today 3:00 PM", "tomorrow 8:00 AM", "Monday 8:00 AM".
+function whenAhead(iso) {
+  const t = Date.parse(iso);
+  if (!isFinite(t)) return '';
+  const now = Date.now(), d = t - now;
+  if (d <= 60000) return 'now';
+  if (d < 3600000) return 'in ' + Math.round(d / 60000) + ' min';
+  const at = new Date(t);
+  const clock = at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const day0 = x => { const c = new Date(x); c.setHours(0, 0, 0, 0); return c.getTime(); };
+  const days = Math.round((day0(t) - day0(now)) / 86400000);
+  if (days === 0) return d < 6 * 3600000 ? 'in ' + Math.round(d / 3600000) + ' h' : 'today ' + clock;
+  if (days === 1) return 'tomorrow ' + clock;
+  if (days < 7) return at.toLocaleDateString([], { weekday: 'long' }) + ' ' + clock;
+  return at.toLocaleDateString([], { day: 'numeric', month: 'short' });
+}
+
+// Small, honest facts: what Ghost knows, runs, thinks with, watches.
+function renderGlance(body, memoryRes, jobsRes, devicesRes, ollamaRes, activeModelRes, proactiveRes) {
+  body.innerHTML = '';
+  const mem = memoryRes.status === 'fulfilled' ? extractMemoryCount(memoryRes.value) : null;
+  const jobs = jobsRes.status === 'fulfilled' ? extractJobCount(jobsRes.value) : null;
+  const running = jobsRes.status === 'fulfilled' ? extractActiveJobCount(jobsRes.value) : null;
+  const devs = devicesRes.status === 'fulfilled' ? extractDeviceCount(devicesRes.value) : null;
+  const local = inferLocalAI(ollamaRes, activeModelRes);
+  const tiles = [
+    ['Memory', mem == null ? '—' : GhostUI.fmtNum(mem), mem === 1 ? 'thing remembered' : 'things remembered', 'memory'],
+    ['Routines', jobs == null ? '—' : String(running), jobs ? 'running of ' + jobs : 'none yet', 'routines'],
+    ['Devices', devs == null ? '—' : String(devs), devs === 0 ? 'not connected' : 'connected', 'devices'],
+    ['Local AI', local.state === 'ok' ? 'Ready' : local.label, local.state === 'ok' ? local.label.replace('Ready · ', '') : '', 'intelligence'],
+  ];
+  const grid = GhostUI.h('div', { className: 'home-tiles' });
+  tiles.forEach(([k, v, sub, to]) => {
+    const t = GhostUI.h('button', { className: 'home-tile', onClick: () => GhostApp.navigate(to) });
+    t.appendChild(GhostUI.h('div', { className: 'home-tile-key' }, k));
+    t.appendChild(GhostUI.h('div', { className: 'home-tile-val' }, v));
+    if (sub) t.appendChild(GhostUI.h('div', { className: 'home-tile-sub' }, sub));
+    grid.appendChild(t);
+  });
+  body.appendChild(grid);
+  const watching = proactiveSummary(proactiveRes);
+  if (watching && watching !== '—') body.appendChild(GhostUI.h('p', { className: 'home-watching' }, 'Watching: ' + watching));
 }
 
 function greetingFor(hour) {
@@ -148,35 +260,6 @@ function computeOverall(doctorRes, healthRes) {
   return { state: 'ok', label: 'Ghost is healthy', detail: 'Ghost is running normally.' };
 }
 
-function renderStatus(titleEl, dotEl, sublineEl, bodyEl, overall, doctorRes, memoryRes, jobsRes, devicesRes, ollamaRes, activeModelRes, proactiveRes) {
-  dotEl.className = 'home-status-dot home-status-dot-' + overall.state;
-  titleEl.textContent = overall.label;
-  // Healthy needs no second sentence saying so: say what Ghost thinks with
-  // instead (runtime's active model), so the line carries information.
-  const active = activeModelRes.status === 'fulfilled' && activeModelRes.value && activeModelRes.value.active;
-  sublineEl.textContent = overall.state === 'ok' && active
-    ? 'Thinking with ' + active + '.'
-    : overall.detail;
-  bodyEl.setAttribute('aria-busy', 'false');
-
-  bodyEl.innerHTML = '';
-
-  const memCount = memoryRes.status === 'fulfilled' ? extractMemoryCount(memoryRes.value) : null;
-  const jobCount = jobsRes.status === 'fulfilled' ? extractJobCount(jobsRes.value) : null;
-  const activeJobCount = jobsRes.status === 'fulfilled' ? extractActiveJobCount(jobsRes.value) : null;
-  const devCount = devicesRes.status === 'fulfilled' ? extractDeviceCount(devicesRes.value) : null;
-
-  const localAI = inferLocalAI(ollamaRes, activeModelRes);
-
-  const dl = GhostUI.h('dl', { className: 'home-status-summary' });
-  appendSummary(dl, 'Local AI', localAI.label);
-  appendSummary(dl, 'Memory', memCount == null ? '\u2014' : GhostUI.fmtNum(memCount) + (memCount === 1 ? ' memory' : ' memories'));
-  appendSummary(dl, 'Devices', devCount == null ? '\u2014' : (devCount === 0 ? 'Not connected' : devCount + ' connected'));
-  appendSummary(dl, 'Routines', jobCount == null ? '\u2014' : (jobCount === 0 ? 'None yet' : activeJobCount + ' running of ' + jobCount));
-  appendSummary(dl, 'Watching', proactiveSummary(proactiveRes));
-  bodyEl.appendChild(dl);
-}
-
 // proactiveSummary renders the quiet-work state as one honest phrase: whether
 // Ghost is in quiet hours, how much of today's check-in budget is used, and
 // whether anything is waiting. Never a number for its own sake.
@@ -196,13 +279,6 @@ function proactiveSummary(res) {
   if (p.quiet) return 'Quiet until ' + (p.quiet_end || 'morning');
   if (p.budget_max > 0) return p.budget_used + ' of ' + p.budget_max + ' check-ins used today';
   return 'Idle';
-}
-
-function appendSummary(dl, key, value) {
-  const row = GhostUI.h('div', { className: 'home-summary-row' });
-  row.appendChild(GhostUI.h('dt', { className: 'home-summary-key' }, key));
-  row.appendChild(GhostUI.h('dd', { className: 'home-summary-val' }, value));
-  dl.appendChild(row);
 }
 
 function inferLocalAI(ollamaRes, activeModelRes) {

@@ -27,12 +27,12 @@ function routineKindLabel(kind) {
 
 function routineState(item) {
   switch (item.state) {
-    case 'waiting': return { label: 'Waiting for you', cls: 'text-warning' };
-    case 'failed': return { label: 'Needs attention', cls: 'text-danger' };
-    case 'paused': return { label: 'Paused', cls: 'text-tertiary' };
-    case 'done': return { label: 'Done', cls: 'text-ok' };
-    case 'cancelled': return { label: 'Cancelled', cls: 'text-tertiary' };
-    default: return { label: 'Active', cls: 'text-ok' };
+    case 'waiting': return { label: 'Waiting for you', cls: 'state-chip state-chip-warn' };
+    case 'failed': return { label: 'Needs attention', cls: 'state-chip state-chip-bad' };
+    case 'paused': return { label: 'Paused', cls: 'state-chip state-chip-off' };
+    case 'done': return { label: 'Done', cls: 'state-chip state-chip-ok' };
+    case 'cancelled': return { label: 'Cancelled', cls: 'state-chip state-chip-off' };
+    default: return { label: 'Active', cls: 'state-chip state-chip-ok' };
   }
 }
 
@@ -71,20 +71,23 @@ function renderRoutines(listEl, container, items) {
     return;
   }
 
+  const rank = { waiting: 0, failed: 0, active: 1, paused: 2 };
+  items = items.slice().sort((a, b) => (rank[a.state] ?? 3) - (rank[b.state] ?? 3));
   items.forEach(item => {
     const card = GhostUI.h('div', { className: 'ghost-card' });
 
     const titleRow = GhostUI.h('div', { className: 'ghost-card-title' });
     titleRow.appendChild(document.createTextNode(item.title || 'Untitled'));
-    titleRow.appendChild(GhostUI.h('span', {
-      className: routineState(item).cls,
-      style: 'margin-left:var(--s-2);font-size:var(--t-foot);font-weight:600',
-    }, routineState(item).label));
+    titleRow.appendChild(GhostUI.h('span', { className: routineState(item).cls }, routineState(item).label));
     card.appendChild(titleRow);
 
     const schedule = item.schedule && item.schedule !== 'Manual' ? item.schedule : 'No schedule';
     const metaParts = [routineKindLabel(item.kind), schedule];
     if (item.run_count > 0) metaParts.push('ran ' + item.run_count + '\u00d7');
+    if (item.state === 'active' && typeof whenAhead === 'function' && item.next_run_at) {
+      const next = whenAhead(item.next_run_at);
+      if (next) metaParts.push('next ' + next);
+    }
     card.appendChild(GhostUI.h('div', { className: 'ghost-card-meta' }, metaParts.join('  \u00b7  ')));
 
     if (item.what) {
