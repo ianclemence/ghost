@@ -11,7 +11,10 @@ they are.
 
 It holds this README, the nine documents linked at the end (one per layer of
 the chain below), and one reference, [Markdown & diagrams](markdown.md), on how
-responses render on every surface. Nothing else lives here.
+responses render on every surface. Two operator guides sit beside them:
+[Your Pod, from the box to your first conversation](POD-QUICKSTART.md) and
+[Reaching your Ghost when you are away](CONNECT.md), the relay decision record.
+Nothing else lives here.
 
 ---
 
