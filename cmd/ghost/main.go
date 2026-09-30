@@ -18,7 +18,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -1447,14 +1446,7 @@ func gatewayCmd() {
 	// clean stop so the next start can tell the difference.
 	runMarker := filepath.Join(configDir(), "running")
 	uncleanStart = hardware.MarkRunning(runMarker)
-	go func() {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGTERM, syscall.SIGINT)
-		sig := <-c
-		hardware.MarkStopped(runMarker)
-		signal.Stop(c)
-		_ = syscall.Kill(os.Getpid(), sig.(syscall.Signal)) // then stop the way it would have
-	}()
+	markCleanStopOnSignal(runMarker)
 
 	// Print agent startup info
 	fmt.Println("\n📦 Agent Status:")

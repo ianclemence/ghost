@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -118,7 +117,7 @@ func startWithoutSystemd() error {
 	}
 	cmd := exec.Command("/bin/sh", "-c", script)
 	cmd.Stdout, cmd.Stderr = f, f
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	detach(cmd)
 	if err := cmd.Start(); err != nil {
 		f.Close()
 		return err

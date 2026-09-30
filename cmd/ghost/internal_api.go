@@ -33,7 +33,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -52,6 +51,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/goals"
+	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/modes"
@@ -1618,14 +1618,7 @@ func memoryInfo() (usedBytes, totalBytes uint64) {
 
 // diskUsage returns used and total bytes for the given filesystem path.
 func diskUsage(path string) (used, total uint64) {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(path, &st); err != nil {
-		return 0, 0
-	}
-	total = st.Blocks * uint64(st.Bsize)
-	free := st.Bavail * uint64(st.Bsize)
-	used = total - free
-	return used, total
+	return hardware.DiskUsage(path)
 }
 
 // loadAverages reads the 1/5/15 minute load averages from /proc/loadavg.

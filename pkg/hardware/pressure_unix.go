@@ -18,6 +18,17 @@ func freeBytes(path string) (uint64, bool) {
 	return uint64(st.Bavail) * uint64(st.Bsize), true
 }
 
+// DiskUsage returns used and total bytes for the filesystem holding path, and
+// zeros when unknown.
+func DiskUsage(path string) (used, total uint64) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
+		return 0, 0
+	}
+	total = uint64(st.Blocks) * uint64(st.Bsize)
+	return total - uint64(st.Bavail)*uint64(st.Bsize), total
+}
+
 // diskInfoGB returns (freeGB, totalGB, freePct) for the filesystem holding
 // path. It returns zeros on error so the caller degrades to normal.
 func diskInfoGB(path string) (int, int, int) {

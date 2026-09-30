@@ -6,5 +6,8 @@ package hardware
 // "normal" rather than reporting a false alarm.
 func diskInfoGB(path string) (int, int, int) { return 0, 0, 0 }
 
+// DiskUsage is unknown off unix; callers degrade gracefully.
+func DiskUsage(path string) (used, total uint64) { return 0, 0 }
+
 // freeBytes is unknown off unix; callers degrade gracefully.
 func freeBytes(path string) (uint64, bool) { return 0, false }

@@ -47,10 +47,8 @@ func OrphanBrowserPIDs(procRoot string) []int {
 		if len(fields) < 4 || fields[3] != "1" {
 			continue // not an orphan
 		}
-		if st, err := os.Stat(dir); err == nil {
-			if sys, ok := st.Sys().(*syscall.Stat_t); ok && int(sys.Uid) != uid {
-				continue // someone else's process
-			}
+		if st, err := os.Stat(dir); err == nil && !ownedByUser(st, uid) {
+			continue // someone else's process
 		}
 		cmdline, err := os.ReadFile(filepath.Join(dir, "cmdline"))
 		if err != nil {
@@ -88,7 +86,7 @@ func isBrowserProcess(cmd string) bool {
 // orphans, so call it only at startup or after a failed session — never while
 // a healthy session is in use.
 func ReapOrphans(procRoot string) []int {
-	return reapPasses(procRoot, 4, syscall.Kill, time.Sleep)
+	return reapPasses(procRoot, 4, killProcess, time.Sleep)
 }
 
 // reapPasses is the testable core: kill, settle, rescan, up to maxPasses.

@@ -14,6 +14,7 @@ Newest first. Ghost shows new entries on first launch after an update;
 - **Power cuts are noticed.** Ghost tells you when it restarted after being cut
   off instead of stopped, and that its memory checked out.
 - New page: what a Pod needs (`docs/HARDWARE.md`).
+- Ghost builds for Windows again. It had stopped compiling there.
 
 ## [0.24.98] - 2026-10-01
 

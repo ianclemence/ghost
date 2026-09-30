@@ -23,12 +23,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
+	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/utils"
@@ -129,14 +129,7 @@ func memoryInfo() (usedBytes, totalBytes uint64) {
 }
 
 func diskUsage(path string) (used, total uint64) {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(path, &st); err != nil {
-		return 0, 0
-	}
-	total = st.Blocks * uint64(st.Bsize)
-	free := st.Bavail * uint64(st.Bsize)
-	used = total - free
-	return used, total
+	return hardware.DiskUsage(path)
 }
 
 func loadAverages() (one, five, fifteen float64) {
