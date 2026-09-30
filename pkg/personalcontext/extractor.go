@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Input is one user turn plus the context the extractor may inspect. The
@@ -531,6 +532,12 @@ func matchDeclarations(text string, correction bool) []candidate {
 		if len(r.rejectWords) > 0 && rejectFirstWord(value, r.rejectWords) {
 			continue
 		}
+		// A place or a name must look like one. "I live in are you dumb"
+		// (a frustrated aside) was stored as the owner's home and quoted back
+		// to them as fact.
+		if (r.name == "location" || r.name == "name") && !plausibleName(value) {
+			continue
+		}
 		if r.prefix != "" {
 			value = r.prefix + value
 		}
@@ -815,4 +822,39 @@ func isInterrogative(text string) bool {
 	}
 	lead := leadingLettersRE.FindString(strings.ToLower(first))
 	return lead != "" && questionWords[lead]
+}
+
+// notNameWords are words that never belong in a place or a person's name:
+// pronouns, auxiliary verbs, question words and insults. A capture containing
+// one is a sentence fragment, not a fact about the owner.
+var notNameWords = map[string]bool{
+	"you": true, "your": true, "yours": true, "are": true, "is": true, "am": true, "was": true, "were": true,
+	"do": true, "does": true, "did": true, "dont": true, "don't": true, "not": true, "no": true, "yes": true,
+	"what": true, "why": true, "how": true, "who": true, "where": true, "when": true, "which": true,
+	"dumb": true, "stupid": true, "idiot": true, "wrong": true, "bad": true, "the": true, "that": true,
+	"this": true, "it": true, "they": true, "he": true, "she": true, "we": true, "my": true, "me": true,
+	"can": true, "will": true, "would": true, "should": true, "could": true, "have": true, "has": true,
+	"just": true, "really": true, "actually": true, "lol": true,
+}
+
+// plausibleName reports whether a captured value could be a place or a person's
+// name: a few words, no sentence words, and no digits-only or symbol-only text.
+func plausibleName(v string) bool {
+	words := strings.Fields(v)
+	if len(words) == 0 || len(words) > 5 {
+		return false
+	}
+	letters := 0
+	for _, w := range words {
+		lw := strings.ToLower(strings.Trim(w, "\"'()"))
+		if notNameWords[lw] {
+			return false
+		}
+		for _, r := range w {
+			if unicode.IsLetter(r) {
+				letters++
+			}
+		}
+	}
+	return letters >= 2
 }

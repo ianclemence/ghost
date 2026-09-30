@@ -110,3 +110,23 @@ func TestDeliverToOwnerStoresAndPublishes(t *testing.T) {
 		t.Fatal("the reminder must be stored in the shared conversation so every surface finds it in history")
 	}
 }
+
+func TestLateNoteOnlyWhenActuallyLate(t *testing.T) {
+	loc, _ := time.LoadLocation("Asia/Bangkok")
+	due := time.Date(2026, 9, 30, 14, 39, 0, 0, loc)
+	if n := LateNote(due, due.Add(2*time.Minute), "Asia/Bangkok"); n != "" {
+		t.Fatalf("two minutes late is on time, got %q", n)
+	}
+	if n := LateNote(due, due.Add(3*time.Hour), "Asia/Bangkok"); n != "This was due at 2:39 PM; I was offline then." {
+		t.Fatalf("same-day lateness: %q", n)
+	}
+	if n := LateNote(due, due.Add(20*time.Hour), "Asia/Bangkok"); !strings.Contains(n, "yesterday, 2:39 PM") {
+		t.Fatalf("next-morning lateness must say when it was due: %q", n)
+	}
+	if n := LateNote(due, due.Add(72*time.Hour), "Asia/Bangkok"); !strings.Contains(n, "Sep 30") {
+		t.Fatalf("days late must name the date: %q", n)
+	}
+	if n := LateNote(due, due.Add(time.Hour), "Not/AZone"); n == "" {
+		t.Fatal("an unknown zone must still produce a note, in UTC")
+	}
+}

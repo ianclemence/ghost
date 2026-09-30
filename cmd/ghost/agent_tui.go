@@ -82,6 +82,9 @@ const (
 	entryTool
 	entryNotice
 	entryError
+	// entryBlock is a multi-line listing (memory, activity, devices, files):
+	// every line indented and wrapped, none truncated to a single row.
+	entryBlock
 )
 
 type entry struct {
@@ -933,7 +936,7 @@ var paletteCommands = []paletteItem{
 	{"session", "where this terminal is + model"},
 	{"model", "show or switch model"},
 	{"context", "topic space (scoped memory/tools)"},
-	{"memory", "ask what Ghost remembers"},
+	{"memory", "what Ghost has stored about you (/memory forget 2)"},
 	{"routines", "ask what Ghost has scheduled"},
 	{"tasks", "list durable routines with status"},
 	{"task", "pause, resume, or cancel a routine (/task pause 1)"},
@@ -941,6 +944,8 @@ var paletteCommands = []paletteItem{
 	{"idea", "read, accept, or dismiss one (/idea accept 1)"},
 	{"thread", "open a side thread"},
 	{"main", "return to the shared conversation"},
+	{"activity", "what Ghost did lately, and why"},
+	{"devices", "phones paired with this Pod; /devices revoke 2"},
 	{"attach", "send a file with your next message (/attach ~/lease.pdf)"},
 	{"files", "files you have sent Ghost; /files delete 2 removes one"},
 	{"rewind", "edit and resend last message"},
@@ -1369,7 +1374,11 @@ func (m *agentTUI) runCommand(line string) (tea.Model, tea.Cmd) {
 		m.showTools = !m.showTools
 		m.append(entry{kind: entryNotice, text: fmt.Sprintf("tool details %s", onOff(m.showTools))})
 	case "memory":
-		return m, m.showMemory(args)
+		return m, m.memoryCommand(args)
+	case "activity":
+		m.activityCommand(args)
+	case "devices":
+		m.devicesCommand(args)
 	case "context":
 		m.handleContext(args)
 	case "attach":
@@ -1941,6 +1950,18 @@ func (m *agentTUI) renderEntry(e entry) string {
 		return styleTool.Render("  ✓ " + cellTruncate(e.text, tw-4))
 	case entryNotice:
 		return styleNotice.Render("  · " + cellTruncate(e.text, tw-2))
+	case entryBlock:
+		var lines []string
+		for _, ln := range strings.Split(e.text, "\n") {
+			if strings.TrimSpace(ln) == "" {
+				lines = append(lines, "")
+				continue
+			}
+			for _, wl := range wrapText(ln, tw-4) {
+				lines = append(lines, "  "+wl)
+			}
+		}
+		return styleNotice.Render(strings.Join(lines, "\n"))
 	case entryError:
 		var lines []string
 		for _, wl := range wrapText(e.text, tw-2) {
@@ -3894,7 +3915,7 @@ func agentHelpText() string {
 		"  /session           where this terminal is, the model, and turn count",
 		"  /model [name]      show or switch the active model (configured providers)",
 		"  /context [name]    show or switch topic context (scoped memory/tools)",
-		"  /memory [query]    ask Ghost in a turn what it remembers",
+		"  /memory [text]     what Ghost has stored about you; /memory forget <n> removes one",
 		"  /routines          ask Ghost in a turn what it has scheduled",
 		"  /tasks             list durable routines with status",
 		"  /task <op> <n>     pause, resume, or cancel routine number n",
@@ -3902,6 +3923,8 @@ func agentHelpText() string {
 		"  /idea <n>          read one; /idea <accept|dismiss> <n> decides",
 		"  /thread            open a side thread (a tangent, not the main one)",
 		"  /main              return to the shared conversation",
+		"  /activity [n]      what Ghost did lately, with the outcome and why",
+		"  /devices           phones paired with this Pod; /devices revoke <n> removes one",
 		"  /attach <path>     send a file with your next message (PDF, Word, sheet, text, image)",
 		"  /files             files you have sent; /files delete <n> removes one",
 		"  /rewind            put the last message back in the editor",
@@ -3934,7 +3957,7 @@ func (m *agentTUI) attach(arg string) {
 		for _, p := range m.attachments {
 			b.WriteString("attached: " + filepath.Base(p) + "\n")
 		}
-		m.append(entry{kind: entryNotice, text: strings.TrimRight(b.String(), "\n") + "\n/attach clear removes them"})
+		m.append(entry{kind: entryBlock, text: strings.TrimRight(b.String(), "\n") + "\n/attach clear removes them"})
 		return
 	}
 	if arg == "clear" {
@@ -3999,7 +4022,7 @@ func (m *agentTUI) files(args []string) {
 	for i, f := range list {
 		fmt.Fprintf(&b, "%2d  %-32s %-11s %8s  %s\n", i+1, truncateName(f.Name, 32), f.Kind, humanFileSize(f.Size), f.CreatedAt.Local().Format("Jan 2"))
 	}
-	m.append(entry{kind: entryNotice, text: strings.TrimRight(b.String(), "\n") + "\n/files delete <n> removes one"})
+	m.append(entry{kind: entryBlock, text: strings.TrimRight(b.String(), "\n") + "\n/files delete <n> removes one"})
 }
 
 // cleanDroppedPath undoes what a terminal does to a dragged-in file: wraps it
@@ -4034,4 +4057,196 @@ func truncateName(s string, w int) string {
 		return s
 	}
 	return string(r[:w-1]) + "…"
+}
+
+// dataPlane is the part of the Pod the terminal reads directly: stored memory,
+// recorded activity and paired devices. These commands show what is on disk,
+// not what a model says about it.
+type dataPlane interface {
+	Memory() (*memorySnapshot, error)
+	ForgetMemory(id string) error
+	Activity(limit int) ([]activityRow, error)
+	Devices() ([]pairedDevice, error)
+	RevokeDevice(id string) error
+}
+
+func (m *agentTUI) dataPlane() (dataPlane, bool) {
+	dp, ok := m.loop.(dataPlane)
+	if !ok {
+		m.append(entry{kind: entryNotice, text: "This terminal isn't connected to a Ghost daemon, so there is nothing stored to show."})
+	}
+	return dp, ok
+}
+
+// memoryCommand: /memory lists what is stored, /memory <text> filters it,
+// /memory forget <n> removes one, /memory ask <question> asks Ghost.
+func (m *agentTUI) memoryCommand(args []string) tea.Cmd {
+	if len(args) > 0 && args[0] == "ask" {
+		return m.showMemory(args[1:])
+	}
+	dp, ok := m.dataPlane()
+	if !ok {
+		return nil
+	}
+	snap, err := dp.Memory()
+	if err != nil {
+		m.append(entry{kind: entryError, text: "memory unavailable: " + friendlyAgentError(err)})
+		return nil
+	}
+	if len(args) >= 2 && args[0] == "forget" {
+		n, convErr := strconv.Atoi(args[1])
+		if convErr != nil || n < 1 || n > len(snap.Entries) {
+			m.append(entry{kind: entryError, text: "no memory number " + args[1] + " (see /memory)"})
+			return nil
+		}
+		if err := dp.ForgetMemory(snap.Entries[n-1].ID); err != nil {
+			m.append(entry{kind: entryError, text: "couldn't forget that: " + friendlyAgentError(err)})
+			return nil
+		}
+		m.append(entry{kind: entryNotice, text: "forgotten: " + memoryLine(snap.Entries[n-1])})
+		return nil
+	}
+	filter := strings.ToLower(strings.TrimSpace(strings.Join(args, " ")))
+	var b strings.Builder
+	shown := 0
+	for i, f := range snap.Entries {
+		line := memoryLine(f)
+		if filter != "" && !strings.Contains(strings.ToLower(line), filter) {
+			continue
+		}
+		shown++
+		fmt.Fprintf(&b, "%2d  %s", i+1, line)
+		if meta := memoryMeta(f); meta != "" {
+			b.WriteString("  (" + meta + ")")
+		}
+		b.WriteString("\n")
+	}
+	for _, n := range snap.Notes {
+		if filter != "" && !strings.Contains(strings.ToLower(n), filter) {
+			continue
+		}
+		shown++
+		b.WriteString("    note: " + n + "\n")
+	}
+	if shown == 0 {
+		msg := "Ghost hasn't kept anything yet. Tell it something worth remembering and it appears here."
+		if filter != "" {
+			msg = "Nothing stored matches \"" + filter + "\"."
+		}
+		m.append(entry{kind: entryNotice, text: msg})
+		return nil
+	}
+	head := fmt.Sprintf("What Ghost remembers (%d)", shown)
+	m.append(entry{kind: entryBlock, text: head + "\n\n" + strings.TrimRight(b.String(), "\n") + "\n\n/memory forget <n> removes one · /memory ask <question> asks Ghost"})
+	return nil
+}
+
+func memoryLine(f memoryFact) string {
+	if f.Value != "" && f.Value != f.Title {
+		if i := strings.Index(f.Title, ":"); i > 0 && strings.Contains(f.Title, f.Value) {
+			return f.Title
+		}
+	}
+	if f.Title != "" {
+		return f.Title
+	}
+	return f.Summary
+}
+
+func memoryMeta(f memoryFact) string {
+	if t, err := time.Parse(time.RFC3339, f.CreatedAt); err == nil {
+		if f.Reinforced > 1 {
+			return fmt.Sprintf("confirmed %d times", f.Reinforced)
+		}
+		return "learned " + t.Local().Format("Jan 2")
+	}
+	return ""
+}
+
+// activityCommand: /activity [n] shows the last n things Ghost did (default 10).
+func (m *agentTUI) activityCommand(args []string) {
+	dp, ok := m.dataPlane()
+	if !ok {
+		return
+	}
+	limit := 10
+	if len(args) > 0 {
+		if n, err := strconv.Atoi(args[0]); err == nil && n > 0 && n <= 50 {
+			limit = n
+		}
+	}
+	rows, err := dp.Activity(limit)
+	if err != nil {
+		m.append(entry{kind: entryError, text: "activity unavailable: " + friendlyAgentError(err)})
+		return
+	}
+	if len(rows) == 0 {
+		m.append(entry{kind: entryNotice, text: "Nothing yet. Every action Ghost takes is recorded here."})
+		return
+	}
+	var b strings.Builder
+	b.WriteString("What Ghost did\n\n")
+	for _, r := range rows {
+		when := ""
+		if t, err := time.Parse(time.RFC3339, r.Timestamp); err == nil {
+			when = t.Local().Format("Jan 2 15:04")
+		}
+		fmt.Fprintf(&b, "%s  %s", when, r.Title)
+		if r.State != "" {
+			b.WriteString(" · " + r.State)
+		}
+		b.WriteString("\n")
+		if r.Summary != "" {
+			b.WriteString("    " + r.Summary + "\n")
+		}
+		if r.Why != "" {
+			b.WriteString("    why: " + r.Why + "\n")
+		}
+	}
+	m.append(entry{kind: entryBlock, text: strings.TrimRight(b.String(), "\n")})
+}
+
+// devicesCommand: /devices lists paired phones; /devices revoke <n> removes one.
+func (m *agentTUI) devicesCommand(args []string) {
+	dp, ok := m.dataPlane()
+	if !ok {
+		return
+	}
+	devs, err := dp.Devices()
+	if err != nil {
+		m.append(entry{kind: entryError, text: "devices unavailable: " + friendlyAgentError(err)})
+		return
+	}
+	if len(args) >= 2 && args[0] == "revoke" {
+		n, convErr := strconv.Atoi(args[1])
+		if convErr != nil || n < 1 || n > len(devs) {
+			m.append(entry{kind: entryError, text: "no device number " + args[1] + " (see /devices)"})
+			return
+		}
+		if err := dp.RevokeDevice(devs[n-1].DeviceID); err != nil {
+			m.append(entry{kind: entryError, text: "couldn't revoke: " + friendlyAgentError(err)})
+			return
+		}
+		m.append(entry{kind: entryNotice, text: "revoked " + devs[n-1].DisplayName + ". That phone must pair again."})
+		return
+	}
+	if len(devs) == 0 {
+		m.append(entry{kind: entryNotice, text: "No phones are paired. Run `ghost pair` to connect one."})
+		return
+	}
+	var b strings.Builder
+	b.WriteString("Paired devices\n\n")
+	for i, d := range devs {
+		seen := "never seen"
+		if t, err := time.Parse(time.RFC3339Nano, d.LastSeenAt); err == nil {
+			seen = "last seen " + t.Local().Format("Jan 2 15:04")
+		}
+		name := d.DisplayName
+		if name == "" {
+			name = "Unnamed device"
+		}
+		fmt.Fprintf(&b, "%2d  %s · %s\n", i+1, name, seen)
+	}
+	b.WriteString("\n/devices revoke <n> removes one")
+	m.append(entry{kind: entryBlock, text: b.String()})
 }

@@ -146,6 +146,15 @@ try:
     code, sf = call("GET", "/v1/live/surfaces?kind=browser", dev=dev)
     check("live browser sessions can be listed", code == 200 and "surfaces" in sf, str(sf)[:120])
 
+    # 6b. Update: the phone can check, and starting needs an explicit confirm.
+    code, up = call("GET", "/v1/system/update", dev=dev)
+    check("the phone can see installed and available versions", code == 200 and up.get("installed"), str(up)[:160])
+    code, _ = call("POST", "/v1/system/update", {}, dev=dev)
+    check("an update will not start without an explicit confirm", code == 400, f"got {code}")
+    if args.host not in ("127.0.0.1", "localhost"):
+        code, _ = call("POST", "/v1/system/update", {"confirm": True})
+        check("an anonymous request cannot start an update", code == 401, f"got {code}")
+
     # 7. Approvals endpoint.
     code, ap_ = call("GET", "/v1/permissions/requests", dev=dev)
     check("pending approvals can be read", code == 200, str(ap_)[:120])
@@ -175,8 +184,13 @@ try:
         check("a due reminder reaches the phone over the live connection", bool(got))
 finally:
     call("DELETE", "/v1/push/register", dev=dev)
-    call("POST", "/v1/pairing/revoke", {"device_id": dev["device_id"]})
-    print("simulated device revoked")
+    # Revoking is an owner action: done from the Pod itself, not with the
+    # phone's own credential and not over the LAN (which would be refused).
+    BASE_LAN = BASE
+    BASE = f"http://127.0.0.1:{args.port}"
+    code, _ = call("POST", "/v1/pairing/revoke", {"device_id": dev["device_id"]})
+    BASE = BASE_LAN
+    print("simulated device revoked" if code == 200 else f"COULD NOT REVOKE the simulated device ({code})")
 
 print(f"\n{sum(results)}/{len(results)} checks passed")
 sys.exit(0 if all(results) else 1)

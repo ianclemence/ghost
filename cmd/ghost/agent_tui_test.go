@@ -827,7 +827,7 @@ func TestTUIPaletteOrderMatchesHelp(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.input.SetValue("/")
-	want := []string{"help", "session", "model", "context", "memory", "routines", "tasks", "task", "ideas", "idea", "thread", "main", "attach", "files", "rewind", "details", "clear", "quit"}
+	want := []string{"help", "session", "model", "context", "memory", "routines", "tasks", "task", "ideas", "idea", "thread", "main", "activity", "devices", "attach", "files", "rewind", "details", "clear", "quit"}
 	items := m.paletteMatches()
 	if len(items) != len(want) {
 		t.Fatalf("palette has %d commands, want %d", len(items), len(want))
@@ -2355,5 +2355,89 @@ func TestCleanDroppedPath(t *testing.T) {
 		if got := cleanDroppedPath(in); got != want {
 			t.Errorf("%q -> %q, want %q", in, got, want)
 		}
+	}
+}
+
+// fakeData is a Pod's stored data, for the commands that show it.
+type fakeData struct {
+	*fakeRuntime
+	facts   []memoryFact
+	acts    []activityRow
+	devs    []pairedDevice
+	forgot  []string
+	revoked []string
+}
+
+func (f *fakeData) Memory() (*memorySnapshot, error) {
+	return &memorySnapshot{Entries: f.facts, Notes: []string{"Is building a pentesting agent"}}, nil
+}
+func (f *fakeData) ForgetMemory(id string) error              { f.forgot = append(f.forgot, id); return nil }
+func (f *fakeData) Activity(limit int) ([]activityRow, error) { return f.acts, nil }
+func (f *fakeData) Devices() ([]pairedDevice, error)          { return f.devs, nil }
+func (f *fakeData) RevokeDevice(id string) error {
+	f.revoked = append(f.revoked, id)
+	return nil
+}
+
+func lastBlock(m *agentTUI) string {
+	for i := len(m.entries) - 1; i >= 0; i-- {
+		if k := m.entries[i].kind; k == entryBlock || k == entryNotice || k == entryError {
+			return m.entries[i].text
+		}
+	}
+	return ""
+}
+
+func TestTUIMemoryShowsStoredFactsAndForgets(t *testing.T) {
+	f := &fakeData{fakeRuntime: newFakeRuntime(), facts: []memoryFact{
+		{ID: "m1", Title: "Favorite: Favorite football club is Chelsea", CreatedAt: "2026-09-25T10:00:00Z"},
+		{ID: "m2", Title: "Food: Always orders oat milk lattes", CreatedAt: "2026-09-26T10:00:00Z", Reinforced: 3},
+	}}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/memory")
+	out := lastBlock(m)
+	for _, want := range []string{"What Ghost remembers (3)", " 1  Favorite: Favorite football club is Chelsea", "confirmed 3 times", "note: Is building a pentesting agent"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("memory listing missing %q in:\n%s", want, out)
+		}
+	}
+	if len(f.turns) != 0 {
+		t.Fatal("listing memory must read the store, not ask the model")
+	}
+	m.runCommand("/memory chelsea")
+	if out := lastBlock(m); strings.Contains(out, "oat milk") || !strings.Contains(out, "Chelsea") {
+		t.Fatalf("a filter must narrow the list: %s", out)
+	}
+	m.runCommand("/memory forget 2")
+	if len(f.forgot) != 1 || f.forgot[0] != "m2" {
+		t.Fatalf("forget 2 must forget the second fact, got %v", f.forgot)
+	}
+	m.runCommand("/memory forget 9")
+	if len(f.forgot) != 1 {
+		t.Fatal("an out-of-range number must forget nothing")
+	}
+}
+
+func TestTUIActivityAndDevices(t *testing.T) {
+	f := &fakeData{fakeRuntime: newFakeRuntime(),
+		acts: []activityRow{{Title: "You promised", State: "waiting", Summary: "buy a keyboard", Why: "you asked", Timestamp: "2026-09-30T14:00:36+07:00"}},
+		devs: []pairedDevice{{DeviceID: "d1", DisplayName: "Ian's phone", LastSeenAt: "2026-09-30T07:38:28.132632764Z"}, {DeviceID: "d2", DisplayName: "Old phone"}},
+	}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/activity")
+	out := lastBlock(m)
+	for _, want := range []string{"What Ghost did", "You promised · waiting", "buy a keyboard", "why: you asked"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("activity missing %q in:\n%s", want, out)
+		}
+	}
+	m.runCommand("/devices")
+	out = lastBlock(m)
+	if !strings.Contains(out, "Ian's phone · last seen") || !strings.Contains(out, "Old phone · never seen") {
+		t.Fatalf("devices listing wrong:\n%s", out)
+	}
+	m.runCommand("/devices revoke 2")
+	if len(f.revoked) != 1 || f.revoked[0] != "d2" {
+		t.Fatalf("revoke 2 must revoke the second device, got %v", f.revoked)
 	}
 }

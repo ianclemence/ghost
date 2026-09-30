@@ -5590,6 +5590,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	// ── Live Surface plane (browser/computer control + observation) ──────
 	registerLiveSurfaceRoutes(mux, agentLoop)
 	registerPushRoutes(mux, startPushBridge(agentLoop))
+	registerSystemUpdateRoutes(mux)
 	registerBrowserStreamRoutes(mux, agentLoop)
 	registerLiveVoiceRoutes(mux, agentLoop)
 

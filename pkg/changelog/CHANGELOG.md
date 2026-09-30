@@ -3,6 +3,20 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.88] - 2026-09-30
+
+- **See what Ghost knows, right in the terminal.** `/memory` lists what is
+  actually stored (and `/memory forget 2` removes one), `/activity` shows what
+  Ghost did and why, `/devices` shows paired phones and can remove one. They
+  read the real records, not a model's recollection.
+- **Update from your phone.** Your Pod screen shows when a newer release is out
+  and can install it after you confirm.
+- **Late reminders say so.** If the Pod was off when a reminder came due, it
+  arrives with "This was due at 2:39 PM; I was offline then."
+- **Fewer wrong memories.** A frustrated aside is no longer stored as your home
+  town, and a shopping errand or a permission claim is no longer kept as a fact
+  about you.
+
 ## [0.24.87] - 2026-09-30
 
 - **Reminders actually reach you.** A reminder that came due was worked out and

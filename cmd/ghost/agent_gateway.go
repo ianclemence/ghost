@@ -1048,3 +1048,98 @@ func isStreamClosedError(err error) bool {
 func localZoneName() string {
 	return strings.TrimSpace(os.Getenv("TZ"))
 }
+
+// readJSON reads one JSON document from the daemon (the terminal talks to the
+// same Pod the phone and console do, so what it shows is what is stored).
+func (g *gatewayRuntime) readJSON(path string, out interface{}) error {
+	req, err := http.NewRequest(http.MethodGet, g.baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Client-Type", "cli")
+	resp, err := g.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("the daemon answered %d", resp.StatusCode)
+	}
+	return json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(out)
+}
+
+func (g *gatewayRuntime) postJSON(path string, body interface{}) error {
+	_, _, err := g.post(context.Background(), path, body, "")
+	return err
+}
+
+// memoryFact is one remembered thing, as the Pod stores it.
+type memoryFact struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Value       string `json:"value"`
+	Summary     string `json:"summary"`
+	DomainLabel string `json:"domain_label"`
+	CreatedAt   string `json:"created_at"`
+	Reinforced  int    `json:"reinforce_count"`
+}
+
+type memorySnapshot struct {
+	Entries []memoryFact `json:"entries"`
+	Notes   []string     `json:"notes"`
+	You     []string     `json:"you"`
+}
+
+func (g *gatewayRuntime) Memory() (*memorySnapshot, error) {
+	var out memorySnapshot
+	if err := g.readJSON("/v1/memory/self", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (g *gatewayRuntime) ForgetMemory(id string) error {
+	return g.postJSON("/v1/memory/self/forget", map[string]string{"id": id, "reason": "forgotten from the terminal"})
+}
+
+// activityRow is one thing Ghost did, with the outcome the runtime recorded.
+type activityRow struct {
+	Title     string `json:"title"`
+	Summary   string `json:"summary"`
+	State     string `json:"state"`
+	Why       string `json:"why"`
+	Timestamp string `json:"timestamp"`
+}
+
+func (g *gatewayRuntime) Activity(limit int) ([]activityRow, error) {
+	var out struct {
+		Activity []activityRow `json:"activity"`
+	}
+	if err := g.readJSON(fmt.Sprintf("/v1/activity?limit=%d", limit), &out); err != nil {
+		return nil, err
+	}
+	return out.Activity, nil
+}
+
+// pairedDevice is one phone or client paired with this Pod.
+type pairedDevice struct {
+	DeviceID    string `json:"device_id"`
+	DisplayName string `json:"display_name"`
+	Platform    string `json:"platform"`
+	PairedAt    string `json:"paired_at"`
+	LastSeenAt  string `json:"last_seen_at"`
+}
+
+func (g *gatewayRuntime) Devices() ([]pairedDevice, error) {
+	var out struct {
+		Devices []pairedDevice `json:"devices"`
+	}
+	if err := g.readJSON("/v1/pairing/devices", &out); err != nil {
+		return nil, err
+	}
+	return out.Devices, nil
+}
+
+func (g *gatewayRuntime) RevokeDevice(id string) error {
+	return g.postJSON("/v1/pairing/revoke", map[string]string{"device_id": id})
+}

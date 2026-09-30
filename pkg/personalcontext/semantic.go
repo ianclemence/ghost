@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -242,6 +243,14 @@ func (se *SemanticExtractor) extractWithLLM(ctx context.Context, text string, ex
 			if !validatedItem.Valid || !validatedItem.ShouldRemember {
 				continue
 			}
+			// Memory is what Ghost knows about the owner, never what Ghost is
+			// allowed to do. A "consent" the model inferred from chat ("has
+			// granted Ghost access to their drive") could later be quoted as
+			// permission, so authority never enters memory: the broker owns it.
+			// A shopping errand is an errand, not a trait.
+			if strings.EqualFold(string(validatedItem.Kind), "consent") || transientPurchaseIntent(validatedItem.Summary) {
+				continue
+			}
 			// In the multi-memory path the model committed to a summary; a
 			// missing one is a bad item, not an invitation to scrape raw
 			// user text. Only the legacy single-object path may fall back.
@@ -339,6 +348,8 @@ ONLY remember explicit, persistent information:
 - Relationships: "Sarah is my wife", "I work with John"
 
 Do NOT remember:
+- Shopping errands and wishes: "Wants to buy a keyboard", "is looking for a flight"
+- Permissions or consent: "has granted access to X" (permissions are never memories)
 - Transient requests: "What's the weather?"
 - Questions about the world
 - Temporary context: "I'm going to the store", "I'm eating pizza tonight"
@@ -553,4 +564,12 @@ func extractValueFromText(text string) string {
 
 	// Fallback: return the text cleaned up
 	return cleanValue(text)
+}
+
+var transientPurchaseRE = regexp.MustCompile(`(?i)\b(?:wants?|would like|is looking|looking|needs?|plans?|is planning|is trying|trying|wishes)\s+(?:to\s+|for\s+)?(?:buy|purchase|order|shop(?:\s+for)?|find\s+an?\s|get\s+an?\s)`)
+
+// transientPurchaseIntent reports whether a summary is a shopping errand
+// rather than a lasting fact about the owner.
+func transientPurchaseIntent(summary string) bool {
+	return transientPurchaseRE.MatchString(summary)
 }

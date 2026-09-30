@@ -539,3 +539,32 @@ func ReminderText(title string) string {
 	}
 	return "Reminder: " + t + "."
 }
+
+// LateNote tells the owner a reminder is late and why, in plain words, when it
+// is more than a few minutes past its time (the Pod was off, or restarting).
+// A reminder that arrives on time gets no note. Ghost knows it missed the
+// moment; it should say so instead of delivering as though nothing happened.
+func LateNote(due, now time.Time, zone string) string {
+	late := now.Sub(due)
+	if late < 5*time.Minute {
+		return ""
+	}
+	loc := time.UTC
+	if zone != "" {
+		if l, err := time.LoadLocation(zone); err == nil {
+			loc = l
+		}
+	}
+	d := due.In(loc)
+	when := d.Format("3:04 PM")
+	switch {
+	case late >= 48*time.Hour:
+		when = d.Format("Mon Jan 2, 3:04 PM")
+	case d.YearDay() != now.In(loc).YearDay() || late >= 20*time.Hour:
+		when = d.Format("yesterday, 3:04 PM")
+		if late >= 36*time.Hour {
+			when = d.Format("Mon, 3:04 PM")
+		}
+	}
+	return "This was due at " + when + "; I was offline then."
+}

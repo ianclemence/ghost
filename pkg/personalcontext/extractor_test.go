@@ -679,3 +679,39 @@ func TestExtractDoesNotFileQuestions(t *testing.T) {
 		}
 	}
 }
+
+// A frustrated aside is not a home. "I live in are you dumb" was stored as the
+// owner's location and quoted back as fact.
+func TestLocationAndNameMustLookLikeOne(t *testing.T) {
+	for _, bad := range []string{"i live in are you dumb", "I live in what", "my name is not important", "i live in the middle of it lol", "my city is 42"} {
+		for _, c := range matchDeclarations(bad, false) {
+			if c.rule == "location" || c.rule == "name" {
+				t.Errorf("%q must not produce a %s fact (%q)", bad, c.rule, c.value)
+			}
+		}
+	}
+	for good, want := range map[string]string{"I live in Bangkok": "Bangkok", "i live in New York": "New York", "my name is Ian": "Ian", "my city is Nairobi": "Nairobi"} {
+		found := false
+		for _, c := range matchDeclarations(good, false) {
+			if (c.rule == "location" || c.rule == "name") && c.value == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q must still produce %q", good, want)
+		}
+	}
+}
+
+func TestShoppingErrandsAndConsentAreNotMemories(t *testing.T) {
+	for _, s := range []string{"Wants to buy a mechanical keyboard", "Is looking to purchase a laptop", "Needs to order printer ink", "Wants to buy a mechanical keyboard for under $100"} {
+		if !transientPurchaseIntent(s) {
+			t.Errorf("%q is an errand, not a trait", s)
+		}
+	}
+	for _, s := range []string{"Favorite football club is Chelsea", "Always orders oat milk lattes", "Works on a pentesting agent", "Aims to launch Ghost as a product"} {
+		if transientPurchaseIntent(s) {
+			t.Errorf("%q is a lasting fact and must be kept", s)
+		}
+	}
+}

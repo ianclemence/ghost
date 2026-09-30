@@ -2601,7 +2601,13 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 		// arrives on time even when the provider is down or out of credit,
 		// and it can't come back as "Stretching. 🧘".
 		if item.Type == scheduled.TypeReminder {
-			agentLoop.DeliverToOwner(item.Channel, item.ChatID, agent.ReminderText(item.Title), map[string]interface{}{"reminder": true})
+			text := agent.ReminderText(item.Title)
+			if item.NextRunAt != nil {
+				if note := agent.LateNote(*item.NextRunAt, time.Now(), item.Timezone); note != "" {
+					text += " " + note
+				}
+			}
+			agentLoop.DeliverToOwner(item.Channel, item.ChatID, text, map[string]interface{}{"reminder": true})
 			return nil
 		}
 		if item.Action.Content == "" {
