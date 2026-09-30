@@ -144,8 +144,12 @@ type agentTUI struct {
 	loop    agentRuntime
 	session string
 
-	input   textarea.Model
-	entries []entry
+	input textarea.Model
+	// pastes holds the full text behind each collapsed "[Pasted text #N
+	// +L lines]" placeholder in the composer; expanded on send.
+	pastes   map[int]string
+	pasteSeq int
+	entries  []entry
 	// entries is a pending buffer, not the transcript: flushScrollback
 	// prints everything pending and drains it (Scout's flushCmds model), so
 	// there is no print cursor that can desync and silently swallow replies.
@@ -438,6 +442,9 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
+	case tea.PasteMsg:
+		return m.handlePaste(msg.Content)
+
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	}
@@ -583,6 +590,16 @@ func (m *agentTUI) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 
+	case "backspace":
+		// A collapsed paste is one unit: delete it whole, not char by char.
+		if v := m.input.Value(); pastePlaceholderRe.MatchString(v) && m.caretAtEnd() {
+			m.input.SetValue(pastePlaceholderRe.ReplaceAllString(v, ""))
+			m.input.MoveToEnd()
+			m.clampPalette()
+			m.layout()
+			return m, nil
+		}
+
 	case "ctrl+l":
 		// Ctrl+L opens the picker; Ctrl+P cycles the usable models.
 		m.openModelModal()
@@ -668,6 +685,63 @@ func (m *agentTUI) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// ─── pasted text ─────────────────────────────────────────────────────────
+
+// A large paste collapses to a placeholder in the composer, like the Claude
+// Code CLI: the box stays readable and the transcript stays compact, while
+// the model still receives every character. Small pastes insert normally.
+const (
+	pasteCollapseLines = 3   // this many lines or more collapses
+	pasteCollapseChars = 400 // or this many characters
+)
+
+var pastePlaceholderRe = regexp.MustCompile(`\[Pasted text #\d+ \+\d+ lines?\]$`)
+var pastePlaceholderAnyRe = regexp.MustCompile(`\[Pasted text #(\d+) \+\d+ lines?\]`)
+
+func (m *agentTUI) caretAtEnd() bool {
+	v := m.input.Value()
+	lines := strings.Split(v, "\n")
+	return m.input.Line() == len(lines)-1 && m.input.Column() >= len([]rune(lines[len(lines)-1]))
+}
+
+func (m *agentTUI) handlePaste(raw string) (tea.Model, tea.Cmd) {
+	text := strings.ReplaceAll(strings.ReplaceAll(raw, "\r\n", "\n"), "\r", "\n")
+	text = strings.TrimRight(text, "\n")
+	if text == "" {
+		return m, nil
+	}
+	lines := strings.Count(text, "\n") + 1
+	if lines >= pasteCollapseLines || len([]rune(text)) >= pasteCollapseChars {
+		if m.pastes == nil {
+			m.pastes = map[int]string{}
+		}
+		m.pasteSeq++
+		m.pastes[m.pasteSeq] = text
+		text = fmt.Sprintf("[Pasted text #%d +%d lines]", m.pasteSeq, lines)
+	}
+	m.input.InsertString(text)
+	m.clampPalette()
+	m.layout()
+	return m, nil
+}
+
+// expandPastes swaps each intact placeholder for the text behind it. A
+// placeholder the owner edited into something else is left as typed.
+func (m *agentTUI) expandPastes(s string) string {
+	if len(m.pastes) == 0 {
+		return s
+	}
+	return pastePlaceholderAnyRe.ReplaceAllStringFunc(s, func(tok string) string {
+		sub := pastePlaceholderAnyRe.FindStringSubmatch(tok)
+		if n, err := strconv.Atoi(sub[1]); err == nil {
+			if full, ok := m.pastes[n]; ok {
+				return full
+			}
+		}
+		return tok
+	})
+}
+
 // recallHistory moves through sent messages with ↑/↓. delta -1 = older.
 func (m *agentTUI) recallHistory(delta int) {
 	if len(m.history) == 0 {
@@ -699,10 +773,11 @@ func (m *agentTUI) send(text string) tea.Cmd {
 	m.histIndex = -1
 	m.paletteSel = 0
 
+	full := m.expandPastes(text) // the model gets every character
 	if m.working {
 		// Queue a steering message into the running turn.
 		m.queued = append(m.queued, text)
-		m.loop.InjectSteering(m.session, text)
+		m.loop.InjectSteering(m.session, full)
 		m.append(entry{kind: entryNotice, text: "↳ queued for the current turn: " + text})
 		m.renderTranscript()
 		return nil
@@ -722,7 +797,7 @@ func (m *agentTUI) send(text string) tea.Cmd {
 	// A new turn always follows: the owner just acted. The user message is
 	// flushed to the scrollback by Update's flush; the terminal shows it at
 	// the bottom.
-	go m.runTurn(text)
+	go m.runTurn(full)
 	return spinnerTick()
 }
 

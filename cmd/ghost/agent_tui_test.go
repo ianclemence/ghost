@@ -2253,3 +2253,52 @@ func TestTUIPaletteHoldsConstantHeight(t *testing.T) {
 		t.Fatalf("paletteView lines %d must equal paletteHeight %d", lines, m.paletteHeight())
 	}
 }
+
+// Large pastes collapse to a placeholder (like the Claude Code CLI); the
+// model still receives every character; small pastes insert as typed.
+func TestTUIPasteCollapsesAndExpands(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+
+	m.Update(tea.PasteMsg{Content: "just a short line"})
+	if got := m.input.Value(); got != "just a short line" {
+		t.Fatalf("small paste must insert verbatim, got %q", got)
+	}
+	m.input.Reset()
+
+	big := "line one\nline two\nline three\nline four\nline five"
+	m.Update(tea.PasteMsg{Content: big})
+	if got := m.input.Value(); got != "[Pasted text #1 +5 lines]" {
+		t.Fatalf("large paste must collapse, got %q", got)
+	}
+	if m.input.Height() != 1 {
+		t.Fatalf("collapsed paste must keep the composer at one row, got %d", m.input.Height())
+	}
+
+	// Text typed around the placeholder survives, and send expands it.
+	m.input.InsertString(" summarize this")
+	if got := m.expandPastes(m.input.Value()); got != big+" summarize this" {
+		t.Fatalf("send must expand the placeholder, got %q", got)
+	}
+
+	// CRLF pastes (Windows clipboards) normalize.
+	m.input.Reset()
+	m.Update(tea.PasteMsg{Content: "a\r\nb\r\nc\r\n"})
+	if got := m.expandPastes(m.input.Value()); got != "a\nb\nc" {
+		t.Fatalf("CRLF paste must normalize, got %q", got)
+	}
+}
+
+// Backspace removes a collapsed paste as one unit.
+func TestTUIBackspaceDeletesPlaceholderWhole(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.width, m.height = 80, 24
+	m.input.InsertString("look: ")
+	m.Update(tea.PasteMsg{Content: "1\n2\n3\n4"})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if got := m.input.Value(); got != "look: " {
+		t.Fatalf("backspace must delete the whole placeholder, got %q", got)
+	}
+}
