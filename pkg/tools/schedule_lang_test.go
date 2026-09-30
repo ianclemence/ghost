@@ -66,7 +66,8 @@ func TestCancelMatchesOneItemAndNeverGuesses(t *testing.T) {
 		t.Fatalf("two close matches must both come back so the owner can choose: %+v", m)
 	}
 	// A cancelled or finished item is never offered.
-	done := item("f", "Take my vitamins"); done.State = scheduled.StateCancelled
+	done := item("f", "Take my vitamins")
+	done.State = scheduled.StateCancelled
 	if m := scheduleMatches([]*scheduled.ScheduledItem{done}, "vitamins"); len(m) != 0 {
 		t.Fatal("only live items can be cancelled")
 	}
