@@ -426,6 +426,8 @@ func main() {
 		relayCmd()
 	case "verify":
 		verifyCmd()
+	case "pair":
+		pairCmd()
 	case "benchmark":
 		benchmarkCmd()
 	case "golden":
@@ -527,6 +529,7 @@ func printHelp() {
 	fmt.Println("  ghost       Chat with Ghost in the terminal")
 	fmt.Println("  tasks       Show and manage durable routines (pause, resume, cancel)")
 	fmt.Println("  ideas       Suggestions with evidence (list, refresh, accept, dismiss, draft)")
+	fmt.Println("  pair        Connect the Ghost app: shows a QR to scan (pair [phone name])")
 	fmt.Println()
 	fmt.Println("Run")
 	fmt.Println("  serve       Start the Ghost daemon (API + channels + scheduler + heartbeat)")
