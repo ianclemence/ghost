@@ -49,7 +49,7 @@ on an owner's Ghost. Two of these are not yet true.
 | Requirement | State |
 |---|---|
 | Relayed requests must present device credentials, exactly like any remote peer. | **Done (v0.24.90).** Before this the relay replayed traffic on the Pod's own loopback, which the gateway treats as the owner with no credentials. A hosted relay would have held owner-level access to every customer's Pod. |
-| End-to-end encryption between phone and Pod, so the relay carries ciphertext only. The Pod's public key travels in the pairing QR and the phone pins it. | **Not done. This is the gate.** The relay currently sees plain requests and responses inside its own TLS hop. |
+| End-to-end encryption between phone and Pod, so the relay carries ciphertext only. The Pod's public key travels in the pairing QR and the phone pins it. | **Not done. This is the gate.** The sealed envelope is built and tested (`pkg/relaycrypto`: pinned X25519 key, per-connection AES-256-GCM keys in each direction, counters that refuse replay, reordering and reflection). It is not yet wired into the relay tunnel or the app, so the relay still sees plain requests and responses inside its own TLS hop. |
 | The relay has no way to approve, revoke, download or otherwise act. | Follows from the first two. |
 | Per-device relay tokens; no shared secret; instant revoke. | Exists (`ghost relay revoke`). Needs an audit before launch. |
 | Rate limits, abuse handling, and logs that keep connection times and byte counts but never content. | Not built. |

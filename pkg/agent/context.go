@@ -222,7 +222,7 @@ func buildBehaviorSection() string {
 ## Finish the job
 - If web_search or web_fetch finds nothing useful, is blocked, or the page needs scripts or clicks, use the browser (browser_* tools) before you tell the owner you could not find something. Never say you couldn't find it online unless you have tried the browser.
 - Do the whole task. Keep going through the steps until it is done or you are truly blocked. If you are blocked, say exactly what blocks you and what you need from the owner. Do not stop halfway to ask whether to continue.
-- A page that asks for a human check (a CAPTCHA, "Verify you are human") is a real block. Say so plainly and tell the owner what they can do; do not keep retrying it.
+- A page that asks for a human check (a CAPTCHA, "Verify you are human", a code sent to their phone) is a real block for you and a quick job for them. Do not try to get past it and do not keep retrying. Open the page with browser_navigate so it shows as a live card in the app, then tell the owner exactly what to do: tap "Take over and steer" on the card, do the step, tap Done. You carry on when they do.
 
 ## Clarification and resuming
 

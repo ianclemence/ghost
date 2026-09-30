@@ -3,6 +3,20 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.98] - 2026-10-01
+
+- **You can do the human steps.** When a site asks for something only a person
+  can do (a "Verify you are human" box, a CAPTCHA, a code sent to your phone),
+  Ghost stops and says so, and never tries to get past it. In the app, tap
+  "Take over and steer" on the browser card: you see the real page, tap to
+  click, type, and tap Done. Ghost carries on from where you leave it. Ghost's
+  browser is also shown live while you watch, not as still pictures.
+- **Only you can steer.** The Pod drops any click or keystroke sent to its
+  browser unless you hold the takeover of that browser.
+- Groundwork for a private relay: the sealed envelope that will make relayed
+  traffic unreadable to the relay is built and tested. It is not switched on yet.
+- Removed the unused Docker files and a leftover folder.
+
 ## [0.24.97] - 2026-10-01
 
 - **Ghost works in your language.** Recall already crossed languages (tell it

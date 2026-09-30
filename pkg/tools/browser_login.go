@@ -116,8 +116,9 @@ func (t *BrowserTool) findLoginPage(ctx context.Context, pageURL string) (found,
 	}
 	if humanCheckRe.MatchString(s) {
 		return "", "That sign-in page asks for a human check (a CAPTCHA or Cloudflare's \"Verify you are human\"). " +
-			"I can't complete that step, so I haven't typed anything into the form. Tell the owner plainly: " +
-			"they can sign in themselves, or if it is their own site, allow Ghost past the check."
+			"I can't complete that step, so I haven't typed anything into the form. Open that sign-in page with browser_navigate so it shows as a live browser card in the app, " +
+			"then tell the owner plainly what to do: in the Ghost app, tap \"Take over and steer\" on the browser card, tick the box and sign in themselves, then tap Done. " +
+			"You carry on when they do. If it is their own site they can instead allow Ghost past the check."
 	}
 	if out, err := browserCLIRun(c, env, "", "get", "url"); err == nil {
 		if u := strings.TrimSpace(string(out)); strings.HasPrefix(u, "http") {

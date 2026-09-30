@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/browser"
+	"github.com/ianclemence/ghost/pkg/live"
 )
 
 // registerBrowserStreamRoutes exposes live browser automation viewing
@@ -119,7 +120,46 @@ func serveBrowserStreamWS(w http.ResponseWriter, r *http.Request, al *agent.Agen
 	}
 	_ = tk
 	upstream := upstreamBase + passthroughStreamQuery(r.URL)
-	proxyBrowserStream(w, r, upstream)
+	// Clicks and keystrokes go through only while the owner holds a takeover of
+	// this very surface. Otherwise a viewer could type into a page Ghost is in
+	// the middle of using.
+	surface := tk.SessionID
+	canInput := func() bool {
+		plane := al.LivePlane()
+		if plane == nil {
+			return false
+		}
+		s, ok := plane.Snapshot(surface)
+		return ok && s.Control == live.OwnerUser && s.Lease != nil && time.Now().Before(s.Lease.ExpiresAt)
+	}
+	proxyBrowserStream(w, r, upstream, canInput)
+}
+
+// maxScreencastClientMessage bounds what a viewer may send: real input events
+// are tiny.
+const maxScreencastClientMessage = 4 << 10
+
+// screencastClientMessageAllowed decides whether a viewer's message may reach
+// the browser. Frame-rate settings and acknowledgements always may. Input
+// (mouse, keyboard, touch) only may while the owner holds the takeover.
+// Anything else, or anything malformed or oversized, is dropped.
+func screencastClientMessageAllowed(msg []byte, userControl bool) bool {
+	if len(msg) == 0 || len(msg) > maxScreencastClientMessage {
+		return false
+	}
+	var m struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(msg, &m) != nil {
+		return false
+	}
+	switch m.Type {
+	case "config", "ack":
+		return true
+	case "input_mouse", "input_keyboard", "input_touch":
+		return userControl
+	}
+	return false
 }
 
 // passthroughStreamQuery forwards only the agent-browser pacing knobs
@@ -156,7 +196,7 @@ func passthroughStreamQuery(u *url.URL) string {
 // proxyBrowserStream bridges one viewer to the agent-browser stream server.
 // Both directions copy raw WS messages; the upstream server already applies
 // latest-first + ack pacing so a stalled viewer never builds a backlog here.
-func proxyBrowserStream(w http.ResponseWriter, r *http.Request, upstream string) {
+func proxyBrowserStream(w http.ResponseWriter, r *http.Request, upstream string, canInput func() bool) {
 	down, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -177,6 +217,9 @@ func proxyBrowserStream(w http.ResponseWriter, r *http.Request, upstream string)
 			mt, msg, err := down.ReadMessage()
 			if err != nil {
 				return
+			}
+			if mt != websocket.TextMessage || !screencastClientMessageAllowed(msg, canInput != nil && canInput()) {
+				continue
 			}
 			_ = up.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := up.WriteMessage(mt, msg); err != nil {
