@@ -3,6 +3,46 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.81] - 2026-09-30
+
+- **Lists and paragraphs stay apart.** When the model sent a line break as a
+  piece of its own, Ghost threw it away, so bullets ran together on one line
+  and a closing sentence stuck to the last bullet. It happened in the terminal
+  and on the phone. Line breaks now arrive as written.
+- **Open and preview the files you send.** In the app, tap a file under
+  Files to see a photo, the text, or what Ghost reads out of a PDF, Word
+  document or spreadsheet, and open the original in your phone's own viewer.
+- **`ghost update` stops repeating itself.** It used to replay every past
+  release note each time; now it shows what is new once, and clears an old copy
+  of Ghost that kept your terminal on the previous version.
+
+## [0.24.80] - 2026-09-30
+
+- **Send Ghost files, and they work.** Photos and documents you send are kept on
+  your Pod with their real names, identified by what they are, and can be
+  listed and deleted from the app, the console and the terminal
+  (`/attach`, `/files`). Ghost reads PDFs, Word documents, spreadsheets, CSV
+  and text, and says plainly when it can't open something.
+- **Photos from the phone now arrive.** They were being rejected.
+
+## [0.24.78] - 2026-09-30
+
+- **Approve "for this task".** A new answer between once and always: Ghost may
+  repeat the action while it keeps working, and it ends after ten quiet
+  minutes or an hour.
+- **Updates from the console work.** The update button and Ghost's own update
+  tool now run as their own background job, which can actually install.
+- **Safer by default.** Ghost's image tool is confined to your workspace, and
+  Home Assistant control needs an explicit grant.
+
+## [0.24.77] - 2026-09-30
+
+- **A blank Pod can be set up.** The setup screen now asks what Ghost should
+  think with before it claims the Pod, checks a cloud key with the provider, and
+  leaves nothing half-done if something is refused.
+- **Secrets never reach the model.** Anything Ghost reads or runs is scrubbed of
+  your saved passwords and keys before the model sees it.
+
 ## [0.24.59] - 2026-09-27
 
 - **The last "One caveat:" is gone.** The rule was in the prompt, but the model

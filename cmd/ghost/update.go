@@ -428,9 +428,25 @@ func ghostDataDir() string {
 // printGhostNotes prints changelog entries newer than the given version (or
 // nothing on a fresh install, which just records the current version).
 func printGhostNotes(version string) {
-	for _, e := range changelog.NewSince(ghostDataDir(), version) {
+	entries := changelog.NewSince(ghostDataDir(), version)
+	if len(entries) == 0 {
+		return
+	}
+	// Show the newest few in full and point at the rest, and remember that
+	// they were shown: without the marker every `ghost update` (even "Already
+	// current") replayed the whole backlog, release after release.
+	const show = 3
+	shown := entries
+	if len(shown) > show {
+		shown = shown[:show]
+	}
+	for _, e := range shown {
 		fmt.Printf("\nWhat's new in %s:\n\n%s\n", e.Version, e.Body)
 	}
+	if more := len(entries) - len(shown); more > 0 {
+		fmt.Printf("\n...and %d earlier release(s). `ghost update --notes` shows them all.\n", more)
+	}
+	_ = changelog.MarkSeen(ghostDataDir(), version)
 }
 
 // printNotesFor prints the notes for an exact version after an update.
