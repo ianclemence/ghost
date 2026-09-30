@@ -41,7 +41,7 @@ def pump(t):
 def snap(label):
     hist = ["".join(line[x].data for x in range(cols)).rstrip() for line in screen.history.top]
     print(f"===== {label} (scrollback {len(hist)} lines) =====")
-    for l in hist[-6:]:
+    for l in (hist if os.environ.get("FULL") else hist[-6:]):
         print("H|" + l)
     for i, l in enumerate(screen.display):
         print(f"{i:02d}|" + l.rstrip())

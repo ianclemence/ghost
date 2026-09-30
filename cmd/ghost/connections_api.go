@@ -73,16 +73,27 @@ func serveConnectedAppAction(w http.ResponseWriter, r *http.Request, rest string
 			jsonError(w, http.StatusBadRequest, "invalid_request", "value is required")
 			return
 		}
-		if err := appConnect(id, strings.TrimSpace(body.Value), strings.TrimSpace(body.Extra)); err != nil {
+		value, extra := strings.TrimSpace(body.Value), strings.TrimSpace(body.Extra)
+		// Try it against the service first: a refusal is said plainly and
+		// nothing is saved; only a check that passes says "connected".
+		verdict := connectedapp.CheckResult{Verdict: connectedapp.Verified}
+		if !connectedapp.IsOAuthOnly(id) && !connectedapp.IsChannelCredential(id) && !connectedapp.IsModelCredential(id) {
+			verdict = connectedapp.Check(r.Context(), id, value, extra)
+			if verdict.Verdict == connectedapp.Rejected {
+				jsonError(w, http.StatusBadRequest, "connect_rejected", verdict.Message)
+				return
+			}
+		}
+		if err := appConnect(id, value, extra); err != nil {
 			jsonError(w, http.StatusBadRequest, "connect_failed", err.Error())
 			return
 		}
-		jsonResponse(w, http.StatusOK, map[string]interface{}{
-			"ok": true,
-			"connected_app": map[string]interface{}{
-				"id": id, "status": "connected",
-			},
-		})
+		app := map[string]interface{}{"id": id, "status": "connected"}
+		if verdict.Verdict == connectedapp.Unreachable {
+			app["status"] = "unverified"
+			app["note"] = verdict.Message
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "connected_app": app})
 	}
 }
 
@@ -108,10 +119,15 @@ func appConnect(id, value, extra string) error {
 	if id == "home-assistant" || id == "homeassistant" {
 		// Accept "url" in value and token in extra; store as hass pair.
 		if extra != "" {
-			if err := connectionVault().Store("hass_url", value); err != nil {
+			// Address and token may arrive in either order.
+			addr, token, ok := connectedapp.SplitHomeAssistant(value, extra)
+			if !ok {
+				addr, token = value, extra
+			}
+			if err := connectionVault().Store("hass_url", addr); err != nil {
 				return err
 			}
-			return connectionVault().Store("hass_token", extra)
+			return connectionVault().Store("hass_token", token)
 		}
 		return connectionVault().Store(id, value)
 	}

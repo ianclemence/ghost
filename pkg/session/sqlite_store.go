@@ -38,6 +38,9 @@ func (s *SQLiteStore) AddFullMessage(sessionKey string, msg providers.Message) {
 	if msg.SourceChannel != "" {
 		meta["source_channel"] = msg.SourceChannel
 	}
+	if msg.Kind != "" {
+		meta["kind"] = msg.Kind
+	}
 	metaJSON, _ := json.Marshal(meta)
 
 	content := msg.Content
@@ -130,6 +133,9 @@ func (s *SQLiteStore) queryHistory(key string, excludeCompacted bool) []provider
 		}
 		if val, ok := meta["source_channel"].(string); ok {
 			msg.SourceChannel = val
+		}
+		if val, ok := meta["kind"].(string); ok {
+			msg.Kind = val
 		}
 
 		if tc, ok := meta["tool_calls"]; ok {

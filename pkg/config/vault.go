@@ -209,6 +209,7 @@ func EnsureMasterKey(secretsPath string) ([]byte, error) {
 	if err := tmp.Close(); err != nil {
 		return nil, fmt.Errorf("vault: close master key: %w", err)
 	}
+	KeepOwner(tmpName, keyPath)
 	if err := os.Rename(tmpName, keyPath); err != nil {
 		return nil, fmt.Errorf("vault: install master key: %w", err)
 	}

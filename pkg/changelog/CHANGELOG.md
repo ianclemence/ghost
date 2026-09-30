@@ -3,6 +3,50 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.94] - 2026-10-01
+
+- **Your terminal no longer stops working after you save a login.** When Ghost
+  saved a credential from the app or console it handed the settings file to the
+  system account, and your own terminal then failed with "permission denied".
+  Saves now keep the file's owner.
+- **Follow a reply from any device.** Send a message from the terminal and open
+  the app: the question is there and the answer arrives as it is written, and
+  opening the app halfway through shows what has been written so far. The app
+  also now sends its credentials on its live connection; without them a phone on
+  your home network never received anything live.
+- **Reminders and notices look like reminders and notices.** They show up in an
+  open terminal the moment they happen, with their own label, and they stay
+  marked in your history. The terminal's "working" indicator is a calm
+  five-dot glide.
+- **Connecting an app now checks it.** A made-up GitHub key or a Home Assistant
+  address of "not a url" used to say "connected". Keys are tried against the
+  service first; a refusal is explained and nothing is saved, and a service that
+  can't be reached is saved with an honest note.
+- **Tool servers (MCP) without a terminal.** Add one by address and key on the
+  console's Apps page. The key is sealed on the Pod, the connection is tested
+  before anything is saved, and the tools appear at once. Ghost now speaks
+  the current "streamable HTTP" style as well as the older one.
+- **Sign in to a website you saved.** Saved logins actually work now (the
+  browser rejected names with a dot, so none ever did), Ghost finds the login
+  page from the front page, and if the page asks for a human check it says so
+  plainly instead of waiting.
+- **Forgot the console password? No terminal needed.** Get a one-time code in
+  the app under Your Pod, or leave a file on the SD card, and set a new password
+  on the sign-in page.
+- **Files.** Ghost can delete and move files in its own workspace, asking before
+  it deletes. It can never delete or move its own default files and folders,
+  through the tools or the shell. Screenshots and downloads live in the
+  workspace, not in temporary folders.
+- **A new look.** True black in dark mode and a cool neutral palette throughout
+  the terminal and the console. The Abilities page is at `#abilities`, and Activity
+  and Abilities lose their divider lines.
+- **Fixes.** A message with several asks is no longer answered with one of them;
+  a stale suggestion can no longer take over an "allow once" meant for a browser
+  approval; approvals for browser control default to "this task"; wide tables in
+  the terminal show as readable cards instead of breaking; output order can no
+  longer scramble when a message is queued; Ghost keeps working past 20 steps
+  and uses the browser before saying it couldn't find something online.
+
 ## [0.24.93] - 2026-09-30
 
 - **Approvals and permissions fit on a phone.** In the console, each approval is

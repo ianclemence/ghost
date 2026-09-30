@@ -2,6 +2,18 @@
    Product setup for skills that need credentials. No SSH, no .env editing. */
 'use strict';
 
+// What a save tells the owner. A refusal from the service is shown in its own
+// words; a key that was saved but could not be checked is said honestly.
+function savedToast(name, res) {
+  if (res && res.status === 'unverified' && res.note) GhostUI.toast(res.note);
+  else GhostUI.toast(name + ' connected');
+}
+function saveError(err) {
+  let msg = (err && err.message) || '';
+  try { const j = JSON.parse(msg); msg = (j && (j.error || j.message)) || msg; } catch (e) { /* plain text */ }
+  return msg || 'That didn\u2019t work.';
+}
+
 async function loadIntegrations(container) {
   if (GhostApp.currentSection() !== 'apps') return;
   container.innerHTML = '';
@@ -131,6 +143,16 @@ async function loadIntegrations(container) {
     webLogins.length ? webLogins.length + ' saved' : 'None saved',
     () => manageWebLogins(webLogins)));
 
+  // Tool servers (MCP): outside services that give Ghost more tools. Added
+  // here by address and key, no terminal; the key is sealed on the Pod.
+  let toolServers = [];
+  try { const r = await GhostAPI.proxyGet('/v1/tool-servers'); toolServers = (r && r.servers) || []; } catch (e) { /* offline-safe */ }
+  const tsUp = toolServers.filter(t => t.status === 'connected').length;
+  listEl.appendChild(intRow('Tool servers', 'More tools from other services',
+    toolServers.length ? (tsUp === toolServers.length ? 'ready' : 'warn') : 'neutral',
+    toolServers.length ? tsUp + ' of ' + toolServers.length + ' connected' : 'None added',
+    () => manageToolServers(toolServers)));
+
   // Camera mirrors the same readiness the Skills list uses — the two
   // screens can never disagree. Status already fetched above.
   const cam = (status && status.integrations && status.integrations.camera) || {};
@@ -144,7 +166,7 @@ async function loadIntegrations(container) {
   const camTr = GhostUI.h('div', { className: 'ghost-row-trailing' });
   camTr.appendChild(GhostUI.h('span', { className: 'status-pill' },
     GhostUI.statusDot(camAvail ? 'ready' : 'neutral'), camAvail ? 'Ready' : 'No camera'));
-  const camBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => GhostApp.navigate('skills') }, 'View skills');
+  const camBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => GhostApp.navigate('abilities') }, 'View abilities');
   camTr.appendChild(camBtn);
   camRow.appendChild(camTr);
   listEl.appendChild(camRow);
@@ -360,11 +382,11 @@ function editGithubToken(configured) {
       const token = inp.value.trim();
       if (!token) { e.target.closest('.ghost-modal-backdrop').remove(); return; }
       try {
-        await GhostAPI.post('/api/admin/integrations/github/save', { token });
+        const saved = await GhostAPI.post('/api/admin/integrations/github/save', { token });
         e.target.closest('.ghost-modal-backdrop').remove();
-        GhostUI.toast('GitHub connected');
+        savedToast('GitHub', saved);
         loadIntegrations(document.getElementById('view'));
-      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+      } catch (err) { GhostUI.toast(saveError(err), 'err'); }
     } }, 'Save'),
   ]);
   if (configured) {
@@ -391,11 +413,11 @@ function editNotionToken(configured) {
       const token = inp.value.trim();
       if (!token) { e.target.closest('.ghost-modal-backdrop').remove(); return; }
       try {
-        await GhostAPI.post('/api/admin/integrations/notion/save', { token });
+        const saved = await GhostAPI.post('/api/admin/integrations/notion/save', { token });
         e.target.closest('.ghost-modal-backdrop').remove();
-        GhostUI.toast('Notion connected');
+        savedToast('Notion', saved);
         loadIntegrations(document.getElementById('view'));
-      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+      } catch (err) { GhostUI.toast(saveError(err), 'err'); }
     } }, 'Save'),
   ]);
   if (configured) {
@@ -422,11 +444,11 @@ function editFlightKey(configured) {
       const key = inp.value.trim();
       if (!key) { e.target.closest('.ghost-modal-backdrop').remove(); return; }
       try {
-        await GhostAPI.post('/api/admin/integrations/flight/save', { api_key: key });
+        const saved = await GhostAPI.post('/api/admin/integrations/flight/save', { api_key: key });
         e.target.closest('.ghost-modal-backdrop').remove();
-        GhostUI.toast('Flight tracking connected');
+        savedToast('Flights', saved);
         loadIntegrations(document.getElementById('view'));
-      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+      } catch (err) { GhostUI.toast(saveError(err), 'err'); }
     } }, 'Save'),
   ]);
 }
@@ -451,11 +473,11 @@ function editHass(configured) {
       if (!url || !token) { GhostUI.toast('URL and token are required.'); return; }
       if (!/^https?:\/\//i.test(url)) { GhostUI.toast('URL must start with http:// or https://', 'err'); return; }
       try {
-        await GhostAPI.post('/api/admin/integrations/homeassistant/save', { url, token });
+        const saved = await GhostAPI.post('/api/admin/integrations/homeassistant/save', { url, token });
         e.target.closest('.ghost-modal-backdrop').remove();
-        GhostUI.toast('Home Assistant connected');
+        savedToast('Home Assistant', saved);
         loadIntegrations(document.getElementById('view'));
-      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+      } catch (err) { GhostUI.toast(saveError(err), 'err'); }
     } }, 'Save'),
   ]);
 }
@@ -478,7 +500,7 @@ function editBraveKey(configured) {
         e.target.closest('.ghost-modal-backdrop').remove();
         GhostUI.toast('Brave Search connected');
         loadIntegrations(document.getElementById('view'));
-      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+      } catch (err) { GhostUI.toast(saveError(err), 'err'); }
     } }, 'Save'),
   ]);
   if (configured) {
@@ -489,7 +511,7 @@ function editBraveKey(configured) {
         e.target.closest('.ghost-modal-backdrop').remove();
         GhostUI.toast('Back to built-in search');
         loadIntegrations(document.getElementById('view'));
-      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+      } catch (err) { GhostUI.toast(saveError(err), 'err'); }
     } }, 'Turn off Brave'));
   }
 }
@@ -533,8 +555,10 @@ function manageWebLogins(logins) {
     if (pw) i.type = 'password';
     f.appendChild(i); body.appendChild(f); return i;
   };
-  body.appendChild(GhostUI.h('div', { className: 'self-group', style: 'margin-top:var(--s-4)' }, 'Add a website'));
-  const urlInp = mk('Login page URL', 'https://example.com/login', false);
+  body.appendChild(GhostUI.h('div', { className: 'self-group', style: 'margin-top:var(--s-4)' }, 'Add or update a website'));
+  body.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-bottom:var(--s-2)' },
+    'Saving a site that is already here replaces its login, so there is never a duplicate. The address can be the site\u2019s front page; Ghost finds the sign-in form.'));
+  const urlInp = mk('Site address', 'https://example.com', false);
   const userInp = mk('Username', 'you@example.com', false);
   const passInp = mk('Password', 'stored encrypted, never shown', true);
 
@@ -554,8 +578,78 @@ function manageWebLogins(logins) {
         e.target.closest('.ghost-modal-backdrop').remove();
         GhostUI.toast('Login saved');
         loadIntegrations(document.getElementById('view'));
-      } catch (err) { GhostUI.toast('Save failed: ' + (err.message || ''), 'err'); }
+      } catch (err) { GhostUI.toast(saveError(err), 'err'); }
     } }, 'Save login'),
+  ]);
+}
+
+// manageToolServers lists the tool servers (MCP) Ghost is connected to and adds
+// or removes one. The key is sent once, sealed on the Pod, and never returned.
+function manageToolServers(servers) {
+  const body = GhostUI.h('div');
+  body.appendChild(GhostUI.h('div', { className: 'type-callout text-tertiary', style: 'margin-bottom:var(--s-4)' },
+    'A tool server gives Ghost extra abilities, such as reading your Notion pages or searching a database. Paste its address and, if it needs one, its key. Ghost tests the connection before saving, and asks you before it uses any of these tools.'));
+
+  const list = GhostUI.h('div', { className: 'ghost-list calm-list' });
+  if (!servers.length) {
+    list.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, 'None added yet.'));
+  } else {
+    servers.forEach(t => {
+      const row = GhostUI.h('div', { className: 'ghost-row' });
+      const c = GhostUI.h('div', { className: 'ghost-row-content' });
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, t.name));
+      const sub = t.kind === 'web' ? t.url : 'Runs a command on this Pod';
+      const state = t.status === 'connected' ? t.tools + (t.tools === 1 ? ' tool' : ' tools') : (t.error || 'Not connected');
+      c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub + ' \u00b7 ' + state));
+      row.appendChild(c);
+      const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+      tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async (e) => {
+        if (!(await GhostUI.confirmModal('Remove ' + t.name + '?', 'Ghost will stop using its tools. Its saved key is deleted from this Pod.', 'Remove'))) return;
+        try {
+          await GhostAPI.proxyDel('/v1/tool-servers?name=' + encodeURIComponent(t.name));
+          e.target.closest('.ghost-modal-backdrop').remove();
+          GhostUI.toast('Removed');
+          loadIntegrations(document.getElementById('view'));
+        } catch (err) { GhostUI.toast(saveError(err), 'err'); }
+      } }, 'Remove'));
+      row.appendChild(tr);
+      list.appendChild(row);
+    });
+  }
+  body.appendChild(list);
+
+  const mk = (label, ph, pw) => {
+    const f = GhostUI.h('div', { className: 'field' });
+    f.appendChild(GhostUI.h('label', {}, label));
+    const i = GhostUI.h('input', { className: 'ghost-input', placeholder: ph, autocomplete: 'off' });
+    if (pw) i.type = 'password';
+    f.appendChild(i); body.appendChild(f); return i;
+  };
+  body.appendChild(GhostUI.h('div', { className: 'self-group', style: 'margin-top:var(--s-4)' }, 'Add a tool server'));
+  const nameInp = mk('Name', 'notion', false);
+  const urlInp = mk('Address', 'https://mcp.example.com/mcp', false);
+  const keyInp = mk('Key (if it needs one)', 'stored encrypted, never shown', true);
+  const msg = GhostUI.h('div', { className: 'type-foot', style: 'min-height:18px;margin-top:var(--s-2);color:var(--bad)' });
+  body.appendChild(msg);
+
+  GhostUI.modal('Tool servers', body, [
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Close'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
+      const btn = e.target;
+      msg.textContent = '';
+      const name = nameInp.value.trim(), url = urlInp.value.trim(), api_key = keyInp.value.trim();
+      if (!name || !url) { msg.textContent = 'A name and an address are required.'; return; }
+      btn.disabled = true; btn.textContent = 'Connecting\u2026';
+      try {
+        const r = await GhostAPI.proxyPost('/v1/tool-servers', { name, url, api_key });
+        btn.closest('.ghost-modal-backdrop').remove();
+        GhostUI.toast('Connected: ' + ((r && r.tools) || 0) + ' tools from ' + name);
+        loadIntegrations(document.getElementById('view'));
+      } catch (err) {
+        msg.textContent = saveError(err);
+        btn.disabled = false; btn.textContent = 'Connect';
+      }
+    } }, 'Connect'),
   ]);
 }
 

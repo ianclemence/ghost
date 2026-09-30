@@ -738,6 +738,7 @@ type historyEntry struct {
 	Role      string
 	Content   string
 	Timestamp int64
+	Kind      string // reminder / notice / alert for messages Ghost started
 }
 
 // conversationBackfillCap bounds startup history loads: the whole
@@ -837,6 +838,7 @@ func (g *gatewayRuntime) loadSessionHistory(sessionKey string, limit, offset int
 			Role      string `json:"role"`
 			Content   string `json:"content"`
 			Timestamp int64  `json:"timestamp"`
+			Kind      string `json:"kind"`
 		} `json:"messages"`
 		HasMore bool `json:"has_more"`
 	}
@@ -854,7 +856,7 @@ func (g *gatewayRuntime) loadSessionHistory(sessionKey string, limit, offset int
 		if strings.TrimSpace(m.Content) == "" {
 			continue
 		}
-		out = append(out, historyEntry{Role: m.Role, Content: m.Content, Timestamp: m.Timestamp})
+		out = append(out, historyEntry{Role: m.Role, Content: m.Content, Timestamp: m.Timestamp, Kind: m.Kind})
 	}
 	return out, res.HasMore, nil
 }

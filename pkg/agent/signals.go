@@ -16,6 +16,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/proactive"
+	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 )
@@ -505,17 +506,36 @@ func (al *AgentLoop) DeliverToOwner(channel, chatID, text string, meta map[strin
 	if al == nil || text == "" {
 		return
 	}
+	kind := messageKindFor(meta)
 	if al.sessions != nil {
-		al.sessions.AddMessage(ownerConversation, "assistant", text)
+		al.sessions.AddFullMessage(ownerConversation, providers.Message{Role: "assistant", Content: text, Kind: kind})
 	}
 	m := map[string]interface{}{"type": "assistant_message", "session_id": ownerConversation, "origin": "ghost"}
 	for k, v := range meta {
 		m[k] = v
 	}
+	if kind != "" {
+		m["kind"] = kind
+	}
 	if channel == "" {
 		channel = "mobile"
 	}
 	al.bus.PublishOutbound(bus.OutboundMessage{Channel: channel, ChatID: chatID, Content: text, Metadata: m})
+}
+
+// messageKindFor classifies a message Ghost sends on its own from the
+// metadata its sender attached, so every surface can set it apart from a reply.
+func messageKindFor(meta map[string]interface{}) string {
+	if r, _ := meta["reminder"].(bool); r {
+		return "reminder"
+	}
+	if _, ok := meta["announce"]; ok {
+		if urgent, _ := meta["urgent"].(bool); urgent {
+			return "alert"
+		}
+		return "notice"
+	}
+	return ""
 }
 
 // ReminderText is what a due reminder says: short, deterministic, and never

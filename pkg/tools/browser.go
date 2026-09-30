@@ -1022,7 +1022,17 @@ func browserScreenshotCommand(ctx context.Context, path string) *exec.Cmd {
 	return cmd
 }
 
+// browserShotDir is where screenshots are kept: inside the workspace, so
+// nothing Ghost captures lands outside it. The agent sets it at startup.
+var browserShotDir string
+
+// SetBrowserShotDir points screenshot capture at a folder inside the workspace.
+func SetBrowserShotDir(dir string) { browserShotDir = dir }
+
 func defaultBrowserShotDir() string {
+	if browserShotDir != "" {
+		return browserShotDir
+	}
 	return filepath.Join(os.TempDir(), "ghost-browser-shots")
 }
 
@@ -1854,7 +1864,7 @@ func (t *BrowserTool) uploadBare(ctx context.Context, args map[string]interface{
 // downloadDir is Ghost's managed download location: downloads never
 // write to model-chosen paths — only inside this directory.
 func (t *BrowserTool) downloadDir() string {
-	return filepath.Join(t.workspace, "state", "browser-downloads")
+	return filepath.Join(t.workspace, "downloads")
 }
 
 // downloadBare clicks to download into the managed directory and

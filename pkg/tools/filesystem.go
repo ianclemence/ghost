@@ -46,8 +46,13 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 			return absPath, nil
 		}
 
-		// Allow access to the workspace and its descendants.
+		// Allow access to the workspace and its descendants, judged on where
+		// the path really leads: a link inside the workspace that points out
+		// of it must not be a way out.
 		if under(absWorkspace, absPath) {
+			if real := realPath(absPath); real != "" && !under(realPath(absWorkspace), real) {
+				return "", fmt.Errorf("access denied: path is outside the workspace")
+			}
 			return absPath, nil
 		}
 
@@ -65,6 +70,25 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 	}
 
 	return absPath, nil
+}
+
+// realPath resolves symlinks for the longest part of p that exists, so a path
+// that does not exist yet (a file about to be created) is still judged by the
+// folder it would land in. It returns "" when nothing can be resolved.
+func realPath(p string) string {
+	p = filepath.Clean(p)
+	rest := ""
+	for {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return ""
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = parent
+	}
 }
 
 type ReadFileTool struct {

@@ -118,7 +118,8 @@ var allowedCoreAudit = map[string]bool{
 	"memory_explain": true,
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,
-	"todo": true, "canvas": true, "tts": true,
+	"move_file": true, // renames inside the workspace, never overwrites, same guards as write_file
+	"todo":      true, "canvas": true, "tts": true,
 	"compact_context": true, "compaction": true, "switch_lane": true,
 	"lane": true, "voice_wake": true, "profile": true,
 	"skill_manage": true, "clarify": true,

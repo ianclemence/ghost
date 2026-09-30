@@ -117,6 +117,14 @@ func (r *ToolRegistry) Register(tool Tool) {
 	}
 }
 
+// Unregister removes a tool (a tool server that was taken away).
+func (r *ToolRegistry) Unregister(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.tools, name)
+	delete(r.schemas, name)
+}
+
 func (r *ToolRegistry) RegisterHidden(tool Tool, ttl time.Duration) {
 	r.Register(tool)
 	r.mu.Lock()

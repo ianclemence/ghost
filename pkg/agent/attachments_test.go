@@ -178,3 +178,65 @@ func TestAnnounceSaysItOnceAndRemembersAcrossRestarts(t *testing.T) {
 		t.Fatal("a different matter is announced")
 	}
 }
+
+// One plain ask may use the quick path; several asks, or two capabilities in
+// one message, belong to the model so nothing is dropped.
+func TestQuickPathOnlyAnswersASingleAsk(t *testing.T) {
+	single := []string{"what's the weather in chiang mai", "weather in paris", "check the aqi in delhi"}
+	for _, m := range single {
+		if !isSingleAsk(m) {
+			t.Errorf("%q is one ask", m)
+		}
+	}
+	several := []string{
+		"i would like to go to chiang mai soon. check the weather ther and the aqi. also send me the latest update of what is happening in bangkok",
+		"weather and aqi in paris",
+		"what's the weather in paris. and what's on my calendar?",
+		"check the weather in rome then book me a table",
+	}
+	for _, m := range several {
+		if isSingleAsk(m) {
+			t.Errorf("%q asks for more than one thing and must reach the model", m)
+		}
+	}
+}
+
+// Messages Ghost starts itself are marked, stored with that mark, and sent on
+// live frames, so a surface can set a reminder apart from a reply.
+func TestOwnerMessagesCarryTheirKind(t *testing.T) {
+	cases := []struct {
+		meta map[string]interface{}
+		want string
+	}{
+		{map[string]interface{}{"reminder": true}, "reminder"},
+		{map[string]interface{}{"announce": "storage", "urgent": true}, "alert"},
+		{map[string]interface{}{"announce": "update:v1", "urgent": false}, "notice"},
+		{map[string]interface{}{}, ""},
+	}
+	for _, c := range cases {
+		if got := messageKindFor(c.meta); got != c.want {
+			t.Errorf("%v -> %q, want %q", c.meta, got, c.want)
+		}
+	}
+	al := newTestAgentLoop(t, t.TempDir())
+	ch, unsub := al.Bus().SubscribeOutbound("t", false, 8)
+	defer unsub()
+	al.DeliverToOwner("mobile", "default", "Reminder: stretch.", map[string]interface{}{"reminder": true})
+	select {
+	case m := <-ch:
+		if m.Metadata["kind"] != "reminder" {
+			t.Fatalf("the live frame must carry the kind: %+v", m.Metadata)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("nothing published")
+	}
+}
+
+func TestToolBudgetNeverStopsRealWorkInTheMiddle(t *testing.T) {
+	if toolIterationBudget(20) < 50 || toolIterationBudget(0) < 50 {
+		t.Fatal("a low configured budget must be raised to a working minimum")
+	}
+	if toolIterationBudget(120) != 120 {
+		t.Fatal("an owner who set more keeps it")
+	}
+}

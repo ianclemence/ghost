@@ -942,6 +942,8 @@ func cardTitle(capability, action string) string {
 			return "See this computer's screen?"
 		}
 		return "Control this computer?"
+	case has("browser") && has("login", "sign_in", "signin"):
+		return "Sign in to a website?"
 	case has("browser"):
 		if has("click", "type", "press", "submit", "transact", "control") {
 			return "Control the browser?"
@@ -964,6 +966,9 @@ func cardTitle(capability, action string) string {
 	case strings.Contains(capability, "hass") || strings.Contains(capability, "home"):
 		return "Control a home device?"
 	case strings.Contains(capability, "file") || strings.Contains(capability, "delete"):
+		if has("delete", "remove") {
+			return "Delete a file?"
+		}
 		if has("read", "list", "search", "open") && !has("delete", "write", "edit", "remove") {
 			return "Read your files?"
 		}
@@ -1008,8 +1013,12 @@ func plainReason(capability, action, title string) string {
 		return "Ghost wants to set this up to run later, as you asked."
 	case has("calendar"):
 		return "Ghost wants to use your calendar."
+	case has("browser") && has("login", "sign_in", "signin"):
+		return "Ghost wants to sign in to a website using a login you saved."
 	case has("browser"):
 		return "Ghost wants to use the web browser."
+	case has("delete_file", "file.delete"):
+		return "Ghost wants to delete a file from its workspace. This can't be undone."
 	case has("file"):
 		return "Ghost wants to work with your files."
 	}

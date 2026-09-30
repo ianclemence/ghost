@@ -522,7 +522,7 @@ func TestApprovalCardsSayWhatApprovingDoes(t *testing.T) {
 		{"schedule.create", "schedule", "Schedule this?", "run later"},
 		{"exec.shell", "exec", "Run commands on this Ghost?", "run a command"},
 		{"file.read", "read_file", "Read your files?", "files"},
-		{"file.delete", "delete_file", "Change files?", "files"},
+		{"file.delete", "delete_file", "Delete a file?", "delete a file"},
 	}
 	for _, c := range cases {
 		r := &Request{Status: StatusPending, Capability: c.capability, Action: c.action, Reason: c.capability + " via " + c.action}
@@ -538,5 +538,13 @@ func TestApprovalCardsSayWhatApprovingDoes(t *testing.T) {
 	r := &Request{Status: StatusPending, Capability: "email.send", Action: "email_send", Reason: "Reply to your landlord about the deposit."}
 	if card, _ := r.Card(); card.Description != "Reply to your landlord about the deposit." {
 		t.Errorf("a real reason must be kept: %q", card.Description)
+	}
+}
+
+func TestSigningInHasItsOwnApprovalWording(t *testing.T) {
+	r := &Request{Status: StatusPending, Capability: "browser.read", Action: "browser_login", Reason: "browser.read via browser_login"}
+	card, _ := r.Card()
+	if card.Title != "Sign in to a website?" || !strings.Contains(card.Description, "sign in") {
+		t.Fatalf("a sign-in must not read as reading a page: %q / %q", card.Title, card.Description)
 	}
 }

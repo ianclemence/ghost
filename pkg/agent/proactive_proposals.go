@@ -13,6 +13,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/proactive"
+	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -981,7 +982,7 @@ func (al *AgentLoop) reportProposalOutcome(idea ideas.Idea, result, channel, cha
 	}
 	// Keep the outcome in the owner's conversation so the next turn knows.
 	if al.sessions != nil {
-		al.sessions.AddMessage(proposalSession, "assistant", msg)
+		al.sessions.AddFullMessage(proposalSession, providers.Message{Role: "assistant", Content: msg, Kind: "notice"})
 		al.sessions.Save(proposalSession)
 	}
 }
@@ -1041,6 +1042,15 @@ func (al *AgentLoop) CheckProposalReply(sessionKey, text string) (ideas.Idea, st
 	grant, ok := approvalPhrases[trimmed]
 	if !ok {
 		return ideas.Idea{}, "", false
+	}
+	// A question the owner is looking at right now outranks an old suggestion.
+	// "allow once" answered a browser approval card and, because a stale
+	// proposal was also open, approved that too; the proposal then ran with
+	// nothing to go on and posted its confusion twice.
+	if al.governance != nil && al.governance.Broker != nil {
+		if _, pending := al.governance.Broker.PendingForSession(sessionKey); pending {
+			return ideas.Idea{}, "", false
+		}
 	}
 	idea, ok := al.pendingProposalFor(sessionKey)
 	if !ok {

@@ -87,6 +87,13 @@ const (
 	entryBlock
 )
 
+// Tags mark what Ghost started itself, so it reads differently from a reply.
+const (
+	tagReminder = "reminder"
+	tagNotice   = "notice"
+	tagAlert    = "alert"
+)
+
 type entry struct {
 	kind entryKind
 	text string
@@ -95,6 +102,7 @@ type entry struct {
 	// (a fallback served), so the transcript never implies the wrong one.
 	via string
 	at  time.Time // when the message landed; zero = unknown (no divider)
+	tag string    // "", or reminder / notice / alert: Ghost spoke first
 }
 
 // ─── model ───────────────────────────────────────────────────────────────
@@ -209,6 +217,8 @@ type agentTUI struct {
 	// approvalSel is the left/right cursor over those
 	// choices (1/2/3 still answer directly).
 	approvalSel int
+	// heldSays holds messages Ghost started itself that arrived mid-reply.
+	heldSays []entry
 	// modal is the inline model picker below the composer. It owns the
 	// keyboard until Enter picks or Esc closes.
 	modal *selectModal
@@ -353,6 +363,20 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case bgTickMsg:
 		return m, m.pollBackground()
 
+	case ghostSaysMsg:
+		// Only the shared conversation hears Ghost speaking first.
+		if m.session != mainConversationKey {
+			return m, nil
+		}
+		e := entry{kind: entryAssistant, tag: msg.kind, text: msg.text, at: msg.at}
+		if m.working {
+			// Mid-reply, printing now would tear the streaming text in two.
+			m.heldSays = append(m.heldSays, e)
+			return m, nil
+		}
+		m.append(e)
+		return m, m.renderTranscript()
+
 	case streamChunkMsg:
 		m.streaming += msg.text
 		prog := m.flushStreamLines()
@@ -411,13 +435,20 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// governed path when the owner answers.
 			if id, title, risk, ok := m.loop.PendingApproval(m.session); ok {
 				m.approval = &pendingApproval{id: id, title: title, risk: risk}
+				// Driving a browser is many steps (type, press, click). Highlight
+				// "this task" so the natural Enter covers the whole search instead
+				// of asking again at every step; buying and sending stay separate.
+				m.approvalSel = 0
+				if strings.Contains(strings.ToLower(title), "browser") {
+					m.approvalSel = 1
+				}
 				m.append(entry{kind: entryNotice, text: "needs your approval"})
 			} else if m.streamHeaderShown {
 				// The reply already grew line-by-line in the scrollback;
 				// print only the unprinted tail, never the whole text again.
 				if tail := m.streamTail(); tail != "" {
 					m.lastFlush += "\n" + tail
-					tailCmd = tea.Println(tail)
+					tailCmd = printCmd(tail)
 				}
 			} else {
 				// The final response wins. The stream buffer is a live
@@ -437,6 +468,11 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streamFlushedLines = 0
 		m.streamSty = streamStyler{width: m.textWidth()}
 		m.toolCount = 0
+		// Anything Ghost said on its own while the reply was streaming lands now.
+		for _, e := range m.heldSays {
+			m.append(e)
+		}
+		m.heldSays = nil
 		flush := m.renderTranscript()
 		cmds := []tea.Cmd{}
 		if flush != nil {
@@ -1667,7 +1703,7 @@ func (m *agentTUI) loadHistory() {
 		case "user":
 			m.entries = append(m.entries, entry{kind: entryUser, text: h.Content, at: at})
 		case "assistant":
-			m.entries = append(m.entries, entry{kind: entryAssistant, text: h.Content, at: at})
+			m.entries = append(m.entries, entry{kind: entryAssistant, text: h.Content, at: at, tag: h.Kind})
 		}
 	}
 	m.turnCount = 0
@@ -1741,17 +1777,58 @@ func (m *agentTUI) rewind() {
 
 func (m *agentTUI) append(e entry) { m.entries = append(m.entries, e) }
 
-// spinnerFrames is the "cube" that turns before the activity word in the
-// prompt ("▖ Thinking", "▘ Searching"). The four quadrant blocks rotate
-// clockwise, reading as a spinning cube. Rendered from spinFrame, advanced
-// by the spinner tick while a turn runs, so it is always in motion.
-var spinnerFrames = []string{"▖", "▘", "▝", "▗"}
+// The activity spinner is a glide: five dots with a bright head and a fading
+// trail that sweeps across and back, easing at each end. It replaces a turning
+// block that read as a loading bar from 2005; this one reads as something
+// alive and calm. Every frame is exactly spinnerCells cells wide so the status
+// text after it never shifts, and it uses only characters every terminal font
+// has.
+const spinnerCells = 5
+
+// spinnerPath is the head position per frame. Repeating the end positions
+// makes the head linger there before turning, which is what gives the motion
+// its ease.
+var spinnerPath = []int{0, 0, 1, 2, 3, 4, 4, 3, 2, 1}
+
+// spinnerFrame draws one frame: head ●, then • and · behind it in the
+// direction of travel, blank ahead.
+func spinnerFrame(i int) string {
+	n := len(spinnerPath)
+	if i < 0 {
+		i = 0
+	}
+	pos := spinnerPath[i%n]
+	prev := spinnerPath[(i+n-1)%n]
+	dir := 1 // travelling right
+	if pos < prev {
+		dir = -1
+	} else if pos == prev {
+		// Lingering at an end: the trail still points back the way it came.
+		if pos == 0 {
+			dir = -1
+		} else {
+			dir = 1
+		}
+	}
+	var b strings.Builder
+	for c := 0; c < spinnerCells; c++ {
+		behind := (c - pos) * dir // negative: behind the head
+		switch {
+		case c == pos:
+			b.WriteString("●")
+		case behind == -1:
+			b.WriteString("•")
+		case behind == -2:
+			b.WriteString("·")
+		default:
+			b.WriteString(" ")
+		}
+	}
+	return b.String()
+}
 
 func (m *agentTUI) spinner() string {
-	if len(spinnerFrames) == 0 {
-		return ""
-	}
-	return spinnerFrames[m.spinFrame%len(spinnerFrames)]
+	return spinnerFrame(m.spinFrame)
 }
 
 // dayLabel groups the transcript the way chat apps do: Today,
@@ -1800,7 +1877,7 @@ func (m *agentTUI) flushScrollback() tea.Cmd {
 	text := m.pendingScrollback()
 	m.lastFlush = text
 	m.entries = nil
-	return tea.Println(text)
+	return printCmd(text)
 }
 
 // pendingScrollback renders the pending entries (with day dividers) and
@@ -1835,7 +1912,7 @@ func (m *agentTUI) welcomeScrollback() tea.Cmd {
 	if len(m.entries) > 0 {
 		return nil
 	}
-	return tea.Println(m.welcomeCard())
+	return printCmd(m.welcomeCard())
 }
 
 // renderTranscript is the callers' "content changed" signal. It is a no-op
@@ -1939,6 +2016,10 @@ func (m *agentTUI) renderEntry(e entry) string {
 		return strings.Join(lines, "\n")
 	case entryAssistant:
 		head := m.assistantHead()
+		if e.tag != "" {
+			head = m.taggedHead(e.tag, e.at)
+			return head + "\n" + m.assistantBlock(e.text)
+		}
 		if e.dur > 0 {
 			head += styleAssistantMeta.Render(" · " + formatElapsed(e.dur))
 		}
@@ -1970,6 +2051,24 @@ func (m *agentTUI) renderEntry(e entry) string {
 		return styleErrorCard.Render(strings.Join(lines, "\n"))
 	}
 	return e.text
+}
+
+// taggedHead is the header of a message Ghost started itself. A reminder, a
+// notice and an alert each get their own glyph and colour, so a glance tells
+// "Ghost answered you" from "Ghost is telling you something".
+func (m *agentTUI) taggedHead(tag string, at time.Time) string {
+	glyph, label, style := "◆", "Ghost noticed", styleTagNotice
+	switch tag {
+	case tagReminder:
+		glyph, label, style = "◷", "Reminder", styleTagReminder
+	case tagAlert:
+		glyph, label, style = "△", "Ghost needs you", styleTagAlert
+	}
+	head := " " + style.Render(glyph+" "+label)
+	if !at.IsZero() {
+		head += styleAssistantMeta.Render(" · " + at.Format("3:04 PM"))
+	}
+	return head
 }
 
 // assistantHead is the reply header line (no model: the model lives in
@@ -2012,7 +2111,7 @@ func (m *agentTUI) flushStreamLines() tea.Cmd {
 	}
 	text := b.String()
 	m.lastFlush = text
-	return tea.Println(text)
+	return printCmd(text)
 }
 
 // streamTail returns the not-yet-printed remainder of the streaming buffer,
@@ -2761,8 +2860,8 @@ func renderTable(block []string, width int) []string {
 	borderOverhead := 3*numCols + 1
 	availableForCells := width - borderOverhead
 	if availableForCells < numCols {
-		// Too narrow for a stable grid: show the rows as lines.
-		return renderTableFallback(block, width)
+		// Too narrow for a stable grid: one card per row.
+		return renderTableRecords(header, rows, width)
 	}
 
 	// Natural (unwrapped) and minimum (longest word) column widths.
@@ -2796,7 +2895,7 @@ func renderTable(block []string, width int) []string {
 	// narrow to render cleanly — show the rows as lines instead.
 	for i, w := range widths {
 		if minWord[i] > w {
-			return renderTableFallback(block, width)
+			return renderTableRecords(header, rows, width)
 		}
 	}
 
@@ -2896,7 +2995,7 @@ func renderTableRowPadded(cells []string, widths []int, style lipgloss.Style) []
 	wrapped := make([][]string, len(cells))
 	height := 1
 	for i := range cells {
-		wrapped[i] = wrapText(stripInline(cells[i]), maxInt(1, widths[i]))
+		wrapped[i] = wrapHard(stripInline(cells[i]), maxInt(1, widths[i]))
 		if len(wrapped[i]) > height {
 			height = len(wrapped[i])
 		}
@@ -3800,19 +3899,19 @@ func providerLocality(model string) string {
 // ─── styles ──────────────────────────────────────────────────────────────
 
 var (
-	cInk            = lipgloss.Color("#f1e9dc") // Midnight ink (brand)
-	cMuted          = lipgloss.Color("#a3927f") // Midnight muted (brand)
-	cFaint          = lipgloss.Color("#5c574f")
-	cAccent         = lipgloss.Color("#8a86b8")
-	cTool           = lipgloss.Color("#6f9c86")
-	cErr            = lipgloss.Color("#e08667") // brand clay (error)
-	cGold           = lipgloss.Color("#ffb45c") // brand ember
-	cBarIdle        = lipgloss.Color("#6e648a") // visible slate-violet composer bar
-	cGreen          = lipgloss.Color("#86b28f") // brand sage (ok)
-	cBlue           = lipgloss.Color("#7fa8c9")
-	cViolet         = lipgloss.Color("#9b99c9") // brand accent violet
-	cCodeBg         = lipgloss.Color("#201c18")
-	cSelBg          = lipgloss.Color("#2a251f")
+	cInk            = lipgloss.Color("#ededf0") // ink
+	cMuted          = lipgloss.Color("#9a9ea8") // muted
+	cFaint          = lipgloss.Color("#4d5058")
+	cAccent         = lipgloss.Color("#8f9df0")
+	cTool           = lipgloss.Color("#62b89a")
+	cErr            = lipgloss.Color("#ff7a6b") // error
+	cGold           = lipgloss.Color("#f5b942") // ember: the one warm signal
+	cBarIdle        = lipgloss.Color("#4a5074") // composer bar, idle
+	cGreen          = lipgloss.Color("#58c58f") // ok
+	cBlue           = lipgloss.Color("#7ab8ee")
+	cViolet         = lipgloss.Color("#9fb0ff") // brand accent: spectral blue
+	cCodeBg         = lipgloss.Color("#101216")
+	cSelBg          = lipgloss.Color("#1a1c22")
 	styleUser       = lipgloss.NewStyle().Foreground(cInk).Bold(true)
 	styleAssistant  = lipgloss.NewStyle().Foreground(cInk)
 	styleTool       = lipgloss.NewStyle().Foreground(cTool)
@@ -3822,6 +3921,9 @@ var (
 	styleWorking    = lipgloss.NewStyle().Foreground(cAccent)
 	styleApproval   = lipgloss.NewStyle().Foreground(cGold).Bold(true)
 
+	styleTagReminder   = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
+	styleTagNotice     = lipgloss.NewStyle().Foreground(cBlue).Bold(true)
+	styleTagAlert      = lipgloss.NewStyle().Foreground(cGold).Bold(true)
 	styleUserName      = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleAssistantName = lipgloss.NewStyle().Foreground(cMuted).Bold(true)
 	styleAssistantMeta = lipgloss.NewStyle().Foreground(cFaint)
@@ -3866,21 +3968,21 @@ var (
 	styleApprovalBar   = lipgloss.NewStyle().Foreground(cGold)
 	styleModalTitle    = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleApprovalTitle = lipgloss.NewStyle().Foreground(cGold).Bold(true)
-	styleApprovalKeys  = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc"))
-	styleApprovalSel   = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(cGold).Bold(true)
-	styleRiskHigh      = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(lipgloss.Color("#c86a5c")).Bold(true)
-	styleRiskMid       = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(cGold).Bold(true)
-	styleRiskLow       = lipgloss.NewStyle().Foreground(lipgloss.Color("#1b1815")).Background(cGreen).Bold(true)
+	styleApprovalKeys  = lipgloss.NewStyle().Foreground(lipgloss.Color("#ededf0"))
+	styleApprovalSel   = lipgloss.NewStyle().Foreground(lipgloss.Color("#05070d")).Background(cGold).Bold(true)
+	styleRiskHigh      = lipgloss.NewStyle().Foreground(lipgloss.Color("#05070d")).Background(lipgloss.Color("#ff7a6b")).Bold(true)
+	styleRiskMid       = lipgloss.NewStyle().Foreground(lipgloss.Color("#05070d")).Background(cGold).Bold(true)
+	styleRiskLow       = lipgloss.NewStyle().Foreground(lipgloss.Color("#05070d")).Background(cGreen).Bold(true)
 	styleRiskDefault   = lipgloss.NewStyle().Foreground(cMuted).Background(cSelBg)
 
-	styleWelcomeTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#efe9dc")).Bold(true)
+	styleWelcomeTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#ededf0")).Bold(true)
 	styleGhostArt     = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
 	styleWelcomeCmds  = lipgloss.NewStyle().Foreground(cMuted)
 	styleDayDivider   = lipgloss.NewStyle().Foreground(cFaint)
 
-	// Markdown roles are keyed to Ghost's own Midnight palette — not a
+	// Markdown roles are keyed to Ghost's own palette — not a
 	// generic rainbow theme — so model replies read in the same two accents
-	// as the rest of the product: brand violet for structure (headings,
+	// as the rest of the product: spectral blue for structure (headings,
 	// links, ordered markers, table headers) and ember-gold for emphasis
 	// (strong, bullets). Sage green marks code and done; coral marks
 	// errors; everything else is ink or muted. This is the single markdown
@@ -4249,4 +4351,36 @@ func (m *agentTUI) devicesCommand(args []string) {
 	}
 	b.WriteString("\n/devices revoke <n> removes one")
 	m.append(entry{kind: entryBlock, text: b.String()})
+}
+
+// Printing into the scrollback must keep the order things were said in. Each
+// print used to be its own command, and Bubble Tea runs commands from one
+// update concurrently, so a reply's closing lines (the end of a table) could
+// land after the next message, and the transcript came out scrambled. In the
+// running program every print goes through one queue and one worker, so it is
+// written in exactly the order it was produced.
+var (
+	printQ    = make(chan string, 4096)
+	printOnce sync.Once
+)
+
+func startPrinter() {
+	go func() {
+		for text := range printQ {
+			if p := agentProgram; p != nil {
+				p.Println(text)
+			}
+		}
+	}()
+}
+
+// printCmd prints text into the scrollback in order. Outside the running
+// program (tests) it is the plain command, so callers can still inspect it.
+func printCmd(text string) tea.Cmd {
+	if agentProgram == nil {
+		return tea.Println(text)
+	}
+	printOnce.Do(startPrinter)
+	printQ <- text
+	return nil
 }

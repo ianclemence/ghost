@@ -237,7 +237,7 @@ func ExtractDeterministic(message string, now time.Time, timezone string) []Cand
 		clause = strings.TrimSpace(clause[:idx])
 	}
 	clause = strings.TrimSpace(strings.TrimPrefix(clause, "to "))
-	if len(clause) < 4 {
+	if len(clause) < 4 || vagueClause(clause) {
 		return nil
 	}
 	c := Candidate{
@@ -421,4 +421,34 @@ func (c Candidate) Describe() string {
 		due = c.DueAt.Format(time.RFC3339)
 	}
 	return fmt.Sprintf("%s (%s, due %s)", c.Text, c.Kind, due)
+}
+
+// vagueWords carry no task: pronouns, timing filler and articles.
+var vagueWords = map[string]bool{
+	"it": true, "this": true, "that": true, "them": true, "those": true, "these": true, "one": true,
+	"soon": true, "later": true, "eventually": true, "hopefully": true, "sometime": true, "someday": true,
+	"before": true, "the": true, "a": true, "an": true, "my": true, "our": true, "your": true,
+	"year": true, "ends": true, "end": true, "of": true, "to": true, "by": true, "at": true, "up": true,
+}
+
+// vagueClause reports whether a clause names no real task. "get it soon" has a
+// verb and nothing to do it to, so there is nothing Ghost could ever pick up,
+// and "be flying from Phuket" is a plan being described, not a job to do.
+func vagueClause(clause string) bool {
+	words := strings.Fields(strings.ToLower(clause))
+	if len(words) == 0 {
+		return true
+	}
+	switch words[0] {
+	case "be", "being", "been", "feel", "stay", "remain":
+		return true
+	}
+	content := 0
+	for _, w := range words {
+		w = strings.Trim(w, ",.;:!?\"'")
+		if w != "" && !vagueWords[w] {
+			content++
+		}
+	}
+	return content < 2
 }

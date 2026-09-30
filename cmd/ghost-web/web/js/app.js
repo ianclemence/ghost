@@ -30,7 +30,7 @@ const GhostApp = (() => {
         // suggestion on Home and in Activity, so a separate list the owner
         // had to read and dismiss was pure noise.
         { name: 'intelligence', title: 'Intelligence', glyph: 'ai' },
-        { name: 'skills', title: 'Abilities', glyph: 'skill' },
+        { name: 'abilities', title: 'Abilities', glyph: 'skill' },
       ],
     },
     {
@@ -268,17 +268,85 @@ const GhostApp = (() => {
         await GhostAPI.post('/api/login', { password: pw.value, remember_me: cb.checked });
         start();
       } catch (e) {
-        err.textContent = 'That password isn’t right.';
+        // A lockout says how long to wait; a wrong password says so plainly.
+        let wait = 0;
+        try { wait = (JSON.parse(e.message) || {}).retry_in || 0; } catch (x) { /* plain text */ }
+        err.textContent = wait
+          ? 'Too many tries. Wait ' + wait + ' seconds, then try again.'
+          : 'That password isn’t right.';
         submit.disabled = false;
       }
     };
     submit.addEventListener('click', doLogin);
     pw.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
+    // Forgetting it is normal, and the way back has to be findable from here
+    // and must not need a terminal. The password is only ever stored hashed, so
+    // it can't be looked up or emailed; what can be proved is that you have the
+    // Pod: through a phone already paired with it, or by holding its SD card.
+    // Nothing else (memory, files, paired phones) is touched.
+    const forgot = GhostUI.h('button', { className: 'locked-forgot', type: 'button', 'aria-expanded': 'false' }, 'Forgot your password?');
+    const help = GhostUI.h('div', { className: 'locked-help hidden' });
+
+    help.appendChild(GhostUI.h('h3', {}, 'Set a new password'));
+    help.appendChild(GhostUI.h('p', {}, 'Your password can\u2019t be looked up, but you can choose a new one if you have your phone.'));
+    help.appendChild(GhostUI.h('ol', { className: 'locked-steps' },
+      GhostUI.h('li', {}, 'Open the Ghost app on your phone.'),
+      GhostUI.h('li', {}, 'Go to Your Pod, then Console password, then Get a reset code.'),
+      GhostUI.h('li', {}, 'Type the code and a new password below.')));
+    const code = GhostUI.input('Reset code (like K7X9-Q2MP)', 'text');
+    code.setAttribute('autocomplete', 'one-time-code');
+    code.setAttribute('autocapitalize', 'characters');
+    const np = GhostUI.input('New password (8+ characters)', 'password');
+    np.setAttribute('autocomplete', 'new-password');
+    const rmsg = GhostUI.h('div', { className: 'type-foot', style: 'min-height:18px;margin:var(--s-2) 0' });
+    const setBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', style: 'width:100%;justify-content:center', type: 'button' }, 'Set new password');
+    setBtn.addEventListener('click', async () => {
+      rmsg.style.color = 'var(--bad)';
+      rmsg.textContent = '';
+      if (!code.value.trim() || !np.value) { rmsg.textContent = 'Enter the code and a new password.'; return; }
+      setBtn.disabled = true;
+      try {
+        await GhostAPI.post('/api/password/reset', { code: code.value, new_password: np.value });
+        rmsg.style.color = 'var(--ok)';
+        rmsg.textContent = 'Password changed. Sign in with the new one above.';
+        code.value = ''; np.value = '';
+        help.classList.add('hidden');
+        forgot.setAttribute('aria-expanded', 'false');
+        err.style.color = 'var(--ok)';
+        err.textContent = 'Password changed. Sign in with the new one.';
+        pw.focus();
+      } catch (e) {
+        let msg = 'That didn\u2019t work. Check the code and try again.';
+        try { msg = (JSON.parse(e.message) || {}).error || msg; } catch (x) { /* plain text */ }
+        rmsg.textContent = msg;
+      }
+      setBtn.disabled = false;
+    });
+    help.appendChild(code);
+    help.appendChild(np);
+    help.appendChild(rmsg);
+    help.appendChild(setBtn);
+
+    const alt = GhostUI.h('details', { className: 'locked-alt' });
+    alt.appendChild(GhostUI.h('summary', {}, 'No phone paired?'));
+    alt.appendChild(GhostUI.h('p', {}, 'Take the SD card out of the Pod and put it in any computer. On the drive called boot, make a text file named ghost-reset-password. Type your new password on its first line and save. Put the card back and start the Pod; within a few seconds the password changes and the file disappears.'));
+    alt.appendChild(GhostUI.h('p', {}, 'Comfortable with a terminal? On the Pod, run:'));
+    alt.appendChild(GhostUI.h('code', {}, 'sudo ghost reset-password --force'));
+    help.appendChild(alt);
+
+    forgot.addEventListener('click', () => {
+      const open = help.classList.toggle('hidden') === false;
+      forgot.setAttribute('aria-expanded', String(open));
+      if (open) setTimeout(() => code.focus(), 30);
+    });
+
     card.appendChild(pw);
     card.appendChild(remember);
     card.appendChild(err);
     card.appendChild(submit);
+    card.appendChild(forgot);
+    card.appendChild(help);
     wrap.appendChild(card);
     root.appendChild(wrap);
     setTimeout(() => pw.focus(), 50);
@@ -307,8 +375,18 @@ const GhostApp = (() => {
     if (!authed) { showLogin(); return; }
 
     buildShell();
+    // The address says what the page is called. Old bookmarks keep working.
+    const LEGACY = { skills: 'abilities' };
+    const hashName = () => {
+      const raw = location.hash.replace('#', '') || 'home';
+      if (LEGACY[raw]) {
+        history.replaceState(null, '', '#' + LEGACY[raw]);
+        return LEGACY[raw];
+      }
+      return raw;
+    };
     window.addEventListener('hashchange', () => {
-      const name = location.hash.replace('#', '') || 'home';
+      const name = hashName();
       if (sections.has(name)) render(name);
     });
     // Close mobile nav on navigation
@@ -316,7 +394,7 @@ const GhostApp = (() => {
       const nav = document.getElementById('shell-nav');
       if (nav && nav.classList.contains('open') && !nav.contains(e.target) && !e.target.closest('.nav-toggle')) toggleNav(false);
     });
-    render(location.hash.replace('#', '') || 'home');
+    render(hashName());
     refreshPresence();
     setInterval(() => { if (!document.hidden) refreshPresence(); }, 20000);
   }

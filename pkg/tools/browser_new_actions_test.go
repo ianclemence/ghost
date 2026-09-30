@@ -341,7 +341,7 @@ func TestBrowserDownloadLandsInManagedDir(t *testing.T) {
 			t.Fatalf("download cli action = %s", action)
 		}
 		gotPath = args[1]
-		if !strings.HasPrefix(gotPath, filepath.Join(ws, "state", "browser-downloads")) {
+		if !strings.HasPrefix(gotPath, filepath.Join(ws, "downloads")) {
 			t.Fatalf("download path %q escapes managed dir", gotPath)
 		}
 		return &ToolResult{ForLLM: "saved", ForUser: "saved"}

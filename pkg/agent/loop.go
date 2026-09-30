@@ -47,7 +47,6 @@ import (
 	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/logger"
-	"github.com/ianclemence/ghost/pkg/mcp"
 	"github.com/ianclemence/ghost/pkg/media"
 	"github.com/ianclemence/ghost/pkg/modes"
 	"github.com/ianclemence/ghost/pkg/permissions"
@@ -261,6 +260,11 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewListDirTool(workspace, restrict))
 	registry.Register(tools.NewEditFileTool(workspace, restrict))
 	registry.Register(tools.NewAppendFileTool(workspace, restrict))
+	registry.Register(tools.NewDeleteFileTool(workspace, restrict))
+	registry.Register(tools.NewMoveFileTool(workspace, restrict))
+	if workspace != "" {
+		tools.SetBrowserShotDir(filepath.Join(workspace, "screenshots"))
+	}
 
 	// Shell execution
 	registry.RegisterHidden(tools.NewExecTool(workspace, restrict), 6*time.Hour)
@@ -506,10 +510,15 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewDocParserTool(workspace))
 
 	if cfg.Tools.MCP.Enabled {
-		manager := mcp.NewManager()
+		manager := sharedMCPManager()
 		if err := manager.LoadFromConfig(context.Background(), cfg); err == nil {
 			for _, info := range manager.ListToolInfos() {
-				registry.Register(tools.NewMCPTool(manager, info.Server, info.Tool))
+				t := tools.NewMCPTool(manager, info.Server, info.Tool)
+				registry.Register(t)
+				// Remembered so the server can be taken away later without a restart.
+				mcpMu.Lock()
+				mcpToolNames[info.Server] = append(mcpToolNames[info.Server], t.Name())
+				mcpMu.Unlock()
 			}
 		}
 		// Installed mcp connectors: their declared server joins the same
@@ -789,7 +798,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		temperature:         cfg.Agents.Defaults.Temperature,
 		maxTokens:           cfg.Agents.Defaults.MaxTokens,
 		contextWindow:       cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
-		maxIterations:       cfg.Agents.Defaults.MaxToolIterations,
+		maxIterations:       toolIterationBudget(cfg.Agents.Defaults.MaxToolIterations),
 		sessions:            sessionsManager,
 		state:               stateManager,
 		media:               mediaStore,
@@ -5197,4 +5206,18 @@ func ownerRequestsCommand(msg string) bool {
 func hardwareBusPresent(pattern string) bool {
 	m, _ := filepath.Glob(pattern)
 	return len(m) > 0
+}
+
+// minToolIterations is the least a turn may be given. A job that drives a
+// browser (search, sign in, fill a form, read the result, do it again on a
+// second site) takes dozens of steps; with the old default of 20 it stopped
+// partway and the owner had to say "continue". An owner may set it higher;
+// lower than this only makes real work stop in the middle.
+const minToolIterations = 50
+
+func toolIterationBudget(configured int) int {
+	if configured < minToolIterations {
+		return minToolIterations
+	}
+	return configured
 }

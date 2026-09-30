@@ -868,7 +868,7 @@ func TestTUIComposerRuleKeepsIdleColor(t *testing.T) {
 		t.Errorf("the top rule prefix must keep the idle colour, got %q", rule)
 	}
 	// The status is the only accented part.
-	if !strings.Contains(rule, styleWorking.Render(spinnerFrames[0]+" Searching the web…")) {
+	if !strings.Contains(rule, styleWorking.Render(spinnerFrame(0)+" Searching the web…")) {
 		t.Errorf("the status must be accented, got %q", rule)
 	}
 }
@@ -2439,5 +2439,130 @@ func TestTUIActivityAndDevices(t *testing.T) {
 	m.runCommand("/devices revoke 2")
 	if len(f.revoked) != 1 || f.revoked[0] != "d2" {
 		t.Fatalf("revoke 2 must revoke the second device, got %v", f.revoked)
+	}
+}
+
+// A table too wide for a grid becomes readable cards, never raw pipes, and no
+// line of it is wider than the terminal.
+func TestWideTableBecomesCardsThatFit(t *testing.T) {
+	block := []string{
+		"| Airline | Route | Departs | Arrives | Duration | Stops | Baggage | Price THB |",
+		"|---|---|---|---|---|---|---|---|",
+		"| China Southern Airlines | Suvarnabhumi Airport (BKK) to Shenzhen Bao'an International Airport (SZX) | 2:40 AM Thu, Oct 15 | 7:05 AM Thu, Oct 15 | 3 hr 25 min | Nonstop | 1 checked bag 23 kg included | 9,105 |",
+		"| Hainan Airlines | Suvarnabhumi Airport (BKK) to Shenzhen via Chongqing Jiangbei International Airport (CKG) | 11:20 AM | 8:55 AM Fri | 20 hr 35 min | 1 stop | 1 checked bag | 11,350 |",
+	}
+	for _, width := range []int{40, 60, 90} {
+		out := renderTable(block, width)
+		joined := strings.Join(out, "\n")
+		if strings.Contains(joined, "|---|") || strings.Contains(joined, "| Airline |") {
+			t.Fatalf("width %d: raw table pipes leaked:\n%s", width, joined)
+		}
+		if !strings.Contains(joined, "Hainan") || !strings.Contains(joined, "Nonstop") || !strings.Contains(joined, "11,350") {
+			t.Fatalf("width %d: content lost:\n%s", width, joined)
+		}
+		for _, ln := range out {
+			if w := lipgloss.Width(ln); w > width {
+				t.Fatalf("width %d: a line is %d wide: %q", width, w, ln)
+			}
+		}
+	}
+}
+
+// No table, at any terminal width or column count, may produce a line wider
+// than the terminal: an over-wide line wraps and shatters the box.
+func TestTablesNeverExceedTheTerminalWidth(t *testing.T) {
+	words := []string{"Nonstop", "Suvarnabhumi", "1 checked bag 23 kg included", "9,105", "**bold** cell", "x", "Shenzhen Bao'an International Airport (SZX)", "日本語のセル", "ok"}
+	for cols := 2; cols <= 10; cols++ {
+		for width := 24; width <= 130; width += 7 {
+			header := make([]string, cols)
+			delim := make([]string, cols)
+			for i := range header {
+				header[i] = "Col" + string(rune('A'+i))
+				delim[i] = "---"
+			}
+			block := []string{"| " + strings.Join(header, " | ") + " |", "|" + strings.Join(delim, "|") + "|"}
+			for r := 0; r < 4; r++ {
+				row := make([]string, cols)
+				for i := range row {
+					row[i] = words[(r*3+i*5+cols)%len(words)]
+				}
+				block = append(block, "| "+strings.Join(row, " | ")+" |")
+			}
+			for _, ln := range renderTable(block, width) {
+				if w := lipgloss.Width(ln); w > width {
+					t.Fatalf("%d columns at width %d: a line is %d wide: %q", cols, width, w, ansiStrip(ln))
+				}
+			}
+		}
+	}
+}
+
+func ansiStrip(s string) string {
+	var b strings.Builder
+	in := false
+	for _, r := range s {
+		switch {
+		case r == 0x1b:
+			in = true
+		case in && r == 'm':
+			in = false
+		case !in:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// The spinner keeps one width on every frame (so the words after it never
+// shift), always shows a head, and actually moves.
+func TestSpinnerGlideIsStableAndMoves(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < len(spinnerPath)*2; i++ {
+		f := spinnerFrame(i)
+		if w := lipgloss.Width(f); w != spinnerCells {
+			t.Fatalf("frame %d is %d cells wide, want %d: %q", i, w, spinnerCells, f)
+		}
+		if strings.Count(f, "●") != 1 {
+			t.Fatalf("frame %d must have exactly one head: %q", i, f)
+		}
+		seen[f] = true
+	}
+	if len(seen) < 6 {
+		t.Fatalf("the glide must visit several distinct frames, saw %d", len(seen))
+	}
+	if spinnerFrame(0) != spinnerFrame(len(spinnerPath)) {
+		t.Fatal("the loop must be seamless")
+	}
+}
+
+// Only what Ghost started itself is shown from the live channel; replies to
+// this terminal's own turns are not printed a second time.
+func TestLiveFrameOnlyShowsWhatGhostStarted(t *testing.T) {
+	msg, ok := parseLiveFrame([]byte(`{"type":"assistant_message","content":"Reminder: stretch.","kind":"reminder","metadata":{"origin":"ghost"}}`))
+	if !ok || msg.kind != "reminder" || msg.text != "Reminder: stretch." {
+		t.Fatalf("a reminder must show: %+v %v", msg, ok)
+	}
+	if _, ok := parseLiveFrame([]byte(`{"type":"assistant_message","content":"pong","metadata":{}}`)); ok {
+		t.Fatal("an ordinary reply already streamed to this terminal and must not print twice")
+	}
+	if _, ok := parseLiveFrame([]byte(`{"type":"progress_event","content":"x","kind":"notice"}`)); ok {
+		t.Fatal("only assistant messages are shown")
+	}
+	if _, ok := parseLiveFrame([]byte(`not json`)); ok {
+		t.Fatal("garbage is ignored")
+	}
+}
+
+func TestTaggedMessagesLookDifferentFromReplies(t *testing.T) {
+	m := &agentTUI{width: 80}
+	plain := m.renderEntry(entry{kind: entryAssistant, text: "hello"})
+	for _, tag := range []string{tagReminder, tagNotice, tagAlert} {
+		out := m.renderEntry(entry{kind: entryAssistant, tag: tag, text: "hello", at: time.Now()})
+		if out == plain || strings.Contains(ansiStrip(out), "👻 Ghost") {
+			t.Fatalf("%s must not look like a reply:\n%s", tag, out)
+		}
+	}
+	if !strings.Contains(ansiStrip(m.renderEntry(entry{kind: entryAssistant, tag: tagReminder, text: "x"})), "Reminder") {
+		t.Fatal("a reminder says so")
 	}
 }

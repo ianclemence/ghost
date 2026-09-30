@@ -94,6 +94,7 @@ var reviewedUngoverned = map[string]string{
 	"video_frames":   "workspace-confined ffmpeg frame extraction",
 	"vision":         "workspace-confined image or a safety-checked URL",
 	"voice_wake":     "toggles Ghost's own wake listener",
+	"move_file":      "renames inside the workspace only, never overwrites, refuses Ghost's default files and folders",
 }
 
 func TestEveryToolIsGovernedOrReviewed(t *testing.T) {

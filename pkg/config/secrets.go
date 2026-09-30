@@ -147,6 +147,7 @@ func SaveSecrets(path string, s *Secrets) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close secrets: %w", err)
 	}
+	KeepOwner(tmpName, path)
 	return os.Rename(tmpName, path)
 }
 

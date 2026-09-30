@@ -471,8 +471,22 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 		defer cancel()
 		outboundCh, unsubscribe := agentLoop.Bus().SubscribeOutbound("mobile-ws", false, 300)
 		defer unsubscribe()
-		wsClients.Add(1)
-		defer wsClients.Add(-1)
+		// Replies in progress: what has been written so far, then the rest live.
+		liveSnap, liveCh, stopLive := turns.Subscribe()
+		defer stopLive()
+		for _, f := range liveSnap {
+			_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err := conn.WriteJSON(f); err != nil {
+				return
+			}
+		}
+		// Only a phone counts as "a phone is connected", which is what holds
+		// back push notifications. A terminal listening for reminders must not
+		// make the daemon think the phone is already being reached.
+		if !strings.EqualFold(r.Header.Get("X-Client-Type"), "cli") {
+			wsClients.Add(1)
+			defer wsClients.Add(-1)
+		}
 
 		// Read side. A connection that is never read can't answer pings or
 		// notice the phone going away, so a dead phone stayed "connected"
@@ -503,6 +517,14 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 			case <-pinger.C:
 				_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					return
+				}
+			case f, ok := <-liveCh:
+				if !ok {
+					return // fell behind; the client reconnects to a fresh snapshot
+				}
+				_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				if err := conn.WriteJSON(f); err != nil {
 					return
 				}
 			case msg, ok := <-outboundCh:
@@ -543,6 +565,9 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 				}
 				if t, ok := msg.Metadata["type"].(string); ok && t != "" {
 					payload["type"] = t
+				}
+				if k, ok := msg.Metadata["kind"].(string); ok && k != "" {
+					payload["kind"] = k
 				}
 				if id, ok := msg.Metadata["message_id"].(string); ok && id != "" {
 					payload["id"] = id
@@ -921,6 +946,9 @@ type Message struct {
 	// Channel is the surface the message arrived on (mobile, cli, telegram,
 	// voice, …). Provenance only — every surface shares one conversation.
 	Channel string `json:"channel,omitempty"`
+	// Kind is set for messages Ghost started itself: "reminder", "notice" or
+	// "alert". Absent for ordinary conversation.
+	Kind string `json:"kind,omitempty"`
 }
 
 type HistoryResponse struct {
@@ -2926,6 +2954,16 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		emitObject := func(payload interface{}) {
 			sw.event(payload)
 		}
+		// Let every other connected surface follow this reply as it is
+		// written (the app opened after the message was sent from the
+		// terminal, say). The requester keeps reading it over this response.
+		liveID := req.RequestID
+		if liveID == "" {
+			liveID = fmt.Sprintf("live-%d", time.Now().UnixNano())
+		}
+		liveOutcome := "success"
+		turns.Begin(req.SessionKey, liveID, req.Channel, req.Content)
+		defer func() { turns.End(req.SessionKey, liveID, liveOutcome) }()
 		emitObject(map[string]interface{}{
 			"type":       "lifecycle",
 			"request_id": req.RequestID,
@@ -2958,6 +2996,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		onChunk := func(chunk string) {
 			streamedText = true
 			sw.event(chunk)
+			turns.Delta(req.SessionKey, liveID, chunk)
 		}
 
 		// onToolCall — sends a tool_status event so the app can show
@@ -2966,6 +3005,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		// to the status badge, not the message bubble.
 		onToolCall := func(name, args string) {
 			label := toolStatusLabel(name, args)
+			turns.Tool(req.SessionKey, liveID, label)
 			sw.event(map[string]string{
 				"type":  "tool_status",
 				"tool":  name,
@@ -3137,6 +3177,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				name = cfg.Agents.Defaults.Provider
 			}
 			sw.event("Error: " + provider.TurnErrorText(err, name))
+			liveOutcome = "failed"
 			lifecycleCompleted("failed")
 			if chatTurns != nil {
 				_, _ = chatTurns.Set(req.SessionKey, req.RequestID, "failed", "failed")
@@ -3165,6 +3206,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			if _, pending := b.PendingForRequest(req.RequestID); pending {
 				outcome = "waiting_for_permission"
 			}
+		}
+		if outcome != "success" {
+			liveOutcome = "waiting"
 		}
 		if chatTurns != nil {
 			switch outcome {
@@ -3306,6 +3350,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				if json.Unmarshal(metaJSON, &meta) == nil {
 					if ch, ok := meta["source_channel"].(string); ok {
 						m.Channel = ch
+					}
+					if k, ok := meta["kind"].(string); ok {
+						m.Kind = k
 					}
 				}
 			}
@@ -4127,6 +4174,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				name = id.GhostName
 			}
 			owner = id.OwnerName
+		}
+		if strings.TrimSpace(owner) == "" {
+			owner = ghoststate.OwnerNameFromProfile(apiWorkspaceDir)
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
 			"ok": true,
@@ -5612,6 +5662,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	registerLiveSurfaceRoutes(mux, agentLoop)
 	registerPushRoutes(mux, startPushBridge(agentLoop))
 	registerSystemUpdateRoutes(mux)
+	registerConsoleResetRoute(mux, agentLoop)
+	registerToolServerRoutes(mux, agentLoop)
 	startSelfCare(agentLoop, workspaceDir)
 	registerBrowserStreamRoutes(mux, agentLoop)
 	registerLiveVoiceRoutes(mux, agentLoop)

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/connectedapp"
 	"github.com/ianclemence/ghost/pkg/updaterun"
 	"io"
 	"net/http"
@@ -355,6 +356,9 @@ func handleAdminMeta(w http.ResponseWriter, r *http.Request) {
 	if id, err := ghoststate.LoadIdentity(fb.Workspace); err == nil && id != nil {
 		ownerName = id.OwnerName
 	}
+	if strings.TrimSpace(ownerName) == "" {
+		ownerName = ghoststate.OwnerNameFromProfile(fb.Workspace)
+	}
 	if meta == nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok":         true,
@@ -388,6 +392,9 @@ func handleAdminIdentity(w http.ResponseWriter, r *http.Request) {
 		resp["ghost_id"] = id.GhostID
 		resp["ghost_name"] = id.GhostName
 		resp["owner_name"] = id.OwnerName
+		if strings.TrimSpace(id.OwnerName) == "" {
+			resp["owner_name"] = ghoststate.OwnerNameFromProfile(fb.Workspace)
+		}
 		if id.CreatedAt != "" {
 			resp["created_at"] = id.CreatedAt
 		}
@@ -3003,6 +3010,22 @@ func handleIntegrationsSpotifyDisconnect(w http.ResponseWriter, r *http.Request)
 // handleIntegrationsGithubSave stores a GitHub PAT. Trust-user model: Ghost
 // documents read-only scopes; the token's own scopes govern. Blank keeps
 // the saved value.
+// verifyBeforeSave tries a pasted key against its service before it is saved.
+// A refusal is answered in plain words and nothing is stored; a service that
+// cannot be reached is saved with an honest note; only a passing check reads
+// as ready. It returns false after writing the refusal.
+func verifyBeforeSave(w http.ResponseWriter, r *http.Request, id, value, extra string) (status, note string, ok bool) {
+	res := connectedapp.Check(r.Context(), id, value, extra)
+	if res.Verdict == connectedapp.Rejected {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": res.Message})
+		return "", "", false
+	}
+	if res.Verdict == connectedapp.Unreachable {
+		return "unverified", res.Message, true
+	}
+	return "ready", "", true
+}
+
 func handleIntegrationsGithubSave(w http.ResponseWriter, r *http.Request) {
 	if !requireSession(w, r) {
 		return
@@ -3023,12 +3046,16 @@ func handleIntegrationsGithubSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "token is required"})
 		return
 	}
+	status, note, ok := verifyBeforeSave(w, r, "github", req.Token, "")
+	if !ok {
+		return
+	}
 	vault := credentials.New(filepath.Dir(fb.ConfigPath))
 	if err := vault.Store("github", req.Token); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready"})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": status, "note": note})
 }
 
 // handleIntegrationsGithubDisconnect removes the stored GitHub PAT.
@@ -3070,12 +3097,16 @@ func handleIntegrationsNotionSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "token is required"})
 		return
 	}
+	status, note, ok := verifyBeforeSave(w, r, "notion", req.Token, "")
+	if !ok {
+		return
+	}
 	vault := credentials.New(filepath.Dir(fb.ConfigPath))
 	if err := vault.Store("notion", req.Token); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready"})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": status, "note": note})
 }
 
 // handleIntegrationsNotionDisconnect removes the stored Notion token.
@@ -3122,6 +3153,10 @@ func handleIntegrationsFlightSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
+	fstatus, fnote, ok := verifyBeforeSave(w, r, "aviationstack", req.APIKey, "")
+	if !ok {
+		return
+	}
 	// Credentials go through the single Vault boundary; the web console
 	// never writes credential storage directly.
 	vault := credentials.New(filepath.Dir(fb.ConfigPath))
@@ -3138,7 +3173,7 @@ func handleIntegrationsFlightSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = cfg
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready"})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": fstatus, "note": fnote})
 }
 
 func handleIntegrationsHassSave(w http.ResponseWriter, r *http.Request) {
@@ -3163,6 +3198,13 @@ func handleIntegrationsHassSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "url and token are required"})
 		return
 	}
+	hstatus, hnote, ok := verifyBeforeSave(w, r, "home-assistant", req.Token, req.URL)
+	if !ok {
+		return
+	}
+	if addr, tok, split := connectedapp.SplitHomeAssistant(req.URL, req.Token); split {
+		req.URL, req.Token = addr, tok
+	}
 	// Credentials go through the single Vault boundary.
 	vault := credentials.New(filepath.Dir(fb.ConfigPath))
 	if err := vault.Store("hass_url", req.URL); err != nil {
@@ -3173,5 +3215,5 @@ func handleIntegrationsHassSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": "ready"})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "status": hstatus, "note": hnote})
 }

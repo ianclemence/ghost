@@ -1,54 +1,56 @@
 /* Ghost — design tokens
-   Warm, crafted, confident. A personal AI that belongs to you. */
+   Cool, quiet, confident. A personal AI that belongs to you. */
 
 :root {
-  /* ── Color: warm paper (brand: light-first) ── */
-  --paper:           #f6f4ef;   /* page */
-  --paper-raised:    #fdfcf9;   /* cards, sidebar */
-  --paper-sunken:    #ece9e2;   /* wells, inputs */
-  --paper-hover:     #f0ede6;
-  --paper-overlay:   rgba(26,22,17,.48);
+  /* ── Color: cool paper. Neutral, quiet, and nothing borrowed from anyone
+     else's palette: no cream, no clay, no brown. ── */
+  --paper:           #f6f7f9;   /* page */
+  --paper-raised:    #ffffff;   /* cards, sidebar */
+  --paper-sunken:    #eceef2;   /* wells, inputs */
+  --paper-hover:     #f0f2f5;
+  --paper-overlay:   rgba(8,10,16,.48);
 
-  /* ── Ink (brand #1A1611) ── */
-  --ink:             #1a1611;
-  --ink-soft:        #5a544c;
-  --ink-faint:       #766f65;
-  --ink-ghost:       #b5aea3;
+  /* ── Ink ── */
+  --ink:             #0b0d12;
+  --ink-soft:        #4b505c;
+  --ink-faint:       #6a6f7b;
+  --ink-ghost:       #b3b7c1;
 
   /* ── Lines ── */
-  --line:            #e4dfd6;
-  --line-strong:     #d0c9bd;
+  --line:            #e2e5eb;
+  --line-strong:     #cdd1da;
   --line-focus:      var(--accent);
 
-  /* ── Accent: brand indigo — structure, selection, links ── */
-  --accent:          #3d3b5c;
-  --accent-hover:    #2e2c4a;
-  --accent-soft:     #e8e7f0;
-  --accent-line:     #c4c3d6;
-  --accent-glow:     rgba(61,59,92,.12);
-  --on-accent:       #faf9f6;
+  /* ── Accent: spectral ink-blue — structure, selection, links ── */
+  --accent:          #2c3aa8;
+  --accent-hover:    #232e86;
+  --accent-soft:     #e9ebfa;
+  --accent-line:     #c5caf0;
+  --accent-glow:     rgba(44,58,168,.12);
+  --on-accent:       #ffffff;
 
-  /* ── Ember: Ghost's presence light — Ghost is working, or asking ── */
-  --ember:           #ffb45c;
-  --ember-deep:      #d88a33;
-  --ember-soft:      #fbeed9;
-  --ember-line:      #efcf9d;
+  /* ── Ember: Ghost's presence light. Amber, used only when Ghost is
+     working or needs you, so it always means something. ── */
+  --ember:           #f5b942;
+  --ember-deep:      #b8710a;
+  --ember-soft:      #fdf2d9;
+  --ember-line:      #efd08d;
 
-  /* ── Status (brand) ── */
-  --ok:              #2d7a4a;
-  --ok-soft:         #e4f1e9;
-  --ok-line:         #b4d8c0;
-  --warn:            #8f6520;
-  --warn-soft:       #f6ecd7;
-  --warn-line:       #dcc89a;
-  --bad:             #c24b3c;
-  --bad-soft:        #f7e4e0;
-  --bad-line:        #e2aaa2;
-  --off:             #766f65;
-  --off-soft:        #ede9e2;
-  --info:            #2e5a7a;
-  --info-soft:       #e2ecf3;
-  --info-line:       #a8c4da;
+  /* ── Status ── */
+  --ok:              #1f7a4d;
+  --ok-soft:         #e2f3ea;
+  --ok-line:         #b0d9c2;
+  --warn:            #8a5a00;
+  --warn-soft:       #f8edd0;
+  --warn-line:       #e3cd8f;
+  --bad:             #c0392b;
+  --bad-soft:        #fbe7e4;
+  --bad-line:        #ecaaa3;
+  --off:             #6a6f7b;
+  --off-soft:        #eceef2;
+  --info:            #1f5f99;
+  --info-soft:       #e3eef8;
+  --info-line:       #a9c8e4;
 
   /* ── Type ── */
   --font-sans:       "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -92,11 +94,11 @@
   --r-pill: 999px;
 
   /* ── Elevation ── */
-  --shadow-xs:  0 1px 2px rgba(26,22,17,.06);
-  --shadow-sm:  0 1px 3px rgba(26,22,17,.08), 0 1px 2px rgba(26,22,17,.04);
-  --shadow-md:  0 4px 12px rgba(26,22,17,.08), 0 2px 4px rgba(26,22,17,.04);
-  --shadow-lg:  0 12px 32px rgba(26,22,17,.12), 0 4px 8px rgba(26,22,17,.06);
-  --shadow-xl:  0 20px 48px rgba(26,22,17,.16), 0 8px 16px rgba(26,22,17,.08);
+  --shadow-xs:  0 1px 2px rgba(8,10,16,.06);
+  --shadow-sm:  0 1px 3px rgba(8,10,16,.08), 0 1px 2px rgba(8,10,16,.04);
+  --shadow-md:  0 4px 12px rgba(8,10,16,.08), 0 2px 4px rgba(8,10,16,.04);
+  --shadow-lg:  0 12px 32px rgba(8,10,16,.12), 0 4px 8px rgba(8,10,16,.06);
+  --shadow-xl:  0 20px 48px rgba(8,10,16,.16), 0 8px 16px rgba(8,10,16,.08);
 
   /* ── Motion ── */
   --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
@@ -117,44 +119,80 @@
   --maxw:           1000px;
 }
 
-/* ── Midnight: the warm dark theme (brand). Follows the system unless the
-   owner pinned a theme with data-theme on <html>. ── */
+/* ── Midnight: true black. Follows the system unless the owner pinned a
+   theme with data-theme on <html>. ── */
+:root[data-theme="dark"] { color-scheme: dark; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) { color-scheme: dark; }
 }
-:root[data-theme="dark"] { color-scheme: dark; }
 
+/* One set of dark values, applied for the system preference and for a pinned
+   theme alike. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper:         #14100d;
-    --paper-raised:  #1c1712;
-    --paper-sunken:  #100d0a;
-    --paper-hover:   #251f18;
-    --paper-overlay: rgba(0,0,0,.6);
-    --ink:           #f1e9dc;
-    --ink-soft:      #c3b6a6;
-    --ink-faint:     #a3927f;
-    --ink-ghost:     #6f6252;
-    --line:          rgba(240,233,223,.09);
-    --line-strong:   rgba(240,233,223,.17);
-    --accent:        #a5a3d2;
-    --accent-hover:  #c0bee6;
-    --accent-soft:   rgba(165,163,210,.14);
-    --accent-line:   rgba(165,163,210,.32);
-    --accent-glow:   rgba(165,163,210,.16);
-    --on-accent:     #14100d;
-    --ember-deep:    #ffb45c;
-    --ember-soft:    rgba(255,180,92,.13);
-    --ember-line:    rgba(255,180,92,.34);
-    --ok:            #86b28f;  --ok-soft:   rgba(134,178,143,.14); --ok-line:   rgba(134,178,143,.34);
-    --warn:          #e8c06a;  --warn-soft: rgba(232,192,106,.13); --warn-line: rgba(232,192,106,.32);
-    --bad:           #e08667;  --bad-soft:  rgba(224,134,103,.14); --bad-line:  rgba(224,134,103,.34);
-    --off:           #a3927f;  --off-soft:  rgba(240,233,223,.07);
-    --info:          #7fa8c9;  --info-soft: rgba(127,168,201,.14); --info-line: rgba(127,168,201,.32);
-    --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
-    --shadow-sm: 0 1px 3px rgba(0,0,0,.45);
-    --shadow-md: 0 4px 14px rgba(0,0,0,.45);
-    --shadow-lg: 0 12px 32px rgba(0,0,0,.55);
-    --shadow-xl: 0 20px 48px rgba(0,0,0,.6);
+    --paper:         #000000;
+    --paper-raised:  #0c0d10;
+    --paper-sunken:  #060608;
+    --paper-hover:   #16171b;
+    --paper-overlay: rgba(0,0,0,.72);
+    --ink:           #ededf0;
+    --ink-soft:      #b1b4bd;
+    --ink-faint:     #868a94;
+    --ink-ghost:     #50535b;
+    --line:          rgba(255,255,255,.08);
+    --line-strong:   rgba(255,255,255,.16);
+    --accent:        #9fb0ff;
+    --accent-hover:  #bccaff;
+    --accent-soft:   rgba(159,176,255,.13);
+    --accent-line:   rgba(159,176,255,.32);
+    --accent-glow:   rgba(159,176,255,.16);
+    --on-accent:     #05070d;
+    --ember:         #f5b942;
+    --ember-deep:    #f5b942;
+    --ember-soft:    rgba(245,185,66,.12);
+    --ember-line:    rgba(245,185,66,.32);
+    --ok:            #58c58f;  --ok-soft:   rgba(88,197,143,.13);  --ok-line:   rgba(88,197,143,.34);
+    --warn:          #f0c25a;  --warn-soft: rgba(240,194,90,.13);  --warn-line: rgba(240,194,90,.32);
+    --bad:           #ff7a6b;  --bad-soft:  rgba(255,122,107,.13); --bad-line:  rgba(255,122,107,.34);
+    --off:           #868a94;  --off-soft:  rgba(255,255,255,.07);
+    --info:          #7ab8ee;  --info-soft: rgba(122,184,238,.13); --info-line: rgba(122,184,238,.32);
+    --shadow-xs: 0 1px 2px rgba(0,0,0,.6);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.65);
+    --shadow-md: 0 4px 14px rgba(0,0,0,.65);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,.75);
+    --shadow-xl: 0 20px 48px rgba(0,0,0,.8);
   }
+}
+:root[data-theme="dark"] {
+  --paper:         #000000;
+  --paper-raised:  #0c0d10;
+  --paper-sunken:  #060608;
+  --paper-hover:   #16171b;
+  --paper-overlay: rgba(0,0,0,.72);
+  --ink:           #ededf0;
+  --ink-soft:      #b1b4bd;
+  --ink-faint:     #868a94;
+  --ink-ghost:     #50535b;
+  --line:          rgba(255,255,255,.08);
+  --line-strong:   rgba(255,255,255,.16);
+  --accent:        #9fb0ff;
+  --accent-hover:  #bccaff;
+  --accent-soft:   rgba(159,176,255,.13);
+  --accent-line:   rgba(159,176,255,.32);
+  --accent-glow:   rgba(159,176,255,.16);
+  --on-accent:     #05070d;
+  --ember:         #f5b942;
+  --ember-deep:    #f5b942;
+  --ember-soft:    rgba(245,185,66,.12);
+  --ember-line:    rgba(245,185,66,.32);
+  --ok:            #58c58f;  --ok-soft:   rgba(88,197,143,.13);  --ok-line:   rgba(88,197,143,.34);
+  --warn:          #f0c25a;  --warn-soft: rgba(240,194,90,.13);  --warn-line: rgba(240,194,90,.32);
+  --bad:           #ff7a6b;  --bad-soft:  rgba(255,122,107,.13); --bad-line:  rgba(255,122,107,.34);
+  --off:           #868a94;  --off-soft:  rgba(255,255,255,.07);
+  --info:          #7ab8ee;  --info-soft: rgba(122,184,238,.13); --info-line: rgba(122,184,238,.32);
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.6);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.65);
+  --shadow-md: 0 4px 14px rgba(0,0,0,.65);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,.75);
+  --shadow-xl: 0 20px 48px rgba(0,0,0,.8);
 }

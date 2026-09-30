@@ -591,11 +591,14 @@
   .view { padding-left: var(--s-4); padding-right: var(--s-4); }
 }
 
-/* ── Memory & Skills: no divider lines ──
+/* ── Memory, Abilities & Activity: no divider lines ──
    These sections read as calm, editorial lists; drop the row dividers there.
    Scoped by id so other sections that use .ghost-list keep their dividers. */
 #mem-list > * + *,
 #skill-list > * + *,
+#activity-list > * + *,
+.calm-list > * + *,
+.panel .calm-list .ghost-row + .ghost-row,
 #recall-list > * + *,
 #conv-list > * + * {
   border-top: 0;
@@ -665,3 +668,36 @@
   transition: background var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out), border-color var(--d-fast) var(--ease-out);
 }
 .provider-chip:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+
+/* Sign-in: the way back for a forgotten password */
+.locked-forgot {
+  display: block; margin: var(--s-4) auto 0; background: none; border: 0; padding: 4px 6px;
+  font: inherit; font-size: var(--t-callout); color: var(--ink-faint); cursor: pointer;
+  border-radius: var(--r-xs);
+  transition: color var(--d-fast) var(--ease-out);
+}
+.locked-forgot:hover { color: var(--ink); }
+.locked-forgot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.locked-help {
+  margin-top: var(--s-3); padding: var(--s-3) var(--s-4);
+  background: var(--paper-sunken); border-radius: var(--r-md);
+  font-size: var(--t-callout); color: var(--ink-soft); line-height: var(--lh-body);
+  animation: lockedHelpIn var(--d-moderate) var(--ease-out);
+}
+.locked-help p + p, .locked-help code + p { margin-top: var(--s-2); }
+.locked-help code {
+  display: block; margin-top: var(--s-2); padding: 8px 10px; border-radius: var(--r-sm);
+  background: var(--paper-raised); border: 1px solid var(--line);
+  font-family: var(--font-mono); font-size: var(--t-foot); color: var(--ink); overflow-wrap: anywhere;
+}
+@keyframes lockedHelpIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .locked-help { animation: none; } }
+
+.locked-help h3 { font-size: var(--t-body); font-weight: 620; color: var(--ink); margin-bottom: var(--s-1); }
+.locked-help input { margin-top: var(--s-2); }
+.locked-steps { margin: var(--s-2) 0 var(--s-1) 1.25em; padding: 0; }
+.locked-steps li { margin: 2px 0; }
+.locked-alt { margin-top: var(--s-4); border-top: 1px solid var(--line); padding-top: var(--s-3); }
+.locked-alt summary { cursor: pointer; color: var(--ink-soft); font-weight: 560; }
+.locked-alt summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-xs); }
+.locked-alt p { margin-top: var(--s-2); }

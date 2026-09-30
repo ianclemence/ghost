@@ -227,3 +227,27 @@ func TestStoreLifecycle(t *testing.T) {
 		t.Fatal("a settled commitment must not reopen")
 	}
 }
+
+// A promise needs something to do. A bare "get it soon" and a described travel
+// plan are not obligations Ghost could pick up.
+func TestVagueClausesAreNotCommitments(t *testing.T) {
+	now := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
+	for _, msg := range []string{
+		"i'll get it soon. hopefully before the year ends",
+		"I'll be flying from phuket",
+		"I need to do it later",
+	} {
+		if got := ExtractDeterministic(msg, now, "UTC"); len(got) != 0 {
+			t.Errorf("%q is not an obligation, got %+v", msg, got)
+		}
+	}
+	for _, msg := range []string{
+		"I need to send Alex the photos Friday",
+		"I have to renew my passport",
+		"I'm going to call the bank tomorrow",
+	} {
+		if got := ExtractDeterministic(msg, now, "UTC"); len(got) != 1 {
+			t.Errorf("%q is a real obligation, got %+v", msg, got)
+		}
+	}
+}

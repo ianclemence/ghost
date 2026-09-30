@@ -125,6 +125,7 @@ func SaveStore(store *AuthStore) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
+	config.KeepOwner(tmpName, path)
 	return os.Rename(tmpName, path)
 }
 

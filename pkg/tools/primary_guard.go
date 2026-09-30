@@ -83,6 +83,66 @@ var runtimeOwnedDirs = []string{
 	"pending", "personal-context", "state", "journal", "conversations",
 }
 
+// defaultWorkspaceDirs and defaultWorkspaceFiles are the top-level entries
+// Ghost's workspace is born with or grows on its own: its identity, prompt,
+// memory, skills, sessions, uploads and the rest. Nobody can have these
+// deleted or moved, however the request is phrased and whoever makes it: they
+// are what makes the workspace Ghost's. What lives inside the open ones
+// (notes, downloads, screenshots, knowledge, data) is still Ghost's to tidy.
+var defaultWorkspaceDirs = []string{
+	"skills", "knowledge", "memory", "sessions", "commitments", "cron", "events", "dreams",
+	"proactive", "pending", "personal-context", "state", "journal", "conversations",
+	"uploads", "screenshots", "downloads", "notes", "data", "db",
+}
+
+var defaultWorkspaceFiles = []string{
+	"GHOST.md", "AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md",
+	"README.md", "PROACTIVE_PREFERENCES.md", "heartbeat.log",
+}
+
+// isDefaultWorkspaceEntry reports whether resolved is one of the workspace's
+// own top-level entries (or the database family), as opposed to something
+// inside one.
+func isDefaultWorkspaceEntry(workspace, resolved string) bool {
+	if workspace == "" {
+		return false
+	}
+	ws, err := filepath.Abs(workspace)
+	if err != nil {
+		return false
+	}
+	p, err := filepath.Abs(resolved)
+	if err != nil || !under(ws, p) {
+		return false
+	}
+	rel, err := filepath.Rel(ws, p)
+	if err != nil || rel == "." {
+		return rel == "."
+	}
+	rel = filepath.ToSlash(rel)
+	if strings.Contains(rel, "/") {
+		return false
+	}
+	if strings.HasPrefix(rel, "ghost.db") {
+		return true
+	}
+	for _, d := range defaultWorkspaceDirs {
+		if rel == d {
+			return true
+		}
+	}
+	for _, f := range defaultWorkspaceFiles {
+		if rel == f {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultEntryDeny(workspace, resolved string) error {
+	return fmt.Errorf("%s is part of Ghost's own workspace. Ghost never deletes or moves its default files and folders, whoever asks; what you put inside the open ones, like notes or downloads, it can tidy", filepath.Base(resolved))
+}
+
 // runtimeOwnedFiles are top-level runtime files with no governed edit
 // path. The prompt/identity contract is already a primary file; these are
 // the heartbeat log and the shipped docs the installer and runtime own.
@@ -212,6 +272,11 @@ func execDeniedPrimaryFiles(command string) (string, bool) {
 			return fmt.Sprintf("that command would destroy a Ghost primary file (%s); primary files are never deleted or modified from the shell", name), true
 		}
 	}
+	// find … -delete over the whole tree removes everything without naming
+	// any of it.
+	if findWipesTree(command) {
+		return "that command would delete the whole working tree, which contains Ghost's own files; name the specific files to remove", true
+	}
 	// Broad recursive wipe of whatever directory the command runs in.
 	if recursiveWipeOfTree(command) {
 		return "that command would recursively wipe the working tree, which contains Ghost's primary files; primary files are never deleted", true
@@ -259,6 +324,8 @@ var primaryFragments = []string{
 	"GHOST.md", "AGENTS.md", "SOUL.md", "IDENTITY.md", "HEARTBEAT.md", "MEMORY.md",
 	"skills", "knowledge", "personal-context", "state", "commitments",
 	"sessions", "cron", "dreams", "proactive", "events", "journal", "workspace",
+	"USER.md", "README.md", "PROACTIVE_PREFERENCES.md", "memory", "uploads", "conversations",
+	"screenshots", "downloads",
 	"/usr/local/bin/ghost", "/.local/bin/ghost",
 }
 
@@ -269,6 +336,23 @@ func primaryNameIn(command string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// findDeleteRe captures the start path of a find that deletes.
+var findDeleteRe = regexp.MustCompile(`(^|[^a-zA-Z0-9])find\s+([^\s-][^\s]*)?[^;&|]*-delete`)
+
+// findWipesTree reports whether a find … -delete starts from the whole
+// working tree (no path, ".", "..", "*", or a root-level path).
+func findWipesTree(command string) bool {
+	m := findDeleteRe.FindStringSubmatch(command)
+	if m == nil {
+		return false
+	}
+	start := strings.TrimSpace(m[2])
+	if start == "" || broadTreeTargets[start] || start == "/" {
+		return true
+	}
+	return false
 }
 
 // rmTailRe captures everything after an rm/rmdir invocation for the

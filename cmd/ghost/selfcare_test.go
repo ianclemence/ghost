@@ -45,8 +45,12 @@ func TestRepeatedFailedAccessFromTheNetworkIsReported(t *testing.T) {
 }
 
 func TestFirstNoteLine(t *testing.T) {
-	if got := firstNoteLine("Release notes\n- **Lists stay apart.** Bullets no longer run together.\n- more"); got != "Lists stay apart. Bullets no longer run together." {
-		t.Fatalf("got %q", got)
+	notes := "- **Backups now back up the right Ghost, and can be restored.** `sudo ghost state backup` used to save\n  an empty workspace and report success.\n- **Second thing.** More."
+	if got := firstNoteLine(notes); got != "Backups now back up the right Ghost, and can be restored." {
+		t.Fatalf("the headline is the bold lead, whole: %q", got)
+	}
+	if got := firstNoteLine("Release notes\nGhost is faster at startup. Other detail follows."); got != "Ghost is faster at startup." {
+		t.Fatalf("plain notes give their first sentence: %q", got)
 	}
 	if firstNoteLine("") != "" {
 		t.Fatal("empty notes")

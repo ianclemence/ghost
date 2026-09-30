@@ -542,6 +542,7 @@ func main() {
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/login", handleLogin)
 	mux.HandleFunc("/api/logout", handleLogout)
+	mux.HandleFunc("/api/password/reset", handlePasswordReset)
 	mux.HandleFunc("/api/configure", handleConfigure)
 	mux.HandleFunc("/api/ollama/models", handleOllamaModels)
 	mux.HandleFunc("/api/ollama/pull", handleOllamaPull)
@@ -709,6 +710,9 @@ func main() {
 	// ExecStartPost will start the ghost service (wait mode) or whether we
 	// must do it ourselves (manual -force runs).
 	waitingOnSystemd = *waitMode
+
+	// A password-reset file left on the SD card is applied while the console runs.
+	watchBootReset()
 
 	if *waitMode {
 		// In wait mode, run the server in a goroutine and block until setup completes.

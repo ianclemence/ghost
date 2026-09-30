@@ -2,7 +2,7 @@
 'use strict';
 
 async function loadSkills(container) {
-  if (GhostApp.currentSection() !== 'skills') return;
+  if (GhostApp.currentSection() !== 'abilities') return;
   container.innerHTML = '';
   const head = GhostUI.h('div', { className: 'page-head' });
   head.appendChild(GhostUI.h('h1', {}, 'What Ghost can do'));
@@ -149,7 +149,7 @@ function skillGroupPanel(container, title, sub, items, integ) {
   if (sub) text.appendChild(GhostUI.h('p', {}, sub));
   head.appendChild(text);
   panel.appendChild(head);
-  const list = GhostUI.h('div', { className: 'ghost-list' });
+  const list = GhostUI.h('div', { className: 'ghost-list calm-list' });
   items.forEach(s => { list.appendChild(buildSkillRow(s, integ)); });
   panel.appendChild(list);
   container.appendChild(panel);
@@ -354,4 +354,4 @@ function showInstall() {
   ]);
 }
 
-GhostApp.registerSection('skills', loadSkills);
+GhostApp.registerSection('abilities', loadSkills);

@@ -38,6 +38,73 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return base.RoundTrip(req)
 }
 
+// HeaderSecretResolver returns the secret stored under a vault id. The daemon
+// sets it; when unset, "vault:" references resolve to nothing.
+var HeaderSecretResolver func(id string) string
+
+const vaultRefPrefix = "vault:"
+
+// VaultRef is the config value that stands for a secret kept in the vault.
+func VaultRef(id string) string { return vaultRefPrefix + id }
+
+// ResolveHeaders returns a copy of headers with "vault:<id>" values replaced by
+// the sealed secret. A reference that cannot be resolved drops the header
+// rather than sending the literal reference to a server.
+func ResolveHeaders(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in)+1)
+	for k, v := range in {
+		if strings.HasPrefix(v, vaultRefPrefix) {
+			if HeaderSecretResolver == nil {
+				continue
+			}
+			secret := HeaderSecretResolver(strings.TrimPrefix(v, vaultRefPrefix))
+			if secret == "" {
+				continue
+			}
+			out[k] = secret
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// connectHTTP reaches an HTTP MCP server. Servers speak one of two dialects:
+// "streamable HTTP" (the current one, typically at .../mcp) or the older
+// server-sent-events style (.../sse). Ghost used to speak only the old one, so
+// most hosted servers could not be reached. It tries the likelier dialect for
+// the address first and falls back to the other.
+func connectHTTP(ctx context.Context, endpoint string, headers map[string]string) (*mcp.Client, *mcp.ClientSession, error) {
+	httpClient := &http.Client{Transport: &headerTransport{headers: headers}}
+	type attempt struct {
+		name string
+		make func() mcp.Transport
+	}
+	streamable := attempt{"streamable HTTP", func() mcp.Transport {
+		return &mcp.StreamableClientTransport{Endpoint: endpoint, HTTPClient: httpClient}
+	}}
+	sse := attempt{"SSE", func() mcp.Transport {
+		return &mcp.SSEClientTransport{Endpoint: endpoint, HTTPClient: httpClient}
+	}}
+	order := []attempt{streamable, sse}
+	if strings.HasSuffix(strings.TrimRight(strings.SplitN(endpoint, "?", 2)[0], "/"), "/sse") {
+		order = []attempt{sse, streamable}
+	}
+	var errs []string
+	for _, a := range order {
+		client := mcp.NewClient(&mcp.Implementation{Name: "ghost"}, nil)
+		sess, err := client.Connect(ctx, a.make(), nil)
+		if err == nil {
+			return client, sess, nil
+		}
+		errs = append(errs, a.name+": "+err.Error())
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return nil, nil, fmt.Errorf("could not connect (%s)", strings.Join(errs, "; "))
+}
+
 func loadEnvFile(path string) (map[string]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -256,32 +323,23 @@ func (m *Manager) ConnectServer(ctx context.Context, name string, cfg config.MCP
 	var cancelFn context.CancelFunc
 
 	if cfg.HTTP {
-		headers := cfg.Headers
+		// Copy, so injecting a token never changes the caller's config, and
+		// resolve "vault:<id>" values from the sealed vault so an API key is
+		// never kept in the config file.
+		headers := ResolveHeaders(cfg.Headers)
 
 		// Inject OAuth token if available
 		if token, ok := m.oauthTokens[name]; ok && token.ExpiresAt.After(time.Now()) {
-			if headers == nil {
-				headers = make(map[string]string)
-			}
 			headers["Authorization"] = token.TokenType + " " + token.AccessToken
 		}
 
-		client = mcp.NewClient(&mcp.Implementation{Name: "ghost"}, nil)
-		transport := &mcp.SSEClientTransport{
-			Endpoint: cfg.HTTPURL,
-			HTTPClient: &http.Client{
-				Transport: &headerTransport{
-					headers: headers,
-				},
-			},
-		}
 		handshakeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		sess, err := client.Connect(handshakeCtx, transport, nil)
+		c, sess, err := connectHTTP(handshakeCtx, cfg.HTTPURL, headers)
 		if err != nil {
 			return err
 		}
-		session = sess
+		client, session = c, sess
 		cancelFn = cancel
 	} else {
 		cmd := exec.Command(cfg.Command, cfg.Args...)
@@ -342,6 +400,38 @@ func (m *Manager) ConnectServer(ctx context.Context, name string, cfg config.MCP
 		"tools":  len(tools),
 	})
 	return nil
+}
+
+// DisconnectServer closes a server's connection and forgets it.
+func (m *Manager) DisconnectServer(name string) {
+	m.mu.Lock()
+	conn, ok := m.servers[name]
+	delete(m.servers, name)
+	m.mu.Unlock()
+	if !ok {
+		return
+	}
+	if conn.cancelFn != nil {
+		conn.cancelFn()
+	}
+	if conn.Session != nil {
+		conn.Session.Close()
+	}
+}
+
+// ServerToolInfos returns the tools one server offers.
+func (m *Manager) ServerToolInfos(name string) []ToolInfo {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	conn, ok := m.servers[name]
+	if !ok {
+		return nil
+	}
+	out := make([]ToolInfo, 0, len(conn.Tools))
+	for _, t := range conn.Tools {
+		out = append(out, ToolInfo{Server: name, Tool: t})
+	}
+	return out
 }
 
 func (m *Manager) ListTools() []*mcp.Tool {

@@ -675,3 +675,19 @@ func TestValidateLogicalPath(t *testing.T) {
 		}
 	}
 }
+
+func TestOwnerNameFromProfile(t *testing.T) {
+	dir := t.TempDir()
+	write := func(body string) { os.WriteFile(filepath.Join(dir, "USER.md"), []byte(body), 0o644) }
+	write("# User Profile\n\n## Identity\n\n- **Name**: ian\n- **Role**: (set by user)\n")
+	if got := OwnerNameFromProfile(dir); got != "Ian" {
+		t.Fatalf("got %q", got)
+	}
+	write("- **Name**: (set by user)\n")
+	if got := OwnerNameFromProfile(dir); got != "" {
+		t.Fatalf("a placeholder is not a name: %q", got)
+	}
+	if OwnerNameFromProfile(t.TempDir()) != "" {
+		t.Fatal("no profile, no name")
+	}
+}

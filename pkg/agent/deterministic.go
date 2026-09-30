@@ -722,6 +722,14 @@ func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metada
 	if lower == "" || isSecurityProbe(msg) {
 		return "", false
 	}
+	// The quick path exists for a single, plain ask. A message with several
+	// asks ("check the weather there and the aqi, also send me the news about
+	// bangkok") went here, took the last place named as the city, answered one
+	// of the three, and left the owner to notice and ask again. Anything longer
+	// or wider than one ask belongs to the model.
+	if !isSingleAsk(lower) {
+		return "", false
+	}
 	inputs := al.locationWithMemoryFallback(msg, session, capabilityInputsFromMessage(msg, metadata))
 	loc := strings.TrimSpace(inputs["location"])
 
@@ -911,4 +919,31 @@ func (al *AgentLoop) rememberHomeLocation(session, loc, message string) {
 			Quote: strings.TrimSpace(message),
 		})
 	}
+}
+
+// multiAskRE marks a second ask riding along with the first.
+var multiAskRE = regexp.MustCompile(`(?i)\b(also|and then|plus|as well|on top of that|after that|then)\b`)
+
+// isSingleAsk reports whether a message is one plain request that a
+// deterministic tool can answer completely: one sentence, short, no second
+// ask attached, and not two capabilities at once (weather and air quality
+// together would answer only one).
+func isSingleAsk(lower string) bool {
+	lower = strings.TrimSpace(lower)
+	if len(strings.Fields(lower)) > 16 || multiAskRE.MatchString(lower) {
+		return false
+	}
+	// More than one sentence means more than one thing was said.
+	sentences := 0
+	for _, part := range regexp.MustCompile(`[.!?]+(?:\s|$)`).Split(lower, -1) {
+		if strings.TrimSpace(part) != "" {
+			sentences++
+		}
+	}
+	if sentences > 1 {
+		return false
+	}
+	mentionsWeather := strings.Contains(lower, "weather") || strings.Contains(lower, "temperature")
+	mentionsAir := strings.Contains(lower, "aqi") || strings.Contains(lower, "air quality")
+	return !(mentionsWeather && mentionsAir)
 }

@@ -46,6 +46,10 @@ var FreeConsequentialTools = []FreeTool{
 	// sees the semantic "device" surface; "hass" remains a governed alias.
 	{Name: "device", Capability: "device.control", Risk: RiskConsequential},
 	{Name: "hass", Capability: "device.control", Risk: RiskConsequential},
+	// Deleting cannot be undone, so it is asked about every time it is not
+	// already allowed. Moving never overwrites and stays ungoverned like
+	// writing.
+	{Name: "delete_file", Capability: "file.delete", Risk: RiskConsequential},
 	// Calendar is one semantic surface whose risk is action-dependent
 	// (read vs modify); the agent loop authorizes the specific capability.
 	// The table entry governs it for paths that cannot see the action

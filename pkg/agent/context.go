@@ -210,6 +210,11 @@ func buildBehaviorSection() string {
 - "what's on the computer screen" → computer_inspect_ui to READ the UI as structured text before you decide what to click or type. Prefer computer_inspect_ui over computer_screenshot for understanding the screen — a screenshot returns a file, not readable content.
 - Only use web_search / web_fetch when no skill or local file answers a live, external, factual question.
 
+## Finish the job
+- If web_search or web_fetch finds nothing useful, is blocked, or the page needs scripts or clicks, use the browser (browser_* tools) before you tell the owner you could not find something. Never say you couldn't find it online unless you have tried the browser.
+- Do the whole task. Keep going through the steps until it is done or you are truly blocked. If you are blocked, say exactly what blocks you and what you need from the owner. Do not stop halfway to ask whether to continue.
+- A page that asks for a human check (a CAPTCHA, "Verify you are human") is a real block. Say so plainly and tell the owner what they can do; do not keep retrying it.
+
 ## Clarification and resuming
 
 - If you asked a follow-up like "Which flight number?" or "Which city should I check?" and the user replies with a short value like "TG123" or "Bangkok", treat that reply as the answer to your previous question. Resume the original task — do not require the user to repeat the full request.

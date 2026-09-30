@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 )
@@ -113,4 +115,35 @@ func GetPodID(workspace string) (string, error) {
 		}
 	}
 	return id.PodID, nil
+}
+
+// OwnerNameFromProfile reads the owner's name from the workspace profile
+// (USER.md, "- **Name**: ian") for a Ghost whose identity record never held
+// one. A Pod set up before the name was asked for still knows who it belongs
+// to; screens should say so rather than fall back to a generic line. The
+// placeholder "(set by user)" and empty values are not names.
+func OwnerNameFromProfile(workspace string) string {
+	data, err := os.ReadFile(filepath.Join(workspace, "USER.md"))
+	if err != nil {
+		return ""
+	}
+	for _, ln := range strings.Split(string(data), "\n") {
+		ln = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(ln), "-*"))
+		lower := strings.ToLower(ln)
+		if !strings.HasPrefix(lower, "**name**:") && !strings.HasPrefix(lower, "name:") {
+			continue
+		}
+		_, v, _ := strings.Cut(ln, ":")
+		v = strings.TrimSpace(strings.Trim(strings.TrimSpace(v), "*_`"))
+		if v == "" || strings.HasPrefix(v, "(") {
+			return ""
+		}
+		r := []rune(v)
+		if len(r) > 40 {
+			return ""
+		}
+		r[0] = unicode.ToUpper(r[0])
+		return string(r)
+	}
+	return ""
 }

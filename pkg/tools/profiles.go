@@ -21,7 +21,7 @@ const (
 var ProfileAllowlists = map[ToolProfile][]string{
 	ProfileMobileSafe: {
 		"system_status",
-		"read_file", "write_file", "list_dir", "edit_file", "append_file",
+		"read_file", "write_file", "list_dir", "edit_file", "append_file", "delete_file", "move_file",
 		"search_files", "session_search", "grep_search",
 		"view", "read",
 		"web_search", "web_fetch",
@@ -59,7 +59,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 	},
 	ProfileCoding: {
 		"system_status",
-		"read_file", "write_file", "list_dir", "edit_file", "append_file",
+		"read_file", "write_file", "list_dir", "edit_file", "append_file", "delete_file", "move_file",
 		"search_files", "grep_search",
 		"exec", "sandbox",
 		"web_search", "web_fetch",
@@ -86,7 +86,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 	},
 	ProfileAdmin: {
 		"system_status",
-		"read_file", "write_file", "list_dir", "edit_file", "append_file",
+		"read_file", "write_file", "list_dir", "edit_file", "append_file", "delete_file", "move_file",
 		"search_files", "grep_search",
 		"exec", "sandbox",
 		"web_search", "web_fetch",
@@ -217,6 +217,10 @@ func FilterRegistryByProfile(registry *ToolRegistry, profile ToolProfile) *ToolR
 var coreToolNames = map[string]bool{
 	"exec": true, "read_file": true, "write_file": true, "append_file": true,
 	"list_dir": true, "edit_file": true,
+	// Tidying its own workspace (deleting and moving files) is a basic ability,
+	// like writing one. Deleting still asks the owner every time it is not
+	// already allowed.
+	"delete_file": true, "move_file": true,
 	"web_search": true, "web_fetch": true, "session_search": true,
 	"remember": true, "context_get": true, "memory_curate": true,
 	"memory_recall": true,

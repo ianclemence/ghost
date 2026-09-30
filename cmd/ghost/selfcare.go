@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -118,26 +119,46 @@ func announceNewRelease(al *agent.AgentLoop) {
 	if !appliance.IsNewer(rel.Version, installed) {
 		return
 	}
-	first := firstNoteLine(rel.Notes)
-	text := fmt.Sprintf("Ghost %s is out (you have %s).", rel.Version, installed)
-	if first != "" {
-		text += " " + first
+	text := fmt.Sprintf("A new version of Ghost is out: %s (you're on %s).", rel.Version, installed)
+	if first := firstNoteLine(rel.Notes); first != "" {
+		text += " What's new: " + first
 	}
-	text += " Update from Your Pod in the app, or run `ghost update`."
+	text += "\n\nTo update, open **Your Pod** in the app, or run `ghost update` on the Pod."
 	al.Announce("update:"+rel.Version, text, 30*24*time.Hour, false)
 }
 
-// firstNoteLine takes the first sentence-sized piece of release notes.
+// noteHeadlineRE finds a bold headline: the sentence a release note leads with.
+var noteHeadlineRE = regexp.MustCompile(`\*\*([^*]{8,160}?)\*\*`)
+
+// firstNoteLine is the headline of the newest thing in the release notes: the
+// bold lead of the first bullet ("Backups now back up the right Ghost, and can
+// be restored."), or, for notes without one, the first plain sentence. It is
+// always a whole sentence, never a fragment cut at a length limit.
 func firstNoteLine(notes string) string {
-	for _, ln := range strings.Split(plainNotes(notes), "\n") {
+	if m := noteHeadlineRE.FindStringSubmatch(notes); m != nil {
+		return wholeSentence(m[1])
+	}
+	for _, ln := range strings.Split(notes, "\n") {
 		ln = strings.TrimSpace(strings.TrimLeft(ln, "-*# "))
+		ln = strings.NewReplacer("**", "", "`", "").Replace(ln)
 		if ln == "" || strings.HasPrefix(strings.ToLower(ln), "release") {
 			continue
 		}
-		if r := []rune(ln); len(r) > 160 {
-			ln = string(r[:160]) + "…"
+		if i := strings.IndexAny(ln, ".!?"); i > 0 {
+			ln = ln[:i+1]
 		}
-		return ln
+		if r := []rune(ln); len(r) <= 200 {
+			return wholeSentence(ln)
+		}
 	}
 	return ""
+}
+
+// wholeSentence ends a headline with a full stop.
+func wholeSentence(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.HasSuffix(s, ".") || strings.HasSuffix(s, "!") || strings.HasSuffix(s, "?") {
+		return s
+	}
+	return s + "."
 }

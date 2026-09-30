@@ -90,6 +90,11 @@ type Message struct {
 	// notes where a turn originated. Empty for messages Ghost produced
 	// without an external surface.
 	SourceChannel string `json:"source_channel,omitempty"`
+	// Kind marks a message Ghost started itself rather than wrote in reply:
+	// "reminder" (something you asked to be told), "notice" (something Ghost
+	// thought you should know) or "alert" (something that needs you). Empty for
+	// ordinary conversation. Surfaces use it to set these apart.
+	Kind string `json:"kind,omitempty"`
 	// CreatedAt is when the message was persisted (zero when unknown).
 	// Context building date-stamps loaded history with it so the model
 	// can tell when "today"/"tomorrow" was actually said — a bare

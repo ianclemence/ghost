@@ -1090,7 +1090,7 @@ func agentGatewayCmd(gw *gatewayRuntime, message, sessionKey string) {
 			case "user":
 				preload = append(preload, entry{kind: entryUser, text: h.Content, at: at})
 			case "assistant":
-				preload = append(preload, entry{kind: entryAssistant, text: h.Content, at: at})
+				preload = append(preload, entry{kind: entryAssistant, text: h.Content, at: at, tag: h.Kind})
 			}
 		}
 	} else {
@@ -1141,6 +1141,17 @@ func interactiveMode(runtime agentRuntime, sessionKey, debugLog string, preload 
 	// the terminal's native scrolling reaches every previous message.
 	agentProgram = tea.NewProgram(m)
 	defer func() { agentProgram = nil }()
+	// Reminders, notices and alerts appear the moment they happen, not at the
+	// next launch. Only a terminal talking to the daemon has a live channel.
+	feedCtx, stopFeed := context.WithCancel(context.Background())
+	defer stopFeed()
+	if gw, ok := runtime.(*gatewayRuntime); ok {
+		gw.startLiveFeed(feedCtx, func(msg ghostSaysMsg) {
+			if p := agentProgram; p != nil {
+				p.Send(msg)
+			}
+		})
+	}
 	_, runErr := agentProgram.Run()
 	restoreStderr()
 	if runErr != nil {
@@ -2134,17 +2145,15 @@ func resetPasswordCmd() {
 		return
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("New admin password: ")
-	pw1, err := reader.ReadString('\n')
+	// Typed on a terminal the password is not echoed; piped in, it is read as
+	// a line, so scripted resets still work.
+	pw1, err := readPassphrase("New admin password: ", false)
 	if err != nil {
 		fmt.Printf("Failed to read password: %v\n", err)
 		os.Exit(1)
 	}
 	pw1 = strings.TrimSpace(pw1)
-
-	fmt.Print("Confirm new admin password: ")
-	pw2, err := reader.ReadString('\n')
+	pw2, err := readPassphrase("Confirm new admin password: ", false)
 	if err != nil {
 		fmt.Printf("Failed to read password: %v\n", err)
 		os.Exit(1)

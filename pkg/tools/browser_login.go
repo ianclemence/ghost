@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -43,6 +44,14 @@ func (t *BrowserTool) executeLogin(ctx context.Context, args map[string]interfac
 	}
 	name := loginProfileName(login.Host)
 
+	// The saved address is often a site's front page. Find the sign-in form
+	// first, and stop early and honestly if the page asks for a human check.
+	if found, blocked := t.findLoginPage(ctx, pageURL); blocked != "" {
+		return ErrorResult(blocked)
+	} else if found != "" {
+		pageURL = found
+	}
+
 	saveArgs := []string{"auth", "save", name, "--url", pageURL, "--username", login.Username, "--password-stdin"}
 	saveArgs = appendSelector(saveArgs, "--username-selector", sarg(args, "username_selector"), login.UsernameSelector)
 	saveArgs = appendSelector(saveArgs, "--password-selector", sarg(args, "password_selector"), login.PasswordSelector)
@@ -52,7 +61,9 @@ func (t *BrowserTool) executeLogin(ctx context.Context, args map[string]interfac
 	saveCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	if out, err := browserCLIRun(saveCtx, browserEnvironment(t.sessionProfile), login.Password, saveArgs...); err != nil {
-		return ErrorResult("Couldn't save the login for " + login.Host + ": " + scrubSecret(string(out), login))
+		// This is a fault on Ghost's side, not a missing login: say so, so it is
+		// never reported to the owner as "no saved login".
+		return ErrorResult("The login for " + login.Host + " IS saved, but the browser could not use it: " + scrubSecret(string(out), login) + " Do not tell the owner the login is missing.")
 	}
 
 	loginCtx, cancel2 := context.WithTimeout(ctx, 60*time.Second)
@@ -62,6 +73,58 @@ func (t *BrowserTool) executeLogin(ctx context.Context, args map[string]interfac
 			" The saved login is still there; the page may need a selector override in Ghost settings.")
 	}
 	return NewToolResult("Signed in to " + login.Host + ".")
+}
+
+var (
+	passwordFieldRe = regexp.MustCompile(`(?i)textbox "[^"]*pass(word)?[^"]*"`)
+	humanCheckRe    = regexp.MustCompile(`(?i)(security challenge|verify you are human|captcha|are you a robot|i'm not a robot)`)
+	loginLinkRe     = regexp.MustCompile(`(?i)link "(log ?in|sign ?in)"[^\n]*ref=(e[0-9]+)`)
+)
+
+// findLoginPage opens the saved address and returns the address that holds the
+// sign-in form: the page itself when it has a password field, otherwise the
+// page behind its "Log in" link. If the sign-in page asks for a human check
+// (a CAPTCHA or Cloudflare's "Verify you are human"), it returns an owner-facing
+// message instead: Ghost does not fill a form it cannot finish, and says who
+// has to do the next step. Best effort: on any browser error it returns
+// nothing and the normal sign-in path runs.
+func (t *BrowserTool) findLoginPage(ctx context.Context, pageURL string) (found, blocked string) {
+	env := browserEnvironment(t.sessionProfile)
+	c, cancel := context.WithTimeout(ctx, 40*time.Second)
+	defer cancel()
+	if _, err := browserCLIRun(c, env, "", "open", pageURL); err != nil {
+		return "", ""
+	}
+	snap := func() string {
+		out, err := browserCLIRun(c, env, "", "snapshot", "-i")
+		if err != nil {
+			return ""
+		}
+		return string(out)
+	}
+	s := snap()
+	if !passwordFieldRe.MatchString(s) {
+		if m := loginLinkRe.FindStringSubmatch(s); m != nil {
+			if _, err := browserCLIRun(c, env, "", "click", "@"+m[2]); err == nil {
+				time.Sleep(2 * time.Second)
+				s = snap()
+			}
+		}
+	}
+	if !passwordFieldRe.MatchString(s) {
+		return "", ""
+	}
+	if humanCheckRe.MatchString(s) {
+		return "", "That sign-in page asks for a human check (a CAPTCHA or Cloudflare's \"Verify you are human\"). " +
+			"I can't complete that step, so I haven't typed anything into the form. Tell the owner plainly: " +
+			"they can sign in themselves, or if it is their own site, allow Ghost past the check."
+	}
+	if out, err := browserCLIRun(c, env, "", "get", "url"); err == nil {
+		if u := strings.TrimSpace(string(out)); strings.HasPrefix(u, "http") {
+			return u, ""
+		}
+	}
+	return "", ""
 }
 
 func appendSelector(args []string, flag, arg, fallback string) []string {
@@ -75,12 +138,18 @@ func appendSelector(args []string, flag, arg, fallback string) []string {
 	return append(args, flag, v)
 }
 
-// loginProfileName keeps the CLI profile name filesystem- and argv-safe.
+// loginProfileName keeps the CLI profile name filesystem- and argv-safe. The
+// browser CLI accepts only letters, digits, hyphen and underscore, so the dots
+// in a host become hyphens ("nairobiunwind.com" -> "nairobiunwind-com"); with a
+// dot in the name, saving the profile failed and no site login could work.
 func loginProfileName(host string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(host) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_':
 			b.WriteRune(r)
+		case r == '.':
+			b.WriteRune('-')
 		}
 	}
 	if b.Len() == 0 {
