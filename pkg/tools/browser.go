@@ -9,7 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/browser"
@@ -433,6 +436,17 @@ func browserEnvironment(profileDir ...string) []string {
 			env = append(env, browser.ExecutableEnv+"="+exe)
 		}
 	}
+	// Present as an ordinary Chrome. A headless browser announces itself as
+	// "HeadlessChrome" and sets navigator.webdriver, and the big retailers
+	// answer that with an error page instead of results, so "search Amazon"
+	// could never work. This is the owner's own browser doing the owner's own
+	// errand; an operator-set value is never overridden.
+	if os.Getenv("AGENT_BROWSER_USER_AGENT") == "" {
+		env = append(env, "AGENT_BROWSER_USER_AGENT="+browserUserAgent())
+	}
+	if os.Getenv("AGENT_BROWSER_ARGS") == "" {
+		env = append(env, "AGENT_BROWSER_ARGS=--disable-blink-features=AutomationControlled")
+	}
 	// Persistent, context-isolated profile: cookies and logins survive a
 	// restart. An operator-set value always wins.
 	if len(profileDir) > 0 && strings.TrimSpace(profileDir[0]) != "" && os.Getenv(browser.ProfileEnv) == "" {
@@ -440,6 +454,37 @@ func browserEnvironment(profileDir ...string) []string {
 	}
 	return env
 }
+
+var (
+	uaOnce sync.Once
+	uaText string
+)
+
+// browserUserAgent is a normal Chrome user agent for this machine, using the
+// installed browser's own major version so the string is truthful about what
+// is actually running.
+func browserUserAgent() string {
+	uaOnce.Do(func() {
+		platform := "X11; Linux x86_64"
+		if runtime.GOARCH == "arm64" {
+			platform = "X11; Linux aarch64"
+		}
+		major := "146"
+		if exe := browser.DiscoverExecutable(nil); exe != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			if out, err := exec.CommandContext(ctx, exe, "--version").Output(); err == nil {
+				if m := chromeMajorRe.FindStringSubmatch(string(out)); m != nil {
+					major = m[1]
+				}
+			}
+		}
+		uaText = fmt.Sprintf("Mozilla/5.0 (%s) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s.0.0.0 Safari/537.36", platform, major)
+	})
+	return uaText
+}
+
+var chromeMajorRe = regexp.MustCompile(`(\d+)\.\d+\.\d+\.\d+`)
 
 // browserStateRoot is where the browser may keep its sockets and state when
 // the user's home directory can't be written.

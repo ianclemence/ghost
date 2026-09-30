@@ -161,3 +161,41 @@ func TestBrowserKeepsAWorkingHome(t *testing.T) {
 		}
 	}
 }
+
+func TestBrowserPresentsAsOrdinaryChrome(t *testing.T) {
+	t.Setenv("AGENT_BROWSER_USER_AGENT", "")
+	t.Setenv("AGENT_BROWSER_ARGS", "")
+	env := browserEnvironment()
+	var ua, args string
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "AGENT_BROWSER_USER_AGENT=") {
+			ua = strings.TrimPrefix(kv, "AGENT_BROWSER_USER_AGENT=")
+		}
+		if strings.HasPrefix(kv, "AGENT_BROWSER_ARGS=") {
+			args = strings.TrimPrefix(kv, "AGENT_BROWSER_ARGS=")
+		}
+	}
+	if !strings.Contains(ua, "Chrome/") || strings.Contains(ua, "Headless") {
+		t.Fatalf("user agent must be an ordinary Chrome, got %q", ua)
+	}
+	if !strings.Contains(args, "AutomationControlled") {
+		t.Fatalf("automation flag must be off by default, got %q", args)
+	}
+}
+
+func TestBrowserLeavesOperatorIdentityAlone(t *testing.T) {
+	t.Setenv("AGENT_BROWSER_USER_AGENT", "custom-agent/1")
+	t.Setenv("AGENT_BROWSER_ARGS", "--my-flag")
+	n := 0
+	for _, kv := range browserEnvironment() {
+		if strings.HasPrefix(kv, "AGENT_BROWSER_USER_AGENT=") && kv != "AGENT_BROWSER_USER_AGENT=custom-agent/1" {
+			t.Fatal("an operator-set user agent must never be overridden")
+		}
+		if strings.HasPrefix(kv, "AGENT_BROWSER_USER_AGENT=") || strings.HasPrefix(kv, "AGENT_BROWSER_ARGS=") {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Fatalf("operator values must appear exactly once, saw %d entries", n)
+	}
+}

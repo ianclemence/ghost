@@ -3,6 +3,12 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.83] - 2026-09-30
+
+- **Shops let Ghost in.** Ghost's browser announced itself as a headless robot,
+  and Amazon answered with an error page instead of results. It now presents
+  as an ordinary Chrome, so searching and reading a shop's results works.
+
 ## [0.24.82] - 2026-09-30
 
 - **The browser works.** Every browser action was dying instantly because
