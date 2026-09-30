@@ -75,6 +75,8 @@ func Save(workspace string, data []byte, name, hintMIME, source string) (Item, e
 		os.RemoveAll(dir)
 		return Item{}, err
 	}
+	matchOwner(workspace, filepath.Join(dir, "meta.json"))
+	matchOwner(workspace, filepath.Join(dir, safe))
 	return it, nil
 }
 
