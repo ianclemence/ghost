@@ -3,6 +3,20 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.82] - 2026-09-30
+
+- **The browser works.** Every browser action was dying instantly because
+  Ghost's service had no writable place for the browser to keep its files.
+  Ghost can now open pages, read them, fill forms and click.
+- **Ask for things the way you would say them.** "Search Amazon for a keyboard"
+  used to get "I can't browse Amazon": Ghost only reached for the browser when a
+  message contained a web address or the word "website". It now also does for
+  well-known shops and sites and for shopping, booking and logging in.
+- **It answers the whole question.** A message with two asks ("disk space and
+  uptime, run the commands") got only the first half from a built-in shortcut.
+  Compound or work-requesting messages now go to Ghost itself, and the quick
+  health answer says how long the machine has been up.
+
 ## [0.24.81] - 2026-09-30
 
 - **Lists and paragraphs stay apart.** When the model sent a line break as a

@@ -236,3 +236,23 @@ func TestUnwiredStoresFallThrough(t *testing.T) {
 		t.Fatal("reminders must not be answered when the scheduler is unwired")
 	}
 }
+
+// A message that asks for more than one plain question must reach the model:
+// the fast path answered only the disk half of "disk space and uptime, run the
+// commands" and dropped the rest.
+func TestStateFastPathLeavesCompoundAsksToTheModel(t *testing.T) {
+	for _, q := range []string{
+		"how much free disk space do I have and how long has this machine been up? run the commands and tell me",
+		"what's my disk usage, then restart the service",
+		"show me system status and also update ghost",
+	} {
+		if simpleStateQuestion(strings.ToLower(q)) {
+			t.Errorf("%q asks for more than one thing; it must not take the fast path", q)
+		}
+	}
+	for _, q := range []string{"how much disk space is left?", "are you ok?", "what's waiting for approval"} {
+		if !simpleStateQuestion(strings.ToLower(q)) {
+			t.Errorf("%q is one plain question; it should stay on the fast path", q)
+		}
+	}
+}

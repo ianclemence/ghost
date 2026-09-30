@@ -2,8 +2,10 @@ package agent
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -107,11 +109,28 @@ var (
 		`)\b`)
 )
 
+// compoundAskRE marks a message that asks for more than one thing or asks for
+// work to be done, so the state fast path must not swallow it.
+var compoundAskRE = regexp.MustCompile(`(?i)\b(and|then|also|plus|afterwards?|run|execute|command|commands|script|uptime)\b`)
+
+// simpleStateQuestion reports whether a message is one short, plain question.
+func simpleStateQuestion(lower string) bool {
+	return len(strings.Fields(lower)) <= 14 &&
+		strings.Count(lower, "?") <= 1 &&
+		!compoundAskRE.MatchString(lower)
+}
+
 // tryStateQueryTurn answers questions whose answer is already authoritative
 // runtime state. Zero model calls, zero embeddings.
 func (al *AgentLoop) tryStateQueryTurn(msg, session string) (string, bool) {
 	lower := strings.ToLower(strings.TrimSpace(msg))
 	if lower == "" {
+		return "", false
+	}
+	// The fast path answers one plain question from runtime state. A message
+	// that asks for more (a second question, "run the commands", "and then…")
+	// would get only its first half answered, so it goes to the model.
+	if !simpleStateQuestion(lower) {
 		return "", false
 	}
 	switch {
@@ -333,12 +352,51 @@ func (al *AgentLoop) renderHealth() (string, bool) {
 		path = "."
 	}
 	snap := hardware.Snapshot(path)
-	parts := []string{fmt.Sprintf("I'm %s on memory and %s on storage", snap.Memory, snap.Storage)}
-	parts = append(parts, fmt.Sprintf("%d MB RAM available of %d MB", snap.MemAvailableMB, snap.MemTotalMB))
-	if snap.DiskTotalGB > 0 {
-		parts = append(parts, fmt.Sprintf("%d GB disk free of %d GB", snap.DiskFreeGB, snap.DiskTotalGB))
+	head := fmt.Sprintf("Memory is %s and storage is %s", snap.Memory, snap.Storage)
+	if snap.Memory == snap.Storage {
+		head = fmt.Sprintf("Memory and storage are both %s", snap.Memory)
 	}
-	return strings.Join(parts, " — ") + ".", true
+	parts := []string{head + fmt.Sprintf(": %d MB of %d MB RAM available", snap.MemAvailableMB, snap.MemTotalMB)}
+	if snap.DiskTotalGB > 0 {
+		parts = append(parts, fmt.Sprintf("%d GB of %d GB disk free", snap.DiskFreeGB, snap.DiskTotalGB))
+	}
+	if up := uptimeText(); up != "" {
+		parts = append(parts, "up "+up)
+	}
+	return strings.Join(parts, ", ") + ".", true
+}
+
+// uptimeText reads how long this machine has been running, in plain words
+// ("3 days, 4 hours"), or "" where the system doesn't say.
+func uptimeText() string {
+	b, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return ""
+	}
+	f := strings.Fields(string(b))
+	if len(f) == 0 {
+		return ""
+	}
+	secs, err := strconv.ParseFloat(f[0], 64)
+	if err != nil || secs < 0 {
+		return ""
+	}
+	d := time.Duration(secs) * time.Second
+	days, hours, mins := int(d.Hours())/24, int(d.Hours())%24, int(d.Minutes())%60
+	switch {
+	case days > 0:
+		return fmt.Sprintf("%d day%s, %d hour%s", days, plural(days), hours, plural(hours))
+	case hours > 0:
+		return fmt.Sprintf("%d hour%s, %d minute%s", hours, plural(hours), mins, plural(mins))
+	}
+	return fmt.Sprintf("%d minute%s", mins, plural(mins))
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // renderModelState reports the active model and mode from live configuration.

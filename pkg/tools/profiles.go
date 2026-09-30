@@ -267,6 +267,15 @@ var turnIntentTools = []struct {
 	// Submit stays checkout-keyword-gated, upload its own entry (file
 	// egress visibility is deliberate), everything else rides the base
 	// set — which bare web addresses also unlock (see webAddressPattern).
+	// Well-known sites and the verbs of doing things on the web. "Search Amazon
+	// for a keyboard" names no address and none of the words below, so the
+	// model was never handed a browser and told the owner it could not browse.
+	{[]string{"amazon", "ebay", "etsy", "walmart", "aliexpress", "lazada", "shopee", "best buy", "bestbuy",
+		"youtube", "reddit", "wikipedia", "linkedin", "airbnb", "google flights", "google maps", "google shopping",
+		"shop for", "shopping", "add to cart", "add to my cart", "to my cart", "compare prices", "price check",
+		"search online", "look up online", "look it up online", "find online", "on the web",
+		"log in to", "login to", "sign in to", "sign up for", "book a ", "reserve a "},
+		browserIntentToolNames()},
 	{[]string{"browser", "website", "web site", "open page", "open url", "open a page",
 		"webpage", "web page", "navigate to", "fill in", "fill out", "form",
 		"site", "visit", "landing page", "scroll", "click on", "dropdown",

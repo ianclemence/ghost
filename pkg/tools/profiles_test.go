@@ -123,3 +123,37 @@ func TestRegistryAllowedFor(t *testing.T) {
 		t.Error("session policy must be honored")
 	}
 }
+
+// "Search Amazon for a keyboard" names no address and none of the old browser
+// words; Ghost must still be handed a browser, or it tells the owner it can't
+// browse. High-impact submit stays behind explicit checkout language.
+func TestBrowserIsOfferedForNamedSitesAndShopping(t *testing.T) {
+	reg := NewToolRegistry()
+	for _, n := range append(browserMobileToolNames(), "browser_submit", "weather_now") {
+		reg.Register(testTool{name: n})
+	}
+	offered := func(msg, tool string) bool {
+		_, ok := FilterToolsForTurn(reg, ProfileFull, msg, false).Get(tool)
+		return ok
+	}
+	for _, msg := range []string{
+		"I want to buy a mechanical keyboard on amazon. search amazon for one under $100",
+		"find me a cheap flight on google flights",
+		"can you shop for running shoes",
+		"check the price on ebay",
+		"log in to my bank and tell me the balance",
+	} {
+		if !offered(msg, "browser_navigate") || !offered(msg, "browser_click") {
+			t.Errorf("%q must be offered the browser", msg)
+		}
+		if offered(msg, "browser_submit") {
+			t.Errorf("%q must NOT expose purchase-class submit without checkout language", msg)
+		}
+	}
+	if !offered("place order for the keyboard on amazon", "browser_submit") {
+		t.Error("explicit checkout language should expose submit (the broker still gates it)")
+	}
+	if offered("what is the weather like", "browser_navigate") {
+		t.Error("an unrelated question must not be handed a browser")
+	}
+}

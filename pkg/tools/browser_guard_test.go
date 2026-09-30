@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"database/sql"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -119,5 +121,43 @@ func TestBrowserLegacyPathUnchanged(t *testing.T) {
 	}
 	if res.ForLLM != raw {
 		t.Fatal("legacy path must not alter output")
+	}
+}
+
+// The service runs with the home directory sealed and the disk read-only; the
+// browser child must be handed somewhere writable or every action dies in
+// milliseconds ("Failed to create socket directory: Read-only file system").
+func TestBrowserGetsAWritableHomeWhenTheDefaultIsSealed(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("GHOST_DIR", state)
+	sealed := t.TempDir()
+	if err := os.Chmod(sealed, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(sealed, 0o700) })
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions; the sandbox case is exercised on the Pod")
+	}
+	env := withWritableBrowserHome([]string{"HOME=" + sealed, "PATH=/usr/bin"})
+	got := map[string]string{}
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		got[k] = v
+	}
+	if got["HOME"] != filepath.Join(state, "browser-home") || got["XDG_RUNTIME_DIR"] != filepath.Join(state, "browser-home", "run") {
+		t.Fatalf("sealed HOME must be replaced with the state dir, got %v", got)
+	}
+	if got["PATH"] != "/usr/bin" {
+		t.Fatal("other variables must be left alone")
+	}
+}
+
+func TestBrowserKeepsAWorkingHome(t *testing.T) {
+	home, run := t.TempDir(), t.TempDir()
+	env := withWritableBrowserHome([]string{"HOME=" + home, "XDG_RUNTIME_DIR=" + run})
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "HOME=") && kv != "HOME="+home {
+			t.Fatalf("a working HOME must never be overridden: %v", env)
+		}
 	}
 }
