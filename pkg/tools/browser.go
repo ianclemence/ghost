@@ -1768,8 +1768,8 @@ func (t *BrowserTool) screenshotBare(ctx context.Context) *ToolResult {
 		return ErrorResult("Screenshot capture failed (the page may not be capturable right now). Read page state with browser_find or browser_snapshot instead.")
 	}
 	return &ToolResult{
-		ForLLM:         "Screenshot captured: " + path + " — attached as an image to this turn when the model supports vision; otherwise use browser_find.",
-		ForUser:        "Screenshot saved: " + path,
+		ForLLM:         "Screenshot captured. It is attached to this turn as an image when the model supports vision, and it has been delivered to the owner (an image card in the app, and in their Files). Describe what it shows; do not mention file names or paths. If you cannot see the image, use browser_find or browser_snapshot.",
+		ForUser:        "Screenshot captured.",
 		ScreenshotPath: path,
 	}
 }

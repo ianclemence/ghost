@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -46,5 +48,21 @@ func TestAudioAndUnknownFilesAreNotClaimedReadable(t *testing.T) {
 	}
 	if tag := cb.attachmentTag("/x/blob.xyz", []byte{0, 1, 2, 3, 4, 5, 6, 7}); !strings.Contains(tag, "no tool") {
 		t.Fatalf("unknown files must be declared unreadable, got %q", tag)
+	}
+}
+
+// A screenshot the owner asked for is kept with their files and never leaks an
+// internal path into what the model says.
+func TestScreenshotIsDeliveredToTheOwner(t *testing.T) {
+	ws := t.TempDir()
+	al := newTestAgentLoop(t, ws)
+	png := filepath.Join(t.TempDir(), "shot.png")
+	os.WriteFile(png, []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"), 0o600)
+
+	al.deliverScreenshot("main", png)
+
+	got := uploads.List(ws)
+	if len(got) != 1 || got[0].Kind != "image" || got[0].Source != "browser" {
+		t.Fatalf("the screenshot must be stored as an image upload, got %+v", got)
 	}
 }

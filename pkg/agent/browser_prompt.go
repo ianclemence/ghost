@@ -14,10 +14,12 @@ import (
 	"encoding/base64"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/uploads"
 )
 
 // registryHasBrowserTool reports whether the active tool set exposes
@@ -87,4 +89,29 @@ func screenshotImageMessage(path string) (providers.Message, bool) {
 			}},
 		},
 	}, true
+}
+
+// deliverScreenshot stores an explicit browser screenshot with the owner's
+// files and publishes it as an image card in the conversation. Best effort: a
+// failure here never fails the turn, because the model still has the image.
+func (al *AgentLoop) deliverScreenshot(sessionKey, path string) {
+	if al == nil || al.tools == nil || al.workspace == "" {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return
+	}
+	name := "browser-" + time.Now().Format("20060102-150405") + ".png"
+	it, err := uploads.Save(al.workspace, data, name, "image/png", "browser")
+	if err != nil {
+		return
+	}
+	t, ok := al.tools.Get("publish_artifact")
+	if !ok {
+		return
+	}
+	if pt, ok := t.(*tools.PublishArtifactTool); ok {
+		_ = pt.PublishFile(sessionKey, "Browser screenshot", "What Ghost's browser was showing at "+time.Now().Format("15:04"), it.Path)
+	}
 }

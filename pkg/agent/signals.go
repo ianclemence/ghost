@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/cevents"
 	"strings"
 	"time"
 
@@ -477,4 +478,14 @@ func truncateReason(s string, max int) string {
 		return s
 	}
 	return s[:max] + "…"
+}
+
+// CanonicalEvents exposes the durable event stream so a surface (the phone
+// push bridge) can react to what Ghost does, such as an approval being requested.
+// Nil when governance isn't wired.
+func (al *AgentLoop) CanonicalEvents() *cevents.Stream {
+	if al == nil || al.governance == nil {
+		return nil
+	}
+	return al.governance.Events
 }

@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.84] - 2026-09-30
+
+- **Ghost can reach your phone when the app is closed.** Reminders, questions,
+  approvals and finished tasks now arrive as push notifications, worded the same
+  fixed way every time and never carrying what was said. They wait for quiet
+  hours if it is only an update, and never double up while the app is open.
+- **Screenshots come back to you.** Ask Ghost for a screenshot of the browser and
+  it appears as an image in the conversation and in Files, instead of a file name
+  you could not open.
+
 ## [0.24.83] - 2026-09-30
 
 - **Shops let Ghost in.** Ghost's browser announced itself as a headless robot,

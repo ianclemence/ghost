@@ -3538,6 +3538,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				if imgMsg, ok := screenshotImageMessage(toolResult.ScreenshotPath); ok {
 					messages = append(messages, imgMsg)
 				}
+				// The owner asked to see the page: put the image in front of
+				// them, not just in front of the model.
+				al.deliverScreenshot(opts.SessionKey, toolResult.ScreenshotPath)
 			}
 
 			// Record tool usage for curator

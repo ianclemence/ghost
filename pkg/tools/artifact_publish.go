@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ianclemence/ghost/pkg/artifacts"
 )
@@ -20,6 +21,17 @@ type PublishArtifactTool struct {
 // store refuses every call (fail-closed for unwired loops).
 func NewPublishArtifactTool(store *artifacts.Store, workspace string) *PublishArtifactTool {
 	return &PublishArtifactTool{store: store, workspace: workspace}
+}
+
+// PublishFile publishes an existing workspace file as a handoff on behalf of the
+// runtime itself (a browser screenshot the owner asked for), with the same
+// validation a model proposal gets.
+func (t *PublishArtifactTool) PublishFile(sessionKey, title, summary, relPath string) error {
+	if t == nil || t.store == nil {
+		return fmt.Errorf("artifact store unavailable")
+	}
+	_, err := t.store.Publish(artifacts.Input{SessionKey: sessionKey, Kind: "file", Title: title, Summary: summary, Path: relPath})
+	return err
 }
 
 func (t *PublishArtifactTool) Name() string {
