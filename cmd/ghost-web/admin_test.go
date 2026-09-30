@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/providers"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -603,5 +604,64 @@ func TestGatewayProxyDropsBrowserContext(t *testing.T) {
 		if proxyDropsHeader(h) {
 			t.Errorf("%s must be forwarded", h)
 		}
+	}
+}
+
+// A refused first-run claim must leave nothing behind: no admin password, so
+// the owner's corrected retry is a fresh claim, not an unauthenticated re-run.
+func TestConfigureRefusalLeavesRetryPossible(t *testing.T) {
+	oldFb := fb
+	dir := t.TempDir()
+	fb = &appliance.SetupState{
+		GhostDir: dir, ConfigDir: dir + "/config", DataDir: dir + "/data",
+		Workspace: dir + "/workspace", ConfigPath: dir + "/config/config.json", EnvPath: dir + "/.env",
+	}
+	t.Cleanup(func() { fb = oldFb })
+	code, err := fb.RotateSetupCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func(body string) map[string]interface{} {
+		rec := httptest.NewRecorder()
+		handleConfigure(rec, httptest.NewRequest(http.MethodPost, "/api/configure", strings.NewReader(body)))
+		var j map[string]interface{}
+		json.NewDecoder(rec.Body).Decode(&j)
+		return j
+	}
+	// Default (keyless cloud) provider: refused.
+	if j := post(fmt.Sprintf(`{"admin_password":"fresh-setup-test-4","setup_code":%q}`, code)); j["ok"] != false {
+		t.Fatalf("keyless claim must be refused, got %v", j)
+	}
+	if appliance.AdminConfigured(dir) {
+		t.Fatal("a refused claim must not leave an admin password behind")
+	}
+	// Retry with a working choice succeeds.
+	if j := post(fmt.Sprintf(`{"admin_password":"fresh-setup-test-4","setup_code":%q,"provider":"ollama"}`, code)); j["ok"] != true {
+		t.Fatalf("the retry must be a clean claim, got %v", j)
+	}
+}
+
+// The provider and key travel with the claim, and a provider chosen without a
+// model gets its own recommended model rather than the previous default's.
+func TestConfigureSavesChosenProviderAndKey(t *testing.T) {
+	oldFb := fb
+	dir := t.TempDir()
+	fb = &appliance.SetupState{
+		GhostDir: dir, ConfigDir: dir + "/config", DataDir: dir + "/data",
+		Workspace: dir + "/workspace", ConfigPath: dir + "/config/config.json", EnvPath: dir + "/.env",
+	}
+	t.Cleanup(func() { fb = oldFb })
+	if err := generateConfig("", "anthropic", "", "sk-ant-test-key-123456"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.LoadConfig(fb.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agents.Defaults.Provider != "anthropic" || cfg.Agents.Defaults.Model != providers.KnownProviderModels["anthropic"][0] {
+		t.Fatalf("provider/model = %s/%s", cfg.Agents.Defaults.Provider, cfg.Agents.Defaults.Model)
+	}
+	if cfg.Providers.Anthropic.APIKey != "sk-ant-test-key-123456" {
+		t.Fatal("the chosen provider's key must be saved with the claim")
 	}
 }

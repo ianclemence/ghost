@@ -423,12 +423,12 @@ func TestTUIApprovalKeys(t *testing.T) {
 	if m.approval == nil {
 		t.Fatalf("a non-choice key must not resolve the approval")
 	}
-	m.handleKey(keyMsgFor('3'))
+	m.handleKey(keyMsgFor('4'))
 	if m.approval != nil {
-		t.Errorf("key 3 must resolve (deny)")
+		t.Errorf("key 4 must resolve (deny)")
 	}
 	if !waitForTurns(f, 1) || f.turns[0] != "deny" {
-		t.Fatalf("key 3 should send deny, got %v", f.turns)
+		t.Fatalf("key 4 should send deny, got %v", f.turns)
 	}
 }
 
@@ -1157,12 +1157,12 @@ func TestTUIApprovalEnterConfirmsSelection(t *testing.T) {
 	f := newFakeRuntime()
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
-	m.handleKey(keyMsgFor('l')) // → always allow
+	m.handleKey(keyMsgFor('l')) // → allow for 1 hour
 	if m.approvalSel != 1 {
 		t.Fatalf("right should move to index 1, got %d", m.approvalSel)
 	}
 	m.handleKey(keyCodeFor(tea.KeyEnter))
-	if !waitForTurns(f, 1) || f.turns[0] != "always allow" {
+	if !waitForTurns(f, 1) || f.turns[0] != "allow for 1 hour" {
 		t.Fatalf("enter should confirm the selection, got %v", f.turns)
 	}
 }
@@ -2014,12 +2014,17 @@ func TestTUIApprovalArrowKeys(t *testing.T) {
 		t.Fatalf("down must move to 2, got %d", m.approvalSel)
 	}
 	arrow(tea.KeyDown)
-	if m.approvalSel != 2 {
-		t.Fatalf("down must clamp at 2, got %d", m.approvalSel)
+	if m.approvalSel != 3 {
+		t.Fatalf("down must move to 3, got %d", m.approvalSel)
+	}
+	arrow(tea.KeyDown)
+	if m.approvalSel != 3 {
+		t.Fatalf("down must clamp at 3, got %d", m.approvalSel)
 	}
 	arrow(tea.KeyUp)
+	arrow(tea.KeyUp)
 	if m.approvalSel != 1 {
-		t.Fatalf("up must move to 1, got %d", m.approvalSel)
+		t.Fatalf("up must move back to 1, got %d", m.approvalSel)
 	}
 	m.handleKey(keyMsgFor('k'))
 	if m.approvalSel != 0 {

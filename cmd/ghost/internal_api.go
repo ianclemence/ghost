@@ -3748,12 +3748,14 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		switch req.Grant {
 		case "allow_once":
 			grant = permissions.GrantOnce
+		case "allow_task":
+			grant = permissions.GrantTask
 		case "allow_always", "always_allow":
 			grant = permissions.GrantAlways
 		case "deny":
 			grant = permissions.GrantDeny
 		default:
-			jsonError(w, http.StatusBadRequest, "invalid_request", "grant must be allow_once, allow_always, or deny")
+			jsonError(w, http.StatusBadRequest, "invalid_request", "grant must be allow_once, allow_task, allow_always, or deny")
 			return
 		}
 		b, err := permBroker()

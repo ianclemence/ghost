@@ -225,8 +225,8 @@ func TestApprovalCardShape(t *testing.T) {
 	if card.Title != "Add calendar event?" {
 		t.Fatalf("card title wrong: %q", card.Title)
 	}
-	if len(card.Actions) != 3 {
-		t.Fatal("card must offer allow-once/always/deny")
+	if len(card.Actions) != 4 {
+		t.Fatal("card must offer allow-once/for-an-hour/always/deny")
 	}
 	raw := strings.ToLower(card.Title + card.Description)
 	for _, banned := range []string{"api_key", "exec", "schema", "sk-", "/var/", "provider", "reasoning"} {
@@ -462,5 +462,35 @@ func TestRevokedGrantStopsAllow(t *testing.T) {
 	}
 	if b.Evaluate("hass.control", "turn_on", "home", RiskConsequential) == VerdictAllow {
 		t.Fatal("revoked grant must not allow")
+	}
+}
+
+// "Allow for 1 hour" is a real grant that lapses, and it never weakens a
+// standing grant that already covers the action.
+func TestTaskGrantLapsesAndNeverDowngrades(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	now := time.Now()
+	b.nowFunc = func() time.Time { return now }
+	req, _ := b.Require("r-task", "s", "a", "email", "send", "owner", "Send?", RiskConsequential, nil)
+	if _, err := b.Resolve(req.ID, GrantTask, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if v := b.Evaluate("email", "send", "owner", RiskConsequential); v != VerdictAllow {
+		t.Fatalf("task grant must allow within the hour, got %v", v)
+	}
+	b.nowFunc = func() time.Time { return now.Add(TaskGrantTTL + time.Minute) }
+	if v := b.Evaluate("email", "send", "owner", RiskConsequential); v != VerdictAsk {
+		t.Fatalf("task grant must lapse after its hour, got %v", v)
+	}
+
+	// A permanent grant is not shortened by a later task grant.
+	b.nowFunc = func() time.Time { return now }
+	always, _ := b.Require("r-always", "s", "a", "email", "delete", "owner", "Delete?", RiskConsequential, nil)
+	b.Resolve(always.ID, GrantAlways, "owner")
+	again, _ := b.Require("r-again", "s", "a", "email", "delete", "owner", "Delete?", RiskConsequential, nil)
+	b.Resolve(again.ID, GrantTask, "owner")
+	b.nowFunc = func() time.Time { return now.Add(3 * TaskGrantTTL) }
+	if v := b.Evaluate("email", "delete", "owner", RiskConsequential); v != VerdictAllow {
+		t.Fatalf("task grant must not downgrade a standing grant, got %v", v)
 	}
 }

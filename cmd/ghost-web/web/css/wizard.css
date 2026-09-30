@@ -1,88 +1,101 @@
-/* Ghost Wizard Styles */
+/* First-run setup. One centered column on the paper background, using the
+   same tokens as the console so the first thing an owner sees is the product. */
 #wizard {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  padding: var(--space-xxl);
+  padding: var(--s-6) var(--s-4);
 }
 
 .wizard-screen {
   width: 100%;
   max-width: 440px;
   text-align: center;
+  animation: viewEnter .28s ease both;
 }
 
-.wizard-brand {
-  margin-bottom: var(--space-xxl);
-}
+.wizard-brand { margin-bottom: var(--s-5); }
+.wizard-brand .ghost-mark-xl { width: 56px; height: 56px; color: var(--ink); }
 
-.wizard-brand .ghost-mark-xl {
-  width: 64px;
-  height: 64px;
-  color: var(--ghost-text-primary);
-}
+.wizard-title { margin-bottom: var(--s-2); color: var(--ink); }
+.wizard-tagline { margin-bottom: var(--s-3); }
+.wizard-desc { max-width: 380px; margin: 0 auto var(--s-5); }
 
-.wizard-title {
-  margin-bottom: var(--space-md);
+/* The phone hand-off sits in its own quiet card, apart from the form. */
+.wizard-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  margin: var(--s-6) auto var(--s-5);
+  padding: var(--s-5);
+  max-width: 260px;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
 }
+.wizard-qr canvas { display: block; border-radius: var(--r-sm); background: #fff; }
 
-.wizard-tagline {
-  margin-bottom: var(--space-sm);
-}
-
-.wizard-desc {
-  max-width: 360px;
-  margin: 0 auto var(--space-xl);
+.wizard-code-hint { margin-top: var(--s-2); }
+.wizard-code-hint code {
+  display: inline-block;
+  margin-top: var(--s-1);
+  padding: 2px 8px;
+  background: var(--paper-sunken);
+  border-radius: var(--r-xs);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  word-break: break-all;
 }
 
 .wizard-actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
-  margin-top: var(--space-xxl);
+  gap: var(--s-2);
+  margin-top: var(--s-6);
   align-items: center;
 }
+.wizard-actions .ghost-btn { min-width: 220px; }
 
-.wizard-actions .ghost-btn {
-  min-width: 200px;
+.wizard-screen .ghost-input { text-align: center; }
+.wizard-screen .ghost-input + .ghost-input { margin-top: var(--s-3); }
+
+/* Choosing what Ghost thinks with: one radio list, key field beneath. */
+.wizard-brains { display: flex; flex-direction: column; gap: var(--s-2); text-align: left; }
+.wizard-choice {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font: inherit; color: var(--ink); cursor: pointer; text-align: left;
+}
+.wizard-choice:hover { border-color: var(--line-strong); }
+.wizard-choice.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); background: var(--accent-soft); }
+.wizard-choice-name { font-weight: 600; font-size: var(--t-body); }
+.wizard-choice-note { font-size: var(--t-callout); color: var(--ink-soft); }
+.wizard-key { margin-top: var(--s-3); }
+.wizard-key .ghost-input { text-align: left; }
+
+/* A refusal from the server, shown where the owner can fix it. */
+.wizard-notice {
+  margin: 0 0 var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--bad-soft);
+  border: 1px solid var(--bad-line);
+  border-radius: var(--r-md);
+  color: var(--bad);
+  font-size: var(--t-callout);
+  text-align: left;
 }
 
 /* Progress */
-.wizard-progress {
-  text-align: left;
-  max-width: 280px;
-  margin: var(--space-xl) auto 0;
-}
+.wizard-progress { text-align: left; max-width: 280px; margin: var(--s-5) auto 0; }
+.wizard-progress-item { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) 0; }
+.wizard-progress-check { width: 20px; text-align: center; color: var(--ink-faint); font-size: 14px; }
+.wizard-progress-check.done { color: var(--ok); }
 
-.wizard-progress-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) 0;
-}
-
-.wizard-progress-check {
-  width: 20px;
-  text-align: center;
-  color: var(--ghost-text-tertiary);
-  font-size: 14px;
-}
-
-.wizard-progress-check.done {
-  color: var(--ghost-success);
-}
-
-/* Input styling in wizard */
-.wizard-screen .ghost-input {
-  text-align: center;
-}
-
-/* Responsive */
 @media (max-width: 640px) {
-  #wizard {
-    padding: var(--space-lg);
-    align-items: flex-start;
-    padding-top: var(--space-huge);
-  }
+  #wizard { align-items: flex-start; padding-top: var(--s-7); }
 }

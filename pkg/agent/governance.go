@@ -522,6 +522,7 @@ func approvalAskTextEx(capabilityID, tool string, args map[string]interface{}, r
 var approvalPhrases = map[string]permissions.GrantType{
 	"allow once": permissions.GrantOnce, "approve": permissions.GrantOnce,
 	"allow": permissions.GrantOnce, "yes": permissions.GrantOnce,
+	"allow for a while": permissions.GrantTask, "allow for an hour": permissions.GrantTask, "allow for 1 hour": permissions.GrantTask, "allow for this task": permissions.GrantTask,
 	"always allow": permissions.GrantAlways, "allow always": permissions.GrantAlways,
 	"deny": permissions.GrantDeny, "deny it": permissions.GrantDeny,
 	"no": permissions.GrantDeny, "cancel": permissions.GrantDeny,
@@ -590,7 +591,7 @@ func (g *Governance) CheckApprovalReply(sessionKey, text string) ResumeOutcome {
 	// allow_always re-check: the standing grant may have been revoked,
 	// denied, or expired between approval and resume. A previously valid
 	// yes must not authorize execution forever.
-	if grant == permissions.GrantAlways {
+	if grant == permissions.GrantAlways || grant == permissions.GrantTask {
 		scope := scopeFor(sessionKey, contArgs)
 		risk := approved.Risk
 		if risk == "" {

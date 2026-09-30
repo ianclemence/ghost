@@ -196,7 +196,7 @@ type agentTUI struct {
 	paletteSel  int        // selected index in the / palette popup
 
 	// approval is set when a turn ends with a durable permission request;
-	// the composer is replaced by Allow once / Always allow / Deny choices.
+	// the composer is replaced by Allow once / For 1 hour / Always allow / Deny choices.
 	approval *pendingApproval
 	// approvalSel is the left/right cursor over those
 	// choices (1/2/3 still answer directly).
@@ -523,9 +523,11 @@ func (m *agentTUI) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "1", "a":
 			return m.resolveApproval("allow once")
-		case "2", "A":
+		case "2", "t":
+			return m.resolveApproval("allow for 1 hour")
+		case "3", "A":
 			return m.resolveApproval("always allow")
-		case "3", "d":
+		case "4", "d":
 			return m.resolveApproval("deny")
 		case "left", "h", "up", "k":
 			if m.approvalSel > 0 {
@@ -533,12 +535,12 @@ func (m *agentTUI) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "right", "l", "down", "j":
-			if m.approvalSel < 2 {
+			if m.approvalSel < 3 {
 				m.approvalSel++
 			}
 			return m, nil
 		case "enter":
-			return m.resolveApproval([]string{"allow once", "always allow", "deny"}[m.approvalSel])
+			return m.resolveApproval([]string{"allow once", "allow for 1 hour", "always allow", "deny"}[m.approvalSel])
 		case "ctrl+c", "esc":
 			// Dismissing is a deny-by-inaction: leave the request pending and
 			// return to normal input without claiming anything ran.
@@ -3320,7 +3322,7 @@ func (m *agentTUI) footerKeysLine() string {
 	case m.clarify != nil:
 		keys = "type your answer · enter sends · esc aborts the question"
 	case m.approval != nil:
-		keys = "1 allow once · 2 always allow · 3 deny · ↑↓←→ select · esc leaves pending"
+		keys = "1 once · 2 for 1 hour · 3 always · 4 deny · ↑↓←→ select · esc leaves pending"
 	case m.working:
 		keys = "enter queues steering · esc aborts · ctrl+o details · / commands"
 	case strings.HasPrefix(strings.TrimSpace(m.input.Value()), "/"):
@@ -3689,7 +3691,7 @@ func (m *agentTUI) approvalCard() string {
 			b.WriteString("\n")
 		}
 	}
-	labels := []string{"[1] allow once", "[2] always allow", "[3] deny"}
+	labels := []string{"[1] allow once", "[2] for 1 hour", "[3] always allow", "[4] deny"}
 	hints := "↑↓←→ select · enter confirm · esc leaves pending"
 	// Lay out the options: one row when it fits, stacked rows when narrow.
 	oneLine := "  " + strings.Join(labels, "    ") + "  " + hints

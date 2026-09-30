@@ -20,6 +20,17 @@ if (process.env.DARK) await send("Emulation.setEmulatedMedia", { features: [{ na
 await send("Emulation.setDeviceMetricsOverride", { width: +w, height: +h, deviceScaleFactor: +w > 600 ? 1 : 2, mobile: +w <= 600 });
 await send("Page.navigate", { url }); await sleep(+waitMs);
 if (evalJs) { await send("Runtime.evaluate", { expression: evalJs, awaitPromise: true }); await sleep(+(process.env.AFTER ?? 7000)); }
+// STEPS='[{"js":"...","wait":800,"out":"a.png"},...]' walks a flow, shooting after each step.
+if (process.env.STEPS) {
+  for (const st of JSON.parse(process.env.STEPS)) {
+    const r = await send("Runtime.evaluate", { expression: st.js, awaitPromise: true, returnByValue: true });
+    if (r?.result?.value !== undefined && st.log) console.log(st.log, JSON.stringify(r.result.value));
+    await sleep(st.wait ?? 800);
+    const sh = await send("Page.captureScreenshot", { format: "png" });
+    writeFileSync(st.out, Buffer.from(sh.data, "base64")); console.log("wrote", st.out);
+  }
+  ws.close(); chrome.kill(); process.exit(0);
+}
 const shot = await send("Page.captureScreenshot", { format: "png" });
 writeFileSync(out, Buffer.from(shot.data, "base64")); console.log("wrote", out);
 ws.close(); chrome.kill(); process.exit(0);

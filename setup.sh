@@ -70,82 +70,6 @@ PY
     cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 48
 }
 
-# ── Service installer ─────────────────────────────────────────────────────
-install_service() {
-    local TEMPLATE="ghost.service.template"
-    local GENERATED="ghost.service"
-    local SERVICE_NAME="ghost"
-
-    echo -e "${YELLOW}[INFO] Installing Ghost as a system service...${NC}"
-    echo -e "${BLUE}  User       : ${USER}${NC}"
-    echo -e "${BLUE}  Home       : ${HOME}${NC}"
-    echo -e "${BLUE}  Binary     : /usr/local/bin/ghost${NC}"
-    echo -e "${BLUE}  WorkingDir : ${HOME}/ghost${NC}"
-    echo -e "${BLUE}  EnvFile    : ${HOME}/ghost/.env${NC}"
-    echo ""
-
-    # Use template if it exists, otherwise generate inline
-    if [ -f "$TEMPLATE" ]; then
-        sed \
-            -e "s|__USER__|${USER}|g" \
-            -e "s|__HOME__|${HOME}|g" \
-            "$TEMPLATE" > "$GENERATED"
-    else
-        # Generate service file inline — no template needed
-        cat > "$GENERATED" << EOF
-[Unit]
-Description=Ghost Pi - Sovereign AI Presence
-After=network.target
-
-[Service]
-Type=simple
-User=${USER}
-WorkingDirectory=${HOME}/ghost
-EnvironmentFile=${HOME}/ghost/.env
-Environment=GHOST_WORKSPACE_DIR=${HOME}/ghost/workspace
-ExecStart=/usr/local/bin/ghost serve
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    fi
-
-    echo -e "${YELLOW}Generated service file:${NC}"
-    cat "$GENERATED"
-    echo ""
-
-    # Install
-    sudo cp "$GENERATED" /etc/systemd/system/${SERVICE_NAME}.service
-    sudo systemctl daemon-reload
-    sudo systemctl enable "$SERVICE_NAME"
-    sudo systemctl restart "$SERVICE_NAME"
-
-    # Verify
-    sleep 3
-    STATUS=$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo "unknown")
-    if [ "$STATUS" = "active" ]; then
-        echo -e "${GREEN}[OK] Ghost service is running!${NC}"
-        echo ""
-        echo -e "${BLUE}Recent logs:${NC}"
-        sudo journalctl -u "$SERVICE_NAME" -n 15 --no-pager
-    else
-        echo -e "${RED}[ERROR] Ghost service failed to start. Status: ${STATUS}${NC}"
-        echo ""
-        echo -e "${YELLOW}Logs:${NC}"
-        sudo journalctl -u "$SERVICE_NAME" -n 20 --no-pager
-        echo ""
-        echo -e "${RED}Common causes:${NC}"
-        echo "  1. .env file missing at ${HOME}/ghost/.env"
-        echo "  2. Binary not found at /usr/local/bin/ghost — run: sudo make install-ghost"
-        echo "  3. DEEPSEEK_API_KEY not set in .env"
-        return 1
-    fi
-}
-
 # ── Detect architecture mismatch ──────────────────────────────────────────
 if [ "$(uname -m)" = "aarch64" ] && [ "$(dpkg --print-architecture 2>/dev/null)" = "armhf" ]; then
     echo -e "${YELLOW}[WARNING] Detected 64-bit kernel with 32-bit userland. Forcing GOARCH=arm.${NC}"
@@ -279,19 +203,24 @@ fi
 # Developer Mode converges on the same /usr/local/bin/ghost the services and
 # `ghost update` use — a separate ~/.local/bin copy is what made updated
 # binaries appear not to run.
-make install-ghost
+if ! make install-ghost; then
+    echo -e "${RED}[ERROR] Install failed (see the make output above). Ghost is NOT installed.${NC}"
+    exit 1
+fi
 echo -e "${GREEN}[OK] Binary installed to /usr/local/bin/ghost${NC}"
 
-# ── 4. Service setup ──────────────────────────────────────────────────────
+# ── 4. Services ───────────────────────────────────────────────────────────
+# `make install-ghost` already wrote, enabled and started the system units
+# (ghost, ghost-web, ghost-speech, backups) under /var/ghost. There is exactly
+# one install shape; offering a second per-user unit here would overwrite the
+# system one and leave two daemons fighting for the same port.
 echo ""
-echo -e "${YELLOW}[4/4] Service Configuration${NC}"
+echo -e "${YELLOW}[4/4] Services${NC}"
 if [ "$NO_SERVICE" = "1" ]; then
-    echo -e "${BLUE}[INFO] Skipping service install (--no-service).${NC}"
+    echo -e "${BLUE}[INFO] Not starting services (--no-service).${NC}"
 else
-    ask "Do you want to install Ghost as a system service (auto-start on boot)? (y/N) " "n" INSTALL_SERVICE || exit 1
-    if [[ "$INSTALL_SERVICE" =~ ^[Yy]$ ]]; then
-        install_service
-    fi
+    sudo systemctl enable --now ghost ghost-web 2>/dev/null || true
+    echo -e "${GREEN}[OK] Ghost and the web console are running and start on boot.${NC}"
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────
@@ -309,15 +238,5 @@ echo -e "${BLUE}Useful commands:${NC}"
 echo "  sudo systemctl status ghost          # check service status"
 echo "  sudo journalctl -u ghost -f          # follow logs"
 echo "  sudo systemctl restart ghost         # restart after config changes"
-echo "  make install && sudo systemctl restart ghost   # rebuild + restart"
+echo "  make install-ghost                   # rebuild + reinstall everything"
 echo ""
-
-ask "Do you want to start Ghost now? (Y/N) " "n" RUN_NOW || exit 1
-if [[ "$RUN_NOW" =~ ^[Yy]$ ]]; then
-    if systemctl is-active ghost &>/dev/null; then
-        echo -e "${BLUE}Ghost service is already running. Tailing logs...${NC}"
-        sudo journalctl -u ghost -f
-    else
-        ./ghost serve --debug
-    fi
-fi

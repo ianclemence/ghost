@@ -312,7 +312,7 @@ func (al *AgentLoop) resumeComputerCall(resume ResumeOutcome, sessionKey, reques
 			return refuse(denyText(permissions.CodeSessionExpired, "That work item moved on while approval waited (stale generation).", "Ask again to start fresh."))
 		}
 	}
-	if resume.Grant == permissions.GrantAlways {
+	if resume.Grant == permissions.GrantAlways || resume.Grant == permissions.GrantTask {
 		if verdict := g.Broker.Evaluate(computerCapability, tool, scopeFor(sessionKey, resume.Args), computerRisk(op)); verdict != permissions.VerdictAllow {
 			return refuse(denyText(permissions.CodeGrantRevoked, "That grant was revoked before I could use it.", "Ask again for a fresh approval."))
 		}
@@ -326,7 +326,7 @@ func (al *AgentLoop) resumeComputerCall(resume ResumeOutcome, sessionKey, reques
 		return refuse(denyText(permissions.CodeUnavailable, "Computer no longer has control authority.", "Ask the operator to grant control authority, then ask again."))
 	}
 	permission := "once"
-	if resume.Grant == permissions.GrantAlways {
+	if resume.Grant == permissions.GrantAlways || resume.Grant == permissions.GrantTask {
 		permission = "always"
 	}
 	call := tools.ComputerCall{

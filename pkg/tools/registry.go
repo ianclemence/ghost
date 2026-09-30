@@ -346,6 +346,7 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 		bgID = r.bg.Start(sessionKey, name, backgroundLabel(args))
 		outer := asyncCallback
 		asyncCallback = func(ctx context.Context, result *ToolResult) {
+			scrubResult(result)
 			if result == nil {
 				r.bg.Finish(sessionKey, bgID, false, "")
 			} else {
@@ -373,6 +374,7 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	start := time.Now()
 	result := executeWithReliability(ctx, tool, args)
 	duration := time.Since(start)
+	scrubResult(result)
 
 	// A tool that implements AsyncTool but finished inline never detached:
 	// drop its running entry so the indicator can't stick.

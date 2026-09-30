@@ -173,6 +173,7 @@ build-ghost: build
 ## install-ghost: Build, install binaries and services, then restart Ghost
 install-ghost: build-ghost
 	@echo "Installing Ghost..."
+	@sudo mkdir -p /usr/local/bin
 	@# Python is a runtime dependency for many skills (document conversion,
 	@# internet reading, media). Install a minimal Python + pip if missing.
 	@if ! command -v python3 >/dev/null 2>&1; then \

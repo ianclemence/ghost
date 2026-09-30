@@ -345,7 +345,7 @@ func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, request
 	}
 	// Standing grants can be revoked between approval and resume:
 	// re-evaluate so revocation takes effect immediately.
-	if resume.Grant == permissions.GrantAlways {
+	if resume.Grant == permissions.GrantAlways || resume.Grant == permissions.GrantTask {
 		if verdict := g.Broker.Evaluate(browserCapability, tool, scopeFor(sessionKey, args), browserRisk(op)); verdict != permissions.VerdictAllow {
 			return refuse(denyText(permissions.CodeGrantRevoked, "That grant was revoked before I could use it.", "Ask again for a fresh approval."))
 		}
@@ -355,7 +355,7 @@ func (al *AgentLoop) resumeBrowserCall(resume ResumeOutcome, sessionKey, request
 		return refuse(denyText(permissions.CodeUnavailable, "Browser is unavailable: session ledger failed.", "Try again in a moment; if it persists, the operator must check the database."))
 	}
 	permission := "once"
-	if resume.Grant == permissions.GrantAlways {
+	if resume.Grant == permissions.GrantAlways || resume.Grant == permissions.GrantTask {
 		permission = "always"
 	}
 	call := tools.BrowserCall{

@@ -116,7 +116,10 @@ type GrantType string
 const (
 	GrantOnce   GrantType = "allow_once"
 	GrantAlways GrantType = "allow_always"
-	GrantDeny   GrantType = "deny"
+	// GrantTask is a standing grant that lapses on its own after TaskGrantTTL:
+	// "keep going with this", without leaving permanent authority behind.
+	GrantTask GrantType = "allow_task"
+	GrantDeny GrantType = "deny"
 )
 
 // RequestStatus tracks a permission request's lifecycle.
@@ -169,6 +172,11 @@ type Grant struct {
 // valid without renewal. Long enough to be useful, finite so stale
 // authority cannot accumulate indefinitely.
 const DefaultGrantTTL = 90 * 24 * time.Hour
+
+// TaskGrantTTL is how long an "allow for this task" grant lasts. A task is
+// not something the runtime can delimit exactly, so the grant is honest
+// about being a time box rather than pretending to track task boundaries.
+const TaskGrantTTL = time.Hour
 
 // Emitter receives broker lifecycle events (wired to the canonical event
 // stream; nil-safe). Defined here to avoid import cycles.
@@ -380,6 +388,15 @@ func (b *Broker) Resolve(id string, grant GrantType, scope string) (*Request, er
 	case GrantAlways:
 		r.Status = StatusApproved
 		_ = b.storeGrant(Grant{Capability: r.Capability, Action: r.Action, Scope: scope, CreatedAt: now})
+		b.emitEvent("permission.approved", r)
+	case GrantTask:
+		r.Status = StatusApproved
+		// Never downgrade: a standing grant that already covers this
+		// keeps its own (longer) life.
+		if !b.granted(r.Capability, r.Action, scope) {
+			exp := now.Add(TaskGrantTTL)
+			_ = b.storeGrant(Grant{Capability: r.Capability, Action: r.Action, Scope: scope, CreatedAt: now, ExpiresAt: &exp})
+		}
 		b.emitEvent("permission.approved", r)
 	case GrantDeny:
 		r.Status = StatusDenied
@@ -852,6 +869,7 @@ func (r *Request) Card() (ApprovalCard, bool) {
 		ExpiresAt:   r.ExpiresAt.Format(time.RFC3339),
 		Actions: []CardAction{
 			{ID: "allow_once", Label: "Allow once", Style: "primary"},
+			{ID: "allow_task", Label: "Allow for 1 hour", Style: "secondary"},
 			{ID: "allow_always", Label: "Always allow", Style: "secondary"},
 			{ID: "deny", Label: "Deny", Style: "danger"},
 		},
