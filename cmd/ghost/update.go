@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -604,9 +605,38 @@ func installScope(scope appliance.ScopePaths, ghostDir string, force bool) error
 	if scope.Scope == appliance.ScopeSystem {
 		refreshSystemUnits(ghostDir, scope.BinDir)
 	}
+	if scope.Scope == appliance.ScopeSystem {
+		home, _ := os.UserHomeDir()
+		removeStaleShadows(scope.BinDir, []string{filepath.Join(home, ".local", "bin"), "/usr/local/sbin"})
+	}
 	restartScope(scope)
 	trimBuildCache()
 	return nil
+}
+
+// removeStaleShadows deletes an older copy of ghost that sits earlier in PATH
+// than the system install (typically ~/.local/bin/ghost from a per-user
+// install). It is the reason "I updated but still see the old behaviour": the
+// owner's terminal kept running the stale copy while the services ran the new
+// one. Only a file that identifies itself as Ghost is removed, never an
+// unrelated program that happens to be called ghost.
+func removeStaleShadows(canonicalDir string, dirs []string) {
+	for _, d := range dirs {
+		if d == "" || filepath.Clean(d) == filepath.Clean(canonicalDir) {
+			continue
+		}
+		f := filepath.Join(d, "ghost")
+		b, err := os.ReadFile(f)
+		if err != nil || !bytes.Contains(b, []byte("Ghost - Personal AI Assistant")) {
+			continue
+		}
+		if err := os.Remove(f); err != nil {
+			if runSudo("rm", "-f", f) != nil {
+				continue
+			}
+		}
+		fmt.Printf("  Removed a stale copy at %s so `ghost` runs the new one.\n", f)
+	}
 }
 
 // trimBuildCache stops updates that build on the device from slowly filling
