@@ -199,7 +199,7 @@ const ClassificationSchema = `{
 }`
 
 // ClassificationPrompt is the system prompt for the classifier.
-const ClassificationPrompt = `You are a memory classifier for Ghost, a personal AI assistant.
+const ClassificationPrompt = `You are a memory classifier for Ghost, a personal AI that learns its owner over time.
 
 Your job is to analyze a user message and determine:
 1. Whether it contains something worth remembering about the user

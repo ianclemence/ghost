@@ -4,7 +4,7 @@
 // Provider decision (deliberate, researched 2026):
 //   - Primary: AviationStack — 100 req/mo free, global schedule + status +
 //     delay + gate coverage, simple key auth, flight-number lookup. Best
-//     fit for a personal assistant's "is TG123 on time" queries.
+//     fit for a personal AI's "is TG123 on time" queries.
 //   - Fallback: AeroDataBox (via RapidAPI, 600 units/mo free) —
 //     complementary coverage: 365-day history + future schedules where the
 //     AviationStack free tier is today-focused, plus codeshare resolution.

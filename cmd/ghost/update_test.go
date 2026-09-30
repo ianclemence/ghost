@@ -17,7 +17,7 @@ func TestRenderUnitMatchesTheInstalledShape(t *testing.T) {
 func TestRemoveStaleShadowsOnlyRemovesGhost(t *testing.T) {
 	canon := t.TempDir()
 	stale, other := t.TempDir(), t.TempDir()
-	os.WriteFile(filepath.Join(stale, "ghost"), []byte("...👻 Ghost - Personal AI Assistant..."), 0o755)
+	os.WriteFile(filepath.Join(stale, "ghost"), []byte("...👻 Ghost - Your Local AI..."), 0o755)
 	os.WriteFile(filepath.Join(other, "ghost"), []byte("a different program named ghost"), 0o755)
 	removeStaleShadows(canon, []string{stale, other, canon})
 	if _, err := os.Stat(filepath.Join(stale, "ghost")); !os.IsNotExist(err) {

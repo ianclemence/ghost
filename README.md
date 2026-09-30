@@ -35,7 +35,7 @@ execution evidence decides whether an action happened — a model saying
 - **Every action leaves proof.** What Ghost says it did is backed by runtime evidence, not a language model's optimism.
 - **Your data stays on your machine.** Memory, permissions, and identity live on your hardware; cloud models are optional intelligence providers, and offline-local capabilities keep working when the network does not.
 
-You get a capable assistant. You keep the guarantees.
+You get a capable AI that is yours. You keep the guarantees.
 
 ---
 

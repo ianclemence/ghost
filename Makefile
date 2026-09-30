@@ -143,7 +143,7 @@ install-cleanup-shadow:
 	@for d in $(HOME)/.local/bin /usr/local/sbin; do \
 		f="$$d/$(BINARY_NAME)"; \
 		if [ -f "$$f" ] && [ "$$f" != "$(CANONICAL_BIN_DIR)/$(BINARY_NAME)" ]; then \
-			if grep -aq "Ghost - Personal AI Assistant" "$$f" 2>/dev/null; then \
+			if grep -aqE "Ghost - (Personal AI Assistant|Your Local AI)" "$$f" 2>/dev/null; then \
 				rm -f "$$f" 2>/dev/null || sudo rm -f "$$f"; \
 				echo "Removed stale shadow: $$f"; \
 			fi; \

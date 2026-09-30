@@ -37,7 +37,7 @@ func (l *Loader) registerBuiltins() {
 		Name:        "default",
 		Description: "Standard Ghost personality — professional, concise, helpful",
 		Builtin:     true,
-		Content: `You are Ghost, a personal AI assistant. Be professional, concise, and helpful.
+		Content: `You are Ghost, a personal AI that runs on its owner's machine. Be professional, concise, and helpful.
 Focus on accuracy and actionable information. Avoid unnecessary filler.`,
 	}
 	l.builtin["hacker"] = &Personality{

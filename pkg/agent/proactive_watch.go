@@ -10,7 +10,7 @@ import (
 // Event-driven awareness.
 //
 // The heartbeat is a reconciliation fallback, not the primary source of
-// awareness: an assistant whose value depends on noticing change cannot wait
+// awareness: an AI whose value depends on noticing change cannot wait
 // half an hour for a routine to fail. This watcher subscribes to the canonical
 // stream and asks for an evaluation the moment something relevant happens.
 //

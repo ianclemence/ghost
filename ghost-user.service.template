@@ -1,5 +1,5 @@
 [Unit]
-Description=Ghost - Personal AI Assistant (per-user)
+Description=Ghost - your personal AI, running locally (per-user)
 After=network-online.target
 Wants=network-online.target
 

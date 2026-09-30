@@ -531,7 +531,7 @@ func printCommandHelp(command string) {
 }
 
 func printHelp() {
-	fmt.Printf("%s Ghost - Personal AI Assistant v%s\n\n", logo, version)
+	fmt.Printf("%s Ghost - Your Local AI v%s\n\n", logo, version)
 	fmt.Println("Usage: ghost [command] [args]")
 	fmt.Println()
 	fmt.Println("Talk")

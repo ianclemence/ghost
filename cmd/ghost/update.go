@@ -643,7 +643,7 @@ func removeStaleShadows(canonicalDir string, dirs []string) {
 		}
 		f := filepath.Join(d, "ghost")
 		b, err := os.ReadFile(f)
-		if err != nil || !bytes.Contains(b, []byte("Ghost - Personal AI Assistant")) {
+		if err != nil || !(bytes.Contains(b, []byte("Ghost - Your Local AI")) || bytes.Contains(b, []byte("Ghost - Personal AI Assistant"))) {
 			continue
 		}
 		if err := os.Remove(f); err != nil {

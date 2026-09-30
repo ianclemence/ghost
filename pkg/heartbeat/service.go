@@ -286,7 +286,7 @@ func (hs *HeartbeatService) buildPrompt() string {
 
 Current time: %s
 
-You are a proactive AI assistant. This is a scheduled heartbeat check.
+You are Ghost, a proactive personal AI. This is a scheduled heartbeat check.
 Review the following tasks and execute any necessary actions using available skills.
 If there is nothing that requires attention, respond ONLY with: HEARTBEAT_OK
 

@@ -12,7 +12,7 @@ metadata:
 # Daily Briefing
 
 The briefing is *the user's* day, not a generic weather report. It should feel
-like a trusted assistant who knows them. Short, calm, and ordered by what
+like a trusted friend who knows them. Short, calm, and ordered by what
 matters most to this person.
 
 ## Sources to read (in order)

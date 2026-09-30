@@ -1,5 +1,5 @@
 [Unit]
-Description=Ghost - Personal AI Assistant
+Description=Ghost - your personal AI, running locally
 After=network-online.target ghost-web.service ghost-speech.service
 Wants=network-online.target
 # An appliance must come back on its own. (These keys used to sit in [Service],

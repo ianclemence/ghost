@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.92] - 2026-09-30
+
+- **Ghost is not an "assistant."** It says so about itself, and the word is
+  gone from the banner, the service descriptions, the README, the skills and
+  every prompt that shapes how Ghost talks about itself. It is a personal AI
+  that lives on your machine and keeps learning you.
+
 ## [0.24.91] - 2026-09-30
 
 - **Backups now back up the right Ghost, and can be restored.** `sudo ghost
