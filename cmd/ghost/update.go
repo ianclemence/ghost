@@ -605,8 +605,42 @@ func installScope(scope appliance.ScopePaths, ghostDir string, force bool) error
 		refreshSystemUnits(ghostDir, scope.BinDir)
 	}
 	restartScope(scope)
+	trimBuildCache()
 	return nil
 }
+
+// trimBuildCache stops updates that build on the device from slowly filling
+// its SD card. Go's build cache grows with every build and is never trimmed
+// by Go itself; on a Pod it reached 5 GB and the next update refused to run.
+// Over a gigabyte, it is dropped (the next build is just slower, once).
+func trimBuildCache() {
+	out, err := exec.Command("go", "env", "GOCACHE").Output()
+	if err != nil {
+		return
+	}
+	dir := strings.TrimSpace(string(out))
+	if dir == "" || dir == "off" {
+		return
+	}
+	var size int64
+	_ = filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if info, ierr := d.Info(); ierr == nil {
+				size += info.Size()
+			}
+		}
+		return nil
+	})
+	if size > buildCacheLimit {
+		if exec.Command("go", "clean", "-cache").Run() == nil {
+			fmt.Printf("  Cleared a %d MB build cache to keep disk space free.\n", size>>20)
+		}
+	}
+}
+
+// buildCacheLimit is how large the Go build cache may grow before an update
+// clears it.
+const buildCacheLimit = 1 << 30
 
 // refreshSystemUnits re-renders the system unit files from this release's
 // templates. Binaries used to be the only thing an update replaced, so a fix to
