@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.105] - 2026-10-01
+
+- **Fixes `ghost pair` and the terminal's approvals on installs where Ghost runs
+  as a system service.** 0.24.104 kept its new local key readable only by root,
+  which locked out your own terminal on those installs. The key now belongs to
+  whoever owns the config folder. Update and nothing else is needed.
+
 ## [0.24.104] - 2026-10-01
 
 - **Approving, pairing and changing policy now need more than being on the Pod.**

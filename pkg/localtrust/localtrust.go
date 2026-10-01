@@ -44,6 +44,7 @@ func Ensure(dir string) (string, error) {
 			return "", err
 		}
 	}
+	matchOwner(dir, filepath.Join(dir, FileName))
 	Accept(tok)
 	return tok, nil
 }
