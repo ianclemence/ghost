@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -91,6 +93,10 @@ func gateway(t *testing.T, via chan string) *httptest.Server {
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		w.Write(append([]byte("echo:"), b...))
+	})
+	mux.HandleFunc("/v1/upload", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		fmt.Fprintf(w, "%d:%x", len(b), sha256.Sum256(b))
 	})
 	mux.HandleFunc("/v1/permissions/grant", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("granted")) })
 	mux.HandleFunc("/v1/stream", func(w http.ResponseWriter, r *http.Request) {
@@ -355,4 +361,87 @@ func TestSealedBodyJSONShapeIsStable(t *testing.T) {
 	if string(h) != `{"status":200,"headers":{"A":["b"]}}` {
 		t.Fatalf("head shape changed: %s", h)
 	}
+}
+
+// Photos and files travel inside the request, so a sealed request has to be
+// able to carry megabytes, far past the 1 MB the plain relay allows.
+func TestLargeUploadThroughTheSealedRelay(t *testing.T) {
+	e := startPod(t, server.Config{}, nil)
+	e.waitConnected(t)
+	payload := make([]byte, 7<<20+123) // not a round number, so chunk edges are exercised
+	for i := range payload {
+		payload[i] = byte(i * 31)
+	}
+	resp, err := e.do(t, "full", SealedRequest{Method: "POST", Path: "/v1/upload", Body: EncodeBody(payload)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("%d:%x", len(payload), sha256.Sum256(payload))
+	if string(resp.Body) != want {
+		t.Fatalf("the Pod received something different: got %.60s want %.60s", resp.Body, want)
+	}
+	// And the relay still saw nothing readable of it.
+	if bytes.Contains(e.tap.seen(), payload[:4096]) {
+		t.Fatal("the relay could read the upload")
+	}
+}
+
+func TestOversizeSealedRequestIsRefusedUpFront(t *testing.T) {
+	e := startPod(t, server.Config{}, nil)
+	e.waitConnected(t)
+	req, _ := http.NewRequest("POST", e.relayURL+"/v1/sealed", io.LimitReader(zeros{}, relaycrypto.MaxRequest+10))
+	req.ContentLength = relaycrypto.MaxRequest + 10
+	req.Header.Set("X-Ghost-Client-Id", e.ghostID)
+	req.Header.Set("X-Ghost-Client-Token", e.tokens["full"])
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("got %d, want 413", resp.StatusCode)
+	}
+}
+
+type zeros struct{}
+
+func (zeros) Read(p []byte) (int, error) { return len(p), nil }
+
+// A phone paired after the tunnel is already up must work at once, not after the
+// next reconnect, and a revoked one must stop working at once.
+func TestPairingAndRevokingTakeEffectWithoutReconnect(t *testing.T) {
+	old := clientsWatchEvery
+	clientsWatchEvery = 50 * time.Millisecond
+	defer func() { clientsWatchEvery = old }()
+
+	e := startPod(t, server.Config{}, nil)
+	e.waitConnected(t)
+
+	late, err := AddClientScoped("ghost-1", "new phone", "full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	var last error
+	for time.Now().Before(deadline) {
+		if _, last = DoSealed(e.relayURL, e.ghostID, late, e.podPub, SealedRequest{Path: "/v1/health"}); last == nil {
+			break
+		}
+		time.Sleep(60 * time.Millisecond)
+	}
+	if last != nil {
+		t.Fatalf("a newly paired phone should work without a reconnect: %v", last)
+	}
+
+	hash := sha256.Sum256([]byte(late))
+	if err := RemoveClient("ghost-1", fmt.Sprintf("%x", hash[:8])); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, last = DoSealed(e.relayURL, e.ghostID, late, e.podPub, SealedRequest{Path: "/v1/health"}); last != nil {
+			return
+		}
+		time.Sleep(60 * time.Millisecond)
+	}
+	t.Fatal("a revoked phone must stop working without a reconnect")
 }

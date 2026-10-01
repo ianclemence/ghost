@@ -34,8 +34,10 @@ const (
 	MsgEnd  byte = 2
 	MsgErr  byte = 3
 
-	// MaxRequest bounds the sealed request the Pod will open.
-	MaxRequest = 1<<20 + 4096
+	// MaxRequest bounds the sealed request the Pod will open. It is large
+	// enough for an owner's photos and files, which travel inside the request
+	// (the app's own limit is 60 MB, which is a little more as base64).
+	MaxRequest = 96<<20 + 4096
 )
 
 var ErrEnvelope = errors.New("relaycrypto: not a sealed request")

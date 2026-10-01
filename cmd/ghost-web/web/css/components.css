@@ -659,3 +659,10 @@ textarea.ghost-input {
 .text-ok      { color: var(--ok); }
 .text-warning { color: var(--warn); }
 .text-danger  { color: var(--bad); }
+
+/* Away from home (Ghost Connect) */
+.away-card { margin-top: var(--s-5); }
+.away-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-4); }
+.away-note { color: var(--warn); }
+.away-link { display: inline-block; margin-top: var(--s-2); color: var(--accent); text-decoration: underline; text-underline-offset: 3px; word-break: break-all; }
+.away-code { margin: var(--s-4) 0 var(--s-3); padding: var(--s-4); border-radius: var(--r-md); background: var(--paper-sunken); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 28px; letter-spacing: 0.2em; text-align: center; color: var(--ink); }

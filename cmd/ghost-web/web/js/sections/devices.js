@@ -14,7 +14,132 @@ async function loadDevices(container) {
   listEl.appendChild(GhostUI.loading('Loading devices…'));
   container.appendChild(listEl);
 
+  const awayEl = GhostUI.h('div', { id: 'away-card' });
+  container.appendChild(awayEl);
+
   await renderDevices(listEl);
+  renderAway(awayEl);
+}
+
+/* ── Away from home: Ghost Connect ───────────────────────────────────────
+   Link this Pod to the hosted relay, check it, and connect a phone that is
+   not on the home network. Everything here is what `ghost relay link|status|
+   pair` does, so the console and the terminal never disagree. */
+let awayTimer = null;
+
+function drawQR(text, host) {
+  const canvas = GhostUI.h('canvas', {});
+  const box = GhostUI.h('div', { className: 'ghost-qr' });
+  box.appendChild(canvas);
+  if (!GhostQR.draw(text, canvas, 5)) {
+    box.innerHTML = '';
+    host.appendChild(GhostUI.h('div', { className: 'qr-fallback-string' }, text));
+  } else host.appendChild(box);
+}
+
+async function renderAway(el) {
+  if (awayTimer) { clearInterval(awayTimer); awayTimer = null; }
+  el.innerHTML = '';
+  let st;
+  try { st = await GhostAPI.proxyGet('/v1/connect/status'); }
+  catch (e) { return; }
+
+  const card = GhostUI.h('div', { className: 'ghost-card away-card' });
+  card.appendChild(GhostUI.h('div', { className: 'ghost-card-title' }, 'Away from home'));
+  el.appendChild(card);
+
+  if (!st.available && !st.linked) {
+    card.appendChild(GhostUI.h('div', { className: 'ghost-card-sub' },
+      'At home your phone connects straight to your Ghost. To reach it from anywhere, use Tailscale or your own relay, or Ghost Connect once it opens.'));
+    return;
+  }
+
+  if (st.pending && st.pending.state === 'waiting') { awayWaiting(card, st.pending, el); return; }
+
+  if (!st.linked) {
+    card.appendChild(GhostUI.h('div', { className: 'ghost-card-sub' },
+      'Reach your Ghost from anywhere with nothing to set up. Everything is sealed on your phone, so the relay carries it and can’t read it.'));
+    if (st.pending && (st.pending.state === 'needs_plan' || st.pending.state === 'expired' || st.pending.state === 'error')) {
+      card.appendChild(GhostUI.h('div', { className: 'ghost-card-sub away-note' }, st.pending.message || 'That didn’t finish.'));
+    }
+    card.appendChild(GhostUI.h('div', { className: 'away-actions' },
+      GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (ev) => {
+        ev.target.disabled = true;
+        try { await GhostAPI.proxyPost('/v1/connect/link', {}); renderAway(el); }
+        catch (e) { ev.target.disabled = false; GhostUI.toast('Couldn’t start. Check the Pod’s internet connection.', 'err'); }
+      } }, 'Link to Ghost Connect')));
+    return;
+  }
+
+  // Linked
+  const tunnel = st.tunnel || 'offline';
+  const label = tunnel === 'connected' ? 'Connected' : tunnel === 'needs-payment' ? 'Plan needs attention' : 'Connecting…';
+  const dot = tunnel === 'connected' ? 'ready' : tunnel === 'needs-payment' ? 'error' : 'neutral';
+  const line = GhostUI.h('div', { className: 'ghost-card-meta' });
+  line.appendChild(GhostUI.statusDot ? GhostUI.statusDot(dot) : document.createTextNode(''));
+  line.appendChild(document.createTextNode(' ' + label));
+  card.appendChild(line);
+  if (tunnel === 'needs-payment') {
+    card.appendChild(GhostUI.h('div', { className: 'ghost-card-sub away-note' },
+      'Your Ghost Connect plan has lapsed, so the relay has stopped. Your Ghost still works at home. Renew on the Ghost site to turn it back on.'));
+  } else {
+    card.appendChild(GhostUI.h('div', { className: 'ghost-card-sub' },
+      'Your phone can reach this Ghost from anywhere. The pass renews itself while your plan is active.'));
+  }
+  card.appendChild(GhostUI.h('div', { className: 'away-actions' },
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => showRemotePairing() }, 'Connect a phone for away from home'),
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
+      if (!(await GhostUI.confirmModal('Unlink Ghost Connect?', 'Phones will stop reaching your Ghost away from home. At home, and over any other route you set up, nothing changes.', 'Unlink'))) return;
+      try { await GhostAPI.proxyPost('/v1/connect/unlink', {}); GhostUI.toast('Unlinked'); renderAway(el); }
+      catch (e) { GhostUI.toast('Couldn’t unlink it.', 'err'); }
+    } }, 'Unlink')));
+}
+
+function awayWaiting(card, p, el) {
+  card.appendChild(GhostUI.h('div', { className: 'ghost-card-sub' }, 'On your computer or phone, open this address and sign in, then check the code matches:'));
+  const link = GhostUI.h('a', { href: p.verify_url, target: '_blank', rel: 'noopener', className: 'away-link' }, p.verify_url.replace(/^https?:\/\//, ''));
+  card.appendChild(link);
+  card.appendChild(GhostUI.h('div', { className: 'away-code', 'aria-label': 'Your code' }, p.user_code));
+  const qr = GhostUI.h('div', { className: 'qr-wrap' });
+  drawQR(p.verify_url, qr);
+  card.appendChild(qr);
+  const left = GhostUI.h('div', { className: 'qr-expiry' }, '');
+  card.appendChild(left);
+  card.appendChild(GhostUI.h('div', { className: 'away-actions' },
+    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: () => renderAway(el) }, 'Refresh')));
+  const exp = new Date(p.expires_at).getTime();
+  const tick = () => { const s = Math.max(0, Math.floor((exp - Date.now()) / 1000)); left.textContent = s > 0 ? 'Waiting… the code works for ' + Math.ceil(s / 60) + ' more minutes' : 'This code expired.'; };
+  tick();
+  awayTimer = setInterval(async () => {
+    tick();
+    if (!document.body.contains(card)) { clearInterval(awayTimer); awayTimer = null; return; }
+    try {
+      const st = await GhostAPI.proxyGet('/v1/connect/status');
+      if (!st.pending || st.pending.state !== 'waiting' || st.linked) { renderAway(el); if (st.linked) GhostUI.toast('Linked. Your Ghost is on Ghost Connect.'); }
+    } catch (e) { /* keep waiting */ }
+  }, 3000);
+}
+
+function showRemotePairing() {
+  const backdrop = GhostUI.h('div', { className: 'ghost-modal-backdrop' });
+  const m = GhostUI.h('div', { className: 'ghost-modal', style: 'max-width:440px' });
+  m.appendChild(GhostUI.h('div', { className: 'modal__title' }, 'Connect a phone for away from home'));
+  m.appendChild(GhostUI.h('div', { className: 'modal__body type-callout text-tertiary' },
+    'Open Ghost on the phone and scan this. It works once and expires in a few minutes. It carries a key for that phone, so don’t share it.'));
+  const wrap = GhostUI.h('div', { className: 'qr-wrap' });
+  m.appendChild(wrap);
+  const actions = GhostUI.h('div', { className: 'modal__actions' });
+  actions.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: () => backdrop.remove() }, 'Close'));
+  m.appendChild(actions);
+  backdrop.appendChild(m);
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) backdrop.remove(); });
+  document.body.appendChild(backdrop);
+  wrap.appendChild(GhostUI.loading('Preparing…'));
+  GhostAPI.proxyPost('/v1/connect/pair', {}).then(r => {
+    wrap.innerHTML = '';
+    drawQR(r.uri, wrap);
+    wrap.appendChild(GhostUI.h('div', { className: 'qr-expiry' }, 'Expires in ' + Math.round((r.expires_in || 300) / 60) + ' minutes'));
+  }).catch(() => { backdrop.remove(); GhostUI.toast('Couldn’t prepare a phone. Is Ghost Connect connected?', 'err'); });
 }
 
 async function renderDevices(listEl) {

@@ -75,25 +75,34 @@ func newRelayClient(cfg *config.Config, podID string) (*relayclient.Client, *con
 	}), st, nil
 }
 
-// runManagedRelay keeps a Ghost Connect Pod on the relay: it holds the tunnel
-// open and renews the pass before it runs out. It is what makes Ghost Connect
-// need no setup after linking.
-func runManagedRelay(ctx context.Context, cfg *config.Config) {
-	ghostID, err := ghoststate.EnsureIdentity(cfg.WorkspacePath())
-	if err != nil {
-		log.Printf("relay: no identity: %v", err)
-		return
+// completeLink finishes linking once the owner has entered the code: it gives
+// the Pod a device secret and an encryption key, enrolls it with the relay by
+// showing the pass, and turns the relay connection on in the config. Used by
+// `ghost relay link` and by the console, so both do exactly the same thing.
+func completeLink(ctx context.Context, cfg *config.Config, site, podID, hostname string, pass *connect.Pass) error {
+	if cfg.Relay.DeviceSecret == "" {
+		secret, err := relayclient.GenerateToken()
+		if err != nil {
+			return fmt.Errorf("couldn't make a device secret: %w", err)
+		}
+		cfg.Relay.DeviceSecret = secret
 	}
-	client, st, err := newRelayClient(cfg, ghostID.GhostID)
-	if err != nil {
-		log.Printf("relay: %v", err)
-		return
+	if _, err := ensureRelayIdentity(cfg); err != nil {
+		return err
 	}
-	go renewLoop(ctx, cfg, client, st)
-	log.Printf("relay: Ghost Connect is on (%s)", cfg.Relay.Server)
-	if err := client.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		log.Printf("relay: stopped: %v", err)
+	if err := connect.Enroll(ctx, connect.HTTPBase(pass.Relay), podID, cfg.Relay.DeviceSecret, hostname, pass.Token); err != nil {
+		return err
 	}
+	st := &connect.State{Site: site, Relay: pass.Relay, Token: pass.Token, ExpiresAt: pass.ExpiresAt, LinkedAt: time.Now().UTC().Format(time.RFC3339)}
+	if err := connect.SaveState(cfg.WorkspacePath(), st); err != nil {
+		return fmt.Errorf("couldn't save the link: %w", err)
+	}
+	cfg.Relay.Enabled, cfg.Relay.Managed, cfg.Relay.RequireSealed = true, true, true
+	cfg.Relay.Server, cfg.Relay.Site = pass.Relay, site
+	if err := config.SaveConfig(getConfigPath(), cfg); err != nil {
+		return fmt.Errorf("couldn't save the config: %w", err)
+	}
+	return nil
 }
 
 // renewLoop swaps the pass for a fresh one while the subscription lasts. If the
@@ -145,7 +154,7 @@ func relayLinkCmd() {
 		fmt.Printf("Couldn't read Ghost's config: %v\n", err)
 		os.Exit(1)
 	}
-	site := firstNonEmpty(flagValue("--site"), os.Getenv("GHOST_CONNECT_SITE"), cfg.Relay.Site, defaultConnectSite)
+	site := firstNonEmpty(flagValue("--site"), connectSite(cfg))
 	if site == "" {
 		fmt.Println("Ghost Connect isn't open yet, so there is nothing to link to.")
 		fmt.Println("Away from home today, use Tailscale or your own relay (docs/CONNECT.md).")
@@ -180,7 +189,7 @@ func relayLinkCmd() {
 	})
 	fmt.Println()
 	fmt.Printf("  2. Check the code reads   %s\n", start.UserCode)
-	fmt.Printf("\n  Waiting… the code works for %d minutes. Ctrl-C to cancel.\n", start.ExpiresIn/60)
+	fmt.Printf("\n  Waiting\u2026 the code works for %d minutes. Ctrl-C to cancel.\n", start.ExpiresIn/60)
 
 	var pass *connect.Pass
 	tick := time.NewTicker(time.Duration(start.Interval) * time.Second)
@@ -209,31 +218,8 @@ func relayLinkCmd() {
 		}
 	}
 
-	if cfg.Relay.DeviceSecret == "" {
-		secret, err := relayclient.GenerateToken()
-		if err != nil {
-			fmt.Printf("Couldn't make a device secret: %v\n", err)
-			os.Exit(1)
-		}
-		cfg.Relay.DeviceSecret = secret
-	}
-	if _, err := ensureRelayIdentity(cfg); err != nil {
-		fmt.Printf("%v\n", err)
-		os.Exit(1)
-	}
-	if err := connect.Enroll(ctx, connect.HTTPBase(pass.Relay), ghostID.GhostID, cfg.Relay.DeviceSecret, hostname, pass.Token); err != nil {
+	if err := completeLink(ctx, cfg, site, ghostID.GhostID, hostname, pass); err != nil {
 		fmt.Printf("\n  %v\n", err)
-		os.Exit(1)
-	}
-	st := &connect.State{Site: site, Relay: pass.Relay, Token: pass.Token, ExpiresAt: pass.ExpiresAt, LinkedAt: time.Now().UTC().Format(time.RFC3339)}
-	if err := connect.SaveState(cfg.WorkspacePath(), st); err != nil {
-		fmt.Printf("Couldn't save the link: %v\n", err)
-		os.Exit(1)
-	}
-	cfg.Relay.Enabled, cfg.Relay.Managed, cfg.Relay.RequireSealed = true, true, true
-	cfg.Relay.Server, cfg.Relay.Site = pass.Relay, site
-	if err := config.SaveConfig(getConfigPath(), cfg); err != nil {
-		fmt.Printf("Couldn't save the config: %v\n", err)
 		os.Exit(1)
 	}
 

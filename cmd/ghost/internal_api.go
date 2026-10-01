@@ -5422,6 +5422,8 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		jsonResponse(w, http.StatusOK, invitation)
 	}))
 
+	registerConnectAPI(mux)
+
 	// Legacy: POST /v1/pairing/start — kept for backward compatibility.
 	mux.HandleFunc("/v1/pairing/start", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

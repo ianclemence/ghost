@@ -59,6 +59,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/verify"
 	"github.com/ianclemence/ghost/pkg/voice"
 	"github.com/joho/godotenv"
+	"github.com/mdp/qrterminal/v3"
 	_ "modernc.org/sqlite"
 )
 
@@ -1659,9 +1660,8 @@ func gatewayCmd() {
 
 	go agentLoop.Run(ctx)
 	go startInternalAPI(agentLoop, scheduledService, channelManager)
-	if cfg.Relay.Managed && cfg.Relay.Enabled && cfg.Relay.Server != "" && cfg.Relay.DeviceSecret != "" {
-		go runManagedRelay(ctx, cfg)
-	}
+	connectSvc.begin(ctx)
+	connectSvc.startRelay(cfg)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
@@ -2891,37 +2891,30 @@ func relayPairCmd() {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
 	}
-
-	ghostID, err := ghoststate.EnsureIdentity(cfg.WorkspacePath())
-	if err != nil {
-		fmt.Printf("Error loading identity: %v\n", err)
-		os.Exit(1)
-	}
-
 	name := "Phone"
 	if len(os.Args) > 3 {
-		name = os.Args[3]
+		name = strings.Join(os.Args[3:], " ")
 	}
-
-	token, err := relayclient.AddClient(ghostID.GhostID, name)
+	uri, expires, err := connectSvc.pairRemote(cfg, name)
 	if err != nil {
-		fmt.Printf("Error generating token: %v\n", err)
+		fmt.Printf("Couldn't prepare a phone: %v\n", err)
+		if cfg.Relay.Server == "" {
+			fmt.Println("Set up a relay first: `ghost relay link` for Ghost Connect, or `ghost relay setup` for your own.")
+		}
 		os.Exit(1)
 	}
-
-	fmt.Printf("\nPairing token generated for: %s\n", name)
-	fmt.Printf("Token: %s\n\n", token)
-	fmt.Println("Add this URL to your Ghost app:")
-	id, err := ensureRelayIdentity(cfg)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-	// pk pins the Pod's key in the phone, so the relay cannot swap in its own
-	// and read what passes through.
-	fmt.Printf("  ghost://connect?transport=relay&relay=%s&ghost=%s&token=%s&pk=%s\n",
-		cfg.Relay.Server, ghostID.GhostID, token, podKeyParam(id))
-	fmt.Println("\nNote: This token is shown once. Store it securely.")
+	fmt.Println()
+	fmt.Println("  Connect a phone for use away from home")
+	fmt.Println("  Open the app \u2192 Connect your Pod \u2192 Scan QR code")
+	fmt.Println()
+	qrterminal.GenerateWithConfig(uri, qrterminal.Config{
+		Level: qrterminal.L, Writer: os.Stdout, HalfBlocks: true,
+		BlackChar: qrterminal.BLACK_BLACK, WhiteChar: qrterminal.WHITE_WHITE,
+		BlackWhiteChar: qrterminal.BLACK_WHITE, WhiteBlackChar: qrterminal.WHITE_BLACK, QuietZone: 1,
+	})
+	fmt.Println()
+	fmt.Printf("  Expires in %d minutes, works once. It carries a key for this phone, so don't share it.\n", expires/60)
+	fmt.Printf("  Can't scan? Open this link on the phone:\n    %s\n\n", uri)
 }
 
 func relayClientsCmd() {

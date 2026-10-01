@@ -286,19 +286,10 @@ func (c *Client) connectAndRun(ctx context.Context) error {
 	c.setStatus(StateConnected, "")
 
 	// Send clients list (device is source of truth)
-	clients, err := loadClients(c.cfg.DeviceID)
-	if err != nil {
-		log.Printf("relay-client: load clients: %v", err)
-	} else if len(clients) > 0 {
-		entries := make([]proto.ClientEntry, len(clients))
-		for i, cl := range clients {
-			entries[i] = proto.ClientEntry{TokenHash: cl.TokenHash, Name: cl.Name, Scope: cl.Scope}
-		}
-		_ = proto.WriteCTLWS(conn, 0, &proto.Control{
-			Op:      proto.OpAddClients,
-			Clients: entries,
-		})
+	if ctl := c.clientsControl(); ctl != nil {
+		_ = proto.WriteCTLWS(conn, 0, ctl)
 	}
+	go c.watchClients(connDone)
 
 	// Write pump (single writer for data frames)
 	writeDone := make(chan struct{})
@@ -738,3 +729,70 @@ func GenerateToken() (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+// clientsControl is the add_clients message for the Pod's paired phones, or nil
+// when there are none (or the list can't be read).
+func (c *Client) clientsControl() *proto.Control {
+	clients, err := loadClients(c.cfg.DeviceID)
+	if err != nil {
+		log.Printf("relay-client: load clients: %v", err)
+		return nil
+	}
+	if len(clients) == 0 {
+		return nil
+	}
+	entries := make([]proto.ClientEntry, len(clients))
+	for i, cl := range clients {
+		entries[i] = proto.ClientEntry{TokenHash: cl.TokenHash, Name: cl.Name, Scope: cl.Scope}
+	}
+	return &proto.Control{Op: proto.OpAddClients, Clients: entries}
+}
+
+// RefreshClients tells the relay about the Pod's paired phones now. Pairing a
+// phone, or revoking one, calls it so the change doesn't wait for a reconnect.
+func (c *Client) RefreshClients() {
+	ctl := c.clientsControl()
+	if ctl == nil {
+		// An empty list still has to reach the relay, or a revoked phone would
+		// stay valid there until the next reconnect.
+		ctl = &proto.Control{Op: proto.OpAddClients}
+	}
+	payload, err := json.Marshal(ctl)
+	if err != nil {
+		return
+	}
+	_ = c.sendFrame(&proto.Frame{Kind: proto.KindCTL, Payload: payload})
+}
+
+// watchClients notices when the list of paired phones changes on disk, from
+// `ghost relay pair` in another process or the console, and tells the relay.
+func (c *Client) watchClients(connDone chan struct{}) {
+	path := clientsPath(c.cfg.DeviceID)
+	stamp := func() (int64, int64) {
+		fi, err := os.Stat(path)
+		if err != nil {
+			return 0, 0
+		}
+		return fi.ModTime().UnixNano(), fi.Size()
+	}
+	m, sz := stamp()
+	t := time.NewTicker(clientsWatchEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-connDone:
+			return
+		case <-c.done:
+			return
+		case <-t.C:
+			if m2, sz2 := stamp(); m2 != m || sz2 != sz {
+				m, sz = m2, sz2
+				c.RefreshClients()
+			}
+		}
+	}
+}
+
+// clientsWatchEvery is how often the paired-phones file is checked. A variable
+// so tests can shorten it.
+var clientsWatchEvery = 2 * time.Second

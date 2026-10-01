@@ -86,7 +86,18 @@ func pairCmd() {
 }
 
 func requestInvitation(base, name string) (*pairInvitation, error) {
-	body, _ := json.Marshal(map[string]string{"display_name": name})
+	return requestInvitationWith(base, map[string]string{"display_name": name})
+}
+
+// requestRelayInvitation asks for an invitation that will be redeemed over the
+// relay rather than the home network. The host and port are unused for a relay
+// invitation; the phone is told where the relay is by the link itself.
+func requestRelayInvitation(base, name string) (*pairInvitation, error) {
+	return requestInvitationWith(base, map[string]string{"display_name": name, "transport": "relay", "host": "relay", "port": "443"})
+}
+
+func requestInvitationWith(base string, fields map[string]string) (*pairInvitation, error) {
+	body, _ := json.Marshal(fields)
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Post(base+"/v1/pairing/invitations", "application/json", bytes.NewReader(body))
 	if err != nil {

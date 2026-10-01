@@ -12,6 +12,10 @@ import (
 	"github.com/ianclemence/ghost/pkg/relaycrypto"
 )
 
+// sealedChunk is how much of a sealed request is forwarded at a time. It stays
+// well inside the tunnel's frame limit.
+const sealedChunk = 256 << 10
+
 // entitlementCheckEvery is how often a metered tunnel is checked against its
 // expiry. A variable so tests can shorten it.
 var entitlementCheckEvery = 15 * time.Second
@@ -69,11 +73,13 @@ func (s *Server) handleSealed(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"device offline"}`, http.StatusServiceUnavailable)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, relaycrypto.MaxRequest+1))
-	if err != nil || len(body) == 0 || len(body) > relaycrypto.MaxRequest {
-		http.Error(w, `{"error":"bad body"}`, http.StatusBadRequest)
+	if r.ContentLength > relaycrypto.MaxRequest {
+		http.Error(w, `{"error":"too large"}`, http.StatusRequestEntityTooLarge)
 		return
 	}
+	// A photo over a phone's uplink takes longer than the server's usual read
+	// limit, so this route extends its own.
+	_ = http.NewResponseController(w).SetReadDeadline(s.cfg.now().Add(15 * time.Minute))
 
 	streamID := s.streams.nextStreamID()
 	key := fmt.Sprintf("%s:%d", deviceID, streamID)
@@ -83,15 +89,45 @@ func (s *Server) handleSealed(w http.ResponseWriter, r *http.Request) {
 	defer st.close()
 
 	meta, _ := json.Marshal(&proto.HTTPMetadata{Type: proto.StreamSealed})
-	for _, f := range []*proto.Frame{
-		{Kind: proto.KindOPEN, StreamID: streamID, Payload: meta},
-		{Kind: proto.KindDATA, StreamID: streamID, Payload: body},
-		{Kind: proto.KindEND, StreamID: streamID},
-	} {
-		if err := tunnel.SendFrame(f); err != nil {
-			http.Error(w, `{"error":"tunnel write"}`, http.StatusBadGateway)
+	if err := tunnel.SendFrame(&proto.Frame{Kind: proto.KindOPEN, StreamID: streamID, Payload: meta}); err != nil {
+		http.Error(w, `{"error":"tunnel write"}`, http.StatusBadGateway)
+		return
+	}
+	// The body goes to the Pod as it arrives, in pieces, never held whole here.
+	abort := func(code int, msg string) {
+		_ = tunnel.SendFrame(&proto.Frame{Kind: proto.KindERROR, StreamID: streamID, Payload: []byte("aborted")})
+		http.Error(w, msg, code)
+	}
+	buf := make([]byte, sealedChunk)
+	total := 0
+	for {
+		n, rerr := r.Body.Read(buf)
+		if n > 0 {
+			total += n
+			if total > relaycrypto.MaxRequest {
+				abort(http.StatusRequestEntityTooLarge, `{"error":"too large"}`)
+				return
+			}
+			if err := tunnel.SendFrame(&proto.Frame{Kind: proto.KindDATA, StreamID: streamID, Payload: append([]byte(nil), buf[:n]...)}); err != nil {
+				http.Error(w, `{"error":"tunnel write"}`, http.StatusBadGateway)
+				return
+			}
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			abort(http.StatusBadRequest, `{"error":"bad body"}`)
 			return
 		}
+	}
+	if total == 0 {
+		abort(http.StatusBadRequest, `{"error":"bad body"}`)
+		return
+	}
+	if err := tunnel.SendFrame(&proto.Frame{Kind: proto.KindEND, StreamID: streamID}); err != nil {
+		http.Error(w, `{"error":"tunnel write"}`, http.StatusBadGateway)
+		return
 	}
 
 	// The Pod answers with an OPEN, then sealed frames, then END. Only the OPEN
