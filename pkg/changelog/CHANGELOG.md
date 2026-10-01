@@ -3,6 +3,22 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.104] - 2026-10-01
+
+- **Approving, pairing and changing policy now need more than being on the Pod.**
+  A command Ghost runs in its shell can reach the gateway on the Pod itself, and
+  the gateway used to trust that. Approvals and grants, the permission mode,
+  pairing, connecting apps and tool servers, skills, providers, reset, system
+  update and live takeover now also need a local key kept where Ghost's commands
+  cannot read it. The console, terminal and `ghost pair` use it automatically;
+  nothing for you to do.
+- **Skills are no longer fetched from a default address.** The registry Ghost
+  looked at does not exist. Set `GHOST_SKILLS_REGISTRY` to a `skills.json`
+  address if you keep one.
+- **Groundwork for Ghost Connect**, the optional hosted way to reach your Pod
+  away from home: sealed requests through a relay, and linking from the console.
+  It is not offered yet, and nothing changes unless you link a Pod.
+
 ## [0.24.103] - 2026-10-01
 
 - **Send several files at once and Ghost answers what you ask about them.** The
