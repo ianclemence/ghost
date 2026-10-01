@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/localtrust"
 	"github.com/mdp/qrterminal/v3"
 )
 
@@ -98,7 +100,7 @@ func requestRelayInvitation(base, name string) (*pairInvitation, error) {
 
 func requestInvitationWith(base string, fields map[string]string) (*pairInvitation, error) {
 	body, _ := json.Marshal(fields)
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: localtrust.Transport{Dir: filepath.Dir(getConfigPath())}}
 	resp, err := client.Post(base+"/v1/pairing/invitations", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return nil, err

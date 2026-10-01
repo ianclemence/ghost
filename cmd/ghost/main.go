@@ -40,6 +40,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/heartbeat"
+	"github.com/ianclemence/ghost/pkg/localtrust"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/maintenance"
 	"github.com/ianclemence/ghost/pkg/mcp"
@@ -958,7 +959,7 @@ func agentCmd() {
 	// back to the embedded loop (today's offline-capable behavior).
 	if base := gatewayBaseURL(cfg); gatewayReachable(base) {
 		fmt.Fprintf(os.Stderr, "✓ Connected to Ghost gateway (%s) — one shared conversation with the app\n", base)
-		agentGatewayCmd(&gatewayRuntime{baseURL: base, http: &http.Client{}}, message, sessionKey)
+		agentGatewayCmd(&gatewayRuntime{baseURL: base, http: &http.Client{Transport: localtrust.Transport{Dir: filepath.Dir(getConfigPath())}}}, message, sessionKey)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "○ Gateway unreachable — local mode (this conversation stays on this machine until the daemon runs)\n")
@@ -1966,7 +1967,7 @@ func tryResetViaAPI(cfg *config.Config, args []string, text string) (string, boo
 	_ = args
 	port := resetAPIPort(cfg)
 	body, _ := json.Marshal(map[string]string{"text": text})
-	client := &http.Client{Timeout: 90 * time.Second}
+	client := &http.Client{Timeout: 90 * time.Second, Transport: localtrust.Transport{Dir: filepath.Dir(getConfigPath())}}
 	resp, err := client.Post(
 		fmt.Sprintf("http://127.0.0.1:%d/v1/reset", port),
 		"application/json", strings.NewReader(string(body)),
@@ -3616,7 +3617,7 @@ func skillsHelp() {
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  ghost skills list")
-	fmt.Println("  ghost skills add sipeed/Ghost-skills")
+	fmt.Println("  ghost skills add owner/repo")
 	fmt.Println("  ghost skills search weather")
 	fmt.Println("  ghost skills add --builtin")
 	fmt.Println("  ghost skills remove weather")
@@ -3646,7 +3647,7 @@ func skillsListCmd(loader *skills.SkillsLoader) {
 func skillsInstallCmd(installer *skills.SkillInstaller, workspace string) {
 	if len(os.Args) < 4 {
 		fmt.Println("Usage: ghost skills install <github-repo>")
-		fmt.Println("Example: ghost skills install sipeed/ghost-skills/weather")
+		fmt.Println("Example: ghost skills install owner/repo/weather")
 		return
 	}
 

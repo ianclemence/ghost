@@ -176,7 +176,18 @@ one broker so that "may Ghost do this?" has exactly one answer.
 See [Capability](CAPABILITY.md) for what is being authorized and
 [Evidence](EVIDENCE.md) for what happens after execution.
 
+## Who may answer an approval
+
+The model can run shell commands, and those commands share the Pod's network, so
+they can reach the gateway on `127.0.0.1` like any local program. Loopback alone
+is therefore not trusted for the routes that grant authority, mint credentials,
+change policy or install code (approvals and grants, mode, pairing, connecting
+apps and tool servers, skills, providers, reset, system update, live takeover).
+Those need either a paired device's credentials or the **local token**: a secret
+in the config directory, which the command sandbox never mounts. The console, the
+terminal and the CLI read it and send it; a command the model runs cannot.
+
 ## Implementation
 
-The broker lives in `pkg/permissions`. Browser and computer gates live in
+The broker lives in `pkg/permissions`; the local token is `pkg/localtrust`. Browser and computer gates live in
 `pkg/agent`.

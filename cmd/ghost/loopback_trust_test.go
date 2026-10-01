@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/localtrust"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -131,5 +132,63 @@ func TestRelayedRequestsAreNotTrustedAsLocal(t *testing.T) {
 	h(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("a relayed request without device credentials must be refused, got %d", rec.Code)
+	}
+}
+
+// A command the model runs in its shell reaches 127.0.0.1 like any local
+// program. For routes that grant authority, mint credentials or change policy,
+// loopback alone must not be trust: the local token, which the sandbox cannot
+// read, has to come with it.
+func TestLoopbackNeedsLocalTokenForSensitiveRoutes(t *testing.T) {
+	const tok = "0123456789abcdef0123456789abcdef"
+	localtrust.Accept(tok)
+	t.Cleanup(func() { localtrust.Accept("") })
+
+	mk := func(method, path, token string) *http.Request {
+		r := httptest.NewRequest(method, "http://127.0.0.1:18790"+path, nil)
+		r.RemoteAddr = "127.0.0.1:50123"
+		if token != "" {
+			r.Header.Set(localtrust.Header, token)
+		}
+		return r
+	}
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		token  string
+		want   bool
+	}{
+		{"resolve without token", http.MethodPost, "/v1/permissions/resolve", "", false},
+		{"resolve with wrong token", http.MethodPost, "/v1/permissions/resolve", "nope", false},
+		{"resolve with token", http.MethodPost, "/v1/permissions/resolve", tok, true},
+		{"grants without token", http.MethodPost, "/v1/permissions/grants", "", false},
+		{"mode without token", http.MethodPost, "/v1/mode", "", false},
+		{"pairing invitation without token", http.MethodPost, "/v1/pairing/invitations", "", false},
+		{"pairing invitation with token", http.MethodPost, "/v1/pairing/invitations", tok, true},
+		{"skill install without token", http.MethodPost, "/v1/skills/install", "", false},
+		{"live takeover without token", http.MethodPost, "/v1/live/surfaces/x/release", "", false},
+		{"password reset read without token", http.MethodGet, "/v1/console/password-reset", "", false},
+		{"website logins read without token", http.MethodGet, "/v1/website-logins", "", false},
+		{"chat stays loopback-trusted", http.MethodPost, "/v1/chat", "", true},
+		{"listing requests stays loopback-trusted", http.MethodGet, "/v1/permissions/requests", "", true},
+		{"health stays loopback-trusted", http.MethodGet, "/v1/health", "", true},
+	}
+	for _, tc := range cases {
+		if got := loopbackTrusted(mk(tc.method, tc.path, tc.token)); got != tc.want {
+			t.Errorf("%s: trusted=%v, want %v", tc.name, got, tc.want)
+		}
+	}
+	// With no token configured the sensitive routes refuse everyone.
+	localtrust.Accept("")
+	if loopbackTrusted(mk(http.MethodPost, "/v1/permissions/resolve", tok)) {
+		t.Error("with no served token, sensitive routes must fail closed")
+	}
+	// A relayed request is never loopback-trusted, token or not.
+	localtrust.Accept(tok)
+	r := mk(http.MethodPost, "/v1/permissions/resolve", tok)
+	r.Header.Set("X-Ghost-Via", "relay")
+	if loopbackTrusted(r) {
+		t.Error("a relayed request must not be trusted")
 	}
 }

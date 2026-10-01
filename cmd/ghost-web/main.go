@@ -25,6 +25,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/appliance"
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
+	"github.com/ianclemence/ghost/pkg/localtrust"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
@@ -913,6 +914,10 @@ func handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The owner's session was verified above, so this hop may carry the local
+	// token that the gateway asks for on routes that grant authority.
+	localtrust.Apply(proxyReq, filepath.Join(fb.GhostDir, "config"))
+
 	// Execute the request
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(proxyReq)
@@ -1391,6 +1396,7 @@ func mintPairingInvitation() (map[string]interface{}, error) {
 			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/json")
+		localtrust.Apply(req, filepath.Join(fb.GhostDir, "config"))
 		resp, err := client.Do(req)
 		if err == nil {
 			if resp.StatusCode == http.StatusOK {

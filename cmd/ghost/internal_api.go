@@ -53,6 +53,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/goals"
 	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/ideas"
+	"github.com/ianclemence/ghost/pkg/localtrust"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/modes"
 	"github.com/ianclemence/ghost/pkg/pairing"
@@ -288,6 +289,49 @@ func isLoopbackRequest(r *http.Request) bool {
 	return !foreignBrowserContext(r)
 }
 
+// localTokenPrefixes are the parts of the gateway that grant authority, mint
+// or change credentials, change policy, or install code. A command the model
+// runs in its shell shares the Pod's network and so reaches loopback; for
+// these routes loopback alone is not trust. The caller must also present the
+// local token (pkg/localtrust), which the command sandbox cannot read.
+var localTokenPrefixes = []string{
+	"/v1/permissions/", "/v1/mode", "/v1/pairing/", "/v1/connect/",
+	"/v1/console/", "/v1/system/", "/v1/website-logins", "/v1/connected-apps",
+	"/v1/connectors", "/v1/tool-servers", "/v1/skills", "/v1/providers",
+	"/v1/intelligence/", "/v1/reset", "/v1/exec", "/v1/live/surfaces/",
+	"/v1/browser/signout", "/v1/channels/reconnect",
+}
+
+// requiresLocalToken reports whether loopback trust for r needs the token.
+// Reading is allowed on loopback alone, except for the password-reset route
+// and website logins, whose reads are themselves sensitive.
+func requiresLocalToken(r *http.Request) bool {
+	path := r.URL.Path
+	if strings.HasPrefix(path, "/v1/console/") || strings.HasPrefix(path, "/v1/website-logins") {
+		return true
+	}
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return false
+	}
+	for _, p := range localTokenPrefixes {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// loopbackTrusted is isLoopbackRequest plus, for the routes above, the local
+// token. A loopback caller without it falls through to device credentials,
+// which a model-run command does not have.
+func loopbackTrusted(r *http.Request) bool {
+	if !isLoopbackRequest(r) {
+		return false
+	}
+	return !requiresLocalToken(r) || localtrust.Valid(r)
+}
+
 // foreignBrowserContext reports whether a request carries the marks of a
 // web page that is not this machine's own.
 func foreignBrowserContext(r *http.Request) bool {
@@ -405,7 +449,7 @@ func setCORS(w http.ResponseWriter, r *http.Request, allowHeaders, allowMethods 
 // must present a valid per-device credential; validation also refreshes the
 // device's last-seen timestamp.
 func peerAuthorized(r *http.Request) bool {
-	if isLoopbackRequest(r) {
+	if loopbackTrusted(r) {
 		return true
 	}
 	deviceID := r.Header.Get("X-Ghost-Device-ID")
@@ -648,7 +692,7 @@ func deviceAuthMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if !isLoopbackRequest(r) {
+		if !loopbackTrusted(r) {
 			deviceID := r.Header.Get("X-Ghost-Device-ID")
 			credential := r.Header.Get("X-Ghost-Credential")
 			if deviceID == "" || credential == "" || db == nil {
@@ -1961,6 +2005,13 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	port := agentLoop.Config().Gateway.Port
 	if p := os.Getenv("GHOST_API_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
+	}
+
+	// Without the local token the owner's own programs still work for
+	// everything ordinary, and the sensitive routes refuse them (and anything
+	// else on loopback), so a failure here is loud but not fatal.
+	if _, err := localtrust.Ensure(filepath.Dir(getConfigPath())); err != nil {
+		log.Printf("⚠️ local trust token unavailable (%v): the console and CLI cannot change permissions or pair devices until it is fixed", err)
 	}
 
 	allowedCmds := []string{}
