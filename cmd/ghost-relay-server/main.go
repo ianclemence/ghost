@@ -7,6 +7,7 @@
 // Usage:
 //
 //	ghost-relay-server serve [--listen :8080] [--registry registry.json] [--tls-cert cert.pem --tls-key key.pem]
+//	                         [--entitlement-keys <base64 Ed25519 public keys>]
 //	ghost-relay-server add-device <device_id> [--name "My Ghost"]
 //	ghost-relay-server list-devices
 //	ghost-relay-server remove-device <device_id>
@@ -20,6 +21,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ianclemence/ghost/pkg/entitlement"
 	"github.com/ianclemence/ghost/pkg/relay/server"
 )
 
@@ -62,7 +64,17 @@ func cmdServe() {
 	tlsCert := fs.String("tls-cert", "", "TLS certificate file (empty = no TLS)")
 	tlsKey := fs.String("tls-key", "", "TLS key file")
 	adminSecret := fs.String("admin-secret", os.Getenv("GHOST_RELAY_ADMIN_SECRET"), "admin token for device enrollment")
+	entKeys := fs.String("entitlement-keys", os.Getenv("GHOST_RELAY_ENTITLEMENT_KEYS"),
+		"Ed25519 public key(s) the Ghost site signs entitlements with; when set, only Pods with a current entitlement are served (Ghost Connect)")
+	enrollPM := fs.Int("enroll-per-minute", 0, "enrollment attempts per client address per minute (0 = default)")
+	connectPM := fs.Int("connect-per-minute", 0, "tunnel connects per client address per minute (0 = default)")
+	requestPM := fs.Int("request-per-minute", 0, "app requests per paired client per minute (0 = default)")
 	fs.Parse(os.Args[2:])
+
+	keys, err := entitlement.ParsePublicKeys(*entKeys)
+	if err != nil {
+		log.Fatalf("--entitlement-keys: %v", err)
+	}
 
 	cfg := server.Config{
 		ListenAddr:   *listen,
@@ -70,6 +82,14 @@ func cmdServe() {
 		TLSKeyFile:   *tlsKey,
 		RegistryPath: *registryPath,
 		AdminSecret:  *adminSecret,
+
+		EntitlementKeys:  keys,
+		EnrollPerMinute:  *enrollPM,
+		ConnectPerMinute: *connectPM,
+		RequestPerMinute: *requestPM,
+	}
+	if len(keys) > 0 {
+		log.Printf("relay: metered, %d entitlement key(s) trusted", len(keys))
 	}
 
 	srv, err := server.NewServer(cfg)

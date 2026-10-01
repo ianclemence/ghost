@@ -9,11 +9,13 @@
 package server
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,9 +25,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/ianclemence/ghost/pkg/entitlement"
 	"github.com/ianclemence/ghost/pkg/relay/proto"
 )
 
@@ -35,6 +39,11 @@ type RegistryEntry struct {
 	SecretHash   string `json:"secret_hash"` // hex(sha256(device_secret))
 	DisplayName  string `json:"display_name,omitempty"`
 	RegisteredAt string `json:"registered_at,omitempty"`
+	// Account is the opaque id from the entitlement that enrolled the device.
+	// It is the only thing that lets a Pod be enrolled again (a new secret after
+	// a reinstall) without the operator, and it says nothing about who the
+	// owner is.
+	Account string `json:"account,omitempty"`
 }
 
 // Registry is the on-disk device registry.
@@ -95,6 +104,36 @@ func (r *Registry) Add(deviceID, displayName string) (string, error) {
 		return "", err
 	}
 	return secretHex, nil
+}
+
+// Enroll registers a device with a secret it chose, for an account. A device
+// that is already registered may only be enrolled again by the account that
+// first enrolled it; otherwise anyone holding any valid entitlement could take
+// over a device id.
+func (r *Registry) Enroll(deviceID, secret, name, account string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if old, ok := r.entries[deviceID]; ok && (old.Account == "" || old.Account != account) {
+		return fmt.Errorf("device %s is already registered to another account", deviceID)
+	}
+	hash := sha256.Sum256([]byte(secret))
+	prev := r.entries[deviceID]
+	r.entries[deviceID] = &RegistryEntry{
+		DeviceID:     deviceID,
+		SecretHash:   hex.EncodeToString(hash[:]),
+		DisplayName:  name,
+		RegisteredAt: time.Now().UTC().Format(time.RFC3339),
+		Account:      account,
+	}
+	if err := r.save(); err != nil {
+		if prev != nil {
+			r.entries[deviceID] = prev
+		} else {
+			delete(r.entries, deviceID)
+		}
+		return err
+	}
+	return nil
 }
 
 // Remove deletes a device from the registry.
@@ -200,6 +239,15 @@ type DeviceTunnel struct {
 	Send     chan []byte
 	Done     chan struct{}
 	closeMu  sync.Once
+
+	// Connected is when the tunnel came up. In and Out count payload bytes, and
+	// are the only usage the relay keeps: sizes and times, never content.
+	Connected time.Time
+	In, Out   atomic.Int64
+	// Expires is the entitlement's expiry as unix seconds; 0 means the relay is
+	// not metering (self-hosted).
+	Expires atomic.Int64
+	Account string
 }
 
 // Close cleanly shuts down the tunnel.
@@ -220,6 +268,7 @@ func (t *DeviceTunnel) SendFrame(f *proto.Frame) error {
 	}
 	select {
 	case t.Send <- data:
+		t.Out.Add(int64(len(f.Payload)))
 		return nil
 	case <-t.Done:
 		return fmt.Errorf("tunnel closed")
@@ -314,53 +363,10 @@ func (tm *TunnelManager) AuthClientScope(deviceID, tokenHex string) (string, boo
 	return "", false
 }
 
-// scopeChatPaths is the conversational core a chat-scoped app may reach:
-// talk, read history/recall, answer clarifications, and read-only
-// self/model/health introspection. Everything else (exec, pairing,
-// permissions, schedules, config) needs a full-scope token.
-var scopeChatPaths = map[string]map[string]bool{
-	"/v1/chat":            {"GET": true, "POST": true},
-	"/v1/message":         {"GET": true, "POST": true},
-	"/v1/messages":        {"GET": true, "POST": true},
-	"/v1/history":         {"GET": true},
-	"/v1/recall":          {"GET": true, "POST": true},
-	"/v1/clarify/respond": {"POST": true},
-	"/v1/health":          {"GET": true},
-	"/v1/identity":        {"GET": true},
-	"/v1/model":           {"GET": true},
-	"/v1/activity":        {"GET": true},
-}
-
-// scopeSensitivePrefixes are credential-adjacent paths even readonly
-// clients must not reach over the relay.
-var scopeSensitivePrefixes = []string{
-	"/v1/pairing/",
-	"/v1/permissions/",
-}
-
-// ScopeAllows reports whether a client scope may call method+path.
-// Unknown scopes deny — fail closed.
-func ScopeAllows(scope, method, path string) bool {
-	switch scope {
-	case "", proto.ScopeFull:
-		return true
-	case proto.ScopeReadonly:
-		if method != http.MethodGet {
-			return false
-		}
-		for _, p := range scopeSensitivePrefixes {
-			if strings.HasPrefix(path, p) {
-				return false
-			}
-		}
-		return true
-	case proto.ScopeChat:
-		methods, ok := scopeChatPaths[path]
-		return ok && methods[method]
-	default:
-		return false
-	}
-}
+// ScopeAllows reports whether a client scope may call method+path. The rules
+// live in proto so the Pod can enforce them on sealed traffic the relay cannot
+// read.
+func ScopeAllows(scope, method, path string) bool { return proto.ScopeAllows(scope, method, path) }
 
 // Config holds relay server configuration.
 type Config struct {
@@ -369,6 +375,34 @@ type Config struct {
 	TLSKeyFile   string
 	RegistryPath string // path to registry.json
 	AdminSecret  string // optional admin token for enrollment
+
+	// EntitlementKeys are the public keys the Ghost site signs entitlements
+	// with. When set, the relay serves only Pods that present a valid
+	// entitlement, and a Pod may enroll itself with one. Empty means a
+	// self-hosted relay that trusts its registry alone.
+	EntitlementKeys []ed25519.PublicKey
+
+	// Limits per minute. Zero uses the defaults.
+	EnrollPerMinute  int // per client address
+	ConnectPerMinute int // tunnel connects, per client address
+	RequestPerMinute int // app requests, per paired client
+
+	// Now is the clock; nil uses time.Now.
+	Now func() time.Time
+}
+
+func (c Config) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
+}
+
+func orDefault(v, d int) int {
+	if v <= 0 {
+		return d
+	}
+	return v
 }
 
 // Server is the relay server.
@@ -378,6 +412,10 @@ type Server struct {
 	tunnels  *TunnelManager
 	streams  *streamRegistry
 	upgrader websocket.Upgrader
+
+	enrollLimit  *rateLimiter
+	connectLimit *rateLimiter
+	requestLimit *rateLimiter
 }
 
 // NewServer creates a new relay server.
@@ -394,6 +432,9 @@ func NewServer(cfg Config) (*Server, error) {
 		upgrader: websocket.Upgrader{
 			CheckOrigin: checkSameOrigin,
 		},
+		enrollLimit:  newRateLimiter(orDefault(cfg.EnrollPerMinute, 10), time.Minute),
+		connectLimit: newRateLimiter(orDefault(cfg.ConnectPerMinute, 30), time.Minute),
+		requestLimit: newRateLimiter(orDefault(cfg.RequestPerMinute, 600), time.Minute),
 	}, nil
 }
 
@@ -459,6 +500,8 @@ func (s *Server) HandleHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleEnroll(w, r)
 	case path == "/v1/tunnel" || strings.HasPrefix(path, "/v1/tunnel"):
 		s.handleDeviceTunnel(w, r)
+	case path == "/v1/sealed":
+		s.handleSealed(w, r)
 	case strings.HasPrefix(path, "/oauth/"):
 		s.handleOAuthCallback(w, r)
 	case strings.HasPrefix(path, "/v1/"):
@@ -473,16 +516,26 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "ok",
 		"version": proto.Version,
+		// Whether this relay serves only Pods with an entitlement. A Pod
+		// reads it to know whether to ask the Ghost site for one.
+		"metered": len(s.cfg.EntitlementKeys) > 0,
 	})
 }
 
-// handleEnroll allows a device to register itself with an admin token.
+// handleEnroll registers a device. Two things can authorise it: the operator's
+// admin token (self-hosted relays), or an entitlement signed by the Ghost site
+// for exactly this device (Ghost Connect), in which case the Pod enrolls
+// itself and the relay never needs a channel to the site.
 func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	if s.cfg.AdminSecret == "" {
+	if !s.enrollLimit.allow(clientAddr(r), s.cfg.now()) {
+		tooMany(w)
+		return
+	}
+	if s.cfg.AdminSecret == "" && len(s.cfg.EntitlementKeys) == 0 {
 		http.Error(w, `{"error":"enrollment disabled"}`, http.StatusForbidden)
 		return
 	}
@@ -491,16 +544,11 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		DeviceID     string `json:"device_id"`
 		DeviceSecret string `json:"device_secret"`
 		AdminToken   string `json:"admin_token"`
+		Entitlement  string `json:"entitlement"`
 		Name         string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
-		return
-	}
-	adminHash := sha256.Sum256([]byte(req.AdminToken))
-	wantHash := sha256.Sum256([]byte(s.cfg.AdminSecret))
-	if subtle.ConstantTimeCompare(adminHash[:], wantHash[:]) != 1 {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
 	if req.DeviceID == "" || req.DeviceSecret == "" {
@@ -508,24 +556,57 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash := sha256.Sum256([]byte(req.DeviceSecret))
-	entry := &RegistryEntry{
-		DeviceID:     req.DeviceID,
-		SecretHash:   hex.EncodeToString(hash[:]),
-		DisplayName:  req.Name,
-		RegisteredAt: time.Now().UTC().Format(time.RFC3339),
-	}
-	s.registry.mu.Lock()
-	s.registry.entries[req.DeviceID] = entry
-	err := s.registry.save()
-	s.registry.mu.Unlock()
-
-	if err != nil {
-		http.Error(w, `{"error":"failed to save"}`, http.StatusInternalServerError)
+	switch {
+	case req.Entitlement != "" && len(s.cfg.EntitlementKeys) > 0:
+		c, err := entitlement.VerifyForPod(req.Entitlement, req.DeviceID, s.cfg.EntitlementKeys, s.cfg.now())
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, entitlementReason(err)), http.StatusUnauthorized)
+			return
+		}
+		if err := s.registry.Enroll(req.DeviceID, req.DeviceSecret, req.Name, c.Account); err != nil {
+			http.Error(w, `{"error":"already registered"}`, http.StatusConflict)
+			return
+		}
+	case s.cfg.AdminSecret != "" && req.AdminToken != "":
+		adminHash := sha256.Sum256([]byte(req.AdminToken))
+		wantHash := sha256.Sum256([]byte(s.cfg.AdminSecret))
+		if subtle.ConstantTimeCompare(adminHash[:], wantHash[:]) != 1 {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		hash := sha256.Sum256([]byte(req.DeviceSecret))
+		s.registry.mu.Lock()
+		s.registry.entries[req.DeviceID] = &RegistryEntry{
+			DeviceID:     req.DeviceID,
+			SecretHash:   hex.EncodeToString(hash[:]),
+			DisplayName:  req.Name,
+			RegisteredAt: time.Now().UTC().Format(time.RFC3339),
+		}
+		err := s.registry.save()
+		s.registry.mu.Unlock()
+		if err != nil {
+			http.Error(w, `{"error":"failed to save"}`, http.StatusInternalServerError)
+			return
+		}
+	default:
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}
+
+// entitlementReason is the short, safe reason given to a Pod whose entitlement
+// was refused. It says what to do, not how the check works.
+func entitlementReason(err error) string {
+	switch {
+	case errors.Is(err, entitlement.ErrExpired):
+		return "entitlement expired"
+	case errors.Is(err, entitlement.ErrPod):
+		return "entitlement is for a different Pod"
+	default:
+		return "entitlement not accepted"
+	}
 }
 
 // handleDeviceTunnel accepts a WebSocket connection from a Ghost device.
@@ -538,9 +619,27 @@ func (s *Server) handleDeviceTunnel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"device credentials required"}`, http.StatusUnauthorized)
 		return
 	}
+	if !s.connectLimit.allow(clientAddr(r), s.cfg.now()) {
+		tooMany(w)
+		return
+	}
 	if !s.registry.Authenticate(deviceID, deviceSecret) {
 		http.Error(w, `{"error":"invalid device credentials"}`, http.StatusUnauthorized)
 		return
+	}
+
+	// On a metered relay the Pod must hold a current entitlement for itself.
+	var expires int64
+	var account string
+	if len(s.cfg.EntitlementKeys) > 0 {
+		c, err := entitlement.VerifyForPod(r.Header.Get("X-Ghost-Entitlement"), deviceID, s.cfg.EntitlementKeys, s.cfg.now())
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusPaymentRequired)
+			fmt.Fprintf(w, `{"error":%q}`, entitlementReason(err))
+			return
+		}
+		expires, account = c.ExpiresAt, c.Account
 	}
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
@@ -550,13 +649,19 @@ func (s *Server) handleDeviceTunnel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tunnel := &DeviceTunnel{
-		DeviceID: deviceID,
-		Conn:     conn,
-		Send:     make(chan []byte, 256),
-		Done:     make(chan struct{}),
+		DeviceID:  deviceID,
+		Conn:      conn,
+		Send:      make(chan []byte, 256),
+		Done:      make(chan struct{}),
+		Connected: s.cfg.now(),
+		Account:   account,
 	}
+	tunnel.Expires.Store(expires)
 	gen := s.tunnels.RegisterTunnel(tunnel)
 	log.Printf("relay: device %s connected", deviceID)
+	if expires > 0 {
+		go s.watchEntitlement(tunnel)
+	}
 
 	// Send welcome
 	_ = proto.WriteCTLWS(conn, 0, &proto.Control{
@@ -575,7 +680,9 @@ func (s *Server) handleDeviceTunnel(w http.ResponseWriter, r *http.Request) {
 func (s *Server) readDeviceLoop(t *DeviceTunnel, gen uint64) {
 	defer func() {
 		s.tunnels.RemoveIfOld(t.DeviceID, gen)
-		log.Printf("relay: device %s disconnected", t.DeviceID)
+		// Sizes and times only. Nothing that was carried is ever logged.
+		log.Printf("relay: device %s disconnected after %s, %d bytes in, %d bytes out",
+			t.DeviceID, s.cfg.now().Sub(t.Connected).Round(time.Second), t.In.Load(), t.Out.Load())
 	}()
 
 	for {
@@ -648,6 +755,18 @@ func (s *Server) handleDeviceControl(t *DeviceTunnel, f *proto.Frame) {
 			OK: true,
 		})
 
+	case proto.OpEntitlement:
+		if len(s.cfg.EntitlementKeys) == 0 {
+			return
+		}
+		c, err := entitlement.VerifyForPod(ctrl.Entitlement, t.DeviceID, s.cfg.EntitlementKeys, s.cfg.now())
+		if err != nil || c.Account != t.Account {
+			_ = proto.WriteCTLWS(t.Conn, 0, &proto.Control{Op: proto.OpError, Message: "entitlement not accepted"})
+			return
+		}
+		t.Expires.Store(c.ExpiresAt)
+		_ = proto.WriteCTLWS(t.Conn, 0, &proto.Control{Op: proto.OpEntitlementOK, OK: true, ExpiresAt: c.ExpiresAt})
+
 	default:
 		log.Printf("relay: unknown control op %q from %s", ctrl.Op, t.DeviceID)
 	}
@@ -706,6 +825,8 @@ func newStreamRegistry() *streamRegistry {
 }
 
 func (sr *streamRegistry) nextStreamID() uint64 {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
 	id := sr.nextID
 	sr.nextID += 2
 	return id
@@ -738,6 +859,7 @@ func (s *Server) dispatchToDeviceStream(t *DeviceTunnel, f *proto.Frame) {
 	if st == nil {
 		return
 	}
+	t.In.Add(int64(len(f.Payload)))
 	select {
 	case st.ch <- f:
 	case <-st.done:
@@ -872,6 +994,10 @@ func (s *Server) handleAppRequest(w http.ResponseWriter, r *http.Request) {
 	scope, ok := s.tunnels.AuthClientScope(deviceID, clientToken)
 	if !ok {
 		http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+		return
+	}
+	if !s.requestLimit.allow(deviceID+"|"+HashToken(clientToken)[:16], s.cfg.now()) {
+		tooMany(w)
 		return
 	}
 	if !ScopeAllows(scope, r.Method, r.URL.Path) {
@@ -1025,7 +1151,7 @@ loop:
 			case proto.KindEND:
 				return
 			case proto.KindERROR:
-				log.Printf("relay: stream error from %s: %.200s", deviceID, truncate(string(f.Payload), 200))
+				log.Printf("relay: stream error from %s", deviceID)
 				return
 			}
 		}

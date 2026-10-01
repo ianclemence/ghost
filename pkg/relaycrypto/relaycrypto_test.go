@@ -3,6 +3,7 @@ package relaycrypto
 import (
 	"bytes"
 	"testing"
+	"time"
 )
 
 func pair(t *testing.T) (phone, pod *Session, id *Identity) {
@@ -117,5 +118,86 @@ func TestBadInputIsRefusedNotTrusted(t *testing.T) {
 	back, err := LoadIdentity(id.Private())
 	if err != nil || !bytes.Equal(back.Public(), id.Public()) {
 		t.Fatal("an identity must survive storage")
+	}
+}
+
+func TestSealedExchangeRoundTrip(t *testing.T) {
+	pod, _ := NewIdentity()
+	phoneSess, env, err := SealRequest(pod.Public(), []byte(`{"path":"/v1/chat"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	podSess, req, eph, err := pod.OpenRequest(env)
+	if err != nil || string(req) != `{"path":"/v1/chat"}` || len(eph) != KeySize {
+		t.Fatalf("open request: %q %v", req, err)
+	}
+	var wire []byte
+	for _, m := range []struct {
+		kind byte
+		body string
+	}{{MsgHead, "head"}, {MsgData, "hello "}, {MsgData, "world"}, {MsgEnd, ""}} {
+		s, err := podSess.SealMessage(m.kind, []byte(m.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire = append(wire, Frame(s)...)
+	}
+	// Deliver in awkward pieces, the way a network does.
+	var got []string
+	var rest []byte
+	for i := 0; i < len(wire); i += 7 {
+		end := i + 7
+		if end > len(wire) {
+			end = len(wire)
+		}
+		var frames [][]byte
+		frames, rest = SplitFrames(append(rest, wire[i:end]...))
+		for _, f := range frames {
+			kind, body, err := phoneSess.OpenMessage(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, string([]byte{'0' + kind})+string(body))
+		}
+	}
+	want := []string{"0head", "1hello ", "1world", "2"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v want %v", got, want)
+		}
+	}
+}
+
+func TestOpenRequestRejectsWrongKeyAndTampering(t *testing.T) {
+	pod, _ := NewIdentity()
+	other, _ := NewIdentity()
+	_, env, _ := SealRequest(pod.Public(), []byte("secret"))
+	if _, _, _, err := other.OpenRequest(env); err == nil {
+		t.Fatal("a different Pod must not open the request")
+	}
+	bad := append([]byte(nil), env...)
+	bad[len(bad)-1] ^= 1
+	if _, _, _, err := pod.OpenRequest(bad); err == nil {
+		t.Fatal("a tampered request must not open")
+	}
+	if _, _, _, err := pod.OpenRequest([]byte{9, 1, 2}); err == nil {
+		t.Fatal("junk must not open")
+	}
+}
+
+func TestReplayGuard(t *testing.T) {
+	g := NewReplayGuard(time.Minute)
+	now := time.Now()
+	if !g.Fresh([]byte("k1"), now) {
+		t.Fatal("first sight is fresh")
+	}
+	if g.Fresh([]byte("k1"), now.Add(time.Second)) {
+		t.Fatal("a repeat inside the window is a replay")
+	}
+	if !g.Fresh([]byte("k1"), now.Add(3*time.Minute)) {
+		t.Fatal("after the memory window passes the key is forgotten")
 	}
 }

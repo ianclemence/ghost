@@ -44,29 +44,50 @@ It is a convenience, not a gate.
 ## What must be true before anyone is charged
 
 A hosted relay is only acceptable if the company running it cannot read or act
-on an owner's Ghost. Two of these are not yet true.
+on an owner's Ghost.
 
 | Requirement | State |
 |---|---|
-| Relayed requests must present device credentials, exactly like any remote peer. | **Done (v0.24.90).** Before this the relay replayed traffic on the Pod's own loopback, which the gateway treats as the owner with no credentials. A hosted relay would have held owner-level access to every customer's Pod. |
-| End-to-end encryption between phone and Pod, so the relay carries ciphertext only. The Pod's public key travels in the pairing QR and the phone pins it. | **Not done. This is the gate.** The sealed envelope is built and tested (`pkg/relaycrypto`: pinned X25519 key, per-connection AES-256-GCM keys in each direction, counters that refuse replay, reordering and reflection). It is not yet wired into the relay tunnel or the app, so the relay still sees plain requests and responses inside its own TLS hop. |
-| The relay has no way to approve, revoke, download or otherwise act. | Follows from the first two. |
+| Relayed requests must present device credentials, exactly like any remote peer. | **Done (v0.24.90).** |
+| End-to-end encryption between phone and Pod, so the relay carries ciphertext only. The Pod's public key travels in the pairing link and the phone pins it. | **Done.** The relay carries a sealed exchange on `/v1/sealed` and cannot see the path, the credentials, the request or the reply. The Pod opens it (`pkg/relayclient/sealed.go`), enforces the client's scope itself, refuses replays and stale requests, and a Pod linked to Ghost Connect refuses plain requests outright. The phone side is `lib/sealedFetch.ts` in ghost-app, pinned byte for byte to `pkg/relaycrypto` by a shared test vector. Not yet covered: file uploads and the live WebSocket, which still need the home network. |
+| The relay has no way to approve, revoke, download or otherwise act. | Follows from the two above. |
+| Only a paid Pod may use the hosted relay. | **Done.** The relay verifies an Ed25519 entitlement signed by the site (`pkg/entitlement`), for exactly that Pod, and closes the tunnel when it expires. A Pod enrolls itself with its entitlement, so the relay never talks to the site. |
 | Per-device relay tokens; no shared secret; instant revoke. | Exists (`ghost relay revoke`). Needs an audit before launch. |
-| Rate limits, abuse handling, and logs that keep connection times and byte counts but never content. | Not built. |
-| A public security write-up and an independent review of the relay and the pairing. | Before launch. |
+| Rate limits, abuse handling, and logs that keep connection times and byte counts but never content. | **Done for limits and logs** (enroll, connect and request limits; per-tunnel byte counts; no payload in any log line). Abuse handling is still by hand. |
+| A public security write-up and an independent review of the relay and the pairing. | The write-up is the site's Security page. The independent review is still **before launch**. |
+
+## How a Pod joins Ghost Connect
+
+```
+Pod                       Site (ghost-site)                 Relay
+ | ghost relay link          |                                |
+ |-- POST /api/connect/start |  pod id                        |
+ |<- code, poll token -------|                                |
+ |   (owner signs in on the site, types the code, has a plan) |
+ |-- POST /api/connect/poll->|                                |
+ |<- pass (Ed25519, 3 days) -|                                |
+ |-- POST /v1/enroll {pass, device secret} ------------------>|  verifies the pass for this Pod
+ |== tunnel, header X-Ghost-Entitlement: pass ===============>|
+ |-- renew daily: POST /api/connect/renew (Bearer pass) ----->|  (site)   OpEntitlement (relay)
+```
+
+The pass is `ge1.<payload>.<signature>`; `pkg/entitlement/contract_test.go` and
+the site's `tests/entitlement.test.ts` pin the same token. The relay is told the
+site's public key with `--entitlement-keys` (several may be listed, so the
+signing key can be rotated). With no key it is an ordinary self-hosted relay.
 
 ## Order of work
 
-1. End-to-end encryption in the relay tunnel (pairing already exchanges a
-   secret; add the Pod's public key and pin it in the app).
-2. Relay hardening: per-device tokens, rate limits, content-free logs.
-3. The site: sign-up, Stripe Checkout, the entitlement token, a status page.
-4. Onboarding: after paying, the app connects with no steps. The Pod claims its
-   entitlement by showing the owner a code once.
-5. Only then set a price and announce it.
+1. ~~End-to-end encryption in the relay tunnel.~~ Done.
+2. ~~Relay hardening: rate limits, content-free logs.~~ Done. Token audit remains.
+3. ~~The site: sign-up, Stripe Checkout, the entitlement, a status page.~~ Built
+   (`ghost-site`), awaiting a domain, Stripe keys and a deploy.
+4. ~~Onboarding: after paying, link with a code.~~ Done (`ghost relay link`).
+5. Independent review of the relay and the pairing.
+6. Only then set a price and announce it.
 
 ## For now
 
-Keep Tailscale for yourself. A normal owner at home needs nothing. Do not launch
-Ghost Connect before step 1: charging people for a relay that can read their
-messages would contradict what Ghost is.
+Keep Tailscale for yourself. A normal owner at home needs nothing. Do not open
+Ghost Connect widely before step 5: charging people for a relay nobody
+independent has looked at would be early.

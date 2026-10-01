@@ -57,6 +57,11 @@ const (
 	OpClientsOK    ControlOp = "clients_ok"
 	OpHeartbeat    ControlOp = "heartbeat"
 	OpError        ControlOp = "error"
+	// OpEntitlement carries a fresh entitlement token from the Pod; the relay
+	// answers OpEntitlementOK with the new expiry. It lets a Pod renew its pass
+	// without dropping the tunnel.
+	OpEntitlement   ControlOp = "entitlement"
+	OpEntitlementOK ControlOp = "entitlement_ok"
 )
 
 // Control is the JSON payload of a CTL frame.
@@ -68,6 +73,8 @@ type Control struct {
 	EnrollToken  string        `json:"enroll_token,omitempty"`
 	Clients      []ClientEntry `json:"clients,omitempty"`
 	TokenHash    string        `json:"token_hash,omitempty"`
+	Entitlement  string        `json:"entitlement,omitempty"`
+	ExpiresAt    int64         `json:"expires_at,omitempty"`
 	OK           bool          `json:"ok,omitempty"`
 	Message      string        `json:"message,omitempty"`
 }
@@ -97,6 +104,9 @@ type StreamType string
 const (
 	StreamHTTP StreamType = "http"
 	StreamWS   StreamType = "ws"
+	// StreamSealed is an end-to-end encrypted exchange. The relay forwards the
+	// payloads without being able to read or change them.
+	StreamSealed StreamType = "sealed"
 )
 
 // HTTPMetadata is the JSON payload of an OPEN frame for an HTTP stream.

@@ -296,6 +296,20 @@ type RelayConfig struct {
 	ReconnectMin int    `json:"reconnect_min_s" env:"GHOST_RELAY_RECONNECT_MIN"`
 	ReconnectMax int    `json:"reconnect_max_s" env:"GHOST_RELAY_RECONNECT_MAX"`
 	DeviceSecret string `json:"-"` // loaded from .secrets.json, never in config.json
+
+	// IdentityKey is the Pod's X25519 private key (hex), the one end-to-end
+	// encryption through a relay is pinned to. Sealed with the other secrets.
+	IdentityKey string `json:"-"`
+	// RequireSealed makes the Pod answer relayed traffic only when it is
+	// end-to-end encrypted. On for Ghost Connect, where the relay is run by
+	// someone else.
+	RequireSealed bool `json:"require_sealed"`
+	// Managed means the Pod runs the relay connection itself, as part of the
+	// daemon, because it is linked to Ghost Connect. Without it the relay
+	// client is started by hand with `ghost relay run`.
+	Managed bool `json:"managed"`
+	// Site is the Ghost Connect website this Pod is linked to.
+	Site string `json:"site"`
 }
 
 type BraveConfig struct {

@@ -1659,6 +1659,9 @@ func gatewayCmd() {
 
 	go agentLoop.Run(ctx)
 	go startInternalAPI(agentLoop, scheduledService, channelManager)
+	if cfg.Relay.Managed && cfg.Relay.Enabled && cfg.Relay.Server != "" && cfg.Relay.DeviceSecret != "" {
+		go runManagedRelay(ctx, cfg)
+	}
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
@@ -2802,6 +2805,12 @@ func relayCmd() {
 		relayRevokeCmd()
 	case "setup":
 		relaySetupCmd()
+	case "link":
+		relayLinkCmd()
+	case "status":
+		relayStatusCmd()
+	case "unlink":
+		relayUnlinkCmd()
 	default:
 		fmt.Printf("Unknown relay command: %s\n", subcommand)
 		relayHelp()
@@ -2810,7 +2819,10 @@ func relayCmd() {
 
 func relayHelp() {
 	fmt.Println("\nRelay commands:")
-	fmt.Println("  run              Connect to relay server (runs in foreground)")
+	fmt.Println("  link             Link this Pod to Ghost Connect, the hosted relay (--site to override)")
+	fmt.Println("  status           Show whether Ghost Connect is linked and for how long")
+	fmt.Println("  unlink           Forget Ghost Connect on this Pod")
+	fmt.Println("  run              Connect to your own relay server (runs in foreground)")
 	fmt.Println("  pair             Generate a pairing token for a new client")
 	fmt.Println("  clients          List paired clients")
 	fmt.Println("  revoke <token-hash-prefix>   Revoke a client (use the ID shown by clients)")
@@ -2837,25 +2849,23 @@ func relayRunCmd() {
 		os.Exit(1)
 	}
 
+	if cfg.Relay.Managed {
+		fmt.Println("This Pod is linked to Ghost Connect, so Ghost runs the relay itself.")
+		fmt.Println("Check it with:  ghost relay status")
+		os.Exit(1)
+	}
+
 	ghostID, err := ghoststate.EnsureIdentity(cfg.WorkspacePath())
 	if err != nil {
 		fmt.Printf("Error loading identity: %v\n", err)
 		os.Exit(1)
 	}
 
-	gatewayURL := cfg.Relay.GatewayURL
-	if gatewayURL == "" {
-		gatewayURL = fmt.Sprintf("http://127.0.0.1:%d", cfg.Gateway.Port)
+	client, _, err := newRelayClient(cfg, ghostID.GhostID)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
-
-	client := relayclient.NewClient(relayclient.ClientConfig{
-		DeviceID:     ghostID.GhostID,
-		DeviceSecret: cfg.Relay.DeviceSecret,
-		RelayServer:  cfg.Relay.Server,
-		GatewayURL:   gatewayURL,
-		ReconnectMin: cfg.Relay.ReconnectMin,
-		ReconnectMax: cfg.Relay.ReconnectMax,
-	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -2902,8 +2912,15 @@ func relayPairCmd() {
 	fmt.Printf("\nPairing token generated for: %s\n", name)
 	fmt.Printf("Token: %s\n\n", token)
 	fmt.Println("Add this URL to your Ghost app:")
-	fmt.Printf("  ghost://connect?transport=relay&relay=%s&ghost=%s&token=%s\n",
-		cfg.Relay.Server, ghostID.GhostID, token)
+	id, err := ensureRelayIdentity(cfg)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	// pk pins the Pod's key in the phone, so the relay cannot swap in its own
+	// and read what passes through.
+	fmt.Printf("  ghost://connect?transport=relay&relay=%s&ghost=%s&token=%s&pk=%s\n",
+		cfg.Relay.Server, ghostID.GhostID, token, podKeyParam(id))
 	fmt.Println("\nNote: This token is shown once. Store it securely.")
 }
 

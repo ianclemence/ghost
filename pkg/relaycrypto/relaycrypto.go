@@ -98,13 +98,18 @@ func derive(shared, clientPub, serverPub []byte) (c2s, s2c cipher.AEAD, err erro
 // Dial starts a session from the phone, given the Pod's pinned public key. It
 // returns the session and the ephemeral public key to send to the Pod.
 func Dial(serverPublic []byte) (*Session, []byte, error) {
-	srv, err := ecdh.X25519().NewPublicKey(serverPublic)
-	if err != nil {
-		return nil, nil, ErrBadKey
-	}
 	eph, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, nil, err
+	}
+	return dialWith(serverPublic, eph)
+}
+
+// dialWith is Dial with the ephemeral key supplied, so tests can pin exact bytes.
+func dialWith(serverPublic []byte, eph *ecdh.PrivateKey) (*Session, []byte, error) {
+	srv, err := ecdh.X25519().NewPublicKey(serverPublic)
+	if err != nil {
+		return nil, nil, ErrBadKey
 	}
 	shared, err := eph.ECDH(srv)
 	if err != nil {

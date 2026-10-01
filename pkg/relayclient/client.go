@@ -16,6 +16,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,11 +24,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/ianclemence/ghost/pkg/relay/proto"
+	"github.com/ianclemence/ghost/pkg/relaycrypto"
 )
 
 // ClientConfig holds the relay client configuration.
@@ -38,13 +42,47 @@ type ClientConfig struct {
 	GatewayURL   string // e.g. http://127.0.0.1:8766 (local gateway)
 	ReconnectMin int    // minimum reconnect delay in seconds
 	ReconnectMax int    // maximum reconnect delay in seconds
+
+	// Identity is the Pod's long-lived key. With it the client answers sealed
+	// exchanges, which the relay carries without being able to read.
+	Identity *relaycrypto.Identity
+	// RequireSealed refuses plain relayed requests. A hosted relay must be
+	// used this way: otherwise whoever runs it could read the traffic.
+	RequireSealed bool
+	// Entitlement is the Ghost Connect pass to present to a hosted relay, or ""
+	// for a relay that does not ask for one.
+	Entitlement string
 }
+
+// State is where the relay connection stands, for the console and the phone.
+type State string
+
+const (
+	StateOffline      State = "offline"       // not connected, retrying
+	StateConnected    State = "connected"     // the tunnel is up
+	StateNeedsPayment State = "needs-payment" // the hosted relay wants a current Ghost Connect subscription
+)
+
+// Status is the current state and when it began.
+type Status struct {
+	State   State
+	Message string
+	Since   time.Time
+}
+
+// ErrNotEntitled is returned when a hosted relay refuses the Pod for want of a
+// current entitlement.
+var ErrNotEntitled = fmt.Errorf("the relay needs a current Ghost Connect subscription")
 
 // Client is the relay client.
 type Client struct {
 	cfg  ClientConfig
 	send chan []byte
 	done chan struct{}
+
+	status      atomic.Value // Status
+	entitlement atomic.Value // string
+	guard       *relaycrypto.ReplayGuard
 
 	connMu     sync.Mutex
 	conn       *websocket.Conn // active connection; closed by Stop()
@@ -63,11 +101,43 @@ func NewClient(cfg ClientConfig) *Client {
 	if cfg.GatewayURL == "" {
 		cfg.GatewayURL = "http://127.0.0.1:8766"
 	}
-	return &Client{
-		cfg:  cfg,
-		send: make(chan []byte, 256),
-		done: make(chan struct{}),
+	c := &Client{
+		cfg:   cfg,
+		send:  make(chan []byte, 256),
+		done:  make(chan struct{}),
+		guard: relaycrypto.NewReplayGuard(sealedWindow),
 	}
+	c.entitlement.Store(cfg.Entitlement)
+	c.setStatus(StateOffline, "")
+	return c
+}
+
+func (c *Client) setStatus(st State, msg string) {
+	if cur, ok := c.status.Load().(Status); ok && cur.State == st && cur.Message == msg {
+		return
+	}
+	c.status.Store(Status{State: st, Message: msg, Since: time.Now()})
+}
+
+// Status reports whether the tunnel is up and, if not, why.
+func (c *Client) Status() Status {
+	st, _ := c.status.Load().(Status)
+	return st
+}
+
+// UpdateEntitlement swaps in a renewed pass. It is used on the next connection
+// and, if the tunnel is up, sent to the relay now so the tunnel is never
+// dropped for a pass that was renewed in time.
+func (c *Client) UpdateEntitlement(token string) {
+	c.entitlement.Store(token)
+	if c.Status().State != StateConnected {
+		return
+	}
+	payload, err := json.Marshal(&proto.Control{Op: proto.OpEntitlement, Entitlement: token})
+	if err != nil {
+		return
+	}
+	_ = c.sendFrame(&proto.Frame{Kind: proto.KindCTL, Payload: payload})
 }
 
 func (c *Client) setConnDone(d chan struct{}) {
@@ -117,17 +187,29 @@ func (c *Client) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		log.Printf("relay-client: disconnected: %v, reconnecting in %ds", err, backoff)
+		wait := time.Duration(backoff) * time.Second
+		if errors.Is(err, ErrNotEntitled) {
+			// Nothing a retry can fix: wait for a renewal or a payment. Check
+			// back every few minutes rather than hammering the relay.
+			c.setStatus(StateNeedsPayment, err.Error())
+			wait = 5 * time.Minute
+			backoff = c.cfg.ReconnectMin
+		} else {
+			c.setStatus(StateOffline, "")
+		}
+		log.Printf("relay-client: disconnected: %v, reconnecting in %s", err, wait)
 
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(time.Duration(backoff) * time.Second):
+		case <-time.After(wait):
 		}
 
-		backoff = backoff * 2
-		if backoff > c.cfg.ReconnectMax {
-			backoff = c.cfg.ReconnectMax
+		if !errors.Is(err, ErrNotEntitled) {
+			backoff = backoff * 2
+			if backoff > c.cfg.ReconnectMax {
+				backoff = c.cfg.ReconnectMax
+			}
 		}
 	}
 }
@@ -158,11 +240,18 @@ func (c *Client) connectAndRun(ctx context.Context) error {
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 15 * time.Second,
 	}
-	conn, _, err := dialer.DialContext(ctx, u.String(), http.Header{
+	hdr := http.Header{
 		"X-Ghost-Device":        []string{c.cfg.DeviceID},
 		"X-Ghost-Device-Secret": []string{c.cfg.DeviceSecret},
-	})
+	}
+	if tok, _ := c.entitlement.Load().(string); tok != "" {
+		hdr.Set("X-Ghost-Entitlement", tok)
+	}
+	conn, resp, err := dialer.DialContext(ctx, u.String(), hdr)
 	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusPaymentRequired {
+			return ErrNotEntitled
+		}
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()
@@ -194,6 +283,7 @@ func (c *Client) connectAndRun(ctx context.Context) error {
 		return fmt.Errorf("expected welcome, got op=%s", ctrl.Op)
 	}
 	log.Printf("relay-client: connected, relay version=%d", ctrl.Version)
+	c.setStatus(StateConnected, "")
 
 	// Send clients list (device is source of truth)
 	clients, err := loadClients(c.cfg.DeviceID)
@@ -332,8 +422,13 @@ func (c *Client) handleControl(f *proto.Frame) {
 	switch ctrl.Op {
 	case proto.OpClientsOK:
 		log.Printf("relay-client: client bindings confirmed")
+	case proto.OpEntitlementOK:
+		log.Printf("relay-client: relay accepted the renewed pass")
 	case proto.OpError:
 		log.Printf("relay-client: relay error: %s", ctrl.Message)
+		if strings.Contains(ctrl.Message, "entitlement") {
+			c.setStatus(StateNeedsPayment, ctrl.Message)
+		}
 	default:
 		log.Printf("relay-client: unknown control op: %s", ctrl.Op)
 	}
@@ -351,8 +446,18 @@ func (c *Client) handleStream(sh *streamHandler, openFrame *proto.Frame) {
 		return
 	}
 
+	if meta.Type == proto.StreamSealed {
+		c.handleSealed(sh, streamID)
+		return
+	}
 	if meta.Type != proto.StreamHTTP {
 		_ = c.sendFrame(&proto.Frame{Kind: proto.KindERROR, StreamID: streamID, Payload: []byte("unsupported stream type")})
+		return
+	}
+	if c.cfg.RequireSealed {
+		// A relay that cannot be trusted with plain traffic must not be given
+		// any. The app is told to pair again and seal its requests.
+		_ = c.sendFrame(&proto.Frame{Kind: proto.KindERROR, StreamID: streamID, Payload: []byte("sealed required")})
 		return
 	}
 
