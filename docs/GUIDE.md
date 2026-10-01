@@ -76,7 +76,7 @@ paste it back into the console.
 
 Two things to know. With Google, choose *Publish app* on the consent screen, or
 Google disconnects Ghost every seven days. And a one-click sign-in, with none of
-this, needs a Ghost-owned app and a public address, which is what the planned
+this, needs a Ghost-owned app and a public address, which is what
 [Ghost Connect](CONNECT.md) is for.
 
 **Website logins.** Save a login once under Apps. Ghost signs in with it without
@@ -97,9 +97,21 @@ you list under **Channels**. Empty means nobody.
 ## Away from home
 
 At home the phone talks straight to the Pod. Away from home you need a way in:
-Tailscale, your own relay, or (planned) **Ghost Connect**. The reasoning, what is
-free, and what must be true before anyone is charged are in
-[docs/CONNECT.md](docs/CONNECT.md). Push notifications do not need any of it.
+Tailscale, your own relay, or **Ghost Connect**, the hosted relay, which is in
+early access. The reasoning, what is free, and what must be true before anyone is
+charged are in [docs/CONNECT.md](docs/CONNECT.md). Push notifications do not need
+any of it.
+
+**Ghost Connect, from the console.** Open **Devices**, and under **Away from home**
+choose **Link to Ghost Connect**. It shows a short code and an address: open the
+address, sign in, check the code matches, and choose a plan. The Pod links itself and
+connects, with no restart. Then choose **Connect a phone for away from home** and scan
+the QR in the app. Everything a phone sends through the relay is sealed on the phone
+and opened only by your Pod, so the relay carries it and can't read it. If the plan
+ever lapses, only the relay stops; the Pod keeps working at home.
+
+The same from a terminal: `ghost relay link` (links), `ghost relay status`,
+`ghost relay pair` (a QR for a phone) and `ghost relay unlink`.
 
 ## Looking after your Ghost
 

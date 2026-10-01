@@ -17,7 +17,8 @@
 | `ghost auth reset-password` | Reset the console password |
 | `ghost status`, `ghost verify` | Health and the real product checks |
 | `ghost reset` | Factory reset (with exclusions) |
-| `ghost relay ...` | Your own relay |
+| `ghost relay link\|status\|unlink\|pair` | Ghost Connect: link this Pod, check it, forget it, connect a phone by QR |
+| `ghost relay setup\|run\|clients\|revoke` | Your own relay |
 
 ## Inside a chat
 
