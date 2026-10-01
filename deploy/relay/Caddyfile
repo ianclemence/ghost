@@ -1,0 +1,45 @@
+# TLS and the public address for the relay, in front of ghost-relay on 127.0.0.1:8080.
+# Replace relay.example.com with your relay's address. Caddy gets and renews the
+# certificate by itself; DNS must already point here and ports 80 and 443 be open.
+#
+# Pods hold a WebSocket open to /v1/tunnel for as long as they are on, so nothing
+# here may time connections out, and nothing may buffer: replies stream.
+relay.example.com {
+	encode off
+
+	# Sealed photos and files travel inside one request. Slightly above the relay's own limit.
+	request_body {
+		max_size 100MB
+	}
+
+	reverse_proxy 127.0.0.1:8080 {
+		flush_interval -1
+		transport http {
+			read_timeout 0
+			write_timeout 0
+			dial_timeout 5s
+		}
+	}
+
+	# The relay never sets cookies, never serves a page, and is never framed.
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+
+	# One line per request: time, status and size. No headers, no bodies.
+	log {
+		output file /var/log/caddy/relay.log {
+			roll_size 50MiB
+			roll_keep 10
+		}
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				request>uri replace
+			}
+		}
+	}
+}

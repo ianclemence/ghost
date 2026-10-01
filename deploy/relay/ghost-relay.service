@@ -1,0 +1,49 @@
+# The Ghost Connect relay. Install as /etc/systemd/system/ghost-relay.service.
+#
+#   sudo useradd --system --home /var/lib/ghost-relay --shell /usr/sbin/nologin ghost-relay
+#   sudo install -m 0755 ghost-relay-server /usr/local/bin/
+#   sudo install -d -m 0750 -o root -g ghost-relay /etc/ghost-relay
+#   sudoedit /etc/ghost-relay/env     # GHOST_RELAY_ENTITLEMENT_KEYS=<the site's public key>
+#   sudo systemctl enable --now ghost-relay
+#
+# It listens on loopback only; Caddy (see Caddyfile) puts TLS in front of it.
+[Unit]
+Description=Ghost Connect relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ghost-relay
+Group=ghost-relay
+EnvironmentFile=/etc/ghost-relay/env
+ExecStart=/usr/local/bin/ghost-relay-server serve \
+  --listen 127.0.0.1:8080 \
+  --registry /var/lib/ghost-relay/registry.json
+Restart=always
+RestartSec=3
+# One open connection per Pod, plus phones.
+LimitNOFILE=65536
+# Created and owned by systemd; the registry lives here.
+StateDirectory=ghost-relay
+StateDirectoryMode=0750
+
+# The relay needs the network and one directory. Nothing else.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+# A sealed upload is held in flight, not on disk, but cap the damage of a bug.
+MemoryMax=768M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+# Copies the relay's device registry. Without it, a lost disk means every Pod has
+# to link again. Installed with ghost-relay-backup.timer.
+[Unit]
+Description=Back up the Ghost relay registry
+
+[Service]
+Type=oneshot
+User=ghost-relay
+ExecStart=/bin/sh -c 'set -e; d=/var/backups/ghost-relay; mkdir -p "$d"; cp /var/lib/ghost-relay/registry.json "$d/registry-$(date +%%Y%%m%%d-%%H%%M).json"; ls -1t "$d"/registry-*.json | tail -n +61 | xargs -r rm --'
+ReadWritePaths=/var/backups/ghost-relay
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
