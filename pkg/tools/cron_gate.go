@@ -9,8 +9,8 @@ import (
 // CronCommandDenyPatterns are regexes matched against a scheduled command
 // before it is executed. Matches are refused, so a cron job that a user or
 // the agent created via natural language cannot silently run something
-// destructive on the personal AI. This is PicoClaw-style "cron security
-// gating": scheduled commands are not allowed to touch the system the way an
+// destructive on the personal AI. This is "cron security gating":
+// scheduled commands are not allowed to touch the system the way an
 // interactive, human-approved exec would.
 var CronCommandDenyPatterns = []*regexp.Regexp{
 	// Wiping or resetting the filesystem.

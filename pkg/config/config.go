@@ -135,7 +135,7 @@ const (
 	DefaultLocalBaseURL  = "http://localhost:11434"
 )
 
-// ModelPreset is a named, user-selectable model configuration (Picoclaw-style).
+// ModelPreset is a named, user-selectable model configuration.
 // Provider and Model follow the same conventions as AgentDefaults.
 type ModelPreset struct {
 	Name     string `json:"name"`
