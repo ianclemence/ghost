@@ -73,7 +73,24 @@ async function loadHome(container) {
     : overall.label + '. ' + overall.detail;
 
   const approvals = pending.status === 'fulfilled' ? ((pending.value && pending.value.requests) || []) : [];
-  renderNeeds(needs.body, approvals, doctor, channels, devices, ollama, consoleStatus, () => loadHome(container));
+  // Notices can be set aside without a refetch, so Needs you and the status
+  // line repaint from what is already loaded.
+  const paintNeeds = () => {
+    const shown = renderNeeds(needs, approvals, doctor, channels, devices, consoleStatus, () => loadHome(container), paintNeeds);
+    if (overall.state === 'warn' && shown.warnVisible === 0 && shown.setAside > 0) {
+      const n = shown.setAside;
+      dot.className = 'home-status-dot home-status-dot-ok';
+      orb.dataset.state = 'idle';
+      statusText.textContent = who + ' is up. ' + n + (n === 1 ? ' notice' : ' notices') + ' dismissed.';
+    } else {
+      dot.className = 'home-status-dot home-status-dot-' + overall.state;
+      orb.dataset.state = overall.state === 'ok' ? 'idle' : (overall.state === 'offline' ? 'offline' : 'attention');
+      statusText.textContent = overall.state === 'ok'
+        ? who + ' is healthy' + (active ? ', thinking with ' + (GhostUI.modelFriendly(active).model || active) + '.' : '.')
+        : overall.label + '. ' + overall.detail;
+    }
+  };
+  paintNeeds();
   renderUpcoming(upcoming.body, jobs);
   renderGlance(glance.body, memory, jobs, devices, ollama, activeModel, proactive);
   renderActivity(recent.body, activity);
@@ -90,27 +107,119 @@ function homeCard(title, link) {
   card.appendChild(head);
   const body = GhostUI.h('div', { className: 'home-card-body' });
   card.appendChild(body);
-  return { card, body };
+  return { card, head, body };
 }
 
-// Ghost's pending decisions, answerable in place; then anything else that
-// needs the owner (setup gaps, health warnings). Empty means genuinely clear.
-function renderNeeds(body, approvals, doctorRes, channelsRes, devicesRes, ollamaRes, consoleRes, reload) {
+// What can be set aside, and how it is remembered. A decision Ghost is waiting
+// on (an approval) is never set aside: you answer it. Notices (setup gaps,
+// warnings) can be, one by one or together; a failure cannot, because you can
+// silence a nag but not an outage. What is set aside is remembered in this
+// browser by what it said, so if it changes (a warning gets worse, a new one
+// appears) it comes back.
+const SET_ASIDE_KEY = 'ghost:home:set-aside';
+
+function noticeKey(it) { return (it.state || 'warn') + '|' + it.title + '|' + it.detail; }
+function canSetAside(it) { return it.state !== 'bad'; }
+
+function readSetAside() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SET_ASIDE_KEY) || '[]');
+    return new Set(Array.isArray(raw) ? raw : []);
+  } catch (e) { return new Set(); }
+}
+
+function writeSetAside(set) {
+  try { localStorage.setItem(SET_ASIDE_KEY, JSON.stringify(Array.from(set).slice(-50))); } catch (e) {}
+}
+
+// Ghost's pending decisions, answerable in place; then the notices that need
+// the owner (setup gaps, health warnings). Returns what it showed, so the page
+// can word the status line honestly.
+function renderNeeds(needs, approvals, doctorRes, channelsRes, devicesRes, consoleRes, reload, repaint) {
+  const body = needs.body;
   body.innerHTML = '';
-  const items = collectAttentionItems(doctorRes, channelsRes, devicesRes, consoleRes);
+  const old = needs.head.querySelector('.home-link-dismiss');
+  if (old) old.remove();
+
+  const all = collectAttentionItems(doctorRes, channelsRes, devicesRes, consoleRes);
+  const set = readSetAside();
+  const asideItems = all.filter(it => canSetAside(it) && set.has(noticeKey(it)));
+  const items = all.filter(it => !(canSetAside(it) && set.has(noticeKey(it)))).slice(0, 5);
+  const shown = { warnVisible: items.filter(it => it.state === 'warn').length, setAside: asideItems.length };
+
+  const setAside = (list, label) => {
+    const next = readSetAside();
+    list.forEach(it => next.add(noticeKey(it)));
+    writeSetAside(next);
+    repaint();
+    GhostUI.toast(label, null, 6000, {
+      label: 'Undo',
+      onClick: () => {
+        const back = readSetAside();
+        list.forEach(it => back.delete(noticeKey(it)));
+        writeSetAside(back);
+        repaint();
+      },
+    });
+  };
+  const showAgain = () => {
+    const next = readSetAside();
+    asideItems.forEach(it => next.delete(noticeKey(it)));
+    writeSetAside(next);
+    repaint();
+  };
+
+  approvals.forEach(p => body.appendChild(approvalRow(p, reload)));
+
+  if (items.length > 0) {
+    const list = GhostUI.h('ul', { className: 'home-attention-list', role: 'list' });
+    items.forEach(it => {
+      const li = renderAttentionItem(it);
+      if (canSetAside(it)) {
+        const x = GhostUI.h('button', {
+          className: 'home-dismiss',
+          type: 'button',
+          'aria-label': 'Dismiss: ' + it.title,
+          title: 'Dismiss',
+          onClick: () => {
+            // Let it leave before the list repaints, so the row below does not
+            // simply jump into its place.
+            li.classList.add('is-leaving');
+            setTimeout(() => setAside([it], 'Dismissed \u201c' + it.title + '\u201d'), 170);
+          },
+        });
+        x.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+        li.querySelector('.home-attention-head').appendChild(x);
+      }
+      list.appendChild(li);
+    });
+    body.appendChild(list);
+  }
+
+  const dismissible = items.filter(canSetAside);
+  if (dismissible.length >= 2) {
+    const all = GhostUI.h('button', {
+      className: 'home-link home-link-dismiss',
+      type: 'button',
+      onClick: () => setAside(dismissible, 'Dismissed ' + dismissible.length + ' notices'),
+    }, 'Dismiss notices');
+    needs.head.appendChild(all);
+  }
+
   if (approvals.length === 0 && items.length === 0) {
     const ok = GhostUI.h('div', { className: 'home-clear' });
     ok.appendChild(GhostUI.h('span', { className: 'home-attention-dot home-attention-dot-ok', 'aria-hidden': 'true' }));
-    ok.appendChild(GhostUI.h('span', {}, 'All clear. Nothing is waiting on you.'));
+    ok.appendChild(GhostUI.h('span', {}, asideItems.length ? 'Nothing is waiting on you.' : 'All clear. Nothing is waiting on you.'));
     body.appendChild(ok);
-    return;
   }
-  approvals.forEach(p => body.appendChild(approvalRow(p, reload)));
-  if (items.length > 0) {
-    const list = GhostUI.h('ul', { className: 'home-attention-list', role: 'list' });
-    items.forEach(it => list.appendChild(renderAttentionItem(it)));
-    body.appendChild(list);
+  if (asideItems.length > 0) {
+    const n = asideItems.length;
+    const quiet = GhostUI.h('div', { className: 'home-set-aside' });
+    quiet.appendChild(GhostUI.h('span', {}, n + (n === 1 ? ' notice' : ' notices') + ' dismissed'));
+    quiet.appendChild(GhostUI.h('button', { className: 'home-set-aside-show', type: 'button', onClick: showAgain }, 'Show'));
+    body.appendChild(quiet);
   }
+  return shown;
 }
 
 function approvalRow(p, reload) {
@@ -536,7 +645,7 @@ function collectAttentionItems(doctorRes, channelsRes, devicesRes, consoleRes) {
     }
   }
 
-  return items.slice(0, 5);
+  return items;
 }
 
 function prettyName(s) {

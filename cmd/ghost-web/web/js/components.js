@@ -231,7 +231,7 @@ const GhostUI = (() => {
     return mountModal(m, title, null, opts && opts.wide);
   }
 
-  function toast(msg, variant, duration) {
+  function toast(msg, variant, duration, action) {
     let container = document.querySelector('.ghost-toast-container');
     if (!container) {
       container = h('div', { className: 'ghost-toast-container' });
@@ -239,6 +239,13 @@ const GhostUI = (() => {
     }
     const cls = variant === 'err' ? 'ghost-toast ghost-toast--err' : variant === 'ok' ? 'ghost-toast ghost-toast--ok' : 'ghost-toast';
     const t = h('div', { className: cls }, msg);
+    if (action && action.label) {
+      t.appendChild(h('button', {
+        className: 'ghost-toast-action',
+        type: 'button',
+        onClick: () => { t.remove(); action.onClick(); },
+      }, action.label));
+    }
     container.appendChild(t);
     setTimeout(() => t.remove(), duration || 3000);
   }

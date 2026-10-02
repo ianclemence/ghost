@@ -158,3 +158,63 @@ body { font-feature-settings: "cv11", "ss03"; letter-spacing: -0.006em; }
 .locked-card .ghost-input, .wizard-screen .ghost-input { background: rgba(255,255,255,.09); }
 .locked-card p, .locked-card .type-callout, .wizard-screen p, .wizard-screen .type-callout { color: rgba(255,255,255,.8); font-weight: 400; }
 .locked-card .ghost-input::placeholder, .wizard-screen .ghost-input::placeholder { color: rgba(255,255,255,.55); }
+
+/* ═══ Needs you: dismissing notices ════════════════════════════════════════
+   A decision Ghost is waiting on is never dismissed; a notice can be, one at a
+   time or together. The dismiss target is 44px for a thumb with a 28px mark. */
+.home-attention-head .home-attention-title { flex: 1; min-width: 0; }
+.home-dismiss {
+  position: relative;
+  flex: none;
+  width: 28px; height: 28px;
+  margin: -4px -6px -4px 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--r-pill);
+  background: transparent; color: var(--ink-faint);
+  cursor: pointer;
+  transition: transform var(--d-press) var(--ease-out), background var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out);
+}
+.home-dismiss::after { content: ""; position: absolute; inset: -8px; }  /* 44px hit area */
+.home-dismiss:active { transform: scale(.9); }
+.home-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .home-dismiss:hover { background: var(--glass-strong); color: var(--ink); }
+}
+
+/* A notice leaves by fading and drifting a few pixels: transform and opacity only. */
+.home-attention-item { transition: opacity var(--d-base) var(--ease-out), transform var(--d-base) var(--ease-out); }
+.home-attention-item.is-leaving { opacity: 0; transform: translateX(8px) scale(.985); pointer-events: none; }
+
+.home-link-dismiss { margin-left: auto; }
+.home-set-aside {
+  display: flex; align-items: center; gap: var(--s-3);
+  margin-top: var(--s-2); padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-foot); color: var(--ink-faint);
+}
+.home-clear + .home-set-aside { margin-top: var(--s-1); }
+.home-set-aside-show {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-weight: 500; color: var(--accent);
+  touch-action: manipulation;
+}
+.home-set-aside-show:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+@media (hover: hover) and (pointer: fine) { .home-set-aside-show:hover { color: var(--accent-hover); } }
+
+/* The toast can carry one action, such as Undo. */
+.ghost-toast { display: inline-flex; align-items: center; gap: var(--s-4); }
+.ghost-toast-action {
+  background: none; border: 0; padding: 0 0 0 var(--s-2); cursor: pointer;
+  font: inherit; font-weight: 600; color: var(--accent);
+  touch-action: manipulation;
+}
+.ghost-toast-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+/* Toasts are dark glass like everything else, so an action reads on them. */
+.ghost-toast {
+  background: rgba(14,14,19,.94);
+  color: var(--ink);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-lg);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}

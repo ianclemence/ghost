@@ -3,6 +3,20 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.121] - 2026-10-02
+
+- **You can dismiss notices in "Needs you" on Home.** Each setup or health
+  notice has a small dismiss button, and "Dismiss notices" clears them
+  together; a toast offers Undo. Decisions Ghost is waiting on (approvals) are
+  never dismissed, because you answer them, and a failure cannot be dismissed
+  either: you can silence a nag but not an outage. A dismissed notice comes
+  back if it changes, for example if a warning gets worse.
+- **The status line stays honest.** If every warning behind "Ghost is up. A
+  few things could use a look." is dismissed, it reads "Ghost is up. 3 notices
+  dismissed." with a calm light instead of the warning one, and "Show" in the
+  card brings them back. Dismissals are remembered in this browser.
+- Toasts are dark glass like the rest of the console and can carry an action.
+
 ## [0.24.120] - 2026-10-02
 
 - **A new look, shared by the phone, the web console and the terminal.** Pure
