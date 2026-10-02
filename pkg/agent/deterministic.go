@@ -7,12 +7,49 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ianclemence/ghost/pkg/credentials"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
+
+// askFiller is the politeness and sentence scaffolding that may surround a
+// command without changing what it asks.
+var askFiller = map[string]bool{
+	"please": true, "pls": true, "can": true, "could": true, "would": true, "will": true,
+	"you": true, "hey": true, "hi": true, "hello": true, "ghost": true, "me": true,
+	"tell": true, "show": true, "give": true, "thanks": true, "thank": true,
+	"the": true, "a": true, "an": true, "are": true, "is": true, "there": true,
+	"do": true, "does": true, "i": true, "we": true, "have": true, "got": true,
+	"what": true, "whats": true, "how": true, "which": true, "any": true, "all": true,
+	"my": true, "current": true, "right": true, "now": true, "ok": true, "okay": true,
+	"so": true, "just": true, "quick": true, "quickly": true, "of": true, "s": true,
+}
+
+// wholeAsk reports whether re accounts for the entire message. A shortcut
+// that answers from stored state or a fixed tool must only fire on a request
+// it fully understands: a keyword found inside a longer sentence says nothing
+// about what that sentence asks ("are there any reminders I forgot to look
+// at" contains "any reminders" and is not a request to list reminders). Any
+// words left over once the match and the filler are removed mean the message
+// carries something the shortcut cannot see, so the model reads it instead.
+func wholeAsk(lower string, re *regexp.Regexp) bool {
+	loc := re.FindStringIndex(lower)
+	if loc == nil {
+		return false
+	}
+	rest := lower[:loc[0]] + " " + lower[loc[1]:]
+	for _, w := range strings.FieldsFunc(rest, func(r rune) bool {
+		return !(unicode.IsLetter(r) || unicode.IsDigit(r))
+	}) {
+		if !askFiller[w] {
+			return false
+		}
+	}
+	return true
+}
 
 // tryDeterministicTurn handles local ops without any LLM call.
 // Intent -> Capability -> execute. Returns (answer, handled).
@@ -423,7 +460,7 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 	}
 
 	// Calendar: enabled != configured != ready. Product message, no gcalcli leak.
-	if isCalendarIntent(lower) {
+	if isCalendarIntent(lower) && isSingleAsk(lower) {
 		r := skills.CheckReadiness("calendar", al.workspace, nil)
 		if r.Status != skills.StatusReady {
 			return r.Message, true
@@ -432,7 +469,7 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 	}
 
 	// Home Assistant: product message, no env leak.
-	if isHassIntent(lower) {
+	if isHassIntent(lower) && isSingleAsk(lower) {
 		r := skills.CheckReadiness("homeassistant", al.workspace, nil)
 		if r.Status != skills.StatusReady {
 			return r.Message, true
@@ -693,7 +730,7 @@ func (al *AgentLoop) locationWithMemoryFallback(msg, session string, inputs map[
 	return inputs
 }
 
-var flightNumberRE = regexp.MustCompile(`(?i)\b([A-Z]{2}\s?\d{1,4})\b`)
+var flightNumberRE = regexp.MustCompile(`\b([A-Za-z]{2}\d{1,4}|[A-Z]{2}\s\d{1,4})\b`)
 
 // futureIntentWords mark forecast-style asks. Ghost's provider-backed
 // capability is CURRENT conditions; a forecast ask must never be answered

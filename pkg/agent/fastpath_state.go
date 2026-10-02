@@ -41,7 +41,7 @@ var (
 		`what (?:reminders?|alarms?)|any (?:reminders?|alarms?)|my (?:reminders?|alarms?)|` +
 		`(?:check|list|show|see) (?:my )?(?:reminders?|alarms?|schedule)|` +
 		`what'?s (?:on|scheduled) (?:today|tonight|tomorrow|this week)|` +
-		`next reminder|overdue reminders?|did i miss (?:any )?reminders?|` +
+		`next reminder|` +
 		`what do i have scheduled` +
 		`)\b`)
 
@@ -141,30 +141,32 @@ func (al *AgentLoop) tryStateQueryTurn(msg, session string) (string, bool) {
 	if !simpleStateQuestion(lower) {
 		return "", false
 	}
+	// Each pattern must account for the whole message, not just a fragment
+	// of it (see wholeAsk).
 	switch {
-	case reminderQueryRE.MatchString(lower):
+	case wholeAsk(lower, reminderQueryRE):
 		return al.renderReminders(session)
-	case proposalQueryRE.MatchString(lower):
+	case wholeAsk(lower, proposalQueryRE):
 		return al.renderProposals()
-	case approvalQueryRE.MatchString(lower):
+	case wholeAsk(lower, approvalQueryRE):
 		return al.renderApprovals()
-	case routineQueryRE.MatchString(lower):
+	case wholeAsk(lower, routineQueryRE):
 		return al.renderRoutines()
-	case jobQueryRE.MatchString(lower):
+	case wholeAsk(lower, jobQueryRE):
 		return al.renderJobs()
-	case activityQueryRE.MatchString(lower):
+	case wholeAsk(lower, activityQueryRE):
 		return al.renderActivity()
-	case environmentQueryRE.MatchString(lower):
+	case wholeAsk(lower, environmentQueryRE):
 		return al.renderEnvironment()
-	case healthQueryRE.MatchString(lower):
+	case wholeAsk(lower, healthQueryRE):
 		return al.renderHealth()
-	case modelQueryRE.MatchString(lower):
+	case wholeAsk(lower, modelQueryRE):
 		return al.renderModelState()
-	case proactivePolicyQueryRE.MatchString(lower):
+	case wholeAsk(lower, proactivePolicyQueryRE):
 		return al.renderProactivePolicy()
-	case commitmentQueryRE.MatchString(lower):
+	case wholeAsk(lower, commitmentQueryRE):
 		return al.renderCommitments()
-	case watchQueryRE.MatchString(lower):
+	case wholeAsk(lower, watchQueryRE):
 		return al.renderWatches()
 	}
 	return "", false

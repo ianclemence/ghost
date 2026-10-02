@@ -665,3 +665,25 @@ func TestNamesAPlace(t *testing.T) {
 		}
 	}
 }
+
+func TestWholeAskLeavesRealQuestionsToTheModel(t *testing.T) {
+	for msg, want := range map[string]bool{
+		"any reminders?":                                  true,
+		"can you show me my reminders please":             true,
+		"are there any reminders":                         true,
+		"are there any reminders i forgot to look at?":    false,
+		"how do i stop my routines from running at night": false,
+		"my routines":                                     true,
+	} {
+		got := wholeAsk(msg, reminderQueryRE) || wholeAsk(msg, routineQueryRE)
+		if got != want {
+			t.Errorf("%q: got %v want %v", msg, got, want)
+		}
+	}
+	if flightNumberRE.MatchString("flight status in 2026") {
+		t.Error("a year after 'in' is not a flight number")
+	}
+	if !flightNumberRE.MatchString("where is tg123") || !flightNumberRE.MatchString("status of TG 123") {
+		t.Error("real flight numbers must still match")
+	}
+}

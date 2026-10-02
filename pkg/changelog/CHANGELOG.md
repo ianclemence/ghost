@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.108] - 2026-10-02
+
+- **Ghost answers what you asked, not the keyword in it.** Quick answers for
+  reminders, routines, jobs, health, watches and similar used to fire whenever
+  a phrase appeared anywhere in your message, so "are there any reminders I
+  forgot to look at?" got the full reminder list. A quick answer now fires only
+  when it covers your whole message; anything with more in it goes to the
+  model, which reads the question. Calendar and home-control "not connected"
+  replies follow the same rule, and a year after "in" is no longer read as a
+  flight number.
+
 ## [0.24.107] - 2026-10-02
 
 - **Weather and air quality no longer misread your city.** Asking for "the
