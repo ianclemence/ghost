@@ -26,6 +26,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/config"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/localtrust"
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 )
@@ -1152,9 +1153,14 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 		SetupCode       string `json:"setup_code"`
 		OwnerName       string `json:"owner_name"`
 		GhostName       string `json:"ghost_name"`
-		Model           string `json:"model"`
-		Provider        string `json:"provider"`
-		OllamaURL       string `json:"ollama_url"`
+		// City and Timezone are optional first-run answers ("where are you?").
+		// They become beliefs so "the weather here" and reminder times work
+		// from the first message.
+		City      string `json:"city"`
+		Timezone  string `json:"timezone"`
+		Model     string `json:"model"`
+		Provider  string `json:"provider"`
+		OllamaURL string `json:"ollama_url"`
 		// APIKey is the chosen cloud provider's key, saved in the same call
 		// that claims the Pod so setup never passes through a state where
 		// Ghost has no way to think.
@@ -1339,6 +1345,14 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 		if serr := ghoststate.SetIdentityNames(fb.Workspace, owner, ghost); serr != nil {
 			// Setup itself succeeded; a failed identity write must not fail it.
 			log.Printf("setup: could not save identity names: %v", serr)
+		}
+	}
+
+	if !setupWasConfigured && (strings.TrimSpace(req.City) != "" || strings.TrimSpace(req.Timezone) != "") {
+		if pcs, perr := personalcontext.Open(fb.Workspace); perr == nil {
+			if serr := personalcontext.SeedHome(pcs, req.City, req.Timezone); serr != nil {
+				log.Printf("setup: could not save location: %v", serr)
+			}
 		}
 	}
 

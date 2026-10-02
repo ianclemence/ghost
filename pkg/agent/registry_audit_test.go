@@ -107,8 +107,12 @@ var allowedCoreAudit = map[string]bool{
 	// read / retrieval
 	"read_file": true, "list_dir": true, "context_get": true,
 	"session_search": true, "memory_recall": true, "memory_curate": true, "remember": true,
-	"oracle":     true, // read-only workspace context bundling
-	"web_search": true, "web_fetch": true, "networking": true,
+	// memory_correct: changes one of Ghost's own beliefs about the owner. It
+	// writes nothing without confirmed=true, keeps the old value in history
+	// (supersede, never delete), and never reaches outside Ghost's memory.
+	"memory_correct": true,
+	"oracle":         true, // read-only workspace context bundling
+	"web_search":     true, "web_fetch": true, "networking": true,
 	"vision": true, "video_frames": true, "doc_parser": true,
 	"weather_now": true, "flight_status": true, "aqi_now": true,
 	"currency_convert": true, "crypto_price": true, "places_nearby": true,

@@ -29,13 +29,19 @@ from claiming your Pod first. The code is:
 
 ## 4. Choose how Ghost thinks
 
-Pick a provider and paste its API key, or choose **On this device** to run
-entirely on the Pod (private and offline, slower and less capable). A wrong key is
-refused on the spot, and nothing is half-configured if you have to try again.
+Ghost needs an AI service to understand you. The setup page links to each
+provider's page for creating a **key**, a long password that lets your Ghost use
+that service. Make a free account, choose "Create API key", copy it, and paste it
+back. You pay the provider directly for what you use, usually a few cents a day.
+Not sure which? Choose DeepSeek. Or pick **On this device** to run entirely on the
+Pod (private and offline, slower and less capable). A wrong key is refused on the
+spot, and nothing is half-configured if you have to try again.
 
 ## 5. Meet Ghost
 
-Give it your name and a name of its own, choose an owner password, and finish.
+Give it your name and a name of its own, and say which city you are in (optional;
+it lets Ghost answer "what's the weather?" without asking, and sets reminders in
+your time zone). Choose an owner password and finish.
 
 ## 6. Bring your phone
 

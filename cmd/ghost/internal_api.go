@@ -867,7 +867,7 @@ func toolStatusLabel(name, args string) string {
 		return "Putting it together…"
 	case "oracle":
 		return "Gathering context…"
-	case "remember", "memory_recall", "memory_curate", "session_search", "context_get":
+	case "remember", "memory_recall", "memory_curate", "memory_correct", "session_search", "context_get":
 		return "Checking memory…"
 	case "screenshot":
 		return "Taking a screenshot…"

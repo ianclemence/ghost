@@ -655,6 +655,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		contextGetTool := tools.NewContextGetTool(pcStore)
 		toolsRegistry.Register(contextGetTool)
 		subagentTools.Register(contextGetTool)
+		toolsRegistry.Register(tools.NewMemoryCorrectTool(pcStore))
 	}
 
 	// Create semantic extractor for LLM-based memory extraction
@@ -963,6 +964,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 			cgt.Scopes = func(session string) []string {
 				return al.sessionScopes(session)
 			}
+		}
+	}
+	if tool, ok := al.tools.Get("memory_correct"); ok {
+		if mct, ok := tool.(*tools.MemoryCorrectTool); ok {
+			mct.Scopes = func(session string) []string { return al.sessionScopes(session) }
 		}
 	}
 	// Session-scoped curator notes: the model reads global + own-context

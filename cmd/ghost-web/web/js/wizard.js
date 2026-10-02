@@ -8,6 +8,8 @@ const GhostWizard = (() => {
     setupCode: '',
     ownerName: '',
     ghostName: 'Ghost',
+    city: '',
+    timezone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { return ''; } })(),
     password: '',
     brain: 'deepseek',
     apiKey: '',
@@ -118,6 +120,18 @@ const GhostWizard = (() => {
     ghostInput.addEventListener('input', (e) => _state.ghostName = e.target.value);
     screen.appendChild(ghostInput);
 
+    screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin:var(--s-5) 0 var(--s-3)' },
+      'Which city are you in? (optional)'
+    ));
+    const cityInput = GhostUI.input('For example: Bangkok');
+    cityInput.value = _state.city;
+    cityInput.addEventListener('input', (e) => _state.city = e.target.value);
+    screen.appendChild(cityInput);
+    screen.appendChild(GhostUI.h('div', { className: 'type-footnote text-tertiary', style: 'margin-top:var(--s-2)' },
+      'So Ghost can answer \u201cwhat\u2019s the weather?\u201d without asking, and set reminders in your time' +
+      (_state.timezone ? ' (' + _state.timezone.replace(/_/g, ' ') + ')' : '') + '. You can skip this and tell Ghost later.'
+    ));
+
     screen.appendChild(GhostUI.h('div', { className: 'wizard-actions' },
       GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: () => goTo('password') }, 'Continue')
     ));
@@ -193,6 +207,8 @@ const GhostWizard = (() => {
         setup_code: _state.setupCode,
         owner_name: _state.ownerName,
         ghost_name: _state.ghostName,
+        city: _state.city.trim(),
+        timezone: _state.timezone,
         provider: _state.brain,
         api_key: _state.brain === 'ollama' ? '' : _state.apiKey,
       });
@@ -246,17 +262,21 @@ const GhostWizard = (() => {
   // so there is no honest "skip for now" here: pick a cloud key, or run on
   // this device.
   const BRAINS = [
-    { key: 'deepseek', label: 'DeepSeek', note: 'Recommended. Fast and inexpensive.', cloud: true },
-    { key: 'anthropic', label: 'Anthropic', note: 'Claude models.', cloud: true },
-    { key: 'openai', label: 'OpenAI', note: '', cloud: true },
-    { key: 'moonshot', label: 'Kimi', note: '', cloud: true },
+    { key: 'deepseek', label: 'DeepSeek', note: 'Recommended. Fast and inexpensive.', cloud: true, keyUrl: 'https://platform.deepseek.com/api_keys' },
+    { key: 'anthropic', label: 'Anthropic', note: 'Claude models.', cloud: true, keyUrl: 'https://console.anthropic.com/settings/keys' },
+    { key: 'openai', label: 'OpenAI', note: '', cloud: true, keyUrl: 'https://platform.openai.com/api-keys' },
+    { key: 'moonshot', label: 'Kimi', note: '', cloud: true, keyUrl: 'https://platform.moonshot.ai/console/api-keys' },
     { key: 'ollama', label: 'On this device', note: 'Private and offline. Slower, and less capable.', cloud: false },
   ];
 
   function renderBrain(screen) {
     screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-title' }, 'What should Ghost think with?'));
-    screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-5)' },
-      'You can change this any time under Intelligence. Keys stay on this Ghost.'));
+    screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-3)' },
+      'Ghost needs an AI service to understand you. Pick one, make a free account with them, and copy a \u201ckey\u201d \u2014 ' +
+      'a long password that lets your Ghost use that service. You pay them directly for what you use, usually a few cents a day. ' +
+      'Not sure? Choose DeepSeek.'));
+    screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-footnote text-tertiary', style: 'margin-bottom:var(--s-5)' },
+      'You can change this any time under Intelligence. The key stays on this Ghost and is never shown again.'));
 
     if (_state.notice) {
       screen.appendChild(GhostUI.h('div', { className: 'wizard-notice', role: 'alert' }, _state.notice));
@@ -268,6 +288,8 @@ const GhostWizard = (() => {
     keyInput.value = _state.apiKey;
     keyInput.addEventListener('input', (e) => { _state.apiKey = e.target.value.trim(); });
     keyWrap.appendChild(keyInput);
+    const keyHelp = GhostUI.h('div', { className: 'type-footnote text-tertiary', style: 'margin-top:var(--s-2)' });
+    keyWrap.appendChild(keyHelp);
     const draw = () => {
       list.innerHTML = '';
       for (const b of BRAINS) {
@@ -281,6 +303,12 @@ const GhostWizard = (() => {
       const cur = BRAINS.find((b) => b.key === _state.brain);
       keyWrap.classList.toggle('hidden', !cur.cloud);
       keyInput.placeholder = 'Paste your ' + cur.label + ' API key';
+      keyHelp.innerHTML = '';
+      if (cur.keyUrl) {
+        keyHelp.appendChild(GhostUI.h('a', { href: cur.keyUrl, target: '_blank', rel: 'noopener noreferrer' },
+          'Open ' + cur.label + ' to get your key'));
+        keyHelp.appendChild(document.createTextNode(' \u2014 sign in, choose \u201cCreate API key\u201d, copy it, and come back here.'));
+      }
     };
     draw();
     screen.appendChild(list);
@@ -300,9 +328,17 @@ const GhostWizard = (() => {
     // isn't up yet at this point in setup — so this step points there
     // instead of showing a code that can't be redeemed.
     screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-title' }, 'Your Ghost is ready.'));
-    screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-6)' },
-      'Take Ghost with you. After setup, open Devices to connect your phone in about a minute \u2014 your Ghost stays on this hardware.'
+    screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-4)' },
+      'You can talk to Ghost right here. To take it with you, connect your phone \u2014 it takes about a minute:'
     ));
+    const how = GhostUI.h('ol', { className: 'type-body text-secondary', style: 'margin:0 0 var(--s-6) var(--s-5);line-height:1.6' });
+    for (const line of [
+      'Install the Ghost app on your phone.',
+      'Come back to this page after setup and open Devices.',
+      'Choose \u201cConnect a phone\u201d, then scan the code with the app.',
+      'Turn on notifications when the app asks \u2014 that\u2019s how Ghost reaches you with reminders.',
+    ]) how.appendChild(GhostUI.h('li', {}, line));
+    screen.appendChild(how);
 
     screen.appendChild(GhostUI.h('div', { className: 'wizard-actions' },
       GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary ghost-btn-lg', onClick: () => goTo('done') }, 'Finish setup')
@@ -311,10 +347,18 @@ const GhostWizard = (() => {
 
   function renderDone(screen) {
     screen.appendChild(GhostUI.h('div', { className: 'wizard-brand' }, GhostUI.ghostMark('xl')));
-    screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-display' }, 'You\u2019re connected.'));
-    screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-6)' },
-      'Ghost is ready. Start talking.'
+    screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-display' }, 'Ghost is ready.'));
+    screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-4)' },
+      'Just talk to it like you would a person. A few things to try:'
     ));
+    const tries = GhostUI.h('ul', { className: 'type-body text-secondary', style: 'margin:0 0 var(--s-6) var(--s-5);line-height:1.7' });
+    for (const line of [
+      '\u201cRemind me to call Mum tomorrow at 6.\u201d',
+      '\u201cWhat\u2019s the weather like today?\u201d',
+      '\u201cI\u2019m flying to Nairobi on Friday.\u201d \u2014 Ghost will remember, and offer to help.',
+      '\u201cWhat do you know about me?\u201d \u2014 you can correct anything it got wrong.',
+    ]) tries.appendChild(GhostUI.h('li', {}, line));
+    screen.appendChild(tries);
     screen.appendChild(GhostUI.h('div', { className: 'wizard-actions' },
       GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary ghost-btn-lg', onClick: () => {
         history.pushState(null, '', '/home');

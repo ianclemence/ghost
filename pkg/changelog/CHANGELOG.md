@@ -3,6 +3,25 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.111] - 2026-10-02
+
+- **Ghost can correct what it remembers, and asks first.** Say "the trip is on
+  the 16th now, forget the 26th" and Ghost finds the belief, shows what it was
+  and what it would become, and changes it once you have said so, keeping the
+  old value in its history. If something you say only seems to disagree with
+  what you told it, Ghost keeps what you stated, holds the new idea aside, and
+  asks which is right. Asking "what do you know about my trip?" now also points
+  out when two things it knows disagree.
+- **Quick answers can suggest a next step.** The reminders list, the weather
+  report and a flight status can now end with one short offer drawn from the
+  answer itself (a reminder that failed to send, rain in the report, a flight
+  nobody is watching), at most once every six hours.
+- **Setup is written for people who have never set up an assistant.** It
+  explains what an AI key is and links straight to where each provider creates
+  one, asks which city you are in (so the weather and reminder times work from
+  your first message), and ends with things to try instead of a claim that your
+  phone is already connected.
+
 ## [0.24.110] - 2026-10-02
 
 - **Ghost can give a forecast.** Ask about tomorrow, the weekend or a named day

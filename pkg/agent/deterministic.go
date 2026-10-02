@@ -833,6 +833,9 @@ func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metada
 		if handled && metadata["resume_field"] == "" && strings.HasPrefix(ans, "I couldn't find a place called") {
 			return "", false
 		}
+		if handled && tool == "weather_now" {
+			ans = withNextStep(session, "weather", ans, weatherOffer(ans))
+		}
 		return ans, handled
 	}
 
@@ -845,7 +848,11 @@ func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metada
 		if credentials.AviationKey(nil) == "" && credentials.AeroDataBoxKey() == "" {
 			return "Flight tracking isn't connected yet. Add your flight data key in Ghost settings under Integrations, then try again — I won't guess flight data.", true
 		}
-		return al.execDeterministicTool("flight_status", map[string]interface{}{"flight_number": fn}, session)
+		ans, handled := al.execDeterministicTool("flight_status", map[string]interface{}{"flight_number": fn}, session)
+		if handled {
+			ans = withNextStep(session, "flight:"+strings.ToUpper(fn), ans, al.flightOffer(fn))
+		}
+		return ans, handled
 	}
 
 	return "", false
@@ -1054,4 +1061,24 @@ func isSingleAsk(lower string) bool {
 	mentionsWeather := strings.Contains(lower, "weather") || strings.Contains(lower, "temperature")
 	mentionsAir := strings.Contains(lower, "aqi") || strings.Contains(lower, "air quality")
 	return !(mentionsWeather && mentionsAir)
+}
+
+// statedByOwnerAndDiffers reports whether a current belief on the same subject
+// and predicate was declared or corrected by the owner and holds a different
+// value than the entry Ghost just inferred.
+func statedByOwnerAndDiffers(current []personalcontext.Entry, entry personalcontext.Entry) bool {
+	for _, ce := range current {
+		if ce.Subject != entry.Subject || ce.Predicate != entry.Predicate || ce.Status != personalcontext.StatusCurrent {
+			continue
+		}
+		if personalcontext.Value(ce) == personalcontext.Value(entry) {
+			return false
+		}
+		for _, src := range ce.Sources {
+			if src.Kind == personalcontext.SourceUserDeclared || src.Kind == personalcontext.SourceUserCorrected {
+				return true
+			}
+		}
+	}
+	return false
 }

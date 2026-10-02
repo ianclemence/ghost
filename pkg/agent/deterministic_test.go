@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -729,5 +730,45 @@ func TestWatchCommandsNeedADirectiveAndATarget(t *testing.T) {
 		if got != want {
 			t.Errorf("%q: got %v want %v", msg, got, want)
 		}
+	}
+}
+
+func TestAnInferenceDoesNotReplaceAStatedFact(t *testing.T) {
+	mk := func(kind personalcontext.SourceKind, val string) personalcontext.Entry {
+		raw, _ := json.Marshal(val)
+		return personalcontext.Entry{Subject: "user", Predicate: "event/trip", Value: raw, Status: personalcontext.StatusCurrent,
+			Sources: []personalcontext.Source{{Kind: kind}}}
+	}
+	stated := mk(personalcontext.SourceUserDeclared, "26 October")
+	if !statedByOwnerAndDiffers([]personalcontext.Entry{stated}, mk(personalcontext.SourceInferred, "16 October")) {
+		t.Error("a different inferred value must be held when the owner stated the old one")
+	}
+	if statedByOwnerAndDiffers([]personalcontext.Entry{mk(personalcontext.SourceInferred, "26 October")}, mk(personalcontext.SourceInferred, "16 October")) {
+		t.Error("an inferred belief may still be replaced by a newer inference")
+	}
+	if statedByOwnerAndDiffers([]personalcontext.Entry{stated}, mk(personalcontext.SourceInferred, "26 October")) {
+		t.Error("the same value is a restatement, not a change")
+	}
+}
+
+func TestNextStepOffersComeFromTheDataAndAreRateLimited(t *testing.T) {
+	if got := weatherOffer("Weather in Bangkok: 🌧️ 28.0°C, Patchy rain nearby (via wttr.in)."); !strings.Contains(got, "umbrella") {
+		t.Errorf("rain must offer a reminder, got %q", got)
+	}
+	if got := weatherOffer("Weather in Dubai: 39.0°C, Sunny (via wttr.in)."); !strings.Contains(got, "hot") {
+		t.Errorf("heat must offer something, got %q", got)
+	}
+	if got := weatherOffer("Weather in Nairobi: 22.0°C, Partly cloudy (via wttr.in)."); got != "" {
+		t.Errorf("pleasant weather offers nothing, got %q", got)
+	}
+	a := withNextStep("s-offer", "weather", "Rain.", "Want an umbrella reminder?")
+	if !strings.Contains(a, "umbrella") {
+		t.Fatalf("first offer must appear: %q", a)
+	}
+	if b := withNextStep("s-offer", "weather", "Rain.", "Want an umbrella reminder?"); b != "Rain." {
+		t.Fatalf("the same offer must not repeat inside the cooldown: %q", b)
+	}
+	if c := withNextStep("s-offer-2", "weather", "Rain.", ""); c != "Rain." {
+		t.Fatalf("no offer, no change: %q", c)
 	}
 }

@@ -202,6 +202,13 @@ func buildBehaviorSection() string {
 - Stop when done. Offer ONE concrete next step only if it's genuinely useful (e.g. "want me to add these to your shopping list?"); otherwise end.
 - Read what the conversation is about and offer the next step a capable assistant would: a trip or flight → the weather and air quality at the destination, or a reminder before departure; an appointment or deadline → a reminder; a place they are heading to → directions or travel time; a plan with a date → a calendar entry. Offer only what your tools can actually do right now, in one short line at the end, never before the answer and never instead of it. Do not do it unasked, do not offer when they are mid-task or in a hurry, and do not repeat an offer they ignored or declined.
 
+## Remembering and correcting
+
+- When asked what you know about something ("my Shenzhen trip"), gather it from every place it lives (context_get, memory_recall, the schedule, notes), group it by topic, and say roughly when you were told each part. If two things disagree, say so and ask which is right; never pick one silently.
+- When the owner changes a plan or corrects you ("actually…", "the new plan is…", "forget the 26th"), carry it out: memory_correct find, then update with confirmed=true (they just said it, so it is confirmed), then say in one line what it was and what it is now. Also offer to move any reminder that depended on the old fact.
+- When something they say merely seems to disagree with what you stored (a different date, city or name), do not overwrite it and do not ignore it: ask once, naturally, which is right.
+- Never claim you have remembered or changed something unless a tool result in this turn says so.
+
 ## Quiet hours
 
 - Ghost has quiet hours (23:00 to 08:00 unless the owner changed them). They hold back notices Ghost raises on its own. A reminder or routine the owner scheduled fires at the time they chose, quiet hours or not. If asked about night-time pings, say exactly that, and offer to move a specific reminder; never say there is no such setting.
@@ -321,6 +328,23 @@ CRITICAL — Skill is authoritative. After you READ a SKILL.md, you MUST:
 		digest := personalcontext.BuildDigest(cb.personalContext.CurrentInScope(scopes), personalcontext.DigestBudget)
 		if digest != "" {
 			parts = append(parts, digest)
+		}
+	}
+
+	// Changes Ghost heard but has not confirmed: the old belief is still the
+	// one in force, and the owner is asked which is right.
+	if cb.personalContext != nil {
+		if pend := cb.personalContext.PendingChanges(scopes); len(pend) > 0 {
+			var b strings.Builder
+			b.WriteString("## Unconfirmed changes (ask the owner once, naturally, before relying on either)\n")
+			for i, pc := range pend {
+				if i == 2 {
+					break
+				}
+				fmt.Fprintf(&b, "- You were told: %q (%s). Since then you heard: %q. Ask which is right. If the new one: memory_correct update on %s with confirmed=true. If the old one: memory_correct dismiss on %s.\n",
+					personalcontext.Value(pc.Current), pc.Current.CreatedAt.Format("2 Jan"), personalcontext.Value(pc.Candidate), pc.Current.ID, pc.Candidate.ID)
+			}
+			parts = append(parts, strings.TrimRight(b.String(), "\n"))
 		}
 	}
 

@@ -83,6 +83,7 @@ var reviewedUngoverned = map[string]string{
 	"connections":    "list/status/begin only; setup steps, no changes",
 	"doc_parser":     "reads a workspace-confined file",
 	"memory_explain": "reads memory provenance",
+	"memory_correct": "changes one of Ghost's own beliefs only with confirmed=true; old values stay in history; no external effect",
 	"networking":     "status/tailscale/bonjour info, read-only",
 	"oracle":         "workspace-confined files to the configured model, same egress as a turn",
 	"spawn":          "delegate; the subagent's own tools stay governed",

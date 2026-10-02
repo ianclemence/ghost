@@ -373,6 +373,15 @@ func (al *AgentLoop) extractSemanticMemory(session, message, requestID string) {
 				// only when the conflicting row is the unambiguous
 				// store-wide current (never retire a fact from a context we
 				// cannot see).
+				// The exception: a belief the owner stated outright is not
+				// replaced by something Ghost merely inferred from a later
+				// message. The inference is kept as an unconfirmed candidate
+				// and the owner is asked which is right.
+				if entry.Status == personalcontext.StatusCurrent && statedByOwnerAndDiffers(current, entry) {
+					entry.Status = personalcontext.StatusUncertain
+					logger.InfoCF("agent", "semantic change held for confirmation",
+						map[string]interface{}{"predicate": entry.Predicate})
+				}
 				if entry.Status == personalcontext.StatusCurrent &&
 					al.supersedeSemanticCorrection(current, entry) {
 					if al.events != nil {

@@ -182,7 +182,11 @@ func (al *AgentLoop) renderReminders(session string) (string, bool) {
 	if _, ok := al.tools.Get("schedule"); !ok {
 		return "", false
 	}
-	return al.execDeterministicTool("schedule", map[string]interface{}{"action": "list"}, session)
+	ans, handled := al.execDeterministicTool("schedule", map[string]interface{}{"action": "list"}, session)
+	if handled {
+		ans = withNextStep(session, "reminders", ans, al.remindersOffer(time.Now()))
+	}
+	return ans, handled
 }
 
 // renderProposals lists open opportunities from the proposal store.

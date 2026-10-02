@@ -375,3 +375,29 @@ func TestHasCurrentDedup(t *testing.T) {
 		t.Fatal("different value must not be considered duplicate")
 	}
 }
+
+func TestSeedHomeRecordsOnceAndSkipsJunk(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SeedHome(st, "Bangkok", "Asia/Bangkok"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SeedHome(st, "Nairobi", "Africa/Nairobi"); err != nil { // a re-run must not overwrite
+		t.Fatal(err)
+	}
+	if err := SeedHome(st, "", "Not/AZone"); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, e := range st.Current() {
+		got[e.Predicate] = Value(e)
+	}
+	if got["fact/location"] != "Bangkok" || got["fact/timezone"] != "Asia/Bangkok" {
+		t.Fatalf("setup answers must be recorded once and kept: %+v", got)
+	}
+	if len(st.Current()) != 2 {
+		t.Fatalf("an invalid zone or blank city must add nothing, got %d entries", len(st.Current()))
+	}
+}
