@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.112] - 2026-10-02
+
+- **The reminders list is shorter.** It shows the latest three completed
+  reminders and says how many more fired earlier, instead of ten lines of
+  history under what is still to come, and no longer cuts a long reminder
+  title in the middle of a word.
+- **When Ghost lists what it knows about you, it asks you to correct it.**
+
 ## [0.24.111] - 2026-10-02
 
 - **Ghost can correct what it remembers, and asks first.** Say "the trip is on

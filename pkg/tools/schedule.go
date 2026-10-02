@@ -435,8 +435,15 @@ func (t *ScheduleTool) listSchedules() *ToolResult {
 		}
 	}
 	if len(completed) > 0 {
+		// The latest few are what "did that go off?" needs; ten lines of
+		// history buries the pending items above them.
+		const shownCompleted = 3
 		b.WriteString("Recently completed:\n")
-		for _, it := range completed {
+		for i, it := range completed {
+			if i == shownCompleted {
+				fmt.Fprintf(&b, "- …and %d more fired earlier\n", len(completed)-shownCompleted)
+				break
+			}
 			fmt.Fprintf(&b, "- %s — fired %s\n", scheduleHeadline(it), storedTimeLabel(it.LastRunAt, it.Timezone))
 		}
 	}
@@ -566,8 +573,13 @@ func derivedItemTitle(content string) string {
 	}
 	out := string(runes)
 	const max = 80
-	if len(out) > max {
-		out = strings.TrimSpace(out[:max]) + "\u2026"
+	if r := []rune(out); len(r) > max {
+		cut := string(r[:max])
+		// Cut at a word boundary, not mid-word ("Ban…").
+		if i := strings.LastIndex(cut, " "); i > max/2 {
+			cut = cut[:i]
+		}
+		out = strings.TrimRight(strings.TrimSpace(cut), ",;:-") + "\u2026"
 	}
 	return out
 }
