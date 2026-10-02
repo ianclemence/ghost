@@ -403,6 +403,12 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 			if locationRefersBack(msg) {
 				return "", false
 			}
+			// The runtime may only ask when it is sure nothing was said. A
+			// message that names something after a place word, or carries a
+			// second ask, failed extraction — it did not omit the place.
+			if !isSingleAsk(lower) || namesAPlace(lower) {
+				return "", false
+			}
 			skills.SetPendingDurable(al.workspace, session, skills.PendingContinuation{
 				CapabilityID: "weather.current", Skill: "weather",
 				MissingField: "location", Question: "Which city should I check?",
@@ -746,7 +752,15 @@ func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metada
 		if isAQI {
 			tool = "aqi_now"
 		}
-		return al.execDeterministicTool(tool, map[string]interface{}{"location": loc}, session)
+		ans, handled := al.execDeterministicTool(tool, map[string]interface{}{"location": loc}, session)
+		// The place was guessed from the sentence, not given. A miss means the
+		// guess may be wrong, so the model (with history and its own reading of
+		// the sentence) gets the turn. A place the owner typed in answer to our
+		// question is final.
+		if handled && metadata["resume_field"] == "" && strings.HasPrefix(ans, "I couldn't find a place called") {
+			return "", false
+		}
+		return ans, handled
 	}
 
 	// Flight status with a number + configured provider -> dispatch.
@@ -807,7 +821,7 @@ func (al *AgentLoop) execDeterministicTool(name string, args map[string]interfac
 	return text, true
 }
 
-var locationFromTextRE = regexp.MustCompile(`(?i)\b(?:in|near|around|close to|next to)\s+([A-Z][a-zA-Z'’\-]*(?:[\s\-][A-Z][a-zA-Z'’\-]*){0,3})`)
+var locationFromTextRE = regexp.MustCompile(`(?i)\b(?:in|near|around|close to|next to|of|for|at)\s+([A-Z][a-zA-Z'’\-]*(?:[\s\-][A-Z][a-zA-Z'’\-]*){0,3})`)
 
 // herePhraseRE matches captures that reference the user's OWN location rather
 // than a named place. The preposition regex is case-insensitive, so "weather
@@ -817,12 +831,39 @@ var locationFromTextRE = regexp.MustCompile(`(?i)\b(?:in|near|around|close to|ne
 // stored location (knownLocation), or the readiness fast-path asks once.
 var herePhraseRE = regexp.MustCompile(`(?i)^(?:me|here|my\s+(?:city|town|location|area|place)|this\s+(?:city|place)|where\s+i\s+(?:am|live))$`)
 
+// placeFrameRE finds a place word and what follows it. namesAPlace uses it to
+// tell "weather" (nothing named) from "weather in <something we could not
+// parse>" (something named).
+var placeFrameRE = regexp.MustCompile(`(?i)\b(?:in|at|of|for|near|around|to|from)\s+([\p{L}'’\-]+)`)
+
+// namesAPlace reports whether the message points at a named thing after a
+// place word. Self-references ("near me", "here", "my city") do not count:
+// those resolve against the stored location.
+func namesAPlace(lower string) bool {
+	for _, m := range placeFrameRE.FindAllStringSubmatch(lower, -1) {
+		switch m[1] {
+		case "me", "here", "my", "this", "today", "now", "tonight", "tomorrow", "a", "an":
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+var locationStopRE = regexp.MustCompile(`(?i)\s(?:and|its|it's|with|plus|also|then|or|aqi|aqo|weather|temperature|air|please|pls|right|today|now|tonight|tomorrow)\b`)
+
 func locationFromText(msg string) string {
 	m := locationFromTextRE.FindStringSubmatch(msg)
 	if m == nil {
 		return ""
 	}
 	loc := strings.TrimSpace(m[1])
+	// The pattern is case-insensitive, so the capture runs on into whatever
+	// follows the place ("nairobi and its aqi"). Cut at the first word that
+	// cannot be part of a place name.
+	if cut := locationStopRE.FindStringIndex(" " + loc); cut != nil && cut[0] > 0 {
+		loc = strings.TrimSpace(loc[:cut[0]-1])
+	}
 	// Trim trailing verbs that leaked in. Longest phrases first so
 	// " right now" wins over " now", and repeat until stable.
 	stops := []string{" right now", " this afternoon", " this morning", " tomorrow", " today", " now", " later", " please", " one line", " asap"}

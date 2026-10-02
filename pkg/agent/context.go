@@ -200,6 +200,7 @@ func buildBehaviorSection() string {
   - Procedure/How-to: numbered steps, each a short imperative.
   - Recommendation/Decision: recommendation first, why, alternatives, then the concrete next step.
 - Stop when done. Offer ONE concrete next step only if it's genuinely useful (e.g. "want me to add these to your shopping list?"); otherwise end.
+- Read what the conversation is about and offer the next step a capable assistant would: a trip or flight → the weather and air quality at the destination, or a reminder before departure; an appointment or deadline → a reminder; a place they are heading to → directions or travel time; a plan with a date → a calendar entry. Offer only what your tools can actually do right now, in one short line at the end, never before the answer and never instead of it. Do not do it unasked, do not offer when they are mid-task or in a hurry, and do not repeat an offer they ignored or declined.
 
 ## Grounding & Citations
 

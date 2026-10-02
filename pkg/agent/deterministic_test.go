@@ -637,3 +637,31 @@ func TestDispatchNeverWeatherOnSpecQuestion(t *testing.T) {
 		t.Fatalf("a genuine ask must invoke the tool exactly once, got %d", len(calls))
 	}
 }
+
+func TestLocationFromTextStopsAtFillerAndAcceptsOf(t *testing.T) {
+	for msg, want := range map[string]string{
+		"what is the current weather in nairobi and its aqo": "nairobi",
+		"what is the current weather and aqi of nairobi":     "nairobi",
+		"weather in New York today":                          "New York",
+		"aqi for Nairobi":                                    "Nairobi",
+	} {
+		if got := locationFromText(msg); got != want {
+			t.Errorf("%q: got %q want %q", msg, got, want)
+		}
+	}
+}
+
+func TestNamesAPlace(t *testing.T) {
+	for msg, want := range map[string]bool{
+		"what's the weather":                 false,
+		"what's the weather today":           false,
+		"weather near me":                    false,
+		"weather in nairobi and its aqo":     true,
+		"weather and aqi of nairobi":         true,
+		"weather over at the kampala office": true,
+	} {
+		if got := namesAPlace(msg); got != want {
+			t.Errorf("%q: got %v want %v", msg, got, want)
+		}
+	}
+}
