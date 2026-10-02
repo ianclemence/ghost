@@ -112,6 +112,10 @@ type Surface struct {
 	// Activity is what Ghost is doing on the surface right now, in plain
 	// words ("Opening news.ycombinator.com"). Cleared when the work settles.
 	Activity string `json:"activity,omitempty"`
+	// WaitingFor says who the surface waits on: "human" when the page needs a
+	// person (a "verify you are human" check). Such a surface stays live when
+	// the turn ends; it is the owner's move.
+	WaitingFor string `json:"waiting_for,omitempty"`
 	// Steps is what Ghost has done on the surface so far, oldest first, one
 	// plain line each ("Opened en.wikipedia.org"). Bounded; never page text.
 	Steps []string `json:"steps,omitempty"`
@@ -233,8 +237,27 @@ func (r *Registry) SetState(id string, st State) bool {
 		return false
 	}
 	s.State = st
+	if st != StateWaiting {
+		s.WaitingFor = ""
+	}
 	s.bump(time.Now())
 	return true
+}
+
+// WaitForHuman parks a surface on a step only a person can do. The turn's
+// settle leaves it live so the owner can take over; it expires like any idle
+// surface if nobody does.
+func (r *Registry) WaitForHuman(id, activity string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.byID[id]
+	if !ok {
+		return
+	}
+	s.State = StateWaiting
+	s.WaitingFor = "human"
+	s.Activity = activity
+	s.bump(time.Now())
 }
 
 // Observe records a safe observation for a surface. ControlOwner/state in
@@ -512,7 +535,7 @@ func (r *Registry) SettleSession(session string, failed bool) []Surface {
 	var out []Surface
 	now := time.Now()
 	for _, s := range r.byID {
-		if s.Session != session || s.Control == OwnerUser {
+		if s.Session != session || s.Control == OwnerUser || s.WaitingFor == "human" {
 			continue
 		}
 		switch s.State {
@@ -542,7 +565,7 @@ func (r *Registry) CompleteTask(task string, failed bool) int {
 	defer r.mu.Unlock()
 	n := 0
 	for _, s := range r.byID {
-		if s.Task != task || s.Control == OwnerUser {
+		if s.Task != task || s.Control == OwnerUser || s.WaitingFor == "human" {
 			continue
 		}
 		switch s.State {

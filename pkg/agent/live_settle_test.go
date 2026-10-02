@@ -337,3 +337,23 @@ func TestFollowUpSessionInheritsTheLastPage(t *testing.T) {
 		t.Fatalf("a screenshot after the turn must still know the page, got %v", ev)
 	}
 }
+
+// A "verify you are human" page waits for the owner: the turn ending does not
+// settle it, so the card keeps its Take over button.
+func TestHumanCheckPageStaysLiveForTheOwner(t *testing.T) {
+	h, _ := settleHarness(t)
+	h.stubs["browser_snapshot"].evidence = map[string]interface{}{"domain": "www.timeanddate.com", "title": "Just a moment...", "text": "Verify you are human by completing the action below."}
+	tc := fakeToolCall("browser_snapshot", map[string]interface{}{})
+	if res, _, _ := h.loop.maybeRunBrowserTool(h.toolCtx(), h.loop.tools, tc, h.opts("sess-cf"), nil); res.IsError {
+		t.Fatalf("snapshot failed: %s", res.ForLLM)
+	}
+	h.loop.SettleSessionSurfaces("sess-cf", "success")
+	for _, s := range h.loop.livePlane.List() {
+		if s.Session == "sess-cf" && (s.State != live.StateWaiting || s.WaitingFor != "human") {
+			t.Fatalf("a human check must stay live and waiting for the owner, got %+v", s)
+		}
+	}
+	if humanCheckPage("Hacker News", "Top stories") {
+		t.Fatalf("an ordinary page is not a human check")
+	}
+}

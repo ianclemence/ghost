@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.135] - 2026-10-03
+
+- **A "verify you are human" page waits for you.** When a site puts up a bot
+  check, the browser card stays live with "Needs you to prove you're human"
+  and Take over and steer, instead of settling into a record the moment Ghost
+  answers. Ghost used to tell you to tap a button that was no longer there.
+
 ## [0.24.134] - 2026-10-03
 
 - **Approvals say what and where.** "Type on en.wikipedia.org?" instead of

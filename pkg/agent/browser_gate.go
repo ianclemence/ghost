@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -732,7 +733,27 @@ func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, r
 		}
 	}
 	al.livePlane.Observe(call.SessionID, obs)
+	// A "verify you are human" page is the owner's move: the card stays live
+	// with Take over instead of settling into a record when the turn ends, so
+	// "tap Take over and steer" points at a button that is there.
+	if text, _ := res.Evidence["text"].(string); humanCheckPage(obs.Title, text) {
+		al.livePlane.WaitForHuman(call.SessionID, "Needs you to prove you're human")
+	}
 	al.announceSurface(sessionKey, call.SessionID, live.KindBrowser)
+}
+
+var humanCheckRE = regexp.MustCompile(`(?i)verify (?:you are|you're) (?:a )?human|are you a robot|i'?m not a robot|unusual traffic|complete the security check|captcha|press (?:&|and) hold`)
+
+// humanCheckPage reports whether the page is a bot check a person must pass.
+func humanCheckPage(title, text string) bool {
+	t := strings.ToLower(strings.TrimSpace(title))
+	if t == "just a moment..." || t == "just a moment…" || strings.HasPrefix(t, "attention required") {
+		return true
+	}
+	if len(text) > 4000 {
+		text = text[:4000]
+	}
+	return humanCheckRE.MatchString(title) || humanCheckRE.MatchString(text)
 }
 
 // publishBrowserEvidence records the governed outcome as a canonical
