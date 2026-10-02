@@ -30,8 +30,10 @@ body::after {
   z-index: -1;
   pointer-events: none;
   opacity: var(--grain-opacity);
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* Fine white speckle with random transparency. Overlay blending made the old
+     grain vanish on black, which is most of this page. */
+  background-image: url("/assets/css/grain.png");
+  background-size: 160px 160px;
 }
 @keyframes auraDrift {
   0%   { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }

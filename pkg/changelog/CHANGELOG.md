@@ -3,6 +3,12 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.126] - 2026-10-03
+
+- **Fine grain behind every screen.** A light film grain now sits over the
+  black and the aurora, in the console and on the phone. The old console grain
+  was invisible on black; this one is subtle but visible.
+
 ## [0.24.125] - 2026-10-03
 
 - **Activity reads like sentences, in the console too.** A failed step used to
