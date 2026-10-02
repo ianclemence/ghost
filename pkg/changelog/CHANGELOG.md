@@ -3,6 +3,22 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.109] - 2026-10-02
+
+- **A reminder uses the time from the sentence that asks for it.** "Forget the
+  October 26 dates, remind me to book the flights by Sunday evening" used to be
+  stored for October 26, the date you were dropping. Ghost now reads the time
+  from the sentence that makes the request.
+- **A question about the weather is no longer answered with the weather.** "What
+  did you do wrong when I asked about the weather in Nairobi" got a Nairobi
+  forecast. The weather and air-quality quick answer now fires only when the
+  message is a weather request and nothing else.
+- **Weather times say UTC.** The "observed" time was in UTC but looked local;
+  it now says so.
+- **Ghost knows about quiet hours.** It said there was no such setting. Quiet
+  hours hold back what Ghost raises by itself; reminders you set still fire at
+  their time.
+
 ## [0.24.108] - 2026-10-02
 
 - **Ghost answers what you asked, not the keyword in it.** Quick answers for

@@ -687,3 +687,23 @@ func TestWholeAskLeavesRealQuestionsToTheModel(t *testing.T) {
 		t.Error("real flight numbers must still match")
 	}
 }
+
+func TestCurrentConditionsAskIsTheWholeMessage(t *testing.T) {
+	for _, c := range []struct {
+		msg, loc string
+		want     bool
+	}{
+		{"what is the current weather in nairobi", "nairobi", true},
+		{"what's the weather like in nairobi today", "nairobi", true},
+		{"weather in new york", "new york", true},
+		{"what's the weather", "", true},
+		{"weather", "", true},
+		{"what did you do wrong earlier today when i asked about the weather in nairobi", "nairobi", false},
+		{"what's the weather", "", true},
+		{"why did you ask me which city when i asked what's the weather", "", false},
+	} {
+		if got := currentConditionsAsk(c.msg, c.loc); got != c.want {
+			t.Errorf("%q: got %v want %v", c.msg, got, c.want)
+		}
+	}
+}

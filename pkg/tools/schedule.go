@@ -126,7 +126,16 @@ func (t *ScheduleTool) resolveScheduleTime(ctx context.Context, message, tz stri
 	// Keep the long-standing behaviour of trusting the supplied phrasing.
 	owner := strings.TrimSpace(RequestMessage(ctx))
 	if owner != "" {
-		// The owner's own words, when they carry a time, are the answer.
+		// The owner's own words, when they carry a time, are the answer. A
+		// message can mention several times ("forget the october 26 dates.
+		// remind me to book by sunday evening"), and only the sentence that
+		// makes the request says which one the reminder is for: parse that
+		// sentence first, so a date the owner is discarding cannot win.
+		if sentence := reminderSentence(owner); sentence != "" && sentence != owner {
+			if parsed, err := scheduled.ParseNaturalLanguage(sentence, time.Now(), tz); err == nil && parsed != nil {
+				return parsed, nil
+			}
+		}
 		if parsed, err := scheduled.ParseNaturalLanguage(owner, time.Now(), tz); err == nil && parsed != nil {
 			return parsed, nil
 		}
@@ -162,6 +171,25 @@ func (t *ScheduleTool) resolveScheduleTime(ctx context.Context, message, tz stri
 	// retries from them.
 	return nil, fmt.Errorf("I couldn't understand when that should happen. Say the time with the day — " +
 		"for example \"tomorrow at 9 AM to call Sam\", \"at 8:30 PM today\", \"tonight at 9\", or \"9 October at 9 AM\".")
+}
+
+var sentenceSplitRE = regexp.MustCompile(`[.!?\n]+\s*`)
+var reminderAskRE = regexp.MustCompile(`(?i)\b(?:remind|reminder|alert me|notify me|ping me|wake me|set (?:an? )?(?:alarm|timer))\b`)
+
+// reminderSentence returns the one sentence of a multi-sentence message that
+// asks for the reminder, or "" when there is not exactly one such sentence.
+func reminderSentence(owner string) string {
+	var found []string
+	for _, part := range sentenceSplitRE.Split(owner, -1) {
+		part = strings.TrimSpace(part)
+		if part != "" && reminderAskRE.MatchString(part) {
+			found = append(found, part)
+		}
+	}
+	if len(found) != 1 {
+		return ""
+	}
+	return found[0]
 }
 
 // ownerConfirmationStems are short replies that agree to something Ghost has

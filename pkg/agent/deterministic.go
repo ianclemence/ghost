@@ -36,19 +36,51 @@ var askFiller = map[string]bool{
 // words left over once the match and the filler are removed mean the message
 // carries something the shortcut cannot see, so the model reads it instead.
 func wholeAsk(lower string, re *regexp.Regexp) bool {
+	return wholeAskWith(lower, re, "")
+}
+
+// slotFiller is what may sit around a request that carries a place: the
+// prepositions that introduce it and the time words that qualify "now".
+var slotFiller = map[string]bool{
+	"in": true, "at": true, "of": true, "for": true, "near": true, "around": true,
+	"like": true, "today": true, "outside": true, "currently": true, "rn": true,
+	"there": true,
+}
+
+// wholeAskWith is wholeAsk for a request that carries a slot (a place). The
+// slot's own words are removed first, then the prepositions and time words in
+// slotFiller are tolerated, so "what's the weather like in nairobi today"
+// passes and "what did you do wrong when I asked about the weather in
+// nairobi" does not.
+func wholeAskWith(lower string, re *regexp.Regexp, slot string) bool {
 	loc := re.FindStringIndex(lower)
 	if loc == nil {
 		return false
 	}
 	rest := lower[:loc[0]] + " " + lower[loc[1]:]
+	if slot != "" {
+		rest = strings.Replace(rest, strings.ToLower(slot), " ", 1)
+	}
 	for _, w := range strings.FieldsFunc(rest, func(r rune) bool {
 		return !(unicode.IsLetter(r) || unicode.IsDigit(r))
 	}) {
-		if !askFiller[w] {
+		if !askFiller[w] && !(slot != "" && slotFiller[w]) {
 			return false
 		}
 	}
 	return true
+}
+
+// currentConditionsAsk reports whether the weather or air-quality request
+// accounts for the whole message once its place is set aside. A bare "weather"
+// always does.
+func currentConditionsAsk(lower, loc string) bool {
+	for _, phrase := range []string{"weather", "aqi", "air quality"} {
+		if skills.IsBareUtterance(lower, phrase) {
+			return true
+		}
+	}
+	return wholeAskWith(lower, weatherAskRE, loc) || wholeAskWith(lower, aqiAskRE, loc)
 }
 
 // tryDeterministicTurn handles local ops without any LLM call.
@@ -443,7 +475,7 @@ func (al *AgentLoop) tryReadinessFastPath(msg, session string, metadata map[stri
 			// The runtime may only ask when it is sure nothing was said. A
 			// message that names something after a place word, or carries a
 			// second ask, failed extraction — it did not omit the place.
-			if !isSingleAsk(lower) || namesAPlace(lower) {
+			if !isSingleAsk(lower) || namesAPlace(lower) || !currentConditionsAsk(lower, "") {
 				return "", false
 			}
 			skills.SetPendingDurable(al.workspace, session, skills.PendingContinuation{
@@ -784,6 +816,9 @@ func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metada
 		}
 		if loc == "" {
 			return "", false // readiness fast-path owns the "which city" ask
+		}
+		if !currentConditionsAsk(lower, loc) {
+			return "", false
 		}
 		tool := "weather_now"
 		if isAQI {

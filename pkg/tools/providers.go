@@ -116,7 +116,7 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]interface{}) 
 				return providerError(o.UserMessage)
 			}
 			return NewToolResult(fmt.Sprintf("Weather: %.1f°C%s (via %s, observed %s).",
-				cur.TemperatureC, descSuffix(cur.Description), r.Provider, cur.ObservedAt.Format("15:04")))
+				cur.TemperatureC, descSuffix(cur.Description), r.Provider, cur.ObservedAt.UTC().Format("15:04 UTC")))
 		}
 	}
 	loc := sarg(args, "location")
@@ -132,7 +132,7 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]interface{}) 
 				cur, r := svc.CurrentByCoords(ctx, latF, lonF, false)
 				if r.Err == nil {
 					return NewToolResult(fmt.Sprintf("Weather: %.1f°C%s (via %s, observed %s).",
-						cur.TemperatureC, descSuffix(cur.Description), r.Provider, cur.ObservedAt.Format("15:04")))
+						cur.TemperatureC, descSuffix(cur.Description), r.Provider, cur.ObservedAt.UTC().Format("15:04 UTC")))
 				}
 			}
 		}
@@ -157,7 +157,7 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return providerError(o.UserMessage)
 	}
 	return NewToolResult(fmt.Sprintf("Weather in %s: %s%.1f°C%s (via %s, observed %s).",
-		loc, emojiPrefix(cur.Emoji), cur.TemperatureC, descSuffix(cur.Description), r.Provider, cur.ObservedAt.Format("15:04")))
+		loc, emojiPrefix(cur.Emoji), cur.TemperatureC, descSuffix(cur.Description), r.Provider, cur.ObservedAt.UTC().Format("15:04 UTC")))
 }
 
 func descSuffix(d string) string {
