@@ -32,7 +32,7 @@ from claiming your Pod first. The code is:
 Ghost needs an AI service to understand you. The setup page links to each
 provider's page for creating a **key**, a long password that lets your Ghost use
 that service. Make a free account, choose "Create API key", copy it, and paste it
-back. You pay the provider directly for what you use, usually a few cents a day.
+back. You pay the provider directly for what you use; everyday chatting is usually inexpensive.
 Not sure which? Choose DeepSeek. Or pick **On this device** to run entirely on the
 Pod (private and offline, slower and less capable). A wrong key is refused on the
 spot, and nothing is half-configured if you have to try again.

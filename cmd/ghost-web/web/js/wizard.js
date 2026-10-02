@@ -273,7 +273,7 @@ const GhostWizard = (() => {
     screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-title' }, 'What should Ghost think with?'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-3)' },
       'Ghost needs an AI service to understand you. Pick one, make a free account with them, and copy a \u201ckey\u201d \u2014 ' +
-      'a long password that lets your Ghost use that service. You pay them directly for what you use, usually a few cents a day. ' +
+      'a long password that lets your Ghost use that service. You pay them directly for what you use; everyday chatting is usually inexpensive. ' +
       'Not sure? Choose DeepSeek.'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-footnote text-tertiary', style: 'margin-bottom:var(--s-5)' },
       'You can change this any time under Intelligence. The key stays on this Ghost and is never shown again.'));
@@ -305,7 +305,7 @@ const GhostWizard = (() => {
       keyInput.placeholder = 'Paste your ' + cur.label + ' API key';
       keyHelp.innerHTML = '';
       if (cur.keyUrl) {
-        keyHelp.appendChild(GhostUI.h('a', { href: cur.keyUrl, target: '_blank', rel: 'noopener noreferrer' },
+        keyHelp.appendChild(GhostUI.h('a', { href: cur.keyUrl, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--accent,#2a38a6);font-weight:600;text-decoration:underline' },
           'Open ' + cur.label + ' to get your key'));
         keyHelp.appendChild(document.createTextNode(' \u2014 sign in, choose \u201cCreate API key\u201d, copy it, and come back here.'));
       }
@@ -327,11 +327,11 @@ const GhostWizard = (() => {
     // Pairing codes are minted by the running gateway (Devices screen), which
     // isn't up yet at this point in setup — so this step points there
     // instead of showing a code that can't be redeemed.
-    screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-title' }, 'Your Ghost is ready.'));
+    screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-title' }, 'Bring your phone.'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-4)' },
       'You can talk to Ghost right here. To take it with you, connect your phone \u2014 it takes about a minute:'
     ));
-    const how = GhostUI.h('ol', { className: 'type-body text-secondary', style: 'margin:0 0 var(--s-6) var(--s-5);line-height:1.6' });
+    const how = GhostUI.h('ol', { className: 'type-body text-secondary', style: 'margin:0 auto var(--s-6);padding-left:var(--s-5);max-width:30em;text-align:left;line-height:1.6' });
     for (const line of [
       'Install the Ghost app on your phone.',
       'Come back to this page after setup and open Devices.',
@@ -351,7 +351,7 @@ const GhostWizard = (() => {
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-4)' },
       'Just talk to it like you would a person. A few things to try:'
     ));
-    const tries = GhostUI.h('ul', { className: 'type-body text-secondary', style: 'margin:0 0 var(--s-6) var(--s-5);line-height:1.7' });
+    const tries = GhostUI.h('ul', { className: 'type-body text-secondary', style: 'margin:0 auto var(--s-6);padding-left:var(--s-5);max-width:30em;text-align:left;line-height:1.7' });
     for (const line of [
       '\u201cRemind me to call Mum tomorrow at 6.\u201d',
       '\u201cWhat\u2019s the weather like today?\u201d',

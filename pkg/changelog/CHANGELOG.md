@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.113] - 2026-10-02
+
+- **Setup page polish, checked in a browser.** The numbered and bulleted lists
+  line up, the link to get an AI key looks like a link, the phone step and the
+  final screen no longer both say "ready", and the cost note no longer promises
+  a figure.
+
 ## [0.24.112] - 2026-10-02
 
 - **The reminders list is shorter.** It shows the latest three completed
