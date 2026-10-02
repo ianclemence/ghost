@@ -2042,6 +2042,11 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		}
 	}
 	apiWorkspaceDir = stateWorkspace
+	// Cards stay where they were shown: the store survives a restart, so the
+	// conversation reads the same after one.
+	if err := cards.DefaultStore.Persist(filepath.Join(stateWorkspace, "cards.json")); err != nil {
+		log.Printf("⚠️ cards could not be restored (%v); new cards will still be kept", err)
+	}
 	// Connect the agent loop to the substrate: canonical identity,
 	// permission broker, canonical event stream. Turns now emit events
 	// and consequential tools gate on the broker (nil-safe elsewhere).
@@ -4075,6 +4080,39 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			channel = "mobile"
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "cards": cards.DefaultStore.List(channel)})
+	}))
+
+	// What the owner did with a card (an offered reply, or dismiss), remembered
+	// so it stays put away on every device and after a restart. The action must
+	// be one the card offered. Recording never runs anything: a reply is sent by
+	// the phone as an ordinary message the owner chose to send.
+	mux.HandleFunc("/v1/cards/resolve", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use POST")
+			return
+		}
+		var req struct {
+			Channel  string `json:"channel"`
+			ID       string `json:"id"`
+			ActionID string `json:"action_id"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil || strings.TrimSpace(req.ID) == "" || strings.TrimSpace(req.ActionID) == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "a card id and an action id are required")
+			return
+		}
+		channel := strings.TrimSpace(req.Channel)
+		if channel == "" {
+			channel = "mobile"
+		}
+		card, ok := cards.DefaultStore.Resolve(channel, req.ID, req.ActionID)
+		if !ok {
+			// Already put away, expired, or not an action it offered: say so, and
+			// still hand back the card so the phone can show its real state.
+			jsonResponse(w, http.StatusConflict, map[string]interface{}{"ok": false, "card": card})
+			return
+		}
+		cards.DefaultActionLog.Record(cards.ActionRecord{CardID: card.ID, CardKind: string(card.Kind), ActionID: req.ActionID, Actor: "owner", Result: "resolved"})
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "card": card})
 	}))
 
 	// ── Standing goals: durable owner intents the heartbeat evaluates ──

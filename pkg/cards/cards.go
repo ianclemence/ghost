@@ -9,8 +9,10 @@ package cards
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -44,7 +46,15 @@ const (
 	// KindBrowserRecovery tells the owner their browser was stuck and has
 	// been reset. Informational; the recovery already happened.
 	KindBrowserRecovery Kind = "browser_recovery"
+	// KindPresent is an answer Ghost chose to show rather than write: a
+	// weather glance, a flight, a plan, a comparison. It is built from blocks
+	// (blocks.go), never from layout the model invents.
+	KindPresent Kind = "present"
 )
+
+// CardVersion is the version of the block vocabulary a card was written in. A
+// phone that does not know a newer block type skips it and still shows the rest.
+const CardVersion = 1
 
 // Action is one card button. Approve/deny actions carry the broker
 // request ID they resolve; the client calls the approvals endpoint.
@@ -53,6 +63,21 @@ type Action struct {
 	Label     string `json:"label"`
 	Style     string `json:"style,omitempty"` // primary | secondary | destructive
 	RequestID string `json:"request_id,omitempty"`
+	// Kind is what tapping does, and it is only ever one of these:
+	//   "reply"   send Text to Ghost as if the owner had typed it
+	//   "dismiss" put the card away
+	// Empty means the older broker-bound action (RequestID). A card can offer
+	// a choice; it can never carry a command, a link or a style of its own.
+	Kind string `json:"kind,omitempty"`
+	Text string `json:"text,omitempty"`
+}
+
+// Resolution is what the owner did with a card, remembered so it stays put
+// away on every device and after a restart.
+type Resolution struct {
+	ActionID string    `json:"action_id"`
+	Label    string    `json:"label"`
+	At       time.Time `json:"at"`
 }
 
 // Card is one rich payload.
@@ -65,6 +90,9 @@ type Card struct {
 	RequestID string                 `json:"request_id,omitempty"`
 	Data      map[string]interface{} `json:"data,omitempty"`
 	Actions   []Action               `json:"actions,omitempty"`
+	Blocks    []Block                `json:"blocks,omitempty"`
+	V         int                    `json:"v,omitempty"`
+	Resolved  *Resolution            `json:"resolved,omitempty"`
 	CreatedAt time.Time              `json:"created_at"`
 	ExpiresAt time.Time              `json:"expires_at,omitempty"`
 }
@@ -93,6 +121,10 @@ func (c Card) Validate() error {
 	switch c.Kind {
 	case KindSuggestion, KindGoalUpdate, KindCart, KindBrowserView, KindMemoryReceipt, KindBrowserRecovery:
 		// producible today
+	case KindPresent:
+		if len(c.Blocks) == 0 {
+			return errors.New("a presented card needs at least one block")
+		}
 	case KindCheckoutSheet:
 		return errors.New("checkout_sheet has no payment partner yet")
 	default:
@@ -104,6 +136,9 @@ func (c Card) Validate() error {
 	if len(c.Actions) > 4 {
 		return errors.New("card carries at most 4 actions")
 	}
+	if len(c.Blocks) > MaxBlocks {
+		return fmt.Errorf("card carries at most %d blocks", MaxBlocks)
+	}
 	return nil
 }
 
@@ -114,6 +149,11 @@ func (c Card) TextFallback() string {
 	sb.WriteString(c.Title)
 	if c.Body != "" {
 		sb.WriteString("\n" + c.Body)
+	}
+	for _, b := range c.Blocks {
+		if t := blockText(b); t != "" {
+			sb.WriteString("\n" + t)
+		}
 	}
 	for _, a := range c.Actions {
 		sb.WriteString("\n[" + a.Label + "]")
@@ -127,20 +167,66 @@ func (c Card) Payload() map[string]interface{} {
 		"card_id": c.ID, "card_kind": string(c.Kind),
 		"title": c.Title, "body": c.Body, "topic": c.Topic,
 		"request_id": c.RequestID, "data": c.Data, "actions": c.Actions,
+		"blocks": c.Blocks, "v": c.V, "resolved": c.Resolved,
 		"created_at": c.CreatedAt.Unix(), "expires_at": c.ExpiresAt.Unix(),
 	}
 }
 
 // Store keeps recent cards per channel for GET /v1/cards fetch-on-open
-// (phones miss pushes). Bounded: 20 per channel, expired pruned on write.
+// (phones miss pushes) and so a conversation keeps its cards where they were
+// shown. Bounded: 100 per channel, expired pruned on write. Persist makes it
+// survive a restart; without it the store lives in memory only (tests).
 type Store struct {
 	mu    sync.Mutex
 	items map[string][]Card
+	path  string
 }
 
 var DefaultStore = &Store{items: map[string][]Card{}}
 
-const storeCap = 20
+const storeCap = 100
+
+// Persist loads cards from path (if the file exists) and keeps writing there.
+func (s *Store) Persist(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.path = path
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var loaded map[string][]Card
+	if err := json.Unmarshal(b, &loaded); err != nil {
+		return err
+	}
+	if s.items == nil {
+		s.items = map[string][]Card{}
+	}
+	for ch, list := range loaded {
+		s.items[ch] = list
+	}
+	return nil
+}
+
+// saveLocked writes the store atomically. Callers hold s.mu. Best effort: a
+// failed write never breaks a turn; the in-memory copy stays authoritative.
+func (s *Store) saveLocked() {
+	if s.path == "" {
+		return
+	}
+	b, err := json.Marshal(s.items)
+	if err != nil {
+		return
+	}
+	tmp := s.path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, s.path)
+}
 
 // Add stores a card for channel (mobile, telegram, ...).
 func (s *Store) Add(channel string, c Card) {
@@ -161,6 +247,7 @@ func (s *Store) Add(channel string, c Card) {
 		kept = kept[len(kept)-storeCap:]
 	}
 	s.items[channel] = kept
+	s.saveLocked()
 }
 
 // List returns unexpired cards for channel, oldest first.
@@ -175,6 +262,41 @@ func (s *Store) List(channel string) []Card {
 		}
 	}
 	return out
+}
+
+// Resolve records what the owner did with a card, so it stays put away on
+// every device. actionID must be one the card offered (or "dismiss"). It
+// returns the updated card, or false when there is no such card, it was
+// already resolved, or the action is not one it offered.
+func (s *Store) Resolve(channel, id, actionID string) (Card, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list := s.items[channel]
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		if list[i].Resolved != nil {
+			return list[i], false
+		}
+		label := ""
+		for _, a := range list[i].Actions {
+			if a.ID == actionID {
+				label = a.Label
+			}
+		}
+		if label == "" && actionID == "dismiss" {
+			label = "Dismissed"
+		}
+		if label == "" {
+			return list[i], false
+		}
+		list[i].Resolved = &Resolution{ActionID: actionID, Label: label, At: time.Now().UTC()}
+		s.items[channel] = list
+		s.saveLocked()
+		return list[i], true
+	}
+	return Card{}, false
 }
 
 // Publish stores a card and emits it on the bus with card_update metadata.

@@ -468,6 +468,15 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	})
 	registry.Register(memoryExplain)
 
+	// Present a card: an answer shown as a validated block card (weather, a
+	// flight, a plan). The model fills blocks from a fixed catalog; nothing in
+	// a card can run, open or style anything.
+	presentCard := tools.NewPresentCardTool()
+	presentCard.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
+		cards.Publish(msgBus, nil, channel, chatID, sessionID, c)
+	})
+	registry.Register(presentCard)
+
 	// Targeted long-tail memory retrieval: the agent searches its own notes
 	// (daily notes, MEMORY.md, captures) on demand, ranked by relevance+recency.
 	memoryRecall := tools.NewMemoryRecall(workspace)

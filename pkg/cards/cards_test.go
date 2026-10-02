@@ -52,15 +52,15 @@ func TestTextFallback(t *testing.T) {
 
 func TestStoreCapsAndExpiry(t *testing.T) {
 	s := &Store{}
-	for i := 0; i < 25; i++ {
+	for i := 0; i < storeCap+5; i++ {
 		c, err := New(KindSuggestion, "T", "B")
 		if err != nil {
 			t.Fatal(err)
 		}
 		s.Add("mobile", c)
 	}
-	if got := len(s.List("mobile")); got != 20 {
-		t.Fatalf("store must cap at 20, got %d", got)
+	if got := len(s.List("mobile")); got != storeCap {
+		t.Fatalf("store must cap at %d, got %d", storeCap, got)
 	}
 	old, err := New(KindSuggestion, "Old", "B")
 	if err != nil {

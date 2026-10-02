@@ -1,0 +1,68 @@
+{
+  "_note": "The contract between the Pod (pkg/cards) and the phone (ghost-app lib/cards-contract.json). Both sides test every case here. A card the Pod accepts must show the same number of blocks on the phone; a card the Pod rejects must never reach one. Keep the two copies identical.",
+  "valid": [
+    {
+      "name": "weather glance",
+      "spec": {
+        "kind": "present", "title": "Nairobi today",
+        "blocks": [
+          { "type": "metric", "label": "Now", "value": "24", "unit": "°C", "delta": "+2° vs yesterday", "tone": "good" },
+          { "type": "facts", "rows": [ { "label": "Rain", "value": "10%" }, { "label": "Wind", "value": "12 km/h", "tone": "neutral" } ] },
+          { "type": "note", "text": "Dry until the evening.", "tone": "info" }
+        ]
+      },
+      "blocks": 3
+    },
+    {
+      "name": "flight with a timeline and a choice",
+      "spec": {
+        "kind": "present", "title": "TP 1352",
+        "blocks": [
+          { "type": "timeline", "steps": [
+            { "time": "09:40", "title": "Depart Lisbon", "state": "done" },
+            { "time": "11:05", "title": "Land Nairobi", "detail": "Terminal 1A", "state": "now" },
+            { "time": "12:00", "title": "Pick up bags", "state": "next" }
+          ] },
+          { "type": "progress", "label": "Flight", "progress": 0.6, "caption": "1h 10m left" }
+        ],
+        "actions": [
+          { "id": "a1", "label": "Track it", "kind": "reply", "text": "Keep an eye on TP 1352 for me", "style": "primary" },
+          { "id": "a2", "label": "Not now", "kind": "dismiss" }
+        ]
+      },
+      "blocks": 2
+    },
+    {
+      "name": "list and code",
+      "spec": {
+        "kind": "present", "title": "Three options",
+        "blocks": [
+          { "type": "list", "items": [ { "title": "Cafe Brera", "subtitle": "Near the station", "trailing": "$$", "tone": "good" }, { "title": "Diner 54" } ] },
+          { "type": "code", "language": "bash", "code": "ghost routines add \"check flights\"" },
+          { "type": "text", "text": "Say the word and I will book one." }
+        ]
+      },
+      "blocks": 3
+    }
+  ],
+  "invalid": [
+    { "name": "unknown kind", "spec": { "kind": "hologram", "title": "x", "blocks": [ { "type": "text", "text": "hi" } ] } },
+    { "name": "no blocks", "spec": { "kind": "present", "title": "x" } },
+    { "name": "no title", "spec": { "kind": "present", "title": " ", "blocks": [ { "type": "text", "text": "hi" } ] } },
+    { "name": "unknown block type", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "iframe", "text": "hi" } ] } },
+    { "name": "empty text", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "text", "text": "  " } ] } },
+    { "name": "bad tone", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "note", "text": "hi", "tone": "rainbow" } ] } },
+    { "name": "progress out of range", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "progress", "label": "p", "progress": 1.5 } ] } },
+    { "name": "progress missing", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "progress", "label": "p" } ] } },
+    { "name": "too many blocks", "spec": { "kind": "present", "title": "x", "blocks": [ {"type":"text","text":"1"},{"type":"text","text":"2"},{"type":"text","text":"3"},{"type":"text","text":"4"},{"type":"text","text":"5"},{"type":"text","text":"6"},{"type":"text","text":"7"},{"type":"text","text":"8"},{"type":"text","text":"9"} ] } },
+    { "name": "bad timeline state", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "timeline", "steps": [ { "title": "a", "state": "later" } ] } ] } },
+    { "name": "code language with a space", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "code", "language": "bash; rm", "code": "ls" } ] } },
+    { "name": "reply without text", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "text", "text": "hi" } ], "actions": [ { "id": "a", "label": "Go", "kind": "reply" } ] } },
+    { "name": "action that binds a request", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "text", "text": "hi" } ], "actions": [ { "id": "a", "label": "Go", "kind": "reply", "text": "yes", "request_id": "req_1" } ] } },
+    { "name": "action that opens a link", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "text", "text": "hi" } ], "actions": [ { "id": "a", "label": "Go", "kind": "open", "text": "https://evil.example" } ] } },
+    { "name": "style outside the catalog", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "text", "text": "hi" } ], "actions": [ { "id": "a", "label": "Go", "kind": "dismiss", "style": "destructive" } ] } },
+    { "name": "blocks on a kind that takes none", "spec": { "kind": "goal_update", "title": "x", "data": { "goal_id": "g" }, "blocks": [ { "type": "text", "text": "hi" } ] } },
+    { "name": "data on a block card", "spec": { "kind": "present", "title": "x", "data": { "a": "b" }, "blocks": [ { "type": "text", "text": "hi" } ] } },
+    { "name": "unknown field", "spec": { "kind": "present", "title": "x", "html": "<b>hi</b>", "blocks": [ { "type": "text", "text": "hi" } ] } }
+  ]
+}

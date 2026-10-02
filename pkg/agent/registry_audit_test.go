@@ -120,6 +120,7 @@ var allowedCoreAudit = map[string]bool{
 	"connections":    true,
 	"system_status":  true,
 	"memory_explain": true,
+	"present_card":   true, // renders a validated block card to the owner's own screen
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,
 	"move_file": true, // renames inside the workspace, never overwrites, same guards as write_file

@@ -19,6 +19,7 @@ type Spec struct {
 	Topic   string                 `json:"topic,omitempty"`
 	Data    map[string]interface{} `json:"data,omitempty"`
 	Actions []Action               `json:"actions,omitempty"`
+	Blocks  []Block                `json:"blocks,omitempty"`
 }
 
 // kindSchema is the guardrail per card kind.
@@ -27,6 +28,9 @@ type kindSchema struct {
 	requireData  []string
 	maxActions   int
 	styles       map[string]bool
+	// blocks marks the kinds built from blocks. Every other kind refuses them,
+	// and a block kind refuses data, so there is one way to say each thing.
+	blocks bool
 }
 
 var catalog = map[Kind]kindSchema{
@@ -39,6 +43,9 @@ var catalog = map[Kind]kindSchema{
 	KindMemoryReceipt: {requireData: []string{"claim_id"}, maxActions: 0},
 	// Browser recovery is informational: the reset already happened.
 	KindBrowserRecovery: {maxActions: 0},
+	// A presented answer: blocks only, at most three choices, and a choice can
+	// only reply or dismiss (never bind a broker request, open a link or run).
+	KindPresent: {maxActions: 3, styles: map[string]bool{"primary": true, "secondary": true}, blocks: true},
 }
 
 // RenderSpec validates a model-emitted spec against the catalog and
@@ -61,6 +68,32 @@ func RenderSpec(raw []byte) (Card, error) {
 	if schema.requireTopic && strings.TrimSpace(spec.Topic) == "" {
 		return Card{}, fmt.Errorf("card spec: %s requires a topic", spec.Kind)
 	}
+	if len(spec.Blocks) > 0 && !schema.blocks {
+		return Card{}, fmt.Errorf("card spec: %s does not take blocks", spec.Kind)
+	}
+	if schema.blocks {
+		if len(spec.Data) > 0 {
+			return Card{}, fmt.Errorf("card spec: %s takes blocks, not data", spec.Kind)
+		}
+		if len(spec.Blocks) == 0 || len(spec.Blocks) > MaxBlocks {
+			return Card{}, fmt.Errorf("card spec: %s needs 1 to %d blocks", spec.Kind, MaxBlocks)
+		}
+		for i := range spec.Blocks {
+			if err := spec.Blocks[i].Validate(); err != nil {
+				return Card{}, fmt.Errorf("card spec: block %d: %w", i+1, err)
+			}
+		}
+		if t, ok := clean(oneLine(spec.Title), 80); !ok {
+			return Card{}, fmt.Errorf("card spec: title is longer than 80 characters")
+		} else {
+			spec.Title = t
+		}
+		if t, ok := clean(oneLine(spec.Body), MaxText); !ok {
+			return Card{}, fmt.Errorf("card spec: body is longer than %d characters", MaxText)
+		} else {
+			spec.Body = t
+		}
+	}
 	for _, key := range schema.requireData {
 		v, ok := spec.Data[key]
 		if !ok || v == nil || v == "" {
@@ -71,7 +104,7 @@ func RenderSpec(raw []byte) (Card, error) {
 		return Card{}, fmt.Errorf("card spec: %s carries at most %d actions", spec.Kind, schema.maxActions)
 	}
 	seen := map[string]bool{}
-	for _, a := range spec.Actions {
+	for i, a := range spec.Actions {
 		if strings.TrimSpace(a.ID) == "" || strings.TrimSpace(a.Label) == "" {
 			return Card{}, fmt.Errorf("card spec: actions need id and label")
 		}
@@ -81,6 +114,32 @@ func RenderSpec(raw []byte) (Card, error) {
 		seen[a.ID] = true
 		if a.Style != "" && !schema.styles[a.Style] {
 			return Card{}, fmt.Errorf("card spec: style %q not allowed for %s", a.Style, spec.Kind)
+		}
+		if schema.blocks {
+			if a.RequestID != "" {
+				return Card{}, fmt.Errorf("card spec: a presented card cannot bind a request")
+			}
+			if l, ok := clean(oneLine(a.Label), 40); !ok || l == "" {
+				return Card{}, fmt.Errorf("card spec: action label must be 1 to 40 characters")
+			} else {
+				spec.Actions[i].Label = l
+			}
+			switch a.Kind {
+			case "reply":
+				t, ok := clean(oneLine(a.Text), MaxActionText)
+				if !ok || t == "" {
+					return Card{}, fmt.Errorf("card spec: a reply action needs text of 1 to %d characters", MaxActionText)
+				}
+				spec.Actions[i].Text = t
+			case "dismiss":
+				if strings.TrimSpace(a.Text) != "" {
+					return Card{}, fmt.Errorf("card spec: a dismiss action carries no text")
+				}
+			default:
+				return Card{}, fmt.Errorf("card spec: action kind %q is not reply or dismiss", a.Kind)
+			}
+		} else if a.Kind != "" || a.Text != "" {
+			return Card{}, fmt.Errorf("card spec: %s actions carry no kind or text", spec.Kind)
 		}
 	}
 	// Data values stay scalar: no nested objects or arrays smuggled
@@ -97,8 +156,14 @@ func RenderSpec(raw []byte) (Card, error) {
 	}
 	c := Card{ID: newID(), Kind: spec.Kind, Title: strings.TrimSpace(spec.Title),
 		Body: strings.TrimSpace(spec.Body), Topic: strings.TrimSpace(spec.Topic),
-		Data: spec.Data, Actions: spec.Actions,
+		Data: spec.Data, Actions: spec.Actions, Blocks: spec.Blocks,
 		CreatedAt: time.Now(), ExpiresAt: time.Now().Add(24 * time.Hour)}
+	if schema.blocks {
+		// A presented card is part of the conversation: it stays where it was
+		// shown, so it outlives the day a nudge does.
+		c.V = CardVersion
+		c.ExpiresAt = time.Now().Add(30 * 24 * time.Hour)
+	}
 	if err := c.Validate(); err != nil {
 		return Card{}, err
 	}
