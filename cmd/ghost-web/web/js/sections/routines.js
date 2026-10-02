@@ -76,8 +76,10 @@ function renderRoutines(listEl, container, items) {
   items.forEach(item => {
     const card = GhostUI.h('div', { className: 'ghost-card' });
 
+    // The title and the text it came from are often the same words; say them once.
+    const words = GhostWording.routine(item.title, item.what);
     const titleRow = GhostUI.h('div', { className: 'ghost-card-title' });
-    titleRow.appendChild(document.createTextNode(item.title || 'Untitled'));
+    titleRow.appendChild(document.createTextNode(words.title));
     titleRow.appendChild(GhostUI.h('span', { className: routineState(item).cls }, routineState(item).label));
     card.appendChild(titleRow);
 
@@ -90,8 +92,8 @@ function renderRoutines(listEl, container, items) {
     }
     card.appendChild(GhostUI.h('div', { className: 'ghost-card-meta' }, metaParts.join('  \u00b7  ')));
 
-    if (item.what) {
-      card.appendChild(GhostUI.h('div', { className: 'ghost-card-sub' }, item.what));
+    if (words.sub) {
+      card.appendChild(GhostUI.h('div', { className: 'ghost-card-sub' }, words.sub));
     }
     if (item.last_error) {
       card.appendChild(GhostUI.h('div', { className: 'type-foot text-danger', style: 'margin-top:var(--s-1)' }, item.last_error));

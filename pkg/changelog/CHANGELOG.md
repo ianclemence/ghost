@@ -3,6 +3,21 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.118] - 2026-10-02
+
+- **The sign-in and setup screens keep the living background.** They used to
+  paint a solid colour over it, so the light showed while the page loaded and
+  then disappeared when the screen drew.
+- **Activity is a tree.** Each day is a branch with a count, and what Ghost did
+  that day hangs from it: a coloured node for the outcome, the time, what
+  happened, and why. Days fold away with their caret.
+- **The phone drawer is solid.** The page no longer shows through it.
+- **The logo's status light sits on the rim of the mark again.** A style meant
+  for the other status dots had pulled it inside the circle.
+- **Routines no longer say everything twice.** When a routine's title and its
+  description are the same words, they appear once; when the title was clipped,
+  the full wording becomes the title.
+
 ## [0.24.117] - 2026-10-02
 
 - **The terminal looks like the rest of Ghost.** Its colours now match the

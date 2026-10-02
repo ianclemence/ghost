@@ -35,36 +35,58 @@ async function loadActivity(container) {
     return;
   }
 
-  // Grouped by day; each row: what Ghost did, the outcome the runtime
-  // recorded, and why it acted. The same words as the phone and Home.
-  let day = '';
+  // A tree: each day is a branch, and what Ghost did that day hangs from it.
+  // Every node carries a dot in the colour of its outcome, the time, what
+  // happened, and (quietly) why Ghost acted. Days fold away with their caret.
+  const groups = [];
   items.forEach(item => {
     const t = item.timestamp ? new Date(item.timestamp) : null;
-    const label = t && !isNaN(t.getTime()) ? activityDayLabel(t) : 'Earlier';
-    if (label !== day) {
-      day = label;
-      listEl.appendChild(GhostUI.h('div', { className: 'activity-day' }, label));
-    }
-    const row = GhostUI.h('div', { className: 'ghost-row' });
-    const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    // The outcome sits beside the title, not at the far edge of a wide screen
-    // where the eye has to cross the page to connect it to its item.
-    const titleLine = GhostUI.h('div', { className: 'ghost-row-title activity-title-line' }, item.title || 'Activity');
-    c.appendChild(titleLine);
-    const word = GhostUI.activityWord(item.state);
-    const summary = (item.summary || '').trim();
-    const bits = [];
-    if (summary) bits.push(summary);
-    if (t && !isNaN(t.getTime())) bits.push(t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
-    if (bits.length) c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, bits.join('  ·  ')));
-    // Revelation: why Ghost asked or acted.
-    if (item.why) c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle type-foot text-tertiary', style: 'margin-top:2px' }, item.why));
-    row.appendChild(c);
-    if (word && word.toLowerCase() !== summary.toLowerCase()) {
-      titleLine.appendChild(GhostUI.h('span', { className: 'status-pill activity-status' }, GhostUI.statusDot(GhostUI.activityTone(item.state)), word));
-    }
-    listEl.appendChild(row);
+    const valid = t && !isNaN(t.getTime());
+    const label = valid ? activityDayLabel(t) : 'Earlier';
+    let g = groups[groups.length - 1];
+    if (!g || g.label !== label) { g = { label, items: [] }; groups.push(g); }
+    g.items.push({ item, t: valid ? t : null });
   });
+
+  const tree = GhostUI.h('div', { className: 'act-tree' });
+  groups.forEach((g, gi) => {
+    const day = GhostUI.h('section', { className: 'act-day', 'data-open': 'true' });
+    const head = GhostUI.h('button', { className: 'act-day-head', type: 'button', 'aria-expanded': 'true' });
+    head.appendChild(GhostUI.h('span', { className: 'act-caret', 'aria-hidden': 'true', html: '<svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 4.5 2.5 3 2.5-3"/></svg>' }));
+    head.appendChild(GhostUI.h('span', { className: 'act-day-label' }, g.label));
+    head.appendChild(GhostUI.h('span', { className: 'act-day-count' }, String(g.items.length)));
+    const branch = GhostUI.h('ol', { className: 'act-branch' });
+    g.items.forEach(({ item, t }, ni) => {
+      const node = GhostUI.h('li', { className: 'act-node tone-' + GhostUI.activityTone(item.state) });
+      node.style.setProperty('--n', String(Math.min(gi * 3 + ni, 12)));
+      node.appendChild(GhostUI.h('span', { className: 'act-dot', 'aria-hidden': 'true' }));
+      const body = GhostUI.h('div', { className: 'act-body' });
+      const titleLine = GhostUI.h('div', { className: 'ghost-row-title act-title' }, item.title || 'Activity');
+      const word = GhostUI.activityWord(item.state);
+      const summary = (item.summary || '').trim();
+      if (word && word.toLowerCase() !== summary.toLowerCase()) {
+        titleLine.appendChild(GhostUI.h('span', { className: 'status-pill activity-status' }, GhostUI.statusDot(GhostUI.activityTone(item.state)), word));
+      }
+      body.appendChild(titleLine);
+      const bits = [];
+      if (t) bits.push(t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+      if (summary) bits.push(summary);
+      if (bits.length) body.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, bits.join('  \u00b7  ')));
+      // Revelation: why Ghost asked or acted.
+      if (item.why) body.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle type-foot text-tertiary', style: 'margin-top:2px' }, item.why));
+      node.appendChild(body);
+      branch.appendChild(node);
+    });
+    head.addEventListener('click', () => {
+      const open = day.getAttribute('data-open') !== 'true';
+      day.setAttribute('data-open', String(open));
+      head.setAttribute('aria-expanded', String(open));
+    });
+    day.appendChild(head);
+    day.appendChild(branch);
+    tree.appendChild(day);
+  });
+  listEl.appendChild(tree);
 }
 
 function activityDayLabel(d) {

@@ -425,3 +425,67 @@ body { font-feature-settings: "ss01", "cv11"; font-kerning: normal; }
    so they read as fields on the dark surface. */
 .panel .row-flex:has(> .ghost-btn), .panel .btn-row { flex-wrap: wrap; }
 .ghost-input, .ghost-select { border-color: var(--line); }
+
+/* ═══ Fixes ════════════════════════════════════════════════════════════════ */
+
+/* The sign-in and setup screens sit on the same living background as the rest:
+   they used to paint a solid page colour over it, so the light appeared while
+   the page loaded and then vanished when the screen drew. */
+.locked, #wizard, #app { background: transparent; }
+
+/* The status light rides the rim of the mark. The "life" rule above gave every
+   dot position: relative, which pulled this one into the circle. */
+.presence-light { position: absolute; }
+
+/* On a phone the drawer is a solid sheet; the page behind it must not show
+   through. */
+@media (max-width: 900px) {
+  .shell-nav { background: var(--paper-raised); }
+  .shell-nav.open { box-shadow: var(--shadow-xl); }
+}
+
+/* ═══ Activity: a tree ═════════════════════════════════════════════════════ */
+.act-tree {
+  display: flex; flex-direction: column; gap: var(--s-4);
+  background: color-mix(in srgb, var(--paper-raised) 94%, transparent);
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--inset-hi), var(--shadow-sm);
+  padding: var(--s-4) var(--s-5) var(--s-3);
+}
+.act-day-head {
+  appearance: none; border: 0; background: transparent; cursor: pointer; font: inherit;
+  display: flex; align-items: center; gap: var(--s-2); width: 100%; text-align: left;
+  padding: var(--s-1) 0; color: var(--ink-soft);
+}
+.act-day-head:hover { color: var(--ink); }
+.act-caret { width: 12px; height: 12px; display: inline-flex; flex: none; transition: transform var(--d-base) var(--ease-out); }
+.act-day[data-open="false"] .act-caret { transform: rotate(-90deg); }
+.act-day-label { font-size: var(--t-callout); font-weight: 620; letter-spacing: -0.005em; color: var(--ink); }
+.act-day-count { font-size: var(--t-micro); font-weight: 600; color: var(--ink-faint); background: var(--paper-sunken); border-radius: var(--r-pill); padding: 1px 8px; font-variant-numeric: tabular-nums; }
+
+.act-branch { list-style: none; margin: 0; padding: 0 0 0 26px; }
+.act-day[data-open="false"] .act-branch { display: none; }
+.act-node { position: relative; padding: 9px 0 11px; animation: rise 460ms var(--ease-out) both; animation-delay: calc(var(--n, 0) * 36ms); --tone: var(--ink-ghost); }
+/* the trunk, with the last node ending at its own elbow */
+.act-node::before { content: ""; position: absolute; left: -20px; top: 0; bottom: 0; width: 1.5px; background: var(--line-strong); }
+.act-node:first-child::before { top: -10px; }
+.act-node:last-child::before { bottom: auto; height: 21px; border-radius: 0 0 0 6px; }
+/* the branch to the node */
+.act-node::after { content: ""; position: absolute; left: -20px; top: 20px; width: 15px; height: 1.5px; background: var(--line-strong); }
+.act-dot {
+  position: absolute; left: -26px; top: 15px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--paper-raised); border: 2px solid var(--tone);
+  box-shadow: 0 0 0 3px var(--paper-raised);
+  z-index: 1; transition: transform var(--d-base) var(--ease-out);
+}
+.act-node:hover .act-dot { transform: scale(1.25); }
+.act-node.tone-ready   { --tone: var(--ok); }
+.act-node.tone-warn    { --tone: var(--ember-deep); }
+.act-node.tone-bad     { --tone: var(--bad); }
+.act-node.tone-neutral { --tone: var(--ink-ghost); }
+.act-node.tone-ready .act-dot, .act-node.tone-warn .act-dot, .act-node.tone-bad .act-dot { background: var(--tone); }
+.act-body { min-width: 0; }
+.act-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+@media (prefers-reduced-motion: reduce) { .act-node { animation: none !important; } }
+@media (max-width: 560px) { .act-tree { padding: var(--s-3) var(--s-4); } .act-branch { padding-left: 24px; } }
+.locked-brand .shell-brand-name { font-family: var(--font-display); font-weight: 400; font-size: 30px; letter-spacing: -0.012em; line-height: 1; }

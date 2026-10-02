@@ -60,3 +60,20 @@ func TestConsoleMarkdownBehavior(t *testing.T) {
 		t.Fatalf("unexpected test output:\n%s", out)
 	}
 }
+
+// The wording helpers decide what a routine shows twice or once.
+func TestConsoleWordingBehavior(t *testing.T) {
+	bun, err := exec.LookPath("bun")
+	if err != nil {
+		t.Skip("bun not installed; skipping executable wording checks")
+	}
+	cmd := exec.Command(bun, "web/js/wording.test.mjs")
+	cmd.Dir = "."
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("web wording checks failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "all checks passed") {
+		t.Fatalf("unexpected test output:\n%s", out)
+	}
+}

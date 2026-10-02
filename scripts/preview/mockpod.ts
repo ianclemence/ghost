@@ -7,10 +7,14 @@ const activity = [
   { id: "a2", event_id: "e2", seq: 4, title: "Checked TP 1352", kind: "watch", state: "changed", timestamp: iso(now - 3 * H), summary: "Departure 07:40 → 08:25", why: "You asked me to keep an eye on this flight." },
   { id: "a3", event_id: "e3", seq: 3, title: "Checked TP 1352", kind: "watch", state: "unchanged", timestamp: iso(now - 9 * H), summary: "No change" },
   { id: "a4", event_id: "e4", seq: 2, title: "Prepared your Monday brief", kind: "routine", state: "done", timestamp: iso(now - D - 8 * H) },
+  { id: "a5", event_id: "e5", seq: 1, title: "Reminded you to take your vitamins", kind: "reminder", state: "done", timestamp: iso(now - D - 21 * H), why: "You asked for this every weekday." },
+  { id: "a6", event_id: "e6", seq: 0, title: "Couldn't reach the flight tracker", kind: "watch", state: "failed", timestamp: iso(now - 3 * D), summary: "Tried again, then stopped" },
 ];
 const routines = [
   { id: "ro1", title: "Monday brief", what: "Calendar, weather and anything waiting on you", kind: "routine", state: "active", schedule: "Mondays at 08:00", next_run_at: iso(now + 4 * D), run_count: 12, source: "chat", created_at: iso(now - 90 * D), updated_at: iso(now - D) },
   { id: "ro2", title: "Watch TP 1352", what: "Gate, time and status until you land", kind: "watch", state: "active", schedule: "Every 30 min until Friday", next_run_at: iso(now + 20 * 60), run_count: 18, source: "chat", created_at: iso(now - D), updated_at: iso(now - 3 * H) },
+  { id: "ro4", title: "Take my vitamins", what: "Take my vitamins", kind: "reminder", state: "active", schedule: "Weekdays at 8:00 AM", next_run_at: iso(now + D), run_count: 41, source: "chat", created_at: iso(now - 60 * D), updated_at: iso(now - D) },
+  { id: "ro5", title: "Chelsea vs Bournemouth is tomorrow \u2014 Saturday 10 October, 15:00 UK / 21:00 Ban\u2026", what: "Chelsea vs Bournemouth is tomorrow \u2014 Saturday 10 October, 15:00 UK / 21:00 Bangkok.", kind: "reminder", state: "active", schedule: "Friday, October 9 at 2:00 PM", next_run_at: iso(now + 6 * D), run_count: 0, source: "chat", created_at: iso(now - D), updated_at: iso(now - D) },
   { id: "ro3", title: "Pay rent", what: "Reminder on the 1st", kind: "reminder", state: "active", schedule: "Monthly on the 1st", next_run_at: iso(now + 2 * D), run_count: 5, source: "chat", created_at: iso(now - 150 * D), updated_at: iso(now - 28 * D) },
 ];
 const memory = { entries: [
