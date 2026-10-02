@@ -3,6 +3,20 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.107] - 2026-10-02
+
+- **Weather and air quality no longer misread your city.** Asking for "the
+  weather in nairobi and its aqi" used to be taken as a place called "nairobi
+  and its aqi", and "aqi of nairobi" was taken as naming no place at all, so
+  Ghost asked "Which city should I check?" again and again. Ghost now asks for a
+  city only when you really named none, stops reading the place at words like
+  "and", and hands anything it cannot parse to the model, which reads the whole
+  conversation, instead of refusing.
+- **Ghost offers a sensible next step.** After an answer it may suggest one
+  thing it can actually do about what you are discussing, such as the weather
+  at a destination or a reminder before a trip. It only offers; it does not act
+  until you say yes.
+
 ## [0.24.106] - 2026-10-02
 
 - **`ghost update` now installs the release itself.** It used to look up the
