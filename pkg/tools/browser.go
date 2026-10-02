@@ -98,7 +98,7 @@ func (t *BrowserTool) SetPublisher(fn func(channel, chatID, sessionID string, c 
 // publishRecovery tells the owner their browser was wedged and has been reset,
 // so a 90-second silence is followed by an explanation instead of a mystery.
 func (t *BrowserTool) publishRecovery(ctx context.Context) {
-	if t.publish == nil || t.channel == "" || t.chatID == "" {
+	if t.publish == nil || t.channel == "" || t.chatID == "" || !recoveryDue(time.Now()) {
 		return
 	}
 	card, err := cards.New(cards.KindBrowserRecovery, "My browser got stuck",
@@ -560,6 +560,33 @@ func withWritableBrowserHome(env []string) []string {
 // resetBrowserSession clears a wedged browser: a bounded close, then reap any
 // orphaned daemon/Chromium so the next action launches a fresh browser. Called
 // only after a timeout, never against a healthy session.
+// browserResponsive reports whether the browser daemon answers a trivial
+// request. A timeout on a heavy page leaves it answering; a wedged one does not.
+func browserResponsive(profile string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "agent-browser", "dialog", "status", "--json")
+	cmd.Env = browserEnvironment(profile)
+	return cmd.Run() == nil
+}
+
+var (
+	recoveryMu   sync.Mutex
+	recoveryLast time.Time
+)
+
+// recoveryDue allows one "my browser got stuck" card per five minutes: the
+// owner needs to hear it once, not after every retry of the same turn.
+func recoveryDue(now time.Time) bool {
+	recoveryMu.Lock()
+	defer recoveryMu.Unlock()
+	if !recoveryLast.IsZero() && now.Sub(recoveryLast) < 5*time.Minute {
+		return false
+	}
+	recoveryLast = now
+	return true
+}
+
 func resetBrowserSession() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -603,6 +630,17 @@ func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...str
 		// a wedged daemon makes every site time out. Reset the session and
 		// say so plainly instead of implying the site is unreachable.
 		if ctx.Err() == context.DeadlineExceeded {
+			// A wait that ran out of time is an answer, not a fault: the page
+			// did not show what the model waited for (Google Flights never
+			// goes idle, for one). Resetting here threw away the page and told
+			// the owner their browser was broken after every search.
+			if action == "wait" {
+				return ErrorResult("[wait.timeout] The condition did not appear in time. The page may still be loading, or the text is worded differently. Take a snapshot to see what is on the page; the browser itself is fine.")
+			}
+			// Any other step: ask the browser if it is alive before blaming it.
+			if browserResponsive(t.sessionProfile) {
+				return ErrorResult("[browser.slow] That step took too long, but the browser is responding. The page may still be loading: take a snapshot to see where it got to. Do NOT tell the user the site is down from this alone.")
+			}
 			resetBrowserSession()
 			t.publishRecovery(ctx)
 			return ErrorResult("[browser.stuck] My browser was stuck — every page was timing out, which is a problem on my side, not the site's. I've reset it; ask me again and it should work. If it fails again, say so and I'll fetch the content a different way. Do NOT tell the user the site is down from this timeout alone.")

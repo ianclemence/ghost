@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.129] - 2026-10-03
+
+- **No more false "My browser got stuck".** When Ghost waited for a page to
+  show something and it didn't in time, Ghost treated the browser as broken:
+  it threw away the page and told you so, every time, even mid-search. A wait
+  that times out is now just that, and any other slow step first checks that
+  the browser is alive. The "stuck" card appears only for a browser that
+  really is stuck, and at most once every five minutes.
+- On the phone, a message Ghost has already started answering no longer stays
+  "Waiting to send", and finished browser cards and repeated notices no longer
+  pile up under your replies.
+
 ## [0.24.128] - 2026-10-03
 
 - **Searches and page reads show in Activity.** Only failures used to appear,

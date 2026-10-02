@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/cards"
 )
@@ -36,5 +37,21 @@ func TestBrowserRecoveryPublishesCard(t *testing.T) {
 	}
 	if got.TextFallback() == "" {
 		t.Error("card must carry a plain-text fallback")
+	}
+}
+
+func TestRecoveryCardIsRateLimited(t *testing.T) {
+	recoveryMu.Lock()
+	recoveryLast = time.Time{}
+	recoveryMu.Unlock()
+	now := time.Now()
+	if !recoveryDue(now) {
+		t.Fatal("the first recovery card should be shown")
+	}
+	if recoveryDue(now.Add(time.Minute)) {
+		t.Fatal("a second card within five minutes should be held back")
+	}
+	if !recoveryDue(now.Add(6 * time.Minute)) {
+		t.Fatal("after five minutes it may be shown again")
 	}
 }
