@@ -52,7 +52,8 @@ Find returns fresh refs that SUPERSEDE the last snapshot's refs.
 Reading never needs the owner's OK; typing, clicking and submitting do.
 To look something up, open the results address directly instead of typing
 into a search box: en.wikipedia.org/w/index.php?search=raspberry+pi,
-google.com/search?q=..., google.com/travel/flights?q=flights+from+BKK+to+SZX+on+2026-10-09,
+google.com/search?q=..., google.com/travel/flights?q=one+way+flights+from+BKK+to+SZX+on+2026-10-09
+(say "one way" or Google prices a round trip),
 youtube.com/results?search_query=... Act on the page only when no address
 gets there. Never read a site through a shell command or a third-party
 reader service: the browser is right here, and they cost an approval and

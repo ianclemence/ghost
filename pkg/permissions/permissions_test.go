@@ -548,3 +548,18 @@ func TestSigningInHasItsOwnApprovalWording(t *testing.T) {
 		t.Fatalf("a sign-in must not read as reading a page: %q / %q", card.Title, card.Description)
 	}
 }
+
+// A browser approval says what Ghost would do and where.
+func TestBrowserStepTitleNamesActionAndSite(t *testing.T) {
+	cases := map[string][2]string{
+		"Type on en.wikipedia.org?":  {"browser:browser_type", "www.en.wikipedia.org"},
+		"Click on a web page?":       {"browser_click", ""},
+		"Submit a form on shop.com?": {"browser_submit", "shop.com"},
+		"":                           {"calendar_create", "x.com"},
+	}
+	for want, c := range cases {
+		if got := browserStepTitle(c[0], c[1]); got != want {
+			t.Errorf("browserStepTitle(%q, %q) = %q, want %q", c[0], c[1], got, want)
+		}
+	}
+}

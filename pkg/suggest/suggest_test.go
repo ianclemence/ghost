@@ -106,3 +106,14 @@ func TestPromptClipsAndEndsOnTheOpenLine(t *testing.T) {
 		t.Errorf("roles missing:\n%s", user)
 	}
 }
+
+func TestCleanNeverSuggestsAGrant(t *testing.T) {
+	for _, s := range []string{"Yes, approve", "Allow once", "deny", "Always allow"} {
+		if got, ok := Clean(s, ""); ok {
+			t.Errorf("Clean(%q) = %q; a grant must never be a suggestion", s, got)
+		}
+	}
+	if _, ok := Clean("What about hotels?", ""); !ok {
+		t.Errorf("an ordinary suggestion must pass")
+	}
+}

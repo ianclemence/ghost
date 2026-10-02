@@ -896,6 +896,12 @@ func (r *Request) Card() (ApprovalCard, bool) {
 		return ApprovalCard{}, false
 	}
 	title := cardTitle(r.Capability, r.Action)
+	// A browser step names what it does and where: "Type on en.wikipedia.org?"
+	// says what the owner is agreeing to; "Control the browser?" asked them to
+	// trust a category.
+	if t := browserStepTitle(r.Action, r.Continuation["browser_page"]); t != "" {
+		title = t
+	}
 	desc := strings.TrimSpace(r.Reason)
 	if desc == "" || machineReason.MatchString(desc) {
 		// "email.read via email_search" is how the broker labels a request, not
@@ -916,6 +922,39 @@ func (r *Request) Card() (ApprovalCard, bool) {
 			{ID: "deny", Label: "Deny", Style: "danger"},
 		},
 	}, true
+}
+
+// browserStepTitle is the approval title for one browser step, naming the
+// site when it is known. Empty for anything that is not a browser step.
+func browserStepTitle(action, page string) string {
+	act := strings.ToLower(action)
+	if i := strings.LastIndex(act, ":"); i >= 0 {
+		act = act[i+1:]
+	}
+	if !strings.HasPrefix(act, "browser_") {
+		return ""
+	}
+	on := " on a web page"
+	if p := strings.TrimPrefix(strings.TrimSpace(page), "www."); p != "" {
+		on = " on " + p
+	}
+	switch strings.TrimPrefix(act, "browser_") {
+	case "type", "fill", "fill_form":
+		return "Type" + on + "?"
+	case "click", "check", "select", "hover", "drag":
+		return "Click" + on + "?"
+	case "press":
+		return "Press a key" + on + "?"
+	case "submit":
+		return "Submit a form" + on + "?"
+	case "upload":
+		return "Upload a file" + on + "?"
+	case "download":
+		return "Download a file" + on + "?"
+	case "dialog":
+		return "Answer a dialog" + on + "?"
+	}
+	return ""
 }
 
 func cardTitle(capability, action string) string {

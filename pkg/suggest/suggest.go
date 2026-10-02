@@ -40,6 +40,7 @@ var (
 	prefixRE    = regexp.MustCompile(`(?i)^(?:you|user|me|human)\s*:\s*`)
 	spacesRE    = regexp.MustCompile(`\s+`)
 	sentenceEnd = regexp.MustCompile(`[.!?\n]`)
+	grantRE     = regexp.MustCompile(`(?i)\b(?:approve|approved|allow|always allow|deny|denied)\b`)
 )
 
 // FromRules returns the suggestion that follows directly from how Ghost's last
@@ -124,6 +125,12 @@ func Clean(s, lastAssistant string) (string, bool) {
 		return "", false
 	}
 	if strings.EqualFold(s, strings.TrimSpace(lastAssistant)) {
+		return "", false
+	}
+	// Granting or refusing permission is the owner's deliberate act, made on
+	// the approval itself, never a one-tap suggestion in the message bar. A
+	// "Yes, approve" offered after the task was already done went nowhere.
+	if grantRE.MatchString(s) {
 		return "", false
 	}
 	return s, true

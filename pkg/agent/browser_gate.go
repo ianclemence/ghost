@@ -267,6 +267,14 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	continuation[contBrowserOp] = op
 	continuation[contBrowserSession] = sess.ID
 	continuation[contBrowserTool] = tool
+	// The site the step would act on, for the approval's title.
+	if al.livePlane != nil {
+		if snap, ok := al.livePlane.Snapshot(sess.ID); ok && snap.Obs.Domain != "" {
+			continuation["browser_page"] = snap.Obs.Domain
+		} else if last := al.lastKnownPage(sessionKey, ""); last != nil {
+			continuation["browser_page"] = last.Obs.Domain
+		}
+	}
 	req, err := g.Broker.RequireWithTrajectory(requestID, sessionKey, g.AgentID, g.trajectoryFor(requestID), browserCapability, tool,
 		scopeTarget(args), humanReason(browserCapability, tool, args), risk, continuation)
 	if err != nil {
@@ -277,7 +285,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 		al.livePlane.Register(sess.ID, live.KindBrowser)
 		al.livePlane.SetState(sess.ID, live.StateWaiting)
 		al.livePlane.SetTask(sess.ID, taskID)
-		al.livePlane.SetActivity(sess.ID, browserWaitLabel(tool))
+		al.livePlane.SetActivity(sess.ID, browserWaitLabel(tool, continuation["browser_page"]))
 		al.announceSurface(sessionKey, sess.ID, live.KindBrowser)
 	}
 	return browserGateResult{decision: "wait", pendingID: req.ID,
@@ -484,6 +492,27 @@ func (al *AgentLoop) announceBrowserStart(call tools.BrowserCall, sessionKey, st
 	al.announceSurface(sessionKey, call.SessionID, live.KindBrowser)
 }
 
+// lastKnownPage is the most recent browser surface in this conversation that
+// knows which page it is on, other than exceptID. The browser keeps its tab
+// between turns while each turn gets a fresh session, so a follow-up's first
+// step (a screenshot) starts on a page its own session has not recorded.
+func (al *AgentLoop) lastKnownPage(sessionKey, exceptID string) *live.Surface {
+	if al == nil || al.livePlane == nil {
+		return nil
+	}
+	var best *live.Surface
+	for _, s := range al.livePlane.List() {
+		if s.Kind != live.KindBrowser || s.Session != sessionKey || s.ID == exceptID || s.Obs.Domain == "" {
+			continue
+		}
+		if best == nil || s.Updated.After(best.Updated) {
+			cp := s
+			best = &cp
+		}
+	}
+	return best
+}
+
 // recentBrowserWork reports whether this conversation used the browser within
 // a browser session's lifetime, so a follow-up keeps the browser tools.
 func (al *AgentLoop) recentBrowserWork(sessionKey string) bool {
@@ -510,14 +539,7 @@ func (al *AgentLoop) browserPageEvidence(sessionKey string, ev map[string]interf
 	if al == nil || al.livePlane == nil {
 		return out
 	}
-	var best *live.Surface
-	for _, s := range al.livePlane.List() {
-		if s.Kind == live.KindBrowser && s.Session == sessionKey && (best == nil || s.Updated.After(best.Updated)) {
-			cp := s
-			best = &cp
-		}
-	}
-	if best != nil {
+	if best := al.lastKnownPage(sessionKey, ""); best != nil {
 		if t, _ := out["title"].(string); t == "" {
 			out["title"] = best.Obs.Title
 		}
@@ -530,22 +552,26 @@ func (al *AgentLoop) browserPageEvidence(sessionKey string, ev map[string]interf
 
 // browserWaitLabel says what Ghost is waiting for the owner's OK to do. Never
 // the text it would type: that can be private.
-func browserWaitLabel(tool string) string {
-	switch tool {
-	case "browser_type", "browser_fill":
-		return "Wants to type into the page"
-	case "browser_click":
-		return "Wants to click on the page"
-	case "browser_press":
-		return "Wants to press a key on the page"
-	case "browser_submit":
-		return "Wants to submit a form"
-	case "browser_login":
-		return "Wants to sign in"
-	case "browser_upload":
-		return "Wants to upload a file"
+func browserWaitLabel(tool, page string) string {
+	on := "the page"
+	if p := strings.TrimPrefix(strings.TrimSpace(page), "www."); p != "" {
+		on = p
 	}
-	return "Wants to act on the page"
+	switch tool {
+	case "browser_type", "browser_fill", "browser_fill_form":
+		return "Wants to type on " + on
+	case "browser_click", "browser_check", "browser_select":
+		return "Wants to click on " + on
+	case "browser_press":
+		return "Wants to press a key on " + on
+	case "browser_submit":
+		return "Wants to submit a form on " + on
+	case "browser_login":
+		return "Wants to sign in to " + on
+	case "browser_upload":
+		return "Wants to upload a file to " + on
+	}
+	return "Wants to act on " + on
 }
 
 // browserStepLabel is what the owner's card says Ghost is doing during one
@@ -685,6 +711,13 @@ func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, r
 	// A step that reports less than the page (a click returns no title) keeps
 	// what was already known, so the card never forgets which page it is on.
 	if prev, ok := al.livePlane.Snapshot(call.SessionID); ok {
+		// A new session that has not loaded a page yet is still on the tab
+		// the last one left: take that page as its own.
+		if prev.Obs.Domain == "" && obs.URL == "" && obs.Domain == "" {
+			if last := al.lastKnownPage(sessionKey, call.SessionID); last != nil {
+				prev.Obs = last.Obs
+			}
+		}
 		if obs.URL == "" {
 			obs.URL = prev.Obs.URL
 		}

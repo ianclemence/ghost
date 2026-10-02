@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.134] - 2026-10-03
+
+- **Approvals say what and where.** "Type on en.wikipedia.org?" instead of
+  "Control the browser?", on the phone, in the console and in the terminal;
+  the browser card says "Wants to type on en.wikipedia.org".
+- A screenshot you ask for after a search is captioned with the page it
+  shows, not "The page": the next step remembers which page Ghost was on.
+- The message bar never suggests approving or denying something: that is
+  always your deliberate choice, on the approval itself.
+- Ghost asks Google Flights for one-way fares when you want one way.
+
 ## [0.24.133] - 2026-10-03
 
 - **"Yes, run it" does what Ghost offered.** A short reply is read together

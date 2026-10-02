@@ -321,3 +321,19 @@ func TestRecentBrowserWorkIsPerConversation(t *testing.T) {
 		t.Fatalf("another conversation must not inherit the browser")
 	}
 }
+
+// A follow-up's fresh session starts on the tab the last one left, so its
+// card and a screenshot's caption name that page, not "the page".
+func TestFollowUpSessionInheritsTheLastPage(t *testing.T) {
+	h, _ := settleHarness(t)
+	h.stubs["browser_snapshot"].evidence = map[string]interface{}{"url": "https://www.google.com/travel/flights", "domain": "www.google.com", "title": "Bangkok to Shenzhen | Google Flights"}
+	tc := fakeToolCall("browser_snapshot", map[string]interface{}{})
+	if res, _, _ := h.loop.maybeRunBrowserTool(h.toolCtx(), h.loop.tools, tc, h.opts("sess-tab"), nil); res.IsError {
+		t.Fatalf("snapshot failed: %s", res.ForLLM)
+	}
+	h.loop.SettleSessionSurfaces("sess-tab", "success")
+	ev := h.loop.browserPageEvidence("sess-tab", map[string]interface{}{})
+	if ev["title"] != "Bangkok to Shenzhen | Google Flights" || ev["domain"] != "www.google.com" {
+		t.Fatalf("a screenshot after the turn must still know the page, got %v", ev)
+	}
+}
