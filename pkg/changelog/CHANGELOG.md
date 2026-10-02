@@ -3,6 +3,22 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.120] - 2026-10-02
+
+- **A new look, shared by the phone, the web console and the terminal.** Pure
+  black with one aurora of light (amber, magenta, violet and electric blue)
+  fading out below the middle of the screen, dark glass surfaces with hairline
+  edges, Inter for the interface and Instrument Serif for titles. The console
+  has one dark theme; there is no light theme any more.
+- **The primary button glows.** Everything you act on is a pill: the action is
+  a glowing indigo, the alternative is dark glass, and danger stays soft red
+  until you press it.
+- **The terminal welcome is the Ghost mark**, an amber light beside the name in
+  the aurora gradient, in place of the emoji banner.
+- **The recovery page** uses the same palette.
+- Console pages work better on a phone: no grey flash on tap, 16px fields so
+  the page does not zoom, and room for the notch and home bar.
+
 ## [0.24.119] - 2026-10-02
 
 - **The empty message box now suggests what you are likely to say next.** After
