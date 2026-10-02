@@ -227,3 +227,48 @@ func TestHassToolUnconfigured(t *testing.T) {
 		t.Fatal("unconfigured must fail honestly")
 	}
 }
+
+const forecastBody = `{"daily":{"time":["2026-10-02","2026-10-03","2026-10-04","2026-10-05","2026-10-06","2026-10-07","2026-10-08","2026-10-09","2026-10-10"],
+"weather_code":[1,61,61,3,0,0,1,2,80],
+"temperature_2m_max":[31,30,29,31,32,32,31,30,29],
+"temperature_2m_min":[25,25,24,25,26,26,25,24,24],
+"precipitation_probability_max":[20,70,80,30,10,5,10,20,60]}}`
+
+func forecastTool(m *httptest.Server) *WeatherTool {
+	return &WeatherTool{cfg: &weather.Config{WttrBase: m.URL, OpenMeteoBase: m.URL, GeocodeBase: m.URL, CacheTTL: time.Minute, BreakerCooldown: time.Second}}
+}
+
+func TestWeatherToolForecastForADate(t *testing.T) {
+	m := fakeServer(forecastBody, 200)
+	defer m.Close()
+	res := forecastTool(m).Execute(context.Background(), map[string]interface{}{"latitude": 22.5, "longitude": 114.0, "date": "2026-10-04"})
+	if res.IsError {
+		t.Fatalf("unexpected error: %s", res.ForLLM)
+	}
+	for _, want := range []string{"Sun Oct 4", "24 to 29°C", "80% chance of rain"} {
+		if !strings.Contains(res.ForLLM, want) {
+			t.Errorf("missing %q in %q", want, res.ForLLM)
+		}
+	}
+	if strings.Contains(res.ForLLM, "Oct 3") {
+		t.Errorf("a single date must return a single day: %q", res.ForLLM)
+	}
+}
+
+func TestWeatherToolForecastBeyondReachSaysSo(t *testing.T) {
+	m := fakeServer(forecastBody, 200)
+	defer m.Close()
+	res := forecastTool(m).Execute(context.Background(), map[string]interface{}{"latitude": 22.5, "longitude": 114.0, "date": "2026-12-25"})
+	if !res.IsError || !strings.Contains(res.ForLLM, "out of reach") {
+		t.Fatalf("a date past the forecast must be refused plainly: %+v", res)
+	}
+}
+
+func TestWeatherToolForecastDays(t *testing.T) {
+	m := fakeServer(forecastBody, 200)
+	defer m.Close()
+	res := forecastTool(m).Execute(context.Background(), map[string]interface{}{"latitude": 22.5, "longitude": 114.0, "days": float64(3)})
+	if res.IsError || strings.Count(res.ForLLM, "\n- ") != 3 {
+		t.Fatalf("want 3 days, got %q", res.ForLLM)
+	}
+}

@@ -87,7 +87,7 @@ type WeatherTool struct {
 func NewWeatherTool(openWeatherKey string) *WeatherTool { return &WeatherTool{key: openWeatherKey} }
 func (t *WeatherTool) Name() string                     { return "weather_now" }
 func (t *WeatherTool) Description() string {
-	return "Current weather (temperature, conditions, wind, humidity) for a named place or latitude/longitude. Prefer this over web search for present conditions."
+	return "Weather for a named place or latitude/longitude. Without date or days: current conditions (temperature, conditions, humidity). With date (YYYY-MM-DD) or days (1-16): the daily forecast (high, low, conditions, chance of rain), reaching up to 16 days ahead — use it for 'tomorrow', 'this weekend', 'on Friday the 16th'. Days beyond about a week are low confidence; say so. Prefer this over web search."
 }
 func (t *WeatherTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
@@ -96,6 +96,8 @@ func (t *WeatherTool) Parameters() map[string]interface{} {
 			"location":  map[string]interface{}{"type": "string", "description": "Place name."},
 			"latitude":  map[string]interface{}{"type": "number"},
 			"longitude": map[string]interface{}{"type": "number"},
+			"date":      map[string]interface{}{"type": "string", "description": "Forecast for this one day, YYYY-MM-DD (within the next 16 days, in the place's own calendar)."},
+			"days":      map[string]interface{}{"type": "integer", "description": "Forecast for the next N days (1-16), starting today."},
 		},
 	}
 }
@@ -108,6 +110,9 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]interface{}) 
 	svc := weather.New(wcfg)
 	ctx, cancel := context.WithTimeout(ctx, providerToolTimeout)
 	defer cancel()
+	if sarg(args, "date") != "" || iarg(args, "days", 0) > 0 {
+		return t.forecast(ctx, svc, args)
+	}
 	if lat, ok1 := farg(args, "latitude"); ok1 {
 		if lon, ok2 := farg(args, "longitude"); ok2 {
 			cur, r := svc.CurrentByCoords(ctx, lat, lon, false)
@@ -591,4 +596,96 @@ func emojiPrefix(e string) string {
 		return ""
 	}
 	return e + " "
+}
+
+// forecast answers the date/days form of weather_now from Open-Meteo's daily
+// forecast. A date the forecast does not reach is said plainly, never filled.
+func (t *WeatherTool) forecast(ctx context.Context, svc *weather.Service, args map[string]interface{}) *ToolResult {
+	want := sarg(args, "date")
+	if want != "" {
+		if _, err := time.Parse("2006-01-02", want); err != nil {
+			return ErrorResult("date must be YYYY-MM-DD, for example 2026-10-16.")
+		}
+	}
+	var (
+		days   []weather.Day
+		r      provider.Result[[]weather.Day]
+		where  = sarg(args, "location")
+		lat, _ = farg(args, "latitude")
+		lon, _ = farg(args, "longitude")
+	)
+	switch {
+	case lat != 0 || lon != 0:
+		days, r = svc.ForecastByCoords(ctx, lat, lon)
+		if where == "" {
+			where = "that spot"
+		}
+	case where != "":
+		days, r = svc.ForecastByPlace(ctx, where)
+	default:
+		rl := RequestLocationFrom(ctx)
+		la, err1 := strconv.ParseFloat(rl.Latitude, 64)
+		lo, err2 := strconv.ParseFloat(rl.Longitude, 64)
+		switch {
+		case rl.HasCoordinates() && err1 == nil && err2 == nil:
+			days, r = svc.ForecastByCoords(ctx, la, lo)
+			where = "your location"
+		case rl.City != "":
+			where = rl.City
+			days, r = svc.ForecastByPlace(ctx, where)
+		default:
+			return ErrorResult("weather_now needs location or latitude+longitude. Ask: Which location should I check?")
+		}
+	}
+	if r.Err != nil {
+		if r.Failure == provider.FailEmpty && strings.Contains(r.Err.Error(), "location lookup failed") {
+			return providerError(fmt.Sprintf("I couldn't find a place called %q. Check the spelling or add the country.", where))
+		}
+		o := product.OutcomeForProviderFailure("weather", r.Failure, r.Err)
+		return providerError(o.UserMessage)
+	}
+	var picked []weather.Day
+	switch {
+	case want != "":
+		for _, d := range days {
+			if d.Date == want {
+				picked = append(picked, d)
+			}
+		}
+		if len(picked) == 0 {
+			return ErrorResult(fmt.Sprintf("The forecast for %s covers %s to %s only, so %s is out of reach. Say so; do not estimate.",
+				where, days[0].Date, days[len(days)-1].Date, want))
+		}
+	default:
+		n := iarg(args, "days", 1)
+		if n > len(days) {
+			n = len(days)
+		}
+		picked = days[:n]
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Forecast for %s (via %s):", where, r.Provider)
+	for _, d := range picked {
+		day, _ := time.Parse("2006-01-02", d.Date)
+		fmt.Fprintf(&b, "\n- %s: %.0f to %.0f°C%s", day.Format("Mon Jan 2"), d.MinC, d.MaxC, descSuffix(d.Description))
+		if d.RainPct != nil {
+			fmt.Fprintf(&b, ", %.0f%% chance of rain", *d.RainPct)
+		}
+	}
+	if first := picked[0]; first.Date != days[0].Date {
+		if ahead := dayGap(days[0].Date, first.Date); ahead > 7 {
+			fmt.Fprintf(&b, "\nThat is %d days ahead; forecasts this far out are low confidence, so treat it as a rough guide.", ahead)
+		}
+	}
+	return NewToolResult(b.String())
+}
+
+// dayGap is the number of days from one YYYY-MM-DD date to a later one.
+func dayGap(from, to string) int {
+	a, err1 := time.Parse("2006-01-02", from)
+	b, err2 := time.Parse("2006-01-02", to)
+	if err1 != nil || err2 != nil {
+		return 0
+	}
+	return int(b.Sub(a).Hours() / 24)
 }

@@ -3,6 +3,23 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.110] - 2026-10-02
+
+- **Ghost can give a forecast.** Ask about tomorrow, the weekend or a named day
+  up to 16 days ahead and Ghost reads the daily high, low and chance of rain
+  instead of saying it has no forecasts. Days beyond about a week are marked as
+  a rough guide.
+- **"Stop tracking my expenses" no longer ends your flight watches.** A stop
+  command with no flight number used to close every watch. It now closes
+  everything only for a plain "stop watching"; anything else goes to the model.
+  Starting a watch likewise needs a command that opens the sentence and
+  something to watch, so "I'm going to watch the game" is just a sentence.
+- **Ghost looks before it explains an earlier mistake.** It now searches your
+  past conversation first and describes only what it finds, instead of guessing.
+- **A date with a 24-hour time keeps its time.** "2026-10-04 19:00" was stored
+  as 09:00.
+- **The weather reading's time is correct and says UTC.**
+
 ## [0.24.109] - 2026-10-02
 
 - **A reminder uses the time from the sentence that asks for it.** "Forget the

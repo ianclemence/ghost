@@ -812,7 +812,8 @@ func (al *AgentLoop) tryDeterministicNetworkDispatch(msg, session string, metada
 			return "I can check current air quality, not a forecast for it yet.", true
 		}
 		if isWeatherIntent(lower) && hasFutureIntent(lower) {
-			return "I can check the current weather where you are, but I don't have forecasts yet.", true
+			// weather_now reaches 16 days ahead; the model picks the date.
+			return "", false
 		}
 		if loc == "" {
 			return "", false // readiness fast-path owns the "which city" ask

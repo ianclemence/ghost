@@ -94,6 +94,7 @@ var (
 	clockAMPMRE = regexp.MustCompile(`(?:at\s+)?\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b`)
 	clockAtRE   = regexp.MustCompile(`\bat\s+(\d{1,2})(?::(\d{2}))?\b`)
 	// a time-of-day word, for when the owner names the shape of the day
+	clock24RE   = regexp.MustCompile(`(?:^|[^\d:])([01]?\d|2[0-3]):([0-5]\d)(?:[^\d:]|$)`)
 	timeOfDayRE = regexp.MustCompile(`\b(morning|afternoon|evening|night|tonight|noon|midnight)\b`)
 )
 
@@ -114,6 +115,13 @@ func parseClockPhrase(input string) (int, int, bool) {
 			minute, _ = strconv.Atoi(m[2])
 		}
 		return parseHour(m[1], ""), minute, true
+	}
+	// A 24-hour "19:00" or "7:30": the colon makes it a clock, so unlike a bare
+	// number it cannot be a day.
+	if m := clock24RE.FindStringSubmatch(input); len(m) >= 3 {
+		h, _ := strconv.Atoi(m[1])
+		min, _ := strconv.Atoi(m[2])
+		return h, min, true
 	}
 	if m := timeOfDayRE.FindStringSubmatch(input); len(m) >= 2 {
 		switch m[1] {

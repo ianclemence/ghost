@@ -33,7 +33,13 @@ var (
 	watchStopRE = regexp.MustCompile(`(?i)\b(?:stop|cancel|end|drop|untrack|quit)\b[^.?!]{0,40}\b(?:watch(?:ing)?|track(?:ing)?)\b|\b(?:stop|cancel)\s+(?:watching|tracking)\b`)
 	// watchEntityRE is the same flight-number shape detection uses, so
 	// "stop watching BA123" cancels exactly what "track BA123" created.
-	watchEntityRE = regexp.MustCompile(`\b([A-Z]{2}\s?\d{1,4})\b`)
+	// watchDirectiveRE requires the watch verb to open the sentence, after
+	// any greeting or politeness.
+	watchDirectiveRE = regexp.MustCompile(`(?i)^(?:(?:hey|hi|ok|okay|so|and|also|now|just|please|pls|ghost|can you|could you|would you|will you|i want you to|i'd like you to|go ahead and)[,\s]+)*(?:track|watch|follow|monitor|keep|stay|check up|stop|cancel|end|drop|untrack|quit)\b`)
+	// watchStopAllRE is the one stop phrase that names no flight and still
+	// means every watch.
+	watchStopAllRE = regexp.MustCompile(`(?i)\b(?:stop|cancel|end|drop|untrack|quit)\s+(?:all\s+(?:of\s+)?(?:my\s+|the\s+)?)?(?:watching|tracking|watches|trackers?)(?:\s+(?:everything|it|that|them|all(?:\s+of\s+them)?|(?:my\s+|the\s+)?flights?))?`)
+	watchEntityRE  = regexp.MustCompile(`\b([A-Z]{2}\s?\d{1,4})\b`)
 )
 
 // tryWatchTurn runs the owner's watch commands deterministically. It
@@ -44,10 +50,28 @@ func (al *AgentLoop) tryWatchTurn(msg, session string) (string, bool) {
 	if lower == "" || strings.HasPrefix(lower, "/") {
 		return "", false
 	}
+	// A watch command is a directive: its verb opens the sentence (after any
+	// politeness). "I'm going to watch the game", "follow up on my email" and
+	// "cancel the watch party" mention the same words and are none of this.
+	if !watchDirectiveRE.MatchString(lower) {
+		return "", false
+	}
 	if watchStopRE.MatchString(lower) || watchStopRE.MatchString(msg) {
-		return al.stopWatchTurn(msg), true
+		// Stopping closes what the owner named. With no flight number named,
+		// only a bare "stop watching" (or "…everything") means all of them;
+		// "stop tracking my expenses" names something else and goes to the
+		// model rather than closing every watch.
+		if watchEntityRE.MatchString(msg) || wholeAsk(lower, watchStopAllRE) {
+			return al.stopWatchTurn(msg), true
+		}
+		return "", false
 	}
 	if !watchStartRE.MatchString(lower) {
+		return "", false
+	}
+	// Starting needs something detectable to watch; otherwise the sentence was
+	// ordinary talk and the model reads it.
+	if len(watch.Detect(msg, time.Now().UTC(), al.scheduleTimezone())) == 0 {
 		return "", false
 	}
 	return al.startWatchTurn(msg, session), true

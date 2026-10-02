@@ -97,7 +97,7 @@ func (t *SessionSearchTool) Timeout() time.Duration { return 20 * time.Second }
 func (t *SessionSearchTool) RetryPolicy() (int, time.Duration) { return 1, 300 * time.Millisecond }
 
 func (t *SessionSearchTool) Description() string {
-	return "Search Ghost's past conversation history. Use ONLY when the user asks about something from a previous conversation (\"what did I say about X\", \"what we discussed\"). Do NOT use it for general knowledge, facts, weather, currency, or skills — use a matching Ghost skill or the general search instead."
+	return "Search Ghost's past conversation history. Use it whenever the user refers to anything said or done earlier, in this conversation or another (\"what did I say about X\", \"what we discussed\", \"earlier today\", \"last time\", \"what did you get wrong\", \"why did you answer that\"): search before you answer, and answer only from what it returns. Do NOT use it for general knowledge, facts, weather, currency, or skills — use a matching Ghost skill or the general search instead."
 }
 
 func (t *SessionSearchTool) Parameters() map[string]interface{} {

@@ -16,7 +16,7 @@ homepage: https://wttr.in/:help
 
 Preferred path: the `weather_now` tool — wttr.in primary, Open-Meteo fallback. The `curl` commands below use wttr.in directly and need no key.
 
-> **Preferred path:** Call the `weather_now` tool with `location` (or `latitude`+`longitude`). wttr.in serves by default; Open-Meteo is the keyless fallback. It returns validated data with provider fallback built in — use its output directly. Only use the `curl` commands below if the tool reports it is unavailable.
+> **Preferred path:** Call the `weather_now` tool with `location` (or `latitude`+`longitude`). For tomorrow, a weekend or a named day, add `date` (YYYY-MM-DD) or `days` (1-16): it returns the daily forecast up to 16 days ahead (days beyond about a week are low confidence — say so). wttr.in serves by default; Open-Meteo is the keyless fallback. It returns validated data with provider fallback built in — use its output directly. Only use the `curl` commands below if the tool reports it is unavailable.
 
 ## Quick Reference
 

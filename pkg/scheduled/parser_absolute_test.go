@@ -148,3 +148,22 @@ func TestUnresolvableTimeStillFails(t *testing.T) {
 		}
 	}
 }
+
+func TestAbsoluteDateKeepsA24HourClock(t *testing.T) {
+	loc, _ := time.LoadLocation("Asia/Bangkok")
+	ref := time.Date(2026, 10, 2, 12, 0, 0, 0, loc)
+	for in, want := range map[string]string{
+		"2026-10-04 19:00":                 "2026-10-04 19:00",
+		"remind me on 2026-10-04 at 07:30": "2026-10-04 07:30",
+		"2026-10-04":                       "2026-10-04 09:00",
+		"2026-10-04 7pm":                   "2026-10-04 19:00",
+	} {
+		p, err := ParseNaturalLanguage(in, ref, "Asia/Bangkok")
+		if err != nil || p == nil {
+			t.Fatalf("%q: %v", in, err)
+		}
+		if got := p.Schedule.At.In(loc).Format("2006-01-02 15:04"); got != want {
+			t.Errorf("%q: got %s want %s", in, got, want)
+		}
+	}
+}

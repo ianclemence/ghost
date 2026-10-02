@@ -199,7 +199,7 @@ func (s *Service) openMeteoProvider(lat, lon float64) provider.Provider[Current]
 	return provider.Provider[Current]{
 		Name: "open-meteo",
 		Do: func(ctx context.Context) (Current, *provider.CallMeta, error) {
-			u := fmt.Sprintf("%s/v1/forecast?latitude=%f&longitude=%f&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto",
+			u := fmt.Sprintf("%s/v1/forecast?latitude=%f&longitude=%f&current=temperature_2m,relative_humidity_2m,weather_code&timezone=GMT",
 				s.cfg.OpenMeteoBase, lat, lon)
 			req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 			if err != nil {
@@ -551,11 +551,8 @@ func parseWttr(body []byte) (Current, error) {
 	if len(raw.Current[0].WeatherDesc) > 0 {
 		cur.Description = strings.TrimSpace(raw.Current[0].WeatherDesc[0].Value)
 	}
-	if ts := strings.TrimSpace(raw.Current[0].LocalObsDateTime); ts != "" {
-		if t, perr := time.ParseInLocation("2006-01-02 03:04 PM", ts, time.Local); perr == nil {
-			cur.ObservedAt = t
-		}
-	}
+	// wttr's own timestamp is the place's local clock with no zone, so it is
+	// not used: the reading is stamped with the moment it was fetched, in UTC.
 	if err := cur.Validate(); err != nil {
 		return Current{}, err
 	}

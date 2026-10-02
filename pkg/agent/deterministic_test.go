@@ -11,6 +11,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/skills"
 	"github.com/ianclemence/ghost/pkg/tools"
+	"github.com/ianclemence/ghost/pkg/watch"
 )
 
 func testMessagesWithSkillRead(args string) []providers.Message {
@@ -177,16 +178,13 @@ func TestResumeNotReaskedByReadiness(t *testing.T) {
 	}
 }
 
-func TestNetworkDispatchHonestForecast(t *testing.T) {
+func TestNetworkDispatchLeavesForecastsToTheModel(t *testing.T) {
 	al := &AgentLoop{}
-	// Forecast ask must be answered honestly, never by the model inventing
-	// numbers, and never dispatched to the current-conditions tool.
-	ans, ok := al.tryDeterministicNetworkDispatch("What's the weather tomorrow in Bangkok?", "s", nil)
-	if !ok {
-		t.Fatalf("forecast ask must be handled deterministically")
-	}
-	if !strings.Contains(ans, "forecast") {
-		t.Fatalf("honest limitation missing: %q", ans)
+	// weather_now reaches 16 days ahead, and picking the date is language
+	// work: the quick path must neither dispatch the current-conditions call
+	// nor refuse. The model reads the date and calls the forecast form.
+	if ans, ok := al.tryDeterministicNetworkDispatch("What's the weather tomorrow in Bangkok?", "s", nil); ok {
+		t.Fatalf("a forecast ask must reach the model, got %q", ans)
 	}
 }
 
@@ -704,6 +702,32 @@ func TestCurrentConditionsAskIsTheWholeMessage(t *testing.T) {
 	} {
 		if got := currentConditionsAsk(c.msg, c.loc); got != c.want {
 			t.Errorf("%q: got %v want %v", c.msg, got, c.want)
+		}
+	}
+}
+
+func TestWatchCommandsNeedADirectiveAndATarget(t *testing.T) {
+	for msg, want := range map[string]bool{
+		"track my flight BA123":               true,
+		"please stop watching BA123":          true,
+		"stop watching":                       true,
+		"stop watching everything":            true,
+		"i'm going to watch the game tonight": false,
+		"can you follow up on my email":       false,
+		"cancel the watch party":              false,
+		"stop tracking my expenses":           false,
+	} {
+		lower := strings.ToLower(msg)
+		directive := watchDirectiveRE.MatchString(lower)
+		got := directive
+		switch {
+		case directive && watchStopRE.MatchString(lower):
+			got = watchEntityRE.MatchString(msg) || wholeAsk(lower, watchStopAllRE)
+		case directive:
+			got = len(watch.Detect(msg, time.Now().UTC(), "UTC")) > 0
+		}
+		if got != want {
+			t.Errorf("%q: got %v want %v", msg, got, want)
 		}
 	}
 }
