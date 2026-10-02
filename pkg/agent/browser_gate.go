@@ -12,6 +12,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/permissions"
+	"github.com/ianclemence/ghost/pkg/product"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/tasks"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -437,6 +438,10 @@ func (al *AgentLoop) maybeRunBrowserTool(toolCtx context.Context, reg *tools.Too
 	decision := al.authorizeBrowserCall(opts.RequestID, opts.SessionKey, tc.Name, tc.Arguments)
 	switch decision.decision {
 	case "allow":
+		// Put the live browser card in front of the owner now, not after the
+		// step: a first page load can take over a minute, and until this
+		// point there was nothing on screen to say Ghost was in a browser.
+		al.announceBrowserStart(decision.call, opts.SessionKey)
 		res := al.runBrowserTool(toolCtx, decision.call, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, opts.SessionKey)
 		al.publishBrowserEvidence(opts.RequestID, opts.SessionKey, tc.Name, res)
 		al.recordBrowserSurface(decision.call, tc.Name, res, opts.SessionKey)
@@ -462,6 +467,61 @@ func (al *AgentLoop) runBrowserTool(ctx context.Context, call tools.BrowserCall,
 		}
 	}
 	return res
+}
+
+// announceBrowserStart registers the browser surface and tells the owner's
+// devices before the step runs. The observation arrives when it finishes.
+func (al *AgentLoop) announceBrowserStart(call tools.BrowserCall, sessionKey string) {
+	if al.livePlane == nil || call.SessionID == "" {
+		return
+	}
+	al.livePlane.Register(call.SessionID, live.KindBrowser)
+	al.livePlane.SetTask(call.SessionID, call.TaskID)
+	al.livePlane.SetState(call.SessionID, live.StateActive)
+	al.announceSurface(sessionKey, call.SessionID, live.KindBrowser)
+}
+
+// browserStepSummary is the one plain line the activity feed shows for a
+// browser step: where it went, or why it did not finish. Page text, element
+// references and other machinery never go in it.
+func browserStepSummary(tool string, res *tools.ToolResult) string {
+	if res.IsError {
+		msg := strings.TrimSpace(res.ForLLM)
+		if msg == "" && res.Err != nil {
+			msg = res.Err.Error()
+		}
+		if i := strings.IndexByte(msg, '\n'); i > 0 {
+			msg = msg[:i]
+		}
+		if len(msg) > 300 {
+			msg = msg[:300]
+		}
+		return msg
+	}
+	domain, _ := res.Evidence["domain"].(string)
+	switch tool {
+	case "browser_navigate":
+		if domain != "" {
+			return "Opened " + domain
+		}
+		return "Opened a page"
+	case "browser_click":
+		return "Clicked on " + orPage(domain)
+	case "browser_type", "browser_fill":
+		return "Typed into " + orPage(domain)
+	case "browser_press":
+		return "Pressed a key on " + orPage(domain)
+	case "browser_submit":
+		return "Submitted a form on " + orPage(domain)
+	}
+	return ""
+}
+
+func orPage(domain string) string {
+	if domain == "" {
+		return "the page"
+	}
+	return domain
 }
 
 // recordBrowserSurface publishes a safe observation to the Live Surface
@@ -518,12 +578,28 @@ func (al *AgentLoop) publishBrowserEvidence(requestID, sessionKey, tool string, 
 	if res.IsError {
 		typ = cevents.ToolFailed
 	}
+	// A browser step that did something is something the owner should be able
+	// to see ("Opened www.google.com"). Re-reading the page after it is
+	// bookkeeping and stays internal, so a navigation is one row, not two.
+	// Success used to be hidden entirely, which made a search that worked
+	// look like a lone failure.
+	vis := product.VisInternalTrace
+	if summary := browserStepSummary(tool, res); summary != "" {
+		payload["summary"] = summary
+		vis = product.VisUserMessage
+		// What the page said stays out of anything the owner's devices can read.
+		delete(payload, "text")
+	}
+	if res.IsError {
+		vis = product.VisUserMessage
+	}
 	al.governance.Events.Publish(&cevents.Event{
 		Type:      typ,
 		RequestID: requestID, SessionID: sessionKey,
 		GhostID: al.governance.GhostID, AgentID: al.governance.AgentID,
-		Status:  map[bool]string{true: "failed", false: "success"}[res.IsError],
-		Payload: payload,
+		Status:     map[bool]string{true: "failed", false: "success"}[res.IsError],
+		Visibility: vis,
+		Payload:    payload,
 	})
 	logger.DebugCF("browser-gate", "governed browser execution",
 		map[string]interface{}{"tool": tool, "session": sessionKey})

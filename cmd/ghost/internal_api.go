@@ -504,9 +504,19 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 			}
 		}
 
-		conn, err := upgrader.Upgrade(w, r, nil)
+		up := upgrader
+		// A paired phone sends its device credentials as headers, which a web
+		// page cannot do, so a credentialed connection cannot be a cross-site
+		// page. React Native adds an Origin of its own (the host it dialled),
+		// and when that host is a name the Pod does not know as its own
+		// (a tailnet or relay address) the origin check turned every live
+		// event, including the browser card, into a refused connection.
+		if deviceID != "" && credential != "" && !isLoopbackRequest(r) {
+			up.CheckOrigin = func(*http.Request) bool { return true }
+		}
+		conn, err := up.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("❌ Failed to upgrade websocket: %v", err)
+			log.Printf("❌ Failed to upgrade websocket: %v (origin %q, from %s)", err, r.Header.Get("Origin"), r.RemoteAddr)
 			return
 		}
 		defer conn.Close()

@@ -1823,7 +1823,18 @@ func runStatusDoctor(cfg *config.Config) []doctor.CheckResult {
 	}
 	doc := doctor.New(db, nil, nil, workspace)
 	doc.SetConfigPath(getConfigPath())
-	return doc.RunAll(context.Background())
+	// This process has no model connection and no tool registry of its own:
+	// those checks only mean something inside the running daemon. Run here
+	// they always failed ("No AI provider is set up yet") while Ghost was
+	// happily answering, so they are left out rather than reported falsely.
+	var out []doctor.CheckResult
+	for _, r := range doc.RunAll(context.Background()) {
+		if r.Name == "provider" || r.Name == "tool_registry" {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // printDoctorRollup prints the overall verdict plus every non-ok row.

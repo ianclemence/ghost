@@ -3,6 +3,22 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.127] - 2026-10-03
+
+- **The phone can see the browser Ghost is using.** Your phone's live
+  connection was being refused whenever it reached the Pod by a name the Pod
+  did not recognise as its own, so nothing live arrived: no browser card, no
+  live reminders. A paired phone is now accepted by its device credentials.
+- **Browser steps appear in Activity.** "Opened www.google.com" now shows when
+  a browser step works, and a failed step says why in plain words, instead of a
+  lone "Browser step didn't finish". The live browser card now appears when
+  the browser starts, not after the first page finishes, and the status line
+  says "Using the browser".
+- **Models live in each provider's Configure sheet**, on the phone and in the
+  console, with the list asked of the provider and a Use button per model.
+- **`ghost status` no longer reports false errors** about AI and tools that
+  only the running Ghost can check.
+
 ## [0.24.126] - 2026-10-03
 
 - **Fine grain behind every screen.** A light film grain now sits over the

@@ -29,12 +29,12 @@ async function loadAI(container) {
 
   // ── Default model ──
   const defPanel = GhostUI.h('div', { className: 'panel' });
-  renderDefaultModel(defPanel, currentProvider, currentModel, providerModels, ollamaModels);
+  renderDefaultModel(defPanel, currentProvider, currentModel, providerModels, ollamaModels, cfg);
   container.appendChild(defPanel);
 
   // ── Providers ──
   const provPanel = GhostUI.h('div', { className: 'panel' });
-  renderProviders(provPanel, cfg, providerModels, ollamaModels);
+  renderProviders(provPanel, cfg, providerModels, ollamaModels, currentProvider, currentModel);
   container.appendChild(provPanel);
 
   // ── Routing ──
@@ -58,7 +58,7 @@ async function loadAI(container) {
 
 // ── Default model panel ──
 
-function renderDefaultModel(panel, currentProvider, currentModel, providerModels, ollamaModels) {
+function renderDefaultModel(panel, currentProvider, currentModel, providerModels, ollamaModels, cfgForDefault) {
   const h = GhostUI.h('div', { className: 'panel-head' });
   const text = GhostUI.h('div');
   text.appendChild(GhostUI.h('h2', {}, 'Default model'));
@@ -79,8 +79,12 @@ function renderDefaultModel(panel, currentProvider, currentModel, providerModels
     c.appendChild(sub);
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
+    // Models live in their provider's Configure sheet; this opens the one
+    // the default model comes from.
     tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', onClick: () => {
-      changeDefaultModal(currentProvider, currentModel, providerModels, ollamaModels);
+      const local = currentProvider === 'ollama' || currentProvider === 'vllm';
+      const name = currentProvider.charAt(0).toUpperCase() + currentProvider.slice(1);
+      configureProviderModal(currentProvider, name, local, cfgForDefault, { providerModels, ollamaModels, activeProvider: currentProvider, activeModel: currentModel });
     } }, 'Change'));
     row.appendChild(tr);
     panel.appendChild(row);
@@ -89,123 +93,10 @@ function renderDefaultModel(panel, currentProvider, currentModel, providerModels
   }
 }
 
-function changeDefaultModal(currentProvider, currentModel, providerModels, ollamaModels) {
-  const body = GhostUI.h('div');
-  const currentVal = currentProvider + ':' + currentModel;
-  let selected = currentVal;
-  let query = '';
-
-  // Groups come from what each provider says it serves (the server asks
-  // the provider APIs). The current default's provider leads; any other
-  // configured provider follows in a stable order.
-  function buildGroups(pmap) {
-    const groups = [];
-    if (ollamaModels.length > 0) {
-      groups.push({ provider: 'ollama', label: 'Ollama \u00b7 Local', models: ollamaModels, local: true });
-    }
-    const known = ['openai', 'anthropic', 'moonshot', 'groq', 'deepseek', 'qwen', 'gemini', 'zhipu', 'openrouter', 'nvidia', 'vllm'];
-    const order = known.concat(Object.keys(pmap).filter((k) => !known.includes(k) && k !== 'ollama').sort());
-    order.sort((a, b) => (a === currentProvider ? -1 : 0) - (b === currentProvider ? -1 : 0));
-    for (const key of order) {
-      const pm = pmap[key];
-      if (!pm || !pm.configured || !pm.models || pm.models.length === 0) continue;
-      const label = key.charAt(0).toUpperCase() + key.slice(1);
-      groups.push({ provider: key, label, models: pm.models, local: key === 'vllm', catalog: pm.source === 'catalog', error: pm.error || '' });
-    }
-    return groups;
-  }
-  let groups = buildGroups(providerModels);
-
-  const search = GhostUI.h('input', { className: 'ghost-input', type: 'search', placeholder: 'Search models or providers', 'aria-label': 'Search models' });
-  const list = GhostUI.h('div', { style: 'max-height:55vh;overflow-y:auto;margin-top:var(--s-2)' });
-  body.appendChild(search);
-  body.appendChild(list);
-
-  function render() {
-    list.innerHTML = '';
-    const q = query.trim().toLowerCase();
-    let shown = 0;
-    for (const g of groups) {
-      const models = q ? g.models.filter((m) => m.toLowerCase().includes(q) || g.provider.includes(q) || g.label.toLowerCase().includes(q)) : g.models;
-      if (models.length === 0) continue;
-      list.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-top:var(--s-3);margin-bottom:var(--s-1);font-weight:600;text-transform:uppercase;letter-spacing:0.05em' }, g.label));
-      if (g.catalog) {
-        // Honest provenance: the provider couldn't be asked, so these are
-        // Ghost's built-in suggestions, not the provider's own list.
-        list.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-bottom:var(--s-1)' },
-          'Built-in list \u2014 couldn\u2019t reach ' + g.label + (g.error ? ' (' + g.error + ')' : '')));
-      }
-      for (const m of models) {
-        shown++;
-        list.appendChild(modelOptionRow(g, m, selected, currentVal, (val) => { selected = val; render(); }));
-      }
-    }
-    if (groups.length === 0) {
-      list.appendChild(GhostUI.emptyState('No models available', 'Configure a provider first.'));
-    } else if (shown === 0) {
-      list.appendChild(GhostUI.emptyState('No matches', 'Try a different search.'));
-    }
-  }
-  search.addEventListener('input', () => { query = search.value; render(); });
-  render();
-
-  const refreshBtn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: async () => {
-    refreshBtn.disabled = true;
-    refreshBtn.textContent = 'Refreshing\u2026';
-    try {
-      const res = await GhostAPI.get('/api/admin/providers/models?refresh=1');
-      groups = buildGroups((res && res.providers) || {});
-      render();
-    } catch (err) {
-      GhostUI.toast('Couldn\u2019t refresh model lists.', 'err');
-    }
-    refreshBtn.disabled = false;
-    refreshBtn.textContent = 'Refresh lists';
-  } }, 'Refresh lists');
-
-  GhostUI.modal('Change default model', body, [
-    refreshBtn,
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
-    GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', onClick: async (e) => {
-      const [provider, ...modelParts] = selected.split(':');
-      const model = modelParts.join(':');
-      if (!provider || !model) return;
-      e.target.disabled = true;
-      try {
-        // Use the live model endpoint for immediate effect
-        await GhostAPI.proxyPost('/v1/model', { model: provider + ':' + model });
-        e.target.closest('.ghost-modal-backdrop').remove();
-        GhostUI.toast('Default model set to ' + model);
-        loadAI(document.getElementById('view'));
-      } catch (err) { GhostUI.toast('Couldn\u2019t set model.', 'err'); e.target.disabled = false; }
-    } }, 'Set default'),
-  ]);
-  setTimeout(() => search.focus(), 0);
-}
-
-// modelOptionRow renders a selectable model in the "Change default model" modal.
-// The model id is the title (a provider can list dozens, and a coarse class
-// like "Fast" can't tell them apart); the class is the secondary line.
-function modelOptionRow(g, m, selected, currentVal, onPick) {
-  const val = g.provider + ':' + m;
-  const f = GhostUI.modelFriendly(val);
-  const row = GhostUI.h('div', { className: 'ghost-row', style: 'cursor:pointer;padding:var(--s-2) var(--s-3)' });
-  const dot = GhostUI.h('span', { className: 'status-dot ' + (val === selected ? 'ready' : 'neutral'), style: 'flex-shrink:0' });
-  row.appendChild(dot);
-  const content = GhostUI.h('div', { style: 'margin-left:var(--s-2);min-width:0;flex:1' });
-  content.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-size:var(--t-body);overflow-wrap:anywhere;font-weight:' + (val === selected ? '600' : '400') }, f.model));
-  content.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary' }, f.name));
-  row.appendChild(content);
-  if (val === currentVal) {
-    row.appendChild(GhostUI.h('span', { className: 'type-foot text-tertiary', style: 'margin-left:auto' }, 'Current'));
-  }
-  row.addEventListener('click', () => onPick(val));
-  return row;
-}
-
 // ── Providers panel ──
 
-function renderProviders(panel, cfg, providerModels, ollamaModels) {
+function renderProviders(panel, cfg, providerModels, ollamaModels, activeProvider, activeModel) {
+  const ctx = { providerModels, ollamaModels, activeProvider, activeModel };
   const h = GhostUI.h('div', { className: 'panel-head' });
   const text = GhostUI.h('div');
   text.appendChild(GhostUI.h('h2', {}, 'Providers'));
@@ -236,7 +127,7 @@ function renderProviders(panel, cfg, providerModels, ollamaModels) {
     c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, sub + (pm && pm.source === 'catalog' && !isLocal(key) ? ' · built-in list (couldn’t reach the provider)' : '')));
     row.appendChild(c);
     const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
-    tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary ghost-btn-sm', onClick: () => configureProviderModal(key, labelOf(key), isLocal(key), cfg) }, 'Configure'));
+    tr.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary ghost-btn-sm', onClick: () => configureProviderModal(key, labelOf(key), isLocal(key), cfg, ctx) }, 'Configure'));
     row.appendChild(tr);
     panel.appendChild(row);
   }
@@ -247,14 +138,14 @@ function renderProviders(panel, cfg, providerModels, ollamaModels) {
     for (const key of available) {
       chips.appendChild(GhostUI.h('button', {
         className: 'provider-chip',
-        onClick: () => configureProviderModal(key, labelOf(key), isLocal(key), cfg),
+        onClick: () => configureProviderModal(key, labelOf(key), isLocal(key), cfg, ctx),
       }, '+ ' + labelOf(key)));
     }
     panel.appendChild(chips);
   }
 }
 
-function configureProviderModal(key, name, isLocal, cfg) {
+function configureProviderModal(key, name, isLocal, cfg, ctx) {
   const body = GhostUI.h('div');
   let keyInput = null;
   let urlInput = null;
@@ -314,6 +205,71 @@ function configureProviderModal(key, name, isLocal, cfg) {
   testRow.appendChild(testBtn);
   testRow.appendChild(testResult);
   body.appendChild(testRow);
+
+  // The provider's models, in the same sheet: ask it what it serves and let
+  // the owner pick one to think with.
+  const info = (ctx && ctx.providerModels && ctx.providerModels[key]) || null;
+  let models = isLocal ? ((ctx && ctx.ollamaModels) || []) : ((info && info.models) || []);
+  const connected = isLocal ? models.length > 0 : !!(info && info.configured);
+  if (connected) {
+    const head = GhostUI.h('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-top:var(--s-5)' });
+    head.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, 'Models'));
+    const refresh = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost ghost-btn-sm' }, 'Refresh');
+    head.appendChild(refresh);
+    body.appendChild(head);
+    const note = GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-bottom:var(--s-2)' });
+    body.appendChild(note);
+    const search = GhostUI.h('input', { className: 'ghost-input', type: 'search', placeholder: 'Search models', 'aria-label': 'Search models', style: models.length > 8 ? '' : 'display:none' });
+    body.appendChild(search);
+    const list = GhostUI.h('div', { style: 'max-height:40vh;overflow-y:auto;margin-top:var(--s-2)' });
+    body.appendChild(list);
+    let query = '';
+    const describe = (i) => {
+      if (isLocal) return 'Installed on your Pod.';
+      if (i && i.source === 'catalog') return 'Built-in list \u2014 couldn\u2019t reach ' + name + (i.error ? ' (' + i.error + ')' : '') + '.';
+      return 'Live from ' + name + '.';
+    };
+    const draw = (i) => {
+      note.textContent = describe(i);
+      list.innerHTML = '';
+      const q = query.trim().toLowerCase();
+      const shown = (q ? models.filter((m) => m.toLowerCase().includes(q)) : models).slice(0, 80);
+      if (shown.length === 0) list.appendChild(GhostUI.emptyState(q ? 'No matches' : 'No models listed', q ? 'Try a different search.' : name + ' did not list any models.'));
+      for (const m of shown) {
+        const val = key + ':' + m;
+        const active = ctx && ctx.activeProvider === key && ctx.activeModel === m;
+        const row = GhostUI.h('div', { className: 'ghost-row', style: 'padding:var(--s-2) var(--s-3)' });
+        const c = GhostUI.h('div', { style: 'min-width:0;flex:1' });
+        c.appendChild(GhostUI.h('div', { className: 'ghost-row-title', style: 'font-size:var(--t-body);overflow-wrap:anywhere' }, GhostUI.modelFriendly(val).model));
+        row.appendChild(c);
+        if (active) {
+          row.appendChild(GhostUI.h('span', { className: 'state-chip state-chip-ok' }, 'Active'));
+        } else {
+          row.appendChild(GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary ghost-btn-sm', onClick: async (e) => {
+            e.target.disabled = true;
+            try {
+              await GhostAPI.proxyPost('/v1/model', { model: val });
+              e.target.closest('.ghost-modal-backdrop').remove();
+              GhostUI.toast('Now using ' + m);
+              loadAI(document.getElementById('view'));
+            } catch (err) { GhostUI.toast('Couldn\u2019t switch model.', 'err'); e.target.disabled = false; }
+          } }, 'Use'));
+        }
+        list.appendChild(row);
+      }
+    };
+    search.addEventListener('input', () => { query = search.value; draw(info); });
+    refresh.addEventListener('click', async () => {
+      refresh.disabled = true; refresh.textContent = 'Asking\u2026';
+      try {
+        const res = await GhostAPI.get('/api/admin/providers/models?refresh=1');
+        const fresh = res && res.providers && res.providers[key];
+        if (fresh && !isLocal) { models = fresh.models || []; draw(fresh); } else draw(info);
+      } catch (err) { GhostUI.toast('Couldn\u2019t refresh the list.', 'err'); }
+      refresh.disabled = false; refresh.textContent = 'Refresh';
+    });
+    draw(info);
+  }
 
   GhostUI.modal('Configure ' + name, body, [
     GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', onClick: (e) => e.target.closest('.ghost-modal-backdrop').remove() }, 'Cancel'),
