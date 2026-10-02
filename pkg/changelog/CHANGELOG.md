@@ -9,9 +9,10 @@ Newest first. Ghost shows new entries on first launch after an update;
   newest release and then rebuild whatever source was already on the Pod, so an
   update could report a new version while running the old code, and needed a
   `git pull` first. Each release now ships ready-made programs for Linux (arm64
-  and amd64) with a checksum and a signature for each. Ghost checks both against
-  a key built into it before anything is replaced, and an update that fails
-  either check is refused with nothing changed. The recovery snapshot is taken,
+  and amd64) and a signed list of their checksums. Ghost checks the signature
+  against a key built into it, and each program against the list, before
+  anything is replaced; an update that fails either check is refused with
+  nothing changed. The recovery snapshot is taken,
   and the console and the service files are updated from the same release. A
   machine with no ready-made program gets the release's tagged source built
   instead.
