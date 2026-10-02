@@ -2380,10 +2380,52 @@ func (m *agentTUI) welcomeCard() string {
 	}
 	// The tagline is the Ghost promise: three declaratives, no filler. It
 	// wraps on narrow terminals so it is never cut mid-word.
-	art := styleGhostArt.Render("▓▒░  👻  G H O S T  ░▒▓")
+	art := ghostBanner()
 	tag := styleWelcomeTitle.Render(wrapFirst(ghostTagline, minInt(w-2, 64)))
 	cmds := styleWelcomeCmds.Render("  /help      commands & keys\n  /model     switch thinking engine\n  /memory    what Ghost remembers\n  /routines  recurring work")
 	return center(art) + "\n" + center(tag) + "\n\n" + center(cmds)
+}
+
+// auroraStops are the aurora's four colours, left to right: amber, magenta,
+// violet, electric blue. The console and the phone paint the same light.
+var auroraStops = [][3]int{{0xff, 0x9a, 0x1a}, {0xc2, 0x3d, 0xeb}, {0x7a, 0x3c, 0xf0}, {0x3a, 0x2e, 0xf0}}
+
+// auroraText colours each visible rune along the aurora gradient. The
+// terminal's colour profile decides how faithfully it shows; spaces keep
+// their place and take no colour.
+func auroraText(s string) string {
+	runes := []rune(s)
+	n := len(runes)
+	var b strings.Builder
+	for i, r := range runes {
+		if r == ' ' {
+			b.WriteRune(r)
+			continue
+		}
+		t := 0.0
+		if n > 1 {
+			t = float64(i) / float64(n-1)
+		}
+		pos := t * float64(len(auroraStops)-1)
+		lo := int(pos)
+		if lo >= len(auroraStops)-1 {
+			lo = len(auroraStops) - 2
+		}
+		f := pos - float64(lo)
+		var c [3]int
+		for k := 0; k < 3; k++ {
+			c[k] = int(float64(auroraStops[lo][k])*(1-f) + float64(auroraStops[lo+1][k])*f)
+		}
+		hex := fmt.Sprintf("#%02x%02x%02x", c[0], c[1], c[2])
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(hex)).Bold(true).Render(string(r)))
+	}
+	return b.String()
+}
+
+// ghostBanner is the welcome mark: an amber light beside the letter-spaced
+// name in the aurora gradient.
+func ghostBanner() string {
+	return lipgloss.NewStyle().Foreground(cGold).Render("●") + "  " + auroraText("G H O S T")
 }
 
 func minInt(a, b int) int {
@@ -3945,19 +3987,19 @@ func providerLocality(model string) string {
 // ─── styles ──────────────────────────────────────────────────────────────
 
 var (
-	cInk            = lipgloss.Color("#f1e9dc") // ink
-	cMuted          = lipgloss.Color("#a3927f") // muted
-	cFaint          = lipgloss.Color("#7a6d5e")
-	cAccent         = lipgloss.Color("#b9b6f2")
-	cTool           = lipgloss.Color("#6fcb93")
-	cErr            = lipgloss.Color("#ff8576") // error
-	cGold           = lipgloss.Color("#ffb45c") // ember: the one warm signal
-	cBarIdle        = lipgloss.Color("#5a5688") // composer bar, idle
-	cGreen          = lipgloss.Color("#6fcb93") // ok
-	cBlue           = lipgloss.Color("#86b8e0")
-	cViolet         = lipgloss.Color("#b9b6f2") // brand accent: soft indigo, the same as the console and the app
-	cCodeBg         = lipgloss.Color("#1c1813")
-	cSelBg          = lipgloss.Color("#26211a")
+	cInk            = lipgloss.Color("#f4f4f8") // ink
+	cMuted          = lipgloss.Color("#a9a7b4") // muted
+	cFaint          = lipgloss.Color("#6f6d7c")
+	cAccent         = lipgloss.Color("#9c95ff")
+	cTool           = lipgloss.Color("#6fe3a0")
+	cErr            = lipgloss.Color("#ff7a7a") // error
+	cGold           = lipgloss.Color("#ffa928") // amber: the one warm signal
+	cBarIdle        = lipgloss.Color("#4a42c8") // composer bar, idle
+	cGreen          = lipgloss.Color("#6fe3a0") // ok
+	cBlue           = lipgloss.Color("#8fb8ff")
+	cViolet         = lipgloss.Color("#9c95ff") // brand accent: soft indigo, the same as the console and the app
+	cCodeBg         = lipgloss.Color("#0e0e13")
+	cSelBg          = lipgloss.Color("#17171e")
 	styleUser       = lipgloss.NewStyle().Foreground(cInk).Bold(true)
 	styleAssistant  = lipgloss.NewStyle().Foreground(cInk)
 	styleTool       = lipgloss.NewStyle().Foreground(cTool)
@@ -4015,15 +4057,14 @@ var (
 	styleApprovalBar   = lipgloss.NewStyle().Foreground(cGold)
 	styleModalTitle    = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleApprovalTitle = lipgloss.NewStyle().Foreground(cGold).Bold(true)
-	styleApprovalKeys  = lipgloss.NewStyle().Foreground(lipgloss.Color("#f1e9dc"))
-	styleApprovalSel   = lipgloss.NewStyle().Foreground(lipgloss.Color("#14110d")).Background(cGold).Bold(true)
-	styleRiskHigh      = lipgloss.NewStyle().Foreground(lipgloss.Color("#14110d")).Background(lipgloss.Color("#ff8576")).Bold(true)
-	styleRiskMid       = lipgloss.NewStyle().Foreground(lipgloss.Color("#14110d")).Background(cGold).Bold(true)
-	styleRiskLow       = lipgloss.NewStyle().Foreground(lipgloss.Color("#14110d")).Background(cGreen).Bold(true)
+	styleApprovalKeys  = lipgloss.NewStyle().Foreground(lipgloss.Color("#f4f4f8"))
+	styleApprovalSel   = lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(cGold).Bold(true)
+	styleRiskHigh      = lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#ff7a7a")).Bold(true)
+	styleRiskMid       = lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(cGold).Bold(true)
+	styleRiskLow       = lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(cGreen).Bold(true)
 	styleRiskDefault   = lipgloss.NewStyle().Foreground(cMuted).Background(cSelBg)
 
-	styleWelcomeTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#f1e9dc")).Bold(true)
-	styleGhostArt     = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
+	styleWelcomeTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#f4f4f8")).Bold(true)
 	styleWelcomeCmds  = lipgloss.NewStyle().Foreground(cMuted)
 	styleDayDivider   = lipgloss.NewStyle().Foreground(cFaint)
 

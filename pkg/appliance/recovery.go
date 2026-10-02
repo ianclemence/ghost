@@ -271,21 +271,21 @@ const recoveryHTML = `<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#17130f">
+    <meta name="theme-color" content="#000000">
     <title>Ghost Recovery Mode</title>
     <style>
         :root {
-            --bg: #17130f;
-            --surface: #241e17;
-            --surface-2: #2b241b;
-            --ink: #f1e9dc;
-            --muted: #a3927f;
-            --ember: #ffb45c;
-            --sage: #86b28f;
-            --clay: #e08667;
-            --danger: #ff7b6b;
-            --line: rgba(241, 233, 220, 0.08);
-            --ring: rgba(255, 180, 92, 0.35);
+            --bg: #000000;
+            --surface: #0e0e13;
+            --surface-2: #17171e;
+            --ink: #ffffff;
+            --muted: #a9a7b4;
+            --ember: #ffa928;
+            --sage: #6fe3a0;
+            --coral: #ff9a7a;
+            --danger: #ff7a7a;
+            --line: rgba(255, 255, 255, 0.08);
+            --ring: rgba(255, 169, 40, 0.35);
             --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
             --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
             --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px;
@@ -295,7 +295,9 @@ const recoveryHTML = `<!DOCTYPE html>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background:
-                radial-gradient(80% 50% at 50% 0%, rgba(255, 180, 92, 0.06), transparent 70%),
+                radial-gradient(70% 45% at 30% 0%, rgba(255, 154, 26, 0.34), transparent 70%),
+                radial-gradient(60% 45% at 100% 22%, rgba(194, 61, 235, 0.30), transparent 70%),
+                radial-gradient(50% 40% at 70% 48%, rgba(58, 46, 240, 0.30), transparent 72%),
                 var(--bg);
             color: var(--ink);
             min-height: 100vh;
@@ -311,7 +313,7 @@ const recoveryHTML = `<!DOCTYPE html>
         .brand .badge {
             font-size: 12px; font-weight: 600; text-transform: uppercase;
             letter-spacing: 0.06em; color: var(--ember);
-            border: 1px solid rgba(255, 180, 92, 0.4);
+            border: 1px solid rgba(255, 169, 40, 0.4);
             border-radius: 999px; padding: 2px 10px;
         }
         .subtitle { color: var(--muted); font-size: 15px; margin-bottom: var(--s-5); }
@@ -319,11 +321,11 @@ const recoveryHTML = `<!DOCTYPE html>
         .ember {
             position: relative; width: 14px; height: 14px; border-radius: 50%;
             background: var(--ember);
-            box-shadow: 0 0 10px rgba(255, 180, 92, 0.65), 0 0 26px rgba(255, 180, 92, 0.3);
+            box-shadow: 0 0 10px rgba(255, 169, 40, 0.65), 0 0 26px rgba(255, 169, 40, 0.3);
             animation: breathe 4.2s var(--ease-in-out) infinite;
             flex-shrink: 0;
         }
-        .ember.ember--off { animation: none; background: var(--danger); box-shadow: 0 0 10px rgba(255, 123, 107, 0.5); }
+        .ember.ember--off { animation: none; background: var(--danger); box-shadow: 0 0 10px rgba(255, 122, 122, 0.5); }
         @keyframes breathe {
             0%, 100% { transform: scale(1); opacity: 1; }
             50% { transform: scale(1.15); opacity: 0.8; }
@@ -374,26 +376,26 @@ const recoveryHTML = `<!DOCTYPE html>
         }
         .btn:active { transform: scale(0.97); }
         .btn.primary {
-            background: var(--ember); border-color: transparent; color: #1d1510;
+            background: var(--ember); border-color: transparent; color: #000000;
         }
-        .btn.primary:hover { background: #ffc47e; }
+        .btn.primary:hover { background: #ffbf5c; }
         .btn.danger {
-            background: transparent; border-color: rgba(255, 123, 107, 0.5); color: var(--danger);
+            background: transparent; border-color: rgba(255, 122, 122, 0.5); color: var(--danger);
         }
-        .btn.danger:hover { background: rgba(255, 123, 107, 0.12); border-color: var(--danger); }
-        .btn:hover:not(.primary):not(.danger) { background: #342c22; border-color: rgba(241, 233, 220, 0.16); }
+        .btn.danger:hover { background: rgba(255, 122, 122, 0.12); border-color: var(--danger); }
+        .btn:hover:not(.primary):not(.danger) { background: #1f1f28; border-color: rgba(255, 255, 255, 0.16); }
         .btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
         .btn:disabled { opacity: 0.5; cursor: default; }
 
         .log-box {
-            background: #12100d;
+            background: #07070a;
             border: 1px solid var(--line);
             border-radius: var(--r-field);
             padding: var(--s-3) var(--s-4);
             font-family: ui-monospace, "SF Mono", "Cascadia Code", "Menlo", "Courier New", monospace;
             font-size: 12px; line-height: 1.55;
             max-height: 420px; overflow-y: auto;
-            color: #cdbfa8;
+            color: #b3b1bd;
             white-space: pre-wrap; word-break: break-word;
         }
 
@@ -409,8 +411,8 @@ const recoveryHTML = `<!DOCTYPE html>
             outline: none;
             transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
         }
-        .field-input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px rgba(255, 180, 92, 0.12); }
-        .field-input::placeholder { color: #6f6253; }
+        .field-input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px rgba(255, 169, 40, 0.12); }
+        .field-input::placeholder { color: #7c7a88; }
 
         .toast {
             position: fixed; left: 50%; bottom: 24px;

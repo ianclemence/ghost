@@ -2634,3 +2634,25 @@ func TestTUIRightArrowTakesTheSuggestionOnlyWhenEmpty(t *testing.T) {
 		t.Errorf("right arrow with text must just move the cursor, composer is %q", m.input.Value())
 	}
 }
+
+// The welcome banner is the aurora wordmark: the text must survive the
+// gradient intact (colour is decoration, never content), spaces must stay
+// where they are, and the old emoji banner must be gone.
+func TestGhostBannerKeepsItsText(t *testing.T) {
+	plain := ansiStrip(ghostBanner())
+	if !strings.Contains(plain, "G H O S T") {
+		t.Fatalf("banner lost its wordmark: %q", plain)
+	}
+	if strings.Contains(plain, "👻") {
+		t.Fatalf("banner still carries the emoji: %q", plain)
+	}
+	if got := ansiStrip(auroraText("a b")); got != "a b" {
+		t.Fatalf("auroraText changed the text: %q", got)
+	}
+	if got := ansiStrip(auroraText("")); got != "" {
+		t.Fatalf("empty text should stay empty: %q", got)
+	}
+	if got := ansiStrip(auroraText("x")); got != "x" {
+		t.Fatalf("single rune: %q", got)
+	}
+}

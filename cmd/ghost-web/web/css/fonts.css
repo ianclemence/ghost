@@ -1,10 +1,10 @@
 /* Ghost — fonts. Self-hosted; nothing is fetched from anywhere else.
-   Instrument Sans for the interface, Instrument Serif for the moments that
-   should feel written rather than rendered, JetBrains Mono for values. */
+   Inter for the interface (light and large where Ghost speaks), Instrument
+   Serif for headlines and greetings, JetBrains Mono for values. */
 @font-face {
-  font-family: "Instrument Sans";
-  src: url("/assets/fonts/instrument-sans.woff2") format("woff2");
-  font-weight: 400 700;
+  font-family: "Inter";
+  src: url("/assets/fonts/inter.woff2") format("woff2");
+  font-weight: 100 900;
   font-style: normal;
   font-display: swap;
 }
