@@ -343,3 +343,24 @@ func TestActivityCarriesSourcesWithoutCaveatProse(t *testing.T) {
 		}
 	}
 }
+
+func TestHumanizeFailureAndTechnicalSummaries(t *testing.T) {
+	cases := map[string]string{
+		"query is required":                     "didn't give the tool everything",
+		"Get https://x: dial tcp: no such host": "couldn't reach",
+		"HTTP 429 rate limit":                   "busy",
+		"401 Unauthorized":                      "key may be missing",
+		"weird thing":                           "Something went wrong",
+	}
+	for raw, want := range cases {
+		if got := humanizeFailure(raw); !strings.Contains(got, want) {
+			t.Errorf("humanizeFailure(%q) = %q, want it to contain %q", raw, got, want)
+		}
+	}
+	if !looksTechnical(`{"q":"x"}`) || !looksTechnical("web_search failed") || !looksTechnical("SELECT * FROM memory") {
+		t.Error("machine output should be technical")
+	}
+	if looksTechnical("Searched the web: \"latest news in bangkok\"") {
+		t.Error("a plain sentence is not technical")
+	}
+}

@@ -497,13 +497,12 @@ function collectActivityItems(activityRes) {
     // Never say the same thing twice ("No change · No change").
     const parts = [summary];
     if (word && word.toLowerCase() !== summary.toLowerCase()) parts.unshift(word);
-    items.push({
-      kind: 'activity',
-      ts,
-      title: a.title || 'Activity',
-      meta: parts.filter(Boolean).join('  \u00b7  '),
-      why: (a.why || '').trim(),
-    });
+    const title = a.title || 'Activity';
+    const meta = parts.filter(Boolean).join('  \u00b7  ');
+    // The same thing repeating is one row with a count.
+    const prev = items[items.length - 1];
+    if (prev && prev.title === title && prev.meta === meta) { prev.count = (prev.count || 1) + 1; continue; }
+    items.push({ kind: 'activity', ts, title, meta, why: (a.why || '').trim() });
   }
   // /v1/activity returns newest first and is already user-safe; no further
   // semantic grouping is needed here.
@@ -524,7 +523,7 @@ function renderActivityRow(it) {
   const row = GhostUI.h('li', { className: 'home-activity-row' });
   row.appendChild(GhostUI.h('div', { className: 'home-activity-when' }, formatTime(new Date(it.ts * 1000))));
   const body = GhostUI.h('div', { className: 'home-activity-body-col' });
-  body.appendChild(GhostUI.h('div', { className: 'home-activity-title' }, it.title));
+  body.appendChild(GhostUI.h('div', { className: 'home-activity-title' }, it.count > 1 ? it.title + '  \u00d7' + it.count : it.title));
   if (it.meta) body.appendChild(GhostUI.h('div', { className: 'home-activity-meta' }, it.meta));
   if (it.why) body.appendChild(GhostUI.h('div', { className: 'home-activity-why' }, it.why));
   row.appendChild(body);

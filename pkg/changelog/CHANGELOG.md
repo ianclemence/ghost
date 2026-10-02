@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.125] - 2026-10-03
+
+- **Activity reads like sentences, in the console too.** A failed step used to
+  show the tool's raw error ("query is required", a network trace) as its
+  summary. Ghost now says what went wrong in plain words ("It took too long to
+  answer", "The service refused access") and keeps the technical text behind a
+  Details link. The same thing happening several times in a row is one line
+  with a count, on the Activity page, on Home, and on the phone.
+
 ## [0.24.124] - 2026-10-03
 
 - **The phone sees the models each provider really serves.** The list on the

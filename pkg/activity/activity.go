@@ -45,6 +45,10 @@ type Chip struct {
 	Timestamp time.Time `json:"timestamp"`
 	Summary   string    `json:"summary,omitempty"`
 	Detail    string    `json:"detail,omitempty"` // layer 2: safe expanded text
+	// Diagnostic is the raw technical text (tool error, query, JSON) that
+	// used to be shown as the summary. It stays available behind a
+	// "Details" disclosure for people who want it; Summary never carries it.
+	Diagnostic string `json:"diagnostic,omitempty"`
 	// Why explains, in owner language, why Ghost acted or asked. It is the
 	// revelation layer: the owner should never have to wonder why a
 	// consequential action happened. Empty for events that need no
@@ -435,7 +439,15 @@ func Project(e *cevents.Event) (*Chip, bool) {
 		cevents.PermissionDenied, cevents.PermissionExpired:
 	default:
 		if s, _ := e.Payload["summary"].(string); s != "" {
-			chip.Summary = truncate(s, 160)
+			switch {
+			case chip.State == StateFailed:
+				chip.Summary = humanizeFailure(s)
+				chip.Diagnostic = truncate(s, 400)
+			case looksTechnical(s):
+				chip.Diagnostic = truncate(s, 400)
+			default:
+				chip.Summary = truncate(s, 160)
+			}
 		}
 	}
 	chip.Detail = expandDetail(e, title, fromPhrase)
@@ -580,4 +592,57 @@ func Diagnostics(e *cevents.Event) map[string]interface{} {
 		out["status"] = e.Status
 	}
 	return out
+}
+
+// looksTechnical reports whether text reads like machine output (JSON, a
+// stack, a query, a path, an error code) rather than a sentence for the owner.
+func looksTechnical(s string) bool {
+	if strings.ContainsAny(s, "{}[]<>|\\") || strings.Contains(s, "://") || strings.Contains(s, "::") {
+		return true
+	}
+	l := strings.ToLower(s)
+	for _, m := range []string{"select ", " from ", "exit status", "panic", "goroutine", "traceback",
+		"nil pointer", "errno", "json:", "unmarshal", "sqlstate", "stderr", "/var/", "/usr/", "/home/", "0x"} {
+		if strings.Contains(l, m) {
+			return true
+		}
+	}
+	// snake_case or dotted identifiers (exec.shell, web_search) are plumbing.
+	for _, w := range strings.Fields(s) {
+		if strings.Contains(w, "_") && len(w) > 3 {
+			return true
+		}
+	}
+	return false
+}
+
+// humanizeFailure turns a raw tool error into one plain sentence. The raw
+// text is kept in Chip.Diagnostic; this is only what the owner reads first.
+func humanizeFailure(raw string) string {
+	l := strings.ToLower(raw)
+	has := func(subs ...string) bool {
+		for _, x := range subs {
+			if strings.Contains(l, x) {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case has("429", "rate limit", "too many requests", "quota"):
+		return "The service is busy right now. Ghost can try again in a moment."
+	case has("401", "403", "unauthorized", "forbidden", "api key", "invalid key", "authentication"):
+		return "The service refused access. Its key may be missing or expired."
+	case has("permission denied", "not permitted", "not allowed"):
+		return "Ghost wasn't allowed to do that."
+	case has("timeout", "timed out", "deadline exceeded"):
+		return "It took too long to answer."
+	case has("connection refused", "no such host", "dial tcp", "network", "unreachable", "eof", "connection reset"):
+		return "Ghost couldn't reach the service."
+	case has("404", "not found", "no such file", "does not exist"):
+		return "Ghost couldn't find what it was looking for."
+	case has("required", "missing", "invalid", "must be", "cannot be empty", "unknown field"):
+		return "Ghost didn't give the tool everything it needed."
+	}
+	return "Something went wrong. Open Details for the technical reason."
 }

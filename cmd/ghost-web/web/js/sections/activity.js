@@ -38,14 +38,23 @@ async function loadActivity(container) {
   // A tree: each day is a branch, and what Ghost did that day hangs from it.
   // Every node carries a dot in the colour of its outcome, the time, what
   // happened, and (quietly) why Ghost acted. Days fold away with their caret.
-  const groups = [];
+  // The same thing failing or succeeding five times in a row is one line
+  // with a count, not five lines (newest first, so the first of a run wins).
+  const folded = [];
   items.forEach(item => {
+    const prev = folded[folded.length - 1];
+    const same = prev && prev.item.title === item.title && prev.item.state === item.state
+      && (prev.item.summary || '') === (item.summary || '');
+    if (same) prev.count++; else folded.push({ item, count: 1 });
+  });
+  const groups = [];
+  folded.forEach(({ item, count }) => {
     const t = item.timestamp ? new Date(item.timestamp) : null;
     const valid = t && !isNaN(t.getTime());
     const label = valid ? activityDayLabel(t) : 'Earlier';
     let g = groups[groups.length - 1];
     if (!g || g.label !== label) { g = { label, items: [] }; groups.push(g); }
-    g.items.push({ item, t: valid ? t : null });
+    g.items.push({ item, t: valid ? t : null, count });
   });
 
   const tree = GhostUI.h('div', { className: 'act-tree' });
@@ -56,7 +65,7 @@ async function loadActivity(container) {
     head.appendChild(GhostUI.h('span', { className: 'act-day-label' }, g.label));
     head.appendChild(GhostUI.h('span', { className: 'act-day-count' }, String(g.items.length)));
     const branch = GhostUI.h('ol', { className: 'act-branch' });
-    g.items.forEach(({ item, t }, ni) => {
+    g.items.forEach(({ item, t, count }, ni) => {
       const node = GhostUI.h('li', { className: 'act-node tone-' + GhostUI.activityTone(item.state) });
       node.style.setProperty('--n', String(Math.min(gi * 3 + ni, 12)));
       node.appendChild(GhostUI.h('span', { className: 'act-dot', 'aria-hidden': 'true' }));
@@ -67,6 +76,7 @@ async function loadActivity(container) {
       if (word && word.toLowerCase() !== summary.toLowerCase()) {
         titleLine.appendChild(GhostUI.h('span', { className: 'status-pill activity-status' }, GhostUI.statusDot(GhostUI.activityTone(item.state)), word));
       }
+      if (count > 1) titleLine.appendChild(GhostUI.h('span', { className: 'act-repeat', title: 'Happened ' + count + ' times in a row' }, '\u00d7' + count));
       body.appendChild(titleLine);
       const bits = [];
       if (t) bits.push(t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
@@ -74,6 +84,14 @@ async function loadActivity(container) {
       if (bits.length) body.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle' }, bits.join('  \u00b7  ')));
       // Revelation: why Ghost asked or acted.
       if (item.why) body.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle type-foot text-tertiary', style: 'margin-top:2px' }, item.why));
+      // The raw technical text (tool error, query) is one click away, in a
+      // quiet monospace box, for anyone who wants it.
+      if (item.diagnostic) {
+        const more = GhostUI.h('details', { className: 'act-details' });
+        more.appendChild(GhostUI.h('summary', {}, 'Details'));
+        more.appendChild(GhostUI.h('pre', { className: 'act-raw' }, item.diagnostic));
+        body.appendChild(more);
+      }
       node.appendChild(body);
       branch.appendChild(node);
     });

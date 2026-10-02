@@ -726,3 +726,11 @@
 /* Activity: the outcome reads with its item. */
 .activity-title-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .activity-status { font-size: var(--t-foot); font-weight: 500; }
+
+/* Activity: repeat count, and the technical text kept behind "Details". */
+.act-repeat { margin-left: 8px; font-size: var(--t-foot); color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.act-details { margin-top: 4px; }
+.act-details > summary { cursor: pointer; width: max-content; font-size: var(--t-foot); color: var(--ink-faint); list-style: none; }
+.act-details > summary::-webkit-details-marker { display: none; }
+.act-details > summary:hover { color: var(--ink); }
+.act-raw { margin: 6px 0 0; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); color: var(--ink-faint); font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
