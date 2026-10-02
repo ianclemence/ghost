@@ -3,6 +3,22 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.119] - 2026-10-02
+
+- **The empty message box now suggests what you are likely to say next.** After
+  Ghost speaks, it works out the most natural reply from the conversation as it
+  stands and offers it where the placeholder used to be. If Ghost made an
+  offer ("Want me to move it, or add a nudge?") the suggestion is the answer
+  ("Yes, move it"); after a reminders list it is "Move the first one"; after a
+  weather report, "What about tomorrow?". Otherwise a small background model
+  call writes one short line, checked before it is shown, and only when Ghost
+  is not busy with you. In the terminal, Tab or the right arrow takes it; on
+  the phone, a "Use" button does. Taking a suggestion only fills the box;
+  nothing is ever sent for you. With no suggestion, the box keeps its line for
+  the time of day.
+- Set `GHOST_SUGGEST=rules` to use only the instant rules (no model call), or
+  `GHOST_SUGGEST=off` to turn suggestions off.
+
 ## [0.24.118] - 2026-10-02
 
 - **The sign-in and setup screens keep the living background.** They used to

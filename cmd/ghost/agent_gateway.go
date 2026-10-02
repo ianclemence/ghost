@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,6 +44,13 @@ import (
 // history backfill the TUI needs to switch threads. All other methods come
 // from the embedded loop.
 type embeddedRuntime struct{ *agent.AgentLoop }
+
+// Suggest asks the in-process agent what the owner is likely to say next.
+func (e embeddedRuntime) Suggest(sessionKey string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	return e.AgentLoop.SuggestNext(ctx, sessionKey).Text
+}
 
 // LoadHistory converts the embedded loop's stored messages into transcript
 // entries, mirroring the gateway client's shape.
@@ -338,6 +346,20 @@ func (g *gatewayRuntime) getJSON(ctx context.Context, path string, sessionKey st
 }
 
 // ─── agentRuntime ────────────────────────────────────────────────────────
+
+// Suggest asks the gateway what the owner is likely to say next. Any failure
+// is just "no suggestion": the composer keeps the line for the time of day.
+func (g *gatewayRuntime) Suggest(sessionKey string) string {
+	var res struct {
+		Suggestion string `json:"suggestion"`
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := g.getJSON(ctx, "/v1/suggest?session="+url.QueryEscape(canonicalConversationKey(sessionKey)), sessionKey, &res); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(res.Suggestion)
+}
 
 // ListIdeas serves the TUI Ideas surface from the gateway's ideas API.
 func (g *gatewayRuntime) ListIdeas() ([]*ideas.Idea, error) {

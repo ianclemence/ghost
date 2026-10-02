@@ -23,19 +23,20 @@ import (
 
 // fakeRuntime records calls and simulates a runtime for TUI tests.
 type fakeRuntime struct {
-	media    [][]string
-	model    string
-	presets  []string
-	injected []string // steering messages queued while working
-	aborted  []string // sessions aborted via Esc
-	answered map[string]string
-	options  []providers.ModelOption // nil = derive from presets
-	turns    []string
-	setCalls []string
-	pending  *pendingApproval
-	context  string
-	contexts []string
-	history  map[string][]historyEntry // session key -> transcript rows
+	media      [][]string
+	model      string
+	presets    []string
+	injected   []string // steering messages queued while working
+	aborted    []string // sessions aborted via Esc
+	answered   map[string]string
+	options    []providers.ModelOption // nil = derive from presets
+	turns      []string
+	setCalls   []string
+	pending    *pendingApproval
+	context    string
+	contexts   []string
+	history    map[string][]historyEntry // session key -> transcript rows
+	suggestion string                    // what Suggest returns
 	// Background surface state.
 	bgRunning []tools.BackgroundTask
 	bgDone    []tools.BackgroundDone
@@ -56,6 +57,9 @@ func newFakeRuntime() *fakeRuntime {
 }
 
 func (f *fakeRuntime) GetCurrentModel() string { return f.model }
+
+// Suggest serves a scripted prediction.
+func (f *fakeRuntime) Suggest(sessionKey string) string { return f.suggestion }
 
 // PollBackground serves scripted background state, draining completions
 // exactly once like the real loop.
@@ -2564,5 +2568,69 @@ func TestTaggedMessagesLookDifferentFromReplies(t *testing.T) {
 	}
 	if !strings.Contains(ansiStrip(m.renderEntry(entry{kind: entryAssistant, tag: tagReminder, text: "x"})), "Reminder") {
 		t.Fatal("a reminder says so")
+	}
+}
+
+func TestTUISuggestionFillsTheEmptyComposerAndTabTakesIt(t *testing.T) {
+	f := newFakeRuntime()
+	f.suggestion = "Yes, move it"
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+
+	// The fetch is a command; running it yields the message the loop would deliver.
+	msg := m.fetchSuggestion()()
+	m.Update(msg)
+	if m.input.Placeholder != "Yes, move it" {
+		t.Fatalf("an empty composer must show the suggestion, got %q", m.input.Placeholder)
+	}
+	if !strings.Contains(m.footerKeysLine(), "tab use suggestion") {
+		t.Errorf("the footer must say how to take it: %q", m.footerKeysLine())
+	}
+
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.input.Value() != "Yes, move it" {
+		t.Fatalf("tab must put the suggestion in the composer, got %q", m.input.Value())
+	}
+	if m.suggestion != "" || m.input.Placeholder == "Yes, move it" {
+		t.Errorf("a taken suggestion must be gone, got %q / %q", m.suggestion, m.input.Placeholder)
+	}
+	if len(f.turns) != 0 {
+		t.Fatalf("taking a suggestion must never send anything, sent %v", f.turns)
+	}
+}
+
+func TestTUISuggestionNeverOverwritesWhatIsTypedOrRuns(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.input.SetValue("my own words")
+	m.Update(suggestionMsg{text: "Yes, go ahead"})
+	if m.suggestion != "" {
+		t.Errorf("a suggestion must not arrive over typed text, got %q", m.suggestion)
+	}
+	m.input.SetValue("")
+	m.working = true
+	m.Update(suggestionMsg{text: "Yes, go ahead"})
+	if m.suggestion != "" {
+		t.Errorf("a suggestion must not arrive while a turn runs, got %q", m.suggestion)
+	}
+	m.working = false
+	m.Update(suggestionMsg{text: "Yes, go ahead"})
+	m.send("hello")
+	if m.suggestion != "" {
+		t.Errorf("sending clears the old prediction, got %q", m.suggestion)
+	}
+}
+
+func TestTUIRightArrowTakesTheSuggestionOnlyWhenEmpty(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.Update(suggestionMsg{text: "What about tomorrow?"})
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if m.input.Value() != "What about tomorrow?" {
+		t.Fatalf("right arrow on an empty composer takes the suggestion, got %q", m.input.Value())
+	}
+	m.Update(suggestionMsg{text: "something else"}) // typed text now: must be ignored
+	m.handleKey(tea.KeyPressMsg{Code: tea.KeyRight})
+	if m.input.Value() != "What about tomorrow?" {
+		t.Errorf("right arrow with text must just move the cursor, composer is %q", m.input.Value())
 	}
 }

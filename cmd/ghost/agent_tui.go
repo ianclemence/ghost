@@ -64,6 +64,9 @@ type spinnerTickMsg struct{}
 // work is in flight — no background work, no wakeups.
 type bgTickMsg struct{}
 
+// suggestionMsg carries the predicted next message for the empty composer.
+type suggestionMsg struct{ text string }
+
 // turnDoneMsg carries the final response of a turn.
 type turnDoneMsg struct {
 	text string
@@ -128,6 +131,9 @@ type agentRuntime interface {
 	// reporting false when there is no such pending question.
 	RespondClarify(questionID, response string) bool
 	ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string, media []string, onChunk func(string), onToolCall func(string, string)) (string, error)
+	// Suggest returns what the owner is most likely to type next, for the empty
+	// message box, or "" when nothing natural follows. It never blocks a turn.
+	Suggest(sessionKey string) string
 	// PendingApproval reports a durable permission request awaiting the owner.
 	PendingApproval(sessionKey string) (id, title, risk string, ok bool)
 	// Contexts: which topic space the session is in (Ghost's native answer to
@@ -158,6 +164,8 @@ type agentRuntime interface {
 type agentTUI struct {
 	loop    agentRuntime
 	session string
+	// suggestion is the predicted next message shown in the empty composer.
+	suggestion string
 
 	input textarea.Model
 	// pastes holds the full text behind each collapsed "[Pasted text #N
@@ -309,7 +317,39 @@ func newAgentTUI(loop agentRuntime, session string) *agentTUI {
 // ─── bubbletea lifecycle ─────────────────────────────────────────────────
 
 func (m *agentTUI) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, spinnerTick())
+	return tea.Batch(textarea.Blink, spinnerTick(), m.fetchSuggestion())
+}
+
+// fetchSuggestion asks the runtime, off the UI loop, what the owner is likely
+// to say next. An empty answer is normal and just leaves the day's line.
+func (m *agentTUI) fetchSuggestion() tea.Cmd {
+	loop, session := m.loop, m.session
+	return func() tea.Msg { return suggestionMsg{text: loop.Suggest(session)} }
+}
+
+// showSuggestion puts the predicted message in the empty composer as its
+// placeholder (Tab or → takes it). With none, the composer falls back to the
+// line for this part of the day.
+func (m *agentTUI) showSuggestion(text string) {
+	m.suggestion = strings.TrimSpace(text)
+	if m.suggestion != "" {
+		m.input.Placeholder = m.suggestion
+	} else {
+		m.input.Placeholder = composerHint(time.Now())
+	}
+}
+
+// takeSuggestion fills the composer with the suggestion when the composer is
+// empty. It reports whether it did; nothing is ever sent by taking it.
+func (m *agentTUI) takeSuggestion() bool {
+	if m.suggestion == "" || strings.TrimSpace(m.input.Value()) != "" {
+		return false
+	}
+	m.input.SetValue(m.suggestion)
+	m.input.CursorEnd()
+	m.showSuggestion("")
+	m.layout()
+	return true
 }
 
 func spinnerTick() tea.Cmd {
@@ -485,7 +525,17 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if bg := m.pollBackground(); bg != nil {
 			cmds = append(cmds, bg)
 		}
+		if msg.err == nil && m.approval == nil {
+			cmds = append(cmds, m.fetchSuggestion())
+		}
 		return m, tea.Batch(cmds...)
+
+	case suggestionMsg:
+		// Only while the owner has the floor and nothing is typed or running.
+		if !m.working && strings.TrimSpace(m.input.Value()) == "" {
+			m.showSuggestion(msg.text)
+		}
+		return m, nil
 
 	case tea.PasteMsg:
 		return m.handlePaste(msg.Content)
@@ -661,10 +711,16 @@ func (m *agentTUI) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.renderTranscript()
 		return m, nil
 
-	case "tab":
-		if items := m.paletteMatches(); len(items) > 0 {
+	case "tab", "right":
+		if items := m.paletteMatches(); len(items) > 0 && msg.String() == "tab" {
 			m.completePalette(palettePick(items, m.input.Value(), m.paletteSel))
 			return m, nil
+		}
+		if m.takeSuggestion() {
+			return m, nil
+		}
+		if msg.String() == "right" {
+			break // an ordinary cursor move
 		}
 		return m, nil
 
@@ -816,6 +872,7 @@ func (m *agentTUI) recallHistory(delta int) {
 // before "thinking"/"searching" is always animating — the tick loop stops
 // when a turn ends and must be restarted on the next turn.
 func (m *agentTUI) send(text string) tea.Cmd {
+	m.showSuggestion("") // the owner has spoken; the old prediction is stale
 	m.history = append(m.history, text)
 	m.histIndex = -1
 	m.paletteSel = 0
@@ -3449,6 +3506,9 @@ func (m *agentTUI) footerKeysLine() string {
 	default:
 		// Idle: Scout parity — command hint left, exit hint right, the same
 		// pairing as the stats line (digest left, model right).
+		if m.suggestion != "" && strings.TrimSpace(m.input.Value()) == "" {
+			return m.footerEnds("tab use suggestion · / commands", "esc quit")
+		}
 		return m.footerEnds("/ commands", "esc quit")
 	}
 	return styleFooterHint.Render(cellTruncate(keys, m.width))

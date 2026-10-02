@@ -4234,6 +4234,20 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	// ── 6c. Files: what the owner has sent to Ghost ─────────────────────
 	// Listable and deletable from every surface. Deleting removes the bytes and
 	// the metadata; nothing else keeps a copy of an upload.
+	// What the owner is most likely to type next, for the empty message box.
+	// A suggestion is only text to accept or ignore; an empty one is normal.
+	mux.HandleFunc("/v1/suggest", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		key := canonicalSessionID(r.URL.Query().Get("session"))
+		sug := agentLoop.SuggestNext(r.Context(), key)
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "suggestion": sug.Text, "source": sug.Source, "for": sug.For,
+		})
+	}))
+
 	mux.HandleFunc("/v1/files", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
