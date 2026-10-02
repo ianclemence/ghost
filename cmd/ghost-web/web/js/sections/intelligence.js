@@ -18,7 +18,9 @@ async function loadAI(container) {
 
   const pm = providerModelsRes.status === 'fulfilled' ? providerModelsRes.value : null;
   const cfg = cfgRes.status === 'fulfilled' ? cfgRes.value : null;
-  const ollamaModels = ollamaRes.status === 'fulfilled' ? (ollamaRes.value.models || []) : [];
+  // Embedding models (nomic-embed-text and the like) cannot hold a conversation:
+  // listing one with a "Use" button invites picking a model that cannot answer.
+  const ollamaModels = (ollamaRes.status === 'fulfilled' ? (ollamaRes.value.models || []) : []).filter(m => !/embed/i.test(m));
   const activeModel = modelRes.status === 'fulfilled' ? modelRes.value : null;
 
   const currentProvider = (pm && pm.provider) || (cfg && cfg.provider) || '';

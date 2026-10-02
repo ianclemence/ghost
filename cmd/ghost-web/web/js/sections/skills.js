@@ -60,12 +60,10 @@ function humanizeSkillDesc(desc) {
 }
 
 // skillGroups buckets skills so everyday capabilities come first and dev
-// tools don't drown them. Unknown/custom skills — including the core
-// primitives (weather, aqi, currency, crypto, find-nearby), which are
-// always-on Ghost verbs — land in More. Connector skills stay visible
+// tools don't drown them. Unknown/custom skills land in More. Connector skills stay visible
 // because they carry the Connect affordance.
 const SKILL_GROUPS = [
-  { title: 'Everyday', sub: 'Schedule, notes, email, and daily tasks.', skills: ['daily-briefing', 'calendar', 'email', 'notion', 'reminders', 'shopping', 'recipe', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'travel', 'flight', 'summarize', 'organizer', 'pdf', 'word-docx', 'excel-xlsx', 'content-creator', 'gog', 'slack', 'proactive-agent-lite', 'stocks', 'rss-feeds', 'reddit-reading', 'humanizer', 'simple-english', 'grounded-citations', 'weekly-review-planning', 'document-to-action-items', 'meeting-action-items', 'email-inbox-triage', 'gif-search', 'maps', 'blocked-page-recovery', 'meme-generation', 'ascii-video', 'songwriting-and-ai-music', 'one-three-one-rule', 'decision-questionnaire', 'creative-ideation'] },
+  { title: 'Everyday', sub: 'Schedule, notes, email, and daily tasks.', skills: ['daily-briefing', 'calendar', 'email', 'notion', 'reminders', 'shopping', 'recipe', 'calculator', 'unit-converter', 'world-clock', 'dictionary', 'translate', 'timer', 'journal', 'quick-capture', 'knowledge-base', 'travel', 'flight', 'summarize', 'organizer', 'pdf', 'word-docx', 'excel-xlsx', 'content-creator', 'gog', 'slack', 'proactive-agent-lite', 'stocks', 'rss-feeds', 'reddit-reading', 'humanizer', 'simple-english', 'grounded-citations', 'weekly-review-planning', 'document-to-action-items', 'meeting-action-items', 'email-inbox-triage', 'gif-search', 'maps', 'blocked-page-recovery', 'meme-generation', 'ascii-video', 'songwriting-and-ai-music', 'one-three-one-rule', 'decision-questionnaire', 'creative-ideation', 'weather', 'aqi', 'currency', 'crypto', 'find-nearby'] },
   { title: 'Smart home & media', sub: 'Devices and content that may need setup.', skills: ['homeassistant', 'camera', 'mobile', 'spotify', 'internet-reading', 'document-convert'] },
   { title: 'System & developer', sub: 'Machine tools and skill building. Enabling may change this machine.', skills: ['system', 'network', 'process-manager', 'tmux', 'git', 'github', 'skill-creator', 'ascii-art', 'healthcheck', 'hardware', 'self-improvement', 'skill-gardener', 'self-improving-compound'] },
 ];
@@ -149,8 +147,13 @@ function skillGroupPanel(container, title, sub, items, integ) {
   if (sub) text.appendChild(GhostUI.h('p', {}, sub));
   head.appendChild(text);
   panel.appendChild(head);
+  panel.classList.add('skill-group');
   const list = GhostUI.h('div', { className: 'ghost-list calm-list' });
-  items.forEach(s => { list.appendChild(buildSkillRow(s, integ)); });
+  items.forEach(s => {
+    const row = buildSkillRow(s, integ);
+    row.dataset.q = (prettySkillName(s.name) + ' ' + humanizeSkillDesc(s.description)).toLowerCase();
+    list.appendChild(row);
+  });
   panel.appendChild(list);
   container.appendChild(panel);
 }
@@ -162,6 +165,26 @@ function renderSkillsList(container, skills, integ) {
     container.appendChild(panel);
     return;
   }
+  // Seventy-odd abilities in one scroll is hard to scan: a search box
+  // narrows the list as you type and hides groups with nothing left.
+  const search = GhostUI.h('input', { className: 'ghost-input skills-search', type: 'search', placeholder: 'Search what Ghost can do\u2026', 'aria-label': 'Search abilities' });
+  const none = GhostUI.h('div', { className: 'panel hidden' }, GhostUI.emptyState('No match', 'Try a different word, or add your own ability.'));
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    let shown = 0;
+    container.querySelectorAll('.skill-group').forEach(panel => {
+      let any = 0;
+      panel.querySelectorAll('[data-q]').forEach(row => {
+        const hit = !q || row.dataset.q.includes(q);
+        row.style.display = hit ? '' : 'none';
+        if (hit) any++;
+      });
+      panel.style.display = any ? '' : 'none';
+      shown += any;
+    });
+    none.classList.toggle('hidden', shown > 0);
+  });
+  container.appendChild(search);
   const byName = {};
   skills.forEach(s => { byName[s.name] = s; });
   const seen = {};
@@ -175,6 +198,7 @@ function renderSkillsList(container, skills, integ) {
   if (rest.length > 0) {
     skillGroupPanel(container, 'More', 'Custom and newly installed skills.', rest, integ);
   }
+  container.appendChild(none);
 }
 
 function buildSkillRow(s, integ) {

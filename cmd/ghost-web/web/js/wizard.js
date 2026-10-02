@@ -329,7 +329,7 @@ const GhostWizard = (() => {
     // instead of showing a code that can't be redeemed.
     screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-title' }, 'Bring your phone.'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-4)' },
-      'You can talk to Ghost right here. To take it with you, connect your phone \u2014 it takes about a minute:'
+      'You talk to Ghost from the Ghost app on your phone, and this page is for looking after it. Connecting your phone takes about a minute:'
     ));
     const how = GhostUI.h('ol', { className: 'type-body text-secondary', style: 'margin:0 auto var(--s-6);padding-left:var(--s-5);max-width:30em;text-align:left;line-height:1.6' });
     for (const line of [
@@ -349,7 +349,7 @@ const GhostWizard = (() => {
     screen.appendChild(GhostUI.h('div', { className: 'wizard-brand' }, GhostUI.ghostMark('xl')));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-display' }, 'Ghost is ready.'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-4)' },
-      'Just talk to it like you would a person. A few things to try:'
+      'This page is where you look after Ghost. To talk to it, use the Ghost app on your phone, or type ghost in a terminal on this machine. Once you are talking, try:'
     ));
     const tries = GhostUI.h('ul', { className: 'type-body text-secondary', style: 'margin:0 auto var(--s-6);padding-left:var(--s-5);max-width:30em;text-align:left;line-height:1.7' });
     for (const line of [

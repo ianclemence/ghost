@@ -3,6 +3,21 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.114] - 2026-10-02
+
+- **The console, reviewed at phone and desktop size.** Every page was checked at
+  both widths; none overflowed or errored. What changed:
+  - **Abilities has a search box**, so finding one of the seventy-odd things
+    Ghost can do no longer means scrolling five screens, and Weather, air
+    quality, currency, crypto and nearby places are listed with the everyday
+    abilities instead of under "Custom and newly installed".
+  - **Embedding models are no longer offered as chat models** under Local
+    models; picking one could not have worked.
+  - **"At a glance" stays two columns on a phone** instead of four tall cards.
+  - **Setup says where to talk to Ghost.** The console is for looking after
+    Ghost, not for chatting; the phone app and the terminal are where you talk
+    to it. The setup screens used to say you could talk to it on that page.
+
 ## [0.24.113] - 2026-10-02
 
 - **Setup page polish, checked in a browser.** The numbered and bulleted lists

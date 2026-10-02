@@ -330,7 +330,9 @@
   .home-approval-actions { width: 100%; }
 }
 @media (max-width: 420px) {
-  .home-tiles { grid-template-columns: minmax(0, 1fr); }
+  .home-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-tile { padding: var(--s-3); }
+  .home-tile-val { font-size: 20px; }
   .home-activity-row { grid-template-columns: 68px 1fr; gap: var(--s-3); }
 }
 
@@ -701,3 +703,6 @@
 .locked-alt summary { cursor: pointer; color: var(--ink-soft); font-weight: 560; }
 .locked-alt summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-xs); }
 .locked-alt p { margin-top: var(--s-2); }
+
+/* Abilities search */
+.skills-search { width: 100%; margin-bottom: var(--s-4); }
