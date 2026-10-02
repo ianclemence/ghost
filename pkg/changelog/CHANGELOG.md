@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.130] - 2026-10-03
+
+- **A browser wait that runs out of time is no longer treated as a hung
+  browser.** Ghost's own safety timeout reworded it as "timed out after 1m30s"
+  and tore the browser session down, even for a 20-second wait Ghost chose
+  itself. Only a step that really hits its own limit gets that treatment now.
+- **On the phone, the live browser card stays.** It disappeared whenever you
+  left the app and came back, because "couldn't reach the Pod for a moment"
+  was read as "the browser is gone". It now asks the Pod what is running when
+  you come back. Watching shows the page's picture only, never its raw
+  accessibility text.
+
 ## [0.24.129] - 2026-10-03
 
 - **No more false "My browser got stuck".** When Ghost waited for a page to

@@ -57,9 +57,15 @@ func executeWithReliability(ctx context.Context, tool Tool, args map[string]inte
 
 	var result *ToolResult
 	var lastErr error
+	// hardTimeout is true only when the tool ran out ITS OWN bound. A tool
+	// that gives up sooner on purpose (a browser wait the model gave 20s)
+	// reports that itself; it is not a hung process, so it must not be
+	// reworded as one or have its session torn down.
+	hardTimeout := false
 	for attempt := 0; ; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
 		result = tool.Execute(attemptCtx, args)
+		hardTimeout = attemptCtx.Err() != nil
 		if attemptCtx.Err() != nil {
 			// The attempt was cancelled/timed out; prefer that as the failure so
 			// a stale result isn't reported as success.
@@ -102,7 +108,7 @@ func executeWithReliability(ctx context.Context, tool Tool, args map[string]inte
 	}
 
 	// Make the failure actionable for the model and the user.
-	if result.TimedOut {
+	if result.TimedOut && hardTimeout {
 		result.ForLLM = fmt.Sprintf("tool %q timed out after %s", tool.Name(), timeout)
 		if ct, ok := tool.(TimeoutCleanupTool); ok {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
