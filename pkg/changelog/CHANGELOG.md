@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.124] - 2026-10-03
+
+- **The phone sees the models each provider really serves.** The list on the
+  Intelligence screen used to be a fixed one built into Ghost. It now asks each
+  connected provider for its own list, like the console does, and says where
+  the answer came from: live from the provider, or Ghost's built-in list with
+  the reason it could not reach it. This is what lets you pick a model after
+  adding a key.
+
 ## [0.24.123] - 2026-10-03
 
 - **Ghost can show an answer as a card.** A weather glance, a flight in

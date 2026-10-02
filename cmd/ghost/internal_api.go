@@ -1878,6 +1878,47 @@ func workspaceFileProtected(rel string) bool {
 	return false
 }
 
+// providerListPayload is what GET /v1/providers answers per provider: whether
+// it is configured, the models it serves, where that list came from ("live",
+// or "catalog" when the provider could not be reached) and, for a configured
+// cloud provider that failed, why. Pure so it can be tested without a network.
+func providerListPayload(cfg *config.Config, discovered map[string]providers.ProviderModels, ollama []string) map[string]interface{} {
+	out := map[string]interface{}{}
+	for name, models := range knownProviderModels {
+		pc := intelligenceProviderConfig(cfg, name)
+		configured := pc != nil && pc.APIKey != ""
+		list, source, errText := models, "catalog", ""
+		if pm, ok := discovered[name]; ok {
+			if len(pm.Models) > 0 {
+				list = pm.Models
+			}
+			if pm.Source != "" {
+				source = pm.Source
+			}
+			if configured && name != "ollama" {
+				errText = pm.Error
+			}
+		}
+		if name == "ollama" {
+			list, source = ollama, "live"
+		}
+		if list == nil {
+			list = []string{}
+		}
+		entry := map[string]interface{}{
+			"configured": configured,
+			"models":     list,
+			"local":      name == "ollama" || name == "vllm",
+			"source":     source,
+		}
+		if errText != "" {
+			entry["error"] = errText
+		}
+		out[name] = entry
+	}
+	return out
+}
+
 // knownProviderModels mirrors the web console's recommended models per
 // provider (used for the provider list and as test defaults). Single
 // source of truth lives in pkg/providers; this alias keeps existing
@@ -5233,29 +5274,25 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			jsonError(w, http.StatusServiceUnavailable, "unavailable", "configuration unavailable")
 			return
 		}
+		// The models each provider actually serves, asked of the provider's own
+		// API (cached; ?refresh=1 asks again now). A provider that cannot be
+		// reached falls back to Ghost's built-in list and says so, so the phone
+		// never presents a guess as the provider's answer.
+		if r.URL.Query().Get("refresh") == "1" {
+			providers.InvalidateModelDiscovery()
+		}
+		dctx, dcancel := context.WithTimeout(r.Context(), 5*time.Second)
+		discovered := providers.DiscoverAll(dctx, cfg)
+		dcancel()
 		ollamaModels := []string{}
 		if models, err := listGatewayOllamaModels(); err == nil {
 			ollamaModels = models
-		}
-		providersMap := map[string]interface{}{}
-		for name, models := range knownProviderModels {
-			pc := intelligenceProviderConfig(cfg, name)
-			configured := pc != nil && pc.APIKey != ""
-			providerModels := models
-			if name == "ollama" {
-				providerModels = ollamaModels
-			}
-			providersMap[name] = map[string]interface{}{
-				"configured": configured,
-				"models":     providerModels,
-				"local":      name == "ollama" || name == "vllm",
-			}
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
 			"ok":        true,
 			"provider":  cfg.Agents.Defaults.Provider,
 			"model":     cfg.Agents.Defaults.Model,
-			"providers": providersMap,
+			"providers": providerListPayload(cfg, discovered, ollamaModels),
 		})
 	}))
 
