@@ -1619,9 +1619,12 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	}
 	requestID := msg.Metadata["request_id"]
 	if requestID == "" {
-		requestID = fmt.Sprintf("req-%d", time.Now().UnixNano())
-		msg.Metadata["request_id"] = requestID
+		requestID = requestIDFrom(ctx)
 	}
+	if requestID == "" {
+		requestID = fmt.Sprintf("req-%d", time.Now().UnixNano())
+	}
+	msg.Metadata["request_id"] = requestID
 	if al.governance != nil {
 		al.governance.TurnStarted(requestID, msg.SessionKey, msg.Channel, turnlog.TrajectoryIDFromContext(ctx))
 	}
@@ -1999,7 +2002,11 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 				if call, refuse := al.resumeBrowserCall(resume, msg.SessionKey, requestID); refuse != nil {
 					toolResult = refuse
 				} else {
+					// The approved step runs now: the card leaves "waiting" and
+					// shows the step, then what the page looks like after it.
+					al.announceBrowserStart(call, msg.SessionKey, browserStepLabel(resume.Tool, resume.Args))
 					toolResult = al.runBrowserTool(ctx, call, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey)
+					al.recordBrowserSurface(call, resume.Tool, toolResult, msg.SessionKey)
 				}
 				al.publishBrowserEvidence(requestID, msg.SessionKey, resume.Tool, toolResult)
 			default:
@@ -3584,9 +3591,14 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				if imgMsg, ok := screenshotImageMessage(toolResult.ScreenshotPath); ok {
 					messages = append(messages, imgMsg)
 				}
-				// The owner asked to see the page: put the image in front of
-				// them, not just in front of the model.
-				al.deliverScreenshot(opts.SessionKey, toolResult.ScreenshotPath)
+				// When the owner asked to see the page, put the image in front
+				// of them as a file. A screenshot Ghost takes to look at a page
+				// for itself is not a delivery: it is already the browser card's
+				// picture, and posting each one as a file filled the thread with
+				// "Browser screenshot" cards nobody asked for.
+				if ownerAskedForPicture(opts.UserMessage) {
+					al.deliverScreenshot(opts.SessionKey, toolResult.ScreenshotPath, al.browserPageEvidence(opts.SessionKey, toolResult.Evidence))
+				}
 			}
 
 			// Record tool usage for curator

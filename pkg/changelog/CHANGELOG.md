@@ -3,6 +3,32 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.131] - 2026-10-03
+
+- **Approving a browser step works.** Tapping Allow on "Ghost wants to type
+  into the page" used to end in "the browser session expired": the turn that
+  asked was recorded as finished, and finishing it closed the very browser
+  your approval was meant to continue. The turn now waits for you, and the
+  approved step picks up where Ghost stopped, on the phone and in the terminal.
+- **Ghost's browser sits in the conversation, under your request.** While it
+  works you see the page, the step it is on ("Opening news.ycombinator.com")
+  and what it has done so far; approvals appear right on that card. When it
+  is done, it settles into one line, "Browsed news.ycombinator.com", with the
+  last picture a tap away. It no longer says "working" under a finished
+  answer, flips to "couldn't finish" when one step misses, or shows an idle
+  computer card that never goes away.
+- **Fewer asks.** Ghost opens search and results pages by their address
+  instead of typing into search boxes, so looking something up no longer
+  stops for your OK.
+- **A screenshot you ask for arrives as the picture**, captioned with the page
+  and time, full screen on a tap. Screenshots Ghost takes to look at a page
+  for itself no longer fill the conversation with "Browser screenshot" files.
+- Every tool says what it is doing in words ("Checking your calendar…",
+  "Checking the flight…") instead of "Working on it…".
+- In the terminal, an approval you left unanswered no longer reopens after
+  every later message, and Ghost's words above an approval are no longer cut
+  off mid-sentence.
+
 ## [0.24.130] - 2026-10-03
 
 - **A browser wait that runs out of time is no longer treated as a hung

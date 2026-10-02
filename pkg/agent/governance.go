@@ -534,10 +534,13 @@ func approvalAskText(capabilityID, tool string, args map[string]interface{}, pen
 // live on the dashboard card until the request expires.
 func approvalAskTextEx(capabilityID, tool string, args map[string]interface{}, req *permissions.Request) string {
 	base := approvalAskText(capabilityID, tool, args, req.ID)
-	where := "Reply here with `allow once`, `always allow`, or `deny` — or tap the card in the dashboard."
-	if !req.ExpiresAt.IsZero() {
-		where += fmt.Sprintf(" The request expires at %s.", req.ExpiresAt.Format("15:04"))
-	}
+	// The phone, the terminal and the console show this ask with its buttons,
+	// on the card beside the work. Only a plain chat app needs the words, so
+	// the model is told that rather than handed phrases and an expiry time to
+	// read out on every surface.
+	where := "The owner sees this ask with Allow and Deny buttons on their screen. " +
+		"In a chat app without buttons they can reply `allow once`, `allow for this task`, or `deny`. " +
+		"Tell them in one sentence what you want to do and why; do not list these phrases where buttons exist, and do not mention when it expires."
 	return base + "\n" + where
 }
 

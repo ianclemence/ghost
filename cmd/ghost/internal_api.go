@@ -885,6 +885,62 @@ func toolStatusLabel(name, args string) string {
 		return "Looking at the image…"
 	case "image_generate":
 		return "Making an image…"
+	case "system_status":
+		return "Checking your Pod…"
+	case "networking":
+		return "Checking the network…"
+	case "weather_now":
+		return "Checking the weather…"
+	case "aqi_now":
+		return "Checking the air…"
+	case "flight_status":
+		return "Checking the flight…"
+	case "currency_convert":
+		return "Converting…"
+	case "crypto_price":
+		return "Checking the price…"
+	case "places_nearby":
+		return "Looking nearby…"
+	case "connections":
+		return "Checking your connected apps…"
+	case "email_search":
+		return "Looking through your email…"
+	case "email_send", "message":
+		return "Sending…"
+	case "docs_search":
+		return "Looking through your documents…"
+	case "code_search":
+		return "Looking through your code…"
+	case "calendar":
+		return "Checking your calendar…"
+	case "media_play":
+		return "Starting playback…"
+	case "device", "hass":
+		return "Talking to your devices…"
+	case "memory_explain":
+		return "Checking memory…"
+	case "append_file":
+		return "Writing…"
+	case "doc_parser":
+		return "Reading the document…"
+	case "video_frames":
+		return "Watching the video…"
+	case "schedule":
+		return "Setting that up…"
+	case "publish_artifact", "present_card":
+		return "Putting it together…"
+	case "tts":
+		return "Recording it…"
+	case "todo", "goal":
+		return "Updating the plan…"
+	case "batch_delegate":
+		return "Splitting up the work…"
+	case "clarify":
+		return "Checking with you…"
+	case "skill_manage":
+		return "Updating skills…"
+	case "update":
+		return "Updating Ghost…"
 	}
 	return "Working on it…"
 }
@@ -3211,6 +3267,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			"request_id": req.RequestID,
 			"state":      "agent_processing",
 		})
+		ctx = agent.WithRequestID(ctx, req.RequestID)
 		response, err := agentLoop.ProcessDirectWithChannel(
 			ctx,
 			req.Content,

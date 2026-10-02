@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -237,7 +238,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 		if al.livePlane != nil && liveSessionID != "" {
 			al.livePlane.SetControlOwner(liveSessionID, live.OwnerGhost)
 			al.livePlane.SetTask(liveSessionID, taskID)
-			al.announceSurface(sessionKey, liveSessionID, live.KindBrowser)
+			// Announced once, by announceBrowserStart, just before the step.
 		}
 		return browserGateResult{decision: "allow", call: tools.BrowserCall{
 			Owner: owner, ContextID: contextID, TaskID: taskID,
@@ -276,6 +277,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 		al.livePlane.Register(sess.ID, live.KindBrowser)
 		al.livePlane.SetState(sess.ID, live.StateWaiting)
 		al.livePlane.SetTask(sess.ID, taskID)
+		al.livePlane.SetActivity(sess.ID, browserWaitLabel(tool))
 		al.announceSurface(sessionKey, sess.ID, live.KindBrowser)
 	}
 	return browserGateResult{decision: "wait", pendingID: req.ID,
@@ -441,7 +443,7 @@ func (al *AgentLoop) maybeRunBrowserTool(toolCtx context.Context, reg *tools.Too
 		// Put the live browser card in front of the owner now, not after the
 		// step: a first page load can take over a minute, and until this
 		// point there was nothing on screen to say Ghost was in a browser.
-		al.announceBrowserStart(decision.call, opts.SessionKey)
+		al.announceBrowserStart(decision.call, opts.SessionKey, browserStepLabel(tc.Name, tc.Arguments))
 		res := al.runBrowserTool(toolCtx, decision.call, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, opts.SessionKey)
 		al.publishBrowserEvidence(opts.RequestID, opts.SessionKey, tc.Name, res)
 		al.recordBrowserSurface(decision.call, tc.Name, res, opts.SessionKey)
@@ -471,14 +473,98 @@ func (al *AgentLoop) runBrowserTool(ctx context.Context, call tools.BrowserCall,
 
 // announceBrowserStart registers the browser surface and tells the owner's
 // devices before the step runs. The observation arrives when it finishes.
-func (al *AgentLoop) announceBrowserStart(call tools.BrowserCall, sessionKey string) {
+func (al *AgentLoop) announceBrowserStart(call tools.BrowserCall, sessionKey, step string) {
 	if al.livePlane == nil || call.SessionID == "" {
 		return
 	}
 	al.livePlane.Register(call.SessionID, live.KindBrowser)
 	al.livePlane.SetTask(call.SessionID, call.TaskID)
 	al.livePlane.SetState(call.SessionID, live.StateActive)
+	al.livePlane.SetActivity(call.SessionID, step)
 	al.announceSurface(sessionKey, call.SessionID, live.KindBrowser)
+}
+
+// browserPageEvidence is what is known about the page a screenshot shows: the
+// step's own evidence, filled in from the live surface (a screenshot step
+// reports no title of its own).
+func (al *AgentLoop) browserPageEvidence(sessionKey string, ev map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{}
+	for k, v := range ev {
+		out[k] = v
+	}
+	if al == nil || al.livePlane == nil {
+		return out
+	}
+	var best *live.Surface
+	for _, s := range al.livePlane.List() {
+		if s.Kind == live.KindBrowser && s.Session == sessionKey && (best == nil || s.Updated.After(best.Updated)) {
+			cp := s
+			best = &cp
+		}
+	}
+	if best != nil {
+		if t, _ := out["title"].(string); t == "" {
+			out["title"] = best.Obs.Title
+		}
+		if d, _ := out["domain"].(string); d == "" {
+			out["domain"] = best.Obs.Domain
+		}
+	}
+	return out
+}
+
+// browserWaitLabel says what Ghost is waiting for the owner's OK to do. Never
+// the text it would type: that can be private.
+func browserWaitLabel(tool string) string {
+	switch tool {
+	case "browser_type", "browser_fill":
+		return "Wants to type into the page"
+	case "browser_click":
+		return "Wants to click on the page"
+	case "browser_press":
+		return "Wants to press a key on the page"
+	case "browser_submit":
+		return "Wants to submit a form"
+	case "browser_login":
+		return "Wants to sign in"
+	case "browser_upload":
+		return "Wants to upload a file"
+	}
+	return "Wants to act on the page"
+}
+
+// browserStepLabel is what the owner's card says Ghost is doing during one
+// browser step, in plain words. Never page text, element references, typed
+// values or full addresses: a domain at most.
+func browserStepLabel(tool string, args map[string]interface{}) string {
+	switch tool {
+	case "browser_navigate":
+		if raw, _ := args["url"].(string); raw != "" {
+			if u, err := url.Parse(strings.TrimSpace(raw)); err == nil && u.Hostname() != "" {
+				return "Opening " + strings.TrimPrefix(u.Hostname(), "www.")
+			}
+		}
+		return "Opening a page"
+	case "browser_click":
+		return "Clicking"
+	case "browser_type", "browser_fill":
+		return "Typing"
+	case "browser_press":
+		return "Pressing a key"
+	case "browser_scroll":
+		return "Scrolling"
+	case "browser_wait":
+		return "Waiting for the page"
+	case "browser_screenshot":
+		return "Looking at the page"
+	case "browser_submit":
+		return "Submitting"
+	case "browser_login":
+		return "Signing in"
+	case "browser_snapshot", "browser_find", "browser_a11y", "browser_console", "browser_network":
+		return "Reading the page"
+	}
+	return "Working in the browser"
 }
 
 // browserStepSummary is the one plain line the activity feed shows for a
@@ -531,13 +617,23 @@ func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, r
 	if al.livePlane == nil || call.SessionID == "" || res == nil {
 		return
 	}
-	obs := live.Observation{Title: "Ghost browser"}
-	if res.IsError {
-		al.livePlane.SetState(call.SessionID, live.StateFailed)
-	} else {
-		al.livePlane.SetState(call.SessionID, live.StateActive)
-		obs.State = live.StateActive
+	al.livePlane.Register(call.SessionID, live.KindBrowser)
+	al.livePlane.SetTask(call.SessionID, call.TaskID)
+	al.livePlane.SetActivity(call.SessionID, "")
+	if !res.IsError {
+		al.livePlane.AddStep(call.SessionID, browserStepSummary(tool, res))
 	}
+	if res.IsError {
+		// One step not working is not the task failing: Ghost usually tries
+		// another way, and the turn's outcome settles the surface. Marking it
+		// failed here flipped the card to "Ghost couldn't finish that" mid-task
+		// and replaced what the page looked like with nothing.
+		al.livePlane.SetState(call.SessionID, live.StateActive)
+		al.announceSurface(sessionKey, call.SessionID, live.KindBrowser)
+		return
+	}
+	al.livePlane.SetState(call.SessionID, live.StateActive)
+	obs := live.Observation{State: live.StateActive}
 	if u, _ := res.Evidence["url"].(string); u != "" {
 		obs.URL = u
 	}
@@ -555,9 +651,22 @@ func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, r
 	if res.ScreenshotPath != "" {
 		obs.ScreenshotPath = res.ScreenshotPath
 	}
-	_ = tool
-	al.livePlane.Register(call.SessionID, live.KindBrowser)
-	al.livePlane.SetTask(call.SessionID, call.TaskID)
+	// A step that reports less than the page (a click returns no title) keeps
+	// what was already known, so the card never forgets which page it is on.
+	if prev, ok := al.livePlane.Snapshot(call.SessionID); ok {
+		if obs.URL == "" {
+			obs.URL = prev.Obs.URL
+		}
+		if obs.Domain == "" {
+			obs.Domain = prev.Obs.Domain
+		}
+		if obs.Title == "" && obs.Domain == prev.Obs.Domain {
+			obs.Title = prev.Obs.Title
+		}
+		if obs.ScreenshotPath == "" {
+			obs.ScreenshotPath = prev.Obs.ScreenshotPath
+		}
+	}
 	al.livePlane.Observe(call.SessionID, obs)
 	al.announceSurface(sessionKey, call.SessionID, live.KindBrowser)
 }

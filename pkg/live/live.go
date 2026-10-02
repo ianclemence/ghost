@@ -75,6 +75,9 @@ type Observation struct {
 	// set, the serving layer reads and streams the bytes; the observation
 	// JSON never embeds raw image data or paths.
 	ScreenshotPath string `json:"-"`
+	// Picture says a picture of the page is available from the observation
+	// endpoint, so a phone asks for it only when there is one.
+	Picture bool `json:"picture,omitempty"`
 }
 
 // UserLease is the human takeover lease. It is scoped to one authenticated
@@ -99,6 +102,19 @@ type Surface struct {
 	Obs      Observation `json:"observation"`
 	Updated  time.Time   `json:"updated"`
 	Sequence int64       `json:"sequence"` // monotonic per-surface change counter
+	// Started is when the surface was first registered: the phone places the
+	// surface in the conversation at the request that opened it.
+	Started time.Time `json:"started"`
+	// Session is the conversation whose turn is using the surface, so a phone
+	// shows it in that conversation and nowhere else. Empty until a turn
+	// announces it (the always-present local computer has none while idle).
+	Session string `json:"session,omitempty"`
+	// Activity is what Ghost is doing on the surface right now, in plain
+	// words ("Opening news.ycombinator.com"). Cleared when the work settles.
+	Activity string `json:"activity,omitempty"`
+	// Steps is what Ghost has done on the surface so far, oldest first, one
+	// plain line each ("Opened en.wikipedia.org"). Bounded; never page text.
+	Steps []string `json:"steps,omitempty"`
 	// Task binds the surface to the unit of work that created it. It is
 	// internal-only (never serialized): completion is settled per task,
 	// and task ids must not become a client-addressable namespace.
@@ -153,8 +169,9 @@ func (r *Registry) Register(id string, kind Kind) {
 		}
 	}
 	r.seq++
+	now := time.Now()
 	s := &Surface{ID: id, Kind: kind, State: StateCreated, Control: OwnerNone,
-		OwnerID: r.owner, Updated: time.Now(), Sequence: r.seq}
+		OwnerID: r.owner, Updated: now, Started: now, Sequence: r.seq}
 	r.byID[id] = s
 }
 
@@ -172,6 +189,7 @@ func (r *Registry) Snapshot(id string) (*Surface, bool) {
 		l := *s.Lease
 		cp.Lease = &l
 	}
+	cp.Steps = append([]string(nil), s.Steps...)
 	return &cp, true
 }
 
@@ -195,6 +213,7 @@ func (r *Registry) List() []Surface {
 			l := *s.Lease
 			cp.Lease = &l
 		}
+		cp.Steps = append([]string(nil), s.Steps...)
 		out = append(out, cp)
 	}
 	for i := 1; i < len(out); i++ {
@@ -234,6 +253,7 @@ func (r *Registry) Observe(id string, o Observation) bool {
 		s.State = StateActive
 	}
 	o.State = s.State
+	o.Picture = o.ScreenshotPath != ""
 	s.Obs = o
 	s.bump(time.Now())
 	return true
@@ -426,6 +446,88 @@ func (r *Registry) SetTask(id, task string) {
 	}
 	s.Task = task
 	s.bump(time.Now())
+}
+
+// SetSession records the conversation using a surface. Internal callers only.
+func (r *Registry) SetSession(id, session string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.byID[id]
+	if !ok || session == "" || s.Session == session {
+		return
+	}
+	s.Session = session
+	s.bump(time.Now())
+}
+
+// SetActivity records what Ghost is doing on a surface right now.
+func (r *Registry) SetActivity(id, activity string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.byID[id]
+	if !ok || s.Activity == activity {
+		return
+	}
+	s.Activity = activity
+	s.bump(time.Now())
+}
+
+// maxSteps bounds the step trail a surface keeps.
+const maxSteps = 8
+
+// AddStep appends one plain line to what Ghost has done on a surface. The
+// same line twice in a row (three clicks on one page) is kept once.
+func (r *Registry) AddStep(id, step string) {
+	if step == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.byID[id]
+	if !ok {
+		return
+	}
+	if n := len(s.Steps); n > 0 && s.Steps[n-1] == step {
+		return
+	}
+	s.Steps = append(s.Steps, step)
+	if len(s.Steps) > maxSteps {
+		s.Steps = append([]string(nil), s.Steps[len(s.Steps)-maxSteps:]...)
+	}
+	s.bump(time.Now())
+}
+
+// SettleSession settles the live surfaces one conversation's turn was using
+// and returns the ones it changed, so the caller can tell the owner's
+// devices. Like CompleteTask, user-held and already-terminal surfaces keep
+// their truthful state. Keyed by conversation rather than task: by the time
+// a turn ends its job may already be closed, and re-resolving the task then
+// named a different one, leaving the surface "active" for half an hour.
+func (r *Registry) SettleSession(session string, failed bool) []Surface {
+	if session == "" {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []Surface
+	now := time.Now()
+	for _, s := range r.byID {
+		if s.Session != session || s.Control == OwnerUser {
+			continue
+		}
+		switch s.State {
+		case StateActive, StateStarting, StateCreated, StateWaiting, StateDisconnected:
+			if failed {
+				s.State = StateFailed
+			} else {
+				s.State = StateCompleted
+			}
+			s.Activity = ""
+			s.bump(now)
+			out = append(out, *s)
+		}
+	}
+	return out
 }
 
 // CompleteTask settles every surface of one finished task that Ghost

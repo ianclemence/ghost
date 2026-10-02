@@ -29,6 +29,8 @@ type stubBrowserTool struct {
 	noEvidence bool
 	failWith   bool
 	output     string
+	// evidence is extra page evidence merged into a successful result.
+	evidence map[string]interface{}
 }
 
 func (s *stubBrowserTool) Name() string        { return s.name }
@@ -153,6 +155,9 @@ func (s *stubBrowserTool) run(ctx context.Context, args map[string]interface{}) 
 		res := &tools.ToolResult{ForLLM: s.output, ForUser: s.output}
 		if !s.noEvidence {
 			res.Evidence = stubEvidence(bag, "ok")
+			for k, v := range s.evidence {
+				res.Evidence[k] = v
+			}
 		}
 		return res
 	}

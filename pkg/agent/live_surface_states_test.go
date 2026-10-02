@@ -74,19 +74,25 @@ func TestGateSurfaceStatesAndAnnouncements(t *testing.T) {
 		t.Fatalf("bad announcement: %v", meta)
 	}
 
-	// 3. Execution error marks the surface failed, never successful.
+	// 3. One step erroring is not the task failing: the surface stays active
+	// (Ghost usually tries another way) and is still announced. Only the
+	// turn's outcome settles it, and a failed turn fails it.
 	h.stubs["browser_snapshot"].failWith = true
 	res, _, _ = al.maybeRunBrowserTool(h.toolCtx(), al.tools, tc2, h.opts("sess-fail"), nil)
 	if !res.IsError {
 		t.Fatalf("stub failure must propagate as error")
 	}
-	failed := false
 	for _, surf := range al.livePlane.List() {
-		if surf.Kind == live.KindBrowser && surf.State == live.StateFailed {
-			failed = true
+		if surf.Kind == live.KindBrowser && surf.Session == "sess-fail" && surf.State != live.StateActive {
+			t.Fatalf("a failed step must leave the surface active, got %q", surf.State)
 		}
 	}
-	if !failed {
-		t.Fatalf("expected a failed browser surface: %+v", al.livePlane.List())
+	if n := al.SettleSessionSurfaces("sess-fail", "failed"); n != 1 {
+		t.Fatalf("a failed turn must settle its surface, got %d", n)
+	}
+	for _, surf := range al.livePlane.List() {
+		if surf.Session == "sess-fail" && surf.State != live.StateFailed {
+			t.Fatalf("a failed turn must fail its surface, got %q", surf.State)
+		}
 	}
 }

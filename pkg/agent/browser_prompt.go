@@ -13,6 +13,7 @@ package agent
 import (
 	"encoding/base64"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -91,10 +92,23 @@ func screenshotImageMessage(path string) (providers.Message, bool) {
 	}, true
 }
 
+// pictureAsk matches a request to see something as an image: "screenshot",
+// "screen shot", "picture of", "photo of", "show me what it looks like".
+var pictureAsk = regexp.MustCompile(`(?i)\bscreen ?shots?\b|\b(picture|photo|image|snapshot) of\b|\bshow me (what|how) it looks\b|\bsend me (a|the) (picture|photo|image)\b`)
+
+// ownerAskedForPicture reports whether the owner's message asks to see an
+// image of the page, as opposed to Ghost looking at the page for itself.
+func ownerAskedForPicture(userMessage string) bool {
+	return pictureAsk.MatchString(userMessage)
+}
+
 // deliverScreenshot stores an explicit browser screenshot with the owner's
 // files and publishes it as an image card in the conversation. Best effort: a
 // failure here never fails the turn, because the model still has the image.
-func (al *AgentLoop) deliverScreenshot(sessionKey, path string) {
+//
+// The card is captioned with what it shows: the page's title, and its site
+// and time underneath.
+func (al *AgentLoop) deliverScreenshot(sessionKey, path string, evidence ...map[string]interface{}) {
 	if al == nil || al.tools == nil || al.workspace == "" {
 		return
 	}
@@ -112,6 +126,15 @@ func (al *AgentLoop) deliverScreenshot(sessionKey, path string) {
 		return
 	}
 	if pt, ok := t.(*tools.PublishArtifactTool); ok {
-		_ = pt.PublishFile(sessionKey, "Browser screenshot", "What Ghost's browser was showing at "+time.Now().Format("15:04"), it.Path)
+		title, sub := "The page", time.Now().Format("15:04")
+		if len(evidence) > 0 && evidence[0] != nil {
+			if t, _ := evidence[0]["title"].(string); strings.TrimSpace(t) != "" {
+				title = strings.TrimSpace(t)
+			}
+			if d, _ := evidence[0]["domain"].(string); strings.TrimSpace(d) != "" {
+				sub = strings.TrimPrefix(strings.TrimSpace(d), "www.") + " · " + sub
+			}
+		}
+		_ = pt.PublishFile(sessionKey, title, sub, it.Path)
 	}
 }

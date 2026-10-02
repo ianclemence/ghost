@@ -179,6 +179,10 @@ type gatewayRuntime struct {
 	baseURL string
 	http    *http.Client
 
+	// outcome is the last turn's terminal outcome as the daemon stated it.
+	outcomeMu sync.Mutex
+	outcome   string
+
 	// Model and context reads back the footer on every frame. Cache them
 	// briefly so a stalled daemon can never freeze rendering; writes
 	// bust the cache so picks apply instantly.
@@ -638,6 +642,14 @@ func (g *gatewayRuntime) RespondClarify(questionID, response string) bool {
 // session, if any. It mirrors AgentLoop.PendingApproval: id, owner-language
 // title, risk string. Resolution still travels through the governed resume
 // path (grant phrases as normal turns), never around the broker.
+// LastOutcome is the daemon's stated outcome for the last turn ("success",
+// "waiting_for_permission", ...), empty when it never said.
+func (g *gatewayRuntime) LastOutcome() string {
+	g.outcomeMu.Lock()
+	defer g.outcomeMu.Unlock()
+	return g.outcome
+}
+
 func (g *gatewayRuntime) PendingApproval(sessionKey string) (id, title, risk string, ok bool) {
 	var res struct {
 		Requests []struct {
@@ -1042,6 +1054,9 @@ func (g *gatewayRuntime) ProcessDirectWithChannel(ctx context.Context, content, 
 			}
 		}
 	}
+	g.outcomeMu.Lock()
+	g.outcome = outcome
+	g.outcomeMu.Unlock()
 	if err := scanner.Err(); err != nil && !isStreamClosedError(err) {
 		return strings.TrimSpace(text.String()), fmt.Errorf("stream interrupted: %w", err)
 	}

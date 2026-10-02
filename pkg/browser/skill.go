@@ -48,6 +48,19 @@ Find returns fresh refs that SUPERSEDE the last snapshot's refs.
 - upload is high impact: local files leave the device; approval names
   the exact paths. download writes only into Ghost's download directory.
 
+## Fewest asks
+Reading never needs the owner's OK; typing, clicking and submitting do.
+To look something up, open the results address directly instead of typing
+into a search box: en.wikipedia.org/w/index.php?search=raspberry+pi,
+google.com/search?q=..., google.com/travel/flights?q=flights+from+BKK+to+SZX+on+2026-10-09,
+youtube.com/results?search_query=... Act on the page only when no address
+gets there.
+
+## When a step needs an OK
+Say in one sentence what you want to do and why. The owner's screen shows
+the approval with its buttons: never list the reply phrases, never quote
+expiry times, never claim the step ran.
+
 ## Unknown outcomes
 A timeout or dropped connection ([browser.timeout], [browser.disconnected])
 means the action MAY ALREADY HAVE RUN. Do not repeat a mutating action

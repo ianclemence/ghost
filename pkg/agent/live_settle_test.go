@@ -206,3 +206,97 @@ func TestStaleSurfaceControlRefused(t *testing.T) {
 		t.Fatalf("empty session must settle nothing")
 	}
 }
+
+// When a turn ends, the owner's devices hear about it. The phone's card used
+// to say "Ghost is working…" under the finished reply because the settle was
+// silent.
+func TestSettleAnnouncesEachSettledSurface(t *testing.T) {
+	h, b := settleHarness(t)
+	ch, unsub := b.SubscribeOutbound("settle-announce", false, 32)
+	defer unsub()
+	tc := fakeToolCall("browser_snapshot", map[string]interface{}{})
+	if res, _, _ := h.loop.maybeRunBrowserTool(h.toolCtx(), h.loop.tools, tc, h.opts("sess-say"), nil); res.IsError {
+		t.Fatalf("snapshot failed: %s", res.ForLLM)
+	}
+	for len(ch) > 0 {
+		<-ch
+	}
+	if n := h.loop.SettleSessionSurfaces("sess-say", "success"); n != 1 {
+		t.Fatalf("expected 1 settled surface, got %d", n)
+	}
+	select {
+	case msg := <-ch:
+		if msg.Metadata["type"] != "surface_update" || msg.Metadata["session_id"] != "sess-say" {
+			t.Fatalf("bad settle announcement: %v", msg.Metadata)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("settling must announce the change")
+	}
+	for _, s := range h.loop.livePlane.List() {
+		if s.Kind == live.KindBrowser && (s.State != live.StateCompleted || s.Activity != "") {
+			t.Fatalf("settled surface must be completed with no activity, got %+v", s)
+		}
+	}
+}
+
+// The card says what Ghost is doing during a step, and keeps the page it knows
+// when a later step reports less.
+func TestBrowserSurfaceCarriesSessionStepAndPage(t *testing.T) {
+	h, _ := settleHarness(t)
+	h.stubs["browser_snapshot"].evidence = map[string]interface{}{"url": "https://news.ycombinator.com/", "domain": "news.ycombinator.com", "title": "Hacker News"}
+	tc := fakeToolCall("browser_snapshot", map[string]interface{}{})
+	if res, _, _ := h.loop.maybeRunBrowserTool(h.toolCtx(), h.loop.tools, tc, h.opts("sess-page"), nil); res.IsError {
+		t.Fatalf("snapshot failed: %s", res.ForLLM)
+	}
+	h.stubs["browser_snapshot"].evidence = map[string]interface{}{}
+	if res, _, _ := h.loop.maybeRunBrowserTool(h.toolCtx(), h.loop.tools, tc, h.opts("sess-page"), nil); res.IsError {
+		t.Fatalf("snapshot failed: %s", res.ForLLM)
+	}
+	var s *live.Surface
+	for _, x := range h.loop.livePlane.List() {
+		if x.Kind == live.KindBrowser {
+			cp := x
+			s = &cp
+		}
+	}
+	if s == nil || s.Session != "sess-page" || s.Started.IsZero() {
+		t.Fatalf("surface must carry its conversation and start time, got %+v", s)
+	}
+	if s.Obs.Title != "Hacker News" || s.Obs.Domain != "news.ycombinator.com" {
+		t.Fatalf("a step that reports no page must keep the known page, got %+v", s.Obs)
+	}
+	if s.Activity != "" {
+		t.Fatalf("activity is cleared once the step is done, got %q", s.Activity)
+	}
+}
+
+func TestBrowserStepLabelIsPlainWords(t *testing.T) {
+	cases := map[string]struct {
+		tool string
+		args map[string]interface{}
+	}{
+		"Opening news.ycombinator.com": {"browser_navigate", map[string]interface{}{"url": "https://www.news.ycombinator.com/item?id=1"}},
+		"Opening a page":               {"browser_navigate", map[string]interface{}{"url": "not a url"}},
+		"Typing":                       {"browser_type", map[string]interface{}{"ref": "e3", "text": "secret"}},
+		"Reading the page":             {"browser_snapshot", nil},
+		"Working in the browser":       {"browser_mystery", nil},
+	}
+	for want, c := range cases {
+		if got := browserStepLabel(c.tool, c.args); got != want {
+			t.Errorf("browserStepLabel(%s) = %q, want %q", c.tool, got, want)
+		}
+	}
+}
+
+func TestOwnerAskedForPicture(t *testing.T) {
+	for msg, want := range map[string]bool{
+		"Take a screenshot of the flights page":                    true,
+		"send me a picture of the results":                         true,
+		"open hacker news and tell me the top 3":                   false,
+		"Open Google Flights and check Bangkok to Shenzhen prices": false,
+	} {
+		if got := ownerAskedForPicture(msg); got != want {
+			t.Errorf("ownerAskedForPicture(%q) = %v, want %v", msg, got, want)
+		}
+	}
+}

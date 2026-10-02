@@ -474,7 +474,15 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// If the turn is blocked on a durable approval, show it as a card
 			// rather than a wall of text. The paused call resumes through the
 			// governed path when the owner answers.
-			if id, title, risk, ok := m.loop.PendingApproval(m.session); ok {
+			// Only when this turn stopped for it: an older approval the owner
+			// left unanswered used to reopen the panel after every later turn.
+			waitingHere := true
+			if o, ok := m.loop.(interface{ LastOutcome() string }); ok {
+				if out := o.LastOutcome(); out != "" && out != "waiting_for_permission" {
+					waitingHere = false
+				}
+			}
+			if id, title, risk, ok := m.loop.PendingApproval(m.session); ok && waitingHere {
 				m.approval = &pendingApproval{id: id, title: title, risk: risk}
 				// Driving a browser is many steps (type, press, click). Highlight
 				// "this task" so the natural Enter covers the whole search instead
@@ -482,6 +490,16 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.approvalSel = 0
 				if strings.Contains(strings.ToLower(title), "browser") {
 					m.approvalSel = 1
+				}
+				// What Ghost said about it stays readable above the panel: the
+				// streamed reply used to stop mid-sentence here.
+				if m.streamHeaderShown {
+					if tail := m.streamTail(); tail != "" {
+						m.lastFlush += "\n" + tail
+						tailCmd = printCmd(tail)
+					}
+				} else if text := strings.TrimSpace(msg.text); text != "" {
+					m.append(entry{kind: entryAssistant, text: text, dur: time.Since(m.turnStart), at: time.Now(), via: m.viaFor(msg.served)})
 				}
 				m.append(entry{kind: entryNotice, text: "needs your approval"})
 			} else if m.streamHeaderShown {

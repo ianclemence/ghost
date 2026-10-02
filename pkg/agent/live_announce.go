@@ -27,18 +27,33 @@ func (al *AgentLoop) SettleSessionSurfaces(sessionKey, outcome string) int {
 }
 
 func (al *AgentLoop) completeSessionTask(sessionKey string, failed bool) int {
+	settled := al.livePlane.SettleSession(sessionKey, failed)
+	// Surfaces announced before this change carry no session: settle them
+	// by task the old way so nothing is stranded across an upgrade.
 	taskID, _, err := al.resolveBrowserTask(sessionKey)
-	if err != nil || taskID == "" {
-		return 0
+	if err == nil && taskID != "" {
+		al.livePlane.CompleteTask(taskID, failed)
 	}
-	n := al.livePlane.CompleteTask(taskID, failed)
-	// The task is terminal: release its browser session now rather than
+	// The task is terminal: release its browser sessions now rather than
 	// waiting for the TTL. A waiting task never reaches here (SettleSession
 	// leaves it alone), so an active user-controlled session is not closed.
 	if ledger, lerr := al.browserSessionLedger(); lerr == nil && ledger != nil {
-		_, _ = ledger.CloseForTask(taskID)
+		if taskID != "" {
+			_, _ = ledger.CloseForTask(taskID)
+		}
+		for _, s := range settled {
+			if s.Kind == live.KindBrowser {
+				_ = ledger.Close(s.ID)
+			}
+		}
 	}
-	return n
+	// Tell the owner's devices: without this the phone's card kept saying
+	// "Ghost is working…" under a finished reply, because nothing ever told
+	// it the work was over.
+	for _, s := range settled {
+		al.announceSurface(sessionKey, s.ID, s.Kind)
+	}
+	return len(settled)
 }
 
 // announceSurface tells the owner's devices that a live surface changed.
@@ -49,6 +64,9 @@ func (al *AgentLoop) completeSessionTask(sessionKey string, failed bool) int {
 func (al *AgentLoop) announceSurface(sessionKey, surfaceID string, kind live.Kind) {
 	if al == nil || surfaceID == "" || sessionKey == "" {
 		return
+	}
+	if al.livePlane != nil {
+		al.livePlane.SetSession(surfaceID, sessionKey)
 	}
 	b := al.Bus()
 	if b == nil {
