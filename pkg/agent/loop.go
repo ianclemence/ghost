@@ -1081,6 +1081,15 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	return al, nil
 }
 
+// PersonalContext returns the live Personal Context store the agent reads
+// from. Anything that changes beliefs while Ghost is running (the console's
+// Forget and Correct) must write through this instance: a second copy opened
+// from the same file would change the log but leave the agent still believing
+// the old value until a restart.
+func (al *AgentLoop) PersonalContext() *personalcontext.Store {
+	return al.pcStore
+}
+
 func (al *AgentLoop) Config() *config.Config {
 	return al.cfg
 }

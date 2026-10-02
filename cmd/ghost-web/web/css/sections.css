@@ -706,3 +706,25 @@
 
 /* Abilities search */
 .skills-search { width: 100%; margin-bottom: var(--s-4); }
+
+/* Memory: actions are easy to see and to tap. */
+.self-entry .ghost-row-trailing { flex-wrap: wrap; gap: var(--s-1); }
+.self-entry .ghost-btn-ghost {
+  min-height: 40px; padding: 0 var(--s-3);
+  color: var(--ink); font-weight: 600;
+  border: 1px solid var(--line-strong); background: var(--paper);
+}
+.self-entry .ghost-btn-ghost:hover { background: var(--paper-hover); }
+.memory-editor { padding: var(--s-3) var(--s-4); background: var(--paper-sunken); border-radius: var(--r-sm); margin: 0 0 var(--s-2); }
+.memory-editor .ghost-input { width: 100%; }
+.memory-editor-actions { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
+@media (max-width: 600px) {
+  .self-entry { flex-wrap: wrap; }
+  .self-entry .ghost-row-content { flex-basis: 100%; }
+  .self-entry .ghost-row-trailing { width: 100%; margin-top: var(--s-2); }
+  .self-entry .ghost-btn-ghost { flex: 1 1 0; }
+}
+
+/* Activity: the outcome reads with its item. */
+.activity-title-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.activity-status { font-size: var(--t-foot); font-weight: 500; }

@@ -2,11 +2,9 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/ianclemence/ghost/pkg/personalcontext"
@@ -222,30 +220,8 @@ func (t *MemoryCorrectTool) change(ctx context.Context, session string, args map
 			"Unless the owner just said this themselves, ask which is right; then call again with confirmed=true.",
 			old, cur.CreatedAt.Format("2 Jan"), nv))
 	}
-	raw, _ := json.Marshal(nv)
-	quote := strings.TrimSpace(RequestMessage(ctx))
-	if r := []rune(quote); len(r) > 200 {
-		quote = string(r[:200])
-	}
-	next := personalcontext.Entry{
-		ID:         personalcontext.NewEntryID(),
-		Kind:       cur.Kind,
-		Subject:    cur.Subject,
-		Predicate:  cur.Predicate,
-		Value:      raw,
-		Status:     personalcontext.StatusCurrent,
-		Lifetime:   cur.Lifetime,
-		Scopes:     cur.Scopes,
-		Confidence: 0.95,
-		Quote:      quote,
-		Sources: []personalcontext.Source{{
-			Type: personalcontext.SourceConversation, Kind: personalcontext.SourceUserCorrected,
-			Ref: session, Timestamp: time.Now().UTC(),
-		}},
-	}
-	if _, err := t.store.Supersede(cur.Subject, cur.Predicate, next); err != nil {
+	if _, _, err := t.store.Correct(cur.ID, nv, RequestMessage(ctx), session); err != nil {
 		return ErrorResult(fmt.Sprintf("Could not update that: %v", err))
 	}
-	t.clearCandidates(cur.Subject, cur.Predicate)
 	return NewToolResult(fmt.Sprintf("Updated. Was: %q. Now: %q.", old, nv))
 }

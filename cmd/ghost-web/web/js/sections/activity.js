@@ -47,7 +47,10 @@ async function loadActivity(container) {
     }
     const row = GhostUI.h('div', { className: 'ghost-row' });
     const c = GhostUI.h('div', { className: 'ghost-row-content' });
-    c.appendChild(GhostUI.h('div', { className: 'ghost-row-title' }, item.title || 'Activity'));
+    // The outcome sits beside the title, not at the far edge of a wide screen
+    // where the eye has to cross the page to connect it to its item.
+    const titleLine = GhostUI.h('div', { className: 'ghost-row-title activity-title-line' }, item.title || 'Activity');
+    c.appendChild(titleLine);
     const word = GhostUI.activityWord(item.state);
     const summary = (item.summary || '').trim();
     const bits = [];
@@ -58,9 +61,7 @@ async function loadActivity(container) {
     if (item.why) c.appendChild(GhostUI.h('div', { className: 'ghost-row-subtitle type-foot text-tertiary', style: 'margin-top:2px' }, item.why));
     row.appendChild(c);
     if (word && word.toLowerCase() !== summary.toLowerCase()) {
-      const tr = GhostUI.h('div', { className: 'ghost-row-trailing' });
-      tr.appendChild(GhostUI.h('span', { className: 'status-pill' }, GhostUI.statusDot(GhostUI.activityTone(item.state)), word));
-      row.appendChild(tr);
+      titleLine.appendChild(GhostUI.h('span', { className: 'status-pill activity-status' }, GhostUI.statusDot(GhostUI.activityTone(item.state)), word));
     }
     listEl.appendChild(row);
   });

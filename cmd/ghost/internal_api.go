@@ -4585,7 +4585,15 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			return
 		}
 		if req.ID != "" {
-			report, err := personalcontext.ForgetPipeline(workspaceDir, req.ID, req.Reason)
+			var (
+				report personalcontext.ForgetReport
+				err    error
+			)
+			if live := agentLoop.PersonalContext(); live != nil {
+				report, err = personalcontext.ForgetPipelineWith(live, workspaceDir, req.ID, req.Reason)
+			} else {
+				report, err = personalcontext.ForgetPipeline(workspaceDir, req.ID, req.Reason)
+			}
 			if err != nil {
 				jsonError(w, http.StatusNotFound, "not_found", "that fact wasn't found")
 				return
@@ -4600,6 +4608,45 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			return
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "remaining": count})
+	}))
+
+	// Owner correction from the console: replace what Ghost believes with what
+	// the owner types. The old value stays in history; the new one carries the
+	// owner's words as its receipt.
+	mux.HandleFunc("/v1/memory/self/correct", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			ID    string `json:"id"`
+			Value string `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+			return
+		}
+		store := agentLoop.PersonalContext()
+		if store == nil {
+			var oerr error
+			if store, oerr = personalcontext.Open(workspaceDir); oerr != nil {
+				jsonError(w, http.StatusInternalServerError, "io_error", "could not read saved facts")
+				return
+			}
+		}
+		old, next, err := store.Correct(req.ID, req.Value, req.Value, "console")
+		switch {
+		case errors.Is(err, personalcontext.ErrBadCorrection):
+			jsonError(w, http.StatusBadRequest, "invalid_request", "type a different value, up to 300 characters")
+			return
+		case errors.Is(err, personalcontext.ErrNotFound), errors.Is(err, personalcontext.ErrNoCurrentEntry):
+			jsonError(w, http.StatusNotFound, "not_found", "that fact wasn't found or has already changed")
+			return
+		case err != nil:
+			jsonError(w, http.StatusInternalServerError, "io_error", "could not save the correction")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "was": personalcontext.Value(old), "now": personalcontext.Value(next), "id": next.ID})
 	}))
 
 	// workspaceFileProtected (package function below) filters the generic

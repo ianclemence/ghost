@@ -153,11 +153,46 @@ function renderFacts(container, facts, curated) {
     });
     const btn = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button' }, 'Forget');
     btn.addEventListener('click', () => forgetBtn({ id: e.id }));
+
+    // Correct: change what Ghost believes without forgetting it. The old value
+    // stays in its history; what is typed here becomes the receipt.
+    const fix = GhostUI.h('button', { className: 'ghost-btn ghost-btn-ghost', type: 'button' }, 'Correct');
+    const editor = GhostUI.h('div', { className: 'receipt memory-editor', style: 'display:none' });
+    fix.addEventListener('click', () => {
+      if (editor.style.display !== 'none') { editor.style.display = 'none'; return; }
+      editor.innerHTML = '';
+      editor.style.display = 'block';
+      editor.appendChild(GhostUI.h('div', { className: 'type-foot text-tertiary', style: 'margin-bottom:var(--s-2)' },
+        'What is true now? Ghost keeps the old version in its history.'));
+      const input = GhostUI.h('input', { className: 'ghost-input', type: 'text', maxlength: '300', 'aria-label': 'Corrected memory' });
+      input.value = e.value || '';
+      const save = GhostUI.h('button', { className: 'ghost-btn ghost-btn-primary', type: 'button' }, 'Save');
+      const cancel = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', type: 'button' }, 'Cancel');
+      cancel.addEventListener('click', () => { editor.style.display = 'none'; });
+      const submit = async () => {
+        const value = input.value.trim();
+        if (!value || value === (e.value || '').trim()) { GhostUI.toast('Type what is true now.'); return; }
+        save.disabled = true;
+        try {
+          await GhostAPI.proxyPost('/v1/memory/self/correct', { id: e.id, value: value });
+          GhostUI.toast('Updated');
+          loadMemory(container);
+        } catch (err) { save.disabled = false; GhostUI.toast('Couldn\u2019t save that. It may have changed already.', 'err'); }
+      };
+      save.addEventListener('click', submit);
+      input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') submit(); if (ev.key === 'Escape') editor.style.display = 'none'; });
+      const actions = GhostUI.h('div', { className: 'memory-editor-actions' }, save, cancel);
+      editor.appendChild(input);
+      editor.appendChild(actions);
+      input.focus();
+    });
     tr.appendChild(why);
+    tr.appendChild(fix);
     tr.appendChild(btn);
     row.appendChild(tr);
     wrap.appendChild(row);
     wrap.appendChild(detail);
+    wrap.appendChild(editor);
     return wrap;
   }
 

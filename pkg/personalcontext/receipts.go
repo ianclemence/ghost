@@ -143,11 +143,17 @@ type ForgetReport struct {
 // serve it (the digest and the curated profile). This is the difference
 // between deleting a line and actually forgetting.
 func ForgetPipeline(workspace, id, reason string) (ForgetReport, error) {
-	report := ForgetReport{ClaimID: id}
 	store, err := Open(workspace)
 	if err != nil {
-		return report, err
+		return ForgetReport{ClaimID: id}, err
 	}
+	return ForgetPipelineWith(store, workspace, id, reason)
+}
+
+// ForgetPipelineWith is ForgetPipeline on a store the caller already holds,
+// so a running agent's own in-memory view is the one that forgets.
+func ForgetPipelineWith(store *Store, workspace, id, reason string) (ForgetReport, error) {
+	report := ForgetReport{ClaimID: id}
 	if _, err := store.ForgetWithReason(id, reason); err != nil {
 		return report, err
 	}

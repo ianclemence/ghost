@@ -3,6 +3,20 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.115] - 2026-10-02
+
+- **You can correct a memory from the console.** Each item on the Memory page
+  now has Correct next to Why? and Forget: type what is true now and Ghost
+  replaces the belief, keeping the old version in its history and your words as
+  the receipt.
+- **Forgetting from the console now takes effect straight away.** It used to
+  change the saved file while the running Ghost kept believing the forgotten
+  fact until its next restart. Forget and Correct now go through the live
+  Ghost.
+- **Memory buttons are easier to see and tap**, full width on a phone.
+- **Activity shows each outcome beside its item** instead of at the far edge of
+  a wide screen.
+
 ## [0.24.114] - 2026-10-02
 
 - **The console, reviewed at phone and desktop size.** Every page was checked at
