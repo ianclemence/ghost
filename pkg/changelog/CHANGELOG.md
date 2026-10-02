@@ -3,6 +3,23 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.123] - 2026-10-03
+
+- **Ghost can show an answer as a card.** A weather glance, a flight in
+  progress, a plan for the day, a few options side by side: when a card says it
+  better than a paragraph, Ghost presents one on your phone. A card is built
+  only from a fixed set of blocks (a big number, facts, a list, a timeline, a
+  progress bar, a note, a code snippet), and every field is checked before it is
+  sent: nothing in a card can run, open a link or style itself. It can offer up
+  to three choices, and a choice only ever sends a reply to Ghost, as if you had
+  typed it, or puts the card away. Surfaces that cannot draw cards (the
+  terminal, a text channel) get the same answer as plain text.
+- **Cards stay where they were shown.** They are saved, so a conversation reads
+  the same after a restart, and a card you have answered puts itself away on
+  every device.
+- New: `POST /v1/cards/resolve` records what you chose on a card.
+- Console and terminal are unchanged.
+
 ## [0.24.122] - 2026-10-02
 
 - **The menu button lines up with the page.** On a phone, the menu icon sat
