@@ -218,3 +218,10 @@ body { font-feature-settings: "cv11", "ss03"; letter-spacing: -0.006em; }
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
 }
+
+/* Icon-only buttons are a square, not a pill with the pill's side padding
+   (which pushed the menu icon 28px in from the content). */
+.ghost-btn-icon { padding: 0; width: 40px; height: 40px; min-height: 40px; justify-content: center; border-radius: var(--r-pill); }
+/* The menu icon is drawn inset inside its 40px button; pull the button out by
+   that inset so the visible lines start on the same left edge as the content. */
+.nav-toggle { margin-left: -13px; }
