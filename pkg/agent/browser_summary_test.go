@@ -9,7 +9,7 @@ import (
 
 func TestBrowserStepSummary(t *testing.T) {
 	ok := &tools.ToolResult{Evidence: map[string]interface{}{"domain": "www.google.com", "text": "- generic"}}
-	if got := browserStepSummary("browser_navigate", ok); got != "Opened www.google.com" {
+	if got := browserStepSummary("browser_navigate", ok); got != "Opened google.com" {
 		t.Errorf("navigate = %q", got)
 	}
 	if got := browserStepSummary("browser_snapshot", ok); got != "" {

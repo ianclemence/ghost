@@ -300,3 +300,24 @@ func TestOwnerAskedForPicture(t *testing.T) {
 		}
 	}
 }
+
+// A follow-up in a conversation that was just browsing keeps the browser
+// ("send me a screenshot of that results page" names no site); another
+// conversation does not inherit it.
+func TestRecentBrowserWorkIsPerConversation(t *testing.T) {
+	h, _ := settleHarness(t)
+	if h.loop.recentBrowserWork("sess-follow") {
+		t.Fatalf("no browser work yet")
+	}
+	tc := fakeToolCall("browser_snapshot", map[string]interface{}{})
+	if res, _, _ := h.loop.maybeRunBrowserTool(h.toolCtx(), h.loop.tools, tc, h.opts("sess-follow"), nil); res.IsError {
+		t.Fatalf("snapshot failed: %s", res.ForLLM)
+	}
+	h.loop.SettleSessionSurfaces("sess-follow", "success")
+	if !h.loop.recentBrowserWork("sess-follow") {
+		t.Fatalf("a follow-up right after browsing must keep the browser")
+	}
+	if h.loop.recentBrowserWork("sess-other") {
+		t.Fatalf("another conversation must not inherit the browser")
+	}
+}

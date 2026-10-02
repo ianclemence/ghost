@@ -57,7 +57,9 @@ youtube.com/results?search_query=... Act on the page only when no address
 gets there.
 
 ## When a step needs an OK
-Say in one sentence what you want to do and why. The owner's screen shows
+Attempt it: the runtime asks the owner with a card and resumes on their yes.
+Never stop to ask in words for a step you have not attempted; that leaves
+them nothing to tap. Then say in one sentence what you want to do and why. The owner's screen shows
 the approval with its buttons: never list the reply phrases, never quote
 expiry times, never claim the step ran.
 

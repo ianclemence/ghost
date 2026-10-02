@@ -3157,6 +3157,20 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		activeProfile = al.toolProfile
 	}
 	activeTools := tools.FilterToolsForTurn(al.tools, activeProfile, opts.UserMessage, len(opts.Media) > 0)
+	// A follow-up to browser work keeps the browser. Tools are picked from the
+	// words of each message, and "send me a screenshot of that results page"
+	// names no site: the model was never handed the browser it had used one
+	// message earlier, and told the owner it couldn't take screenshots.
+	if al.recentBrowserWork(opts.SessionKey) {
+		for _, name := range tools.FilterNamesByProfile(activeProfile, tools.BrowserFollowUpToolNames()) {
+			if _, ok := activeTools.Get(name); ok {
+				continue
+			}
+			if t, ok := al.tools.Get(name); ok {
+				activeTools.Register(t)
+			}
+		}
+	}
 	// The owner explicitly asked for a command: offer exec for this turn so
 	// the model can actually attempt it. Visibility only — the broker still
 	// decides execution (exec is high-impact, never auto-authorized).

@@ -3,6 +3,19 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.132] - 2026-10-03
+
+- **Follow-ups keep the browser.** "Send me a screenshot of that results
+  page" right after a search got "I can't take screenshots": tools are picked
+  from the words of each message, and that one names no site. A conversation
+  that was just browsing now keeps its browser.
+- **Ghost asks with a button, not in words.** When the next browser step needs
+  your OK, Ghost tries it so your screen shows the approval; it no longer
+  stops to ask in a sentence that leaves you nothing to tap.
+- On the phone, a browser approval offers "Allow for this task" first, like
+  the terminal: a search is several steps, and "once" covered one keystroke.
+- The browser card's trail names the site ("Typed into en.wikipedia.org").
+
 ## [0.24.131] - 2026-10-03
 
 - **Approving a browser step works.** Tapping Allow on "Ghost wants to type

@@ -484,6 +484,21 @@ func (al *AgentLoop) announceBrowserStart(call tools.BrowserCall, sessionKey, st
 	al.announceSurface(sessionKey, call.SessionID, live.KindBrowser)
 }
 
+// recentBrowserWork reports whether this conversation used the browser within
+// a browser session's lifetime, so a follow-up keeps the browser tools.
+func (al *AgentLoop) recentBrowserWork(sessionKey string) bool {
+	if al == nil || al.livePlane == nil || sessionKey == "" {
+		return false
+	}
+	cutoff := time.Now().Add(-30 * time.Minute)
+	for _, s := range al.livePlane.List() {
+		if s.Kind == live.KindBrowser && s.Session == sessionKey && s.Updated.After(cutoff) {
+			return true
+		}
+	}
+	return false
+}
+
 // browserPageEvidence is what is known about the page a screenshot shows: the
 // step's own evidence, filled in from the live surface (a screenshot step
 // reports no title of its own).
@@ -585,6 +600,7 @@ func browserStepSummary(tool string, res *tools.ToolResult) string {
 		return msg
 	}
 	domain, _ := res.Evidence["domain"].(string)
+	domain = strings.TrimPrefix(domain, "www.")
 	switch tool {
 	case "browser_navigate":
 		if domain != "" {
@@ -621,7 +637,22 @@ func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, r
 	al.livePlane.SetTask(call.SessionID, call.TaskID)
 	al.livePlane.SetActivity(call.SessionID, "")
 	if !res.IsError {
-		al.livePlane.AddStep(call.SessionID, browserStepSummary(tool, res))
+		// A step that reports no page of its own (typing) is named after
+		// the page Ghost is on.
+		stepRes := res
+		if d, _ := res.Evidence["domain"].(string); d == "" {
+			if prev, ok := al.livePlane.Snapshot(call.SessionID); ok && prev.Obs.Domain != "" {
+				ev := map[string]interface{}{}
+				for k, v := range res.Evidence {
+					ev[k] = v
+				}
+				ev["domain"] = prev.Obs.Domain
+				cp := *res
+				cp.Evidence = ev
+				stepRes = &cp
+			}
+		}
+		al.livePlane.AddStep(call.SessionID, browserStepSummary(tool, stepRes))
 	}
 	if res.IsError {
 		// One step not working is not the task failing: Ghost usually tries

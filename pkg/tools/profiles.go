@@ -283,11 +283,18 @@ var turnIntentTools = []struct {
 	{[]string{"browser", "website", "web site", "open page", "open url", "open a page",
 		"webpage", "web page", "navigate to", "fill in", "fill out", "form",
 		"site", "visit", "landing page", "scroll", "click on", "dropdown",
-		"checkbox", "the page", "this page", "web app"},
+		"checkbox", "the page", "this page", "that page", "results page", "screenshot of", "web app"},
 		browserIntentToolNames()},
 	{[]string{"checkout", "place order", "submit order", "buy now", "pay for"}, []string{"browser_submit"}},
 	{[]string{"upload", "attach a file", "file input", "attach a document"}, []string{"browser_upload"}},
 	{[]string{"computer", "desktop", "screen", "on the computer", "on the desktop", "computer screen", "settings window", "ui", "interface"}, []string{"computer_inspect_ui", "computer_screenshot", "computer_click", "computer_type", "computer_press_key"}},
+}
+
+// BrowserFollowUpToolNames is the browser surface a follow-up in a
+// conversation that was just using the browser keeps ("send me a screenshot
+// of that", "now sort by price"): observe + act, never submit or upload.
+func BrowserFollowUpToolNames() []string {
+	return browserIntentToolNames()
 }
 
 // browserIntentToolNames is the browser surface any browser-intent
