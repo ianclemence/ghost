@@ -395,6 +395,10 @@ func main() {
 		stateCmd()
 	case "update":
 		updateCmd()
+	case "__unit":
+		// Internal: the updater asks the staged binary for its own unit
+		// templates so a system update refreshes units from the new release.
+		unitCmd(os.Args[2:])
 	case "auto-update", "updater":
 		if command == "updater" {
 			deprecationWarning("updater", "auto-update")

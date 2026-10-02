@@ -66,36 +66,41 @@ func updateCmd() {
 	// Default: release channel. Fall back to the dev/build path when the
 	// checkout is the source of truth on this machine (no published assets),
 	// but never require root for a user-scoped install.
-	updateReleaseChannel(scope, dryRun, force)
+	if err := updateReleaseChannel(scope, dryRun, force); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
-// updateReleaseChannel installs a verified release. It resolves the target
-// from GitHub Releases; if a binary asset is published it downloads and
-// verifies it (sha256 + optional Ed25519) and installs that, otherwise it
-// falls back to building the pinned tag from a detached checkout. Either way
-// it never builds the dirty working tree. User scope needs no root.
-func updateReleaseChannel(scope appliance.ScopePaths, dryRun, force bool) {
-	ghostDir := findGhostDir()
+// updateReleaseChannel deploys the latest GitHub release: a verified prebuilt
+// binary when the release has one for this platform, otherwise the release
+// tag built from a throwaway checkout (update_release.go). It never builds the
+// owner's working tree, which may be older than the release or dirty.
+func updateReleaseChannel(scope appliance.ScopePaths, dryRun, force bool) error {
 	current := ghostVersion()
 
 	rel, err := resolveRelease(offline())
 	if err != nil {
-		// No release channel reachable: fall back to the local tag.
-		target := gitTagAtCheckout(ghostDir)
+		// No release channel reachable: fall back to the local tag, if this
+		// machine has a checkout at all.
+		ghostDir := locateGhostDir()
+		target := ""
+		if ghostDir != "" {
+			target = gitTagAtCheckout(ghostDir)
+		}
 		if target == "" {
-			fmt.Printf("Could not resolve a release and no local tag found: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("could not resolve a release (%v) and there is no local checkout to fall back to", err)
 		}
 		fmt.Printf("Release channel unavailable (%v); deploying local tag %s.\n", err, target)
 		if !force && target == current {
 			fmt.Println("Already current (" + current + "). Use --force to redeploy.")
-			return
+			return nil
 		}
 		if dryRun {
-			return
+			return nil
 		}
 		buildAndDeploy(scope, ghostDir, force)
-		return
+		return nil
 	}
 
 	target := rel.Version
@@ -103,29 +108,18 @@ func updateReleaseChannel(scope appliance.ScopePaths, dryRun, force bool) {
 	if !force && !appliance.IsNewer(target, current) {
 		fmt.Println("Already current.")
 		printGhostNotes(current)
-		return
+		return nil
 	}
 	if dryRun {
-		kind := "build the pinned tag"
-		if asset, ok := pickGhostAsset(rel); ok {
-			kind = "download and verify " + asset.Name + ""
+		kind := "fetch the release tag and build it"
+		if _, ok := rel.FindAsset(appliance.BinaryAssetName("ghost", runtimeGOOS(), runtimeArch())); ok {
+			kind = "download and verify the prebuilt binary"
 		}
 		fmt.Printf("[dry-run] would %s and install into %s (scope: %s, root: %v)\n", kind, scope.BinDir, scope.Scope, scope.NeedsRoot())
-		return
+		return nil
 	}
 	fmt.Printf("Deploying %s...\n", target)
-
-	if asset, ok := pickGhostAsset(rel); ok {
-		if err := installReleaseAsset(scope, rel, asset); err != nil {
-			return
-		}
-		printNotesFor(target)
-		return
-	}
-
-	// No published asset: build the pinned tag (detached, never the working
-	// tree) so the install is still reproducible and version-stamped.
-	buildAndDeploy(scope, ghostDir, force)
+	return deployRelease(realUpdateEnv(), scope, rel)
 }
 
 // ghostRepo is the release repository.
@@ -142,123 +136,11 @@ func resolveRelease(isOffline bool) (*appliance.Release, error) {
 	if isOffline {
 		return nil, fmt.Errorf("offline")
 	}
-	client := appliance.NewGitHubClient(ghostRepo)
+	client := releaseClient()
 	if v := strings.TrimSpace(os.Getenv("GHOST_VERSION")); v != "" {
 		return client.ByTag(v)
 	}
 	return client.Latest()
-}
-
-// pickGhostAsset selects the platform binary asset for this machine.
-func pickGhostAsset(rel *appliance.Release) (appliance.Asset, bool) {
-	want := "ghost_" + runtimeGOOS() + "_" + runtimeArch()
-	for _, a := range rel.Assets {
-		if strings.Contains(strings.ToLower(a.Name), want) || strings.Contains(strings.ToLower(a.Name), "ghost-linux-"+runtimeArch()) {
-			return a, true
-		}
-	}
-	return appliance.Asset{}, false
-}
-
-// installReleaseAsset downloads, verifies, and atomically installs a release
-// binary, then restarts the service in the matching scope.
-func installReleaseAsset(scope appliance.ScopePaths, rel *appliance.Release, asset appliance.Asset) error {
-	stage, err := os.MkdirTemp("", "ghost-rel-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(stage)
-	dst := filepath.Join(stage, "ghost")
-	// Refuse to start when the install directory cannot hold the binary plus
-	// headroom: a full disk used to surface as a silent failure or a
-	// truncated install.
-	need := uint64(asset.Size)
-	if need < 64<<20 {
-		need = 64 << 20
-	}
-	if err := appliance.EnsureDiskSpace(scope.BinDir, need*2); err != nil {
-		return err
-	}
-	client := appliance.NewGitHubClient(ghostRepo)
-	fmt.Printf("  Downloading %s...\n", asset.Name)
-	if err := client.Download(asset.URL, dst); err != nil {
-		return err
-	}
-
-	var wantSum string
-	if sum, ok := pickAsset(rel, "checksums"); ok {
-		sumPath := filepath.Join(stage, sum.Name)
-		if err := client.Download(sum.URL, sumPath); err == nil {
-			if data, rerr := os.ReadFile(sumPath); rerr == nil {
-				if want := parseChecksums(string(data))[asset.Name]; want != "" {
-					if err := appliance.VerifySHA256(dst, want); err != nil {
-						return err
-					}
-					wantSum = want
-					fmt.Println("  Checksum verified.")
-				}
-			}
-		}
-	}
-
-	if sig, ok := pickAsset(rel, ".sig"); ok {
-		pub := strings.TrimSpace(os.Getenv("GHOST_RELEASE_PUBKEY"))
-		sigPath := filepath.Join(stage, sig.Name)
-		if pub != "" && client.Download(sig.URL, sigPath) == nil {
-			if data, rerr := os.ReadFile(sigPath); rerr == nil {
-				if err := appliance.VerifyEd25519(dst, pub, strings.TrimSpace(string(data))); err != nil {
-					return err
-				}
-				fmt.Println("  Signature verified.")
-			}
-		}
-	}
-
-	target := scope.BinDir + "/ghost"
-	if scope.NeedsRoot() && os.Geteuid() != 0 {
-		if err := runSudo("install", "-m", "0755", dst, target); err != nil {
-			return err
-		}
-	} else {
-		if err := appliance.AtomicInstall(dst, target); err != nil {
-			return err
-		}
-	}
-	fmt.Printf("  Installed %s\n", target)
-
-	// AtomicInstall can still be raced by a full disk; prove the installed
-	// binary is the verified one before declaring success.
-	if wantSum != "" {
-		if err := appliance.VerifySHA256(target, wantSum); err != nil {
-			return fmt.Errorf("installed binary failed verification: %w", err)
-		}
-		fmt.Println("  Verified installed binary.")
-	}
-	restartScope(scope)
-	_ = changelog.MarkSeen(ghostDataDir(), rel.Version)
-	fmt.Printf("Updated %s → %s\n", ghostVersion(), rel.Version)
-	return nil
-}
-
-func pickAsset(rel *appliance.Release, substr string) (appliance.Asset, bool) {
-	for _, a := range rel.Assets {
-		if strings.Contains(strings.ToLower(a.Name), strings.ToLower(substr)) {
-			return a, true
-		}
-	}
-	return appliance.Asset{}, false
-}
-
-// parseChecksums parses a sha256sums file into name->hex.
-func parseChecksums(data string) map[string]string {
-	out := map[string]string{}
-	for _, line := range strings.Split(data, "\n") {
-		f := strings.Fields(line)
-		if len(f) == 2 {
-			out[strings.TrimPrefix(f[1], "*")] = strings.ToLower(f[0])
-		}
-	}
-	return out
 }
 
 // restartScope reloads and restarts the service in the detected scope.
@@ -390,7 +272,9 @@ func ghostCheck(scope appliance.ScopePaths) {
 	if rel, err := resolveRelease(offline()); err == nil {
 		target = rel.Version
 	} else {
-		target = gitTagAtCheckout(findGhostDir())
+		if dir := locateGhostDir(); dir != "" {
+			target = gitTagAtCheckout(dir)
+		}
 	}
 	fmt.Printf("Installed: %s\n", current)
 	if target != "" {
@@ -699,25 +583,32 @@ func refreshSystemUnits(ghostDir, binDir string) {
 		if err != nil {
 			continue
 		}
-		want := renderUnit(string(tpl), binDir)
-		path := "/etc/systemd/system/" + name + ".service"
-		have, err := os.ReadFile(path)
-		if err != nil || string(have) == want {
-			continue
-		}
-		tmp, err := os.CreateTemp("", name+"-unit-*")
-		if err != nil {
-			continue
-		}
-		tmp.WriteString(want)
-		tmp.Close()
-		_ = runSudo("cp", path, path+".bak")
-		if err := runSudo("install", "-m", "0644", tmp.Name(), path); err != nil {
-			fmt.Printf("  Could not refresh %s.service: %v\n", name, err)
-		} else {
-			fmt.Printf("  Refreshed %s.service (previous kept as %s.service.bak)\n", name, name)
-		}
-		os.Remove(tmp.Name())
+		refreshUnit(runSudo, name, string(tpl), binDir)
+	}
+}
+
+// refreshUnit renders one unit from its template and installs it when it
+// differs from what is installed (keeping the old one as .bak). A unit that
+// isn't installed is left alone.
+func refreshUnit(sudo func(string, ...string) error, name, tpl, binDir string) {
+	want := renderUnit(tpl, binDir)
+	path := "/etc/systemd/system/" + name + ".service"
+	have, err := os.ReadFile(path)
+	if err != nil || string(have) == want {
+		return
+	}
+	tmp, err := os.CreateTemp("", name+"-unit-*")
+	if err != nil {
+		return
+	}
+	defer os.Remove(tmp.Name())
+	tmp.WriteString(want)
+	tmp.Close()
+	_ = sudo("cp", path, path+".bak")
+	if err := sudo("install", "-m", "0644", tmp.Name(), path); err != nil {
+		fmt.Printf("  Could not refresh %s.service: %v\n", name, err)
+	} else {
+		fmt.Printf("  Refreshed %s.service (previous kept as %s.service.bak)\n", name, name)
 	}
 }
 
@@ -814,10 +705,24 @@ func updaterCmd() {
 func checkAndUpdate() {
 	fmt.Println("Checking for updates...")
 	scope := appliance.DetectScope()
-	updateReleaseChannel(scope, false, false)
+	if err := updateReleaseChannel(scope, false, false); err != nil {
+		fmt.Printf("Update failed: %v\n", err)
+	}
 }
 
 func findGhostDir() string {
+	if dir := locateGhostDir(); dir != "" {
+		return dir
+	}
+	fmt.Println("Error: Ghost directory not found")
+	os.Exit(1)
+	return ""
+}
+
+// locateGhostDir finds a git checkout of Ghost, or returns "" when there is
+// none (an install that came from a release has no checkout, and must still be
+// able to update).
+func locateGhostDir() string {
 	// Try environment variable
 	if dir := os.Getenv("GHOST_DIR"); dir != "" {
 		return dir
@@ -835,7 +740,6 @@ func findGhostDir() string {
 		filepath.Join(home, "ghost"),
 		filepath.Join(home, ".ghost"),
 		"/var/ghost",
-		"/home/ianclemence/ghost",
 	}
 
 	// When running as root, also check /home/*  for the repo
@@ -854,8 +758,5 @@ func findGhostDir() string {
 			return dir
 		}
 	}
-
-	fmt.Println("Error: Ghost directory not found")
-	os.Exit(1)
 	return ""
 }
