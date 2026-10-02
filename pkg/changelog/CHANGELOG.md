@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.128] - 2026-10-03
+
+- **Searches and page reads show in Activity.** Only failures used to appear,
+  so a turn that worked looked like one that broke. Looking things up on the
+  web and reaching outside services now show as steps ("Searched the web").
+- **Your Pod screen reads in words.** "Needs attention" says "Disk pressure"
+  and "Skills", not `disk_pressure`, and the internal memory model
+  (nomic-embed-text) is no longer listed as one you could use.
+
 ## [0.24.127] - 2026-10-03
 
 - **The phone can see the browser Ghost is using.** Your phone's live

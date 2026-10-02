@@ -20,3 +20,16 @@ func TestBrowserStepSummary(t *testing.T) {
 		t.Error("a failure must carry its reason")
 	}
 }
+
+func TestActivityWorthy(t *testing.T) {
+	for _, c := range []string{"web.search", "web.fetch", "email.send"} {
+		if !activityWorthy(c) {
+			t.Errorf("%s should be shown in Activity", c)
+		}
+	}
+	for _, c := range []string{"memory.recall", "file.read", "exec.shell", ""} {
+		if activityWorthy(c) {
+			t.Errorf("%s is bookkeeping and should stay out of Activity", c)
+		}
+	}
+}

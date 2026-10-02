@@ -22,6 +22,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/contexts"
 	"github.com/ianclemence/ghost/pkg/permissions"
+	"github.com/ianclemence/ghost/pkg/product"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
 
@@ -197,12 +198,36 @@ func (g *Governance) ToolRan(requestID, sessionKey, tool, trajectoryID string, f
 		}
 	}
 	// ToolStarted is transient by taxonomy (never persisted); completed
-	// and failed are durable outcomes.
+	// and failed are durable outcomes. A completed tool is internal by
+	// default, which hid every search and page read from Activity: only
+	// failures showed, so a turn that worked read as one that broke. The
+	// things Ghost does out in the world are shown ("Searched the web").
+	vis := product.Visibility("")
+	if !failed {
+		if c, _ := payload["capability"].(string); activityWorthy(c) {
+			vis = product.VisUserMessage
+		}
+	}
 	g.Events.Publish(&cevents.Event{
 		Type: typ, RequestID: requestID, SessionID: sessionKey,
 		GhostID: g.GhostID, AgentID: g.AgentID, TrajectoryID: trajectoryID, Status: status,
-		Payload: payload,
+		Visibility: vis,
+		Payload:    payload,
 	})
+}
+
+// activityWorthy reports whether a successful capability is something the
+// owner would want to see in Activity: looking things up on the web, reaching
+// outside services, devices and media. Memory, file and shell bookkeeping
+// stays out: it is Ghost thinking, not Ghost acting.
+func activityWorthy(capabilityID string) bool {
+	for _, m := range []string{"web.", "weather", "aqi", "places", "currency", "crypto",
+		"email", "message", "device", "media", "mcp", "artifact"} {
+		if strings.Contains(capabilityID, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // CapabilityDone records the terminal capability outcome.
