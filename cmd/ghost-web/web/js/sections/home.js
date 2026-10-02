@@ -10,14 +10,20 @@ async function loadHome(container) {
 
   // Header: greeting + one honest status line.
   const header = GhostUI.h('header', { className: 'page-head home-head' });
+  const headText = GhostUI.h('div', { className: 'home-head-text' });
   const greet = GhostUI.h('h1', { id: 'home-greet' }, greetingFor(new Date().getHours()) + '.');
-  header.appendChild(greet);
+  headText.appendChild(greet);
   const statusLine = GhostUI.h('p', { className: 'home-statusline', role: 'status', 'aria-live': 'polite' });
   const dot = GhostUI.h('span', { className: 'home-status-dot', 'aria-hidden': 'true' });
   const statusText = GhostUI.h('span', {}, 'Reading Ghost…');
   statusLine.appendChild(dot);
   statusLine.appendChild(statusText);
-  header.appendChild(statusLine);
+  headText.appendChild(statusLine);
+  header.appendChild(headText);
+  // Ghost's presence, made visible: it breathes slowly when all is well and
+  // quickens when Ghost is waiting on you.
+  const orb = GhostUI.h('div', { className: 'presence-orb', 'data-state': 'idle', 'aria-hidden': 'true' });
+  header.appendChild(orb);
   view.appendChild(header);
 
   const needs = homeCard('Needs you', null);
@@ -58,6 +64,7 @@ async function loadHome(container) {
 
   const overall = computeOverall(doctor, health);
   dot.className = 'home-status-dot home-status-dot-' + overall.state;
+  orb.dataset.state = overall.state === 'ok' ? 'idle' : (overall.state === 'offline' ? 'offline' : 'attention');
   const active = activeModel.status === 'fulfilled' && activeModel.value && activeModel.value.active;
   const ghostInfo = (identity.status === 'fulfilled' && identity.value && identity.value.ghost) || {};
   const who = ghostInfo.name && ghostInfo.name !== 'Ghost' ? ghostInfo.name : 'Ghost';

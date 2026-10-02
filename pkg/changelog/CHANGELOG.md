@@ -3,6 +3,27 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.116] - 2026-10-02
+
+- **The console has a new look, and now matches the phone app.** Warm paper by
+  day and warm midnight by night (the same two worlds as the app), a serif
+  voice for titles and big numbers, and a background of slow-drifting light
+  with a touch of film grain. The typefaces Ghost shipped with were never
+  actually loaded before; now they are. Pages arrive in order, buttons and
+  tiles respond under your finger, and everything that moves stops moving if
+  your device asks for reduced motion.
+- **Ghost's presence is visible.** On Home and on the first setup screen, a
+  soft living light breathes slowly when all is well and quickens when Ghost is
+  waiting on you.
+- **Files is a gallery.** Photos show as themselves (small copies made on the
+  device, so a page of photos stays quick), other files get a tile that says
+  what they are, and you can filter by photos, documents and other. Open one to
+  read it: photos at full size, documents and text as readable pages, with
+  arrow keys to move between files, plus Download and Delete.
+- **Calmer danger buttons.** Delete, Deny and Stop are soft until you press
+  them, and no longer shout at you from every row. Diagnostics and approval
+  rows line up properly on a phone.
+
 ## [0.24.115] - 2026-10-02
 
 - **You can correct a memory from the console.** Each item on the Memory page

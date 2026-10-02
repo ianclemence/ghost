@@ -1,79 +1,82 @@
 /* Ghost — design tokens
-   Cool, quiet, confident. A personal AI that belongs to you. */
+   Warm paper by day, warm midnight by night: the same two worlds as the phone
+   app. One quiet indigo for structure, one ember for "Ghost is here". */
 
 :root {
-  /* ── Color: cool paper. Neutral, quiet, and nothing borrowed from anyone
-     else's palette: no cream, no clay, no brown. ── */
-  --paper:           #f6f7f9;   /* page */
-  --paper-raised:    #ffffff;   /* cards, sidebar */
-  --paper-sunken:    #eceef2;   /* wells, inputs */
-  --paper-hover:     #f0f2f5;
-  --paper-overlay:   rgba(8,10,16,.48);
+  /* ── Paper ── */
+  --paper:           #f8f6f1;   /* page */
+  --paper-raised:    #fffefb;   /* cards */
+  --paper-sunken:    #f0ece3;   /* wells, inputs */
+  --paper-hover:     #f4f0e8;
+  --paper-overlay:   rgba(26,22,17,.42);
 
   /* ── Ink ── */
-  --ink:             #0b0d12;
-  --ink-soft:        #4b505c;
-  --ink-faint:       #6a6f7b;
-  --ink-ghost:       #b3b7c1;
+  --ink:             #1a1611;
+  --ink-soft:        #5b554c;
+  --ink-faint:       #6f6a63;
+  --ink-ghost:       #b8b0a2;
+  --ink-muted:       var(--ink-soft);
 
   /* ── Lines ── */
-  --line:            #e2e5eb;
-  --line-strong:     #cdd1da;
+  --line:            #e7e2d8;
+  --line-strong:     #d6cfc1;
   --line-focus:      var(--accent);
 
-  /* ── Accent: spectral ink-blue — structure, selection, links ── */
-  --accent:          #2c3aa8;
-  --accent-hover:    #232e86;
-  --accent-soft:     #e9ebfa;
-  --accent-line:     #c5caf0;
-  --accent-glow:     rgba(44,58,168,.12);
+  /* ── Accent: deep indigo. Structure, selection, links, the primary action ── */
+  --accent:          #3d3b5c;
+  --accent-hover:    #2e2c4a;
+  --accent-soft:     #eceaf4;
+  --accent-line:     #d2cfe6;
+  --accent-glow:     rgba(61,59,92,.16);
+  --accent-bright:   #5a56b8;   /* links and focus: reads as interactive */
   --on-accent:       #ffffff;
 
-  /* ── Ember: Ghost's presence light. Amber, used only when Ghost is
-     working or needs you, so it always means something. ── */
-  --ember:           #f5b942;
-  --ember-deep:      #b8710a;
-  --ember-soft:      #fdf2d9;
-  --ember-line:      #efd08d;
+  /* ── Ember: Ghost's presence light. Only when Ghost is working or needs you ── */
+  --ember:           #ffb45c;
+  --ember-deep:      #a8620a;
+  --ember-soft:      #fff1dc;
+  --ember-line:      #f0d3a4;
+  --ember-glow:      rgba(255,180,92,.35);
 
   /* ── Status ── */
-  --ok:              #1f7a4d;
-  --ok-soft:         #e2f3ea;
-  --ok-line:         #b0d9c2;
+  --ok:              #2d7a4a;
+  --ok-soft:         #e4f2e9;
+  --ok-line:         #b7d9c4;
   --warn:            #8a5a00;
   --warn-soft:       #f8edd0;
   --warn-line:       #e3cd8f;
-  --bad:             #c0392b;
-  --bad-soft:        #fbe7e4;
-  --bad-line:        #ecaaa3;
-  --off:             #6a6f7b;
-  --off-soft:        #eceef2;
-  --info:            #1f5f99;
-  --info-soft:       #e3eef8;
-  --info-line:       #a9c8e4;
+  --bad:             #c24b3c;
+  --bad-soft:        #fbe9e5;
+  --bad-line:        #ebb5ac;
+  --off:             #6f6a63;
+  --off-soft:        #eee9df;
+  --info:            #34688f;
+  --info-soft:       #e4eef6;
+  --info-line:       #b0cbe0;
 
   /* ── Type ── */
   --font-sans:       "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display:    "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --font-mono:       "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* Display: 36/26/20/16/14/12.5/11 — clear hierarchy, not flat */
-  --t-display:       36px;
-  --t-title:         26px;
+  --t-display:       48px;
+  --t-title:         32px;
   --t-head:          20px;
   --t-body:          15px;
   --t-callout:       14px;
   --t-foot:          12.5px;
   --t-micro:         11px;
+  --t-caption:       12px;
 
-  --lh-tight:        1.15;
-  --lh-snug:         1.3;
-  --lh-body:         1.5;
+  --lh-tight:        1.05;
+  --lh-snug:         1.28;
+  --lh-body:         1.55;
 
-  --ls-tight:        -0.025em;
-  --ls-snug:         -0.015em;
-  --ls-normal:       -0.005em;
+  --ls-tight:        -0.02em;
+  --ls-snug:         -0.012em;
+  --ls-normal:       -0.003em;
 
-  /* ── Space ── */
+  /* ── Space (an 8pt rhythm with a 4pt assist) ── */
   --s-0:   2px;
   --s-1:  4px;
   --s-2:  8px;
@@ -86,113 +89,134 @@
   --s-9:  96px;
 
   /* ── Radius ── */
-  --r-xs:  4px;
-  --r-sm:  6px;
-  --r-md:  10px;
-  --r-lg:  14px;
-  --r-xl:  20px;
+  --r-xs:  5px;
+  --r-sm:  8px;
+  --r-md:  12px;
+  --r-lg:  18px;
+  --r-xl:  24px;
   --r-pill: 999px;
 
-  /* ── Elevation ── */
-  --shadow-xs:  0 1px 2px rgba(8,10,16,.06);
-  --shadow-sm:  0 1px 3px rgba(8,10,16,.08), 0 1px 2px rgba(8,10,16,.04);
-  --shadow-md:  0 4px 12px rgba(8,10,16,.08), 0 2px 4px rgba(8,10,16,.04);
-  --shadow-lg:  0 12px 32px rgba(8,10,16,.12), 0 4px 8px rgba(8,10,16,.06);
-  --shadow-xl:  0 20px 48px rgba(8,10,16,.16), 0 8px 16px rgba(8,10,16,.08);
+  /* ── Elevation: warm, layered, never harsh ── */
+  --shadow-xs:  0 1px 2px rgba(60,45,25,.05);
+  --shadow-sm:  0 1px 2px rgba(60,45,25,.06), 0 2px 6px rgba(60,45,25,.04);
+  --shadow-md:  0 2px 4px rgba(60,45,25,.04), 0 8px 22px rgba(60,45,25,.07);
+  --shadow-lg:  0 4px 8px rgba(60,45,25,.05), 0 18px 42px rgba(60,45,25,.11);
+  --shadow-xl:  0 8px 16px rgba(60,45,25,.06), 0 32px 72px rgba(60,45,25,.18);
+  --inset-hi:   inset 0 1px 0 rgba(255,255,255,.7);
 
-  /* ── Motion ── */
-  --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out:    cubic-bezier(0.77, 0, 0.175, 1);
+  /* ── Motion: 150 to 260ms, exponential ease-out, no bounce ── */
+  --ease-out:       cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:    cubic-bezier(0.65, 0, 0.35, 1);
   --ease-drawer:    cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-spring:    cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-spring:    cubic-bezier(0.16, 1, 0.3, 1);
 
   --d-instant:      0ms;
-  --d-fast:         120ms;
-  --d-base:         180ms;
-  --d-moderate:     240ms;
-  --d-slow:         320ms;
-  --d-drawer:       280ms;
+  --d-fast:         140ms;
+  --d-base:         200ms;
+  --d-moderate:     260ms;
+  --d-slow:         420ms;
+  --d-drawer:       300ms;
+
+  /* ── Atmosphere: the living background (see polish.css) ── */
+  --aura-a:         rgba(112,102,204,.30);   /* indigo, upper left */
+  --aura-b:         rgba(255,180,92,.34);    /* ember, upper right */
+  --aura-c:         rgba(226,140,128,.22);   /* rose, lower right */
+  --grain-opacity:  .055;
 
   /* ── Layout ── */
-  --nav-w:          252px;
-  --topbar-h:       52px;
+  --nav-w:          256px;
+  --topbar-h:       56px;
   --maxw:           1000px;
+
+  color-scheme: light;
 }
 
-/* ── Midnight: true black. Follows the system unless the owner pinned a
-   theme with data-theme on <html>. ── */
+/* ── Midnight: warm dark. Follows the system unless the owner pinned a
+   theme with data-theme on <html>. One set of values serves both. ── */
 :root[data-theme="dark"] { color-scheme: dark; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) { color-scheme: dark; }
 }
 
-/* One set of dark values, applied for the system preference and for a pinned
-   theme alike. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper:         #000000;
-    --paper-raised:  #0c0d10;
-    --paper-sunken:  #060608;
-    --paper-hover:   #16171b;
-    --paper-overlay: rgba(0,0,0,.72);
-    --ink:           #ededf0;
-    --ink-soft:      #b1b4bd;
-    --ink-faint:     #868a94;
-    --ink-ghost:     #50535b;
-    --line:          rgba(255,255,255,.08);
-    --line-strong:   rgba(255,255,255,.16);
-    --accent:        #9fb0ff;
-    --accent-hover:  #bccaff;
-    --accent-soft:   rgba(159,176,255,.13);
-    --accent-line:   rgba(159,176,255,.32);
-    --accent-glow:   rgba(159,176,255,.16);
-    --on-accent:     #05070d;
-    --ember:         #f5b942;
-    --ember-deep:    #f5b942;
-    --ember-soft:    rgba(245,185,66,.12);
-    --ember-line:    rgba(245,185,66,.32);
-    --ok:            #58c58f;  --ok-soft:   rgba(88,197,143,.13);  --ok-line:   rgba(88,197,143,.34);
-    --warn:          #f0c25a;  --warn-soft: rgba(240,194,90,.13);  --warn-line: rgba(240,194,90,.32);
-    --bad:           #ff7a6b;  --bad-soft:  rgba(255,122,107,.13); --bad-line:  rgba(255,122,107,.34);
-    --off:           #868a94;  --off-soft:  rgba(255,255,255,.07);
-    --info:          #7ab8ee;  --info-soft: rgba(122,184,238,.13); --info-line: rgba(122,184,238,.32);
-    --shadow-xs: 0 1px 2px rgba(0,0,0,.6);
-    --shadow-sm: 0 1px 3px rgba(0,0,0,.65);
-    --shadow-md: 0 4px 14px rgba(0,0,0,.65);
-    --shadow-lg: 0 12px 32px rgba(0,0,0,.75);
-    --shadow-xl: 0 20px 48px rgba(0,0,0,.8);
+    --paper:         #14110d;
+    --paper-raised:  #1c1813;
+    --paper-sunken:  #0f0c09;
+    --paper-hover:   #26211a;
+    --paper-overlay: rgba(8,6,4,.72);
+    --ink:           #f1e9dc;
+    --ink-soft:      #cdbfac;
+    --ink-faint:     #a3927f;
+    --ink-ghost:     #6b5f51;
+    --line:          rgba(240,233,223,.09);
+    --line-strong:   rgba(240,233,223,.18);
+    --accent:        #b9b6f2;
+    --accent-hover:  #d2d0f8;
+    --accent-soft:   rgba(185,182,242,.12);
+    --accent-line:   rgba(185,182,242,.30);
+    --accent-glow:   rgba(185,182,242,.20);
+    --accent-bright: #b9b6f2;
+    --on-accent:     #14110d;
+    --ember:         #ffb45c;
+    --ember-deep:    #ffb45c;
+    --ember-soft:    rgba(255,180,92,.12);
+    --ember-line:    rgba(255,180,92,.32);
+    --ember-glow:    rgba(255,180,92,.30);
+    --ok:            #6fcb93;  --ok-soft:   rgba(111,203,147,.13);  --ok-line:   rgba(111,203,147,.34);
+    --warn:          #f0c25a;  --warn-soft: rgba(240,194,90,.13);   --warn-line: rgba(240,194,90,.32);
+    --bad:           #ff8576;  --bad-soft:  rgba(255,133,118,.13);  --bad-line:  rgba(255,133,118,.34);
+    --off:           #a3927f;  --off-soft:  rgba(240,233,223,.07);
+    --info:          #86b8e0;  --info-soft: rgba(134,184,224,.13);  --info-line: rgba(134,184,224,.32);
+    --shadow-xs: 0 1px 2px rgba(0,0,0,.5);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.55);
+    --shadow-md: 0 4px 16px rgba(0,0,0,.55);
+    --shadow-lg: 0 12px 36px rgba(0,0,0,.65);
+    --shadow-xl: 0 20px 56px rgba(0,0,0,.75);
+    --inset-hi:  inset 0 1px 0 rgba(255,255,255,.06);
+    --aura-a:        rgba(112,102,214,.30);
+    --aura-b:        rgba(255,160,70,.16);
+    --aura-c:        rgba(60,130,150,.18);
+    --grain-opacity: .09;
   }
 }
 :root[data-theme="dark"] {
-  --paper:         #000000;
-  --paper-raised:  #0c0d10;
-  --paper-sunken:  #060608;
-  --paper-hover:   #16171b;
-  --paper-overlay: rgba(0,0,0,.72);
-  --ink:           #ededf0;
-  --ink-soft:      #b1b4bd;
-  --ink-faint:     #868a94;
-  --ink-ghost:     #50535b;
-  --line:          rgba(255,255,255,.08);
-  --line-strong:   rgba(255,255,255,.16);
-  --accent:        #9fb0ff;
-  --accent-hover:  #bccaff;
-  --accent-soft:   rgba(159,176,255,.13);
-  --accent-line:   rgba(159,176,255,.32);
-  --accent-glow:   rgba(159,176,255,.16);
-  --on-accent:     #05070d;
-  --ember:         #f5b942;
-  --ember-deep:    #f5b942;
-  --ember-soft:    rgba(245,185,66,.12);
-  --ember-line:    rgba(245,185,66,.32);
-  --ok:            #58c58f;  --ok-soft:   rgba(88,197,143,.13);  --ok-line:   rgba(88,197,143,.34);
-  --warn:          #f0c25a;  --warn-soft: rgba(240,194,90,.13);  --warn-line: rgba(240,194,90,.32);
-  --bad:           #ff7a6b;  --bad-soft:  rgba(255,122,107,.13); --bad-line:  rgba(255,122,107,.34);
-  --off:           #868a94;  --off-soft:  rgba(255,255,255,.07);
-  --info:          #7ab8ee;  --info-soft: rgba(122,184,238,.13); --info-line: rgba(122,184,238,.32);
-  --shadow-xs: 0 1px 2px rgba(0,0,0,.6);
-  --shadow-sm: 0 1px 3px rgba(0,0,0,.65);
-  --shadow-md: 0 4px 14px rgba(0,0,0,.65);
-  --shadow-lg: 0 12px 32px rgba(0,0,0,.75);
-  --shadow-xl: 0 20px 48px rgba(0,0,0,.8);
+  --paper:         #14110d;
+  --paper-raised:  #1c1813;
+  --paper-sunken:  #0f0c09;
+  --paper-hover:   #26211a;
+  --paper-overlay: rgba(8,6,4,.72);
+  --ink:           #f1e9dc;
+  --ink-soft:      #cdbfac;
+  --ink-faint:     #a3927f;
+  --ink-ghost:     #6b5f51;
+  --line:          rgba(240,233,223,.09);
+  --line-strong:   rgba(240,233,223,.18);
+  --accent:        #b9b6f2;
+  --accent-hover:  #d2d0f8;
+  --accent-soft:   rgba(185,182,242,.12);
+  --accent-line:   rgba(185,182,242,.30);
+  --accent-glow:   rgba(185,182,242,.20);
+  --accent-bright: #b9b6f2;
+  --on-accent:     #14110d;
+  --ember:         #ffb45c;
+  --ember-deep:    #ffb45c;
+  --ember-soft:    rgba(255,180,92,.12);
+  --ember-line:    rgba(255,180,92,.32);
+  --ember-glow:    rgba(255,180,92,.30);
+  --ok:            #6fcb93;  --ok-soft:   rgba(111,203,147,.13);  --ok-line:   rgba(111,203,147,.34);
+  --warn:          #f0c25a;  --warn-soft: rgba(240,194,90,.13);   --warn-line: rgba(240,194,90,.32);
+  --bad:           #ff8576;  --bad-soft:  rgba(255,133,118,.13);  --bad-line:  rgba(255,133,118,.34);
+  --off:           #a3927f;  --off-soft:  rgba(240,233,223,.07);
+  --info:          #86b8e0;  --info-soft: rgba(134,184,224,.13);  --info-line: rgba(134,184,224,.32);
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.5);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.55);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.55);
+  --shadow-lg: 0 12px 36px rgba(0,0,0,.65);
+  --shadow-xl: 0 20px 56px rgba(0,0,0,.75);
+  --inset-hi:  inset 0 1px 0 rgba(255,255,255,.06);
+  --aura-a:        rgba(112,102,214,.30);
+  --aura-b:        rgba(255,160,70,.16);
+  --aura-c:        rgba(60,130,150,.18);
+  --grain-opacity: .09;
 }

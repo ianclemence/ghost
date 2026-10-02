@@ -19,6 +19,14 @@ const GhostWizard = (() => {
 
   const steps = ['welcome', 'identity', 'password', 'brain', 'preparing', 'phone', 'done'];
 
+  // The mark inside Ghost's living light: the first thing anyone sees should
+  // already feel present.
+  function brandOrb() {
+    const orb = GhostUI.h('div', { className: 'presence-orb orb-lg', 'data-state': 'idle', 'aria-hidden': 'true' });
+    orb.appendChild(GhostUI.ghostMark('md'));
+    return GhostUI.h('div', { className: 'wizard-brand' }, orb);
+  }
+
   function render(container) {
     _container = container;
     _container.innerHTML = '';
@@ -47,7 +55,7 @@ const GhostWizard = (() => {
   }
 
   function renderWelcome(screen) {
-    screen.appendChild(GhostUI.h('div', { className: 'wizard-brand' }, GhostUI.ghostMark('xl')));
+    screen.appendChild(brandOrb());
     screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-display' }, 'Ghost'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-tagline type-body text-secondary' }, 'Your AI. Your Memory. Your Machine.'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-callout text-secondary' },
@@ -346,7 +354,7 @@ const GhostWizard = (() => {
   }
 
   function renderDone(screen) {
-    screen.appendChild(GhostUI.h('div', { className: 'wizard-brand' }, GhostUI.ghostMark('xl')));
+    screen.appendChild(brandOrb());
     screen.appendChild(GhostUI.h('div', { className: 'wizard-title type-display' }, 'Ghost is ready.'));
     screen.appendChild(GhostUI.h('div', { className: 'wizard-desc type-body text-secondary', style: 'margin-bottom:var(--s-4)' },
       'This page is where you look after Ghost. To talk to it, use the Ghost app on your phone, or type ghost in a terminal on this machine. Once you are talking, try:'

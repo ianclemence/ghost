@@ -1,6 +1,11 @@
 package uploads
 
 import (
+	"bytes"
+	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -109,5 +114,45 @@ func TestImportCopiesLocalFile(t *testing.T) {
 	}
 	if _, err := Import(ws, t.TempDir(), "terminal"); err == nil {
 		t.Fatal("a folder must be refused")
+	}
+}
+
+func TestThumbnailShrinksPhotosAndRefusesTheRest(t *testing.T) {
+	ws := t.TempDir()
+	img := image.NewRGBA(image.Rect(0, 0, 800, 400))
+	for y := 0; y < 400; y++ {
+		for x := 0; x < 800; x++ {
+			img.Set(x, y, color.RGBA{uint8(x / 4), uint8(y / 2), 128, 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	it, err := Save(ws, buf.Bytes(), "wide.png", "image/png", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := Thumbnail(ws, it, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("thumbnail must be a readable image: %v", err)
+	}
+	if b := got.Bounds(); b.Dx() != 200 || b.Dy() != 100 {
+		t.Fatalf("an 800x400 photo at max 200 must be 200x100, got %dx%d", b.Dx(), b.Dy())
+	}
+	doc, err := Save(ws, []byte("%PDF-1.4 hello"), "a.pdf", "application/pdf", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Thumbnail(ws, doc, 200); !errors.Is(err, ErrNoThumbnail) {
+		t.Fatalf("a document has no thumbnail, got %v", err)
+	}
+	it.Size = MaxThumbSource + 1
+	if _, err := Thumbnail(ws, it, 200); !errors.Is(err, ErrNoThumbnail) {
+		t.Fatalf("an oversize photo must be refused, got %v", err)
 	}
 }

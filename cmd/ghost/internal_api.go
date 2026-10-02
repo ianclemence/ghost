@@ -4252,6 +4252,26 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/files/"), "/")
 		id, action, _ := strings.Cut(rest, "/")
 		ws, _ := resolveApiWorkspace(agentLoop.Config())
+		if r.Method == http.MethodGet && action == "thumb" {
+			// A small JPEG for the gallery, so a page of photos does not mean
+			// downloading every original. Files with no picture get a 404 and
+			// the page draws a type tile instead.
+			it, ok := uploads.Find(ws, id)
+			if !ok {
+				jsonError(w, http.StatusNotFound, "not_found", "That file isn't stored on this Ghost.")
+				return
+			}
+			data, err := uploads.Thumbnail(ws, it, 480)
+			if err != nil {
+				jsonError(w, http.StatusNotFound, "not_found", "There is no picture to show for this file.")
+				return
+			}
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Cache-Control", "private, max-age=3600")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(data)
+			return
+		}
 		if r.Method == http.MethodGet && (action == "preview" || action == "content") {
 			it, ok := uploads.Find(ws, id)
 			if !ok {
