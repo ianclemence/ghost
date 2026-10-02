@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.122] - 2026-10-02
+
+- **The menu button lines up with the page.** On a phone, the menu icon sat
+  about 28px to the right of the page title and cards. Its lines now start on
+  the same left edge as the content, and icon-only buttons are squares
+  everywhere in the console.
+- **No dark background when you hover an app or a channel.** Rows in Apps and
+  Channels stay still under the mouse, like Approvals and Intelligence do; the
+  buttons on them are unchanged.
+
 ## [0.24.121] - 2026-10-02
 
 - **You can dismiss notices in "Needs you" on Home.** Each setup or health
