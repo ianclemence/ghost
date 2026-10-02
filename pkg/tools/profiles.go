@@ -278,7 +278,11 @@ var turnIntentTools = []struct {
 		"youtube", "reddit", "wikipedia", "linkedin", "airbnb", "google flights", "google maps", "google shopping",
 		"shop for", "shopping", "add to cart", "add to my cart", "to my cart", "compare prices", "price check",
 		"search online", "look up online", "look it up online", "find online", "on the web",
-		"log in to", "login to", "sign in to", "sign up for", "book a ", "reserve a "},
+		"log in to", "login to", "sign in to", "sign up for", "book a ", "reserve a ",
+		// Travel and price shopping live on the web: "cheapest one-way Bangkok
+		// to Shenzhen" names no site, and used to get no browser at all.
+		"flights", "airfare", "fares", "one-way", "one way", "round trip", "round-trip",
+		"hotel", "hotels", "tickets", "cheapest", "price of", "prices for", "how much is", "in stock"},
 		browserIntentToolNames()},
 	{[]string{"browser", "website", "web site", "open page", "open url", "open a page",
 		"webpage", "web page", "navigate to", "fill in", "fill out", "form",

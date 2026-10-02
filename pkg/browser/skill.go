@@ -54,7 +54,9 @@ To look something up, open the results address directly instead of typing
 into a search box: en.wikipedia.org/w/index.php?search=raspberry+pi,
 google.com/search?q=..., google.com/travel/flights?q=flights+from+BKK+to+SZX+on+2026-10-09,
 youtube.com/results?search_query=... Act on the page only when no address
-gets there.
+gets there. Never read a site through a shell command or a third-party
+reader service: the browser is right here, and they cost an approval and
+hand the owner's query to someone else.
 
 ## When a step needs an OK
 Attempt it: the runtime asks the owner with a card and resumes on their yes.

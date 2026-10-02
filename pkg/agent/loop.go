@@ -2749,6 +2749,29 @@ func (al *AgentLoop) captureQuickNote(msg, channel string) {
 	logger.InfoCF("agent", "Quick capture saved", map[string]interface{}{"chars": len(content)})
 }
 
+// toolIntentText is the text the turn's tools are chosen from. A short reply
+// ("yes, run it", "do it", "the second one") means what Ghost just offered:
+// read alone, "yes, run it" named no browser, so the model reached for a shell
+// command through a third-party page reader instead of the browser it had
+// offered to use. Visibility only; the gates still decide every call.
+func toolIntentText(userMsg string, messages []providers.Message) string {
+	if utf8.RuneCountInString(strings.TrimSpace(userMsg)) > 80 {
+		return userMsg
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		m := messages[i]
+		if m.Role != "assistant" || strings.TrimSpace(m.Content) == "" {
+			continue
+		}
+		prev := m.Content
+		if len(prev) > 800 {
+			prev = prev[len(prev)-800:]
+		}
+		return userMsg + "\n" + prev
+	}
+	return userMsg
+}
+
 func previousUserMessage(history []providers.Message) string {
 	for i := len(history) - 2; i >= 0; i-- {
 		if history[i].Role == "user" {
@@ -3156,7 +3179,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	if activeProfile == "" {
 		activeProfile = al.toolProfile
 	}
-	activeTools := tools.FilterToolsForTurn(al.tools, activeProfile, opts.UserMessage, len(opts.Media) > 0)
+	activeTools := tools.FilterToolsForTurn(al.tools, activeProfile, toolIntentText(opts.UserMessage, messages), len(opts.Media) > 0)
 	// A follow-up to browser work keeps the browser. Tools are picked from the
 	// words of each message, and "send me a screenshot of that results page"
 	// names no site: the model was never handed the browser it had used one

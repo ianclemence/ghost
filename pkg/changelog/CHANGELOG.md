@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.133] - 2026-10-03
+
+- **"Yes, run it" does what Ghost offered.** A short reply is read together
+  with the offer it answers. Ghost used to pick its tools from your words
+  alone, so "yes, run it" to "shall I search Google Flights?" got no browser,
+  and Ghost asked to run a shell command through an outside page reader.
+- **Flights, hotels and prices go to the browser.** "Cheapest one-way Bangkok
+  to Shenzhen" names no website and used to get no browser at all. Ghost never
+  reads a site through a shell command or someone else's reader service.
+- A reminder you cancel or move is described in your time ("Sunday at
+  6:00 PM"), not the server's: Ghost had told you the times disagreed.
+
 ## [0.24.132] - 2026-10-03
 
 - **Follow-ups keep the browser.** "Send me a screenshot of that results

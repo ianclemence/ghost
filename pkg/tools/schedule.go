@@ -742,7 +742,16 @@ func describeScheduleTime(item *scheduled.ScheduledItem) string {
 		return "unknown time"
 	}
 	if item.Schedule.Kind == scheduled.ScheduleAt && item.Schedule.At != nil {
-		return item.Schedule.At.Format("Monday at 3:04 PM")
+		// In the owner's zone, the one the item was made in. Stored rows come
+		// back in UTC, and "Cancelled it (Sunday at 11:00 AM)" for a 6 pm
+		// Bangkok reminder left Ghost telling the owner the times disagreed.
+		at := *item.Schedule.At
+		if item.Timezone != "" {
+			if loc, err := time.LoadLocation(item.Timezone); err == nil {
+				at = at.In(loc)
+			}
+		}
+		return at.Format("Monday at 3:04 PM")
 	}
 	if item.Title != "" {
 		return item.Title

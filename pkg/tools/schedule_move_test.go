@@ -128,3 +128,12 @@ func TestRescheduleNoMatchCreatesFresh(t *testing.T) {
 		t.Fatalf("items = %d, want 1 fresh item", len(svc.items))
 	}
 }
+
+// A stored reminder is described in the zone it was made in, not UTC.
+func TestDescribeScheduleTimeUsesTheOwnersZone(t *testing.T) {
+	at := time.Date(2026, 10, 4, 11, 0, 0, 0, time.UTC) // 18:00 in Bangkok
+	item := &scheduled.ScheduledItem{Timezone: "Asia/Bangkok", Schedule: scheduled.Schedule{Kind: scheduled.ScheduleAt, At: &at}}
+	if got := describeScheduleTime(item); got != "Sunday at 6:00 PM" {
+		t.Fatalf("describeScheduleTime = %q, want Sunday at 6:00 PM", got)
+	}
+}
