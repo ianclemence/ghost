@@ -3,6 +3,22 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.106] - 2026-10-02
+
+- **`ghost update` now installs the release itself.** It used to look up the
+  newest release and then rebuild whatever source was already on the Pod, so an
+  update could report a new version while running the old code, and needed a
+  `git pull` first. Each release now ships ready-made programs for Linux (arm64
+  and amd64) with a checksum and a signature for each. Ghost checks both against
+  a key built into it before anything is replaced, and an update that fails
+  either check is refused with nothing changed. The recovery snapshot is taken,
+  and the console and the service files are updated from the same release. A
+  machine with no ready-made program gets the release's tagged source built
+  instead.
+- **If you are updating from 0.24.105 or earlier,** the first update still runs the
+  old updater. After it, run `ghost update --force` once so the web console and
+  service files are brought in line; every update after that is the new kind.
+
 ## [0.24.105] - 2026-10-01
 
 - **Fixes `ghost pair` and the terminal's approvals on installs where Ghost runs

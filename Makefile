@@ -1,4 +1,4 @@
-.PHONY: all build install install-ghost install-user uninstall-user install-cleanup-shadow uninstall clean help test install-service build-ghost rebuild-web
+.PHONY: release all build install install-ghost install-user uninstall-user install-cleanup-shadow uninstall clean help test install-service build-ghost rebuild-web
 
 # Build variables
 BINARY_NAME=ghost
@@ -312,3 +312,8 @@ rebuild-web:
 	@sudo systemctl daemon-reload
 	@sudo systemctl restart ghost-web
 	@echo "Web console rebuilt and restarted"
+
+## release: Build, sign and verify a release (VERSION=vX.Y.Z); add PUBLISH=1 to publish it
+release:
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=vX.Y.Z [PUBLISH=1]"; exit 2; }
+	@scripts/release.sh $(VERSION) $(if $(PUBLISH),--publish,)

@@ -127,6 +127,14 @@ Ghost tells you when a new version is out and never installs one on its own. You
 can also update from **Your Pod** in the app. A recovery snapshot is taken first,
 and if it can't be, the update stops and says why.
 
+`ghost update` installs the published release, whatever state your own copy of the
+source is in, so you never need to pull anything first. Each release carries a
+ready-made program that is checked against a checksum and a signature before it
+touches your Pod, and an update that fails either check is refused and changes
+nothing. A release with no ready-made program for your kind of machine is built
+from its tagged source instead, which needs `git` and `go`. Run
+`ghost update --force` to reinstall the current release.
+
 ### Backups and a forgotten password
 
 ```bash
