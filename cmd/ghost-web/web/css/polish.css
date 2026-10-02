@@ -420,3 +420,8 @@ body { font-feature-settings: "ss01", "cv11"; font-kerning: normal; }
 .wizard-brand .ghost-mark-xl { display: none; }
 :root[data-theme="dark"] .ghost-btn-danger:not(:hover):not(:active) { color: var(--bad); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ghost-btn-danger:not(:hover):not(:active) { color: var(--bad); } }
+
+/* Button rows wrap instead of running past the card; fields keep a faint edge
+   so they read as fields on the dark surface. */
+.panel .row-flex:has(> .ghost-btn), .panel .btn-row { flex-wrap: wrap; }
+.ghost-input, .ghost-select { border-color: var(--line); }

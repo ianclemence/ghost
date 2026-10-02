@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.117] - 2026-10-02
+
+- **The terminal looks like the rest of Ghost.** Its colours now match the
+  console and the app (warm ink, soft indigo, ember for Ghost), the faintest
+  text is readable instead of nearly invisible, and the empty message box says
+  something: a short line that follows the time of day and changes daily, in
+  the same words the phone uses.
+- **Console polish.** Rows of buttons wrap instead of running past their card
+  on a phone, and form fields keep a faint edge on the dark background.
+
 ## [0.24.116] - 2026-10-02
 
 - **The console has a new look, and now matches the phone app.** Warm paper by

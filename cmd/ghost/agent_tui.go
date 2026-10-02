@@ -264,10 +264,10 @@ const mainConversationKey = MainSessionID
 
 func newAgentTUI(loop agentRuntime, session string) *agentTUI {
 	ta := textarea.New()
-	// The composer has no placeholder and no prefix: two bare horizontal
-	// rules with the text between them. Hints live in the footer and the
-	// welcome card, not in the box.
-	ta.Placeholder = ""
+	// Two bare horizontal rules with the text between them and no prefix. The
+	// box says one quiet line while it is empty (see composerHint), in the
+	// faintest ink, and nothing at all once you start typing.
+	ta.Placeholder = composerHint(time.Now())
 	ta.Prompt = ""
 	ta.CharLimit = 0
 	// The textarea manages its own height: it grows with the wrapped
@@ -3885,19 +3885,19 @@ func providerLocality(model string) string {
 // ─── styles ──────────────────────────────────────────────────────────────
 
 var (
-	cInk            = lipgloss.Color("#ededf0") // ink
-	cMuted          = lipgloss.Color("#9a9ea8") // muted
-	cFaint          = lipgloss.Color("#4d5058")
-	cAccent         = lipgloss.Color("#8f9df0")
-	cTool           = lipgloss.Color("#62b89a")
-	cErr            = lipgloss.Color("#ff7a6b") // error
-	cGold           = lipgloss.Color("#f5b942") // ember: the one warm signal
-	cBarIdle        = lipgloss.Color("#4a5074") // composer bar, idle
-	cGreen          = lipgloss.Color("#58c58f") // ok
-	cBlue           = lipgloss.Color("#7ab8ee")
-	cViolet         = lipgloss.Color("#9fb0ff") // brand accent: spectral blue
-	cCodeBg         = lipgloss.Color("#101216")
-	cSelBg          = lipgloss.Color("#1a1c22")
+	cInk            = lipgloss.Color("#f1e9dc") // ink
+	cMuted          = lipgloss.Color("#a3927f") // muted
+	cFaint          = lipgloss.Color("#7a6d5e")
+	cAccent         = lipgloss.Color("#b9b6f2")
+	cTool           = lipgloss.Color("#6fcb93")
+	cErr            = lipgloss.Color("#ff8576") // error
+	cGold           = lipgloss.Color("#ffb45c") // ember: the one warm signal
+	cBarIdle        = lipgloss.Color("#5a5688") // composer bar, idle
+	cGreen          = lipgloss.Color("#6fcb93") // ok
+	cBlue           = lipgloss.Color("#86b8e0")
+	cViolet         = lipgloss.Color("#b9b6f2") // brand accent: soft indigo, the same as the console and the app
+	cCodeBg         = lipgloss.Color("#1c1813")
+	cSelBg          = lipgloss.Color("#26211a")
 	styleUser       = lipgloss.NewStyle().Foreground(cInk).Bold(true)
 	styleAssistant  = lipgloss.NewStyle().Foreground(cInk)
 	styleTool       = lipgloss.NewStyle().Foreground(cTool)
@@ -3955,14 +3955,14 @@ var (
 	styleApprovalBar   = lipgloss.NewStyle().Foreground(cGold)
 	styleModalTitle    = lipgloss.NewStyle().Foreground(cAccent).Bold(true)
 	styleApprovalTitle = lipgloss.NewStyle().Foreground(cGold).Bold(true)
-	styleApprovalKeys  = lipgloss.NewStyle().Foreground(lipgloss.Color("#ededf0"))
-	styleApprovalSel   = lipgloss.NewStyle().Foreground(lipgloss.Color("#05070d")).Background(cGold).Bold(true)
-	styleRiskHigh      = lipgloss.NewStyle().Foreground(lipgloss.Color("#05070d")).Background(lipgloss.Color("#ff7a6b")).Bold(true)
-	styleRiskMid       = lipgloss.NewStyle().Foreground(lipgloss.Color("#05070d")).Background(cGold).Bold(true)
-	styleRiskLow       = lipgloss.NewStyle().Foreground(lipgloss.Color("#05070d")).Background(cGreen).Bold(true)
+	styleApprovalKeys  = lipgloss.NewStyle().Foreground(lipgloss.Color("#f1e9dc"))
+	styleApprovalSel   = lipgloss.NewStyle().Foreground(lipgloss.Color("#14110d")).Background(cGold).Bold(true)
+	styleRiskHigh      = lipgloss.NewStyle().Foreground(lipgloss.Color("#14110d")).Background(lipgloss.Color("#ff8576")).Bold(true)
+	styleRiskMid       = lipgloss.NewStyle().Foreground(lipgloss.Color("#14110d")).Background(cGold).Bold(true)
+	styleRiskLow       = lipgloss.NewStyle().Foreground(lipgloss.Color("#14110d")).Background(cGreen).Bold(true)
 	styleRiskDefault   = lipgloss.NewStyle().Foreground(cMuted).Background(cSelBg)
 
-	styleWelcomeTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#ededf0")).Bold(true)
+	styleWelcomeTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#f1e9dc")).Bold(true)
 	styleGhostArt     = lipgloss.NewStyle().Foreground(cViolet).Bold(true)
 	styleWelcomeCmds  = lipgloss.NewStyle().Foreground(cMuted)
 	styleDayDivider   = lipgloss.NewStyle().Foreground(cFaint)
