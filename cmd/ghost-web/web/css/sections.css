@@ -109,10 +109,8 @@
   align-items: center;
   gap: var(--s-3);
   padding: var(--s-2) var(--s-2);
-  transition: background var(--d-fast) var(--ease-out);
   border-radius: var(--r-sm);
 }
-.model-row:hover { background: var(--paper-hover); }
 .model-main { flex: 1; min-width: 0; }
 .model-name { font-weight: 560; }
 .model-sub {
