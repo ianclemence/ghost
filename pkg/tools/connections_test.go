@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/ianclemence/ghost/pkg/credentials"
 )
 
 func TestConnectionEntriesCoverCatalog(t *testing.T) {
@@ -70,5 +72,44 @@ func TestConnectionsExecute(t *testing.T) {
 	badAction := tool.Execute(context.Background(), map[string]interface{}{"action": "nope"})
 	if badAction == nil || !badAction.IsError {
 		t.Fatal("unsupported action should be refused")
+	}
+}
+
+// A sealed website login is visible to the model as a host, never as a
+// secret — so "is my X login set up?" is answered by checking, not by
+// doubting the owner or by claiming the vault unlocks nothing.
+func TestConnectionsSeesSealedWebLogins(t *testing.T) {
+	t.Setenv("GHOST_CONFIG_DIR", t.TempDir())
+	if err := credentials.SaveWebLogin(credentials.WebLogin{
+		URL: "https://x.com/login", Username: "icmosha", Password: "hunter2",
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	tool := NewConnectionsTool()
+
+	list := tool.Execute(context.Background(), map[string]interface{}{"action": "list"})
+	if list == nil || list.IsError {
+		t.Fatalf("list should succeed: %+v", list)
+	}
+	if !strings.Contains(list.ForLLM, "x.com — login saved") {
+		t.Fatalf("list must show the sealed host: %s", list.ForLLM)
+	}
+	for _, secret := range []string{"hunter2", "icmosha"} {
+		if strings.Contains(list.ForLLM, secret) {
+			t.Fatalf("list must never carry secret material %q", secret)
+		}
+	}
+
+	st := tool.Execute(context.Background(), map[string]interface{}{"action": "status", "app": "x.com"})
+	if st == nil || st.IsError {
+		t.Fatalf("status of a sealed host should succeed: %+v", st)
+	}
+	if !strings.Contains(st.ForLLM, "sealed in the vault") {
+		t.Fatalf("status must confirm the sealed login: %s", st.ForLLM)
+	}
+	for _, secret := range []string{"hunter2", "icmosha"} {
+		if strings.Contains(st.ForLLM, secret) {
+			t.Fatalf("status must never carry secret material %q", secret)
+		}
 	}
 }

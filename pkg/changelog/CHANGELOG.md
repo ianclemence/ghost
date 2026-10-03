@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.142] - 2026-10-03
+
+- **Website logins work end to end.** Asking Ghost to sign in to a site you
+  saved now follows the governed path instead of a refusal: Ghost checks
+  what is sealed (the `connections` tool lists saved website logins, hosts
+  only, never secrets), opens the session with `browser_login` with your
+  approval, and reads what you asked for. A refusal must now name its rule —
+  a broker denial, a missing capability, the law, or safety — never a
+  personal line.
+
 ## [0.24.141] - 2026-10-03
 
 - **Reminders are promises, not messages.** A reminder arrives with Done,

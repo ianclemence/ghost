@@ -24,7 +24,7 @@ func NewConnectionsTool() *ConnectionsTool { return &ConnectionsTool{} }
 func (t *ConnectionsTool) Name() string { return "connections" }
 
 func (t *ConnectionsTool) Description() string {
-	return "Check which external apps are connected (Gmail, Google Calendar, Outlook, Spotify, Home Assistant, GitHub, Notion, weather, flights) and get the exact next step to connect one. Use when the user asks to connect or check an app, or whether something is set up. Never returns secrets and never asks the user to paste a secret into chat — the owner pastes it once in the secure screen or terminal prompt."
+	return "Check which external apps are connected (Gmail, Google Calendar, Outlook, Spotify, Home Assistant, GitHub, Notion, weather, flights), whether a website login is saved in the vault, and get the exact next step to connect one. Use when the user asks to connect or check an app, or whether something is set up. Never returns secrets and never asks the user to paste a secret into chat — the owner pastes it once in the secure screen or terminal prompt."
 }
 
 func (t *ConnectionsTool) Parameters() map[string]interface{} {
@@ -140,12 +140,32 @@ func (t *ConnectionsTool) Execute(ctx context.Context, args map[string]interface
 			}
 			fmt.Fprintf(&sb, "- %s — %s\n", e.name, state)
 		}
+		// Website logins are the other half of "is something set up": a
+		// sealed login is what lets the browser open a session. Hosts only,
+		// never secrets — ListWebLogins returns metadata by construction.
+		if sealed := credentials.ListWebLogins(); len(sealed) > 0 {
+			sb.WriteString("\nWebsite logins (sealed in the vault — sign in with browser_login, never ask for the password):\n")
+			for _, w := range sealed {
+				fmt.Fprintf(&sb, "- %s — login saved\n", w.Host)
+			}
+		} else {
+			sb.WriteString("\nNo website logins saved. The owner adds them under Apps → Website logins.")
+		}
 		sb.WriteString("\nAsk about one app to get its setup steps.")
 		return NewToolResult(strings.TrimSpace(sb.String()))
 
 	case "status", "begin":
 		e, ok := find()
 		if !ok {
+			// Not a first-party app — it may be a website with a sealed
+			// login, which is what the browser signs in with. Check before
+			// claiming anything about the vault.
+			if host := matchWebLogin(query); host != "" {
+				if action == "begin" {
+					return NewToolResult(fmt.Sprintf("A login for %s is sealed in the vault — nothing to set up. Ask me to use it and I'll open the session.", host))
+				}
+				return NewToolResult(fmt.Sprintf("A login for %s is sealed in the vault. I sign in with browser_login (the broker asks first); I never see the password.", host))
+			}
 			return ErrorResult(fmt.Sprintf("I don't know an app called %q. Connected apps are: %s.", sarg(args, "app"), entryNames(entries)))
 		}
 		if e.connected {
@@ -167,4 +187,24 @@ func entryNames(entries []connEntry) string {
 		names = append(names, e.name)
 	}
 	return strings.Join(names, ", ")
+}
+
+// matchWebLogin reports the sealed-login host matching a status query, or "".
+// Hosts only — the metadata list carries no secrets by construction.
+func matchWebLogin(query string) string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return ""
+	}
+	norm := strings.NewReplacer("-", " ", "_", " ").Replace(strings.ToLower(query))
+	for _, w := range credentials.ListWebLogins() {
+		host := strings.ToLower(w.Host)
+		if host == strings.ToLower(query) || host == credentials.NormalizeWebHost(query) {
+			return w.Host
+		}
+		if strings.Contains(host, norm) || strings.Contains(norm, host) {
+			return w.Host
+		}
+	}
+	return ""
 }
