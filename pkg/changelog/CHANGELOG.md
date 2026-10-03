@@ -3,6 +3,34 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.148] - 2026-10-04
+
+- **A page that re-renders under Ghost no longer costs two turns.** Refs
+  are short-lived on purpose: any click, fill or submit closes the
+  snapshot they came from, so the next action on an old one is refused.
+  On a real site that is the normal condition — a modal opens, a list
+  reorders, a step swaps the form out — and the refusal used to send
+  Ghost back for a page it could already see, spending a whole round
+  trip to learn what had changed. The refusal now carries the page as it
+  is now, with its refs live, so the very next action uses one of them.
+  Ghost never retries the refused ref itself: the same `@e1` on a
+  re-rendered page is a different element, and clicking it would be
+  Ghost choosing something you never chose. You still choose; it just
+  doesn't cost an extra step.
+- **A site that wants a human hands off in the same breath.** A CAPTCHA
+  or "Verify you are human" was detected only where a step succeeded, so
+  a step that failed could leave the browser card saying Ghost was still
+  working with no "Take over" button on it — and the model was never
+  told. Both now happen together: the card offers the hand-off the
+  moment the check is seen, even on a failed step, and the model is told
+  plainly to stop, name the button you should tap, and carry on when you
+  do, instead of grinding on a check it will not pass.
+- The record of what an action proved is no longer overwritten by the
+  record of who ran it. A checkout submission records the merchant,
+  total and whether the page confirmed it; a recovered refusal records
+  the page it saw. Those are what the audit trail reads, and the
+  generic envelope was replacing the whole thing with nine plain keys.
+
 ## [0.24.147] - 2026-10-03
 
 - **A restart reads as a pause, not amnesia.** The reply to a message lived
