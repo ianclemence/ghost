@@ -210,9 +210,29 @@ func DropForgotten(workspace, text string) string {
 	if strings.TrimSpace(text) == "" {
 		return text
 	}
+	match := ForgottenMatcher(workspace)
+	if match == nil {
+		return text
+	}
+	lines := strings.Split(text, "\n")
+	kept := lines[:0]
+	for _, ln := range lines {
+		if strings.TrimSpace(ln) != "" && match(ln) {
+			continue
+		}
+		kept = append(kept, ln)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// ForgottenMatcher returns a test for "does this text carry something the
+// owner asked Ghost to forget", or nil when nothing is forgotten. Searches
+// over old conversations use it to keep a forgotten fact out of what Ghost
+// reads back, while the conversation itself stays as it was.
+func ForgottenMatcher(workspace string) func(string) bool {
 	s, err := Open(workspace)
 	if err != nil {
-		return text
+		return nil
 	}
 	relearned := map[string]bool{}
 	for _, e := range s.Current() {
@@ -233,18 +253,10 @@ func DropForgotten(workspace, text string) string {
 		}
 	}
 	if len(values) == 0 {
-		return text
+		return nil
 	}
 	names, topics := forgetNames(values), topicWords(forgotten)
-	lines := strings.Split(text, "\n")
-	kept := lines[:0]
-	for _, ln := range lines {
-		if strings.TrimSpace(ln) != "" && mentions(ln, values, names, topics) {
-			continue
-		}
-		kept = append(kept, ln)
-	}
-	return strings.Join(kept, "\n")
+	return func(text string) bool { return mentions(text, values, names, topics) }
 }
 
 // ScrubForgottenNotes runs DropForgotten over every note Ghost has already

@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.139] - 2026-10-03
+
+- **Forgetting reaches old conversations too.** Searching past conversations
+  no longer reads back a fact you asked Ghost to forget; the conversation is
+  kept as it was, but Ghost stops reciting it.
+- What you tell Ghost outright ("my dentist is Dr. Lee") is recorded as
+  yours, not as Ghost's guess, so a later guess cannot quietly replace it.
+- Dates in memories are written as dates: "next month, on the 2nd" becomes
+  "2 Nov 2026", so a trip does not read as upcoming forever.
+
 ## [0.24.138] - 2026-10-03
 
 - **Forgotten stays forgotten.** The summary Ghost writes at the end of a

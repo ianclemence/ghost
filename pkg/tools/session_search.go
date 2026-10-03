@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"github.com/ianclemence/ghost/pkg/personalcontext"
+
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -16,6 +18,10 @@ type SessionSearchTool struct {
 	// read sessions inside its own context — session transcripts in another
 	// context (work vs personal) never surface.
 	ContextOf func(sessionKey string) string
+	// Workspace, when set, keeps facts the owner asked Ghost to forget out of
+	// what a search reads back. The transcript is untouched; Ghost just no
+	// longer recites a forgotten dentist from it.
+	Workspace string
 }
 
 // SetContextOf installs the session→context resolver used to keep
@@ -148,6 +154,61 @@ func (t *SessionSearchTool) Execute(ctx context.Context, args map[string]interfa
 		return ErrorResult("session_search unavailable: database not configured")
 	}
 
+	res := t.execute(ctx, args)
+	if t.Workspace == "" || res == nil || res.IsError {
+		return res
+	}
+	if match := personalcontext.ForgottenMatcher(t.Workspace); match != nil {
+		res.ForLLM = redactForgottenJSON(res.ForLLM, match)
+		res.ForUser = redactForgottenJSON(res.ForUser, match)
+	}
+	return res
+}
+
+// redactForgottenJSON replaces every string in a JSON result that carries a
+// forgotten fact. Non-JSON text is redacted line by line.
+func redactForgottenJSON(text string, match func(string) bool) string {
+	if strings.TrimSpace(text) == "" {
+		return text
+	}
+	var v interface{}
+	if json.Unmarshal([]byte(text), &v) != nil {
+		lines := strings.Split(text, "\n")
+		for i, ln := range lines {
+			if match(ln) {
+				lines[i] = forgottenMark
+			}
+		}
+		return strings.Join(lines, "\n")
+	}
+	var walk func(interface{}) interface{}
+	walk = func(x interface{}) interface{} {
+		switch t := x.(type) {
+		case string:
+			if match(t) {
+				return forgottenMark
+			}
+		case []interface{}:
+			for i := range t {
+				t[i] = walk(t[i])
+			}
+		case map[string]interface{}:
+			for k := range t {
+				t[k] = walk(t[k])
+			}
+		}
+		return x
+	}
+	out, err := json.Marshal(walk(v))
+	if err != nil {
+		return text
+	}
+	return string(out)
+}
+
+const forgottenMark = "(forgotten at the owner's request)"
+
+func (t *SessionSearchTool) execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	mode, _ := args["mode"].(string)
 	if mode == "" {
 		mode = "discover"

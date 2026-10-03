@@ -275,7 +275,7 @@ func (se *SemanticExtractor) extractWithLLM(ctx context.Context, text string, ex
 				UpdatedAt:  now,
 				Sources: []Source{{
 					Type:      SourceConversation,
-					Kind:      "inferred",
+					Kind:      sourceKindFor(text, verbatimQuote(text, item.Quote)),
 					Timestamp: now,
 				}},
 			}
@@ -307,6 +307,10 @@ func (se *SemanticExtractor) extractWithLLM(ctx context.Context, text string, ex
 // buildExtractionPrompt builds the prompt for LLM extraction.
 func (se *SemanticExtractor) buildExtractionPrompt(text string, existing []Entry) string {
 	var sb strings.Builder
+	// Without today's date "next month, departing on the 2nd" was stored as
+	// said and would have read as true forever.
+	sb.WriteString(fmt.Sprintf("Today is %s. Write every date in a summary and in valid_until as an absolute date (\"2 Nov 2026\"), never relative words like \"next month\", \"tomorrow\" or \"the 2nd\".\n\n",
+		time.Now().Format("Monday 2 January 2006")))
 	sb.WriteString(fmt.Sprintf("Message to classify: %q\n\n", text))
 
 	if len(existing) > 0 {
@@ -650,4 +654,22 @@ func verbatimQuote(text, quote string) string {
 		return q
 	}
 	return ""
+}
+
+// sourceKindFor tells a thing the owner said outright ("my dentist is Dr.
+// Lee", "I work at a school") from something Ghost worked out. Every model
+// extraction used to be filed as inferred, so the owner's own words carried
+// no more weight than a guess, and the memory screen could not show which
+// was which.
+func sourceKindFor(message, quote string) SourceKind {
+	q := strings.ToLower(strings.TrimSpace(quote))
+	if q == "" || strings.HasSuffix(strings.TrimSpace(message), "?") {
+		return SourceInferred
+	}
+	for _, p := range []string{"my ", "i am ", "i'm ", "im ", "i have ", "i've ", "i live", "i work", "i like", "i love", "i hate", "i prefer", "i don't", "i do not", "i was ", "i'll be ", "i will be ", "i speak", "i own", "i drive", "we "} {
+		if strings.HasPrefix(q, p) || strings.Contains(q, " "+p) {
+			return SourceUserDeclared
+		}
+	}
+	return SourceInferred
 }

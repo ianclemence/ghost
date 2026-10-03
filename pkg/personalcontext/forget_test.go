@@ -120,3 +120,15 @@ func TestDropForgottenAndRelearn(t *testing.T) {
 		t.Fatal("a fact told again stays out of notes")
 	}
 }
+
+func TestSourceKindFor(t *testing.T) {
+	if got := sourceKindFor("By the way, my dentist is Dr. Somchai.", "my dentist is Dr. Somchai"); got != SourceUserDeclared {
+		t.Errorf("a direct statement is %s", got)
+	}
+	if got := sourceKindFor("look for flights from bangkok", "look for flights from bangkok"); got != SourceInferred {
+		t.Errorf("a request is %s", got)
+	}
+	if got := sourceKindFor("is my dentist Dr. Lee?", "my dentist Dr. Lee"); got != SourceInferred {
+		t.Errorf("a question is %s", got)
+	}
+}

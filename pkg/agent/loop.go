@@ -597,6 +597,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	if cfg.Agents.Defaults.SearchEnabled {
 		searchTool := tools.NewSessionSearchTool(database.DB)
+		searchTool.Workspace = workspace
 		toolsRegistry.Register(searchTool)
 		subagentTools.Register(searchTool)
 	}
