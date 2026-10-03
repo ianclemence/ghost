@@ -166,3 +166,20 @@ func TestDeleteMetaAndPruneOrphaned(t *testing.T) {
 		t.Fatalf("second prune must be a no-op, got %d %v", n, err)
 	}
 }
+
+// A routine must carry its first run: the scheduler only fires items that
+// have one, and routines used to be created without it and never ran.
+func TestCreateSetsFirstRun(t *testing.T) {
+	svc := openTestService(t)
+	r, err := svc.Create("g", "o", "Weather", "check the weather", "Asia/Bangkok",
+		scheduled.Schedule{Kind: scheduled.ScheduleCron, Expr: "30 7 * * *"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.NextRun == nil {
+		t.Fatal("routine created without a next run never fires")
+	}
+	if got := r.NextRun.In(time.FixedZone("ICT", 7*3600)); got.Hour() != 7 || got.Minute() != 30 {
+		t.Fatalf("next run %v is not 07:30 in Bangkok", got)
+	}
+}

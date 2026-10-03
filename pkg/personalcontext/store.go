@@ -327,7 +327,7 @@ func (s *Store) applyActions(actions []Action) ([]Action, error) {
 				a.Entry = *cur
 			}
 			out = append(out, a)
-		case a.Rule == likesRuleName:
+		case a.Rule == likesRuleName || (HoldsMany(e) && !isCorrection(e)):
 			// Additive: a like never supersedes. A duplicate value (existing
 			// or just appended earlier in this batch) is handled as a reinforce
 			// action above; otherwise a genuinely new like is appended.
@@ -745,6 +745,17 @@ func HasCurrent(entries []Entry, want Entry) bool {
 			continue
 		}
 		if bytes.Equal(e.Value, want.Value) {
+			return true
+		}
+	}
+	return false
+}
+
+// isCorrection reports whether the entry records the owner correcting Ghost.
+// Only a correction may replace a value under a catch-all predicate.
+func isCorrection(e Entry) bool {
+	for _, src := range e.Sources {
+		if src.Kind == SourceUserCorrected {
 			return true
 		}
 	}

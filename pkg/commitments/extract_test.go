@@ -251,3 +251,21 @@ func TestVagueClausesAreNotCommitments(t *testing.T) {
 		}
 	}
 }
+
+// Live false positives: a request to Ghost, something done on the spot, and a
+// wish were all filed as promises the owner made.
+func TestNotCommitments(t *testing.T) {
+	now := time.Date(2026, 10, 3, 8, 0, 0, 0, time.UTC)
+	for _, msg := range []string{
+		"Cancel the plants reminder, I'll do it now.",
+		"I want to see you use the page) and tell me the first sentence of the article",
+		"I want to buy a mechanical keyboard on amazon.",
+	} {
+		if got := ExtractDeterministic(msg, now, "UTC"); len(got) != 0 {
+			t.Errorf("%q became a commitment: %+v", msg, got[0].Text)
+		}
+	}
+	if got := ExtractDeterministic("I need to send Alex the photos on Friday.", now, "UTC"); len(got) != 1 {
+		t.Error("a real obligation was lost")
+	}
+}

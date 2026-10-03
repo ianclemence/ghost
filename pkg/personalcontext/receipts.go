@@ -154,11 +154,24 @@ func ForgetPipeline(workspace, id, reason string) (ForgetReport, error) {
 // so a running agent's own in-memory view is the one that forgets.
 func ForgetPipelineWith(store *Store, workspace, id, reason string) (ForgetReport, error) {
 	report := ForgetReport{ClaimID: id}
-	if _, err := store.ForgetWithReason(id, reason); err != nil {
+	chain := store.chainOf(id)
+	values, err := store.forgetChain(id, reason)
+	if err != nil {
 		return report, err
 	}
 	report.Forgotten = true
 	report.Tombstoned = true
+	// Every copy Ghost made of it goes too: its own notes, and (through the
+	// runtime hook) the search index. The conversation itself is kept: it is
+	// the record of what was said, not a belief.
+	names := forgetNames(values)
+	if n := scrubNotes(workspace, values, names, topicWords(chain)); n > 0 {
+		report.DerivativesRebuilt = append(report.DerivativesRebuilt, "notes")
+	}
+	if OnForget != nil && len(values) > 0 {
+		OnForget(values, names)
+		report.DerivativesRebuilt = append(report.DerivativesRebuilt, "search")
+	}
 
 	if _, _, err := Compact(store); err == nil {
 		report.DerivativesRebuilt = append(report.DerivativesRebuilt, "digest")

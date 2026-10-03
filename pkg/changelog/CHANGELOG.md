@@ -3,6 +3,34 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.137] - 2026-10-03
+
+- **Routines run.** A routine created in chat ("every day at 7:30, check the
+  weather") was saved without its next run, so the scheduler never picked it
+  up, and its time was read as UTC instead of yours. New routines get their
+  first run and your timezone; existing ones are repaired on start.
+- **Forget means forget.** Forgetting a memory now retracts every earlier
+  version of it, removes it from Ghost's own notes and from search. Asked to
+  search its notes, Ghost used to recite a dentist you had told it to forget.
+- **Facts stop overwriting each other.** A favourite football club no longer
+  replaces a favourite programming language, and separate facts filed under
+  the same broad heading ("Works as an ESL teacher", "Is originally from
+  Tanzania") are no longer hidden as a conflict.
+- Memories read as sentences: "Favorite football club is Chelsea", not
+  "Your favorite is Favorite football club is Chelsea."
+- Activity shows a reminder going off ("Reminded you: stand up and stretch"),
+  and a reminder Ghost missed while it was off. Cancelling or changing a
+  reminder says so instead of "Scheduled it", and its approval asks "Cancel
+  this?".
+- A reminder a day or more late (Ghost was off) is not delivered as if it
+  were fresh: Ghost tells you it was missed and offers to set it again.
+- Morning briefings and other heartbeat messages are saved in your
+  conversation and reach the phone, instead of disappearing when the app was
+  closed.
+- A reminder push shows the reminder itself, not "Ghost has a reminder for you".
+- "I'll do it now" and "I want to see you open the page" are no longer filed
+  as promises you made.
+
 ## [0.24.136] - 2026-10-03
 
 - **A forecast out of range says so.** Asking for the weather on a date past

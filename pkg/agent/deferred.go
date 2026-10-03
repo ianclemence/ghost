@@ -382,7 +382,12 @@ func (al *AgentLoop) extractSemanticMemory(session, message, requestID string) {
 					logger.InfoCF("agent", "semantic change held for confirmation",
 						map[string]interface{}{"predicate": entry.Predicate})
 				}
+				// A key that holds many beliefs ("preference/favorite") gets a
+				// second value beside the first; only a correction replaces.
+				// Otherwise a favourite football club retired a favourite
+				// programming language.
 				if entry.Status == personalcontext.StatusCurrent &&
+					(!personalcontext.HoldsMany(entry) || correctedByOwner(entry)) &&
 					al.supersedeSemanticCorrection(current, entry) {
 					if al.events != nil {
 						al.events.emit(EventMemoryUpdated, "", map[string]interface{}{
@@ -450,4 +455,13 @@ func (al *AgentLoop) extractSemanticCommitment(session, message, requestID strin
 	}
 	al.publishCommitment(cevents.CommitmentCreated, created, "noticed a promise")
 	al.RequestProactiveEvaluation()
+}
+
+func correctedByOwner(e personalcontext.Entry) bool {
+	for _, src := range e.Sources {
+		if src.Kind == personalcontext.SourceUserCorrected {
+			return true
+		}
+	}
+	return false
 }

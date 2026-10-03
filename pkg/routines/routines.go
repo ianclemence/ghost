@@ -122,6 +122,7 @@ func (s *Service) Create(ghostID, ownerID, name, instruction, timezone string, s
 		CreatedBy:   ownerID,
 		CreatedAt:   now,
 		UpdatedAt:   now,
+		NextRunAt:   scheduled.FirstRun(sched, timezone, now),
 	}
 	if err := s.store.Create(item); err != nil {
 		return nil, err

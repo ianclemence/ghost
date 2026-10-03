@@ -201,7 +201,7 @@ func (t *MemoryCorrectTool) change(ctx context.Context, session string, args map
 		if !confirmed {
 			return NewToolResult(fmt.Sprintf("Nothing changed yet. I would forget: %q. Ask the owner to confirm, then call again with confirmed=true.", old))
 		}
-		if _, err := t.store.ForgetWithReason(cur.ID, "the owner asked Ghost to forget it"); err != nil {
+		if _, err := personalcontext.ForgetPipelineWith(t.store, t.store.Workspace(), cur.ID, "the owner asked Ghost to forget it"); err != nil {
 			return ErrorResult(fmt.Sprintf("Could not forget that: %v", err))
 		}
 		t.clearCandidates(cur.Subject, cur.Predicate)

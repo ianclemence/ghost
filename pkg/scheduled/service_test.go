@@ -41,3 +41,28 @@ func TestNextCronRun(t *testing.T) {
 		})
 	}
 }
+
+// A routine created without a next run was never selected by ListDue: it sat
+// "active" and never fired. Every waiting item must carry one.
+func TestFirstRunAndRepair(t *testing.T) {
+	store := newMigrateStore(t)
+	svc := NewService(store, &SimpleEventBus{}, nil)
+	now := time.Date(2026, 10, 3, 1, 0, 0, 0, time.UTC) // 08:00 Bangkok
+	item := &ScheduledItem{ID: "r1", Type: TypeAutomation, Title: "Weather", State: StateScheduled,
+		Schedule: Schedule{Kind: ScheduleCron, Expr: "30 7 * * *"}, Timezone: "Asia/Bangkok",
+		Action: Action{Kind: ActionAgentTurn, Content: "weather"}, CreatedAt: now, UpdatedAt: now}
+	if err := store.Create(item); err != nil {
+		t.Fatal(err)
+	}
+	if n := svc.RepairMissingNextRun(now); n != 1 {
+		t.Fatalf("repaired %d, want 1", n)
+	}
+	got, _ := store.Get("r1")
+	want := time.Date(2026, 10, 4, 0, 30, 0, 0, time.UTC) // tomorrow 07:30 Bangkok
+	if got.NextRunAt == nil || !got.NextRunAt.Equal(want) {
+		t.Fatalf("next run %v, want %v", got.NextRunAt, want)
+	}
+	if n := svc.RepairMissingNextRun(now); n != 0 {
+		t.Fatalf("repair is not idempotent: %d", n)
+	}
+}

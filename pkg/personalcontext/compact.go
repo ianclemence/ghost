@@ -168,11 +168,7 @@ func MaterializeCuratedProfile(workspace string, store *Store) (int, error) {
 		if val == "" {
 			continue
 		}
-		label := Label(e.Predicate)
-		if label == "" {
-			label = e.Predicate
-		}
-		line := label + ": " + val
+		line := Line(e)
 		if e.ReinforceCount > 0 {
 			line += " (reinforced " + strconv.Itoa(e.ReinforceCount) + "x)"
 		}

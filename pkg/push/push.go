@@ -127,8 +127,9 @@ type Notifier struct {
 	client *http.Client
 	now    func() time.Time
 
-	mu   sync.Mutex
-	last map[Category]time.Time
+	mu       sync.Mutex
+	last     map[Category]time.Time
+	lastText string
 }
 
 // NewNotifier builds a notifier. GHOST_EXPO_PUSH_URL overrides the service
@@ -145,23 +146,42 @@ func NewNotifier(store *Store) *Notifier {
 // of the same category went out a moment ago. It returns how many devices the
 // push service accepted.
 func (n *Notifier) Notify(ctx context.Context, cat Category) (int, error) {
+	return n.NotifyWith(ctx, cat, "")
+}
+
+// NotifyWith is Notify with the words to show. Only a reminder carries its
+// own words: the owner wrote them for exactly this moment, and "Ghost has a
+// reminder for you" on a locked phone makes them open the app to learn it was
+// "Stretch". Everything else keeps fixed copy, so a conversation never leaves
+// the Pod through the push service.
+func (n *Notifier) NotifyWith(ctx context.Context, cat Category, text string) (int, error) {
 	tokens := n.store.Tokens()
 	if len(tokens) == 0 {
 		return 0, nil
 	}
 	n.mu.Lock()
-	if t, ok := n.last[cat]; ok && n.now().Sub(t) < minGap[cat] {
+	if t, ok := n.last[cat]; ok && n.now().Sub(t) < minGap[cat] && (cat != Reminder || text == n.lastText) {
 		n.mu.Unlock()
 		return 0, nil
 	}
+	n.lastText = text
 	n.last[cat] = n.now()
 	n.mu.Unlock()
 
 	c := copyFor[cat]
+	shown := c.body
+	if cat == Reminder {
+		if t := strings.TrimSpace(text); t != "" {
+			if r := []rune(t); len(r) > 160 {
+				t = string(r[:159]) + "…"
+			}
+			shown = t
+		}
+	}
 	msgs := make([]map[string]interface{}, 0, len(tokens))
 	for _, t := range tokens {
 		msgs = append(msgs, map[string]interface{}{
-			"to": t, "title": "Ghost", "body": c.body, "sound": "default", "priority": "high",
+			"to": t, "title": "Ghost", "body": shown, "sound": "default", "priority": "high",
 			"ttl": 3600, "channelId": "default",
 			"data": map[string]string{"category": string(cat), "anchor": c.anchor},
 		})

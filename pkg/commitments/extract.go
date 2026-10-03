@@ -45,7 +45,7 @@ type Candidate struct {
 }
 
 // markerRE matches the phrases with which an owner commits to doing something.
-var markerRE = regexp.MustCompile(`(?i)\b(i(?:'ve| have)? (?:still )?(?:need|have|got|must|want|intend|plan)\s+to|i(?:'m| am) going to|i(?:'ll| will)|i(?:'ve| have) been meaning to|i should)\b`)
+var markerRE = regexp.MustCompile(`(?i)\b(i(?:'ve| have)? (?:still )?(?:need|have|got|must|intend|plan)\s+to|i(?:'m| am) going to|i(?:'ll| will)|i(?:'ve| have) been meaning to|i should)\b`)
 
 // speculativere matches language that turns a statement into a maybe. A
 // speculation is not an obligation, so these reject the whole message.
@@ -429,6 +429,7 @@ var vagueWords = map[string]bool{
 	"soon": true, "later": true, "eventually": true, "hopefully": true, "sometime": true, "someday": true,
 	"before": true, "the": true, "a": true, "an": true, "my": true, "our": true, "your": true,
 	"year": true, "ends": true, "end": true, "of": true, "to": true, "by": true, "at": true, "up": true,
+	"do": true, "now": true, "right": true, "away": true, "just": true, "then": true,
 }
 
 // vagueClause reports whether a clause names no real task. "get it soon" has a
@@ -442,6 +443,17 @@ func vagueClause(clause string) bool {
 	switch words[0] {
 	case "be", "being", "been", "feel", "stay", "remain":
 		return true
+	}
+	for _, w := range words {
+		switch strings.Trim(w, ",.;:!?\"'()") {
+		case "you", "your", "yourself":
+			// "I want to see you use the page" asks Ghost for something; it
+			// is not a job the owner took on.
+			return true
+		case "now":
+			// "I'll do it now" is done before Ghost could ever follow up.
+			return true
+		}
 	}
 	content := 0
 	for _, w := range words {

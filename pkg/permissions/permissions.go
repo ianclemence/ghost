@@ -1000,6 +1000,10 @@ func cardTitle(capability, action string) string {
 			return "Read your email?"
 		}
 		return "Send this email?"
+	case has("schedule", "reminder", "cron", "routine") && has("cancel"):
+		return "Cancel this?"
+	case has("schedule", "reminder", "cron", "routine") && has("modify"):
+		return "Change this?"
 	case has("schedule", "reminder", "cron", "routine"):
 		return "Schedule this?"
 	case strings.Contains(capability, "hass") || strings.Contains(capability, "home"):
@@ -1048,6 +1052,10 @@ func plainReason(capability, action, title string) string {
 			return "Ghost wants to look through your inbox."
 		}
 		return "Ghost wants to send an email from your account."
+	case has("schedule", "reminder", "cron", "routine") && has("cancel"):
+		return "Ghost wants to cancel something it scheduled for you, as you asked."
+	case has("schedule", "reminder", "cron", "routine") && has("modify"):
+		return "Ghost wants to change something it scheduled for you, as you asked."
 	case has("schedule", "reminder", "cron", "routine"):
 		return "Ghost wants to set this up to run later, as you asked."
 	case has("calendar"):

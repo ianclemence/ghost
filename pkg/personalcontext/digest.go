@@ -50,6 +50,9 @@ func BuildDigest(current []Entry, budget int) string {
 	var sb strings.Builder
 	for _, e := range entries {
 		line := "- " + digestLabel(e.Predicate) + ": " + digestValue(e)
+		if SentenceValue(e) {
+			line = "- " + digestValue(e)
+		}
 		if sb.Len()+len(line)+1 > room {
 			if sb.Len() == 0 {
 				// Even the top-priority entry alone cannot fit; truncate its

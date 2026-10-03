@@ -635,6 +635,19 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	if ragStore != nil {
 		toolsRegistry.Register(tools.NewRememberTool(workspace, ragStore))
+		// A forgotten fact leaves the search index too, or recall finds it.
+		personalcontext.OnForget = func(values, names []string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			for _, v := range values {
+				_, _ = ragStore.ForgetValue(ctx, v)
+			}
+			for _, n := range names {
+				if len([]rune(n)) >= 5 {
+					_, _ = ragStore.ForgetValue(ctx, n)
+				}
+			}
+		}
 	}
 
 	var store session.Store
@@ -4979,9 +4992,26 @@ func (al *AgentLoop) authorizeStandaloneTool(requestID, sessionKey, tool string,
 	if risk == "" {
 		risk = permissions.RiskConsequential
 	}
-	al.governance.NoteCapability(requestID, ft.Capability, "")
-	decision := al.governance.AuthorizeStandalone(requestID, sessionKey, ft.Capability, tool, args, risk)
+	capID := scheduleCapability(tool, args, ft.Capability)
+	al.governance.NoteCapability(requestID, capID, "")
+	decision := al.governance.AuthorizeStandalone(requestID, sessionKey, capID, tool, args, risk)
 	return AuthorizeResult{Allowed: decision.Allowed, AskMessage: decision.AskMessage, PendingID: decision.PendingID}, true
+}
+
+// scheduleCapability names what a schedule call does. One identity for every
+// action made a cancellation ask "Schedule this?" and land in Activity as
+// "Scheduled it".
+func scheduleCapability(tool string, args map[string]interface{}, base string) string {
+	if tool != "schedule" {
+		return base
+	}
+	switch a, _ := args["action"].(string); strings.ToLower(strings.TrimSpace(a)) {
+	case "cancel", "delete", "remove":
+		return "schedule.cancel"
+	case "update", "edit", "modify", "move", "reschedule":
+		return "schedule.modify"
+	}
+	return base
 }
 
 // skillManageRisk classifies a skill_manage action by what it changes. The

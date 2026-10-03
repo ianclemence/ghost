@@ -22,6 +22,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 	"github.com/ianclemence/ghost/pkg/skills"
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 const routinePendingCapability = "routine.create"
@@ -360,7 +361,10 @@ func routineTimezone(msg bus.InboundMessage) string {
 			return tz
 		}
 	}
-	return "UTC"
+	// The phone does not send a zone, and "every day at 7:30" means 7:30
+	// where the owner is. The Pod's own zone is that place; UTC turned a
+	// Bangkok 7:30 into 14:30.
+	return tools.DeviceTimezone()
 }
 
 func routineIDs(workspace string) (ghostID, ownerID string) {

@@ -34,6 +34,9 @@ type Service struct {
 	// MissedNotice, when set, is told about a recurring run that was skipped
 	// because Ghost was off when it came due, so the owner can be told.
 	MissedNotice func(item *ScheduledItem, due time.Time)
+	// OnMissed, when set, hears about a one-time item that came due more than
+	// graceWindow ago (Ghost was off) and was marked missed instead of fired.
+	OnMissed func(item *ScheduledItem, due time.Time)
 	// clockBlocked remembers the gate state to log transitions once
 	// instead of every second.
 	clockBlocked bool
@@ -54,6 +57,9 @@ func NewService(store *Store, events EventBus, executor Executor) *Service {
 func (s *Service) Start() error {
 	if err := s.store.InitSchema(); err != nil {
 		return err
+	}
+	if n := s.RepairMissingNextRun(time.Now().UTC()); n > 0 {
+		log.Printf("[scheduled] gave %d waiting item(s) the next run they were missing", n)
 	}
 
 	s.mu.Lock()
@@ -138,6 +144,19 @@ func (s *Service) tick() {
 				}
 				continue
 			}
+		}
+		// A one-time item a day or more past its time is not delivered now as if
+		// it were fresh: "remind me at 9 to call" a day later is noise. It is
+		// recorded as missed and the owner is told once.
+		if item.IsOneTime() && item.NextRunAt != nil && now.Sub(*item.NextRunAt) > graceWindow {
+			if err := s.store.UpdateState(item.ID, StateMissed); err != nil {
+				log.Printf("[scheduled] failed to mark item missed: %v", err)
+				continue
+			}
+			if s.OnMissed != nil {
+				s.OnMissed(item, *item.NextRunAt)
+			}
+			continue
 		}
 		// Transition the item to running synchronously so a subsequent tick can
 		// never re-list it and fire it a second time while execution is in flight.
@@ -377,6 +396,57 @@ func (s *Service) handleFailure(item *ScheduledItem, err error) {
 	}
 }
 
+// FirstRun is when a newly created schedule should first fire. Every path that
+// creates an item must set it: ListDue only selects items with a next run, so
+// an item without one is never fired and never reported missed. Routines were
+// created that way and sat "active" without ever running.
+func FirstRun(sched Schedule, tz string, now time.Time) *time.Time {
+	switch sched.Kind {
+	case ScheduleAt:
+		if sched.At == nil {
+			return nil
+		}
+		at := sched.At.UTC()
+		return &at
+	case ScheduleEvery:
+		if sched.Every <= 0 {
+			return nil
+		}
+		next := now.UTC().Add(sched.Every)
+		return &next
+	case ScheduleCron:
+		return computeCronNextRun(sched.Expr, tz, now)
+	}
+	return nil
+}
+
+// RepairMissingNextRun gives every waiting item without a next run the one it
+// should have had, so nothing created before FirstRun existed stays silent.
+// Idempotent; returns how many items it fixed.
+func (s *Service) RepairMissingNextRun(now time.Time) int {
+	items, err := s.store.List("", StateScheduled, 1000)
+	if err != nil {
+		return 0
+	}
+	fixed := 0
+	for _, it := range items {
+		if it == nil || it.NextRunAt != nil {
+			continue
+		}
+		next := FirstRun(it.Schedule, it.Timezone, now)
+		if next == nil {
+			continue
+		}
+		it.NextRunAt = next
+		if err := s.store.Update(it); err != nil {
+			log.Printf("[scheduled] failed to repair next run for %s: %v", it.ID, err)
+			continue
+		}
+		fixed++
+	}
+	return fixed
+}
+
 // computeNextRun calculates the next run time for a recurring item.
 func (s *Service) computeNextRun(item *ScheduledItem) *time.Time {
 	now := time.Now().UTC()
@@ -390,57 +460,6 @@ func (s *Service) computeNextRun(item *ScheduledItem) *time.Time {
 		return computeCronNextRun(item.Schedule.Expr, item.Timezone, now)
 	default:
 		return nil
-	}
-}
-
-// HandleMissedSolicies processes items that were missed during downtime.
-func (s *Service) HandleMissedSolicies() {
-	now := time.Now().UTC()
-
-	// Find items that should have run but didn't
-	items, err := s.store.ListDue(now.Add(-24 * time.Hour))
-	if err != nil {
-		log.Printf("[scheduled] failed to list missed items: %v", err)
-		return
-	}
-
-	for _, item := range items {
-		if item.NextRunAt == nil {
-			continue
-		}
-
-		missedDuration := now.Sub(*item.NextRunAt)
-
-		if item.IsOneTime() {
-			// One-time reminder: apply missed schedule policy
-			s.handleMissedOneTime(item, missedDuration)
-		} else {
-			// Recurring: just compute next valid occurrence
-			s.handleMissedRecurring(item, now)
-		}
-	}
-}
-
-// handleMissedOneTime processes a missed one-time reminder.
-func (s *Service) handleMissedOneTime(item *ScheduledItem, missedDuration time.Duration) {
-	switch {
-	case missedDuration < time.Hour:
-		// Fire immediately with note
-		go s.runItemSafely(item)
-	case missedDuration < 24*time.Hour:
-		// Fire with "late" note
-		go s.runItemSafely(item)
-	default:
-		// Mark as missed, don't fire
-		if err := s.store.UpdateState(item.ID, StateMissed); err != nil {
-			log.Printf("[scheduled] failed to mark item missed: %v", err)
-		}
-		if s.events != nil {
-			s.events.Publish("reminder.missed", map[string]interface{}{
-				"item_id": item.ID,
-				"title":   item.Title,
-			})
-		}
 	}
 }
 
@@ -465,6 +484,9 @@ func (s *Service) handleMissedRecurring(item *ScheduledItem, now time.Time) {
 
 // CreateItem creates a new scheduled item.
 func (s *Service) CreateItem(item *ScheduledItem) error {
+	if item.NextRunAt == nil && (item.State == "" || item.State == StateScheduled) {
+		item.NextRunAt = FirstRun(item.Schedule, item.Timezone, time.Now().UTC())
+	}
 	if err := s.store.Create(item); err != nil {
 		return err
 	}

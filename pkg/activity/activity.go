@@ -116,6 +116,9 @@ var humanTitles = map[cevents.Type]string{
 	cevents.CommitmentCompleted:     "Promise kept",
 	cevents.CommitmentFailed:        "Promise still open",
 	cevents.CommitmentBlocked:       "Promise blocked",
+	cevents.ReminderDelivered:       "Reminded you",
+	cevents.ReminderMissed:          "Missed a reminder",
+	cevents.ReminderFailed:          "Couldn't send a reminder",
 }
 
 // skillNameTitle refines skill lifecycle chips with the skill name when the
@@ -211,6 +214,8 @@ var capabilityPhrases = []struct {
 	{"system.update", activityPhrase{"Updating your Ghost", "Ghost updated", "Update didn't finish"}},
 
 	// Scheduling and routines.
+	{"schedule.cancel", activityPhrase{"Cancelling it", "Cancelled it", "Couldn't cancel that"}},
+	{"schedule.modify", activityPhrase{"Changing it", "Changed it", "Couldn't change that"}},
 	{"schedule", activityPhrase{"Scheduling it", "Scheduled it", "Couldn't schedule that"}},
 	{"routine.cancel", activityPhrase{"Stopping a routine", "Routine stopped", "Couldn't stop that routine"}},
 	{"routine", activityPhrase{"Working on a routine", "Routine updated", "Routine step didn't finish"}},
@@ -369,11 +374,12 @@ func stateFor(t cevents.Type, status string) State {
 		cevents.SkillInstalled, cevents.SkillUpdated, cevents.SkillEnabled,
 		cevents.SkillDisabled, cevents.SkillRemoved,
 		cevents.ProactiveApproved, cevents.ProactiveCompleted,
-		cevents.CommitmentCompleted:
+		cevents.CommitmentCompleted, cevents.ReminderDelivered:
 		return StateSuccess
 	case cevents.AgentFailed, cevents.CapabilityFailed, cevents.ToolFailed,
 		cevents.IntegrationFailed, cevents.RoutineFailed,
-		cevents.OperationFailed, cevents.GhostOffline, cevents.ProactiveFailed:
+		cevents.OperationFailed, cevents.GhostOffline, cevents.ProactiveFailed,
+		cevents.ReminderMissed, cevents.ReminderFailed:
 		return StateFailed
 	case cevents.IntegrationExpired:
 		return StateWaiting

@@ -54,6 +54,7 @@ type HeartbeatService struct {
 	enabled   bool
 	mu        sync.RWMutex
 	stopChan  chan struct{}
+	deliver   func(channel, chatID, text string)
 }
 
 // NewHeartbeatService creates a new heartbeat service
@@ -333,10 +334,26 @@ write here if you want Ghost to act without being asked.
 }
 
 // sendResponse sends the heartbeat response to the last channel
+// SetDeliver routes what a heartbeat tick has to say through the owner's
+// conversation (saved, pushed when the phone is closed) instead of a bare bus
+// message that vanished when no phone was listening.
+func (hs *HeartbeatService) SetDeliver(fn func(channel, chatID, text string)) {
+	hs.mu.Lock()
+	defer hs.mu.Unlock()
+	hs.deliver = fn
+}
+
 func (hs *HeartbeatService) sendResponse(response string) {
 	hs.mu.RLock()
 	msgBus := hs.bus
+	deliver := hs.deliver
 	hs.mu.RUnlock()
+	if deliver != nil {
+		platform, userID := hs.parseLastChannel(hs.state.GetLastChannel())
+		deliver(platform, userID, response)
+		hs.logInfo("Heartbeat result delivered to the owner's conversation")
+		return
+	}
 
 	if msgBus == nil {
 		hs.logInfo("No message bus configured, heartbeat result not sent")

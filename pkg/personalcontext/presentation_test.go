@@ -284,3 +284,18 @@ func TestTitleRelationshipEntity(t *testing.T) {
 		t.Errorf("Summary() = %q, want %q", got, "You work with Sarah.")
 	}
 }
+
+// The model-written extractor stores whole sentences. Wrapping one in a label
+// template produced "Your favorite is Favorite football club is Chelsea."
+func TestSentenceValuesReadAsSentences(t *testing.T) {
+	e := Entry{Kind: KindPreference, Subject: "user", Predicate: "preference/favorite", Value: json.RawMessage(`"Favorite football club is Chelsea"`)}
+	if got := Title(e); got != "Favorite football club is Chelsea" {
+		t.Errorf("Title = %q", got)
+	}
+	if got := Summary(e); got != "Favorite football club is Chelsea." {
+		t.Errorf("Summary = %q", got)
+	}
+	if got := Line(e); got != "Favorite football club is Chelsea" {
+		t.Errorf("Line = %q", got)
+	}
+}

@@ -23,6 +23,9 @@ func (s *Store) Consolidate(now time.Time) (Consolidation, error) {
 		now = time.Now().UTC()
 	}
 	out := Consolidation{At: now}
+	if _, err := s.ReleaseMultiValuedConflicts(); err != nil {
+		return out, err
+	}
 	n, err := s.DetectConflicts()
 	if err != nil {
 		return out, err
@@ -50,7 +53,7 @@ func (s *Store) DetectConflicts() (int, error) {
 	defer s.mu.Unlock()
 	groups := map[string][]Entry{}
 	for _, e := range s.byID {
-		if e.Status != StatusCurrent {
+		if e.Status != StatusCurrent || HoldsMany(*e) {
 			continue
 		}
 		key := strings.ToLower(strings.TrimSpace(e.Subject)) + "\x00" + strings.ToLower(strings.TrimSpace(e.Predicate))
@@ -108,6 +111,61 @@ func (s *Store) declareConflictLocked(subject, predicate, idA, idB string) error
 		return err
 	}
 	return s.append(rb)
+}
+
+// MultiValued reports whether a predicate is a catch-all that holds many
+// unrelated beliefs ("fact/general", "project/current", "goal/primary",
+// "preference/favorite"). Two values under one of these are two facts, not a
+// contradiction: treating them as one belief hid "Works as an ESL teacher"
+// and "Is originally from Tanzania" as conflicting, and let a favourite
+// football club overwrite a favourite programming language.
+func MultiValued(predicate string) bool {
+	p := strings.ToLower(strings.TrimSpace(predicate))
+	i := strings.LastIndex(p, "/")
+	if i < 0 {
+		return false
+	}
+	switch p[i+1:] {
+	case "general", "current", "favorite", "prefers", "likes", "technology", "other":
+		return true
+	}
+	return false
+}
+
+// HoldsMany reports whether an entry lives under a key that can hold several
+// beliefs at once. "goal/primary" and "fact/work" are single-valued for the
+// grammar rules ("my goal is to…" replaces the last one), but the model-written
+// extractor files whole sentences under them ("Targets a $349 retail price",
+// "Works on Applied AI Engineering"); those are separate facts.
+func HoldsMany(e Entry) bool {
+	if MultiValued(e.Predicate) {
+		return true
+	}
+	p := strings.ToLower(e.Predicate)
+	return SentenceValue(e) && (strings.HasSuffix(p, "/primary") || strings.HasSuffix(p, "/work"))
+}
+
+// ReleaseMultiValuedConflicts returns entries that were declared conflicting
+// only because they shared a catch-all predicate to current. Nothing chose
+// between them, so none was ever wrong. Idempotent.
+func (s *Store) ReleaseMultiValuedConflicts() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	released := 0
+	now := time.Now().UTC()
+	for _, e := range s.byID {
+		if e.Status != StatusConflicting || !HoldsMany(*e) {
+			continue
+		}
+		rev := *e
+		rev.Status = StatusCurrent
+		rev.UpdatedAt = now
+		if err := s.append(rev); err != nil {
+			return released, err
+		}
+		released++
+	}
+	return released, nil
 }
 
 func normConflictValue(v string) string {

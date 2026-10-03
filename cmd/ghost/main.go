@@ -1514,6 +1514,9 @@ func gatewayCmd() {
 	)
 	heartbeatService.SetScheduler(scheduledService)
 	heartbeatService.SetBus(msgBus)
+	heartbeatService.SetDeliver(func(channel, chatID, text string) {
+		agentLoop.DeliverToOwner(channel, chatID, text, map[string]interface{}{"announce": "heartbeat"})
+	})
 	heartbeatService.SetHandler(func(prompt, channel, chatID string) *tools.ToolResult {
 		// Quiet hours (PROACTIVE_PREFERENCES.md, user timezone): skip the
 		// model turn, but still poll signals so urgent items break through
@@ -2617,7 +2620,8 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 					text += " " + note
 				}
 			}
-			agentLoop.DeliverToOwner(item.Channel, item.ChatID, text, map[string]interface{}{"reminder": true})
+			agentLoop.DeliverToOwner(item.Channel, item.ChatID, text, map[string]interface{}{"reminder": true, "item_id": item.ID})
+			publishReminderEvent(cstream, cevents.ReminderDelivered, item, "")
 			return nil
 		}
 		if item.Action.Content == "" {
@@ -2654,6 +2658,18 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 		when := scheduled.InZone(due, item.Timezone).Format("Mon 3:04 PM")
 		agentLoop.Announce("missed:"+item.ID+":"+due.UTC().Format("20060102"),
 			fmt.Sprintf("I was offline when %q was due (%s), so I skipped that run. It will go again at its next scheduled time.", item.Title, when),
+			24*time.Hour, false)
+	}
+	// A reminder a day or more overdue (Ghost was off) is not delivered as if
+	// fresh: it is recorded as missed, and the owner hears that once.
+	service.OnMissed = func(item *scheduled.ScheduledItem, due time.Time) {
+		if item.Type != scheduled.TypeReminder {
+			return
+		}
+		when := scheduled.InZone(due, item.Timezone).Format("Mon 2 Jan, 3:04 PM")
+		publishReminderEvent(cstream, cevents.ReminderMissed, item, "Was due "+when)
+		agentLoop.Announce("missed:"+item.ID,
+			fmt.Sprintf("I was offline when your reminder %q was due (%s), so it never went off. Want me to set it again?", agent.ReminderText(item.Title), when),
 			24*time.Hour, false)
 	}
 	// Feed the proactive signal scan: routine waits/failures propose
@@ -4170,4 +4186,22 @@ func contains(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// publishReminderEvent records what happened to a reminder the owner asked
+// for, so Activity shows it went off (or why it did not). The summary is the
+// reminder's own words unless a note is given.
+func publishReminderEvent(stream *cevents.Stream, typ cevents.Type, item *scheduled.ScheduledItem, note string) {
+	if stream == nil || item == nil {
+		return
+	}
+	summary := agent.ReminderText(item.Title)
+	if note != "" {
+		summary = note + ": " + summary
+	}
+	stream.Publish(&cevents.Event{
+		Type: typ, GhostID: ghostID(), SessionID: "main",
+		Status:  map[bool]string{true: "success", false: "failed"}[typ == cevents.ReminderDelivered],
+		Payload: map[string]interface{}{"summary": summary, "item_id": item.ID},
+	})
 }

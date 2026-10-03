@@ -60,7 +60,7 @@ func startPushBridge(al *agent.AgentLoop) *push.Store {
 		return nil
 	}
 	notifier := push.NewNotifier(store)
-	send := func(cat push.Category) {
+	send := func(cat push.Category, text string) {
 		if wsClients.Load() > 0 {
 			return // a connected phone already has it
 		}
@@ -69,7 +69,7 @@ func startPushBridge(al *agent.AgentLoop) *push.Store {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 		defer cancel()
-		if _, err := notifier.Notify(ctx, cat); err != nil {
+		if _, err := notifier.NotifyWith(ctx, cat, text); err != nil {
 			log.Printf("push: %v", err)
 		}
 	}
@@ -78,13 +78,13 @@ func startPushBridge(al *agent.AgentLoop) *push.Store {
 	go func() {
 		for msg := range ch {
 			if cat, ok := pushCategoryFor(msg); ok {
-				send(cat)
+				send(cat, msg.Content)
 			}
 		}
 	}()
 	if events := al.CanonicalEvents(); events != nil {
 		events.Subscribe(cevents.Filter{Types: []cevents.Type{cevents.PermissionRequested}}, func(*cevents.Event) {
-			go send(push.Approval)
+			go send(push.Approval, "")
 		})
 	}
 	return store

@@ -151,6 +151,13 @@ const (
 	WatchFailed     Type = "watch.failed"
 	WatchExpired    Type = "watch.expired"
 	WatchCancelled  Type = "watch.cancelled"
+	// Reminders: what the scheduler actually did with one the owner asked
+	// for. Delivered means it reached the conversation; missed means Ghost
+	// was off past its time and it did not fire. Without these a reminder
+	// left no trace in Activity once it went off.
+	ReminderDelivered Type = "reminder.delivered"
+	ReminderMissed    Type = "reminder.missed"
+	ReminderFailed    Type = "reminder.failed"
 	// Effort / routing decisions (observability for why a turn was cheap or deep)
 	EffortSelected Type = "effort.selected"
 )
@@ -192,6 +199,7 @@ func (t Type) DefaultVisibility() product.Visibility {
 		ProactiveCompleted, ProactiveFailed,
 		CommitmentCreated, CommitmentCompleted, CommitmentFailed, CommitmentBlocked,
 		WatchCreated, WatchNotified, WatchCancelled,
+		ReminderDelivered, ReminderMissed, ReminderFailed,
 		OperationFailed:
 		return product.VisUserMessage
 	default:

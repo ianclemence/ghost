@@ -177,7 +177,7 @@ func DomainLabel(d Domain) string {
 //	goal/primary "build a house" → "Goal: build a house"
 //	relationship/partner "Sam"   → "Partner: Sam"
 func Title(e Entry) string {
-	if e.Domain != "" {
+	if e.Domain != "" || SentenceValue(e) {
 		return understoodLine(e)
 	}
 	return tidyTitle(rawTitle(e))
@@ -196,6 +196,42 @@ func understoodLine(e Entry) string {
 		return subj + ": " + v
 	}
 	return upperFirst(v)
+}
+
+// SentenceValue reports whether an entry's value is already a whole sentence
+// ("Favorite football club is Chelsea") rather than a bare value ("Chelsea").
+// The model-written extractor stores sentences; the label templates were made
+// for bare values, and together they produced "Favorite: Favorite football
+// club is Chelsea" and "Your favorite is Favorite football club is Chelsea.".
+func SentenceValue(e Entry) bool {
+	if e.Kind == KindIdentity {
+		return false
+	}
+	if e.Kind == KindRelationship {
+		for _, k := range []string{"partner", "family", "colleague", "business"} {
+			if strings.Contains(e.Predicate, k) {
+				return false // phrased around the person's name
+			}
+		}
+	}
+	v := strings.TrimSpace(entryValueString(e))
+	r := []rune(v)
+	// Bare values are lowercase fragments ("tea over coffee"); the
+	// extractor's sentences are capitalised and say the whole thing.
+	return len(r) > 0 && unicode.IsUpper(r[0]) && len(strings.Fields(v)) >= 3
+}
+
+// Line is one memory as a single line for Ghost's own profile and digest:
+// the sentence itself when it is one, else "Label: value".
+func Line(e Entry) string {
+	if SentenceValue(e) {
+		return understoodLine(e)
+	}
+	label := Label(e.Predicate)
+	if label == "" {
+		label = e.Predicate
+	}
+	return label + ": " + entryValueString(e)
 }
 
 func upperFirst(s string) string {
@@ -320,7 +356,7 @@ func rawTitle(e Entry) string {
 //	goal/primary "build a house" → "Your goal is to build a house."
 func Summary(e Entry) string {
 	val := entryValueString(e)
-	if e.Domain != "" {
+	if e.Domain != "" || SentenceValue(e) {
 		line := understoodLine(e)
 		if !strings.HasSuffix(line, ".") && !strings.HasSuffix(line, "!") && !strings.HasSuffix(line, "?") {
 			line += "."
