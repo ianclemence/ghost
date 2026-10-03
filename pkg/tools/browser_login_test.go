@@ -147,3 +147,78 @@ func TestBrowserLoginStopsAtAHumanCheck(t *testing.T) {
 		t.Fatal("no credential may be handed to a form Ghost cannot finish")
 	}
 }
+
+// A field can be filled from the sealed login: the secret travels to the
+// browser on stdin (never argv, never the result), the target is focused by
+// its snapshot ref, and the value is set through the native setter so a
+// React-controlled sign-in form sees it. This is the multi-step path X needs.
+func TestBrowserFillVaultKeepsSecretOffArgvAndOutOfResult(t *testing.T) {
+	loginFixture(t)
+	bt := NewBrowserTool(t.TempDir(), "fill")
+	var focused []string
+	bt.run = func(ctx context.Context, action string, args ...string) *ToolResult {
+		focused = append(focused, action+" "+strings.Join(args, " "))
+		return &ToolResult{ForLLM: "ok"}
+	}
+	orig := browserCLIRun
+	defer func() { browserCLIRun = orig }()
+	var gotArgs []string
+	var gotStdin []string
+	browserCLIRun = func(ctx context.Context, env []string, stdin string, args ...string) ([]byte, error) {
+		gotArgs = args
+		gotStdin = append(gotStdin, stdin)
+		// Deliberately echo the secret to prove scrubbing.
+		return []byte(`{"success":true,"data":"hunter2"}`), nil
+	}
+
+	res := bt.fillVault(context.Background(), "@e5", "weblogin:shop.example.com:password")
+	if res == nil || res.IsError {
+		t.Fatalf("vault fill should succeed: %+v", res)
+	}
+	if len(focused) != 1 || !strings.HasPrefix(focused[0], "focus @e5") {
+		t.Fatalf("the target must be focused by its ref first: %v", focused)
+	}
+	if len(gotArgs) == 0 || gotArgs[0] != "eval" {
+		t.Fatalf("the secret must be set via eval: %v", gotArgs)
+	}
+	for _, a := range gotArgs {
+		if strings.Contains(a, "hunter2") {
+			t.Fatalf("the password must never be an argv: %v", gotArgs)
+		}
+	}
+	if len(gotStdin) != 1 || !strings.Contains(gotStdin[0], "hunter2") {
+		t.Fatalf("the password must travel on stdin: %v", gotStdin)
+	}
+	if strings.Contains(res.ForLLM, "hunter2") {
+		t.Fatalf("the password must be scrubbed from the result: %q", res.ForLLM)
+	}
+}
+
+// The vault reference names an explicit host: a malformed one is refused, and
+// a host with no sealed login never silently falls back to another.
+func TestBrowserFillVaultRefusesBadRefAndMissingLogin(t *testing.T) {
+	loginFixture(t)
+	bt := NewBrowserTool(t.TempDir(), "fill")
+	bt.run = func(ctx context.Context, action string, args ...string) *ToolResult { return &ToolResult{ForLLM: "ok"} }
+
+	for _, ref := range []string{"hunter2", "weblogin:", "weblogin:x.com", ":password"} {
+		res := bt.fillVault(context.Background(), "@e5", ref)
+		if res == nil || !res.IsError {
+			t.Fatalf("bad ref %q must be refused: %+v", ref, res)
+		}
+	}
+	res := bt.fillVault(context.Background(), "@e5", "weblogin:other.example.com:password")
+	if res == nil || !res.IsError || !strings.Contains(res.ForLLM, "No saved login") {
+		t.Fatalf("a host without a sealed login must be reported, not guessed: %+v", res)
+	}
+}
+
+func TestParseVaultRef(t *testing.T) {
+	host, field, ok := parseVaultRef("weblogin:accounts.example.com:username")
+	if !ok || host != "accounts.example.com" || field != "username" {
+		t.Fatalf("parse = %q %q %v", host, field, ok)
+	}
+	if _, _, ok := parseVaultRef("weblogin::password"); ok {
+		t.Fatal("an empty host must not parse")
+	}
+}

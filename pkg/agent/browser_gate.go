@@ -590,6 +590,9 @@ func browserStepLabel(tool string, args map[string]interface{}) string {
 	case "browser_click":
 		return "Clicking"
 	case "browser_type", "browser_fill":
+		if v, _ := args["vault"].(string); strings.TrimSpace(v) != "" {
+			return "Signing in"
+		}
 		return "Typing"
 	case "browser_press":
 		return "Pressing a key"

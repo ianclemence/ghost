@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -184,4 +185,89 @@ var browserCLIRun = func(ctx context.Context, env []string, stdin string, args .
 	cmd.Stderr = &out
 	err := cmd.Run()
 	return out.Bytes(), err
+}
+
+// fillVault fills one form field from a sealed website login. It exists for
+// the sites browser_login's single-shot form fill cannot reach: X (and most
+// identity providers) split the sign-in across screens — a username screen,
+// then a password screen — so the runtime has to interact with each input in
+// turn, the way a person would. The secret is resolved inside this tool,
+// focused by its snapshot ref, then set through a JavaScript value-setter fed
+// on STDIN: it never reaches the model, the transcript, the logs, or the
+// process list. vaultRef is "weblogin:<host>:username" or
+// "weblogin:<host>:password" (also the literal "password"/"username" forms
+// with the host taken from the active page are intentionally NOT supported —
+// the host is always explicit so a secret can never land on the wrong site).
+func (t *BrowserTool) fillVault(ctx context.Context, ref, vaultRef string) *ToolResult {
+	host, field, ok := parseVaultRef(vaultRef)
+	if !ok {
+		return ErrorResult("vault must be \"weblogin:<host>:username\" or \"weblogin:<host>:password\"")
+	}
+	login, found := credentials.WebLoginFor(host)
+	if !found {
+		return ErrorResult(fmt.Sprintf(
+			"No saved login for %s. Ask the owner to add it under Apps, Website logins (or Connected apps in the app), then try again — never ask them for the password here.", host))
+	}
+	var secret string
+	switch field {
+	case "username":
+		secret = login.Username
+	case "password":
+		secret = login.Password
+	default:
+		return ErrorResult("vault field must be \"username\" or \"password\"")
+	}
+	if secret == "" {
+		return ErrorResult(fmt.Sprintf("The saved login for %s has no %s.", host, field))
+	}
+
+	// Focus the target by its snapshot ref, then set the value from stdin.
+	// Focusing first means the script targets document.activeElement, so no
+	// selector or value has to travel through argv.
+	if res := t.run(ctx, "focus", ref); res != nil && res.IsError {
+		return res
+	}
+	runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, err := browserCLIRun(runCtx, browserEnvironment(t.sessionProfile), vaultFillScript(secret), "eval", "--stdin", "--json")
+	if err != nil {
+		return ErrorResult("The login for " + host + " IS saved, but the field could not be filled: " +
+			scrubSecret(boundedBrowserText(string(out)), login) + " Do not tell the owner the login is missing.")
+	}
+	return NewToolResult("Filled " + field + " for " + host + ".")
+}
+
+// parseVaultRef splits "weblogin:<host>:<field>". The host may contain dots
+// and the field is the last colon-delimited segment.
+func parseVaultRef(v string) (host, field string, ok bool) {
+	v = strings.TrimSpace(v)
+	if !strings.HasPrefix(v, "weblogin:") {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(v, "weblogin:")
+	i := strings.LastIndex(rest, ":")
+	if i <= 0 || i >= len(rest)-1 {
+		return "", "", false
+	}
+	host = strings.TrimSpace(rest[:i])
+	field = strings.ToLower(strings.TrimSpace(rest[i+1:]))
+	if host == "" {
+		return "", "", false
+	}
+	return host, field, true
+}
+
+// vaultFillScript is the JavaScript that sets a field's value to secret via
+// the native value setter, so React and other controlled inputs observe the
+// change. It targets whatever element currently has focus (the ref the tool
+// just focused), so no selector is needed. The secret is JSON-encoded to keep
+// it a safe JS string literal and never broken by quotes or newlines.
+func vaultFillScript(secret string) string {
+	b, _ := json.Marshal(secret)
+	return `(() => { const el = document.activeElement; if (!el || !('value' in el)) return 'no-focus'; ` +
+		`const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; ` +
+		`const setter = Object.getOwnPropertyDescriptor(proto, 'value').set; ` +
+		`setter.call(el, ` + string(b) + `); ` +
+		`el.dispatchEvent(new Event('input', {bubbles:true})); ` +
+		`el.dispatchEvent(new Event('change', {bubbles:true})); return 'ok'; })()`
 }

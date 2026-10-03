@@ -259,7 +259,11 @@ func (t *BrowserTool) Parameters() map[string]interface{} {
 			"type":        "string",
 			"description": "The text to fill into the field (clears first).",
 		}
-		required = []string{"ref", "text"}
+		props["vault"] = map[string]interface{}{
+			"type":        "string",
+			"description": "Instead of text: a sealed login field, 'weblogin:<host>:username|password' (e.g. 'weblogin:x.com:username'). The secret is resolved inside the tool and never reaches you, the transcript, or the logs — use this for multi-step sign-ins (username screen, then password screen) where browser_login's one-shot fill does not apply. The broker still asks the owner first.",
+		}
+		required = []string{"ref"}
 	case "submit":
 		props["ref"] = map[string]interface{}{
 			"type":        "string",
@@ -1597,7 +1601,16 @@ func (t *BrowserTool) executeBare(ctx context.Context, args map[string]interface
 	case "fill":
 		ref, _ := args["ref"].(string)
 		text, _ := args["text"].(string)
-		if ref == "" || text == "" {
+		if ref == "" {
+			return ErrorResult("ref is required")
+		}
+		if vaultRef, _ := args["vault"].(string); strings.TrimSpace(vaultRef) != "" {
+			if text != "" {
+				return ErrorResult("pass either text or vault for a fill, never both")
+			}
+			return t.fillVault(ctx, ref, vaultRef)
+		}
+		if text == "" {
 			return ErrorResult("ref and text are required")
 		}
 		return t.run(ctx, "fill", ref, text)
