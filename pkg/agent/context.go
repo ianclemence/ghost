@@ -855,6 +855,13 @@ func stampHistory(history []providers.Message) []providers.Message {
 			continue
 		}
 		clean := utils.StripDateStamp(m.Content)
+		// A reply a restart cut off stops mid-sentence. The model has to
+		// know that, or "continue" lands on a message that merely looks
+		// finished; with the note it picks the thread up exactly where it
+		// stopped instead of rebuilding the context from scratch.
+		if m.Interrupted && m.Role == "assistant" {
+			clean += "\n[the reply stopped mid-sentence when the process restarted — it was never finished]"
+		}
 		if m.CreatedAt.IsZero() {
 			history[i].Content = clean
 			continue

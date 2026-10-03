@@ -3,6 +3,34 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.147] - 2026-10-03
+
+- **A restart reads as a pause, not amnesia.** The reply to a message lived
+  only in the memory of a process that could die, so the Pod going down
+  mid-sentence left the transcript with a question and no answer — Ghost
+  came back rebuilding context instead of continuing it. What has been
+  written now reaches disk while it is still being written. When the
+  process returns: a turn still worth finishing (recent, and still the
+  newest thing in its conversation) is finished, the rest of the reply
+  streaming in as though nothing had happened; anything else has its
+  partial reply written into the transcript, marked cut short. Nothing
+  said is dropped in either case. Finishing waits a few seconds for boot
+  to settle, never runs a turn that was waiting on you, and can be turned
+  off with `GHOST_NO_AUTO_RESUME=1` (or narrowed with
+  `GHOST_RESUME_WINDOW`).
+- **"Continue" actually continues.** A reply that stopped mid-sentence
+  carries a marker only the model sees, so it picks up where it stopped
+  instead of starting the answer again. The phone shows a quiet
+  "Stopped when your Pod restarted" under a reply that ended that way —
+  an unfinished answer with nothing said about it reads as Ghost trailing
+  off.
+- Reconnecting to a turn the restart killed now says the reply is in the
+  conversation, instead of insisting the turn is still running and
+  leaving the client waiting on a reply that will never arrive.
+- The JSONL session store keeps the interrupted marker through a rewrite:
+  `Save` rebuilds the transcript file from what it reads back, and it was
+  dropping every field the line format did not carry.
+
 ## [0.24.146] - 2026-10-03
 
 - **Live view holds.** The takeover screencast socket now upgrades as

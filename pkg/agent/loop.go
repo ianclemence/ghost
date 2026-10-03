@@ -246,6 +246,13 @@ type processOptions struct {
 	// rides the current-message slot only — evidence for the model, never
 	// speech by the owner and never Ghost's reply.
 	ContinuationOutput string
+	// ResumePrompt carries a restart's continuation into the one turn that
+	// owes the owner a finished answer. Like ContinuationOutput it marks
+	// speech that is NOT the owner's, so no user row is persisted and none
+	// of the user-turn machinery runs on it — but where ContinuationOutput
+	// frames an approved run's raw output, this frames the model's own
+	// reply that a restart cut off mid-sentence.
+	ResumePrompt string
 }
 
 // createToolRegistry creates a tool registry with common tools.
@@ -2888,7 +2895,10 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// and the raw payload is not the answer: the model reads the payload
 	// here and replies in its own words.
 	currentMessage := opts.UserMessage
-	if opts.ContinuationOutput != "" {
+	switch {
+	case opts.ResumePrompt != "":
+		currentMessage = opts.ResumePrompt
+	case opts.ContinuationOutput != "":
 		currentMessage = resumeContinuationPrompt(opts.UserMessage, opts.ContinuationOutput)
 	}
 	messages := al.contextBuilder.BuildMessages(
@@ -2912,8 +2922,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// 3. Save user message to session (only if not a slash command and not
 	// an approval continuation — "always allow" is an approval, not speech,
 	// and the payload beside it is evidence, not something the owner said).
+	// A restart resume is the same shape: the owner asked once, and that
+	// row already exists.
 	isSlashCommand := strings.HasPrefix(opts.UserMessage, "/")
-	if !isSlashCommand && opts.ContinuationOutput == "" {
+	notOwnerSpeech := opts.ContinuationOutput != "" || opts.ResumePrompt != ""
+	if !isSlashCommand && !notOwnerSpeech {
 		// Persist the originating surface as provenance. The message lives
 		// in the one shared conversation; the channel only notes where the
 		// owner spoke from (mobile, cli, telegram, voice, …).
@@ -3032,8 +3045,9 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		al.sessions.Save(opts.SessionKey)
 		// If the model asked a natural follow-up for a known missing input,
 		// record a pending continuation so the next short reply resumes.
-		// An approval continuation is not a question, so it mints none.
-		if opts.ContinuationOutput == "" {
+		// An approval continuation is not a question, and a restart resume
+		// is not one either — neither may mint a pending follow-up.
+		if !notOwnerSpeech {
 			maybeSetPendingFromAnswer(al.workspace, opts.SessionKey, opts.UserMessage, finalContent)
 		}
 	}
@@ -3107,7 +3121,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// 11. Record turn for the evolution pipeline (autonomous skill creation)
 	// — an approval continuation is one turn's evidence, not a new task
 	// pattern to learn from, so it is not recorded as one.
-	if !isSlashCommand && al.evolution != nil && opts.ContinuationOutput == "" {
+	if !isSlashCommand && al.evolution != nil && !notOwnerSpeech {
 		al.evolution.RecordTurn(evolution.LearningRecord{
 			TaskKind:   classifyTaskKind(opts.UserMessage),
 			Summary:    utils.Truncate(opts.UserMessage, 300),

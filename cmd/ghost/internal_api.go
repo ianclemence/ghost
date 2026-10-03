@@ -1059,6 +1059,11 @@ type Message struct {
 	// Kind is set for messages Ghost started itself: "reminder", "notice" or
 	// "alert". Absent for ordinary conversation.
 	Kind string `json:"kind,omitempty"`
+	// Interrupted marks a reply a restart cut off mid-sentence, which the
+	// runtime put back into the transcript so nothing said was lost.
+	// Surfaces show it as cut short rather than as an answer that simply
+	// stopped.
+	Interrupted bool `json:"interrupted,omitempty"`
 }
 
 type HistoryResponse struct {
@@ -3078,11 +3083,28 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 						"status": claim.Status,
 					})
 					return
+				case turnlog.StatusInterrupted:
+					// The process died mid-reply. Recovery already put
+					// whatever was said into the transcript (and finished
+					// it, if it was still worth finishing), so this is not
+					// a live turn to attach to and never will be. Say so
+					// distinctly instead of claiming it is running: a
+					// client that believes that waits forever.
+					jsonError(w, http.StatusConflict, "turn_interrupted",
+						"Ghost restarted while answering that. The reply is in the conversation.")
+					return
 				default:
 					jsonError(w, http.StatusConflict, "turn_in_progress",
 						"that turn is already running or waiting; attach to it instead of resending")
 					return
 				}
+			}
+			if cerr == nil && claim.Created {
+				// Where the question came from, recorded once so a turn
+				// that has to be finished later answers on the same
+				// surface instead of appearing somewhere the owner never
+				// looks.
+				_ = chatTurns.SetOrigin(req.SessionKey, req.RequestID, req.Content, req.Channel, req.ChatID)
 			}
 		}
 
@@ -3510,6 +3532,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 					}
 					if k, ok := meta["kind"].(string); ok {
 						m.Kind = k
+					}
+					if v, ok := meta["interrupted"].(bool); ok {
+						m.Interrupted = v
 					}
 				}
 			}
@@ -5998,7 +6023,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	registerDeviceRoutes(mux)
 
 	// ── Durable chat turns, activity stream, connections ─────────────────
-	registerDurableTurns(mux)
+	registerDurableTurns(mux, agentLoop)
 	registerActivityStream(mux)
 	registerConnectionsRoutes(mux)
 	registerWebsiteLoginRoutes(mux)

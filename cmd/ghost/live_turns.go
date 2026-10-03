@@ -57,6 +57,12 @@ func newTurnHub() *turnHub {
 // turns is the daemon's hub.
 var turns = newTurnHub()
 
+// checkpointFlush writes the reply written so far to durable storage so a
+// restart can put it back. It is a hook rather than a direct dependency:
+// the hub is process-global and constructed before the durable turn log is
+// opened, and a turn logged without one still streams normally.
+var checkpointFlush func(session, requestID, text string, force bool)
+
 const liveSubBuffer = 512
 
 // broadcast sends f to every subscriber. A subscriber that cannot keep up is
@@ -87,13 +93,24 @@ func (h *turnHub) Delta(session, requestID, text string) {
 		return
 	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	t := h.active[session]
 	if t == nil || t.requestID != requestID {
+		h.mu.Unlock()
 		return
 	}
 	t.text.WriteString(text)
+	// Clone under the lock: Builder.String shares its buffer, so the copy
+	// handed to the durability write must not alias text the next token
+	// appends to.
+	soFar := strings.Clone(t.text.String())
 	h.broadcast(liveFrame{Type: "stream_delta", Session: session, RequestID: requestID, Delta: text})
+	h.mu.Unlock()
+	// Outside the lock: the durability write must not hold up the reply or
+	// the other surfaces watching it. It is throttled downstream, so this
+	// is a cheap call per token, not a write per token.
+	if checkpointFlush != nil {
+		checkpointFlush(session, requestID, soFar, false)
+	}
 }
 
 // Tool notes what Ghost is doing (searching, reading…) for a status line.
@@ -112,13 +129,21 @@ func (h *turnHub) Tool(session, requestID, label string) {
 // show it immediately without waiting for history to catch up.
 func (h *turnHub) End(session, requestID, outcome string) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	t := h.active[session]
 	if t == nil || t.requestID != requestID {
+		h.mu.Unlock()
 		return
 	}
 	delete(h.active, session)
-	h.broadcast(liveFrame{Type: "stream_end", Session: session, RequestID: requestID, Origin: t.origin, Text: t.text.String(), Outcome: outcome})
+	soFar := strings.Clone(t.text.String())
+	h.broadcast(liveFrame{Type: "stream_end", Session: session, RequestID: requestID, Origin: t.origin, Text: soFar, Outcome: outcome})
+	h.mu.Unlock()
+	// Final flush, unthrottled. A turn that ends waiting on an approval
+	// keeps its partial on disk; a turn that completed retires it, because
+	// the reply is already a row in the transcript.
+	if checkpointFlush != nil && soFar != "" {
+		checkpointFlush(session, requestID, soFar, true)
+	}
 }
 
 // Snapshot returns a frame for every reply in progress, for a surface that has

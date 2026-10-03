@@ -101,6 +101,11 @@ type Message struct {
 	// relative word in old context is otherwise undatable. It is local
 	// provenance only and is never serialized to providers.
 	CreatedAt time.Time `json:"-"`
+	// Interrupted marks a reply a restart cut off mid-sentence, which the
+	// runtime put back into the transcript so nothing the model said was
+	// lost. Surfaces show it as cut short instead of as an answer that
+	// simply stopped. Local provenance only, never sent to providers.
+	Interrupted bool `json:"-"`
 }
 
 // SystemPromptCacheBoundary separates the stable part of a system prompt

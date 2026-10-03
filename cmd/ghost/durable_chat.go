@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/turnlog"
 )
 
@@ -22,6 +23,13 @@ func initChatTurns() *turnlog.Store {
 		return nil
 	}
 	_, _ = st.Recover(deviceProcessStart)
+	// The reply a model streams is written here while it streams, so a
+	// process that dies mid-sentence leaves the words on disk instead of
+	// losing them. It is a hook because the live hub is built before this
+	// store is opened.
+	checkpointFlush = func(session, requestID, text string, force bool) {
+		_ = st.Checkpoint(session, requestID, text, force)
+	}
 	chatTurns = st
 	return st
 }
@@ -35,12 +43,15 @@ func joinWorkspace(parts ...string) string {
 	return p
 }
 
-// registerDurableTurns exposes the durable turn lookup and wires recovery.
-func registerDurableTurns(mux *http.ServeMux) {
+// registerDurableTurns exposes the durable turn lookup and repairs any
+// thread a restart cut off: replies are written back into the transcript,
+// and turns still worth finishing are finished.
+func registerDurableTurns(mux *http.ServeMux, loop *agent.AgentLoop) {
 	st := initChatTurns()
 	if st == nil {
 		return
 	}
+	recoverInterruptedTurns(st, loop)
 	mux.HandleFunc("/v1/chat/turn", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "invalid_request", "use GET")

@@ -24,6 +24,10 @@ type jsonlEntry struct {
 	ToolCallID   string                  `json:"tool_call_id,omitempty"`
 	ToolCalls    []providers.ToolCall    `json:"tool_calls,omitempty"`
 	CreatedAt    time.Time               `json:"created_at"`
+	// Interrupted marks a reply a restart cut off mid-sentence, so the
+	// model and the owner's transcript both see it as unfinished rather
+	// than as an answer that simply stopped.
+	Interrupted bool `json:"interrupted,omitempty"`
 }
 
 func NewJSONLStore(baseDir string) *JSONLStore {
@@ -43,14 +47,7 @@ func (s *JSONLStore) AddFullMessage(sessionKey string, msg providers.Message) {
 	if path == "" {
 		return
 	}
-	entry := jsonlEntry{
-		Role:         msg.Role,
-		Content:      msg.Content,
-		MultiContent: msg.MultiContent,
-		ToolCallID:   msg.ToolCallID,
-		ToolCalls:    msg.ToolCalls,
-		CreatedAt:    time.Now(),
-	}
+	entry := entryFor(msg, time.Now())
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return
@@ -96,6 +93,7 @@ func (s *JSONLStore) readHistory(key string) []providers.Message {
 			ToolCallID:   entry.ToolCallID,
 			ToolCalls:    entry.ToolCalls,
 			CreatedAt:    entry.CreatedAt,
+			Interrupted:  entry.Interrupted,
 		}
 		history = append(history, msg)
 	}
@@ -158,6 +156,21 @@ func (s *JSONLStore) TruncateHistory(key string, keepLast int) {
 	s.SetHistory(key, history)
 }
 
+// entryFor projects a message onto the line format. Both writers go through
+// it — appending and rewriting the whole file — or a rewrite (Save, a
+// compaction) would silently strip whatever the append had carried.
+func entryFor(msg providers.Message, at time.Time) jsonlEntry {
+	return jsonlEntry{
+		Role:         msg.Role,
+		Content:      msg.Content,
+		MultiContent: msg.MultiContent,
+		ToolCallID:   msg.ToolCallID,
+		ToolCalls:    msg.ToolCalls,
+		CreatedAt:    at,
+		Interrupted:  msg.Interrupted,
+	}
+}
+
 func (s *JSONLStore) SetHistory(key string, messages []providers.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -173,15 +186,7 @@ func (s *JSONLStore) SetHistory(key string, messages []providers.Message) {
 	defer file.Close()
 	enc := json.NewEncoder(file)
 	for _, msg := range messages {
-		entry := jsonlEntry{
-			Role:         msg.Role,
-			Content:      msg.Content,
-			MultiContent: msg.MultiContent,
-			ToolCallID:   msg.ToolCallID,
-			ToolCalls:    msg.ToolCalls,
-			CreatedAt:    time.Now(),
-		}
-		enc.Encode(entry)
+		enc.Encode(entryFor(msg, time.Now()))
 	}
 }
 

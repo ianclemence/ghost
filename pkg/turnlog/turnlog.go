@@ -46,6 +46,30 @@ type Turn struct {
 	Outcome      string    `json:"outcome,omitempty"` // product outcome when terminal
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+
+	// Partial is the reply text written so far, checkpointed while the
+	// model streams. The reply used to live only in memory, so a restart
+	// mid-sentence lost every word already spoken; the transcript ended
+	// with an answered question and no answer. Checkpointed here, the
+	// process can put it back — a crash reads as a pause.
+	Partial   string    `json:"partial,omitempty"`
+	PartialAt time.Time `json:"partial_at,omitempty"`
+
+	// Origin is the surface the turn arrived on, recorded once at claim so
+	// a resumed turn answers where the owner actually asked.
+	UserText string `json:"user_text,omitempty"`
+	Channel  string `json:"channel,omitempty"`
+	ChatID   string `json:"chat_id,omitempty"`
+
+	// InterruptedAt is the last moment the turn was known to be alive (the
+	// last checkpoint), not the moment recovery noticed — so a Pod that was
+	// off all night does not present yesterday's dead turn as fresh.
+	InterruptedAt time.Time `json:"interrupted_at,omitempty"`
+	// Materialized marks the partial already written into the transcript,
+	// so recovery can never append the same half-reply twice.
+	Materialized bool `json:"materialized,omitempty"`
+	// ResumedBy is the request id of the turn that finished the work.
+	ResumedBy string `json:"resumed_by,omitempty"`
 }
 
 // trajectoryIDContextKey carries a turn's trajectory ID through the agent
@@ -94,6 +118,22 @@ type ClaimResult struct {
 type Store struct {
 	dir string
 	mu  sync.Mutex
+	// lastCk is the throttle stamp per live turn, so a chunk-by-chunk
+	// checkpoint does not turn every token into a disk write.
+	lastCk map[string]checkpointMark
+}
+
+// checkpointInterval and checkpointByteStep bound how often a streaming
+// reply is flushed: at most one write every interval, unless the reply has
+// grown by a whole step, which is when a lost chunk would actually hurt.
+const (
+	checkpointInterval = 400 * time.Millisecond
+	checkpointByteStep = 2048
+)
+
+type checkpointMark struct {
+	at time.Time
+	n  int
 }
 
 // New creates the store under dir (created if absent).
@@ -101,7 +141,7 @@ func New(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	return &Store{dir: dir}, nil
+	return &Store{dir: dir, lastCk: map[string]checkpointMark{}}, nil
 }
 
 func key(sessionID, requestID string) string {
@@ -159,12 +199,200 @@ func (s *Store) Set(sessionID, requestID string, st Status, outcome string) (*Tu
 	if outcome != "" {
 		t.Outcome = outcome
 	}
+	// A reply that finished is in the transcript, so the checkpoint is
+	// retired — recovering it later would append the same words twice. A
+	// reply that failed or was cut off keeps its partial: that text is
+	// nowhere else, and losing it is the amnesia recovery exists to stop.
+	if st == StatusCompleted {
+		t.Partial = ""
+		t.PartialAt = time.Time{}
+		t.Materialized = true
+		delete(s.lastCk, key(sessionID, requestID))
+	}
 	t.UpdatedAt = time.Now().UTC()
 	if err := s.writeLocked(t); err != nil {
 		return nil, err
 	}
 	cp := *t
 	return &cp, nil
+}
+
+// SetOrigin records the surface a turn arrived on. Called once, right after
+// the claim wins, so a later resume knows what was asked and where from
+// without re-reading the transcript.
+func (s *Store) SetOrigin(sessionID, requestID, userText, channel, chatID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, err := s.loadLocked(sessionID, requestID)
+	if err != nil || t == nil {
+		return err
+	}
+	if t.UserText == userText && t.Channel == channel && t.ChatID == chatID {
+		return nil
+	}
+	t.UserText = userText
+	t.Channel = channel
+	t.ChatID = chatID
+	return s.writeLocked(t)
+}
+
+// Checkpoint durably records the reply text written so far. It is throttled
+// by default (a token stream must not become a token stream of fsyncs) and
+// refuses terminal turns, whose partial has already been settled one way or
+// the other.
+func (s *Store) Checkpoint(sessionID, requestID, text string, force bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	k := key(sessionID, requestID)
+	now := time.Now()
+	if !force {
+		if m, ok := s.lastCk[k]; ok {
+			if now.Sub(m.at) < checkpointInterval && len(text)-m.n < checkpointByteStep {
+				return nil
+			}
+		}
+	}
+	t, err := s.loadLocked(sessionID, requestID)
+	if err != nil || t == nil {
+		return err
+	}
+	switch t.Status {
+	case StatusCompleted, StatusFailed, StatusInterrupted:
+		return nil // terminal: already settled
+	}
+	t.Partial = text
+	t.PartialAt = now.UTC()
+	t.UpdatedAt = t.PartialAt
+	if err := s.writeLocked(t); err != nil {
+		return err
+	}
+	s.lastCk[k] = checkpointMark{at: now, n: len(text)}
+	return nil
+}
+
+// PendingPartials returns terminal turns whose partial reply has not yet
+// reached the transcript. Recovery writes each one in exactly once.
+func (s *Store) PendingPartials() ([]*Turn, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []*Turn
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		t, err := s.loadNameLocked(e.Name())
+		if err != nil || t == nil || t.Materialized || t.Partial == "" {
+			continue
+		}
+		switch t.Status {
+		case StatusInterrupted, StatusFailed:
+			cp := *t
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+// MarkMaterialized records that a turn's partial reply is now a row in the
+// transcript, so it can never be appended a second time.
+func (s *Store) MarkMaterialized(sessionID, requestID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, err := s.loadLocked(sessionID, requestID)
+	if err != nil || t == nil {
+		return err
+	}
+	t.Materialized = true
+	t.Partial = ""
+	t.PartialAt = time.Time{}
+	delete(s.lastCk, key(sessionID, requestID))
+	return s.writeLocked(t)
+}
+
+// MarkResumed links an interrupted turn to the turn that finished its work.
+func (s *Store) MarkResumed(sessionID, requestID, resumedBy string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, err := s.loadLocked(sessionID, requestID)
+	if err != nil || t == nil {
+		return err
+	}
+	t.ResumedBy = resumedBy
+	return s.writeLocked(t)
+}
+
+// Resumable returns interrupted turns that died within window and have not
+// already been picked back up. The window is measured from InterruptedAt —
+// the last moment the turn was demonstrably alive — so a Pod that was off
+// overnight does not resurrect a turn the owner has long stopped expecting.
+func (s *Store) Resumable(now time.Time, window time.Duration) ([]*Turn, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []*Turn
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		t, err := s.loadNameLocked(e.Name())
+		if err != nil || t == nil || t.Status != StatusInterrupted || t.ResumedBy != "" {
+			continue
+		}
+		dead := t.InterruptedAt
+		if dead.IsZero() {
+			dead = t.UpdatedAt
+		}
+		if dead.IsZero() || now.Sub(dead) > window || now.Sub(dead) < 0 {
+			continue
+		}
+		cp := *t
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
+// HasNewerTurn reports whether the session has a turn that started after
+// this one. When the owner already moved on, finishing the old reply would
+// inject it out of order, so recovery must leave it alone.
+func (s *Store) HasNewerTurn(t *Turn) (bool, error) {
+	if t == nil {
+		return false, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return false, err
+	}
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		o, err := s.loadNameLocked(e.Name())
+		if err != nil || o == nil || o.SessionID != t.SessionID {
+			continue
+		}
+		if o.RequestID == t.RequestID {
+			continue
+		}
+		if o.CreatedAt.After(t.CreatedAt) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Recover marks turns that were running/pending at a crash as interrupted so
@@ -190,6 +418,17 @@ func (s *Store) Recover(processStart time.Time) (int, error) {
 			continue
 		}
 		if t.Status == StatusRunning || t.Status == StatusPending || t.Status == StatusWaiting {
+			// InterruptedAt is when the turn was last seen alive (its last
+			// checkpoint), not now: freshness must be measured from the
+			// crash, so an overnight outage does not look like a turn that
+			// just stopped.
+			if !t.PartialAt.IsZero() {
+				t.InterruptedAt = t.PartialAt
+			} else if !t.UpdatedAt.IsZero() {
+				t.InterruptedAt = t.UpdatedAt
+			} else {
+				t.InterruptedAt = t.CreatedAt
+			}
 			t.Status = StatusInterrupted
 			t.UpdatedAt = time.Now().UTC()
 			if err := s.writeLocked(t); err == nil {
