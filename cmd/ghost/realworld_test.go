@@ -262,7 +262,7 @@ func TestMemoryPresentation(t *testing.T) {
 				Predicate: "identity/name",
 				Value:     json.RawMessage(`"Ian"`),
 			},
-			expectedTitle:  "Named Ian",
+			expectedTitle:  "Name: Ian",
 			expectedDomain: personalcontext.DomainIdentity,
 			expectedLabel:  "Identity",
 		},

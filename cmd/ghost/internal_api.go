@@ -4212,6 +4212,28 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		if channel == "" {
 			channel = "mobile"
 		}
+		// An "act" choice is carried out here, by the handler for the card's
+		// kind, before the card is marked resolved: a snooze that failed must
+		// leave the reminder's buttons where they were.
+		label := ""
+		if open, found := cards.DefaultStore.Find(channel, req.ID); found && open.Resolved == nil {
+			for _, a := range open.Actions {
+				if a.ID != req.ActionID || a.Kind != "act" {
+					continue
+				}
+				h, has := cards.HandlerFor(open.Kind)
+				if !has {
+					jsonError(w, http.StatusBadRequest, "unsupported", "that choice can't be carried out")
+					return
+				}
+				l, err := h(open, req.ActionID)
+				if err != nil {
+					jsonResponse(w, http.StatusConflict, map[string]interface{}{"ok": false, "card": open, "error": err.Error()})
+					return
+				}
+				label = l
+			}
+		}
 		card, ok := cards.DefaultStore.Resolve(channel, req.ID, req.ActionID)
 		if !ok {
 			// Already put away, expired, or not an action it offered: say so, and
@@ -4219,7 +4241,23 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			jsonResponse(w, http.StatusConflict, map[string]interface{}{"ok": false, "card": card})
 			return
 		}
+		if label != "" {
+			cards.DefaultStore.Relabel(channel, card.ID, label)
+			card.Resolved.Label = label
+		}
 		cards.DefaultActionLog.Record(cards.ActionRecord{CardID: card.ID, CardKind: string(card.Kind), ActionID: req.ActionID, Actor: "owner", Result: "resolved"})
+		// Tapping a morning suggestion is the owner engaging with that kind
+		// of thing; the attention layer keeps those coming.
+		if card.Kind == cards.KindDigest && strings.HasPrefix(req.ActionID, "item_") {
+			if srcs, ok := card.Data["sources"].([]interface{}); ok {
+				var i int
+				if _, err := fmt.Sscanf(req.ActionID, "item_%d", &i); err == nil && i >= 0 && i < len(srcs) {
+					if src, _ := srcs[i].(string); src != "" {
+						agentLoop.AttentionAnswered(src)
+					}
+				}
+			}
+		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "card": card})
 	}))
 
@@ -4672,6 +4710,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			CreatedAt      time.Time  `json:"created_at,omitempty"`
 			ReinforceCount int        `json:"reinforce_count,omitempty"`
 			ReinforcedAt   *time.Time `json:"reinforced_at,omitempty"`
+			// SaidBy is "you" (the owner stated it) or "ghost" (inferred);
+			// LearnedAt is when it was first heard; Field marks a labelled
+			// value ("Name" → "Ian") to show as a field, not a sentence.
+			SaidBy    string    `json:"said_by"`
+			LearnedAt time.Time `json:"learned_at"`
+			Field     bool      `json:"field,omitempty"`
 		}
 		store, err := personalcontext.Open(workspaceDir)
 		if err != nil {
@@ -4718,6 +4762,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				CreatedAt:      e.CreatedAt,
 				ReinforceCount: e.ReinforceCount,
 				ReinforcedAt:   e.ReinforcedAt,
+				SaidBy:         personalcontext.SaidBy(e),
+				LearnedAt:      personalcontext.LearnedAt(e),
+				Field:          personalcontext.IsField(e),
 			})
 		}
 		curate := tools.NewMemoryCurateTool(workspaceDir)
@@ -5930,6 +5977,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	// ── Live Surface plane (browser/computer control + observation) ──────
 	registerLiveSurfaceRoutes(mux, agentLoop)
 	registerPushRoutes(mux, startPushBridge(agentLoop))
+	registerReminderActions(mux, scheduledService, nil, agentLoop)
 	registerSystemUpdateRoutes(mux)
 	registerConsoleResetRoute(mux, agentLoop)
 	registerToolServerRoutes(mux, agentLoop)

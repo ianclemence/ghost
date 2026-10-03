@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/attention"
 	"github.com/ianclemence/ghost/pkg/cevents"
 	"github.com/ianclemence/ghost/pkg/commitments"
 	"github.com/ianclemence/ghost/pkg/logger"
@@ -139,7 +140,7 @@ func (al *AgentLoop) writeDeferredQueue(jobs []deferredJob) {
 // deferExtraction records the model-backed extraction work for after the
 // reply. It is a local file append: no model, no network, no blocking.
 func (al *AgentLoop) deferExtraction(session, requestID, message, channel string) {
-	if al.semanticExtractor == nil && al.commitmentExtractor == nil {
+	if al.semanticExtractor == nil && al.commitmentExtractor == nil && al.provider == nil {
 		return
 	}
 	if isMachineTurn(session) || message == "" {
@@ -303,6 +304,7 @@ func (al *AgentLoop) runDeferredExtraction(session, message, requestID string) b
 	if al.commitmentExtractor != nil {
 		al.extractSemanticCommitment(session, message, requestID)
 	}
+	al.extractFollowups(message)
 	return ok
 }
 
@@ -464,4 +466,27 @@ func correctedByOwner(e personalcontext.Entry) bool {
 		}
 	}
 	return false
+}
+
+// extractFollowups records open threads from one message: things the owner
+// said that are worth coming back to later (a planned purchase, something
+// they said they would do, a decision, something awaited, a worry). It runs
+// from the deferred queue like memory extraction, never inline, and only
+// when the cheap word filter says the message looks ahead — most turns cost
+// nothing.
+func (al *AgentLoop) extractFollowups(message string) {
+	if al == nil || al.workspace == "" || al.provider == nil {
+		return
+	}
+	if !attention.LooksForward(message) {
+		return
+	}
+	now := time.Now()
+	list, err := attention.ExtractFollowups(context.Background(), al.provider, al.model, message, now, al.ownerLocation())
+	if err != nil || len(list) == 0 {
+		return
+	}
+	if n := al.followupStore().Add(list); n > 0 {
+		logger.InfoCF("agent", "follow-up threads recorded", map[string]interface{}{"count": n})
+	}
 }

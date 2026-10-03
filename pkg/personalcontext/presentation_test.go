@@ -20,7 +20,7 @@ func TestTitle(t *testing.T) {
 				Predicate: "identity/name",
 				Value:     json.RawMessage(`"Ian"`),
 			},
-			expected: "Named Ian",
+			expected: "Name: Ian",
 		},
 		{
 			name: "fact location",

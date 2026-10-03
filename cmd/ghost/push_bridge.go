@@ -44,6 +44,11 @@ func pushCategoryFor(msg bus.OutboundMessage) (push.Category, bool) {
 			return push.Update, true
 		}
 	case "card_update":
+		// A reminder's card rides with the reminder message, which already
+		// pushed; a second buzz for the same reminder is noise.
+		if k, _ := msg.Metadata["card_kind"].(string); k == "reminder" {
+			return "", false
+		}
 		if msg.Content != "" {
 			return push.Update, true
 		}
@@ -60,7 +65,7 @@ func startPushBridge(al *agent.AgentLoop) *push.Store {
 		return nil
 	}
 	notifier := push.NewNotifier(store)
-	send := func(cat push.Category, text string) {
+	send := func(cat push.Category, text string, data map[string]string) {
 		if wsClients.Load() > 0 {
 			return // a connected phone already has it
 		}
@@ -69,7 +74,7 @@ func startPushBridge(al *agent.AgentLoop) *push.Store {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 		defer cancel()
-		if _, err := notifier.NotifyWith(ctx, cat, text); err != nil {
+		if _, err := notifier.NotifyWith(ctx, cat, text, data); err != nil {
 			log.Printf("push: %v", err)
 		}
 	}
@@ -78,13 +83,19 @@ func startPushBridge(al *agent.AgentLoop) *push.Store {
 	go func() {
 		for msg := range ch {
 			if cat, ok := pushCategoryFor(msg); ok {
-				send(cat, msg.Content)
+				// A reminder's push carries its id so the notification's own
+				// Done and Snooze buttons act on it without opening the app.
+				var data map[string]string
+				if id, _ := msg.Metadata["item_id"].(string); id != "" && cat == push.Reminder {
+					data = map[string]string{"item_id": id}
+				}
+				send(cat, msg.Content, data)
 			}
 		}
 	}()
 	if events := al.CanonicalEvents(); events != nil {
 		events.Subscribe(cevents.Filter{Types: []cevents.Type{cevents.PermissionRequested}}, func(*cevents.Event) {
-			go send(push.Approval, "")
+			go send(push.Approval, "", nil)
 		})
 	}
 	return store

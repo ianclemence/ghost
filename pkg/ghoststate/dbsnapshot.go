@@ -75,6 +75,11 @@ var snapshotTables = []snapshotTable{
 		"scheduled_at", "started_at", "completed_at",
 		"status", "error", "channel", "delivered_at", "delivery_status",
 	}, OrderBy: "scheduled_at, execution_id"},
+	// What the owner did with each reminder that went off (seen, done,
+	// snoozed, dismissed): part of the reminder, so it moves with it.
+	{Name: "reminder_acks", Columns: []string{
+		"item_id", "delivered_at", "seen_at", "outcome", "outcome_at",
+	}, OrderBy: "item_id, delivered_at"},
 	{Name: "canonical_events", Columns: []string{
 		"seq", "id", "type", "request_id", "session_id",
 		"conversation_id", "ghost_id", "agent_id", "routine_id",

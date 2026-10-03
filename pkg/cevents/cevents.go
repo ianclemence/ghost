@@ -158,6 +158,12 @@ const (
 	ReminderDelivered Type = "reminder.delivered"
 	ReminderMissed    Type = "reminder.missed"
 	ReminderFailed    Type = "reminder.failed"
+	ReminderDone      Type = "reminder.done"
+	ReminderSnoozed   Type = "reminder.snoozed"
+	ReminderDismissed Type = "reminder.dismissed"
+	// The attention layer's morning message: what Ghost bundled for the
+	// owner instead of sending each thing on its own.
+	DigestDelivered Type = "digest.delivered"
 	// Effort / routing decisions (observability for why a turn was cheap or deep)
 	EffortSelected Type = "effort.selected"
 )
@@ -200,6 +206,7 @@ func (t Type) DefaultVisibility() product.Visibility {
 		CommitmentCreated, CommitmentCompleted, CommitmentFailed, CommitmentBlocked,
 		WatchCreated, WatchNotified, WatchCancelled,
 		ReminderDelivered, ReminderMissed, ReminderFailed,
+		ReminderDone, ReminderSnoozed, ReminderDismissed, DigestDelivered,
 		OperationFailed:
 		return product.VisUserMessage
 	default:

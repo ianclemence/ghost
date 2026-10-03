@@ -119,6 +119,10 @@ var humanTitles = map[cevents.Type]string{
 	cevents.ReminderDelivered:       "Reminded you",
 	cevents.ReminderMissed:          "Missed a reminder",
 	cevents.ReminderFailed:          "Couldn't send a reminder",
+	cevents.ReminderDone:            "Done",
+	cevents.ReminderSnoozed:         "Snoozed",
+	cevents.ReminderDismissed:       "Put away",
+	cevents.DigestDelivered:         "Morning summary",
 }
 
 // skillNameTitle refines skill lifecycle chips with the skill name when the
@@ -356,7 +360,8 @@ func stateFor(t cevents.Type, status string) State {
 	case cevents.AgentWaiting, cevents.PermissionRequested, cevents.RoutineWaiting,
 		cevents.ProactivePresented, cevents.ProactiveSnoozed, cevents.ProactiveExpired:
 		return StateWaiting
-	case cevents.ProactiveDenied, cevents.ProactiveDismissed, cevents.ProactiveSuperseded:
+	case cevents.ProactiveDenied, cevents.ProactiveDismissed, cevents.ProactiveSuperseded,
+		cevents.ReminderDismissed:
 		return StateCancelled
 	// A refusal and an expiry both end the request; neither is still waiting
 	// on anybody, and a "waiting" pill for a settled decision is a false
@@ -374,7 +379,8 @@ func stateFor(t cevents.Type, status string) State {
 		cevents.SkillInstalled, cevents.SkillUpdated, cevents.SkillEnabled,
 		cevents.SkillDisabled, cevents.SkillRemoved,
 		cevents.ProactiveApproved, cevents.ProactiveCompleted,
-		cevents.CommitmentCompleted, cevents.ReminderDelivered:
+		cevents.CommitmentCompleted, cevents.ReminderDelivered,
+		cevents.ReminderDone, cevents.ReminderSnoozed, cevents.DigestDelivered:
 		return StateSuccess
 	case cevents.AgentFailed, cevents.CapabilityFailed, cevents.ToolFailed,
 		cevents.IntegrationFailed, cevents.RoutineFailed,

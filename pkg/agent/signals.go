@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/ianclemence/ghost/pkg/attention"
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/cards"
 	"github.com/ianclemence/ghost/pkg/commands"
@@ -77,6 +78,13 @@ func (al *AgentLoop) PollProactive() int {
 		}
 	}
 	for _, nt := range al.ScanNotices() {
+		// One attention layer: anything that can wait joins the morning
+		// message instead of interrupting on its own.
+		if !nt.Urgency {
+			al.OfferAttention(attention.Item{Key: "notice:" + nt.DedupeKey, Source: "notice:" + noticeKind(nt.Topic),
+				Line: nt.Message, Priority: nt.Priority, Reliable: nt.Confidence >= 0.8})
+			continue
+		}
 		if affinity < minAffinityForProactive && !nt.Urgency {
 			logger.InfoCF("agent", "proactive skipped: affinity floor",
 				map[string]interface{}{"topic": nt.Topic, "affinity": affinity})
@@ -603,4 +611,13 @@ func LateNote(due, now time.Time, zone string) string {
 		}
 	}
 	return "This was due at " + when + "; I was offline then."
+}
+
+// noticeKind is the family of a notice topic ("routine:abc" → "routine"),
+// which is what the attention layer learns the owner's interest against.
+func noticeKind(topic string) string {
+	if i := strings.Index(topic, ":"); i > 0 {
+		return topic[:i]
+	}
+	return topic
 }

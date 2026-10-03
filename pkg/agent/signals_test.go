@@ -106,7 +106,9 @@ func TestWaitingRoutineNotice(t *testing.T) {
 	}
 }
 
-// PollProactive delivers through the gate and suppresses repeats.
+// PollProactive holds what can wait for the morning digest and suppresses
+// repeats. A failed routine is not urgent, so it joins the digest instead of
+// interrupting; polling twice queues it once.
 func TestPollProactiveDeliversOnce(t *testing.T) {
 	al, rsvc, ssvc, store := signalLoop(t)
 	id := mkRoutine(t, rsvc, "briefing")
@@ -116,8 +118,6 @@ func TestPollProactiveDeliversOnce(t *testing.T) {
 	if err := store.Update(item); err != nil {
 		t.Fatal(err)
 	}
-	ch, unsub := al.bus.SubscribeOutbound("test", true, 8)
-	defer unsub()
 	if err := al.state.SetLastActiveSession("telegram", "123"); err != nil {
 		t.Fatal(err)
 	}
@@ -130,19 +130,21 @@ func TestPollProactiveDeliversOnce(t *testing.T) {
 	}
 	// Warm affinity so the floor doesn't gate the test signal.
 	al.affect = al.affect.Turn(0.9, 0.5, 0.9, false, time.Now())
-	if n := al.PollProactive(); n != 1 {
-		t.Fatalf("must deliver exactly one notice, got %d", n)
+	if n := al.PollProactive(); n != 0 {
+		t.Fatalf("a non-urgent failure must wait for the morning digest, got %d", n)
 	}
-	select {
-	case m := <-ch:
-		if !strings.Contains(m.Content, "briefing") {
-			t.Fatalf("delivered wrong content: %q", m.Content)
-		}
-	default:
-		t.Fatal("notice must arrive on the bus")
+	pending := al.attentionQueue().Pending()
+	if len(pending) != 1 {
+		t.Fatalf("exactly one digest item must wait, got %+v", pending)
+	}
+	if !strings.Contains(pending[0].Line, "briefing") {
+		t.Fatalf("digest item must carry its reason: %q", pending[0].Line)
 	}
 	if n := al.PollProactive(); n != 0 {
-		t.Fatalf("repeat poll must be a gated no-op, got %d", n)
+		t.Fatalf("repeat poll must be a no-op, got %d", n)
+	}
+	if len(al.attentionQueue().Pending()) != 1 {
+		t.Fatalf("repeat poll must not duplicate the digest item")
 	}
 }
 

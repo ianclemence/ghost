@@ -3,6 +3,7 @@ package personalcontext
 import (
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -250,7 +251,7 @@ func rawTitle(e Entry) string {
 	if e.Kind == KindIdentity {
 		switch {
 		case strings.Contains(e.Predicate, "name"):
-			return "Named " + val
+			return "Name: " + val
 		case strings.Contains(e.Predicate, "age"):
 			return "Age: " + val
 		case strings.Contains(e.Predicate, "gender"):
@@ -495,4 +496,35 @@ func knownDomain(d Domain) bool {
 		return true
 	}
 	return false
+}
+
+// SaidBy is who a belief came from: "you" when the owner stated or corrected
+// it, "ghost" when Ghost worked it out.
+func SaidBy(e Entry) string {
+	for _, src := range e.Sources {
+		switch src.Kind {
+		case SourceUserDeclared, SourceUserCorrected, SourceManual:
+			return "you"
+		}
+	}
+	return "ghost"
+}
+
+// LearnedAt is when Ghost first heard it: the earliest receipt, not when the
+// record was written. A memory restored or rewritten today was still learned
+// the day the owner said it.
+func LearnedAt(e Entry) time.Time {
+	t := e.CreatedAt
+	for _, src := range e.Sources {
+		if !src.Timestamp.IsZero() && (t.IsZero() || src.Timestamp.Before(t)) {
+			t = src.Timestamp
+		}
+	}
+	return t
+}
+
+// IsField reports whether a memory is a labelled value ("Name: Ian") rather
+// than a sentence, so a screen can show it as a field.
+func IsField(e Entry) bool {
+	return !SentenceValue(e) && Label(e.Predicate) != ""
 }

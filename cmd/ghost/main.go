@@ -1515,8 +1515,23 @@ func gatewayCmd() {
 	heartbeatService.SetScheduler(scheduledService)
 	heartbeatService.SetBus(msgBus)
 	heartbeatService.SetDeliver(func(channel, chatID, text string) {
+		// One morning message: a briefing written while the morning
+		// message is due carries it, instead of arriving beside it.
+		text = agentLoop.MorningMerge(text)
 		agentLoop.DeliverToOwner(channel, chatID, text, map[string]interface{}{"announce": "heartbeat"})
 	})
+	// The attention loop runs on its own clock. It used to ride the
+	// heartbeat, which skips its handler when no HEARTBEAT.md section is
+	// due, so proactive signals were looked at a few times a day.
+	go func() {
+		time.Sleep(90 * time.Second)
+		t := time.NewTicker(5 * time.Minute)
+		defer t.Stop()
+		for {
+			agentLoop.AttentionTick(time.Now())
+			<-t.C
+		}
+	}()
 	heartbeatService.SetHandler(func(prompt, channel, chatID string) *tools.ToolResult {
 		// Quiet hours (PROACTIVE_PREFERENCES.md, user timezone): skip the
 		// model turn, but still poll signals so urgent items break through
@@ -2614,14 +2629,7 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 		// arrives on time even when the provider is down or out of credit,
 		// and it can't come back as "Stretching. 🧘".
 		if item.Type == scheduled.TypeReminder {
-			text := agent.ReminderText(item.Title)
-			if item.NextRunAt != nil {
-				if note := agent.LateNote(*item.NextRunAt, time.Now(), item.Timezone); note != "" {
-					text += " " + note
-				}
-			}
-			agentLoop.DeliverToOwner(item.Channel, item.ChatID, text, map[string]interface{}{"reminder": true, "item_id": item.ID})
-			publishReminderEvent(cstream, cevents.ReminderDelivered, item, "")
+			deliverReminder(agentLoop, reminderService, cstream, item)
 			return nil
 		}
 		if item.Action.Content == "" {
@@ -2652,6 +2660,7 @@ func setupScheduledService(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, w
 	events := &scheduled.SimpleEventBus{}
 
 	service := scheduled.NewService(store, events, executor)
+	reminderService = service
 	// A recurring routine that came due while Ghost was off is skipped, not
 	// replayed hours later; say so, so its silence is not a mystery.
 	service.MissedNotice = func(item *scheduled.ScheduledItem, due time.Time) {
@@ -4205,3 +4214,7 @@ func publishReminderEvent(stream *cevents.Stream, typ cevents.Type, item *schedu
 		Payload: map[string]interface{}{"summary": summary, "item_id": item.ID},
 	})
 }
+
+// reminderService is the scheduler the reminder executor records deliveries
+// on. Set once at startup, before the scheduler starts firing.
+var reminderService *scheduled.Service

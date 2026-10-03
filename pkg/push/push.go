@@ -146,7 +146,7 @@ func NewNotifier(store *Store) *Notifier {
 // of the same category went out a moment ago. It returns how many devices the
 // push service accepted.
 func (n *Notifier) Notify(ctx context.Context, cat Category) (int, error) {
-	return n.NotifyWith(ctx, cat, "")
+	return n.NotifyWith(ctx, cat, "", nil)
 }
 
 // NotifyWith is Notify with the words to show. Only a reminder carries its
@@ -154,7 +154,7 @@ func (n *Notifier) Notify(ctx context.Context, cat Category) (int, error) {
 // reminder for you" on a locked phone makes them open the app to learn it was
 // "Stretch". Everything else keeps fixed copy, so a conversation never leaves
 // the Pod through the push service.
-func (n *Notifier) NotifyWith(ctx context.Context, cat Category, text string) (int, error) {
+func (n *Notifier) NotifyWith(ctx context.Context, cat Category, text string, extra map[string]string) (int, error) {
 	tokens := n.store.Tokens()
 	if len(tokens) == 0 {
 		return 0, nil
@@ -180,11 +180,15 @@ func (n *Notifier) NotifyWith(ctx context.Context, cat Category, text string) (i
 	}
 	msgs := make([]map[string]interface{}, 0, len(tokens))
 	for _, t := range tokens {
-		msgs = append(msgs, map[string]interface{}{
+		m := map[string]interface{}{
 			"to": t, "title": "Ghost", "body": shown, "sound": "default", "priority": "high",
 			"ttl": 3600, "channelId": "default",
-			"data": map[string]string{"category": string(cat), "anchor": c.anchor},
-		})
+			"data": pushData(cat, c.anchor, extra),
+		}
+		if id := pushCategoryID(cat); id != "" {
+			m["categoryId"] = id
+		}
+		msgs = append(msgs, m)
 	}
 	raw, _ := json.Marshal(msgs)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.url, bytes.NewReader(raw))
@@ -228,4 +232,23 @@ func (n *Notifier) NotifyWith(ctx context.Context, cat Category, text string) (i
 		}
 	}
 	return sent, nil
+}
+
+// pushData is the payload the phone reads when a notification is tapped or
+// one of its buttons pressed.
+func pushData(cat Category, anchor string, extra map[string]string) map[string]string {
+	d := map[string]string{"category": string(cat), "anchor": anchor}
+	for k, v := range extra {
+		d[k] = v
+	}
+	return d
+}
+
+// pushCategoryID names the set of buttons the phone shows on the
+// notification: a reminder offers Done and Snooze where it appears.
+func pushCategoryID(cat Category) string {
+	if cat == Reminder {
+		return "reminder"
+	}
+	return ""
 }

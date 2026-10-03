@@ -88,12 +88,12 @@ func (t *ScheduleTool) Parameters() map[string]interface{} {
 			},
 			"action": map[string]interface{}{
 				"type":        "string",
-				"enum":        []string{"create", "list", "cancel"},
-				"description": "create (default): store the request in message. list: return what is scheduled (pending, recently completed, failed). cancel: stop one reminder or recurring routine described by target. message is not needed for list or cancel.",
+				"enum":        []string{"create", "list", "cancel", "done"},
+				"description": "create (default): store the request in message. list: return what is scheduled (pending, recently completed, failed). cancel: stop one reminder or recurring routine described by target. done: the owner already did what a reminder is for (\"I already watered the plants\"); it closes that reminder so it never fires or nags. message is not needed for list, cancel or done.",
 			},
 			"target": map[string]interface{}{
 				"type":        "string",
-				"description": "With action=cancel: a few words describing the reminder or routine to cancel, or its id. Example: \"the vitamins reminder\".",
+				"description": "With action=cancel or done: a few words describing the reminder or routine, or its id. Example: \"the vitamins reminder\".",
 			},
 		},
 	}
@@ -264,6 +264,9 @@ func (t *ScheduleTool) Execute(ctx context.Context, args map[string]interface{})
 	} else if strings.EqualFold(strings.TrimSpace(action), "cancel") {
 		target, _ := args["target"].(string)
 		return t.cancelSchedule(target)
+	} else if strings.EqualFold(strings.TrimSpace(action), "done") {
+		target, _ := args["target"].(string)
+		return t.markDone(target)
 	}
 
 	t.mu.RLock()
@@ -924,11 +927,74 @@ func (t *ScheduleTool) cancelSchedule(target string) *ToolResult {
 	}
 }
 
+// reminderCloser closes a reminder the owner already took care of.
+type reminderCloser interface {
+	MarkDone(id string, now time.Time) (*scheduled.ScheduledItem, error)
+}
+
+// markDone closes a reminder because the owner already did the thing: one
+// still waiting never fires, one that went off stops being open. It looks at
+// what is pending and at what went off in the last two days.
+func (t *ScheduleTool) markDone(target string) *ToolResult {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return ErrorResult("say which reminder is done")
+	}
+	lister, ok := t.service.(scheduleLister)
+	closer, ok2 := t.service.(reminderCloser)
+	if !ok || !ok2 {
+		return ErrorResult("I can't close reminders from here.")
+	}
+	pending, err := lister.ListItems(scheduled.TypeReminder, scheduled.StateScheduled, 200)
+	if err != nil {
+		return ErrorResult("I couldn't read your reminders just now. Try again in a moment.")
+	}
+	fired, _ := lister.ListItems(scheduled.TypeReminder, scheduled.StateCompleted, 200)
+	cutoff := time.Now().Add(-48 * time.Hour)
+	var pool []*scheduled.ScheduledItem
+	pool = append(pool, pending...)
+	for _, it := range fired {
+		if it != nil && it.LastRunAt != nil && it.LastRunAt.After(cutoff) {
+			pool = append(pool, it)
+		}
+	}
+	matches := scheduleMatchesIn(pool, target, scheduled.StateScheduled, scheduled.StateCompleted)
+	switch len(matches) {
+	case 0:
+		return ErrorResult(fmt.Sprintf("I couldn't find a reminder that matches %q.", target))
+	case 1:
+		it := matches[0]
+		wasPending := it.State == scheduled.StateScheduled
+		if _, err := closer.MarkDone(it.ID, time.Now()); err != nil {
+			return ErrorResult(fmt.Sprintf("I couldn't close %q: %v", it.Title, err))
+		}
+		if wasPending && it.Schedule.Kind == scheduled.ScheduleAt {
+			return NewToolResult(fmt.Sprintf("Closed %q: it was due %s and won't go off now.", it.Title, describeScheduleTime(it)))
+		}
+		return NewToolResult(fmt.Sprintf("Marked %q done.", it.Title))
+	default:
+		var lines []string
+		for _, it := range matches {
+			lines = append(lines, fmt.Sprintf("- %s (%s)", it.Title, describeScheduleTime(it)))
+		}
+		return ErrorResult("More than one reminder matches. I closed nothing. Ask the owner which:\n" + strings.Join(lines, "\n"))
+	}
+}
+
 // scheduleMatches returns the live items that match a description: the single
 // exact-id match if there is one, otherwise the best-scoring item and any other
 // that scores nearly as well (so an ambiguous request is never resolved by a
 // coin toss).
 func scheduleMatches(items []*scheduled.ScheduledItem, query string) []*scheduled.ScheduledItem {
+	return scheduleMatchesIn(items, query, scheduled.StateScheduled)
+}
+
+// scheduleMatchesIn is scheduleMatches over items in any of the given states.
+func scheduleMatchesIn(items []*scheduled.ScheduledItem, query string, states ...scheduled.ItemState) []*scheduled.ScheduledItem {
+	allowed := map[scheduled.ItemState]bool{}
+	for _, st := range states {
+		allowed[st] = true
+	}
 	q := strings.ToLower(strings.TrimSpace(query))
 	type scored struct {
 		it    *scheduled.ScheduledItem
@@ -936,7 +1002,7 @@ func scheduleMatches(items []*scheduled.ScheduledItem, query string) []*schedule
 	}
 	var all []scored
 	for _, it := range items {
-		if it == nil || it.State != scheduled.StateScheduled {
+		if it == nil || !allowed[it.State] {
 			continue
 		}
 		if it.ID == query || strings.EqualFold(it.ID, q) {

@@ -31,6 +31,10 @@ const (
 	StateCancelled ItemState = "cancelled" // User cancelled
 	StateMissed    ItemState = "missed"    // Past due, not executed (one-time)
 	StatePaused    ItemState = "paused"    // User paused
+	// A reminder the owner closed: done (they did the thing, possibly before
+	// it fired) or dismissed (they put it away without doing it).
+	StateDone      ItemState = "done"
+	StateDismissed ItemState = "dismissed"
 )
 
 // ScheduleKind defines how a schedule triggers.
@@ -153,6 +157,8 @@ var ValidStates = map[ItemState]bool{
 	StateCancelled: true,
 	StateMissed:    true,
 	StatePaused:    true,
+	StateDone:      true,
+	StateDismissed: true,
 }
 
 // ValidScheduleKinds is the set of valid schedule kinds.

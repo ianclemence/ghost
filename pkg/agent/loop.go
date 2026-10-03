@@ -5014,7 +5014,7 @@ func scheduleCapability(tool string, args map[string]interface{}, base string) s
 	switch a, _ := args["action"].(string); strings.ToLower(strings.TrimSpace(a)) {
 	case "cancel", "delete", "remove":
 		return "schedule.cancel"
-	case "update", "edit", "modify", "move", "reschedule":
+	case "update", "edit", "modify", "move", "reschedule", "done", "complete":
 		return "schedule.modify"
 	}
 	return base

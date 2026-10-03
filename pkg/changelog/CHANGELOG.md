@@ -3,6 +3,24 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.141] - 2026-10-03
+
+- **Reminders are promises, not messages.** A reminder arrives with Done,
+  10 min, 1 hour and Tomorrow buttons, on its card and on the phone
+  notification itself. Done, snoozed or put away is recorded, so Ghost knows
+  "reminded" from "done" and never nags about one already handled. "I already
+  watered the plants" closes the reminder so it never fires.
+- **One morning message.** Small things Ghost notices — an upcoming trip, a
+  reminder that went unseen, something you said you would buy or do — arrive
+  together in one morning message instead of as separate pings. Urgent things
+  still break through right away.
+- **Ghost follows up.** Things you mentioned in passing — planning to buy
+  something, something you said you would do, a choice you were weighing,
+  something you were waiting on — are brought up once, at a sensible time,
+  then let go. Ignored kinds of things go quiet on their own.
+- Memory shows who said what and when: your words read "You told Ghost",
+  with an Edit button beside Forget.
+
 ## [0.24.140] - 2026-10-03
 
 - Forgetting your name or where you live also clears it from Ghost's profile

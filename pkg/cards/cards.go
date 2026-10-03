@@ -50,6 +50,12 @@ const (
 	// weather glance, a flight, a plan, a comparison. It is built from blocks
 	// (blocks.go), never from layout the model invents.
 	KindPresent Kind = "present"
+	// KindReminder is a reminder that went off, with what can be done about
+	// it (done, snooze). Its buttons are "act" actions the Pod carries out.
+	KindReminder Kind = "reminder"
+	// KindDigest is the morning message: several small things Ghost held
+	// back so they arrive together instead of as separate pings.
+	KindDigest Kind = "digest"
 )
 
 // CardVersion is the version of the block vocabulary a card was written in. A
@@ -66,6 +72,9 @@ type Action struct {
 	// Kind is what tapping does, and it is only ever one of these:
 	//   "reply"   send Text to Ghost as if the owner had typed it
 	//   "dismiss" put the card away
+	//   "act"     the Pod carries out the choice named by ID for this card's
+	//             kind (a reminder's Done or Snooze). The phone sends only the
+	//             action id; what it does is decided here, never by the card.
 	// Empty means the older broker-bound action (RequestID). A card can offer
 	// a choice; it can never carry a command, a link or a style of its own.
 	Kind string `json:"kind,omitempty"`
@@ -119,7 +128,7 @@ func New(kind Kind, title, body string) (Card, error) {
 // Validate enforces the card contract.
 func (c Card) Validate() error {
 	switch c.Kind {
-	case KindSuggestion, KindGoalUpdate, KindCart, KindBrowserView, KindMemoryReceipt, KindBrowserRecovery:
+	case KindSuggestion, KindGoalUpdate, KindCart, KindBrowserView, KindMemoryReceipt, KindBrowserRecovery, KindReminder, KindDigest:
 		// producible today
 	case KindPresent:
 		if len(c.Blocks) == 0 {
@@ -319,4 +328,73 @@ func Publish(b *bus.MessageBus, store *Store, channel, chatID, sessionID string,
 		Channel: channel, ChatID: chatID,
 		Content: c.TextFallback(), Metadata: meta,
 	})
+}
+
+// ResolveHandler carries out an "act" choice on a card of one kind. It
+// returns the words the card should show once resolved ("Snoozed until 9:40
+// PM"); an error leaves the card open.
+type ResolveHandler func(c Card, actionID string) (string, error)
+
+var (
+	handlersMu sync.Mutex
+	handlers   = map[Kind]ResolveHandler{}
+)
+
+// OnResolve registers the handler for a kind's "act" choices.
+func OnResolve(kind Kind, h ResolveHandler) {
+	handlersMu.Lock()
+	defer handlersMu.Unlock()
+	handlers[kind] = h
+}
+
+// HandlerFor returns the registered handler for a kind, if any.
+func HandlerFor(kind Kind) (ResolveHandler, bool) {
+	handlersMu.Lock()
+	defer handlersMu.Unlock()
+	h, ok := handlers[kind]
+	return h, ok
+}
+
+// Find returns a stored card by id.
+func (s *Store) Find(channel, id string) (Card, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, c := range s.items[channel] {
+		if c.ID == id {
+			return c, true
+		}
+	}
+	return Card{}, false
+}
+
+// FindByData returns the newest open card of a kind whose Data[key] equals
+// value: the reminder card for a reminder id.
+func (s *Store) FindByData(channel string, kind Kind, key, value string) (Card, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list := s.items[channel]
+	for i := len(list) - 1; i >= 0; i-- {
+		c := list[i]
+		if c.Kind == kind && c.Resolved == nil {
+			if v, _ := c.Data[key].(string); v == value {
+				return c, true
+			}
+		}
+	}
+	return Card{}, false
+}
+
+// Relabel sets the words a resolved card shows.
+func (s *Store) Relabel(channel, id, label string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list := s.items[channel]
+	for i := range list {
+		if list[i].ID == id && list[i].Resolved != nil {
+			list[i].Resolved.Label = label
+			s.items[channel] = list
+			s.saveLocked()
+			return
+		}
+	}
 }

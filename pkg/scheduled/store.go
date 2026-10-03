@@ -78,8 +78,10 @@ func (s *Store) InitSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_execution_history_item_id ON execution_history(item_id);
 	CREATE INDEX IF NOT EXISTS idx_execution_history_execution_id ON execution_history(execution_id);
 	`
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+	return s.initReminderAcks()
 }
 
 // Create persists a new ScheduledItem.
