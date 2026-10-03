@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.144] - 2026-10-03
+
+- **Multi-step sign-ins work.** Sites like X split sign-in across screens (a
+  username screen, then a password screen), which the one-shot sign-in path
+  could not finish. Ghost now drives each field in turn, filling from the
+  sealed login, so the secret never touches the chat, a log, or a command
+  line. `browser_fill` takes a `vault` reference
+  (`weblogin:<host>:username|password`) resolved inside the runtime.
+- A new native browser engine (Go, speaking Chrome's protocol directly)
+  lands under `pkg/browser/native`, the first step to owning the browser
+  layer natively. Not wired into the running tools yet.
+
 ## [0.24.143] - 2026-10-03
 
 - **Signing into a saved site reaches the phone.** `browser_login` was
