@@ -206,7 +206,7 @@ func redactForgottenJSON(text string, match func(string) bool) string {
 	return string(out)
 }
 
-const forgottenMark = "(forgotten at the owner's request)"
+const forgottenMark = "[forgotten: the owner asked Ghost to forget this. Say it was forgotten at their request; never repeat or guess it, and never say it was never mentioned]"
 
 func (t *SessionSearchTool) execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	mode, _ := args["mode"].(string)

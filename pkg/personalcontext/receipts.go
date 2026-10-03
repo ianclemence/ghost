@@ -167,6 +167,7 @@ func ForgetPipelineWith(store *Store, workspace, id, reason string) (ForgetRepor
 	// Every copy Ghost made of it goes too: its own notes, and (through the
 	// runtime hook) the search index. The conversation itself is kept: it is
 	// the record of what was said, not a belief.
+	resetUserDoc(workspace, chain)
 	names := forgetNames(values)
 	if n := scrubNotes(workspace, values, names, topicWords(chain)); n > 0 {
 		report.DerivativesRebuilt = append(report.DerivativesRebuilt, "notes")

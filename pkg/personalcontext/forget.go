@@ -287,3 +287,42 @@ func ScrubForgottenNotes(workspace string) int {
 	}
 	return removed
 }
+
+// resetUserDoc puts a USER.md identity line back to its placeholder when the
+// belief it was filled from is forgotten. USER.md is read on every turn, so a
+// forgotten name or city kept there was still in front of Ghost.
+func resetUserDoc(workspace string, chain []Entry) {
+	field := ""
+	for _, e := range chain {
+		switch {
+		case strings.HasPrefix(e.Predicate, "identity/name"):
+			field = "Name"
+		case strings.HasPrefix(e.Predicate, "fact/location"):
+			field = "Location"
+		}
+	}
+	if field == "" {
+		return
+	}
+	path := filepath.Join(workspace, "USER.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	changed := false
+	for i, ln := range lines {
+		if strings.HasPrefix(strings.TrimSpace(ln), "- **"+field+"**:") && !strings.Contains(ln, "(set by user)") {
+			lines[i] = "- **" + field + "**: (set by user)"
+			changed = true
+		}
+	}
+	if changed {
+		info, _ := os.Stat(path)
+		mode := os.FileMode(0644)
+		if info != nil {
+			mode = info.Mode().Perm()
+		}
+		_ = os.WriteFile(path, []byte(strings.Join(lines, "\n")), mode)
+	}
+}

@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.140] - 2026-10-03
+
+- Forgetting your name or where you live also clears it from Ghost's profile
+  of you, which it reads on every turn.
+- Asked about something you told it to forget, Ghost says it was forgotten at
+  your request instead of claiming you never mentioned it.
+
 ## [0.24.139] - 2026-10-03
 
 - **Forgetting reaches old conversations too.** Searching past conversations

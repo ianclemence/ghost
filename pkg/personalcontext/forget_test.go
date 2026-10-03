@@ -132,3 +132,19 @@ func TestSourceKindFor(t *testing.T) {
 		t.Errorf("a question is %s", got)
 	}
 }
+
+func TestForgetNameResetsUserDoc(t *testing.T) {
+	ws := t.TempDir()
+	s := mustOpen(t, ws)
+	_ = os.WriteFile(filepath.Join(ws, "USER.md"), []byte("## Identity\n\n- **Name**: Ian\n- **Location**: bangkok\n"), 0644)
+	src := []Source{{Type: SourceConversation, Kind: SourceUserDeclared, Ref: "m", Timestamp: time.Now()}}
+	e, _ := s.Create(Entry{ID: newEntryID(), Kind: KindIdentity, Subject: "user", Predicate: "identity/name", Status: StatusCurrent,
+		Value: json.RawMessage(`"Ian"`), Confidence: 0.9, Sources: src})
+	if _, err := ForgetPipelineWith(s, ws, e.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(ws, "USER.md"))
+	if strings.Contains(string(data), "Name**: Ian") || !strings.Contains(string(data), "Location**: bangkok") {
+		t.Fatalf("USER.md = %s", data)
+	}
+}
