@@ -738,12 +738,26 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 	for _, ref := range browserRefArgs(t.action, args) {
 		if err := call.Sessions.CheckRef(sess.ID, ref); err != nil {
 			if _, stale := err.(*browser.StaleRefError); stale {
-				return denyCode(permissions.CodeRefStale, strings.TrimPrefix(err.Error(), "browser: "), "Re-snapshot and act on the fresh refs.")
+				refusal := denyCode(permissions.CodeRefStale, staleRefReason(ref), staleRefRemedy)
+				// The layout moved: look at it now rather than making the
+				// model spend a turn finding that out.
+				if healed := t.healStaleRef(ctx, call, sess, refusal.ForLLM); healed != nil {
+					stampActionEvidence(t.action, healed, call, sess, taskID, op, "error")
+					return healed
+				}
+				return refusal
 			}
 			return deny(err.Error())
 		}
 	}
 	res := t.executeBare(ctx, args)
+	// The ledger approved the ref but the page disagreed: the CLI refused a
+	// ref it does not recognise. Same recovery, still nothing executed.
+	if res != nil && res.IsError && staleRefFailure(res.ForLLM) {
+		if healed := t.healStaleRef(ctx, call, sess, res.ForLLM); healed != nil {
+			res = healed
+		}
+	}
 	outcome := "ok"
 	if res.IsError {
 		outcome = "error"
@@ -757,35 +771,13 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 	if call.OnEvidence != nil {
 		call.OnEvidence(taskID, ev)
 	}
-	res.Evidence = map[string]interface{}{
-		"type":       "action",
-		"op":         "browser." + t.action,
-		"class":      op,
-		"owner":      call.Owner,
-		"context":    call.ContextID,
-		"task":       taskID,
-		"session":    sess.ID,
-		"permission": call.Permission,
-		"outcome":    outcome,
-		"timestamp":  time.Now().UTC().Format(time.RFC3339),
-	}
+	stampActionEvidence(t.action, res, call, sess, taskID, op, outcome)
 	// Page summary for safe observation: navigate/snapshot/find emit the
 	// page as JSON. Parsed defensively, bounded, and redacted — the same
 	// material the Live Surface plane may show the owner. Anything
 	// unparseable is simply absent, never an error.
 	if !res.IsError && browserActionObserves(t.action) {
-		attachPageEvidence(res)
-		// Open a new ref epoch from the observed snapshot and record
-		// the page as an untrusted-content (taint) span: everything
-		// page-derived enters model context marked, and the broker can
-		// scope consequential approvals against tainted domains.
-		epoch := call.Sessions.Observe(sess.ID, browser.ParseRefs(res.ForLLM))
-		res.Evidence["ref_epoch"] = epoch
-		if url, _ := res.Evidence["url"].(string); url != "" {
-			domain, _ := res.Evidence["domain"].(string)
-			call.Sessions.RecordTaint(browser.TaintSpan{SessionID: sess.ID, URL: url, Domain: domain})
-			res.Evidence["taint_sources"] = call.Sessions.TaintedDomains(sess.ID)
-		}
+		observePageEvidence(call, sess, res)
 	}
 	// Successful mutations close the epoch: the next act requires a
 	// fresh snapshot. Epochs advance exactly on real mutations.
@@ -809,6 +801,113 @@ func (t *BrowserTool) executeEnforced(ctx context.Context, args map[string]inter
 	// it to the owner, and the loop attaches it as model context for the
 	// explicit browser_screenshot tool.
 	return &ToolResult{ForLLM: labeled, ForUser: res.ForUser, Silent: res.Silent, IsError: false, Evidence: res.Evidence, ScreenshotPath: res.ScreenshotPath}
+}
+
+// stampActionEvidence fills the action envelope on a result's evidence
+// without discarding what the action itself proved. The envelope answers
+// "who ran what, under which grant, and did it work"; the content keys
+// answer "what did it find". A transactional submit records the merchant,
+// amount and confirmation it observed, and a recovered refusal records
+// the page it observed — those are the record the audit trail reads, so
+// the envelope is stamped around them, never over them.
+func stampActionEvidence(action string, res *ToolResult, call BrowserCall, sess *browser.Session, taskID, class, outcome string) {
+	if res == nil {
+		return
+	}
+	if res.Evidence == nil {
+		res.Evidence = map[string]interface{}{}
+	}
+	for k, v := range map[string]interface{}{
+		"type":       "action",
+		"op":         "browser." + action,
+		"class":      class,
+		"owner":      call.Owner,
+		"context":    call.ContextID,
+		"task":       taskID,
+		"session":    sess.ID,
+		"permission": call.Permission,
+		"outcome":    outcome,
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
+	} {
+		res.Evidence[k] = v
+	}
+}
+
+// observePageEvidence records a fresh page observation the same way for
+// every path that reads the page: url/title/text for the owner's card, a
+// new ref epoch opened on the live refs, and the page logged as an
+// untrusted-content (taint) span — everything page-derived enters model
+// context marked, and the broker can scope consequential approvals
+// against tainted domains.
+func observePageEvidence(call BrowserCall, sess *browser.Session, res *ToolResult) {
+	if res == nil {
+		return
+	}
+	if res.Evidence == nil {
+		res.Evidence = map[string]interface{}{}
+	}
+	attachPageEvidence(res)
+	epoch := call.Sessions.Observe(sess.ID, browser.ParseRefs(res.ForLLM))
+	res.Evidence["ref_epoch"] = epoch
+	if url, _ := res.Evidence["url"].(string); url != "" {
+		domain, _ := res.Evidence["domain"].(string)
+		call.Sessions.RecordTaint(browser.TaintSpan{SessionID: sess.ID, URL: url, Domain: domain})
+		res.Evidence["taint_sources"] = call.Sessions.TaintedDomains(sess.ID)
+	}
+}
+
+// staleRefReason and staleRefRemedy word the refusal the model sees when
+// a ref no longer names a live element. The remedy is what actually
+// happens next: healStaleRef has already looked at the page for it.
+const staleRefRemedy = "Nothing ran. The page as it is now is below — act on one of its refs."
+
+func staleRefReason(ref string) string {
+	return fmt.Sprintf("stale element ref %q: the page changed between your snapshot and this action. ", ref)
+}
+
+// staleRefFailure reports a refusal that means "this ref names nothing",
+// which is the one browser failure with a known-safe recovery: the
+// action was rejected before dispatch, so the page is untouched.
+func staleRefFailure(msg string) bool {
+	lower := strings.ToLower(msg)
+	return strings.Contains(lower, "stale element ref") || strings.Contains(lower, "unknown ref")
+}
+
+// healStaleRef is Ghost's answer to a page that re-renders under it —
+// the ordinary condition on real sites, where a modal opens, a list
+// reorders, or a component swaps its tree between one step and the next.
+//
+// Without it, a stale ref costs two full round trips: refuse, snapshot,
+// act. Here the refusal carries the page as it is now, so the very next
+// act uses a live ref.
+//
+// It deliberately never retries the refused ref. Refs are positional: the
+// same @e1 on a re-rendered tree is a different element, and a re-resolve
+// that "worked" would be Ghost clicking something the owner never chose.
+// The model sees the new page and picks the element itself.
+//
+// Returns nil when there is nothing to heal with (the page could not be
+// read), so the caller's original refusal stands unchanged.
+func (t *BrowserTool) healStaleRef(ctx context.Context, call BrowserCall, sess *browser.Session, refusal string) *ToolResult {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	snap := t.run(ctx, "snapshot")
+	if snap == nil || snap.IsError || strings.TrimSpace(snap.ForLLM) == "" {
+		return nil
+	}
+	observePageEvidence(call, sess, snap)
+	// The page is web content and untrusted: label it before it reaches
+	// the model, exactly as a normal snapshot would.
+	page := browser.ObserveText(snap.ForLLM)
+	return &ToolResult{
+		ForLLM: fmt.Sprintf("%s\n\n%s\n\nThe page as it is now (its refs are live, act on one of them):\n%s",
+			strings.TrimSpace(refusal), staleRefRemedy, page),
+		ForUser:        snap.ForUser,
+		IsError:        true,
+		Evidence:       snap.Evidence,
+		ScreenshotPath: snap.ScreenshotPath,
+	}
 }
 
 // browserRefArgs returns the element refs an action must validate

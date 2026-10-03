@@ -477,7 +477,32 @@ func (al *AgentLoop) runBrowserTool(ctx context.Context, call tools.BrowserCall,
 			return tools.ErrorResult(permissions.Deny(permissions.CodeEvidenceAbsent, "The browser action may not have completed: no runtime evidence was recorded, so I can't claim it worked.", "Here is what did happen — re-snapshot the page to verify state before retrying.").String())
 		}
 	}
+	// A page asking for a human to prove it is not a failure to solve and
+	// not a reason to try harder: it is a step only the owner can take.
+	// Say so in the same breath as the page that shows it, naming the
+	// button that is on the card, so instruction and affordance land
+	// together instead of Ghost burning the turn on a check it will fail.
+	if note, ok := humanCheckHandoff(res); ok {
+		res.ForLLM = strings.TrimSpace(res.ForLLM) + "\n\n" + note
+	}
 	return res
+}
+
+// humanCheckHandoff words the hand-off the model receives the moment a bot
+// check appears. Returns false when the page is ordinary.
+func humanCheckHandoff(res *tools.ToolResult) (string, bool) {
+	if res == nil || res.Evidence == nil {
+		return "", false
+	}
+	title, _ := res.Evidence["title"].(string)
+	text, _ := res.Evidence["text"].(string)
+	if !humanCheckPage(title, text) {
+		return "", false
+	}
+	return "[browser.human_check] This page wants a human to prove it — a CAPTCHA, or \"Verify you are human\". " +
+		"Do not attempt it and do not retry it; you will not get past it and it will only look like the site is broken. " +
+		"The live browser card is open for the owner: tell them plainly to tap \"Take over and steer\", finish the check, " +
+		"then tap Done. You carry on when they do.", true
 }
 
 // announceBrowserStart registers the browser surface and tells the owner's
@@ -690,6 +715,15 @@ func (al *AgentLoop) recordBrowserSurface(call tools.BrowserCall, tool string, r
 		// failed here flipped the card to "Ghost couldn't finish that" mid-task
 		// and replaced what the page looked like with nothing.
 		al.livePlane.SetState(call.SessionID, live.StateActive)
+		// A bot check is the owner's move the moment it is seen, including
+		// when it is a step that failed. The card must offer "Take over"
+		// in the same breath as Ghost refusing to continue, or the owner
+		// is told to tap a button that is not there.
+		title, _ := res.Evidence["title"].(string)
+		text, _ := res.Evidence["text"].(string)
+		if humanCheckPage(title, text) {
+			al.livePlane.WaitForHuman(call.SessionID, "Needs you to prove you're human")
+		}
 		al.announceSurface(sessionKey, call.SessionID, live.KindBrowser)
 		return
 	}

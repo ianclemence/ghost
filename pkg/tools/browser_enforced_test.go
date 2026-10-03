@@ -175,22 +175,35 @@ func TestEnforcedObserveExecutesAndEvidences(t *testing.T) {
 
 // Allowed act executes exactly once and records evidence. The ref loop
 // is enforced end to end: snapshot first (opens the epoch), then click
-// on a live ref; a click on a never-observed ref is denied.
+// on a live ref. A click on a never-observed ref is refused and never
+// reaches the executor as a click — but Ghost does look at the page for
+// the model, so the refusal comes back with the page as it is now.
 func TestEnforcedActExecutesWithPermission(t *testing.T) {
 	bt, sessions := newEnforcedTool(t, "click")
-	calls := 0
+	clicks := 0
+	looks := 0
 	bt.run = func(ctx context.Context, action string, args ...string) *ToolResult {
-		calls++
-		return &ToolResult{ForLLM: "clicked @e1", ForUser: "clicked"}
+		if action == "click" {
+			clicks++
+			return &ToolResult{ForLLM: "clicked @e1", ForUser: "clicked"}
+		}
+		looks++
+		return &ToolResult{ForLLM: `{"url":"https://x.test/","text":"@e1 [button] Go"}`, ForUser: "page"}
 	}
 	call := BrowserCall{Owner: "ian", ContextID: "personal", TaskID: "task-a", Sessions: sessions, Op: "click", Permission: "grant:once:x"}
-	// No snapshot yet: the click must fail closed without reaching the CLI.
+	// No snapshot yet: the click must fail closed without driving the page.
 	res := bt.Execute(enforcedCtx(call), map[string]interface{}{"ref": "@e1"})
 	if !res.IsError || !strings.Contains(res.ForLLM, "stale element ref") {
 		t.Fatalf("unobserved ref must deny: %+v", res)
 	}
-	if calls != 0 {
-		t.Fatal("stale ref reached the executor")
+	if clicks != 0 {
+		t.Fatal("a refused ref must never reach the executor")
+	}
+	if looks == 0 {
+		t.Fatal("the refusal must come back with the page as it is now")
+	}
+	if !strings.Contains(res.ForLLM, "https://x.test/") {
+		t.Fatalf("refusal carries no page for the model to act on: %s", res.ForLLM)
 	}
 	// Snapshot opens the epoch (fake CLI returns a ref-bearing tree).
 	snapper := NewBrowserTool("", "snapshot")
@@ -205,8 +218,8 @@ func TestEnforcedActExecutesWithPermission(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("click failed: %s", res.ForLLM)
 	}
-	if calls != 1 {
-		t.Fatalf("executor calls = %d, want 1", calls)
+	if clicks != 1 {
+		t.Fatalf("executor clicks = %d, want 1", clicks)
 	}
 	if res.Evidence["op"] != "browser.click" || res.Evidence["outcome"] != "ok" {
 		t.Fatalf("evidence wrong: %+v", res.Evidence)
