@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.146] - 2026-10-03
+
+- **Live view holds.** The takeover screencast socket now upgrades as
+  generously as the main conversation socket: its auth is the single-use
+  ticket in the URL, so an unexpected Origin header from a native client no
+  longer turns the phone away, and the frame buffers match what the stream
+  actually sends. The proxy also logs where a connection ends, so a drop is
+  diagnosable instead of silent.
+
 ## [0.24.145] - 2026-10-03
 
 - **Taking over the browser works.** When a site asked for a human check and

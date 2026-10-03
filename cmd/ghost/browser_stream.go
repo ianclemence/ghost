@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -101,12 +102,14 @@ func registerBrowserStreamRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 func serveBrowserStreamWS(w http.ResponseWriter, r *http.Request, al *agent.AgentLoop) {
 	token := strings.TrimSpace(r.URL.Query().Get("token"))
 	if al == nil || token == "" {
+		log.Printf("browser-stream: reject: al=%v tokenEmpty=%v", al != nil, token == "")
 		http.Error(w, "invalid screencast token", http.StatusBadRequest)
 		return
 	}
 	tk, err := al.ConsumeBrowserScreencast(token)
 	if err != nil {
 		// Close code 4001 = token invalid/expired/used.
+		log.Printf("browser-stream: consume failed: %v", err)
 		http.Error(w, "invalid screencast token", http.StatusUnauthorized)
 		return
 	}
@@ -115,11 +118,13 @@ func serveBrowserStreamWS(w http.ResponseWriter, r *http.Request, al *agent.Agen
 	upstreamBase, err := al.BrowserStreamURL(ctx)
 	cancel()
 	if err != nil {
+		log.Printf("browser-stream: upstream unavailable: %v", err)
 		http.Error(w, "screencast unsupported", http.StatusNotImplemented)
 		return
 	}
 	_ = tk
 	upstream := upstreamBase + passthroughStreamQuery(r.URL)
+	log.Printf("browser-stream: connecting viewer to %s (session=%s)", upstream, tk.SessionID)
 	// Clicks and keystrokes go through only while the owner holds a takeover of
 	// this very surface. Otherwise a viewer could type into a page Ghost is in
 	// the middle of using.
@@ -196,15 +201,28 @@ func passthroughStreamQuery(u *url.URL) string {
 // proxyBrowserStream bridges one viewer to the agent-browser stream server.
 // Both directions copy raw WS messages; the upstream server already applies
 // latest-first + ack pacing so a stalled viewer never builds a backlog here.
+// streamUpgrader upgrades the screencast viewer socket. Its auth is the
+// single-use token in the query string, never a header or cookie, so a
+// cross-site page cannot ride it; the origin check adds nothing here and a
+// native client that sends an unexpected Origin must not be turned away. It
+// mirrors the /v1/ws upgrade, which is permissive for the same reason.
+var streamUpgrader = websocket.Upgrader{
+	ReadBufferSize:  4096,
+	WriteBufferSize: 32768,
+	CheckOrigin:     func(*http.Request) bool { return true },
+}
+
 func proxyBrowserStream(w http.ResponseWriter, r *http.Request, upstream string, canInput func() bool) {
-	down, err := upgrader.Upgrade(w, r, nil)
+	down, err := streamUpgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Printf("browser-stream: viewer upgrade failed: %v (origin=%q)", err, r.Header.Get("Origin"))
 		return
 	}
 	defer down.Close()
 	dialer := websocket.Dialer{HandshakeTimeout: 8 * time.Second}
 	up, _, err := dialer.Dial(upstream, nil)
 	if err != nil {
+		log.Printf("browser-stream: upstream dial failed: %v", err)
 		_ = down.WriteControl(websocket.CloseMessage,
 			websocket.FormatCloseMessage(4004, "target closed"), time.Now().Add(2*time.Second))
 		return
@@ -216,6 +234,7 @@ func proxyBrowserStream(w http.ResponseWriter, r *http.Request, upstream string,
 		for {
 			mt, msg, err := down.ReadMessage()
 			if err != nil {
+				log.Printf("browser-stream: viewer read ended: %v", err)
 				return
 			}
 			if mt != websocket.TextMessage || !screencastClientMessageAllowed(msg, canInput != nil && canInput()) {
@@ -223,6 +242,7 @@ func proxyBrowserStream(w http.ResponseWriter, r *http.Request, upstream string,
 			}
 			_ = up.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := up.WriteMessage(mt, msg); err != nil {
+				log.Printf("browser-stream: upstream write ended: %v", err)
 				return
 			}
 		}
@@ -232,10 +252,12 @@ func proxyBrowserStream(w http.ResponseWriter, r *http.Request, upstream string,
 		for {
 			mt, msg, err := up.ReadMessage()
 			if err != nil {
+				log.Printf("browser-stream: upstream read ended: %v", err)
 				return
 			}
 			_ = down.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := down.WriteMessage(mt, msg); err != nil {
+				log.Printf("browser-stream: viewer write ended: %v", err)
 				return
 			}
 		}
