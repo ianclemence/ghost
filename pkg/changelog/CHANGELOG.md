@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.136] - 2026-10-03
+
+- **A forecast out of range says so.** Asking for the weather on a date past
+  the 14-day forecast showed "Weather unavailable · Something went wrong".
+  It now says "The forecast doesn't reach that date yet."
+- Approvals in Activity read in plain words: "You said yes, so Ghost went
+  ahead" instead of "You approved this consequential action".
+
 ## [0.24.135] - 2026-10-03
 
 - **A "verify you are human" page waits for you.** When a site puts up a bot
