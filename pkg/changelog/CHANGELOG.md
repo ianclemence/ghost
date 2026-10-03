@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.145] - 2026-10-03
+
+- **Taking over the browser works.** When a site asked for a human check and
+  you tapped "Take over and steer", the screen said the live view was not
+  available. The live-view broker and the browser tool were resolving
+  different HOME and runtime directories, so the broker looked in the wrong
+  socket directory and gave up while the stream server was listening on
+  another. Both now resolve the same place, so the live view connects.
+
 ## [0.24.144] - 2026-10-03
 
 - **Multi-step sign-ins work.** Sites like X split sign-in across screens (a

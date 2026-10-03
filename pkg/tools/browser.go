@@ -492,73 +492,23 @@ func browserUserAgent() string {
 var chromeMajorRe = regexp.MustCompile(`(\d+)\.\d+\.\d+\.\d+`)
 
 // browserStateRoot is where the browser may keep its sockets and state when
-// the user's home directory can't be written.
-func browserStateRoot() string {
-	if d := strings.TrimSpace(os.Getenv("GHOST_DIR")); d != "" {
-		return filepath.Join(d, "browser-home")
-	}
-	if st, err := os.Stat("/var/ghost"); err == nil && st.IsDir() {
-		return "/var/ghost/browser-home"
-	}
-	return filepath.Join(os.TempDir(), "ghost-browser-home")
-}
+// the user's home directory can't be written. Shared with the screencast
+// broker so both resolve the same location.
+func browserStateRoot() string { return browser.StateRoot() }
 
 // writableDir reports whether files can be created under dir.
-func writableDir(dir string) bool {
-	if dir == "" {
-		return false
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return false
-	}
-	f, err := os.CreateTemp(dir, ".w-*")
-	if err != nil {
-		return false
-	}
-	f.Close()
-	os.Remove(f.Name())
-	return true
-}
+func writableDir(dir string) bool { return browser.WritableDir(dir) }
 
 // withWritableBrowserHome gives the browser child somewhere to put its socket
 // and state. Ghost's service runs with the home directory sealed off
 // (ProtectHome) and the filesystem read-only, so agent-browser's default
 // location failed with "Failed to create socket directory: Read-only file
 // system" and every browser action died in milliseconds. An operator-chosen
-// HOME or XDG_RUNTIME_DIR that already works is never overridden.
+// HOME or XDG_RUNTIME_DIR that already works is never overridden. The logic
+// lives in pkg/browser so the screencast broker resolves the same HOME and
+// runtime directory (otherwise it looks in the wrong socket directory).
 func withWritableBrowserHome(env []string) []string {
-	get := func(key string) string {
-		for _, kv := range env {
-			if strings.HasPrefix(kv, key+"=") {
-				return strings.TrimPrefix(kv, key+"=")
-			}
-		}
-		return ""
-	}
-	homeOK := writableDir(filepath.Join(get("HOME"), ".agent-browser")) && get("HOME") != ""
-	runtimeOK := get("XDG_RUNTIME_DIR") != "" && writableDir(get("XDG_RUNTIME_DIR"))
-	if homeOK && runtimeOK {
-		return env
-	}
-	root := browserStateRoot()
-	run := filepath.Join(root, "run")
-	if !writableDir(root) || !writableDir(run) {
-		return env
-	}
-	out := make([]string, 0, len(env)+2)
-	for _, kv := range env {
-		if (!homeOK && strings.HasPrefix(kv, "HOME=")) || (!runtimeOK && strings.HasPrefix(kv, "XDG_RUNTIME_DIR=")) {
-			continue
-		}
-		out = append(out, kv)
-	}
-	if !homeOK {
-		out = append(out, "HOME="+root)
-	}
-	if !runtimeOK {
-		out = append(out, "XDG_RUNTIME_DIR="+run)
-	}
-	return out
+	return browser.WithWritableBrowserHome(env)
 }
 
 // resetBrowserSession clears a wedged browser: a bounded close, then reap any

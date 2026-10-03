@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -73,6 +74,10 @@ func NewStreamBroker() *StreamBroker {
 		tickets: map[string]*Ticket{},
 		run: func(ctx context.Context, args ...string) ([]byte, error) {
 			cmd := exec.CommandContext(ctx, "agent-browser", args...)
+			// Same HOME/XDG_RUNTIME_DIR the tool path uses, or the CLI looks
+			// in the wrong socket directory and reports streaming unavailable
+			// while the stream server is listening on a different one.
+			cmd.Env = WithWritableBrowserHome(os.Environ())
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
