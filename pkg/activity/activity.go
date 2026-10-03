@@ -466,12 +466,12 @@ func whyFor(e *cevents.Event) string {
 
 	switch e.Type {
 	case cevents.PermissionRequested:
-		return "Consequential action, so Ghost asked first."
+		return "This changes something, so Ghost asked first."
 	case cevents.PermissionApproved:
 		if risk == "high_impact" {
 			return "You approved this high-impact action; it may be hard to undo."
 		}
-		return "You approved this consequential action."
+		return "You said yes, so Ghost went ahead."
 	case cevents.PermissionDenied:
 		return "You declined this action, so Ghost did not do it."
 	case cevents.PermissionExpired:
@@ -629,6 +629,11 @@ func humanizeFailure(raw string) string {
 		return false
 	}
 	switch {
+	// A source declining a date it does not cover is an answer, not a fault:
+	// "Something went wrong" sent the owner to Details for "covers 3 to 17
+	// October only".
+	case has("forecast") && has("out of reach", "out of range", "covers", "only goes"):
+		return "The forecast doesn't reach that date yet."
 	case has("429", "rate limit", "too many requests", "quota"):
 		return "The service is busy right now. Ghost can try again in a moment."
 	case has("401", "403", "unauthorized", "forbidden", "api key", "invalid key", "authentication"):

@@ -261,7 +261,12 @@ func TestWhyForConsequentialActions(t *testing.T) {
 		{
 			"approval requested explains itself",
 			ev(cevents.PermissionRequested, map[string]interface{}{"capability": "email.send", "risk": "consequential"}),
-			"Consequential action, so Ghost asked first.",
+			"This changes something, so Ghost asked first.",
+		},
+		{
+			"approval says what the yes did, in plain words",
+			ev(cevents.PermissionApproved, map[string]interface{}{"capability": "browser", "risk": "consequential"}),
+			"You said yes, so Ghost went ahead.",
 		},
 		{
 			"high-impact approval warns it is hard to undo",
@@ -351,6 +356,7 @@ func TestHumanizeFailureAndTechnicalSummaries(t *testing.T) {
 		"HTTP 429 rate limit":                   "busy",
 		"401 Unauthorized":                      "key may be missing",
 		"weird thing":                           "Something went wrong",
+		"The forecast for Shenzhen covers 2026-10-03 to 2026-10-17 only, so 2026-10-26 is out of reach. Say so; do not estimate.": "doesn't reach that date",
 	}
 	for raw, want := range cases {
 		if got := humanizeFailure(raw); !strings.Contains(got, want) {
