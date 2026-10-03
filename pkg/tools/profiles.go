@@ -116,7 +116,7 @@ var (
 	browserActToolNames = []string{
 		"browser_click", "browser_type", "browser_press", "browser_fill",
 		"browser_fill_form", "browser_select", "browser_check", "browser_hover",
-		"browser_drag", "browser_dialog", "browser_download",
+		"browser_drag", "browser_dialog", "browser_download", "browser_login",
 	}
 	// browserHighToolNames are high impact (never auto-authorized):
 	// purchase-class submit, and upload (local files leave the device).

@@ -86,6 +86,7 @@ func TestBrowserProfileMembership(t *testing.T) {
 		{ProfileMobileSafe, "browser_snapshot", true},
 		{ProfileMobileSafe, "browser_console", true},
 		{ProfileMobileSafe, "browser_fill_form", true},
+		{ProfileMobileSafe, "browser_login", true},
 		{ProfileMobileSafe, "browser_submit", false},
 		{ProfileMobileSafe, "browser_upload", false},
 		{ProfileCoding, "browser_console", true},

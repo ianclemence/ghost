@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.143] - 2026-10-03
+
+- **Signing into a saved site reaches the phone.** `browser_login` was
+  missing from the mobile tool profile, so the governed sign-in path could
+  not run where you actually chat. It now can — the broker still asks
+  first, every time.
+
 ## [0.24.142] - 2026-10-03
 
 - **Website logins work end to end.** Asking Ghost to sign in to a site you
