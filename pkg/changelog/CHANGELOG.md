@@ -3,6 +3,19 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.138] - 2026-10-03
+
+- **Forgotten stays forgotten.** The summary Ghost writes at the end of a
+  turn used to record the very fact you had just asked it to forget ("their
+  barber is Somsak… then asked to forget it"). Every note Ghost writes now
+  leaves out what you asked it to forget, and older notes are cleaned too.
+  Tell Ghost the same thing again later and it remembers it again.
+- The same fact learned twice is one memory, not two rows.
+- "Every day at 7:30 in the morning, check the weather" is saved as "check
+  the weather", not "In the morning, check the weather", and Ghost confirms it
+  as something it will do, not as a reminder.
+- Activity shows a reminder in its own words ("Reminded you: check the oven").
+
 ## [0.24.137] - 2026-10-03
 
 - **Routines run.** A routine created in chat ("every day at 7:30, check the

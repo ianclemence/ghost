@@ -163,6 +163,8 @@ func scrubNotes(workspace string, values, names, topics []string) int {
 		return 0
 	}
 	files, _ := filepath.Glob(filepath.Join(workspace, "memory", "*.md"))
+	dreams, _ := filepath.Glob(filepath.Join(workspace, "dreams", "*.md"))
+	files = append(files, dreams...)
 	removed := 0
 	for _, f := range files {
 		data, err := os.ReadFile(f)
@@ -189,6 +191,86 @@ func scrubNotes(workspace string, values, names, topics []string) int {
 		}
 		if err := os.WriteFile(f, []byte(strings.Join(kept, "\n")), mode); err == nil {
 			removed += n
+		}
+	}
+	return removed
+}
+
+// OwnerForgetReason marks a retraction the owner asked for. Only these are
+// kept out of Ghost's notes from then on; an engineering clean-up (a false
+// positive, test data) is not a wish to never hear of it again.
+const OwnerForgetReason = "the owner asked Ghost to forget it"
+
+// DropForgotten removes from text every line that carries a fact the owner
+// asked Ghost to forget. Every writer of Ghost's notes runs its text through
+// it: forgetting scrubbed the notes once, and the turn's own journal summary
+// then wrote "the user said their barber is Somsak… then asked to forget it"
+// straight back in.
+func DropForgotten(workspace, text string) string {
+	if strings.TrimSpace(text) == "" {
+		return text
+	}
+	s, err := Open(workspace)
+	if err != nil {
+		return text
+	}
+	relearned := map[string]bool{}
+	for _, e := range s.Current() {
+		relearned[strings.ToLower(e.Subject+"\x00"+e.Predicate)] = true
+	}
+	var forgotten []Entry
+	var values []string
+	for _, e := range s.All() {
+		// Told again after forgetting: it is a memory again, notes included.
+		if relearned[strings.ToLower(e.Subject+"\x00"+e.Predicate)] {
+			continue
+		}
+		if e.Status == StatusRejected && strings.Contains(strings.ToLower(e.RetractReason), "owner asked") {
+			forgotten = append(forgotten, e)
+			if v := strings.TrimSpace(entryValueString(e)); v != "" {
+				values = append(values, v)
+			}
+		}
+	}
+	if len(values) == 0 {
+		return text
+	}
+	names, topics := forgetNames(values), topicWords(forgotten)
+	lines := strings.Split(text, "\n")
+	kept := lines[:0]
+	for _, ln := range lines {
+		if strings.TrimSpace(ln) != "" && mentions(ln, values, names, topics) {
+			continue
+		}
+		kept = append(kept, ln)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// ScrubForgottenNotes runs DropForgotten over every note Ghost has already
+// written, so lines saved before a forget (or before this existed) go too.
+// Returns how many lines it removed.
+func ScrubForgottenNotes(workspace string) int {
+	files, _ := filepath.Glob(filepath.Join(workspace, "memory", "*.md"))
+	dreams, _ := filepath.Glob(filepath.Join(workspace, "dreams", "*.md"))
+	removed := 0
+	for _, f := range append(files, dreams...) {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		before := strings.Count(string(data), "\n")
+		out := DropForgotten(workspace, string(data))
+		if out == string(data) {
+			continue
+		}
+		info, _ := os.Stat(f)
+		mode := os.FileMode(0644)
+		if info != nil {
+			mode = info.Mode().Perm()
+		}
+		if os.WriteFile(f, []byte(out), mode) == nil {
+			removed += before - strings.Count(out, "\n")
 		}
 	}
 	return removed

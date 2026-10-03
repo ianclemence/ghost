@@ -2215,6 +2215,11 @@ func (al *AgentLoop) consolidatePersonalContext() {
 		logger.InfoCF("agent", "Personal Context compounded", map[string]interface{}{
 			"conflicts": c.ConflictsDeclared, "expired": c.Expired, "decayed": c.Decayed})
 	}
+	// Lines about something the owner asked Ghost to forget leave its notes,
+	// including ones written before the forget.
+	if n := personalcontext.ScrubForgottenNotes(al.workspace); n > 0 {
+		logger.InfoCF("agent", "Forgotten facts removed from notes", map[string]interface{}{"lines": n})
+	}
 	// Keep the curated (always-injected) profile in sync with Ghost's
 	// structured memory, so the curated layer is actually used.
 	if n, err := personalcontext.MaterializeCuratedProfile(al.workspace, al.pcStore); err != nil {

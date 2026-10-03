@@ -143,6 +143,10 @@ func (ms *MemoryStore) ReadToday() string {
 // If the file doesn't exist, it creates a new file with a date header.
 func (ms *MemoryStore) AppendToday(content string) error {
 	todayFile := ms.getTodayFile()
+	content = personalcontext.DropForgotten(ms.workspace, content)
+	if strings.TrimSpace(content) == "" {
+		return nil
+	}
 
 	var existingContent string
 	if data, err := os.ReadFile(todayFile); err == nil {

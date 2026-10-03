@@ -65,18 +65,24 @@ func ParseIntent(text string, now time.Time, timezone string) Intent {
 // into the task. Leading reminder phrasing is normalized away.
 func extractTask(rest string) string {
 	rest = strings.Trim(strings.TrimSpace(rest), " .,;:-")
+	rest = strings.Join(strings.Fields(strings.ReplaceAll(rest, ",", " , ")), " ")
+	rest = strings.TrimLeft(rest, " ,")
 	lower := strings.ToLower(rest)
 	// Peel leading conversational connectives and filler that precede the
 	// actual task. "Also remind me to X", "and can you X", "then X" all
 	// mean X; leaving the connective produced titles like "Also remind me
 	// to send a status update".
-	connectives := []string{"also ", "and also ", "and ", "then ", "plus "}
+	connectives := []string{"also ", "and also ", "and ", "then ", "plus ",
+		// A time-of-day word the clock time already said ("at 7:30 in the
+		// morning, check the weather"): left in, it made the title "In the
+		// morning, check…" and hid that the task is an instruction to Ghost.
+		"in the morning ", "in the evening ", "in the afternoon ", "at night ", "tonight "}
 	changed := true
 	for changed {
 		changed = false
 		for _, c := range connectives {
 			if strings.HasPrefix(lower, c) {
-				rest = strings.TrimSpace(rest[len(c):])
+				rest = strings.TrimLeft(strings.TrimSpace(rest[len(c):]), " ,")
 				lower = strings.ToLower(rest)
 				changed = true
 			}
@@ -95,7 +101,7 @@ func extractTask(rest string) string {
 	}
 	// Collapse internal whitespace left by clause removal ("Also remind me
 	//   to send" -> "Also remind me to send").
-	rest = strings.Join(strings.Fields(rest), " ")
+	rest = strings.ReplaceAll(strings.Join(strings.Fields(rest), " "), " ,", ",")
 	if len(rest) < 3 {
 		return ""
 	}

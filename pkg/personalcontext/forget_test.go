@@ -78,3 +78,45 @@ func TestCatchAllKeysHoldManyFacts(t *testing.T) {
 		t.Error("a bare value under fact/work stays single-valued")
 	}
 }
+
+// The same sentence learned twice is one memory.
+func TestFoldDuplicates(t *testing.T) {
+	s := mustOpen(t, t.TempDir())
+	src := []Source{{Type: SourceConversation, Kind: SourceInferred, Ref: "m", Timestamp: time.Now()}}
+	for i := 0; i < 2; i++ {
+		if _, err := s.Create(Entry{ID: newEntryID(), Kind: KindProject, Subject: "user", Predicate: "project/current", Status: StatusCurrent,
+			Value: json.RawMessage(`"Is designing a Ghost Pod"`), Confidence: 0.9, Sources: src}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, _ := s.FoldDuplicates(); n != 1 {
+		t.Fatalf("folded %d, want 1", n)
+	}
+	if n := len(s.Current()); n != 1 {
+		t.Fatalf("current = %d, want 1", n)
+	}
+}
+
+// A line written after the forget (the turn's own journal summary) is kept
+// out, and telling Ghost again brings the fact back into notes.
+func TestDropForgottenAndRelearn(t *testing.T) {
+	ws := t.TempDir()
+	s := mustOpen(t, ws)
+	src := []Source{{Type: SourceConversation, Kind: SourceUserDeclared, Ref: "m", Timestamp: time.Now()}}
+	e, _ := s.Create(Entry{ID: newEntryID(), Kind: KindPerson, Subject: "user", Predicate: "person/barber", Status: StatusCurrent,
+		Value: json.RawMessage(`"Somsak at Thonglor Cuts is their barber"`), Confidence: 0.9, Sources: src})
+	if _, err := ForgetPipelineWith(s, ws, e.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	line := "- [08:37] (journal) the user stated their barber is Somsak at Thonglor Cuts, then asked to forget it\n- booked flights"
+	if got := DropForgotten(ws, line); strings.Contains(got, "Thonglor") || !strings.Contains(got, "booked flights") {
+		t.Fatalf("DropForgotten = %q", got)
+	}
+	if _, err := s.Create(Entry{ID: newEntryID(), Kind: KindPerson, Subject: "user", Predicate: "person/barber", Status: StatusCurrent,
+		Value: json.RawMessage(`"Somsak at Thonglor Cuts is their barber"`), Confidence: 0.9, Sources: src}); err != nil {
+		t.Fatal(err)
+	}
+	if got := DropForgotten(ws, line); !strings.Contains(got, "Thonglor") {
+		t.Fatal("a fact told again stays out of notes")
+	}
+}

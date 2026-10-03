@@ -26,6 +26,9 @@ func (s *Store) Consolidate(now time.Time) (Consolidation, error) {
 	if _, err := s.ReleaseMultiValuedConflicts(); err != nil {
 		return out, err
 	}
+	if _, err := s.FoldDuplicates(); err != nil {
+		return out, err
+	}
 	n, err := s.DetectConflicts()
 	if err != nil {
 		return out, err
@@ -203,4 +206,68 @@ func (s *Store) ExpireDue(now time.Time) (int, error) {
 		expired++
 	}
 	return expired, nil
+}
+
+// FoldDuplicates retires current entries that say exactly what another
+// current entry under the same key already says, keeping the one the owner
+// stated (else the oldest). The same sentence learned twice is one memory,
+// not two rows. Idempotent; returns how many it folded.
+func (s *Store) FoldDuplicates() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	groups := map[string][]*Entry{}
+	for _, e := range s.byID {
+		if e.Status != StatusCurrent {
+			continue
+		}
+		k := strings.ToLower(e.Subject) + "\x00" + strings.ToLower(e.Predicate) + "\x00" + normConflictValue(string(e.Value))
+		groups[k] = append(groups[k], e)
+	}
+	folded := 0
+	now := time.Now().UTC()
+	for _, g := range groups {
+		if len(g) < 2 {
+			continue
+		}
+		keep := g[0]
+		for _, e := range g[1:] {
+			if better(e, keep) {
+				keep = e
+			}
+		}
+		for _, e := range g {
+			if e == keep {
+				continue
+			}
+			rev := *e
+			rev.Status = StatusSuperseded
+			id := keep.ID
+			rev.SupersededBy = &id
+			rev.UpdatedAt = now
+			if err := s.append(rev); err != nil {
+				return folded, err
+			}
+			folded++
+		}
+	}
+	return folded, nil
+}
+
+// better prefers what the owner said over what Ghost inferred, then the
+// older entry (it carries the original receipt).
+func better(a, b *Entry) bool {
+	da, db := ownerStated(*a), ownerStated(*b)
+	if da != db {
+		return da
+	}
+	return a.CreatedAt.Before(b.CreatedAt)
+}
+
+func ownerStated(e Entry) bool {
+	for _, src := range e.Sources {
+		if src.Kind == SourceUserDeclared || src.Kind == SourceUserCorrected {
+			return true
+		}
+	}
+	return false
 }

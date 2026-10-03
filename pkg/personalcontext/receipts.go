@@ -154,6 +154,9 @@ func ForgetPipeline(workspace, id, reason string) (ForgetReport, error) {
 // so a running agent's own in-memory view is the one that forgets.
 func ForgetPipelineWith(store *Store, workspace, id, reason string) (ForgetReport, error) {
 	report := ForgetReport{ClaimID: id}
+	if strings.TrimSpace(reason) == "" {
+		reason = OwnerForgetReason
+	}
 	chain := store.chainOf(id)
 	values, err := store.forgetChain(id, reason)
 	if err != nil {

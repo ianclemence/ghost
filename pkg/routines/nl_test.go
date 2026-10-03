@@ -62,3 +62,11 @@ func TestRoutineExtractsTaskFromDaypart(t *testing.T) {
 		t.Fatalf("schedule text must resolve morning to a time, got %q", in.ScheduleText)
 	}
 }
+
+func TestTimeOfDayWordLeavesTheTask(t *testing.T) {
+	now := time.Date(2026, 10, 3, 1, 0, 0, 0, time.UTC)
+	in := ParseIntent("Every day at 7:30 in the morning, check the Bangkok weather and tell me if I need an umbrella.", now, "Asia/Bangkok")
+	if in.Task != "check the Bangkok weather and tell me if I need an umbrella" {
+		t.Fatalf("task = %q", in.Task)
+	}
+}

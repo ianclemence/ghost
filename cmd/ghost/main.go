@@ -4195,7 +4195,7 @@ func publishReminderEvent(stream *cevents.Stream, typ cevents.Type, item *schedu
 	if stream == nil || item == nil {
 		return
 	}
-	summary := agent.ReminderText(item.Title)
+	summary := strings.TrimSpace(item.Title)
 	if note != "" {
 		summary = note + ": " + summary
 	}

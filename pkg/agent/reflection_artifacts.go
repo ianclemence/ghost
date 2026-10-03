@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"github.com/ianclemence/ghost/pkg/personalcontext"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,6 +31,7 @@ func reflectionFrontmatter(kind, date string) string {
 // dreams/ (never memory/), so recalled daily notes and the prompt context
 // cannot pick it up. Returns the path written.
 func (ms *MemoryStore) AppendReflection(now time.Time, body string) (string, error) {
+	body = personalcontext.DropForgotten(ms.workspace, body)
 	if err := os.MkdirAll(ms.dreamsDir(), 0755); err != nil {
 		return "", err
 	}
