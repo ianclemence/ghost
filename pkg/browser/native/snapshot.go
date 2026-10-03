@@ -108,6 +108,15 @@ func newRefMap() *refMap {
 	return &refMap{refs: map[string]refEntry{}, durable: map[int64]string{}, next: 1}
 }
 
+// cleanRef normalizes a ref to the bare form this package mints ("e5").
+// Elements are named two ways: with the sigil ("@e5") as the model and
+// the tool layer address them, and without it as the snapshot writes
+// them. Both must resolve to the same node — a mismatch here showed up
+// in the golden set as "unknown ref @@e5" on the first fill.
+func cleanRef(ref string) string {
+	return strings.TrimPrefix(strings.TrimSpace(ref), "@")
+}
+
 func (r *refMap) reset(document string) {
 	r.document = document
 	r.refs = map[string]refEntry{}
@@ -118,7 +127,7 @@ func (r *refMap) reset(document string) {
 func (r *refMap) get(ref string) (refEntry, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	e, ok := r.refs[ref]
+	e, ok := r.refs[cleanRef(ref)]
 	return e, ok
 }
 

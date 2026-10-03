@@ -133,6 +133,30 @@ func (s *Session) Snapshot(ctx context.Context, opts snapshotOptions) (string, e
 	return s.takeSnapshot(ctx, opts)
 }
 
+// Outline is Snapshot for callers outside this package: the full
+// accessibility tree with @eN refs, which is what a model reads and what
+// the tool layer's ref ledger parses. Options are internal because the
+// flags they mirror are a CLI detail; a snapshot to a model is always the
+// whole tree.
+func (s *Session) Outline(ctx context.Context) (string, error) {
+	return s.takeSnapshot(ctx, snapshotOptions{})
+}
+
+// Supported lists the actions this engine implements, named in the tool
+// layer's vocabulary so the two can be compared directly.
+//
+// It is a claim, not a capability probe: the golden set asserts that
+// everything in here is actually driven end to end, and that the tool
+// actions outside it are named too. An engine that silently answered for
+// actions it could not perform would fail on a real site in the worst
+// possible way — mid-flow, on somebody's account — so routing consults
+// this list and refuses honestly rather than trying.
+func Supported() []string {
+	return []string{
+		"navigate", "snapshot", "click", "fill", "type", "press", "wait", "screenshot",
+	}
+}
+
 // URL returns the current page URL.
 func (s *Session) URL(ctx context.Context) (string, error) {
 	var res struct {
@@ -178,6 +202,7 @@ func (s *Session) Read(ctx context.Context) (string, error) {
 
 // resolveObject turns a ref into a Runtime object handle on the live node.
 func (s *Session) resolveObject(ctx context.Context, ref string) (string, error) {
+	ref = cleanRef(ref)
 	e, ok := s.refs.get(ref)
 	if !ok {
 		return "", fmt.Errorf("unknown ref @%s — take a fresh snapshot", ref)
@@ -208,6 +233,7 @@ func (s *Session) scrollIntoView(ctx context.Context, ref string) {
 
 // boxCenter returns the clickable center of a node in CSS pixels.
 func (s *Session) boxCenter(ctx context.Context, ref string) (float64, float64, error) {
+	ref = cleanRef(ref)
 	e, ok := s.refs.get(ref)
 	if !ok || !e.HasBackend {
 		return 0, 0, fmt.Errorf("unknown ref @%s", ref)
