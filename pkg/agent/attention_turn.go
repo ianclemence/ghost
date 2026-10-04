@@ -305,9 +305,15 @@ func (al *AgentLoop) offerUnseenReminders(now time.Time, loc *time.Location) {
 	}
 	q := al.attentionQueue()
 	for _, d := range open {
-		when := d.DeliveredAt.In(loc).Format("Mon 3:04 PM")
+		local := d.DeliveredAt.In(loc)
+		when := local.Format("Mon 3:04 PM")
 		q.Offer(attention.Item{
-			Key:      "unseen:" + d.ItemID + ":" + d.DeliveredAt.UTC().Format(time.RFC3339),
+			// One note per reminder per day, in the owner's zone. Keying on
+			// (item, day) rather than (item, delivery) means a fire that got
+			// recorded twice — a retry, a restart, two ticks racing a slow
+			// boot — is still one thing on the owner's plate, while a
+			// reminder missed again tomorrow can still be raised again.
+			Key:      "unseen:" + d.ItemID + ":" + local.Format("2006-01-02"),
 			Source:   "reminder_unseen",
 			Priority: 5,
 			Line:     fmt.Sprintf("Still open from %s: %s.", when, strings.TrimRight(strings.TrimSpace(d.Title), ".")),

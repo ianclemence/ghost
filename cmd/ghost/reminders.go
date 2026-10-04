@@ -123,6 +123,10 @@ func registerReminderActions(mux *http.ServeMux, svc *scheduled.Service, stream 
 	settle := func(id, action string) {
 		if al != nil && action != "seen" {
 			al.ForgetAttention("unseen:" + id + ":")
+			// Answering a reminder answers the source. Without this the layer
+			// keeps counting it as something the owner ignored, and the next
+			// morning still reports the reminder as unanswered.
+			al.AttentionAnswered("reminder_unseen")
 		}
 	}
 	cards.OnResolve(cards.KindReminder, func(c cards.Card, actionID string) (string, error) {

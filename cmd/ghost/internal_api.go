@@ -4132,10 +4132,17 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			jsonError(w, http.StatusBadRequest, "resolve_failed", "that approval is no longer answerable")
 			return
 		}
-		// A proactive proposal's card resolves that proposal's broker request.
-		// Once the owner approves it from any surface, the runtime executes the
-		// exact bound action and reports the verified result. Ordinary in-chat
-		// asks are untouched: their continuation still belongs to the turn.
+		// Resolving answers the broker, but the paused call still has to
+		// run. Resolving alone cleared the card while the action never
+		// executed, which is why the conversation kept showing "waiting for
+		// your approval" after a tap. ExecuteApprovedRequest resumes through
+		// the same governed path a typed reply uses, exactly once.
+		if grant != permissions.GrantDeny && agentLoop != nil {
+			if !agentLoop.ExecuteApprovedRequest(resolved, grant, "mobile", "default") {
+				logger.WarnCF("internal-api", "approval recorded but nothing to resume",
+					map[string]interface{}{"request_id": resolved.RequestID, "grant": req.Grant})
+			}
+		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "request": resolved})
 	}))
 

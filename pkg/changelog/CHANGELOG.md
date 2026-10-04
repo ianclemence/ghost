@@ -3,6 +3,24 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.154] - 2026-10-04
+
+- **Approving from a button now actually runs the approved action.**
+  Tapping "Allow once", "Allow for this task", "Always allow" or "Deny" in
+  the app or the web console recorded the choice but never carried it out:
+  the card cleared and the action stayed unrun, so the conversation kept
+  showing "waiting for your approval". A button now resumes the paused
+  call through the exact same governed path a typed "yes" uses — it runs
+  once, its result returns to the model, and the reply lands in the
+  conversation. "Allow once" is still exactly once.
+- **One reminder can no longer look like two.** A reminder that fired twice
+  in quick succession — a retry, a restart, two ticks racing a slow boot —
+  left two delivery records, and Ghost counted them as two separate things
+  still open (that is where "those two 'Drink a glass of water' reminders"
+  came from, when there was one). A reminder now reads as one however many
+  times it was sent, answering it settles every one of its deliveries, and
+  a completed reminder stops dragging down the "you ignored this" tally.
+
 ## [0.24.153] - 2026-10-04
 
 - **A space can be told "read, but don't write".** Ghost already enforced

@@ -2027,81 +2027,10 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 				}
 				return endTurn(resume.Message, nil)
 			}
-			// Browser resumes re-verify the stored approval against live
-			// state (owner, context, session, generation, revocation)
-			// before executing. Anything drifted refuses instead of
-			// running under a stale yes.
-			// Approved resume: the stored approval was re-verified against
-			// live state above, so carry the execution grant the registry
-			// requires for primitives.
-			ctx = tools.GrantExec(ctx, resume.Tool)
-			var toolResult *tools.ToolResult
-			switch {
-			case isComputerTool(resume.Tool):
-				if call, refuse := al.resumeComputerCall(resume, msg.SessionKey, requestID); refuse != nil {
-					toolResult = refuse
-				} else {
-					toolResult = al.runComputerTool(ctx, call, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey)
-				}
-				al.publishComputerEvidence(requestID, msg.SessionKey, resume.Tool, toolResult)
-			case isBrowserTool(resume.Tool):
-				if call, refuse := al.resumeBrowserCall(resume, msg.SessionKey, requestID); refuse != nil {
-					toolResult = refuse
-				} else {
-					// The approved step runs now: the card leaves "waiting" and
-					// shows the step, then what the page looks like after it.
-					al.announceBrowserStart(call, msg.SessionKey, browserStepLabel(resume.Tool, resume.Args))
-					toolResult = al.runBrowserTool(ctx, call, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey)
-					al.recordBrowserSurface(call, resume.Tool, toolResult, msg.SessionKey)
-				}
-				al.publishBrowserEvidence(requestID, msg.SessionKey, resume.Tool, toolResult)
-			default:
-				toolResult = al.tools.ExecuteWithContext(ctx, resume.Tool, resume.Args, msg.Channel, msg.ChatID, msg.SessionKey, nil)
-				al.governance.ToolRan(requestID, msg.SessionKey, resume.Tool, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError, toolResult.Obs)
-			}
-			al.governance.CapabilityDone(requestID, msg.SessionKey, resume.Capability, turnlog.TrajectoryIDFromContext(ctx), toolResult.IsError)
-			// The resumed result is evidence for the model, never Ghost's
-			// own words. Piping a page or a command's stdout straight into
-			// the reply is what turned "approve it and I'll give you the
-			// rundown" into a wall of markup: raw payload is context, not
-			// an answer. Hand it back for one model turn so the owner gets
-			// what was promised, and store that reply as the assistant
-			// message. The paused call itself still runs exactly once — the
-			// request is never repeated.
-			if al.canContinueResume() {
-				response, cerr := al.runAgentLoop(ctx, processOptions{
-					SessionKey:         msg.SessionKey,
-					Channel:            msg.Channel,
-					ChatID:             msg.ChatID,
-					ToolProfile:        profile,
-					UserMessage:        resumeContinuationLabel(resume.Tool),
-					ContinuationOutput: toolResult.ForLLM,
-					DefaultResponse:    "Hmm — that came back empty. Could you say it another way?",
-					EnableSummary:      true,
-					OnChunk:            onChunk,
-					OnToolCall:         onToolCall,
-					RequestID:          requestID,
-				})
-				if cerr == nil && strings.TrimSpace(response) != "" {
-					return endTurn(response, nil)
-				}
-				logger.WarnCF("agent", "approval continuation failed, reporting receipt",
-					map[string]interface{}{"session_key": msg.SessionKey, "error": fmt.Sprint(cerr)})
-			}
-			// No model turn available (or it failed): the receipt must still
-			// reach the live transcript, not just storage — a resumed
-			// approval that reports only to the database shows the owner
-			// "(no response)" while Ghost claims it acted. It is bounded so
-			// a payload can never be pasted at the owner as Ghost's words.
-			text := resumeReceiptText(toolResult)
-			if onChunk != nil && text != "" {
-				onChunk(text)
-			}
-			if al.sessions != nil {
-				al.sessions.AddMessage(msg.SessionKey, "assistant", text)
-				al.sessions.Save(msg.SessionKey)
-			}
-			return endTurn(text, nil)
+			// The paused call runs now, exactly once, and the reply goes
+			// back to the owner. Shared with the API approval path so a
+			// button and a typed "yes" resume identically.
+			return endTurn(al.resumeApproval(ctx, resume, msg.SessionKey, msg.Channel, msg.ChatID, requestID, profile, onChunk, onToolCall), nil)
 		}
 	}
 	response, err := al.runAgentLoop(ctx, processOptions{SessionKey: msg.SessionKey,

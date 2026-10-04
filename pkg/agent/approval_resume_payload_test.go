@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/cevents"
@@ -33,6 +35,97 @@ func short(s string) string {
 		return s[:300] + "…"
 	}
 	return s
+}
+
+// approvingTool records that the paused call ran, to prove a button-driven
+// approval executes it.
+type approvingTool struct {
+	mu   sync.Mutex
+	runs int
+}
+
+func (a *approvingTool) Name() string        { return "probe_approve" }
+func (a *approvingTool) Description() string { return "test approval tool" }
+func (a *approvingTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{"type": "object"}
+}
+func (a *approvingTool) Execute(ctx context.Context, args map[string]interface{}) *tools.ToolResult {
+	a.mu.Lock()
+	a.runs++
+	a.mu.Unlock()
+	return tools.UserResult("done")
+}
+func (a *approvingTool) count() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.runs
+}
+
+// A button approval must run the paused call. Resolving the broker request
+// alone cleared the card while the action never executed, so the
+// conversation kept showing "waiting for your approval" after a tap.
+func TestExecuteApprovedRequestRunsThePausedCallOnce(t *testing.T) {
+	ws := t.TempDir()
+	cfg := &config.Config{Agents: config.AgentsConfig{Defaults: config.AgentDefaults{
+		Workspace: ws, Model: "mock-model", MaxTokens: 1024, MaxToolIterations: 5,
+	}}}
+	al, err := NewAgentLoop(cfg, bus.NewMessageBus(), &simpleMockProvider{response: "done and reported"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { al.Stop() })
+
+	raw, err := sql.Open("sqlite", "file:"+ws+"/ghost.db?_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { raw.Close() })
+	if _, err := schema.MigrateToCurrent(raw); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	broker, err := permissions.Open(raw, permissions.ModeAsk, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := cevents.Open(raw, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	al.SetGovernance(NewGovernance(events, broker, "g1", "agent-main"))
+
+	tool := &approvingTool{}
+	al.tools.Register(tool)
+
+	res := al.governance.AuthorizeStandalone("req-a", "sess-a", "web.read", "probe_approve",
+		map[string]interface{}{}, permissions.RiskConsequential)
+	if res.Allowed || res.PendingID == "" {
+		t.Fatalf("want a durable approval, got %+v", res)
+	}
+
+	// The button resolves the request and then resumes it.
+	resolved, err := broker.ResolveAuto(res.PendingID, permissions.GrantOnce)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if !al.ExecuteApprovedRequest(resolved, permissions.GrantOnce, "mobile", "default") {
+		t.Fatal("approving a request with a continuation must resume it")
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for tool.count() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if tool.count() != 1 {
+		t.Fatalf("paused call ran %d times, want 1", tool.count())
+	}
+
+	// allow_once is exactly once: a second tap has nothing left to run.
+	if al.ExecuteApprovedRequest(resolved, permissions.GrantOnce, "mobile", "default") {
+		t.Fatal("allow_once resumed twice")
+	}
+	if tool.count() != 1 {
+		t.Fatalf("paused call ran %d times after a second tap, want 1", tool.count())
+	}
 }
 
 // An approved execution's output is evidence for the model, never Ghost's

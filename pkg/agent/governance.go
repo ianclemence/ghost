@@ -632,6 +632,51 @@ func (g *Governance) CheckApprovalReply(sessionKey, text string) ResumeOutcome {
 	return resumeFrom(approved, grant)
 }
 
+// ResumeApproved re-verifies an approval the owner gave through an API
+// button against live policy and rebuilds the paused call. It is the
+// counterpart to CheckApprovalReply for a request the endpoint already
+// resolved: the same exactly-once and revocation re-checks, applied to the
+// request the button named instead of the session's first pending one.
+func (g *Governance) ResumeApproved(r *permissions.Request, grant permissions.GrantType) (ResumeOutcome, bool) {
+	if !g.active() || g.Broker == nil || r == nil || r.RequestID == "" {
+		return ResumeOutcome{}, false
+	}
+	if grant == permissions.GrantDeny {
+		return ResumeOutcome{}, false
+	}
+	if grant == permissions.GrantOnce {
+		// Exactly one execution per "allow once": consume the approval so a
+		// second resume of the same request finds nothing to run.
+		consumed, ok := g.Broker.ConsumeApproved(r.RequestID)
+		if !ok {
+			return ResumeOutcome{}, false
+		}
+		return resumeFrom(consumed, grant), true
+	}
+	approved, ok := g.Broker.ApprovedRequest(r.RequestID)
+	if !ok {
+		return ResumeOutcome{}, false
+	}
+	contArgs := map[string]interface{}{}
+	for k, v := range approved.Continuation {
+		contArgs[k] = v
+	}
+	// A standing (always/task) approval is re-checked against live policy:
+	// a grant revoked, denied, or expired between the tap and the resume
+	// must not authorize the call.
+	if grant == permissions.GrantAlways || grant == permissions.GrantTask {
+		scope := scopeFor(r.SessionKey, contArgs)
+		risk := approved.Risk
+		if risk == "" {
+			risk = permissions.RiskConsequential
+		}
+		if permissions.VerdictDecision(g.Broker.Evaluate(approved.Capability, approved.Action, scope, risk)) != permissions.DecisionAllow {
+			return ResumeOutcome{}, false
+		}
+	}
+	return resumeFrom(approved, grant), true
+}
+
 // resumeFrom rebuilds the paused call from an approved request's durable
 // continuation. The action field may carry a ":detail" suffix (see
 // toolAction); only the tool name resumes.

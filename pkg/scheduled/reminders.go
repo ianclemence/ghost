@@ -1,7 +1,6 @@
 package scheduled
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -64,52 +63,43 @@ func (s *Store) RecordDelivery(itemID string, at time.Time) error {
 	return err
 }
 
-// latestDelivery returns the newest delivery of an item, or nil.
-func (s *Store) latestDelivery(itemID string) (*Delivery, error) {
-	row := s.db.QueryRow(`SELECT delivered_at, seen_at, outcome, outcome_at FROM reminder_acks WHERE item_id=? ORDER BY delivered_at DESC LIMIT 1`, itemID)
-	d := &Delivery{ItemID: itemID}
-	var seen, outAt sql.NullTime
-	var outcome string
-	if err := row.Scan(&d.DeliveredAt, &seen, &outcome, &outAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	if seen.Valid {
-		t := seen.Time
-		d.SeenAt = &t
-	}
-	if outAt.Valid {
-		t := outAt.Time
-		d.OutcomeAt = &t
-	}
-	d.Outcome = Outcome(outcome)
-	return d, nil
-}
-
-func (s *Store) setOutcome(itemID string, deliveredAt time.Time, o Outcome, at time.Time) error {
-	_, err := s.db.Exec(`UPDATE reminder_acks SET outcome=?, outcome_at=?, seen_at=COALESCE(seen_at, ?) WHERE item_id=? AND delivered_at=?`,
-		string(o), at.UTC(), at.UTC(), itemID, deliveredAt.UTC())
+// MarkSeen records that the owner saw the reminder. Idempotent.
+//
+// Every unseen delivery is marked, not only the newest: a reminder that
+// fired twice (a retry, a restart, two ticks racing a slow boot) left two
+// rows, and marking one of them seen leaves the item looking unseen.
+func (s *Store) MarkSeen(itemID string, at time.Time) error {
+	_, err := s.db.Exec(`UPDATE reminder_acks SET seen_at=? WHERE item_id=? AND seen_at IS NULL`,
+		at.UTC(), itemID)
 	return err
 }
 
-// MarkSeen records that the owner saw the latest delivery. Idempotent.
-func (s *Store) MarkSeen(itemID string, at time.Time) error {
-	_, err := s.db.Exec(`UPDATE reminder_acks SET seen_at=? WHERE item_id=? AND seen_at IS NULL AND delivered_at=(SELECT MAX(delivered_at) FROM reminder_acks WHERE item_id=?)`,
-		at.UTC(), itemID, itemID)
+// settleOpenDeliveries records one outcome against every delivery of an
+// item that is still awaiting one. The owner answered the reminder, not
+// whichever row a duplicated fire happened to create; leaving the other
+// rows open is how a single reminder comes back later as two.
+func (s *Store) settleOpenDeliveries(itemID string, o Outcome, at time.Time) error {
+	_, err := s.db.Exec(`UPDATE reminder_acks SET outcome=?, outcome_at=?, seen_at=COALESCE(seen_at, ?)
+		WHERE item_id=? AND COALESCE(outcome,'')=''`,
+		string(o), at.UTC(), at.UTC(), itemID)
 	return err
 }
 
 // OpenDeliveries returns reminders delivered between from and to that the
 // owner has neither seen nor answered: the ones Ghost may gently bring up
 // again, once.
+//
+// One row per reminder, carrying its most recent open delivery. A reminder
+// is one promise; how many times a flaky tick happened to record sending it
+// is bookkeeping, not a second thing the owner has to answer.
 func (s *Store) OpenDeliveries(from, to time.Time) ([]Delivery, error) {
 	rows, err := s.db.Query(`
 		SELECT a.item_id, a.delivered_at, i.title, i.timezone, i.schedule_kind
 		FROM reminder_acks a JOIN scheduled_items i ON i.id = a.item_id
 		WHERE a.delivered_at >= ? AND a.delivered_at < ? AND a.seen_at IS NULL AND COALESCE(a.outcome,'') = ''
 		  AND i.state NOT IN ('done','dismissed','cancelled')
+		  AND a.delivered_at = (SELECT MAX(b.delivered_at) FROM reminder_acks b
+		                        WHERE b.item_id = a.item_id AND b.seen_at IS NULL AND COALESCE(b.outcome,'') = '')
 		ORDER BY a.delivered_at ASC`, from.UTC(), to.UTC())
 	if err != nil {
 		return nil, err
@@ -162,8 +152,8 @@ func (s *Service) close(id string, o Outcome, state ItemState, now time.Time) (*
 	if err != nil {
 		return nil, err
 	}
-	if d, _ := s.store.latestDelivery(id); d != nil && d.Outcome == OutcomeNone {
-		_ = s.store.setOutcome(id, d.DeliveredAt, o, now)
+	if err := s.store.settleOpenDeliveries(id, o, now); err != nil {
+		return nil, err
 	}
 	if item.IsOneTime() {
 		item.State = state
@@ -186,8 +176,8 @@ func (s *Service) Snooze(id string, until, now time.Time) (*ScheduledItem, error
 	if err != nil {
 		return nil, err
 	}
-	if d, _ := s.store.latestDelivery(id); d != nil && d.Outcome == OutcomeNone {
-		_ = s.store.setOutcome(id, d.DeliveredAt, OutcomeSnoozed, now)
+	if err := s.store.settleOpenDeliveries(id, OutcomeSnoozed, now); err != nil {
+		return nil, err
 	}
 	u := until.UTC()
 	if item.IsOneTime() {
