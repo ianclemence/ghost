@@ -101,6 +101,7 @@ var snapshotTables = []snapshotTable{
 		"finished_at", "updated_at",
 		"owner", "context_id", "generation", "evidence", "resume_state",
 		"trajectory_id",
+		"next_attempt_at", "max_attempts", "failures",
 	}, OrderBy: "id"},
 	{Name: "event_consumers", Columns: []string{
 		"consumer", "last_seq", "updated_at",

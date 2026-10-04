@@ -29,7 +29,7 @@ import (
 )
 
 // CurrentVersion is the schema head this build understands.
-const CurrentVersion = 8
+const CurrentVersion = 9
 
 // baseline builds the full v1 schema through the same initializers
 // production startup has always used. Every step is CREATE-IF-NOT-EXISTS
@@ -107,7 +107,22 @@ func registry() []migrations.Migration {
 			Description: "restore conversations hidden by the old compaction behaviour",
 			UpDB:        restoreCompactedV8,
 		},
+		{
+			Version:     9,
+			Description: "durable job retry: next_attempt_at, max_attempts and failures columns on jobs",
+			UpDB:        jobRetryV9,
+		},
 	}
+}
+
+// jobRetryV9 adds the columns a retrying runner needs: when the next
+// attempt becomes due, and the per-job ceiling on attempts. The PRAGMA
+// guard inside tasks keeps it idempotent.
+func jobRetryV9(raw *sql.DB) error {
+	if err := tasks.EnsureRetryColumns(raw); err != nil {
+		return fmt.Errorf("jobs retry columns: %w", err)
+	}
+	return nil
 }
 
 // restoreCompactedV8 un-hides conversations the old compaction behaviour

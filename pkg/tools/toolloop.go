@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/capability"
@@ -44,6 +45,12 @@ type ToolLoopConfig struct {
 	// is not listed is refused. Empty = unscoped (legacy full delegation,
 	// still bounded by the actuator blocklist and the broker).
 	AllowedCapabilities []string
+	// Checkpoint is called once per tool execution that actually happened,
+	// with a human-safe line describing it. It is how a long run leaves a
+	// durable trace: a restart resumes from what is recorded here rather
+	// than from the beginning, and the owner sees how far it got. Nil = no
+	// recording (a short in-memory run has nothing to resume from).
+	Checkpoint func(text string)
 }
 
 // SubagentBrowserAuth authorizes one subagent browser call against the
@@ -117,6 +124,11 @@ func executeSubagentBrowser(ctx context.Context, config ToolLoopConfig, tc provi
 type ToolLoopResult struct {
 	Content    string
 	Iterations int
+	// NeedsApproval is non-empty when the run stopped because a tool
+	// required the owner's approval. The loop stops there on purpose: a
+	// subagent that carries on after being told no wanders into work it
+	// was not allowed to start, and its caller has nothing to wait on.
+	NeedsApproval string
 }
 
 // RunToolLoop executes the LLM + tool call iteration loop.
@@ -124,6 +136,9 @@ type ToolLoopResult struct {
 func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []providers.Message, channel, chatID string) (*ToolLoopResult, error) {
 	iteration := 0
 	var finalContent string
+	// pendingApproval is the ask message that stopped the run, empty while
+	// nothing has asked for the owner yet.
+	var pendingApproval string
 	// turnTouchedWeb taints downstream memory writes once the turn has
 	// touched the network (same rule as the main agent loop).
 	turnTouchedWeb := false
@@ -267,11 +282,47 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 				ToolError:  toolResult.IsError,
 			}
 			messages = append(messages, toolResultMsg)
+
+			// An approval wall ends the run right here. The step did not
+			// happen, so there is nothing to try next until the owner says
+			// yes — and a subagent that kept going after being told "ask
+			// first" would either loop on the same wall or start work it
+			// was never allowed to begin.
+			if _, wait := AsApprovalWait(toolResult.Err); wait {
+				pendingApproval = contentForLLM
+				continue
+			}
+			// Record what actually happened. Only completed steps count:
+			// recording an error would let a resume claim progress that
+			// was never made.
+			if config.Checkpoint != nil && !toolResult.IsError && toolResult.Err == nil {
+				if line := checkpointLine(tc.Name, contentForLLM); line != "" {
+					config.Checkpoint(line)
+				}
+			}
+		}
+		if pendingApproval != "" {
+			break
 		}
 	}
 
 	return &ToolLoopResult{
-		Content:    finalContent,
-		Iterations: iteration,
+		Content:       finalContent,
+		Iterations:    iteration,
+		NeedsApproval: pendingApproval,
 	}, nil
+}
+
+// checkpointLine compresses one completed step into a single durable line:
+// the tool, and what it told the model — the same text the model just saw,
+// so a resume quoting it is not inventing anything. It is flattened to one
+// line and bounded, because these accumulate in a row that has to stay
+// readable months later.
+func checkpointLine(tool, content string) string {
+	content = strings.Join(strings.Fields(content), " ")
+	content = utils.Truncate(content, 160)
+	if content == "" {
+		return tool
+	}
+	return tool + ": " + content
 }

@@ -149,6 +149,10 @@ type AgentLoop struct {
 	standingBrokerInst *permissions.Broker
 	// jobs is the durable task store (SQLite-backed, part of Ghost State).
 	jobs *tasks.Store
+	// jobRunner claims due jobs and executes them. It is what makes the
+	// store more than a record: without it nothing ever starts, retries,
+	// or comes back after a restart.
+	jobRunner *tasks.Runner
 
 	// failureCorpus records runtime failures (verification, etc.) locally
 	// for regression conversion. Nil when the workspace is unavailable.
@@ -1042,6 +1046,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		})
 	})
 
+	// Kept so a runtime model switch can reach them: without this the loop
+	// would change its own model and leave every subagent on the one it
+	// booted with — two models in one runtime, each thinking it is active.
+	al.subagents = subagentManager
+
 	// Durable task store: scheduled/background work outlives a single turn and
 	// survives a restart. Emits typed task events; jobs left "running" by a
 	// crash are flagged interrupted (resumable) on startup.
@@ -1076,6 +1085,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		if n, err := al.jobs.MarkInterrupted(); err == nil && n > 0 {
 			logger.InfoCF("agent", "durable jobs interrupted by restart (resumable)", map[string]interface{}{"count": n})
 		}
+		al.wireJobRunner(subagentManager)
 	}
 
 	// Subagent browser calls resolve through the same gate as main-turn
@@ -1378,6 +1388,12 @@ func (al *AgentLoop) Stop() {
 	al.curator.Stop()
 	if al.shutdownCancel != nil {
 		al.shutdownCancel()
+	}
+	// Stop the job runner before the database closes underneath it: an
+	// attempt in flight has to finish writing its state (interrupted, not
+	// failed) while the store still exists.
+	if al.jobRunner != nil {
+		al.jobRunner.Stop()
 	}
 	if al.db != nil {
 		al.db.Close()
@@ -1990,6 +2006,10 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 	// model's answer, never the payload itself.
 	if al.governance != nil {
 		if resume := al.governance.CheckApprovalReply(msg.SessionKey, msg.Content); resume.Resumed || resume.Denied {
+			// A background job parked at this approval is waiting on the
+			// reply, not on a restart. Hand it back to the runner now — a
+			// checkpoint nobody releases is not a checkpoint, it is a trap.
+			al.resumeWaitingJobs(msg.SessionKey)
 			if resume.Denied {
 				// Stream like every other fast path: the denial text is a
 				// reply the owner must SEE, not only a row in storage.

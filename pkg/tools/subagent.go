@@ -104,6 +104,55 @@ type SubagentManager struct {
 	// subtasks. Non-empty = deny-by-default. Empty = legacy unscoped (still
 	// bounded by the actuator blocklist and the broker).
 	allowedCapabilities []string
+	// enqueue, when set, makes a spawn durable: the task is recorded as a
+	// job and execution belongs to the runner that owns that record, not
+	// to a goroutine started here. Nil keeps the old in-memory behaviour,
+	// which is what an unwired test wants.
+	enqueue func(SpawnRequest) (string, error)
+}
+
+// SpawnRequest is a background task the caller wants to outlive the
+// process that asked for it.
+type SpawnRequest struct {
+	Task    string
+	Label   string
+	Channel string
+	ChatID  string
+	// SessionKey binds the recorded job to the conversation it came from,
+	// so its state is visible where the owner will look for it and so an
+	// approval reply in that conversation can find it again.
+	SessionKey string
+}
+
+// DurableAttempt is one run of a recorded spawn: what to do, where earlier
+// attempts got to, and the two callbacks that write what this attempt
+// learns back to the record. Both may be nil.
+type DurableAttempt struct {
+	JobID      string
+	Task       string
+	Label      string
+	Channel    string
+	ChatID     string
+	Resume     string
+	Checkpoint func(line string)
+	Evidence   func(text string)
+}
+
+// SetDurableSpawner hands spawns to a durable store. Nil restores the
+// in-memory path.
+func (sm *SubagentManager) SetDurableSpawner(fn func(SpawnRequest) (string, error)) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.enqueue = fn
+}
+
+// IterationBudget is the tool-loop ceiling one attempt runs under. The
+// job's progress is measured against it, so "how far through" means the
+// same thing to the record as it does to the run.
+func (sm *SubagentManager) IterationBudget() int {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.maxIterations
 }
 
 // SetDefaultModel updates the model subagents run on. A runtime model switch
@@ -244,6 +293,13 @@ func (sm *SubagentManager) filteredTools() *ToolRegistry {
 }
 
 func (sm *SubagentManager) runLoop(ctx context.Context, taskPrompt, originChannel, originChatID, label string) (*ToolLoopResult, error) {
+	return sm.runLoopRecording(ctx, taskPrompt, originChannel, originChatID, label, nil)
+}
+
+// runLoopRecording is runLoop with an optional per-step recorder: a durable
+// run leaves a trace as it goes, an in-memory one has nothing to resume
+// from and so records nothing.
+func (sm *SubagentManager) runLoopRecording(ctx context.Context, taskPrompt, originChannel, originChatID, label string, checkpoint func(string)) (*ToolLoopResult, error) {
 	messages := []providers.Message{
 		{
 			Role:    "system",
@@ -276,6 +332,7 @@ func (sm *SubagentManager) runLoop(ctx context.Context, taskPrompt, originChanne
 		BrowserAuth:         browserAuth,
 		ConsequentialAuth:   consequentialAuth,
 		AllowedCapabilities: allowedCaps,
+		Checkpoint:          checkpoint,
 	}, messages, originChannel, originChatID)
 }
 
@@ -377,6 +434,27 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel
 	if err != nil {
 		return "", err
 	}
+
+	// Durable first: record the task and hand execution to the runner.
+	// The slot is not taken here — a queued job is not running work, and
+	// holding a concurrency slot for something waiting its turn would
+	// starve the runs that are actually going.
+	sm.mu.RLock()
+	enqueue := sm.enqueue
+	sm.mu.RUnlock()
+	if enqueue != nil {
+		jobID, err := enqueue(SpawnRequest{Task: task, Label: label, Channel: originChannel, ChatID: originChatID,
+			SessionKey: SessionKeyFromContext(ctx)})
+		if err != nil {
+			return "", err
+		}
+		sm.ensureTask(jobID, task, label, originChannel, originChatID, "queued")
+		if label != "" {
+			return fmt.Sprintf("Spawned subagent '%s' for task: %s (recorded as job %s; it survives a restart)", label, task, jobID), nil
+		}
+		return fmt.Sprintf("Spawned subagent for task: %s (recorded as job %s; it survives a restart)", task, jobID), nil
+	}
+
 	if err := sm.acquireSlot(); err != nil {
 		return "", err
 	}
@@ -402,6 +480,108 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel
 		return fmt.Sprintf("Spawned subagent '%s' for task: %s", label, task), nil
 	}
 	return fmt.Sprintf("Spawned subagent for task: %s", task), nil
+}
+
+// ensureTask returns the in-memory record of a background run, creating it
+// if neither side has seen it yet. It is idempotent on purpose: the
+// spawner and the runner can arrive in either order (the runner may even
+// start before Spawn has finished talking to the store) and they must share
+// one record rather than hold two that disagree about what is running.
+func (sm *SubagentManager) ensureTask(id, task, label, channel, chatID, status string) *SubagentTask {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if t, ok := sm.tasks[id]; ok {
+		return t
+	}
+	t := &SubagentTask{
+		ID:            id,
+		Task:          task,
+		Label:         label,
+		OriginChannel: channel,
+		OriginChatID:  chatID,
+		Status:        status,
+		Created:       time.Now().UnixMilli(),
+	}
+	sm.tasks[id] = t
+	return t
+}
+
+// durableSubagentTimeout bounds one attempt of a job-backed run. It is far
+// longer than an in-memory spawn's: the record outlives the process, so a
+// run that runs out of time is a retry rather than work that disappeared.
+const durableSubagentTimeout = 2 * time.Hour
+
+// RunDurable executes one attempt of a recorded background task. The runner
+// owns this call — it decides when to try, how long to wait, and when the
+// budget is spent — and everything this learns is written back through the
+// two callbacks, so what a restart finds is what actually happened rather
+// than what this process happened to remember.
+//
+// It returns nil when the task is done, an *ApprovalWait when it stopped at
+// something the owner has to allow, and any other error for a failure the
+// runner may try again.
+func (sm *SubagentManager) RunDurable(ctx context.Context, a DurableAttempt) error {
+	if err := sm.acquireSlot(); err != nil {
+		// A full concurrency budget is "later", not "no": the job waits
+		// its turn instead of spending an attempt on a busy moment.
+		return &AtCapacityError{Delay: 30 * time.Second}
+	}
+	defer sm.releaseSlot()
+
+	task := sm.ensureTask(a.JobID, a.Task, a.Label, a.Channel, a.ChatID, "running")
+	sm.mu.Lock()
+	task.Status = "running"
+	sm.mu.Unlock()
+	sm.emitLog(task, "info", "system", "Background job attempt starting")
+
+	prompt := a.Task
+	if strings.TrimSpace(a.Resume) != "" {
+		prompt = resumePrompt(a.Resume, a.Task)
+	}
+
+	runCtx, cancel := context.WithTimeout(ctx, durableSubagentTimeout)
+	defer cancel()
+
+	loopResult, err := sm.runLoopRecording(runCtx, prompt, a.Channel, a.ChatID, a.Label, a.Checkpoint)
+	if err == nil && loopResult != nil && loopResult.NeedsApproval != "" {
+		sm.setTaskState(task, "waiting", loopResult.NeedsApproval)
+		sm.emitLog(task, "warn", "system", "Stopped for approval: "+loopResult.NeedsApproval)
+		return &ApprovalWait{Reason: loopResult.NeedsApproval}
+	}
+	if err != nil {
+		msg := "Error: " + err.Error()
+		if runCtx.Err() == context.DeadlineExceeded {
+			msg = "Ran out of time before it finished"
+		}
+		sm.setTaskState(task, "failed", msg)
+		sm.emitLog(task, "error", "system", msg)
+		return err
+	}
+	sm.setTaskState(task, "completed", loopResult.Content)
+	sm.emitLog(task, "info", "system", fmt.Sprintf("Task completed in %d iterations", loopResult.Iterations))
+	if a.Evidence != nil {
+		a.Evidence(loopResult.Content)
+	}
+	return nil
+}
+
+// setTaskState records an outcome under the manager's lock; the task's
+// result is read by surfaces that must never see a half-written string.
+func (sm *SubagentManager) setTaskState(task *SubagentTask, status, result string) {
+	sm.mu.Lock()
+	task.Status = status
+	task.Result = result
+	sm.mu.Unlock()
+}
+
+// resumePrompt stitches what earlier attempts confirmed onto the task, so a
+// restarted run is told where it got to instead of quietly starting again.
+// The difference matters: re-doing work that already happened is how a
+// resumed job ends up sending the same message twice.
+func resumePrompt(resume, task string) string {
+	return "You are continuing a task that was interrupted partway through. " +
+		"These steps are already confirmed done — do not repeat them:\n" + resume +
+		"\n\nCarry on from there and finish the task.\n\nTask:\n" + task
 }
 
 func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, callback AsyncCallback) {

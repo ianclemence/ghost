@@ -2,8 +2,65 @@ package tools
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
+	"time"
 )
+
+// ErrApprovalNeeded marks a result that stopped the work because the owner
+// has to approve first. It is not a failure: nothing was refused for good,
+// nothing ran, and the caller is expected to stop and wait rather than
+// decide on the owner's behalf.
+var ErrApprovalNeeded = errors.New("approval needed from the owner")
+
+// AtCapacityError reports that a durable run could not start because the
+// subagent concurrency budget is full. It is a "later", not a "no": the
+// job layer turns it into a wait rather than a failure, because a busy
+// runtime must never be able to kill work that never failed.
+type AtCapacityError struct {
+	// Delay is how long to wait before trying again. Zero lets the caller
+	// choose.
+	Delay time.Duration
+}
+
+func (e *AtCapacityError) Error() string { return "subagent capacity is full" }
+
+// AsAtCapacity reports err as a capacity wait.
+func AsAtCapacity(err error) (*AtCapacityError, bool) {
+	var e *AtCapacityError
+	if errors.As(err, &e) {
+		return e, true
+	}
+	return nil, false
+}
+
+// ApprovalWait is a run that stopped at an approval it does not have. The
+// job layer turns it into a park (waiting_for_permission) instead of a
+// retry, because trying again without the grant would just stop at the
+// same wall and burn the budget on it.
+type ApprovalWait struct {
+	// Reason is what the owner is being asked to allow, in their words.
+	Reason string
+}
+
+func (e *ApprovalWait) Error() string {
+	if e == nil || e.Reason == "" {
+		return "waiting for approval"
+	}
+	return e.Reason
+}
+
+// AsApprovalWait reports err as an approval stop, unwrapping sentinels.
+func AsApprovalWait(err error) (*ApprovalWait, bool) {
+	var w *ApprovalWait
+	if errors.As(err, &w) {
+		return w, true
+	}
+	if errors.Is(err, ErrApprovalNeeded) {
+		return &ApprovalWait{Reason: err.Error()}, true
+	}
+	return nil, false
+}
 
 // modelGuidanceSuffix is appended to failed provider-completion results so
 // the model relays the failure instead of inventing data. It is addressed

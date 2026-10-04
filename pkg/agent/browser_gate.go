@@ -423,7 +423,15 @@ func (al *AgentLoop) authorizeSubagentStandaloneTool(ctx context.Context, tool s
 	if decision.Allowed {
 		return nil
 	}
-	return &tools.ToolResult{ForLLM: decision.AskMessage}
+	res := &tools.ToolResult{ForLLM: decision.AskMessage}
+	if decision.PendingID != "" {
+		// The broker is asking the owner, not answering no. Stop the run
+		// at the wall and wait for it: a subagent that takes "ask first"
+		// for a refusal will either grind on the same wall or begin work
+		// it was never given, and neither is the owner's decision.
+		res.Err = tools.ErrApprovalNeeded
+	}
+	return res
 }
 
 // isBrowserTool reports whether a tool name is a governed browser operation.

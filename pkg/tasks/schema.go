@@ -29,10 +29,14 @@ const jobsTableDDL = `CREATE TABLE IF NOT EXISTS jobs (
 	generation TEXT NOT NULL DEFAULT '',
 	evidence TEXT NOT NULL DEFAULT '',
 	resume_state TEXT NOT NULL DEFAULT '',
-	trajectory_id TEXT NOT NULL DEFAULT ''
+	trajectory_id TEXT NOT NULL DEFAULT '',
+	next_attempt_at INTEGER NOT NULL DEFAULT 0,
+	max_attempts INTEGER NOT NULL DEFAULT 0,
+	failures INTEGER NOT NULL DEFAULT 0
 )`
 
-const jobsIndexesDDL = `CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+const jobsIndexesDDL = `CREATE INDEX IF NOT EXISTS idx_jobs_due ON jobs(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_owner ON jobs(owner)`
 
@@ -61,6 +65,43 @@ func ensureSchemaOn(ex queryExecer) error {
 	}
 	if _, err := ex.Exec(`CREATE INDEX IF NOT EXISTS idx_jobs_owner ON jobs(owner)`); err != nil {
 		return fmt.Errorf("jobs owner index: %w", err)
+	}
+	// Existing tables (a database this shape already ran against) still
+	// need the retry columns, so converging them is part of ensuring the
+	// schema rather than a separate step callers must remember.
+	return EnsureRetryColumns(ex)
+}
+
+// retryColumns are the columns a runner needs to hold work back and try
+// again: when the next attempt becomes due, and how many attempts the job
+// is allowed before its failure is the answer.
+var retryColumns = []struct{ name, ddl string }{
+	{"next_attempt_at", `ALTER TABLE jobs ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0`},
+	{"max_attempts", `ALTER TABLE jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 0`},
+	// failures counts attempts that ENDED in failure, which is not the same
+	// as attempts. A job that parks for approval and starts again has not
+	// failed; budgeting retries from starts would quietly kill long work
+	// the first few times the owner takes their time answering.
+	{"failures", `ALTER TABLE jobs ADD COLUMN failures INTEGER NOT NULL DEFAULT 0`},
+}
+
+// EnsureRetryColumns brings a jobs table to the retry-aware shape.
+// Idempotent via explicit PRAGMA checks, like its predecessors.
+func EnsureRetryColumns(ex queryExecer) error {
+	existing, err := tableColumns(ex, "jobs")
+	if err != nil {
+		return err
+	}
+	for _, col := range retryColumns {
+		if existing[col.name] {
+			continue
+		}
+		if _, err := ex.Exec(col.ddl); err != nil {
+			return fmt.Errorf("add jobs.%s: %w", col.name, err)
+		}
+	}
+	if _, err := ex.Exec(`CREATE INDEX IF NOT EXISTS idx_jobs_due ON jobs(status, next_attempt_at)`); err != nil {
+		return fmt.Errorf("jobs due index: %w", err)
 	}
 	return nil
 }

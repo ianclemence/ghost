@@ -3,6 +3,32 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.149] - 2026-10-04
+
+- **Background work now outlives the Pod that started it.** A task you
+  handed off — research this, watch that page, draft the report — was a
+  goroutine in memory, and a restart, a crash or an update killed it
+  silently with nothing in the conversation to say it had. Ghost writes
+  the task down before it runs and, on boot, picks up anything a restart
+  left mid-flight and carries on — with each attempt allowed hours rather
+  than the old five minutes. What an earlier attempt confirmed is handed
+  to the next one, so a resumed task does not quietly repeat work you
+  already saw happen.
+- **A task that fails for a moment gets another go.** A provider
+  blinking, a page timing out, a command that was not ready used to end
+  the task the first time. It now waits and tries again — a few seconds,
+  then longer, up to a ceiling — and only reports a failure once it has
+  genuinely run out of attempts. A task stopped by a restart is not
+  counted as one of its failures: our stop is not its mistake.
+- **A task that needs your approval waits instead of giving up.** When
+  background work reached something consequential — sending a message,
+  scheduling, deleting — it was told "ask first" and pushed on anyway,
+  either grinding against the same wall or wandering into something you
+  had not agreed to. It now stops at that step, parks as waiting for
+  your approval, and resumes from where it stopped the moment you
+  answer. Waiting on you never spends the task's attempts, however long
+  you take to reply.
+
 ## [0.24.148] - 2026-10-04
 
 - **A page that re-renders under Ghost no longer costs two turns.** Refs
