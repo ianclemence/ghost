@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.155] - 2026-10-04
+
+- **Stopping a reminder or automation from the phone now works.** The
+  Routines screen sends "Stop" for anything that is not a Ghost routine to
+  the scheduler, but that endpoint only knew pause, resume and run — so the
+  request came back "unsupported action" (HTTP 400) and the item kept
+  going. Cancelling a scheduled item is now an action the endpoint accepts,
+  the same cancellation the console's delete already performed.
+
 ## [0.24.154] - 2026-10-04
 
 - **Approving from a button now actually runs the approved action.**

@@ -3017,6 +3017,16 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 						return
 					}
 					jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "state": "scheduled"})
+				case "cancel":
+					// The app's Routines screen offers Stop for reminders and
+					// automations (anything not routine-sourced) and posts
+					// {id}/cancel here; only DELETE existed, so Stop answered
+					// 400 "unsupported action" and the row never stopped.
+					if err := scheduledService.CancelItem(itemID); err != nil {
+						jsonError(w, http.StatusNotFound, "not_found", err.Error())
+						return
+					}
+					jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "state": "cancelled"})
 				case "run":
 					if err := scheduledService.RunNow(itemID); err != nil {
 						jsonError(w, http.StatusNotFound, "not_found", err.Error())
