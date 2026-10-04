@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.153] - 2026-10-04
+
+- **A space can be told "read, but don't write".** Ghost already enforced
+  read-versus-write per capability — reads pass, and sends, edits and
+  deletions ask first — and a space's capability list could narrow that,
+  but there was no way to actually set it. `POST /v1/contexts/capabilities`
+  lets the owner list exactly what a space may do: leave it empty and
+  everything is allowed, list only the read capabilities and the writes
+  fail closed before anything runs. The list can only take authority away,
+  never add it. A misspelled capability is refused rather than stored,
+  because a deny-by-typo is indistinguishable from a deliberate no.
+
 ## [0.24.152] - 2026-10-04
 
 - **Deleting a conversation deletes the conversation.** Removing a session

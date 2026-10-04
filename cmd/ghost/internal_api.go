@@ -212,6 +212,29 @@ func emitMemoryDeleted(title string, summary string) {
 	})
 }
 
+// normalizeCapabilityAllowlist cleans an owner's capability allowlist. An
+// unknown ID is refused rather than stored: a typo in an allowlist silently
+// denies the capability the owner meant to allow, and a deny-by-typo is
+// indistinguishable from a deliberate no. An empty list clears the
+// allowlist, which is the documented "all allowed".
+func normalizeCapabilityAllowlist(ids []string) ([]string, error) {
+	reg := capability.Default()
+	clean := make([]string, 0, len(ids))
+	seen := make(map[string]bool)
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		if _, ok := reg.Get(id); !ok {
+			return nil, fmt.Errorf("unknown capability: %s", id)
+		}
+		seen[id] = true
+		clean = append(clean, id)
+	}
+	return clean, nil
+}
+
 func routineService() (*routines.Service, error) {
 	if apiDB == nil {
 		return nil, errors.New("database unavailable")
@@ -4696,6 +4719,43 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			return
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "context_id": req.ContextID})
+	}))
+
+	// ── Context capability allowlist ──────────────────────────────────────
+	// What a space may do. An empty list means all allowed; a non-empty one
+	// is an allowlist the broker enforces per call. This is how an owner
+	// says "this space may read, not write": list the read capabilities and
+	// the write ones are refused before anything runs.
+	mux.HandleFunc("/v1/contexts/capabilities", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		var req struct {
+			ContextID    string   `json:"context_id"`
+			Capabilities []string `json:"capabilities"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.ContextID) == "" {
+			jsonError(w, http.StatusBadRequest, "invalid_request", "context_id is required")
+			return
+		}
+		cs, err := contextStore()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "unavailable", "contexts are unavailable right now")
+			return
+		}
+		clean, err := normalizeCapabilityAllowlist(req.Capabilities)
+		if err != nil {
+			jsonError(w, http.StatusBadRequest, "unknown_capability", err.Error())
+			return
+		}
+		if err := cs.SetCapabilities(req.ContextID, clean); err != nil {
+			jsonError(w, http.StatusBadRequest, "unknown_context", "unknown context")
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"ok": true, "context_id": req.ContextID, "capabilities": clean,
+		})
 	}))
 
 	mux.HandleFunc("/v1/routines/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
