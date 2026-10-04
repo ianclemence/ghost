@@ -1121,17 +1121,44 @@ type memoryFact struct {
 	DomainLabel string `json:"domain_label"`
 	CreatedAt   string `json:"created_at"`
 	Reinforced  int    `json:"reinforce_count"`
+	// Status and the retraction fields are only populated when history is
+	// requested; the default view is what Ghost believes now.
+	Status        string `json:"status"`
+	SupersededBy  string `json:"superseded_by"`
+	RetractReason string `json:"retract_reason"`
+}
+
+// memoryForgotten is one belief the owner asked Ghost to forget. It carries
+// no value by design — the record proves the removal without being another
+// copy of what was removed.
+type memoryForgotten struct {
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Reason string `json:"reason"`
+	At     string `json:"at"`
 }
 
 type memorySnapshot struct {
-	Entries []memoryFact `json:"entries"`
-	Notes   []string     `json:"notes"`
-	You     []string     `json:"you"`
+	Entries   []memoryFact      `json:"entries"`
+	Notes     []string          `json:"notes"`
+	You       []string          `json:"you"`
+	Forgotten []memoryForgotten `json:"forgotten"`
 }
 
 func (g *gatewayRuntime) Memory() (*memorySnapshot, error) {
 	var out memorySnapshot
 	if err := g.readJSON("/v1/memory/self", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// MemoryHistory asks for what Ghost used to believe and what it was told to
+// forget, not just the current answer — the difference between a summary
+// and a record the owner can check.
+func (g *gatewayRuntime) MemoryHistory() (*memorySnapshot, error) {
+	var out memorySnapshot
+	if err := g.readJSON("/v1/memory/self?history=1", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

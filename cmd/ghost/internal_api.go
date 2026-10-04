@@ -189,6 +189,29 @@ func emitPermissionEvent(t string, r *permissions.Request) {
 	})
 }
 
+// emitMemoryDeleted records an owner-initiated removal of a remembered
+// thing on the canonical stream, so it shows in the activity feed instead
+// of disappearing silently. Only the label and what was done go in — never
+// the removed content, which is the whole point of removing it.
+func emitMemoryDeleted(title string, summary string) {
+	if substrateEvents == nil {
+		return
+	}
+	title = strings.TrimSpace(title)
+	if len([]rune(title)) > 120 {
+		title = string([]rune(title)[:120])
+	}
+	substrateEvents.Publish(&cevents.Event{
+		Type:    cevents.MemoryDeleted,
+		GhostID: substrateGhost,
+		AgentID: "agent-main",
+		Payload: map[string]interface{}{
+			"title":   title,
+			"summary": summary,
+		},
+	})
+}
+
 func routineService() (*routines.Service, error) {
 	if apiDB == nil {
 		return nil, errors.New("database unavailable")
@@ -4749,9 +4772,17 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		}
 		// Owner management surface: all entries by default. Optional
 		// ?context=work filters to one context's view (global + scoped).
+		// ?history=1 widens it from what Ghost believes now to everything
+		// it used to believe and what it was told to forget, so a
+		// correction or a removal is inspectable where the owner looks.
 		// Model retrieval paths are always scope-filtered; this endpoint
 		// is the owner, not the model.
+		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("history")))
+		includeHistory := q == "1" || q == "true" || q == "all"
 		all := store.Current()
+		if includeHistory {
+			all = store.All()
+		}
 		if ctxParam := strings.TrimSpace(r.URL.Query().Get("context")); ctxParam != "" {
 			scopes := []string{"context:" + ctxParam}
 			filtered := all[:0:0]
@@ -4795,11 +4826,33 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		curate := tools.NewMemoryCurateTool(workspaceDir)
 		notes := curate.Entries("memory")
 		you := curate.Entries("user")
-		jsonResponse(w, http.StatusOK, map[string]interface{}{
+		resp := map[string]interface{}{
 			"entries": entries,
 			"notes":   notes,
 			"you":     you,
-		})
+		}
+		if includeHistory {
+			// What Ghost was told to forget, and why it cannot come back.
+			// Tombstones carry no value — only the label and the reason —
+			// so inspecting the record is not another way to recover it.
+			type forgottenView struct {
+				ID        string    `json:"id"`
+				Subject   string    `json:"subject,omitempty"`
+				Predicate string    `json:"predicate,omitempty"`
+				Label     string    `json:"label,omitempty"`
+				Reason    string    `json:"reason,omitempty"`
+				At        time.Time `json:"at"`
+			}
+			forgotten := make([]forgottenView, 0)
+			for _, tw := range store.Tombstones() {
+				forgotten = append(forgotten, forgottenView{
+					ID: tw.ID, Subject: tw.Subject, Predicate: tw.Predicate,
+					Label: personalcontext.Label(tw.Predicate), Reason: tw.Reason, At: tw.At,
+				})
+			}
+			resp["forgotten"] = forgotten
+		}
+		jsonResponse(w, http.StatusOK, resp)
 	}))
 
 	mux.HandleFunc("/v1/memory/explain", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
@@ -4859,6 +4912,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			jsonError(w, http.StatusBadRequest, "not_found", err.Error())
 			return
 		}
+		emitMemoryDeleted(req.Entry, "Removed from what Ghost remembers.")
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "remaining": count})
 	}))
 

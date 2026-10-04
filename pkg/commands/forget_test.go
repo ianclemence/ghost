@@ -24,7 +24,7 @@ func newForgetStore(t *testing.T) *personalcontext.Store {
 func runForgetHandler(t *testing.T, store *personalcontext.Store, sessions *session.SessionManager, text string) string {
 	t.Helper()
 	var out string
-	rt := &Runtime{PersonalContext: store, Sessions: sessions}
+	rt := &Runtime{PersonalContext: store, Sessions: sessions, Workspace: t.TempDir()}
 	req := Request{
 		Text:       text,
 		Channel:    "cli",
@@ -101,8 +101,49 @@ func TestForgetKeepsHistory(t *testing.T) {
 	}
 }
 
-// D. After a supersession, /forget retires the current value; the superseded
-// one stays superseded (not rejected).
+// /forget now scrubs Ghost's own derived notes, not just the structured
+// belief. The daily journal is what Ghost searched when it recited a
+// "forgotten" fact back, so a forget that leaves it there is not complete.
+func TestForgetCommandScrubsDerivedNotes(t *testing.T) {
+	ws := t.TempDir()
+	store, err := personalcontext.Open(ws)
+	if err != nil {
+		t.Fatalf("open personal context: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(ws, "memory"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	journal := filepath.Join(ws, "memory", "2026-01-01.md")
+	if err := os.WriteFile(journal, []byte("# Journal\n- The user's favorite color is green.\n- Unrelated line.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mustCreate(t, store, forgetEntry("e1", "preference", "user", "preference/favorite_color", "green", "s1:m1"))
+
+	var out string
+	rt := &Runtime{PersonalContext: store, Workspace: ws}
+	req := Request{
+		Text: "/forget favorite_color", Channel: "cli", ChatID: "direct", SessionKey: "s1",
+		Reply: func(s string) error { out = s; return nil },
+	}
+	if err := forgetHandler(context.Background(), req, rt); err != nil {
+		t.Fatalf("forgetHandler: %v", err)
+	}
+
+	data, _ := os.ReadFile(journal)
+	if strings.Contains(string(data), "favorite color is green") {
+		t.Fatalf("journal still carries the forgotten fact:\n%s", data)
+	}
+	if !strings.Contains(string(data), "Unrelated line.") {
+		t.Fatalf("scrubbing removed an unrelated line:\n%s", data)
+	}
+	_ = out
+}
+
+// D. After a supersession, /forget retires the whole belief: the current
+// value and the superseded ones it replaced. Retracting only the current
+// revision would leave the old value un-tombstoned, and an old message
+// could then resurrect the belief the owner just removed.
 func TestForgetAfterSupersession(t *testing.T) {
 	store := newForgetStore(t)
 	mustCreate(t, store, forgetEntry("e1", "preference", "user", "preference/favorite_color", "blue", "s1:m1"))
@@ -114,12 +155,18 @@ func TestForgetAfterSupersession(t *testing.T) {
 	runForgetHandler(t, store, nil, "/forget favorite_color")
 
 	e1, _ := store.Get("e1")
-	if e1.Status != personalcontext.StatusSuperseded {
-		t.Fatalf("superseded entry status = %s, want superseded", e1.Status)
+	if e1.Status != personalcontext.StatusRejected {
+		t.Fatalf("superseded revision status = %s, want rejected (the whole belief is retracted)", e1.Status)
 	}
 	e2, _ := store.Get("e2")
 	if e2.Status != personalcontext.StatusRejected {
 		t.Fatalf("current entry status = %s, want rejected", e2.Status)
+	}
+	// The old value is tombstoned, not just retracted, so evidence older
+	// than the forgetting cannot bring it back.
+	tombs := store.Tombstones()
+	if len(tombs) == 0 {
+		t.Fatal("no tombstone written; forgetting must be durable against old evidence")
 	}
 }
 

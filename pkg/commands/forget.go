@@ -133,7 +133,7 @@ func forgetTarget(ctx context.Context, req Request, rt *Runtime, phrase string) 
 	}
 
 	for _, e := range group {
-		if err := store.Forget(e.ID); err != nil {
+		if err := retireEntry(rt, e.ID); err != nil {
 			return req.Reply(fmt.Sprintf("Failed to forget %s: %v", e.Predicate, err))
 		}
 	}
@@ -142,6 +142,20 @@ func forgetTarget(ctx context.Context, req Request, rt *Runtime, phrase string) 
 		return req.Reply(fmt.Sprintf("Forgotten: %s%s", group[0].Predicate, purged))
 	}
 	return req.Reply(fmt.Sprintf("Forgotten %d Personal Context entries for %s.%s", len(group), group[0].Predicate, purged))
+}
+
+// retireEntry retires one belief through the full pipeline. Using the
+// pipeline rather than a bare retract is the difference between deleting a
+// line and forgetting: it writes the tombstone that stops old evidence
+// resurrecting the belief, and rebuilds the notes, digest and profile that
+// would otherwise go on serving it. A runtime with no workspace has no
+// derived files to rebuild, so there a retract is all there is.
+func retireEntry(rt *Runtime, id string) error {
+	if rt.Workspace != "" {
+		_, err := personalcontext.ForgetPipelineWith(rt.PersonalContext, rt.Workspace, id, personalcontext.OwnerForgetReason)
+		return err
+	}
+	return rt.PersonalContext.Forget(id)
 }
 
 // forgetBeliefs groups matching entries by subject + predicate, preserving
@@ -230,7 +244,7 @@ func forgetEverythingAbout(ctx context.Context, req Request, rt *Runtime, rawTop
 		return req.Reply(fmt.Sprintf("No current Personal Context entry mentions %q.", rawTopic))
 	}
 	for _, e := range targets {
-		if err := store.Forget(e.ID); err != nil {
+		if err := retireEntry(rt, e.ID); err != nil {
 			return req.Reply(fmt.Sprintf("Failed to forget %s: %v", e.Predicate, err))
 		}
 	}
@@ -415,7 +429,7 @@ func forgetSession(req Request, rt *Runtime, rest string) error {
 		return req.Reply(fmt.Sprintf("Failed to delete session %q: %v", id, err))
 	}
 	for _, e := range dependent {
-		if err := rt.PersonalContext.Forget(e.ID); err != nil {
+		if err := retireEntry(rt, e.ID); err != nil {
 			return req.Reply(fmt.Sprintf("Failed to forget %s: %v", e.Predicate, err))
 		}
 	}

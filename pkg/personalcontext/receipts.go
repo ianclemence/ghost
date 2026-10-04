@@ -128,15 +128,28 @@ func (s *Store) ForgetWithReason(id, reason string) (Entry, error) {
 	return rev, nil
 }
 
-// ForgetReport is what the owner (and the audit trail) sees after a
-// forgetting: what was retired and which derived artifacts were rebuilt so
-// nothing can serve it again.
+// ForgetReport is the receipt for one forgetting: what was retracted, why,
+// and which derived stores were rebuilt so the belief is not still being
+// served from somewhere else. It carries the claim's identity and label,
+// never the forgotten value — a receipt for forgetting something must not
+// itself be another copy of it, or the audit trail becomes the leak.
 type ForgetReport struct {
 	ClaimID            string   `json:"claim_id"`
+	Subject            string   `json:"subject,omitempty"`
+	Predicate          string   `json:"predicate,omitempty"`
+	Reason             string   `json:"reason,omitempty"`
 	Forgotten          bool     `json:"forgotten"`
 	Tombstoned         bool     `json:"tombstoned"`
 	DerivativesRebuilt []string `json:"derivatives_rebuilt,omitempty"`
+	At                 int64    `json:"at,omitempty"`
 }
+
+// OnForgetReceipt, when set by the runtime, is told every time a belief is
+// forgotten, after the derived stores have been rebuilt. It is how the
+// audit trail learns that memory was deleted: cevents.MemoryDeleted and the
+// owner's activity feed flow from here. It is handed the redacted report,
+// never the value.
+var OnForgetReceipt func(ForgetReport)
 
 // ForgetPipeline runs the full forgetting: retract the claim, write the
 // tombstone, then rebuild the derived artifacts that could otherwise still
@@ -162,6 +175,9 @@ func ForgetPipelineWith(store *Store, workspace, id, reason string) (ForgetRepor
 	if err != nil {
 		return report, err
 	}
+	report.Subject, report.Predicate = chainLabel(chain)
+	report.Reason = reason
+	report.At = time.Now().Unix()
 	report.Forgotten = true
 	report.Tombstoned = true
 	// Every copy Ghost made of it goes too: its own notes, and (through the
@@ -183,7 +199,29 @@ func ForgetPipelineWith(store *Store, workspace, id, reason string) (ForgetRepor
 	if _, err := MaterializeCuratedProfile(workspace, store); err == nil {
 		report.DerivativesRebuilt = append(report.DerivativesRebuilt, "profile")
 	}
+	// The receipt goes out last, after every derived store has been rebuilt:
+	// an audit line that says "removed" while a summary still serves it
+	// would be the trail lying about its own state.
+	if OnForgetReceipt != nil {
+		OnForgetReceipt(report)
+	}
 	return report, nil
+}
+
+// chainLabel names a forgotten belief by the version that was current when
+// the owner asked, falling back to any version in the chain. It is the
+// human-readable handle the activity feed shows — "forgot favorite_color" —
+// without repeating the value that was just removed.
+func chainLabel(chain []Entry) (subject, predicate string) {
+	for _, e := range chain {
+		if e.SupersededBy == nil && e.Status == StatusCurrent {
+			return e.Subject, e.Predicate
+		}
+	}
+	if len(chain) > 0 {
+		return chain[0].Subject, chain[0].Predicate
+	}
+	return "", ""
 }
 
 // Explanation is the receipt for one belief: the current state, the revisions

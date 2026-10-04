@@ -2365,15 +2365,21 @@ func TestCleanDroppedPath(t *testing.T) {
 // fakeData is a Pod's stored data, for the commands that show it.
 type fakeData struct {
 	*fakeRuntime
-	facts   []memoryFact
-	acts    []activityRow
-	devs    []pairedDevice
-	forgot  []string
-	revoked []string
+	facts     []memoryFact
+	history   []memoryFact
+	forgotten []memoryForgotten
+	acts      []activityRow
+	devs      []pairedDevice
+	forgot    []string
+	revoked   []string
 }
 
 func (f *fakeData) Memory() (*memorySnapshot, error) {
 	return &memorySnapshot{Entries: f.facts, Notes: []string{"Is building a pentesting agent"}}, nil
+}
+
+func (f *fakeData) MemoryHistory() (*memorySnapshot, error) {
+	return &memorySnapshot{Entries: f.history, Forgotten: f.forgotten, Notes: []string{"Is building a pentesting agent"}}, nil
 }
 func (f *fakeData) ForgetMemory(id string) error              { f.forgot = append(f.forgot, id); return nil }
 func (f *fakeData) Activity(limit int) ([]activityRow, error) { return f.acts, nil }
@@ -2419,6 +2425,36 @@ func TestTUIMemoryShowsStoredFactsAndForgets(t *testing.T) {
 	m.runCommand("/memory forget 9")
 	if len(f.forgot) != 1 {
 		t.Fatal("an out-of-range number must forget nothing")
+	}
+}
+
+// The history view is the record behind the current answer: what Ghost used
+// to believe, what you corrected, and what you asked it to forget — each
+// with the reason, and none of it a way to recover the removed content.
+func TestTUIMemoryHistoryShowsCorrectionsAndForgettings(t *testing.T) {
+	f := &fakeData{fakeRuntime: newFakeRuntime(),
+		history: []memoryFact{
+			{ID: "m1", Title: "Favorite: Favorite color is green", Status: "current", CreatedAt: "2026-09-25T10:00:00Z"},
+			{ID: "m0", Title: "Favorite: Favorite color is blue", Status: "superseded", SupersededBy: "m1"},
+			{ID: "m2", Title: "Food: Favorite food is sushi", Status: "rejected", RetractReason: "the owner asked Ghost to forget it"},
+		},
+		forgotten: []memoryForgotten{{ID: "m3", Label: "favorite_color", Reason: "the owner asked Ghost to forget it"}},
+	}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.runCommand("/memory history")
+	out := lastBlock(m)
+	for _, want := range []string{
+		"What Ghost remembers (1 now, 2 changed, 1 forgotten)",
+		"Favorite: Favorite color is green",
+		"Favorite: Favorite color is blue",
+		"changed their mind",
+		"Food: Favorite food is sushi",
+		"cannot return",
+		"favorite_color",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("memory history missing %q in:\n%s", want, out)
+		}
 	}
 }
 

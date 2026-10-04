@@ -129,8 +129,23 @@ var genericTopic = map[string]bool{"general": true, "current": true, "primary": 
 // erase every note that mentions Bangkok.
 func mentions(line string, values, names, topics []string) bool {
 	l := strings.ToLower(line)
+	tokens := stringTokenSet(l)
 	for _, v := range values {
-		if len([]rune(v)) >= 6 && strings.Contains(l, strings.ToLower(v)) {
+		v = strings.ToLower(strings.TrimSpace(v))
+		if v == "" {
+			continue
+		}
+		// A value that is multi-word or long is specific enough to match as
+		// a substring. Short single words — a colour, a city, a first name
+		// — are exactly what a length floor would leak, so they match only
+		// as whole words: "green" goes, "greenery" stays.
+		if strings.ContainsAny(v, " -_") || len([]rune(v)) >= 6 {
+			if strings.Contains(l, v) {
+				return true
+			}
+			continue
+		}
+		if _, ok := tokens[v]; ok {
 			return true
 		}
 	}
@@ -151,6 +166,18 @@ func mentions(line string, values, names, topics []string) bool {
 		}
 	}
 	return false
+}
+
+// stringTokenSet is the set of whole words in an already-lowercased line,
+// so a short forgotten value matches a word rather than part of one.
+func stringTokenSet(lower string) map[string]struct{} {
+	out := make(map[string]struct{})
+	for _, w := range strings.FieldsFunc(lower, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		out[w] = struct{}{}
+	}
+	return out
 }
 
 // scrubNotes removes lines carrying a forgotten fact from Ghost's own

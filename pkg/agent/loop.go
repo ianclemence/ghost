@@ -1015,6 +1015,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		}
 	}
 
+	// A forgetting must leave a mark. memory.created and memory.updated
+	// already reached the canonical stream; memory.deleted never did, so a
+	// removed belief left no trace the owner could see.
+	al.wireMemoryAudit()
+
 	// Value-gated proactivity: Ghost only interrupts when usefulness is high
 	// (threshold + confidence) and never spams (daily budget, per-topic
 	// cooldown, dedupe). Approved notices are DELIVERED to the last active

@@ -430,6 +430,10 @@ func Project(e *cevents.Event) (*Chip, bool) {
 		if summary, _ := e.Payload["title"].(string); summary != "" {
 			title = "Remembered: " + truncate(summary, 80)
 		}
+	case cevents.MemoryDeleted:
+		if label, _ := e.Payload["title"].(string); label != "" {
+			title = "Forgot: " + truncate(label, 80)
+		}
 	case cevents.IntegrationConnected:
 		if name, _ := e.Payload["integration"].(string); name != "" {
 			title = humanizeIntegration(name) + " connected"

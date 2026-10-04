@@ -3,6 +3,32 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.151] - 2026-10-04
+
+- **Forgetting leaves a mark.** Ghost recorded when it remembered
+  something and when it changed its mind, but never when it removed
+  something — so a belief you asked it to forget simply disappeared from
+  the record, and the activity feed had nothing to show. Every removal now
+  writes a plain line: the belief, why, and what Ghost rebuilt to make the
+  forgetting hold. It names what was done, never what was said — a receipt
+  for deleting something must not be another copy of it.
+- **`/forget` in chat now forgets completely.** It retired the structured
+  belief but left two things behind: no tombstone, so an old message could
+  bring the belief back, and its own daily notes untouched, so Ghost could
+  still recite what it had just agreed to forget. The chat command now runs
+  the same full forgetting as the memory tools and the console — tombstone,
+  notes, digest, profile, search index — so every door leads to the same
+  complete result.
+- **Memory you can inspect, not just the current answer.** `/memory` showed
+  only what Ghost believes right now. `/memory history` shows what it used
+  to believe, what you corrected and to what, and the beliefs you asked it
+  to forget — each with the reason, and none of it a way to recover the
+  removed content.
+- A forgotten value no longer survives in Ghost's own notes just for being
+  short. The scrubber matched only values of six characters or more, so a
+  colour, a city or a first name stayed in the journal; short values now
+  match whole words, so "green" goes while "greenery" stays.
+
 ## [0.24.150] - 2026-10-04
 
 - **Recovery no longer gives up when it runs before the database is

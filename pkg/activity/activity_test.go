@@ -183,6 +183,25 @@ func TestMemoryChip(t *testing.T) {
 	}
 }
 
+// A removal has to read as a removal, with the reason and what was rebuilt,
+// so the owner's activity feed shows a forgetting happened and why.
+func TestMemoryDeletedChip(t *testing.T) {
+	chip, ok := Project(ev(cevents.MemoryDeleted, map[string]interface{}{
+		"title":   "preference/favorite_color",
+		"summary": "Recorded so old messages cannot bring it back. Rebuilt notes, search, digest.",
+		"reason":  "the owner asked Ghost to forget it",
+	}))
+	if !ok {
+		t.Fatal("memory.deleted was dropped from the activity feed")
+	}
+	if chip.Title != "Forgot: preference/favorite_color" {
+		t.Fatalf("title = %q, want the removed belief named", chip.Title)
+	}
+	if !strings.Contains(chip.Summary, "cannot bring it back") {
+		t.Fatalf("summary = %q, want what was done to make it stick", chip.Summary)
+	}
+}
+
 func TestDiagnosticsSafe(t *testing.T) {
 	e := ev(cevents.CapabilityCompleted, map[string]interface{}{
 		"provider": "open-meteo", "duration_ms": 382, "attempt": 1, "api_key": "«redacted 8 chars»",

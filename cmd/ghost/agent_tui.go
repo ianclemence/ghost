@@ -4272,6 +4272,7 @@ func truncateName(s string, w int) string {
 // not what a model says about it.
 type dataPlane interface {
 	Memory() (*memorySnapshot, error)
+	MemoryHistory() (*memorySnapshot, error)
 	ForgetMemory(id string) error
 	Activity(limit int) ([]activityRow, error)
 	Devices() ([]pairedDevice, error)
@@ -4291,6 +4292,9 @@ func (m *agentTUI) dataPlane() (dataPlane, bool) {
 func (m *agentTUI) memoryCommand(args []string) tea.Cmd {
 	if len(args) > 0 && args[0] == "ask" {
 		return m.showMemory(args[1:])
+	}
+	if len(args) > 0 && args[0] == "history" {
+		return m.memoryHistoryCommand()
 	}
 	dp, ok := m.dataPlane()
 	if !ok {
@@ -4346,6 +4350,69 @@ func (m *agentTUI) memoryCommand(args []string) tea.Cmd {
 	}
 	head := fmt.Sprintf("What Ghost remembers (%d)", shown)
 	m.append(entry{kind: entryBlock, text: head + "\n\n" + strings.TrimRight(b.String(), "\n") + "\n\n/memory forget <n> removes one · /memory ask <question> asks Ghost"})
+	return nil
+}
+
+// memoryHistoryCommand: /memory history shows what Ghost used to believe,
+// what you corrected, and what you asked it to forget. It is the record
+// behind the current answer — a summary you can check.
+func (m *agentTUI) memoryHistoryCommand() tea.Cmd {
+	dp, ok := m.dataPlane()
+	if !ok {
+		return nil
+	}
+	snap, err := dp.MemoryHistory()
+	if err != nil {
+		m.append(entry{kind: entryError, text: "memory history unavailable: " + friendlyAgentError(err)})
+		return nil
+	}
+
+	var b strings.Builder
+	var current, changed int
+	for _, f := range snap.Entries {
+		switch f.Status {
+		case "superseded", "rejected", "conflicting", "uncertain":
+			changed++
+			line := memoryLine(f)
+			why := f.RetractReason
+			if why == "" && f.SupersededBy != "" {
+				why = "changed their mind"
+			}
+			mark := "was"
+			if f.Status == "rejected" {
+				mark = "forgotten"
+			}
+			if why != "" {
+				fmt.Fprintf(&b, "  %-10s %s  (%s)\n", mark, line, why)
+			} else {
+				fmt.Fprintf(&b, "  %-10s %s\n", mark, line)
+			}
+		default:
+			current++
+			fmt.Fprintf(&b, "  now        %s\n", memoryLine(f))
+		}
+	}
+	for _, f := range snap.Forgotten {
+		label := f.Label
+		if label == "" {
+			label = "a remembered fact"
+		}
+		if f.Reason != "" {
+			fmt.Fprintf(&b, "  cannot return  %s  (%s)\n", label, f.Reason)
+		} else {
+			fmt.Fprintf(&b, "  cannot return  %s\n", label)
+		}
+	}
+
+	if current == 0 && changed == 0 && len(snap.Forgotten) == 0 {
+		m.append(entry{kind: entryNotice, text: "Ghost hasn't kept anything yet. Tell it something worth remembering and it appears here."})
+		return nil
+	}
+	head := fmt.Sprintf("What Ghost remembers (%d now, %d changed)", current, changed)
+	if len(snap.Forgotten) > 0 {
+		head = fmt.Sprintf("What Ghost remembers (%d now, %d changed, %d forgotten)", current, changed, len(snap.Forgotten))
+	}
+	m.append(entry{kind: entryBlock, text: head + "\n\n" + strings.TrimRight(b.String(), "\n") + "\n\n/memory shows the current view · /memory history shows changes · /memory forget <n> removes one"})
 	return nil
 }
 
