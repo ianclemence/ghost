@@ -53,6 +53,13 @@ func BuildDigest(current []Entry, budget int) string {
 		if SentenceValue(e) {
 			line = "- " + digestValue(e)
 		}
+		// When it was told. A fact without its date is only half remembered:
+		// "you said in August you wanted to revisit X" needs the August. The
+		// date is the entry's own, never re-derived, and a correction carries
+		// the correction's date because it is a new entry.
+		if !e.CreatedAt.IsZero() {
+			line += " (" + e.CreatedAt.Format("2006-01-02") + ")"
+		}
 		if sb.Len()+len(line)+1 > room {
 			if sb.Len() == 0 {
 				// Even the top-priority entry alone cannot fit; truncate its

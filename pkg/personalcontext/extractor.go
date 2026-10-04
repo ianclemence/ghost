@@ -118,6 +118,18 @@ var communicationStyleRegex = regexp.MustCompile(`(?i)\bi prefer\s+(concise|brie
 // model each turn.
 var communicationFormatRegex = regexp.MustCompile(`(?i)\bi\s+(?:prefer|like|really like|want)\s+(no\s+emojis?|(?:a|some)?\s*lists?|bullet\s+points?|bullets?|(?:a|some)?\s*options?|(?:a|some)?\s*tables?|(?:a|some)?\s*summar(?:y|ies)|(?:a|some)?\s*examples?|to\s+be\s+(?:asked|confirmed)\s+before\s+(?:deleting|destructive|any))`)
 
+// declarationRules is the deterministic, high-precision fast path. It is a
+// CLOSED grammar on purpose: every pattern here is a shape the owner uses to
+// state a durable fact, and a broad "my <noun> is <x>" catch-all is
+// deliberately absent because it would file non-durable statements ("my
+// appointment is at 3") as memory — a false fact is worse than a missed one.
+//
+// POLICY: a declaration the owner states in a shape this grammar does not
+// cover is the SEMANTIC extractor's job (see the agent's extraction path,
+// which calls the model). The deterministic path must not be widened to
+// "catch" more shapes than it can do precisely; the boundary is tested in
+// extractor_boundary_test.go, and open-ended capture is proven only with a
+// real model (not in CI).
 var declarationRules = []declarationRule{
 	{
 		name:      "favorite_color",

@@ -39,14 +39,60 @@ func TestAcceptance_MemoryAcrossWeeksThroughATurn(t *testing.T) {
 	}
 }
 
-// UNMET: retrieved memory is not attributed to when it was said. The fact
-// survives across weeks and sessions, but the prompt carries only the value
-// ("Favorite color: teal"), never the date it was told. The store has
-// CreatedAt and source timestamps; the prompt/digest renderer drops them.
-// Skipped rather than deleted, so the unmet criterion is recorded in the
-// suite rather than quietly dropped.
+// The retrieved fact must carry WHEN it was said, not just what. The date
+// is the entry's own (CreatedAt), rendered into the prompt by the digest.
 func TestAcceptance_MemoryIsAttributedToWhenItWasSaid(t *testing.T) {
-	t.Skip("retrieved memory carries no date attribution; implement it in the memory prompt/digest renderer")
+	ws := newDigestWorkspace(t)
+	provider := &recordingDigestProvider{}
+	al := newTestAgentLoopWithProvider(t, ws, provider)
+	pc := al.PersonalContext()
+	if pc == nil {
+		t.Fatal("personal context store not wired")
+	}
+	day1 := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	now := day1
+	pc.SetClock(func() time.Time { return now })
+
+	runTurn(t, al, "my favorite color is teal", "s1")
+	now = day1.AddDate(0, 0, 29)
+	runTurn(t, al, "what is my favorite color?", "s2")
+
+	prompt := provider.lastSystemPrompt
+	if !strings.Contains(prompt, "teal") {
+		t.Fatalf("the fact is missing:\n%s", firstLines(prompt, 40))
+	}
+	if !strings.Contains(prompt, "2026-01-01") {
+		t.Fatalf("the retrieved fact carries no date it was said:\n%s", firstLines(prompt, 40))
+	}
+}
+
+// A correction renders the NEW date, not the original: the corrected entry is
+// a new entry and carries the correction's timestamp.
+func TestAcceptance_CorrectionRendersNewDate(t *testing.T) {
+	ws := newDigestWorkspace(t)
+	provider := &recordingDigestProvider{}
+	al := newTestAgentLoopWithProvider(t, ws, provider)
+	pc := al.PersonalContext()
+	if pc == nil {
+		t.Fatal("personal context store not wired")
+	}
+	day1 := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	now := day1
+	pc.SetClock(func() time.Time { return now })
+
+	runTurn(t, al, "my favorite color is blue", "s1")
+	now = day1.AddDate(0, 0, 14)
+	runTurn(t, al, "actually my favorite color is green", "s1")
+	now = day1.AddDate(0, 0, 29)
+	runTurn(t, al, "what is my favorite color?", "s2")
+
+	prompt := provider.lastSystemPrompt
+	if !strings.Contains(prompt, "green") {
+		t.Fatalf("corrected value missing:\n%s", firstLines(prompt, 40))
+	}
+	if !strings.Contains(prompt, "2026-01-15") {
+		t.Fatalf("corrected fact does not carry the correction date:\n%s", firstLines(prompt, 40))
+	}
 }
 
 // Correction through turns: state, correct in a later turn, ask in a third.
