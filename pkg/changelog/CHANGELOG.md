@@ -3,6 +3,19 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.152] - 2026-10-04
+
+- **Deleting a conversation deletes the conversation.** Removing a session
+  over the API dropped its messages but left the session row and its
+  summary and title behind — a ghost of a conversation you had asked to be
+  rid of. It now removes the whole thing through the session store, the
+  same way `/forget session` already did.
+- **Take your memory with you.** `/memory export [file]` writes everything
+  Ghost remembers — what it believes now, what you corrected, and what you
+  asked it to forget — to one readable JSON file, with owner-only
+  permissions, defaulting to the working directory. It is the data itself,
+  not a summary Ghost chose to show you.
+
 ## [0.24.151] - 2026-10-04
 
 - **Forgetting leaves a mark.** Ghost recorded when it remembered

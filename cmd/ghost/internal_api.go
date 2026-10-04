@@ -5208,6 +5208,21 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			http.Error(w, "id required", 400)
 			return
 		}
+		// Delete the conversation, not just its messages: the session row
+		// and its summary/title are part of what the owner asked to remove,
+		// and leaving them behind leaves a ghost of the conversation. The
+		// manager knows which store is live (SQLite or JSONL) and removes
+		// all of it; the raw delete is only a fallback.
+		if agentLoop != nil {
+			if sm := agentLoop.Sessions(); sm != nil {
+				if err := sm.DeleteSession(session); err != nil {
+					jsonError(w, http.StatusInternalServerError, "db_error", err.Error())
+					return
+				}
+				json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+				return
+			}
+		}
 		if db != nil {
 			// Permanently delete all messages for this session
 			_, err := db.Exec("DELETE FROM messages WHERE session_id = ?", session)

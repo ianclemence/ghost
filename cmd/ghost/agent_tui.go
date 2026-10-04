@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/ianclemence/ghost/pkg/agent"
 	"github.com/ianclemence/ghost/pkg/uploads"
@@ -4296,6 +4297,9 @@ func (m *agentTUI) memoryCommand(args []string) tea.Cmd {
 	if len(args) > 0 && args[0] == "history" {
 		return m.memoryHistoryCommand()
 	}
+	if len(args) > 0 && args[0] == "export" {
+		return m.memoryExportCommand(args[1:])
+	}
 	dp, ok := m.dataPlane()
 	if !ok {
 		return nil
@@ -4349,7 +4353,7 @@ func (m *agentTUI) memoryCommand(args []string) tea.Cmd {
 		return nil
 	}
 	head := fmt.Sprintf("What Ghost remembers (%d)", shown)
-	m.append(entry{kind: entryBlock, text: head + "\n\n" + strings.TrimRight(b.String(), "\n") + "\n\n/memory forget <n> removes one · /memory ask <question> asks Ghost"})
+	m.append(entry{kind: entryBlock, text: head + "\n\n" + strings.TrimRight(b.String(), "\n") + "\n\n/memory forget <n> removes one · /memory history · /memory export · /memory ask <question> asks Ghost"})
 	return nil
 }
 
@@ -4412,7 +4416,40 @@ func (m *agentTUI) memoryHistoryCommand() tea.Cmd {
 	if len(snap.Forgotten) > 0 {
 		head = fmt.Sprintf("What Ghost remembers (%d now, %d changed, %d forgotten)", current, changed, len(snap.Forgotten))
 	}
-	m.append(entry{kind: entryBlock, text: head + "\n\n" + strings.TrimRight(b.String(), "\n") + "\n\n/memory shows the current view · /memory history shows changes · /memory forget <n> removes one"})
+	m.append(entry{kind: entryBlock, text: head + "\n\n" + strings.TrimRight(b.String(), "\n") + "\n\n/memory shows the current view · /memory history shows changes · /memory export saves everything · /memory forget <n> removes one"})
+	return nil
+}
+
+// memoryExportCommand: /memory export [path] writes everything Ghost
+// remembers — the current view, the corrections, and the forgettings — to
+// one readable JSON file. It is the owner taking their data, not a summary
+// the runtime chose. The default lands in the working directory.
+func (m *agentTUI) memoryExportCommand(args []string) tea.Cmd {
+	dp, ok := m.dataPlane()
+	if !ok {
+		return nil
+	}
+	snap, err := dp.MemoryHistory()
+	if err != nil {
+		m.append(entry{kind: entryError, text: "memory export unavailable: " + friendlyAgentError(err)})
+		return nil
+	}
+	out := "ghost-memory-export.json"
+	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
+		out = strings.TrimSpace(args[0])
+	}
+	data, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		m.append(entry{kind: entryError, text: "couldn't build the export: " + friendlyAgentError(err)})
+		return nil
+	}
+	// Owner's eyes only: the export holds what Ghost knows about them.
+	if err := os.WriteFile(out, append(data, '\n'), 0o600); err != nil {
+		m.append(entry{kind: entryError, text: "couldn't write " + out + ": " + friendlyAgentError(err)})
+		return nil
+	}
+	m.append(entry{kind: entryNotice, text: fmt.Sprintf(
+		"Wrote %d memories and %d forgettings to %s", len(snap.Entries), len(snap.Forgotten), out)})
 	return nil
 }
 

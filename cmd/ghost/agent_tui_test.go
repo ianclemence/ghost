@@ -2458,6 +2458,36 @@ func TestTUIMemoryHistoryShowsCorrectionsAndForgettings(t *testing.T) {
 	}
 }
 
+// The export is the owner taking their data, not a summary Ghost chose:
+// current, corrected, and forgotten all leave in one readable file.
+func TestTUIMemoryExportWritesEverything(t *testing.T) {
+	f := &fakeData{fakeRuntime: newFakeRuntime(),
+		history: []memoryFact{
+			{ID: "m1", Title: "Favorite: Favorite color is green", Status: "current"},
+			{ID: "m0", Title: "Favorite: Favorite color is blue", Status: "superseded"},
+		},
+		forgotten: []memoryForgotten{{ID: "m3", Label: "favorite_color", Reason: "the owner asked"}},
+	}
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	out := filepath.Join(t.TempDir(), "memories.json")
+	m.runCommand("/memory export " + out)
+	if !strings.Contains(lastBlock(m), out) {
+		t.Fatalf("export did not report where it wrote: %q", lastBlock(m))
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("export file missing: %v", err)
+	}
+	var snap memorySnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatalf("export is not readable JSON: %v\n%s", err, data)
+	}
+	if len(snap.Entries) != 2 || len(snap.Forgotten) != 1 {
+		t.Fatalf("export carried %d entries and %d forgettings, want everything",
+			len(snap.Entries), len(snap.Forgotten))
+	}
+}
+
 func TestTUIActivityAndDevices(t *testing.T) {
 	f := &fakeData{fakeRuntime: newFakeRuntime(),
 		acts: []activityRow{{Title: "You promised", State: "waiting", Summary: "buy a keyboard", Why: "you asked", Timestamp: "2026-09-30T14:00:36+07:00"}},
