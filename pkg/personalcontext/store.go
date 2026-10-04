@@ -52,7 +52,37 @@ type Store struct {
 	mu   sync.RWMutex
 	log  []Entry           // every record in file order
 	byID map[string]*Entry // last record per entry id (final state)
+	// clock is the store's time source. Nil means wall time.
+	//
+	// It exists so tests and simulations can move time without a global
+	// clock that the running runtime might read. Production paths never set
+	// it, so the default — time.Now — is what every real call uses; a test
+	// clock cannot leak into production behaviour because there is nothing
+	// global to leak.
+	clock func() time.Time
 }
+
+// SetClock installs a time source for tests and simulations. Nil restores
+// wall time. Nothing in production calls this.
+func (s *Store) SetClock(now func() time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clock = now
+}
+
+// now returns the store's current time: the injected clock when set, wall
+// time otherwise.
+func (s *Store) now() time.Time {
+	if s.clock != nil {
+		return s.clock()
+	}
+	return time.Now()
+}
+
+// Now exposes the store's clock to callers that must stamp entries with the
+// same time the store will use (the extractor, for one). Production leaves
+// the clock unset, so this is wall time.
+func (s *Store) Now() time.Time { return s.now() }
 
 // Open opens (creating if necessary) the entries log for a workspace and
 // reconstructs the current state from it. A missing or empty log is a valid,
@@ -159,7 +189,7 @@ func (s *Store) createLocked(e Entry) (Entry, error) {
 	if _, exists := s.byID[e.ID]; exists {
 		return Entry{}, fmt.Errorf("%w: %s", ErrDuplicateID, e.ID)
 	}
-	now := time.Now().UTC()
+	now := s.now().UTC()
 	if e.CreatedAt.IsZero() {
 		e.CreatedAt = now
 	}
@@ -214,7 +244,7 @@ func (s *Store) supersedeLocked(subject, predicate string, e Entry) (Entry, erro
 	rev := *cur
 	rev.Status = StatusSuperseded
 	rev.SupersededBy = &created.ID
-	rev.UpdatedAt = time.Now().UTC()
+	rev.UpdatedAt = s.now().UTC()
 	if err := s.append(rev); err != nil {
 		return Entry{}, err
 	}
@@ -244,7 +274,7 @@ func (s *Store) reinforceLocked(cur *Entry) error {
 	} else {
 		rev.ReinforceCount = MaxReinforceCount
 	}
-	now := time.Now().UTC()
+	now := s.now().UTC()
 	rev.ReinforcedAt = &now
 	rev.UpdatedAt = now
 	return s.append(rev)
@@ -259,7 +289,7 @@ func (s *Store) reinforceLocked(cur *Entry) error {
 func (s *Store) DecayReinforcement() (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := time.Now().UTC()
+	now := s.now().UTC()
 	decayed := 0
 	for _, e := range s.byID {
 		if e.Status != StatusCurrent || e.ReinforceCount <= 0 || e.ReinforcedAt == nil {
@@ -384,7 +414,7 @@ func (s *Store) DeclareConflict(subject, predicate string, idA, idB string) erro
 		return fmt.Errorf("%w: %s and %s are not both current", ErrNotCurrent, a.ID, b.ID)
 	}
 
-	now := time.Now().UTC()
+	now := s.now().UTC()
 	ra := *a
 	ra.Status = StatusConflicting
 	ra.UpdatedAt = now
@@ -424,7 +454,7 @@ func (s *Store) ResolveConflict(subject, predicate, winnerID string) (Entry, err
 		return Entry{}, fmt.Errorf("%w: %s is %s", ErrNotConflicting, w.ID, w.Status)
 	}
 
-	now := time.Now().UTC()
+	now := s.now().UTC()
 	var losers []Entry
 	for _, e := range s.byID {
 		if e.ID == winnerID || e.Subject != subject || e.Predicate != predicate {
@@ -467,7 +497,7 @@ func (s *Store) Forget(id string) error {
 	}
 	rev := *e
 	rev.Status = StatusRejected
-	rev.UpdatedAt = time.Now().UTC()
+	rev.UpdatedAt = s.now().UTC()
 	return s.append(rev)
 }
 
@@ -504,7 +534,7 @@ func (s *Store) All() []Entry {
 // Current returns the current context as of now: entries with status current
 // that fall within their temporal validity, sorted deterministically.
 func (s *Store) Current() []Entry {
-	return s.CurrentAt(time.Now())
+	return s.CurrentAt(s.now())
 }
 
 // CurrentAt returns the current context as of a reference time. Entries with

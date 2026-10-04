@@ -2556,11 +2556,17 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 	}
 
 	// Try regex extraction first (fast path)
+	now := time.Now().UTC()
+	if al.pcStore != nil {
+		// Stamp with the store's clock, so a test or simulation that moves
+		// time files the fact at the simulated instant rather than wall time.
+		now = al.pcStore.Now().UTC()
+	}
 	in := personalcontext.Input{
 		SessionID:    opts.SessionKey,
 		MessageID:    msgID,
 		Text:         opts.UserMessage,
-		Timestamp:    time.Now().UTC(),
+		Timestamp:    now,
 		PreviousText: previousUserMessage(al.sessions.GetHistory(opts.SessionKey)),
 	}
 	if al.governance != nil {
