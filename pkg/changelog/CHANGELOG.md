@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.150] - 2026-10-04
+
+- **Recovery no longer gives up when it runs before the database is
+  ready.** The job runner starts as part of the agent loop, and the loop
+  is built before the schema migration runs on boot. That meant the very
+  first look for work a restart had interrupted could fail against a jobs
+  table that did not have the new columns yet — and it only looked once.
+  It now keeps trying until it succeeds, so the work recovery exists to
+  save is never the work it drops.
+
 ## [0.24.149] - 2026-10-04
 
 - **Background work now outlives the Pod that started it.** A task you

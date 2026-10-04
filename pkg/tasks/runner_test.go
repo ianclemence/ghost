@@ -412,6 +412,62 @@ func TestRunnerSnoozesBusyWorkWithoutSpendingAttempts(t *testing.T) {
 	}
 }
 
+// Recovery is not abandoned when it runs too early. This runtime starts
+// the runner from inside the agent loop, before the schema migration runs,
+// so the first Recover can fail on a jobs table that does not yet have the
+// retry columns — and the loop must try again rather than strand exactly
+// the work recovery exists to save.
+func TestRunnerRetriesRecoveryUntilTheSchemaIsReady(t *testing.T) {
+	db := openMem(t)
+	if _, err := db.Exec(v1JobsDDL); err != nil {
+		t.Fatal(err)
+	}
+	// Bring the table up to everything except the retry columns: the exact
+	// state at the moment the runner first starts.
+	if err := EnsureV2Columns(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureTrajectoryColumn(db); err != nil {
+		t.Fatal(err)
+	}
+	// A job a previous process left running.
+	if _, err := db.Exec(`INSERT INTO jobs (id, kind, status, checkpoints, payload, attempts, created_at, updated_at) VALUES ('job-left','crawl','running','[]','{}',1,0,0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewStore(db, nil)
+	r := newTestRunner(t, s)
+	var ran int32
+	r.Register("crawl", func(ctx context.Context, j Job) error {
+		atomic.AddInt32(&ran, 1)
+		return nil
+	})
+
+	if _, err := s.MarkInterrupted(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Too early: the retry columns do not exist, so recovery cannot succeed.
+	if _, err := r.Recover(); err == nil {
+		t.Fatal("expected recovery to fail before the retry columns exist")
+	}
+
+	// The migration runs, then the next tick tries recovery again.
+	if err := EnsureRetryColumns(db); err != nil {
+		t.Fatal(err)
+	}
+	r.Tick(context.Background())
+
+	got := waitJob(t, s, "job-left", StatusSucceeded, 5*time.Second)
+	r.Wait()
+	if got.Attempts != 2 {
+		t.Fatalf("attempts = %d, want 2 (the crashed start plus the recovery run)", got.Attempts)
+	}
+	if atomic.LoadInt32(&ran) != 1 {
+		t.Fatalf("handler ran %d times, want 1", ran)
+	}
+}
+
 // A job that has had its ceiling raised gets the new one — the owner
 // saying "try again, more" is a decision, and the store has to honour it
 // rather than remember the old number.

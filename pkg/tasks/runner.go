@@ -129,8 +129,15 @@ type Runner struct {
 	inFlight map[string]context.CancelFunc
 	started  bool
 	stopped  bool
-	baseCtx  context.Context
-	cancel   context.CancelFunc
+	// recovered records that crash leftovers have been requeued. It is not
+	// set until Recover actually succeeds: this runtime starts the runner
+	// from inside the agent loop, before the schema migration runs, so the
+	// first attempts can fail on a jobs table that lacks the retry columns
+	// yet — and a recovery that gave up there would strand exactly the
+	// work it exists to save.
+	recovered bool
+	baseCtx   context.Context
+	cancel    context.CancelFunc
 
 	wake  chan struct{}
 	loops sync.WaitGroup
@@ -305,6 +312,7 @@ func (r *Runner) Stop() {
 // Tick claims one batch of due jobs and starts each in its own goroutine.
 // It returns as soon as the work is dispatched; Wait blocks for it.
 func (r *Runner) Tick(ctx context.Context) {
+	r.ensureRecovered()
 	due, err := r.store.ListDue(r.batch)
 	if err != nil {
 		r.logf("tasks: list due: %v", err)
@@ -312,6 +320,24 @@ func (r *Runner) Tick(ctx context.Context) {
 	}
 	for _, j := range due {
 		r.dispatch(ctx, j)
+	}
+}
+
+// ensureRecovered runs the one-time requeue of crash leftovers, and keeps
+// trying until it actually succeeds rather than once at startup. The agent
+// loop — and therefore this runner — is built before the schema migration
+// runs, so the first attempt can fail on a jobs table that does not yet
+// have the retry columns. A recovery that gave up on that first error
+// would leave interrupted work stranded until the next restart.
+func (r *Runner) ensureRecovered() {
+	r.mu.Lock()
+	done := r.recovered
+	r.mu.Unlock()
+	if done {
+		return
+	}
+	if _, err := r.Recover(); err != nil {
+		r.logf("tasks: recovery not ready yet: %v", err)
 	}
 }
 
@@ -520,6 +546,9 @@ func (r *Runner) Recover() (int, error) {
 		}
 		requeued++
 	}
+	r.mu.Lock()
+	r.recovered = true
+	r.mu.Unlock()
 	return requeued, nil
 }
 

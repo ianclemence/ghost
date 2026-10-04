@@ -49,10 +49,10 @@ func (al *AgentLoop) wireJobRunner(sm *tools.SubagentManager) {
 		return j.ID, nil
 	})
 
-	if n, err := r.Recover(); err != nil {
-		logger.WarnCF("agent", "durable job recovery failed",
-			map[string]interface{}{"error": err.Error()})
-	} else if n > 0 {
+	// Requeue anything a crash left behind. On a boot where the schema
+	// migration has not run yet this can fail harmlessly — the loop retries
+	// until it succeeds — so only a real success is worth reporting here.
+	if n, err := r.Recover(); err == nil && n > 0 {
 		logger.InfoCF("agent", "durable jobs requeued after restart",
 			map[string]interface{}{"count": n})
 	}
