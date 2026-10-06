@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.156] - 2026-10-06
+
+- **Dismissing a suggestion now keeps it dismissed.** Tapping "No thanks"
+  on a suggestion card recorded the decision against the suggestion but
+  left its card untouched, so the same card came back on every restart
+  until it expired. Deciding a suggestion now puts its companion cards
+  away too, and dismissed cards are no longer served to any device.
+
 ## [0.24.155] - 2026-10-04
 
 - **Stopping a reminder or automation from the phone now works.** The
