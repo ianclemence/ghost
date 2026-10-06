@@ -4266,6 +4266,20 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	}))
 
 	// ── Rich cards: fetch-on-open for phones that missed pushes ──
+	// openCards serves fetch-on-open (GET /v1/cards): unexpired cards the owner
+	// has not put away. Resolved cards stay stored as receipts but are never
+	// served again, so a dismissal survives refetch and restart on every device.
+	openCards := func(channel string) []cards.Card {
+		out := []cards.Card{}
+		for _, c := range cards.DefaultStore.List(channel) {
+			if c.Resolved != nil {
+				continue
+			}
+			out = append(out, c)
+		}
+		return out
+	}
+
 	mux.HandleFunc("/v1/cards", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET")
@@ -4275,7 +4289,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		if channel == "" {
 			channel = "mobile"
 		}
-		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "cards": cards.DefaultStore.List(channel)})
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "cards": openCards(channel)})
 	}))
 
 	// What the owner did with a card (an offered reply, or dismiss), remembered

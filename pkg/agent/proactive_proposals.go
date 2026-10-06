@@ -612,6 +612,9 @@ func (al *AgentLoop) DecideIdea(ctx context.Context, ref string, decision string
 			return idea, "", err
 		}
 		al.cancelBound(idea)
+		// The companion suggestion card is a separate store object: put it
+		// away too, or it refetches on every open after the owner said no.
+		cards.ResolveByData("idea_id", idea.ID, "deny")
 		al.settleCommitmentFromProposal(updated, "dismissed", "owner said no for now")
 		al.publishProactive(cevents.ProactiveDismissed, updated, "owner said no")
 		return updated, "", nil
@@ -624,10 +627,17 @@ func (al *AgentLoop) DecideIdea(ctx context.Context, ref string, decision string
 			return idea, "", err
 		}
 		al.cancelBound(idea)
+		cards.ResolveByData("idea_id", idea.ID, "dismiss")
 		al.publishProactive(cevents.ProactiveSnoozed, updated, "owner deferred")
 		return updated, "", nil
 	case "approve":
-		return al.approveProposal(ctx, store, idea, now)
+		rec, result, err := al.approveProposal(ctx, store, idea, now)
+		if err != nil {
+			return rec, result, err
+		}
+		// Acted upon: the companion card has served its purpose.
+		cards.ResolveByData("idea_id", idea.ID, "approve")
+		return rec, result, nil
 	default:
 		return idea, "", fmt.Errorf("unknown decision %q", decision)
 	}

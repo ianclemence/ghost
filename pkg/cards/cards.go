@@ -355,6 +355,59 @@ func HandlerFor(kind Kind) (ResolveHandler, bool) {
 	return h, ok
 }
 
+// ResolveByData resolves every open card in any channel whose Data[key]
+// equals value on the default store (e.g. the companion cards of a decided
+// idea) and returns the resolved cards.
+func ResolveByData(key, value, actionID string) []Card {
+	return DefaultStore.ResolveByData(key, value, actionID)
+}
+
+// ResolveByData (store method) resolves every open card in any channel whose Data[key]
+// equals value (e.g. the companion cards of a decided idea) and returns the
+// resolved cards. An action the card offered wins; otherwise the generic
+// "dismiss" receipt is recorded so the card still stays put away.
+func (s *Store) ResolveByData(key, value, actionID string) []Card {
+	type target struct {
+		channel string
+		id      string
+		action  string
+	}
+	s.mu.Lock()
+	var targets []target
+	for channel, list := range s.items {
+		for i := range list {
+			c := list[i]
+			if c.Resolved != nil {
+				continue
+			}
+			v, _ := c.Data[key].(string)
+			if v == "" || v != value {
+				continue
+			}
+			action := actionID
+			offered := false
+			for _, a := range c.Actions {
+				if a.ID == action {
+					offered = true
+					break
+				}
+			}
+			if !offered {
+				action = "dismiss"
+			}
+			targets = append(targets, target{channel, c.ID, action})
+		}
+	}
+	s.mu.Unlock()
+	var done []Card
+	for _, t := range targets {
+		if c, ok := s.Resolve(t.channel, t.id, t.action); ok {
+			done = append(done, c)
+		}
+	}
+	return done
+}
+
 // Find returns a stored card by id.
 func (s *Store) Find(channel, id string) (Card, bool) {
 	s.mu.Lock()
