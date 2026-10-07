@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.158] - 2026-10-07
+
+- **Alert pills with buttons no longer squeeze their text.** Toasts carrying
+  an action (like the Undo on a dismissed notice) starved their own message,
+  wrapping it a word per line next to the button. The message now takes the
+  free space and wraps inside it while the button holds its place — for every
+  alert, not just dismissals. Dismissed notices also lost their doubled
+  quotes around notice titles (`"Disk"` instead of `""Disk""`).
+
 ## [0.24.157] - 2026-10-07
 
 - **Memory search now runs on Google's EmbeddingGemma.** The on-device

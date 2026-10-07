@@ -238,7 +238,11 @@ const GhostUI = (() => {
       document.body.appendChild(container);
     }
     const cls = variant === 'err' ? 'ghost-toast ghost-toast--err' : variant === 'ok' ? 'ghost-toast ghost-toast--ok' : 'ghost-toast';
-    const t = h('div', { className: cls }, msg);
+    const t = h('div', { className: cls });
+    // The message gets its own node: in a flex row with an action button,
+    // an anonymous text node can't take a flex share, so the button
+    // squeezed long messages into a word per line.
+    t.appendChild(h('span', { className: 'ghost-toast-msg' }, msg));
     if (action && action.label) {
       t.appendChild(h('button', {
         className: 'ghost-toast-action',

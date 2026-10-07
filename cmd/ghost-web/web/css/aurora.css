@@ -203,7 +203,12 @@ body { font-feature-settings: "cv11", "ss03"; letter-spacing: -0.006em; }
 
 /* The toast can carry one action, such as Undo. */
 .ghost-toast { display: inline-flex; align-items: center; gap: var(--s-4); }
+/* The message takes the free space and wraps inside it; the action never
+   shrinks or wraps, so long messages no longer squeeze to a word per line. */
+.ghost-toast { max-width: min(92vw, 480px); }
+.ghost-toast-msg { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }
 .ghost-toast-action {
+  flex-shrink: 0; white-space: nowrap;
   background: none; border: 0; padding: 0 0 0 var(--s-2); cursor: pointer;
   font: inherit; font-weight: 600; color: var(--accent);
   touch-action: manipulation;

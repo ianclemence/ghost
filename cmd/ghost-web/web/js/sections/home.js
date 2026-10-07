@@ -198,7 +198,7 @@ function renderNeeds(needs, approvals, doctorRes, channelsRes, devicesRes, conso
             // Let it leave before the list repaints, so the row below does not
             // simply jump into its place.
             li.classList.add('is-leaving');
-            setTimeout(() => setAside([it], 'Dismissed \u201c' + it.title + '\u201d'), 170);
+            setTimeout(() => setAside([it], 'Dismissed \u201c' + String(it.title).replace(/^"+|"+$/g, '') + '\u201d'), 170);
           },
         });
         x.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
