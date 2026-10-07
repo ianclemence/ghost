@@ -77,7 +77,7 @@ func TestFetchAnthropicModels(t *testing.T) {
 
 func TestFetchOllamaModelsSkipsEmbedders(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"models":[{"name":"qwen3:0.6b"},{"name":"nomic-embed-text:latest"}]}`))
+		_, _ = w.Write([]byte(`{"models":[{"name":"qwen3:0.6b"},{"name":"embeddinggemma:latest"}]}`))
 	}))
 	defer srv.Close()
 	ids, err := fetchOllamaModels(context.Background(), srv.URL)

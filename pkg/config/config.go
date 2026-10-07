@@ -128,12 +128,57 @@ type AgentsConfig struct {
 // reset defaults, and guided onboarding all reference these — never a
 // second literal, so the pulled tag can never drift from the
 // configured one again.
+//
+// DefaultEmbeddingTag is the canonical on-device embedding model for
+// the RAG vector index (Ollama library name). All references must use
+// this constant. NextEmbeddingTag is the declared successor —
+// EmbeddingGemma 2 — which becomes the default by flipping this one
+// constant (plus setup.sh) once Ollama ships a portable non-MLX CPU
+// build; every Ollama v2 artifact today is Apple-MLX-only and its
+// `gemma-embedding2` arch is unknown to the CPU runner.
 const (
 	DefaultLocalProvider = "ollama"
 	DefaultLocalTag      = "qwen3:0.6b"
 	DefaultLocalModel    = "ollama/qwen3:0.6b"
 	DefaultLocalBaseURL  = "http://localhost:11434"
+
+	DefaultEmbeddingTag = "embeddinggemma"
+	NextEmbeddingTag    = "embeddinggemma-2"
 )
+
+// legacyEmbeddingTags are previous defaults. Stored vectors are tied
+// to the model that produced them, so a config still naming one of
+// these resolves to the current default and the index is re-embedded
+// on startup (see rag.Store.EnsureEmbedModel) instead of breaking.
+var legacyEmbeddingTags = map[string]bool{
+	"":                        true,
+	"nomic-embed-text":        true,
+	"nomic-embed-text:latest": true,
+}
+
+// EmbeddingModelOrDefault resolves the configured embedding model,
+// mapping empty and legacy values to the current default. Tags may
+// carry an explicit `:variant` suffix; only the base name is compared.
+func (c *Config) EmbeddingModelOrDefault() string {
+	name := strings.TrimSpace(c.Agents.Defaults.EmbeddingModel)
+	base := name
+	if i := strings.Index(base, ":"); i >= 0 {
+		base = base[:i]
+	}
+	if base == "embeddinggemma" || base == "embeddinggemma-2" {
+		if name == "" {
+			return DefaultEmbeddingTag
+		}
+		return name
+	}
+	if legacyEmbeddingTags[name] || legacyEmbeddingTags[base] {
+		return DefaultEmbeddingTag
+	}
+	if name == "" {
+		return DefaultEmbeddingTag
+	}
+	return name
+}
 
 // ModelPreset is a named, user-selectable model configuration.
 // Provider and Model follow the same conventions as AgentDefaults.

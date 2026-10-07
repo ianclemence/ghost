@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.157] - 2026-10-07
+
+- **Memory search now runs on Google's EmbeddingGemma.** The on-device
+  embedding model behind recall is now `embeddinggemma` instead of
+  `nomic-embed-text`, with better code understanding for codebase
+  search. Setups pull it automatically during install, and existing
+  memories are re-embedded in the background on first start after the
+  update — nothing is forgotten. (EmbeddingGemma 2 stays a one-line
+  flip away: its Ollama builds are Apple-only for now and cannot run
+  on this device yet.)
+
 ## [0.24.156] - 2026-10-06
 
 - **Dismissing a suggestion now keeps it dismissed.** Tapping "No thanks"

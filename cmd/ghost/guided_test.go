@@ -169,4 +169,7 @@ func TestDefaultModelTagSingleSourced(t *testing.T) {
 	if !strings.Contains(string(raw), `DEFAULT_MODEL_TAG="`+config.DefaultLocalTag+`"`) {
 		t.Fatalf("setup.sh must pin DEFAULT_MODEL_TAG=%q", config.DefaultLocalTag)
 	}
+	if !strings.Contains(string(raw), `DEFAULT_EMBED_TAG="`+config.DefaultEmbeddingTag+`"`) {
+		t.Fatalf("setup.sh must pin DEFAULT_EMBED_TAG=%q", config.DefaultEmbeddingTag)
+	}
 }

@@ -4,7 +4,7 @@
       "workspace": "~/ghost/workspace",
       "provider": "anthropic",
       "model": "claude-3.5-sonnet",
-      "embedding_model": "nomic-embed-text",
+      "embedding_model": "embeddinggemma",
       "max_tokens": 8192,
       "temperature": 0.7,
       "fallback_models": [],

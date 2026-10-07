@@ -7,10 +7,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Canonical local model tag. Single-sourced with pkg/config
-# DefaultLocalTag — if you change this, change that constant too
-# (covered by TestDefaultModelTagSingleSourced).
+# Canonical local model tags. Single-sourced with pkg/config
+# DefaultLocalTag / DefaultEmbeddingTag — if you change these, change
+# those constants too (covered by TestDefaultModelTagSingleSourced).
 DEFAULT_MODEL_TAG="qwen3:0.6b"
+DEFAULT_EMBED_TAG="embeddinggemma"
 
 # Non-interactive flags: --yes answers every prompt affirmatively,
 # --no-service skips the service/install prompts. CI=1 implies --yes.
@@ -125,14 +126,16 @@ if ! check_command "ollama"; then
     if check_command "curl"; then
         curl -fsSL https://ollama.com/install.sh | sh
         echo -e "${GREEN}[OK] Ollama installed.${NC}"
-        echo -e "${YELLOW}[INFO] Pre-pulling ${DEFAULT_MODEL_TAG} model...${NC}"
+        echo -e "${YELLOW}[INFO] Pre-pulling ${DEFAULT_MODEL_TAG} + ${DEFAULT_EMBED_TAG} models...${NC}"
         ollama pull "$DEFAULT_MODEL_TAG"
+        ollama pull "$DEFAULT_EMBED_TAG"
     else
         echo -e "${RED}[ERROR] curl is required for Ollama installation.${NC}"
     fi
 else
     echo -e "${GREEN}[OK] Ollama already installed.${NC}"
     ollama pull "$DEFAULT_MODEL_TAG"
+    ollama pull "$DEFAULT_EMBED_TAG"
 fi
 
 # ── 3. Build Ghost ────────────────────────────────────────────────────────

@@ -2,7 +2,9 @@ package rag
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -75,6 +77,94 @@ func NewStore(database *db.DB, provider providers.EmbeddingProvider, cfg config.
 		config:     cfg,
 		embedCache: make(map[string]embedCacheEntry),
 	}
+}
+
+// embedModelStampKey records which embedding model produced the
+// vectors in memory_chunks. Vectors are model-specific: an index
+// embedded by nomic-embed-text must never be searched with
+// embeddinggemma vectors, even at identical dimensions.
+const embedModelStampKey = "rag.embed_model"
+
+// EnsureEmbedModel re-embeds the stored chunks when they were produced
+// by a different model than the one now configured. Content is stored
+// alongside every vector, so migration is lossless — slow, but it runs
+// once per model change in the background startup goroutine. Matching
+// stamp: no-op. No rows: stamps and returns.
+func (s *Store) EnsureEmbedModel(ctx context.Context, model string) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return fmt.Errorf("empty embedding model name")
+	}
+	if s.provider == nil {
+		return fmt.Errorf("no embedding provider configured")
+	}
+	var stamp string
+	err := s.db.QueryRow(`SELECT value FROM kv_store WHERE key = ?`, embedModelStampKey).Scan(&stamp)
+	switch {
+	case err == nil:
+		var stamped string
+		if jerr := json.Unmarshal([]byte(stamp), &stamped); jerr == nil {
+			stamp = stamped
+		}
+		if strings.TrimSpace(stamp) == model {
+			return nil
+		}
+	case err != nil && !isNoRows(err):
+		return fmt.Errorf("failed to read embed-model stamp: %w", err)
+	}
+	rows, err := s.db.Query(`SELECT id, content FROM memory_chunks`)
+	if err != nil {
+		return fmt.Errorf("failed to fetch chunks for re-embedding: %w", err)
+	}
+	type chunk struct{ id, content string }
+	var chunks []chunk
+	for rows.Next() {
+		var c chunk
+		if serr := rows.Scan(&c.id, &c.content); serr != nil {
+			rows.Close()
+			return fmt.Errorf("failed to scan chunk for re-embedding: %w", serr)
+		}
+		chunks = append(chunks, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to iterate chunks for re-embedding: %w", err)
+	}
+	migrated := 0
+	for _, c := range chunks {
+		if strings.TrimSpace(c.content) == "" {
+			continue
+		}
+		vec, verr := s.provider.Embed(ctx, c.content)
+		if verr != nil {
+			return fmt.Errorf("failed to embed chunk %s: %w", c.id, verr)
+		}
+		raw, merr := json.Marshal(vec)
+		if merr != nil {
+			return fmt.Errorf("failed to marshal re-embedded chunk %s: %w", c.id, merr)
+		}
+		if _, uerr := s.db.Exec(`UPDATE memory_chunks SET embedding = ? WHERE id = ?`, string(raw), c.id); uerr != nil {
+			return fmt.Errorf("failed to store re-embedded chunk %s: %w", c.id, uerr)
+		}
+		migrated++
+	}
+	raw, _ := json.Marshal(model)
+	if _, err := s.db.Exec(
+		`INSERT INTO kv_store (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		embedModelStampKey, string(raw), time.Now()); err != nil {
+		return fmt.Errorf("failed to stamp embed model: %w", err)
+	}
+	s.embedMu.Lock()
+	s.embedCache = make(map[string]embedCacheEntry)
+	s.embedMu.Unlock()
+	logger.InfoCF("rag", "RAG index re-embedded for new model", map[string]interface{}{
+		"model": model, "chunks": migrated,
+	})
+	return nil
+}
+
+func isNoRows(err error) bool {
+	return errors.Is(err, sql.ErrNoRows)
 }
 
 // LoadIndex populates the vector index from the SQLite database

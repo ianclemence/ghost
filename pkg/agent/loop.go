@@ -631,10 +631,17 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	if cfg.RAG.Enabled {
 		embedProvider := pickEmbedProvider(cfg, provider)
 		if ep, ok := embedProvider.(providers.EmbeddingProvider); ok {
+			embedModel := cfg.EmbeddingModelOrDefault()
 			ragStore = rag.NewStore(database, ep, cfg.RAG)
-			// Load index asynchronously
+			// Load index asynchronously. Re-embedding first when the
+			// embedder changed: stored vectors are tied to the model
+			// that produced them and are useless across models.
 			go func() {
-				if err := ragStore.LoadIndex(context.Background()); err != nil {
+				ctx := context.Background()
+				if err := ragStore.EnsureEmbedModel(ctx, embedModel); err != nil {
+					logger.ErrorCF("agent", "Failed to re-embed RAG index", map[string]interface{}{"error": err.Error()})
+				}
+				if err := ragStore.LoadIndex(ctx); err != nil {
 					logger.ErrorCF("agent", "Failed to load RAG index", map[string]interface{}{"error": err.Error()})
 				}
 			}()
@@ -2226,10 +2233,7 @@ func pickEmbedProvider(cfg *config.Config, chatProvider providers.LLMProvider) p
 		base = "http://localhost:11434"
 	}
 	if ollamaReachable(base) {
-		model := strings.TrimSpace(cfg.Agents.Defaults.EmbeddingModel)
-		if model == "" {
-			model = "nomic-embed-text"
-		}
+		model := cfg.EmbeddingModelOrDefault()
 		local := providers.NewHTTPProvider(
 			strings.TrimSpace(cfg.Providers.Ollama.APIKey),
 			base,
