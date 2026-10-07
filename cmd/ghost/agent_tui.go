@@ -1005,7 +1005,27 @@ type clarifyAnswerMsg struct{ ok bool }
 // SAME governed resume path the console and mobile use (CheckApprovalReply),
 // so the CLI can never authorize around the broker. The card clears first so
 // the phrase is sent as an ordinary message, not re-interpreted as a key.
+//
+// The card is re-checked first: a panel left open while the phone or web
+// answered the request used to send the phrase anyway, and it landed as
+// literal chat ("allow once") in the transcript. Answered elsewhere shows
+// that instead; a newer pending request replaces the stale card.
 func (m *agentTUI) resolveApproval(phrase string) (tea.Model, tea.Cmd) {
+	if m.approval != nil {
+		if id, title, risk, ok := m.loop.PendingApproval(m.session); !ok {
+			m.approval = nil
+			m.approvalSel = 0
+			m.append(entry{kind: entryNotice, text: "already answered elsewhere — nothing to approve"})
+			m.renderTranscript()
+			return m, nil
+		} else if id != m.approval.id {
+			m.approval = &pendingApproval{id: id, title: title, risk: risk}
+			m.approvalSel = 0
+			m.append(entry{kind: entryNotice, text: "a newer approval arrived — answering that one instead"})
+			m.renderTranscript()
+			return m, nil
+		}
+	}
 	m.approval = nil
 	m.approvalSel = 0
 	m.append(entry{kind: entryNotice, text: "you chose: " + phrase})

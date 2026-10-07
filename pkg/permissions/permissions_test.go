@@ -563,3 +563,32 @@ func TestBrowserStepTitleNamesActionAndSite(t *testing.T) {
 		}
 	}
 }
+
+// StatusOf tracks a request through resolve and consume so a failed
+// resolve can name the actual state (answered, expired) instead of one
+// generic "no longer answerable".
+func TestStatusOfTracksResolveLifecycle(t *testing.T) {
+	b := openTestBroker(t, ModeAsk)
+	req, err := b.Require("req-status", "sess-1", "agent-main", "browser", "browser_click", "owner", "Click", RiskConsequential, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, ok := b.StatusOf(req.ID); !ok || st != StatusPending {
+		t.Fatalf("StatusOf = %q,%v, want pending,true", st, ok)
+	}
+	if _, err := b.Resolve(req.ID, GrantOnce, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if st, ok := b.StatusOf(req.ID); !ok || st != StatusApproved {
+		t.Fatalf("StatusOf = %q,%v, want approved,true", st, ok)
+	}
+	if _, ok := b.ConsumeApproved("req-status"); !ok {
+		t.Fatal("consume must succeed")
+	}
+	if st, ok := b.StatusOf(req.ID); !ok || st != StatusConsumed {
+		t.Fatalf("StatusOf = %q,%v, want consumed,true", st, ok)
+	}
+	if _, ok := b.StatusOf("no-such-id"); ok {
+		t.Fatal("unknown id must report false")
+	}
+}

@@ -3,6 +3,7 @@
 
 async function loadPermissions(container, opts) {
   const embedded = !!(opts && opts.embedded);
+  const seq = GhostApp.getRenderSeq();
   container.innerHTML = '';
   if (!embedded) {
     const head = GhostUI.h('div', { className: 'page-head' });
@@ -19,6 +20,7 @@ async function loadPermissions(container, opts) {
   container.appendChild(grantsEl);
 
   async function refresh() {
+    if (GhostApp.getRenderSeq() !== seq) return;
     if (!document.body.contains(container)) return;
     let pending = [], grants = [];
     try {
@@ -30,10 +32,19 @@ async function loadPermissions(container, opts) {
       grants = gr.grants || [];
     } catch (e) { grants = 'error'; }
     if (!document.body.contains(container)) return;
+    if (GhostApp.getRenderSeq() !== seq) return;
     paintPending(pendingEl, pending, refresh, embedded);
     paintGrants(grantsEl, grants, refresh, embedded);
   }
   await refresh();
+  // Live list: repaint the pending cards from each presence poll (it
+  // already fetched them) so answered-elsewhere and expired cards leave
+  // on their own instead of failing your next tap.
+  GhostApp.setSectionRefresh((live) => {
+    if (GhostApp.getRenderSeq() !== seq) return;
+    if (!document.body.contains(container)) return;
+    if (Array.isArray(live)) paintPending(pendingEl, live, refresh, embedded);
+  });
 }
 
 // On its own page each group is a panel. Embedded in System it already sits
@@ -135,12 +146,24 @@ function paintPending(el, pending, refresh, embedded) {
       const tr = GhostUI.h('div', { className: 'perm-request-actions' });
       [['Allow once', 'allow_once'], ['Allow for this task', 'allow_task'], ['Always allow', 'allow_always'], ['Deny', 'deny']].forEach(([label, grant]) => {
         const b = GhostUI.btn(label, grant === 'deny' ? 'danger' : grant === 'allow_always' || grant === 'allow_task' ? 'secondary' : 'primary', async () => {
+          // One tap, one resolve: rapid double taps used to send two
+          // resolves for the same card, and the loser always failed with
+          // "no longer answerable".
+          tr.querySelectorAll('button').forEach(x => { x.disabled = true; });
           try {
             // No scope is sent: the server stores the canonical scope the
             // request was asked under, so the grant matches exactly the
             // runtime invocation it authorizes.
-            await GhostAPI.proxyPost('/v1/permissions/resolve', { id: p.id, grant });
-          } catch (e) { GhostUI.toast('Couldn\u2019t record that choice \u2014 try again.'); return; }
+            const res = await GhostAPI.proxyPost('/v1/permissions/resolve', { id: p.id, grant });
+            if (res && res.resumed === false) {
+              GhostUI.toast('Recorded, but it couldn\u2019t run: ' + (res.resume_reason || 'nothing left to resume.') + ' The conversation says what happened.');
+            }
+          } catch (e) {
+            // Say why, then refresh anyway: a failed resolve usually means
+            // the card is dead (expired, answered elsewhere), and leaving
+            // it on screen is what made approvals feel broken.
+            GhostUI.toast((e && e.message) || 'Couldn\u2019t record that choice \u2014 try again.');
+          }
           refresh();
         });
         b.classList.add('ghost-btn-sm');

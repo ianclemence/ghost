@@ -806,6 +806,49 @@ func jsonError(w http.ResponseWriter, status int, kind, message string) {
 	})
 }
 
+// resolveStaleKind names why a resolve failed with "not pending": the row
+// exists but left the answerable state. The card the owner tapped was
+// superseded, answered elsewhere, denied, or swept after expiry.
+func resolveStaleKind(b *permissions.Broker, id string) string {
+	if b == nil {
+		return "resolve_failed"
+	}
+	status, ok := b.StatusOf(id)
+	if !ok {
+		return "approval_unknown"
+	}
+	switch status {
+	case permissions.StatusApproved, permissions.StatusConsumed:
+		return "approval_answered"
+	case permissions.StatusDenied:
+		return "approval_denied"
+	case permissions.StatusExpired:
+		return "approval_expired"
+	case permissions.StatusCancelled:
+		return "approval_cancelled"
+	default:
+		return "resolve_failed"
+	}
+}
+
+// resolveStaleMessage is the owner-words companion to resolveStaleKind.
+func resolveStaleMessage(kind string) string {
+	switch kind {
+	case "approval_answered":
+		return "that approval was already answered — a second tap has nothing left to run"
+	case "approval_denied":
+		return "that approval was denied — nothing will run"
+	case "approval_expired":
+		return "that approval expired — please make the request again"
+	case "approval_cancelled":
+		return "that approval was cancelled — please make the request again"
+	case "approval_unknown":
+		return "that approval doesn't exist — it may have been superseded by a newer request"
+	default:
+		return "that approval is no longer answerable"
+	}
+}
+
 // MainSessionID is the one shared conversation: terminal, app, and
 // gateway resolve to the same rows. Surface-neutral by design — it used
 // to be called mobile:default, which lied about who it belongs to.
@@ -4139,21 +4182,47 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			resolved, err = b.Resolve(req.ID, grant, strings.TrimSpace(req.Scope))
 		}
 		if err != nil {
-			jsonError(w, http.StatusBadRequest, "resolve_failed", "that approval is no longer answerable")
+			// A failed resolve is not one condition: expired, already
+			// answered elsewhere, and unknown ids all used to return the
+			// same "no longer answerable", leaving the owner tapping a
+			// dead card with no idea why. Name the actual state.
+			kind, msg := "resolve_failed", "that approval is no longer answerable"
+			switch {
+			case strings.Contains(err.Error(), "expired"):
+				kind, msg = "approval_expired", "that approval expired — please make the request again"
+			case strings.Contains(err.Error(), "not found"):
+				kind, msg = "approval_unknown", "that approval doesn't exist — it may have been superseded by a newer request"
+			case strings.Contains(err.Error(), "not pending"):
+				kind = resolveStaleKind(b, req.ID)
+				msg = resolveStaleMessage(kind)
+			}
+			jsonError(w, http.StatusBadRequest, kind, msg)
 			return
 		}
 		// Resolving answers the broker, but the paused call still has to
 		// run. Resolving alone cleared the card while the action never
 		// executed, which is why the conversation kept showing "waiting for
 		// your approval" after a tap. ExecuteApprovedRequest resumes through
-		// the same governed path a typed reply uses, exactly once.
+		// the same governed path a typed reply uses, exactly once. When it
+		// has nothing to resume, the owner gets a visible receipt in the
+		// conversation instead of silence.
+		resumed := true
+		resumeReason := ""
 		if grant != permissions.GrantDeny && agentLoop != nil {
-			if !agentLoop.ExecuteApprovedRequest(resolved, grant, "mobile", "default") {
+			var ok bool
+			ok, resumeReason = agentLoop.ExecuteApprovedRequest(resolved, grant, "mobile", "default")
+			resumed = ok
+			if !ok {
 				logger.WarnCF("internal-api", "approval recorded but nothing to resume",
-					map[string]interface{}{"request_id": resolved.RequestID, "grant": req.Grant})
+					map[string]interface{}{"request_id": resolved.RequestID, "grant": req.Grant, "reason": resumeReason})
+				title := ""
+				if card, ok := resolved.Card(); ok {
+					title = card.Title
+				}
+				agentLoop.PublishApprovalStall(resolved.SessionKey, title, resumeReason)
 			}
 		}
-		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "request": resolved})
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "request": resolved, "resumed": resumed, "resume_reason": resumeReason})
 	}))
 
 	mux.HandleFunc("/v1/permissions/grants", authMiddleware(func(w http.ResponseWriter, r *http.Request) {

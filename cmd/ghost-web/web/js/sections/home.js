@@ -6,6 +6,7 @@
 
 async function loadHome(container) {
   container.innerHTML = '';
+  const seq = GhostApp.getRenderSeq();
   const view = GhostUI.h('div', { className: 'home' });
 
   // Header: greeting + one honest status line.
@@ -58,6 +59,7 @@ async function loadHome(container) {
     GhostAPI.proxyGet('/v1/permissions/requests?status=pending'),
   ]);
   if (!document.body.contains(container)) return;
+  if (GhostApp.getRenderSeq() !== seq) return;
 
   const ownerName = (meta.status === 'fulfilled' && meta.value && meta.value.owner_name || '').trim();
   if (ownerName) greet.textContent = greetingFor(new Date().getHours()) + ', ' + ownerName + '.';
@@ -94,6 +96,17 @@ async function loadHome(container) {
   renderUpcoming(upcoming.body, jobs);
   renderGlance(glance.body, memory, jobs, devices, ollama, activeModel, proactive);
   renderActivity(recent.body, activity);
+  // Live approvals: repaint Needs-you from each presence poll (it already
+  // fetched the pending list) so cards answered elsewhere or expired
+  // disappear without a manual reload.
+  GhostApp.setSectionRefresh((live) => {
+    if (GhostApp.getRenderSeq() !== seq) return;
+    if (!document.body.contains(container)) return;
+    if (!Array.isArray(live)) return;
+    approvals.length = 0;
+    live.forEach(a => approvals.push(a));
+    paintNeeds();
+  });
 }
 
 // homeCard builds a titled card; `link` adds a quiet "see all" affordance.
@@ -236,20 +249,27 @@ function approvalRow(p, reload) {
     try {
       // No scope is sent: the server stores the canonical scope the request
       // was asked under, so the grant matches exactly what it authorizes.
-      await GhostAPI.proxyPost('/v1/permissions/resolve', { id: p.id, grant });
-      GhostApp.refreshPresence();
-      reload();
+      const res = await GhostAPI.proxyPost('/v1/permissions/resolve', { id: p.id, grant });
+      if (res && res.resumed === false) {
+        GhostUI.toast('Recorded, but it couldn\u2019t run: ' + (res.resume_reason || 'nothing left to resume.'));
+      }
     } catch (e) {
-      GhostUI.toast('Couldn’t record that choice. Try again.');
-      acts.querySelectorAll('button').forEach(b => { b.disabled = false; });
+      // A failed resolve usually means the card is already dead (expired,
+      // answered on another surface): say why, then reload anyway so the
+      // dead card leaves instead of sitting there looking broken.
+      GhostUI.toast((e && e.message) || 'Couldn’t record that choice. Try again.');
     }
+    GhostApp.refreshPresence();
+    reload();
   };
-  const allow = GhostUI.btn('Allow', 'primary', () => decide('allow_once'));
-  allow.classList.add('ghost-btn-sm');
-  const deny = GhostUI.btn('Deny', 'secondary', () => decide('deny'));
-  deny.classList.add('ghost-btn-sm');
-  acts.appendChild(allow);
-  acts.appendChild(deny);
+  // All four grants, like the Approvals page: browser work is multi-step,
+  // and "Allow once" authorizing a single click is why approvals felt like
+  // they did nothing.
+  [['Allow', 'allow_once', 'primary'], ['This task', 'allow_task', 'secondary'], ['Always', 'allow_always', 'secondary'], ['Deny', 'deny', 'secondary']].forEach(([label, grant, kind]) => {
+    const b = GhostUI.btn(label, kind, () => decide(grant));
+    b.classList.add('ghost-btn-sm');
+    acts.appendChild(b);
+  });
   row.appendChild(acts);
   return row;
 }

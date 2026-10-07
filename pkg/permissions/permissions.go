@@ -511,6 +511,19 @@ func (b *Broker) ApprovedRequest(requestID string) (*Request, bool) {
 	return r, true
 }
 
+// StatusOf reports the current status of a request by its card id, for
+// diagnosing a failed resolve (answered elsewhere, expired, superseded).
+// Unknown ids report false so callers can say so honestly.
+func (b *Broker) StatusOf(id string) (RequestStatus, bool) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	r, ok := b.byID(id)
+	if !ok {
+		return "", false
+	}
+	return r.Status, true
+}
+
 // PendingForRequest returns the live pending request for a turn, if any.
 // This is the approval-continuation lookup: restart-safe via SQLite.
 func (b *Broker) PendingForRequest(requestID string) (*Request, bool) {

@@ -637,25 +637,29 @@ func (g *Governance) CheckApprovalReply(sessionKey, text string) ResumeOutcome {
 // counterpart to CheckApprovalReply for a request the endpoint already
 // resolved: the same exactly-once and revocation re-checks, applied to the
 // request the button named instead of the session's first pending one.
-func (g *Governance) ResumeApproved(r *permissions.Request, grant permissions.GrantType) (ResumeOutcome, bool) {
+//
+// The reason string explains a refusal in owner words so the API path can
+// publish a receipt instead of failing silently: a recorded approval that
+// never runs must still tell the conversation what happened.
+func (g *Governance) ResumeApproved(r *permissions.Request, grant permissions.GrantType) (ResumeOutcome, bool, string) {
 	if !g.active() || g.Broker == nil || r == nil || r.RequestID == "" {
-		return ResumeOutcome{}, false
+		return ResumeOutcome{}, false, "the approval carried nothing to run"
 	}
 	if grant == permissions.GrantDeny {
-		return ResumeOutcome{}, false
+		return ResumeOutcome{}, false, ""
 	}
 	if grant == permissions.GrantOnce {
 		// Exactly one execution per "allow once": consume the approval so a
 		// second resume of the same request finds nothing to run.
 		consumed, ok := g.Broker.ConsumeApproved(r.RequestID)
 		if !ok {
-			return ResumeOutcome{}, false
+			return ResumeOutcome{}, false, "that approval was already used — a second tap finds nothing to run"
 		}
-		return resumeFrom(consumed, grant), true
+		return resumeFrom(consumed, grant), true, ""
 	}
 	approved, ok := g.Broker.ApprovedRequest(r.RequestID)
 	if !ok {
-		return ResumeOutcome{}, false
+		return ResumeOutcome{}, false, "that approval expired before it could run"
 	}
 	contArgs := map[string]interface{}{}
 	for k, v := range approved.Continuation {
@@ -671,10 +675,10 @@ func (g *Governance) ResumeApproved(r *permissions.Request, grant permissions.Gr
 			risk = permissions.RiskConsequential
 		}
 		if permissions.VerdictDecision(g.Broker.Evaluate(approved.Capability, approved.Action, scope, risk)) != permissions.DecisionAllow {
-			return ResumeOutcome{}, false
+			return ResumeOutcome{}, false, "that standing approval is no longer valid (revoked, denied, or expired)"
 		}
 	}
-	return resumeFrom(approved, grant), true
+	return resumeFrom(approved, grant), true, ""
 }
 
 // resumeFrom rebuilds the paused call from an approved request's durable

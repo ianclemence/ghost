@@ -82,6 +82,17 @@ const GhostApp = (() => {
     sections.set(name, { loader });
   }
 
+  // Render sequencing: every navigation bumps the sequence and drops any
+  // section-registered live refresher. Async loaders capture the sequence
+  // at start and refuse to paint (or refresh) when it moved on — a slow
+  // fetch from the previous section must never repaint the new one.
+  let renderSeq = 0;
+  let sectionRefresh = null;
+  function getRenderSeq() { return renderSeq; }
+  function setSectionRefresh(fn) {
+    sectionRefresh = (typeof fn === 'function') ? fn : null;
+  }
+
   function navigate(name) {
     if (!sections.has(name)) name = 'home';
     if (location.hash !== '#' + name) {
@@ -96,6 +107,8 @@ const GhostApp = (() => {
     // must land on Home, not throw before anything renders.
     if (!sections.has(name)) name = 'home';
     current = name;
+    renderSeq++;
+    sectionRefresh = null;
     const view = document.getElementById('view');
     if (!view) return;
     view.innerHTML = '';
@@ -228,6 +241,15 @@ const GhostApp = (() => {
     if (g && g.name) document.getElementById('presence-name').textContent = g.name;
     const badge = document.getElementById('badge-approvals');
     if (badge) { badge.textContent = String(waiting); badge.classList.toggle('hidden', waiting === 0); }
+    // Live approval lists: the open section can repaint from the pending
+    // data this poll already fetched — no extra requests, and new cards
+    // appear (and dead ones leave) without manual navigation.
+    if (sectionRefresh && !document.hidden) {
+      try {
+        const live = pending.status === 'fulfilled' ? ((pending.value && pending.value.requests) || null) : null;
+        sectionRefresh(live);
+      } catch (_) {}
+    }
   }
 
   function toggleNav(force) {
@@ -411,7 +433,7 @@ const GhostApp = (() => {
 
   function currentSection() { return current; }
 
-  return { registerSection, navigate, start, setActions, render, lock, currentSection, refreshPresence };
+  return { registerSection, navigate, start, setActions, render, lock, currentSection, refreshPresence, getRenderSeq, setSectionRefresh };
 })();
 
 window.addEventListener('DOMContentLoaded', () => GhostApp.start());

@@ -98,15 +98,20 @@ func (al *AgentLoop) resumeApproval(ctx context.Context, resume ResumeOutcome, s
 // It exists because resolving the broker request alone cleared the card
 // while the action never ran: the conversation kept showing "waiting for
 // your approval" because, as far as the paused call was concerned, nothing
-// had happened. Returns false when there is nothing executable to resume
-// (a deny, or a request that had no continuation).
-func (al *AgentLoop) ExecuteApprovedRequest(r *permissions.Request, grant permissions.GrantType, channel, chatID string) bool {
+// had happened. Returns false with an owner-words reason when there is
+// nothing executable to resume (a deny, or a request that had no
+// continuation, or one already consumed) so the caller can say so instead
+// of failing silently.
+func (al *AgentLoop) ExecuteApprovedRequest(r *permissions.Request, grant permissions.GrantType, channel, chatID string) (bool, string) {
 	if al == nil || al.governance == nil || r == nil {
-		return false
+		return false, "the approval carried nothing to run"
 	}
-	resume, ok := al.governance.ResumeApproved(r, grant)
+	resume, ok, reason := al.governance.ResumeApproved(r, grant)
 	if !ok || strings.TrimSpace(resume.Tool) == "" {
-		return false
+		if reason == "" {
+			reason = "the approval carried nothing to run"
+		}
+		return false, reason
 	}
 	// The owner answered, so any background job parked at this approval is
 	// waiting on that answer: hand it back to the runner.
@@ -121,5 +126,29 @@ func (al *AgentLoop) ExecuteApprovedRequest(r *permissions.Request, grant permis
 		}()
 		al.resumeApproval(context.Background(), resume, sessionKey, channel, chatID, requestID, tools.ToolProfile(""), nil, nil)
 	}()
-	return true
+	return true, ""
+}
+
+// PublishApprovalStall writes a visible receipt when an approval was
+// recorded but the paused call could not resume: without it the card
+// clears, nothing runs, and the conversation still shows "waiting for
+// your approval" with no explanation. Same sessions store the normal
+// resume receipts use, so the message lands in the live transcript.
+func (al *AgentLoop) PublishApprovalStall(sessionKey, title, reason string) {
+	if al == nil || al.sessions == nil || strings.TrimSpace(sessionKey) == "" {
+		return
+	}
+	text := "Your approval was recorded"
+	if t := strings.TrimSpace(title); t != "" {
+		text += " (" + t + ")"
+	} else {
+		text += " for that action"
+	}
+	if r := strings.TrimSpace(reason); r != "" {
+		text += ", but " + strings.TrimRight(r, ".") + " — nothing ran."
+	} else {
+		text += ", but nothing could resume — nothing ran."
+	}
+	al.sessions.AddMessage(sessionKey, "assistant", text)
+	al.sessions.Save(sessionKey)
 }

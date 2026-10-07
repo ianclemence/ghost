@@ -107,7 +107,7 @@ func TestExecuteApprovedRequestRunsThePausedCallOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if !al.ExecuteApprovedRequest(resolved, permissions.GrantOnce, "mobile", "default") {
+	if ok, _ := al.ExecuteApprovedRequest(resolved, permissions.GrantOnce, "mobile", "default"); !ok {
 		t.Fatal("approving a request with a continuation must resume it")
 	}
 
@@ -119,9 +119,12 @@ func TestExecuteApprovedRequestRunsThePausedCallOnce(t *testing.T) {
 		t.Fatalf("paused call ran %d times, want 1", tool.count())
 	}
 
-	// allow_once is exactly once: a second tap has nothing left to run.
-	if al.ExecuteApprovedRequest(resolved, permissions.GrantOnce, "mobile", "default") {
+	// allow_once is exactly once: a second tap has nothing left to run,
+	// and says why instead of failing silently.
+	if ok, reason := al.ExecuteApprovedRequest(resolved, permissions.GrantOnce, "mobile", "default"); ok {
 		t.Fatal("allow_once resumed twice")
+	} else if strings.TrimSpace(reason) == "" {
+		t.Fatal("a refused second resume must explain why")
 	}
 	if tool.count() != 1 {
 		t.Fatalf("paused call ran %d times after a second tap, want 1", tool.count())

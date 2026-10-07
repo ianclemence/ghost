@@ -408,6 +408,7 @@ func TestTUIApprovalHeightMatchesPaint(t *testing.T) {
 // governed resume path runs — the CLI never authorizes around the broker.
 func TestTUIApprovalSendsGrantPhrase(t *testing.T) {
 	f := newFakeRuntime()
+	f.pending = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
 	m.resolveApproval("always allow")
@@ -423,6 +424,7 @@ func TestTUIApprovalSendsGrantPhrase(t *testing.T) {
 // nothing (so a stray keystroke cannot approve).
 func TestTUIApprovalKeys(t *testing.T) {
 	f := newFakeRuntime()
+	f.pending = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
 	// A stray key must not resolve.
@@ -1162,6 +1164,7 @@ func TestTUIModelModalEscCloses(t *testing.T) {
 // 1/2/3 keep answering directly.
 func TestTUIApprovalEnterConfirmsSelection(t *testing.T) {
 	f := newFakeRuntime()
+	f.pending = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
 	m := readyForTest(newAgentTUI(f, "cli:test"))
 	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
 	m.handleKey(keyMsgFor('l')) // → allow for this task
@@ -1171,6 +1174,24 @@ func TestTUIApprovalEnterConfirmsSelection(t *testing.T) {
 	m.handleKey(keyCodeFor(tea.KeyEnter))
 	if !waitForTurns(f, 1) || f.turns[0] != "allow for this task" {
 		t.Fatalf("enter should confirm the selection, got %v", f.turns)
+	}
+}
+
+// A card answered on another surface must not send its phrase as chat:
+// the stale panel says so and clears instead of talking to the model.
+func TestTUIApprovalStaleCardDoesNotSend(t *testing.T) {
+	f := newFakeRuntime()
+	m := readyForTest(newAgentTUI(f, "cli:test"))
+	m.approval = &pendingApproval{id: "req-1", title: "Send?", risk: "consequential"}
+	m.resolveApproval("allow once")
+	if m.approval != nil {
+		t.Errorf("stale card must clear")
+	}
+	if len(f.turns) != 0 {
+		t.Fatalf("stale card must not send a turn, got %v", f.turns)
+	}
+	if !hasNotice(m, "already answered elsewhere") {
+		t.Errorf("stale card must say it was answered elsewhere")
 	}
 }
 

@@ -23,7 +23,20 @@ const GhostAPI = (() => {
       }
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        throw new Error(text || `Request failed (${res.status})`);
+        // Server errors carry {error:{kind,message}}: keep the kind on the
+        // thrown error so callers can explain a failure honestly instead of
+        // toasting one generic string for expired, answered, and unknown.
+        const err = new Error(text || `Request failed (${res.status})`);
+        try {
+          const body = JSON.parse(text);
+          const e = body && body.error;
+          if (e && typeof e === 'object') {
+            if (typeof e.kind === 'string' && e.kind) err.kind = e.kind;
+            if (typeof e.message === 'string' && e.message) err.message = e.message;
+          }
+        } catch (_) {}
+        err.status = res.status;
+        throw err;
       }
       const ct = res.headers.get('content-type') || '';
       if (ct.includes('application/json')) return res.json();
