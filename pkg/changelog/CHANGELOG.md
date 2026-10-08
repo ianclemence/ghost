@@ -3,6 +3,20 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.162] - 2026-10-09
+
+- **Ghost can build something and show it running in your chat.** Ask for a
+  page, a game, a calculator, a chart or a mock-up (or to see what some code
+  does) and Ghost writes it as one self-contained page that runs right in the
+  conversation. Each change is saved as the next version, so you can step back
+  through them, and a page that errors can be sent back to Ghost to fix. The
+  phone runs it in a sandbox: no network, no storage, no navigation. Ghost is
+  told to tell you about anything the sandbox blocks before you see it fail.
+- **A follow-up to a canvas keeps it in reach.** "Make the button blue" now
+  produces a new version instead of pasting HTML into the chat, for half an
+  hour after the last canvas.
+- **The terminal names a canvas step** ("Built a page") with its title.
+
 ## [0.24.161] - 2026-10-08
 
 - **An alert goes away when the problem does.** "I'm almost out of storage"

@@ -241,8 +241,9 @@ The three rules that govern every family:
 
 ## Artifacts — `publish_artifact`, `canvas`, `tts`
 
-- **Reach for it when** you're handing something durable back: a document, report, or bounded result the owner keeps (`publish_artifact`); a diagram or visual for the console (`canvas`); speech out loud (`tts`).
-- **How:** an artifact exists only when the runtime publishes it — produce it, publish it, then hand it back. `canvas` is display state for the console; `tts` is local audio out.
+- **Reach for it when** you're handing something durable back: a document, report, or bounded result the owner keeps (`publish_artifact`); something they can see and use (`canvas`); speech out loud (`tts`).
+- **How:** an artifact exists only when the runtime publishes it — produce it, publish it, then hand it back. `tts` is local audio out.
+- **Canvas — when the owner asks you to build, draw, prototype or visualize something, or to show what code you wrote does:** call `canvas` with ONE complete, self-contained HTML document (inline CSS and JS, no network calls, it cannot make any). It runs live in their chat. Make it for a phone: a viewport meta tag, touch targets of at least 44px, readable on a dark background, no hover-only controls. Give it a short title; to change it, call `canvas` again with the whole updated document and the same title, which becomes the next version. Never paste the HTML into your reply: say in a sentence or two what you made and how to use it. A snippet the owner only wants to read stays a code block; `canvas` is for what they want to see run. If the page throws an error and the owner sends it back, fix it and publish the next version.
 - **Then:** "published" means the runtime confirmed it; until then it's a draft. Artifacts are outputs, never authorities — sharing or delivering one later is its own governed act.
 
 ## Work tracking — `todo`, `goal`

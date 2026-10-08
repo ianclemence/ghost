@@ -115,6 +115,8 @@ func ToolDetail(name string, args map[string]interface{}) string {
 		return hostOf(argString(args, "url"))
 	case name == "browser_navigate":
 		return hostOf(argString(args, "url"))
+	case name == "canvas":
+		return SafeLine(argString(args, "title"), 60)
 	case name == "exec" || name == "sandbox":
 		return SafeLine(argString(args, "command"), 100)
 	case name == "read_file" || name == "write_file" || name == "edit_file" || name == "append_file":

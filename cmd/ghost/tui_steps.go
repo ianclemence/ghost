@@ -59,7 +59,7 @@ var stepPast = map[string]string{
 	"read_file": "Read a file", "write_file": "Wrote a file", "edit_file": "Edited a file", "append_file": "Wrote a file",
 	"list_dir": "Looked through files", "schedule": "Set a reminder", "weather_now": "Checked the weather",
 	"calendar": "Checked your calendar", "email_search": "Looked through your email",
-	"vision": "Looked at an image", "image_generate": "Made an image",
+	"vision": "Looked at an image", "image_generate": "Made an image", "canvas": "Built a page",
 }
 
 var stepPresent = map[string]string{
@@ -72,7 +72,7 @@ var stepPresent = map[string]string{
 	"read_file": "Reading a file", "write_file": "Writing a file", "edit_file": "Editing a file", "append_file": "Writing a file",
 	"list_dir": "Looking through files", "schedule": "Setting a reminder", "weather_now": "Checking the weather",
 	"calendar": "Checking your calendar", "email_search": "Looking through your email",
-	"vision": "Looking at an image", "image_generate": "Making an image",
+	"vision": "Looking at an image", "image_generate": "Making an image", "canvas": "Building a page",
 }
 
 var kindPast = map[string]string{

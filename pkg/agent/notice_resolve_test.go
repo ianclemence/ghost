@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -49,5 +51,26 @@ func TestAlertIsRetractedWhenItsConditionClears(t *testing.T) {
 	// The condition returns inside the old 12-hour cooldown: the owner is told.
 	if !al.Announce("storage-critical", "I'm almost out of storage: 1 GB left.", 12*time.Hour, true) {
 		t.Fatal("a returning condition must be announced again")
+	}
+}
+
+// A follow-up on a canvas keeps the canvas tool, for half an hour.
+func TestRecentCanvasWorkKeepsTheToolForFollowUps(t *testing.T) {
+	ws := t.TempDir()
+	al := newTestAgentLoop(t, ws)
+	if al.recentCanvasWork() {
+		t.Fatal("no canvas yet")
+	}
+	dir := filepath.Join(ws, "canvas")
+	_ = os.MkdirAll(dir, 0o755)
+	f := filepath.Join(dir, "pong-v1.html")
+	_ = os.WriteFile(f, []byte("<p>x</p>"), 0o644)
+	if !al.recentCanvasWork() {
+		t.Fatal("a canvas made just now must count")
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(f, old, old)
+	if al.recentCanvasWork() {
+		t.Fatal("a canvas from two hours ago must not")
 	}
 }

@@ -48,6 +48,9 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Device control and handoff are legitimate mobile actions; the
 		// broker still governs the consequential ones.
 		"device", "calendar", "publish_artifact", "doc_parser",
+		// Showing the owner what was built, running in their chat. Sandboxed on
+		// the phone and unable to reach the network, so nothing to gate.
+		"canvas",
 		// Browser surface on mobile: observe + act (broker-governed like
 		// exec, which is already here). Purchase-class submit and
 		// file-egress upload stay desktop/admin posture.
@@ -229,7 +232,6 @@ var coreToolNames = map[string]bool{
 	"weather_now": true, "places_nearby": true, "aqi_now": true,
 	"crypto_price": true, "currency_convert": true, "flight_status": true,
 	"clarify": true, "todo": true,
-	"message": true, "skill_manage": true,
 	"schedule": true,
 	"spawn":    true, "subagent": true,
 	// Status phrasings vary too much to keyword-gate ("is the device
@@ -247,7 +249,16 @@ var turnIntentTools = []struct {
 	keywords []string
 	tools    []string
 }{
-	{[]string{"draw", "diagram", "flowchart", "mindmap", "canvas"}, []string{"canvas"}},
+	{[]string{"draw", "diagram", "flowchart", "mindmap", "canvas",
+		// Building something to look at and use: a page, a tool, a game, a
+		// mock-up. "Show me what that code does" and "make me a ..." are the
+		// ways people ask.
+		"html", "web page", "webpage", "landing page", "website", "web app", "mockup", "mock-up", "mock up",
+		"prototype", "wireframe", "visualize", "visualise", "visualization", "visualisation", "dashboard",
+		"chart", "graph", "infographic", "animation", "animate", "calculator", "stopwatch", "timer app", "widget",
+		"game", "quiz", "to-do app", "todo app", "counter", "interactive", "ui for", "page that", "page with",
+		"build me", "make me a", "make me an", "create a page", "show it to me", "display it", "see it", "preview", "render"},
+		[]string{"canvas"}},
 	{[]string{"image", "picture", "photo", "screenshot", "draw something"}, []string{"image_generate", "vision"}},
 	{[]string{"video", "clip", "frames"}, []string{"video_frames"}},
 	{[]string{"speak", "tts", "read aloud", "say this", "audio"}, []string{"tts"}},

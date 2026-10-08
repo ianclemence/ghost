@@ -20,6 +20,7 @@ func TestToolDetailIsOneSafeLine(t *testing.T) {
 		{"navigate keeps only the host", "browser_navigate", map[string]interface{}{"url": "news.ycombinator.com/item?id=1"}, "news.ycombinator.com"},
 		{"exec is one line", "exec", map[string]interface{}{"command": "php -v\nphp -m"}, "php -v"},
 		{"files show the name, not the path", "read_file", map[string]interface{}{"path": "/home/x/secret/notes.md"}, "notes.md"},
+		{"a canvas shows its title", "canvas", map[string]interface{}{"title": "Click counter", "html": "<p>x</p>"}, "Click counter"},
 		{"others say nothing", "remember", map[string]interface{}{"text": "private"}, ""},
 	}
 	for _, c := range cases {

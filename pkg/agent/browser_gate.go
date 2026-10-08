@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -854,4 +855,22 @@ func (al *AgentLoop) PurgeBrowserProfiles() (int64, int, error) {
 		return 0, 0, err
 	}
 	return s.PurgeProfiles()
+}
+
+// recentCanvasWork reports whether a canvas was made in the last half hour, so a
+// follow-up ("make the button blue", "add a reset") keeps the canvas tool. Such
+// a message names nothing to match on its own, and without the tool Ghost would
+// answer by pasting HTML into the chat instead of showing the new version.
+func (al *AgentLoop) recentCanvasWork() bool {
+	if al == nil || al.workspace == "" {
+		return false
+	}
+	matches, _ := filepath.Glob(filepath.Join(al.workspace, "canvas", "*.html"))
+	cutoff := time.Now().Add(-30 * time.Minute)
+	for _, m := range matches {
+		if fi, err := os.Stat(m); err == nil && fi.ModTime().After(cutoff) {
+			return true
+		}
+	}
+	return false
 }

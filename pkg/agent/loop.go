@@ -376,7 +376,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 				"type": "canvas_update",
 			},
 		})
-	})
+	}, nil)
 	registry.Register(canvasTool)
 
 	if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
@@ -618,6 +618,12 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// than running unwired.
 	if artifactStore, err := artifacts.NewStore(database.DB, workspace); err == nil {
 		toolsRegistry.Register(tools.NewPublishArtifactTool(artifactStore, workspace))
+		// A canvas is shown in the chat as an artifact of its own.
+		if t, ok := toolsRegistry.Get("canvas"); ok {
+			if ct, ok := t.(*tools.CanvasTool); ok {
+				ct.SetPublisher(artifactStore)
+			}
+		}
 	} else {
 		logger.WarnC("agent", "Artifact store unavailable, publish_artifact disabled")
 	}
@@ -3187,6 +3193,14 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				continue
 			}
 			if t, ok := al.tools.Get(name); ok {
+				activeTools.Register(t)
+			}
+		}
+	}
+	// A follow-up to a canvas keeps the canvas tool, for the same reason.
+	if al.recentCanvasWork() {
+		if _, ok := activeTools.Get("canvas"); !ok && activeProfile.Allows("canvas") {
+			if t, ok := al.tools.Get("canvas"); ok {
 				activeTools.Register(t)
 			}
 		}
