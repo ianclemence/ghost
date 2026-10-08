@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.163] - 2026-10-09
+
+- **Pages Ghost builds fill their window in the chat.** The app now shows a
+  canvas as a framed window with its own title bar and an Open button, as wide
+  as the conversation. Ghost is told so: it uses the whole width instead of
+  drawing a small card in the middle of the page, and does not repeat the
+  title the window already shows.
+
 ## [0.24.162] - 2026-10-09
 
 - **Ghost can build something and show it running in your chat.** Ask for a
