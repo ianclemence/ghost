@@ -58,6 +58,11 @@ func (t *CanvasTool) Description() string {
 		"Scripts and styles may be loaded only from cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com " +
 		"or fonts.googleapis.com (Tailwind, Chart.js, D3, Three.js, React, Alpine all work from those). " +
 		"Design for a phone: a viewport meta tag, touch targets of at least 44px, no hover-only controls. " +
+		"In the chat it runs in a window as wide as the conversation (about 360px) at its own height, up " +
+		"to about 520px; the owner taps Open to see all of it full screen. So the page IS the window: let " +
+		"it use the full width, do not wrap everything in one outer card, and do not centre it in a " +
+		"min-height of 100vh. The window already has a frame and a title bar, so do not repeat the title " +
+		"as a big heading unless the page needs one. " +
 		"The page already has a dark base, a clean font and these CSS variables, so use them instead of " +
 		"inventing colours: --bg --surface --fg --muted --accent --ok --warn --bad --line --radius. " +
 		"To change a canvas, call canvas again with the WHOLE updated document and the same title: it " +
