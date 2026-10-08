@@ -43,6 +43,8 @@ const (
 
 var (
 	memoryShortChecks int
+	// retract takes an alert back once what it reported has stayed gone.
+	retract = newConditionWatch()
 	// uncleanStart is set at boot when the last run did not stop cleanly.
 	uncleanStart bool
 )
@@ -64,6 +66,15 @@ func startSelfCare(al *agent.AgentLoop, workspace string) {
 	}
 	securityGuard = awareness.NewGuard(func(text string) {
 		al.Announce("security:"+fmt.Sprint(time.Now().Unix()/1800), text, time.Minute, true)
+	})
+	// Alerts written before they carried a key: key them by their opening
+	// words, so one whose condition has cleared since can be resolved.
+	al.KeyOlderNotices(map[string]string{
+		"I'm almost out of storage:": "storage-critical",
+		"Storage is getting low:":    "storage-low",
+		"I'm short on memory:":       "memory-critical",
+		"Memory is getting tight:":   "memory-low",
+		"The Pod is running hot:":    "pod-hot",
 	})
 	go func() {
 		lastUpdateCheck := time.Time{}
@@ -92,16 +103,35 @@ func selfCareOnce(al *agent.AgentLoop, workspace string, lastUpdateCheck *time.T
 	for _, a := range hardware.Assess(snap, hardware.OnMemoryCard(), memoryShortChecks >= sustainedShortChecks) {
 		al.Announce(a.Key, a.Text, a.Cooldown, a.Urgent)
 	}
+	// What is true now, for each alert that reports a condition that can clear.
+	// A reading that could not be taken is left out: unknown is not "fine".
+	conditions := map[string]bool{
+		"storage-critical": snap.Storage == hardware.PressureCritical,
+		"storage-low":      snap.Storage == hardware.PressureWarning,
+		"memory-critical":  snap.Memory == hardware.PressureCritical,
+		"memory-low":       snap.Memory == hardware.PressureWarning,
+	}
 	if uncleanStart {
 		uncleanStart = false
 		al.Announce("unclean-stop", "I restarted after being cut off, most likely a power cut or a crash. I checked my memory and it's intact, so nothing was lost. If this happens often, a small battery backup for the Pod is worth it.", time.Minute, false)
 	}
 
 	rs := hardware.ReadEnvironment("")
+	if cpu := hardware.CPU(rs); cpu != nil {
+		conditions["pod-hot"] = cpu.Value >= cpuHotC
+	}
 	if cpu := hardware.CPU(rs); cpu != nil && cpu.Value >= cpuHotC {
 		al.Announce("pod-hot", fmt.Sprintf("The Pod is running hot: %.0f°C. It slows itself down to protect its chips. Check that it has airflow and its fan is turning.", cpu.Value), 3*time.Hour, true)
 	}
 	temp, hum := hardware.Room(rs)
+	if temp != nil {
+		conditions["room-hot"] = temp.Value >= roomHotC
+		conditions["room-cold"] = temp.Value <= roomColdC
+	}
+	if hum != nil {
+		conditions["room-humid"] = hum.Value >= roomHumidPct
+		conditions["room-dry"] = hum.Value <= roomDryPct
+	}
 	if temp != nil {
 		switch {
 		case temp.Value >= roomHotC:
@@ -118,6 +148,8 @@ func selfCareOnce(al *agent.AgentLoop, workspace string, lastUpdateCheck *time.T
 			al.Announce("room-dry", fmt.Sprintf("Humidity in the room is %.0f%%. The air is very dry.", hum.Value), 6*time.Hour, false)
 		}
 	}
+
+	retract.observe(conditions, func(key string) { al.ResolveNotice(key) })
 
 	if time.Since(*lastUpdateCheck) >= updateCheckGap {
 		*lastUpdateCheck = time.Now()

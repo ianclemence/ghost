@@ -85,6 +85,27 @@ func (sm *SessionManager) AddFullMessage(sessionKey string, msg providers.Messag
 	}
 }
 
+// ResolveNotice marks the open alerts that report noticeKey as resolved, when
+// the store can (the SQLite store can). It returns the ids it settled.
+func (sm *SessionManager) ResolveNotice(sessionKey, noticeKey string) []string {
+	if r, ok := sm.store.(interface {
+		ResolveNotice(sessionKey, noticeKey string) []string
+	}); ok {
+		return r.ResolveNotice(sessionKey, noticeKey)
+	}
+	return nil
+}
+
+// TagNotices keys older alerts by their opening words (see SQLiteStore).
+func (sm *SessionManager) TagNotices(sessionKey, contentPrefix, noticeKey string) int {
+	if t, ok := sm.store.(interface {
+		TagNotices(sessionKey, contentPrefix, noticeKey string) int
+	}); ok {
+		return t.TagNotices(sessionKey, contentPrefix, noticeKey)
+	}
+	return 0
+}
+
 func (sm *SessionManager) GetHistory(key string) []providers.Message {
 	if sm.store == nil {
 		return []providers.Message{}

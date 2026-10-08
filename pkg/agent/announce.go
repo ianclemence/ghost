@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/constants"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/provider"
@@ -71,6 +72,52 @@ func (al *AgentLoop) Announce(key, text string, cooldown time.Duration, urgent b
 	al.DeliverToOwner(channel, chatID, text, map[string]interface{}{"announce": key, "urgent": urgent})
 	logger.InfoCF("agent", "announced to owner", map[string]interface{}{"key": key, "urgent": urgent})
 	return true
+}
+
+// ResolveNotice retracts an alert whose condition has cleared. The words Ghost
+// said stay in the conversation, marked resolved so every surface can show them
+// as settled, and every connected surface is told at once. The key's cooldown
+// is forgotten, so the same condition coming back is announced again. It
+// reports whether anything was open.
+func (al *AgentLoop) ResolveNotice(key string) bool {
+	if al == nil || al.sessions == nil || key == "" {
+		return false
+	}
+	ids := al.sessions.ResolveNotice(ownerConversation, key)
+	if len(ids) == 0 {
+		return false
+	}
+	announceMu.Lock()
+	seen := al.readAnnounced()
+	delete(seen, key)
+	if b, err := json.Marshal(seen); err == nil {
+		_ = os.WriteFile(al.announcedPath(), b, 0o600)
+	}
+	announceMu.Unlock()
+	if b := al.Bus(); b != nil {
+		b.PublishOutbound(bus.OutboundMessage{
+			Channel: "mobile",
+			Metadata: map[string]interface{}{
+				"type":       "notice_resolved",
+				"session_id": ownerConversation,
+				"key":        key,
+			},
+		})
+	}
+	logger.InfoCF("agent", "alert resolved", map[string]interface{}{"key": key, "messages": len(ids)})
+	return true
+}
+
+// KeyOlderNotices gives the alerts Ghost wrote before alerts carried a key
+// their key, by the fixed opening of their words, so the ones whose condition
+// has since cleared can be resolved. Idempotent.
+func (al *AgentLoop) KeyOlderNotices(openings map[string]string) {
+	if al == nil || al.sessions == nil {
+		return
+	}
+	for prefix, key := range openings {
+		al.sessions.TagNotices(ownerConversation, prefix, key)
+	}
 }
 
 // noteModelFailure is called when a model call fails. If the cause is

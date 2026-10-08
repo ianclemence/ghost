@@ -650,7 +650,7 @@ func handleWebSocket(agentLoop *agent.AgentLoop) http.HandlerFunc {
 				metaType, _ := msg.Metadata["type"].(string)
 				interactive := false
 				switch metaType {
-				case "canvas_update", "cron_update", "clarify_request", "progress_event", "card_update", "surface_update", "background_started", "background_done":
+				case "canvas_update", "cron_update", "clarify_request", "progress_event", "card_update", "surface_update", "notice_resolved", "background_started", "background_done":
 					interactive = true
 				}
 				if !interactive && !conversationEvent(msg) {
@@ -1148,6 +1148,10 @@ type Message struct {
 	// Kind is set for messages Ghost started itself: "reminder", "notice" or
 	// "alert". Absent for ordinary conversation.
 	Kind string `json:"kind,omitempty"`
+	// NoticeKey names the condition an alert reports; Resolved is true once
+	// that condition has cleared, so surfaces show it as settled.
+	NoticeKey string `json:"notice_key,omitempty"`
+	Resolved  bool   `json:"resolved,omitempty"`
 	// Interrupted marks a reply a restart cut off mid-sentence, which the
 	// runtime put back into the transcript so nothing said was lost.
 	// Surfaces show it as cut short rather than as an answer that simply
@@ -3659,6 +3663,12 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 					}
 					if v, ok := meta["interrupted"].(bool); ok {
 						m.Interrupted = v
+					}
+					if k, ok := meta["notice_key"].(string); ok {
+						m.NoticeKey = k
+					}
+					if v, ok := meta["resolved"].(bool); ok {
+						m.Resolved = v
 					}
 				}
 			}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 func TestToolDetailIsOneSafeLine(t *testing.T) {
@@ -71,5 +73,26 @@ func TestSteerPickedEventListsOnlyOwnerMessages(t *testing.T) {
 	got := ev["contents"].([]string)
 	if len(got) != 2 || got[0] != "use blue" || got[1] != "and bold" {
 		t.Fatalf("contents: %v", got)
+	}
+}
+
+func TestAFailedCommandSaysWhatTheCommandSaid(t *testing.T) {
+	cases := []struct{ name, out, want string }{
+		{"stderr line, not the marker", "\nSTDERR:\nls: cannot access '/x': No such file or directory\nExit code: exit status 2", "ls: cannot access '/x': No such file or directory"},
+		{"stdout first when there is some", "partial output\nSTDERR:\nboom\nExit code: exit status 1", "partial output"},
+		{"nothing said: the exit status", "(no output)\nExit code: exit status 3", "exit status 3"},
+		{"plain error text", "tool \"x\" not found", "tool \"x\" not found"},
+	}
+	for _, c := range cases {
+		got := toolEndNote(&tools.ToolResult{IsError: true, ForLLM: c.out})
+		if got != c.want {
+			t.Errorf("%s: got %q want %q", c.name, got, c.want)
+		}
+	}
+	if toolEndNote(&tools.ToolResult{ForLLM: "all good"}) != "" {
+		t.Error("a call that worked has no note")
+	}
+	if toolEndNote(&tools.ToolResult{TimedOut: true, IsError: true}) != "Timed out" {
+		t.Error("a timeout says so")
 	}
 }

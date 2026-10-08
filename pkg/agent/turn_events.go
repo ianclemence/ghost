@@ -131,7 +131,9 @@ func ToolDetail(name string, args map[string]interface{}) string {
 }
 
 // toolEndNote says why a call did not work, in one short line. A call that
-// worked has nothing to add.
+// worked has nothing to add. A command's output is stdout, then "STDERR:" and
+// stderr, then "Exit code: ...": the line worth showing is the first line of
+// what the command itself said, not those markers.
 func toolEndNote(r *tools.ToolResult) string {
 	if r == nil {
 		return ""
@@ -142,10 +144,32 @@ func toolEndNote(r *tools.ToolResult) string {
 	if !r.IsError {
 		return ""
 	}
-	if r.Err != nil {
-		return r.Err.Error()
+	text := r.ForLLM
+	if r.Err != nil && strings.TrimSpace(text) == "" {
+		text = r.Err.Error()
 	}
-	return r.ForLLM
+	return meaningfulLine(text)
+}
+
+// meaningfulLine picks the line of a failure that says what went wrong: the
+// first line that is not a marker the tool added, falling back to the exit
+// status when the command said nothing.
+func meaningfulLine(text string) string {
+	exit := ""
+	for _, ln := range strings.Split(text, "\n") {
+		ln = strings.TrimSpace(ln)
+		switch {
+		case ln == "" || ln == "STDERR:" || ln == "(no output)":
+			continue
+		case strings.HasPrefix(ln, "Exit code:"):
+			if exit == "" {
+				exit = strings.TrimSpace(strings.TrimPrefix(ln, "Exit code:"))
+			}
+			continue
+		}
+		return ln
+	}
+	return exit
 }
 
 // steerPickedEvent tells a watcher that messages it sent into the running turn

@@ -72,6 +72,16 @@ func (e embeddedRuntime) LoadHistory(sessionKey string) ([]historyEntry, error) 
 	return out, nil
 }
 
+// DrainSteering empties the loop's queue of messages sent into a turn that is
+// over. What the model did not read goes out as the next message from the
+// terminal; left here it would surface in a later turn, out of context.
+func (e embeddedRuntime) DrainSteering(sessionKey string) {
+	if sm := e.AgentLoop.Steering(); sm != nil {
+		for len(sm.DrainPending(sessionKey)) > 0 {
+		}
+	}
+}
+
 // embeddedRoutines opens the routines service over the loop's own database,
 // the same authority the gateway serves when a daemon runs.
 func (e embeddedRuntime) embeddedRoutines() (*routines.Service, string, error) {
@@ -773,6 +783,8 @@ type historyEntry struct {
 	Content   string
 	Timestamp int64
 	Kind      string // reminder / notice / alert for messages Ghost started
+	// Resolved is true for an alert or notice whose condition has since cleared.
+	Resolved bool
 }
 
 // conversationBackfillCap bounds startup history loads: the whole
@@ -873,6 +885,7 @@ func (g *gatewayRuntime) loadSessionHistory(sessionKey string, limit, offset int
 			Content   string `json:"content"`
 			Timestamp int64  `json:"timestamp"`
 			Kind      string `json:"kind"`
+			Resolved  bool   `json:"resolved"`
 		} `json:"messages"`
 		HasMore bool `json:"has_more"`
 	}
@@ -890,7 +903,7 @@ func (g *gatewayRuntime) loadSessionHistory(sessionKey string, limit, offset int
 		if strings.TrimSpace(m.Content) == "" {
 			continue
 		}
-		out = append(out, historyEntry{Role: m.Role, Content: m.Content, Timestamp: m.Timestamp, Kind: m.Kind})
+		out = append(out, historyEntry{Role: m.Role, Content: m.Content, Timestamp: m.Timestamp, Kind: m.Kind, Resolved: m.Resolved})
 	}
 	return out, res.HasMore, nil
 }
@@ -1020,6 +1033,11 @@ func (g *gatewayRuntime) ProcessDirectWithChannel(ctx context.Context, content, 
 			Provider   string   `json:"provider"`
 			Model      string   `json:"model"`
 			Local      bool     `json:"local"`
+			ID         string   `json:"id"`
+			OK         bool     `json:"ok"`
+			MS         int64    `json:"ms"`
+			Note       string   `json:"note"`
+			Contents   []string `json:"contents"`
 		}
 		if err := json.Unmarshal([]byte(payload), &obj); err != nil {
 			continue
@@ -1028,6 +1046,18 @@ func (g *gatewayRuntime) ProcessDirectWithChannel(ctx context.Context, content, 
 		case "tool_status":
 			if agentProgram != nil {
 				agentProgram.Send(toolProgressMsg{tool: obj.Tool, label: obj.Label})
+			}
+		case "tool_start":
+			if agentProgram != nil && obj.ID != "" {
+				agentProgram.Send(toolStartMsg{id: obj.ID, tool: obj.Tool, detail: obj.Detail})
+			}
+		case "tool_result":
+			if agentProgram != nil && obj.ID != "" {
+				agentProgram.Send(toolResultMsg{id: obj.ID, ok: obj.OK, dur: time.Duration(obj.MS) * time.Millisecond, note: obj.Note})
+			}
+		case "steer_picked", "steer_returned":
+			if agentProgram != nil {
+				agentProgram.Send(steerMsg{contents: obj.Contents, picked: obj.Type == "steer_picked"})
 			}
 		case "clarify_request":
 			if agentProgram != nil {

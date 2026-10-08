@@ -41,6 +41,9 @@ func (s *SQLiteStore) AddFullMessage(sessionKey string, msg providers.Message) {
 	if msg.Kind != "" {
 		meta["kind"] = msg.Kind
 	}
+	if msg.NoticeKey != "" {
+		meta["notice_key"] = msg.NoticeKey
+	}
 	if msg.Interrupted {
 		meta["interrupted"] = true
 	}
@@ -139,6 +142,9 @@ func (s *SQLiteStore) queryHistory(key string, excludeCompacted bool) []provider
 		}
 		if val, ok := meta["kind"].(string); ok {
 			msg.Kind = val
+		}
+		if val, ok := meta["notice_key"].(string); ok {
+			msg.NoticeKey = val
 		}
 		if val, ok := meta["interrupted"].(bool); ok {
 			msg.Interrupted = val
@@ -243,4 +249,64 @@ func (s *SQLiteStore) DeleteSession(key string) error {
 		return err
 	}
 	return nil
+}
+
+// ResolveNotice marks every still-open alert or notice in the conversation
+// that reports condition noticeKey as resolved, and returns their ids. The
+// words stay in the transcript (it is a record of what Ghost said); surfaces
+// show them as settled instead of as something that still needs the owner.
+func (s *SQLiteStore) ResolveNotice(sessionKey, noticeKey string) []string {
+	if noticeKey == "" {
+		return nil
+	}
+	rows, err := s.db.Query(`SELECT id, meta FROM messages
+		WHERE session_id = ? AND json_extract(meta, '$.notice_key') = ?
+		  AND COALESCE(json_extract(meta, '$.resolved'), 0) = 0`, sessionKey, noticeKey)
+	if err != nil {
+		return nil
+	}
+	type row struct {
+		id   string
+		meta []byte
+	}
+	var found []row
+	for rows.Next() {
+		var r row
+		if rows.Scan(&r.id, &r.meta) == nil {
+			found = append(found, r)
+		}
+	}
+	rows.Close()
+	now := time.Now().Format(time.RFC3339Nano)
+	var ids []string
+	for _, r := range found {
+		var meta map[string]interface{}
+		if json.Unmarshal(r.meta, &meta) != nil {
+			continue
+		}
+		meta["resolved"] = true
+		meta["resolved_at"] = now
+		b, _ := json.Marshal(meta)
+		if _, err := s.db.Exec(`UPDATE messages SET meta = ? WHERE id = ?`, b, r.id); err == nil {
+			ids = append(ids, r.id)
+		}
+	}
+	return ids
+}
+
+// TagNotices gives a key to alerts and notices written before alerts carried
+// one, found by the fixed opening of their words, so they can be resolved like
+// any other. It touches only messages Ghost started itself that have no key,
+// and is safe to run on every start.
+func (s *SQLiteStore) TagNotices(sessionKey, contentPrefix, noticeKey string) int {
+	res, err := s.db.Exec(`UPDATE messages SET meta = json_set(meta, '$.notice_key', ?)
+		WHERE session_id = ? AND role = 'assistant'
+		  AND json_extract(meta, '$.kind') IN ('alert', 'notice')
+		  AND json_extract(meta, '$.notice_key') IS NULL
+		  AND substr(content, 1, ?) = ?`, noticeKey, sessionKey, len(contentPrefix), contentPrefix)
+	if err != nil {
+		return 0
+	}
+	n, _ := res.RowsAffected()
+	return int(n)
 }

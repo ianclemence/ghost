@@ -95,6 +95,9 @@ type Message struct {
 	// thought you should know) or "alert" (something that needs you). Empty for
 	// ordinary conversation. Surfaces use it to set these apart.
 	Kind string `json:"kind,omitempty"`
+	// NoticeKey names the condition an alert or notice reports ("storage-critical"),
+	// so the message can be marked resolved when the condition clears.
+	NoticeKey string `json:"notice_key,omitempty"`
 	// CreatedAt is when the message was persisted (zero when unknown).
 	// Context building date-stamps loaded history with it so the model
 	// can tell when "today"/"tomorrow" was actually said — a bare

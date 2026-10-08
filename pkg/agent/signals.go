@@ -516,7 +516,8 @@ func (al *AgentLoop) DeliverToOwner(channel, chatID, text string, meta map[strin
 	}
 	kind := messageKindFor(meta)
 	if al.sessions != nil {
-		al.sessions.AddFullMessage(ownerConversation, providers.Message{Role: "assistant", Content: text, Kind: kind})
+		key, _ := meta["announce"].(string)
+		al.sessions.AddFullMessage(ownerConversation, providers.Message{Role: "assistant", Content: text, Kind: kind, NoticeKey: key})
 	}
 	m := map[string]interface{}{"type": "assistant_message", "session_id": ownerConversation, "origin": "ghost"}
 	for k, v := range meta {

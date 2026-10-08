@@ -967,6 +967,10 @@ func agentCmd() {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "○ Gateway unreachable — local mode (this conversation stays on this machine until the daemon runs)\n")
+	// Anything that needs the owner's approval (commands, the browser, the
+	// computer) goes through the daemon's permission broker. Without it these
+	// are refused, and the model's explanation of why reads like a fault.
+	fmt.Fprintf(os.Stderr, "  Commands, the browser and anything that needs your approval stay off until it does: start it with `ghost serve`.\n")
 
 	// Seed bundled skills for a fresh workspace (idempotent, manifest-aware).
 	syncEmbeddedSkills(cfg.WorkspacePath())

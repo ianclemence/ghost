@@ -44,6 +44,23 @@ type streamChunkMsg struct{ text string }
 // toolCallMsg reports the model invoking a tool (label is product language).
 type toolCallMsg struct{ tool, label string }
 
+// toolStartMsg and toolResultMsg report one tool call beginning and ending,
+// with what it was about and how it went (from the Pod's turn events).
+type toolStartMsg struct{ id, tool, detail string }
+type toolResultMsg struct {
+	id   string
+	ok   bool
+	dur  time.Duration
+	note string
+}
+
+// steerMsg reports what became of messages sent into the running turn:
+// the model read them (picked), or the turn ended without reading them.
+type steerMsg struct {
+	contents []string
+	picked   bool
+}
+
 // toolProgressMsg is toolCallMsg for turns that run on the daemon: the
 // server-side label arrives complete, so it bypasses local relabeling.
 type toolProgressMsg struct{ tool, label string }
@@ -96,6 +113,8 @@ const (
 	tagReminder = "reminder"
 	tagNotice   = "notice"
 	tagAlert    = "alert"
+	// tagResolved marks an alert or notice whose condition has cleared.
+	tagResolved = "resolved"
 	tagRoutine  = "routine"
 )
 
@@ -219,7 +238,14 @@ type agentTUI struct {
 	elapsed     time.Duration
 	spinFrame   int
 	toolHistory []toolStep // product-language tool steps for the current turn
-	paletteSel  int        // selected index in the / palette popup
+	// This turn's step rows: how many were printed, how many were left out past
+	// stepRowCap, and whether the Pod reports each call (otherwise the older
+	// bare status frames are all there is and nothing is printed).
+	stepsPrinted     int
+	stepsHidden      int
+	stepEvents       bool
+	podReportsPickup bool
+	paletteSel       int // selected index in the / palette popup
 
 	// approval is set when a turn ends with a durable permission request;
 	// the composer is replaced by Allow once / This task / Always allow / Deny choices.
@@ -262,6 +288,13 @@ type toolStep struct {
 	start time.Time
 	done  bool
 	dur   time.Duration
+	// From a Pod that reports each call (tool_start / tool_result): which call
+	// it was, what it was about, whether it worked and why not.
+	id      string
+	detail  string
+	note    string
+	failed  bool
+	printed bool // its row is in the scrollback (or was counted as hidden)
 }
 
 const agentPrompt = "› "
@@ -433,12 +466,28 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case toolCallMsg:
-		m.pushToolStep(msg.tool, msg.label)
+		if !m.stepEvents {
+			m.pushToolStep(msg.tool, msg.label)
+		}
 		return m, nil
 
 	case toolProgressMsg:
-		// Daemon turns arrive with complete server-side labels.
-		m.pushToolStep(msg.tool, msg.label)
+		// Daemon turns arrive with complete server-side labels. A Pod that
+		// reports each call says it better: its steps replace these.
+		if !m.stepEvents || msg.tool == "phase" {
+			m.pushToolStep(msg.tool, msg.label)
+		}
+		return m, nil
+
+	case toolStartMsg:
+		m.beginStep(msg)
+		return m, nil
+
+	case toolResultMsg:
+		return m, m.finishStep(msg)
+
+	case steerMsg:
+		m.noteSteer(msg)
 		return m, nil
 
 	case clarifyRequestMsg:
@@ -460,12 +509,28 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clarify = nil
 		var tailCmd tea.Cmd
 		now := time.Now()
+		var stepCmds []tea.Cmd
 		for i := range m.toolHistory {
 			if !m.toolHistory[i].done {
 				m.toolHistory[i].done = true
 				m.toolHistory[i].dur = now.Sub(m.toolHistory[i].start)
+				// A call that never reported back when the turn ended: it was
+				// cut off, which is worth saying, not a quiet success.
+				if m.toolHistory[i].id != "" && msg.err != nil {
+					m.toolHistory[i].failed = true
+					m.toolHistory[i].note = "stopped"
+				}
+				if c := m.printStep(i); c != nil {
+					stepCmds = append(stepCmds, c)
+				}
 			}
 		}
+		if line := hiddenStepsLine(m.toolHistory, m.stepsHidden, now.Sub(m.turnStart), m.textWidth()); line != "" {
+			if c := printCmd(line); c != nil {
+				stepCmds = append(stepCmds, c)
+			}
+		}
+		m.stepsHidden = 0
 		m.toolLine = ""
 		m.turnCount++
 		if msg.err != nil {
@@ -544,7 +609,12 @@ func (m *agentTUI) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if bg := m.pollBackground(); bg != nil {
 			cmds = append(cmds, bg)
 		}
-		if msg.err == nil && m.approval == nil {
+		cmds = append(cmds, stepCmds...)
+		// What was typed while Ghost worked is never lost: whatever the turn
+		// did not read goes out next, in order.
+		if next := m.settleQueue(msg.err == nil); next != "" && m.approval == nil {
+			cmds = append(cmds, m.send(next))
+		} else if msg.err == nil && m.approval == nil {
 			cmds = append(cmds, m.fetchSuggestion())
 		}
 		return m, tea.Batch(cmds...)
@@ -899,9 +969,9 @@ func (m *agentTUI) send(text string) tea.Cmd {
 	full := m.expandPastes(text) // the model gets every character
 	if m.working {
 		// Queue a steering message into the running turn.
-		m.queued = append(m.queued, text)
+		m.queued = append(m.queued, full)
 		m.loop.InjectSteering(m.session, full)
-		m.append(entry{kind: entryNotice, text: "↳ queued for the current turn: " + text})
+		m.append(entry{kind: entryNotice, text: "↳ queued: " + text})
 		m.renderTranscript()
 		return nil
 	}
@@ -911,6 +981,9 @@ func (m *agentTUI) send(text string) tea.Cmd {
 	m.toolCount = 0
 	m.toolLine = ""
 	m.toolHistory = nil
+	m.stepsPrinted, m.stepsHidden, m.stepEvents, m.podReportsPickup = 0, 0, false, false
+	// An in-process turn always reports pickup; a daemon says so as it goes.
+	_, m.podReportsPickup = m.loop.(embeddedRuntime)
 	m.streaming = ""
 	m.streamHeaderShown = false
 	m.streamFlushedLines = 0
@@ -960,8 +1033,20 @@ func (m *agentTUI) runTurn(text string, media []string) {
 		served = append(served, s)
 		mu.Unlock()
 	})
+	// In-process turns report each call the same way the daemon does.
+	ctx = agent.WithTurnObserver(ctx, func(ev map[string]interface{}) {
+		if msg := turnEventMsg(ev); msg != nil {
+			send(msg)
+		}
+	})
 	resp, err := m.loop.ProcessDirectWithChannel(
 		ctx, text, m.session, "cli", "direct", media, chunk, onTool)
+	// A message sent into this turn that the model never got to must not wait
+	// in the loop's queue and surface in some later turn out of context: the
+	// terminal sends it as the next message itself.
+	if d, ok := m.loop.(interface{ DrainSteering(sessionKey string) }); ok {
+		d.DrainSteering(m.session)
+	}
 	mu.Lock()
 	agg, ok := agent.AggregateServedBy(served)
 	mu.Unlock()
@@ -1082,7 +1167,7 @@ var paletteCommands = []paletteItem{
 	{"attach", "send a file with your next message (/attach ~/lease.pdf)"},
 	{"files", "files you have sent Ghost; /files delete 2 removes one"},
 	{"rewind", "edit and resend last message"},
-	{"details", "toggle tool step details"},
+	{"details", "show every step and full commands"},
 	{"clear", "clear the screen"},
 	{"quit", "exit"},
 }
@@ -1783,7 +1868,7 @@ func (m *agentTUI) loadHistory() {
 		case "user":
 			m.entries = append(m.entries, entry{kind: entryUser, text: h.Content, at: at})
 		case "assistant":
-			m.entries = append(m.entries, entry{kind: entryAssistant, text: h.Content, at: at, tag: h.Kind})
+			m.entries = append(m.entries, entry{kind: entryAssistant, text: h.Content, at: at, tag: tuiTagFor(h)})
 		}
 	}
 	m.turnCount = 0
@@ -2133,6 +2218,15 @@ func (m *agentTUI) renderEntry(e entry) string {
 	return e.text
 }
 
+// tuiTagFor is the tag a stored row is drawn with: what Ghost started itself, or
+// "resolved" once the alert it raised has cleared, so it stops saying it needs you.
+func tuiTagFor(h historyEntry) string {
+	if h.Resolved && (h.Kind == tagAlert || h.Kind == "notice") {
+		return tagResolved
+	}
+	return h.Kind
+}
+
 // taggedHead is the header of a message Ghost started itself. A reminder, a
 // notice and an alert each get their own glyph and colour, so a glance tells
 // "Ghost answered you" from "Ghost is telling you something".
@@ -2143,6 +2237,8 @@ func (m *agentTUI) taggedHead(tag string, at time.Time) string {
 		glyph, label, style = "◷", "Reminder", styleTagReminder
 	case tagAlert:
 		glyph, label, style = "△", "Ghost needs you", styleTagAlert
+	case tagResolved:
+		glyph, label, style = "✓", "Resolved", styleTagRoutine
 	case tagRoutine:
 		glyph, label, style = "↻", "Routine", styleTagRoutine
 	}
@@ -3681,6 +3777,14 @@ func (m *agentTUI) activityWord() string {
 func (m *agentTUI) activeStepWord() string {
 	for i := len(m.toolHistory) - 1; i >= 0; i-- {
 		if !m.toolHistory[i].done {
+			if st := m.toolHistory[i]; st.id != "" {
+				// What it is doing, and about what: "Running a command · php -v".
+				word := stepTitle(st.tool, true)
+				if d := strings.TrimSpace(st.detail); d != "" {
+					word += " · " + cellTruncate(d, 40)
+				}
+				return word
+			}
 			if label := strings.TrimSpace(m.toolHistory[i].label); label != "" {
 				return label
 			}
@@ -4157,7 +4261,7 @@ func agentHelpText() string {
 		"  /attach <path>     send a file with your next message (PDF, Word, sheet, text, image)",
 		"  /files             files you have sent; /files delete <n> removes one",
 		"  /rewind            put the last message back in the editor",
-		"  /details           toggle tool step details",
+		"  /details           show every step and full commands",
 		"  /clear             clear the screen (keeps the conversation)",
 		"  /quit              exit",
 		"",

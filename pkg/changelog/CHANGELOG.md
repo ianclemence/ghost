@@ -3,6 +3,27 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.161] - 2026-10-08
+
+- **An alert goes away when the problem does.** "I'm almost out of storage"
+  used to stay in the conversation as a "Needs you" card long after you freed
+  the space. Ghost now notices when what it reported has stayed fixed for a
+  couple of checks (storage, memory, heat, room temperature and humidity),
+  marks the alert resolved, and tells your app and terminal at once. The words
+  stay as a record; the card settles into a quiet "Resolved" line. If the
+  problem comes back, you are told again. Alerts written before this are keyed
+  on first start so the ones already on your phone settle too.
+- **The terminal shows what Ghost did, step by step.** Each finished step is
+  one quiet row with what it was, what it was about and how long it took, and a
+  failure says why on the line beneath. A long task prints the first eight and
+  counts the rest; `/details` shows every step and full commands.
+- **What you type while Ghost works is never lost.** In the terminal and the
+  app, a message sent into a running turn is either read by Ghost or handed
+  back and sent as the next message, exactly once. A failed command's note now
+  says what the command said instead of "STDERR:".
+- **Local mode says what it can't do.** With no daemon running, the terminal
+  now says commands and the browser stay off until `ghost serve`.
+
 ## [0.24.160] - 2026-10-08
 
 - **Alerts now use the whole width of a phone.** A toast (like the Undo after
