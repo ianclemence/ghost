@@ -3389,6 +3389,15 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					"iteration": iteration,
 				})
 
+			// Tell any watcher this call is starting, and how it ended. Every way
+			// out of this iteration (refused, blocked, paused, ran) closes it, so
+			// a step on the owner's phone never stays "running" for good.
+			toolStartedAt := time.Now()
+			emitTurnEvent(ctx, toolStartEvent(tc.ID, tc.Name, tc.Arguments))
+			endTool := func(ok bool, note string) {
+				emitTurnEvent(ctx, toolEndEvent(tc.ID, tc.Name, ok, time.Since(toolStartedAt).Milliseconds(), note))
+			}
+
 			// Create async callback for tools that implement AsyncTool
 			// NOTE: async tools do NOT send results directly to users.
 			// Instead, they notify the agent via PublishInbound, and the agent decides
@@ -3406,6 +3415,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 
 			if !activeProfile.Allows(tc.Name) {
+				endTool(false, "Not available here")
 				toolResultMsg := providers.Message{
 					Role:       "tool",
 					Content:    fmt.Sprintf("tool %s not available in profile %s", tc.Name, activeProfile),
@@ -3426,6 +3436,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				cap := skills.GetCapability(capSkill)
 				if !cap.Allows(tc.Name) {
 					capViolations[cap.ID]++
+					endTool(false, "Not allowed for this task")
 					if capViolations[cap.ID] >= 3 {
 						finalContent = cap.CleanFailure()
 						if al.governance != nil {
@@ -3460,6 +3471,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			// still hard-block before any approval request.
 			if msg, blocked := surfaceToolBlocked(activeProfile, al.tools, tc.Name, opts.Channel, opts.SessionKey); blocked {
 				if !attemptHiddenPrimitive(activeProfile, al.tools, activeTools, tc.Name, opts.Channel, opts.SessionKey) {
+					endTool(false, "Not available here")
 					toolResultMsg := providers.Message{
 						Role:       "tool",
 						Content:    msg,
@@ -3479,6 +3491,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				cap := skills.GetCapability(capSkill)
 				al.governance.NoteCapability(opts.RequestID, cap.ID, turnlog.TrajectoryIDFromContext(ctx))
 				if decision := al.governance.AuthorizeTool(opts.RequestID, opts.SessionKey, cap.ID, tc.Name, tc.Arguments); !decision.Allowed {
+					endTool(false, "Waiting for your OK")
 					toolResultMsg := providers.Message{
 						Role:       "tool",
 						Content:    decision.AskMessage,
@@ -3497,6 +3510,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				// excluded: they have their own dedicated gate.
 				if decision, handled := al.authorizeStandaloneTool(opts.RequestID, opts.SessionKey, tc.Name, tc.Arguments); handled {
 					if !decision.Allowed {
+						endTool(false, "Waiting for your OK")
 						toolResultMsg := providers.Message{
 							Role:       "tool",
 							Content:    decision.AskMessage,
@@ -3540,6 +3554,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			} else {
 				toolResult, toolGoverned, toolStop = al.maybeRunBrowserTool(toolCtx, activeTools, tc, opts, asyncCallback)
 			}
+			endTool(toolResult != nil && !toolResult.IsError && !toolResult.TimedOut, toolEndNote(toolResult))
 			if toolGoverned {
 				if toolStop {
 					toolResultMsg := providers.Message{
@@ -3652,6 +3667,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		if al.steering != nil {
 			pending := al.steering.DrainPending(opts.SessionKey)
 			if len(pending) > 0 {
+				if ev := steerPickedEvent(pending); len(ev["contents"].([]string)) > 0 {
+					emitTurnEvent(ctx, ev)
+				}
 				steerText := FormatForPrompt(pending)
 				if steerText != "" {
 					messages = append(messages, providers.Message{

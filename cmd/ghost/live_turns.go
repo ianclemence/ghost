@@ -79,6 +79,14 @@ func (h *turnHub) broadcast(f liveFrame) {
 	}
 }
 
+// Active reports whether a reply is being written for the session right now.
+// A message steered into a turn that is not running would wait for nothing.
+func (h *turnHub) Active(session string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.active[session] != nil
+}
+
 // Begin records that a reply is starting.
 func (h *turnHub) Begin(session, requestID, origin, userText string) {
 	h.mu.Lock()

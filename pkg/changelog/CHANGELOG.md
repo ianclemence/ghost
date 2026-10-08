@@ -3,6 +3,19 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.159] - 2026-10-08
+
+- **The phone can now show what Ghost did, step by step.** While a reply is
+  being written the Pod reports each tool call as it starts and as it ends,
+  with what it was about (the search, the site, the command, the file name),
+  how long it took and why it failed. Anything that looks like a credential is
+  masked and every line is cut short.
+- **Messages sent while Ghost works are never left waiting for nothing.** The
+  Pod tells the phone when it has read a message sent into the running turn,
+  and hands back any it finished without reading, so the phone can send them
+  as the next message. Steering a turn that is not running is refused instead
+  of queueing for a later turn to pick up out of context.
+
 ## [0.24.158] - 2026-10-07
 
 - **Alert pills with buttons no longer squeeze their text.** Toasts carrying

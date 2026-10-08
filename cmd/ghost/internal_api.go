@@ -3312,6 +3312,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		// execution, and verification so every event for this turn lands
 		// on one trace (ghost replay <trajectory-id>).
 		ctx = turnlog.WithTrajectoryID(ctx, trajectoryID)
+		// What each tool call did and how it ended, and when a message the
+		// owner sent into this turn is read: the phone draws them as the run.
+		ctx = agent.WithTurnObserver(ctx, func(ev map[string]interface{}) { emitObject(ev) })
 
 		// Subscribe to outbound bus during this request to forward
 		// clarify_request and other interactive events over SSE. Without
@@ -3403,6 +3406,28 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 
 		// Stop keep-alive before writing [DONE] to avoid write-after-close race
 		close(keepAliveDone)
+
+		// A message the owner sent into this turn that the model never got to
+		// (the turn finished without another tool call) is handed back, so the
+		// phone sends it as the next message instead of leaving it waiting.
+		if sm := agentLoop.Steering(); sm != nil {
+			var back []string
+			// The queue may hand out one message per drain: take until empty.
+			for {
+				batch := sm.DrainPending(req.SessionKey)
+				if len(batch) == 0 {
+					break
+				}
+				for _, m := range batch {
+					if !m.IsInterrupt && !m.IsHardAbort && strings.TrimSpace(m.Content) != "" {
+						back = append(back, m.Content)
+					}
+				}
+			}
+			if len(back) > 0 {
+				emitObject(map[string]interface{}{"type": "steer_returned", "contents": back})
+			}
+		}
 
 		// Terminal product outcome: the runtime states success/waiting/failed;
 		// the client renders it and never infers success from prose. Draining
@@ -5486,6 +5511,15 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			http.Error(w, `{"ok":false,"error":"steering unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
+		// A message steered into a turn that is not running would sit in the
+		// queue until some later turn read it out of context. Say so, and the
+		// phone sends it as the next message instead.
+		if req.Action != "abort" && req.Action != "interrupt" && !turns.Active(req.SessionKey) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			fmt.Fprint(w, `{"ok":false,"error":"no_active_turn"}`)
+			return
+		}
 		switch req.Action {
 		case "abort":
 			sm.HardAbort(req.SessionKey)
@@ -5504,7 +5538,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			})
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"ok":true}`)
+		fmt.Fprintf(w, `{"ok":true,"pending":%d}`, sm.PendingCount(req.SessionKey))
 	}))
 
 	// ── Clarify responses ─────────────────────────────────────────────────
