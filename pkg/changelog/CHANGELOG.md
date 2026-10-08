@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.160] - 2026-10-08
+
+- **Alerts now use the whole width of a phone.** A toast (like the Undo after
+  dismissing a notice) could only grow to half the screen, so on a phone every
+  message wrapped inside about half its width, a word or two per line, with a
+  gap before the button. Toasts now span the screen up to a comfortable
+  maximum, sit above the phone's bottom edge, and keep soft corners instead of
+  turning into a circle when a message runs long.
+
 ## [0.24.159] - 2026-10-08
 
 - **The phone can now show what Ghost did, step by step.** While a reply is

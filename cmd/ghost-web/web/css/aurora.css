@@ -205,7 +205,7 @@ body { font-feature-settings: "cv11", "ss03"; letter-spacing: -0.006em; }
 .ghost-toast { display: inline-flex; align-items: center; gap: var(--s-4); }
 /* The message takes the free space and wraps inside it; the action never
    shrinks or wraps, so long messages no longer squeeze to a word per line. */
-.ghost-toast { max-width: min(92vw, 480px); }
+.ghost-toast { max-width: min(100%, 480px); box-sizing: border-box; }
 .ghost-toast-msg { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }
 .ghost-toast-action {
   flex-shrink: 0; white-space: nowrap;

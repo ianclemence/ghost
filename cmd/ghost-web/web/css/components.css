@@ -534,9 +534,14 @@ textarea.ghost-input {
 /* ── Toasts ── */
 .ghost-toast-container {
   position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
+  /* Full width, toasts centred inside it. Anchored at left: 50% with a
+     translate, the container could only be as wide as the right half of the
+     screen, so on a phone every toast wrapped inside ~half its width. */
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  padding: 0 var(--s-4);
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   z-index: 80;
   display: flex;
   flex-direction: column;
