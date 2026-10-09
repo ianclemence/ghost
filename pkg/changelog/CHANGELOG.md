@@ -3,6 +3,43 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.164] - 2026-10-09
+
+- **Cards can ask you things.** A card can offer choices, a date and time,
+  an amount, a few words, or a list to tick, answered with one send that
+  Ghost checks before it counts. Questions Ghost used to ask as a grey line
+  above the box now arrive as cards you can answer in place, and a grocery
+  list keeps each tick.
+- **Ghost drafts it; you send it.** Ask for an email, an event or a text
+  and Ghost shows it as it will go out, ready to edit first. Sending is
+  your tap on the card: mail goes through Gmail or Outlook, the event is
+  put on the calendar with its real times, a text opens in Messages filled
+  in. The card says what really happened.
+- **Cards can compare, chart and map.** A side-by-side with Ghost's pick,
+  bars and lines that fit any width, and places drawn by their positions,
+  each opening in your maps app.
+- **Ghost lays out documents to print.** What Ghost writes becomes a printed
+  page in its own type, kept as PDF and as Word, each change the next
+  version. Everything Ghost made — pages, documents, pictures, links, notes —
+  lives on one shelf, pinned first, versions as one entry, with search.
+- **Ghost keeps track of people, papers and money.** Who matters with
+  birthdays and when you last spoke, passports and warranties with when
+  they run out (read off the photo), what went out and came in by month
+  with subscriptions and bills. It reminds you: a birthday a week ahead,
+  a paper at 90, 30 and 7 days, a bill three days ahead.
+- **Ghost watches a page and tells you when what you asked happens.** "Tell
+  me when it's under KES 25,000" or back in stock or when a slot opens, made
+  from your own words with the link in them. It looks with one safe read and
+  pings you only when the rule is met; if it already is, it says so.
+- **Trips are journeys with their legs.** Flights, trains and hotels from
+  what you said and your bookings, on a timeline: the week before (and a
+  passport too close to expiring), the day before a flight with one tap to
+  follow it, when to leave for the airport, the hotel on its day.
+- **Recorded meetings come back as text.** Record from the composer; the
+  phone sends it in pieces and Ghost transcribes it part by part with your
+  own speech engine, kept as a document. One tap asks what was decided and
+  the actions as a checklist.
+
 ## [0.24.163] - 2026-10-09
 
 - **Pages Ghost builds fill their window in the chat.** The app now shows a
