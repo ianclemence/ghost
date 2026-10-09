@@ -291,6 +291,8 @@ func main() {
 		onboard()
 	case "tasks":
 		tasksCmd()
+	case "jobs":
+		jobsCmd()
 	case "ideas":
 		ideasCmd()
 	case "serve", "gateway":
@@ -509,6 +511,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Talk")
 	fmt.Println("  ghost       Chat with Ghost in the terminal")
+	fmt.Println("  jobs        What Ghost takes on for you: list, turn on at a time, turn off")
 	fmt.Println("  tasks       Show and manage durable routines (pause, resume, cancel)")
 	fmt.Println("  ideas       Suggestions with evidence (list, refresh, accept, dismiss, draft)")
 	fmt.Println("  pair        Connect the Ghost app: shows a QR to scan (pair [phone name])")
@@ -2462,7 +2465,7 @@ func isApplianceOpsCommand(command string) bool {
 // commands whose config MUST match the console and the daemon.
 func isInteractiveCommand(command string) bool {
 	switch command {
-	case "serve", "gateway", "model", "golden", "benchmark", "tasks", "ideas":
+	case "serve", "gateway", "model", "golden", "benchmark", "tasks", "jobs", "ideas":
 		return true
 	}
 	return false

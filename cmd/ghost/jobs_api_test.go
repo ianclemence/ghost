@@ -86,3 +86,14 @@ func TestJobsTurnOnAsRoutinesAndOff(t *testing.T) {
 		t.Fatalf("unknown job: %d", code)
 	}
 }
+
+func TestJobRefsByIDOrTitle(t *testing.T) {
+	for ref, want := range map[string]string{"morning": "morning_brief", "Inbox": "inbox", "life_admin": "life_admin", "health weekly": "health"} {
+		if j, ok := findJobRef(ref); !ok || j.ID != want {
+			t.Fatalf("%q: %v %q", ref, ok, j.ID)
+		}
+	}
+	if _, ok := findJobRef("nothing"); ok {
+		t.Fatal("no such job")
+	}
+}

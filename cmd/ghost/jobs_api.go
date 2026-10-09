@@ -1,7 +1,10 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -18,6 +21,7 @@ import (
 	outlookprov "github.com/ianclemence/ghost/pkg/providers/outlook"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 // registerJobRoutes offers what Ghost can take on, as jobs.
@@ -136,59 +140,86 @@ func registerJobRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
 			return
 		}
-		svc, err := svcOf()
-		if err != nil {
-			jsonError(w, http.StatusServiceUnavailable, "unavailable", "routines are unavailable right now")
-			return
-		}
-		states, _ := store().All()
-		prev := states[id]
-		// Whatever was running for this job stops first: changing the time is
-		// a new routine, never two.
-		if prev.RoutineID != "" {
-			_ = svc.Cancel(prev.RoutineID)
-		}
-		if !req.Enabled {
-			if err := store().Set(id, jobs.State{Enabled: false}); err != nil {
-				jsonError(w, http.StatusInternalServerError, "failed", err.Error())
-				return
-			}
-			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "enabled": false})
-			return
-		}
-		set, err := j.Check(jobs.Settings{Time: req.Time, Topic: req.Topic})
-		if err != nil {
-			jsonError(w, http.StatusBadRequest, "invalid_request", err.Error())
-			return
-		}
-		ghostID, owner := "ghost-local", "owner"
-		if ident, err := ghoststate.LoadIdentity(apiWorkspaceDir); err == nil && ident != nil {
-			ghostID, owner = ident.GhostID, ident.OwnerName
-		}
-		tz := "UTC"
+		tz := tools.DeviceLocation().String()
 		if al != nil {
 			tz = al.OwnerLocation().String()
 		}
-		rt, err := svc.Create(ghostID, owner, j.Title, j.Instruction(set), tz, scheduled.Schedule{Kind: scheduled.ScheduleCron, Expr: j.Cron(set)}, nil)
-		if err != nil {
-			jsonError(w, http.StatusBadRequest, "invalid_request", "couldn't schedule it: "+err.Error())
+		set, next, err := applyJob(apiDB, apiWorkspaceDir, tz, j, req.Enabled, req.Time, req.Topic)
+		switch {
+		case errors.Is(err, errJobsUnavailable):
+			jsonError(w, http.StatusServiceUnavailable, "unavailable", "routines are unavailable right now")
 			return
-		}
-		// The job reports to the owner's conversation on the phone.
-		st := scheduled.NewStore(apiDB)
-		if item, err := st.Get(rt.ID); err == nil {
-			item.Channel, item.ChatID = "mobile", "default"
-			_ = st.Update(item)
-		}
-		if err := store().Set(id, jobs.State{Enabled: true, RoutineID: rt.ID, Settings: set, Since: time.Now().UTC()}); err != nil {
-			_ = svc.Cancel(rt.ID)
+		case errors.Is(err, errJobInvalid):
+			jsonError(w, http.StatusBadRequest, "invalid_request", strings.TrimPrefix(err.Error(), errJobInvalid.Error()+": "))
+			return
+		case err != nil:
 			jsonError(w, http.StatusInternalServerError, "failed", err.Error())
 			return
 		}
-		next := ""
-		if rt.NextRun != nil {
-			next = rt.NextRun.Format(time.RFC3339)
+		if !req.Enabled {
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "enabled": false})
+			return
 		}
-		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "enabled": true, "settings": set, "next_run_at": next})
+		at := ""
+		if next != nil {
+			at = next.Format(time.RFC3339)
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "enabled": true, "settings": set, "next_run_at": at})
 	}))
+}
+
+var (
+	errJobsUnavailable = errors.New("routines are unavailable")
+	errJobInvalid      = errors.New("invalid")
+)
+
+// applyJob turns a job on (or changes its time) or off: the one way to do it,
+// for the API and the CLI alike. Whatever was running for the job stops first,
+// so changing the time is a new routine, never two. A job that is on reports
+// to the owner's conversation on the phone.
+func applyJob(database *sql.DB, workspace, tz string, j jobs.Job, enabled bool, at, topic string) (jobs.Settings, *time.Time, error) {
+	if database == nil {
+		return jobs.Settings{}, nil, errJobsUnavailable
+	}
+	st := scheduled.NewStore(database)
+	if err := st.InitSchema(); err != nil {
+		return jobs.Settings{}, nil, errJobsUnavailable
+	}
+	svc, err := routines.New(database, st)
+	if err != nil {
+		return jobs.Settings{}, nil, errJobsUnavailable
+	}
+	store := jobs.Open(workspace)
+	// Settings are checked before anything stops, so a bad time never
+	// leaves a job that was on turned off.
+	var set jobs.Settings
+	if enabled {
+		if set, err = j.Check(jobs.Settings{Time: at, Topic: topic}); err != nil {
+			return set, nil, fmt.Errorf("%w: %s", errJobInvalid, err.Error())
+		}
+	}
+	states, _ := store.All()
+	if prev := states[j.ID]; prev.RoutineID != "" {
+		_ = svc.Cancel(prev.RoutineID)
+	}
+	if !enabled {
+		return set, nil, store.Set(j.ID, jobs.State{Enabled: false})
+	}
+	ghostID, owner := "ghost-local", "owner"
+	if ident, err := ghoststate.LoadIdentity(workspace); err == nil && ident != nil {
+		ghostID, owner = ident.GhostID, ident.OwnerName
+	}
+	rt, err := svc.Create(ghostID, owner, j.Title, j.Instruction(set), tz, scheduled.Schedule{Kind: scheduled.ScheduleCron, Expr: j.Cron(set)}, nil)
+	if err != nil {
+		return set, nil, fmt.Errorf("%w: couldn't schedule it: %s", errJobInvalid, err.Error())
+	}
+	if item, err := st.Get(rt.ID); err == nil {
+		item.Channel, item.ChatID = "mobile", "default"
+		_ = st.Update(item)
+	}
+	if err := store.Set(j.ID, jobs.State{Enabled: true, RoutineID: rt.ID, Settings: set, Since: time.Now().UTC()}); err != nil {
+		_ = svc.Cancel(rt.ID)
+		return set, nil, err
+	}
+	return set, rt.NextRun, nil
 }
