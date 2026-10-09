@@ -3,6 +3,11 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.167] - 2026-10-09
+
+- **A dashboard's total over an empty month reads 0**, instead of saying
+  the chart couldn't be drawn.
+
 ## [0.24.166] - 2026-10-09
 
 - **Ask about your data; keep the answer live.** "How did sales do by
