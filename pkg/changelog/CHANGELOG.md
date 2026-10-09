@@ -3,6 +3,21 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.169] - 2026-10-10
+
+- **Diagrams in motions.** A motion can show a process (boxes and arrows,
+  in turn, optionally looping back), one thing and what connects to it,
+  and a ring filling to a score. Motions are landscape unless you ask for
+  a phone or square video.
+- **Delete what Ghost made**: one version, or every version of it. A
+  document's files and a motion's video go with it; files you sent stay
+  in your Files.
+- **Every version of a motion** can be played again from the app.
+- **A PDF you send shows as itself** in the app, page by page, instead of
+  its text.
+- **Birthdays are optional** when Ghost gets to know the people in your
+  life: a date on a card can be left empty.
+
 ## [0.24.168] - 2026-10-10
 
 - **One home for what Ghost takes on.** In the app, Jobs now holds
