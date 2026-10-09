@@ -2,12 +2,15 @@ package credentials
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ianclemence/ghost/pkg/config"
 )
 
 // minScrubLen is the shortest secret worth scrubbing by value. Shorter
@@ -43,6 +46,17 @@ func collectSecretValues(path string) []string {
 	if err != nil {
 		return nil
 	}
+	// The vault is sealed on disk; read it the way the vault does, or there
+	// is nothing to scrub (every secret would pass through untouched).
+	if config.IsSealed(data) {
+		sec, err := config.LoadSecrets(path)
+		if err != nil {
+			return nil
+		}
+		if data, err = json.Marshal(sec); err != nil {
+			return nil
+		}
+	}
 	var root interface{}
 	if json.Unmarshal(data, &root) != nil {
 		return nil
@@ -73,6 +87,16 @@ func collectSecretValues(path string) []string {
 				var l WebLogin
 				if json.Unmarshal([]byte(t), &l) == nil {
 					add(l.Password)
+				}
+				// So are database connections: the address and its password.
+				var d Database
+				if json.Unmarshal([]byte(t), &d) == nil && d.URL != "" {
+					add(d.URL)
+					if u, err := url.Parse(d.URL); err == nil && u.User != nil {
+						if pw, ok := u.User.Password(); ok {
+							add(pw)
+						}
+					}
 				}
 			}
 		}

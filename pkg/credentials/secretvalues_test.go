@@ -24,3 +24,19 @@ func TestCollectSecretValuesFindsKeysTokensAndWebLoginPasswords(t *testing.T) {
 		t.Errorf("must skip placeholders, too-short strings and usernames: %v", got)
 	}
 }
+
+// The vault is sealed on disk: what it holds must still be found to scrub.
+func TestSecretValuesReadTheSealedVault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GHOST_CONFIG_DIR", dir)
+	if err := SaveWebLogin(WebLogin{URL: "https://example.com/login", Username: "ian", Password: "web-pass-123"}); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, v := range collectSecretValues(dir + "/.secrets.json") {
+		found = found || v == "web-pass-123"
+	}
+	if !found {
+		t.Fatal("a sealed vault's secrets are not scrubbed")
+	}
+}
