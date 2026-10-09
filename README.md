@@ -68,7 +68,7 @@ needs](docs/HARDWARE.md).
 **On your own Linux machine.**
 
 ```bash
-sudo apt install -y git make golang-go ffmpeg
+sudo apt install -y git make golang-go
 git clone https://github.com/ianclemence/ghost.git
 cd ghost
 sudo make install-ghost

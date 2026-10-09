@@ -182,6 +182,21 @@ install-ghost: build-ghost
 	else \
 		echo "Python 3 already installed."; \
 	fi
+	@# What Ghost works with on the Pod: ffmpeg (voice, video from motions),
+	@# a browser (browsing, laying out documents, drawing motions), pandoc and
+	@# poppler (documents). Only what is missing is installed; the browser's
+	@# package is "chromium" on Debian and Raspberry Pi OS, "chromium-browser"
+	@# on Ubuntu.
+	@missing=""; \
+	for t in ffmpeg:ffmpeg pandoc:pandoc pdftoppm:poppler-utils; do \
+		command -v $${t%%:*} >/dev/null 2>&1 || missing="$$missing $${t#*:}"; \
+	done; \
+	if [ -n "$$missing" ]; then echo "Installing$$missing..."; sudo apt-get install -y $$missing; fi; \
+	if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then \
+		echo "Installing a browser for Ghost..."; \
+		sudo apt-get install -y chromium 2>/dev/null || sudo apt-get install -y chromium-browser || \
+			echo "Couldn't install a browser: browsing, documents and motion videos need Chromium."; \
+	fi
 	@# Stop services before replacing binaries
 	@sudo systemctl stop ghost 2>/dev/null || true
 	@sudo systemctl stop ghost-web 2>/dev/null || true

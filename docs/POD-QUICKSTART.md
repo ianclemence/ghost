@@ -55,12 +55,16 @@ app is closed: reminders, questions, and anything it thinks you should know.
 ## Building your own Pod
 
 ```bash
-sudo apt install -y git make golang-go ffmpeg
+sudo apt install -y git make golang-go
 git clone https://github.com/ianclemence/ghost.git
 cd ghost
 sudo make install-ghost
 sudo reboot
 ```
+
+`make install-ghost` also installs what Ghost works with when it is missing:
+ffmpeg, a browser (Chromium), pandoc and poppler, for voice, browsing, documents
+and motion videos.
 
 Then follow steps 2 to 6. To give the Pod a fixed setup code (for a batch you are
 preparing), write it to `ghost-setup-code` on the boot partition before first
