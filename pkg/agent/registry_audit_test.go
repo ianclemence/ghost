@@ -128,6 +128,7 @@ var allowedCoreAudit = map[string]bool{
 	"finances":       true, // the owner's own spending records, local; no bank, no payment
 	"trips":          true, // the owner's own trip records, local; no booking
 	"knowledge":      true, // what the owner reads and studies, local records
+	"motion":         true, // animated explainers: local files, rendered to video on the Pod
 	"phone":          true, // what the owner's phone shared, local; place reminders
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,

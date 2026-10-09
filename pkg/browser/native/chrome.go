@@ -53,6 +53,7 @@ type launchOptions struct {
 	ExtraArgs []string
 	// StartURL, when set, opens as the first tab.
 	StartURL string
+	Env      []string
 }
 
 // chromeProcess is a launched browser, its debugging endpoint, and enough state
@@ -146,6 +147,9 @@ func launchChrome(ctx context.Context, opts launchOptions) (*chromeProcess, erro
 	args = append(args, opts.ExtraArgs...)
 
 	cmd := exec.CommandContext(ctx, bin, args...)
+	if len(opts.Env) > 0 {
+		cmd.Env = append(os.Environ(), opts.Env...)
+	}
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {

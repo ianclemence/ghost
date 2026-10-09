@@ -49,6 +49,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/media"
 	"github.com/ianclemence/ghost/pkg/modes"
+	"github.com/ianclemence/ghost/pkg/motion"
 	"github.com/ianclemence/ghost/pkg/permissions"
 	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/proactive"
@@ -378,6 +379,8 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 		})
 	}, nil)
 	registry.Register(canvasTool)
+	// Motion: animated explainers, played on the phone and made into videos here.
+	registry.Register(tools.NewMotionTool(workspace, motion.ExportsFor(workspace)))
 
 	if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 		BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
@@ -634,6 +637,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		if t, ok := toolsRegistry.Get("canvas"); ok {
 			if ct, ok := t.(*tools.CanvasTool); ok {
 				ct.SetPublisher(artifactStore)
+			}
+		}
+		if t, ok := toolsRegistry.Get("motion"); ok {
+			if mt, ok := t.(*tools.MotionTool); ok {
+				mt.SetPublisher(artifactStore)
 			}
 		}
 		// So is a document: a PDF laid out from what Ghost wrote.
@@ -948,6 +956,19 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		}
 	}
 	doctorRunner.SetRetrievalSource(al.retrieval.snapshot)
+
+	// A motion's video is made in the background; the owner hears when it is.
+	if tool, ok := al.tools.Get("motion"); ok {
+		if mt, ok := tool.(*tools.MotionTool); ok {
+			mt.OnVideo(func(_ context.Context, title string, j motion.Job) {
+				text := fmt.Sprintf("The video of %s is ready. It's in the chat and on your shelf.", title)
+				if j.State != "done" {
+					text = fmt.Sprintf("I couldn't make the video of %s: %s", title, j.Error)
+				}
+				al.DeliverToOwner("mobile", "default", text, map[string]interface{}{"motion": true})
+			})
+		}
+	}
 
 	// Detached-task lifecycle joins the bus for surfaces: the registry
 	// observes starts/finishes where they happen, the loop routes them.

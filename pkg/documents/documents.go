@@ -404,3 +404,7 @@ tr { break-inside: avoid; }
 tr > :last-child:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
 img { max-width: 100%; }
 `
+
+// FontFaces is Ghost's type as inline @font-face rules, for anything else the
+// Pod lays out (a motion, a page) that must look the same with nothing fetched.
+func FontFaces() string { return fontFaces() }

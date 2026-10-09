@@ -51,6 +51,9 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Showing the owner what was built, running in their chat. Sandboxed on
 		// the phone and unable to reach the network, so nothing to gate.
 		"canvas",
+		// Animated explainers: a spec the phone plays and the Pod renders to
+		// video locally. Nothing is sent anywhere.
+		"motion",
 		// Cards that show or ask, and drafts the owner sends themselves: none
 		// of them can run, open or send anything on their own.
 		"present_card", "draft",
@@ -304,6 +307,9 @@ var turnIntentTools = []struct {
 		"heart rate", "health", "walked", "exercise", "when i get to", "when i arrive", "when i leave", "when i'm at", "when i am at", "arrive at",
 		"get home", "alarm", "wake me", "wake up at"},
 		[]string{"phone", "draft", "places_nearby"}},
+	// Motion: animated explainers and videos made from the owner's data.
+	{[]string{"animate", "animation", "animated", "explainer", "motion", "video", "mp4", "clip", "reel", "tiktok", "walkthrough", "make it move"},
+		[]string{"motion", "finances", "knowledge"}},
 	// Knowledge: what the owner reads and studies.
 	{[]string{"reading", "i read", "finished reading", "book", "chapter", "page ", "studying", "study", "revise", "revision", "exam", "course",
 		"lesson", "module", "lecture", "learning", "learn ", "podcast", "article", "highlight", "quote", "flashcard", "quiz me", "test me"},

@@ -104,6 +104,7 @@ var reviewedUngoverned = map[string]string{
 	"finances":       "the owner's own spending records on the Pod; imports a workspace file; no bank, no payment; forgetting needs confirmed=true",
 	"trips":          "the owner's own trip records on the Pod; no booking, no payment; forgetting needs confirmed=true",
 	"knowledge":      "the owner's own reading and study records on the Pod; nothing leaves it; forgetting needs confirmed=true",
+	"motion":         "writes Ghost's own motion files and renders them to video on the Pod with a local browser and ffmpeg; nothing is sent",
 	"phone":          "reads what the owner's phone shared with the Pod (notifications, health totals) and keeps place reminders the phone watches; nothing leaves the Pod",
 }
 

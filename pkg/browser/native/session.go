@@ -27,6 +27,8 @@ type Options struct {
 	Viewport [2]int
 	// StartURL opens as the first tab.
 	StartURL string
+	// Env adds to the browser's environment (KEY=VALUE).
+	Env []string
 }
 
 // Session is a live page: a Chrome process (or an attached target), a CDP
@@ -52,6 +54,7 @@ func Launch(ctx context.Context, opts Options) (*Session, error) {
 		Profile:  opts.Profile,
 		Viewport: opts.Viewport,
 		StartURL: opts.StartURL,
+		Env:      opts.Env,
 	})
 	if err != nil {
 		return nil, err

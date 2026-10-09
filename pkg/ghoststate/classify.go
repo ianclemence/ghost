@@ -60,6 +60,13 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 		// What Ghost made for the owner: pages that run and documents laid
 		// out from what it wrote (with their sources). Theirs, and kept.
 		return CategoryPortable, nil
+	case strings.HasPrefix(rel, "motion/"):
+		// A motion is its spec, which is the owner's and travels; the video
+		// is made from it again on any Pod, so it is left out.
+		if strings.HasSuffix(rel, ".mp4") {
+			return CategoryDerived, nil
+		}
+		return CategoryPortable, nil
 	case strings.HasPrefix(rel, "meetings/"):
 		// Transcripts and their records are the owner's and travel; the
 		// recordings themselves are left out (large; the transcript is what
