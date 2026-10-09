@@ -49,6 +49,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/connectedapp"
 	"github.com/ianclemence/ghost/pkg/contexts"
 	"github.com/ianclemence/ghost/pkg/credentials"
+	"github.com/ianclemence/ghost/pkg/documents"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/goals"
 	"github.com/ianclemence/ghost/pkg/hardware"
@@ -4677,6 +4678,38 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			w.Header().Set("Cache-Control", "private, max-age=3600")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(data)
+			return
+		}
+		if r.Method == http.MethodGet && action == "page" {
+			// A PDF page as it is printed (fonts, layout, images), not its
+			// text pulled out: the same renderer as Ghost's own documents.
+			it, ok := uploads.Find(ws, id)
+			if !ok {
+				jsonError(w, http.StatusNotFound, "not_found", "That file isn't stored on this Ghost.")
+				return
+			}
+			if !strings.HasSuffix(strings.ToLower(it.Name), ".pdf") && it.MIME != "application/pdf" {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "only a PDF has pages")
+				return
+			}
+			n, _ := strconv.Atoi(r.URL.Query().Get("n"))
+			if n < 1 {
+				n = 1
+			}
+			width, _ := strconv.Atoi(r.URL.Query().Get("w"))
+			png, pages, err := documents.PageImage(r.Context(), ws, it.Path, n, width)
+			if err != nil {
+				status := http.StatusBadRequest
+				if errors.Is(err, documents.ErrUnavailable) || pages == 0 {
+					status = http.StatusServiceUnavailable
+				}
+				jsonResponse(w, status, map[string]interface{}{"ok": false, "pages": pages, "error": err.Error()})
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{
+				"ok": true, "page": n, "pages": pages, "mime_type": "image/png",
+				"image_base64": base64.StdEncoding.EncodeToString(png),
+			})
 			return
 		}
 		if r.Method == http.MethodGet && (action == "preview" || action == "content") {

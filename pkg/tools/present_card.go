@@ -54,7 +54,7 @@ tone is one of neutral, good, warn, bad, info. Everything is plain text: no link
 
 A card can also ASK, so the owner answers with a tap instead of typing. Input blocks each need a key (lowercase, the name the answer comes back under):
 - choice: key, label, options [{id, label, detail?}] (2 to 8), multiple? (true lets them pick several)
-- datetime: key, label, mode ("date", "time" or "datetime"), value? (a suggestion, in the form 2026-10-12 / 14:30 / 2026-10-12T14:30), earliest?
+- datetime: key, label, mode ("date", "time" or "datetime"), value? (a suggestion, in the form 2026-10-12 / 14:30 / 2026-10-12T14:30), earliest?, optional? (true when the owner may not know it, like someone's birthday: never make them invent one)
 - slider: key, label, min, max, step?, number? (where it starts), unit?
 - field: key, label, placeholder?, optional?, multiline? (short text)
 - checklist: key, label?, checks [{id, label, done?}] (up to 20). A card whose only input is a checklist needs no submit: the owner ticks it as they go (groceries, packing) and the ticks are kept.

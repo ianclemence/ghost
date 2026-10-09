@@ -301,6 +301,35 @@
         ]
       },
       "blocks": 3
+    },
+    {
+      "name": "a date the owner may not know",
+      "spec": {
+        "kind": "present",
+        "title": "Who matters to you?",
+        "blocks": [
+          {
+            "type": "field",
+            "key": "name",
+            "label": "Name"
+          },
+          {
+            "type": "datetime",
+            "key": "birthday",
+            "label": "Birthday",
+            "mode": "date",
+            "optional": true
+          }
+        ],
+        "actions": [
+          {
+            "id": "s",
+            "label": "Send",
+            "kind": "submit"
+          }
+        ]
+      },
+      "blocks": 2
     }
   ],
   "invalid": [

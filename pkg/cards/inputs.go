@@ -541,6 +541,10 @@ func answerFor(b Block, v interface{}, has bool, now time.Time) (string, interfa
 		return names[0], ids[0], nil
 	case BlockDatetime:
 		s, ok := v.(string)
+		if (missing || (ok && strings.TrimSpace(s) == "")) && b.Optional {
+			// Not known, and allowed to be left (a birthday the owner doesn't know).
+			return "", nil, nil
+		}
 		if missing || !ok || strings.TrimSpace(s) == "" {
 			return "", nil, fmt.Errorf("%s: choose a %s", b.Label, map[string]string{"date": "date", "time": "time", "datetime": "date and time"}[b.Mode])
 		}
