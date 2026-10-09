@@ -58,3 +58,34 @@ html,body{margin:0;padding:0;background:#0B0B10;overflow:hidden}
   background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.25);opacity:0;pointer-events:none}
 .play::after{content:"";position:absolute;left:40%;top:30%;border-style:solid;border-width:calc(var(--u)*3.2) 0 calc(var(--u)*3.2) calc(var(--u)*5.2);border-color:transparent transparent transparent #fff}
 #motion.paused .play,#motion.ended .play{opacity:1}
+.flow-row{display:flex;align-items:center;justify-content:flex-start;gap:0;width:max-content}
+.flow--col .flow-row{flex-direction:column;margin:0 auto}
+.flow-back{width:max-content}
+.flow-box{flex:none;white-space:nowrap;padding:calc(var(--u)*2.4) calc(var(--u)*2.8);border-radius:calc(var(--u)*2.6);
+  background:rgba(255,255,255,.06);border:calc(var(--u)*.25) solid rgba(255,255,255,.16);font-size:calc(var(--u)*3.2);line-height:1.25;text-align:center;font-weight:500}
+.flow-box.on{background:color-mix(in srgb,var(--accent) 18%,transparent);border-color:var(--accent);box-shadow:0 0 calc(var(--u)*5) color-mix(in srgb,var(--accent) 40%,transparent)}
+.flow-arrow{position:relative;flex:none;width:calc(var(--u)*7);height:calc(var(--u)*3);transform-origin:0 50%}
+.flow--col .flow-arrow{width:calc(var(--u)*3);height:calc(var(--u)*6);transform-origin:50% 0}
+.flow-shaft{position:absolute;left:calc(var(--u)*1);right:calc(var(--u)*1.6);top:50%;height:calc(var(--u)*.4);margin-top:calc(var(--u)*-.2);background:rgba(255,255,255,.55);border-radius:2px}
+.flow-head{position:absolute;right:calc(var(--u)*.6);top:50%;width:calc(var(--u)*1.6);height:calc(var(--u)*1.6);margin-top:calc(var(--u)*-.8);border-top:calc(var(--u)*.4) solid rgba(255,255,255,.55);border-right:calc(var(--u)*.4) solid rgba(255,255,255,.55);transform:rotate(45deg)}
+.flow--col .flow-shaft{left:50%;right:auto;top:calc(var(--u)*.8);bottom:calc(var(--u)*1.4);width:calc(var(--u)*.4);height:auto;margin:0 0 0 calc(var(--u)*-.2)}
+.flow--col .flow-head{left:50%;right:auto;top:auto;bottom:calc(var(--u)*.5);margin:0 0 0 calc(var(--u)*-.8);transform:rotate(135deg)}
+.flow-back{display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*1.2);margin-top:calc(var(--u)*2.4)}
+.flow-back-line{display:block;width:100%;height:calc(var(--u)*1.6);border:calc(var(--u)*.35) solid color-mix(in srgb,var(--accent) 70%,transparent);border-top:0;border-radius:0 0 calc(var(--u)*2) calc(var(--u)*2);transform-origin:100% 50%}
+.flow-back-label{font-size:calc(var(--u)*2.6);letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.5)}
+.hub-box{position:relative;margin:0 auto}
+.hub-svg{position:absolute;inset:0;overflow:visible}
+.hub-spoke{stroke:rgba(255,255,255,.35);stroke-width:2;stroke-linecap:round}
+.hub-core{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:calc(var(--u)*22);height:calc(var(--u)*22);border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;padding:calc(var(--u)*2);
+  background:radial-gradient(circle at 50% 35%,color-mix(in srgb,var(--accent) 45%,#0B0B10),#0B0B10);border:calc(var(--u)*.3) solid var(--accent);box-shadow:0 0 calc(var(--u)*7) color-mix(in srgb,var(--accent) 45%,transparent);
+  font-family:"Instrument Serif",Georgia,serif;font-size:calc(var(--u)*4.2);line-height:1.05;z-index:2}
+.hub-sat{position:absolute;transform:translate(-50%,-50%);max-width:calc(var(--u)*24);padding:calc(var(--u)*1.6) calc(var(--u)*2.4);border-radius:999px;background:#14141B;border:calc(var(--u)*.25) solid rgba(255,255,255,.18);
+  font-size:calc(var(--u)*2.9);line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:2}
+.gauge{display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*2)}
+.gauge-wrap{position:relative}
+.gauge-svg{display:block}
+.gauge-track{fill:none;stroke:rgba(255,255,255,.08);stroke-width:7;stroke-linecap:round}
+.gauge-fill{fill:none;stroke:var(--accent);stroke-width:7;stroke-linecap:round;filter:drop-shadow(0 0 4px color-mix(in srgb,var(--accent) 60%,transparent))}
+.gauge-value{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:"Instrument Serif",Georgia,serif;font-size:calc(var(--u)*11);font-variant-numeric:tabular-nums}
+.flow,.hub{display:flex;flex-direction:column;align-items:center}
+.flow .chart-label,.hub .chart-label{text-align:center}

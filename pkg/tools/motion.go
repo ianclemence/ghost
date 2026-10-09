@@ -45,7 +45,7 @@ func (t *MotionTool) Description() string {
 	return `Make a short animated explainer (a motion) from a report, numbers, a chart or a walkthrough, for the owner to watch, change and export as an MP4 video. It is written as scenes, not filmed: no video model, every word, number and timing can be changed. Use it when they ask to animate something, make a video or explainer of their data, a short clip for a presentation or social media, or to explain steps visually. Use real numbers only (from what they gave you, a file, their finances, a dashboard query); never invent data.
 
 action:
-- make: title, spec. The spec is JSON: {"title", "size": "portrait" (9:16, default) | "landscape" (16:9) | "square", "accent": "#RRGGBB" (one leading colour, optional), "scenes": [{"duration": seconds 1-20, "caption"?: a source or date at the foot, "elements": [...]}]}. At most 12 scenes, 90 seconds in all, 6 elements a scene. Elements (each may have "at": seconds into its scene when it enters, and "stay"):
+- make: title, spec. The spec is JSON: {"title", "size": "landscape" (16:9, the default) | "portrait" (9:16, only when they want it for a phone or a story) | "square", "accent": "#RRGGBB" (one leading colour, optional), "scenes": [{"duration": seconds 1-20, "caption"?: a source or date at the foot, "elements": [...]}]}. At most 12 scenes, 90 seconds in all, 6 elements a scene. Elements (each may have "at": seconds into its scene when it enters, and "stay"):
   {"type":"title","text","sub"?} · {"type":"text","text"} · {"type":"quote","text","sub"?: who}
   {"type":"number","from","to","prefix"? ("KES "),"suffix"? ("%"),"decimals"?,"label"?}: counts up
   {"type":"bars","labels":[...],"values":[...],"unit"?,"label"?}: horizontal bars growing in turn, the biggest lit
@@ -53,6 +53,10 @@ action:
   {"type":"donut","labels","values","label"?}: shares of a whole
   {"type":"compare","labels":[a,b],"values":[a,b],"prefix"?,"label"?}: before and after
   {"type":"list","items":[...],"label"?} · {"type":"steps","items":[...],"label"?}: a walkthrough, each step lit in turn
+  {"type":"flow","items":[2-6 short boxes],"loop"?:true,"label"?}: a diagram of a process or a chain (A → B → C), arrows drawing in turn; loop returns to the start
+  {"type":"hub","text":"the centre","items":[2-6 parts],"label"?}: a diagram of one thing and what connects to it (your Pod and the phone, web and terminal around it)
+  {"type":"gauge","to":value,"max"?:100,"suffix"?:"%","label"?}: a ring filling to a share or a score
+  Use flow and hub for diagrams: they are the motion's diagrams.
   Good motions are short (15-40 s), one idea per scene, a title first, few words on screen, the number that matters big.
 - change: title, spec: the whole updated spec, saved as the next version (read it first with show).
 - show: title → the current spec, to change it.

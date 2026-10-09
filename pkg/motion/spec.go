@@ -46,6 +46,11 @@ type Scene struct {
 //	steps   Items as numbered steps (a walkthrough), each lit in turn
 //	compare Labels (two) + Values (two): before and after, this and that
 //	quote   Text, and Sub for who said it
+//	flow    Items as boxes joined by arrows, drawn in turn (Loop: the last
+//	        arrow returns to the first): a process, a chain of cause and effect
+//	hub     Text at the centre, Items around it, joined by spokes: one thing
+//	        and the parts that connect to it
+//	gauge   To out of Max (100 if unset) as a ring that fills; Suffix, Label
 //
 // At is when it enters, in seconds from the start of its scene; Stay, when set,
 // is how long it stays (otherwise to the end of the scene).
@@ -63,6 +68,8 @@ type Element struct {
 	Labels   []string  `json:"labels,omitempty"`
 	Values   []float64 `json:"values,omitempty"`
 	Items    []string  `json:"items,omitempty"`
+	Loop     bool      `json:"loop,omitempty"`
+	Max      float64   `json:"max,omitempty"`
 	At       float64   `json:"at,omitempty"`
 	Stay     float64   `json:"stay,omitempty"`
 }
@@ -78,7 +85,7 @@ const (
 
 var (
 	hexRE        = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
-	elementTypes = map[string]bool{"title": true, "text": true, "number": true, "bars": true, "line": true, "donut": true, "list": true, "steps": true, "compare": true, "quote": true}
+	elementTypes = map[string]bool{"title": true, "text": true, "number": true, "bars": true, "line": true, "donut": true, "list": true, "steps": true, "compare": true, "quote": true, "flow": true, "hub": true, "gauge": true}
 )
 
 // Parse reads a spec and checks it.
@@ -100,7 +107,7 @@ func (s *Spec) Check() error {
 	}
 	switch s.Size {
 	case "":
-		s.Size = "portrait"
+		s.Size = "landscape"
 	case "portrait", "landscape", "square":
 	default:
 		return fmt.Errorf("size is portrait, landscape or square, not %q", s.Size)
@@ -141,7 +148,7 @@ func (s *Spec) Check() error {
 
 func (e *Element) check(sceneDur float64) error {
 	if !elementTypes[e.Type] {
-		return fmt.Errorf("type is title, text, number, bars, line, donut, list, steps, compare or quote, not %q", e.Type)
+		return fmt.Errorf("type is title, text, number, bars, line, donut, list, steps, compare, quote, flow, hub or gauge, not %q", e.Type)
 	}
 	// A prefix or suffix keeps its spacing ("KES " before, " sold" after).
 	for _, f := range []*string{&e.Text, &e.Sub, &e.Label, &e.Unit} {
@@ -156,7 +163,7 @@ func (e *Element) check(sceneDur float64) error {
 	if e.Decimals < 0 || e.Decimals > 3 {
 		return errors.New("decimals is 0 to 3")
 	}
-	for _, v := range append([]float64{e.From, e.To}, e.Values...) {
+	for _, v := range append([]float64{e.From, e.To, e.Max}, e.Values...) {
 		if math.IsNaN(v) || math.IsInf(v, 0) || math.Abs(v) > 1e15 {
 			return errors.New("a number is out of range")
 		}
@@ -189,6 +196,31 @@ func (e *Element) check(sceneDur float64) error {
 					return errors.New("a donut's values are shares, so not negative")
 				}
 			}
+		}
+	case "flow":
+		if len(e.Items) < 2 || len(e.Items) > 6 {
+			return errors.New("a flow has 2 to 6 boxes")
+		}
+		for _, it := range e.Items {
+			if len([]rune(it)) > 40 {
+				return errors.New("a flow's box says at most 40 characters")
+			}
+		}
+	case "hub":
+		if e.Text == "" || len(e.Items) < 2 || len(e.Items) > 6 {
+			return errors.New("a hub needs text at its centre and 2 to 6 items around it")
+		}
+		for _, it := range e.Items {
+			if len([]rune(it)) > 32 {
+				return errors.New("a hub's item says at most 32 characters")
+			}
+		}
+	case "gauge":
+		if e.Max == 0 {
+			e.Max = 100
+		}
+		if e.Max < 0 || e.To < 0 || e.To > e.Max {
+			return errors.New("a gauge's value is between 0 and its max")
 		}
 	case "compare":
 		if len(e.Values) != 2 || len(e.Labels) != 2 {

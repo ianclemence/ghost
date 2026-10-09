@@ -11,7 +11,9 @@
   var mode = window.__MOTION_MODE__ || "preview"; // "preview" | "render"
   var W = spec.size === "landscape" ? 1280 : spec.size === "square" ? 1080 : 720;
   var H = spec.size === "landscape" ? 720 : spec.size === "square" ? 1080 : 1280;
-  var U = Math.min(W, H) / 100; // one unit: 1% of the short side
+  // One unit: 1% of the short side on a tall or square frame; a little more
+  // on a wide one, which is seen at a distance (a screen, a presentation).
+  var U = W > H ? H / 80 : Math.min(W, H) / 100;
   var accent = spec.accent || "#9C95FF";
 
   // ── easing ─────────────────────────────────────────────────────────────
@@ -259,6 +261,149 @@
               o.mark.classList.toggle("done", t >= 0.15 + (i + 1) * gap && i < items.length - 1);
             }
           });
+        };
+        break;
+      }
+      case "flow": {
+        // Boxes joined by arrows, in a row (a column on a tall frame). Each box
+        // arrives, then the arrow to the next draws itself; the box being
+        // reached is lit. With loop, a return line runs back to the first.
+        node = el("div", "e flow" + (H > W ? " flow--col" : ""));
+        if (e.label) node.appendChild(el("div", "chart-label", e.label));
+        var row = el("div", "flow-row");
+        node.appendChild(row);
+        var n = e.items.length;
+        var span = Math.max(0.35, Math.min(0.7, (stay - 0.8) / (n + 0.5)));
+        var boxes = [], arrows = [];
+        e.items.forEach(function (it, i) {
+          var b = el("div", "flow-box", it);
+          row.appendChild(b);
+          boxes.push(b);
+          if (i < n - 1) {
+            var a = el("div", "flow-arrow");
+            a.appendChild(el("span", "flow-shaft"));
+            a.appendChild(el("span", "flow-head"));
+            row.appendChild(a);
+            arrows.push(a);
+          }
+        });
+        var back = null;
+        if (e.loop) {
+          back = el("div", "flow-back");
+          back.appendChild(el("span", "flow-back-line"));
+          back.appendChild(el("span", "flow-back-label", "and again"));
+          node.appendChild(back);
+        }
+        var fitted = false;
+        up = function (t) {
+          if (!fitted && node.offsetWidth) {
+            // Labels stay on one line; a row too wide for the frame is drawn smaller.
+            fitted = true;
+            var k = Math.min(1, node.offsetWidth / Math.max(1, row.scrollWidth));
+            var kh = H > W ? Math.min(1, (H - 34 * U) / Math.max(1, row.scrollHeight)) : 1;
+            k = Math.min(k, kh);
+            if (k < 1) row.style.transform = "scale(" + k + ")";
+            row.style.transformOrigin = H > W ? "50% 0" : "50% 50%";
+            if (back) back.firstChild.style.width = row.scrollWidth * k + "px";
+          }
+          boxes.forEach(function (b, i) {
+            var s0 = 0.15 + i * span;
+            var p = outCubic(prog(t, s0, 0.45));
+            b.style.opacity = p;
+            b.style.transform = "translateY(" + (1 - p) * 1.6 * U + "px) scale(" + (0.96 + 0.04 * p) + ")";
+            var lit = t >= s0 && (i === n - 1 || t < 0.15 + (i + 1) * span);
+            b.classList.toggle("on", lit || (i === n - 1 && t >= s0));
+          });
+          arrows.forEach(function (a, i) {
+            var p = inOut(prog(t, 0.15 + i * span + span * 0.45, span * 0.55));
+            a.style.transform = (H > W ? "scaleY(" : "scaleX(") + p + ")";
+            a.style.opacity = p > 0 ? 1 : 0;
+          });
+          if (back) {
+            var q = inOut(prog(t, 0.15 + n * span, 0.7));
+            back.style.opacity = q;
+            back.firstChild.style.transform = (H > W ? "scaleY(" : "scaleX(") + q + ")";
+          }
+        };
+        break;
+      }
+      case "hub": {
+        // One thing at the centre and what connects to it, spokes drawn out in
+        // turn. Drawn in one SVG at the frame's own scale, so it is crisp.
+        node = el("div", "e hub");
+        if (e.label) node.appendChild(el("div", "chart-label", e.label));
+        // Tall frames: a circle. Wide ones: an ellipse as wide as the frame
+        // allows, so the parts sit clear of the centre.
+        var bw, bh;
+        if (H > W) {
+          bw = bh = Math.min(W - 16 * U, H * 0.62);
+        } else {
+          bh = H - 30 * U;
+          bw = Math.min(W - 18 * U, bh * 2.1);
+        }
+        var box = el("div", "hub-box");
+        box.style.width = bw + "px";
+        box.style.height = bh + "px";
+        node.appendChild(box);
+        var cx = bw / 2, cy = bh / 2;
+        var hs = svg("svg", { width: bw, height: bh, viewBox: "0 0 " + bw + " " + bh, class: "hub-svg" });
+        box.appendChild(hs);
+        var core = el("div", "hub-core", e.text);
+        box.appendChild(core);
+        var m = e.items.length;
+        var rx = bw / 2 - 13 * U, ry = bh / 2 - 4 * U;
+        var spokes = e.items.map(function (it, i) {
+          var ang = -Math.PI / 2 + (i * 2 * Math.PI) / m;
+          var x = cx + rx * Math.cos(ang), y = cy + ry * Math.sin(ang);
+          var line = svg("line", { x1: cx, y1: cy, x2: x, y2: y, class: "hub-spoke" });
+          hs.appendChild(line);
+          var sat = el("div", "hub-sat", it);
+          sat.style.left = x + "px";
+          sat.style.top = y + "px";
+          box.appendChild(sat);
+          var len = Math.hypot(x - cx, y - cy);
+          line.style.strokeDasharray = len;
+          return { line: line, sat: sat, len: len };
+        });
+        up = function (t) {
+          var c = outQuint(prog(t, 0.05, 0.6));
+          core.style.opacity = c;
+          core.style.transform = "translate(-50%,-50%) scale(" + (0.9 + 0.1 * c) + ")";
+          var gap = Math.max(0.18, Math.min(0.4, (stay - 1.5) / Math.max(1, m)));
+          spokes.forEach(function (o, i) {
+            var s0 = 0.5 + i * gap;
+            var p = inOut(prog(t, s0, 0.5));
+            o.line.style.strokeDashoffset = o.len * (1 - p);
+            var q = outCubic(prog(t, s0 + 0.35, 0.45));
+            o.sat.style.opacity = q;
+            o.sat.style.transform = "translate(-50%,-50%) scale(" + (0.92 + 0.08 * q) + ")";
+          });
+        };
+        break;
+      }
+      case "gauge": {
+        // A ring that fills to the value, the number counting up inside it.
+        node = el("div", "e gauge");
+        var G = Math.min(W, H) * 0.42;
+        var gs = svg("svg", { width: G, height: G, viewBox: "0 0 100 100", class: "gauge-svg" });
+        var GR = 42, GC = 2 * Math.PI * GR, ARC = 0.75;
+        gs.appendChild(svg("circle", { cx: 50, cy: 50, r: GR, class: "gauge-track", transform: "rotate(135 50 50)", "stroke-dasharray": GC * ARC + " " + GC }));
+        var fill = svg("circle", { cx: 50, cy: 50, r: GR, class: "gauge-fill", transform: "rotate(135 50 50)" });
+        gs.appendChild(fill);
+        var wrapG = el("div", "gauge-wrap");
+        wrapG.appendChild(gs);
+        var gv = el("div", "gauge-value");
+        wrapG.appendChild(gv);
+        node.appendChild(wrapG);
+        var gl = e.label ? el("div", "number-label", e.label) : null;
+        if (gl) node.appendChild(gl);
+        var max = e.max || 100, val = e.to || 0;
+        up = function (t) {
+          var p = inOut(prog(t, 0.15, Math.min(1.8, stay * 0.5)));
+          fill.style.strokeDasharray = (GC * ARC * (val / max) * p) + " " + GC;
+          gv.textContent = (e.prefix || "") + fmt(val * p, e.decimals) + (e.suffix || "");
+          node.style.opacity = outCubic(prog(t, 0, 0.4));
+          if (gl) gl.style.opacity = outCubic(prog(t, 0.6, 0.6));
         };
         break;
       }
