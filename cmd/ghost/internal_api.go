@@ -6280,6 +6280,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	registerPushRoutes(mux, startPushBridge(agentLoop))
 	registerReminderActions(mux, scheduledService, nil, agentLoop)
 	registerCardInputs(mux, agentLoop)
+	registerLifeRoutes(mux, agentLoop.OwnerLocation)
 	registerSystemUpdateRoutes(mux)
 	registerConsoleResetRoute(mux, agentLoop)
 	registerToolServerRoutes(mux, agentLoop)

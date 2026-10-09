@@ -79,6 +79,7 @@ func (al *AgentLoop) AttentionTick(now time.Time) int {
 	al.offerUpcoming(now, loc)
 	al.offerUnseenReminders(now, loc)
 	al.offerFollowups(now, loc)
+	al.offerLife(now, loc)
 	pol := proactive.Load(al.workspace)
 	if !pol.Enabled {
 		return 0

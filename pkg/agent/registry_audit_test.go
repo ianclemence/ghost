@@ -123,6 +123,9 @@ var allowedCoreAudit = map[string]bool{
 	"present_card":   true, // renders a validated block card to the owner's own screen
 	"draft":          true, // shows a draft; sending is the owner's own tap on the card, never the model's
 	"document":       true, // lays out a workspace document as a PDF, locally
+	"people":         true, // the owner's own records of people, local
+	"vault":          true, // the owner's own document records, local
+	"money":          true, // the owner's own spending records, local; no bank, no payment
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,
 	"move_file": true, // renames inside the workspace, never overwrites, same guards as write_file

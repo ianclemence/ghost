@@ -99,6 +99,9 @@ var reviewedUngoverned = map[string]string{
 	"move_file":      "renames inside the workspace only, never overwrites, refuses Ghost's default files and folders",
 	"draft":          "shows a draft (email, event, text) on the owner's own screen; it never sends: sending is the owner's tap on the card, carried out by the Pod's card handler, not by the model",
 	"document":       "writes a document into the workspace and lays it out as a PDF locally (no network while printing); shown on the owner's own screen",
+	"people":         "the owner's own records of the people in their life, on the Pod; forgetting needs confirmed=true",
+	"vault":          "the owner's own records of their documents, on the Pod; reads only workspace files; forgetting needs confirmed=true",
+	"money":          "the owner's own spending records on the Pod; imports a workspace file; no bank, no payment; forgetting needs confirmed=true",
 }
 
 func TestEveryToolIsGovernedOrReviewed(t *testing.T) {

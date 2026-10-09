@@ -56,6 +56,13 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 		// migrate between machines. This is why exports failed on live
 		// devices the moment a skill wrote its first data file.
 		return CategoryPortable, nil
+	case strings.HasPrefix(rel, "canvas/") || strings.HasPrefix(rel, "documents/"):
+		// What Ghost made for the owner: pages that run and documents laid
+		// out from what it wrote (with their sources). Theirs, and kept.
+		return CategoryPortable, nil
+	case strings.HasPrefix(rel, ".cache/"):
+		// Pictures of document pages, drawn again on demand.
+		return CategoryDerived, nil
 	case strings.HasPrefix(rel, "pending/"):
 		// In-flight user business (pending questions, continuations):
 		// interrupted work that must resume after restore, like sessions.

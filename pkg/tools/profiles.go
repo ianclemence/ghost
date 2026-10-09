@@ -56,6 +56,8 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"present_card", "draft",
 		// Documents are laid out on the Pod and shown; nothing is sent.
 		"document",
+		// The owner's own records on their Pod: people, documents, money.
+		"people", "vault", "money",
 		// Browser surface on mobile: observe + act (broker-governed like
 		// exec, which is already here). Purchase-class submit and
 		// file-egress upload stay desktop/admin posture.
@@ -285,6 +287,23 @@ var turnIntentTools = []struct {
 	{[]string{"compact", "summarize history", "context full"}, []string{"compact_context"}},
 	{[]string{"update ghost", "upgrade ghost", "self-update"}, []string{"update"}},
 	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"doc_parser"}},
+	// The people in the owner's life. Mentioning someone is enough: "my
+	// sister", "Sam's birthday", "text Mum" all need to know who.
+	{[]string{"mum", "mom", "dad", "mother", "father", "sister", "brother", "wife", "husband", "partner", "girlfriend", "boyfriend",
+		"son", "daughter", "kids", "aunt", "uncle", "cousin", "grandma", "grandpa", "friend", "colleague", "boss", "neighbour", "neighbor",
+		"birthday", "anniversary", "who is", "who's", "gift for", "present for", "get her", "get him", "call ", "text ", "phone number",
+		"remember that", "keep in touch", "haven't spoken", "people"},
+		[]string{"people"}},
+	// Important documents and their dates.
+	{[]string{"passport", "visa", "id card", "national id", "driving licence", "driving license", "licence", "license", "insurance",
+		"policy", "warranty", "guarantee", "lease", "tenancy", "contract", "logbook", "registration", "certificate", "expires", "expiry",
+		"renewal", "renew", "vault", "my documents"},
+		[]string{"vault", "vision", "doc_parser"}},
+	// Money: spending, receipts, subscriptions, bills, statements.
+	{[]string{"spent", "spend", "spending", "paid", "pay ", "bought", "cost", "receipt", "expense", "budget", "money", "salary", "income",
+		"earned", "subscription", "subscribed", "netflix", "spotify", "bill", "rent", "electricity", "kplc", "water bill", "statement", "m-pesa",
+		"mpesa", "bank", "renews", "this month", "how much"},
+		[]string{"money", "vision"}},
 	// Making something to keep, print, send or sign.
 	{[]string{"cv", "resume", "résumé", "cover letter", "letter", "invoice", "quote for", "receipt", "itinerary",
 		"one-pager", "one pager", "report", "proposal", "contract", "agenda", "minutes", "meeting notes", "recipe card",

@@ -719,6 +719,14 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		toolsRegistry.Register(tools.NewMemoryCorrectTool(pcStore))
 	}
 
+	// The owner's life beyond the conversation: the people in it, their
+	// important documents and their money, each a local record with its
+	// source. Dates are read in the owner's own zone.
+	ownerZone := func() *time.Location { return proactive.UserLocation(pcStore) }
+	toolsRegistry.Register(tools.NewPeopleTool(workspace, ownerZone))
+	toolsRegistry.Register(tools.NewVaultTool(workspace, ownerZone))
+	toolsRegistry.Register(tools.NewMoneyTool(workspace, ownerZone))
+
 	// Create semantic extractor for LLM-based memory extraction
 	semanticExtractor := personalcontext.NewSemanticExtractor(provider, cfg.Agents.Defaults.Model)
 	logger.InfoCF("agent", "Semantic extractor initialized", map[string]interface{}{
