@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.168] - 2026-10-10
+
+- **One home for what Ghost takes on.** In the app, Jobs now holds
+  Ghost's jobs, your own (things to look after in your words, which were
+  called goals) and what Ghost is watching for you. Routines is only
+  what runs on a schedule.
+- **One morning message.** With the Morning brief job on, what Ghost
+  noticed overnight is part of the brief instead of a second message.
+  With Health weekly on, there is no separate Monday health line.
+- **`ghost routines`** is the terminal's name for your reminders and
+  routines (`ghost tasks` still works).
+
 ## [0.24.167] - 2026-10-09
 
 - **A dashboard's total over an empty month reads 0**, instead of saying
