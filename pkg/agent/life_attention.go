@@ -149,9 +149,9 @@ func lifeItems(workspace string, now time.Time, loc *time.Location) []attention.
 	out = append(out, learningItems(workspace, now, today)...)
 
 	// Bills and renewals: three days ahead, and the day before for a bill.
-	money := life.MoneyFor(workspace)
-	_, _ = money.Advance(now, loc)
-	if recs, err := money.Recurrings(); err == nil {
+	fin := life.FinancesFor(workspace)
+	_, _ = fin.Advance(now, loc)
+	if recs, err := fin.Recurrings(); err == nil {
 		for _, r := range recs {
 			if !r.Active {
 				continue
@@ -170,10 +170,10 @@ func lifeItems(workspace string, now time.Time, loc *time.Location) []attention.
 					line = fmt.Sprintf("%s is due on %s (%s).", r.Name, due.Format("Monday"), amount)
 					reply, label = "", ""
 				}
-				out = append(out, attention.Item{Key: "life:recurring:" + r.ID + ":" + r.Next + ":3", Source: "money_" + r.Kind, Priority: 5,
+				out = append(out, attention.Item{Key: "life:recurring:" + r.ID + ":" + r.Next + ":3", Source: "finances_" + r.Kind, Priority: 5,
 					Line: line, Reply: reply, ReplyLabel: label, Expires: due.AddDate(0, 0, 1)})
 			case days == 1 && r.Kind == "bill":
-				out = append(out, attention.Item{Key: "life:recurring:" + r.ID + ":" + r.Next + ":1", Source: "money_bill", Priority: 8,
+				out = append(out, attention.Item{Key: "life:recurring:" + r.ID + ":" + r.Next + ":1", Source: "finances_bill", Priority: 8,
 					Line: fmt.Sprintf("%s is due tomorrow (%s).", r.Name, amount), Expires: due.AddDate(0, 0, 1)})
 			}
 		}

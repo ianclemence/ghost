@@ -56,8 +56,8 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"present_card", "draft",
 		// Documents are laid out on the Pod and shown; nothing is sent.
 		"document",
-		// The owner's own records on their Pod: people, documents, money.
-		"people", "vault", "money", "trips", "phone", "knowledge",
+		// The owner's own records on their Pod: people, documents, finances.
+		"people", "vault", "finances", "trips", "phone", "knowledge",
 		// Browser surface on mobile: observe + act (broker-governed like
 		// exec, which is already here). Purchase-class submit and
 		// file-egress upload stay desktop/admin posture.
@@ -312,11 +312,11 @@ var turnIntentTools = []struct {
 	{[]string{"trip", "travel", "travelling", "traveling", "holiday", "vacation", "flight", "flying", "booking", "booked", "itinerary",
 		"hotel", "airbnb", "check in", "check-in", "boarding", "airport", "train to", "bus to", "going to ", "visiting"},
 		[]string{"trips", "email_search"}},
-	// Money: spending, receipts, subscriptions, bills, statements.
+	// Finances: spending, receipts, subscriptions, bills, statements.
 	{[]string{"spent", "spend", "spending", "paid", "pay ", "bought", "cost", "receipt", "expense", "budget", "money", "salary", "income",
 		"earned", "subscription", "subscribed", "netflix", "spotify", "bill", "rent", "electricity", "kplc", "water bill", "statement", "m-pesa",
 		"mpesa", "bank", "renews", "this month", "how much"},
-		[]string{"money", "vision"}},
+		[]string{"finances", "vision"}},
 	// Making something to keep, print, send or sign.
 	{[]string{"cv", "resume", "résumé", "cover letter", "letter", "invoice", "quote for", "receipt", "itinerary",
 		"one-pager", "one pager", "report", "proposal", "contract", "agenda", "minutes", "meeting notes", "recipe card",

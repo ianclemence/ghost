@@ -720,12 +720,12 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 
 	// The owner's life beyond the conversation: the people in it, their
-	// important documents and their money, each a local record with its
+	// important documents and their finances, each a local record with its
 	// source. Dates are read in the owner's own zone.
 	ownerZone := func() *time.Location { return proactive.UserLocation(pcStore) }
 	toolsRegistry.Register(tools.NewPeopleTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewVaultTool(workspace, ownerZone))
-	toolsRegistry.Register(tools.NewMoneyTool(workspace, ownerZone))
+	toolsRegistry.Register(tools.NewFinancesTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewTripsTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewKnowledgeTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewPhoneTool(workspace, ownerZone))

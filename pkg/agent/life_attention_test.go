@@ -23,7 +23,7 @@ func TestLifeItemsComeAtTheRightTimes(t *testing.T) {
 	if _, _, err := life.VaultFor(ws).Keep(life.PaperInput{Kind: "passport", Title: "Passport", Expires: "2026-11-08", Source: life.Source{Kind: "photo"}}, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := life.MoneyFor(ws).Track(life.RecurringInput{Kind: "subscription", Name: "Netflix", Amount: "1100", Currency: "KES", Every: "month", Next: "2026-10-12", Source: src}, now); err != nil {
+	if _, _, err := life.FinancesFor(ws).Track(life.RecurringInput{Kind: "subscription", Name: "Netflix", Amount: "1100", Currency: "KES", Every: "month", Next: "2026-10-12", Source: src}, now); err != nil {
 		t.Fatal(err)
 	}
 	items := lifeItems(ws, now, loc)
@@ -40,7 +40,7 @@ func TestLifeItemsComeAtTheRightTimes(t *testing.T) {
 	if !strings.Contains(lines["document_expiry:30"], "Your passport expires on 8 November (in 4 weeks)") {
 		t.Fatalf("passport: %+v", lines)
 	}
-	if !strings.Contains(lines["money_subscription:3"], "Netflix renews on Monday (KES 1,100)") {
+	if !strings.Contains(lines["finances_subscription:3"], "Netflix renews on Monday (KES 1,100)") {
 		t.Fatalf("netflix: %+v", lines)
 	}
 	for _, it := range items {

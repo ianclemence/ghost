@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -13,14 +15,14 @@ import (
 	"time"
 )
 
-// Money is what the owner spends and earns, and what comes round again (a
+// Finances is what the owner spends and earns, and what comes round again (a
 // subscription, a bill). Amounts are kept in whole minor units (cents) with
 // their currency, so nothing drifts through floating point. Nothing here is
 // connected to a bank: entries come from the owner's words, a receipt photo,
 // an email, or a statement they import.
-type Money struct{ f *file[moneyData] }
+type Finances struct{ f *file[financesData] }
 
-type moneyData struct {
+type financesData struct {
 	Entries   []Entry     `json:"entries"`
 	Recurring []Recurring `json:"recurring"`
 }
@@ -60,9 +62,14 @@ var Categories = []string{"groceries", "eating out", "transport", "housing", "ut
 
 var everies = map[string]bool{"week": true, "month": true, "quarter": true, "year": true}
 
-// OpenMoney opens the money store in a workspace.
-func OpenMoney(workspace string) *Money {
-	return &Money{f: newFile(workspace, "money.json", moneyData{})}
+// OpenFinances opens the finances store in a workspace.
+func OpenFinances(workspace string) *Finances {
+	// Kept as money.json before it was called finances: carried over once.
+	dir := filepath.Join(workspace, Dir)
+	if _, err := os.Stat(filepath.Join(dir, "finances.json")); os.IsNotExist(err) {
+		_ = os.Rename(filepath.Join(dir, "money.json"), filepath.Join(dir, "finances.json"))
+	}
+	return &Finances{f: newFile(workspace, "finances.json", financesData{})}
 }
 
 const (
@@ -84,7 +91,7 @@ func minorDigits(cur string) int {
 var currencyRE = regexp.MustCompile(`^[A-Z]{3}$`)
 
 // ParseAmount reads "1,250.50" in a currency as minor units. Negative and
-// zero amounts are refused: the kind says which way money went.
+// zero amounts are refused: the kind says which way it went.
 func ParseAmount(s, currency string) (int64, error) {
 	cur := strings.ToUpper(strings.TrimSpace(currency))
 	if !currencyRE.MatchString(cur) {
@@ -208,13 +215,13 @@ func (in EntryInput) build(now time.Time) (Entry, error) {
 
 // Record keeps an amount spent or received. The same amount at the same place
 // on the same day is not kept twice (a receipt read again).
-func (m *Money) Record(in EntryInput, now time.Time) (Entry, bool, error) {
+func (m *Finances) Record(in EntryInput, now time.Time) (Entry, bool, error) {
 	e, err := in.build(now)
 	if err != nil {
 		return Entry{}, false, err
 	}
 	var dup bool
-	err = m.f.with(true, func(d *moneyData) error {
+	err = m.f.with(true, func(d *financesData) error {
 		for _, x := range d.Entries {
 			if sameEntry(x, e) {
 				e, dup = x, true
@@ -224,7 +231,7 @@ func (m *Money) Record(in EntryInput, now time.Time) (Entry, bool, error) {
 		if len(d.Entries) >= maxEntries {
 			d.Entries = d.Entries[len(d.Entries)-maxEntries+1:]
 		}
-		e.ID = newID("money")
+		e.ID = newID("fin")
 		d.Entries = append(d.Entries, e)
 		return nil
 	})
@@ -236,8 +243,8 @@ func sameEntry(a, b Entry) bool {
 }
 
 // Forget removes an entry or a recurring item by id.
-func (m *Money) Forget(id string) error {
-	return m.f.with(true, func(d *moneyData) error {
+func (m *Finances) Forget(id string) error {
+	return m.f.with(true, func(d *financesData) error {
 		for i, e := range d.Entries {
 			if e.ID == id {
 				d.Entries = append(d.Entries[:i], d.Entries[i+1:]...)
@@ -267,7 +274,7 @@ type RecurringInput struct {
 }
 
 // Track keeps a subscription or bill, or updates the one with the same name.
-func (m *Money) Track(in RecurringInput, now time.Time) (Recurring, bool, error) {
+func (m *Finances) Track(in RecurringInput, now time.Time) (Recurring, bool, error) {
 	r := Recurring{Kind: strings.ToLower(strings.TrimSpace(in.Kind)), Currency: strings.ToUpper(strings.TrimSpace(in.Currency)),
 		Every: strings.ToLower(strings.TrimSpace(in.Every)), Next: strings.TrimSpace(in.Next), Active: true, Source: in.Source}
 	if r.Kind != "subscription" && r.Kind != "bill" {
@@ -303,7 +310,7 @@ func (m *Money) Track(in RecurringInput, now time.Time) (Recurring, bool, error)
 		return Recurring{}, false, err
 	}
 	created := true
-	err = m.f.with(true, func(d *moneyData) error {
+	err = m.f.with(true, func(d *financesData) error {
 		for i, x := range d.Recurring {
 			if key(x.Name) == key(r.Name) && x.Kind == r.Kind {
 				r.ID = x.ID
@@ -323,9 +330,9 @@ func (m *Money) Track(in RecurringInput, now time.Time) (Recurring, bool, error)
 }
 
 // SetActive turns tracking of a subscription or bill on or off (cancelled).
-func (m *Money) SetActive(id string, active bool) (Recurring, error) {
+func (m *Finances) SetActive(id string, active bool) (Recurring, error) {
 	var out Recurring
-	err := m.f.with(true, func(d *moneyData) error {
+	err := m.f.with(true, func(d *financesData) error {
 		for i := range d.Recurring {
 			if d.Recurring[i].ID == id {
 				d.Recurring[i].Active = active
@@ -340,10 +347,10 @@ func (m *Money) SetActive(id string, active bool) (Recurring, error) {
 
 // Advance moves every recurring item whose date has passed to its next date,
 // and returns the ones it moved (they came round).
-func (m *Money) Advance(now time.Time, loc *time.Location) ([]Recurring, error) {
+func (m *Finances) Advance(now time.Time, loc *time.Location) ([]Recurring, error) {
 	var moved []Recurring
 	today := now.In(loc).Format("2006-01-02")
-	err := m.f.with(true, func(d *moneyData) error {
+	err := m.f.with(true, func(d *financesData) error {
 		for i := range d.Recurring {
 			r := &d.Recurring[i]
 			if !r.Active || r.Next >= today {
@@ -392,9 +399,9 @@ func step(t time.Time, every string, anchor int) time.Time {
 }
 
 // Recurrings lists subscriptions and bills, soonest first (active first).
-func (m *Money) Recurrings() ([]Recurring, error) {
+func (m *Finances) Recurrings() ([]Recurring, error) {
 	var out []Recurring
-	err := m.f.with(false, func(d *moneyData) error {
+	err := m.f.with(false, func(d *financesData) error {
 		out = append(out, d.Recurring...)
 		return nil
 	})
@@ -408,9 +415,9 @@ func (m *Money) Recurrings() ([]Recurring, error) {
 }
 
 // Entries lists amounts between two dates (inclusive, 2006-01-02), newest first.
-func (m *Money) Entries(from, to string) ([]Entry, error) {
+func (m *Finances) Entries(from, to string) ([]Entry, error) {
 	var out []Entry
-	err := m.f.with(false, func(d *moneyData) error {
+	err := m.f.with(false, func(d *financesData) error {
 		for _, e := range d.Entries {
 			if (from == "" || e.Date >= from) && (to == "" || e.Date <= to) {
 				out = append(out, e)
@@ -422,7 +429,7 @@ func (m *Money) Entries(from, to string) ([]Entry, error) {
 	return out, err
 }
 
-// MonthSummary is one month's money in one currency.
+// MonthSummary is one month's spending and income in one currency.
 type MonthSummary struct {
 	Month      string           `json:"month"` // 2006-01
 	Currency   string           `json:"currency"`
@@ -444,7 +451,7 @@ type CategoryTotal struct {
 
 // Summary is a month at a glance, in the currency most of it was in (other
 // currencies are counted beside it, never added to it).
-func (m *Money) Summary(month string, now time.Time) (MonthSummary, error) {
+func (m *Finances) Summary(month string, now time.Time) (MonthSummary, error) {
 	start, err := time.Parse("2006-01", month)
 	if err != nil {
 		return MonthSummary{}, fmt.Errorf("%q is not a month (2026-10)", month)
@@ -523,7 +530,7 @@ func (m *Money) Summary(month string, now time.Time) (MonthSummary, error) {
 // money-out and money-in columns. Rows already kept are skipped. It returns
 // how many were added and skipped, and the first problem found, if any rows
 // could not be read.
-func (m *Money) ImportCSV(r io.Reader, currency, ref string, now time.Time) (added, skipped int, problem error) {
+func (m *Finances) ImportCSV(r io.Reader, currency, ref string, now time.Time) (added, skipped int, problem error) {
 	cur := strings.ToUpper(strings.TrimSpace(currency))
 	if !currencyRE.MatchString(cur) {
 		return 0, 0, fmt.Errorf("%q is not a currency code", currency)
@@ -608,7 +615,7 @@ func (m *Money) ImportCSV(r io.Reader, currency, ref string, now time.Time) (add
 		}
 		entries = append(entries, e)
 	}
-	err = m.f.with(true, func(d *moneyData) error {
+	err = m.f.with(true, func(d *financesData) error {
 		for _, e := range entries {
 			dup := false
 			for _, x := range d.Entries {
@@ -621,7 +628,7 @@ func (m *Money) ImportCSV(r io.Reader, currency, ref string, now time.Time) (add
 				skipped++
 				continue
 			}
-			e.ID = newID("money")
+			e.ID = newID("fin")
 			d.Entries = append(d.Entries, e)
 			added++
 		}

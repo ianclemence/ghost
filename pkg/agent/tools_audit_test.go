@@ -101,7 +101,7 @@ var reviewedUngoverned = map[string]string{
 	"document":       "writes a document into the workspace and lays it out as a PDF locally (no network while printing); shown on the owner's own screen",
 	"people":         "the owner's own records of the people in their life, on the Pod; forgetting needs confirmed=true",
 	"vault":          "the owner's own records of their documents, on the Pod; reads only workspace files; forgetting needs confirmed=true",
-	"money":          "the owner's own spending records on the Pod; imports a workspace file; no bank, no payment; forgetting needs confirmed=true",
+	"finances":       "the owner's own spending records on the Pod; imports a workspace file; no bank, no payment; forgetting needs confirmed=true",
 	"trips":          "the owner's own trip records on the Pod; no booking, no payment; forgetting needs confirmed=true",
 	"knowledge":      "the owner's own reading and study records on the Pod; nothing leaves it; forgetting needs confirmed=true",
 	"phone":          "reads what the owner's phone shared with the Pod (notifications, health totals) and keeps place reminders the phone watches; nothing leaves the Pod",

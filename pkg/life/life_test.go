@@ -1,6 +1,8 @@
 package life
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -90,8 +92,8 @@ func TestVaultKeepsOneRecordPerDocumentAndOrdersByWhatIsDue(t *testing.T) {
 	}
 }
 
-func TestMoneyAmountsSummariesAndRecurring(t *testing.T) {
-	m := OpenMoney(t.TempDir())
+func TestFinancesAmountsSummariesAndRecurring(t *testing.T) {
+	m := OpenFinances(t.TempDir())
 	now := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 	src := Source{Kind: "conversation"}
 	if got, _ := ParseAmount("1,250.50", "KES"); got != 125050 {
@@ -162,7 +164,7 @@ func TestMoneyAmountsSummariesAndRecurring(t *testing.T) {
 }
 
 func TestImportStatements(t *testing.T) {
-	m := OpenMoney(t.TempDir())
+	m := OpenFinances(t.TempDir())
 	now := time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)
 	mpesa := "Receipt No.,Completion Time,Details,Transaction Status,Paid In,Withdrawn,Balance\n" +
 		"QJK1,2026-10-01 08:12:01,Pay Bill to KPLC PREPAID,Completed,,1500.00,9000\n" +
@@ -281,5 +283,23 @@ func TestDeviceSignals(t *testing.T) {
 	}
 	if active, _ := d.Places(true); len(active) != 0 {
 		t.Fatal("a fired once reminder is no longer watched")
+	}
+}
+
+func TestFinancesCarryOverWhatWasKeptAsMoney(t *testing.T) {
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, Dir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"entries":[{"id":"money_1","kind":"expense","amount":2350,"currency":"KES","category":"groceries","date":"2026-10-08","source":{"kind":"conversation","at":"2026-10-08T00:00:00Z"}}]}`
+	if err := os.WriteFile(filepath.Join(ws, Dir, "money.json"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := OpenFinances(ws).Entries("2026-10-01", "2026-10-31")
+	if err != nil || len(got) != 1 || got[0].Amount != 2350 {
+		t.Fatalf("carried over: %+v %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(ws, Dir, "money.json")); !os.IsNotExist(err) {
+		t.Fatal("the old file is moved, not copied")
 	}
 }

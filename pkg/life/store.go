@@ -1,6 +1,6 @@
 // Package life is what Ghost knows about the owner's life beyond the
 // conversation: the people in it, the documents that matter (a passport, a
-// lease, a warranty), and their money (what they spend, what renews, what is
+// lease, a warranty), and their finances (what they spend, what renews, what is
 // due). It is not memory: memory holds facts in the owner's words; these are
 // structured records Ghost can count, date and remind from. Every record says
 // where it came from (the conversation, a photo, an email, an import), and the
@@ -150,10 +150,10 @@ func day(s string) (time.Time, bool, error) {
 // reminders, so each has one lock and one copy in memory and no writer can
 // overwrite another's change with a stale copy.
 var (
-	sharedMu     sync.Mutex
-	sharedPeople = map[string]*People{}
-	sharedVault  = map[string]*Vault{}
-	sharedMoney  = map[string]*Money{}
+	sharedMu       sync.Mutex
+	sharedPeople   = map[string]*People{}
+	sharedVault    = map[string]*Vault{}
+	sharedFinances = map[string]*Finances{}
 )
 
 // PeopleFor is the people store of a workspace.
@@ -180,14 +180,14 @@ func VaultFor(workspace string) *Vault {
 	return s
 }
 
-// MoneyFor is the money store of a workspace.
-func MoneyFor(workspace string) *Money {
+// FinancesFor is the finances store of a workspace.
+func FinancesFor(workspace string) *Finances {
 	sharedMu.Lock()
 	defer sharedMu.Unlock()
-	if s, ok := sharedMoney[workspace]; ok {
+	if s, ok := sharedFinances[workspace]; ok {
 		return s
 	}
-	s := OpenMoney(workspace)
-	sharedMoney[workspace] = s
+	s := OpenFinances(workspace)
+	sharedFinances[workspace] = s
 	return s
 }

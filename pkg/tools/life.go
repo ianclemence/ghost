@@ -13,7 +13,7 @@ import (
 )
 
 // The owner's life beyond the conversation, as tools: the people in it, their
-// important documents, their money. Each reads and writes only Ghost's own
+// important documents, their finances. Each reads and writes only Ghost's own
 // records on the Pod (pkg/life) and says where every fact came from. Forgetting
 // anything needs the owner's explicit yes (confirmed=true).
 
@@ -336,22 +336,22 @@ func vaultText(list []life.Paper, now time.Time, loc *time.Location) string {
 	return sb.String()
 }
 
-// ─── money ───────────────────────────────────────────────────────────────
+// ─── finances ──────────────────────────────────────────────────────────
 
-type MoneyTool struct {
+type FinancesTool struct {
 	workspace string
-	store     *life.Money
+	store     *life.Finances
 	loc       func() *time.Location
 }
 
-func NewMoneyTool(workspace string, loc func() *time.Location) *MoneyTool {
-	return &MoneyTool{workspace: workspace, store: life.MoneyFor(workspace), loc: loc}
+func NewFinancesTool(workspace string, loc func() *time.Location) *FinancesTool {
+	return &FinancesTool{workspace: workspace, store: life.FinancesFor(workspace), loc: loc}
 }
 
-func (t *MoneyTool) Name() string { return "money" }
+func (t *FinancesTool) Name() string { return "finances" }
 
-func (t *MoneyTool) Description() string {
-	return `The owner's money, kept on their Pod (no bank connection): what they spend and earn, and their subscriptions and bills. Use it when the owner tells you what they spent, sends a receipt (read it with vision first), mentions a subscription or a bill, sends a statement to import, or asks how their month is going. Amounts are what was written, in its currency (KES, USD...). Never invent an amount or a date.
+func (t *FinancesTool) Description() string {
+	return `The owner's finances, kept on their Pod (no bank connection): what they spend and earn, and their subscriptions and bills. Use it when the owner tells you what they spent, sends a receipt (read it with vision first), mentions a subscription or a bill, sends a statement to import, or asks how their month is going. Amounts are what was written, in its currency (KES, USD...). Never invent an amount or a date.
 
 action:
 - record: amount ("1,250.50"), currency, merchant?, category? (` + strings.Join(life.Categories, ", ") + `), date? (2006-01-02, default today), kind? (expense or income), note?
@@ -363,7 +363,7 @@ action:
 - forget: id and confirmed=true, only after the owner said so.`
 }
 
-func (t *MoneyTool) Parameters() map[string]interface{} {
+func (t *FinancesTool) Parameters() map[string]interface{} {
 	s := map[string]interface{}{"type": "string"}
 	return map[string]interface{}{
 		"type":     "object",
@@ -391,9 +391,9 @@ func (t *MoneyTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *MoneyTool) Timeout() time.Duration { return 20 * time.Second }
+func (t *FinancesTool) Timeout() time.Duration { return 20 * time.Second }
 
-func (t *MoneyTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
+func (t *FinancesTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
 	now := time.Now().In(t.loc())
 	switch sarg(args, "action") {
 	case "record":

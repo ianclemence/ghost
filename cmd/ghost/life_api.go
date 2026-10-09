@@ -12,7 +12,7 @@ import (
 )
 
 // registerLifeRoutes serves the owner's own records to their devices: the
-// people in their life, their important documents, their money. Reading is
+// people in their life, their important documents, their finances. Reading is
 // open to a paired device; every change is the owner's own edit on their
 // phone, checked by the same rules the tools use.
 //
@@ -22,11 +22,11 @@ import (
 //	GET    /v1/life/vault               the documents, soonest due first
 //	POST   /v1/life/vault/{id}          edit a document
 //	DELETE /v1/life/vault/{id}          remove a document
-//	GET    /v1/life/money?month=2026-10  the month at a glance, recent entries, subscriptions and bills
+//	GET    /v1/life/finances?month=2026-10  the month at a glance, recent entries, subscriptions and bills
 //	GET    /v1/life/trips               trips, upcoming first, each leg with when to leave
 //	DELETE /v1/life/trips/{id}          remove a trip
-//	DELETE /v1/life/money/{id}          remove an entry, a subscription or a bill
-//	POST   /v1/life/money/{id}/active   {active} start or stop tracking a subscription or bill
+//	DELETE /v1/life/finances/{id}          remove an entry, a subscription or a bill
+//	POST   /v1/life/finances/{id}/active   {active} start or stop tracking a subscription or bill
 //	GET    /v1/life/knowledge           what the owner reads and studies, current first
 //	POST   /v1/life/knowledge           add something to read or learn
 //	POST   /v1/life/knowledge/{id}      edit it (progress, status, notes dropped)
@@ -311,7 +311,7 @@ func registerLifeRoutes(mux *http.ServeMux, zone func() *time.Location) {
 		}
 	}))
 
-	mux.HandleFunc("/v1/life/money", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/life/finances", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET")
 			return
@@ -322,7 +322,7 @@ func registerLifeRoutes(mux *http.ServeMux, zone func() *time.Location) {
 		if month == "" {
 			month = now.Format("2006-01")
 		}
-		store := life.MoneyFor(ws())
+		store := life.FinancesFor(ws())
 		_, _ = store.Advance(now, loc)
 		sum, err := store.Summary(month, now)
 		if err != nil {
@@ -351,9 +351,9 @@ func registerLifeRoutes(mux *http.ServeMux, zone func() *time.Location) {
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "summary": sum, "entries": entries, "recurring": recs, "categories": life.Categories})
 	}))
-	mux.HandleFunc("/v1/life/money/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		id, sub := idOf(r, "/v1/life/money/")
-		store := life.MoneyFor(ws())
+	mux.HandleFunc("/v1/life/finances/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		id, sub := idOf(r, "/v1/life/finances/")
+		store := life.FinancesFor(ws())
 		switch {
 		case r.Method == http.MethodDelete && sub == "":
 			if err := store.Forget(id); err != nil {
@@ -376,7 +376,7 @@ func registerLifeRoutes(mux *http.ServeMux, zone func() *time.Location) {
 			}
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "recurring": rec})
 		default:
-			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "not something money does")
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "not something finances does")
 		}
 	}))
 }

@@ -51,10 +51,10 @@ func TestLifeRoutesEditAndForget(t *testing.T) {
 	if all, _ := life.PeopleFor(apiWorkspaceDir).All(); len(all) != 0 {
 		t.Fatal("forgotten person is still there")
 	}
-	if code, out := get("/v1/life/money?month=2026-10"); code != 200 || out["summary"] == nil {
-		t.Fatalf("money: %d %v", code, out)
+	if code, out := get("/v1/life/finances?month=2026-10"); code != 200 || out["summary"] == nil {
+		t.Fatalf("finances: %d %v", code, out)
 	}
-	if code, _ := get("/v1/life/money?month=october"); code != http.StatusBadRequest {
+	if code, _ := get("/v1/life/finances?month=october"); code != http.StatusBadRequest {
 		t.Fatalf("a bad month: %d", code)
 	}
 }
