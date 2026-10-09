@@ -1682,7 +1682,10 @@ func pullOllamaModel(model string) error {
 
 // runPrivileged runs a command, prefixing with sudo when we're not root so
 // manual (non-systemd) runs of ghost-web can still manage ufw/systemd.
-func runPrivileged(name string, args ...string) ([]byte, error) {
+// runPrivileged runs a system command (systemctl, ufw, hostnamectl, reboot)
+// as root. It is a variable so tests replace it: a test must never restart
+// the real Ghost or change the real firewall on the machine it runs on.
+var runPrivileged = func(name string, args ...string) ([]byte, error) {
 	if os.Geteuid() != 0 {
 		args = append([]string{name}, args...)
 		name = "sudo"
