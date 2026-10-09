@@ -3,6 +3,30 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.166] - 2026-10-09
+
+- **Ask about your data; keep the answer live.** "How did sales do by
+  month?" Ghost writes the query, draws the chart and keeps it as a
+  dashboard that updates whenever you look at it. Every chart shows the
+  query behind it. It reads your own finances, health, reading and trips,
+  any spreadsheet you send, and databases you connect (Postgres, such as
+  Supabase or Neon), and it only ever reads.
+- **Animated explainers, made as code.** Ghost turns a report, numbers or
+  a walkthrough into a short animation you watch in the chat. Change any
+  word, number or timing, then make it an MP4 on your Pod. No video model
+  is involved.
+- **Knowledge: what you read and study.** Books, courses and subjects for
+  an exam, with where you are, your notes and the lines you kept. Ghost
+  quizzes you from them, reminds you a week before an exam, and asks
+  gently when a book has gone quiet. Learn now makes you a flashcard deck
+  that brings cards back just before you would forget them.
+- **Money is now Finances**, everywhere. What you kept carries over.
+- **Plainer words.** Health checks read as sentences, each connected app
+  says what Ghost can do with it, and developer keys sit apart.
+- **Safer.** Secrets in your Pod's sealed vault are scrubbed again from
+  anything the model sees (they were being missed). A new install also sets
+  up the browser, pandoc and ffmpeg that documents, browsing and videos need.
+
 ## [0.24.165] - 2026-10-09
 
 - **Jobs: say what Ghost should take on.** Ten jobs, each one switch and a
