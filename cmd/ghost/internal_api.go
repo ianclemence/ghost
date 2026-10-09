@@ -6586,6 +6586,8 @@ func connectedAppsList() []map[string]interface{} {
 			"status":       status,
 			"needs_reauth": needsReauth,
 			"help":         c.Help,
+			"summary":      c.Summary,
+			"advanced":     c.Advanced,
 		})
 	}
 	return out

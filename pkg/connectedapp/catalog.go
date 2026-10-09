@@ -50,8 +50,13 @@ type Connector struct {
 	WriteScopes []string `json:"write_scopes,omitempty"`
 	// Capabilities are Ghost capability IDs this app can fulfil.
 	Capabilities []string `json:"capabilities"`
-	// Help is a short product hint shown in clients.
+	// Help is how to connect it, shown where the owner connects it.
 	Help string `json:"help,omitempty"`
+	// Summary is what Ghost can do with it, in everyday words, for lists.
+	Summary string `json:"summary,omitempty"`
+	// Advanced marks keys and data sources most people never need; clients
+	// list them apart, under "For developers".
+	Advanced bool `json:"advanced,omitempty"`
 }
 
 // FirstParty is the curated set Ghost supports as head-of-engineering.
@@ -66,6 +71,7 @@ func FirstParty() []Connector {
 			WriteScopes:  []string{"calendar.events"},
 			Capabilities: []string{"calendar.read", "calendar.modify"},
 			Help:         "Connect in the web console or phone browser. Read-only first; enable writes when needed.",
+			Summary:      "Ghost sees what's on and can add events when you say so.",
 		},
 		{
 			ID: "gmail", Provider: "gmail", DisplayName: "Gmail",
@@ -74,6 +80,7 @@ func FirstParty() []Connector {
 			WriteScopes:  []string{"gmail.send"},
 			Capabilities: []string{"email.read", "email.send"},
 			Help:         "Search and send on your behalf. Sending always asks first. OTPs and reset links are filtered.",
+			Summary:      "Ghost finds emails, drafts replies and sends only with your OK.",
 		},
 		{
 			ID: "outlook", Provider: "outlook", DisplayName: "Outlook",
@@ -82,12 +89,14 @@ func FirstParty() []Connector {
 			WriteScopes:  []string{"Mail.Send", "Calendars.ReadWrite"},
 			Capabilities: []string{"email.read", "email.send", "calendar.read"},
 			Help:         "Microsoft 365 / Outlook.com mail and calendar. Same approval rules as Gmail.",
+			Summary:      "Mail and calendar from Microsoft, with the same OK before sending.",
 		},
 		{
 			ID: "home-assistant", Provider: "homeassistant", DisplayName: "Home Assistant",
 			AuthKind: AuthToken, Setup: SetupPastePair,
 			Capabilities: []string{"device.read", "device.control"},
 			Help:         "Paste your instance URL plus a long-lived token. Stays on your Ghost.",
+			Summary:      "Lights, heating and locks, checked and switched when you ask.",
 		},
 		{
 			ID: "spotify", Provider: "spotify", DisplayName: "Spotify",
@@ -96,6 +105,7 @@ func FirstParty() []Connector {
 			WriteScopes:  []string{"user-modify-playback-state"},
 			Capabilities: []string{"media.playback"},
 			Help:         "Playback control. Read-only status first.",
+			Summary:      "Ghost can play, pause and pick music for you.",
 		},
 		{
 			ID: "github", Provider: "github", DisplayName: "GitHub",
@@ -103,30 +113,40 @@ func FirstParty() []Connector {
 			ReadScopes:   []string{"repo:read"},
 			Capabilities: []string{"code.read", "repository.search"},
 			Help:         "Paste a read-only personal access token. Never grant write scopes.",
+			Summary:      "Your repositories and issues, read only.",
+			Advanced:     true,
 		},
 		{
 			ID: "notion", Provider: "notion", DisplayName: "Notion",
 			AuthKind: AuthToken, Setup: SetupPasteKey,
 			Capabilities: []string{"docs"},
 			Help:         "Paste an internal integration token for docs access.",
+			Summary:      "Ghost can read your Notion pages.",
+			Advanced:     true,
 		},
 		{
 			ID: "openweather", Provider: "openweather", DisplayName: "OpenWeather",
 			AuthKind: AuthAPIKey, Setup: SetupPasteKey,
 			Capabilities: []string{"weather.get"},
 			Help:         "Optional weather provider key. Works without it via built-in fallback.",
+			Summary:      "A weather source of your own. Weather works without it.",
+			Advanced:     true,
 		},
 		{
 			ID: "aviationstack", Provider: "aviationstack", DisplayName: "AviationStack",
 			AuthKind: AuthAPIKey, Setup: SetupPasteKey,
 			Capabilities: []string{"flight.status"},
 			Help:         "Optional flight-status provider key.",
+			Summary:      "Live flight status for your trips.",
+			Advanced:     true,
 		},
 		{
 			ID: "aerodatabox", Provider: "aerodatabox", DisplayName: "AeroDataBox",
 			AuthKind: AuthAPIKey, Setup: SetupPasteKey,
 			Capabilities: []string{"flight.status"},
 			Help:         "Optional flight-status fallback key.",
+			Summary:      "A second source for flight status.",
+			Advanced:     true,
 		},
 	}
 }

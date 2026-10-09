@@ -33,15 +33,15 @@ func (d *Doctor) SetConfigPath(path string) {
 func (d *Doctor) checkDiskPressure(ctx context.Context) CheckResult {
 	start := time.Now()
 	s := hardware.Snapshot(d.workspace)
-	msg := fmt.Sprintf("disk %d GB free (%d%%)", s.DiskFreeGB, s.DiskFreePct)
+	msg := fmt.Sprintf("%d GB free (%d%%)", s.DiskFreeGB, s.DiskFreePct)
 	status := "ok"
 	switch s.Worst() {
 	case hardware.PressureCritical:
 		status = "error"
-		msg += " — critical: free space now or run `ghost state prune` to drop old snapshots"
+		msg += ". Almost full: free some space, or run `ghost state prune` to drop old snapshots"
 	case hardware.PressureWarning:
 		status = "warning"
-		msg += " — running low: snapshots and derived caches will be trimmed first"
+		msg += ". Running low, so old snapshots and caches are cleared first"
 	}
 	_ = ctx
 	return CheckResult{Name: "disk_pressure", Label: "Disk", Status: status, Message: msg, Latency: time.Since(start).Milliseconds()}

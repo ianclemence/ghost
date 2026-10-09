@@ -418,7 +418,7 @@ func (d *Doctor) checkSkillDependencies(ctx context.Context) CheckResult {
 		Name:    "skill_dependencies",
 		Label:   "Skills",
 		Status:  "warning",
-		Message: fmt.Sprintf("%d skill(s) need extra software to run: %s", len(missing), formatMissingSkills(missing)),
+		Message: fmt.Sprintf("%s %s something set up first: %s.", plural(len(missing), "skill", "skills"), map[bool]string{true: "needs", false: "need"}[len(missing) == 1], formatMissingSkills(missing)),
 		Latency: time.Since(start).Milliseconds(),
 	}
 }
@@ -450,4 +450,12 @@ func status(err error) string {
 		return "error"
 	}
 	return "ok"
+}
+
+// plural is "1 skill" or "2 skills".
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }

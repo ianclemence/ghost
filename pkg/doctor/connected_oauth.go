@@ -145,7 +145,7 @@ func (d *Doctor) checkConnectedServices(ctx context.Context) CheckResult {
 		return done("ok", fmt.Sprintf("%d connected: %s", len(ready), strings.Join(ready, ", ")))
 	}
 	if len(ready) == 0 {
-		return done("warning", fmt.Sprintf("none connected — %s need setup (see Apps)",
+		return done("warning", fmt.Sprintf("None connected yet. Connect %s under Apps when you want Ghost to use them.",
 			strings.Join(missing, ", ")))
 	}
 	return done("warning", fmt.Sprintf("%d of %d connected — %s ready; %s need setup (see Apps)",
