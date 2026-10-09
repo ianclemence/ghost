@@ -4373,10 +4373,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	// openCards serves fetch-on-open (GET /v1/cards): unexpired cards the owner
 	// has not put away. Resolved cards stay stored as receipts but are never
 	// served again, so a dismissal survives refetch and restart on every device.
-	openCards := func(channel string) []cards.Card {
+	openCards := func(channel string, receipts bool) []cards.Card {
 		out := []cards.Card{}
 		for _, c := range cards.DefaultStore.List(channel) {
-			if c.Resolved != nil {
+			if c.Resolved != nil && !(receipts && keepsReceipt(c.Kind)) {
 				continue
 			}
 			out = append(out, c)
@@ -4393,7 +4393,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		if channel == "" {
 			channel = "mobile"
 		}
-		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "cards": openCards(channel)})
+		// receipts=1: answered cards of the kinds that stay in the conversation
+		// as one line (a sent draft, an answered question), so a phone that
+		// reloads shows what happened where it happened.
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "cards": openCards(channel, r.URL.Query().Get("receipts") == "1")})
 	}))
 
 	// What the owner did with a card (an offered reply, or dismiss), remembered
@@ -6276,6 +6279,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	registerLiveSurfaceRoutes(mux, agentLoop)
 	registerPushRoutes(mux, startPushBridge(agentLoop))
 	registerReminderActions(mux, scheduledService, nil, agentLoop)
+	registerCardInputs(mux, agentLoop)
 	registerSystemUpdateRoutes(mux)
 	registerConsoleResetRoute(mux, agentLoop)
 	registerToolServerRoutes(mux, agentLoop)

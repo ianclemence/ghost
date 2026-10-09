@@ -131,15 +131,20 @@ func RenderSpec(raw []byte) (Card, error) {
 					return Card{}, fmt.Errorf("card spec: a reply action needs text of 1 to %d characters", MaxActionText)
 				}
 				spec.Actions[i].Text = t
-			case "dismiss":
+			case "dismiss", "submit":
 				if strings.TrimSpace(a.Text) != "" {
-					return Card{}, fmt.Errorf("card spec: a dismiss action carries no text")
+					return Card{}, fmt.Errorf("card spec: a %s action carries no text", a.Kind)
 				}
 			default:
-				return Card{}, fmt.Errorf("card spec: action kind %q is not reply or dismiss", a.Kind)
+				return Card{}, fmt.Errorf("card spec: action kind %q is not reply, submit or dismiss", a.Kind)
 			}
 		} else if a.Kind != "" || a.Text != "" {
 			return Card{}, fmt.Errorf("card spec: %s actions carry no kind or text", spec.Kind)
+		}
+	}
+	if schema.blocks {
+		if err := checkInputs(spec.Blocks, spec.Actions); err != nil {
+			return Card{}, fmt.Errorf("card spec: %w", err)
 		}
 	}
 	// Data values stay scalar: no nested objects or arrays smuggled

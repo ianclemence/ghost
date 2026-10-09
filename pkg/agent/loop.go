@@ -488,6 +488,14 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	})
 	registry.Register(presentCard)
 
+	// Drafts: an email, an invite or a text written for the owner to read,
+	// change and send themselves. The tool never sends.
+	draft := tools.NewDraftTool()
+	draft.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
+		cards.Publish(msgBus, nil, channel, chatID, sessionID, c)
+	})
+	registry.Register(draft)
+
 	// Targeted long-tail memory retrieval: the agent searches its own notes
 	// (daily notes, MEMORY.md, captures) on demand, ranked by relevance+recency.
 	memoryRecall := tools.NewMemoryRecall(workspace)
@@ -515,7 +523,11 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewTodoTool())
 
 	// Clarify Tool — interactive user questions with choices
-	registry.Register(tools.NewClarifyTool(msgBus))
+	clarify := tools.NewClarifyTool(msgBus)
+	clarify.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
+		cards.Publish(msgBus, nil, channel, chatID, sessionID, c)
+	})
+	registry.Register(clarify)
 
 	// TTS Tool — text-to-speech conversion
 	ttsConfig := tools.TTSConfig{

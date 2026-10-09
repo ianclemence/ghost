@@ -161,27 +161,40 @@ func (s *Service) doList(req *http.Request) ([]gmailprov.Message, provider.Resul
 // provider tag for acknowledgement evidence (Graph gives no stable ID
 // synchronously, so evidence cites recipient + timestamp).
 func (s *Service) Send(ctx context.Context, to, subject, body string) (string, provider.Result[string]) {
+	return s.SendMail(ctx, []string{to}, nil, subject, body)
+}
+
+// SendMail sends to several people, with copies.
+func (s *Service) SendMail(ctx context.Context, to, cc []string, subject, body string) (string, provider.Result[string]) {
 	if !s.Configured() {
 		return "", provider.Result[string]{Failure: provider.FailNotConfigured, Err: fmt.Errorf("outlook not connected")}
 	}
-	to = strings.TrimSpace(to)
-	if to == "" {
+	recipients := func(list []string) []map[string]interface{} {
+		out := []map[string]interface{}{}
+		for _, a := range list {
+			if a = strings.TrimSpace(a); a != "" {
+				out = append(out, map[string]interface{}{"emailAddress": map[string]interface{}{"address": a}})
+			}
+		}
+		return out
+	}
+	toList := recipients(to)
+	if len(toList) == 0 {
 		return "", provider.Result[string]{Failure: provider.FailInvalid, Err: fmt.Errorf("recipient required")}
 	}
 	access, err := skills.OutlookAccessToken(ctx, true)
 	if err != nil {
 		return "", provider.Result[string]{Failure: provider.FailAuth, Err: err}
 	}
-	payload := map[string]interface{}{
-		"message": map[string]interface{}{
-			"subject": subject,
-			"body":    map[string]interface{}{"contentType": "Text", "content": body},
-			"toRecipients": []map[string]interface{}{
-				{"emailAddress": map[string]interface{}{"address": to}},
-			},
-		},
-		"saveToSentItems": true,
+	msg := map[string]interface{}{
+		"subject":      subject,
+		"body":         map[string]interface{}{"contentType": "Text", "content": body},
+		"toRecipients": toList,
 	}
+	if ccList := recipients(cc); len(ccList) > 0 {
+		msg["ccRecipients"] = ccList
+	}
+	payload := map[string]interface{}{"message": msg, "saveToSentItems": true}
 	data, _ := json.Marshal(payload)
 	req, err := s.authed(ctx, access, "POST", "/me/sendMail", bytes.NewReader(data), "")
 	if err != nil {

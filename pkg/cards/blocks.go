@@ -40,13 +40,45 @@ type Block struct {
 
 	// metric, note, facts rows, list items: how it should feel
 	Tone string `json:"tone,omitempty"`
+
+	// Input blocks (choice, datetime, slider, field, checklist) carry a Key:
+	// the name the owner's answer comes back under. See inputs.go.
+	Key string `json:"key,omitempty"`
+	// choice: the options; compare: the things compared (its columns)
+	Options []Option `json:"options,omitempty"`
+	// choice: more than one may be picked
+	Multiple bool `json:"multiple,omitempty"`
+	// datetime: date, time or datetime
+	Mode string `json:"mode,omitempty"`
+	// datetime: the earliest allowed (same format as the mode)
+	Earliest string `json:"earliest,omitempty"`
+	// slider: the range, the step and where it starts
+	Min    *float64 `json:"min,omitempty"`
+	Max    *float64 `json:"max,omitempty"`
+	Step   *float64 `json:"step,omitempty"`
+	Number *float64 `json:"number,omitempty"`
+	// field: a hint inside the empty box; whether it may be left empty; several lines
+	Placeholder string `json:"placeholder,omitempty"`
+	Optional    bool   `json:"optional,omitempty"`
+	Multiline   bool   `json:"multiline,omitempty"`
+	// checklist: things to tick
+	Checks []Check `json:"checks,omitempty"`
+	// compare: which option Ghost recommends (0-based)
+	Pick *int `json:"pick,omitempty"`
+	// chart: bar or line, and its points
+	Chart  string  `json:"chart,omitempty"`
+	Points []Point `json:"points,omitempty"`
+	// map: the places
+	Places []Place `json:"places,omitempty"`
 }
 
-// Row is one line of a facts block: a label and its value.
+// Row is one line of a facts block: a label and its value. In a compare
+// block a row is one attribute, with one value per option (Values).
 type Row struct {
-	Label string `json:"label"`
-	Value string `json:"value"`
-	Tone  string `json:"tone,omitempty"`
+	Label  string   `json:"label"`
+	Value  string   `json:"value,omitempty"`
+	Values []string `json:"values,omitempty"`
+	Tone   string   `json:"tone,omitempty"`
 }
 
 // Item is one entry of a list block.
@@ -75,6 +107,15 @@ const (
 	BlockNote     = "note"
 	BlockTimeline = "timeline"
 	BlockCode     = "code"
+
+	BlockChoice    = "choice"
+	BlockDatetime  = "datetime"
+	BlockSlider    = "slider"
+	BlockField     = "field"
+	BlockChecklist = "checklist"
+	BlockCompare   = "compare"
+	BlockChart     = "chart"
+	BlockMap       = "map"
 )
 
 // Limits. The phone mirrors these; a shared fixture pins the two together.
@@ -248,6 +289,10 @@ func (b *Block) Validate() error {
 			}
 		}
 		b.Language = lang
+	case BlockChoice, BlockDatetime, BlockSlider, BlockField, BlockChecklist:
+		return b.validateInput()
+	case BlockCompare, BlockChart, BlockMap:
+		return b.validateView()
 	default:
 		return fmt.Errorf("block type %q is not in the catalog", b.Type)
 	}
@@ -309,6 +354,8 @@ func blockText(b Block) string {
 		}
 	case BlockCode:
 		sb.WriteString("```" + b.Language + "\n" + b.Code + "\n```")
+	default:
+		sb.WriteString(extraBlockText(b))
 	}
 	return sb.String()
 }

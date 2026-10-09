@@ -59,9 +59,9 @@ func TestScheduleStoresTheOwnersDate(t *testing.T) {
 	tool := NewScheduleTool(svc, "Asia/Bangkok")
 	tool.SetContext("mobile", "default")
 
-	res := tool.Execute(liveContext(t, "Asia/Bangkok", "remind me about the chelsea game on 9 october at 9 am"),
+	res := tool.Execute(liveContext(t, "Asia/Bangkok", "remind me about the chelsea game on "+strings.ToLower(futureDay())+" at 9 am"),
 		map[string]interface{}{
-			"message": "Remind me on 9 October at 9 AM about the chelsea game",
+			"message": "Remind me on " + futureDay() + " at 9 AM about the chelsea game",
 		})
 	if res.IsError {
 		t.Fatalf("the owner named a real date and it was refused: %s", res.ForLLM)
@@ -71,7 +71,7 @@ func TestScheduleStoresTheOwnersDate(t *testing.T) {
 		t.Fatalf("expected 1 reminder, got %d", len(items))
 	}
 	loc, _ := time.LoadLocation("Asia/Bangkok")
-	want := time.Date(2026, 10, 9, 9, 0, 0, 0, loc)
+	want := futureDate(loc)
 	if items[0].NextRunAt == nil || !items[0].NextRunAt.Equal(want) {
 		t.Fatalf("stored %v, want %v", items[0].NextRunAt, want)
 	}
@@ -115,7 +115,7 @@ func TestScheduleAcceptsAShortConfirmation(t *testing.T) {
 
 	res := tool.Execute(liveContext(t, "Asia/Bangkok", "yes"),
 		map[string]interface{}{
-			"message": "Remind me on 9 October at 9 AM about the chelsea game",
+			"message": "Remind me on " + futureDay() + " at 9 AM about the chelsea game",
 		})
 	if res.IsError {
 		t.Fatalf("a confirmation of a proposed time must be accepted: %s", res.ForLLM)
@@ -200,7 +200,7 @@ func TestScheduleResumesOnAnApprovalReply(t *testing.T) {
 		tool = NewScheduleTool(svc, "Asia/Bangkok")
 		tool.SetContext("mobile", "default")
 		res := tool.Execute(liveContext(t, "Asia/Bangkok", reply),
-			map[string]interface{}{"message": "Remind me on 9 October at 9 AM about the chelsea game"})
+			map[string]interface{}{"message": "Remind me on " + futureDay() + " at 9 AM about the chelsea game"})
 		if res.IsError {
 			t.Fatalf("approval reply %q must resume the approved call, got: %s", reply, res.ForLLM)
 		}
@@ -209,9 +209,24 @@ func TestScheduleResumesOnAnApprovalReply(t *testing.T) {
 			t.Fatalf("reply %q: expected 1 reminder, got %d", reply, len(items))
 		}
 		loc, _ := time.LoadLocation("Asia/Bangkok")
-		want := time.Date(2026, 10, 9, 9, 0, 0, 0, loc)
+		want := futureDate(loc)
 		if items[0].NextRunAt == nil || !items[0].NextRunAt.Equal(want) {
 			t.Fatalf("reply %q: stored %v, want %v", reply, items[0].NextRunAt, want)
 		}
 	}
+}
+
+// futureDay is a day about a month from now ("12 November"), so the tests
+// that name a date never name one that has already passed.
+func futureDay() string {
+	loc, err := time.LoadLocation("Asia/Bangkok")
+	if err != nil {
+		loc = time.Local
+	}
+	return futureDate(loc).Format("2 January")
+}
+
+func futureDate(loc *time.Location) time.Time {
+	d := time.Now().In(loc).AddDate(0, 0, 30)
+	return time.Date(d.Year(), d.Month(), d.Day(), 9, 0, 0, 0, loc)
 }

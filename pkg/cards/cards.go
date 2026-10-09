@@ -56,6 +56,15 @@ const (
 	// KindDigest is the morning message: several small things Ghost held
 	// back so they arrive together instead of as separate pings.
 	KindDigest Kind = "digest"
+	// KindQuestion is Ghost asking something it needs to go on (the clarify
+	// tool): the question as a title and the ways to answer it as input
+	// blocks. Answering it hands the answer to the turn that asked, or, when
+	// that turn has moved on, sends it as the owner's next message.
+	KindQuestion Kind = "question"
+	// KindDraft is something Ghost wrote for the owner to send (an email, a
+	// calendar invite, a text message), shown in full and editable before
+	// anything leaves. Sending is the owner's own act on the card. See draft.go.
+	KindDraft Kind = "draft"
 )
 
 // CardVersion is the version of the block vocabulary a card was written in. A
@@ -87,6 +96,8 @@ type Resolution struct {
 	ActionID string    `json:"action_id"`
 	Label    string    `json:"label"`
 	At       time.Time `json:"at"`
+	// Answers is what the owner answered, by block key, when the card asked.
+	Answers map[string]interface{} `json:"answers,omitempty"`
 }
 
 // Card is one rich payload.
@@ -130,9 +141,13 @@ func (c Card) Validate() error {
 	switch c.Kind {
 	case KindSuggestion, KindGoalUpdate, KindCart, KindBrowserView, KindMemoryReceipt, KindBrowserRecovery, KindReminder, KindDigest:
 		// producible today
-	case KindPresent:
+	case KindPresent, KindQuestion:
 		if len(c.Blocks) == 0 {
 			return errors.New("a presented card needs at least one block")
+		}
+	case KindDraft:
+		if err := validateDraftData(c.Data); err != nil {
+			return err
 		}
 	case KindCheckoutSheet:
 		return errors.New("checkout_sheet has no payment partner yet")
@@ -450,4 +465,126 @@ func (s *Store) Relabel(channel, id, label string) {
 			return
 		}
 	}
+}
+
+// ErrNoCard is returned when a card is not in the store (expired, another
+// channel, never existed).
+var ErrNoCard = errors.New("that card is no longer here")
+
+// ErrResolved is returned when a card was already answered or put away.
+var ErrResolved = errors.New("that card was already answered")
+
+// Respond records the owner's answer to a card that asks something. The answer
+// is checked against the card's own input blocks first; a wrong answer leaves
+// the card open with the reason. The resolved card keeps the answers, so every
+// device shows what was answered.
+func (s *Store) Respond(channel, id string, raw map[string]interface{}, now time.Time) (Card, Answer, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list := s.items[channel]
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		if list[i].Resolved != nil {
+			return list[i], Answer{}, ErrResolved
+		}
+		ans, err := list[i].CheckAnswer(raw, now)
+		if err != nil {
+			return list[i], Answer{}, err
+		}
+		actionID := "submit"
+		for _, a := range list[i].Actions {
+			if a.Kind == "submit" {
+				actionID = a.ID
+			}
+		}
+		// A checklist answered by sending keeps its ticks.
+		for bi := range list[i].Blocks {
+			b := &list[i].Blocks[bi]
+			if b.Type != BlockChecklist {
+				continue
+			}
+			done := map[string]bool{}
+			if ids, ok := ans.Values[b.Key].([]string); ok {
+				for _, id := range ids {
+					done[id] = true
+				}
+			}
+			for ci := range b.Checks {
+				b.Checks[ci].Done = done[b.Checks[ci].ID]
+			}
+		}
+		list[i].Resolved = &Resolution{ActionID: actionID, Label: ans.Label, At: now.UTC(), Answers: ans.Values}
+		s.items[channel] = list
+		s.saveLocked()
+		return list[i], ans, nil
+	}
+	return Card{}, Answer{}, ErrNoCard
+}
+
+// Check ticks or unticks one line of a checklist on an open card, and keeps it,
+// so a list the owner works through (groceries, packing) stays ticked on every
+// device. It changes nothing else.
+func (s *Store) Check(channel, id, key, item string, done bool) (Card, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list := s.items[channel]
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		if list[i].Resolved != nil {
+			return list[i], ErrResolved
+		}
+		for bi := range list[i].Blocks {
+			b := &list[i].Blocks[bi]
+			if b.Type != BlockChecklist || b.Key != key {
+				continue
+			}
+			for ci := range b.Checks {
+				if b.Checks[ci].ID == item {
+					b.Checks[ci].Done = done
+					s.items[channel] = list
+					s.saveLocked()
+					return list[i], nil
+				}
+			}
+			return list[i], fmt.Errorf("%q is not on that checklist", item)
+		}
+		return list[i], fmt.Errorf("the card has no checklist %q", key)
+	}
+	return Card{}, ErrNoCard
+}
+
+// Update replaces an open card's fields with fn's result, validated, and keeps
+// it. It is how a draft takes the owner's edits.
+func (s *Store) Update(channel, id string, fn func(c *Card) error) (Card, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list := s.items[channel]
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		if list[i].Resolved != nil {
+			return list[i], ErrResolved
+		}
+		next := list[i]
+		next.Data = map[string]interface{}{}
+		for k, v := range list[i].Data {
+			next.Data[k] = v
+		}
+		if err := fn(&next); err != nil {
+			return list[i], err
+		}
+		if err := next.Validate(); err != nil {
+			return list[i], err
+		}
+		list[i] = next
+		s.items[channel] = list
+		s.saveLocked()
+		return next, nil
+	}
+	return Card{}, ErrNoCard
 }

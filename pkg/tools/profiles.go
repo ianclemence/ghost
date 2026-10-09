@@ -51,6 +51,9 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Showing the owner what was built, running in their chat. Sandboxed on
 		// the phone and unable to reach the network, so nothing to gate.
 		"canvas",
+		// Cards that show or ask, and drafts the owner sends themselves: none
+		// of them can run, open or send anything on their own.
+		"present_card", "draft",
 		// Browser surface on mobile: observe + act (broker-governed like
 		// exec, which is already here). Purchase-class submit and
 		// file-egress upload stay desktop/admin posture.
@@ -233,7 +236,10 @@ var coreToolNames = map[string]bool{
 	"crypto_price": true, "currency_convert": true, "flight_status": true,
 	"clarify": true, "todo": true,
 	"schedule": true,
-	"spawn":    true, "subagent": true,
+	// Showing an answer as a card (or asking with one) is how Ghost talks on
+	// the phone; it has to be there whatever the words of the message were.
+	"present_card": true,
+	"spawn":        true, "subagent": true,
 	// Status phrasings vary too much to keyword-gate ("is the device
 	// healthy", "how much space is left", "what's the temperature") and a
 	// missed offer is a refused question — always present, read-only,
@@ -259,6 +265,11 @@ var turnIntentTools = []struct {
 		"game", "quiz", "to-do app", "todo app", "counter", "interactive", "ui for", "page that", "page with",
 		"build me", "make me a", "make me an", "create a page", "show it to me", "display it", "see it", "preview", "render"},
 		[]string{"canvas"}},
+	// Writing something for the owner to send: they see it in full and send it.
+	{[]string{"email", "e-mail", "mail ", "reply to", "write to", "write back", "text ", "sms", "message to", "send a message",
+		"invite", "calendar", "schedule a meeting", "set up a meeting", "book a meeting", "add to my calendar", "put it in my calendar",
+		"draft", "let them know", "tell her", "tell him", "tell them"},
+		[]string{"draft", "email_search"}},
 	{[]string{"image", "picture", "photo", "screenshot", "draw something"}, []string{"image_generate", "vision"}},
 	{[]string{"video", "clip", "frames"}, []string{"video_frames"}},
 	{[]string{"speak", "tts", "read aloud", "say this", "audio"}, []string{"tts"}},

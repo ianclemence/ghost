@@ -283,3 +283,93 @@ func (s *Service) DeleteByQuery(ctx context.Context, q string) (Event, provider.
 func itoa(n int) string {
 	return fmt.Sprintf("%d", n)
 }
+
+// NewEvent is an event to create from fields the owner has seen and approved
+// (a draft card), not from a sentence the provider has to interpret.
+type NewEvent struct {
+	Summary  string
+	Location string
+	Notes    string
+	// Start and End are local times; for an all-day event only their dates count.
+	Start, End time.Time
+	AllDay     bool
+}
+
+// Insert creates an event on the primary calendar exactly as given. An event
+// with no end lasts an hour (a whole day when all-day).
+func (s *Service) Insert(ctx context.Context, e NewEvent) (Event, provider.Result[Event]) {
+	fail := func(class provider.FailureClass, err error) (Event, provider.Result[Event]) {
+		return Event{}, provider.Result[Event]{Failure: class, Err: err}
+	}
+	if !s.Configured() {
+		return fail(provider.FailNotConfigured, fmt.Errorf("calendar not connected"))
+	}
+	if strings.TrimSpace(e.Summary) == "" || e.Start.IsZero() {
+		return fail(provider.FailInvalid, fmt.Errorf("an event needs a title and a start"))
+	}
+	if e.End.IsZero() || e.End.Before(e.Start) {
+		if e.AllDay {
+			e.End = e.Start
+		} else {
+			e.End = e.Start.Add(time.Hour)
+		}
+	}
+	type when struct {
+		DateTime string `json:"dateTime,omitempty"`
+		Date     string `json:"date,omitempty"`
+		TimeZone string `json:"timeZone,omitempty"`
+	}
+	at := func(t time.Time, end bool) when {
+		if e.AllDay {
+			if end {
+				// Google's all-day end date is exclusive.
+				t = t.AddDate(0, 0, 1)
+			}
+			return when{Date: t.Format("2006-01-02")}
+		}
+		return when{DateTime: t.Format(time.RFC3339)}
+	}
+	body := map[string]interface{}{
+		"summary": e.Summary,
+		"start":   at(e.Start, false),
+		"end":     at(e.End, true),
+	}
+	if e.Location != "" {
+		body["location"] = e.Location
+	}
+	if e.Notes != "" {
+		body["description"] = e.Notes
+	}
+	if !s.break_.Allow() {
+		return fail(provider.FailUnavailable, fmt.Errorf("calendar temporarily unavailable"))
+	}
+	data, _ := json.Marshal(body)
+	access, err := s.cfg.TokenSource(ctx, true)
+	if err != nil {
+		return fail(provider.FailAuth, err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", s.cfg.Base+"/calendars/primary/events", strings.NewReader(string(data)))
+	if err != nil {
+		return fail(provider.FailInvalid, err)
+	}
+	req.Header.Set("Authorization", "Bearer "+access)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.cfg.HTTPClient.Do(req)
+	if err != nil {
+		s.break_.RecordFailure(provider.FailNetwork)
+		return fail(provider.FailNetwork, err)
+	}
+	defer resp.Body.Close()
+	if class := checkStatus(resp, "insert"); class != "" {
+		s.break_.RecordFailure(class)
+		return fail(class, fmt.Errorf("calendar insert status %d", resp.StatusCode))
+	}
+	var created apiEvent
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		return fail(provider.FailMalformed, err)
+	}
+	s.break_.RecordSuccess()
+	s.cache.Invalidate("agenda")
+	ev := toEvent(created)
+	return ev, provider.Result[Event]{Value: ev, Provider: "calendar"}
+}

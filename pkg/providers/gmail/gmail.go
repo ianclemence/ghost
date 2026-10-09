@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -229,18 +230,40 @@ type sendResp struct {
 // acknowledgement evidence. The permission broker must approve before this
 // is ever called.
 func (s *Service) Send(ctx context.Context, to, subject, body string) (sendResp, provider.Result[sendResp]) {
+	return s.SendMail(ctx, []string{to}, nil, subject, body)
+}
+
+// SendMail sends to several people, with copies. Header values are single
+// lines (a newline in one would start a header of its own), and the subject is
+// encoded so any language survives.
+func (s *Service) SendMail(ctx context.Context, to, cc []string, subject, body string) (sendResp, provider.Result[sendResp]) {
 	if !s.Configured() {
 		return sendResp{}, provider.Result[sendResp]{Failure: provider.FailNotConfigured, Err: fmt.Errorf("gmail not connected")}
 	}
-	to = strings.TrimSpace(to)
-	if to == "" {
+	headerLine := func(list []string) string {
+		var kept []string
+		for _, a := range list {
+			a = strings.TrimSpace(strings.NewReplacer("\r", "", "\n", "").Replace(a))
+			if a != "" {
+				kept = append(kept, a)
+			}
+		}
+		return strings.Join(kept, ", ")
+	}
+	toLine := headerLine(to)
+	if toLine == "" {
 		return sendResp{}, provider.Result[sendResp]{Failure: provider.FailInvalid, Err: fmt.Errorf("recipient required")}
 	}
+	subject = strings.NewReplacer("\r", " ", "\n", " ").Replace(subject)
 	access, err := skills.GmailAccessToken(ctx, true)
 	if err != nil {
 		return sendResp{}, provider.Result[sendResp]{Failure: provider.FailAuth, Err: err}
 	}
-	raw := "To: " + to + "\r\nSubject: " + subject + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + body
+	raw := "To: " + toLine + "\r\n"
+	if ccLine := headerLine(cc); ccLine != "" {
+		raw += "Cc: " + ccLine + "\r\n"
+	}
+	raw += "Subject: " + mime.QEncoding.Encode("utf-8", subject) + "\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + body
 	encoded := base64.URLEncoding.EncodeToString([]byte(raw))
 	payload := `{"raw":"` + encoded + `"}`
 	req, err := http.NewRequestWithContext(ctx, "POST", s.cfg.Base+"/users/me/messages/send", strings.NewReader(payload))

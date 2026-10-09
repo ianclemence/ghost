@@ -4,11 +4,36 @@
     {
       "name": "weather glance",
       "spec": {
-        "kind": "present", "title": "Nairobi today",
+        "kind": "present",
+        "title": "Nairobi today",
         "blocks": [
-          { "type": "metric", "label": "Now", "value": "24", "unit": "°C", "delta": "+2° vs yesterday", "tone": "good" },
-          { "type": "facts", "rows": [ { "label": "Rain", "value": "10%" }, { "label": "Wind", "value": "12 km/h", "tone": "neutral" } ] },
-          { "type": "note", "text": "Dry until the evening.", "tone": "info" }
+          {
+            "type": "metric",
+            "label": "Now",
+            "value": "24",
+            "unit": "°C",
+            "delta": "+2° vs yesterday",
+            "tone": "good"
+          },
+          {
+            "type": "facts",
+            "rows": [
+              {
+                "label": "Rain",
+                "value": "10%"
+              },
+              {
+                "label": "Wind",
+                "value": "12 km/h",
+                "tone": "neutral"
+              }
+            ]
+          },
+          {
+            "type": "note",
+            "text": "Dry until the evening.",
+            "tone": "info"
+          }
         ]
       },
       "blocks": 3
@@ -16,18 +41,50 @@
     {
       "name": "flight with a timeline and a choice",
       "spec": {
-        "kind": "present", "title": "TP 1352",
+        "kind": "present",
+        "title": "TP 1352",
         "blocks": [
-          { "type": "timeline", "steps": [
-            { "time": "09:40", "title": "Depart Lisbon", "state": "done" },
-            { "time": "11:05", "title": "Land Nairobi", "detail": "Terminal 1A", "state": "now" },
-            { "time": "12:00", "title": "Pick up bags", "state": "next" }
-          ] },
-          { "type": "progress", "label": "Flight", "progress": 0.6, "caption": "1h 10m left" }
+          {
+            "type": "timeline",
+            "steps": [
+              {
+                "time": "09:40",
+                "title": "Depart Lisbon",
+                "state": "done"
+              },
+              {
+                "time": "11:05",
+                "title": "Land Nairobi",
+                "detail": "Terminal 1A",
+                "state": "now"
+              },
+              {
+                "time": "12:00",
+                "title": "Pick up bags",
+                "state": "next"
+              }
+            ]
+          },
+          {
+            "type": "progress",
+            "label": "Flight",
+            "progress": 0.6,
+            "caption": "1h 10m left"
+          }
         ],
         "actions": [
-          { "id": "a1", "label": "Track it", "kind": "reply", "text": "Keep an eye on TP 1352 for me", "style": "primary" },
-          { "id": "a2", "label": "Not now", "kind": "dismiss" }
+          {
+            "id": "a1",
+            "label": "Track it",
+            "kind": "reply",
+            "text": "Keep an eye on TP 1352 for me",
+            "style": "primary"
+          },
+          {
+            "id": "a2",
+            "label": "Not now",
+            "kind": "dismiss"
+          }
         ]
       },
       "blocks": 2
@@ -35,34 +92,730 @@
     {
       "name": "list and code",
       "spec": {
-        "kind": "present", "title": "Three options",
+        "kind": "present",
+        "title": "Three options",
         "blocks": [
-          { "type": "list", "items": [ { "title": "Cafe Brera", "subtitle": "Near the station", "trailing": "$$", "tone": "good" }, { "title": "Diner 54" } ] },
-          { "type": "code", "language": "bash", "code": "ghost routines add \"check flights\"" },
-          { "type": "text", "text": "Say the word and I will book one." }
+          {
+            "type": "list",
+            "items": [
+              {
+                "title": "Cafe Brera",
+                "subtitle": "Near the station",
+                "trailing": "$$",
+                "tone": "good"
+              },
+              {
+                "title": "Diner 54"
+              }
+            ]
+          },
+          {
+            "type": "code",
+            "language": "bash",
+            "code": "ghost routines add \"check flights\""
+          },
+          {
+            "type": "text",
+            "text": "Say the word and I will book one."
+          }
+        ]
+      },
+      "blocks": 3
+    },
+    {
+      "name": "a question with a choice, a date and a submit",
+      "spec": {
+        "kind": "present",
+        "title": "Dinner on Friday",
+        "blocks": [
+          {
+            "type": "choice",
+            "key": "place",
+            "label": "Where",
+            "options": [
+              {
+                "id": "brera",
+                "label": "Cafe Brera",
+                "detail": "Near the station"
+              },
+              {
+                "id": "diner",
+                "label": "Diner 54"
+              }
+            ]
+          },
+          {
+            "type": "datetime",
+            "key": "when",
+            "label": "When",
+            "mode": "datetime",
+            "value": "2026-10-16T19:30"
+          }
+        ],
+        "actions": [
+          {
+            "id": "go",
+            "label": "Book it",
+            "kind": "submit",
+            "style": "primary"
+          },
+          {
+            "id": "no",
+            "label": "Not now",
+            "kind": "dismiss"
+          }
+        ]
+      },
+      "blocks": 2
+    },
+    {
+      "name": "a slider and a field",
+      "spec": {
+        "kind": "present",
+        "title": "Your budget",
+        "blocks": [
+          {
+            "type": "slider",
+            "key": "budget",
+            "label": "Up to",
+            "min": 0,
+            "max": 500,
+            "step": 10,
+            "number": 150,
+            "unit": "$"
+          },
+          {
+            "type": "field",
+            "key": "notes",
+            "label": "Anything else",
+            "placeholder": "Optional",
+            "optional": true
+          }
+        ],
+        "actions": [
+          {
+            "id": "send",
+            "label": "Send",
+            "kind": "submit"
+          }
+        ]
+      },
+      "blocks": 2
+    },
+    {
+      "name": "a checklist to tick as you go",
+      "spec": {
+        "kind": "present",
+        "title": "Groceries",
+        "blocks": [
+          {
+            "type": "checklist",
+            "key": "items",
+            "checks": [
+              {
+                "id": "milk",
+                "label": "Milk"
+              },
+              {
+                "id": "eggs",
+                "label": "Eggs",
+                "done": true
+              }
+            ]
+          }
+        ]
+      },
+      "blocks": 1
+    },
+    {
+      "name": "compare, chart and map",
+      "spec": {
+        "kind": "present",
+        "title": "Three laptops",
+        "blocks": [
+          {
+            "type": "compare",
+            "options": [
+              {
+                "label": "Air 13"
+              },
+              {
+                "label": "XPS 13"
+              },
+              {
+                "label": "ThinkPad X1"
+              }
+            ],
+            "rows": [
+              {
+                "label": "Price",
+                "values": [
+                  "$999",
+                  "$1099",
+                  "$1299"
+                ]
+              },
+              {
+                "label": "Battery",
+                "values": [
+                  "18h",
+                  "12h",
+                  "15h"
+                ],
+                "tone": "good"
+              }
+            ],
+            "pick": 0
+          },
+          {
+            "type": "chart",
+            "chart": "bar",
+            "label": "Spending",
+            "unit": "$",
+            "points": [
+              {
+                "label": "Jul",
+                "value": 420
+              },
+              {
+                "label": "Aug",
+                "value": 380
+              },
+              {
+                "label": "Sep",
+                "value": 455.5
+              }
+            ]
+          },
+          {
+            "type": "map",
+            "places": [
+              {
+                "name": "Cafe Brera",
+                "detail": "4 min walk",
+                "lat": -1.2864,
+                "lon": 36.8172
+              }
+            ]
+          }
         ]
       },
       "blocks": 3
     }
   ],
   "invalid": [
-    { "name": "unknown kind", "spec": { "kind": "hologram", "title": "x", "blocks": [ { "type": "text", "text": "hi" } ] } },
-    { "name": "no blocks", "spec": { "kind": "present", "title": "x" } },
-    { "name": "no title", "spec": { "kind": "present", "title": " ", "blocks": [ { "type": "text", "text": "hi" } ] } },
-    { "name": "unknown block type", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "iframe", "text": "hi" } ] } },
-    { "name": "empty text", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "text", "text": "  " } ] } },
-    { "name": "bad tone", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "note", "text": "hi", "tone": "rainbow" } ] } },
-    { "name": "progress out of range", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "progress", "label": "p", "progress": 1.5 } ] } },
-    { "name": "progress missing", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "progress", "label": "p" } ] } },
-    { "name": "too many blocks", "spec": { "kind": "present", "title": "x", "blocks": [ {"type":"text","text":"1"},{"type":"text","text":"2"},{"type":"text","text":"3"},{"type":"text","text":"4"},{"type":"text","text":"5"},{"type":"text","text":"6"},{"type":"text","text":"7"},{"type":"text","text":"8"},{"type":"text","text":"9"} ] } },
-    { "name": "bad timeline state", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "timeline", "steps": [ { "title": "a", "state": "later" } ] } ] } },
-    { "name": "code language with a space", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "code", "language": "bash; rm", "code": "ls" } ] } },
-    { "name": "reply without text", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "text", "text": "hi" } ], "actions": [ { "id": "a", "label": "Go", "kind": "reply" } ] } },
-    { "name": "action that binds a request", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "text", "text": "hi" } ], "actions": [ { "id": "a", "label": "Go", "kind": "reply", "text": "yes", "request_id": "req_1" } ] } },
-    { "name": "action that opens a link", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "text", "text": "hi" } ], "actions": [ { "id": "a", "label": "Go", "kind": "open", "text": "https://evil.example" } ] } },
-    { "name": "style outside the catalog", "spec": { "kind": "present", "title": "x", "blocks": [ { "type": "text", "text": "hi" } ], "actions": [ { "id": "a", "label": "Go", "kind": "dismiss", "style": "destructive" } ] } },
-    { "name": "blocks on a kind that takes none", "spec": { "kind": "goal_update", "title": "x", "data": { "goal_id": "g" }, "blocks": [ { "type": "text", "text": "hi" } ] } },
-    { "name": "data on a block card", "spec": { "kind": "present", "title": "x", "data": { "a": "b" }, "blocks": [ { "type": "text", "text": "hi" } ] } },
-    { "name": "unknown field", "spec": { "kind": "present", "title": "x", "html": "<b>hi</b>", "blocks": [ { "type": "text", "text": "hi" } ] } }
+    {
+      "name": "unknown kind",
+      "spec": {
+        "kind": "hologram",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no blocks",
+      "spec": {
+        "kind": "present",
+        "title": "x"
+      }
+    },
+    {
+      "name": "no title",
+      "spec": {
+        "kind": "present",
+        "title": " ",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown block type",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "iframe",
+            "text": "hi"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty text",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "  "
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad tone",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "note",
+            "text": "hi",
+            "tone": "rainbow"
+          }
+        ]
+      }
+    },
+    {
+      "name": "progress out of range",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "progress",
+            "label": "p",
+            "progress": 1.5
+          }
+        ]
+      }
+    },
+    {
+      "name": "progress missing",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "progress",
+            "label": "p"
+          }
+        ]
+      }
+    },
+    {
+      "name": "too many blocks",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "1"
+          },
+          {
+            "type": "text",
+            "text": "2"
+          },
+          {
+            "type": "text",
+            "text": "3"
+          },
+          {
+            "type": "text",
+            "text": "4"
+          },
+          {
+            "type": "text",
+            "text": "5"
+          },
+          {
+            "type": "text",
+            "text": "6"
+          },
+          {
+            "type": "text",
+            "text": "7"
+          },
+          {
+            "type": "text",
+            "text": "8"
+          },
+          {
+            "type": "text",
+            "text": "9"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad timeline state",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "timeline",
+            "steps": [
+              {
+                "title": "a",
+                "state": "later"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "code language with a space",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "code",
+            "language": "bash; rm",
+            "code": "ls"
+          }
+        ]
+      }
+    },
+    {
+      "name": "reply without text",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ],
+        "actions": [
+          {
+            "id": "a",
+            "label": "Go",
+            "kind": "reply"
+          }
+        ]
+      }
+    },
+    {
+      "name": "action that binds a request",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ],
+        "actions": [
+          {
+            "id": "a",
+            "label": "Go",
+            "kind": "reply",
+            "text": "yes",
+            "request_id": "req_1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "action that opens a link",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ],
+        "actions": [
+          {
+            "id": "a",
+            "label": "Go",
+            "kind": "open",
+            "text": "https://evil.example"
+          }
+        ]
+      }
+    },
+    {
+      "name": "style outside the catalog",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ],
+        "actions": [
+          {
+            "id": "a",
+            "label": "Go",
+            "kind": "dismiss",
+            "style": "destructive"
+          }
+        ]
+      }
+    },
+    {
+      "name": "blocks on a kind that takes none",
+      "spec": {
+        "kind": "goal_update",
+        "title": "x",
+        "data": {
+          "goal_id": "g"
+        },
+        "blocks": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ]
+      }
+    },
+    {
+      "name": "data on a block card",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "data": {
+          "a": "b"
+        },
+        "blocks": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown field",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "html": "<b>hi</b>",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a question with no submit",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "choice",
+            "key": "a",
+            "label": "Pick",
+            "options": [
+              {
+                "label": "A"
+              },
+              {
+                "label": "B"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a submit with nothing to ask",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ],
+        "actions": [
+          {
+            "id": "s",
+            "label": "Send",
+            "kind": "submit"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a choice with one option",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "choice",
+            "key": "a",
+            "label": "Pick",
+            "options": [
+              {
+                "label": "A"
+              }
+            ]
+          }
+        ],
+        "actions": [
+          {
+            "id": "s",
+            "label": "Send",
+            "kind": "submit"
+          }
+        ]
+      }
+    },
+    {
+      "name": "two inputs with one key",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "field",
+            "key": "a",
+            "label": "One"
+          },
+          {
+            "type": "field",
+            "key": "a",
+            "label": "Two"
+          }
+        ],
+        "actions": [
+          {
+            "id": "s",
+            "label": "Send",
+            "kind": "submit"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a slider with no range",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "slider",
+            "key": "a",
+            "label": "How much",
+            "min": 5,
+            "max": 5
+          }
+        ],
+        "actions": [
+          {
+            "id": "s",
+            "label": "Send",
+            "kind": "submit"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a date in the wrong form",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "datetime",
+            "key": "a",
+            "label": "When",
+            "mode": "date",
+            "value": "next friday"
+          }
+        ],
+        "actions": [
+          {
+            "id": "s",
+            "label": "Send",
+            "kind": "submit"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a compare row missing a value",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "compare",
+            "options": [
+              {
+                "label": "A"
+              },
+              {
+                "label": "B"
+              }
+            ],
+            "rows": [
+              {
+                "label": "Price",
+                "values": [
+                  "1"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a map pin at nowhere",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "map",
+            "places": [
+              {
+                "name": "Null island",
+                "lat": 0,
+                "lon": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a chart with one point",
+      "spec": {
+        "kind": "present",
+        "title": "x",
+        "blocks": [
+          {
+            "type": "chart",
+            "label": "x",
+            "points": [
+              {
+                "label": "a",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      }
+    }
   ]
 }
