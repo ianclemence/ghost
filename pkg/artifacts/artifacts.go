@@ -470,7 +470,8 @@ const (
 	ShelfDocuments = "documents" // files to read, print or send
 	ShelfPictures  = "pictures"
 	ShelfLinks     = "links"
-	ShelfNotes     = "notes" // written results
+	ShelfNotes     = "notes"  // written results
+	ShelfMotion    = "motion" // animated explainers and their videos
 )
 
 // ShelfKindOf is the filter an artifact belongs to.
@@ -483,6 +484,8 @@ func ShelfKindOf(a Artifact) string {
 	}
 	p := strings.ToLower(a.Path)
 	switch {
+	case strings.HasPrefix(p, "motion/") && (strings.HasSuffix(p, ".json") || strings.HasSuffix(p, ".mp4")):
+		return ShelfMotion
 	case strings.HasSuffix(p, ".html") || strings.HasSuffix(p, ".htm"):
 		return ShelfPages
 	case strings.HasSuffix(p, ".png") || strings.HasSuffix(p, ".jpg") || strings.HasSuffix(p, ".jpeg") || strings.HasSuffix(p, ".webp") || strings.HasSuffix(p, ".gif"):

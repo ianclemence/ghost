@@ -216,7 +216,7 @@ func registerArtifactRoutes(mux *http.ServeMux) {
 		}
 		kind := strings.TrimSpace(r.URL.Query().Get("kind"))
 		switch kind {
-		case "", artifacts.ShelfPages, artifacts.ShelfDocuments, artifacts.ShelfPictures, artifacts.ShelfLinks, artifacts.ShelfNotes:
+		case "", artifacts.ShelfPages, artifacts.ShelfDocuments, artifacts.ShelfPictures, artifacts.ShelfLinks, artifacts.ShelfNotes, artifacts.ShelfMotion:
 		default:
 			jsonError(w, http.StatusBadRequest, "invalid_request", "unknown kind")
 			return

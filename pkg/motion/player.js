@@ -372,10 +372,16 @@
   }
   if (mode === "preview") {
     // The stage fills the width of the window it runs in.
+    // Inline in the chat it stays under the window's height; full screen it
+    // fits the whole screen. Either way it is centred on the dark ground.
     function fit() {
-      var s = document.documentElement.clientWidth / W;
-      root.style.transform = "scale(" + s + ")";
-      document.getElementById("frame").style.height = H * s + "px";
+      var cw = document.documentElement.clientWidth;
+      var ch = window.__GHOST_INLINE__ ? 480 : document.documentElement.clientHeight || window.innerHeight;
+      var s = Math.min(cw / W, ch / H);
+      var left = Math.max(0, (cw - W * s) / 2);
+      root.style.transform = "translate(" + left + "px,0) scale(" + s + ")";
+      document.getElementById("frame").style.height = (window.__GHOST_INLINE__ ? H * s : Math.max(H * s, ch)) + "px";
+      if (!window.__GHOST_INLINE__) root.style.top = Math.max(0, (ch - H * s) / 2) + "px";
     }
     fit();
     window.addEventListener("resize", fit);
