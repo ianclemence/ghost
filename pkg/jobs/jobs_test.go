@@ -33,7 +33,7 @@ func TestJobsScheduleAtTheOwnersTime(t *testing.T) {
 		t.Fatal("learn asks what to learn")
 	}
 	s, _ = learn.Check(Settings{Topic: "  Kiswahili   verbs "})
-	if in := learn.Instruction(s); !strings.Contains(in, "Learn: Kiswahili verbs") || strings.Contains(in, "%s") {
+	if in := learn.Instruction(s); !strings.Contains(in, "Learn: Kiswahili verbs") || !strings.Contains(in, "Learn cards: Kiswahili verbs") || strings.Contains(in, "{topic}") {
 		t.Fatalf("instruction: %s", in)
 	}
 	watch, _ := Find("watch")

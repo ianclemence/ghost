@@ -174,3 +174,37 @@ fetch('/api'); localStorage.setItem('a','b');</script></body></html>`
 		t.Fatalf("an allowed library must not be flagged: %s", r.ForLLM)
 	}
 }
+
+func TestCanvasKeepsWhatThePageSavedAcrossVersions(t *testing.T) {
+	ws := t.TempDir()
+	if err := WriteCanvasSaved(ws, "canvas/kiswahili-cards-v1.html", []byte(`{"due":{"jambo":"2026-10-10"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	// The next version reads the same.
+	got, err := ReadCanvasSaved(ws, "canvas/kiswahili-cards-v3.html")
+	if err != nil || string(got) != `{"due":{"jambo":"2026-10-10"}}` {
+		t.Fatalf("%s %v", got, err)
+	}
+	tool := NewCanvasTool(ws, nil, nil)
+	r := tool.Execute(context.Background(), map[string]interface{}{"title": "Kiswahili cards", "read_saved": true})
+	if !strings.Contains(r.ForLLM, `"jambo"`) {
+		t.Fatalf("read_saved: %s", r.ForLLM)
+	}
+	if err := WriteCanvasSaved(ws, "canvas/x-v1.html", []byte(`{nope`)); err == nil {
+		t.Fatal("not JSON")
+	}
+	if err := WriteCanvasSaved(ws, "canvas/x-v1.html", []byte(`"`+strings.Repeat("a", MaxCanvasSaved)+`"`)); err == nil {
+		t.Fatal("too large")
+	}
+	if err := WriteCanvasSaved(ws, "documents/x.md", []byte(`1`)); err == nil {
+		t.Fatal("only canvases keep things")
+	}
+	_ = WriteCanvasSaved(ws, "canvas/kiswahili-cards-v2.html", []byte(`null`))
+	if got, _ := ReadCanvasSaved(ws, "canvas/kiswahili-cards-v1.html"); got != nil {
+		t.Fatalf("null forgets: %s", got)
+	}
+	r = tool.Execute(context.Background(), map[string]interface{}{"title": "Kiswahili cards"})
+	if !r.IsError {
+		t.Fatal("a canvas without html or read_saved is an error")
+	}
+}

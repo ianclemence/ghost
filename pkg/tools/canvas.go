@@ -1,7 +1,10 @@
 package tools
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -65,6 +68,11 @@ func (t *CanvasTool) Description() string {
 		"as a big heading unless the page needs one. " +
 		"The page already has a dark base, a clean font and these CSS variables, so use them instead of " +
 		"inventing colours: --bg --surface --fg --muted --accent --ok --warn --bad --line --radius. " +
+		"To remember what the owner does between opens (a score, where they are in a deck of " +
+		"flashcards and when each card is due again, what they ticked), call ghost.save(value) with any " +
+		"JSON value (up to 64 KB) and read it back as ghost.saved when the page loads (null the first " +
+		"time). It is kept for this canvas across its versions; read it yourself with read_saved: true " +
+		"and the title (no html), for instance to build the next version from where they got to. " +
 		"To change a canvas, call canvas again with the WHOLE updated document and the same title: it " +
 		"becomes the next version. Do not paste the HTML into your reply; say in a sentence or two what " +
 		"you made and how to use it."
@@ -86,8 +94,12 @@ func (t *CanvasTool) Parameters() map[string]interface{} {
 				"type":        "string",
 				"description": "Optional: one line on what changed in this version.",
 			},
+			"read_saved": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Read what the canvas with this title saved with ghost.save, instead of showing a new version.",
+			},
 		},
-		"required": []string{"html", "title"},
+		"required": []string{"title"},
 	}
 }
 
@@ -169,6 +181,13 @@ func (t *CanvasTool) Execute(ctx context.Context, args map[string]interface{}) *
 		title = "Canvas"
 	}
 
+	if read, _ := args["read_saved"].(bool); read {
+		raw, err := ReadCanvasSaved(t.workspace, "canvas/"+canvasSlug(title)+"-v1.html")
+		if err != nil || raw == nil {
+			return &ToolResult{ForLLM: fmt.Sprintf("The canvas %q has saved nothing yet.", title), Silent: true}
+		}
+		return &ToolResult{ForLLM: fmt.Sprintf("What the canvas %q saved (JSON): %s", title, raw), Silent: true}
+	}
 	if strings.TrimSpace(html) == "" || !strings.Contains(html, "<") {
 		return ErrorResult("html content is required: give a complete HTML document.")
 	}
@@ -221,4 +240,64 @@ func (t *CanvasTool) Execute(ctx context.Context, args map[string]interface{}) *
 		msg += " But note: " + strings.Join(warn, "; ") + ". It will not work as written. Fix it and call canvas again with the same title before telling the owner it is done."
 	}
 	return &ToolResult{ForLLM: msg, Silent: true}
+}
+
+// MaxCanvasSaved is the most a canvas may keep with ghost.save.
+const MaxCanvasSaved = 64 << 10
+
+var canvasVersioned = regexp.MustCompile(`^canvas/([a-z0-9-]+)-v\d+\.html$`)
+
+// canvasSavedFile is where a canvas keeps what it saved: one file for all of
+// its versions (canvas/<slug>.saved.json), so a new version picks up where
+// the owner got to. "" for a path that is not a canvas.
+func canvasSavedFile(workspace, path string) string {
+	m := canvasVersioned.FindStringSubmatch(filepath.ToSlash(path))
+	if m == nil {
+		return ""
+	}
+	return filepath.Join(workspace, "canvas", m[1]+".saved.json")
+}
+
+// ReadCanvasSaved returns what the canvas at path saved, or nil if nothing.
+func ReadCanvasSaved(workspace, path string) (json.RawMessage, error) {
+	f := canvasSavedFile(workspace, path)
+	if f == "" {
+		return nil, errors.New("not a canvas")
+	}
+	b, err := os.ReadFile(f)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(b), nil
+}
+
+// WriteCanvasSaved keeps a JSON value for the canvas at path; null forgets it.
+func WriteCanvasSaved(workspace, path string, value json.RawMessage) error {
+	f := canvasSavedFile(workspace, path)
+	if f == "" {
+		return errors.New("not a canvas")
+	}
+	if len(value) > MaxCanvasSaved {
+		return fmt.Errorf("a canvas can keep up to %d KB", MaxCanvasSaved>>10)
+	}
+	if !json.Valid(value) {
+		return errors.New("not JSON")
+	}
+	if string(bytes.TrimSpace(value)) == "null" {
+		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+		return err
+	}
+	tmp := f + ".tmp"
+	if err := os.WriteFile(tmp, value, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, f)
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/artifacts"
 	"github.com/ianclemence/ghost/pkg/documents"
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 // registerArtifactRoutes exposes runtime-validated handoffs ("things Ghost
@@ -97,6 +98,33 @@ func registerArtifactRoutes(mux *http.ServeMux) {
 			servePage(w, r, a)
 		case sub == "export" && r.Method == http.MethodGet:
 			serveExport(w, r, a)
+		case sub == "saved" && r.Method == http.MethodGet:
+			// What a canvas kept with ghost.save, for the page to start from.
+			raw, err := tools.ReadCanvasSaved(apiWorkspaceDir, a.Path)
+			if err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "only a canvas keeps things")
+				return
+			}
+			if raw == nil {
+				raw = json.RawMessage("null")
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "saved": raw})
+		case sub == "saved" && r.Method == http.MethodPut:
+			var req struct {
+				Saved json.RawMessage `json:"saved"`
+			}
+			if err := json.NewDecoder(io.LimitReader(r.Body, tools.MaxCanvasSaved+1024)).Decode(&req); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "too large, or not JSON")
+				return
+			}
+			if len(req.Saved) == 0 {
+				req.Saved = json.RawMessage("null")
+			}
+			if err := tools.WriteCanvasSaved(apiWorkspaceDir, a.Path, req.Saved); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", err.Error())
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
 		case sub == "pin" && r.Method == http.MethodPost:
 			var req struct {
 				Pinned bool `json:"pinned"`

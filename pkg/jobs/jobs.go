@@ -65,8 +65,8 @@ var Catalog = []Job{
 		Promise:     "Your week of steps and sleep, gently, with one small idea for the next.",
 		instruction: `Show the owner their week (phone health, days 14): one present_card with a bar chart of steps by day, a line chart of hours of sleep, and a note with one small, kind suggestion for the coming week. Compare with the week before in plain words. Never diagnose, never alarm; if something looks unusual, suggest they mention it to a doctor. If there is no health data, say that health sharing is off (Settings → Phone) in one line.`},
 	{ID: "learn", Title: "Learn something", When: "Every evening", Days: "* * *", Time: "20:00", Ask: "What would you like to learn?",
-		Promise:     "A few questions a day on what you want to learn, building on the last.",
-		instruction: `Teach the owner a little about: %s. First look at what you asked them before (session_search for "Learn: %s") so today builds on it and revisits what they got wrong. Then send ONE present_card titled "Learn: %s" with three choice blocks (keys q1, q2, q3: one question each, 3 or 4 options, one right) and a submit "Check my answers". When their answers come back, say which were right, explain the ones they missed in a sentence each, and add one new idea for tomorrow.`},
+		Promise:     "Flashcards that come back when you're about to forget, and three questions a day on what you want to learn.",
+		instruction: `Teach the owner a little about: {topic}. First check their flashcards: canvas with read_saved true and title "Learn cards: {topic}". If it has saved nothing and you have not made it before (session_search for "Learn cards: {topic}"), make it once with canvas, titled "Learn cards: {topic}": about 20 cards on the basics, tap to flip, "Again", "Hard" and "Easy" buttons that schedule each card's next day (spaced repetition: Again tomorrow, Hard in 2 days, Easy doubles the gap), keeping each card's due date and gap with ghost.save and showing only the cards due today. Then look at what you asked before (session_search for "Learn: {topic}") and at the cards they find hard, so today builds on it. Send ONE present_card titled "Learn: {topic}" with three choice blocks (keys q1, q2, q3: one question each, 3 or 4 options, one right) and a submit "Check my answers". When their answers come back, say which were right, explain the ones they missed in a sentence each, and add one new idea for tomorrow.`},
 	{ID: "watch", Title: "Watch this for me", When: "Whenever you ask",
 		Promise: "Send a link and say what you're waiting for: a lower price, back in stock, a free slot. Ghost checks and tells you.",
 	},
@@ -126,11 +126,7 @@ func zeroIfEmpty(s string) string {
 
 // Instruction is what the routine asks Ghost to do each time.
 func (j Job) Instruction(s Settings) string {
-	if strings.Contains(j.instruction, "%s") {
-		t := s.Topic
-		return fmt.Sprintf(j.instruction, t, t, t)
-	}
-	return j.instruction
+	return strings.ReplaceAll(j.instruction, "{topic}", s.Topic)
 }
 
 // State is whether a job is on, and the routine that carries it.
