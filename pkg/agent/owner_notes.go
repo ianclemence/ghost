@@ -32,3 +32,21 @@ func (al *AgentLoop) ClarifyWaiting(questionID string) bool {
 	w, ok := t.(waiter)
 	return ok && w.Waiting(questionID)
 }
+
+// conversationOf is the conversation a card belongs to. A routine runs in a
+// session of its own, but what it says (and shows) is delivered to the owner's
+// conversation, so its cards go there too: otherwise the phone, which shows
+// the owner's conversation, would not draw them as they arrive.
+func conversationOf(sessionID string) string {
+	if strings.HasPrefix(sessionID, "routine:") {
+		return "main"
+	}
+	return sessionID
+}
+
+// SilentRoutineReply reports whether a routine's reply means it has nothing to
+// say (NOTHING, alone, give or take punctuation and case).
+func SilentRoutineReply(resp string) bool {
+	t := strings.Trim(strings.TrimSpace(resp), ".!\"'`*")
+	return strings.EqualFold(t, "NOTHING")
+}

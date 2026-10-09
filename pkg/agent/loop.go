@@ -306,7 +306,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registerBrowser := func(action string) {
 		bt := tools.NewBrowserTool(workspace, action)
 		bt.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
-			cards.Publish(msgBus, nil, channel, chatID, sessionID, c)
+			cards.Publish(msgBus, nil, channel, chatID, conversationOf(sessionID), c)
 		})
 		registry.Register(bt)
 	}
@@ -475,7 +475,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// cards (the phone), the receipt also ships as a memory_receipt card.
 	memoryExplain := tools.NewMemoryExplainTool(workspace)
 	memoryExplain.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
-		cards.Publish(msgBus, nil, channel, chatID, sessionID, c)
+		cards.Publish(msgBus, nil, channel, chatID, conversationOf(sessionID), c)
 	})
 	registry.Register(memoryExplain)
 
@@ -484,7 +484,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// a card can run, open or style anything.
 	presentCard := tools.NewPresentCardTool()
 	presentCard.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
-		cards.Publish(msgBus, nil, channel, chatID, sessionID, c)
+		cards.Publish(msgBus, nil, channel, chatID, conversationOf(sessionID), c)
 	})
 	registry.Register(presentCard)
 
@@ -492,7 +492,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// change and send themselves. The tool never sends.
 	draft := tools.NewDraftTool()
 	draft.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
-		cards.Publish(msgBus, nil, channel, chatID, sessionID, c)
+		cards.Publish(msgBus, nil, channel, chatID, conversationOf(sessionID), c)
 	})
 	registry.Register(draft)
 
@@ -525,7 +525,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Clarify Tool — interactive user questions with choices
 	clarify := tools.NewClarifyTool(msgBus)
 	clarify.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
-		cards.Publish(msgBus, nil, channel, chatID, sessionID, c)
+		cards.Publish(msgBus, nil, channel, chatID, conversationOf(sessionID), c)
 	})
 	registry.Register(clarify)
 

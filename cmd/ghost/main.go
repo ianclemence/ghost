@@ -4061,7 +4061,12 @@ func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus
 				return routines.RunOutcome{Completion: product.CompletionWaitingForPermission, WaitingOn: pending.ID}
 			}
 		}
-		// Deliver the result where the routine was created.
+		// Deliver the result where the routine was created. A routine that
+		// found nothing worth saying (a job that checks and only speaks when
+		// something is up) answers NOTHING, and nothing is sent.
+		if agent.SilentRoutineReply(resp) {
+			return routines.RunOutcome{Completion: product.CompletionSuccess, Message: "nothing to report"}
+		}
 		if strings.TrimSpace(resp) != "" && msgBus != nil && item.Channel != "" {
 			agentLoop.DeliverToOwner(item.Channel, item.ChatID, resp, map[string]interface{}{"routine": r.Name})
 		}

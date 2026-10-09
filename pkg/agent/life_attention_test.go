@@ -132,3 +132,17 @@ func TestHealthWeekOnMondays(t *testing.T) {
 		}
 	}
 }
+
+func TestRoutineCardsBelongToTheConversation(t *testing.T) {
+	if conversationOf("routine:r1") != "main" || conversationOf("main") != "main" || conversationOf("voice:1") != "voice:1" {
+		t.Fatal("conversationOf")
+	}
+	for _, s := range []string{"NOTHING", " nothing. ", "**NOTHING**"} {
+		if !SilentRoutineReply(s) {
+			t.Fatalf("%q is silent", s)
+		}
+	}
+	if SilentRoutineReply("Nothing is on today, enjoy it.") {
+		t.Fatal("a sentence is not silence")
+	}
+}
