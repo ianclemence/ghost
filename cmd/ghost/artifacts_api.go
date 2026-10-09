@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/artifacts"
+	"github.com/ianclemence/ghost/pkg/dashboards"
 	"github.com/ianclemence/ghost/pkg/documents"
 	"github.com/ianclemence/ghost/pkg/motion"
 	"github.com/ianclemence/ghost/pkg/tools"
@@ -141,6 +143,15 @@ func registerArtifactRoutes(mux *http.ServeMux) {
 				return
 			}
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "artifact": na})
+		case sub == "dashboard" && r.Method == http.MethodGet:
+			// The dashboard with every chart's query run now.
+			d, err := dashboards.Load(apiWorkspaceDir, a.Path)
+			if err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "this is not a dashboard")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "title": d.Title,
+				"tiles": dashboards.Data(r.Context(), apiWorkspaceDir, d), "ran_at": time.Now().UTC().Format(time.RFC3339)})
 		case sub == "video" && r.Method == http.MethodGet:
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "video": motion.ExportsFor(apiWorkspaceDir).Status(a.Path)})
 		case sub == "video" && r.Method == http.MethodPost:
@@ -216,7 +227,7 @@ func registerArtifactRoutes(mux *http.ServeMux) {
 		}
 		kind := strings.TrimSpace(r.URL.Query().Get("kind"))
 		switch kind {
-		case "", artifacts.ShelfPages, artifacts.ShelfDocuments, artifacts.ShelfPictures, artifacts.ShelfLinks, artifacts.ShelfNotes, artifacts.ShelfMotion:
+		case "", artifacts.ShelfPages, artifacts.ShelfDocuments, artifacts.ShelfPictures, artifacts.ShelfLinks, artifacts.ShelfNotes, artifacts.ShelfMotion, artifacts.ShelfDashboards:
 		default:
 			jsonError(w, http.StatusBadRequest, "invalid_request", "unknown kind")
 			return

@@ -381,6 +381,8 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(canvasTool)
 	// Motion: animated explainers, played on the phone and made into videos here.
 	registry.Register(tools.NewMotionTool(workspace, motion.ExportsFor(workspace)))
+	// Dashboards: questions about the owner's data answered with SQL, kept live.
+	registry.Register(tools.NewDashboardTool(workspace))
 
 	if searchTool := tools.NewWebSearchTool(tools.WebSearchToolOptions{
 		BraveAPIKey:          cfg.Tools.Web.Brave.APIKey,
@@ -642,6 +644,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		if t, ok := toolsRegistry.Get("motion"); ok {
 			if mt, ok := t.(*tools.MotionTool); ok {
 				mt.SetPublisher(artifactStore)
+			}
+		}
+		if t, ok := toolsRegistry.Get("dashboard"); ok {
+			if dt, ok := t.(*tools.DashboardTool); ok {
+				dt.SetPublisher(artifactStore)
 			}
 		}
 		// So is a document: a PDF laid out from what Ghost wrote.

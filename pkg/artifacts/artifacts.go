@@ -466,12 +466,13 @@ func (s *Store) SetPinned(id string, pinned bool) (bool, error) {
 
 // ShelfKinds are the shelf's filters.
 const (
-	ShelfPages     = "pages"     // canvases: things that run
-	ShelfDocuments = "documents" // files to read, print or send
-	ShelfPictures  = "pictures"
-	ShelfLinks     = "links"
-	ShelfNotes     = "notes"  // written results
-	ShelfMotion    = "motion" // animated explainers and their videos
+	ShelfPages      = "pages"     // canvases: things that run
+	ShelfDocuments  = "documents" // files to read, print or send
+	ShelfPictures   = "pictures"
+	ShelfLinks      = "links"
+	ShelfNotes      = "notes"      // written results
+	ShelfMotion     = "motion"     // animated explainers and their videos
+	ShelfDashboards = "dashboards" // live answers about the owner's data
 )
 
 // ShelfKindOf is the filter an artifact belongs to.
@@ -486,6 +487,8 @@ func ShelfKindOf(a Artifact) string {
 	switch {
 	case strings.HasPrefix(p, "motion/") && (strings.HasSuffix(p, ".json") || strings.HasSuffix(p, ".mp4")):
 		return ShelfMotion
+	case strings.HasPrefix(p, "dashboards/") && strings.HasSuffix(p, ".json"):
+		return ShelfDashboards
 	case strings.HasSuffix(p, ".html") || strings.HasSuffix(p, ".htm"):
 		return ShelfPages
 	case strings.HasSuffix(p, ".png") || strings.HasSuffix(p, ".jpg") || strings.HasSuffix(p, ".jpeg") || strings.HasSuffix(p, ".webp") || strings.HasSuffix(p, ".gif"):

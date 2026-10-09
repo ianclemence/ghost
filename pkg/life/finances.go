@@ -702,3 +702,14 @@ func guessCategory(desc, kind string) string {
 	}
 	return "other"
 }
+
+// Major is an amount in minor units as a plain number in its currency
+// (235000 KES cents → 2350.00), for anything that sums or charts it.
+func Major(minor int64, currency string) float64 {
+	d := minorDigits(currency)
+	f := float64(minor)
+	for i := 0; i < d; i++ {
+		f /= 10
+	}
+	return f
+}

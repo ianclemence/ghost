@@ -54,6 +54,9 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Animated explainers: a spec the phone plays and the Pod renders to
 		// video locally. Nothing is sent anywhere.
 		"motion",
+		// Dashboards read the owner's data (one SELECT, read-only transaction
+		// for a connected database); they never change anything.
+		"dashboard",
 		// Cards that show or ask, and drafts the owner sends themselves: none
 		// of them can run, open or send anything on their own.
 		"present_card", "draft",
@@ -307,6 +310,10 @@ var turnIntentTools = []struct {
 		"heart rate", "health", "walked", "exercise", "when i get to", "when i arrive", "when i leave", "when i'm at", "when i am at", "arrive at",
 		"get home", "alarm", "wake me", "wake up at"},
 		[]string{"phone", "draft", "places_nearby"}},
+	// Dashboards: questions about the owner's data, spreadsheets and databases.
+	{[]string{"dashboard", "chart", "graph", "how many", "how much", "total", "average", "trend", "per month", "by month", "breakdown",
+		"spreadsheet", "csv", "excel", "database", "sql", "query", "report", "kpi", "metrics", "sales", "revenue", "customers", "crm", "pipeline"},
+		[]string{"dashboard", "present_card", "motion"}},
 	// Motion: animated explainers and videos made from the owner's data.
 	{[]string{"animate", "animation", "animated", "explainer", "motion", "video", "mp4", "clip", "reel", "tiktok", "walkthrough", "make it move"},
 		[]string{"motion", "finances", "knowledge"}},

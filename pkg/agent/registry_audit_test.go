@@ -129,6 +129,7 @@ var allowedCoreAudit = map[string]bool{
 	"trips":          true, // the owner's own trip records, local; no booking
 	"knowledge":      true, // what the owner reads and studies, local records
 	"motion":         true, // animated explainers: local files, rendered to video on the Pod
+	"dashboard":      true, // read-only SQL over the owner's own data and connected databases
 	"phone":          true, // what the owner's phone shared, local; place reminders
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,
