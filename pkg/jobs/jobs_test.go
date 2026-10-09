@@ -36,9 +36,8 @@ func TestJobsScheduleAtTheOwnersTime(t *testing.T) {
 	if in := learn.Instruction(s); !strings.Contains(in, "Learn: Kiswahili verbs") || !strings.Contains(in, "Learn cards: Kiswahili verbs") || strings.Contains(in, "{topic}") {
 		t.Fatalf("instruction: %s", in)
 	}
-	watch, _ := Find("watch")
-	if _, err := watch.Check(Settings{}); err == nil {
-		t.Fatal("watch has nothing to schedule")
+	if _, ok := Find("watch"); ok {
+		t.Fatal("watching a page is not a job")
 	}
 	for _, j := range Catalog {
 		if j.Time != "" && strings.TrimSpace(j.instruction) == "" {

@@ -169,8 +169,8 @@ func roundDur(d time.Duration) string {
 }
 
 func tasksHelp() {
-	fmt.Println("Usage: ghost tasks [list] [--json]")
-	fmt.Println("       ghost tasks <pause|resume|cancel|delete> <id-prefix>")
+	fmt.Println("Usage: ghost routines [list] [--json]")
+	fmt.Println("       ghost routines <pause|resume|cancel|delete> <id-prefix>")
 	fmt.Println()
 	fmt.Println("Show and manage durable routines: plan, progress, and receipts.")
 	fmt.Println("Pause/resume/cancel resolve through the routines service —")

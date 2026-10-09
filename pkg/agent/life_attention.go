@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/attention"
+	"github.com/ianclemence/ghost/pkg/jobs"
 	"github.com/ianclemence/ghost/pkg/life"
 )
 
@@ -121,7 +122,8 @@ func lifeItems(workspace string, now time.Time, loc *time.Location) []attention.
 
 	// Health, once a week (Monday's morning message), only when the phone
 	// shares it: the week's averages against the week before, said gently.
-	if local.Weekday() == time.Monday {
+	// Not when the Health weekly job is on: that is the owner's week, in full.
+	if local.Weekday() == time.Monday && !jobOn(workspace, "health") {
 		if w, err := life.DeviceFor(workspace).Week(today.AddDate(0, 0, -1)); err == nil && w.Days >= 4 && w.Steps > 0 {
 			parts := []string{fmt.Sprintf("about %s steps a day", groupThousands(w.Steps))}
 			if w.PrevSteps > 0 {
@@ -367,4 +369,11 @@ func learningItems(workspace string, now, today time.Time) []attention.Item {
 		break
 	}
 	return out
+}
+
+// jobOn reports whether the owner turned a job on (it then speaks for itself,
+// so the attention layer does not say the same thing again).
+func jobOn(workspace, id string) bool {
+	states, err := jobs.Open(workspace).All()
+	return err == nil && states[id].Enabled
 }

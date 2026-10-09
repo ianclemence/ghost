@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/attention"
+	"github.com/ianclemence/ghost/pkg/jobs"
 	"github.com/ianclemence/ghost/pkg/life"
 )
 
@@ -129,6 +130,15 @@ func TestHealthWeekOnMondays(t *testing.T) {
 	for _, it := range lifeItems(ws, monday.AddDate(0, 0, 1), time.UTC) {
 		if it.Source == "health_weekly" {
 			t.Fatal("only on Mondays")
+		}
+	}
+	// With the Health weekly job on, the job is the week: no second line.
+	if err := jobs.Open(ws).Set("health", jobs.State{Enabled: true, RoutineID: "r1"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range lifeItems(ws, monday, time.UTC) {
+		if it.Source == "health_weekly" {
+			t.Fatal("the health job and the Monday line both spoke")
 		}
 	}
 }

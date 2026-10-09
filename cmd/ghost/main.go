@@ -289,7 +289,7 @@ func main() {
 	switch command {
 	case "onboard":
 		onboard()
-	case "tasks":
+	case "routines", "tasks":
 		tasksCmd()
 	case "jobs":
 		jobsCmd()
@@ -512,7 +512,7 @@ func printHelp() {
 	fmt.Println("Talk")
 	fmt.Println("  ghost       Chat with Ghost in the terminal")
 	fmt.Println("  jobs        What Ghost takes on for you: list, turn on at a time, turn off")
-	fmt.Println("  tasks       Show and manage durable routines (pause, resume, cancel)")
+	fmt.Println("  routines    Your reminders and routines: list, pause, resume, cancel")
 	fmt.Println("  ideas       Suggestions with evidence (list, refresh, accept, dismiss, draft)")
 	fmt.Println("  pair        Connect the Ghost app: shows a QR to scan (pair [phone name])")
 	fmt.Println()
@@ -2465,7 +2465,7 @@ func isApplianceOpsCommand(command string) bool {
 // commands whose config MUST match the console and the daemon.
 func isInteractiveCommand(command string) bool {
 	switch command {
-	case "serve", "gateway", "model", "golden", "benchmark", "tasks", "jobs", "ideas":
+	case "serve", "gateway", "model", "golden", "benchmark", "tasks", "routines", "jobs", "ideas":
 		return true
 	}
 	return false
@@ -4069,6 +4069,11 @@ func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus
 		// something is up) answers NOTHING, and nothing is sent.
 		if agent.SilentRoutineReply(resp) {
 			return routines.RunOutcome{Completion: product.CompletionSuccess, Message: "nothing to report"}
+		}
+		// The Morning brief job is the morning message: what Ghost noticed
+		// overnight is folded into it, so the owner gets one, not two.
+		if isJobRoutine(r.ID, "morning_brief") {
+			resp = agentLoop.MorningMerge(resp)
 		}
 		if strings.TrimSpace(resp) != "" && msgBus != nil && item.Channel != "" {
 			agentLoop.DeliverToOwner(item.Channel, item.ChatID, resp, map[string]interface{}{"routine": r.Name})

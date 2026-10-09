@@ -1,7 +1,8 @@
 // Package jobs is what Ghost can take on for the owner, offered as jobs rather
 // than skills: a morning brief, an inbox kept in hand, bills and
 // subscriptions, trips, meals and groceries, life admin, the home, a week of
-// health, learning something. Each job is a routine underneath (a time and an
+// health, learning something. (Watching a page is not a job: it is asked for in
+// the conversation and shown with what Ghost is watching.) Each job is a routine underneath (a time and an
 // instruction the routine engine runs as a turn) written against the tools
 // Ghost has, so turning a job on is one switch and a time, not a filing
 // decision. What a job needs (a connected mailbox, Home Assistant, health
@@ -67,9 +68,6 @@ var Catalog = []Job{
 	{ID: "learn", Title: "Learn something", When: "Every evening", Days: "* * *", Time: "20:00", Ask: "What would you like to learn?",
 		Promise:     "Flashcards that come back when you're about to forget, and three questions a day on what you want to learn.",
 		instruction: `Teach the owner a little about: {topic}. First check their flashcards: canvas with read_saved true and title "Learn cards: {topic}". If it has saved nothing and you have not made it before (session_search for "Learn cards: {topic}"), make it once with canvas, titled "Learn cards: {topic}": about 20 cards on the basics, tap to flip, "Again", "Hard" and "Easy" buttons that schedule each card's next day (spaced repetition: Again tomorrow, Hard in 2 days, Easy doubles the gap), keeping each card's due date and gap with ghost.save and showing only the cards due today. Then look at what you asked before (session_search for "Learn: {topic}") and at the cards they find hard, so today builds on it. Send ONE present_card titled "Learn: {topic}" with three choice blocks (keys q1, q2, q3: one question each, 3 or 4 options, one right) and a submit "Check my answers". When their answers come back, say which were right, explain the ones they missed in a sentence each, and add one new idea for tomorrow.`},
-	{ID: "watch", Title: "Watch this for me", When: "Whenever you ask",
-		Promise: "Send a link and say what you're waiting for: a lower price, back in stock, a free slot. Ghost checks and tells you.",
-	},
 }
 
 // Find returns a job by id.

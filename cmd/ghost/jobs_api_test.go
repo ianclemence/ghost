@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ianclemence/ghost/pkg/jobs"
 	"github.com/ianclemence/ghost/pkg/routines"
 	"github.com/ianclemence/ghost/pkg/scheduled"
 
@@ -59,7 +60,7 @@ func TestJobsTurnOnAsRoutinesAndOff(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	got := decode(t, rec.Body.Bytes())
 	jobsList, _ := got["jobs"].([]interface{})
-	if len(jobsList) != 10 {
+	if len(jobsList) != 9 {
 		t.Fatalf("catalog: %d", len(jobsList))
 	}
 	for _, j := range jobsList {
@@ -95,5 +96,18 @@ func TestJobRefsByIDOrTitle(t *testing.T) {
 	}
 	if _, ok := findJobRef("nothing"); ok {
 		t.Fatal("no such job")
+	}
+}
+
+func TestTheMorningBriefJobIsKnownByItsRoutine(t *testing.T) {
+	prev := apiWorkspaceDir
+	apiWorkspaceDir = t.TempDir()
+	defer func() { apiWorkspaceDir = prev }()
+	if isJobRoutine("r1", "morning_brief") {
+		t.Fatal("no job on")
+	}
+	_ = jobs.Open(apiWorkspaceDir).Set("morning_brief", jobs.State{Enabled: true, RoutineID: "r1"})
+	if !isJobRoutine("r1", "morning_brief") || isJobRoutine("r2", "morning_brief") {
+		t.Fatal("isJobRoutine")
 	}
 }

@@ -223,3 +223,12 @@ func applyJob(database *sql.DB, workspace, tz string, j jobs.Job, enabled bool, 
 	}
 	return set, rt.NextRun, nil
 }
+
+// isJobRoutine reports whether a routine is the one carrying a job.
+func isJobRoutine(routineID, job string) bool {
+	if apiWorkspaceDir == "" || routineID == "" {
+		return false
+	}
+	states, err := jobs.Open(apiWorkspaceDir).All()
+	return err == nil && states[job].Enabled && states[job].RoutineID == routineID
+}
