@@ -98,6 +98,28 @@ func registerArtifactRoutes(mux *http.ServeMux) {
 		switch {
 		case sub == "" && r.Method == http.MethodGet:
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "artifact": a})
+		case sub == "" && r.Method == http.MethodDelete:
+			// The owner deletes what Ghost made: this version, or with all=1
+			// the whole thing. Uploads stay in Files.
+			var n int
+			var err error
+			if r.URL.Query().Get("all") == "1" {
+				n, err = st.DeleteAll(a.ID)
+			} else {
+				n, err = st.Delete(a.ID)
+			}
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, "failed", "couldn't delete it")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted": n})
+		case sub == "versions" && r.Method == http.MethodGet:
+			vs, err := st.Versions(a.ID)
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, "failed", "couldn't list its versions")
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "versions": vs})
 		case sub == "page" && r.Method == http.MethodGet:
 			servePage(w, r, a)
 		case sub == "export" && r.Method == http.MethodGet:

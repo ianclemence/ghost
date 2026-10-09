@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -135,5 +136,50 @@ func TestDashboardAndDataSourceRoutes(t *testing.T) {
 	}
 	if code, _ := postJSON(t, mux, "/v1/datasources", map[string]interface{}{"name": "pod", "url": "postgres://u:p@h/x"}); code != http.StatusBadRequest {
 		t.Fatalf("reserved name: %d", code)
+	}
+}
+
+func TestDeleteRoutes(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "ghost.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := artifacts.EnsureSchema(db); err != nil {
+		t.Fatal(err)
+	}
+	ws := t.TempDir()
+	st, _ := artifacts.NewStore(db, ws)
+	var ids []string
+	for _, v := range []string{"v1", "v2", "v3"} {
+		p := filepath.Join(ws, "canvas", "chess-"+v+".html")
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		_ = os.WriteFile(p, []byte("<p>x</p>"), 0o644)
+		a, err := st.Publish(artifacts.Input{SessionKey: "main", Kind: "file", Title: "Chess", Path: "canvas/chess-" + v + ".html"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, a.ID)
+	}
+	prevDB, prevWS := apiDB, apiWorkspaceDir
+	apiDB, apiWorkspaceDir = db, ws
+	defer func() { apiDB, apiWorkspaceDir = prevDB, prevWS }()
+	mux := http.NewServeMux()
+	registerArtifactRoutes(mux)
+	call := func(method, path string) (int, map[string]interface{}) {
+		req := httptest.NewRequest(method, "http://127.0.0.1:18790"+path, nil)
+		req.RemoteAddr, req.Host = "127.0.0.1:5000", "127.0.0.1:18790"
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code, decode(t, rec.Body.Bytes())
+	}
+	if code, out := call(http.MethodGet, "/v1/artifacts/"+ids[2]+"/versions"); code != 200 || len(out["versions"].([]interface{})) != 3 {
+		t.Fatalf("versions: %d %v", code, out)
+	}
+	if code, out := call(http.MethodDelete, "/v1/artifacts/"+ids[0]); code != 200 || out["deleted"] != 1.0 {
+		t.Fatalf("delete one: %d %v", code, out)
+	}
+	if code, out := call(http.MethodDelete, "/v1/artifacts/"+ids[2]+"?all=1"); code != 200 || out["deleted"] != 2.0 {
+		t.Fatalf("delete all: %d %v", code, out)
 	}
 }

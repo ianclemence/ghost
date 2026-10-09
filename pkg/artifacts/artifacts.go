@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -533,10 +534,7 @@ func (s *Store) Shelf(query, kind string, limit int) ([]ShelfItem, error) {
 		if q != "" && !strings.Contains(strings.ToLower(a.Title+" "+a.Summary), q) {
 			continue
 		}
-		group := ""
-		if k == ShelfPages || (k == ShelfDocuments && strings.HasPrefix(a.Path, "documents/")) {
-			group = k + "|" + strings.ToLower(strings.TrimSpace(a.Title))
-		}
+		group := shelfGroup(a, k)
 		if group != "" {
 			if i, ok := seen[group]; ok {
 				out[i].Versions++
@@ -565,4 +563,123 @@ func (s *Store) Shelf(query, kind string, limit int) ([]ShelfItem, error) {
 		sorted = sorted[:limit]
 	}
 	return sorted, nil
+}
+
+// shelfGroup is what versions of one thing share (its kind and title), or ""
+// for something that has no versions. A motion's video is not a version of
+// the motion: it is listed on its own.
+func shelfGroup(a Artifact, k string) string {
+	switch {
+	case k == ShelfPages,
+		k == ShelfDocuments && strings.HasPrefix(a.Path, "documents/"),
+		k == ShelfMotion && strings.HasSuffix(a.Path, ".json"),
+		k == ShelfDashboards:
+		return k + "|" + strings.ToLower(strings.TrimSpace(a.Title))
+	}
+	return ""
+}
+
+// madeDirs are where Ghost keeps what it made. Deleting one of those removes
+// its file too; anything else (an upload, a file in the workspace) is only
+// taken off the shelf and out of the conversation, and stays in Files.
+var madeDirs = []string{"canvas/", "documents/", "motion/", "dashboards/"}
+
+func madeByGhost(path string) bool {
+	for _, d := range madeDirs {
+		if strings.HasPrefix(path, d) {
+			return true
+		}
+	}
+	return false
+}
+
+// Versions lists every version of the thing an artifact belongs to (itself
+// alone when it has none), newest first.
+func (s *Store) Versions(id string) ([]Artifact, error) {
+	a, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	g := shelfGroup(*a, ShelfKindOf(*a))
+	if g == "" {
+		return []Artifact{*a}, nil
+	}
+	all, err := s.listNewest(2000)
+	if err != nil {
+		return nil, err
+	}
+	var out []Artifact
+	for _, b := range all {
+		if shelfGroup(b, ShelfKindOf(b)) == g {
+			out = append(out, b)
+		}
+	}
+	return out, nil
+}
+
+// Delete removes one artifact: it leaves the shelf and the conversation, and
+// a file Ghost made goes with it (a document's source and Word copy, a
+// motion's video). It reports how many artifacts were removed.
+func (s *Store) Delete(id string) (int, error) {
+	a, err := s.Get(id)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.remove(*a); err != nil {
+		return 0, err
+	}
+	return 1, nil
+}
+
+// DeleteAll removes the thing an artifact belongs to: every version, and
+// what was kept for it across versions (a canvas's saved data).
+func (s *Store) DeleteAll(id string) (int, error) {
+	vs, err := s.Versions(id)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, v := range vs {
+		if err := s.remove(v); err != nil {
+			return n, err
+		}
+		n++
+	}
+	if len(vs) > 0 && strings.HasPrefix(vs[0].Path, "canvas/") {
+		if m := canvasVersion.FindStringSubmatch(vs[0].Path); m != nil {
+			_ = os.Remove(filepath.Join(s.workspace, "canvas", m[1]+".saved.json"))
+		}
+	}
+	return n, nil
+}
+
+var canvasVersion = regexp.MustCompile(`^canvas/([a-z0-9-]+)-v\d+\.html$`)
+
+func (s *Store) remove(a Artifact) error {
+	if a.Kind == KindFile && madeByGhost(a.Path) {
+		// Another artifact may point at the same file (a dashboard saved
+		// again under its title): the file goes only with the last of them.
+		var others int
+		_ = s.db.QueryRow(`SELECT COUNT(*) FROM artifacts WHERE path=? AND id!=?`, a.Path, a.ID).Scan(&others)
+		if others == 0 {
+			base := filepath.Join(s.workspace, filepath.FromSlash(a.Path))
+			_ = os.Remove(base)
+			stem := strings.TrimSuffix(base, filepath.Ext(base))
+			switch {
+			case strings.HasPrefix(a.Path, "documents/"):
+				_ = os.Remove(stem + ".md")
+				_ = os.Remove(stem + ".docx")
+			case strings.HasPrefix(a.Path, "motion/") && strings.HasSuffix(a.Path, ".json"):
+				_ = os.Remove(stem + ".mp4")
+				video := strings.TrimSuffix(a.Path, ".json") + ".mp4"
+				_, _ = s.db.Exec(`DELETE FROM artifact_pins WHERE artifact_id IN (SELECT id FROM artifacts WHERE path=?)`, video)
+				_, _ = s.db.Exec(`DELETE FROM artifacts WHERE path=?`, video)
+			}
+		}
+	}
+	if _, err := s.db.Exec(`DELETE FROM artifact_pins WHERE artifact_id=?`, a.ID); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM artifacts WHERE id=?`, a.ID)
+	return err
 }
