@@ -54,6 +54,8 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Cards that show or ask, and drafts the owner sends themselves: none
 		// of them can run, open or send anything on their own.
 		"present_card", "draft",
+		// Documents are laid out on the Pod and shown; nothing is sent.
+		"document",
 		// Browser surface on mobile: observe + act (broker-governed like
 		// exec, which is already here). Purchase-class submit and
 		// file-egress upload stay desktop/admin posture.
@@ -283,6 +285,11 @@ var turnIntentTools = []struct {
 	{[]string{"compact", "summarize history", "context full"}, []string{"compact_context"}},
 	{[]string{"update ghost", "upgrade ghost", "self-update"}, []string{"update"}},
 	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"doc_parser"}},
+	// Making something to keep, print, send or sign.
+	{[]string{"cv", "resume", "résumé", "cover letter", "letter", "invoice", "quote for", "receipt", "itinerary",
+		"one-pager", "one pager", "report", "proposal", "contract", "agenda", "minutes", "meeting notes", "recipe card",
+		"document", "pdf", "word file", "word doc", "docx", "print", "printable", "write up", "write-up", "handout", "flyer", "menu"},
+		[]string{"document"}},
 	// Home Assistant device control (broker-gated, consequential).
 	{[]string{"light", "lights", "thermostat", "home assistant", "smart home", "turn on", "turn off", "turn the", "device", "scene"}, []string{"device"}},
 	// Durable handoff artifacts (low risk, evidence-backed).

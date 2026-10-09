@@ -132,6 +132,14 @@ func EnsureSchema(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_key)`); err != nil {
 		return fmt.Errorf("artifacts: index: %w", err)
 	}
+	// What the owner pinned to the top of their shelf. Kept beside the
+	// artifact, not in it: pinning is the owner's, the record is the Pod's.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS artifact_pins (
+		artifact_id TEXT PRIMARY KEY,
+		pinned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`); err != nil {
+		return fmt.Errorf("artifacts: pins: %w", err)
+	}
 	return nil
 }
 
@@ -272,6 +280,11 @@ func (s *Store) ListAll(limit int) ([]Artifact, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 100
 	}
+	return s.listNewest(limit)
+}
+
+// listNewest is the newest limit artifacts in every conversation.
+func (s *Store) listNewest(limit int) ([]Artifact, error) {
 	rows, err := s.db.Query(`SELECT id, session_key, kind, title, summary, path, text, url, state, reason, actions, evidence_request_id, created_at
 		FROM artifacts ORDER BY created_at DESC, rowid DESC LIMIT ?`, limit)
 	if err != nil {
@@ -425,4 +438,125 @@ func (s *Store) PruneDangling() (int, error) {
 		}
 	}
 	return removed, nil
+}
+
+// ShelfItem is an artifact as the shelf shows it: whether it is pinned, and
+// for a canvas or a document made in versions, how many there are (only the
+// newest is listed).
+type ShelfItem struct {
+	Artifact
+	Pinned   bool `json:"pinned"`
+	Versions int  `json:"versions"`
+}
+
+// SetPinned pins or unpins an artifact. It reports false when there is no
+// such artifact.
+func (s *Store) SetPinned(id string, pinned bool) (bool, error) {
+	if _, err := s.Get(id); err != nil {
+		return false, nil
+	}
+	var err error
+	if pinned {
+		_, err = s.db.Exec(`INSERT OR IGNORE INTO artifact_pins (artifact_id, pinned_at) VALUES (?, ?)`, id, time.Now().UTC())
+	} else {
+		_, err = s.db.Exec(`DELETE FROM artifact_pins WHERE artifact_id = ?`, id)
+	}
+	return err == nil, err
+}
+
+// ShelfKinds are the shelf's filters.
+const (
+	ShelfPages     = "pages"     // canvases: things that run
+	ShelfDocuments = "documents" // files to read, print or send
+	ShelfPictures  = "pictures"
+	ShelfLinks     = "links"
+	ShelfNotes     = "notes" // written results
+)
+
+// ShelfKindOf is the filter an artifact belongs to.
+func ShelfKindOf(a Artifact) string {
+	switch a.Kind {
+	case KindLink:
+		return ShelfLinks
+	case KindText:
+		return ShelfNotes
+	}
+	p := strings.ToLower(a.Path)
+	switch {
+	case strings.HasSuffix(p, ".html") || strings.HasSuffix(p, ".htm"):
+		return ShelfPages
+	case strings.HasSuffix(p, ".png") || strings.HasSuffix(p, ".jpg") || strings.HasSuffix(p, ".jpeg") || strings.HasSuffix(p, ".webp") || strings.HasSuffix(p, ".gif"):
+		return ShelfPictures
+	}
+	return ShelfDocuments
+}
+
+// Shelf lists everything Ghost has made, across every conversation, newest
+// first with pinned things on top. Versions of the same canvas or document
+// (same title, same kind of thing) are one entry: the newest, with the count.
+// query matches the title or summary; kind narrows to one filter.
+func (s *Store) Shelf(query, kind string, limit int) ([]ShelfItem, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	all, err := s.listNewest(2000)
+	if err != nil {
+		return nil, err
+	}
+	pinned := map[string]bool{}
+	if rows, err := s.db.Query(`SELECT artifact_id FROM artifact_pins`); err == nil {
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				pinned[id] = true
+			}
+		}
+		rows.Close()
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+	seen := map[string]int{}
+	var out []ShelfItem
+	for _, a := range all {
+		if a.State != StateAvailable && !pinned[a.ID] {
+			continue
+		}
+		k := ShelfKindOf(a)
+		if kind != "" && k != kind {
+			continue
+		}
+		if q != "" && !strings.Contains(strings.ToLower(a.Title+" "+a.Summary), q) {
+			continue
+		}
+		group := ""
+		if k == ShelfPages || (k == ShelfDocuments && strings.HasPrefix(a.Path, "documents/")) {
+			group = k + "|" + strings.ToLower(strings.TrimSpace(a.Title))
+		}
+		if group != "" {
+			if i, ok := seen[group]; ok {
+				out[i].Versions++
+				if pinned[a.ID] {
+					out[i].Pinned = true
+				}
+				continue
+			}
+			seen[group] = len(out)
+		}
+		out = append(out, ShelfItem{Artifact: a, Pinned: pinned[a.ID], Versions: 1})
+	}
+	// Pinned first; otherwise the order stays newest first.
+	sorted := make([]ShelfItem, 0, len(out))
+	for _, it := range out {
+		if it.Pinned {
+			sorted = append(sorted, it)
+		}
+	}
+	for _, it := range out {
+		if !it.Pinned {
+			sorted = append(sorted, it)
+		}
+	}
+	if len(sorted) > limit {
+		sorted = sorted[:limit]
+	}
+	return sorted, nil
 }

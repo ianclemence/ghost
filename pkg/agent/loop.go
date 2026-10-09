@@ -636,6 +636,8 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 				ct.SetPublisher(artifactStore)
 			}
 		}
+		// So is a document: a PDF laid out from what Ghost wrote.
+		toolsRegistry.Register(tools.NewDocumentTool(workspace, artifactStore))
 	} else {
 		logger.WarnC("agent", "Artifact store unavailable, publish_artifact disabled")
 	}

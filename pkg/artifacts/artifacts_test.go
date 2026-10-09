@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -174,5 +175,56 @@ func TestGetUnknownIsNotFound(t *testing.T) {
 	s, _ := testStore(t)
 	if _, err := s.Get("art-does-not-exist"); err == nil {
 		t.Fatalf("unknown id must fail closed")
+	}
+}
+
+func TestShelfGroupsVersionsAndPutsPinsFirst(t *testing.T) {
+	st, ws := testStore(t)
+	for _, f := range []string{"canvas/pong-v1.html", "canvas/pong-v2.html", "documents/cv-v1.pdf", "photos/cat.png"} {
+		writeWS(t, ws, f, "x")
+	}
+	pub := func(title, path string) *Artifact {
+		a, err := st.Publish(Input{SessionKey: "main", Kind: KindFile, Title: title, Path: path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond)
+		return a
+	}
+	pub("Pong", "canvas/pong-v1.html")
+	pub("Pong", "canvas/pong-v2.html")
+	cv := pub("My CV", "documents/cv-v1.pdf")
+	pub("Cat", "photos/cat.png")
+	if _, err := st.Publish(Input{SessionKey: "other", Kind: KindLink, Title: "Docs", URL: "https://example.com"}); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := st.Shelf("", "", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 4 {
+		t.Fatalf("want 4 entries (two Pong versions are one), got %d", len(items))
+	}
+	for _, it := range items {
+		if it.Title == "Pong" && (it.Versions != 2 || it.Path != "canvas/pong-v2.html") {
+			t.Fatalf("Pong should be the newest version of two: %+v", it)
+		}
+	}
+	if ok, err := st.SetPinned(cv.ID, true); !ok || err != nil {
+		t.Fatalf("pin: %v %v", ok, err)
+	}
+	items, _ = st.Shelf("", "", 50)
+	if items[0].ID != cv.ID || !items[0].Pinned {
+		t.Fatalf("the pinned CV should come first: %+v", items[0])
+	}
+	if only, _ := st.Shelf("", ShelfPictures, 50); len(only) != 1 || only[0].Title != "Cat" {
+		t.Fatalf("pictures filter: %+v", only)
+	}
+	if found, _ := st.Shelf("pon", "", 50); len(found) != 1 {
+		t.Fatalf("search: %+v", found)
+	}
+	if ok, _ := st.SetPinned("art_missing", true); ok {
+		t.Fatal("pinned an artifact that does not exist")
 	}
 }

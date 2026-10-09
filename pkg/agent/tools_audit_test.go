@@ -97,6 +97,8 @@ var reviewedUngoverned = map[string]string{
 	"vision":         "workspace-confined image or a safety-checked URL",
 	"voice_wake":     "toggles Ghost's own wake listener",
 	"move_file":      "renames inside the workspace only, never overwrites, refuses Ghost's default files and folders",
+	"draft":          "shows a draft (email, event, text) on the owner's own screen; it never sends: sending is the owner's tap on the card, carried out by the Pod's card handler, not by the model",
+	"document":       "writes a document into the workspace and lays it out as a PDF locally (no network while printing); shown on the owner's own screen",
 }
 
 func TestEveryToolIsGovernedOrReviewed(t *testing.T) {

@@ -50,6 +50,7 @@ var snapshotTables = []snapshotTable{
 		"path", "text", "url", "state", "reason", "actions",
 		"evidence_request_id", "created_at",
 	}, OrderBy: "created_at, rowid"},
+	{Name: "artifact_pins", Columns: []string{"artifact_id", "pinned_at"}, OrderBy: "artifact_id"},
 	{Name: "scheduled_items", Columns: []string{
 		"id", "type", "title", "description", "state",
 		"schedule_kind", "schedule_at", "schedule_every", "schedule_expr",
