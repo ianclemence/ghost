@@ -102,3 +102,33 @@ func TestTripItems(t *testing.T) {
 		t.Fatalf("after: %+v", back)
 	}
 }
+
+func TestHealthWeekOnMondays(t *testing.T) {
+	ws := t.TempDir()
+	var days []life.HealthDay
+	for i := 1; i <= 14; i++ {
+		steps := 5000
+		if i <= 7 {
+			steps = 6200
+		}
+		days = append(days, life.HealthDay{Date: time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -i).Format("2006-01-02"), Steps: steps, SleepMinutes: 410})
+	}
+	if _, err := life.DeviceFor(ws).AddHealth(days); err != nil {
+		t.Fatal(err)
+	}
+	monday := time.Date(2026, 10, 12, 7, 0, 0, 0, time.UTC)
+	var line string
+	for _, it := range lifeItems(ws, monday, time.UTC) {
+		if it.Source == "health_weekly" {
+			line = it.Line
+		}
+	}
+	if line != "Last week: about 6,200 steps a day (24% more than the week before), 6h50 of sleep a night." {
+		t.Fatalf("line: %q", line)
+	}
+	for _, it := range lifeItems(ws, monday.AddDate(0, 0, 1), time.UTC) {
+		if it.Source == "health_weekly" {
+			t.Fatal("only on Mondays")
+		}
+	}
+}

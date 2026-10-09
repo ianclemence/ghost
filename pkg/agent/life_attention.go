@@ -119,6 +119,30 @@ func lifeItems(workspace string, now time.Time, loc *time.Location) []attention.
 		}
 	}
 
+	// Health, once a week (Monday's morning message), only when the phone
+	// shares it: the week's averages against the week before, said gently.
+	if local.Weekday() == time.Monday {
+		if w, err := life.DeviceFor(workspace).Week(today.AddDate(0, 0, -1)); err == nil && w.Days >= 4 && w.Steps > 0 {
+			parts := []string{fmt.Sprintf("about %s steps a day", groupThousands(w.Steps))}
+			if w.PrevSteps > 0 {
+				switch {
+				case w.StepsChange >= 10:
+					parts[0] += fmt.Sprintf(" (%.0f%% more than the week before)", w.StepsChange)
+				case w.StepsChange <= -10:
+					parts[0] += fmt.Sprintf(" (%.0f%% fewer than the week before)", -w.StepsChange)
+				}
+			}
+			if w.SleepMin > 0 {
+				parts = append(parts, fmt.Sprintf("%dh%02d of sleep a night", w.SleepMin/60, w.SleepMin%60))
+			}
+			_, wk := today.ISOWeek()
+			out = append(out, attention.Item{Key: fmt.Sprintf("life:health:%d-%d", today.Year(), wk), Source: "health_weekly", Priority: 3,
+				Line:  "Last week: " + strings.Join(parts, ", ") + ".",
+				Reply: "Show me my week: steps and sleep, day by day.", ReplyLabel: "Show my week",
+				Expires: today.AddDate(0, 0, 2)})
+		}
+	}
+
 	// Trips: the week before (with a passport check), the day before a
 	// flight, when to leave for it, a hotel on its day, and how it went.
 	out = append(out, tripItems(workspace, now, loc, today)...)
@@ -282,4 +306,12 @@ func tripItems(workspace string, now time.Time, loc *time.Location, today time.T
 		}
 	}
 	return out
+}
+
+func groupThousands(n int) string {
+	s := fmt.Sprintf("%d", n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
 }

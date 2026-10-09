@@ -57,7 +57,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Documents are laid out on the Pod and shown; nothing is sent.
 		"document",
 		// The owner's own records on their Pod: people, documents, money.
-		"people", "vault", "money", "trips",
+		"people", "vault", "money", "trips", "phone",
 		// Browser surface on mobile: observe + act (broker-governed like
 		// exec, which is already here). Purchase-class submit and
 		// file-egress upload stay desktop/admin posture.
@@ -299,6 +299,11 @@ var turnIntentTools = []struct {
 		"policy", "warranty", "guarantee", "lease", "tenancy", "contract", "logbook", "registration", "certificate", "expires", "expiry",
 		"renewal", "renew", "vault", "my documents"},
 		[]string{"vault", "vision", "doc_parser"}},
+	// The phone: notifications it shared, health totals, place reminders, alarms.
+	{[]string{"notification", "message from", "messaged me", "texted me", "whatsapp", "did anyone", "missed call", "steps", "sleep", "slept",
+		"heart rate", "health", "walked", "exercise", "when i get to", "when i arrive", "when i leave", "when i'm at", "when i am at", "arrive at",
+		"get home", "alarm", "wake me", "wake up at"},
+		[]string{"phone", "draft", "places_nearby"}},
 	// Trips: journeys, bookings, flights and stays.
 	{[]string{"trip", "travel", "travelling", "traveling", "holiday", "vacation", "flight", "flying", "booking", "booked", "itinerary",
 		"hotel", "airbnb", "check in", "check-in", "boarding", "airport", "train to", "bus to", "going to ", "visiting"},

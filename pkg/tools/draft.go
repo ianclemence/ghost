@@ -33,12 +33,13 @@ func (t *DraftTool) SetPublisher(fn func(channel, chatID, sessionID string, c ca
 func (t *DraftTool) Name() string { return "draft" }
 
 func (t *DraftTool) Description() string {
-	return `Write something for the owner to send and show it to them in full, editable, before anything leaves: an email, a calendar event or invite, or a text message (sms). Use it whenever the owner asks you to write, reply to, email, text, message or invite someone, or to put something in their calendar. Nothing is sent by this tool: the owner reads it, can change any field, and taps Send themselves. Then tell them in one short sentence that it is ready for them to check.
+	return `Write something for the owner to send and show it to them in full, editable, before anything leaves: an email, a calendar event or invite, a text message (sms), or an alarm for their phone. Use it whenever the owner asks you to write, reply to, email, text, message or invite someone, or to put something in their calendar. Nothing is sent by this tool: the owner reads it, can change any field, and taps Send themselves. Then tell them in one short sentence that it is ready for them to check.
 
 Fields by kind:
 - email: to (address, or several separated by commas), cc?, subject, body (plain text)
 - event: subject (the event's title), start, end?, location?, body? (notes), all_day? ("true" for a whole day)
 - sms: to (a name or a phone number), body
+- alarm: start (the time, 07:30), subject? (a label, "Flight to Lamu")
 Times are local: 2026-10-12T14:30, or 2026-10-12 for an all-day event. Write the body the way the owner writes: their voice, no signature unless they use one. If you do not know an email address, look it up (email_search) or ask; never invent one.`
 }
 
@@ -48,7 +49,7 @@ func (t *DraftTool) Parameters() map[string]interface{} {
 		"type":     "object",
 		"required": []string{"kind"},
 		"properties": map[string]interface{}{
-			"kind":     map[string]interface{}{"type": "string", "enum": []string{"email", "event", "sms"}},
+			"kind":     map[string]interface{}{"type": "string", "enum": []string{"email", "event", "sms", "alarm"}},
 			"to":       s,
 			"cc":       s,
 			"subject":  s,

@@ -205,6 +205,10 @@ func sendDraft(ctx context.Context, c cards.Card) (label, note string, err error
 			return "", "", errors.New(product.OutcomeForProviderFailure("calendar", r.Failure, r.Err).UserMessage)
 		}
 		return "Added to your calendar", fmt.Sprintf("The owner added the event you drafted, \"%s\" (%s), to their calendar.", ev.Summary, ev.Start), nil
+	case cards.DraftAlarm:
+		// The phone set it with the clock app's own alarm request; the Pod
+		// records what the owner asked for.
+		return "Set on your phone", fmt.Sprintf("The owner set the alarm you drafted for %s on their phone.", cards.DraftField(c, "start")), nil
 	case cards.DraftSMS:
 		// The phone opened it in Messages for the owner to send; the Pod
 		// cannot know whether they did, and the card does not claim it.

@@ -159,3 +159,13 @@ func TestDraftsAreCheckedOnEveryChange(t *testing.T) {
 		t.Fatalf("round trip: %v %v", err, back.Validate())
 	}
 }
+
+func TestAlarmDrafts(t *testing.T) {
+	a, err := NewDraft(DraftAlarm, map[string]string{"start": "06:30", "subject": "Flight to Lamu"})
+	if err != nil || a.Title != "Alarm 06:30 · Flight to Lamu" || a.Actions[0].Label != "Set alarm" {
+		t.Fatalf("alarm: %v %+v", err, a)
+	}
+	if _, err := NewDraft(DraftAlarm, map[string]string{"start": "half six"}); err == nil {
+		t.Fatal("not a time")
+	}
+}

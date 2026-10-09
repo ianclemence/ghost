@@ -103,6 +103,7 @@ var reviewedUngoverned = map[string]string{
 	"vault":          "the owner's own records of their documents, on the Pod; reads only workspace files; forgetting needs confirmed=true",
 	"money":          "the owner's own spending records on the Pod; imports a workspace file; no bank, no payment; forgetting needs confirmed=true",
 	"trips":          "the owner's own trip records on the Pod; no booking, no payment; forgetting needs confirmed=true",
+	"phone":          "reads what the owner's phone shared with the Pod (notifications, health totals) and keeps place reminders the phone watches; nothing leaves the Pod",
 }
 
 func TestEveryToolIsGovernedOrReviewed(t *testing.T) {

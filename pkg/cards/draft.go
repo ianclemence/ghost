@@ -19,6 +19,9 @@ const (
 	DraftEmail = "email"
 	DraftEvent = "event"
 	DraftSMS   = "sms"
+	// DraftAlarm is an alarm for the owner's phone: the phone sets it when
+	// the owner taps Set alarm.
+	DraftAlarm = "alarm"
 )
 
 // Limits for a draft's fields.
@@ -35,6 +38,7 @@ var draftFields = map[string]map[string]bool{
 	DraftEmail: {"to": true, "cc": false, "subject": true, "body": true},
 	DraftEvent: {"subject": true, "start": true, "end": false, "location": false, "body": false, "all_day": false},
 	DraftSMS:   {"to": true, "body": true},
+	DraftAlarm: {"start": true, "subject": false},
 }
 
 // DraftKindOf is the kind of draft a card holds, or "".
@@ -108,6 +112,8 @@ func draftActions(kind string) []Action {
 		// The Pod cannot send a text: the phone opens it in Messages, ready
 		// for the owner to send, and the card says exactly that.
 		send.Label = "Open in Messages"
+	case DraftAlarm:
+		send.Label = "Set alarm"
 	}
 	return []Action{send, {ID: "discard", Label: "Discard", Kind: "dismiss"}}
 }
@@ -122,6 +128,11 @@ func draftTitle(d map[string]interface{}) string {
 		t = str("subject")
 	case DraftSMS:
 		t = "Text to " + str("to")
+	case DraftAlarm:
+		t = "Alarm " + str("start")
+		if s := str("subject"); s != "" {
+			t += " · " + s
+		}
 	}
 	if r := []rune(t); len(r) > 80 {
 		t = string(r[:79]) + "…"
@@ -161,6 +172,10 @@ func normalizeDraft(d map[string]interface{}) error {
 		limit["body"] = MaxDraftSMS
 		limit["to"] = 120
 	}
+	if kind == DraftAlarm {
+		limit["subject"] = 60
+		limit["start"] = 5
+	}
 	for k, required := range allowed {
 		v := get(k)
 		multi := k == "body"
@@ -195,6 +210,10 @@ func normalizeDraft(d map[string]interface{}) error {
 					return errors.New("a draft goes to at most 10 people")
 				}
 			}
+		}
+	case DraftAlarm:
+		if _, err := time.Parse("15:04", get("start")); err != nil {
+			return fmt.Errorf("%q is not a time (07:30)", get("start"))
 		}
 	case DraftEvent:
 		allDay := get("all_day") == "true"

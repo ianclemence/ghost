@@ -230,3 +230,56 @@ func TestTripsMergeBookingsAndKnowWhenToLeave(t *testing.T) {
 		t.Fatal("nobody leaves for a hotel check-in by the clock")
 	}
 }
+
+func TestDeviceSignals(t *testing.T) {
+	d := DeviceFor(t.TempDir())
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	n, err := d.AddNotes([]PhoneNote{{App: "WhatsApp", Title: "Mum", Text: "Call me when you land", At: now.Add(-time.Hour)}, {App: "", Text: "x"}}, now)
+	if err != nil || n != 1 {
+		t.Fatalf("notes: %d %v", n, err)
+	}
+	if n, _ := d.AddNotes([]PhoneNote{{App: "WhatsApp", Title: "Mum", Text: "Call me when you land", At: now.Add(-time.Hour)}}, now); n != 0 {
+		t.Fatal("the same notification was kept twice")
+	}
+	if got, _ := d.Notes("whatsapp", "land", 24, now); len(got) != 1 {
+		t.Fatalf("find: %+v", got)
+	}
+	if got, _ := d.Notes("", "", 24, now.AddDate(0, 0, 2)); len(got) != 0 {
+		t.Fatalf("older than the window: %+v", got)
+	}
+	days := []HealthDay{}
+	for i := 0; i < 14; i++ {
+		steps := 5000
+		if i >= 7 {
+			steps = 6000
+		}
+		days = append(days, HealthDay{Date: now.AddDate(0, 0, -13+i).Format("2006-01-02"), Steps: steps, SleepMinutes: 420})
+	}
+	days = append(days, HealthDay{Date: "2026-10-09", Steps: -5})
+	if n, _ := d.AddHealth(days); n != 14 {
+		t.Fatalf("health kept %d", n)
+	}
+	w, _ := d.Week(now)
+	if w.Steps != 6000 || w.PrevSteps != 5000 || int(w.StepsChange) != 20 || w.SleepMin != 420 {
+		t.Fatalf("week: %+v", w)
+	}
+	p, err := d.AddPlace("Naivas Westlands", -1.2634, 36.8027, 0, "Buy milk", "", true, now)
+	if err != nil || p.Radius != 150 || p.On != "enter" {
+		t.Fatalf("place: %+v %v", p, err)
+	}
+	if _, err := d.AddPlace("Nowhere", 0, 0, 100, "x", "enter", false, now); err == nil {
+		t.Fatal("null island")
+	}
+	if _, fire, _ := d.Arrived(p.ID, "exit", now); fire {
+		t.Fatal("left is not arrived")
+	}
+	if _, fire, _ := d.Arrived(p.ID, "enter", now); !fire {
+		t.Fatal("arriving fires")
+	}
+	if _, fire, _ := d.Arrived(p.ID, "enter", now.Add(2*time.Hour)); fire {
+		t.Fatal("a once reminder fires once")
+	}
+	if active, _ := d.Places(true); len(active) != 0 {
+		t.Fatal("a fired once reminder is no longer watched")
+	}
+}
