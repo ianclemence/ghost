@@ -49,11 +49,7 @@ func collectSecretValues(path string) []string {
 	// The vault is sealed on disk; read it the way the vault does, or there
 	// is nothing to scrub (every secret would pass through untouched).
 	if config.IsSealed(data) {
-		sec, err := config.LoadSecrets(path)
-		if err != nil {
-			return nil
-		}
-		if data, err = json.Marshal(sec); err != nil {
+		if data, err = vaultContents(path); err != nil {
 			return nil
 		}
 	}

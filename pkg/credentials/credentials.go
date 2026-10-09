@@ -14,6 +14,7 @@
 package credentials
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -458,4 +459,14 @@ func (v *Vault) Sealed() (path string, ok bool, err error) {
 		return p, true, nil
 	}
 	return "", false, nil
+}
+
+// vaultContents is the vault at path, unsealed, as JSON: for the redaction
+// boundary (secretvalues.go), which must see every secret to scrub it.
+func vaultContents(path string) ([]byte, error) {
+	sec, err := config.LoadSecrets(path)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(sec)
 }
