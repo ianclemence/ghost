@@ -63,6 +63,7 @@ func TestTheOwnersDataAndFilesAreTables(t *testing.T) {
 		{Title: "Spent this month", Chart: "metric", Query: "SELECT SUM(amount) FROM finance_entries WHERE month='2026-10' UNION ALL SELECT SUM(amount) FROM finance_entries WHERE month='2026-09'", Unit: "KES"},
 		{Title: "By category", Chart: "bar", Query: "SELECT category, SUM(amount) FROM finance_entries GROUP BY 1"},
 		{Title: "Broken", Chart: "line", Query: "SELECT nope FROM nowhere"},
+		{Title: "Nothing yet", Chart: "metric", Query: "SELECT SUM(amount) FROM finance_entries WHERE month='1999-01'"},
 	}}
 	rel, err := Save(ws, d)
 	if err != nil || rel != "dashboards/shop.json" {
@@ -73,7 +74,7 @@ func TestTheOwnersDataAndFilesAreTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := Data(ctx, ws, got)
-	if *data[0].Value != 3200 || *data[0].Previous != 1200 || len(data[1].Points) != 2 || data[2].Error == "" {
+	if *data[0].Value != 3200 || *data[0].Previous != 1200 || len(data[1].Points) != 2 || data[2].Error == "" || data[3].Value == nil || *data[3].Value != 0 {
 		t.Fatalf("data: %+v", data)
 	}
 	// A saved dashboard that someone edited into a write is refused on load.

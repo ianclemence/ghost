@@ -125,6 +125,10 @@ func shape(td *TileData, r Result) {
 		}
 		if v, ok := firstNumber(r.Rows[0]); ok {
 			td.Value = &v
+		} else if allNil(r.Rows[0]) {
+			// A total over nothing (SUM of no rows) is nothing yet: 0.
+			zero := 0.0
+			td.Value = &zero
 		} else {
 			td.Error = "the first row has no number"
 			return
@@ -244,4 +248,13 @@ func Load(workspace, rel string) (Dashboard, error) {
 		return Dashboard{}, err
 	}
 	return d, d.Check()
+}
+
+func allNil(row []interface{}) bool {
+	for _, v := range row {
+		if v != nil {
+			return false
+		}
+	}
+	return len(row) > 0
 }
