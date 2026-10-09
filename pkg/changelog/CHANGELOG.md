@@ -3,6 +3,26 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.165] - 2026-10-09
+
+- **Jobs: say what Ghost should take on.** Ten jobs, each one switch and a
+  time: a morning brief, your inbox in hand (replies drafted, never sent),
+  bills and subscriptions, a trip companion, meals with a shopping list to
+  tick, life admin for the month, a last look around the house at night, a
+  gentle health week, learning something, and watching a page. Each says
+  what it still needs, like a connected mailbox. A job with nothing to say
+  stays quiet.
+- **Your phone can tell Ghost things, if you let it.** In the app's Phone
+  settings, each is off until you turn it on: notifications from the apps
+  you choose ("did the bank text me?"), daily steps, sleep and resting heart
+  rate, and reminders at places that fire the moment you arrive, even with
+  Ghost closed. Ghost can also set an alarm on your phone's clock with your
+  tap. Turning notifications off forgets what Ghost had.
+- **Pages Ghost builds can remember.** A page keeps what you did between
+  opens (a score, a flashcard deck's progress), and Ghost can read it to
+  build the next version from where you got to. Learn now makes you a
+  flashcard deck that brings cards back just before you would forget them.
+
 ## [0.24.164] - 2026-10-09
 
 - **Cards can ask you things.** A card can offer choices, a date and time,
