@@ -27,6 +27,10 @@ import (
 //	DELETE /v1/life/trips/{id}          remove a trip
 //	DELETE /v1/life/money/{id}          remove an entry, a subscription or a bill
 //	POST   /v1/life/money/{id}/active   {active} start or stop tracking a subscription or bill
+//	GET    /v1/life/knowledge           what the owner reads and studies, current first
+//	POST   /v1/life/knowledge           add something to read or learn
+//	POST   /v1/life/knowledge/{id}      edit it (progress, status, notes dropped)
+//	DELETE /v1/life/knowledge/{id}      forget it
 func registerLifeRoutes(mux *http.ServeMux, zone func() *time.Location) {
 	ws := func() string { return apiWorkspaceDir }
 	idOf := func(r *http.Request, prefix string) (string, string) {
@@ -222,6 +226,89 @@ func registerLifeRoutes(mux *http.ServeMux, zone func() *time.Location) {
 			return
 		}
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
+	}))
+
+	type learningBody struct {
+		Kind      string   `json:"kind"`
+		Title     string   `json:"title"`
+		Author    string   `json:"author"`
+		Status    string   `json:"status"`
+		Current   *int     `json:"current"`
+		Total     *int     `json:"total"`
+		Unit      string   `json:"unit"`
+		Goal      string   `json:"goal"`
+		Due       string   `json:"due"`
+		Tags      []string `json:"tags"`
+		Note      string   `json:"note"`
+		DropNotes []int    `json:"drop_notes"`
+	}
+	learningIn := func(b learningBody) life.LearningInput {
+		in := life.LearningInput{Kind: b.Kind, Title: b.Title, Author: b.Author, Status: b.Status, Unit: b.Unit, Goal: b.Goal, Due: b.Due,
+			Tags: b.Tags, Note: b.Note, Current: -1, Total: -1}
+		if b.Current != nil {
+			in.Current = *b.Current
+		}
+		if b.Total != nil {
+			in.Total = *b.Total
+		}
+		return in
+	}
+	mux.HandleFunc("/v1/life/knowledge", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		store := life.KnowledgeFor(ws())
+		switch r.Method {
+		case http.MethodGet:
+			all, err := store.All()
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			if all == nil {
+				all = []life.Learning{}
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "items": all})
+		case http.MethodPost:
+			var b learningBody
+			if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&b); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+				return
+			}
+			in := learningIn(b)
+			in.Source = life.Source{Kind: "owner"}
+			l, _, err := store.Save(in, time.Now().In(zone()))
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "item": l})
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET or POST")
+		}
+	}))
+	mux.HandleFunc("/v1/life/knowledge/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		id, _ := idOf(r, "/v1/life/knowledge/")
+		store := life.KnowledgeFor(ws())
+		switch r.Method {
+		case http.MethodPost:
+			var b learningBody
+			if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&b); err != nil {
+				jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
+				return
+			}
+			l, err := store.Edit(id, learningIn(b), b.DropNotes, time.Now().In(zone()))
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "item": l})
+		case http.MethodDelete:
+			if err := store.Forget(id); err != nil {
+				fail(w, err)
+				return
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
+		default:
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use POST or DELETE")
+		}
 	}))
 
 	mux.HandleFunc("/v1/life/money", authMiddleware(func(w http.ResponseWriter, r *http.Request) {

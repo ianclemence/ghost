@@ -65,3 +65,34 @@ func decode(t *testing.T, b []byte) map[string]interface{} {
 	_ = json.Unmarshal(b, &out)
 	return out
 }
+
+func TestKnowledgeRoutes(t *testing.T) {
+	old := apiWorkspaceDir
+	apiWorkspaceDir = t.TempDir()
+	defer func() { apiWorkspaceDir = old }()
+	mux := http.NewServeMux()
+	registerLifeRoutes(mux, func() *time.Location { return time.UTC })
+	code, out := postJSON(t, mux, "/v1/life/knowledge", map[string]interface{}{"title": "Sapiens", "kind": "book", "author": "Yuval Noah Harari", "current": 40, "total": 443})
+	if code != 200 {
+		t.Fatalf("add: %d %v", code, out)
+	}
+	item := out["item"].(map[string]interface{})
+	id := item["id"].(string)
+	if item["status"] != "active" || item["unit"] != "page" {
+		t.Fatalf("item: %v", item)
+	}
+	code, out = postJSON(t, mux, "/v1/life/knowledge/"+id, map[string]interface{}{"title": "Sapiens", "kind": "book", "unit": "page", "current": 443, "total": 443, "status": "done"})
+	if code != 200 || out["item"].(map[string]interface{})["finished"] == nil {
+		t.Fatalf("finish: %d %v", code, out)
+	}
+	if code, _ := postJSON(t, mux, "/v1/life/knowledge", map[string]interface{}{"title": "x", "kind": "movie"}); code != http.StatusBadRequest {
+		t.Fatalf("bad kind: %d", code)
+	}
+	req := httptest.NewRequest(http.MethodDelete, "http://127.0.0.1:18790/v1/life/knowledge/"+id, nil)
+	req.RemoteAddr, req.Host = "127.0.0.1:5000", "127.0.0.1:18790"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("forget: %d", rec.Code)
+	}
+}

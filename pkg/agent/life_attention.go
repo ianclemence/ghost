@@ -146,6 +146,7 @@ func lifeItems(workspace string, now time.Time, loc *time.Location) []attention.
 	// Trips: the week before (with a passport check), the day before a
 	// flight, when to leave for it, a hotel on its day, and how it went.
 	out = append(out, tripItems(workspace, now, loc, today)...)
+	out = append(out, learningItems(workspace, now, today)...)
 
 	// Bills and renewals: three days ahead, and the day before for a bill.
 	money := life.MoneyFor(workspace)
@@ -314,4 +315,56 @@ func groupThousands(n int) string {
 		s = s[:i] + "," + s[i:]
 	}
 	return s
+}
+
+// learningItems: an exam or deadline a week ahead and the day before (with a
+// quiz on what they kept), and, once a fortnight at most, something they were
+// reading or studying that has gone quiet.
+func learningItems(workspace string, now, today time.Time) []attention.Item {
+	k := life.KnowledgeFor(workspace)
+	all, err := k.All()
+	if err != nil {
+		return nil
+	}
+	var out []attention.Item
+	for _, l := range all {
+		if l.Due == "" || l.Status == "done" {
+			continue
+		}
+		due, err := time.ParseInLocation("2006-01-02", l.Due, today.Location())
+		if err != nil {
+			continue
+		}
+		days := int(due.Sub(today).Hours() / 24)
+		what := l.Title
+		if l.Goal != "" {
+			what = l.Goal
+		}
+		switch days {
+		case 7:
+			out = append(out, attention.Item{Key: "life:learn:" + l.ID + ":" + l.Due + ":week", Source: "upcoming", Priority: 5,
+				Line:  fmt.Sprintf("A week to go: %s.", what),
+				Reply: fmt.Sprintf("Help me plan the week before %s: what to go over each day.", l.Title), ReplyLabel: "Plan the week",
+				Expires: today.AddDate(0, 0, 2)})
+		case 1:
+			out = append(out, attention.Item{Key: "life:learn:" + l.ID + ":" + l.Due + ":eve", Source: "upcoming", Priority: 8,
+				Line:  fmt.Sprintf("Tomorrow: %s. Good luck.", what),
+				Reply: fmt.Sprintf("Quiz me on %s: a few quick questions from my notes.", l.Title), ReplyLabel: "Quiz me",
+				Expires: today.AddDate(0, 0, 1)})
+		}
+	}
+	// One quiet thing at a time, at most once a fortnight each.
+	for _, l := range k.Quiet(now, 14*24*time.Hour) {
+		_, wk := today.ISOWeek()
+		where := ""
+		if p := l.Progress(); p != "" {
+			where = " You were on " + p + "."
+		}
+		out = append(out, attention.Item{Key: fmt.Sprintf("life:learn:%s:quiet:%d-%d", l.ID, today.Year(), wk/2), Source: "followup", Priority: 2,
+			Line:  fmt.Sprintf("Still on %s?%s", l.Title, where),
+			Reply: fmt.Sprintf("Where was I with %s? Remind me what I noted.", l.Title), ReplyLabel: "Pick it up",
+			Expires: today.AddDate(0, 0, 3)})
+		break
+	}
+	return out
 }

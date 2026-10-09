@@ -659,6 +659,153 @@ func tripText(tr life.Trip) string {
 	return sb.String()
 }
 
+// ─── knowledge ───────────────────────────────────────────────────────────
+
+// KnowledgeTool is what the owner reads and studies: books, courses, subjects
+// for an exam, articles, podcasts, with where they are and what they made of it.
+type KnowledgeTool struct {
+	store *life.Knowledge
+	loc   func() *time.Location
+}
+
+func NewKnowledgeTool(workspace string, loc func() *time.Location) *KnowledgeTool {
+	return &KnowledgeTool{store: life.KnowledgeFor(workspace), loc: loc}
+}
+
+func (t *KnowledgeTool) Name() string { return "knowledge" }
+
+func (t *KnowledgeTool) Description() string {
+	return `What the owner reads and studies: books, courses, subjects they are studying for, articles, podcasts, videos, papers. Keep it whenever they mention one ("I started Sapiens", "I'm on lesson 6 of the Go course", "I have my CPA exam in March", "save this line: …"). It is how Ghost picks up where they left off, quizzes them on what they are learning, and nudges gently when something has gone quiet.
+
+action:
+- save: title, kind? (book, course, subject, article, podcast, video, paper, other), author?, status? (want, active, paused, done), current? and total? (where they are and how long it is) with unit? (page, chapter, lesson, module, episode, percent), goal? (what it is for, in their words), due? (2006-01-02: an exam, a deadline), tags?, note? (a thought or summary; for a line they want to keep, the line itself with is_quote=true and where? "p. 112"). Saving the same title again changes it: progress moves it to active, reaching the end finishes it. Only what they said; never invent a page or a quote.
+- list: what they are reading and studying, what they want to, and what they finished.
+- show: title or id → it in full, with notes. To quiz them, use present_card with choice blocks built from their notes.
+- forget: id and confirmed=true, only after the owner said so.`
+}
+
+func (t *KnowledgeTool) Parameters() map[string]interface{} {
+	s := map[string]interface{}{"type": "string"}
+	n := map[string]interface{}{"type": "integer"}
+	return map[string]interface{}{
+		"type":     "object",
+		"required": []string{"action"},
+		"properties": withSource(map[string]interface{}{
+			"action":    map[string]interface{}{"type": "string", "enum": []string{"save", "list", "show", "forget"}},
+			"id":        s,
+			"title":     s,
+			"kind":      map[string]interface{}{"type": "string", "enum": []string{"book", "course", "subject", "article", "podcast", "video", "paper", "other"}},
+			"author":    s,
+			"status":    map[string]interface{}{"type": "string", "enum": []string{"want", "active", "paused", "done"}},
+			"current":   n,
+			"total":     n,
+			"unit":      map[string]interface{}{"type": "string", "enum": []string{"page", "chapter", "lesson", "module", "episode", "percent"}},
+			"goal":      s,
+			"due":       s,
+			"tags":      map[string]interface{}{"type": "array", "items": s},
+			"note":      s,
+			"where":     s,
+			"is_quote":  map[string]interface{}{"type": "boolean"},
+			"confirmed": map[string]interface{}{"type": "boolean"},
+		}),
+	}
+}
+
+func (t *KnowledgeTool) Timeout() time.Duration { return 10 * time.Second }
+
+func (t *KnowledgeTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
+	now := time.Now().In(t.loc())
+	count := func(k string) int {
+		if f, ok := args[k].(float64); ok {
+			return int(f)
+		}
+		return -1
+	}
+	switch sarg(args, "action") {
+	case "save":
+		quote, _ := args["is_quote"].(bool)
+		in := life.LearningInput{Title: sarg(args, "title"), Kind: sarg(args, "kind"), Author: sarg(args, "author"), Status: sarg(args, "status"),
+			Current: count("current"), Total: count("total"), Unit: sarg(args, "unit"), Goal: sarg(args, "goal"), Due: sarg(args, "due"),
+			Tags: strList(args, "tags"), Note: sarg(args, "note"), Quote: quote, Where: sarg(args, "where"), Source: lifeSource(args)}
+		l, created, err := t.store.Save(in, now)
+		if err != nil {
+			return ErrorResult("Not saved: " + err.Error())
+		}
+		verb := "Updated"
+		if created {
+			verb = "Saved"
+		}
+		return NewToolResult(fmt.Sprintf("%s %q (id %s).\n%s", verb, l.Title, l.ID, learningText(l, false)))
+	case "list":
+		all, err := t.store.All()
+		if err != nil {
+			return ErrorResult(err.Error())
+		}
+		if len(all) == 0 {
+			return NewToolResult("Nothing saved yet.")
+		}
+		var sb strings.Builder
+		for _, l := range all {
+			sb.WriteString("- " + learningText(l, false) + " (id " + l.ID + ")\n")
+		}
+		return NewToolResult(sb.String())
+	case "show":
+		l, err := t.store.Get(sarg(args, "id"))
+		if err != nil {
+			ref := sarg(args, "title")
+			if ref == "" {
+				ref = sarg(args, "id")
+			}
+			if l, err = t.store.Find(ref); err != nil {
+				return ErrorResult("Nothing saved by that name.")
+			}
+		}
+		return NewToolResult(learningText(l, true))
+	case "forget":
+		if b, _ := args["confirmed"].(bool); !b {
+			return ErrorResult("Removing it needs the owner's yes. Ask first, then call again with confirmed=true.")
+		}
+		if err := t.store.Forget(sarg(args, "id")); err != nil {
+			return ErrorResult("No such id: " + sarg(args, "id"))
+		}
+		return NewToolResult("Removed.")
+	}
+	return ErrorResult("action is save, list, show or forget")
+}
+
+func learningText(l life.Learning, notes bool) string {
+	var sb strings.Builder
+	sb.WriteString(l.Title)
+	if l.Author != "" {
+		sb.WriteString(" by " + l.Author)
+	}
+	fmt.Fprintf(&sb, " [%s, %s]", l.Kind, l.Status)
+	if p := l.Progress(); p != "" {
+		sb.WriteString(", " + p)
+	}
+	if l.Goal != "" {
+		sb.WriteString(", for: " + l.Goal)
+	}
+	if l.Due != "" {
+		sb.WriteString(", due " + l.Due)
+	}
+	if notes {
+		for _, n := range l.Notes {
+			if n.Quote {
+				fmt.Fprintf(&sb, "\n- \"%s\"", n.Text)
+				if n.Where != "" {
+					sb.WriteString(" (" + n.Where + ")")
+				}
+			} else {
+				sb.WriteString("\n- " + n.Text)
+			}
+		}
+	} else if len(l.Notes) > 0 {
+		fmt.Fprintf(&sb, ", %d notes", len(l.Notes))
+	}
+	return sb.String()
+}
+
 // ─── phone ───────────────────────────────────────────────────────────────
 
 // PhoneTool is what the owner's phone shares with the Pod, when they turned

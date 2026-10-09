@@ -127,6 +127,7 @@ var allowedCoreAudit = map[string]bool{
 	"vault":          true, // the owner's own document records, local
 	"money":          true, // the owner's own spending records, local; no bank, no payment
 	"trips":          true, // the owner's own trip records, local; no booking
+	"knowledge":      true, // what the owner reads and studies, local records
 	"phone":          true, // what the owner's phone shared, local; place reminders
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,

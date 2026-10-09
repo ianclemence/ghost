@@ -727,6 +727,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	toolsRegistry.Register(tools.NewVaultTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewMoneyTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewTripsTool(workspace, ownerZone))
+	toolsRegistry.Register(tools.NewKnowledgeTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewPhoneTool(workspace, ownerZone))
 
 	// Create semantic extractor for LLM-based memory extraction

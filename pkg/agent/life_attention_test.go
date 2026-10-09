@@ -146,3 +146,25 @@ func TestRoutineCardsBelongToTheConversation(t *testing.T) {
 		t.Fatal("a sentence is not silence")
 	}
 }
+
+func TestLearningItemsBeforeAnExamAndWhenQuiet(t *testing.T) {
+	ws := t.TempDir()
+	loc := time.UTC
+	now := time.Date(2026, 10, 9, 9, 0, 0, 0, loc)
+	k := life.KnowledgeFor(ws)
+	if _, _, err := k.Save(life.LearningInput{Title: "CPA Section 1", Kind: "subject", Goal: "the CPA exam", Due: "2026-10-16", Status: "active", Current: -1, Total: -1, Source: life.Source{Kind: "conversation"}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := k.Save(life.LearningInput{Title: "Sapiens", Current: 140, Total: 443, Source: life.Source{Kind: "conversation"}}, now.AddDate(0, 0, -20)); err != nil {
+		t.Fatal(err)
+	}
+	items := learningItems(ws, now, time.Date(2026, 10, 9, 0, 0, 0, 0, loc))
+	var week, quiet bool
+	for _, it := range items {
+		week = week || strings.Contains(it.Line, "A week to go: the CPA exam")
+		quiet = quiet || strings.Contains(it.Line, "Still on Sapiens? You were on page 140 of 443.")
+	}
+	if !week || !quiet {
+		t.Fatalf("items: %+v", items)
+	}
+}
