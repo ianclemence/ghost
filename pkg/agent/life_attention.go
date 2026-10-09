@@ -119,6 +119,10 @@ func lifeItems(workspace string, now time.Time, loc *time.Location) []attention.
 		}
 	}
 
+	// Trips: the week before (with a passport check), the day before a
+	// flight, when to leave for it, a hotel on its day, and how it went.
+	out = append(out, tripItems(workspace, now, loc, today)...)
+
 	// Bills and renewals: three days ahead, and the day before for a bill.
 	money := life.MoneyFor(workspace)
 	_, _ = money.Advance(now, loc)
@@ -196,4 +200,86 @@ func (al *AgentLoop) OwnerLocation() *time.Location {
 		return time.Local
 	}
 	return al.ownerLocation()
+}
+
+func tripItems(workspace string, now time.Time, loc *time.Location, today time.Time) []attention.Item {
+	trips, err := life.TripsFor(workspace).All(now)
+	if err != nil {
+		return nil
+	}
+	papers, _ := life.VaultFor(workspace).All()
+	var out []attention.Item
+	for _, tr := range trips {
+		start, err1 := time.ParseInLocation("2006-01-02", tr.Start, loc)
+		end, err2 := time.ParseInLocation("2006-01-02", tr.End, loc)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		where := tr.Destination
+		if where == "" {
+			where = tr.Title
+		}
+		days := int(start.Sub(today).Hours() / 24)
+		if days == 7 || days == 6 {
+			out = append(out, attention.Item{Key: "life:trip:" + tr.ID + ":week", Source: "upcoming", Priority: 6,
+				Line:       fmt.Sprintf("Your trip to %s starts on %s.", where, start.Format("Monday 2 January")),
+				Reply:      fmt.Sprintf("Help me get ready for my trip to %s: the weather, what to pack and anything I still need to book.", where),
+				ReplyLabel: "Help me prepare", Expires: start})
+			// Many countries want six months left on a passport.
+			for _, p := range papers {
+				if p.Kind != "passport" || p.Holder != "" || p.Expires == "" {
+					continue
+				}
+				exp, err := time.ParseInLocation("2006-01-02", p.Expires, loc)
+				if err != nil || !exp.Before(end.AddDate(0, 6, 0)) {
+					continue
+				}
+				out = append(out, attention.Item{Key: "life:trip:" + tr.ID + ":passport:" + p.ID, Source: "document_expiry", Priority: 8,
+					Line:       fmt.Sprintf("Your passport expires on %s, less than six months after your trip to %s ends. Some countries won't let you in on it.", exp.Format("2 January 2006"), where),
+					Reply:      fmt.Sprintf("Check whether my passport is valid long enough for %s, and how to renew it if not.", where),
+					ReplyLabel: "Check for me", Expires: start})
+			}
+		}
+		for i, l := range tr.Legs {
+			ls, err := time.ParseInLocation(life.LegTime, l.Start, loc)
+			if err != nil {
+				continue
+			}
+			legKey := fmt.Sprintf("life:trip:%s:leg%d:%s", tr.ID, i, l.Start)
+			legDay := time.Date(ls.Year(), ls.Month(), ls.Day(), 0, 0, 0, 0, loc)
+			legDays := int(legDay.Sub(today).Hours() / 24)
+			name := l.Title
+			if l.Kind == "flight" && l.Ref != "" {
+				name = l.Ref
+				if l.To != "" {
+					name += " to " + l.To
+				}
+			}
+			switch {
+			case l.Kind == "flight" && legDays == 1:
+				it := attention.Item{Key: legKey + ":eve", Source: "upcoming", Priority: 8,
+					Line:    fmt.Sprintf("Tomorrow: %s at %s. Check in online if your airline lets you.", name, ls.Format("15:04")),
+					Expires: ls}
+				if l.Ref != "" {
+					// The tap is the owner asking, in their own words, so the
+					// flight becomes a watch (gate changes, delays).
+					it.Reply, it.ReplyLabel = fmt.Sprintf("Watch my flight %s tomorrow.", l.Ref), "Follow the flight"
+				}
+				out = append(out, it)
+			case l.Kind == "hotel" && legDays == 0:
+				out = append(out, attention.Item{Key: legKey + ":day", Source: "upcoming", Priority: 6,
+					Line: fmt.Sprintf("Check-in at %s today from %s.", l.Title, ls.Format("15:04")), Expires: ls.Add(12 * time.Hour)})
+			}
+			if by, ok := life.LeaveBy(l, loc); ok && now.Before(ls) && !now.Before(by.Add(-15*time.Minute)) {
+				out = append(out, attention.Item{Key: legKey + ":leave", Source: "leave_by", Priority: 10, Urgent: true, Reliable: true,
+					Line:      fmt.Sprintf("Time to leave for %s at %s: be on your way by %s.", name, ls.Format("15:04"), by.Format("15:04")),
+					NotBefore: by.Add(-15 * time.Minute), Expires: ls})
+			}
+		}
+		if after := int(today.Sub(end).Hours() / 24); after == 1 || after == 2 {
+			out = append(out, attention.Item{Key: "life:trip:" + tr.ID + ":after", Source: "followup", Priority: 3,
+				Line: fmt.Sprintf("Welcome back from %s. How was it?", where), Expires: end.AddDate(0, 0, 4)})
+		}
+	}
+	return out
 }

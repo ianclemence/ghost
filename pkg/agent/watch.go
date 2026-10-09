@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/proactive"
 	"github.com/ianclemence/ghost/pkg/providers/flight"
+	"github.com/ianclemence/ghost/pkg/tools"
 	"github.com/ianclemence/ghost/pkg/watch"
 )
 
@@ -68,6 +70,10 @@ type watchRuntime struct {
 
 	wakeMu    sync.Mutex
 	wakeTimer *time.Timer
+
+	// justCreated holds, per request, the watches this turn's own words
+	// created, so the reply can say so instead of claiming it can't watch.
+	justCreated sync.Map // request id → []watch.Watch
 }
 
 // watchStoreFor opens the durable watch ledger for this workspace.
@@ -132,6 +138,15 @@ func (al *AgentLoop) watchProbes() *watch.Registry {
 				return res.Value, nil
 			}, true))
 		}
+		// A page the owner asked Ghost to watch: one bounded GET, through the
+		// same address safety gate as web_fetch (no private networks, no
+		// credentials in the address), checked again on every redirect.
+		reg.Register(watch.NewPageProbe(func(raw string) error {
+			if ok, reason := tools.ValidateURL(raw, tools.URLSafetyConfig{}); !ok {
+				return fmt.Errorf("%s", reason)
+			}
+			return nil
+		}))
 		reg.Register(watch.NewSandbox(al.workspace))
 		al.watchRT.probes = reg
 	})
@@ -226,6 +241,11 @@ func (al *AgentLoop) extractWatchesInline(opts processOptions) {
 			continue
 		}
 		al.watchMetrics().RecordCreated()
+		if opts.RequestID != "" {
+			prev, _ := al.watchRT.justCreated.Load(opts.RequestID)
+			list, _ := prev.([]watch.Watch)
+			al.watchRT.justCreated.Store(opts.RequestID, append(list, created))
+		}
 		al.publishWatch(cevents.WatchCreated, created, "noticed something worth watching")
 		logger.InfoCF("agent", "watch created", map[string]interface{}{
 			"id": created.ID, "kind": string(created.Kind), "entity": created.Entity,
@@ -305,6 +325,7 @@ func (al *AgentLoop) probeWatch(store *watch.Store, w watch.Watch, now time.Time
 		return al.failWatch(store, w, err, now)
 	}
 	ev := watch.Evidence{At: now, Source: probe.Name(), Detail: excerpt}
+	first := w.Baseline == nil
 	updated, changes, err := store.Observe(w.ID, state, ev, watch.NextCheckAt(w, now).UTC())
 	if err != nil {
 		logger.InfoCF("agent", "watch observe failed", map[string]interface{}{"error": err.Error()})
@@ -315,6 +336,15 @@ func (al *AgentLoop) probeWatch(store *watch.Store, w watch.Watch, now time.Time
 		"id": w.ID, "entity": w.Entity, "source": probe.Name(),
 		"changes": len(changes), "excerpt": truncateReason(excerpt, 160),
 	})
+	// A page watch speaks only when what the owner asked for happened (the
+	// price at or under their number, back in stock); other changes are
+	// observed and kept as evidence, not announced.
+	if first && err == nil {
+		// What the owner asked for may already be true the first time Ghost
+		// looks (the price is already under their number): say so now.
+		changes = append(changes, watch.AlreadyMet(updated)...)
+	}
+	changes = watch.Relevant(updated, changes)
 	if len(changes) == 0 {
 		return 0
 	}
@@ -640,4 +670,43 @@ func (al *AgentLoop) publishWatch(typ cevents.Type, w watch.Watch, note string) 
 		GhostID: al.governance.GhostID, AgentID: al.governance.AgentID,
 		Status: string(w.Status), Payload: payload,
 	})
+}
+
+// watchesNote is the line the model reads when the owner's message just
+// started a watch, so its reply confirms it truthfully. It is taken once.
+func (al *AgentLoop) watchesNote(requestID string) string {
+	if requestID == "" {
+		return ""
+	}
+	v, ok := al.watchRT.justCreated.LoadAndDelete(requestID)
+	if !ok {
+		return ""
+	}
+	list, _ := v.([]watch.Watch)
+	var parts []string
+	for _, w := range list {
+		desc := watch.SubjectPhrase(w)
+		if w.Kind == watch.KindPage && w.Rule != nil {
+			switch w.Rule.Want {
+			case "below":
+				desc += fmt.Sprintf(" (tell the owner when the price is at or under %s)", strconv.FormatFloat(w.Rule.Threshold, 'f', -1, 64))
+			case "drop":
+				desc += " (tell the owner when the price drops)"
+			case "stock":
+				desc += " (tell the owner when it is back in stock)"
+			case "appears":
+				desc += fmt.Sprintf(" (tell the owner when %q appears)", w.Rule.Phrase)
+			case "disappears":
+				desc += fmt.Sprintf(" (tell the owner when %q is gone)", w.Rule.Phrase)
+			default:
+				desc += " (tell the owner when it changes)"
+			}
+		}
+		parts = append(parts, desc)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Ghost has just started watching, from the owner's own words: " + strings.Join(parts, "; ") +
+		". It checks on its own and tells the owner when that happens. Confirm this in a sentence; do not say you cannot watch it, and do not set a reminder for it."
 }

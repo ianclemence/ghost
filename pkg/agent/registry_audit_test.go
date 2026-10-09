@@ -126,6 +126,7 @@ var allowedCoreAudit = map[string]bool{
 	"people":         true, // the owner's own records of people, local
 	"vault":          true, // the owner's own document records, local
 	"money":          true, // the owner's own spending records, local; no bank, no payment
+	"trips":          true, // the owner's own trip records, local; no booking
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,
 	"move_file": true, // renames inside the workspace, never overwrites, same guards as write_file

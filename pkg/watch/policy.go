@@ -89,6 +89,10 @@ func (p Policy) ResolveSource(kind Kind) (string, bool) {
 	if kind == KindFlight && has("flight") {
 		return "flight", true
 	}
+	if kind == KindPage {
+		// A page is read from the page itself or not at all.
+		return "page", has("page")
+	}
 	if has("sandbox") {
 		return "sandbox", true
 	}

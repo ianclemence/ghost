@@ -39,6 +39,9 @@ type Candidate struct {
 	Confidence  float64
 	Origin      string // deterministic | explicit
 	Explicit    bool   // the owner asked for this watch by name
+	// URL and Rule are a page watch's page and what the owner wants from it.
+	URL  string
+	Rule *PageRule
 }
 
 // travelRE is the context a bare flight number needs before Ghost may read
@@ -97,6 +100,13 @@ func Detect(message string, now time.Time, timezone string) []Candidate {
 		return nil
 	}
 	explicit := explicitRE.MatchString(text)
+	// A link in an explicit request is a page to watch, and only that: the
+	// words around it say what about the page matters, not a second watch.
+	if explicit && !thirdPersonRE.MatchString(text) {
+		if c, ok := detectPage(text); ok {
+			return []Candidate{c}
+		}
+	}
 
 	var out []Candidate
 	seen := map[string]bool{}
@@ -249,10 +259,18 @@ func (c Candidate) Describe() string {
 // source is NOT set here: it is resolved by the registry at creation time,
 // so a watch never claims a source that was not consulted.
 func (c Candidate) ToWatch(session, msgID string, now time.Time) Watch {
-	return Watch{
+	w := Watch{
 		Kind: c.Kind, Entity: strings.TrimSpace(c.Entity), Label: c.Label,
 		EventAt: c.EventAt, Status: StatusActive, Explicit: c.Explicit,
+		URL: c.URL, Rule: c.Rule,
 		Provenance: Provenance{Session: session, MessageID: msgID, Quote: c.Quote, At: now},
 		CreatedAt:  now, UpdatedAt: now,
 	}
+	if c.Kind == KindPage {
+		// A page has no event to end on: it is watched for a month, then
+		// Ghost says it stopped.
+		end := now.Add(PageHorizon)
+		w.ExpiresAt = &end
+	}
+	return w
 }

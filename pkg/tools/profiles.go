@@ -57,7 +57,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Documents are laid out on the Pod and shown; nothing is sent.
 		"document",
 		// The owner's own records on their Pod: people, documents, money.
-		"people", "vault", "money",
+		"people", "vault", "money", "trips",
 		// Browser surface on mobile: observe + act (broker-governed like
 		// exec, which is already here). Purchase-class submit and
 		// file-egress upload stay desktop/admin posture.
@@ -299,6 +299,10 @@ var turnIntentTools = []struct {
 		"policy", "warranty", "guarantee", "lease", "tenancy", "contract", "logbook", "registration", "certificate", "expires", "expiry",
 		"renewal", "renew", "vault", "my documents"},
 		[]string{"vault", "vision", "doc_parser"}},
+	// Trips: journeys, bookings, flights and stays.
+	{[]string{"trip", "travel", "travelling", "traveling", "holiday", "vacation", "flight", "flying", "booking", "booked", "itinerary",
+		"hotel", "airbnb", "check in", "check-in", "boarding", "airport", "train to", "bus to", "going to ", "visiting"},
+		[]string{"trips", "email_search"}},
 	// Money: spending, receipts, subscriptions, bills, statements.
 	{[]string{"spent", "spend", "spending", "paid", "pay ", "bought", "cost", "receipt", "expense", "budget", "money", "salary", "income",
 		"earned", "subscription", "subscribed", "netflix", "spotify", "bill", "rent", "electricity", "kplc", "water bill", "statement", "m-pesa",

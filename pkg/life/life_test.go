@@ -193,3 +193,40 @@ func TestImportStatements(t *testing.T) {
 		t.Fatal("a file with no date or amount was read")
 	}
 }
+
+func TestTripsMergeBookingsAndKnowWhenToLeave(t *testing.T) {
+	tr := OpenTrips(t.TempDir())
+	now := time.Date(2026, 10, 9, 9, 0, 0, 0, time.UTC)
+	src := Source{Kind: "email", Ref: "msg-1"}
+	trip, created, err := tr.Save(TripInput{Title: "Lamu", Destination: "Lamu", Start: "2026-10-16", End: "2026-10-20",
+		Legs: []Leg{{Kind: "flight", Title: "Nairobi to Lamu", Ref: "jm 101", Start: "2026-10-16T09:40", End: "2026-10-16T11:05", To: "Lamu"}}, Source: src}, now)
+	if err != nil || !created || trip.Legs[0].Ref != "JM101" {
+		t.Fatalf("save: %v %+v", err, trip)
+	}
+	again, created, err := tr.Save(TripInput{Title: "lamu", Start: "2026-10-16", End: "2026-10-20",
+		Legs: []Leg{{Kind: "hotel", Title: "Peponi Hotel", Start: "2026-10-16T14:00", End: "2026-10-20T10:00"},
+			{Kind: "flight", Title: "Nairobi to Lamu", Ref: "JM101", Start: "2026-10-16T09:40"}}, Source: src}, now)
+	if err != nil || created || again.ID != trip.ID || len(again.Legs) != 2 || again.Legs[1].Kind != "hotel" {
+		t.Fatalf("merge: %v %v %+v", err, created, again.Legs)
+	}
+	for _, bad := range []TripInput{
+		{Title: "x", Start: "2026-10-20", End: "2026-10-16", Source: src},
+		{Title: "x", Start: "2026-10-16", Legs: []Leg{{Kind: "rocket", Title: "y", Start: "2026-10-16T09:00"}}, Source: src},
+		{Title: "x", Start: "2026-10-16", Legs: []Leg{{Kind: "flight", Title: "y", Start: "morning"}}, Source: src},
+	} {
+		if _, _, err := tr.Save(bad, now); err == nil {
+			t.Fatalf("bad trip kept: %+v", bad)
+		}
+	}
+	by, ok := LeaveBy(Leg{Kind: "flight", Start: "2026-10-16T09:40"}, time.UTC)
+	if !ok || by.Format("15:04") != "06:55" {
+		t.Fatalf("domestic: leave by %v", by)
+	}
+	by, _ = LeaveBy(Leg{Kind: "flight", Start: "2026-10-16T09:40", International: true, TravelMinutes: 70}, time.UTC)
+	if by.Format("15:04") != "05:30" {
+		t.Fatalf("international, 70 minutes away: %v", by)
+	}
+	if _, ok := LeaveBy(Leg{Kind: "hotel", Start: "2026-10-16T14:00"}, time.UTC); ok {
+		t.Fatal("nobody leaves for a hotel check-in by the clock")
+	}
+}

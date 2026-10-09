@@ -525,3 +525,136 @@ func summaryText(s life.MonthSummary) string {
 	}
 	return sb.String()
 }
+
+// ─── trips ───────────────────────────────────────────────────────────────
+
+type TripsTool struct {
+	store *life.Trips
+	loc   func() *time.Location
+}
+
+func NewTripsTool(workspace string, loc func() *time.Location) *TripsTool {
+	return &TripsTool{store: life.TripsFor(workspace), loc: loc}
+}
+
+func (t *TripsTool) Name() string { return "trips" }
+
+func (t *TripsTool) Description() string {
+	return `The owner's trips, put together from what they said and their bookings (flights, trains, hotels, tickets): Ghost uses them to say the right thing at the right time (the week before, a passport that runs out too soon, the day before a flight, when to leave for the airport, how it went). When the owner mentions a trip or forwards a booking, or you find booking emails with email_search, save it here with each leg's real times and references. Never invent a time, a flight number or a booking reference.
+
+action:
+- save: title ("Lamu", "Wedding in Kisumu"), destination?, start, end (2006-01-02), legs? [{kind (flight, train, bus, ferry, car, hotel, event, other), title, ref? (flight number or booking ref), from?, to?, start (2026-10-12T09:40, local time where it happens), end?, place?, international? (flight), travel_minutes? (how long the owner takes to get there, only if they said)}], notes?. Saving the same title and start again adds the new legs.
+- list: upcoming trips (and recent ones).
+- show: id → the trip in full. To show it, use present_card with a timeline (one step per leg).
+- forget: id and confirmed=true, only after the owner said so.`
+}
+
+func (t *TripsTool) Parameters() map[string]interface{} {
+	s := map[string]interface{}{"type": "string"}
+	return map[string]interface{}{
+		"type":     "object",
+		"required": []string{"action"},
+		"properties": withSource(map[string]interface{}{
+			"action":      map[string]interface{}{"type": "string", "enum": []string{"save", "list", "show", "forget"}},
+			"id":          s,
+			"title":       s,
+			"destination": s,
+			"start":       s,
+			"end":         s,
+			"notes":       s,
+			"legs": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object",
+				"properties": map[string]interface{}{
+					"kind":  map[string]interface{}{"type": "string", "enum": []string{"flight", "train", "bus", "ferry", "car", "hotel", "event", "other"}},
+					"title": s, "ref": s, "from": s, "to": s, "start": s, "end": s, "place": s,
+					"international":  map[string]interface{}{"type": "boolean"},
+					"travel_minutes": map[string]interface{}{"type": "integer"},
+				}}},
+			"confirmed": map[string]interface{}{"type": "boolean"},
+		}),
+	}
+}
+
+func (t *TripsTool) Timeout() time.Duration { return 10 * time.Second }
+
+func (t *TripsTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
+	now := time.Now().In(t.loc())
+	switch sarg(args, "action") {
+	case "save":
+		var legs []life.Leg
+		if raw, ok := args["legs"].([]interface{}); ok {
+			for _, r := range raw {
+				m, ok := r.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				l := life.Leg{Kind: sarg(m, "kind"), Title: sarg(m, "title"), Ref: sarg(m, "ref"), From: sarg(m, "from"), To: sarg(m, "to"),
+					Start: sarg(m, "start"), End: sarg(m, "end"), Place: sarg(m, "place")}
+				l.International, _ = m["international"].(bool)
+				if v, ok := m["travel_minutes"].(float64); ok {
+					l.TravelMinutes = int(v)
+				}
+				legs = append(legs, l)
+			}
+		}
+		tr, created, err := t.store.Save(life.TripInput{Title: sarg(args, "title"), Destination: sarg(args, "destination"), Start: sarg(args, "start"),
+			End: sarg(args, "end"), Legs: legs, Notes: sarg(args, "notes"), Source: lifeSource(args)}, now)
+		if err != nil {
+			return ErrorResult("Not saved: " + err.Error())
+		}
+		verb := "Updated"
+		if created {
+			verb = "Saved"
+		}
+		return NewToolResult(fmt.Sprintf("%s the trip %q (id %s, %d legs). Ghost will bring up what matters before and during it.\n%s", verb, tr.Title, tr.ID, len(tr.Legs), tripText(tr)))
+	case "list":
+		all, err := t.store.All(now)
+		if err != nil {
+			return ErrorResult(err.Error())
+		}
+		if len(all) == 0 {
+			return NewToolResult("No trips saved.")
+		}
+		var sb strings.Builder
+		for _, tr := range all {
+			fmt.Fprintf(&sb, "- %s (id %s): %s to %s, %d legs\n", tr.Title, tr.ID, tr.Start, tr.End, len(tr.Legs))
+		}
+		return NewToolResult(sb.String())
+	case "show":
+		tr, err := t.store.Get(sarg(args, "id"))
+		if err != nil {
+			return ErrorResult("No such trip: " + sarg(args, "id"))
+		}
+		return NewToolResult(tripText(tr))
+	case "forget":
+		if b, _ := args["confirmed"].(bool); !b {
+			return ErrorResult("Removing a trip needs the owner's yes. Ask first, then call again with confirmed=true.")
+		}
+		if err := t.store.Forget(sarg(args, "id")); err != nil {
+			return ErrorResult("No such trip: " + sarg(args, "id"))
+		}
+		return NewToolResult("Removed the trip.")
+	}
+	return ErrorResult("action is save, list, show or forget")
+}
+
+func tripText(tr life.Trip) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%s", tr.Title)
+	if tr.Destination != "" {
+		fmt.Fprintf(&sb, " (%s)", tr.Destination)
+	}
+	fmt.Fprintf(&sb, ", %s to %s", tr.Start, tr.End)
+	for _, l := range tr.Legs {
+		fmt.Fprintf(&sb, "\n- %s %s: %s", l.Start, l.Kind, l.Title)
+		if l.Ref != "" {
+			fmt.Fprintf(&sb, " [%s]", l.Ref)
+		}
+		if l.From != "" || l.To != "" {
+			fmt.Fprintf(&sb, " %s → %s", l.From, l.To)
+		}
+		if l.End != "" {
+			fmt.Fprintf(&sb, " until %s", l.End)
+		}
+	}
+	return sb.String()
+}

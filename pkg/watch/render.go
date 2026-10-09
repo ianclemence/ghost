@@ -81,6 +81,9 @@ func RenderNotice(w Watch, changes []Change) string {
 	if len(changes) == 0 {
 		return ""
 	}
+	if w.Kind == KindPage && w.Rule != nil {
+		return RenderPageNotice(w, changes)
+	}
 	subject := SubjectPhrase(w)
 	parts := make([]string, 0, len(changes))
 	for _, c := range changes {
@@ -114,6 +117,9 @@ func RenderFailure(w Watch) string {
 // of horizon. Automatic watches expire silently — nobody asked for those,
 // and an unrequested message about a watch they never wanted is noise.
 func RenderExpired(w Watch) string {
+	if w.Kind == KindPage {
+		return fmt.Sprintf("I've been watching %s for a month and nothing you asked for happened, so I've stopped. Ask again if you still want me to keep an eye on it.", SubjectPhrase(w))
+	}
 	return fmt.Sprintf("Your watch on %s has ended — the %s is past now.",
 		SubjectPhrase(w), strings.ToLower(string(w.Kind)))
 }

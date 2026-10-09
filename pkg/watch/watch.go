@@ -51,7 +51,7 @@ const (
 // ValidKind reports whether k is in the closed vocabulary.
 func ValidKind(k Kind) bool {
 	switch k {
-	case KindFlight, KindAppointment, KindReservation, KindDelivery, KindEvent:
+	case KindFlight, KindAppointment, KindReservation, KindDelivery, KindEvent, KindPage:
 		return true
 	}
 	return false
@@ -125,8 +125,12 @@ type Watch struct {
 	Kind   Kind   `json:"kind"`
 	Entity string `json:"entity"` // flight number, "dentist", order id…
 	Label  string `json:"label"`  // owner-facing name
-	// Source names the probe consulted for this watch (flight, sandbox).
+	// Source names the probe consulted for this watch (flight, page, sandbox).
 	Source string `json:"source"`
+	// URL and Rule belong to a page watch: the page, and what about it the
+	// owner asked to hear (see page.go).
+	URL  string    `json:"url,omitempty"`
+	Rule *PageRule `json:"rule,omitempty"`
 
 	// EventAt is the instant the watched thing happens, when the owner's
 	// words carried one. It drives the polling cadence, never a guess.

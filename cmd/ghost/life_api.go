@@ -23,6 +23,8 @@ import (
 //	POST   /v1/life/vault/{id}          edit a document
 //	DELETE /v1/life/vault/{id}          remove a document
 //	GET    /v1/life/money?month=2026-10  the month at a glance, recent entries, subscriptions and bills
+//	GET    /v1/life/trips               trips, upcoming first, each leg with when to leave
+//	DELETE /v1/life/trips/{id}          remove a trip
 //	DELETE /v1/life/money/{id}          remove an entry, a subscription or a bill
 //	POST   /v1/life/money/{id}/active   {active} start or stop tracking a subscription or bill
 func registerLifeRoutes(mux *http.ServeMux, zone func() *time.Location) {
@@ -166,6 +168,60 @@ func registerLifeRoutes(mux *http.ServeMux, zone func() *time.Location) {
 		default:
 			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use POST or DELETE")
 		}
+	}))
+
+	mux.HandleFunc("/v1/life/trips", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET")
+			return
+		}
+		loc := zone()
+		now := time.Now().In(loc)
+		all, err := life.TripsFor(ws()).All(now)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		type legView struct {
+			life.Leg
+			LeaveBy string `json:"leave_by,omitempty"`
+		}
+		type view struct {
+			life.Trip
+			Legs  []legView `json:"legs"`
+			State string    `json:"state"` // upcoming | now | past
+		}
+		today := now.Format("2006-01-02")
+		out := make([]view, 0, len(all))
+		for _, tr := range all {
+			v := view{Trip: tr, State: "upcoming", Legs: []legView{}}
+			if tr.End < today {
+				v.State = "past"
+			} else if tr.Start <= today {
+				v.State = "now"
+			}
+			for _, l := range tr.Legs {
+				lv := legView{Leg: l}
+				if by, ok := life.LeaveBy(l, loc); ok {
+					lv.LeaveBy = by.Format(life.LegTime)
+				}
+				v.Legs = append(v.Legs, lv)
+			}
+			out = append(out, v)
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "trips": out})
+	}))
+	mux.HandleFunc("/v1/life/trips/", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		id, _ := idOf(r, "/v1/life/trips/")
+		if r.Method != http.MethodDelete {
+			jsonError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use DELETE")
+			return
+		}
+		if err := life.TripsFor(ws()).Forget(id); err != nil {
+			fail(w, err)
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true})
 	}))
 
 	mux.HandleFunc("/v1/life/money", authMiddleware(func(w http.ResponseWriter, r *http.Request) {

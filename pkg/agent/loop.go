@@ -726,6 +726,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	toolsRegistry.Register(tools.NewPeopleTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewVaultTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewMoneyTool(workspace, ownerZone))
+	toolsRegistry.Register(tools.NewTripsTool(workspace, ownerZone))
 
 	// Create semantic extractor for LLM-based memory extraction
 	semanticExtractor := personalcontext.NewSemanticExtractor(provider, cfg.Agents.Defaults.Model)
@@ -2933,6 +2934,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		// persistence and before the LLM iteration, and never blocks the turn.
 		if opts.SessionKey != "heartbeat" {
 			al.extractPersonalContext(opts)
+			// A watch the owner's words just started is part of this turn's
+			// truth: the model is told, so its reply confirms it.
+			if note := al.watchesNote(opts.RequestID); note != "" {
+				messages = append(messages, providers.Message{Role: "system", Content: note})
+			}
 		}
 	}
 

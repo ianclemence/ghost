@@ -60,6 +60,14 @@ func classifyWorkspaceFile(rel string) (Category, error) {
 		// What Ghost made for the owner: pages that run and documents laid
 		// out from what it wrote (with their sources). Theirs, and kept.
 		return CategoryPortable, nil
+	case strings.HasPrefix(rel, "meetings/"):
+		// Transcripts and their records are the owner's and travel; the
+		// recordings themselves are left out (large; the transcript is what
+		// was kept of them).
+		if strings.Count(rel, "/") >= 2 && !strings.HasSuffix(rel, "/meeting.json") {
+			return CategorySkipped, nil
+		}
+		return CategoryPortable, nil
 	case strings.HasPrefix(rel, ".cache/"):
 		// Pictures of document pages, drawn again on demand.
 		return CategoryDerived, nil

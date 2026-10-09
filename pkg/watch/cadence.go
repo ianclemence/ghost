@@ -24,6 +24,11 @@ const (
 	// (a delivery with no date): frequent enough to be useful, sparse
 	// enough to stay cheap.
 	CadenceNoEvent = 4 * time.Hour
+	// PageCadenceFast is for pages where what the owner waits for goes
+	// quickly (an appointment slot, tickets, a restock).
+	PageCadenceFast = time.Hour
+	// PageHorizon is how long a page is watched.
+	PageHorizon = 30 * 24 * time.Hour
 )
 
 // Cadence returns how long to wait before the next probe of a watch whose
@@ -53,7 +58,12 @@ func Cadence(eventAt *time.Time, now time.Time) time.Duration {
 // completes — the window right after the event is when a change (landed,
 // cancelled, gate called) actually reaches the owner.
 func NextCheckAt(w Watch, now time.Time) time.Time {
-	next := now.Add(Cadence(w.EventAt, now))
+	every := Cadence(w.EventAt, now)
+	if w.Kind == KindPage && w.Rule != nil && (w.Rule.Phrase != "" || w.Rule.Want == "stock") {
+		// A slot, a ticket or a restock goes quickly: hourly.
+		every = PageCadenceFast
+	}
+	next := now.Add(every)
 	if w.ExpiresAt != nil && next.After(*w.ExpiresAt) {
 		// Never schedule a probe past the horizon; Sweep will expire it.
 		return *w.ExpiresAt
