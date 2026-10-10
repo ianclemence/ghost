@@ -3,6 +3,12 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.171] - 2026-10-10
+
+- **"What did we discuss earlier?" works again.** Looking back through
+  past conversations (scrolling around a match, reading a session) failed
+  on every try; it now handles the current message format.
+
 ## [0.24.170] - 2026-10-10
 
 - **A motion's video opens and saves as a video.** Tapping it plays the

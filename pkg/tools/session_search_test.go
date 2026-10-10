@@ -70,6 +70,104 @@ func TestSessionSearchToolRequiresQuery(t *testing.T) {
 	}
 }
 
+// Scroll and read modes must handle TEXT UUID message ids: the schema stores
+// messages.id as TEXT (see pkg/db baseSchemaStatements), so scanning into an
+// int64 failed with "converting driver.Value type string ... to a int64".
+// Regression test for the 18:31 scroll failure on id 178461d1-....
+func TestSessionSearchScrollWithUUIDIDs(t *testing.T) {
+	workspace := t.TempDir()
+	database, err := db.NewDB(workspace)
+	if err != nil {
+		t.Fatalf("NewDB failed: %v", err)
+	}
+	defer database.Close()
+
+	_, err = database.Exec(`
+		INSERT INTO messages (id, session_id, role, content) VALUES
+		('178461d1-2f61-4298-b550-95124eea88f9', 's1', 'user', 'first message here'),
+		('aaaabbbb-cccc-dddd-eeee-ffffffffffff', 's1', 'assistant', 'second message here'),
+		('11112222-3333-4444-5555-666677778888', 's1', 'user', 'third message here')
+	`)
+	if err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	tool := NewSessionSearchTool(database.DB)
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"mode":              "scroll",
+		"session_id":        "s1",
+		"around_message_id": "aaaabbbb-cccc-dddd-eeee-ffffffffffff",
+		"window":            float64(1),
+	})
+	if result.IsError {
+		t.Fatalf("scroll returned error: %s", result.ForLLM)
+	}
+
+	var payload struct {
+		Count    int            `json:"count"`
+		AnchorID string         `json:"anchor_msg_id"`
+		Results  []ScrollResult `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(result.ForLLM), &payload); err != nil {
+		t.Fatalf("invalid json output: %v", err)
+	}
+	if payload.AnchorID != "aaaabbbb-cccc-dddd-eeee-ffffffffffff" {
+		t.Fatalf("expected anchor id echoed, got %q", payload.AnchorID)
+	}
+	if payload.Count != 3 {
+		t.Fatalf("expected 3 messages in window, got %d: %s", payload.Count, result.ForLLM)
+	}
+	for _, item := range payload.Results {
+		if item.ID == "" {
+			t.Fatalf("expected non-empty string id: %s", result.ForLLM)
+		}
+	}
+	if payload.Results[1].ID != "aaaabbbb-cccc-dddd-eeee-ffffffffffff" {
+		t.Fatalf("expected anchor in the middle, got %+v", payload.Results)
+	}
+}
+
+func TestSessionSearchReadWithUUIDIDs(t *testing.T) {
+	workspace := t.TempDir()
+	database, err := db.NewDB(workspace)
+	if err != nil {
+		t.Fatalf("NewDB failed: %v", err)
+	}
+	defer database.Close()
+
+	_, err = database.Exec(`
+		INSERT INTO messages (id, session_id, role, content) VALUES
+		('178461d1-2f61-4298-b550-95124eea88f9', 's1', 'user', 'first message here'),
+		('aaaabbbb-cccc-dddd-eeee-ffffffffffff', 's1', 'assistant', 'second message here')
+	`)
+	if err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	tool := NewSessionSearchTool(database.DB)
+	result := tool.Execute(context.Background(), map[string]interface{}{
+		"mode":       "read",
+		"session_id": "s1",
+	})
+	if result.IsError {
+		t.Fatalf("read returned error: %s", result.ForLLM)
+	}
+
+	var payload struct {
+		Total   int          `json:"total"`
+		Results []ReadResult `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(result.ForLLM), &payload); err != nil {
+		t.Fatalf("invalid json output: %v", err)
+	}
+	if payload.Total != 2 {
+		t.Fatalf("expected 2 messages, got %d: %s", payload.Total, result.ForLLM)
+	}
+	if payload.Results[0].ID != "178461d1-2f61-4298-b550-95124eea88f9" {
+		t.Fatalf("expected UUID string id in insertion order, got %+v", payload.Results)
+	}
+}
+
 // A caller in one context must never see another context's transcripts:
 // discover matches confined to a foreign session are dropped, an explicit
 // foreign session_id is refused, and in-context search still works.

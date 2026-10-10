@@ -74,14 +74,14 @@ type BrowseResult struct {
 }
 
 type ScrollResult struct {
-	ID        int64  `json:"id"`
+	ID        string `json:"id"`
 	Role      string `json:"role"`
 	Content   string `json:"content"`
 	Timestamp string `json:"timestamp"`
 }
 
 type ReadResult struct {
-	ID        int64  `json:"id"`
+	ID        string `json:"id"`
 	Role      string `json:"role"`
 	Content   string `json:"content"`
 	ToolCalls string `json:"tool_calls,omitempty"`
@@ -125,8 +125,8 @@ func (t *SessionSearchTool) Parameters() map[string]interface{} {
 				"description": "Session ID filter (discover, scroll, read modes)",
 			},
 			"around_message_id": map[string]interface{}{
-				"type":        "integer",
-				"description": "Message ID to anchor scroll mode (requires session_id)",
+				"type":        "string",
+				"description": "Message ID (UUID string) to anchor scroll mode (requires session_id). A rowid number is also accepted for backward compatibility.",
 			},
 			"window": map[string]interface{}{
 				"type":        "integer",
@@ -486,11 +486,68 @@ func (t *SessionSearchTool) scroll(ctx context.Context, args map[string]interfac
 		return ErrorResult("that conversation belongs to another context and is not visible here")
 	}
 
-	aroundMsgID, ok := args["around_message_id"].(float64)
-	if !ok || aroundMsgID <= 0 {
+	// Message ids are TEXT UUIDs (see pkg/db baseSchemaStatements), so the
+	// anchor is a UUID string. A rowid number is still accepted for backward
+	// compatibility with callers built against the old integer schema, and
+	// windowing always runs on rowid (insertion order), never on the TEXT id.
+	var anchorRowid int64
+	var anchorID string
+	switch v := args["around_message_id"].(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return ErrorResult("around_message_id is required for scroll mode")
+		}
+		anchorID = strings.TrimSpace(v)
+		if err := t.db.QueryRowContext(ctx,
+			`SELECT rowid FROM messages WHERE session_id = ? AND id = ?`,
+			sessionID, anchorID).Scan(&anchorRowid); err != nil {
+			if err == sql.ErrNoRows {
+				return ErrorResult("around_message_id not found in that session")
+			}
+			return ErrorResult(fmt.Sprintf("session_search scroll anchor failed: %v", err)).WithError(err)
+		}
+	case float64:
+		if v <= 0 {
+			return ErrorResult("around_message_id is required for scroll mode")
+		}
+		anchorRowid = int64(v)
+		if err := t.db.QueryRowContext(ctx,
+			`SELECT id FROM messages WHERE session_id = ? AND rowid = ?`,
+			sessionID, anchorRowid).Scan(&anchorID); err != nil {
+			if err == sql.ErrNoRows {
+				return ErrorResult("around_message_id not found in that session")
+			}
+			return ErrorResult(fmt.Sprintf("session_search scroll anchor failed: %v", err)).WithError(err)
+		}
+	case int:
+		if v <= 0 {
+			return ErrorResult("around_message_id is required for scroll mode")
+		}
+		anchorRowid = int64(v)
+		if err := t.db.QueryRowContext(ctx,
+			`SELECT id FROM messages WHERE session_id = ? AND rowid = ?`,
+			sessionID, anchorRowid).Scan(&anchorID); err != nil {
+			if err == sql.ErrNoRows {
+				return ErrorResult("around_message_id not found in that session")
+			}
+			return ErrorResult(fmt.Sprintf("session_search scroll anchor failed: %v", err)).WithError(err)
+		}
+	case int64:
+		if v <= 0 {
+			return ErrorResult("around_message_id is required for scroll mode")
+		}
+		anchorRowid = v
+		if err := t.db.QueryRowContext(ctx,
+			`SELECT id FROM messages WHERE session_id = ? AND rowid = ?`,
+			sessionID, anchorRowid).Scan(&anchorID); err != nil {
+			if err == sql.ErrNoRows {
+				return ErrorResult("around_message_id not found in that session")
+			}
+			return ErrorResult(fmt.Sprintf("session_search scroll anchor failed: %v", err)).WithError(err)
+		}
+	default:
 		return ErrorResult("around_message_id is required for scroll mode")
 	}
-	msgID := int64(aroundMsgID)
 
 	window := 5
 	if raw, ok := args["window"].(float64); ok {
@@ -506,21 +563,21 @@ func (t *SessionSearchTool) scroll(ctx context.Context, args map[string]interfac
 	beforeQuery := `
 		SELECT id, role, content, COALESCE(created_at, '') AS ts
 		FROM messages
-		WHERE session_id = ? AND id <= ?
+		WHERE session_id = ? AND rowid <= ?
 		  AND (archived IS NULL OR archived = 0)
-		ORDER BY id DESC
+		ORDER BY rowid DESC
 		LIMIT ?
 	`
 	afterQuery := `
 		SELECT id, role, content, COALESCE(created_at, '') AS ts
 		FROM messages
-		WHERE session_id = ? AND id > ?
+		WHERE session_id = ? AND rowid > ?
 		  AND (archived IS NULL OR archived = 0)
-		ORDER BY id ASC
+		ORDER BY rowid ASC
 		LIMIT ?
 	`
 
-	beforeRows, err := t.db.QueryContext(ctx, beforeQuery, sessionID, msgID, window+1)
+	beforeRows, err := t.db.QueryContext(ctx, beforeQuery, sessionID, anchorRowid, window+1)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("session_search scroll before failed: %v", err)).WithError(err)
 	}
@@ -538,7 +595,7 @@ func (t *SessionSearchTool) scroll(ctx context.Context, args map[string]interfac
 		return ErrorResult(fmt.Sprintf("session_search scroll failed: %v", err)).WithError(err)
 	}
 
-	afterRows, err := t.db.QueryContext(ctx, afterQuery, sessionID, msgID, window)
+	afterRows, err := t.db.QueryContext(ctx, afterQuery, sessionID, anchorRowid, window)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("session_search scroll after failed: %v", err)).WithError(err)
 	}
@@ -566,7 +623,7 @@ func (t *SessionSearchTool) scroll(ctx context.Context, args map[string]interfac
 	payload := map[string]interface{}{
 		"mode":            "scroll",
 		"session_id":      sessionID,
-		"anchor_msg_id":   msgID,
+		"anchor_msg_id":   anchorID,
 		"window":          window,
 		"messages_before": len(before) - 1,
 		"messages_after":  len(after),
@@ -590,11 +647,11 @@ func (t *SessionSearchTool) readSession(ctx context.Context, args map[string]int
 	}
 
 	sqlQuery := `
-		SELECT id, role, content, COALESCE(tool_calls, '') AS tool_calls, COALESCE(created_at, '') AS ts
+		SELECT id, role, content, COALESCE(json_extract(meta, '$.tool_calls'), '') AS tool_calls, COALESCE(created_at, '') AS ts
 		FROM messages
 		WHERE session_id = ?
 		  AND (archived IS NULL OR archived = 0)
-		ORDER BY id ASC
+		ORDER BY rowid ASC
 	`
 
 	rows, err := t.db.QueryContext(ctx, sqlQuery, sessionID)
