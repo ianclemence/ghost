@@ -3,6 +3,12 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.172] - 2026-10-11
+
+- **Deleting what Ghost made updates everywhere.** Removing an item from
+  Made by Ghost now clears it from Today on the panel too, instead of
+  leaving it there until a restart.
+
 ## [0.24.171] - 2026-10-10
 
 - **"What did we discuss earlier?" works again.** Looking back through
