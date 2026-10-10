@@ -100,10 +100,24 @@ func registerArtifactRoutes(mux *http.ServeMux) {
 			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "artifact": a})
 		case sub == "" && r.Method == http.MethodDelete:
 			// The owner deletes what Ghost made: this version, or with all=1
-			// the whole thing. Uploads stay in Files.
+			// the whole thing. Uploads stay in Files. The deletion is
+			// published so activity watchers retract the item instead of
+			// showing it forever.
+			all := r.URL.Query().Get("all") == "1"
+			// Tombstone ids for every version going away, so watchers can
+			// retract each of their chips. Resolved before the delete.
+			deletedIDs := []string{a.ID}
+			if all {
+				if vs, verr := st.Versions(a.ID); verr == nil {
+					deletedIDs = deletedIDs[:0]
+					for _, v := range vs {
+						deletedIDs = append(deletedIDs, v.ID)
+					}
+				}
+			}
 			var n int
 			var err error
-			if r.URL.Query().Get("all") == "1" {
+			if all {
 				n, err = st.DeleteAll(a.ID)
 			} else {
 				n, err = st.Delete(a.ID)
@@ -112,7 +126,11 @@ func registerArtifactRoutes(mux *http.ServeMux) {
 				jsonError(w, http.StatusInternalServerError, "failed", "couldn't delete it")
 				return
 			}
-			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted": n})
+			for _, id := range deletedIDs {
+				emitArtifactDeleted(id, a.Title, a.SessionKey, all, n)
+			}
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted": n,
+				"deleted_ids": deletedIDs, "title": a.Title})
 		case sub == "versions" && r.Method == http.MethodGet:
 			vs, err := st.Versions(a.ID)
 			if err != nil {

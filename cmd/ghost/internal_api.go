@@ -213,6 +213,33 @@ func emitMemoryDeleted(title string, summary string) {
 	})
 }
 
+// emitArtifactDeleted records an owner-initiated removal of something Ghost
+// made on the canonical stream, so clients watching the activity feed learn
+// to retract it instead of showing it forever. Only the identifier and the
+// title go in — never the removed content, which is the whole point of
+// removing it.
+func emitArtifactDeleted(artifactID, title, sessionKey string, all bool, count int) {
+	if substrateEvents == nil {
+		return
+	}
+	title = strings.TrimSpace(title)
+	if len([]rune(title)) > 120 {
+		title = string([]rune(title)[:120])
+	}
+	substrateEvents.Publish(&cevents.Event{
+		Type:      cevents.ArtifactDeleted,
+		SessionID: sessionKey,
+		GhostID:   substrateGhost,
+		AgentID:   "agent-main",
+		Payload: map[string]interface{}{
+			"artifact_id": artifactID,
+			"title":       title,
+			"all":         all,
+			"deleted":     count,
+		},
+	})
+}
+
 // normalizeCapabilityAllowlist cleans an owner's capability allowlist. An
 // unknown ID is refused rather than stored: a typo in an allowlist silently
 // denies the capability the owner meant to allow, and a deny-by-typo is

@@ -196,6 +196,11 @@ func (g *Governance) ToolRan(requestID, sessionKey, tool, trajectoryID string, f
 		if obs.SourceAccess != "" {
 			payload["source_access"] = obs.SourceAccess
 		}
+		// The artifact a publish created, so a later artifact.deleted event
+		// can retract exactly this chip on clients.
+		if obs.ArtifactID != "" {
+			payload["artifact_id"] = obs.ArtifactID
+		}
 	}
 	// ToolStarted is transient by taxonomy (never persisted); completed
 	// and failed are durable outcomes. A completed tool is internal by

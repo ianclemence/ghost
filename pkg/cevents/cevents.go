@@ -86,6 +86,10 @@ const (
 	SkillEnabled   Type = "skill.enabled"
 	SkillDisabled  Type = "skill.disabled"
 	SkillRemoved   Type = "skill.removed"
+	// Artifacts (things Ghost made and handed over; emitted by the trusted
+	// runtime, never by a skill or the model). Deletion is owner-driven and
+	// recorded so clients can retract what the shelf no longer holds.
+	ArtifactDeleted Type = "artifact.deleted"
 	// System
 	GhostStarted    Type = "ghost.started"
 	GhostReady      Type = "ghost.ready"
@@ -199,6 +203,7 @@ func (t Type) DefaultVisibility() product.Visibility {
 		IntegrationConnected, IntegrationDisconnected, IntegrationExpired, IntegrationFailed,
 		RoutineCreated, RoutineWaiting, RoutineCompleted, RoutineFailed,
 		SkillInstalled, SkillUpdated, SkillEnabled, SkillDisabled, SkillRemoved,
+		ArtifactDeleted,
 		GhostReady, GhostDegraded, GhostOffline, GhostRecovering,
 		ProactivePresented, ProactiveApproved, ProactiveDenied, ProactiveDismissed,
 		ProactiveSnoozed, ProactiveExpired, ProactiveSuperseded,

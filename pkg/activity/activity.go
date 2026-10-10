@@ -54,6 +54,10 @@ type Chip struct {
 	// consequential action happened. Empty for events that need no
 	// justification (routine housekeeping, reads).
 	Why string `json:"why,omitempty"`
+	// ArtifactID names the thing Ghost made that this chip is about: the
+	// artifact a publish chip created, or the one a removal chip retracted.
+	// Clients use it to drop publish chips whose artifact was later deleted.
+	ArtifactID string `json:"artifact_id,omitempty"`
 }
 
 // humanTitles maps event types to product-narrative titles. Unknown types
@@ -103,6 +107,7 @@ var humanTitles = map[cevents.Type]string{
 	cevents.SkillDisabled:           "Disabled skill",
 	cevents.SkillUpdated:            "Updated skill",
 	cevents.SkillRemoved:            "Removed skill",
+	cevents.ArtifactDeleted:         "Removed",
 	cevents.ProactivePresented:      "Ghost noticed something",
 	cevents.ProactiveApproved:       "You approved it",
 	cevents.ProactiveDenied:         "You declined it",
@@ -370,6 +375,8 @@ func stateFor(t cevents.Type, status string) State {
 		return StateCancelled
 	case cevents.CommitmentCreated, cevents.CommitmentFailed:
 		return StateWaiting
+	case cevents.ArtifactDeleted:
+		return StateSuccess
 	case cevents.CommitmentBlocked:
 		return StateFailed
 	case cevents.AgentCompleted, cevents.MessageCreated, cevents.CapabilityCompleted,
@@ -434,6 +441,10 @@ func Project(e *cevents.Event) (*Chip, bool) {
 		if label, _ := e.Payload["title"].(string); label != "" {
 			title = "Forgot: " + truncate(label, 80)
 		}
+	case cevents.ArtifactDeleted:
+		if label, _ := e.Payload["title"].(string); label != "" {
+			title = "Removed: " + truncate(label, 80)
+		}
 	case cevents.IntegrationConnected:
 		if name, _ := e.Payload["integration"].(string); name != "" {
 			title = humanizeIntegration(name) + " connected"
@@ -468,6 +479,11 @@ func Project(e *cevents.Event) (*Chip, bool) {
 	}
 	chip.Detail = expandDetail(e, title, fromPhrase)
 	chip.Why = whyFor(e)
+	// Name the artifact this chip is about so clients can retract a publish
+	// chip when its artifact is later deleted.
+	if id, _ := e.Payload["artifact_id"].(string); id != "" {
+		chip.ArtifactID = id
+	}
 	return chip, true
 }
 

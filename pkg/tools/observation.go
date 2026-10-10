@@ -24,6 +24,10 @@ type Observation struct {
 	// listings, or failed). Internal: the limitation policy decides whether it
 	// ever reaches the owner.
 	SourceAccess string `json:"source_access,omitempty"`
+	// ArtifactID carries the artifact a tool created, when the tool declared
+	// artifact evidence (publish_artifact). It lets the canonical event name
+	// the thing made, so a later deletion can retract exactly it.
+	ArtifactID string `json:"artifact_id,omitempty"`
 }
 
 // ErrorClass is a normalized failure category. Retry policy keys off this, not
@@ -112,6 +116,9 @@ func NewObservation(tool string, res *ToolResult) Observation {
 	}
 	if srcs := EvidenceSources(res); len(srcs) > 0 {
 		o.Sources = srcs
+	}
+	if id, _ := res.Evidence["artifact_id"].(string); strings.TrimSpace(id) != "" {
+		o.ArtifactID = strings.TrimSpace(id)
 	}
 	o.SourceAccess = EvidenceSourceAccess(res)
 	return o

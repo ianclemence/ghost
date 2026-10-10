@@ -202,6 +202,46 @@ func TestMemoryDeletedChip(t *testing.T) {
 	}
 }
 
+// A deleted artifact must project as a removal naming the artifact and
+// carrying its id, so clients can retract the matching publish chip from
+// Today instead of showing it forever.
+func TestArtifactDeletedChip(t *testing.T) {
+	chip, ok := Project(ev(cevents.ArtifactDeleted, map[string]interface{}{
+		"artifact_id": "art-123",
+		"title":       "Q3 report",
+		"all":         true,
+		"deleted":     2,
+	}))
+	if !ok {
+		t.Fatal("artifact.deleted was dropped from the activity feed")
+	}
+	if chip.Title != "Removed: Q3 report" {
+		t.Fatalf("title = %q, want the removed artifact named", chip.Title)
+	}
+	if chip.ArtifactID != "art-123" {
+		t.Fatalf("artifact_id = %q, want the retracted artifact's id", chip.ArtifactID)
+	}
+	if chip.State != StateSuccess {
+		t.Fatalf("state = %q, want success: the removal completed", chip.State)
+	}
+}
+
+// A publish chip must carry the created artifact's id so a later
+// artifact.deleted event can retract exactly it.
+func TestPublishChipCarriesArtifactID(t *testing.T) {
+	chip, ok := Project(ev(cevents.ToolCompleted, map[string]interface{}{
+		"tool": "publish_artifact", "capability": "artifact.create",
+		"summary":     "Published artifact art-123 (file: Q3 report).",
+		"artifact_id": "art-123",
+	}))
+	if !ok {
+		t.Fatal("publish_artifact completion was dropped from the activity feed")
+	}
+	if chip.ArtifactID != "art-123" {
+		t.Fatalf("artifact_id = %q, want the published artifact's id", chip.ArtifactID)
+	}
+}
+
 func TestDiagnosticsSafe(t *testing.T) {
 	e := ev(cevents.CapabilityCompleted, map[string]interface{}{
 		"provider": "open-meteo", "duration_ms": 382, "attempt": 1, "api_key": "«redacted 8 chars»",
