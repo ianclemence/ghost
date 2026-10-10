@@ -28,8 +28,12 @@ func registerPhoneRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 			return
 		}
 		var req struct {
-			Notes  []life.PhoneNote `json:"notes"`
-			Health []life.HealthDay `json:"health"`
+			Notes   []life.PhoneNote `json:"notes"`
+			Health  []life.HealthDay `json:"health"`
+			Sharing *struct {
+				Notifications bool     `json:"notifications"`
+				Apps          []string `json:"apps"`
+			} `json:"sharing"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 512*1024)).Decode(&req); err != nil {
 			jsonError(w, http.StatusBadRequest, "invalid_request", "invalid json body")
@@ -38,6 +42,12 @@ func registerPhoneRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 		if len(req.Notes) > 300 || len(req.Health) > 120 {
 			jsonError(w, http.StatusBadRequest, "invalid_request", "too much at once")
 			return
+		}
+		if req.Sharing != nil {
+			if err := store().SetSharing(req.Sharing.Notifications, req.Sharing.Apps, time.Now()); err != nil {
+				jsonError(w, http.StatusInternalServerError, "failed", err.Error())
+				return
+			}
 		}
 		notes, err := store().AddNotes(req.Notes, time.Now())
 		if err != nil {

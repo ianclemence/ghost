@@ -245,6 +245,18 @@ func (s *Store) Get(id string) (*Artifact, error) {
 	return a, nil
 }
 
+// ByPath is the newest artifact for a workspace file, if there is one.
+func (s *Store) ByPath(path string) (*Artifact, error) {
+	a, err := s.load("SELECT id, session_key, kind, title, summary, path, text, url, state, reason, actions, evidence_request_id, created_at FROM artifacts WHERE path = ? ORDER BY created_at DESC LIMIT 1", path)
+	if err != nil {
+		return nil, err
+	}
+	if a == nil {
+		return nil, fmt.Errorf("artifacts: not found")
+	}
+	return a, nil
+}
+
 // List returns a session's artifacts newest first. Unknown sessions yield
 // nothing: conversation isolation is by session key, the same unit the
 // mobile contract uses for history and activity.

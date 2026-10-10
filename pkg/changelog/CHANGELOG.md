@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.170] - 2026-10-10
+
+- **A motion's video opens and saves as a video.** Tapping it plays the
+  motion it was made from; saving it gives the MP4, instead of an error.
+- **"What did I get on Gmail?" gets a straight answer.** The phone tells
+  your Pod which apps it shares, so when nothing is found Ghost says why:
+  sharing is off, that app isn't shared, or nothing has arrived from it
+  since you added it.
+
 ## [0.24.169] - 2026-10-10
 
 - **Diagrams in motions.** A motion can show a process (boxes and arrows,

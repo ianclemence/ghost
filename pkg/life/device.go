@@ -45,10 +45,19 @@ type Place struct {
 	Created time.Time `json:"created"`
 }
 
+// Sharing is what the owner lets the phone share, as the phone last said:
+// whether notifications are on and from which apps (by name).
+type Sharing struct {
+	Notifications bool      `json:"notifications"`
+	Apps          []string  `json:"apps,omitempty"`
+	At            time.Time `json:"at"`
+}
+
 type deviceData struct {
-	Notes  []PhoneNote `json:"notes"`
-	Health []HealthDay `json:"health"`
-	Places []Place     `json:"places"`
+	Sharing *Sharing    `json:"sharing,omitempty"`
+	Notes   []PhoneNote `json:"notes"`
+	Health  []HealthDay `json:"health"`
+	Places  []Place     `json:"places"`
 }
 
 // Device is what the phone shares with the Pod.
@@ -74,6 +83,33 @@ func DeviceFor(workspace string) *Device {
 	s := &Device{f: newFile(workspace, "device.json", deviceData{})}
 	sharedDevice[workspace] = s
 	return s
+}
+
+// SetSharing records what the phone says it shares.
+func (d *Device) SetSharing(on bool, apps []string, now time.Time) error {
+	clean := []string{}
+	for _, a := range apps {
+		if a, _ := text("app", a, 60, true); a != "" && len(clean) < 60 {
+			clean = append(clean, a)
+		}
+	}
+	return d.f.with(true, func(x *deviceData) error {
+		x.Sharing = &Sharing{Notifications: on, Apps: clean, At: now.UTC()}
+		return nil
+	})
+}
+
+// SharingNow is what the phone last said it shares (nil before it has said).
+func (d *Device) SharingNow() (*Sharing, error) {
+	var out *Sharing
+	err := d.f.with(false, func(x *deviceData) error {
+		if x.Sharing != nil {
+			c := *x.Sharing
+			out = &c
+		}
+		return nil
+	})
+	return out, err
 }
 
 // AddNotes keeps notifications the phone sent (cut short, a week kept). The

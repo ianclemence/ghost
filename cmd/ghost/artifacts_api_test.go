@@ -183,3 +183,56 @@ func TestDeleteRoutes(t *testing.T) {
 		t.Fatalf("delete all: %d %v", code, out)
 	}
 }
+
+// A motion's video, handed over on its own, opens the motion it was made from
+// and saves as the video, instead of being read as text.
+func TestMotionVideoOpensItsMotion(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "ghost.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := artifacts.EnsureSchema(db); err != nil {
+		t.Fatal(err)
+	}
+	ws := t.TempDir()
+	st, _ := artifacts.NewStore(db, ws)
+	spec, err := motion.Parse([]byte(`{"title":"Grocery","scenes":[{"duration":3,"elements":[{"type":"title","text":"Grocery"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, _, err := motion.Save(ws, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	video := motion.VideoPath(rel)
+	if err := os.WriteFile(filepath.Join(ws, video), []byte("\x00\x00\x00\x18ftypmp42"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := st.Publish(artifacts.Input{SessionKey: "main", Kind: "file", Title: "Grocery", Path: rel})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := st.Publish(artifacts.Input{SessionKey: "main", Kind: "file", Title: "Grocery", Summary: "Video", Path: video})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prevDB, prevWS := apiDB, apiWorkspaceDir
+	apiDB, apiWorkspaceDir = db, ws
+	defer func() { apiDB, apiWorkspaceDir = prevDB, prevWS }()
+	mux := http.NewServeMux()
+	registerArtifactRoutes(mux)
+	call := func(path string) (int, map[string]interface{}) {
+		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:18790"+path, nil)
+		req.RemoteAddr, req.Host = "127.0.0.1:5000", "127.0.0.1:18790"
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code, decode(t, rec.Body.Bytes())
+	}
+	if code, out := call("/v1/artifacts/" + v.ID + "/motion"); code != 200 || out["motion_id"] != m.ID {
+		t.Fatalf("the video should open its motion: %d %v", code, out["motion_id"])
+	}
+	if code, out := call("/v1/artifacts/" + v.ID + "/export?format=mp4"); code != 200 || out["mime_type"] != "video/mp4" || out["name"] != filepath.Base(video) {
+		t.Fatalf("the video should save as itself: %d %v", code, out["name"])
+	}
+}

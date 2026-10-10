@@ -125,14 +125,22 @@ func registerArtifactRoutes(mux *http.ServeMux) {
 		case sub == "export" && r.Method == http.MethodGet:
 			serveExport(w, r, a)
 		case sub == "motion" && r.Method == http.MethodGet:
-			// A motion with its player, for the phone to play as it is.
-			s, err := motion.Load(apiWorkspaceDir, a.Path)
+			// A motion with its player, for the phone to play as it is. Its
+			// video opens the motion it was made from (motion_id says which).
+			src, motionID := a.Path, a.ID
+			if m, ok := motion.MotionOfVideo(a.Path); ok {
+				src = m
+				if ma, err := st.ByPath(m); err == nil {
+					motionID = ma.ID
+				}
+			}
+			s, err := motion.Load(apiWorkspaceDir, src)
 			if err != nil {
 				jsonError(w, http.StatusBadRequest, "invalid_request", "this is not a motion")
 				return
 			}
-			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "spec": s, "duration": s.Duration(),
-				"html": motion.Page(s, false), "video": motion.ExportsFor(apiWorkspaceDir).Status(a.Path)})
+			jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "spec": s, "duration": s.Duration(), "motion_id": motionID,
+				"html": motion.Page(s, false), "video": motion.ExportsFor(apiWorkspaceDir).Status(src)})
 		case sub == "motion" && r.Method == http.MethodPut:
 			// The owner changed a word, a number or a timing: the next version.
 			old, err := motion.Load(apiWorkspaceDir, a.Path)
@@ -328,12 +336,17 @@ func serveExport(w http.ResponseWriter, r *http.Request, a *artifacts.Artifact) 
 		jsonResponse(w, http.StatusOK, map[string]interface{}{"ok": true, "name": base + ".docx",
 			"mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "base64": base64.StdEncoding.EncodeToString(b)})
 	case "mp4":
-		// A motion's video, once made.
-		if !motion.IsMotion(a.Path) {
+		// A motion's video, once made: from the motion, or the video itself.
+		video := ""
+		if motion.IsMotion(a.Path) {
+			video = motion.VideoPath(a.Path)
+		} else if _, ok := motion.MotionOfVideo(a.Path); ok {
+			video = a.Path
+		} else {
 			jsonError(w, http.StatusBadRequest, "invalid_request", "only a motion comes as a video")
 			return
 		}
-		b, err := os.ReadFile(filepath.Join(apiWorkspaceDir, filepath.Clean("/"+motion.VideoPath(a.Path))))
+		b, err := os.ReadFile(filepath.Join(apiWorkspaceDir, filepath.Clean("/"+video)))
 		if err != nil {
 			jsonError(w, http.StatusNotFound, "not_found", "the video hasn't been made yet")
 			return

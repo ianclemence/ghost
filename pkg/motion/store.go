@@ -100,6 +100,18 @@ func Latest(workspace, title string) (string, bool) {
 // VideoPath is where a motion's video is kept.
 func VideoPath(rel string) string { return strings.TrimSuffix(rel, ".json") + ".mp4" }
 
+var videoOf = regexp.MustCompile(`^motion/[a-z0-9-]+-v\d+\.mp4$`)
+
+// MotionOfVideo is the motion a video was made from (motion/x-v2.mp4 →
+// motion/x-v2.json), when the path is a motion's video.
+func MotionOfVideo(rel string) (string, bool) {
+	rel = filepath.ToSlash(rel)
+	if !videoOf.MatchString(rel) {
+		return "", false
+	}
+	return strings.TrimSuffix(rel, ".mp4") + ".json", true
+}
+
 // Job is one video being made.
 type Job struct {
 	Motion string `json:"motion"`

@@ -824,7 +824,7 @@ func (t *PhoneTool) Name() string { return "phone" }
 
 func (t *PhoneTool) Description() string {
 	return `What the owner's phone shares with their Pod, only what they switched on in the app (Settings → Phone):
-- notifications: recent notifications from the apps they allowed ("did Mum message me?", "what did the bank text say?"). Parameters: app?, query?, hours? (default 24, at most 168). If nothing comes back, sharing may be off: say so plainly.
+- notifications: recent notifications from the apps they allowed ("did Mum message me?", "what did the bank text say?"). Parameters: app?, query?, hours? (default 24, at most 168). If nothing comes back, the result says why (sharing off, the app not shared, or nothing new since it was added): tell the owner that, plainly, without guessing.
 - health: daily totals from Health Connect (steps, sleep, resting heart rate). days? (default 7). Speak about trends gently and never diagnose; show them with present_card (a chart of the days).
 - remind_at_place: a reminder when the owner arrives at (on=enter) or leaves (on=exit) a place: name, lat, lon (real coordinates: from places_nearby, or the owner's current location if they said "here"), radius? (metres, default 150), message, once? (default true). The phone watches the place; Ghost speaks when it crosses.
 - places: the place reminders being watched. cancel_place: id.
@@ -870,7 +870,8 @@ func (t *PhoneTool) Execute(ctx context.Context, args map[string]interface{}) *T
 			return ErrorResult(err.Error())
 		}
 		if len(list) == 0 {
-			return NewToolResult("No notifications like that came from the phone. Either nothing arrived, or the owner hasn't turned on notification sharing for that app (Settings → Phone in the app).")
+			sh, _ := t.store.SharingNow()
+			return NewToolResult(noNotesWhy(sh, sarg(args, "app"), hours, t.loc()))
 		}
 		if len(list) > 40 {
 			list = list[:40]
@@ -959,4 +960,39 @@ func (t *PhoneTool) Execute(ctx context.Context, args map[string]interface{}) *T
 		return NewToolResult("Stopped watching " + p.Name + ".")
 	}
 	return ErrorResult("action is notifications, health, remind_at_place, places or cancel_place")
+}
+
+// noNotesWhy says why no notification was found, as precisely as the phone
+// lets Ghost know: sharing off, the app not shared, or shared with nothing
+// new since. Ghost only ever sees notifications that arrive after an app is
+// added, and they reach the Pod when the Ghost app is open.
+func noNotesWhy(sh *life.Sharing, app string, hours int, loc *time.Location) string {
+	const after = " Ghost only sees notifications that arrive after an app is added on the Phone screen, and they reach the Pod when the Ghost app is open."
+	if sh == nil {
+		return "No notifications like that came from the phone. Either nothing arrived, or notification sharing isn't on for that app (Settings → Phone in the app)." + after
+	}
+	if !sh.Notifications {
+		return "Notification sharing is off on the owner's phone (Settings → Phone in the app), so Ghost sees none."
+	}
+	if app != "" {
+		shared := false
+		for _, a := range sh.Apps {
+			if strings.Contains(strings.ToLower(a), strings.ToLower(app)) || strings.Contains(strings.ToLower(app), strings.ToLower(a)) {
+				shared = true
+				break
+			}
+		}
+		if !shared {
+			list := "none yet"
+			if len(sh.Apps) > 0 {
+				list = strings.Join(sh.Apps, ", ")
+			}
+			return fmt.Sprintf("%s isn't one of the apps the phone shares (shared: %s). The owner can add it on the Phone screen (Settings → Phone).", app, list) + after
+		}
+	}
+	what := "the shared apps"
+	if app != "" {
+		what = app
+	}
+	return fmt.Sprintf("%s is shared, but no notification from it in the last %d hours has reached the Pod (the phone last checked in %s).", what, hours, sh.At.In(loc).Format("Mon 15:04")) + after
 }
