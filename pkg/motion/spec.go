@@ -51,6 +51,13 @@ type Scene struct {
 //	hub     Text at the centre, Items around it, joined by spokes: one thing
 //	        and the parts that connect to it
 //	gauge   To out of Max (100 if unset) as a ring that fills; Suffix, Label
+//	timeline Items as milestones on a line, lit in turn with a travelling
+//	        marker: a sequence over time or over steps of a story
+//	table   Labels as column headers (2 to 4), Items as rows with cells split
+//	        by " | ": a small fact grid, rows appearing in turn
+//	sketch  Items as boxes (2 to 6, Loop allowed) joined by arrows like a
+//	        flow, but drawn hand: wobbling strokes that draw themselves, for
+//	        processes with character (a formation, a gut, a route)
 //
 // At is when it enters, in seconds from the start of its scene; Stay, when set,
 // is how long it stays (otherwise to the end of the scene).
@@ -85,7 +92,7 @@ const (
 
 var (
 	hexRE        = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
-	elementTypes = map[string]bool{"title": true, "text": true, "number": true, "bars": true, "line": true, "donut": true, "list": true, "steps": true, "compare": true, "quote": true, "flow": true, "hub": true, "gauge": true}
+	elementTypes = map[string]bool{"title": true, "text": true, "number": true, "bars": true, "line": true, "donut": true, "list": true, "steps": true, "compare": true, "quote": true, "flow": true, "hub": true, "gauge": true, "timeline": true, "table": true, "sketch": true}
 )
 
 // Parse reads a spec and checks it.
@@ -147,8 +154,8 @@ func (s *Spec) Check() error {
 }
 
 func (e *Element) check(sceneDur float64) error {
-	if !elementTypes[e.Type] {
-		return fmt.Errorf("type is title, text, number, bars, line, donut, list, steps, compare, quote, flow, hub or gauge, not %q", e.Type)
+	if e.Type != "title" && e.Type != "text" && e.Type != "number" && e.Type != "bars" && e.Type != "line" && e.Type != "donut" && e.Type != "list" && e.Type != "steps" && e.Type != "compare" && e.Type != "quote" && e.Type != "flow" && e.Type != "hub" && e.Type != "gauge" && e.Type != "timeline" && e.Type != "table" && e.Type != "sketch" {
+		return fmt.Errorf("type is title, text, number, bars, line, donut, list, steps, compare, quote, flow, hub, gauge, timeline, table or sketch, not %q", e.Type)
 	}
 	// A prefix or suffix keeps its spacing ("KES " before, " sold" after).
 	for _, f := range []*string{&e.Text, &e.Sub, &e.Label, &e.Unit} {
@@ -197,13 +204,14 @@ func (e *Element) check(sceneDur float64) error {
 				}
 			}
 		}
-	case "flow":
-		if len(e.Items) < 2 || len(e.Items) > 6 {
-			return errors.New("a flow has 2 to 6 boxes")
+	case "flow", "sketch":
+		n := len(e.Items)
+		if n < 2 || n > 6 {
+			return fmt.Errorf("a %s has 2 to 6 boxes", e.Type)
 		}
 		for _, it := range e.Items {
 			if len([]rune(it)) > 40 {
-				return errors.New("a flow's box says at most 40 characters")
+				return fmt.Errorf("a %s's box says at most 40 characters", e.Type)
 			}
 		}
 	case "hub":
@@ -226,9 +234,33 @@ func (e *Element) check(sceneDur float64) error {
 		if len(e.Values) != 2 || len(e.Labels) != 2 {
 			return errors.New("a compare has two labels and two values")
 		}
-	case "list", "steps":
+	case "list", "steps", "timeline":
 		if len(e.Items) == 0 {
 			return fmt.Errorf("a %s needs items", e.Type)
+		}
+		if e.Type == "timeline" && len(e.Items) < 2 {
+			return errors.New("a timeline has 2 to 8 milestones")
+		}
+	case "table":
+		if len(e.Labels) < 2 || len(e.Labels) > 4 {
+			return errors.New("a table has 2 to 4 column headers")
+		}
+		if len(e.Items) == 0 {
+			return errors.New("a table needs rows")
+		}
+		for _, it := range e.Items {
+			cells := strings.Split(it, "|")
+			if len(cells) != len(e.Labels) {
+				return fmt.Errorf("a table row has %d cells split by |, not %d (%q)", len(e.Labels), len(cells), it)
+			}
+			for _, c := range cells {
+				if strings.TrimSpace(c) == "" {
+					return fmt.Errorf("a table cell is empty (%q)", it)
+				}
+				if len([]rune(c)) > 60 {
+					return fmt.Errorf("a table cell says at most 60 characters (%q)", it)
+				}
+			}
 		}
 	}
 	return nil

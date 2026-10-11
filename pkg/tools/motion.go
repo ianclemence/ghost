@@ -54,10 +54,14 @@ action:
   {"type":"compare","labels":[a,b],"values":[a,b],"prefix"?,"label"?}: before and after
   {"type":"list","items":[...],"label"?} · {"type":"steps","items":[...],"label"?}: a walkthrough, each step lit in turn
   {"type":"flow","items":[2-6 short boxes],"loop"?:true,"label"?}: a diagram of a process or a chain (A → B → C), arrows drawing in turn; loop returns to the start
+  {"type":"sketch","items":[2-6 short boxes],"loop"?:true,"label"?}: like a flow, but hand-drawn: wobbling strokes that draw themselves, tilted boxes, dashed links. For processes with character (a formation, a gut, a route, a chase) — prefer it over flow whenever the subject has a physical shape or a story beat
   {"type":"hub","text":"the centre","items":[2-6 parts],"label"?}: a diagram of one thing and what connects to it (your Pod and the phone, web and terminal around it)
+  {"type":"timeline","items":[2-8 milestones],"label"?}: a sequence over time or over the beats of a story, lit in turn with a travelling marker (days of a trip, minutes of a match, stages of a build)
+  {"type":"table","labels":[2-4 headers],"items":["cell | cell | cell", ...]}: a small fact grid, one row per item, cells split by | (fixtures, squads, prices, compare-at-a-glance facts)
   {"type":"gauge","to":value,"max"?:100,"suffix"?:"%","label"?}: a ring filling to a share or a score
   Use flow and hub for diagrams: they are the motion's diagrams.
   Good motions are short (15-40 s), one idea per scene, a title first, few words on screen, the number that matters big.
+  Make it about THIS subject, never generic: pick the diagram the subject asks for (a match gets a timeline of its minutes and a table of its facts, a gut gets a sketch of its chambers, a system gets a hub of its parts), and put the source on screen — a caption with the outlet or where the numbers came from on every scene built from research, never invented data.
 - change: title, spec: the whole updated spec, saved as the next version (read it first with show).
 - show: title → the current spec, to change it.
 - export: title → makes the MP4 on the Pod (about three times its length); the owner is told when it is ready, and it appears in the chat and on their shelf.

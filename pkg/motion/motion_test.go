@@ -85,7 +85,10 @@ const diagrams = `{"title":"How Ghost works","accent":"#8FB8FF","scenes":[
  {"duration":5,"elements":[{"type":"flow","label":"From words to done","items":["You ask","Ghost plans","You approve","It acts","It shows proof"]}]},
  {"duration":5,"elements":[{"type":"hub","label":"One Ghost, everywhere","text":"Your Pod","items":["Phone","Web console","Terminal","Home Assistant","Your files"]}]},
  {"duration":4,"elements":[{"type":"gauge","to":100,"suffix":"%","label":"Of your data stays at home"}]},
- {"duration":4,"elements":[{"type":"flow","items":["Notice","Remind","Follow up"],"loop":true}]}
+ {"duration":4,"elements":[{"type":"flow","items":["Notice","Remind","Follow up"],"loop":true}]},
+ {"duration":5,"elements":[{"type":"timeline","label":"That morning","items":["Alarm","Coffee","Inbox zero","Standup"]}]},
+ {"duration":4,"elements":[{"type":"table","label":"The bill","labels":["Item","Price"],"items":["Coffee | KES 250","Croissant | KES 180"]}]},
+ {"duration":5,"elements":[{"type":"sketch","label":"The route","items":["Door","Hall","Lift","Roof"],"loop":true}]}
 ]}`
 
 func TestDiagramsAreChecked(t *testing.T) {
@@ -103,6 +106,11 @@ func TestDiagramsAreChecked(t *testing.T) {
 		`{"title":"x","scenes":[{"duration":3,"elements":[{"type":"flow","items":["only one"]}]}]}`,
 		`{"title":"x","scenes":[{"duration":3,"elements":[{"type":"hub","items":["a","b"]}]}]}`,
 		`{"title":"x","scenes":[{"duration":3,"elements":[{"type":"gauge","to":120,"max":100}]}]}`,
+		`{"title":"x","scenes":[{"duration":3,"elements":[{"type":"timeline","items":["only one"]}]}]}`,
+		`{"title":"x","scenes":[{"duration":3,"elements":[{"type":"sketch","items":["only one"]}]}]}`,
+		`{"title":"x","scenes":[{"duration":3,"elements":[{"type":"table","labels":["Only"],"items":["a | b"]}]}]}`,
+		`{"title":"x","scenes":[{"duration":3,"elements":[{"type":"table","labels":["A","B"],"items":["a | b | c"]}]}]}`,
+		`{"title":"x","scenes":[{"duration":3,"elements":[{"type":"table","labels":["A","B"],"items":["a | "]}]}]}`,
 	} {
 		if _, err := Parse([]byte(b)); err == nil {
 			t.Fatalf("accepted: %s", b)

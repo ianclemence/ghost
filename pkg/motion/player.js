@@ -22,6 +22,9 @@
   function outQuint(x) { x = clamp(x, 0, 1); return 1 - Math.pow(1 - x, 5); }
   function inOut(x) { x = clamp(x, 0, 1); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; }
   function prog(t, start, dur) { return clamp((t - start) / dur, 0, 1); }
+  // Deterministic wobble in [0,1): a pure function of its inputs, so a
+  // sketch draws identically on every seek and every render. Never random.
+  function wob(i, k) { var x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); }
 
   // ── formatting ─────────────────────────────────────────────────────────
   function fmt(v, dec) {
@@ -429,6 +432,137 @@
             o.big.textContent = (e.prefix || "") + short(o.v * p) + (e.suffix || "");
             o.big.style.opacity = outCubic(prog(t, 0.1 + i * 0.45, 0.5));
           });
+        };
+        break;
+      }
+      case "timeline": {
+        // Milestones on a line, lit in turn with a travelling marker: a
+        // sequence over time or over the beats of a story. Horizontal on wide
+        // frames, vertical on tall ones.
+        var tlCol = H > W;
+        node = el("div", "e timeline" + (tlCol ? " timeline--col" : ""));
+        if (e.label) node.appendChild(el("div", "chart-label", e.label));
+        var tlTrack = el("div", "tl-track");
+        tlTrack.appendChild(el("div", "tl-line"));
+        var tlN = e.items.length;
+        var tlSpan = Math.max(0.35, Math.min(0.7, (stay - 0.8) / (tlN + 0.5)));
+        var tlDots = e.items.map(function (it, i) {
+          var m = el("div", "tl-ms");
+          var d = el("div", "tl-dot");
+          m.appendChild(d);
+          m.appendChild(el("div", "tl-text", it));
+          tlTrack.appendChild(m);
+          return { m: m, d: d };
+        });
+        var tlMarker = el("div", "tl-marker");
+        tlTrack.appendChild(tlMarker);
+        node.appendChild(tlTrack);
+        up = function (t) {
+          tlDots.forEach(function (o, i) {
+            var s0 = 0.15 + i * tlSpan;
+            var p = outCubic(prog(t, s0, 0.45));
+            o.m.style.opacity = p;
+            var lit = t >= s0 && (i === tlN - 1 || t < 0.15 + (i + 1) * tlSpan);
+            o.d.classList.toggle("on", lit || (i === tlN - 1 && t >= s0));
+          });
+          var travel = Math.max(0.01, (tlN - 1) * tlSpan);
+          var mp = inOut(prog(t, 0.15, travel));
+          if (tlCol) tlMarker.style.top = (mp * 100) + "%";
+          else tlMarker.style.left = (mp * 100) + "%";
+          tlMarker.style.opacity = outCubic(prog(t, 0.1, 0.3));
+        };
+        break;
+      }
+      case "table": {
+        // A small fact grid: column headers, then rows appearing in turn.
+        // Rows are items with cells split by " | ".
+        node = el("div", "e table");
+        if (e.label) node.appendChild(el("div", "chart-label", e.label));
+        var tbCols = "repeat(" + e.labels.length + ", 1fr)";
+        var tbHead = el("div", "tbl-head");
+        tbHead.style.gridTemplateColumns = tbCols;
+        e.labels.forEach(function (l) { tbHead.appendChild(el("div", "tbl-th", l)); });
+        node.appendChild(tbHead);
+        var tbGap = Math.min(0.3, 1.2 / Math.max(1, e.items.length));
+        var tbRows = e.items.map(function (it) {
+          var r = el("div", "tbl-row");
+          r.style.gridTemplateColumns = tbCols;
+          it.split("|").forEach(function (c) { r.appendChild(el("div", "tbl-td", c.trim())); });
+          node.appendChild(r);
+          return r;
+        });
+        up = function (t) {
+          tbHead.style.opacity = outCubic(prog(t, 0, 0.35));
+          tbRows.forEach(function (r, i) {
+            var s = 0.2 + i * tbGap;
+            var p = outCubic(prog(t, s, 0.5));
+            r.style.opacity = p;
+            r.style.transform = "translateY(" + (1 - p) * 1.6 * U + "px)";
+          });
+        };
+        break;
+      }
+      case "sketch": {
+        // Like flow (boxes joined by arrows, row or column) but hand-drawn:
+        // wobbling strokes that draw themselves, tilted boxes, dashed links.
+        // The wobble is deterministic per box, so every seek draws the same.
+        var skCol = H > W;
+        node = el("div", "e sketch" + (skCol ? " sketch--col" : ""));
+        if (e.label) node.appendChild(el("div", "chart-label", e.label));
+        var skRow = el("div", "sk-row");
+        node.appendChild(skRow);
+        var skN = e.items.length;
+        var skSpan = Math.max(0.35, Math.min(0.7, (stay - 0.8) / (skN + 0.5)));
+        var skBoxes = [], skLinks = [];
+        e.items.forEach(function (it, i) {
+          var b = el("div", "sk-box", it);
+          var tilt = ((wob(i, 1) - 0.5) * 3).toFixed(2);
+          skRow.appendChild(b);
+          skBoxes.push({ b: b, tilt: tilt });
+          if (i < skN - 1) {
+            var a = el("div", "sk-link");
+            a.appendChild(el("span", "sk-shaft"));
+            a.appendChild(el("span", "sk-head"));
+            skRow.appendChild(a);
+            skLinks.push(a);
+          }
+        });
+        var skBack = null;
+        if (e.loop) {
+          skBack = el("div", "sk-back");
+          skBack.appendChild(el("span", "sk-back-line"));
+          skBack.appendChild(el("span", "sk-back-label", "and again"));
+          node.appendChild(skBack);
+        }
+        var skFitted = false;
+        up = function (t) {
+          if (!skFitted && node.offsetWidth) {
+            skFitted = true;
+            var k = Math.min(1, node.offsetWidth / Math.max(1, skRow.scrollWidth));
+            var kh = skCol ? Math.min(1, (H - 34 * U) / Math.max(1, skRow.scrollHeight)) : 1;
+            k = Math.min(k, kh);
+            if (k < 1) skRow.style.transform = "scale(" + k + ")";
+            skRow.style.transformOrigin = skCol ? "50% 0" : "50% 50%";
+            if (skBack) skBack.firstChild.style.width = skRow.scrollWidth * k + "px";
+          }
+          skBoxes.forEach(function (o, i) {
+            var s0 = 0.15 + i * skSpan;
+            var p = outCubic(prog(t, s0, 0.45));
+            o.b.style.opacity = p;
+            o.b.style.transform = "rotate(" + o.tilt + "deg) translateY(" + (1 - p) * 1.6 * U + "px) scale(" + (0.96 + 0.04 * p) + ")";
+            var lit = t >= s0 && (i === skN - 1 || t < 0.15 + (i + 1) * skSpan);
+            o.b.classList.toggle("on", lit || (i === skN - 1 && t >= s0));
+          });
+          skLinks.forEach(function (a, i) {
+            var p = inOut(prog(t, 0.15 + i * skSpan + skSpan * 0.45, skSpan * 0.55));
+            a.style.transform = (skCol ? "scaleY(" : "scaleX(") + p + ")";
+            a.style.opacity = p > 0 ? 1 : 0;
+          });
+          if (skBack) {
+            var q = inOut(prog(t, 0.15 + skN * skSpan, 0.7));
+            skBack.style.opacity = q;
+            skBack.firstChild.style.transform = (skCol ? "scaleY(" : "scaleX(") + q + ")";
+          }
         };
         break;
       }
