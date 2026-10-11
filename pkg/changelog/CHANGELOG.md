@@ -3,6 +3,16 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.174] - 2026-10-11
+
+- **Motions gain timelines, tables and hand-drawn sketches.** A motion can
+  now walk through milestones on a travelling line, lay out a small fact
+  grid, or draw a process like a sketch — wobbling strokes that draw
+  themselves, for formations, guts and routes. The phone's editor changes
+  the new diagrams like any other, and Ghost's authoring brief now picks
+  the diagram each subject asks for, with sources on screen for researched
+  numbers.
+
 ## [0.24.173] - 2026-10-11
 
 - **PDFs in Files read as themselves.** Opening a PDF in the web console
