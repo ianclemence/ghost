@@ -45,6 +45,16 @@ function fileWhen(iso) {
   return d.toLocaleDateString([], opts);
 }
 
+// A PDF reads as its printed pages (fonts, layout, pictures), never as the
+// text pulled out of it. The preview payload names the mime; the file name
+// is the fallback for uploads recorded before the mime was kept.
+function isPdfPreview(pv, f) {
+  if (pv && pv.mime === 'application/pdf') return true;
+  const name = (pv && pv.name) || (f && f.name) || '';
+  return /\.pdf$/i.test(name);
+}
+var GhostFiles = { isPdfPreview: isPdfPreview };
+
 // The groups the filter offers. "Other" gathers whatever has no group of its own.
 const FILE_FILTERS = [
   { key: 'all', label: 'All', match: () => true },
@@ -207,6 +217,10 @@ async function loadFiles(container) {
       catch (e) { pv = { previewable: false, reason: 'Ghost couldn’t open a preview just now.' }; }
       if (my !== token || !viewer) return;
       body.innerHTML = '';
+      if (isPdfPreview(pv, f)) {
+        showPdf(body, f, pv, my);
+        return;
+      }
       if (pv && pv.previewable && pv.image_base64) {
         const img = GhostUI.h('img', { className: 'fv-photo', alt: f.name, src: 'data:' + (pv.mime || 'image/jpeg') + ';base64,' + pv.image_base64 });
         body.appendChild(img);
@@ -228,6 +242,57 @@ async function loadFiles(container) {
       if (n < 0 || n >= list.length) return;
       idx = n;
       show();
+    }
+
+    // A PDF as its pages: each drawn on the Pod as printed, paged here. If
+    // the Pod cannot draw them (a scan-only PDF, a missing renderer), the
+    // extracted text below is the honest fallback, same as the app.
+    async function showPdf(host, f, pv, my) {
+      let page = 1, pages = 0;
+      const wrap = GhostUI.h('div', { className: 'fv-pdf' });
+      const pager = GhostUI.h('div', { className: 'fv-actions fv-pager' });
+      const prevB = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', type: 'button' }, '‹ Prev page');
+      const count = GhostUI.h('div', { className: 'fv-count' });
+      const nextB = GhostUI.h('button', { className: 'ghost-btn ghost-btn-secondary', type: 'button' }, 'Next page ›');
+      pager.appendChild(prevB); pager.appendChild(count); pager.appendChild(nextB);
+      const sheet = GhostUI.h('div', { className: 'fv-sheet' });
+      wrap.appendChild(pager); wrap.appendChild(sheet);
+      host.appendChild(wrap);
+
+      function drawPager() {
+        count.textContent = pages > 0 ? ('Page ' + page + ' of ' + pages) : ('Page ' + page);
+        prevB.disabled = page <= 1;
+        nextB.disabled = pages > 0 && page >= pages;
+        pager.style.display = (pages <= 1 && page === 1 && sheet.firstChild) ? 'none' : '';
+      }
+      async function draw() {
+        const mine = ++token;
+        sheet.innerHTML = '';
+        sheet.appendChild(GhostUI.h('div', { className: 'fv-loading' }, GhostUI.h('span', { className: 'spinner' })));
+        drawPager();
+        let r = null;
+        try { r = await GhostAPI.proxyGet('/v1/files/' + encodeURIComponent(f.id) + '/page?n=' + page + '&w=1400'); }
+        catch (e) { r = null; }
+        if (mine !== token || my !== token || !viewer) return;
+        sheet.innerHTML = '';
+        if (r && r.ok && r.image_base64) {
+          pages = r.pages || pages;
+          sheet.appendChild(GhostUI.h('img', { className: 'fv-photo', alt: f.name + ' — page ' + page, src: 'data:image/png;base64,' + r.image_base64 }));
+        } else {
+          // The pages would not draw: fall back to the extracted text.
+          if (pv && typeof pv.content === 'string' && pv.content) {
+            if (pv.extracted) sheet.appendChild(GhostUI.h('div', { className: 'fv-note' }, 'The pages wouldn’t draw, so here is the text Ghost can read in this file'));
+            sheet.appendChild(GhostUI.h('pre', { className: 'fv-text' }, pv.content));
+            if (pv.truncated) sheet.appendChild(GhostUI.h('div', { className: 'fv-note' }, 'Showing the start of a long file. Download it to read the rest.'));
+          } else {
+            sheet.appendChild(GhostUI.h('div', { className: 'fv-note' }, 'The pages wouldn’t draw. Download it to read it.'));
+          }
+        }
+        drawPager();
+      }
+      prevB.addEventListener('click', () => { if (page > 1) { page--; draw(); } });
+      nextB.addEventListener('click', () => { page++; draw(); });
+      draw();
     }
 
     dl.addEventListener('click', async () => {

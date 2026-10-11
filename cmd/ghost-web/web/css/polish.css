@@ -364,6 +364,10 @@ body { font-feature-settings: "ss01", "cv11"; font-kerning: normal; }
 }
 .fv-text.mono { font-family: var(--font-mono); font-size: 13px; line-height: 1.6; }
 .fv-document, .fv-spreadsheet, .fv-text-wrap { flex-direction: column; align-items: stretch; justify-content: flex-start; }
+/* A PDF as its pages: the pager on top, the sheet below, scrolling inside. */
+.fv-pdf { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); width: 100%; max-height: 100%; }
+.fv-pager { align-items: center; }
+.fv-sheet { display: flex; justify-content: center; width: 100%; min-height: 120px; overflow: auto; }
 .fv-note { text-align: center; flex: none; color: var(--ink-faint); font-size: var(--t-foot); padding: var(--s-2) var(--s-4); }
 .fv-loading { display: grid; place-items: center; width: 100%; height: 100%; }
 .fv-none { text-align: center; max-width: 340px; padding: var(--s-5); }

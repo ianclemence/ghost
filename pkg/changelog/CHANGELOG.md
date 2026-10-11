@@ -3,6 +3,12 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.173] - 2026-10-11
+
+- **PDFs in Files read as themselves.** Opening a PDF in the web console
+  shows its printed pages, page by page, like the app — instead of the
+  text pulled out of it.
+
 ## [0.24.172] - 2026-10-11
 
 - **Deleting what Ghost made updates everywhere.** Removing an item from

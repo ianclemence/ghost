@@ -61,6 +61,25 @@ func TestConsoleMarkdownBehavior(t *testing.T) {
 	}
 }
 
+// The files section shows a PDF as its printed pages, never as the text
+// pulled out of it. The page renderer already exists server-side; the
+// detection that routes a PDF to it is checked here.
+func TestConsoleFilesPdfBehavior(t *testing.T) {
+	bun, err := exec.LookPath("bun")
+	if err != nil {
+		t.Skip("bun not installed; skipping executable files checks")
+	}
+	cmd := exec.Command(bun, "web/js/sections/files.test.mjs")
+	cmd.Dir = "."
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("web files checks failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "all checks passed") {
+		t.Fatalf("unexpected test output:\n%s", out)
+	}
+}
+
 // The wording helpers decide what a routine shows twice or once.
 func TestConsoleWordingBehavior(t *testing.T) {
 	bun, err := exec.LookPath("bun")
