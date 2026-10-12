@@ -567,7 +567,31 @@
         break;
       }
     }
-    return { node: node, up: up, at: e.at || 0, stay: stay };
+    return { node: node, up: up, at: e.at || 0, stay: stay, id: e.id || "", focus: !!e.focus, type: e.type };
+  }
+
+  // Reduced motion keeps the same sequence of ideas with hard cuts and a
+  // still camera. Honour the OS setting and ?reduced=1 (the accessible cut).
+  var REDUCED = false;
+  try {
+    REDUCED = (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
+      (location.search || "").indexOf("reduced=1") >= 0;
+  } catch (x) { REDUCED = false; }
+
+  function cueText(s) {
+    if (s.voice) return s.voice;
+    if (s.caption) return s.caption;
+    for (var k = 0; k < s.elements.length; k++) {
+      var e = s.elements[k];
+      if ((e.type === "title" || e.type === "text" || e.type === "quote") && e.text) {
+        return e.sub ? e.text + " — " + e.sub : e.text;
+      }
+      if (e.label) return e.label;
+    }
+    return "";
+  }
+  function isReading(s) {
+    return s.elements.some(function (e) { return e.type === "title" || e.type === "text" || e.type === "quote"; });
   }
 
   var scenes = spec.scenes.map(function (s, i) {
@@ -576,13 +600,36 @@
     wrap.appendChild(stack);
     var parts = s.elements.map(function (e) {
       var b = build(e, s.duration);
+      if (b.id) b.node.setAttribute("data-mid", b.id);
       stack.appendChild(b.node);
       return b;
     });
     var cap = s.caption ? el("div", "caption", s.caption) : null;
     if (cap) wrap.appendChild(cap);
+    // Burned caption: voice first, then source caption, so muted carries it.
+    var cue = cueText(s);
+    var cueNode = null;
+    if (cue && cue !== (s.caption || "")) {
+      cueNode = el("div", "cue");
+      cueNode.appendChild(el("span", "", cue));
+      wrap.appendChild(cueNode);
+      wrap.classList.add("has-cue");
+    }
     root.appendChild(wrap);
-    return { wrap: wrap, parts: parts, cap: cap, start: starts[i], dur: s.duration, last: i === spec.scenes.length - 1 };
+    var ids = {};
+    parts.forEach(function (p) { if (p.id) ids[p.id] = true; });
+    return { wrap: wrap, parts: parts, cap: cap, cueNode: cueNode, start: starts[i], dur: s.duration,
+      last: i === spec.scenes.length - 1, reading: isReading(s), ids: ids,
+      focusIdx: parts.reduce(function (a, p, k) { return p.focus ? k : a; }, -1) };
+  });
+  // Objects with the same id in neighbouring scenes stay alive across the
+  // cut: both sides hold full opacity through the crossfade instead of one
+  // fading out while the other fades in.
+  var carry = scenes.map(function () { return {}; });
+  scenes.forEach(function (s, i) {
+    if (i + 1 >= scenes.length) return;
+    var nx = scenes[i + 1];
+    Object.keys(s.ids).forEach(function (id) { if (nx.ids[id]) { carry[i][id] = true; carry[i + 1][id] = true; } });
   });
 
   var bar = null, playBtn = null;
@@ -595,31 +642,52 @@
   }
 
   var now = 0;
+  var camX = 0, camY = 0; // camera holds still while text is read
   function seek(t) {
     now = clamp(t, 0, total);
-    scenes.forEach(function (s) {
+    scenes.forEach(function (s, si) {
       var local = now - s.start;
       var inScene = local >= -FADE && local <= s.dur + (s.last ? 1 : 0);
       if (!inScene) { s.wrap.style.display = "none"; return; }
       s.wrap.style.display = "flex";
       // Crossfade: in over the first FADE, out over the last FADE (not the last scene).
-      var a = outCubic(prog(local, 0, FADE));
-      if (!s.last) a *= 1 - inOut(prog(local, s.dur - FADE, FADE));
+      // Reduced motion: hard cuts, same sequence, same timing.
+      var fadeLen = REDUCED ? 0.01 : FADE;
+      var a = outCubic(prog(local, 0, fadeLen));
+      if (!s.last) a *= 1 - inOut(prog(local, s.dur - fadeLen, fadeLen));
       s.wrap.style.opacity = a;
-      s.parts.forEach(function (p) {
+      var hasFocus = s.focusIdx >= 0;
+      s.parts.forEach(function (p, pi) {
         var lt = local - p.at;
         if (lt < 0) { p.node.style.visibility = "hidden"; p.up(0); return; }
         p.node.style.visibility = "visible";
         var fadeOut = p.at + p.stay < s.dur ? 1 - outCubic(prog(local, p.at + p.stay, 0.4)) : 1;
+        // Carried objects do not blink out across the cut.
+        if (p.id && carry[si][p.id]) fadeOut = Math.max(fadeOut, local > s.dur - fadeLen ? 1 : fadeOut);
         p.node.style.opacity = fadeOut;
-        p.up(lt);
+        // One focal action: everything else holds still and dims.
+        p.node.classList.toggle("dim", hasFocus && pi !== s.focusIdx && lt < p.stay * 0.7 && lt >= 0);
+        p.up(REDUCED ? Math.min(lt, p.stay) : lt);
+        if (REDUCED) p.node.style.transform = "";
       });
       if (s.cap) s.cap.style.opacity = outCubic(prog(local, 0.6, 0.8));
+      if (s.cueNode) s.cueNode.style.opacity = outCubic(prog(local, 0.5, 0.6));
+      // Camera reframes between ideas and stays still while text is read.
+      if (local >= 0 && local <= s.dur && !s.reading && !REDUCED) {
+        var g = (s.start + local) / Math.max(total, 1);
+        camX = Math.sin((s.start + local) * 0.35) * 6 * U;
+        camY = -g * 10 * U;
+      }
     });
-    // The light behind drifts slowly, by t alone.
-    var g = now / Math.max(total, 1);
-    glow.style.transform = "translate(" + (Math.sin(now * 0.35) * 6 * U) + "px," + (-g * 10 * U) + "px)";
-    glow2.style.transform = "translate(" + (Math.cos(now * 0.28) * 8 * U) + "px," + (Math.sin(now * 0.2) * 5 * U) + "px)";
+    // The light behind drifts slowly, by t alone — frozen under reduced motion
+    // or while the current scene is being read.
+    if (!REDUCED) {
+      glow.style.transform = "translate(" + camX + "px," + camY + "px)";
+      glow2.style.transform = "translate(" + (Math.cos(now * 0.28) * 3 * U) + "px," + (Math.sin(now * 0.2) * 2 * U) + "px)";
+    } else {
+      glow.style.transform = "";
+      glow2.style.transform = "";
+    }
     if (bar) bar.firstChild.style.width = (now / total) * 100 + "%";
   }
 

@@ -3,6 +3,28 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.175] - 2026-10-12
+
+- **Motions become a studio, not a slideshow.** Every motion can now carry
+  its brief (one question, audience, outcome, wrong-belief hook) and each
+  scene says what it teaches, speaks a voice line, names its sound cue and
+  what the viewer can now say — the Question/Model/Proof/Turn/Payoff arc.
+  Objects with the same id stay alive across scenes instead of being
+  replaced, one focus:true action moves while the rest hold still and dim,
+  and the camera reframes between ideas and stays still while text is read.
+- **Sound and captions ship with every video.** The export muxes a soft
+  procedural bed with ticks only where the scene names a sound, burns the
+  voice/source line on screen, and writes a .srt beside the MP4. The player
+  honours reduced-motion with hard cuts and a still camera, keeping the
+  same ideas in the same order.
+- **Copy and sources are enforced.** On-screen words are anchors (3 lines,
+  12 words a line; sentences live in voice), data scenes name their source,
+  and `motion verify` gates determinism, 390 px legibility, muted/audio
+  parity, sources, one focus and no flashes — plus `motion captions` to
+  rewrite the .srt.
+- **Calmer picture.** The neon glow is gone (flat ground, borders instead
+  of glows) and secondary text is lifted to hold contrast.
+
 ## [0.24.174] - 2026-10-11
 
 - **Motions gain timelines, tables and hand-drawn sketches.** A motion can

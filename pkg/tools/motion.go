@@ -42,10 +42,46 @@ func (t *MotionTool) OnVideo(fn func(ctx context.Context, title string, j motion
 func (t *MotionTool) Name() string { return "motion" }
 
 func (t *MotionTool) Description() string {
-	return `Make a short animated explainer (a motion) from a report, numbers, a chart or a walkthrough, for the owner to watch, change and export as an MP4 video. It is written as scenes, not filmed: no video model, every word, number and timing can be changed. Use it when they ask to animate something, make a video or explainer of their data, a short clip for a presentation or social media, or to explain steps visually. Use real numbers only (from what they gave you, a file, their finances, a dashboard query); never invent data.
+	return `Make a short animated explainer (a motion) from a report, numbers, a chart or a walkthrough, for the owner to watch, change and export as an MP4 video with sound and captions. It is written as scenes, not filmed: no video model, every word, number and timing can be changed. Use it when they ask to animate something, make a video or explainer of their data, a short clip for a presentation or social media, or to explain steps visually. Use real numbers only (from what they gave you, a file, their finances, a dashboard query); never invent data. Every number has a source or it goes.
+
+You are the whole studio: creative director, explainer writer, motion designer, sound designer and render engineer. When the brief is thin, make the call and say what you assumed in one sentence; keep moving.
+
+Work shape-before-polish:
+- Settle the one idea and the viewer's mental model first; polish is the last pass.
+- Ask before designing: who is this for, what are we communicating, does it need a name or can it stay invisible?
+- Never start from nothing: anchor to their brand, product and real screenshots/data, or it looks generic.
+- Restraint is taste: cut whatever does not serve the idea. Banned look: neon glow, stock 3D blobs, gradient title cards, floating particles, fake metrics.
+
+Discovery (do this first, in one pass):
+- Write the one question the film answers, in the viewer's own words (spec question).
+- Split facts into must-know and cut list; the cut list stays out.
+- Find the hook: the wrong belief most viewers hold (spec hook). Open on it as an image, not a title card.
+- Metaphor only if it makes the idea more accurate; otherwise show the real thing.
+
+Story arc (map scenes to it; 15-40 s is usually right):
+- Question 0-10%: the thing people get wrong, as an image.
+- Model 10-35%: smallest correct picture of how it works, one element per beat.
+- Proof 35-75%: run the model on a real case; cause and effect play out on screen.
+- Turn 75-90%: change one variable, show what follows.
+- Payoff 90-100%: opening image again, now read correctly, plus the next step.
+
+Motion language:
+- Motion carries meaning (grouping, order, cause, scale). One focal action at a time: set focus:true on it; everything else holds still and dims.
+- Keep objects alive across scenes with the same element id (a dot becomes a node, a label becomes an axis) instead of replacing them.
+- Easing settles without bounce; the camera reframes between ideas and stays still while text is read.
+- Prefer real UI, real data and clean diagrams over illustration.
+
+Copy:
+- On-screen words are anchors (at most 3 lines, 12 words a line); the sentence lives in voice.
+- Max two ideas on screen at once; plain words before jargon; one name per thing, used every time.
+- Never put the full voice line on screen. Every data scene carries a caption with its source.
+
+Sound and access:
+- Every scene has a voice line if anything is spoken; captions are burned and shipped as .srt; the video muxes a soft procedural bed with ticks only where the scene names a sound.
+- Keep contrast high, never colour-only (the lead bar/step is also labelled/lit in text), no flashes; reduced-motion (?reduced=1) keeps the same ideas with hard cuts.
 
 action:
-- make: title, spec. The spec is JSON: {"title", "size": "landscape" (16:9, the default) | "portrait" (9:16, only when they want it for a phone or a story) | "square", "accent": "#RRGGBB" (one leading colour, optional), "scenes": [{"duration": seconds 1-20, "caption"?: a source or date at the foot, "elements": [...]}]}. At most 12 scenes, 90 seconds in all, 6 elements a scene. Elements (each may have "at": seconds into its scene when it enters, and "stay"):
+- make: title, spec. The spec is JSON: {"title", "size": "landscape" (16:9, default) | "portrait" (phone/story) | "square", "accent": "#RRGGBB" (one leading colour), "question"?, "audience"?, "outcome"?, "hook"?, "sources"?: ["outlet or file, date"], "scenes": [{"id"?: "q|model-1|proof-1|turn|payoff", "duration": seconds 1-20, "teaches"?: "the one thing this scene adds (required with question)", "voice"?: "spoken line, at most 48 words", "sound"?: "cue marking the key action", "check"?: "what the viewer can now say", "caption"?: "source or date at the foot (required on data scenes in studio mode)", "elements": [...]}]}. At most 12 scenes, 90 seconds in all, 6 elements a scene, one focus:true at most per scene. Elements (each may have "id" to persist across scenes, "at": seconds in when it enters, and "stay"):
   {"type":"title","text","sub"?} · {"type":"text","text"} · {"type":"quote","text","sub"?: who}
   {"type":"number","from","to","prefix"? ("KES "),"suffix"? ("%"),"decimals"?,"label"?}: counts up
   {"type":"bars","labels":[...],"values":[...],"unit"?,"label"?}: horizontal bars growing in turn, the biggest lit
@@ -53,19 +89,19 @@ action:
   {"type":"donut","labels","values","label"?}: shares of a whole
   {"type":"compare","labels":[a,b],"values":[a,b],"prefix"?,"label"?}: before and after
   {"type":"list","items":[...],"label"?} · {"type":"steps","items":[...],"label"?}: a walkthrough, each step lit in turn
-  {"type":"flow","items":[2-6 short boxes],"loop"?:true,"label"?}: a diagram of a process or a chain (A → B → C), arrows drawing in turn; loop returns to the start
-  {"type":"sketch","items":[2-6 short boxes],"loop"?:true,"label"?}: like a flow, but hand-drawn: wobbling strokes that draw themselves, tilted boxes, dashed links. For processes with character (a formation, a gut, a route, a chase) — prefer it over flow whenever the subject has a physical shape or a story beat
-  {"type":"hub","text":"the centre","items":[2-6 parts],"label"?}: a diagram of one thing and what connects to it (your Pod and the phone, web and terminal around it)
-  {"type":"timeline","items":[2-8 milestones],"label"?}: a sequence over time or over the beats of a story, lit in turn with a travelling marker (days of a trip, minutes of a match, stages of a build)
-  {"type":"table","labels":[2-4 headers],"items":["cell | cell | cell", ...]}: a small fact grid, one row per item, cells split by | (fixtures, squads, prices, compare-at-a-glance facts)
-  {"type":"gauge","to":value,"max"?:100,"suffix"?:"%","label"?}: a ring filling to a share or a score
-  Use flow and hub for diagrams: they are the motion's diagrams.
-  Good motions are short (15-40 s), one idea per scene, a title first, few words on screen, the number that matters big.
-  Make it about THIS subject, never generic: pick the diagram the subject asks for (a match gets a timeline of its minutes and a table of its facts, a gut gets a sketch of its chambers, a system gets a hub of its parts), and put the source on screen — a caption with the outlet or where the numbers came from on every scene built from research, never invented data.
+  {"type":"flow","items":[2-6 short boxes],"loop"?:true,"label"?}: a process or chain (A → B → C), arrows drawing in turn; loop returns to the start
+  {"type":"sketch","items":[2-6 short boxes],"loop"?:true,"label"?}: like flow but hand-drawn for processes with character; prefer it when the subject has a physical shape or story beat
+  {"type":"hub","text":"the centre","items":[2-6 parts],"label"?}: one thing and what connects to it
+  {"type":"timeline","items":[2-8 milestones],"label"?}: lit in turn with a travelling marker
+  {"type":"table","labels":[2-4 headers],"items":["cell | cell | cell", ...]}: one row per item, cells split by |
+  {"type":"gauge","to":value,"max"?:100,"suffix"?:"%","label"?}: a ring filling to a share or score
+  Use flow and hub for diagrams. Make it about THIS subject, never generic: pick the diagram the subject asks for (a match gets a timeline + table, a gut gets a sketch, a system gets a hub), open on the hook image, close on it re-read, and put the source on screen for researched numbers.
 - change: title, spec: the whole updated spec, saved as the next version (read it first with show).
 - show: title → the current spec, to change it.
-- export: title → makes the MP4 on the Pod (about three times its length); the owner is told when it is ready, and it appears in the chat and on their shelf.
-Do not paste the spec into your reply; say in a sentence what you made.`
+- verify: title → run the studio gate (deterministic frames, cue at every beat, 390 px lines, muted/audio-only parity, sources, one focus, no flashes) and report what failed.
+- captions: title → write the .srt beside the motion and say where it is.
+- export: title → makes the MP4 on the Pod (about three times its length) with bed + .srt beside it; the owner is told when it is ready, and it appears in the chat and on their shelf.
+Do not paste the spec into your reply; say in a sentence what you made, what it teaches, and what you assumed.`
 }
 
 func (t *MotionTool) Parameters() map[string]interface{} {
@@ -73,7 +109,7 @@ func (t *MotionTool) Parameters() map[string]interface{} {
 		"type":     "object",
 		"required": []string{"action", "title"},
 		"properties": map[string]interface{}{
-			"action": map[string]interface{}{"type": "string", "enum": []string{"make", "change", "show", "export"}},
+			"action": map[string]interface{}{"type": "string", "enum": []string{"make", "change", "show", "verify", "captions", "export"}},
 			"title":  map[string]interface{}{"type": "string"},
 			"spec":   map[string]interface{}{"type": "object", "description": "The motion spec (make, change)."},
 		},
@@ -131,6 +167,30 @@ func (t *MotionTool) Execute(ctx context.Context, args map[string]interface{}) *
 		}
 		b, _ := json.MarshalIndent(s, "", " ")
 		return NewToolResult(string(b))
+	case "verify":
+		rel, ok := motion.Latest(t.workspace, title)
+		if !ok {
+			return ErrorResult(fmt.Sprintf("No motion called %q.", title))
+		}
+		s, err := motion.Load(t.workspace, rel)
+		if err != nil {
+			return ErrorResult(err.Error())
+		}
+		v := s.Verify()
+		if v.OK {
+			return NewToolResult(fmt.Sprintf("%q verifies: %s.", title, strings.Join(v.Checks, "; ")))
+		}
+		return NewToolResult(fmt.Sprintf("%q does not verify yet. Failed: %s. Passed: %s. Fix the spec with change and verify again.", title, strings.Join(v.Failed, "; "), strings.Join(v.Checks, "; ")))
+	case "captions":
+		rel, ok := motion.Latest(t.workspace, title)
+		if !ok {
+			return ErrorResult(fmt.Sprintf("No motion called %q.", title))
+		}
+		crel, err := motion.WriteCaptions(t.workspace, rel)
+		if err != nil {
+			return ErrorResult("Couldn't write its captions: " + err.Error())
+		}
+		return NewToolResult(fmt.Sprintf("Captions for %q are at %s (%d cues). They burn on screen and ship beside the MP4.", title, crel, len(mustLoadCues(t.workspace, rel))))
 	case "export":
 		rel, ok := motion.Latest(t.workspace, title)
 		if !ok {
@@ -154,7 +214,15 @@ func (t *MotionTool) Execute(ctx context.Context, args map[string]interface{}) *
 		}
 		return NewToolResult(fmt.Sprintf("Making the video of %q on the Pod now (%d frames). The owner will be told when it's ready; say so in a sentence.", title, j.Total))
 	}
-	return ErrorResult("action is make, change, show or export")
+	return ErrorResult("action is make, change, show, verify, captions or export")
+}
+
+func mustLoadCues(workspace, rel string) []motion.Cue {
+	s, err := motion.Load(workspace, rel)
+	if err != nil {
+		return nil
+	}
+	return s.Cues()
 }
 
 // publishVideo puts a finished video in the conversation and on the shelf.

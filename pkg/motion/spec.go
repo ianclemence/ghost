@@ -22,13 +22,38 @@ type Spec struct {
 	// Size: portrait (9:16, for phones and stories), landscape (16:9) or square.
 	Size string `json:"size,omitempty"`
 	// Accent is the one colour that leads (#RRGGBB); the rest is the dark ground.
-	Accent string  `json:"accent,omitempty"`
-	Scenes []Scene `json:"scenes"`
+	Accent string `json:"accent,omitempty"`
+	// Story is the explainer brief (Choi studio method). Optional, so older
+	// motions keep playing; when present, the arc and copy rules apply.
+	// Question is the one question the film answers, in the viewer's words.
+	// Audience is who it is for; Outcome is what they can now say or do.
+	// Hook is the wrong belief most viewers hold, opened on as an image.
+	Question string `json:"question,omitempty"`
+	Audience string `json:"audience,omitempty"`
+	Outcome  string `json:"outcome,omitempty"`
+	Hook     string `json:"hook,omitempty"`
+	// Sources lists where every number came from (SOURCES.md lines). When a
+	// scene shows data, it must also carry a Caption naming its source.
+	Sources []string `json:"sources,omitempty"`
+	Scenes  []Scene  `json:"scenes"`
 }
 
 // Scene is one beat, shown for Duration seconds.
 type Scene struct {
-	Duration float64   `json:"duration"`
+	Duration float64 `json:"duration"`
+	// ID is a stable beat id (q, model-1, proof-2, turn, payoff). Optional.
+	ID string `json:"id,omitempty"`
+	// Teaches is the one thing this scene adds. Required when the spec
+	// carries a Question (the studio arc); otherwise optional.
+	Teaches string `json:"teaches,omitempty"`
+	// Voice is the spoken line for this beat (captions + audio-only check).
+	// Never put the full voice line on screen; on-screen words are anchors.
+	Voice string `json:"voice,omitempty"`
+	// Sound names the cue that marks the key action (e.g. "soft tick on
+	// third bar", "motif returns"). Silent when empty.
+	Sound string `json:"sound,omitempty"`
+	// Check is what the viewer can now say that they could not before.
+	Check    string    `json:"check,omitempty"`
 	Elements []Element `json:"elements"`
 	// Caption is an optional line at the foot of the scene (a source, a date).
 	Caption string `json:"caption,omitempty"`
@@ -62,16 +87,23 @@ type Scene struct {
 // At is when it enters, in seconds from the start of its scene; Stay, when set,
 // is how long it stays (otherwise to the end of the scene).
 type Element struct {
-	Type     string    `json:"type"`
-	Text     string    `json:"text,omitempty"`
-	Sub      string    `json:"sub,omitempty"`
-	Label    string    `json:"label,omitempty"`
-	From     float64   `json:"from,omitempty"`
-	To       float64   `json:"to,omitempty"`
-	Prefix   string    `json:"prefix,omitempty"`
-	Suffix   string    `json:"suffix,omitempty"`
-	Decimals int       `json:"decimals,omitempty"`
-	Unit     string    `json:"unit,omitempty"`
+	Type string `json:"type"`
+	// ID keeps an object alive across scenes: an element with the same ID in
+	// the next scene transforms instead of being replaced (a dot becomes a
+	// node, a label becomes an axis). Optional.
+	ID       string  `json:"id,omitempty"`
+	// Focus marks the one focal action: when set, everything else in the
+	// scene holds still and dims while this moves. At most one per scene.
+	Focus    bool    `json:"focus,omitempty"`
+	Text     string  `json:"text,omitempty"`
+	Sub      string  `json:"sub,omitempty"`
+	Label    string  `json:"label,omitempty"`
+	From     float64 `json:"from,omitempty"`
+	To       float64 `json:"to,omitempty"`
+	Prefix   string  `json:"prefix,omitempty"`
+	Suffix   string  `json:"suffix,omitempty"`
+	Decimals int     `json:"decimals,omitempty"`
+	Unit     string  `json:"unit,omitempty"`
 	Labels   []string  `json:"labels,omitempty"`
 	Values   []float64 `json:"values,omitempty"`
 	Items    []string  `json:"items,omitempty"`
@@ -92,6 +124,7 @@ const (
 
 var (
 	hexRE        = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+	idRE         = regexp.MustCompile(`^[a-z0-9-]+$`)
 	elementTypes = map[string]bool{"title": true, "text": true, "number": true, "bars": true, "line": true, "donut": true, "list": true, "steps": true, "compare": true, "quote": true, "flow": true, "hub": true, "gauge": true, "timeline": true, "table": true, "sketch": true}
 )
 
@@ -112,6 +145,24 @@ func (s *Spec) Check() error {
 	if s.Title == "" || len([]rune(s.Title)) > 80 {
 		return errors.New("a motion needs a title of at most 80 characters")
 	}
+	for _, f := range []*string{&s.Question, &s.Audience, &s.Outcome, &s.Hook} {
+		*f = strings.TrimSpace(*f)
+	}
+	if len([]rune(s.Question)) > 140 || len([]rune(s.Audience)) > 120 || len([]rune(s.Outcome)) > 140 || len([]rune(s.Hook)) > 140 {
+		return errors.New("question, audience, outcome and hook are each one short line (at most 140 characters)")
+	}
+	for i := range s.Sources {
+		s.Sources[i] = strings.TrimSpace(s.Sources[i])
+		if len([]rune(s.Sources[i])) > 160 {
+			return errors.New("a source is one short line (at most 160 characters)")
+		}
+		if s.Sources[i] == "" {
+			return errors.New("a source is never empty; drop it instead")
+		}
+	}
+	if len(s.Sources) > 12 {
+		return errors.New("at most 12 sources; one per data scene is plenty")
+	}
 	switch s.Size {
 	case "":
 		s.Size = "landscape"
@@ -128,23 +179,66 @@ func (s *Spec) Check() error {
 	if len(s.Scenes) == 0 || len(s.Scenes) > MaxScenes {
 		return fmt.Errorf("a motion has 1 to %d scenes", MaxScenes)
 	}
+	// A studio arc needs room: question, model, proof, turn, payoff.
+	if s.Question != "" && len(s.Scenes) < 3 {
+		return errors.New("a motion with a question needs at least 3 scenes (open it, show it, close it)")
+	}
 	total := 0.0
+	seenIDs := map[string]bool{}
 	for i := range s.Scenes {
 		sc := &s.Scenes[i]
 		if sc.Duration < 1 || sc.Duration > 20 || math.IsNaN(sc.Duration) {
 			return fmt.Errorf("scene %d: a scene lasts 1 to 20 seconds", i+1)
 		}
 		total += sc.Duration
+		sc.ID = strings.TrimSpace(sc.ID)
+		sc.Teaches = strings.TrimSpace(sc.Teaches)
+		sc.Voice = strings.TrimSpace(sc.Voice)
+		sc.Sound = strings.TrimSpace(sc.Sound)
+		sc.Check = strings.TrimSpace(sc.Check)
+		sc.Caption = strings.TrimSpace(sc.Caption)
+		if len(sc.ID) > 24 {
+			return fmt.Errorf("scene %d: id is at most 24 characters", i+1)
+		}
+		if sc.ID != "" {
+			if seenIDs[sc.ID] {
+				return fmt.Errorf("scene %d: id %q is used twice", i+1, sc.ID)
+			}
+			seenIDs[sc.ID] = true
+		}
+		if s.Question != "" && sc.Teaches == "" {
+			return fmt.Errorf("scene %d: with a question set, every scene says what it teaches (one line)", i+1)
+		}
+		if len([]rune(sc.Teaches)) > 140 || len([]rune(sc.Voice)) > 280 || len([]rune(sc.Sound)) > 120 || len([]rune(sc.Check)) > 140 {
+			return fmt.Errorf("scene %d: teaches/check are at most 140, voice 280, sound 120 characters", i+1)
+		}
+		if sc.Voice != "" {
+			if n := len(strings.Fields(sc.Voice)); n > 48 {
+				return fmt.Errorf("scene %d: the voice line is spoken, so at most 48 words (has %d)", i+1, n)
+			}
+		}
 		if len([]rune(sc.Caption)) > 120 {
 			return fmt.Errorf("scene %d: the caption is longer than 120 characters", i+1)
 		}
 		if len(sc.Elements) == 0 || len(sc.Elements) > MaxElements {
 			return fmt.Errorf("scene %d: a scene has 1 to %d elements", i+1, MaxElements)
 		}
+		focused := 0
 		for j := range sc.Elements {
 			if err := sc.Elements[j].check(sc.Duration); err != nil {
 				return fmt.Errorf("scene %d, element %d: %w", i+1, j+1, err)
 			}
+			if sc.Elements[j].Focus {
+				focused++
+			}
+		}
+		if focused > 1 {
+			return fmt.Errorf("scene %d: one focal action at a time (one focus:true at most)", i+1)
+		}
+		// Every number has a source or it goes: a studio data scene names it.
+		// Older motions without a question keep playing as they did.
+		if s.Question != "" && hasData(sc) && sc.Caption == "" && len(s.Sources) == 0 {
+			return fmt.Errorf("scene %d: it shows numbers, so it needs a caption with the source (or spec sources)", i+1)
 		}
 	}
 	if total > MaxDuration {
@@ -153,13 +247,50 @@ func (s *Spec) Check() error {
 	return nil
 }
 
+// hasData reports whether a scene shows numbers that need a source.
+func hasData(sc *Scene) bool {
+	for _, e := range sc.Elements {
+		switch e.Type {
+		case "number", "bars", "line", "donut", "compare", "gauge", "table":
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Element) check(sceneDur float64) error {
 	if e.Type != "title" && e.Type != "text" && e.Type != "number" && e.Type != "bars" && e.Type != "line" && e.Type != "donut" && e.Type != "list" && e.Type != "steps" && e.Type != "compare" && e.Type != "quote" && e.Type != "flow" && e.Type != "hub" && e.Type != "gauge" && e.Type != "timeline" && e.Type != "table" && e.Type != "sketch" {
 		return fmt.Errorf("type is title, text, number, bars, line, donut, list, steps, compare, quote, flow, hub, gauge, timeline, table or sketch, not %q", e.Type)
 	}
+	e.ID = strings.TrimSpace(e.ID)
+	if len(e.ID) > 32 {
+		return errors.New("id is at most 32 characters (a-z, 0-9, -)")
+	}
+	if e.ID != "" && !idRE.MatchString(e.ID) {
+		return fmt.Errorf("id is lowercase letters, numbers and -, not %q", e.ID)
+	}
 	// A prefix or suffix keeps its spacing ("KES " before, " sold" after).
 	for _, f := range []*string{&e.Text, &e.Sub, &e.Label, &e.Unit} {
 		*f = strings.TrimSpace(*f)
+	}
+	if len([]rune(e.Text)) > 220 || len([]rune(e.Sub)) > 140 || len([]rune(e.Label)) > 80 || len(e.Prefix) > 12 || len(e.Suffix) > 12 || len(e.Unit) > 12 {
+		return errors.New("a word field is too long")
+	}
+	// On-screen words are anchors, never paragraphs: at most 3 lines, each
+	// line at most 12 words. The voice line carries the sentence.
+	for _, field := range []string{e.Text, e.Sub, e.Label} {
+		if field == "" {
+			continue
+		}
+		lines := strings.Split(field, "\n")
+		if len(lines) > 3 {
+			return errors.New("on-screen text is at most 3 lines; the rest belongs in voice")
+		}
+		for _, ln := range lines {
+			if n := len(strings.Fields(ln)); n > 12 {
+				return fmt.Errorf("on-screen text is at most 12 words a line (has %d): %q", n, ln)
+			}
+		}
 	}
 	if len([]rune(e.Text)) > 220 || len([]rune(e.Sub)) > 140 || len([]rune(e.Label)) > 80 || len(e.Prefix) > 12 || len(e.Suffix) > 12 || len(e.Unit) > 12 {
 		return errors.New("a word field is too long")

@@ -114,12 +114,13 @@ func MotionOfVideo(rel string) (string, bool) {
 
 // Job is one video being made.
 type Job struct {
-	Motion string `json:"motion"`
-	State  string `json:"state"` // queued | rendering | done | failed
-	Done   int    `json:"done"`
-	Total  int    `json:"total"`
-	Error  string `json:"error,omitempty"`
-	Video  string `json:"video,omitempty"`
+	Motion   string `json:"motion"`
+	State    string `json:"state"` // queued | rendering | done | failed
+	Done     int    `json:"done"`
+	Total    int    `json:"total"`
+	Error    string `json:"error,omitempty"`
+	Video    string `json:"video,omitempty"`
+	Captions string `json:"captions,omitempty"`
 }
 
 // Exports makes videos one at a time (a Pod has one browser's worth of room)
@@ -146,13 +147,14 @@ func (x *Exports) Start(workspace, rel string, done func(j Job)) (Job, error) {
 		return out, nil
 	}
 	video := VideoPath(rel)
+	captions := CaptionsPath(rel)
 	if fi, err := os.Stat(filepath.Join(workspace, video)); err == nil && fi.Size() > 0 {
-		j := &Job{Motion: rel, State: "done", Video: video}
+		j := &Job{Motion: rel, State: "done", Video: video, Captions: captions}
 		x.jobs[rel] = j
 		x.mu.Unlock()
 		return *j, nil
 	}
-	j := &Job{Motion: rel, State: "queued", Total: int(s.Duration()*FPS + 0.5)}
+	j := &Job{Motion: rel, State: "queued", Total: int(s.Duration()*FPS + 0.5), Captions: captions}
 	x.jobs[rel] = j
 	x.mu.Unlock()
 	go func() {
@@ -164,6 +166,10 @@ func (x *Exports) Start(workspace, rel string, done func(j Job)) (Job, error) {
 		err := Render(ctx, s, filepath.Join(workspace, video), func(d, t int) {
 			x.set(rel, func(j *Job) { j.Done, j.Total = d, t })
 		})
+		// Captions ship beside the MP4 whatever the sound mux did.
+		if cerr := os.WriteFile(filepath.Join(workspace, filepath.FromSlash(captions)), []byte(FormatSRT(s.Cues())), 0o644); cerr == nil {
+			x.set(rel, func(j *Job) { j.Captions = captions })
+		}
 		x.set(rel, func(j *Job) {
 			if err != nil {
 				j.State, j.Error = "failed", err.Error()
