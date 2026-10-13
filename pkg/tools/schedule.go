@@ -64,7 +64,7 @@ MOVING a reminder: when the user says move/change/postpone/shift/delay an existi
 
 The tool will parse the natural language and create the appropriate scheduled item. It returns a human-readable confirmation. The confirmation always states the EXACT stored time including minutes — quote it back verbatim, never round it.
 
-CANCELLING: when the user says cancel/stop/remove/delete a reminder or a recurring routine, pass action="cancel" and target=<a few words describing it, or its id> ("the vitamins reminder", "my Monday brief"). It cancels exactly one item and says which; if several match it lists them and you ask which. A recurring item stops for good. No message is needed.
+CANCELLING: when the user says cancel/stop/remove/delete a reminder or a recurring routine, pass action="cancel" and target=<its exact title or its id when you have either> ("Give me a short brief of my week and the weather", "routine-e44e0ac6"); a few describing words otherwise ("the vitamins reminder"). An exact title or id always singles the item out. It cancels exactly one item and says which; if several match it lists them with their ids and you ask which, then call cancel again with the exact title or id. A recurring item stops for good. No message is needed. Never call cancel twice with the same fuzzy target: disambiguate first.
 
 CHECKING what is scheduled: pass action="list" when the user asks what's scheduled, what reminders are pending, or to check whether reminders already fired ("check my reminders", "what's on today", "did X go off"). It returns pending items plus recently completed and failed ones with exact times — one-time reminders stay visible as completed after they fire. No message is needed for a list.`
 }
@@ -93,7 +93,7 @@ func (t *ScheduleTool) Parameters() map[string]interface{} {
 			},
 			"target": map[string]interface{}{
 				"type":        "string",
-				"description": "With action=cancel or done: a few words describing the reminder or routine, or its id. Example: \"the vitamins reminder\".",
+				"description": "With action=cancel or done: the item's exact title or id when you have either (an exact title always singles it out), else a few words describing the reminder or routine. Example: \"the vitamins reminder\".",
 			},
 		},
 	}
@@ -782,12 +782,18 @@ func matchScheduleQuery(items []*scheduled.ScheduledItem, query string) *schedul
 	q := strings.ToLower(strings.TrimSpace(query))
 	var best *scheduled.ScheduledItem
 	bestScore := 0
+	var exactTitles []*scheduled.ScheduledItem
 	for _, it := range items {
 		if it == nil || it.State != scheduled.StateScheduled {
 			continue
 		}
 		if it.ID == query || strings.EqualFold(it.ID, q) {
 			return it
+		}
+		// The exact title singles it out, even when its words match more.
+		// (Shared titles fall through to scoring, as before.)
+		if strings.EqualFold(strings.TrimSpace(it.Title), strings.TrimSpace(query)) {
+			exactTitles = append(exactTitles, it)
 		}
 		haystack := strings.ToLower(strings.TrimSpace(it.Title + " " + it.Description + " " + it.Action.Content))
 		score := 0
@@ -806,8 +812,10 @@ func matchScheduleQuery(items []*scheduled.ScheduledItem, query string) *schedul
 			best = it
 		}
 	}
-	// Require real signal: a single 3-letter overlap must not cancel
-	// someone's reminder.
+	// A lone exact title decides; shared ones fall through to scoring.
+	if len(exactTitles) == 1 {
+		return exactTitles[0]
+	}
 	if bestScore < 5 {
 		return nil
 	}
@@ -919,12 +927,18 @@ func (t *ScheduleTool) cancelSchedule(target string) *ToolResult {
 		}
 		return NewToolResult(fmt.Sprintf("Cancelled %q (%s).%s", it.Title, when, note))
 	default:
-		var lines []string
-		for _, it := range matches {
-			lines = append(lines, fmt.Sprintf("- %s (%s)", it.Title, describeScheduleTime(it)))
-		}
-		return ErrorResult("More than one thing matches. I cancelled nothing. Ask the owner which:\n" + strings.Join(lines, "\n"))
+		return ErrorResult("More than one thing matches. I cancelled nothing. Ask the owner which one, then call cancel again with its exact title or its id:\n" + describeMatches(matches))
 	}
+}
+
+// describeMatches lists ambiguous items with their ids, so the next call can
+// single one out by exact title or id instead of matching fuzzily again.
+func describeMatches(matches []*scheduled.ScheduledItem) string {
+	lines := make([]string, 0, len(matches))
+	for _, it := range matches {
+		lines = append(lines, fmt.Sprintf("- %s (%s) [id: %s]", it.Title, describeScheduleTime(it), it.ID))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // reminderCloser closes a reminder the owner already took care of.
@@ -973,11 +987,7 @@ func (t *ScheduleTool) markDone(target string) *ToolResult {
 		}
 		return NewToolResult(fmt.Sprintf("Marked %q done.", it.Title))
 	default:
-		var lines []string
-		for _, it := range matches {
-			lines = append(lines, fmt.Sprintf("- %s (%s)", it.Title, describeScheduleTime(it)))
-		}
-		return ErrorResult("More than one reminder matches. I closed nothing. Ask the owner which:\n" + strings.Join(lines, "\n"))
+		return ErrorResult("More than one reminder matches. I closed nothing. Ask the owner which one, then call done again with its exact title or its id:\n" + describeMatches(matches))
 	}
 }
 
@@ -1001,12 +1011,20 @@ func scheduleMatchesIn(items []*scheduled.ScheduledItem, query string, states ..
 		score int
 	}
 	var all []scored
+	var exactTitle []*scheduled.ScheduledItem
 	for _, it := range items {
 		if it == nil || !allowed[it.State] {
 			continue
 		}
 		if it.ID == query || strings.EqualFold(it.ID, q) {
 			return []*scheduled.ScheduledItem{it}
+		}
+		// The exact title singles it out, even when its words also match
+		// something else ("weekly brief" hits two briefs; the full title
+		// names one). Two items sharing a title stay ambiguous.
+		if strings.EqualFold(strings.TrimSpace(it.Title), strings.TrimSpace(query)) {
+			exactTitle = append(exactTitle, it)
+			continue
 		}
 		haystack := strings.ToLower(strings.TrimSpace(it.Title + " " + it.Description + " " + it.Action.Content))
 		score := 0
@@ -1022,6 +1040,10 @@ func scheduleMatchesIn(items []*scheduled.ScheduledItem, query string, states ..
 		if score >= 5 {
 			all = append(all, scored{it, score})
 		}
+	}
+	// An exact title decides, even when its words also match something else.
+	if len(exactTitle) > 0 {
+		return exactTitle
 	}
 	if len(all) == 0 {
 		return nil
