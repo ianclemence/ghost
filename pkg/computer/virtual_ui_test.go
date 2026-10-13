@@ -122,3 +122,70 @@ func (v *VirtualUI) snapshotForTest() string {
 	r := v.inspect()
 	return r.Output
 }
+
+// The fixture mirrors the real executor's new surface: scroll moves
+// observably, drag dispatches with evidence, the clipboard round-trips,
+// and element refs live for exactly one screen.
+func TestVirtualUINewOpsAndRefExpiry(t *testing.T) {
+	ctx := context.Background()
+	v := NewVirtualUI("reach")
+	if _, err := v.Do(ctx, OpScroll, Args{"direction": "sideways"}); err == nil {
+		t.Fatal("bad scroll direction must fail")
+	}
+	if res, err := v.Do(ctx, OpScroll, Args{"direction": "down", "amount": "4"}); err != nil {
+		t.Fatal(err)
+	} else if res.Evidence["amount"] != "4" || res.Verified {
+		t.Fatalf("scroll evidence wrong: %+v", res.Evidence)
+	}
+	res, err := v.Do(ctx, OpInspectUI, Args{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Output, "Scrolled to (0, 4)") {
+		t.Fatalf("scroll must be observable:\n%s", res.Output)
+	}
+	if !strings.Contains(res.Output, "ref: e1") {
+		t.Fatalf("inspect must print refs:\n%s", res.Output)
+	}
+	if _, err := v.Do(ctx, OpDrag, Args{"x1": "1", "y1": "1", "x2": "2"}); err == nil {
+		t.Fatal("short drag args must fail")
+	}
+	if res, err := v.Do(ctx, OpDrag, Args{"x1": "1", "y1": "1", "x2": "9", "y2": "9"}); err != nil {
+		t.Fatal(err)
+	} else if res.Evidence["x2"] != "9" {
+		t.Fatalf("drag evidence wrong: %+v", res.Evidence)
+	}
+	if res, err := v.Do(ctx, OpClipboardSet, Args{"text": "hello clip"}); err != nil {
+		t.Fatal(err)
+	} else if res.Evidence["chars"] != "10" {
+		t.Fatalf("clipboard evidence wrong: %+v", res.Evidence)
+	}
+	if res, err := v.Do(ctx, OpClipboardGet, Args{}); err != nil || !res.Verified || res.Output != "hello clip" {
+		t.Fatalf("clipboard roundtrip wrong: %+v %v", res, err)
+	}
+	// Refs: inspect, click e1 (Settings icon), dialog opens; the twin
+	// ref-click without a fresh inspect fails closed.
+	if _, err := v.Do(ctx, OpInspectUI, Args{}); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := v.Do(ctx, OpClick, Args{"element": "e1"}); err != nil {
+		t.Fatalf("ref click failed: %v", err)
+	} else if res.Evidence["ref"] != "e1" {
+		t.Fatalf("ref click evidence wrong: %+v", res.Evidence)
+	}
+	if _, err := v.Do(ctx, OpClick, Args{"element": "e1"}); err == nil {
+		t.Fatal("post-action ref must expire")
+	}
+	// Fresh inspect shows the dialog; e2 (Save) commits through the ref.
+	if _, err := v.Do(ctx, OpInspectUI, Args{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := v.Do(ctx, OpClick, Args{"element": "e2"}); err != nil {
+		t.Fatalf("dialog ref click failed: %v", err)
+	}
+	if res, err := v.Do(ctx, OpInspectUI, Args{}); err != nil {
+		t.Fatal(err)
+	} else if !strings.Contains(res.Output, "Display name saved as") {
+		t.Fatalf("ref-driven flow must complete:\n%s", res.Output)
+	}
+}

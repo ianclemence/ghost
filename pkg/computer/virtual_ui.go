@@ -42,6 +42,12 @@ type VirtualUI struct {
 	displayName  string
 	fieldFocused bool
 	statusNote   string // transient human-readable state ("saved"/"cancelled")
+	clipboard    string // fixture clipboard buffer
+	scrollX      int    // fixture scroll offsets (observable via inspect text)
+	scrollY      int
+	// refs mirrors the real executor: inspect retains element refs, any
+	// mutating action expires them.
+	refs refRetainer
 }
 
 // NewVirtualUI creates a fresh deterministic fixture with a default display
@@ -56,7 +62,7 @@ func (v *VirtualUI) DisplayName() string  { return "Ghost settings fixture" }
 
 // SupportedOps lists the deterministic operations the fixture performs.
 func (v *VirtualUI) SupportedOps() []Op {
-	return []Op{OpScreenshot, OpInspectUI, OpClick, OpType, OpPressKey}
+	return []Op{OpScreenshot, OpInspectUI, OpClick, OpType, OpPressKey, OpScroll, OpDrag, OpClipboardGet, OpClipboardSet}
 }
 
 // screen layout used by the fixture (window contents live on a 1280x800
@@ -91,6 +97,26 @@ func (v *VirtualUI) Do(ctx context.Context, op Op, args Args) (Result, error) {
 		return res, nil
 	case OpPressKey:
 		res, err := v.key(args)
+		if err != nil {
+			return Result{}, err
+		}
+		return res, nil
+	case OpScroll:
+		res, err := v.scroll(args)
+		if err != nil {
+			return Result{}, err
+		}
+		return res, nil
+	case OpDrag:
+		res, err := v.drag(args)
+		if err != nil {
+			return Result{}, err
+		}
+		return res, nil
+	case OpClipboardGet:
+		return v.clipboardGet(), nil
+	case OpClipboardSet:
+		res, err := v.clipboardSet(args)
 		if err != nil {
 			return Result{}, err
 		}
@@ -163,6 +189,9 @@ func (v *VirtualUI) snapshot() UISnapshot {
 		if v.statusNote != "" {
 			text += " " + v.statusNote + "."
 		}
+		if v.scrollX != 0 || v.scrollY != 0 {
+			text += fmt.Sprintf(" Scrolled to (%d, %d).", v.scrollX, v.scrollY)
+		}
 		return UISnapshot{
 			WindowTitle:  title,
 			VisibleText:  text,
@@ -195,11 +224,12 @@ func (v *VirtualUI) inspect() Result {
 	defer v.mu.Unlock()
 	s := v.snapshot()
 	title := s.WindowTitle
+	epoch := v.refs.retain(title, s.Elements)
 	return Result{
 		Output:   FormatUISnapshot(s),
 		Verified: true, // the fixture deterministically read its own UI
 		Evidence: map[string]string{"op": "inspect_ui", "window": title,
-			"elements": fmt.Sprintf("%d", len(s.Elements))},
+			"elements": fmt.Sprintf("%d", len(s.Elements)), "epoch": fmt.Sprintf("%d", epoch)},
 	}
 }
 
@@ -219,10 +249,25 @@ func hitTest(x, y int) string {
 }
 
 func (v *VirtualUI) click(args Args) (Result, error) {
-	x, err1 := atoi(args["x"])
-	y, err2 := atoi(args["y"])
-	if err1 != nil || err2 != nil {
-		return Result{}, fmt.Errorf("click requires integer x,y coordinates")
+	x, y := 0, 0
+	ref := strings.TrimSpace(args["element"])
+	ev := map[string]string{"op": "click"}
+	if ref != "" {
+		e, epoch, err := v.refs.resolve(ref)
+		if err != nil {
+			return Result{}, err
+		}
+		x, y = e.X, e.Y
+		ev["ref"] = ref
+		ev["epoch"] = fmt.Sprintf("%d", epoch)
+	} else {
+		var err1, err2 error
+		x, err1 = atoi(args["x"])
+		y, err2 = atoi(args["y"])
+		if err1 != nil || err2 != nil {
+			return Result{}, fmt.Errorf("click requires integer x,y coordinates")
+		}
+		ev["x"], ev["y"] = itoa(x), itoa(y)
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -244,10 +289,13 @@ func (v *VirtualUI) click(args Args) (Result, error) {
 		v.cancelLocked()
 		effect = "cancelled"
 	}
+	// Any click may change the screen: retained element refs expire.
+	v.refs.expire()
+	ev["outcome"] = effect
 	return Result{
 		Output:   "click dispatched at (" + itoa(x) + ", " + itoa(y) + ")",
 		Verified: false,
-		Evidence: map[string]string{"op": "click", "x": itoa(x), "y": itoa(y), "outcome": effect},
+		Evidence: ev,
 	}, nil
 }
 
@@ -268,6 +316,7 @@ func (v *VirtualUI) typ(args Args) (Result, error) {
 		v.displayName = text
 		v.statusNote = ""
 	}
+	v.refs.expire()
 	return Result{
 		Output:   "typing dispatched",
 		Verified: false,
@@ -312,10 +361,95 @@ func (v *VirtualUI) key(args Args) (Result, error) {
 		key == "F7", key == "F8", key == "F9", key == "F10", key == "F11", key == "F12":
 		outcome = "no_visible_effect"
 	}
+	v.refs.expire()
 	return Result{
 		Output:   "key dispatched",
 		Verified: false,
 		Evidence: map[string]string{"op": "press_key", "key": key, "outcome": outcome},
+	}, nil
+}
+
+func (v *VirtualUI) scroll(args Args) (Result, error) {
+	button, ok := scrollButtons[strings.ToLower(strings.TrimSpace(args["direction"]))]
+	if !ok || button == "" {
+		return Result{}, fmt.Errorf("scroll direction is up, down, left or right")
+	}
+	amount := 1
+	if raw := strings.TrimSpace(args["amount"]); raw != "" {
+		n, err := atoi(raw)
+		if err != nil || n < 1 || n > maxScrollKey {
+			return Result{}, fmt.Errorf("scroll amount is 1..%d", maxScrollKey)
+		}
+		amount = n
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	switch strings.ToLower(strings.TrimSpace(args["direction"])) {
+	case "up":
+		v.scrollY -= amount
+	case "down":
+		v.scrollY += amount
+	case "left":
+		v.scrollX -= amount
+	case "right":
+		v.scrollX += amount
+	}
+	v.refs.expire()
+	return Result{
+		Output:   "scroll dispatched",
+		Verified: false,
+		Evidence: map[string]string{"op": "scroll", "direction": strings.ToLower(strings.TrimSpace(args["direction"])),
+			"amount": itoa(amount), "outcome": "dispatched"},
+	}, nil
+}
+
+func (v *VirtualUI) drag(args Args) (Result, error) {
+	coords := make([]int, 4)
+	for i, k := range []string{"x1", "y1", "x2", "y2"} {
+		n, err := atoi(args[k])
+		if err != nil || n < 0 || n > maxCoord {
+			return Result{}, fmt.Errorf("drag requires integer %s within 0..%d", k, maxCoord)
+		}
+		coords[i] = n
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.refs.expire()
+	return Result{
+		Output:   "drag dispatched",
+		Verified: false,
+		Evidence: map[string]string{"op": "drag",
+			"x1": itoa(coords[0]), "y1": itoa(coords[1]),
+			"x2": itoa(coords[2]), "y2": itoa(coords[3]), "outcome": "dispatched"},
+	}, nil
+}
+
+func (v *VirtualUI) clipboardGet() Result {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return Result{
+		Output:   v.clipboard,
+		Verified: true, // observed: the fixture's own buffer was read
+		Evidence: map[string]string{"op": "clipboard_get", "chars": itoa(len(v.clipboard))},
+	}
+}
+
+func (v *VirtualUI) clipboardSet(args Args) (Result, error) {
+	text := args["text"]
+	if text == "" {
+		return Result{}, fmt.Errorf("clipboard_set requires text")
+	}
+	if len(text) > maxTypeLen {
+		return Result{}, fmt.Errorf("clipboard text exceeds %d characters", maxTypeLen)
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.clipboard = text
+	v.refs.expire()
+	return Result{
+		Output:   "clipboard dispatched",
+		Verified: false,
+		Evidence: map[string]string{"op": "clipboard_set", "chars": itoa(len(text)), "outcome": "dispatched"},
 	}, nil
 }
 

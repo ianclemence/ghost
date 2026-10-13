@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.180] - 2026-10-13
+
+- **The computer reaches further.** Screenshots now enter the model's
+  view, so clicks ground to what it actually sees. Scroll, drag and the
+  clipboard are real operations under the same broker, lease and evidence
+  rules. Inspect names elements with refs that live for exactly one
+  screen, and where AT-SPI answers the snapshot carries real elements
+  instead of just a window title.
+
 ## [0.24.179] - 2026-10-13
 
 - **Memory learns budgets, gating and locking.** Recalled context is now
