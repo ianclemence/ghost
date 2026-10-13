@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -23,6 +24,12 @@ type ToolRegistry struct {
 	hiddenTools       map[string]time.Time
 	channelToolPolicy map[string]map[string]bool
 	sessionToolPolicy map[string]map[string]bool
+	// invalidRepeats counts consecutive identical argument-validation
+	// failures per session+tool. Validation is deterministic: the same call
+	// can never succeed on retry, so at the threshold the error tells the
+	// model to reshape the call instead of burning the turn. Any different
+	// call — invalid or valid — restarts the count.
+	invalidRepeats map[string]invalidRepeat
 	// verifySink observes world-state verification outcomes (tool name,
 	// latency, verification error or nil). The context carries the calling
 	// session and trajectory for correlation. Set by the agent runtime;
@@ -41,6 +48,7 @@ func NewToolRegistry() *ToolRegistry {
 		hiddenTools:       make(map[string]time.Time),
 		channelToolPolicy: make(map[string]map[string]bool),
 		sessionToolPolicy: make(map[string]map[string]bool),
+		invalidRepeats:    make(map[string]invalidRepeat),
 		bg:                NewBackgroundLog(),
 	}
 }
@@ -52,6 +60,71 @@ func backgroundLabel(args map[string]interface{}) string {
 		return strings.TrimSpace(label)
 	}
 	return ""
+}
+
+// invalidRepeatThreshold is how many consecutive identical validation
+// failures it takes before the error tells the model to reshape the call
+// instead of retrying it: the first two errors already name what's wrong,
+// the third must break the loop.
+const invalidRepeatThreshold = 3
+
+// maxInvalidRepeatKeys bounds the repeat table over a long-lived daemon.
+const maxInvalidRepeatKeys = 1000
+
+// invalidRepeat is one call failing validation over and over: the hash of
+// the exact arguments and how many consecutive failures they have.
+type invalidRepeat struct {
+	args string
+	n    int
+}
+
+// unwrapRawEnvelope recovers a call whose every property was serialized as
+// one JSON string under a single "raw" key. It applies only when the args
+// hold nothing but that string, the string parses to a JSON object, and
+// the tool's schema defines no raw property of its own — so a tool that
+// legitimately takes raw input is never rewritten.
+func unwrapRawEnvelope(args map[string]interface{}, schema *jsonschema.Schema, hasSchema bool) map[string]interface{} {
+	if len(args) != 1 {
+		return args
+	}
+	raw, ok := args["raw"].(string)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return args
+	}
+	if hasSchema && schema != nil {
+		if props, ok := schema.Properties["raw"]; ok && props != nil {
+			return args
+		}
+	}
+	var inner map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &inner); err != nil || len(inner) == 0 {
+		return args
+	}
+	return inner
+}
+
+func (r *ToolRegistry) countInvalidRepeat(scope, argsHash string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.invalidRepeats == nil {
+		r.invalidRepeats = make(map[string]invalidRepeat)
+	}
+	if len(r.invalidRepeats) >= maxInvalidRepeatKeys {
+		r.invalidRepeats = make(map[string]invalidRepeat)
+	}
+	cur := r.invalidRepeats[scope]
+	if cur.args != argsHash {
+		cur = invalidRepeat{args: argsHash}
+	}
+	cur.n++
+	r.invalidRepeats[scope] = cur
+	return cur.n
+}
+
+func (r *ToolRegistry) clearInvalidRepeat(scope string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.invalidRepeats, scope)
 }
 
 // BackgroundRunning returns the session's in-flight detached executions.
@@ -316,12 +389,28 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	schema, hasSchema := r.schemas[name]
 	r.mu.RUnlock()
 
+	// A model sometimes wraps every documented property in one JSON string
+	// under a single "raw" key (seen: a whole canvas as one string, failing
+	// "missing properties: title" six times in a row). No tool defines a
+	// raw property, so unwrap that envelope before validating: the fields
+	// inside are what was meant.
+	args = unwrapRawEnvelope(args, schema, hasSchema)
+
+	// The repeat scope is the session+tool; the hash tells identical calls
+	// from merely similar ones. Any different call — valid or not —
+	// restarts the count, so only a true unchanged retry trips the nudge.
+	repeatScope := sessionKey + "\x00" + name
+	b, _ := json.Marshal(args) // maps marshal with sorted keys: canonical
+	argsHash := fmt.Sprintf("%x", sha256.Sum256(b))
+
 	if hasSchema {
 		if err := schema.Validate(args); err != nil {
+			n := r.countInvalidRepeat(repeatScope, argsHash)
 			logger.WarnCF("tool", "Tool argument validation failed", map[string]interface{}{
-				"tool":  name,
-				"args":  redact.Any(args),
-				"error": err.Error(),
+				"tool":    name,
+				"args":    redact.Any(args),
+				"error":   err.Error(),
+				"repeats": n,
 			})
 
 			var errMsg string
@@ -330,10 +419,16 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 			} else {
 				errMsg = fmt.Sprintf("Invalid arguments for tool %q: %v", name, err)
 			}
+			if n >= invalidRepeatThreshold {
+				errMsg += fmt.Sprintf("\nThis identical call has now failed validation %d times in a row. Do not send it again unchanged: pass each documented property at the top level of the arguments object (never nested inside a single string), then call once.", n)
+			}
 
 			return ErrorResult(errMsg).WithError(err)
 		}
 	}
+	// Validated (or nothing to validate against): no identical-failure
+	// streak survives a call that got through.
+	r.clearInvalidRepeat(repeatScope)
 
 	// If tool implements ContextualTool, set context
 	if contextualTool, ok := tool.(ContextualTool); ok && channel != "" && chatID != "" {

@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.178] - 2026-10-13
+
+- **Ghost recovers when a tool call is shaped wrong.** A page build failed
+  six times in a row because every property arrived nested in one JSON
+  string instead of at the top level. The registry now unwraps that
+  envelope, the third identical validation failure tells Ghost to reshape
+  the call instead of retrying, and the canvas brief shows the exact call
+  shape.
+
 ## [0.24.177] - 2026-10-13
 
 - **Captions are opt-in.** Motion videos now render a clean picture
