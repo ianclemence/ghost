@@ -62,7 +62,10 @@ func TestCancelMatchesOneItemAndNeverGuesses(t *testing.T) {
 		t.Fatalf("nothing matches: %+v", m)
 	}
 	twin := append(items, item("e", "Call Amara about the flights"))
-	if m := scheduleMatches(twin, "call Amara"); len(m) < 2 {
+	if m := scheduleMatches(twin, "Call Amara"); len(m) != 1 || m[0].ID != "d" {
+		t.Fatalf("an exact title singles it out, even when its words match more: %+v", m)
+	}
+	if m := scheduleMatches(twin, "call Amara reminder"); len(m) < 2 {
 		t.Fatalf("two close matches must both come back so the owner can choose: %+v", m)
 	}
 	// A cancelled or finished item is never offered.

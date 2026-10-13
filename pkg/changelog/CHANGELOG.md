@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.176] - 2026-10-13
+
+- **Cancelling by exact name works.** "Cancel the weekly brief" used to
+  match both the daily Morning brief and the weekly one and cancel
+  neither — even the exact full title matched both, so approving again
+  never helped. An exact title now singles its item out, and when several
+  do match the list carries each item's id so the retry passes the id and
+  succeeds instead of looping on approvals.
+
 ## [0.24.175] - 2026-10-12
 
 - **Motions become a studio, not a slideshow.** Every motion can now carry
