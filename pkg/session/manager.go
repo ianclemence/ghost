@@ -204,15 +204,24 @@ func (sm *SessionManager) GetContext(ctx context.Context, userQuery string, scop
 		return ""
 	}
 
-	// Context budget: the retrieved items are already ranked; keep only what
-	// fits the memory-context budget so a long tail of weak matches cannot
-	// crowd out the model's actual task.
-	items := make([]string, 0, len(results))
+	// Context budget, cut per provenance layer: the retrieved items are
+	// already ranked; canonical facts fit first and a long tail of weak or
+	// untrusted matches cannot crowd them out. Layers never borrow, so the
+	// whole still fits the single memory-context budget.
+	var canonical, trusted, other []string
 	now := time.Now()
 	for _, r := range results {
-		items = append(items, "- "+r.Content+" ("+memoryProvenance(r, now)+")")
+		line := "- " + r.Content + " (" + memoryProvenance(r, now) + ")"
+		switch retrieval.TierOf(r.Trust) {
+		case "canonical":
+			canonical = append(canonical, line)
+		case "trusted":
+			trusted = append(trusted, line)
+		default:
+			other = append(other, line)
+		}
 	}
-	items = retrieval.DefaultBudget().Fit(items)
+	items := retrieval.DefaultLayerBudgets().FitLayers(canonical, trusted, other)
 	if len(items) == 0 {
 		return ""
 	}

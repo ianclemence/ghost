@@ -57,6 +57,10 @@ type SearchResult struct {
 	Score     float32   `json:"score"`
 	Source    string    `json:"source"`
 	CreatedAt time.Time `json:"created_at"`
+	// Trust is the provenance tier (canonical, observed, inferred,
+	// untrusted, unknown): layer budgets are cut on it, so it travels
+	// with the result instead of being re-derived downstream.
+	Trust string `json:"trust"`
 }
 
 func NewStore(database *db.DB, provider providers.EmbeddingProvider, cfg config.RAGConfig) *Store {
@@ -544,6 +548,7 @@ func (s *Store) RetrieveScoped(ctx context.Context, query string, limit int, sco
 			Score:     idToScore[id],
 			Source:    source,
 			CreatedAt: createdAt,
+			Trust:     trustForSource(source),
 		})
 	}
 

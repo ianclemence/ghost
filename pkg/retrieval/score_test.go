@@ -1,6 +1,7 @@
 package retrieval
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -91,5 +92,63 @@ func TestLexicalOverlap(t *testing.T) {
 	}
 	if lexicalOverlap("", "anything") != 0 {
 		t.Fatal("empty query has no terms")
+	}
+}
+
+// Layer budgets keep provenance tiers from crowding each other out: a long
+// tail of weak matches must never starve user-stated facts, and spare
+// canonical space must not invite weaker material in.
+func TestLayerBudgetsNeverBorrow(t *testing.T) {
+	b := LayerBudgets{Canonical: 10, Trusted: 10, Other: 10}
+	mk := func(prefix string, n int) []string {
+		out := make([]string, n)
+		for i := range out {
+			out[i] = strings.Repeat(prefix, 4) // 8 runes = ~2 tokens; 20 items overflow a 10-token layer
+		}
+		return out
+	}
+	// Each item is ~2 tokens; 20 canonical items overflow 10 tokens alone.
+	got := b.FitLayers(mk("cc", 20), mk("tt", 20), mk("oo", 20))
+	nCanon, nTrusted, nOther := 0, 0, 0
+	for _, g := range got {
+		switch g[:2] {
+		case "cc":
+			nCanon++
+		case "tt":
+			nTrusted++
+		case "oo":
+			nOther++
+		}
+	}
+	if nCanon != 5 || nTrusted != 5 || nOther != 5 {
+		t.Fatalf("layers borrowed: canonical=%d trusted=%d other=%d, want 5/5/5", nCanon, nTrusted, nOther)
+	}
+	// Order is canonical first even when every layer is full.
+	if got[0][:2] != "cc" || got[len(got)-1][:2] != "oo" {
+		t.Fatal("layers must emit canonical-first")
+	}
+	// An empty canonical layer does not hand its space down.
+	got = b.FitLayers(nil, mk("tt", 20), mk("oo", 20))
+	for _, g := range got {
+		if g[:2] == "cc" {
+			t.Fatal("no canonical items exist")
+		}
+	}
+	if len(got) != 10 {
+		t.Fatalf("trusted+other must still cap at their own budgets, got %d items", len(got))
+	}
+	if tot := DefaultLayerBudgets().Total(); tot != 2000 {
+		t.Fatalf("layer total = %d, want the 2000-token memory context", tot)
+	}
+}
+
+func TestTierOfSplitsTrust(t *testing.T) {
+	for trust, want := range map[string]string{
+		"canonical": "canonical", "observed": "trusted", "unknown": "trusted",
+		"inferred": "other", "untrusted": "other",
+	} {
+		if TierOf(trust) != want {
+			t.Errorf("TierOf(%q) = %q, want %q", trust, TierOf(trust), want)
+		}
 	}
 }

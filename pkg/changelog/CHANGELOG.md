@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.179] - 2026-10-13
+
+- **Memory learns budgets, gating and locking.** Recalled context is now
+  cut per provenance layer, so user-stated facts keep their share no
+  matter how long the tail of weak matches grows. Chitchat ("thanks",
+  "hey", "ok") queues zero extraction work instead of two model calls.
+  Curated writes take an optimistic lock: a stale replace or remove fails
+  with the current state rather than clobbering another turn's write.
+
 ## [0.24.178] - 2026-10-13
 
 - **Ghost recovers when a tool call is shaped wrong.** A page build failed

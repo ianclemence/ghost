@@ -64,3 +64,26 @@ func TestMemoryGateIsNotFooledByShortTalk(t *testing.T) {
 		}
 	}
 }
+
+// Deferred extraction costs up to two model calls per queued message.
+// Chitchat carries nothing durable, so it must queue nothing — while
+// anything that could hold a fact, decision or commitment still queues.
+func TestExtractionWorthwhile(t *testing.T) {
+	for _, q := range []string{"", "hey", "thanks!", "ok", "yes", "good morning", "got it", "cancel"} {
+		if extractionWorthwhile(q) {
+			t.Errorf("extractionWorthwhile(%q) = true; chitchat must queue zero work", q)
+		}
+	}
+	for _, q := range []string{
+		"remind me Friday to call the bank",
+		"we decided the deposit is 5000",
+		"my wifi password is hunter2",
+		"thanks, and remind me Friday",
+		"cancel the weekly brief",
+		"what did we discuss last week?",
+	} {
+		if !extractionWorthwhile(q) {
+			t.Errorf("extractionWorthwhile(%q) = false; this may carry durable state", q)
+		}
+	}
+}

@@ -81,6 +81,21 @@ var (
 		`)[\s!.,]*$`)
 )
 
+// extractionWorthwhile reports whether a user message can carry anything
+// worth model-backed extraction. Deferred extraction costs up to two
+// 15-second model calls per message; greetings, thanks and bare
+// acknowledgements carry no durable fact, commitment or correction, so
+// chitchat yields zero queued work. Anything else — including actions,
+// which feed commitment extraction — still queues. The match is a full
+// string, so "thanks, and remind me Friday" still extracts.
+func extractionWorthwhile(message string) bool {
+	q := strings.ToLower(strings.TrimSpace(message))
+	if q == "" {
+		return false
+	}
+	return !trivialRE.MatchString(q)
+}
+
 // memoryRetrievalNeeded reports whether a turn should pay for a semantic
 // memory lookup before answering.
 //
