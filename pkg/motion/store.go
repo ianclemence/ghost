@@ -148,6 +148,9 @@ func (x *Exports) Start(workspace, rel string, done func(j Job)) (Job, error) {
 	}
 	video := VideoPath(rel)
 	captions := CaptionsPath(rel)
+	if !s.CaptionsOn() {
+		captions = ""
+	}
 	if fi, err := os.Stat(filepath.Join(workspace, video)); err == nil && fi.Size() > 0 {
 		j := &Job{Motion: rel, State: "done", Video: video, Captions: captions}
 		x.jobs[rel] = j
@@ -166,9 +169,12 @@ func (x *Exports) Start(workspace, rel string, done func(j Job)) (Job, error) {
 		err := Render(ctx, s, filepath.Join(workspace, video), func(d, t int) {
 			x.set(rel, func(j *Job) { j.Done, j.Total = d, t })
 		})
-		// Captions ship beside the MP4 whatever the sound mux did.
-		if cerr := os.WriteFile(filepath.Join(workspace, filepath.FromSlash(captions)), []byte(FormatSRT(s.Cues())), 0o644); cerr == nil {
-			x.set(rel, func(j *Job) { j.Captions = captions })
+		// Captions ship beside the MP4 whatever the sound mux did — but only
+		// when the owner asked for them.
+		if s.CaptionsOn() {
+			if cerr := os.WriteFile(filepath.Join(workspace, filepath.FromSlash(captions)), []byte(FormatSRT(s.Cues())), 0o644); cerr == nil {
+				x.set(rel, func(j *Job) { j.Captions = captions })
+			}
 		}
 		x.set(rel, func(j *Job) {
 			if err != nil {

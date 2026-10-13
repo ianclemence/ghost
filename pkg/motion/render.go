@@ -120,7 +120,13 @@ func Render(ctx context.Context, s Spec, out string, progress Progress) error {
 		return err
 	}
 	// Companions live beside the MP4 and never fail the export on their own.
-	_ = os.WriteFile(strings.TrimSuffix(out, ".mp4")+".srt", []byte(FormatSRT(s.Cues())), 0o644)
+	// The .srt ships only when the owner asked for captions; the bed muxes
+	// regardless (it carries no words).
+	if s.CaptionsOn() {
+		_ = os.WriteFile(strings.TrimSuffix(out, ".mp4")+".srt", []byte(FormatSRT(s.Cues())), 0o644)
+	} else {
+		_ = os.Remove(strings.TrimSuffix(out, ".mp4") + ".srt")
+	}
 	muxBed(ctx, ffmpeg, s, out)
 	return nil
 }

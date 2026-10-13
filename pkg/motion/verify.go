@@ -31,37 +31,47 @@ func (s Spec) Verify() Verification {
 	}
 
 	// 2. A still at every beat reads at 390 px: cues short, on-screen short.
-	cues := s.Cues()
-	if len(cues) == len(s.Scenes) {
-		pass(fmt.Sprintf("a cue at every beat (%d/%d)", len(cues), len(s.Scenes)))
+	// Only when the owner asked for captions; a clean picture has no cues.
+	if !s.CaptionsOn() {
+		pass("captions off: a clean picture, nothing to read")
 	} else {
-		fail(fmt.Sprintf("a cue at every beat (%d cues for %d scenes)", len(cues), len(s.Scenes)))
-	}
-	long := 0
-	for _, c := range cues {
-		for _, ln := range strings.Split(c.Text, "\n") {
-			if len([]rune(ln)) > 48 {
-				long++
+		cues := s.Cues()
+		if len(cues) == len(s.Scenes) {
+			pass(fmt.Sprintf("a cue at every beat (%d/%d)", len(cues), len(s.Scenes)))
+		} else {
+			fail(fmt.Sprintf("a cue at every beat (%d cues for %d scenes)", len(cues), len(s.Scenes)))
+		}
+		long := 0
+		for _, c := range cues {
+			for _, ln := range strings.Split(c.Text, "\n") {
+				if len([]rune(ln)) > 48 {
+					long++
+				}
 			}
 		}
-	}
-	if long == 0 {
-		pass("read every line at 390 px wide")
-	} else {
-		fail(fmt.Sprintf("read every line at 390 px wide (%d long lines)", long))
-	}
-
-	// 3. Muted and audio-only: voice or caption carries each beat.
-	covered := 0
-	for _, sc := range s.Scenes {
-		if strings.TrimSpace(sc.Voice) != "" || strings.TrimSpace(sc.Caption) != "" || strings.TrimSpace(firstWords(sc)) != "" {
-			covered++
+		if long == 0 {
+			pass("read every line at 390 px wide")
+		} else {
+			fail(fmt.Sprintf("read every line at 390 px wide (%d long lines)", long))
 		}
 	}
-	if covered == len(s.Scenes) {
-		pass("watch it muted, then listen audio-only: same ideas")
+
+	// 3. Muted and audio-only: voice or caption carries each beat — again,
+	// only when captions were asked for.
+	covered := 0
+	if !s.CaptionsOn() {
+		pass("captions off: muted parity skipped with them")
 	} else {
-		fail("watch it muted, then listen audio-only: same ideas")
+		for _, sc := range s.Scenes {
+			if strings.TrimSpace(sc.Voice) != "" || strings.TrimSpace(sc.Caption) != "" || strings.TrimSpace(firstWords(sc)) != "" {
+				covered++
+			}
+		}
+		if covered == len(s.Scenes) {
+			pass("watch it muted, then listen audio-only: same ideas")
+		} else {
+			fail("watch it muted, then listen audio-only: same ideas")
+		}
 	}
 
 	// 4. Sources: every data beat names one in studio mode.

@@ -42,7 +42,9 @@ func (t *MotionTool) OnVideo(fn func(ctx context.Context, title string, j motion
 func (t *MotionTool) Name() string { return "motion" }
 
 func (t *MotionTool) Description() string {
-	return `Make a short animated explainer (a motion) from a report, numbers, a chart or a walkthrough, for the owner to watch, change and export as an MP4 video with sound and captions. It is written as scenes, not filmed: no video model, every word, number and timing can be changed. Use it when they ask to animate something, make a video or explainer of their data, a short clip for a presentation or social media, or to explain steps visually. Use real numbers only (from what they gave you, a file, their finances, a dashboard query); never invent data. Every number has a source or it goes.
+	return `Make a short animated explainer (a motion) from a report, numbers, a chart or a walkthrough, for the owner to watch, change and export as an MP4 video with sound. It is written as scenes, not filmed: no video model, every word, number and timing can be changed. Use it when they ask to animate something, make a video or explainer of their data, a short clip for a presentation or social media, or to explain steps visually. Use real numbers only (from what they gave you, a file, their finances, a dashboard query); never invent data. Every number has a source or it goes.
+
+Captions are opt-in: a clean picture unless the owner asks for captions or subtitles. Only then set spec captions to "on" (voice/source line burns on screen and a .srt ships beside the MP4). Never turn captions on unasked.
 
 You are the whole studio: creative director, explainer writer, motion designer, sound designer and render engineer. When the brief is thin, make the call and say what you assumed in one sentence; keep moving.
 
@@ -77,11 +79,11 @@ Copy:
 - Never put the full voice line on screen. Every data scene carries a caption with its source.
 
 Sound and access:
-- Every scene has a voice line if anything is spoken; captions are burned and shipped as .srt; the video muxes a soft procedural bed with ticks only where the scene names a sound.
+- Every scene may carry a voice line for when captions are on; with captions on they burn on screen and ship as .srt, and the video muxes a soft procedural bed with ticks only where the scene names a sound. With captions off the picture stays clean (the bed still muxes; it carries no words).
 - Keep contrast high, never colour-only (the lead bar/step is also labelled/lit in text), no flashes; reduced-motion (?reduced=1) keeps the same ideas with hard cuts.
 
 action:
-- make: title, spec. The spec is JSON: {"title", "size": "landscape" (16:9, default) | "portrait" (phone/story) | "square", "accent": "#RRGGBB" (one leading colour), "question"?, "audience"?, "outcome"?, "hook"?, "sources"?: ["outlet or file, date"], "scenes": [{"id"?: "q|model-1|proof-1|turn|payoff", "duration": seconds 1-20, "teaches"?: "the one thing this scene adds (required with question)", "voice"?: "spoken line, at most 48 words", "sound"?: "cue marking the key action", "check"?: "what the viewer can now say", "caption"?: "source or date at the foot (required on data scenes in studio mode)", "elements": [...]}]}. At most 12 scenes, 90 seconds in all, 6 elements a scene, one focus:true at most per scene. Elements (each may have "id" to persist across scenes, "at": seconds in when it enters, and "stay"):
+- make: title, spec. The spec is JSON: {"title", "size": "landscape" (16:9, default) | "portrait" (phone/story) | "square", "accent": "#RRGGBB" (one leading colour), "question"?, "audience"?, "outcome"?, "hook"?, "sources"?: ["outlet or file, date"], "captions"?: "on" (only when they ask for captions or subtitles; otherwise leave it out for a clean picture), "scenes": [{"id"?: "q|model-1|proof-1|turn|payoff", "duration": seconds 1-20, "teaches"?: "the one thing this scene adds (required with question)", "voice"?: "spoken line, at most 48 words", "sound"?: "cue marking the key action", "check"?: "what the viewer can now say", "caption"?: "source or date at the foot (required on data scenes in studio mode)", "elements": [...]}]}. At most 12 scenes, 90 seconds in all, 6 elements a scene, one focus:true at most per scene. Elements (each may have "id" to persist across scenes, "at": seconds in when it enters, and "stay"):
   {"type":"title","text","sub"?} · {"type":"text","text"} · {"type":"quote","text","sub"?: who}
   {"type":"number","from","to","prefix"? ("KES "),"suffix"? ("%"),"decimals"?,"label"?}: counts up
   {"type":"bars","labels":[...],"values":[...],"unit"?,"label"?}: horizontal bars growing in turn, the biggest lit
@@ -98,9 +100,9 @@ action:
   Use flow and hub for diagrams. Make it about THIS subject, never generic: pick the diagram the subject asks for (a match gets a timeline + table, a gut gets a sketch, a system gets a hub), open on the hook image, close on it re-read, and put the source on screen for researched numbers.
 - change: title, spec: the whole updated spec, saved as the next version (read it first with show).
 - show: title → the current spec, to change it.
-- verify: title → run the studio gate (deterministic frames, cue at every beat, 390 px lines, muted/audio-only parity, sources, one focus, no flashes) and report what failed.
-- captions: title → write the .srt beside the motion and say where it is.
-- export: title → makes the MP4 on the Pod (about three times its length) with bed + .srt beside it; the owner is told when it is ready, and it appears in the chat and on their shelf.
+- verify: title → run the studio gate (deterministic frames, cue at every beat and 390 px lines when captions are on, muted/audio-only parity with them, sources, one focus, no flashes) and report what failed.
+- captions: title → write the .srt beside the motion and say where it is (an explicit ask counts as opting in, even when the spec leaves captions off).
+- export: title → makes the MP4 on the Pod (about three times its length) with bed + .srt beside it only when captions are on; the owner is told when it is ready, and it appears in the chat and on their shelf.
 Do not paste the spec into your reply; say in a sentence what you made, what it teaches, and what you assumed.`
 }
 
