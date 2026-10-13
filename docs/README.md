@@ -10,9 +10,8 @@ today, and is written for engineers and architects who need to understand where
 authority lives and why the boundaries are drawn where they are. If you just want
 to use Ghost, start with [Using Ghost](GUIDE.md).
 
-It holds this README, the nine documents linked at the end (one per layer of
-the chain below), and one reference, [Markdown & diagrams](markdown.md), on how
-responses render on every surface. Beside them are the guides for the person
+It holds this README and the nine documents linked at the end (one per layer of
+the chain below). Beside them are the guides for the person
 running Ghost: [Using Ghost](GUIDE.md),
 [What a Pod needs](HARDWARE.md),
 [Your Pod, from the box to your first conversation](POD-QUICKSTART.md),
@@ -191,5 +190,3 @@ Read in order for a full picture, or jump to the layer you need.
 - [Evidence](EVIDENCE.md)
 - [Canonical Events](CANONICAL-EVENT.md)
 - [Memory, Activity, Routines & Artifacts](MEMORY-ACTIVITY-ROUTINES-ARTIFACTS.md)
-
-For how responses are rendered on every surface, see [Markdown & diagrams](markdown.md).
