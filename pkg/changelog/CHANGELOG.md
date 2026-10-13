@@ -3,6 +3,11 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.181] - 2026-10-13
+
+- **Docs tidy.** The Markdown-rendering reference is retired from the
+  docs; the index no longer links to it.
+
 ## [0.24.180] - 2026-10-13
 
 - **The computer reaches further.** Screenshots now enter the model's
