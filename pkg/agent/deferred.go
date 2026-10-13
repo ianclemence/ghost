@@ -146,6 +146,13 @@ func (al *AgentLoop) deferExtraction(session, requestID, message, channel string
 	if isMachineTurn(session) || message == "" {
 		return
 	}
+	// Workload gate: chitchat yields zero queued work. A greeting or bare
+	// acknowledgement carries no durable fact, commitment or correction,
+	// and each queued record costs up to two model calls to drain.
+	if !extractionWorthwhile(message) {
+		al.retrieval.observeSkip("extract")
+		return
+	}
 	al.deferredMu.Lock()
 	defer al.deferredMu.Unlock()
 	jobs := al.readDeferredQueue()

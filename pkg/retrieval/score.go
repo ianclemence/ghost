@@ -208,6 +208,48 @@ type Budget struct {
 	MaxTokens int
 }
 
+// LayerBudgets bounds each provenance layer separately, so a long tail of
+// weak or untrusted matches can never crowd user-stated facts out of the
+// prompt. Canonical (what the owner said) is never starved by lower layers;
+// the three layers sum to the single memory-context budget.
+type LayerBudgets struct {
+	Canonical int // user-stated facts
+	Trusted   int // observed and unknown provenance
+	Other     int // inferred and untrusted
+}
+
+// DefaultLayerBudgets splits the 2000-token memory context across layers:
+// room for the facts that matter most first, scraps for the rest.
+func DefaultLayerBudgets() LayerBudgets {
+	return LayerBudgets{Canonical: 1000, Trusted: 600, Other: 400}
+}
+
+// Total is the whole memory context the layers may occupy together.
+func (b LayerBudgets) Total() int { return b.Canonical + b.Trusted + b.Other }
+
+// TierOf maps a provenance trust label to its budget layer.
+func TierOf(trust string) string {
+	switch strings.ToLower(strings.TrimSpace(trust)) {
+	case "canonical":
+		return "canonical"
+	case "observed", "unknown", "":
+		return "trusted"
+	default:
+		return "other"
+	}
+}
+
+// FitLayers fits each already-ranked layer within its own budget and emits
+// canonical first, then trusted, then other. Layers never borrow from each
+// other: spare canonical space does not invite weaker material in.
+func (b LayerBudgets) FitLayers(canonical, trusted, other []string) []string {
+	out := make([]string, 0, len(canonical)+len(trusted)+len(other))
+	out = append(out, Budget{MaxTokens: b.Canonical}.Fit(canonical)...)
+	out = append(out, Budget{MaxTokens: b.Trusted}.Fit(trusted)...)
+	out = append(out, Budget{MaxTokens: b.Other}.Fit(other)...)
+	return out
+}
+
 // DefaultBudget is the memory-context budget: room for several recalled
 // facts plus their provenance. Ranked best-first, so extra space helps
 // strong matches and never drowns the model in weak ones.

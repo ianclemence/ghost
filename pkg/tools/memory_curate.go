@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -77,6 +78,11 @@ TWO TARGETS:
 
 ACTIONS: add (new entry), replace (update existing — old_text identifies it), remove (delete — old_text identifies it).
 
+CONCURRENCY: replace and remove accept expected_version (the version string
+from your last read). When the store changed since — another turn wrote
+first — the call fails instead of clobbering, and the error carries the
+current entries and version: read them and retry once with the new version.
+
 SKIP: trivial/obvious info, things easily re-discovered, raw data dumps, and temporary task state.
 For procedural knowledge (how to do things), use skill_manage instead.`
 }
@@ -102,6 +108,10 @@ func (t *MemoryCurateTool) Parameters() map[string]interface{} {
 			"old_text": map[string]interface{}{
 				"type":        "string",
 				"description": "Short unique substring identifying the entry to replace or remove.",
+			},
+			"expected_version": map[string]interface{}{
+				"type":        "string",
+				"description": "Optimistic lock for replace/remove: the version from your last read. Fails when the store changed since, instead of overwriting another turn's write.",
 			},
 		},
 		"required": []string{"action", "target"},
@@ -231,6 +241,49 @@ func scanMemoryContent(content string) string {
 	return ""
 }
 
+// versionOf hashes the entry list into the optimistic-locking token
+// replace and remove compare against. Any content change — add, edit,
+// delete, reorder — changes the token; the token itself reveals nothing.
+func versionOf(entries []string) string {
+	h := fnv.New64a()
+	for i, e := range entries {
+		if i > 0 {
+			_, _ = h.Write([]byte{0})
+		}
+		_, _ = h.Write([]byte(e))
+	}
+	return fmt.Sprintf("%x", h.Sum64())
+}
+
+// checkVersion enforces the optimistic lock: an expected_version from a
+// stale read fails with the current entries and version, so the caller
+// retries once against fresh state instead of clobbering a concurrent
+// write. Empty means no lock requested.
+func checkVersion(entries []string, args map[string]interface{}) *ToolResult {
+	want, _ := args["expected_version"].(string)
+	if strings.TrimSpace(want) == "" {
+		return nil
+	}
+	if versionOf(entries) == strings.TrimSpace(want) {
+		return nil
+	}
+	return versionConflict(entries)
+}
+
+// versionConflict reports a lost race: what is in the store now, and the
+// token a retry must present.
+func versionConflict(entries []string) *ToolResult {
+	result := map[string]interface{}{
+		"success": false,
+		"error": fmt.Sprintf("Memory changed since you read it (now version %s with %d entries). Read the current entries above and retry once with expected_version set to %s.",
+			versionOf(entries), len(entries), versionOf(entries)),
+		"entries": entries,
+		"version": versionOf(entries),
+	}
+	jsonResult, _ := json.Marshal(result)
+	return ErrorResult(string(jsonResult))
+}
+
 func (t *MemoryCurateTool) successResponse(target string, entries []string, message string) *ToolResult {
 	current := t.charCount(entries)
 	limit := t.charLimit(target)
@@ -244,6 +297,7 @@ func (t *MemoryCurateTool) successResponse(target string, entries []string, mess
 		"message":     message,
 		"target":      target,
 		"entries":     entries,
+		"version":     versionOf(entries),
 		"usage":       fmt.Sprintf("%d%% — %d/%d chars", pct, current, limit),
 		"entry_count": len(entries),
 	}
@@ -308,6 +362,7 @@ func (t *MemoryCurateTool) addEntry(target string, args map[string]interface{}, 
 			"error": fmt.Sprintf("Memory at %d/%d chars. Adding this entry (%d chars) would exceed the limit. Replace or remove existing entries first.",
 				current, limit, len(content)),
 			"current_entries": entries,
+			"version":         versionOf(entries),
 			"usage":           fmt.Sprintf("%d/%d", current, limit),
 		}
 		jsonResult, _ := json.Marshal(result)
@@ -330,7 +385,9 @@ func (t *MemoryCurateTool) addEntry(target string, args map[string]interface{}, 
 		"chars":  len(content),
 	})
 
-	return t.successResponse(target, entries, "Entry added.")
+	// The response describes the store after the write, so its version
+	// token is the one a follow-up replace or remove must present.
+	return t.successResponse(target, newEntries, "Entry added.")
 }
 
 func (t *MemoryCurateTool) replaceEntry(target string, args map[string]interface{}, contextID string) *ToolResult {
@@ -352,6 +409,11 @@ func (t *MemoryCurateTool) replaceEntry(target string, args map[string]interface
 	}
 
 	entries := t.readEntriesFor(target, contextID)
+
+	// Optimistic lock: a stale read fails before touching anything.
+	if conflict := checkVersion(entries, args); conflict != nil {
+		return conflict
+	}
 
 	// Find matching entry in the merged view (uniqueness across global +
 	// context), then apply per-file so files never cross-contaminate.
@@ -410,6 +472,11 @@ func (t *MemoryCurateTool) removeEntry(target string, args map[string]interface{
 	}
 
 	entries := t.readEntriesFor(target, contextID)
+
+	// Optimistic lock: a stale read fails before touching anything.
+	if conflict := checkVersion(entries, args); conflict != nil {
+		return conflict
+	}
 
 	// Find matching entry in the merged view, then remove per-file.
 	matchCount := 0
