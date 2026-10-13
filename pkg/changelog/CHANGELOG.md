@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.177] - 2026-10-13
+
+- **Captions are opt-in.** Motion videos now render a clean picture
+  unless you ask for captions or subtitles: only then does the voice line
+  burn on screen and a .srt ship beside the MP4. The studio check and the
+  phone's captions button follow the same switch.
+
 ## [0.24.176] - 2026-10-13
 
 - **Cancelling by exact name works.** "Cancel the weekly brief" used to

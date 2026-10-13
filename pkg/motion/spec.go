@@ -35,7 +35,11 @@ type Spec struct {
 	// Sources lists where every number came from (SOURCES.md lines). When a
 	// scene shows data, it must also carry a Caption naming its source.
 	Sources []string `json:"sources,omitempty"`
-	Scenes  []Scene  `json:"scenes"`
+	// Captions is "on" only when the owner asked for captions: the voice or
+	// source line burns on screen and a .srt ships beside the MP4. Anything
+	// else (including unset) means a clean picture — no burned text, no .srt.
+	Captions string `json:"captions,omitempty"`
+	Scenes   []Scene `json:"scenes"`
 }
 
 // Scene is one beat, shown for Duration seconds.
@@ -162,6 +166,11 @@ func (s *Spec) Check() error {
 	}
 	if len(s.Sources) > 12 {
 		return errors.New("at most 12 sources; one per data scene is plenty")
+	}
+	switch s.Captions {
+	case "", "on", "off":
+	default:
+		return fmt.Errorf("captions is \"on\" or \"off\", not %q", s.Captions)
 	}
 	switch s.Size {
 	case "":
@@ -396,6 +405,10 @@ func (e *Element) check(sceneDur float64) error {
 	}
 	return nil
 }
+
+// CaptionsOn reports whether the owner asked for captions: burned on
+// screen and shipped as .srt. Unset or "off" means a clean picture.
+func (s Spec) CaptionsOn() bool { return s.Captions == "on" }
 
 // Duration is the motion's length in seconds.
 func (s Spec) Duration() float64 {

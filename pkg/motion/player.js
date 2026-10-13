@@ -607,7 +607,8 @@
     var cap = s.caption ? el("div", "caption", s.caption) : null;
     if (cap) wrap.appendChild(cap);
     // Burned caption: voice first, then source caption, so muted carries it.
-    var cue = cueText(s);
+    // Only when the owner asked for captions; otherwise a clean picture.
+    var cue = spec.captions === "on" ? cueText(s) : "";
     var cueNode = null;
     if (cue && cue !== (s.caption || "")) {
       cueNode = el("div", "cue");

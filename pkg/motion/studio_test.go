@@ -45,6 +45,45 @@ func TestStudioArcIsChecked(t *testing.T) {
 	}
 }
 
+func TestCaptionsAreOptIn(t *testing.T) {
+	s, err := Parse([]byte(studio))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Default: a clean picture. The studio gates pass without any cue,
+	// and nothing about captions is required.
+	if s.CaptionsOn() {
+		t.Fatal("captions default on")
+	}
+	if v := s.Verify(); !v.OK {
+		t.Fatalf("captions-off verify failed: %v", v.Failed)
+	}
+	// Explicit off behaves the same.
+	off := s
+	off.Captions = "off"
+	if off.CaptionsOn() {
+		t.Fatal("captions off reads on")
+	}
+	if v := off.Verify(); !v.OK {
+		t.Fatalf("captions-off verify failed: %v", v.Failed)
+	}
+	// Asked for: cues gate the export again.
+	on := s
+	on.Captions = "on"
+	if !on.CaptionsOn() {
+		t.Fatal("captions on reads off")
+	}
+	if v := on.Verify(); !v.OK {
+		t.Fatalf("captions-on verify failed: %v", v.Failed)
+	}
+	// Anything else is rejected at the door.
+	bad := s
+	bad.Captions = "sometimes"
+	if err := bad.Check(); err == nil {
+		t.Fatal("accepted captions=sometimes")
+	}
+}
+
 func TestCaptionsAndVerify(t *testing.T) {
 	s, err := Parse([]byte(studio))
 	if err != nil {
