@@ -21,21 +21,24 @@ import (
 type Op string
 
 const (
-	OpObserve    Op = "observe"    // read screen state / list windows
-	OpScreenshot Op = "screenshot" // capture pixels
-	OpInspectUI  Op = "inspect_ui" // accessibility tree / interactive elements
-	OpOpenApp    Op = "open_app"   // launch an application by name
-	OpOpenURL    Op = "open_url"   // open a URL in the browser
-	OpNavigate   Op = "navigate"   // browser back/forward/goto
-	OpScroll     Op = "scroll"     // scroll a view
-	OpClick      Op = "click"      // click at a point or element
-	OpClose      Op = "close"      // close a window/tab
-	OpWait       Op = "wait"       // wait for condition or duration
-	OpType       Op = "type"       // type text (credential-adjacent: brokered)
-	OpPressKey   Op = "press_key"  // press keys (credential-adjacent: brokered)
-	OpUpload     Op = "upload"     // move bytes onto the computer
-	OpDownload   Op = "download"   // move bytes off the computer
-	OpExecute    Op = "execute"    // bounded shell execution, separately permissioned
+	OpObserve      Op = "observe"       // read screen state / list windows
+	OpScreenshot   Op = "screenshot"    // capture pixels
+	OpInspectUI    Op = "inspect_ui"    // accessibility tree / interactive elements
+	OpOpenApp      Op = "open_app"      // launch an application by name
+	OpOpenURL      Op = "open_url"      // open a URL in the browser
+	OpNavigate     Op = "navigate"      // browser back/forward/goto
+	OpScroll       Op = "scroll"        // scroll a view
+	OpClick        Op = "click"         // click at a point or element
+	OpClose        Op = "close"         // close a window/tab
+	OpWait         Op = "wait"          // wait for condition or duration
+	OpDrag         Op = "drag"          // press, move and release (move things)
+	OpClipboardGet Op = "clipboard_get" // read the clipboard (bounded, brokered)
+	OpClipboardSet Op = "clipboard_set" // write the clipboard (bounded, brokered)
+	OpType         Op = "type"          // type text (credential-adjacent: brokered)
+	OpPressKey     Op = "press_key"     // press keys (credential-adjacent: brokered)
+	OpUpload       Op = "upload"        // move bytes onto the computer
+	OpDownload     Op = "download"      // move bytes off the computer
+	OpExecute      Op = "execute"       // bounded shell execution, separately permissioned
 )
 
 // Risk maps an operation to Ghost's broker risk vocabulary
@@ -49,7 +52,7 @@ func OpRisk(op Op) string {
 		return "read_only"
 	case OpOpenApp, OpOpenURL, OpNavigate, OpScroll, OpClick, OpClose:
 		return "low_risk"
-	case OpType, OpPressKey, OpUpload, OpDownload:
+	case OpType, OpPressKey, OpUpload, OpDownload, OpDrag, OpClipboardGet, OpClipboardSet:
 		return "consequential"
 	case OpExecute:
 		return "high_impact"

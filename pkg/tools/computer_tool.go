@@ -19,8 +19,9 @@ type ComputerCall struct {
 	TaskID     string
 	SessionKey string
 	Generation string
-	// Op is the concrete computer operation word (screenshot/click/type/
-	// press_key). The tool refuses to run a different action than the one
+	// Op is the concrete computer operation word (screenshot, inspect_ui,
+	// click, type, press_key, scroll, drag, clipboard_get, clipboard_set).
+	// The tool refuses to run a different action than the one
 	// the gate authorized.
 	Op string
 	// ControlAuthority is true only when the runtime has verified the
@@ -72,11 +73,19 @@ func (t *ComputerTool) Name() string { return "computer_" + t.action }
 func (t *ComputerTool) Description() string {
 	switch t.action {
 	case "inspect_ui":
-		return "Read the current UI as a compact structured description: the focused window, visible text, and the interactive elements a user can see (role, value, enabled, click target). Observation only — never a control action."
+		return "Read the current UI as a compact structured description: the focused window, visible text, and the interactive elements a user can see, each with a ref like e3. Observation only — never a control action. Click an element by its ref while the snapshot is live; refs expire after any action."
 	case "screenshot":
-		return "Capture the current computer screen to a file and return its path. Observation only — never a control action."
+		return "Capture the current computer screen to a file and return its path. The image is also shown to the model for visual grounding. Observation only — never a control action."
 	case "click":
-		return "Click the computer at pixel coordinates (x, y). State-changing; requires authorization and control authority."
+		return "Click the computer at pixel coordinates (x, y), or name an element ref like e3 from the latest inspect_ui (preferred when the target has one; elements without a click target need coordinates from a screenshot). State-changing; requires authorization and control authority."
+	case "scroll":
+		return "Scroll the view under the pointer (or at x, y) one or more wheel clicks up, down, left or right. State-changing; requires authorization and control authority."
+	case "drag":
+		return "Press the left button at (x1, y1), move to (x2, y2) and release: move things, select text, resize. State-changing; requires authorization and control authority."
+	case "clipboard_get":
+		return "Read the computer clipboard as text (bounded). What comes back may be credentials or pasted secrets: use it for the task at hand and never repeat it. Observation of user data; requires authorization."
+	case "clipboard_set":
+		return "Write bounded text to the computer clipboard so a later paste lands it. State-changing; requires authorization and control authority."
 	case "type":
 		return "Type text into the focused field on the computer. State-changing; requires authorization and control authority."
 	case "press_key":
@@ -98,9 +107,26 @@ func (t *ComputerTool) Parameters() map[string]interface{} {
 		}
 		required = []string{"path"}
 	case "click":
-		props["x"] = map[string]interface{}{"type": "integer", "description": "X pixel coordinate"}
-		props["y"] = map[string]interface{}{"type": "integer", "description": "Y pixel coordinate"}
-		required = []string{"x", "y"}
+		props["x"] = map[string]interface{}{"type": "integer", "description": "X pixel coordinate (omit when clicking an element ref)"}
+		props["y"] = map[string]interface{}{"type": "integer", "description": "Y pixel coordinate (omit when clicking an element ref)"}
+		props["element"] = map[string]interface{}{"type": "string", "description": "Element ref like e3 from the latest inspect_ui; preferred over coordinates. Expires after any action."}
+	case "scroll":
+		props["direction"] = map[string]interface{}{"type": "string", "enum": []string{"up", "down", "left", "right"}, "description": "Wheel direction"}
+		props["amount"] = map[string]interface{}{"type": "integer", "description": "Wheel clicks, 1..100 (default 1)"}
+		props["x"] = map[string]interface{}{"type": "integer", "description": "Optional focus point: scrolls under these coordinates"}
+		props["y"] = map[string]interface{}{"type": "integer", "description": "Optional focus point: scrolls under these coordinates"}
+		required = []string{"direction"}
+	case "drag":
+		props["x1"] = map[string]interface{}{"type": "integer", "description": "Press-down X pixel coordinate"}
+		props["y1"] = map[string]interface{}{"type": "integer", "description": "Press-down Y pixel coordinate"}
+		props["x2"] = map[string]interface{}{"type": "integer", "description": "Release X pixel coordinate"}
+		props["y2"] = map[string]interface{}{"type": "integer", "description": "Release Y pixel coordinate"}
+		required = []string{"x1", "y1", "x2", "y2"}
+	case "clipboard_get":
+		// No parameters: the clipboard is read as it is.
+	case "clipboard_set":
+		props["text"] = map[string]interface{}{"type": "string", "description": "Text for the clipboard (bounded length). Evidence records the length, never the bytes."}
+		required = []string{"text"}
 	case "type":
 		props["text"] = map[string]interface{}{"type": "string", "description": "Text to type into the focused field (bounded length)."}
 		required = []string{"text"}
@@ -135,22 +161,39 @@ func (t *ComputerTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	op := computer.Op(t.action)
 	a := computer.Args{}
+	setStr := func(key string) {
+		if s, _ := args[key].(string); s != "" {
+			a[key] = s
+		}
+	}
+	setNum := func(key string) {
+		if _, ok := args[key]; ok {
+			a[key] = fmt.Sprintf("%v", args[key])
+		}
+	}
 	switch t.action {
 	case "screenshot":
-		if p, _ := args["path"].(string); p != "" {
-			a["path"] = p
-		}
+		setStr("path")
 	case "click":
-		a["x"] = fmt.Sprintf("%v", args["x"])
-		a["y"] = fmt.Sprintf("%v", args["y"])
+		setNum("x")
+		setNum("y")
+		setStr("element")
 	case "type":
-		if s, _ := args["text"].(string); s != "" {
-			a["text"] = s
-		}
+		setStr("text")
 	case "press_key":
-		if s, _ := args["key"].(string); s != "" {
-			a["key"] = s
-		}
+		setStr("key")
+	case "scroll":
+		setStr("direction")
+		setNum("amount")
+		setNum("x")
+		setNum("y")
+	case "drag":
+		setNum("x1")
+		setNum("y1")
+		setNum("x2")
+		setNum("y2")
+	case "clipboard_set":
+		setStr("text")
 	}
 	res, derr := exec.Do(ctx, op, a)
 	if derr != nil {
@@ -184,7 +227,16 @@ func (t *ComputerTool) Execute(ctx context.Context, args map[string]interface{})
 		ev.Refs = res.Evidence
 		call.OnEvidence(call.TaskID, *ev)
 	}
-	return &ToolResult{ForLLM: out, ForUser: out, Evidence: evidence}
+	tr := &ToolResult{ForLLM: out, ForUser: out, Evidence: evidence}
+	// A verified screenshot doubles as vision input: the loop attaches the
+	// image for the model, exactly like browser_screenshot. Only the path
+	// travels here; the loop reads and caps the bytes.
+	if t.action == "screenshot" && res.Verified {
+		if p, _ := res.Evidence["path"]; p != "" {
+			tr.ScreenshotPath = p
+		}
+	}
+	return tr
 }
 
 func (t *ComputerTool) executor() (computer.Computer, error) {

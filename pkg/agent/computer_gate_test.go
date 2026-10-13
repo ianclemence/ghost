@@ -288,3 +288,31 @@ func TestComputerLeaseStorePerLoop(t *testing.T) {
 		t.Fatalf("second loop must not see the first loop's lease: %v", err)
 	}
 }
+
+// The new reach operations ride the same gate: scroll asks like any
+// control op, drag and clipboard wait for the broker, and anything
+// outside the taxonomy (computer_execute) is denied outright.
+func TestComputerGateNewOpsGoverned(t *testing.T) {
+	h := newGateHarness(t)
+	al := h.loop
+	al.setTestComputer(computer.LocalComputerConfigured("local", "/bin/true", "", ":99"))
+
+	for tool, args := range map[string]map[string]interface{}{
+		"computer_scroll":        {"direction": "down", "amount": "2"},
+		"computer_drag":          {"x1": "1", "y1": "1", "x2": "2", "y2": "2"},
+		"computer_clipboard_get": {},
+		"computer_clipboard_set": {"text": "x"},
+	} {
+		d := al.authorizeComputerCall("req-"+tool, "sess-c", tool, args)
+		if d.decision == "allow" {
+			t.Fatalf("%s must not auto-allow without a grant", tool)
+		}
+		if d.pending == "" {
+			t.Fatalf("%s must leave a durable pending request or explicit denial", tool)
+		}
+	}
+	d := al.authorizeComputerCall("req-exec", "sess-c", "computer_execute", map[string]interface{}{})
+	if d.decision != "deny" {
+		t.Fatalf("computer_execute must stay denied, got %s", d.decision)
+	}
+}

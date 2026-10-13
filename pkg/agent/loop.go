@@ -1173,9 +1173,10 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// through the computer gate. Registration is unconditional; availability
 	// is reported truthfully by the executor (none/view-only/control), never
 	// by the tool pretending to work. The taxonomy stays closed: inspect_ui
-	// and screenshot are observation; click/type/press_key are control.
+	// and screenshot are observation; click/type/press_key/scroll/drag and
+	// the clipboard ops are control.
 	// There is no generic computer_exec / computer_shell surface.
-	for _, action := range []string{"inspect_ui", "screenshot", "click", "type", "press_key"} {
+	for _, action := range []string{"inspect_ui", "screenshot", "click", "type", "press_key", "scroll", "drag", "clipboard_get", "clipboard_set"} {
 		ct := tools.NewComputerTool(action)
 		ct.Exec = al.computerExecutor
 		al.RegisterTool(ct)
@@ -3709,7 +3710,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			// routing in selectModel follows the image to a vision-capable
 			// model). Not persisted — see screenshotImageMessage.
 			if tc.Name == "browser_screenshot" && toolResult != nil && toolResult.ScreenshotPath != "" {
-				if imgMsg, ok := screenshotImageMessage(toolResult.ScreenshotPath); ok {
+				if imgMsg, ok := screenshotImageMessage(toolResult.ScreenshotPath, tc.Name); ok {
 					messages = append(messages, imgMsg)
 				}
 				// When the owner asked to see the page, put the image in front
@@ -3719,6 +3720,17 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				// "Browser screenshot" cards nobody asked for.
 				if ownerAskedForPicture(opts.UserMessage) {
 					al.deliverScreenshot(opts.SessionKey, toolResult.ScreenshotPath, al.browserPageEvidence(opts.SessionKey, toolResult.Evidence))
+				}
+			}
+
+			// Computer screenshots ground the model's clicks the same way:
+			// turn-local vision, never persisted. No file delivery here —
+			// the owner already watches the computer through the Live
+			// Surface plane, and each capture is not something they asked
+			// to keep.
+			if tc.Name == "computer_screenshot" && toolResult != nil && toolResult.ScreenshotPath != "" {
+				if imgMsg, ok := screenshotImageMessage(toolResult.ScreenshotPath, tc.Name); ok {
+					messages = append(messages, imgMsg)
 				}
 			}
 

@@ -32,6 +32,7 @@ func TestOpRiskMapping(t *testing.T) {
 		OpScroll: "low_risk", OpClick: "low_risk", OpClose: "low_risk",
 		OpType: "consequential", OpPressKey: "consequential",
 		OpUpload: "consequential", OpDownload: "consequential",
+		OpDrag: "consequential", OpClipboardGet: "consequential", OpClipboardSet: "consequential",
 		OpExecute:      "high_impact",
 		Op("nonsense"): "consequential",
 	}

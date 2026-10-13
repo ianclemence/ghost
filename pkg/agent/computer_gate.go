@@ -23,16 +23,21 @@ import (
 // for state-changing operations, executes through the bounded LocalComputer
 // executor, and records evidence as a canonical event.
 //
-// The operation taxonomy is the boundary: screenshot is observation;
-// click/type/press_key are control. Unknown computer_* names are denied.
+// The operation taxonomy is the boundary: screenshot and inspect_ui are
+// observation; click/type/press_key/scroll/drag/clipboard_get/clipboard_set
+// are control. Unknown computer_* names are denied.
 
 // computerToolNames are the model-visible computer operations.
 var computerToolNames = map[string]bool{
-	"computer_inspect_ui": true,
-	"computer_screenshot": true,
-	"computer_click":      true,
-	"computer_type":       true,
-	"computer_press_key":  true,
+	"computer_inspect_ui":    true,
+	"computer_screenshot":    true,
+	"computer_click":         true,
+	"computer_type":          true,
+	"computer_press_key":     true,
+	"computer_scroll":        true,
+	"computer_drag":          true,
+	"computer_clipboard_get": true,
+	"computer_clipboard_set": true,
 }
 
 // isComputerTool reports whether a tool name is a governed computer op.
@@ -48,8 +53,10 @@ func computerOp(tool string) (string, bool) {
 
 // computerControlOp reports whether an operation changes state. Observation
 // (screenshot, inspect_ui) never confers control authority; control ops
-// (click/type/press_key) require the full authority state, broker decision,
-// and lease.
+// (click/type/press_key/scroll/drag/clipboard_get/clipboard_set) require
+// the full authority state, broker decision, and lease. Clipboard reads
+// are control: the bytes belong to the owner and leave the machine only
+// through this op, so they are brokered like any state-touching act.
 func computerControlOp(op string) bool {
 	return !computer.IsObservation(computer.Op(op))
 }
@@ -64,9 +71,9 @@ func computerRiskOf(op computer.Op) permissions.Risk {
 	switch op {
 	case computer.OpScreenshot, computer.OpInspectUI:
 		return permissions.RiskReadOnly
-	case computer.OpClick:
+	case computer.OpClick, computer.OpScroll:
 		return permissions.RiskLow
-	case computer.OpType, computer.OpPressKey:
+	case computer.OpType, computer.OpPressKey, computer.OpDrag, computer.OpClipboardGet, computer.OpClipboardSet:
 		return permissions.RiskConsequential
 	default:
 		return permissions.RiskConsequential
