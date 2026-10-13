@@ -75,7 +75,10 @@ func (t *CanvasTool) Description() string {
 		"and the title (no html), for instance to build the next version from where they got to. " +
 		"To change a canvas, call canvas again with the WHOLE updated document and the same title: it " +
 		"becomes the next version. Do not paste the HTML into your reply; say in a sentence or two what " +
-		"you made and how to use it."
+		"you made and how to use it. " +
+		"Call shape: every property sits at the top level of the arguments object, " +
+		"{\"title\": \"Click counter\", \"html\": \"<!doctype html>...\", \"summary\": \"what changed\"}. " +
+		"Never nest them inside a single string property."
 }
 
 func (t *CanvasTool) Parameters() map[string]interface{} {
