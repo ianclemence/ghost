@@ -184,6 +184,9 @@ func (al *AgentLoop) renderReminders(session string) (string, bool) {
 	}
 	ans, handled := al.execDeterministicTool("schedule", map[string]interface{}{"action": "list"}, session)
 	if handled {
+		if waiting := al.waitingOnOwner(session); len(waiting) > 0 {
+			ans += "\n\nWaiting for your approval, not set yet:\n- " + strings.Join(waiting, "\n- ")
+		}
 		ans = withNextStep(session, "reminders", ans, al.remindersOffer(time.Now()))
 	}
 	return ans, handled
