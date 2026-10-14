@@ -1418,6 +1418,7 @@ func gatewayCmd() {
 	// Sync bundled skills before starting so devices pick up new bundled
 	// skills after updates without ever stomping user edits.
 	syncEmbeddedSkills(cfg.WorkspacePath())
+	syncEmbeddedContract(cfg.WorkspacePath())
 
 	// A browser daemon orphaned by a previous run wedges every browser action
 	// until its timeout (new invocations attach to the stuck daemon). Reap
