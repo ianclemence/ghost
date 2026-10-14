@@ -69,6 +69,7 @@ func ParseRecurrence(text string, ref time.Time, timezone string) (*Recurrence, 
 	if in == "" {
 		return nil, false
 	}
+	in = neutralizeAdjectiveCadence(in)
 	mk := func(sched Schedule, cadenceSpan, phrase string, clockUsed bool, h, m int, timeSpan string) (*Recurrence, bool) {
 		spans := []string{cadenceSpan}
 		if clockUsed && timeSpan != "" {
@@ -259,4 +260,40 @@ var dayNameRE = regexp.MustCompile(`\b(monday|tuesday|wednesday|thursday|friday|
 // capitalizeDays writes weekday names the way people read them: "every Monday".
 func capitalizeDays(s string) string {
 	return dayNameRE.ReplaceAllStringFunc(s, func(d string) string { return strings.ToUpper(d[:1]) + d[1:] })
+}
+
+var bareCadenceRE = regexp.MustCompile(`(?i)\b(daily|weekly|monthly|hourly|nightly)\b(?:[ \t]+([A-Za-z']+))?`)
+
+// cadenceFollowers are the words after a bare "daily" or "monthly" that show
+// it is describing when something happens. Any other word makes it an
+// adjective on a noun ("monthly budget categories", "weekly report").
+var cadenceFollowers = map[string]bool{
+	"at": true, "on": true, "to": true, "from": true, "for": true, "and": true, "then": true,
+	"in": true, "by": true, "around": true, "before": true, "after": true, "when": true, "so": true,
+	"but": true, "or": true, "if": true, "until": true, "please": true, "i": true,
+	"give": true, "send": true, "tell": true, "remind": true, "brief": true, "email": true,
+	"text": true, "message": true, "ping": true, "check": true, "summarize": true, "show": true,
+	"read": true, "update": true, "let": true, "remember": true, "make": true, "set": true,
+	"wake": true, "notify": true, "alert": true, "nudge": true,
+	"reminder": true, "reminders": true, "routine": true, "routines": true, "alerts": true,
+	"alarm": true, "notification": true, "notifications": true, "nudges": true,
+}
+
+// neutralizeAdjectiveCadence blanks a cadence word that modifies a noun, so
+// a request for "5 monthly budget categories" is not read as a monthly
+// schedule.
+func neutralizeAdjectiveCadence(in string) string {
+	out := []byte(in)
+	for _, m := range bareCadenceRE.FindAllStringSubmatchIndex(in, -1) {
+		if m[4] < 0 {
+			continue
+		}
+		if cadenceFollowers[strings.ToLower(in[m[4]:m[5]])] {
+			continue
+		}
+		for i := m[2]; i < m[3]; i++ {
+			out[i] = '~'
+		}
+	}
+	return string(out)
 }

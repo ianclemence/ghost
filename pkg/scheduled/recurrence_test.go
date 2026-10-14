@@ -90,3 +90,27 @@ func TestRemoveSpansLeavesTheTask(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestCadenceWordOnANounIsNotASchedule(t *testing.T) {
+	ref := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	for _, text := range []string{
+		"Create a CSV of 5 monthly budget categories with amounts and tell me the total.",
+		"Summarize the weekly report",
+		"What's my daily step count?",
+	} {
+		if rec, ok := ParseRecurrence(text, ref, "UTC"); ok {
+			t.Errorf("%q was read as a schedule: %q", text, rec.Clause)
+		}
+	}
+	for _, text := range []string{
+		"Remind me monthly to pay rent",
+		"daily at 9 give me a brief",
+		"Check the weather hourly",
+		"weekly on Friday send me the totals",
+		"set up a daily reminder to stand up",
+	} {
+		if _, ok := ParseRecurrence(text, ref, "UTC"); !ok {
+			t.Errorf("%q should still be a schedule", text)
+		}
+	}
+}
