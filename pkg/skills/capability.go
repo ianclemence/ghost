@@ -128,6 +128,15 @@ func (c Capability) Allows(tool string) bool {
 	if tool == "read_file" {
 		return true
 	}
+	// Presenting results to the owner is not external-API wandering: a
+	// committed data capability must never remove the ability to show
+	// what was found. Blocking it breaks routines whose whole job is to
+	// present (seen: morning brief's present_card refused after
+	// committing to calendar.read, so the brief shipped without its card
+	// every day).
+	if tool == "present_card" {
+		return true
+	}
 	if len(c.AllowedTools) == 0 {
 		return true
 	}

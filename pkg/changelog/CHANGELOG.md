@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.183] - 2026-10-14
+
+- **The morning brief keeps its card.** Committing to a data skill
+  (calendar, weather) used to take away `present_card`, so the brief
+  arrived without the card it exists to show. Presenting results is
+  not wandering: the card stays allowed no matter which capability is
+  committed.
+
 ## [0.24.182] - 2026-10-14
 
 - **Routines gain a typed workflow engine.** A new `pkg/workflow`

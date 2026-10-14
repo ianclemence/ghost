@@ -13,6 +13,14 @@ func TestGetCapabilityGeneric(t *testing.T) {
 	if cap.Allows("web_search") || cap.Allows("list_dir") || cap.Allows("subagent") {
 		t.Fatalf("weather must block wandering tools")
 	}
+	// Presenting results is never wandering: a committed capability must
+	// not take away the card the routine exists to show.
+	if !cap.Allows("present_card") {
+		t.Fatalf("weather must allow present_card")
+	}
+	if !GetCapability("calendar").Allows("present_card") {
+		t.Fatalf("calendar must allow present_card (morning brief renders a card)")
+	}
 	if cap.MaxAttempts < 1 || cap.MaxAttempts > 3 {
 		t.Fatalf("weather MaxAttempts should be bounded, got %d", cap.MaxAttempts)
 	}
