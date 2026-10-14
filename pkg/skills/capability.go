@@ -47,8 +47,9 @@ type Capability struct {
 	Deterministic bool `json:"deterministic,omitempty"`
 }
 
-// capabilityRegistry is the code-defined default. Frontmatter `capability:`
-// blocks in SKILL.md override these when present (see LoadCapability).
+// capabilityRegistry is the code-defined default and the only live
+// mechanism: no skill currently declares a frontmatter capability block,
+// so these defaults decide every skill's contract.
 var capabilityRegistry = map[string]Capability{
 	// Provider-backed tools are the deterministic primary path; exec
 	// remains allowed so skill scripts stay usable as fallback. The
@@ -72,9 +73,9 @@ var capabilityRegistry = map[string]Capability{
 	// Declared write capabilities: narrow grant targets. Runtime gating
 	// for the calendar skill uses the read contract (same consequential
 	// risk); grants may name these IDs to scope standing permission.
-	"calendar-create": {ID: "calendar.create", Skill: "calendar", AllowedTools: []string{"read_file", "exec"}, Primary: "calendar add via exec", Fallback: "none", MaxAttempts: 1, Timeout: 15 * time.Second, Risk: "consequential"},
-	"calendar-update": {ID: "calendar.update_event", Skill: "calendar", AllowedTools: []string{"read_file", "exec"}, Primary: "calendar edit via exec", Fallback: "none", MaxAttempts: 1, Timeout: 15 * time.Second, Risk: "consequential"},
-	"calendar":        {ID: "calendar.read", Skill: "calendar", AllowedTools: []string{"read_file", "exec"}, Primary: "gcalcli agenda via exec", Fallback: "none", MaxAttempts: 1, Timeout: 15 * time.Second, Risk: "consequential"},
+	"calendar-create": {ID: "calendar.create", Skill: "calendar", AllowedTools: []string{"calendar", "read_file", "exec"}, Primary: "calendar tool (governed gcalcli)", Fallback: "gcalcli via exec", MaxAttempts: 1, Timeout: 15 * time.Second, Risk: "consequential"},
+	"calendar-update": {ID: "calendar.update_event", Skill: "calendar", AllowedTools: []string{"calendar", "read_file", "exec"}, Primary: "calendar tool (governed gcalcli)", Fallback: "gcalcli via exec", MaxAttempts: 1, Timeout: 15 * time.Second, Risk: "consequential"},
+	"calendar":        {ID: "calendar.read", Skill: "calendar", AllowedTools: []string{"calendar", "read_file", "exec"}, Primary: "calendar tool (governed gcalcli)", Fallback: "gcalcli agenda via exec", MaxAttempts: 1, Timeout: 15 * time.Second, Risk: "consequential"},
 	"shopping":        {ID: "shopping.add", Skill: "shopping", AllowedTools: []string{"read_file", "write_file", "append_file", "edit_file"}, MaxAttempts: 1, Deterministic: true, Risk: "low_risk"},
 	"reminders":       {ID: "reminder.create", Skill: "reminders", AllowedTools: []string{"read_file", "append_file", "write_file", "schedule"}, MaxAttempts: 1, Deterministic: true, Risk: "low_risk"},
 	"daily-briefing":  {ID: "briefing.daily", Skill: "daily-briefing", AllowedTools: []string{"read_file", "exec", "write_file", "append_file"}, MaxAttempts: 3, Timeout: 15 * time.Second, Risk: "low_risk"},
@@ -121,20 +122,25 @@ func HasCapability(id string) bool {
 	return false
 }
 
+// toolClasses assigns tools to an exemption class that no capability
+// commitment can remove. Classes are data, not branches: the next exempt
+// tool is one map entry here, not another if-statement in Allows.
+var toolClasses = map[string]string{
+	"read_file":    "local-read",   // a skill reading its own files
+	"present_card": "presentation", // showing results to the owner
+}
+
+// ToolClass reports the exemption class of a tool, or "" when the tool is
+// bound by the committed capability's AllowedTools.
+func ToolClass(tool string) string { return toolClasses[tool] }
+
 // Allows reports whether tool is on the capability's execution path.
-// read_file is always allowed (skill reading itself). An empty AllowedTools
-// means unrestricted.
+// Class-exempt tools (local reads, presenting results) are always allowed:
+// committing to a data capability bounds API wandering, never the ability
+// to read instructions or show what was found. An empty AllowedTools means
+// unrestricted.
 func (c Capability) Allows(tool string) bool {
-	if tool == "read_file" {
-		return true
-	}
-	// Presenting results to the owner is not external-API wandering: a
-	// committed data capability must never remove the ability to show
-	// what was found. Blocking it breaks routines whose whole job is to
-	// present (seen: morning brief's present_card refused after
-	// committing to calendar.read, so the brief shipped without its card
-	// every day).
-	if tool == "present_card" {
+	if ToolClass(tool) != "" {
 		return true
 	}
 	if len(c.AllowedTools) == 0 {

@@ -58,7 +58,6 @@ func OpenLedger(path string) (*Ledger, error) {
 	return &Ledger{db: db}, nil
 }
 
-// Close releases the DB.
 func (l *Ledger) Close() error { return l.db.Close() }
 
 // HashState redacts then hashes a state map for the trail. Secrets never

@@ -38,7 +38,7 @@ type Spec struct {
 	// Captions is "on" only when the owner asked for captions: the voice or
 	// source line burns on screen and a .srt ships beside the MP4. Anything
 	// else (including unset) means a clean picture — no burned text, no .srt.
-	Captions string `json:"captions,omitempty"`
+	Captions string  `json:"captions,omitempty"`
 	Scenes   []Scene `json:"scenes"`
 }
 
@@ -95,19 +95,19 @@ type Element struct {
 	// ID keeps an object alive across scenes: an element with the same ID in
 	// the next scene transforms instead of being replaced (a dot becomes a
 	// node, a label becomes an axis). Optional.
-	ID       string  `json:"id,omitempty"`
+	ID string `json:"id,omitempty"`
 	// Focus marks the one focal action: when set, everything else in the
 	// scene holds still and dims while this moves. At most one per scene.
-	Focus    bool    `json:"focus,omitempty"`
-	Text     string  `json:"text,omitempty"`
-	Sub      string  `json:"sub,omitempty"`
-	Label    string  `json:"label,omitempty"`
-	From     float64 `json:"from,omitempty"`
-	To       float64 `json:"to,omitempty"`
-	Prefix   string  `json:"prefix,omitempty"`
-	Suffix   string  `json:"suffix,omitempty"`
-	Decimals int     `json:"decimals,omitempty"`
-	Unit     string  `json:"unit,omitempty"`
+	Focus    bool      `json:"focus,omitempty"`
+	Text     string    `json:"text,omitempty"`
+	Sub      string    `json:"sub,omitempty"`
+	Label    string    `json:"label,omitempty"`
+	From     float64   `json:"from,omitempty"`
+	To       float64   `json:"to,omitempty"`
+	Prefix   string    `json:"prefix,omitempty"`
+	Suffix   string    `json:"suffix,omitempty"`
+	Decimals int       `json:"decimals,omitempty"`
+	Unit     string    `json:"unit,omitempty"`
 	Labels   []string  `json:"labels,omitempty"`
 	Values   []float64 `json:"values,omitempty"`
 	Items    []string  `json:"items,omitempty"`

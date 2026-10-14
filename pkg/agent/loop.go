@@ -3519,7 +3519,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					}
 					toolResultMsg := providers.Message{
 						Role:       "tool",
-						Content:    fmt.Sprintf("Capability '%s' is committed for this request. Allowed tools: %s. Use the exact command from %s/SKILL.md, not %s. If the result returns data (even short), use it directly.", cap.ID, strings.Join(cap.AllowedTools, ", "), cap.Skill, tc.Name),
+						Content:    fmt.Sprintf("Capability '%s' is committed: gather data only with %s, then answer or present what you have (presenting is always allowed). %s is outside this task — do not call it again.", cap.ID, strings.Join(cap.AllowedTools, ", "), tc.Name),
 						ToolCallID: tc.ID,
 					}
 					messages = append(messages, toolResultMsg)

@@ -257,3 +257,20 @@ func TestSetOriginIsRecorded(t *testing.T) {
 		t.Fatalf("origin not recorded: %+v", got)
 	}
 }
+
+// The origin is write-once: an identical rewrite is a no-op, a differing
+// rewrite is rejected and the recorded origin keeps its first values.
+func TestSetOriginRejectsRewrite(t *testing.T) {
+	s := newStore(t)
+	driveTurn(t, s, "main", "req-1", "what's the weather", "telegram")
+	if err := s.SetOrigin("main", "req-1", "what's the weather", "telegram", "default"); err != nil {
+		t.Fatalf("identical origin rewrite must be a no-op: %v", err)
+	}
+	if err := s.SetOrigin("main", "req-1", "different text", "web", "other"); err == nil {
+		t.Fatal("differing origin rewrite must be rejected")
+	}
+	got, _ := s.Get("main", "req-1")
+	if got.UserText != "what's the weather" || got.Channel != "telegram" {
+		t.Fatalf("rejected rewrite changed the origin: %+v", got)
+	}
+}

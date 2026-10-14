@@ -423,7 +423,6 @@ func (s *Store) ResolveByData(key, value, actionID string) []Card {
 	return done
 }
 
-// Find returns a stored card by id.
 func (s *Store) Find(channel, id string) (Card, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

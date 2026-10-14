@@ -137,7 +137,6 @@ func (s *Service) Create(ghostID, ownerID, name, instruction, timezone string, s
 	return s.Get(item.ID)
 }
 
-// Get loads the product view.
 func (s *Service) Get(id string) (*Routine, error) {
 	item, err := s.store.Get(id)
 	if err != nil {

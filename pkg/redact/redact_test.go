@@ -70,3 +70,30 @@ func TestNested(t *testing.T) {
 		t.Fatalf("nested redaction wrong: %v", m)
 	}
 }
+
+// Event/tool payloads carry receipts shaped like this (headers, echoed
+// args, free-text evidence). The publish boundary redacts them via Any;
+// this pins that the shapes crossing that boundary are actually masked.
+func TestPayloadShapes(t *testing.T) {
+	v := Any(map[string]interface{}{
+		"tool": "web_fetch",
+		"args": map[string]interface{}{"url": "https://example.com", "token": "sekret-token-value"},
+		"evidence": map[string]interface{}{
+			"text":   "page said hello",
+			"cookie": "session=abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+		},
+		"usage": map[string]interface{}{"input_tokens": 45512, "token_count": 12},
+	})
+	m := v.(map[string]interface{})
+	args := m["args"].(map[string]interface{})
+	if args["url"] != "https://example.com" {
+		t.Fatalf("innocent arg rewritten: %v", args)
+	}
+	if tok, _ := args["token"].(string); !strings.HasPrefix(tok, "«redacted") {
+		t.Fatalf("token arg not masked: %v", args)
+	}
+	usage := m["usage"].(map[string]interface{})
+	if usage["input_tokens"] != 45512 || usage["token_count"] != 12 {
+		t.Fatalf("numeric measurements must survive redaction: %v", usage)
+	}
+}

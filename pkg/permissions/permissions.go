@@ -273,15 +273,7 @@ func (b *Broker) SetMode(m Mode) {
 }
 
 // Evaluate decides ALLOW / ASK / DENY for a capability action WITHOUT
-// creating a request. Pure policy:
-//   - explicit deny grant → DENY
-//   - matching always-grant (exact scope) → ALLOW
-//   - read_only risk → ALLOW (no approval)
-//   - low_risk → ALLOW unless mode is ask? No: low-risk creation acts
-//     (reminders, drafts, saved memories) auto-allow in auto/full,
-//     ask in ask/custom. Read-only always allows.
-//   - consequential/high_impact → ASK, except full mode allows
-//     consequential (never high_impact).
+// creating a request. Policy lives in evaluatePolicy; see it for the rules.
 func (b *Broker) Evaluate(capability, action, scope string, risk Risk) Verdict {
 	b.mu.RLock()
 	mode := b.mode

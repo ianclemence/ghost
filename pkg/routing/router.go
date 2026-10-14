@@ -18,9 +18,8 @@ type Router struct {
 	classifier Classifier
 }
 
-// NewRouter creates a new Router with the given light model and threshold.
-// SetLightModel updates the light-model target. A model switch must reach the
-// router, or routing keeps choosing a model that is no longer the default.
+// SetLightModel updates the light-model target. A model switch must reach
+// the router, or routing keeps choosing a model that is no longer the default.
 func (r *Router) SetLightModel(model string) {
 	if r == nil {
 		return
@@ -40,6 +39,7 @@ func (r *Router) LightModel() string {
 	return r.lightModel
 }
 
+// NewRouter creates a Router; a non-positive threshold selects the default.
 func NewRouter(lightModel string, threshold float64) *Router {
 	if threshold <= 0 {
 		threshold = defaultThreshold

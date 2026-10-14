@@ -107,7 +107,7 @@ func TestFollowupStoreDueOnce(t *testing.T) {
 		t.Fatalf("each thread is brought up once, got %+v", again)
 	}
 	s.Close("b")
-	if len(s.Due(now.Add(72 * time.Hour))) != 0 {
+	if len(s.Due(now.Add(72*time.Hour))) != 0 {
 		t.Fatal("a closed thread never comes up")
 	}
 }

@@ -35,6 +35,41 @@ func TestGetCapabilityGeneric(t *testing.T) {
 	}
 }
 
+// HasCapability is the gate the standing-grant confirm path relies on
+// (standing_turn.go): undeclared capabilities can never be granted, so pin
+// both directions.
+func TestHasCapabilityPinsDeclared(t *testing.T) {
+	for _, id := range []string{"calendar.read", "calendar.create", "weather.current", "email.read"} {
+		if !HasCapability(id) {
+			t.Fatalf("declared capability %q must be recognized", id)
+		}
+	}
+	if HasCapability("no.such.capability") {
+		t.Fatal("undeclared capability must not be recognized")
+	}
+}
+
+// Exemptions are data (ToolClass), not branches: every class-exempt tool
+// stays allowed under every committed capability, and ordinary tools stay
+// bound by AllowedTools.
+func TestToolClassExemptions(t *testing.T) {
+	if ToolClass("read_file") == "" || ToolClass("present_card") == "" {
+		t.Fatal("read_file and present_card must have exemption classes")
+	}
+	if ToolClass("exec") != "" || ToolClass("web_search") != "" {
+		t.Fatal("exec and web_search must stay capability-bound")
+	}
+	for _, skill := range []string{"weather", "calendar", "email"} {
+		cap := GetCapability(skill)
+		if !cap.Allows("read_file") || !cap.Allows("present_card") {
+			t.Fatalf("%s must allow class-exempt tools", skill)
+		}
+		if cap.Allows("web_search") {
+			t.Fatalf("%s must block web_search", skill)
+		}
+	}
+}
+
 func TestValidateResult(t *testing.T) {
 	cap := GetCapability("weather")
 	if !cap.ValidateResult(`Bangkok: +27C cloudy humidity 75%`) {

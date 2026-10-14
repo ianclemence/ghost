@@ -1,4 +1,4 @@
-.PHONY: release all build install install-ghost install-user uninstall-user install-cleanup-shadow uninstall clean help test install-service build-ghost rebuild-web
+.PHONY: release all build install install-ghost install-user uninstall-user install-cleanup-shadow uninstall clean help test vet install-service build-ghost rebuild-web
 
 # Build variables
 BINARY_NAME=ghost
@@ -327,6 +327,15 @@ rebuild-web:
 	@sudo systemctl daemon-reload
 	@sudo systemctl restart ghost-web
 	@echo "Web console rebuilt and restarted"
+
+## test: Run the full test suite (same gate release.sh enforces)
+test:
+	@$(GO) test ./... -count=1
+
+## vet: Static analysis over all packages
+vet:
+	@$(GO) vet ./...
+	@test -z "$$(gofmt -l pkg cmd 2>/dev/null)" || { echo "unformatted files:"; gofmt -l pkg cmd; exit 1; }
 
 ## release: Build, sign and verify a release (VERSION=vX.Y.Z); add PUBLISH=1 to publish it
 release:

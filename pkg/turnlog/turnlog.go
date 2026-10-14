@@ -136,7 +136,7 @@ type checkpointMark struct {
 	n  int
 }
 
-// New creates the store under dir (created if absent).
+// New creates the store dir if absent.
 func New(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -219,7 +219,8 @@ func (s *Store) Set(sessionID, requestID string, st Status, outcome string) (*Tu
 
 // SetOrigin records the surface a turn arrived on. Called once, right after
 // the claim wins, so a later resume knows what was asked and where from
-// without re-reading the transcript.
+// without re-reading the transcript. A second call with different values
+// is rejected: the origin is the claim winner's surface, never rewritten.
 func (s *Store) SetOrigin(sessionID, requestID, userText, channel, chatID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -229,6 +230,9 @@ func (s *Store) SetOrigin(sessionID, requestID, userText, channel, chatID string
 	}
 	if t.UserText == userText && t.Channel == channel && t.ChatID == chatID {
 		return nil
+	}
+	if t.UserText != "" || t.Channel != "" || t.ChatID != "" {
+		return fmt.Errorf("turn %s origin already recorded", requestID)
 	}
 	t.UserText = userText
 	t.Channel = channel

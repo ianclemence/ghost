@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.184] - 2026-10-14
+
+- **Less lore, more enforcement.** A pass over the codebase's comments
+  removed restated signatures, dead helpers, and stale references, and
+  turned prose rules into tests: seed and live contract files are now
+  pinned identical, turn origins are write-once, and exemption lists
+  are data instead of special cases.
+- **Calendar takes the governed path.** The calendar skill's tool is now
+  on its capability's allowed list, so reads go through the governed
+  tool instead of raw shell commands.
+
 ## [0.24.183] - 2026-10-14
 
 - **The morning brief keeps its card.** Committing to a data skill

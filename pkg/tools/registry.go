@@ -389,11 +389,9 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	schema, hasSchema := r.schemas[name]
 	r.mu.RUnlock()
 
-	// A model sometimes wraps every documented property in one JSON string
-	// under a single "raw" key (seen: a whole canvas as one string, failing
-	// "missing properties: title" six times in a row). No tool defines a
-	// raw property, so unwrap that envelope before validating: the fields
-	// inside are what was meant.
+	// Unwrap the single-"raw"-string envelope before validating: the fields
+	// inside are what was meant. No tool defines a raw property, so a
+	// lone raw string is always a wrapping mistake, never intended input.
 	args = unwrapRawEnvelope(args, schema, hasSchema)
 
 	// The repeat scope is the session+tool; the hash tells identical calls

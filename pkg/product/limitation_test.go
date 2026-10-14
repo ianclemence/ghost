@@ -95,6 +95,26 @@ func TestCaveatRuleIsPresentInGhostPrompt(t *testing.T) {
 	}
 }
 
+// The seed contracts baked into the binary and the live checkout copies
+// must not drift apart: the model follows the live files, fresh installs
+// get the seed files, and whichever an agent reads first wins. Byte
+// equality is the contract; edit both copies together.
+func TestSeedContractsMatchLive(t *testing.T) {
+	for _, name := range []string{"AGENTS.md", "GHOST.md", "SOUL.md", "IDENTITY.md", "HEARTBEAT.md", "USER.md"} {
+		seed, err := os.ReadFile("../../cmd/ghost/workspace/" + name)
+		if err != nil {
+			t.Fatalf("read seed %s: %v", name, err)
+		}
+		live, err := os.ReadFile("../../workspace/" + name)
+		if err != nil {
+			t.Fatalf("read live %s: %v", name, err)
+		}
+		if string(seed) != string(live) {
+			t.Fatalf("seed and live %s differ: edit both copies together", name)
+		}
+	}
+}
+
 // The closing offer is the one piece of the old habit a prompt cannot reliably
 // suppress, so the runtime enforces it — narrowly.
 func TestTrimClosingOffer(t *testing.T) {

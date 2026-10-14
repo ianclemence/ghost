@@ -9,7 +9,7 @@ import (
 // sound and accessibility. Run it; do not just claim it.
 type Verification struct {
 	OK     bool     `json:"ok"`
-	Checks [] string `json:"checks,omitempty"`
+	Checks []string `json:"checks,omitempty"`
 	Failed []string `json:"failed,omitempty"`
 }
 

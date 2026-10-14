@@ -84,7 +84,6 @@ func (s *Store) InitSchema() error {
 	return s.initReminderAcks()
 }
 
-// Create persists a new ScheduledItem.
 func (s *Store) Create(item *ScheduledItem) error {
 	if item.ID == "" {
 		item.ID = generateID()
@@ -128,7 +127,6 @@ func (s *Store) Create(item *ScheduledItem) error {
 	return err
 }
 
-// Get retrieves a ScheduledItem by ID.
 func (s *Store) Get(id string) (*ScheduledItem, error) {
 	var item ScheduledItem
 	var scheduleAt sql.NullTime
@@ -171,7 +169,6 @@ func (s *Store) Get(id string) (*ScheduledItem, error) {
 	return &item, nil
 }
 
-// List retrieves ScheduledItems with optional filters.
 func (s *Store) List(itemType ItemType, state ItemState, limit int) ([]*ScheduledItem, error) {
 	return s.listFiltered(itemType, state, limit, "")
 }
@@ -288,7 +285,6 @@ func (s *Store) PruneCompleted(keep int) (int64, error) {
 	return res.RowsAffected()
 }
 
-// Update modifies an existing ScheduledItem.
 func (s *Store) Update(item *ScheduledItem) error {
 	item.UpdatedAt = time.Now().UTC()
 	utcScheduleTimes(item)
@@ -322,13 +318,11 @@ func (s *Store) Update(item *ScheduledItem) error {
 	return err
 }
 
-// Delete removes a ScheduledItem by ID.
 func (s *Store) Delete(id string) error {
 	_, err := s.db.Exec(`DELETE FROM scheduled_items WHERE id = ?`, id)
 	return err
 }
 
-// RecordExecution stores an execution record.
 func (s *Store) RecordExecution(record *ExecutionRecord) error {
 	if record.ID == "" {
 		record.ID = generateID()
@@ -400,21 +394,18 @@ func (s *Store) HasExecution(executionID string) (bool, error) {
 	return count > 0, nil
 }
 
-// UpdateNextRun updates the next_run_at for an item.
 func (s *Store) UpdateNextRun(id string, nextRun *time.Time) error {
 	_, err := s.db.Exec(`UPDATE scheduled_items SET next_run_at = ?, updated_at = ? WHERE id = ?`,
 		timePtrToSQL(nextRun), time.Now().UTC(), id)
 	return err
 }
 
-// UpdateState updates the state of an item.
 func (s *Store) UpdateState(id string, state ItemState) error {
 	_, err := s.db.Exec(`UPDATE scheduled_items SET state = ?, updated_at = ? WHERE id = ?`,
 		state, time.Now().UTC(), id)
 	return err
 }
 
-// IncrementRunCount increments the run count and updates last_run_at.
 func (s *Store) IncrementRunCount(id string) error {
 	_, err := s.db.Exec(`UPDATE scheduled_items SET run_count = run_count + 1, last_run_at = ?, updated_at = ? WHERE id = ?`,
 		time.Now().UTC(), time.Now().UTC(), id)
@@ -441,7 +432,7 @@ func utcScheduleTimes(item *ScheduledItem) {
 	}
 }
 
-// legacyTimeLayouts parses the TEXT forms previously stored for schedule
+// parseLegacyStoredTime parses the TEXT forms previously stored for schedule
 // columns: Go time.String() output with a numeric offset, an optional zone
 // abbreviation, and an optional monotonic suffix
 // ("2026-09-12 12:56:00.007 +0700 +07 m=+145.9"), or the driver's
@@ -549,7 +540,6 @@ func (s *Store) NormalizeStoredTimesToUTC() (int64, error) {
 	return total, nil
 }
 
-// scanItem scans a row into a ScheduledItem.
 func scanItem(rows *sql.Rows) (*ScheduledItem, error) {
 	var item ScheduledItem
 	var scheduleAt sql.NullTime
@@ -606,12 +596,4 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
-}
-
-func formatTime(t time.Time) string {
-	return t.Format(time.RFC3339)
-}
-
-func parseTime(s string) (time.Time, error) {
-	return time.Parse(time.RFC3339, s)
 }

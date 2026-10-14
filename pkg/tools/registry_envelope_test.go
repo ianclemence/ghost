@@ -12,7 +12,7 @@ type envelopeTestTool struct {
 	last map[string]interface{}
 }
 
-func (t *envelopeTestTool) Name() string { return "envelope_test_tool" }
+func (t *envelopeTestTool) Name() string        { return "envelope_test_tool" }
 func (t *envelopeTestTool) Description() string { return "test tool" }
 func (t *envelopeTestTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
