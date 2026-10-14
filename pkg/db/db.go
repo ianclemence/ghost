@@ -206,6 +206,17 @@ func (db *DB) MigrateFTS5() error {
 			INSERT INTO messages_fts(messages_fts, rowid, content, session_id, created_at)
 			VALUES ('delete', old.rowid, old.content, old.session_id, old.created_at);
 		END`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS memory_chunks_fts USING fts5(content, id UNINDEXED)`,
+		`CREATE TRIGGER IF NOT EXISTS memory_chunks_ai AFTER INSERT ON memory_chunks BEGIN
+			INSERT INTO memory_chunks_fts(content, id) VALUES (new.content, new.id);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS memory_chunks_ad AFTER DELETE ON memory_chunks BEGIN
+			DELETE FROM memory_chunks_fts WHERE id = old.id;
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS memory_chunks_au AFTER UPDATE ON memory_chunks BEGIN
+			DELETE FROM memory_chunks_fts WHERE id = old.id;
+			INSERT INTO memory_chunks_fts(content, id) VALUES (new.content, new.id);
+		END`,
 		`CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
 			INSERT INTO messages_fts(messages_fts, rowid, content, session_id, created_at)
 			VALUES ('delete', old.rowid, old.content, old.session_id, old.created_at);
@@ -222,6 +233,18 @@ func (db *DB) MigrateFTS5() error {
 
 	if _, err := db.Exec(`INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`); err != nil {
 		return err
+	}
+
+	var chunks, indexed int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM memory_chunks`).Scan(&chunks)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM memory_chunks_fts`).Scan(&indexed)
+	if chunks != indexed {
+		if _, err := db.Exec(`DELETE FROM memory_chunks_fts`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`INSERT INTO memory_chunks_fts(content, id) SELECT content, id FROM memory_chunks`); err != nil {
+			return err
+		}
 	}
 
 	return nil

@@ -367,8 +367,9 @@ func (s *Store) ingest(ctx context.Context, content string, source string) error
 		// Update vector index
 		s.mu.Lock()
 		if s.collection != nil {
-			// Ignore error for now, or log it
-			_ = s.collection.Add(ctx, []string{id}, [][]float32{embedding}, nil, nil)
+			if err := s.collection.Add(ctx, []string{id}, [][]float32{embedding}, nil, nil); err != nil {
+				logger.WarnCF("rag", "chunk stored but not added to the vector index", map[string]interface{}{"id": id, "error": err.Error()})
+			}
 		}
 		s.mu.Unlock()
 	}
@@ -440,8 +441,7 @@ func (s *Store) RetrieveScoped(ctx context.Context, query string, limit int, sco
 	collection := s.collection
 	s.mu.RUnlock()
 
-	// If index is not ready, return empty or fallback.
-	// For now, we assume LoadIndex is called on startup.
+	// Without a loaded index there is nothing to search; LoadIndex runs at startup.
 	if !isReady || collection == nil {
 		logger.WarnC("rag", "Index not ready, returning empty results")
 		return []SearchResult{}, nil
@@ -493,6 +493,13 @@ func (s *Store) RetrieveScoped(ctx context.Context, query string, limit int, sco
 	for i, res := range results {
 		ids[i] = res.ID
 		idToScore[res.ID] = res.Similarity
+	}
+	// Meaning-based search misses exact names, numbers and codes. A word
+	// search over the same chunks fills that in, and the two rankings are
+	// merged by reciprocal rank.
+	ids = fuseRanks(ids, s.lexicalIDs(query, fetchN))
+	if len(ids) > fetchN {
+		ids = ids[:fetchN]
 	}
 
 	// Construct query to fetch content

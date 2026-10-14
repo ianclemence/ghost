@@ -24,6 +24,7 @@ import (
 // Deliberately NOT snapshotted:
 //   - sessions, messages            → versioned conversations/*.jsonl
 //   - messages_fts*                 → FTS index rebuilt by insert triggers
+//   - memory_chunks_fts*            → word index over memory chunks, rebuilt at startup
 //   - permission_requests           → 15-minute ephemeral approvals
 //   - paired_devices, pending_pairings → must rebind on the new machine
 //   - sqlite_sequence               → autoincrement bookkeeping
@@ -197,7 +198,7 @@ func stageTableSnapshots(staging map[string]string, stagingDir string, m *Manife
 	for _, name := range present {
 		switch {
 		case whitelisted[name], conversationTables[name]:
-		case strings.HasPrefix(name, "messages_fts"), strings.HasPrefix(name, "sqlite_"):
+		case strings.HasPrefix(name, "messages_fts"), strings.HasPrefix(name, "memory_chunks_fts"), strings.HasPrefix(name, "sqlite_"):
 		case name == "schema_migrations":
 			// Migration bookkeeping is recomputed by MigrateToCurrent on
 			// import; carrying a version number across machines would be
