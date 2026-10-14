@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,7 +26,13 @@ func goldenCmd() {
 		behavioralCmd()
 		return
 	}
+	if len(os.Args) > 2 && os.Args[2] == "scorecard" {
+		scorecardCmd()
+		return
+	}
 	configDir := os.Getenv("GHOST_CONFIG_DIR")
+	trials := 1
+	split := ""
 	modelSpec := ""
 	asJSON := false
 	compare := false
@@ -43,6 +50,19 @@ func goldenCmd() {
 			offline = true
 		case strings.HasPrefix(a, "--model="):
 			modelSpec = strings.TrimPrefix(a, "--model=")
+		case strings.HasPrefix(a, "--trials="):
+			n, err := strconv.Atoi(strings.TrimPrefix(a, "--trials="))
+			if err != nil || n < 1 {
+				fmt.Println("--trials needs a whole number of 1 or more")
+				os.Exit(1)
+			}
+			trials = n
+		case strings.HasPrefix(a, "--split="):
+			split = strings.TrimPrefix(a, "--split=")
+			if split != "dev" && split != "holdout" {
+				fmt.Println("--split is dev or holdout")
+				os.Exit(1)
+			}
 		case strings.HasPrefix(a, "--suite="):
 			suiteFilter = strings.TrimPrefix(a, "--suite=")
 		case strings.HasPrefix(a, "--cases="):
@@ -80,6 +100,7 @@ func goldenCmd() {
 	if casesFilter != "" {
 		suite = filterSuiteByIDs(suite, casesFilter)
 	}
+	suite = golden.FilterSplit(suite, golden.Split(split))
 	if len(suite) == 0 {
 		fmt.Println("No conversations matched the filter.")
 		os.Exit(1)
@@ -88,6 +109,14 @@ func goldenCmd() {
 	runner := &golden.Runner{
 		Target: target, ConfigDir: configDir, Offline: offline, Suite: suite,
 		Log: func(format string, a ...interface{}) { fmt.Fprintf(os.Stderr, format+"\n", a...) },
+	}
+	var earlier []golden.Summary
+	for i := 1; i < trials; i++ {
+		s := runner.Run()
+		s.SuiteVersion = golden.SuiteVersion
+		s.Commit = headCommit()
+		fmt.Fprintf(os.Stderr, "trial %d/%d: %d/%d passed\n", i, trials, s.Passed, s.Total)
+		earlier = append(earlier, s)
 	}
 	sum := runner.Run()
 	sum.SuiteVersion = golden.SuiteVersion
@@ -107,8 +136,11 @@ func goldenCmd() {
 
 	// Persist history.
 	if stateDir != "" {
-		if _, err := golden.SaveHistory(stateDir, sum, 50); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: golden history not saved: %v\n", err)
+		for _, e := range append(earlier, sum) {
+			if _, err := golden.SaveHistory(stateDir, e, 50); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: golden history not saved: %v\n", err)
+				break
+			}
 		}
 		// Capture failures locally so they can become regression tests.
 		// Nothing leaves the device.
@@ -145,6 +177,10 @@ func goldenCmd() {
 		fmt.Print(golden.RenderSummary(sum))
 	}
 
+	if trials > 1 {
+		fmt.Print(golden.RenderTrials(golden.AggregateTrials(append(earlier, sum))))
+	}
+
 	// Compare to the previous run when requested.
 	if compare && stateDir != "" {
 		if hist, err := golden.LoadHistory(stateDir); err == nil && len(hist) >= 2 {
@@ -153,9 +189,35 @@ func goldenCmd() {
 		}
 	}
 
-	if sum.Failed > 0 {
+	for _, e := range append(earlier, sum) {
+		if e.Failed > 0 {
+			os.Exit(1)
+		}
+	}
+}
+
+func scorecardCmd() {
+	stateDir := ""
+	for _, a := range os.Args[3:] {
+		if strings.HasPrefix(a, "--state-dir=") {
+			stateDir = strings.TrimPrefix(a, "--state-dir=")
+		}
+	}
+	if stateDir == "" {
+		if cfg, err := config.LoadConfig(getConfigPath()); err == nil {
+			stateDir = cfg.WorkspacePath()
+		}
+	}
+	if stateDir == "" {
+		fmt.Println("No workspace found. Pass --state-dir=<dir>.")
 		os.Exit(1)
 	}
+	hist, err := golden.LoadHistory(stateDir)
+	if err != nil {
+		fmt.Printf("Could not read golden history: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Print(golden.RenderScorecard(golden.Scorecard(hist)))
 }
 
 // failureCategory maps a golden failure classification to a corpus category.
@@ -184,6 +246,9 @@ func goldenHelp() {
 	fmt.Println("  --offline                run with the provider unreachable (offline validation)")
 	fmt.Println("  --json                   machine-readable JSON output")
 	fmt.Println("  --compare                show delta vs the previous saved run")
+	fmt.Println("  --trials=N               run the suite N times and report pass@N and pass^N")
+	fmt.Println("  --split=dev|holdout      run only the tuning set or the held-out fifth")
+	fmt.Println("  scorecard                per-model results, change since last run, saturated categories")
 	fmt.Println("  --state-dir=<dir>        workspace for golden history (default: configured workspace)")
 	fmt.Println()
 	fmt.Println("Models: any provider Ghost supports. Qwen is supported but intentionally")

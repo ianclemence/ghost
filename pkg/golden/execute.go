@@ -130,6 +130,7 @@ type Summary struct {
 	Skipped      int                     `json:"skipped"`
 	HardFails    int                     `json:"hard_fails"`
 	DurationMs   int64                   `json:"duration_ms"`
+	Env          Env                     `json:"env"`
 	ByCategory   map[Category]CatSummary `json:"by_category"`
 	Results      []CaseResult            `json:"results"`
 }
@@ -176,6 +177,7 @@ func (r *Runner) Run() Summary {
 		SuiteVersion: SuiteVersion,
 		Model:        r.Target.Model, Provider: r.Target.Provider,
 		At: time.Now().Format(time.RFC3339), ByCategory: map[Category]CatSummary{},
+		Env: CaptureEnv(""),
 	}
 	for _, c := range r.Suite {
 		cr := r.runCase(c)
