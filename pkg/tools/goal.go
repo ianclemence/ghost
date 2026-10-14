@@ -23,18 +23,22 @@ func NewGoalTool(workspace string) *GoalTool {
 func (t *GoalTool) Name() string { return "goal" }
 
 func (t *GoalTool) Description() string {
-	return "Manage standing goals (durable owner intents like \"take care of school emails\"). Actions: create, list, pause, resume, complete, progress."
+	return "Manage standing goals (durable owner intents like \"take care of school emails\"). Actions: create, list, pause, resume, complete, progress, criteria, check. " +
+		"For anything that takes more than one session, set criteria (one checkable part of done each) and mark each with check only after you have seen it work and can say what you saw; complete is refused until every criterion has passed."
 }
 
 func (t *GoalTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"action": map[string]interface{}{"type": "string", "enum": []string{"create", "list", "pause", "resume", "complete", "progress"}},
-			"text":   map[string]interface{}{"type": "string", "description": "Goal text (create)"},
-			"scope":  map[string]interface{}{"type": "string", "description": "Scope bound (create)"},
-			"id":     map[string]interface{}{"type": "string", "description": "Goal ID (pause/resume/complete/progress)"},
-			"note":   map[string]interface{}{"type": "string", "description": "Progress note (progress)"},
+			"action":   map[string]interface{}{"type": "string", "enum": []string{"create", "list", "pause", "resume", "complete", "progress", "criteria", "check"}},
+			"text":     map[string]interface{}{"type": "string", "description": "Goal text (create)"},
+			"scope":    map[string]interface{}{"type": "string", "description": "Scope bound (create)"},
+			"id":       map[string]interface{}{"type": "string", "description": "Goal ID (pause/resume/complete/progress)"},
+			"note":     map[string]interface{}{"type": "string", "description": "Progress note (progress)"},
+			"criteria": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "The checkable parts of done (create, criteria)"},
+			"index":    map[string]interface{}{"type": "integer", "description": "Which criterion, from 1 (check)"},
+			"evidence": map[string]interface{}{"type": "string", "description": "What you saw that shows it passes (check)"},
 		},
 		"required": []string{"action"},
 	}
@@ -54,6 +58,11 @@ func (t *GoalTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		g, err := store.Create(text, strings.TrimSpace(sarg(args, "scope")), "", nil, time.Time{})
 		if err != nil {
 			return ErrorResult(fmt.Sprintf("Couldn't create that goal: %v.", err))
+		}
+		if cs := stringList(args["criteria"]); len(cs) > 0 {
+			if g, err = store.SetCriteria(g.ID, cs); err != nil {
+				return ErrorResult(fmt.Sprintf("The goal was set (%s) but its criteria were refused: %v.", g.ID, err))
+			}
 		}
 		return NewToolResult(fmt.Sprintf("Goal set (%s): %s. I'll keep working on it and report back when something needs you.", g.ID, g.Text))
 	case "list", "":
@@ -90,6 +99,27 @@ func (t *GoalTool) Execute(ctx context.Context, args map[string]interface{}) *To
 			return ErrorResult(fmt.Sprintf("Couldn't %s that goal: %v.", action, err))
 		}
 		return NewToolResult(fmt.Sprintf("Goal %s %sd: %s.", g.ID, action, g.Text))
+	case "criteria":
+		id := strings.TrimSpace(sarg(args, "id"))
+		g, err := store.SetCriteria(id, stringList(args["criteria"]))
+		if err != nil {
+			return ErrorResult(fmt.Sprintf("Couldn't set criteria: %v.", err))
+		}
+		return NewToolResult(fmt.Sprintf("Goal %s has %d criteria, none passed yet.", g.ID, len(g.Criteria)))
+	case "check":
+		id := strings.TrimSpace(sarg(args, "id"))
+		n, _ := args["index"].(float64)
+		g, err := store.CheckCriterion(id, int(n), sarg(args, "evidence"))
+		if err != nil {
+			return ErrorResult(fmt.Sprintf("Couldn't check that: %v.", err))
+		}
+		left := 0
+		for _, c := range g.Criteria {
+			if !c.Passes {
+				left++
+			}
+		}
+		return NewToolResult(fmt.Sprintf("Criterion %d passes. %d left before this goal can be completed.", int(n), left))
 	case "progress":
 		id := strings.TrimSpace(sarg(args, "id"))
 		note := strings.TrimSpace(sarg(args, "note"))
@@ -103,4 +133,15 @@ func (t *GoalTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	default:
 		return ErrorResult("goal needs action create, list, pause, resume, complete, or progress.")
 	}
+}
+
+func stringList(v interface{}) []string {
+	var out []string
+	list, _ := v.([]interface{})
+	for _, x := range list {
+		if s, ok := x.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }

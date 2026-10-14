@@ -38,6 +38,13 @@ type ProgressNote struct {
 	Text string    `json:"text"`
 }
 
+// Criterion is one checkable part of "done". It passes only with evidence.
+type Criterion struct {
+	Text     string `json:"text"`
+	Passes   bool   `json:"passes"`
+	Evidence string `json:"evidence,omitempty"`
+}
+
 // Goal is one durable owner intent.
 type Goal struct {
 	// ID is stable (goal_<16 hex>), never reused.
@@ -48,6 +55,9 @@ type Goal struct {
 	Scope string `json:"scope,omitempty"`
 	// Success describes done in plain language.
 	Success string `json:"success,omitempty"`
+	// Criteria split "done" into parts that are each checked against evidence.
+	// A goal that has them cannot be completed until every one passes.
+	Criteria []Criterion `json:"criteria,omitempty"`
 	// Capabilities narrows which capability IDs goal-triggered turns may
 	// use. Narrowing-only after creation: updates can remove, never add.
 	Capabilities []string `json:"capabilities,omitempty"`
@@ -232,10 +242,57 @@ func (s *Store) Resume(id string) (Goal, error) {
 	})
 }
 
-// Complete marks the goal done (terminal).
+// Complete marks the goal done (terminal). A goal with criteria is done only
+// when each has passed with evidence.
 func (s *Store) Complete(id string) (Goal, error) {
 	return s.mutate(id, func(g *Goal) error {
+		var unmet []string
+		for i, c := range g.Criteria {
+			if !c.Passes {
+				unmet = append(unmet, fmt.Sprintf("%d. %s", i+1, c.Text))
+			}
+		}
+		if len(unmet) > 0 {
+			return fmt.Errorf("not done yet: %s", strings.Join(unmet, "; "))
+		}
 		g.Status = StatusCompleted
+		return nil
+	})
+}
+
+// SetCriteria replaces the goal's criteria with new, unmet ones.
+func (s *Store) SetCriteria(id string, texts []string) (Goal, error) {
+	return s.mutate(id, func(g *Goal) error {
+		var cs []Criterion
+		for _, t := range texts {
+			if t = trim(t); t != "" {
+				cs = append(cs, Criterion{Text: t})
+			}
+		}
+		if len(cs) == 0 {
+			return errors.New("give at least one criterion")
+		}
+		if len(cs) > 20 {
+			return errors.New("a goal has at most 20 criteria")
+		}
+		g.Criteria = cs
+		return nil
+	})
+}
+
+// CheckCriterion marks criterion n (1-based) as passing, recording the
+// evidence that shows it. A check without evidence is refused.
+func (s *Store) CheckCriterion(id string, n int, evidence string) (Goal, error) {
+	evidence = trim(evidence)
+	if evidence == "" {
+		return Goal{}, errors.New("a criterion passes only with evidence: say what you saw")
+	}
+	return s.mutate(id, func(g *Goal) error {
+		if n < 1 || n > len(g.Criteria) {
+			return fmt.Errorf("this goal has %d criteria; there is no number %d", len(g.Criteria), n)
+		}
+		g.Criteria[n-1].Passes = true
+		g.Criteria[n-1].Evidence = evidence
 		return nil
 	})
 }
