@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/ianclemence/ghost/pkg/db"
@@ -255,5 +256,66 @@ func TestSessionSearchCrossContextIsolation(t *testing.T) {
 	}
 	if payload.Count == 0 {
 		t.Fatalf("expected same-context match, got none")
+	}
+}
+
+func TestSessionSearchOutlineListsEveryOwnerMessageInOrder(t *testing.T) {
+	database, err := db.NewDB(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for i, m := range []struct{ role, text string }{
+		{"user", "what is the weather"}, {"assistant", "sunny"}, {"user", "remind me to call the bank"},
+		{"assistant", "ok"}, {"user", "build me a landing page"},
+	} {
+		if _, err := database.Exec(`INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, 's1', ?, ?, ?)`,
+			"m"+string(rune('a'+i)), m.role, m.text, "2026-10-14 10:0"+string(rune('0'+i))+":00"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res := NewSessionSearchTool(database.DB).Execute(WithSessionKey(context.Background(), "s1"), map[string]interface{}{"mode": "outline"})
+	if res.IsError {
+		t.Fatal(res.ForLLM)
+	}
+	var out struct {
+		Count int `json:"owner_messages"`
+		Turns []struct {
+			N    int    `json:"n"`
+			Said string `json:"said"`
+		} `json:"turns"`
+	}
+	if err := json.Unmarshal([]byte(res.ForLLM), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Count != 3 || len(out.Turns) != 3 || out.Turns[0].Said != "what is the weather" || out.Turns[2].N != 3 {
+		t.Fatalf("outline lost or reordered the owner's messages: %+v", out)
+	}
+}
+
+func TestSessionSearchOutlineKeepsBothEndsOfALongConversation(t *testing.T) {
+	database, err := db.NewDB(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for i := 0; i < 300; i++ {
+		if _, err := database.Exec(`INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, 's1', 'user', ?, ?)`,
+			fmt.Sprintf("m%03d", i), fmt.Sprintf("message %d", i), fmt.Sprintf("2026-10-14 10:%02d:%02d", i/60, i%60)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res := NewSessionSearchTool(database.DB).Execute(WithSessionKey(context.Background(), "s1"), map[string]interface{}{"mode": "outline"})
+	var out struct {
+		Omitted int `json:"omitted"`
+		Turns   []struct {
+			Said string `json:"said"`
+		} `json:"turns"`
+	}
+	if err := json.Unmarshal([]byte(res.ForLLM), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Omitted != 300-outlineMax || out.Turns[0].Said != "message 0" || out.Turns[len(out.Turns)-1].Said != "message 299" {
+		t.Fatalf("a long outline must keep the start and the end and say what it left out: omitted=%d", out.Omitted)
 	}
 }

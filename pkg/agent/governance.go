@@ -400,7 +400,7 @@ func authorizedToolRisk(capabilityID, tool string) permissions.Risk {
 	switch tool {
 	case "exec", "sandbox":
 		return permissions.RiskHighImpact
-	case "read_file", "list_dir", "search_files", "grep_search", "web_fetch", "web_search", "memory_recall", "context_get", "session_search":
+	case "read_file", "list_dir", "search_files", "grep_search", "web_fetch", "web_search", "memory_recall", "context_get", "session_search", "session_state":
 		return permissions.RiskReadOnly
 	}
 	return permissions.RiskOf(capabilityID)

@@ -103,7 +103,7 @@ func (t *SessionSearchTool) Timeout() time.Duration { return 20 * time.Second }
 func (t *SessionSearchTool) RetryPolicy() (int, time.Duration) { return 1, 300 * time.Millisecond }
 
 func (t *SessionSearchTool) Description() string {
-	return "Search Ghost's past conversation history. Use it whenever the user refers to anything said or done earlier, in this conversation or another (\"what did I say about X\", \"what we discussed\", \"earlier today\", \"last time\", \"what did you get wrong\", \"why did you answer that\"): search before you answer, and answer only from what it returns. Do NOT use it for general knowledge, facts, weather, currency, or skills — use a matching Ghost skill or the general search instead."
+	return "Search Ghost's past conversation history. Use it whenever the user refers to anything said or done earlier, in this conversation or another (\"what did I say about X\", \"what we discussed\", \"earlier today\", \"last time\", \"what did you get wrong\", \"why did you answer that\"): search before you answer, and answer only from what it returns. For a question about the whole conversation (\"what have we talked about\", \"summarize this chat\", \"how many times did I ask\"), use mode outline first: it lists every owner message in order, and a search does not. Do NOT use it for general knowledge, facts, weather, currency, or skills — use a matching Ghost skill or the general search instead."
 }
 
 func (t *SessionSearchTool) Parameters() map[string]interface{} {
@@ -116,7 +116,7 @@ func (t *SessionSearchTool) Parameters() map[string]interface{} {
 			},
 			"mode": map[string]interface{}{
 				"type":        "string",
-				"enum":        []string{"discover", "browse", "scroll", "read", "summarize"},
+				"enum":        []string{"discover", "browse", "scroll", "read", "summarize", "outline"},
 				"description": "Search mode (default: discover)",
 				"default":     "discover",
 			},
@@ -223,11 +223,82 @@ func (t *SessionSearchTool) execute(ctx context.Context, args map[string]interfa
 		return t.readSession(ctx, args)
 	case "summarize":
 		return t.summarize(ctx, args)
+	case "outline":
+		return t.outline(ctx, args)
 	case "discover":
 		return t.discover(ctx, args)
 	default:
 		return ErrorResult(fmt.Sprintf("unknown mode: %s", mode))
 	}
+}
+
+const (
+	outlineHead = 40
+	outlineTail = 80
+	outlineMax  = outlineHead + outlineTail
+)
+
+// outline lists what the owner said in a conversation, in order, so a
+// question about the whole conversation is answered from all of it and not
+// from whichever messages a search ranked first.
+func (t *SessionSearchTool) outline(ctx context.Context, args map[string]interface{}) *ToolResult {
+	sessionID, _ := args["session_id"].(string)
+	if sessionID == "" {
+		sessionID = callerSession(ctx)
+	}
+	if sessionID == "" {
+		return ErrorResult("session_id is required for outline mode")
+	}
+	if !t.sameContext(callerSession(ctx), sessionID) {
+		return ErrorResult("that conversation belongs to another context and is not visible here")
+	}
+	rows, err := t.db.QueryContext(ctx, `
+		SELECT COALESCE(created_at, ''), content
+		FROM messages
+		WHERE session_id = ? AND role = 'user' AND (archived IS NULL OR archived = 0)
+		ORDER BY created_at ASC, rowid ASC
+	`, sessionID)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search outline failed: %v", err)).WithError(err)
+	}
+	defer rows.Close()
+	type turn struct {
+		N    int    `json:"n"`
+		At   string `json:"at"`
+		Said string `json:"said"`
+	}
+	var all []turn
+	for rows.Next() {
+		var at, content string
+		if err := rows.Scan(&at, &content); err != nil {
+			return ErrorResult(fmt.Sprintf("session_search outline scan failed: %v", err)).WithError(err)
+		}
+		said := strings.Join(strings.Fields(content), " ")
+		if r := []rune(said); len(r) > 160 {
+			said = string(r[:160]) + "…"
+		}
+		all = append(all, turn{N: len(all) + 1, At: at, Said: said})
+	}
+	if err := rows.Err(); err != nil {
+		return ErrorResult(fmt.Sprintf("session_search outline failed: %v", err)).WithError(err)
+	}
+	shown, omitted := all, 0
+	if len(all) > outlineMax {
+		shown = append(append([]turn{}, all[:outlineHead]...), all[len(all)-outlineTail:]...)
+		omitted = len(all) - outlineMax
+	}
+	payload := map[string]interface{}{
+		"mode": "outline", "session_id": sessionID, "owner_messages": len(all), "turns": shown,
+	}
+	if omitted > 0 {
+		payload["omitted_between_turn"] = fmt.Sprintf("%d and %d", outlineHead, len(all)-outlineTail+1)
+		payload["omitted"] = omitted
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("session_search outline marshal failed: %v", err)).WithError(err)
+	}
+	return UserResult(string(raw))
 }
 
 func (t *SessionSearchTool) discover(ctx context.Context, args map[string]interface{}) *ToolResult {

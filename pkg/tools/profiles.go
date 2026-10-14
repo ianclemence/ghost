@@ -44,7 +44,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Standing goals are user-manageable local state.
 		"goal",
 		// Read-only memory + conversation tools.
-		"memory_recall", "context_get", "memory_correct", "clarify", "todo",
+		"memory_recall", "context_get", "session_state", "memory_correct", "clarify", "todo",
 		// Device control and handoff are legitimate mobile actions; the
 		// broker still governs the consequential ones.
 		"device", "calendar", "publish_artifact", "doc_parser",
@@ -238,7 +238,7 @@ var coreToolNames = map[string]bool{
 	// already allowed.
 	"delete_file": true, "move_file": true,
 	"web_search": true, "web_fetch": true, "session_search": true,
-	"remember": true, "context_get": true, "memory_curate": true, "memory_correct": true,
+	"remember": true, "context_get": true, "session_state": true, "memory_curate": true, "memory_correct": true,
 	"memory_recall": true,
 	// Read-only skill reference tools: always visible so skill docs that name
 	// them as the preferred path actually work. Cheap, no side effects.

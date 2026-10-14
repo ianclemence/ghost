@@ -268,7 +268,7 @@ func buildDefault() *Registry {
 		// --- Memory (Ghost-owned knowledge) ---
 		{ID: "memory.remember", Title: "Remember", Risk: RiskLow, Tools: []string{"remember"},
 			Description: "Store a durable fact or preference about the user."},
-		{ID: "memory.recall", Title: "Recall", Risk: RiskReadOnly, Tools: []string{"memory_recall", "context_get", "session_search"},
+		{ID: "memory.recall", Title: "Recall", Risk: RiskReadOnly, Tools: []string{"memory_recall", "context_get", "session_search", "session_state"},
 			Description: "Retrieve what Ghost knows or remembers."},
 		{ID: "memory.forget", Title: "Forget", Risk: RiskLow, Tools: []string{"memory_curate"},
 			Description: "Retire a belief or memory entry."},

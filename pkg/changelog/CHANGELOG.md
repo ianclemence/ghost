@@ -3,6 +3,31 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.187] - 2026-10-14
+
+- **Updates now deliver Ghost's operating contract.** The rules Ghost
+  reads every turn (`GHOST.md`, `AGENTS.md`) were only copied in at
+  install, so an update shipped new behaviour that Ghost never saw. They
+  now follow each release, with your previous version kept under
+  `state/contract-backups`. Your own `SOUL.md`, `IDENTITY.md` and
+  `HEARTBEAT.md` are never overwritten once you have changed them.
+- **Ghost checks what exists before saying what exists.** A new
+  `session_state` lookup reads the runtime's own records: approvals
+  waiting for you, pages and files built in this conversation, and open
+  reminders. Long conversations also keep that block in their summary, so
+  "nothing is pending" or "I never built that" stops being said from
+  memory of the chat.
+- **"Summarize this conversation" covers all of it.** Searching your past
+  chats gains an outline mode that lists everything you said, in order,
+  keeping both ends of a very long chat and saying what it left out.
+- **Quality is measured by reliability, not luck.** `ghost golden
+  --trials=N` reruns the suite and reports pass@N and pass^N, naming the
+  cases that pass only sometimes. `--split=holdout` keeps a stable fifth
+  of the cases out of tuning. `ghost golden scorecard` compares models run
+  over run and flags categories that no longer tell changes apart. Every
+  run records the machine it ran on, and a test now caps how large the
+  always-on prompt may grow.
+
 ## [0.24.186] - 2026-10-14
 
 - **Outside text can no longer talk Ghost into acting.** Anything Ghost

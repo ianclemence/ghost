@@ -101,6 +101,7 @@ type AgentLoop struct {
 	doctor           *doctor.Doctor
 	running          atomic.Bool
 	summarizing      sync.Map // Tracks which sessions are currently being summarized
+	sessionArtifacts *artifacts.Store
 	curator          *tools.Curator
 	nudge            *NudgeManager
 	evolution        *evolution.EvolutionManager
@@ -630,10 +631,15 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		subagentTools.Register(searchTool)
 	}
 
+	sessionState := tools.NewSessionStateTool()
+	toolsRegistry.Register(sessionState)
+	var sessionArtifacts *artifacts.Store
+
 	// Artifact publishing: the model proposes handoffs, the artifacts
 	// package validates them. A store failure refuses publishes rather
 	// than running unwired.
 	if artifactStore, err := artifacts.NewStore(database.DB, workspace); err == nil {
+		sessionArtifacts = artifactStore
 		toolsRegistry.Register(tools.NewPublishArtifactTool(artifactStore, workspace))
 		// A canvas is shown in the chat as an artifact of its own.
 		if t, ok := toolsRegistry.Get("canvas"); ok {
@@ -902,6 +908,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		cfg:                 cfg,
 		doctor:              doctorRunner,
 		summarizing:         sync.Map{},
+		sessionArtifacts:    sessionArtifacts,
 		curator:             curator,
 		nudge:               nudgeMgr,
 		evolution:           evolutionMgr,
@@ -1054,6 +1061,12 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 			return s
 		})
 	}
+
+	sessionState.SetSources(
+		al.pendingApprovalLines,
+		func(session string) []string { return artifactLines(al.sessionArtifacts, session) },
+		func() []string { return al.scheduleRowLines(20) },
+	)
 
 	// Session-scoped memory retrieval: context_get sees what the calling
 	// session's context may see. The closure reads governance live, so
@@ -4877,6 +4890,9 @@ func (al *AgentLoop) summarizeSession(sessionKey string) {
 	if footer := al.openSchedulesFooter(); footer != "" {
 		finalSummary += "\n" + footer
 	}
+	if footer := al.sessionStateFooter(sessionKey); footer != "" {
+		finalSummary += "\n" + footer
+	}
 
 	if finalSummary != "" {
 		al.sessions.SetSummary(sessionKey, finalSummary)
@@ -4899,7 +4915,7 @@ func stripScheduleFooters(summary string) string {
 	kept := lines[:0]
 	skipping := false
 	for _, ln := range lines {
-		if strings.HasPrefix(strings.TrimSpace(ln), footerScheduleMarker) {
+		if t := strings.TrimSpace(ln); strings.HasPrefix(t, footerScheduleMarker) || strings.HasPrefix(t, footerStateMarker) {
 			skipping = true
 			continue
 		}
@@ -4922,52 +4938,16 @@ func stripScheduleFooters(summary string) string {
 // Each row carries what it is for, not just when it fires, so future
 // turns never have to guess at a bare time.
 func (al *AgentLoop) openSchedulesFooter() string {
-	if al.schedSvc == nil {
-		return ""
-	}
-	items, err := al.schedSvc.ListItems("", scheduled.StateScheduled, 20)
-	if err != nil || len(items) == 0 {
+	rows := al.scheduleRowLines(5)
+	if len(rows) == 0 {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("[Open schedules @")
 	b.WriteString(time.Now().Format("2006-01-02 15:04"))
 	b.WriteString(" — from scheduler rows, authoritative over chat text:]")
-	shown := 0
-	for _, it := range items {
-		if it == nil || it.NextRunAt == nil {
-			continue
-		}
-		when := it.NextRunAt.UTC()
-		if loc, lerr := time.LoadLocation(it.Timezone); lerr == nil {
-			when = it.NextRunAt.In(loc)
-		}
-		title := strings.TrimSpace(it.Title)
-		detail := strings.TrimSpace(it.Description)
-		if detail == "" {
-			detail = strings.TrimSpace(it.Action.Content)
-		}
-		if title == "" {
-			title = detail
-			detail = ""
-		}
-		// Cap detail so one verbose reminder can't flood every summary.
-		if len(detail) > 90 {
-			detail = strings.TrimSpace(detail[:90]) + "…"
-		}
-		// Full date on every row: "Sat 21:00" alone means a different
-		// day on every later read; the summary outlives the day.
-		if detail != "" && !strings.EqualFold(detail, title) {
-			fmt.Fprintf(&b, "\n- %s → %s — %s", title, when.Format("Mon 2006-01-02 15:04"), detail)
-		} else {
-			fmt.Fprintf(&b, "\n- %s → %s", title, when.Format("Mon 2006-01-02 15:04"))
-		}
-		if shown++; shown >= 5 {
-			break
-		}
-	}
-	if shown == 0 {
-		return ""
+	for _, r := range rows {
+		b.WriteString("\n- " + r)
 	}
 	return b.String()
 }
