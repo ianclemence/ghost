@@ -11,9 +11,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// The Desk must surface only things Ghost made for the owner — never raw
-// workspace files. An earlier version walked the workspace and exposed
-// internal files (proactive outboxes, logs) and sizes; that is not a product.
+// The Desk surfaces only things Ghost made for the owner, never raw workspace
+// files: no internal files, outboxes, logs or sizes.
 func TestDeskInputsAreArtifactsOnly(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "ghost.db"))
 	if err != nil {

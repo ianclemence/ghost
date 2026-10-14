@@ -57,8 +57,7 @@ func TestDeleteAfterRunStillDeletes(t *testing.T) {
 	}
 }
 
-// Recurring items keep their old behavior: the next run is computed and
-// the row stays scheduled.
+// Recurring items compute the next run and the row stays scheduled.
 func TestRecurringSuccessStaysScheduled(t *testing.T) {
 	past := time.Now().UTC().Add(-time.Minute)
 	svc, _ := newLedgerTestService(t, func(context.Context, *ScheduledItem) error { return nil })

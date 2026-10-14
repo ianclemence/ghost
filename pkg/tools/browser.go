@@ -552,8 +552,7 @@ func resetBrowserSession() {
 
 // executeCLI runs the agent-browser CLI.
 func (t *BrowserTool) executeCLI(ctx context.Context, action string, args ...string) *ToolResult {
-	// Ensure temp directory exists for session tracking (agent-browser usually uses ~/.agent-browser)
-	// but we'll let the CLI manage its own state for now.
+	// The CLI manages its own session state.
 
 	cmdArgs := append([]string{action}, args...)
 
@@ -856,9 +855,9 @@ func observePageEvidence(call BrowserCall, sess *browser.Session, res *ToolResul
 	}
 }
 
-// staleRefReason and staleRefRemedy word the refusal the model sees when
-// a ref no longer names a live element. The remedy is what actually
-// happens next: healStaleRef has already looked at the page for it.
+// staleRefReason and staleRefRemedy word the refusal the model sees when a ref
+// does not name a live element. The remedy is what happens next: healStaleRef
+// has already looked at the page for it.
 const staleRefRemedy = "Nothing ran. The page as it is now is below — act on one of its refs."
 
 func staleRefReason(ref string) string {

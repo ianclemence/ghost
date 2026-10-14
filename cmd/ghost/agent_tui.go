@@ -2912,10 +2912,9 @@ func nestStyle(outer lipgloss.Style, inner string) string {
 func renderMarkdownLine(trim, ln string, width int) []string {
 	var out []string
 	if level, rest, ok := parseHeading(trim); ok {
-		// A title wraps like every other line. It used to be cellTruncate'd
-		// to the terminal width, so in a narrow window every section title
-		// came back cut short behind an ellipsis with the rest of the heading
-		// dropped — content loss on the one line the owner reads first.
+		// A title wraps like every other line: truncating to the terminal width cut
+		// section titles short in a narrow window, dropping the heading on the line
+		// the owner reads first.
 		headStyle := styleMDHead
 		if level == 1 {
 			headStyle = styleMDHead1

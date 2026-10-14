@@ -147,8 +147,8 @@ func TestScheduleAsksWhenTheOwnerGaveNoTime(t *testing.T) {
 	}
 }
 
-// Direct tool use without an owner message keeps the previous behaviour, so
-// nothing outside the chat path changes.
+// Direct tool use without an owner message leaves the phrasing as supplied,
+// so nothing outside the chat path changes.
 func TestScheduleWithoutRequestMessageUsesSuppliedPhrasing(t *testing.T) {
 	svc := newFakeScheduleService()
 	tool := NewScheduleTool(svc, "Asia/Bangkok")

@@ -650,8 +650,8 @@ func TestExtractCorrectionWithNoCurrentEntry(t *testing.T) {
 }
 
 // A question contains declaration patterns but asserts nothing. Filing one
-// puts words in the owner's mouth — observed live when "Why do you think my
-// name is Ian?" became a user-declared fact whose quote was the question.
+// puts words in the owner's mouth: "Why do you think my name is Ian?" must not
+// become a user-declared fact whose quote is the question.
 func TestExtractDoesNotFileQuestions(t *testing.T) {
 	questions := []string{
 		"Why do you think my name is Ian?",

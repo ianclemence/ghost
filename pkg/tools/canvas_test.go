@@ -222,3 +222,24 @@ func TestCanvasResultCarriesDesignAdviceWithoutBlocking(t *testing.T) {
 		t.Fatalf("the model was not told what to improve: %s", res.ForLLM)
 	}
 }
+
+func TestCanvasResultCarriesWhatTheRenderedCheckFound(t *testing.T) {
+	tool := NewCanvasTool(t.TempDir(), nil, nil)
+	tool.SetChecker(func(context.Context, string) []string { return []string{"it throws on load: x is not defined"} })
+	res := tool.Execute(context.Background(), map[string]interface{}{"title": "Broken", "html": "<!doctype html><p>hi</p>"})
+	if res.IsError {
+		t.Fatalf("a problem found by the check must not fail the canvas: %s", res.ForLLM)
+	}
+	if !strings.Contains(res.ForLLM, "x is not defined") || !strings.Contains(res.ForLLM, "call canvas again") {
+		t.Fatalf("the model was not told what is broken: %s", res.ForLLM)
+	}
+}
+
+func TestCanvasWithACleanRenderSaysNothingExtra(t *testing.T) {
+	tool := NewCanvasTool(t.TempDir(), nil, nil)
+	tool.SetChecker(func(context.Context, string) []string { return nil })
+	res := tool.Execute(context.Background(), map[string]interface{}{"title": "Fine", "html": "<!doctype html><p>hi</p>"})
+	if strings.Contains(res.ForLLM, "Opened in a browser") {
+		t.Fatalf("a clean render must not add findings: %s", res.ForLLM)
+	}
+}

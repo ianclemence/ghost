@@ -18,8 +18,8 @@ type Router struct {
 	classifier Classifier
 }
 
-// SetLightModel updates the light-model target. A model switch must reach
-// the router, or routing keeps choosing a model that is no longer the default.
+// SetLightModel updates the light-model target. A model switch must reach the
+// router, or routing keeps choosing a model that is not the default.
 func (r *Router) SetLightModel(model string) {
 	if r == nil {
 		return

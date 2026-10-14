@@ -118,8 +118,7 @@ func actOnReminder(svc *scheduled.Service, stream *cevents.Stream, itemID, actio
 // registerReminderActions wires the reminder card's buttons and the
 // reminders endpoint (used by notification buttons and the app).
 func registerReminderActions(mux *http.ServeMux, svc *scheduled.Service, stream *cevents.Stream, al *agent.AgentLoop) {
-	// A reminder the owner answered is no longer "still open": any morning
-	// note waiting about it goes.
+	// An answered reminder is not "still open": any morning note waiting about it goes.
 	settle := func(id, action string) {
 		if al != nil && action != "seen" {
 			al.ForgetAttention("unseen:" + id + ":")

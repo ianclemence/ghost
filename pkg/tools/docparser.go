@@ -104,8 +104,8 @@ func (t *DocParserTool) Execute(ctx context.Context, args map[string]interface{}
 		// pandoc cannot read PDF at all; poppler's pdftotext is the reader.
 		content, err = extractPDFText(filePath)
 	case "txt", "csv", "json", "xml":
-		// Plain formats are read as they are. They used to be sent to pandoc as
-		// "-f plain", which is not a pandoc reader, so every one of them failed.
+		// Plain formats are read as they are, not sent to pandoc ("-f plain" is not
+		// a pandoc reader).
 		var raw []byte
 		raw, err = os.ReadFile(filePath)
 		content = string(raw)

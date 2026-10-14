@@ -1,6 +1,6 @@
 ---
 name: grounded-citations
-description: "Ground answers and documents in cited, verifiable sources."
+description: "Ground answers and documents in cited, verifiable sources. Invoke when the user asks for sources, 'where did you get that', a fact-checked summary, or a report that must cite its evidence."
 version: 1.2.0
 author: Ghost + Teknium
 license: MIT

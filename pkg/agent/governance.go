@@ -400,7 +400,7 @@ func authorizedToolRisk(capabilityID, tool string) permissions.Risk {
 	switch tool {
 	case "exec", "sandbox":
 		return permissions.RiskHighImpact
-	case "read_file", "list_dir", "search_files", "grep_search", "web_fetch", "web_search", "memory_recall", "context_get", "session_search", "session_state":
+	case "read_file", "list_dir", "search_files", "grep_search", "web_fetch", "web_search", "memory_recall", "context_get", "session_search", "session_state", "find_tools", "pipeline":
 		return permissions.RiskReadOnly
 	}
 	return permissions.RiskOf(capabilityID)
@@ -501,10 +501,9 @@ func (g *Governance) authorize(requestID, sessionKey, capabilityID, tool string,
 		}
 		// No duplicate cards: if the session already has a live pending
 		// request for this exact ask (same capability, action, and
-		// continuation), re-present it instead of minting a second card
-		// for the same ask (seen live: a sentence-form "yes" opened a
-		// duplicate file.delete request beside the still-pending
-		// original). The owner answers one card.
+		// continuation), re-present it instead of minting a second card. A
+		// sentence-form "yes" must not open a duplicate request beside the
+		// pending original. The owner answers one card.
 		action := toolAction(tool, args)
 		wantCont := continuationOf(args)
 		if dup, ok := g.Broker.PendingForSession(sessionKey); ok && dup != nil &&

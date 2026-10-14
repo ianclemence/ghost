@@ -5,10 +5,8 @@
 // artifact authority has already validated existence and provenance; this
 // package only normalizes and orders.
 //
-// Scope note: an earlier version also surfaced workspace files, built tools,
-// and live surfaces. That made the Desk a file manager — the owner saw
-// internal files and sizes they had no reason to care about. A person wants
-// to look at what Ghost made for them, so the Desk is exactly that.
+// The Desk is exactly what Ghost made for the owner: never workspace files,
+// built tools or live surfaces.
 package desk
 
 import (

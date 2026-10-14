@@ -1,6 +1,6 @@
 ---
 name: humanizer
-description: "Humanize text: strip AI-isms and add real voice."
+description: "Rewrite text so it reads as written by a person: strip AI-isms and restore voice. Invoke when the user says 'make this sound human', 'less robotic', 'remove the AI feel', or pastes text to polish."
 version: 2.5.1
 author: Siqi Chen (@blader, https://github.com/blader/humanizer)
 license: MIT

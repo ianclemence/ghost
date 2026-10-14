@@ -1,6 +1,6 @@
 ---
 name: rss-feeds
-description: "Read RSS, Atom, JSON feeds; discover feeds behind a page."
+description: "Read RSS, Atom and JSON feeds, and discover the feed behind a page. Invoke when the user asks to follow a blog or site, check a feed, or summarize its new posts."
 version: 1.0.0
 author: Teknium (teknium1)
 license: MIT

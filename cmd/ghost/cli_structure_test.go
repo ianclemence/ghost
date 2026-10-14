@@ -41,8 +41,7 @@ func TestPrintCommandHelpCoversAllCommands(t *testing.T) {
 	}
 }
 
-// The `agent` subcommand was removed: `ghost` opens the terminal. Assert
-// it is no longer a recognized command name anywhere.
+// `ghost` opens the terminal, so `agent` is not a recognised command name.
 func TestAgentSubcommandRemoved(t *testing.T) {
 	commands := []string{
 		"serve", "gateway", "dev", "onboard", "update", "auto-update",
@@ -56,8 +55,7 @@ func TestAgentSubcommandRemoved(t *testing.T) {
 	}
 }
 
-// The legacy migration command was removed; assert the name is no longer
-// special-cased as an appliance ops command.
+// `migrate` is not an appliance ops command.
 func TestMigrateNoLongerAnOpsCommand(t *testing.T) {
 	if isApplianceOpsCommand("migrate") {
 		t.Errorf("migrate must no longer be a recognised ops command")

@@ -8,12 +8,10 @@ import (
 // Binary-shadow detection.
 //
 // A `ghost` binary earlier in PATH silently shadows a newer one installed
-// later. This is not hypothetical here: `ghost update` installs to
-// /usr/local/bin, while a user-local copy at ~/.local/bin usually comes FIRST
-// in PATH. When the user-local copy is stale, `ghost` keeps running the old
-// build after an update — the exact bug behind "I updated but still see the
-// old behavior". This check makes the situation visible.
-
+// later: `ghost update` installs to /usr/local/bin, while a user-local copy at
+// ~/.local/bin usually comes FIRST in PATH. When that copy is stale, `ghost`
+// keeps running the old build after an update. This check makes the situation
+// visible.
 // BinaryPath is one `ghost` executable found on PATH, in PATH order.
 type BinaryPath struct {
 	// Path is the absolute path to the executable.

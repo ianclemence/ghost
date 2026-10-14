@@ -424,8 +424,8 @@ func newID() string {
 	return "art-" + hex.EncodeToString(b[:])
 }
 
-// PruneDangling deletes file artifacts whose referenced file no longer exists
-// in the workspace. Text and link artifacts have no file and are never pruned
+// PruneDangling deletes file artifacts whose referenced file is missing from
+// the workspace. Text and link artifacts have no file and are never pruned
 // here. This bounds the table without ever discarding a live handoff.
 func (s *Store) PruneDangling() (int, error) {
 	rows, err := s.db.Query(`SELECT id, path FROM artifacts WHERE kind='file' AND path != ''`)

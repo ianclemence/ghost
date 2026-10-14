@@ -88,7 +88,7 @@ const (
 	SkillRemoved   Type = "skill.removed"
 	// Artifacts (things Ghost made and handed over; emitted by the trusted
 	// runtime, never by a skill or the model). Deletion is owner-driven and
-	// recorded so clients can retract what the shelf no longer holds.
+	// recorded so clients can retract what the shelf has dropped.
 	ArtifactDeleted Type = "artifact.deleted"
 	// System
 	GhostStarted    Type = "ghost.started"

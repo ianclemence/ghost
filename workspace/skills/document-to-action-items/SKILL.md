@@ -1,6 +1,6 @@
 ---
 name: document-to-action-items
-description: "Extract cited obligations, deadlines, tasks from documents."
+description: "Extract cited obligations, deadlines and tasks from a document. Invoke when the user shares a contract, letter, policy or long document and asks what they must do and by when."
 version: 0.1.0
 author: Ben Barclay (benbarclay)
 license: MIT

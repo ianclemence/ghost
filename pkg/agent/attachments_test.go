@@ -83,8 +83,7 @@ func TestReminderTextIsShortAndDeterministic(t *testing.T) {
 	}
 }
 
-// A timer's message must land in the shared conversation, stored and live.
-// It used to stay in a private automation session and reach no one.
+// A timer's message lands in the shared conversation, stored and live.
 func TestDeliverToOwnerStoresAndPublishes(t *testing.T) {
 	al := newTestAgentLoop(t, t.TempDir())
 	ch, unsub := al.Bus().SubscribeOutbound("test", false, 8)

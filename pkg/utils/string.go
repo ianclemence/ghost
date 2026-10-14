@@ -10,7 +10,6 @@ func DerefStr(s *string, fallback string) string {
 }
 
 // Prettify renders an identifier for humans: "open-meteo" → "Open Meteo".
-// Single home for the copies that used to live in activity/credentials.
 func Prettify(s string) string {
 	s = strings.ReplaceAll(s, "-", " ")
 	s = strings.ReplaceAll(s, "_", " ")

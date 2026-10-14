@@ -1,6 +1,6 @@
 ---
 name: meeting-action-items
-description: "Turn meeting notes into cited decisions, owners, tickets."
+description: "Turn meeting notes or a transcript into cited decisions, owners and follow-up tasks. Invoke when the user shares meeting notes or a summary and asks for action items or a recap."
 version: 0.1.0
 author: Ben Barclay (benbarclay)
 license: MIT

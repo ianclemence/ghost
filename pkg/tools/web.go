@@ -205,15 +205,8 @@ func (p *DuckDuckGoSearchProvider) extractResults(html string, count int, query 
 
 	var lines []string
 	lines = append(lines, fmt.Sprintf("Results for: %s (via DuckDuckGo)", query))
-
-	// Pre-compile snippet regex to run inside the loop
-	// We'll search for snippets relative to the link position or just globally if needed
-	// But simple global search for snippets might mismatch order.
-	// Since we only have the raw HTML string, let's just extract snippets globally and assume order matches (risky but simple for regex)
-	// Or better: Let's assume the snippet follows the link in the HTML
-
-	// A better regex approach: iterate through text and find matches in order
-	// But for now, let's grab all snippets too
+	// Snippets are extracted globally and paired with links by order: the HTML
+	// carries no stronger link between them.
 	reSnippet := regexp.MustCompile(`<a class="result__snippet[^"]*".*?>([\s\S]*?)</a>`)
 	snippetMatches := reSnippet.FindAllStringSubmatch(html, count+5)
 

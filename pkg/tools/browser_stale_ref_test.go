@@ -31,10 +31,9 @@ func staleScenario(t *testing.T, respond func(action string, n int) *ToolResult)
 
 const freshPageJSON = `{"url":"https://shop.test/cart","text":"@e1 [button] Pay now @e2 [link] Continue browsing"}`
 
-// The model snapshot, the page re-rendered underneath it, and the ref it
-// named no longer resolves. The refusal must hand back the page so the
-// model can pick a live ref straight away — and must not, under any
-// reading, click the ref it just refused.
+// When the page re-renders under the model's snapshot, the ref it named does
+// not resolve. The refusal hands back the live page so the model can pick a
+// live ref straight away, and never clicks the ref it just refused.
 func TestStaleRefHandsBackTheLivePage(t *testing.T) {
 	bt, sessions, count := staleScenario(t, func(action string, n int) *ToolResult {
 		if action == "click" {

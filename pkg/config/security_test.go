@@ -77,7 +77,7 @@ func TestSecurityManager_LoadAndSave(t *testing.T) {
 	// But JSON marshal of the struct redacts them
 	// For actual persistence, we should use a separate serialization
 
-	// For now, verify the manager holds the values in memory
+	// Verify the manager holds the values in memory
 	if key := sm.GetProviderAPIKey("anthropic"); key != "sk-ant-123" {
 		t.Errorf("Expected 'sk-ant-123' in memory, got '%s'", key)
 	}

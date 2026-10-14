@@ -106,6 +106,8 @@ var reviewedUngoverned = map[string]string{
 	"knowledge":      "the owner's own reading and study records on the Pod; nothing leaves it; forgetting needs confirmed=true",
 	"motion":         "writes Ghost's own motion files and renders them to video on the Pod with a local browser and ffmpeg; nothing is sent",
 	"dashboard":      "reads only: one checked SELECT over the owner's own data in a private in-memory copy, or inside a read-only transaction with a time limit on a database the owner connected; credentials never reach the model",
+	"pipeline":       "runs a short recipe of read-only lookups and line filters and returns only the last result; it refuses any tool that is not read-only, cannot call itself or delegate, and its result is fenced as outside content",
+	"find_tools":     "offers the model other tools for this turn after reading only tool names and descriptions; each tool it offers is governed on its own",
 	"phone":          "reads what the owner's phone shared with the Pod (notifications, health totals) and keeps place reminders the phone watches; nothing leaves the Pod",
 }
 

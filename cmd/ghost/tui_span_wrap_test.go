@@ -108,10 +108,9 @@ func TestMarkdownHeadingStylesInlineMarkup(t *testing.T) {
 	}
 }
 
-// A table that cannot fit its grid falls back to showing its rows as
-// text — that fallback must conceal inline markers like every other path.
-// It used to emit the raw markdown, wrapping **spans** and code spans
-// mid-token: the live TUI showed literal ** and ` in streamed replies.
+// A table that cannot fit its grid falls back to showing its rows as text. That
+// fallback conceals inline markers like every other path, so no literal ** or `
+// reaches a streamed reply.
 func TestTableFallbackConcealsMarkers(t *testing.T) {
 	cases := []struct {
 		name  string

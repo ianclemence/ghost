@@ -20,7 +20,7 @@ const (
 
 var ProfileAllowlists = map[ToolProfile][]string{
 	ProfileMobileSafe: {
-		"system_status",
+		"system_status", "find_tools", "pipeline",
 		"read_file", "write_file", "list_dir", "edit_file", "append_file", "delete_file", "move_file",
 		"search_files", "session_search", "grep_search",
 		"view", "read",
@@ -74,7 +74,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"write_file", "append_file", "remember",
 	},
 	ProfileCoding: {
-		"system_status",
+		"system_status", "find_tools", "pipeline",
 		"read_file", "write_file", "list_dir", "edit_file", "append_file", "delete_file", "move_file",
 		"search_files", "grep_search",
 		"exec", "sandbox",
@@ -87,7 +87,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// No submit: purchases are not a coding action.
 	},
 	ProfileResearch: {
-		"system_status",
+		"system_status", "find_tools", "pipeline",
 		"read_file", "list_dir", "search_files", "grep_search",
 		"web_search", "web_fetch",
 		"vision", "image_generate", "video_frames",
@@ -101,7 +101,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"remember",
 	},
 	ProfileAdmin: {
-		"system_status",
+		"system_status", "find_tools", "pipeline",
 		"read_file", "write_file", "list_dir", "edit_file", "append_file", "delete_file", "move_file",
 		"search_files", "grep_search",
 		"exec", "sandbox",
@@ -238,7 +238,7 @@ var coreToolNames = map[string]bool{
 	// already allowed.
 	"delete_file": true, "move_file": true,
 	"web_search": true, "web_fetch": true, "session_search": true,
-	"remember": true, "context_get": true, "session_state": true, "memory_curate": true, "memory_correct": true,
+	"remember": true, "context_get": true, "session_state": true, "find_tools": true, "memory_curate": true, "memory_correct": true,
 	"memory_recall": true,
 	// Read-only skill reference tools: always visible so skill docs that name
 	// them as the preferred path actually work. Cheap, no side effects.
@@ -290,8 +290,9 @@ var turnIntentTools = []struct {
 	{[]string{"oracle", "ask oracle"}, []string{"oracle"}},
 	{[]string{"lane", "template", "route"}, []string{"switch_lane"}},
 	{[]string{"merge", "parallel", "batch"}, []string{"batch_delegate"}},
+	{[]string{"how many", "which of my", "across all", "across my", "all my notes", "all my files", "every note", "every file", "count the", "of my notes", "of my files"}, []string{"pipeline"}},
 	{[]string{"compact", "summarize history", "context full"}, []string{"compact_context"}},
-	{[]string{"update ghost", "upgrade ghost", "self-update"}, []string{"update"}},
+	{[]string{"update ghost", "upgrade ghost", "self-update", "update yourself", "update itself", "upgrade yourself", "latest version", "new version", "install the update"}, []string{"update"}},
 	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"doc_parser"}},
 	// The people in the owner's life. Mentioning someone is enough: "my
 	// sister", "Sam's birthday", "text Mum" all need to know who.

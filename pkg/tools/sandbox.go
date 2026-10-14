@@ -60,9 +60,8 @@ func (t *SandboxTool) Execute(ctx context.Context, args map[string]interface{}) 
 	}
 	env, _ := args["env"].([]interface{})
 
-	// Construct the command. On Linux, we can use 'timeout' and 'nice' to limit resources.
-	// We'll also wrap the command in a shell to handle redirection or complex commands.
-	// We'll use 'unshare' or similar if available, but for now, we'll focus on timeout and nice.
+	// Commands run through a shell (for redirection and compound commands) under
+	// 'timeout' and 'nice' to bound time and priority.
 
 	// Check if 'timeout' is available
 	if _, err := exec.LookPath("timeout"); err != nil {

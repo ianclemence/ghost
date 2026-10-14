@@ -10,13 +10,10 @@ import (
 
 // registerDeskRoutes wires the Desk: a read-only feed of the things Ghost has
 // made FOR the owner. It is a projection over the artifacts authority Ghost
-// already validates — no new storage, no execution, no authority.
+// already validates: no new storage, no execution, no authority.
 //
-// Scope is deliberately narrow. An earlier version surfaced every workspace
-// file, which meant the owner saw internal files (proactive outboxes, run
-// logs) and file sizes — a file manager, not a product. The Desk shows only
-// what Ghost produced on the owner's behalf, which is what a person actually
-// wants to look at.
+// Scope is deliberately narrow: only what Ghost produced on the owner's behalf,
+// never workspace files, internal outboxes, logs or sizes.
 func registerDeskRoutes(mux *http.ServeMux, al *agent.AgentLoop) {
 	mux.HandleFunc("/v1/desk", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

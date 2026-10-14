@@ -15,8 +15,7 @@ func TestStripDateStamp(t *testing.T) {
 		"[2026-09-2515:59] Approval needed":        "Approval needed",
 		"[2026-09-2515:59][2026-09-2516:00] Twice": "Twice",
 		// Bracket eaten upstream (a dump filter drops "["-chunks): the
-		// label BODY must strip too, or the transcript shows a bare
-		// date fragment — the live v0.24.46 leak.
+		// label BODY must strip too, or the transcript shows a bare date fragment.
 		"2026-09-2515:59] Approval needed":  "Approval needed",
 		"2026-09-25 15:59] Set — dinner":    "Set — dinner",
 		"No label here":                     "No label here",

@@ -463,9 +463,8 @@ type simpleErr struct{ s string }
 func (e *simpleErr) Error() string { return e.s }
 
 // stripANSI removes SGR escape sequences so content assertions read the
-// visible text. Bubble Tea v2's cell renderer styles rune-by-rune (v1
-// emitted single runs and stripped color entirely without a TTY), so raw
-// styled output no longer contains plain substrings — the terminal shows
+// visible text. Bubble Tea v2's cell renderer styles rune-by-rune, so raw
+// styled output does not contain plain substrings; the terminal shows
 // identical cells either way.
 var ansiStripRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
@@ -554,7 +553,7 @@ func TestTUIViewRendersSingleChrome(t *testing.T) {
 	if strings.Contains(view, " prompt\n") || strings.Contains(view, "\n prompt ") {
 		t.Errorf("view must not label the prompt box, got %q", view)
 	}
-	// The footer no longer repeats internal identifiers; the model appears
+	// The footer does not repeat internal identifiers; the model appears
 	// exactly once, on the stats line.
 	if n := strings.Count(view, "cli:test"); n != 0 {
 		t.Errorf("session id must not surface in the footer, found %d: %q", n, view)

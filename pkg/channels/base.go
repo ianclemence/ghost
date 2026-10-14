@@ -50,8 +50,7 @@ var OnUnknownSender func(channel, senderID string)
 // IsAllowed reports whether a sender may talk to Ghost through this channel.
 // An empty allowlist allows nobody: a messaging channel reaches the owner's own
 // conversation, memory and tools, so it must be opened to named people on
-// purpose. (It used to allow everyone, which meant anyone who found the bot's
-// name could talk to Ghost.)
+// purpose.
 func (c *BaseChannel) IsAllowed(senderID string) bool {
 	if len(c.allowList) == 0 {
 		return false

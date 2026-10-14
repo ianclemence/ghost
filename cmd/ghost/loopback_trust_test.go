@@ -82,8 +82,8 @@ func TestAuthMiddlewareBlocksCrossSiteLoopback(t *testing.T) {
 	}
 }
 
-// A turn that failed because the provider account is out of credit tells
-// the owner so — it used to surface as "no available providers".
+// A turn that failed because the provider account is out of credit tells the
+// owner so.
 func TestFriendlyAgentErrorExplainsBilling(t *testing.T) {
 	err := fmt.Errorf("LLM call failed: %w", fmt.Errorf("all models cooling down after a recent failure: %w",
 		errors.New("API request failed:\n  Status: 402\n  Body: {\"message\":\"Insufficient Balance\"}")))

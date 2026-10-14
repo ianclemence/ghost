@@ -358,7 +358,7 @@ func (al *AgentLoop) renderActivity() (string, bool) {
 	var b strings.Builder
 	b.WriteString("My last actions:\n")
 	for _, r := range rows {
-		fmt.Fprintf(&b, "- %s (%s, %s)\n", r.title, r.state, r.at.In(time.Local).Format("15:04"))
+		fmt.Fprintf(&b, "- %s (%s, %s)\n", r.title, activityStateWords(r.state), r.at.In(time.Local).Format("15:04"))
 	}
 	return strings.TrimRight(b.String(), "\n"), true
 }
@@ -510,4 +510,23 @@ func clockLabel(mins int) string {
 		mins = 0
 	}
 	return fmt.Sprintf("%02d:%02d", (mins/60)%24, mins%60)
+}
+
+// activityStateWords says a chip's state the way the owner would.
+func activityStateWords(state string) string {
+	switch state {
+	case "waiting":
+		return "waiting for your OK"
+	case "success":
+		return "done"
+	case "failed":
+		return "didn't work"
+	case "running":
+		return "in progress"
+	case "cancelled":
+		return "cancelled"
+	case "paused":
+		return "paused"
+	}
+	return state
 }

@@ -3,6 +3,46 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.189] - 2026-10-14
+
+- **An update that does not come up puts the old Ghost back.** The new
+  release is given 90 seconds to start answering as itself; if it does not,
+  the previous binaries are restored, the services restart on them, and the
+  update reports that it was rolled back. The previous release is kept
+  beside the new one as `ghost.prev`.
+- **Ghost watches its own models.** Every model call is recorded locally
+  (outcome, speed, fallbacks). `ghost doctor` flags a model that starts
+  failing or slows to a crawl compared with its own recent past, and a
+  request the provider refused is never blamed on the model.
+- **Ghost checks the pages it builds before it tells you they are done.**
+  Each page is opened in the Pod's own browser at phone size, its buttons
+  are tapped, and Ghost is told about script errors, storage the phone does
+  not allow, sideways scrolling, tiny tap targets and tiny text, and fixes
+  them first. Building a page, a site or a tool is no longer treated as a
+  quick question, which had cut builds off before they started. When
+  there is not enough to go on, Ghost builds a clearly marked draft and asks
+  afterwards instead of holding the build back with questions.
+- **Finding what Ghost can do.** When a request names something none of the
+  tools it was handed fits, Ghost can look the rest up (`find_tools`) before
+  saying it cannot. "Update yourself" now reaches the update, which asks you
+  first.
+- **Asking many things at once.** A `pipeline` of read-only lookups and line
+  filters answers questions such as "how many of my notes mention the
+  invoice" and returns only the answer. It cannot change anything.
+- **Exact names are found.** Memory search now also matches the words in a
+  question, so a name, a number or a code is found even when its meaning
+  does not match, and both rankings are merged.
+- **Clearer answers about what is waiting.** When two things wait for
+  your OK, "yes" asks which, naming each in your own words. "What did you
+  just do?" says "waiting for your OK" and "done" and names forgotten things
+  plainly.
+- **Comments say what code does, not what it used to do.** A test now rejects
+  stopgap, history and release-number comments in the source, and ninety
+  that carried them were rewritten. Two placeholders became honest: a
+  classifier stub states that it creates no memory, and an unsupported
+  connect mode returns an error. Every bundled skill description now says
+  when to use the skill, and a test keeps it that way.
+
 ## [0.24.188] - 2026-10-14
 
 - **One stuck request no longer locks Ghost out.** When the model asked

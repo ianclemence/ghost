@@ -82,10 +82,9 @@ func TestStampStreamFlushesOnDivergence(t *testing.T) {
 	}
 }
 
-// The gate runs BEFORE the dump filter. Filtering first dropped the "["
-// that opens the label (models emit it as its own chunk), the gate only
-// ever saw the body, and "2026-09-2610:04] …" reached the live
-// transcript as a bare date fragment (observed on v0.24.46).
+// The gate runs BEFORE the dump filter: filtering first drops the "[" that
+// opens the label (models emit it as its own chunk), so the gate sees only the
+// body and a bare date fragment reaches the live transcript.
 func TestStampFilterStreamGateBeforeFilter(t *testing.T) {
 	var got []string
 	sink := func(text string) {
@@ -132,8 +131,7 @@ func TestStampFilterStreamGateBeforeFilter(t *testing.T) {
 		t.Fatalf("label + dump must stay filtered, got %q", got)
 	}
 
-	// Whitespace must not settle the gate (it used to be filtered
-	// before ever reaching it): a label arriving after it still strips.
+	// Whitespace does not settle the gate: a label arriving after it still strips.
 	got = nil
 	sink = func(text string) {
 		emit, flush := stampFilterStream(func(s string) { got = append(got, s) }, nil)

@@ -1,6 +1,6 @@
 ---
 name: maps
-description: "Geocode, POIs, routes, timezones via OpenStreetMap/OSRM."
+description: "Geocode places, find points of interest, plan routes and look up timezones with OpenStreetMap. Invoke when the user asks for directions, distances, coordinates, an address lookup or the time zone of a place."
 version: 1.2.0
 author: Mibayy
 license: MIT

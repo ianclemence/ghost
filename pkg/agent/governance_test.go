@@ -144,9 +144,8 @@ func TestContextCapabilityGate(t *testing.T) {
 	}
 }
 
-// Re-asking for an already-pending approval must re-present the same
-// card, not mint a duplicate (seen live: a sentence-form "yes" opened a
-// second file.delete request beside the still-pending original).
+// Re-asking for an already-pending approval re-presents the same card instead
+// of minting a duplicate, even when the re-ask is a sentence-form "yes".
 func TestAskDedupesPendingApproval(t *testing.T) {
 	g := openTestGovernance(t)
 	args := map[string]interface{}{"path": "scratch.txt"}

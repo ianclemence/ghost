@@ -8,9 +8,8 @@ import "context"
 // so concurrent turns cannot see each other's messages.
 type requestMessageKey struct{}
 
-// WithRequestMessage returns a context carrying the owner's raw turn text.
-// An empty message is a no-op, so callers that do not have one keep the
-// previous behaviour.
+// WithRequestMessage returns a context carrying the owner's raw turn text. An
+// empty message is a no-op.
 func WithRequestMessage(ctx context.Context, message string) context.Context {
 	if message == "" {
 		return ctx

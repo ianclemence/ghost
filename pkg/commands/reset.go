@@ -451,8 +451,6 @@ func clearSecrets(ws string) error {
 	// Wipe ONLY the secrets colocated with the active config. Never sweep
 	// global or adjacent dirs: a reset (or a test run) in one checkout
 	// must be structurally unable to destroy another installation's keys.
-	// (A previous version swept every candidate config dir and deleted a
-	// live personal AI's keys from a unit test. Never again.)
 	var dirs []string
 	if path := resolveConfigFilePath(ws); path != "" {
 		dirs = append(dirs, filepath.Dir(path))

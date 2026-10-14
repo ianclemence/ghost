@@ -436,8 +436,7 @@ func Extract(in Input) ([]Action, error) {
 
 	// A question is not a declaration. "Why do you think my name is Ian?"
 	// contains a declaration pattern but asserts nothing, and filing it puts
-	// words in the owner's mouth (observed live: a question became a
-	// user-declared fact whose quote was the question itself).
+	// words in the owner's mouth.
 	if isInterrogative(text) {
 		return nil, nil
 	}
@@ -741,10 +740,10 @@ func stripTrailingNow(s string) string {
 }
 
 // cleanValue trims surrounding whitespace and quotes, plus trailing
-// temporal fillers ("Arsenal now", "Sushi, for now") that describe when
+// temporal fillers ("Arsenal now", "Sushi, currently") that describe when
 // the statement was made, never the value itself. Values that ARE the
 // capture directive itself ("Remember this:") or end in a bare label
-// colon are rejected outright — they are instruction echoes, not beliefs.
+// colon are rejected outright: they are instruction echoes, not beliefs.
 func cleanValue(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.Trim(s, `"'`)

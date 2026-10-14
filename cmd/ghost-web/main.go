@@ -1324,8 +1324,8 @@ func handleConfigure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The claim is complete: the setup code is no longer needed and must not
-	// linger as a reusable secret.
+	// The claim is complete: the setup code is spent and must not linger as a
+	// reusable secret.
 	fb.ClearSetupCode()
 
 	// Persist the identity names the wizard collected. These were previously

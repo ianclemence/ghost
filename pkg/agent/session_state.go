@@ -26,12 +26,32 @@ func (al *AgentLoop) pendingApprovalLines(session string) []string {
 			title = card.Title
 		}
 		line := title
+		if d := requestDetail(r); d != "" {
+			line += ": " + d
+		}
 		if !r.ExpiresAt.IsZero() {
 			line += " — expires " + r.ExpiresAt.In(time.Local).Format("15:04")
 		}
 		out = append(out, line)
 	}
 	return out
+}
+
+var detailKeys = []string{"message", "task", "title", "content", "text", "path", "to", "query", "target", "name"}
+
+// requestDetail says what a waiting request is about, in the owner's own words
+// where the call carried them.
+func requestDetail(r *permissions.Request) string {
+	for _, k := range detailKeys {
+		if v := strings.TrimSpace(r.Continuation[k]); v != "" {
+			v = strings.Join(strings.Fields(v), " ")
+			if rs := []rune(v); len(rs) > 70 {
+				v = string(rs[:70]) + "…"
+			}
+			return v
+		}
+	}
+	return ""
 }
 
 func artifactLines(store *artifacts.Store, session string) []string {
@@ -46,6 +66,7 @@ func artifactLines(store *artifacts.Store, session string) []string {
 		kind     string
 		versions int
 		latest   string
+		path     string
 	}
 	groups := map[string]*group{}
 	var order []string
@@ -59,6 +80,7 @@ func artifactLines(store *artifacts.Store, session string) []string {
 		}
 		g.versions++
 		g.latest = a.Summary
+		g.path = a.Path
 	}
 	out := make([]string, 0, len(order))
 	for _, title := range order {
@@ -68,6 +90,9 @@ func artifactLines(store *artifacts.Store, session string) []string {
 			line += "s"
 		}
 		line += ")"
+		if g.path != "" {
+			line += " latest at " + g.path
+		}
 		if s := strings.TrimSpace(g.latest); s != "" {
 			line += " — " + s
 		}

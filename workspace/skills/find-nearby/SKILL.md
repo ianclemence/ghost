@@ -1,6 +1,6 @@
 ---
 name: find-nearby
-description: Find nearby places (restaurants, cafes, bars, pharmacies, etc.) using OpenStreetMap. Works with coordinates, addresses, cities, zip codes, or Telegram location pins. No API keys needed.
+description: "Find places near the owner (restaurants, cafes, bars, pharmacies) using OpenStreetMap. Invoke when the user asks for somewhere near them or shares a location pin. No API key needed."
 version: 1.0.0
 metadata:
   ghost:

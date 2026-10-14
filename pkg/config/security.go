@@ -329,7 +329,6 @@ func MergeSecurityIntoConfig(main *Config, security *SecurityManager) {
 
 // parseSimpleYAML provides minimal YAML parsing for the security config.
 func (sm *SecurityManager) parseSimpleYAML(data []byte) error {
-	// For now, we support JSON format only
-	// YAML can be added later with a proper parser
+	// Security config is JSON.
 	return json.Unmarshal(data, &sm.securityConfig)
 }

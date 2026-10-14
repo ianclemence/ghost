@@ -95,8 +95,8 @@ func checkProactiveLifecycle(e *Env) Check {
 		return fail("Proactive", "dismissed opportunity stays quiet", "re-created inside cooldown", true)
 	}
 
-	// Stale-approval protection: a transition from a status that no longer
-	// holds must be refused, so a stale card cannot execute.
+	// Stale-approval protection: a transition from a status that does not hold is
+	// refused, so a stale card cannot execute.
 	if _, err := store.BeginExecution(cand.ID, now); !errors.Is(err, ideas.ErrStale) {
 		return fail("Proactive", "answered proposal cannot start executing", "stale approval was accepted", true)
 	}

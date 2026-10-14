@@ -1,6 +1,6 @@
 ---
 name: one-three-one-rule
-description: "1-3-1 decision briefs: problem, three options, one pick."
+description: "Write a 1-3-1 decision brief: one problem, three options, one recommendation. Invoke when the user needs a recommendation they can approve quickly, or says 'give me options and pick one'."
 platforms: [linux, macos, windows]
 version: 1.0.0
 author: Willard Moore

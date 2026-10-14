@@ -174,9 +174,9 @@ func TestTrimClosingOffer(t *testing.T) {
 	}
 }
 
-// An offer welded onto the end of a real sentence: only the offer goes, and
-// the observation that carried it keeps its full stop. Observed live on a
-// news answer, where the trailing paragraph began with content.
+// An offer welded onto the end of a real sentence: only the offer goes, and the
+// observation that carried it keeps its full stop (a news answer whose trailing
+// paragraph began with content).
 func TestTrimClosingOfferCutsAnOfferAttachedToARealSentence(t *testing.T) {
 	reply := "Flooding leads the news today.\n\nSources: Bangkok Post, The Thaiger.\n\n" +
 		"If you're out and about today, the eastern side of the city is the worst hit " +

@@ -1,6 +1,6 @@
 ---
 name: ascii-video
-description: "ASCII video: convert video/audio to colored ASCII MP4/GIF."
+description: "Convert a video or audio file into a coloured ASCII MP4 or GIF. Invoke when the user asks for an ASCII video, a text-art animation from a clip, or an ASCII audio visualiser."
 version: 1.0.0
 author: SHL0MS
 license: MIT

@@ -189,7 +189,8 @@ func (h *SkillsHub) Update(ctx context.Context, slug string) (*InstallResult, er
 		return nil, fmt.Errorf("cannot snapshot %q for rollback: %w", slug, err)
 	}
 
-	// Remove old version and install new.
+	// Replace the installed version with the new one; the snapshot restores it if
+	// the install fails.
 	os.RemoveAll(oldPath)
 
 	result, err := h.registry.DownloadAndInstall(ctx, slug, meta.LatestVersion, filepath.Join(h.workspace, "skills"))

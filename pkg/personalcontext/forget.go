@@ -17,10 +17,10 @@ func (s *Store) Workspace() string {
 	return filepath.Dir(filepath.Dir(s.path))
 }
 
-// chainOf returns id and every earlier version it replaced (entries whose
+// chainOf returns id and every version it replaced (entries whose
 // SupersededBy leads to it). "Forget my dentist" means every version Ghost
-// held, not only the last: the old one stayed in history and came back when
-// Ghost searched.
+// held, not only the last: an older version left in history comes back when
+// Ghost searches.
 func (s *Store) chainOf(id string) []Entry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

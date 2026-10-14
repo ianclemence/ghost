@@ -8,7 +8,7 @@ import (
 )
 
 // Capability declares the generic execution contract for a skill.
-// It replaces per-skill prompt hacks with a single mechanism:
+// It replaces per-skill prompt rules with a single mechanism:
 //
 //	Skill -> declares Capability -> Router selects -> Runtime enforces
 //	allowed path -> Tool executes -> Result validated -> Model responds.

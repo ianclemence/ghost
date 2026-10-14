@@ -1,6 +1,6 @@
 ---
 name: reddit-reading
-description: "Read Reddit: subreddits, search, threads, users. No browser."
+description: "Read Reddit without a browser: subreddits, search, threads and user pages. Invoke when the user asks what Reddit says about something, or shares a Reddit link."
 version: 1.0.0
 author: Teknium (teknium1)
 license: MIT

@@ -516,10 +516,10 @@ func installScope(scope appliance.ScopePaths, ghostDir string, force bool) error
 
 // removeStaleShadows deletes an older copy of ghost that sits earlier in PATH
 // than the system install (typically ~/.local/bin/ghost from a per-user
-// install). It is the reason "I updated but still see the old behaviour": the
-// owner's terminal kept running the stale copy while the services ran the new
-// one. Only a file that identifies itself as Ghost is removed, never an
-// unrelated program that happens to be called ghost.
+// install). A stale copy makes an update look like it did not take: the owner's
+// terminal runs it while the services run the new one. Only a file that
+// identifies itself as Ghost is removed, never an unrelated program that
+// happens to be called ghost.
 func removeStaleShadows(canonicalDir string, dirs []string) {
 	for _, d := range dirs {
 		if d == "" || filepath.Clean(d) == filepath.Clean(canonicalDir) {

@@ -261,9 +261,8 @@ func main() {
 	if isApplianceOpsCommand(command) {
 		applyApplianceTarget()
 	} else if command == "state" {
-		// Backup, export and import must act on the Ghost that is actually
-		// running. Run as root they used to fall through to /root/.ghost, so
-		// `sudo ghost state backup` saved an empty workspace and said "Snapshot".
+		// Backup, export and import act on the Ghost that is actually running: run as
+		// root they resolve the system install, not /root/.ghost.
 		if os.Geteuid() == 0 {
 			applyApplianceTarget()
 		} else {
@@ -1528,9 +1527,9 @@ func gatewayCmd() {
 		text = agentLoop.MorningMerge(text)
 		agentLoop.DeliverToOwner(channel, chatID, text, map[string]interface{}{"announce": "heartbeat"})
 	})
-	// The attention loop runs on its own clock. It used to ride the
-	// heartbeat, which skips its handler when no HEARTBEAT.md section is
-	// due, so proactive signals were looked at a few times a day.
+	// The attention loop runs on its own clock, not the heartbeat's: the
+	// heartbeat skips its handler when no HEARTBEAT.md section is due, which
+	// would look at proactive signals only a few times a day.
 	go func() {
 		time.Sleep(90 * time.Second)
 		t := time.NewTicker(5 * time.Minute)
@@ -3871,7 +3870,7 @@ func skillsInstallBuiltinCmd(workspace string) {
 func skillsListBuiltinCmd() {
 	// Builtin skills live in the embedded workspace FS (the same source
 	// `skills sync` seeds from). Never resolve them from a hand-built
-	// filesystem path: those pointed at layouts that no longer exist.
+	// filesystem path.
 	sub, err := fs.Sub(embeddedFiles, "workspace/skills")
 	if err != nil {
 		fmt.Printf("Error loading bundled skills: %v\n", err)
@@ -3930,9 +3929,7 @@ func skillsSearchCmd(cfg *config.Config, query string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Search the live ClawHub registry (the source of truth). A previous
-	// implementation queried a static skills.json snapshot that no longer
-	// exists upstream, so search always failed.
+	// Search the live ClawHub registry, the source of truth, never a static snapshot.
 	registry := skills.NewClawHubRegistry(cfg.Skills.ClawHub)
 	results, err := registry.Search(ctx, query, 20)
 	if err != nil {

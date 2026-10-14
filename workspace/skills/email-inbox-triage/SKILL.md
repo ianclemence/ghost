@@ -1,6 +1,6 @@
 ---
 name: email-inbox-triage
-description: "Triage an inbox: prioritize threads, draft replies safely."
+description: "Triage an inbox: rank threads by urgency and draft safe replies for the owner to send. Invoke when the user says 'triage my inbox', 'what needs a reply' or 'go through my email'."
 version: 0.2.0
 author: Ben Barclay (benbarclay)
 license: MIT

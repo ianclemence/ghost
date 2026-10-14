@@ -3,6 +3,7 @@ package skills
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -74,4 +75,26 @@ func parseFrontmatterNameDesc(text string) (name, desc string) {
 		}
 	}
 	return name, desc
+}
+
+// The description is the only thing the model sees of a skill until it opens
+// it, so it is the routing logic: it must say when to use the skill.
+func TestSkillDescriptionsSayWhenToUseThem(t *testing.T) {
+	trigger := regexp.MustCompile(`(?i)\b(invoke|when|use)\b`)
+	for _, root := range []string{"../../workspace/skills"} {
+		dirs, _ := os.ReadDir(root)
+		for _, d := range dirs {
+			data, err := os.ReadFile(filepath.Join(root, d.Name(), "SKILL.md"))
+			if err != nil {
+				continue
+			}
+			_, desc := parseFrontmatterNameDesc(string(data))
+			if len(desc) < 70 {
+				t.Errorf("%s: description is %d characters; say what it does and when to use it", d.Name(), len(desc))
+			}
+			if !trigger.MatchString(desc) {
+				t.Errorf("%s: description never says when to use the skill: %q", d.Name(), desc)
+			}
+		}
+	}
 }

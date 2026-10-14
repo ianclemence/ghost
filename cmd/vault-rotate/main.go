@@ -8,7 +8,7 @@
 //
 //	go run ./cmd/vault-rotate check /var/ghost/config
 //
-// prints "old key rejected: ok" when the file key no longer unseals the
+// prints "old key rejected: ok" when the file key does not unseal the
 // vault, "old key file absent: ok" when it is gone, and fails otherwise.
 // Never prints key material.
 package main
@@ -112,10 +112,9 @@ func main() {
 	fmt.Println("rotation ok")
 }
 
-// checkOldKeyDead proves the legacy on-disk key no longer opens the
-// vault. It reads the .master-key file directly — never the unified
-// resolver, which would (correctly) find the live rotation key in
-// .master-env and always report STALE.
+// checkOldKeyDead proves the old on-disk key does not open the vault. It reads
+// the .master-key file directly, never the unified resolver, which would
+// (correctly) find the live rotation key in .master-env and always report STALE.
 // Run with a clean environment (env -i) so nothing leaks in via env.
 func checkOldKeyDead(dir string) {
 	keyPath := filepath.Join(dir, ".master-key")

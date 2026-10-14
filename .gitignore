@@ -111,3 +111,6 @@ backups/
 # Python caches
 __pycache__/
 *.pyc
+
+/cmd/ghost/ghost
+/cmd/ghost-web/ghost-web

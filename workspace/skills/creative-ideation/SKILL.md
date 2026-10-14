@@ -1,7 +1,7 @@
 ---
 name: creative-ideation
 title: Creative Ideation — Routed Library of Creative Methods
-description: "Generate ideas via named methods from creative practice."
+description: "Generate ideas with named creative methods. Invoke when the user says 'give me ideas', 'I'm stuck', 'inspire me', 'what should I build or write', or must choose between creative directions."
 version: 2.1.0
 author: SHL0MS
 license: MIT

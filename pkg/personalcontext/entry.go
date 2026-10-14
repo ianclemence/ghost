@@ -139,8 +139,7 @@ type Entry struct {
 	// (nudge-style reinforcement). ReinforcedAt is the last time it was restated,
 	// so a consolidated memory can answer "when was this last reinforced".
 	// Domain is the area of life the memory concerns, as understood when it
-	// was learned (sports, pets, health…). It used to be re-derived from the
-	// predicate text and mostly came out as "Other".
+	// was learned (sports, pets, health…).
 	Domain string `json:"domain,omitempty"`
 	// Sensitive marks a memory the owner would want handled with care (health,
 	// money, legal). It is shown as private and never volunteered.

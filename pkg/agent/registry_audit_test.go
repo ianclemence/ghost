@@ -105,7 +105,7 @@ func TestRegistryGovernanceAudit(t *testing.T) {
 //     standalone broker hook); not themselves external side effects.
 var allowedCoreAudit = map[string]bool{
 	// read / retrieval
-	"read_file": true, "list_dir": true, "search_files": true, "context_get": true, "session_state": true,
+	"read_file": true, "list_dir": true, "search_files": true, "context_get": true, "session_state": true, "find_tools": true, "pipeline": true,
 	"session_search": true, "memory_recall": true, "memory_curate": true, "remember": true,
 	// memory_correct: changes one of Ghost's own beliefs about the owner. It
 	// writes nothing without confirmed=true, keeps the old value in history

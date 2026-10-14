@@ -13,10 +13,8 @@ import (
 	"github.com/ianclemence/ghost/pkg/provider"
 )
 
-// Every geocode failure cause must map to its honest class. Regression:
-// any lookup failure was blanket-classified FailInvalid, so a dropped
-// connection surfaced to the owner as "I got an unexpected response and
-// didn't want to guess" (observed live twice in one minute).
+// Every geocode failure cause maps to its honest class: a dropped connection is
+// a network failure, not an "unexpected response" Ghost "didn't want to guess" at.
 func TestGeocodeFailureClassification(t *testing.T) {
 	var malformed map[string]interface{}
 	jsonErr := json.Unmarshal([]byte("{"), &malformed)

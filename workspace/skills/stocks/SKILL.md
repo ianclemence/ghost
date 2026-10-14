@@ -1,6 +1,6 @@
 ---
 name: stocks
-description: Stock quotes, history, search, compare, crypto via Yahoo.
+description: "Stock quotes, price history, search and comparison, plus crypto, via Yahoo. Invoke when the user asks for a share price, how a stock has done, to compare tickers, or a crypto quote."
 version: 0.1.0
 author: Mibay (Mibayy)
 license: MIT

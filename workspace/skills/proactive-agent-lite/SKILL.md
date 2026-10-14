@@ -1,6 +1,6 @@
 ---
 name: proactive-agent-lite
-description: Transform AI agents from task-followers into proactive partners with memory architecture, reverse prompting, and self-healing patterns. Lightweight version focused on core proactive capabilities.
+description: "Help Ghost act ahead of the owner: memory habits, reverse prompting and self-checks. Invoke when the user asks Ghost to be more proactive, to anticipate needs, or to review how it follows up."
 ---
 
 # Proactive Agent Lite

@@ -83,9 +83,8 @@ func (m *MDNSAdvertiser) registerAvahi() {
 	// Build service type
 	serviceType := "_ghost._tcp"
 
-	// avahi-publish expects each TXT record as its own key=value argument.
-	// Passing one space-joined string (the previous behaviour) makes the
-	// daemon treat it as a single opaque record that no client can parse.
+	// avahi-publish expects each TXT record as its own key=value argument; one
+	// space-joined string is a single opaque record that no client can parse.
 	txt := map[string]string{
 		"version":  m.Version,
 		"api_port": fmt.Sprintf("%d", m.Port),

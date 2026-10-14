@@ -1,6 +1,6 @@
 ---
 name: weekly-review-planning
-description: "Weekly reset: commitments, stalled work, next-week plan."
+description: "Run a weekly reset: review commitments, spot stalled work, plan next week. Invoke when the user says 'weekly review', 'plan my week' or 'what slipped this week'."
 version: 0.1.0
 author: Ben Barclay (benbarclay)
 license: MIT

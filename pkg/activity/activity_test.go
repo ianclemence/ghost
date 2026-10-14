@@ -194,7 +194,7 @@ func TestMemoryDeletedChip(t *testing.T) {
 	if !ok {
 		t.Fatal("memory.deleted was dropped from the activity feed")
 	}
-	if chip.Title != "Forgot: preference/favorite_color" {
+	if chip.Title != "Forgot: Favorite color" {
 		t.Fatalf("title = %q, want the removed belief named", chip.Title)
 	}
 	if !strings.Contains(chip.Summary, "cannot bring it back") {
@@ -427,5 +427,18 @@ func TestHumanizeFailureAndTechnicalSummaries(t *testing.T) {
 	}
 	if looksTechnical("Searched the web: \"latest news in bangkok\"") {
 		t.Error("a plain sentence is not technical")
+	}
+}
+
+func TestHumanClaimLabelReadsLikeTheOwnerWouldSayIt(t *testing.T) {
+	for in, want := range map[string]string{
+		"preference/coffee-order": "Coffee order",
+		"fact/home_city":          "Home city",
+		"dentist":                 "Dentist",
+		"":                        "",
+	} {
+		if got := humanClaimLabel(in); got != want {
+			t.Errorf("%q → %q, want %q", in, got, want)
+		}
 	}
 }

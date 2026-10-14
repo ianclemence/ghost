@@ -28,6 +28,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/artifacts"
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/bus"
+	"github.com/ianclemence/ghost/pkg/canvascheck"
 	"github.com/ianclemence/ghost/pkg/capability"
 	"github.com/ianclemence/ghost/pkg/cards"
 	"github.com/ianclemence/ghost/pkg/cevents"
@@ -48,6 +49,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/media"
+	"github.com/ianclemence/ghost/pkg/modelhealth"
 	"github.com/ianclemence/ghost/pkg/modes"
 	"github.com/ianclemence/ghost/pkg/motion"
 	"github.com/ianclemence/ghost/pkg/permissions"
@@ -102,6 +104,7 @@ type AgentLoop struct {
 	running          atomic.Bool
 	summarizing      sync.Map // Tracks which sessions are currently being summarized
 	sessionArtifacts *artifacts.Store
+	modelHealth      *modelhealth.Ledger
 	curator          *tools.Curator
 	nudge            *NudgeManager
 	evolution        *evolution.EvolutionManager
@@ -272,6 +275,8 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewWriteFileTool(workspace, restrict))
 	registry.Register(tools.NewListDirTool(workspace, restrict))
 	registry.Register(tools.NewSearchFilesTool(workspace, restrict))
+	registry.Register(tools.NewFindToolsTool(registry))
+	registry.Register(tools.NewPipelineTool(registry))
 	registry.Register(tools.NewEditFileTool(workspace, restrict))
 	registry.Register(tools.NewAppendFileTool(workspace, restrict))
 	registry.Register(tools.NewDeleteFileTool(workspace, restrict))
@@ -292,9 +297,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 
 	// Lanes (Isolated Contexts)
 	registry.Register(tools.NewLaneTool(func(lane string) {
-		// This callback will be handled by the agent loop if needed,
-		// but for now, the tool just returns a success message to the LLM.
-		// The LLM can then decide to use this information.
+		// Lanes are named by the model; the result is the whole effect.
 	}))
 
 	// Interactive Browser Automation (CDP-based). Registered visibly (not
@@ -646,6 +649,9 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		if t, ok := toolsRegistry.Get("canvas"); ok {
 			if ct, ok := t.(*tools.CanvasTool); ok {
 				ct.SetPublisher(artifactStore)
+				if os.Getenv("GHOST_CANVAS_CHECK") != "off" {
+					ct.SetChecker(canvascheck.Check)
+				}
 			}
 		}
 		if t, ok := toolsRegistry.Get("motion"); ok {
@@ -910,6 +916,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		doctor:              doctorRunner,
 		summarizing:         sync.Map{},
 		sessionArtifacts:    sessionArtifacts,
+		modelHealth:         modelhealth.Open(workspace),
 		curator:             curator,
 		nudge:               nudgeMgr,
 		evolution:           evolutionMgr,
@@ -1063,6 +1070,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		})
 	}
 
+	doctorRunner.ModelHealth = al.ModelHealthLine
 	sessionState.SetSources(
 		al.pendingApprovalLines,
 		func(session string) []string { return artifactLines(al.sessionArtifacts, session) },
@@ -2312,7 +2320,7 @@ func (al *AgentLoop) consolidatePersonalContext() {
 // memory index. Cloud chat providers rarely expose a compatible
 // embeddings endpoint, so the on-device Ollama embedder wins whenever
 // it answers a quick reachability probe; otherwise the chat provider
-// is used unchanged (previous behavior).
+// is used unchanged.
 func pickEmbedProvider(cfg *config.Config, chatProvider providers.LLMProvider) providers.LLMProvider {
 	_ = chatProvider // deliberately unused: see the fallback comment below
 	base := strings.TrimSpace(cfg.Providers.Ollama.APIBase)
@@ -3584,6 +3592,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 
 			toolCtx := tools.WithSubagentDepth(ctx, tools.SubagentDepth(ctx))
+			toolCtx = tools.WithTurnTools(toolCtx, &tools.TurnTools{Offered: activeTools, Profile: activeProfile})
 			// Permission broker gate: consequential calls without a grant
 			// pause durably here. The model cannot bypass this — it sits
 			// between capability resolution and execution, not in a prompt.
@@ -4059,19 +4068,25 @@ func (al *AgentLoop) callLLM(ctx context.Context, model string, messages []provi
 					turnlog.TrajectoryIDFromContext(ctx), from, c.Name, escalated)
 			}
 			attempted++
+			started := time.Now()
 			r, e := al.invokeProvider(ctx, c.Provider, c.Model, messages, tools, opts)
+			al.recordModelCall(c.Name, started, r, e, attempted > 1)
 			if e == nil && r != nil && (strings.TrimSpace(r.Content) != "" || len(r.ToolCalls) > 0) {
 				emitServedBy(ctx, al.servedBy(c.Name, c.Model))
 			}
 			return r, e
 		})
 	} else if len(candidates) == 0 {
+		started := time.Now()
 		resp, err = al.invokeProvider(ctx, al.provider, model, messages, tools, opts)
+		al.recordModelCall(model, started, resp, err, false)
 		if err == nil && resp != nil {
 			emitServedBy(ctx, al.servedBy(model, model))
 		}
 	} else {
+		started := time.Now()
 		resp, err = al.invokeProvider(ctx, candidates[0].Provider, candidates[0].Model, messages, tools, opts)
+		al.recordModelCall(candidates[0].Name, started, resp, err, false)
 		if err == nil && resp != nil {
 			emitServedBy(ctx, al.servedBy(candidates[0].Name, candidates[0].Model))
 		}

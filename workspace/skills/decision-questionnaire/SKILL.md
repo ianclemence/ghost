@@ -1,6 +1,6 @@
 ---
 name: decision-questionnaire
-description: "Turn an unanswerable decision into a questionnaire doc."
+description: "Turn a hard decision into a questionnaire document the owner fills in. Invoke when the user cannot decide, says 'help me decide', or needs to weigh options before choosing."
 version: 1.0.0
 author: Matt Pocock (mattpocock/skills, to-questionnaire) +
 license: MIT

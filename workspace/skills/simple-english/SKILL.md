@@ -1,6 +1,6 @@
 ---
 name: simple-english
-description: "Rewrite text to ASD-STE100 Simplified Technical English."
+description: "Rewrite text in ASD-STE100 Simplified Technical English. Invoke when the user asks for plain technical English, or for instructions that non-native readers can follow."
 version: 1.2.0
 author: AminBlg (https://github.com/AminBlg/SimpleEnglish)
 license: MIT

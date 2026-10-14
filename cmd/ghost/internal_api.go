@@ -4245,10 +4245,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			resolved, err = b.Resolve(req.ID, grant, strings.TrimSpace(req.Scope))
 		}
 		if err != nil {
-			// A failed resolve is not one condition: expired, already
-			// answered elsewhere, and unknown ids all used to return the
-			// same "no longer answerable", leaving the owner tapping a
-			// dead card with no idea why. Name the actual state.
+			// A failed resolve is not one condition: expired, answered elsewhere and
+			// unknown ids each get their own message, so the owner is never left tapping
+			// a dead card with no idea why.
 			kind, msg := "resolve_failed", "that approval is no longer answerable"
 			switch {
 			case strings.Contains(err.Error(), "expired"):
@@ -5030,11 +5029,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 		}
 		// Owner management surface: all entries by default. Optional
 		// ?context=work filters to one context's view (global + scoped).
-		// ?history=1 widens it from what Ghost believes now to everything
-		// it used to believe and what it was told to forget, so a
-		// correction or a removal is inspectable where the owner looks.
-		// Model retrieval paths are always scope-filtered; this endpoint
-		// is the owner, not the model.
+		// ?history=1 widens it from what Ghost believes now to everything it has
+		// believed and what it was told to forget, so a correction or a removal is
+		// inspectable where the owner looks. Model retrieval paths are always
+		// scope-filtered; this endpoint is the owner, not the model.
 		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("history")))
 		includeHistory := q == "1" || q == "true" || q == "all"
 		all := store.Current()

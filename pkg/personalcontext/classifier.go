@@ -226,11 +226,10 @@ RULES:
 
 RESPOND WITH VALID JSON ONLY. No explanation.`
 
-// ClassifyMessage sends the message to the model for semantic classification.
-// This is a placeholder that will be integrated with the actual model provider.
+// ClassifyMessage is the seam for model-backed classification. With no model
+// wired into it, it takes the conservative answer and creates no memory; the
+// semantic extractor is the model-backed path.
 func ClassifyMessage(input ClassificationInput) ClassificationOutput {
-	// TODO: Integrate with model provider
-	// For now, return a default that indicates no memory should be created
 	return ClassificationOutput{
 		ShouldRemember: false,
 		Kind:           string(KindFact),

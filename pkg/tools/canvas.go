@@ -31,6 +31,7 @@ type CanvasTool struct {
 	onPresent func(html string)
 	mu        sync.Mutex
 	pub       CanvasPublisher
+	check     func(ctx context.Context, html string) []string
 }
 
 // MaxCanvasBytes bounds one canvas. A phone has to load it inside a chat.
@@ -38,6 +39,14 @@ const MaxCanvasBytes = 256 * 1024
 
 func NewCanvasTool(workspace string, onPresent func(html string), pub CanvasPublisher) *CanvasTool {
 	return &CanvasTool{workspace: workspace, onPresent: onPresent, pub: pub}
+}
+
+// SetChecker installs the rendered-page check: it opens the page the way the
+// phone will and reports what is broken or hard to use.
+func (t *CanvasTool) SetChecker(fn func(ctx context.Context, html string) []string) {
+	t.mu.Lock()
+	t.check = fn
+	t.mu.Unlock()
 }
 
 // SetPublisher wires the artifact store once it exists.
@@ -227,8 +236,16 @@ func (t *CanvasTool) Execute(ctx context.Context, args map[string]interface{}) *
 	pub := t.pub
 	t.mu.Unlock()
 	advice := ""
+	t.mu.Lock()
+	check := t.check
+	t.mu.Unlock()
+	if check != nil {
+		if found := check(ctx, html); len(found) > 0 {
+			advice = " Opened in a browser at phone size, it has problems: " + strings.Join(found, "; ") + ". Fix them and call canvas again with the same title before you tell the owner it is done."
+		}
+	}
 	if notes := canvasDesignNotes(html); len(notes) > 0 {
-		advice = " Design check (craft advice, the page works): " + strings.Join(notes, "; ") + ". Fix what applies and call canvas again with the same title, or leave it if it is deliberate; skills/canvas-design/SKILL.md explains each."
+		advice += " Design check (craft advice, the page works): " + strings.Join(notes, "; ") + ". Fix what applies and call canvas again with the same title, or leave it if it is deliberate; skills/canvas-design/SKILL.md explains each. The page is already live in the owner's chat either way: never tell the owner it needs approval or publishing."
 	}
 	if pub == nil {
 		return &ToolResult{ForLLM: fmt.Sprintf("Canvas %q (v%d) is shown on the console only: the chat can't show it right now.", title, version) + advice, Silent: true}

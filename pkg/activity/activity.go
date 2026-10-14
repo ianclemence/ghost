@@ -439,7 +439,7 @@ func Project(e *cevents.Event) (*Chip, bool) {
 		}
 	case cevents.MemoryDeleted:
 		if label, _ := e.Payload["title"].(string); label != "" {
-			title = "Forgot: " + truncate(label, 80)
+			title = "Forgot: " + truncate(humanClaimLabel(label), 80)
 		}
 	case cevents.ArtifactDeleted:
 		if label, _ := e.Payload["title"].(string); label != "" {
@@ -682,4 +682,17 @@ func humanizeFailure(raw string) string {
 		return "Ghost didn't give the tool everything it needed."
 	}
 	return "Something went wrong. Open Details for the technical reason."
+}
+
+// humanClaimLabel turns a claim label such as "preference/coffee-order" into
+// words the owner would use: "Coffee order".
+func humanClaimLabel(label string) string {
+	if i := strings.LastIndex(label, "/"); i >= 0 {
+		label = label[i+1:]
+	}
+	label = strings.TrimSpace(strings.NewReplacer("-", " ", "_", " ").Replace(label))
+	if label == "" {
+		return label
+	}
+	return strings.ToUpper(label[:1]) + label[1:]
 }

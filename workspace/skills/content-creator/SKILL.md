@@ -1,6 +1,6 @@
 ---
 name: content-creator
-description: Create high-quality content for blogs, social media, email marketing, and sales copy. Generates engaging, SEO-optimized content in any voice or style.
+description: "Write blog posts, social posts, marketing email and sales copy in a chosen voice. Invoke when the user asks to draft or rewrite marketing or social content, a newsletter, a caption or an ad."
 version: 1.0.0
 author: OWL
 tags: [content, copywriting, SEO, social-media, email, marketing]
