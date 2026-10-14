@@ -3,6 +3,31 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.193] - 2026-10-14
+
+- **Pages are built, not queued for approval.** A fresh 100-turn run showed
+  every page request ending "waiting on your approval to publish": Ghost was
+  using the artifact publisher, which asks first and shows nothing running,
+  instead of the canvas. The design skill no longer names it, and a page
+  offered to it as text is sent back to the canvas.
+- **Ghost knows what it can do in any language.** The tools a request is
+  handed still come from its words, but the prompt now carries a short list
+  of everything else Ghost can do, so it can ask for the right tool by
+  itself, whatever language you write in, before saying it cannot.
+- **Forgetting reaches reworded copies.** "Forget my coffee preference"
+  removed the stored fact but left the note and the search entry that said it
+  slightly differently ("Favourite coffee is a flat white…"). Forgetting now
+  also removes lines and entries that say the same thing in other words, in
+  your notes, captures and journal, and hides it from conversation summaries.
+  A reason you give when forgetting is still treated as your own request.
+- **"Forget everything about X" is the confirmation.** Ghost no longer asks
+  which of two names you meant when you named both.
+- **"What did I ask in my fifth message?" works.** The conversation outline
+  accepts the chat's name where it expected the conversation's id.
+- **No approval for a dinner idea.** The recipe skill read the web through a
+  shell command, which asks first; it now uses a plain read and answers a
+  general "what should I eat" from its own knowledge.
+
 ## [0.24.192] - 2026-10-14
 
 - **Forgetting a person from your people list also forgets what Ghost

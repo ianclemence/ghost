@@ -260,3 +260,55 @@ func TestForgettingOneOfSeveralBeliefsKeepsThePerson(t *testing.T) {
 		t.Fatal("Dara is still believed in, so her record must stay")
 	}
 }
+
+func TestForgettingReachesCapturesAndJournal(t *testing.T) {
+	ws := t.TempDir()
+	s := mustOpen(t, ws)
+	e, err := s.Create(Entry{ID: newEntryID(), Kind: KindFact, Subject: "user", Predicate: "fact/dentist", Status: StatusCurrent,
+		Value: json.RawMessage(`"Their dentist is Dr. Somchai at Bumrungrad Hospital"`), Confidence: 0.9,
+		Sources: []Source{{Type: SourceConversation, Kind: SourceUserDeclared, Ref: "m1", Timestamp: time.Now()}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"data/captures.md", "journal/2026-10-03.md"} {
+		p := filepath.Join(ws, f)
+		_ = os.MkdirAll(filepath.Dir(p), 0755)
+		_ = os.WriteFile(p, []byte("- the dentist is Dr. Somchai at Bumrungrad Hospital\n- buy milk\n"), 0644)
+	}
+	if _, err := ForgetPipelineWith(s, ws, e.ID, "test data"); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"data/captures.md", "journal/2026-10-03.md"} {
+		b, _ := os.ReadFile(filepath.Join(ws, f))
+		if strings.Contains(string(b), "Somchai") || !strings.Contains(string(b), "buy milk") {
+			t.Errorf("%s: forgotten line kept or unrelated line lost:\n%q", f, b)
+		}
+	}
+	if got, _ := s.Get(e.ID); !strings.Contains(strings.ToLower(got.RetractReason), "owner asked") {
+		t.Errorf("an owner's own reason must still be recorded as an owner forget: %q", got.RetractReason)
+	}
+}
+
+func TestForgettingCatchesALineThatSaysTheSameThingInOtherWords(t *testing.T) {
+	ws := t.TempDir()
+	s := mustOpen(t, ws)
+	e, err := s.Create(Entry{ID: newEntryID(), Kind: KindPreference, Subject: "user", Predicate: "preference/coffee-order", Status: StatusCurrent,
+		Value: json.RawMessage(`"Their favourite coffee is a flat white with oat milk"`), Confidence: 0.9,
+		Sources: []Source{{Type: SourceConversation, Kind: SourceUserDeclared, Ref: "m1", Timestamp: time.Now()}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(ws, "memory", "MEMORY.md")
+	_ = os.MkdirAll(filepath.Dir(p), 0755)
+	_ = os.WriteFile(p, []byte("- [2026-10-14] (user_preference) Favourite coffee is a flat white with oat milk\n- [2026-10-14] (user_preference) Likes green tea\n- the coffee machine is broken\n"), 0644)
+	if _, err := ForgetPipelineWith(s, ws, e.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p)
+	if strings.Contains(string(b), "flat white") {
+		t.Errorf("the reworded line survived:\n%s", b)
+	}
+	if !strings.Contains(string(b), "green tea") || !strings.Contains(string(b), "coffee machine") {
+		t.Errorf("an unrelated line was removed:\n%s", b)
+	}
+}

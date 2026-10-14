@@ -40,7 +40,7 @@ func (t *MemoryCorrectTool) Description() string {
 		"action=find with about=<words>: lists matching beliefs with their ids and when the owner said them. " +
 		"action=update with entry_id and new_value: changes that belief. action=forget with entry_id: drops it. " +
 		"Always find first (unless an Unconfirmed changes note already gave you the ids). action=dismiss with entry_id drops an unconfirmed candidate the owner said was wrong. Update and forget only PREVIEW (change nothing) until you pass confirmed=true; pass it only when " +
-		"the owner has just told you the new fact or said yes to your preview. If a new message merely seems to disagree with a stored belief, " +
+		"the owner has just told you the new fact or said yes to your preview. A plain instruction to forget something (\"forget X\", \"forget everything about X\") is itself the owner's yes: find it, then forget with confirmed=true in the same turn, and do not ask which. If a new message merely seems to disagree with a stored belief, " +
 		"ask which is right instead of changing it. After a change, tell the owner in one line what it was and what it is now."
 }
 

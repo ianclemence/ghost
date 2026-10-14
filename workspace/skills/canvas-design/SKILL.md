@@ -1,6 +1,6 @@
 ---
 name: canvas-design
-description: Design guidance for anything visual Ghost builds with canvas, publish_artifact or a written HTML/CSS file: websites, landing pages, portfolios, pricing pages, dashboards, mock-ups, tools, games and animations. Invoke before building or restyling such a page, and when the owner says it looks plain, generic, dated, cramped or "AI-made". Covers layout, type, colour, states, motion and a pre-send checklist. Based on Emil Kowalski's design-engineering craft.
+description: Design guidance for anything visual Ghost builds. Build it with the canvas tool (never publish_artifact, which needs an approval and shows nothing running): websites, landing pages, portfolios, pricing pages, dashboards, mock-ups, tools, games and animations. Invoke before building or restyling such a page, and when the owner says it looks plain, generic, dated, cramped or "AI-made". Covers layout, type, colour, states, motion and a pre-send checklist. Based on Emil Kowalski's design-engineering craft.
 version: 1.0.0
 author: Ghost
 license: MIT

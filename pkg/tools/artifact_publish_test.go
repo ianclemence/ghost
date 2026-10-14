@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ianclemence/ghost/pkg/artifacts"
@@ -56,5 +57,12 @@ func TestPublishArtifactToolFailsClosed(t *testing.T) {
 	})
 	if !res.IsError {
 		t.Fatalf("unwired store must refuse, not publish")
+	}
+}
+
+func TestAWebPageIsSentToCanvasNotPublishedAsText(t *testing.T) {
+	res := (&PublishArtifactTool{}).Execute(context.Background(), map[string]interface{}{"title": "x", "kind": "text", "text": "<!DOCTYPE html><html><body>hi</body></html>"})
+	if !res.IsError || !strings.Contains(res.ForLLM, "canvas") {
+		t.Fatalf("an HTML page published as text must be sent to canvas: %+v", res)
 	}
 }

@@ -1,6 +1,7 @@
 package personalcontext
 
 import (
+	"github.com/ianclemence/ghost/pkg/utils"
 	"os"
 	"path/filepath"
 	"strings"
@@ -154,6 +155,11 @@ func mentions(line string, values, names, topics []string) bool {
 			return true
 		}
 	}
+	for _, v := range values {
+		if utils.SameStatement(v, line) {
+			return true
+		}
+	}
 	hits := 0
 	for _, n := range names {
 		if strings.Contains(l, strings.ToLower(n)) {
@@ -194,9 +200,7 @@ func scrubNotes(workspace string, values, names, topics []string) int {
 	if len(values) == 0 && len(names) == 0 {
 		return 0
 	}
-	files, _ := filepath.Glob(filepath.Join(workspace, "memory", "*.md"))
-	dreams, _ := filepath.Glob(filepath.Join(workspace, "dreams", "*.md"))
-	files = append(files, dreams...)
+	files := noteFiles(workspace)
 	removed := 0
 	for _, f := range files {
 		data, err := os.ReadFile(f)
@@ -295,10 +299,9 @@ func ForgottenMatcher(workspace string) func(string) bool {
 // written, so lines saved before a forget (or before this existed) go too.
 // Returns how many lines it removed.
 func ScrubForgottenNotes(workspace string) int {
-	files, _ := filepath.Glob(filepath.Join(workspace, "memory", "*.md"))
-	dreams, _ := filepath.Glob(filepath.Join(workspace, "dreams", "*.md"))
+	files := noteFiles(workspace)
 	removed := 0
-	for _, f := range append(files, dreams...) {
+	for _, f := range files {
 		data, err := os.ReadFile(f)
 		if err != nil {
 			continue
@@ -367,4 +370,16 @@ func (s *Store) hasCurrentSubject(subject string) bool {
 		}
 	}
 	return false
+}
+
+// noteFiles are the text stores Ghost writes about the owner, besides the
+// belief log: daily notes, reflections, captures and the journal. Forgetting
+// has to reach every one of them.
+func noteFiles(workspace string) []string {
+	var files []string
+	for _, dir := range []string{"memory", "dreams", "data", "journal"} {
+		matches, _ := filepath.Glob(filepath.Join(workspace, dir, "*.md"))
+		files = append(files, matches...)
+	}
+	return files
 }

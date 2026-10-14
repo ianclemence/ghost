@@ -15,7 +15,7 @@ prerequisites:
 
 TheMealDB API. No API key required.
 
-> **Mandatory:** Run the exact `curl` command below with the `exec` tool and use its JSON output. Do NOT use `web_search` or `web_fetch` to "find" the recipe, and do NOT delegate to a subagent — that is duplicate work and TheMealDB is the authoritative source.
+> **Fetch the URL in the table below with `web_fetch`** (a plain read, no approval needed) and use its JSON. The `curl` commands are the same request. Do not delegate to a subagent, and do not search the web for the recipe: TheMealDB is the source. For a general "what should I eat tonight" with no recipe asked for, suggest from your own knowledge and do not look anything up.
 
 ## Quick Reference
 

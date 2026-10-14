@@ -177,6 +177,9 @@ func (cb *ContextBuilder) buildToolsSection() string {
 	sb.WriteString("## Tools\n\n")
 	sb.WriteString("The tools available to you are in the function-calling API, and that list is authoritative for this turn. ")
 	sb.WriteString("Pick the ONE tool that best matches the task. Do not invent tools, and never claim to have run a command you didn't actually execute.")
+	if catalogue := tools.OnDemandCatalogue(cb.tools); catalogue != "" {
+		sb.WriteString("\n\n" + catalogue)
+	}
 	return sb.String()
 }
 

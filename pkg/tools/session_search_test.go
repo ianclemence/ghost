@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/ianclemence/ghost/pkg/db"
@@ -317,5 +318,20 @@ func TestSessionSearchOutlineKeepsBothEndsOfALongConversation(t *testing.T) {
 	}
 	if out.Omitted != 300-outlineMax || out.Turns[0].Said != "message 0" || out.Turns[len(out.Turns)-1].Said != "message 299" {
 		t.Fatalf("a long outline must keep the start and the end and say what it left out: omitted=%d", out.Omitted)
+	}
+}
+
+func TestSessionSearchOutlineFallsBackFromAChatNameToTheConversation(t *testing.T) {
+	database, err := db.NewDB(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(`INSERT INTO messages (id, session_id, role, content, created_at) VALUES ('m1', 's1', 'user', 'hello there', '2026-10-14 10:00:00')`); err != nil {
+		t.Fatal(err)
+	}
+	res := NewSessionSearchTool(database.DB).Execute(WithSessionKey(context.Background(), "s1"), map[string]interface{}{"mode": "outline", "session_id": "default"})
+	if res.IsError || !strings.Contains(res.ForLLM, "hello there") {
+		t.Fatalf("a name with no messages must mean this conversation: %+v", res)
 	}
 }

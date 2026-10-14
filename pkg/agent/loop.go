@@ -723,6 +723,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 			defer cancel()
 			for _, v := range values {
 				_, _ = ragStore.ForgetValue(ctx, v)
+				_, _ = ragStore.ForgetStatement(ctx, v)
 			}
 			for _, n := range names {
 				if len([]rune(n)) >= 5 {
@@ -2927,7 +2928,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	var summary string
 	if !opts.NoHistory {
 		history = al.sessions.GetHistory(opts.SessionKey)
-		summary = al.sessions.GetSummary(opts.SessionKey)
+		summary = personalcontext.DropForgotten(al.workspace, al.sessions.GetSummary(opts.SessionKey))
 
 		// Inject RAG context into summary (scope-filtered: cross-context
 		// memories never reach the model's context) — but only when the

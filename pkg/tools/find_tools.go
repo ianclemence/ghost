@@ -46,7 +46,7 @@ func (t *FindToolsTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"need": map[string]interface{}{"type": "string", "description": "What the tool must do, in a few words"},
+			"need": map[string]interface{}{"type": "string", "description": "What the tool must do, in a few English words"},
 		},
 		"required": []string{"need"},
 	}

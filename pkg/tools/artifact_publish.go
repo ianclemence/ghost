@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ianclemence/ghost/pkg/artifacts"
 )
@@ -41,7 +42,8 @@ func (t *PublishArtifactTool) Name() string {
 func (t *PublishArtifactTool) Description() string {
 	return "Hand the user a result: a workspace file, a short text result, or a link. " +
 		"Use after the file actually exists — the runtime validates existence and " +
-		"rejects anything it cannot prove. Title is required; give exactly one of path, text, or url."
+		"rejects anything it cannot prove. Title is required; give exactly one of path, text, or url. " +
+		"Never use it for a web page, app, tool or game that the owner should see running: build those with canvas."
 }
 
 func (t *PublishArtifactTool) Parameters() map[string]interface{} {
@@ -60,12 +62,15 @@ func (t *PublishArtifactTool) Parameters() map[string]interface{} {
 }
 
 func (t *PublishArtifactTool) Execute(ctx context.Context, args map[string]interface{}) *ToolResult {
-	if t.store == nil {
-		return ErrorResult("Artifact publishing is unavailable: no artifact store is wired. Nothing was published.")
-	}
 	str := func(key string) string {
 		s, _ := args[key].(string)
 		return s
+	}
+	if looksLikeHTMLPage(str("text")) || looksLikeHTMLPage(str("content")) {
+		return ErrorResult("A web page is built with canvas, not published as text. Call canvas with a title and the complete HTML; nothing was published.")
+	}
+	if t.store == nil {
+		return ErrorResult("Artifact publishing is unavailable: no artifact store is wired. Nothing was published.")
 	}
 	a, err := t.store.Publish(artifacts.Input{
 		SessionKey: SessionKeyFromContext(ctx),
@@ -83,4 +88,12 @@ func (t *PublishArtifactTool) Execute(ctx context.Context, args map[string]inter
 		ForLLM:   "Published artifact " + a.ID + " (" + a.Kind + ": " + a.Title + "). It is now available to the user.",
 		Evidence: ArtifactEvidence(a.ID, a.Kind, a.Title),
 	}
+}
+
+func looksLikeHTMLPage(s string) bool {
+	head := strings.ToLower(strings.TrimSpace(s))
+	if len(head) > 200 {
+		head = head[:200]
+	}
+	return strings.HasPrefix(head, "<!doctype html") || strings.HasPrefix(head, "<html")
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/utils"
 	"strings"
 	"sync"
 	"time"
@@ -423,6 +424,38 @@ func (s *Store) ForgetValue(ctx context.Context, value string) (int, error) {
 	s.mu.Unlock()
 	return len(ids), nil
 }
+
+// ForgetStatement removes chunks that say the same thing as value in other
+// words, which a substring match on the exact wording misses.
+func (s *Store) ForgetStatement(ctx context.Context, value string) (int, error) {
+	rows, err := s.db.Query(`SELECT id, content FROM memory_chunks`)
+	if err != nil {
+		return 0, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id, content string
+		if rows.Scan(&id, &content) == nil && utils.SameStatement(value, content) {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	for _, id := range ids {
+		if _, err := s.db.Exec(`DELETE FROM memory_chunks WHERE id = ?`, id); err != nil {
+			return 0, err
+		}
+	}
+	s.mu.Lock()
+	if s.collection != nil {
+		_ = s.collection.Delete(ctx, nil, nil, ids...)
+	}
+	s.mu.Unlock()
+	return len(ids), nil
+}
+
 func (s *Store) Retrieve(ctx context.Context, query string, limit int) ([]SearchResult, error) {
 	return s.RetrieveScoped(ctx, query, limit, nil)
 }

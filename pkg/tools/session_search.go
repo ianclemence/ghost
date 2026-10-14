@@ -249,6 +249,15 @@ func (t *SessionSearchTool) outline(ctx context.Context, args map[string]interfa
 	if sessionID == "" {
 		return ErrorResult("session_id is required for outline mode")
 	}
+	// A model often passes the chat's name ("default") for this conversation's
+	// id. A name that holds no messages means the conversation it is in.
+	if caller := callerSession(ctx); caller != "" && sessionID != caller {
+		var n int
+		_ = t.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE session_id = ?`, sessionID).Scan(&n)
+		if n == 0 {
+			sessionID = caller
+		}
+	}
 	if !t.sameContext(callerSession(ctx), sessionID) {
 		return ErrorResult("that conversation belongs to another context and is not visible here")
 	}

@@ -73,3 +73,16 @@ func TestForgetValueIgnoresShortValues(t *testing.T) {
 		t.Fatal("short value deleted a chunk")
 	}
 }
+
+func TestForgetStatementRemovesAChunkThatSaysItInOtherWords(t *testing.T) {
+	s := newForgetTestStore(t)
+	seedChunk(t, s, "Favourite coffee is a flat white with oat milk")
+	seedChunk(t, s, "Likes green tea in the evening")
+	n, err := s.ForgetStatement(context.Background(), "Their favourite coffee is a flat white with oat milk")
+	if err != nil || n != 1 {
+		t.Fatalf("expected one chunk gone, got %d %v", n, err)
+	}
+	if chunkCount(t, s, "%green tea%") != 1 {
+		t.Fatal("an unrelated chunk was removed")
+	}
+}
