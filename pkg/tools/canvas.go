@@ -67,7 +67,11 @@ func (t *CanvasTool) Description() string {
 		"min-height of 100vh. The window already has a frame and a title bar, so do not repeat the title " +
 		"as a big heading unless the page needs one. " +
 		"The page already has a dark base, a clean font and these CSS variables, so use them instead of " +
-		"inventing colours: --bg --surface --fg --muted --accent --ok --warn --bad --line --radius. " +
+		"inventing colours: --bg --surface --fg --muted --accent --ok --warn --bad --line --radius, plus " +
+		"--ease-out --ease-in-out --ease-drawer, --fast --base, --s1 to --s8 for spacing and --shadow. " +
+		"Override them to give the page its own look. Before you build a site, landing page, dashboard or " +
+		"app screen, read skills/canvas-design/SKILL.md with read_file: it sets the bar for layout, type, " +
+		"colour, states and motion, and what to do about a plain or generic result. " +
 		"To remember what the owner does between opens (a score, where they are in a deck of " +
 		"flashcards and when each card is due again, what they ticked), call ghost.save(value) with any " +
 		"JSON value (up to 64 KB) and read it back as ghost.saved when the page loads (null the first " +
@@ -91,7 +95,7 @@ func (t *CanvasTool) Parameters() map[string]interface{} {
 			},
 			"title": map[string]interface{}{
 				"type":        "string",
-				"description": "A short name for what this is (\"Click counter\"). Reuse the same title for a new version of the same canvas.",
+				"description": "The name the owner gave it, or a short name for what it is (\"Doi Roast\", \"Click counter\"): they will ask for it by that name. Reuse the same title for a new version of the same canvas.",
 			},
 			"summary": map[string]interface{}{
 				"type":        "string",
@@ -222,8 +226,12 @@ func (t *CanvasTool) Execute(ctx context.Context, args map[string]interface{}) *
 	t.mu.Lock()
 	pub := t.pub
 	t.mu.Unlock()
+	advice := ""
+	if notes := canvasDesignNotes(html); len(notes) > 0 {
+		advice = " Design check (craft advice, the page works): " + strings.Join(notes, "; ") + ". Fix what applies and call canvas again with the same title, or leave it if it is deliberate; skills/canvas-design/SKILL.md explains each."
+	}
 	if pub == nil {
-		return &ToolResult{ForLLM: fmt.Sprintf("Canvas %q (v%d) is shown on the console only: the chat can't show it right now.", title, version), Silent: true}
+		return &ToolResult{ForLLM: fmt.Sprintf("Canvas %q (v%d) is shown on the console only: the chat can't show it right now.", title, version) + advice, Silent: true}
 	}
 	if summary = strings.TrimSpace(summary); summary == "" {
 		summary = fmt.Sprintf("Version %d", version)
@@ -242,7 +250,7 @@ func (t *CanvasTool) Execute(ctx context.Context, args map[string]interface{}) *
 	if warn := canvasWarnings(html); len(warn) > 0 {
 		msg += " But note: " + strings.Join(warn, "; ") + ". It will not work as written. Fix it and call canvas again with the same title before telling the owner it is done."
 	}
-	return &ToolResult{ForLLM: msg, Silent: true}
+	return &ToolResult{ForLLM: msg + advice, Silent: true}
 }
 
 // MaxCanvasSaved is the most a canvas may keep with ghost.save.

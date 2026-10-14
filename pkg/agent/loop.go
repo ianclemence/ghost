@@ -271,6 +271,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewReadFileTool(workspace, restrict))
 	registry.Register(tools.NewWriteFileTool(workspace, restrict))
 	registry.Register(tools.NewListDirTool(workspace, restrict))
+	registry.Register(tools.NewSearchFilesTool(workspace, restrict))
 	registry.Register(tools.NewEditFileTool(workspace, restrict))
 	registry.Register(tools.NewAppendFileTool(workspace, restrict))
 	registry.Register(tools.NewDeleteFileTool(workspace, restrict))
@@ -1951,6 +1952,19 @@ func (al *AgentLoop) processMessageInner(ctx context.Context, msg bus.InboundMes
 			logger.InfoCF("agent", "disabled-skill fast-path",
 				map[string]interface{}{"session_key": msg.SessionKey})
 			if onChunk != nil && ans != "" {
+				onChunk(ans)
+			}
+			if al.sessions != nil {
+				al.sessions.AddMessage(msg.SessionKey, "user", msg.Content)
+				al.sessions.AddMessage(msg.SessionKey, "assistant", ans)
+				al.sessions.Save(msg.SessionKey)
+			}
+			return endTurn(ans, nil)
+		}
+	}
+	if !resumedTurn && !thinking && !isCronTriggered && !machineTurn && msg.Channel != "system" && len(msg.Media) == 0 && msg.Content != "" {
+		if ans, ok := al.ambiguousAnswer(msg.SessionKey, msg.Content); ok {
+			if onChunk != nil {
 				onChunk(ans)
 			}
 			if al.sessions != nil {
@@ -3762,6 +3776,12 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 		}
 
+		for _, id := range providers.UnansweredToolCalls(messages) {
+			stub := providers.UnrunToolMessage(id)
+			messages = append(messages, stub)
+			al.sessions.AddFullMessage(opts.SessionKey, stub)
+		}
+
 		// Inject any mid-turn steering messages queued by the user (e.g. an
 		// interrupt-and-redirect while a long tool-call sequence is running).
 		if al.steering != nil {
@@ -4102,6 +4122,7 @@ func (al *AgentLoop) invokeProvider(ctx context.Context, provider providers.LLMP
 	if model == "" {
 		model = al.model
 	}
+	messages = providers.RepairToolPairing(messages)
 
 	thinkingLevel := "off"
 	if opts.Thinking {
@@ -4676,6 +4697,7 @@ func (al *AgentLoop) updateToolContexts(channel, chatID string) {
 	}
 	setFileGuard("read_file", guard)
 	setFileGuard("list_dir", guard)
+	setFileGuard("search_files", guard)
 	setFileGuard("write_file", guard)
 	setFileGuard("edit_file", guard)
 	setFileGuard("append_file", guard)

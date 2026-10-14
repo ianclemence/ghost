@@ -232,7 +232,7 @@ func FilterRegistryByProfile(registry *ToolRegistry, profile ToolProfile) *ToolR
 // gating never starves a turn of the essentials.
 var coreToolNames = map[string]bool{
 	"exec": true, "read_file": true, "write_file": true, "append_file": true,
-	"list_dir": true, "edit_file": true,
+	"list_dir": true, "search_files": true, "edit_file": true,
 	// Tidying its own workspace (deleting and moving files) is a basic ability,
 	// like writing one. Deleting still asks the owner every time it is not
 	// already allowed.

@@ -208,3 +208,17 @@ func TestCanvasKeepsWhatThePageSavedAcrossVersions(t *testing.T) {
 		t.Fatal("a canvas without html or read_saved is an error")
 	}
 }
+
+func TestCanvasResultCarriesDesignAdviceWithoutBlocking(t *testing.T) {
+	tool := NewCanvasTool(t.TempDir(), nil, nil)
+	res := tool.Execute(context.Background(), map[string]interface{}{
+		"title": "Roaster",
+		"html":  `<!doctype html><style>a{transition: all 200ms}</style><a>Lorem ipsum</a>`,
+	})
+	if res.IsError {
+		t.Fatalf("design advice must not fail a canvas: %s", res.ForLLM)
+	}
+	if !strings.Contains(res.ForLLM, "Design check") || !strings.Contains(res.ForLLM, "placeholder copy") {
+		t.Fatalf("the model was not told what to improve: %s", res.ForLLM)
+	}
+}

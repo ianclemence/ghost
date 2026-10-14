@@ -3,6 +3,35 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.188] - 2026-10-14
+
+- **One stuck request no longer locks Ghost out.** When the model asked
+  for two actions at once and the first needed your approval, the second
+  was left without an answer, the AI provider refused every later message
+  in that conversation, and Ghost then refused to talk to the provider for
+  every conversation at once, blaming "the model". Unanswered actions now
+  get a plain "not run" answer, a request the provider refuses no longer
+  puts the model into cooldown, and the message says what happened.
+- **A plain "yes" never answers for you when two things are waiting.**
+  With a reminder awaiting your approval and a new routine awaiting
+  confirmation, "yes" used to confirm whichever came last. Ghost now lists
+  what is waiting and asks which you mean. Asking for your reminders also
+  shows what is still waiting for approval.
+- **"Monthly budget categories" is not a monthly reminder.** A cadence
+  word that describes a thing ("monthly report", "daily step count") is no
+  longer read as a request to schedule it.
+- **Searching your files is one step.** A new file search finds the line
+  in the notes and documents you wrote, without sending a helper to open
+  folders one by one (one search took 106 seconds), and never looks inside
+  Ghost's own memory or session stores.
+- **Pages Ghost builds have a point of view.** A new design skill, based on
+  Emil Kowalski's craft, covers layout, type, colour, every state, and
+  restrained motion. Every page now starts with motion, spacing and press
+  tokens, and Ghost is told what to improve (placeholder text, `transition:
+  all`, hover-only effects, long animations, missing reduced-motion rules)
+  the moment it publishes. A page is saved under the name you gave it, so
+  "open Doi Roast" finds it.
+
 ## [0.24.187] - 2026-10-14
 
 - **Updates now deliver Ghost's operating contract.** The rules Ghost
