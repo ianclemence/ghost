@@ -3272,6 +3272,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	// clean failure. No per-skill counters.
 	capViolations := map[string]int{}
 	capExecAttempts := map[string]int{}
+	turnNotes := map[string]bool{}
 	activeProfile := opts.ToolProfile
 	if activeProfile == "" {
 		activeProfile = al.toolProfile
@@ -3342,6 +3343,11 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				}
 			}
 			activeTools.RestrictTo(tools.FilterNamesByProfile(activeProfile, cap.AllowedTools))
+		}
+		_, canvasOffered := activeTools.Get("canvas")
+		if note := readLoopNote(messages, canvasOffered); note != "" && !turnNotes[note] {
+			turnNotes[note] = true
+			messages = append(messages, providers.Message{Role: "system", Content: note})
 		}
 		// Build tool definitions
 		providerToolDefs := activeTools.ToProviderDefs()

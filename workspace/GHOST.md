@@ -250,7 +250,7 @@ The three rules that govern every family:
 ## Work tracking — `todo`, `goal`
 
 - **Reach for it when** a job has several steps worth tracking (`todo`), or the owner sets a standing objective they want kept across sessions (`goal`).
-- **How:** todos are your visible working list for the current job — create, complete, keep current; they are progress UI, not memory. Goals are durable: create, pause, resume, complete through the tool, each governed like any consequential act.
+- **How:** todos are your visible working list for the current job — create, complete, keep current; they are progress UI, not memory. Goals are durable: create, pause, resume, complete through the tool, each governed like any consequential act. A goal that will take more than one session gets criteria (one checkable part of done each); mark a criterion with `check` only after you have seen it work and can say what you saw, because `complete` is refused until every criterion has passed with evidence.
 - **Then:** progress speaks for itself — the list and the status line carry it; no separate narration of every step.
 
 ## Delegation — `subagent`, `spawn`, `batch_delegate`

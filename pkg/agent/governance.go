@@ -390,7 +390,7 @@ func (g *Governance) AuthorizeTool(requestID, sessionKey, capabilityID, tool str
 //     this, a read-only skill that lists exec in its AllowedTools (for a
 //     legitimate curl) would let a skill's instructions run ARBITRARY shell
 //     with no broker decision.
-//   - Read-only tools (read_file, list_dir, search_files, grep_search,
+//   - Read-only tools (read_file, list_dir, search_files,
 //     web_fetch, memory recall) are ALWAYS read_only. A skill declaring
 //     consequential risk (email, calendar) also lists read_file so the skill
 //     can read its own SKILL.md; without this override, reading a file under
@@ -400,7 +400,7 @@ func authorizedToolRisk(capabilityID, tool string) permissions.Risk {
 	switch tool {
 	case "exec", "sandbox":
 		return permissions.RiskHighImpact
-	case "read_file", "list_dir", "search_files", "grep_search", "web_fetch", "web_search", "memory_recall", "context_get", "session_search", "session_state", "find_tools", "pipeline":
+	case "read_file", "list_dir", "search_files", "web_fetch", "web_search", "memory_recall", "context_get", "session_search", "session_state", "find_tools", "pipeline":
 		return permissions.RiskReadOnly
 	}
 	return permissions.RiskOf(capabilityID)

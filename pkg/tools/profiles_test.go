@@ -32,7 +32,7 @@ func TestToolProfileAllows(t *testing.T) {
 		{"mobile allows read", ProfileMobileSafe, "read_file", true},
 		{"mobile blocks shell", ProfileMobileSafe, "shell", false},
 		{"heartbeat allows session_search", ProfileHeartbeatSafe, "session_search", true},
-		{"heartbeat blocks grep_search", ProfileHeartbeatSafe, "grep_search", false},
+		{"heartbeat blocks search_files", ProfileHeartbeatSafe, "search_files", false},
 		// Skill docs name these as the preferred path; the model must see
 		// them on mobile or every skill call fails with "not available".
 		{"mobile allows weather_now", ProfileMobileSafe, "weather_now", true},
@@ -155,5 +155,21 @@ func TestBrowserIsOfferedForNamedSitesAndShopping(t *testing.T) {
 	}
 	if offered("what is the weather like", "browser_navigate") {
 		t.Error("an unrelated question must not be handed a browser")
+	}
+}
+
+func TestBuildRequestsInOtherLanguagesOfferTheCanvas(t *testing.T) {
+	reg := NewToolRegistry()
+	reg.Register(described{"canvas", "shows a page"})
+	reg.Register(described{"weather_now", "weather"})
+	for _, msg := range []string{
+		"สวัสดี ช่วยสร้างหน้าเว็บร้านกาแฟชื่อ Doi Chang ให้หน่อย",
+		"Crea una página web para mi panadería",
+		"帮我做一个网站",
+	} {
+		offered := FilterToolsForTurn(reg, ProfileFull, msg, false)
+		if _, ok := offered.Get("canvas"); !ok {
+			t.Errorf("%q was not offered the canvas", msg)
+		}
 	}
 }

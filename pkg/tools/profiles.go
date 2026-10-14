@@ -22,8 +22,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 	ProfileMobileSafe: {
 		"system_status", "find_tools", "pipeline",
 		"read_file", "write_file", "list_dir", "edit_file", "append_file", "delete_file", "move_file",
-		"search_files", "session_search", "grep_search",
-		"view", "read",
+		"search_files", "session_search",
 		"web_search", "web_fetch",
 		"sandbox", "exec",
 		"schedule", "remember",
@@ -70,13 +69,13 @@ var ProfileAllowlists = map[ToolProfile][]string{
 	},
 	ProfileHeartbeatSafe: {
 		"system_status",
-		"read_file", "view", "session_search", "exec",
+		"read_file", "session_search", "exec",
 		"write_file", "append_file", "remember",
 	},
 	ProfileCoding: {
 		"system_status", "find_tools", "pipeline",
 		"read_file", "write_file", "list_dir", "edit_file", "append_file", "delete_file", "move_file",
-		"search_files", "grep_search",
+		"search_files",
 		"exec", "sandbox",
 		"web_search", "web_fetch",
 		"remember", "session_search",
@@ -88,7 +87,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 	},
 	ProfileResearch: {
 		"system_status", "find_tools", "pipeline",
-		"read_file", "list_dir", "search_files", "grep_search",
+		"read_file", "list_dir", "search_files",
 		"web_search", "web_fetch",
 		"vision", "image_generate", "video_frames",
 		"remember", "session_search",
@@ -103,7 +102,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 	ProfileAdmin: {
 		"system_status", "find_tools", "pipeline",
 		"read_file", "write_file", "list_dir", "edit_file", "append_file", "delete_file", "move_file",
-		"search_files", "grep_search",
+		"search_files",
 		"exec", "sandbox",
 		"web_search", "web_fetch",
 		"schedule", "remember",
@@ -112,7 +111,7 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"skill_manage", "browser_submit",
 		"vision", "image_generate",
 		"i2c", "spi", "device", "publish_artifact",
-		"compaction", "compact_context", "todo", "doc_parser",
+		"compact_context", "todo", "doc_parser",
 	},
 	ProfileFull: nil,
 }
@@ -273,7 +272,10 @@ var turnIntentTools = []struct {
 		"prototype", "wireframe", "visualize", "visualise", "visualization", "visualisation", "dashboard",
 		"chart", "graph", "infographic", "animation", "animate", "calculator", "stopwatch", "timer app", "widget",
 		"game", "quiz", "to-do app", "todo app", "counter", "interactive", "ui for", "page that", "page with",
-		"build me", "make me a", "make me an", "create a page", "show it to me", "display it", "see it", "preview", "render"},
+		"build me", "make me a", "make me an", "create a page", "show it to me", "display it", "see it", "preview", "render",
+		// The same asks in the languages owners write in.
+		"หน้าเว็บ", "เว็บไซต์", "สร้างเว็บ", "ออกแบบ", "แดชบอร์ด", "เกม", "กราฟ", "แอป",
+		"página web", "sitio web", "page web", "site web", "seite erstellen", "tovuti", "ukurasa wa", "网页", "网站", "ウェブサイト"},
 		[]string{"canvas"}},
 	// Writing something for the owner to send: they see it in full and send it.
 	{[]string{"email", "e-mail", "mail ", "reply to", "write to", "write back", "text ", "sms", "message to", "send a message",

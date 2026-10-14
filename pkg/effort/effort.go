@@ -119,7 +119,7 @@ var (
 	urgentRE   = regexp.MustCompile(`\b(now|asap|urgent|immediately|right away)\b`)
 	// Building something to look at and use takes reading guidance, writing
 	// a page, and fixing what the canvas points out: never a Quick turn.
-	buildRE = regexp.MustCompile(`\b(build|create|make|design|prototype|draw|sketch)\b[^.?!]{0,60}\b(page|site|website|web app|app|dashboard|game|calculator|chart|landing|portfolio|mock-?up|ui|screen|widget|tracker|tool|animation|motion|diagram)\b`)
+	buildRE = regexp.MustCompile(`\b(build|create|make|design|prototype|draw|sketch)\b[^.?!]{0,60}\b(page|site|website|web app|app|dashboard|game|calculator|chart|landing|portfolio|mock-?up|ui|screen|widget|tracker|tool|animation|motion|diagram)\b|(สร้าง|ทำ|ออกแบบ)[^.?!]{0,40}(หน้าเว็บ|เว็บไซต์|เว็บ|แอป|เกม|แดชบอร์ด)|\b(crea|haz|construye|diseña)\b[^.?!]{0,60}\b(página|sitio|web|app|juego|panel)\b|(做|制作|创建|设计)[^。？！]{0,20}(网页|网站|应用|游戏)`)
 	toolRE  = regexp.MustCompile(`\b(schedule|remind|calendar|email|send|create|delete|move|rename|download|upload|browse|open|run|install|summarize|summary|save|write|edit|translate|analyze|plan|organize|search|look up|generate|draft)\b`)
 )
 

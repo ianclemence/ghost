@@ -15,17 +15,22 @@ Build what a person would want to keep, not what a model produces by default.
 A page is finished when it has a point of view, every state is handled, and no
 detail makes a thumb or an eye work harder than it should.
 
-This file is enough for a small tool, widget or chart. Open a reference only when the job needs it, and one at a time:
+This file has what a good first build needs. Build from it, let the canvas check the page, then improve. The references go deeper and are optional: read at most one, and only when you are stuck or the owner asks for more polish (`references/site-patterns.md`, `references/motion.md`, `references/anti-slop.md`).
 
-- `references/site-patterns.md` for a multi-section page (landing, pricing, portfolio, dashboard): sections, content, rhythm.
-- `references/motion.md` when the page animates beyond a press and a fade.
-- `references/anti-slop.md` when the owner calls the result plain or generic.
+## Pick the shape
+
+- **Landing page:** hero (what it is, for whom, one action) → one proof → what is offered (list or menu with prices, not three identical cards) → story or how it works → practical details (where, when, how to reach) → the action again.
+- **Pricing:** two or three tiers named by who they are for; the recommended one differs by weight and contrast; same price and action position in each; stack on a phone.
+- **Portfolio:** the work leads (one large piece, then a grid with title, year, one line); a short first-person about; one way to get in touch. Drawn placeholders with real aspect ratios, never hotlinked photos.
+- **Dashboard or tracker:** the answer the owner opens it for is the first thing on screen, as one large number with its unit and trend; breakdown below; real empty and first-run states; remember entries with `ghost.save`.
+- **Tool or calculator:** one input, one result, shown as you type, result in the largest type; remembers the last values.
+- **Game:** works in three seconds with no instructions; feedback on every input; score kept with `ghost.save`; one-tap restart.
 
 ## The five decisions, in order
 
 1. **Who is it for, and what is the one thing they should do?** One primary action per screen. Write it down before any markup.
 2. **What is the point of view?** Pick one memorable idea and commit: editorial and warm, instrument-panel precise, playful and tactile, quiet and premium. A coffee roaster is not a fintech app. Every later choice (type, colour, radius, motion) serves that idea.
-3. **What is real?** Use the owner's real name, place, products and numbers. Never lorem ipsum, "Your text here", "Feature 1", or invented testimonials and statistics presented as true. Build first: when you lack content, write honest, specific copy, say it is a draft, and ask for the real details after you have shown the page. Never hold the build back with questions.
+3. **What is real?** Use the owner's real name, place, products and numbers. Never lorem ipsum, "Your text here", "Feature 1", or invented testimonials and statistics presented as true. Build first: when you lack content, write honest, specific copy, say it is a draft, and ask for the real details after you have shown the page. Never hold the build back with questions. A page that needs the owner's own data (sleep, spending, habits) is still built now: fill it with clearly labelled sample data and give it inputs for the real entries, kept with `ghost.save`; never refuse to build because the data is not connected yet.
 4. **What are the states?** Empty, loading, error, success, disabled, long text, one item, a hundred items. Design them, do not leave them to the browser.
 5. **What is the motion budget?** Decide what animates and why (see `references/motion.md`). Most things should not.
 

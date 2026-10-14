@@ -98,6 +98,8 @@ func TestBuildingAPageIsNeverAQuickTurn(t *testing.T) {
 		"Create a one-page portfolio site for a photographer named Ploy.",
 		"Build a small habit-tracker page with a counter that remembers its value.",
 		"design a pricing page for Lumen",
+		"สวัสดี ช่วยสร้างหน้าเว็บร้านกาแฟชื่อ Doi Chang ให้หน่อย",
+		"Crea una página web para mi panadería",
 	} {
 		if got := Classify(msg); got == Quick {
 			t.Errorf("%q was classified Quick", msg)

@@ -3,6 +3,27 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.190] - 2026-10-14
+
+- **A page request no longer ends in a pile of re-read guidance.** One build
+  spent its whole budget opening the same design files over and over and
+  produced nothing. Ghost now notices a repeated lookup, or several guidance
+  files read in a row with nothing built, and is told to build. The design
+  skill carries what a first build needs, so it need not open anything else.
+- **Pages that need your own data are built anyway.** A sleep dashboard used
+  to be refused because no health data was connected. It is now built with
+  clearly labelled sample data and inputs for your real entries, which it
+  remembers.
+- **Build requests in Thai, Spanish and Chinese get a canvas.** The words that
+  offered the canvas and the budget for real work were English only, so a
+  Thai request for a coffee-shop site got a permission prompt for a shell
+  command instead of a page.
+- **Goals that take more than one session have a definition of done.** A goal
+  can list criteria, each marked passing only with the evidence that shows
+  it, and completing the goal is refused until every one has passed.
+- **Dead permissions removed.** Several profiles allowed tools that do not
+  exist (`grep_search`, `view`, `read`, `compaction`).
+
 ## [0.24.189] - 2026-10-14
 
 - **An update that does not come up puts the old Ghost back.** The new
