@@ -220,3 +220,43 @@ func TestForgetNameResetsUserDoc(t *testing.T) {
 		t.Fatalf("USER.md = %s", data)
 	}
 }
+
+func personEntry(subject, predicate, value string) Entry {
+	return Entry{ID: newEntryID(), Kind: KindPerson, Subject: subject, Predicate: predicate, Status: StatusCurrent,
+		Value: json.RawMessage(`"` + value + `"`), Confidence: 0.95,
+		Sources: []Source{{Type: SourceConversation, Kind: SourceUserDeclared, Ref: "m1", Timestamp: time.Now()}}}
+}
+
+func TestForgettingTheLastBeliefAboutSomeoneTellsTheRuntime(t *testing.T) {
+	ws := t.TempDir()
+	st := mustOpen(t, ws)
+	e, err := st.Create(personEntry("Dara", "person/dara-job", "barista in Phuket"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var told []string
+	OnForgetSubject = func(s string) { told = append(told, s) }
+	defer func() { OnForgetSubject = nil }()
+	if _, err := ForgetPipelineWith(st, ws, e.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(told) != 1 || told[0] != "Dara" {
+		t.Fatalf("the runtime was not told the last belief about Dara went: %v", told)
+	}
+}
+
+func TestForgettingOneOfSeveralBeliefsKeepsThePerson(t *testing.T) {
+	ws := t.TempDir()
+	st := mustOpen(t, ws)
+	a, _ := st.Create(personEntry("Dara", "person/dara-job", "barista"))
+	_, _ = st.Create(personEntry("Dara", "person/dara-city", "Phuket"))
+	called := false
+	OnForgetSubject = func(string) { called = true }
+	defer func() { OnForgetSubject = nil }()
+	if _, err := ForgetPipelineWith(st, ws, a.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("Dara is still believed in, so her record must stay")
+	}
+}

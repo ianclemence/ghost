@@ -12,6 +12,11 @@ import (
 // the distinctive names in them.
 var OnForget func(values, names []string)
 
+// OnForgetSubject, when set by the runtime, is told that the last belief about
+// a subject was forgotten, so records kept about that person elsewhere (the
+// people the owner knows) go with it.
+var OnForgetSubject func(subject string)
+
 // Workspace is the workspace directory this store lives in.
 func (s *Store) Workspace() string {
 	return filepath.Dir(filepath.Dir(s.path))
@@ -352,4 +357,14 @@ func resetUserDoc(workspace string, chain []Entry) {
 		}
 		_ = os.WriteFile(path, []byte(strings.Join(lines, "\n")), mode)
 	}
+}
+
+// hasCurrentSubject reports whether any belief about subject is still in force.
+func (s *Store) hasCurrentSubject(subject string) bool {
+	for _, e := range s.Current() {
+		if strings.EqualFold(e.Subject, subject) {
+			return true
+		}
+	}
+	return false
 }

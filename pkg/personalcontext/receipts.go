@@ -193,6 +193,11 @@ func ForgetPipelineWith(store *Store, workspace, id, reason string) (ForgetRepor
 		report.DerivativesRebuilt = append(report.DerivativesRebuilt, "search")
 	}
 
+	if OnForgetSubject != nil && report.Subject != "" && !strings.EqualFold(report.Subject, "user") && !store.hasCurrentSubject(report.Subject) {
+		OnForgetSubject(report.Subject)
+		report.DerivativesRebuilt = append(report.DerivativesRebuilt, "people")
+	}
+
 	if _, _, err := Compact(store); err == nil {
 		report.DerivativesRebuilt = append(report.DerivativesRebuilt, "digest")
 	}
