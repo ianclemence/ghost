@@ -41,8 +41,9 @@ func TestDoctorRunAll(t *testing.T) {
 
 	runner := New(database.DB, &testProvider{}, reg, t.TempDir())
 	results := runner.RunAll(context.Background())
-	// 13 registered checks minus 3 empty-info omissions on a bare workspace:
-	// unbound vault, no connected-service skills, no binaries on PATH.
+	// 14 registered checks minus 4 empty-info omissions on a bare workspace:
+	// unbound vault, no connected-service skills, no binaries on PATH, no
+	// model-health ledger.
 	// Neither the golden suite nor spend is part of health. Diagnostics
 	// length scales with problems, not inventory.
 	if len(results) != 10 {

@@ -36,6 +36,8 @@ type Doctor struct {
 	// Optional: when set, the provider check reports the whole estate and
 	// flags cloud entries missing credentials.
 	Estate []providers.ProviderInfo
+	// ModelHealth reports how recent model calls have gone: ok, or what drifted.
+	ModelHealth func() (status, message string)
 	// RetrievalSource reports observed retrieval latency aggregates
 	// (populated by the agent runtime; nil = nothing observed yet).
 	RetrievalSource func() RetrievalStats
@@ -122,6 +124,7 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 		d.checkRoutinesFailing,
 		d.checkConnectedServices,
 		d.checkBinaries,
+		d.checkModelHealth,
 	}
 	results := make([]CheckResult, 0, len(checks))
 	for _, check := range checks {
@@ -131,10 +134,11 @@ func (d *Doctor) RunAll(ctx context.Context) []CheckResult {
 	// omitted rather than rendered as permanent info noise. The vault row
 	// appears once a config is bound (unbound means the check didn't run,
 	// not that all is well); the connected-services aggregate appears once
-	// at least one service skill is enabled.
+	// at least one service skill is enabled; the model-health row appears once a
+	// ledger is wired.
 	kept := results[:0]
 	for _, r := range results {
-		if r.Status == "info" && (r.Name == "vault" || r.Name == "connected_services" || r.Name == "binaries") {
+		if r.Status == "info" && (r.Name == "vault" || r.Name == "connected_services" || r.Name == "binaries" || r.Name == "model_health") {
 			continue
 		}
 		kept = append(kept, r)

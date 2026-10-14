@@ -33,8 +33,8 @@ func TestHealthCheckCount(t *testing.T) {
 	// See TestDoctorRunAll: pin PATH so checkBinaries omits itself here too.
 	t.Setenv("PATH", t.TempDir())
 	results := d.RunAll(context.Background())
-	// 13 registered minus 3 empty-info omissions on a bare workspace
-	// (unbound vault, no service skills, no binaries on PATH). Neither the
+	// 14 registered minus 4 empty-info omissions on a bare workspace
+	// (unbound vault, no service skills, no binaries on PATH, no ledger). Neither the
 	// golden suite nor spend is a registered check: health never reports
 	// test scores or cost.
 	if len(results) != 10 {

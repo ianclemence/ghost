@@ -78,7 +78,7 @@ func ghostVersionAt(ctx context.Context, path string) string {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "👻 Ghost ") {
 			v := strings.TrimSpace(strings.TrimPrefix(line, "👻 Ghost "))
-			// "v0.23.26 (git: abc1234)" -> keep the version, drop the parenthetical
+			// "vX.Y.Z (git: abc1234)" -> keep the version, drop the parenthetical
 			// for a readable message; the full string still differs between builds.
 			if i := strings.Index(v, " ("); i > 0 {
 				v = v[:i]
