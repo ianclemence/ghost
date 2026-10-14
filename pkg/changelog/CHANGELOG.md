@@ -3,6 +3,20 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.182] - 2026-10-14
+
+- **Routines gain a typed workflow engine.** A new `pkg/workflow`
+  package compiles repetitive jobs into inspectable steps instead of
+  re-reading everything every time: typed yes/no and choice questions
+  with confidence gates, stoppers-first ordering, early stop when the
+  answer is settled, and escalation to you when confidence is low.
+  Every step is written to an append-only ledger, so a decision can be
+  replayed without redoing the research.
+- **Inbox triage is the first compiled routine.** Newsletters and noise
+  end at headers without fetching bodies; full threads are read only
+  for replies and actions that need them. Uncertain calls route to an
+  approval batch instead of guessing.
+
 ## [0.24.181] - 2026-10-13
 
 - **Docs tidy.** The Markdown-rendering reference is retired from the
