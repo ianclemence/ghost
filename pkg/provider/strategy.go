@@ -538,7 +538,7 @@ func Explain(err error, provider string) string {
 	case FailUnavailable, FailServer:
 		return who + " is having trouble right now. Try again shortly, or switch models with /model."
 	case FailRejected:
-		return who + " rejected the request (the model may not exist or may not support it). Try another model with /model."
+		return who + " refused this request. That usually means something in this conversation it cannot accept, not a problem with the model. Try again; if it repeats, start a new conversation."
 	}
 	return "The model call failed. Try again, or switch models with /model."
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/logger"
+	"github.com/ianclemence/ghost/pkg/provider"
 )
 
 type FallbackCandidate struct {
@@ -114,7 +115,10 @@ func (f *FallbackChain) Execute(ctx context.Context, candidates []FallbackCandid
 			err = fmt.Errorf("empty response from %s", c.Name)
 			logger.WarnCF("fallback", "candidate returned empty response", map[string]interface{}{"name": c.Name})
 		}
-		if f.tracker != nil {
+		// A request the provider refused for its own shape says nothing about
+		// the model's health. Cooling the model down for it would lock every
+		// other conversation out for the same window.
+		if f.tracker != nil && provider.ClassifyError(err) != provider.FailRejected {
 			f.tracker.markFailed(c.Name, err)
 		}
 		lastErr = err

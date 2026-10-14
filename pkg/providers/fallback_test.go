@@ -103,3 +103,33 @@ func TestFallbackReportsCooldownCause(t *testing.T) {
 		t.Fatalf("wrapped cause must classify as non-retryable billing, got %q", c)
 	}
 }
+
+func TestRefusedRequestDoesNotCoolTheModelDown(t *testing.T) {
+	chain := NewFallbackChain(time.Minute)
+	cand := []FallbackCandidate{{Name: "m", Model: "m"}}
+	bad := errors.New("API request failed:\n  Status: 400\n  Body: {\"error\":{\"type\":\"invalid_request_error\"}}")
+	_, err := chain.Execute(context.Background(), cand, func(FallbackCandidate) (*LLMResponse, error) { return nil, bad })
+	if err == nil {
+		t.Fatal("the refusal must surface")
+	}
+	ok := &LLMResponse{Content: "fine"}
+	got, err := chain.Execute(context.Background(), cand, func(FallbackCandidate) (*LLMResponse, error) { return ok, nil })
+	if err != nil || got != ok {
+		t.Fatalf("one refused request locked the model out for everyone else: %v", err)
+	}
+}
+
+func TestServerFailureStillCoolsTheModelDown(t *testing.T) {
+	chain := NewFallbackChain(time.Minute)
+	cand := []FallbackCandidate{{Name: "m", Model: "m"}}
+	down := errors.New("API request failed:\n  Status: 503\n  Body: unavailable")
+	_, _ = chain.Execute(context.Background(), cand, func(FallbackCandidate) (*LLMResponse, error) { return nil, down })
+	called := false
+	_, err := chain.Execute(context.Background(), cand, func(FallbackCandidate) (*LLMResponse, error) {
+		called = true
+		return &LLMResponse{Content: "x"}, nil
+	})
+	if called || err == nil {
+		t.Fatal("a failing model must still be skipped during its cooldown")
+	}
+}

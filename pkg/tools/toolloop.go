@@ -175,7 +175,7 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 					map[string]any{"iteration": iteration, "attempt": attempt, "class": string(class)})
 			},
 			func() (*providers.LLMResponse, error) {
-				return config.Provider.Chat(ctx, messages, providerToolDefs, config.Model, llmOpts)
+				return config.Provider.Chat(ctx, providers.RepairToolPairing(messages), providerToolDefs, config.Model, llmOpts)
 			})
 		if err != nil {
 			logger.ErrorCF("toolloop", "LLM call failed",
