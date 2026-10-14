@@ -373,3 +373,50 @@ func TestReleaseJSONDecodesTheWayGitHubSendsIt(t *testing.T) {
 		t.Fatalf("decoded %+v", rel)
 	}
 }
+
+func TestUpdateThatNeverServesIsRolledBack(t *testing.T) {
+	f := newFakeRelease(t, relOpts{version: "v2.0.0"})
+	trust(t, f)
+	scope, ghost := userScope(t)
+	var r recorder
+	env := r.env()
+	env.healthy = func(string) bool { return false }
+	err := deployRelease(env, scope, f.rel)
+	if err == nil || !strings.Contains(err.Error(), "rolled back") {
+		t.Fatalf("a release that never served must fail the update, got %v", err)
+	}
+	if got := installedVersion(t, ghost); got != "v1.0.0" {
+		t.Fatalf("the previous release was not put back: running %s", got)
+	}
+	restarts := 0
+	for _, c := range r.calls {
+		if c == "restart" {
+			restarts++
+		}
+	}
+	if restarts != 2 {
+		t.Fatalf("expected a restart into the new release and another back out, got %d: %v", restarts, r.calls)
+	}
+}
+
+func TestHealthyUpdateKeepsThePreviousReleaseBeside(t *testing.T) {
+	f := newFakeRelease(t, relOpts{version: "v2.0.0"})
+	trust(t, f)
+	scope, ghost := userScope(t)
+	var r recorder
+	env := r.env()
+	var asked string
+	env.healthy = func(v string) bool { asked = v; return true }
+	if err := deployRelease(env, scope, f.rel); err != nil {
+		t.Fatal(err)
+	}
+	if asked != "v2.0.0" {
+		t.Fatalf("health was asked about %q", asked)
+	}
+	if got := installedVersion(t, ghost); got != "v2.0.0" {
+		t.Fatalf("installed %s", got)
+	}
+	if got := installedVersion(t, ghost+".prev"); got != "v1.0.0" {
+		t.Fatalf("the previous release was not kept: %s", got)
+	}
+}

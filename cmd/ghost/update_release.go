@@ -86,6 +86,9 @@ type updateEnv struct {
 	service  func(scope appliance.ScopePaths, action string, svcs ...string)
 	restart  func(scope appliance.ScopePaths)
 	sudo     func(name string, args ...string) error
+	// healthy reports whether the daemon is serving the given version. Nil
+	// skips the check.
+	healthy func(version string) bool
 }
 
 func realUpdateEnv() updateEnv {
@@ -105,6 +108,7 @@ func realUpdateEnv() updateEnv {
 		}
 	}
 	return updateEnv{
+		healthy: waitServing,
 		plan: func() error {
 			fmt.Println("1. Validating workspace layout (services still running)...")
 			return appliance.CheckWorkspaceMigration(appliance.DefaultGhostDir)
@@ -360,16 +364,60 @@ func installBinary(env updateEnv, scope appliance.ScopePaths, src, target string
 	return appliance.AtomicInstall(src, target)
 }
 
+const healthWait = 90 * time.Second
+
+// waitServing polls the daemon until it reports version, or gives up.
+func waitServing(version string) bool {
+	deadline := time.Now().Add(healthWait)
+	for time.Now().Before(deadline) {
+		if servingVersion() == version {
+			return true
+		}
+		time.Sleep(3 * time.Second)
+	}
+	return false
+}
+
+// keepPrevious copies the installed binary beside itself so a release that
+// does not come up can be put back.
+func keepPrevious(env updateEnv, scope appliance.ScopePaths, target string) string {
+	if _, err := os.Stat(target); err != nil {
+		return ""
+	}
+	prev := target + ".prev"
+	if err := installBinary(env, scope, target, prev); err != nil {
+		return ""
+	}
+	return prev
+}
+
+func restorePrevious(env updateEnv, scope appliance.ScopePaths, prevs map[string]string) {
+	for target, prev := range prevs {
+		if prev == "" {
+			continue
+		}
+		if err := installBinary(env, scope, prev, target); err != nil {
+			fmt.Printf("  Could not restore %s: %v\n", target, err)
+		}
+	}
+	env.restart(scope)
+}
+
 // installStaged swaps the staged release in. Services are already stopped.
+// If the new release does not report itself as serving, the previous
+// binaries go back and the update fails.
 func installStaged(env updateEnv, scope appliance.ScopePaths, st *stagedRelease) error {
 	target := filepath.Join(scope.BinDir, "ghost")
+	prevs := map[string]string{target: keepPrevious(env, scope, target)}
 	if err := installBinary(env, scope, st.ghost, target); err != nil {
 		return err
 	}
 	fmt.Printf("  Installed %s\n", target)
 	if st.web != "" {
 		webTarget := filepath.Join(scope.BinDir, "ghost-web")
+		prevs[webTarget] = keepPrevious(env, scope, webTarget)
 		if err := installBinary(env, scope, st.web, webTarget); err != nil {
+			restorePrevious(env, scope, prevs)
 			return err
 		}
 		fmt.Printf("  Installed %s\n", webTarget)
@@ -380,6 +428,11 @@ func installStaged(env updateEnv, scope appliance.ScopePaths, st *stagedRelease)
 		removeStaleShadows(scope.BinDir, []string{filepath.Join(home, ".local", "bin"), "/usr/local/sbin"})
 	}
 	env.restart(scope)
+	if env.healthy != nil && st.version != "" && !env.healthy(st.version) {
+		fmt.Printf("  %s did not come up within %s. Putting the previous release back.\n", st.version, healthWait)
+		restorePrevious(env, scope, prevs)
+		return fmt.Errorf("update rolled back: %s did not start serving", st.version)
+	}
 	return nil
 }
 
