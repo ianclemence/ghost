@@ -59,6 +59,9 @@ func withSource(props map[string]interface{}) map[string]interface{} {
 type PeopleTool struct {
 	store *life.People
 	loc   func() *time.Location
+	// OnForgotten is told the name of a person who was just forgotten, so
+	// what Ghost believes about them goes too.
+	OnForgotten func(name string)
 }
 
 func NewPeopleTool(workspace string, loc func() *time.Location) *PeopleTool {
@@ -160,6 +163,9 @@ func (t *PeopleTool) Execute(ctx context.Context, args map[string]interface{}) *
 		}
 		if err := t.store.Forget(p.ID); err != nil {
 			return ErrorResult(err.Error())
+		}
+		if t.OnForgotten != nil {
+			t.OnForgotten(p.Name)
 		}
 		return NewToolResult("Forgot " + p.Name + " and everything Ghost knew about them.")
 	}

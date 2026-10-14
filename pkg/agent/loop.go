@@ -766,7 +766,19 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// important documents and their finances, each a local record with its
 	// source. Dates are read in the owner's own zone.
 	ownerZone := func() *time.Location { return proactive.UserLocation(pcStore) }
-	toolsRegistry.Register(tools.NewPeopleTool(workspace, ownerZone))
+	peopleTool := tools.NewPeopleTool(workspace, ownerZone)
+	peopleTool.OnForgotten = func(name string) {
+		store, err := personalcontext.Open(workspace)
+		if err != nil {
+			return
+		}
+		for _, e := range store.Current() {
+			if strings.EqualFold(e.Subject, name) {
+				_, _ = personalcontext.ForgetPipelineWith(store, workspace, e.ID, "")
+			}
+		}
+	}
+	toolsRegistry.Register(peopleTool)
 	toolsRegistry.Register(tools.NewVaultTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewFinancesTool(workspace, ownerZone))
 	toolsRegistry.Register(tools.NewTripsTool(workspace, ownerZone))

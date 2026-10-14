@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.192] - 2026-10-14
+
+- **Forgetting a person from your people list also forgets what Ghost
+  believes about them.** Last release it worked the other way round only:
+  forgetting the beliefs removed the person. Now removing the person also
+  retires every belief Ghost held about them, so "forget Dara" leaves nothing
+  behind in either place.
+
 ## [0.24.191] - 2026-10-14
 
 - **"Here's your page" now means there is a page.** Twice, asked for a bakery
