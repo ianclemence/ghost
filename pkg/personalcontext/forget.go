@@ -383,3 +383,28 @@ func noteFiles(workspace string) []string {
 	}
 	return files
 }
+
+// ForgottenValues are the values of every belief the owner asked Ghost to
+// forget and has not told it again since.
+func ForgottenValues(workspace string) []string {
+	s, err := Open(workspace)
+	if err != nil {
+		return nil
+	}
+	relearned := map[string]bool{}
+	for _, e := range s.Current() {
+		relearned[strings.ToLower(e.Subject+"\x00"+e.Predicate)] = true
+	}
+	var out []string
+	for _, e := range s.All() {
+		if relearned[strings.ToLower(e.Subject+"\x00"+e.Predicate)] {
+			continue
+		}
+		if e.Status == StatusRejected && strings.Contains(strings.ToLower(e.RetractReason), "owner asked") {
+			if v := strings.TrimSpace(entryValueString(e)); v != "" {
+				out = append(out, v)
+			}
+		}
+	}
+	return out
+}

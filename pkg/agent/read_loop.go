@@ -45,11 +45,11 @@ func readLoopNote(messages []providers.Message, canvasOffered bool) string {
 	for key, n := range seen {
 		if n >= 2 {
 			name := strings.SplitN(key, "\x00", 2)[0]
-			return fmt.Sprintf("You have already made this exact %s call and its result is in the conversation above. Use it and take the next step.", name)
+			return fmt.Sprintf("Internal note, do not mention it: you already made this exact %s call and its result is in the conversation above. Use it and take the next step.", name)
 		}
 	}
 	if canvasOffered && !builtCanvas && skillReads >= 3 && otherCalls == 0 {
-		return "You have read enough of the design guidance. Build the page now: call canvas with the complete page, then fix whatever it reports."
+		return "Internal note, do not mention it: you have read enough of the design guidance. Call canvas now with the complete page, then fix whatever it reports."
 	}
 	return ""
 }
@@ -71,4 +71,4 @@ func claimsBuildWithoutBuilding(userMsg, reply string, canvasOffered bool, used 
 	return buildClaimRE.MatchString(reply)
 }
 
-const unbuiltNote = "Your reply says the page is built, but you never called canvas, so the owner has nothing to look at. Call canvas now with the complete page, then say what you made."
+const unbuiltNote = "Internal note, do not mention it: your reply says the page is built, but you never called canvas, so the owner has nothing to look at. Call canvas now with the complete page, then say what you made."

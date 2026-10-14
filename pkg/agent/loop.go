@@ -2312,6 +2312,19 @@ func (al *AgentLoop) consolidatePersonalContext() {
 	if n := personalcontext.ScrubForgottenNotes(al.workspace); n > 0 {
 		logger.InfoCF("agent", "Forgotten facts removed from notes", map[string]interface{}{"lines": n})
 	}
+	if al.rag != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		purged := 0
+		for _, v := range personalcontext.ForgottenValues(al.workspace) {
+			n1, _ := al.rag.ForgetValue(ctx, v)
+			n2, _ := al.rag.ForgetStatement(ctx, v)
+			purged += n1 + n2
+		}
+		cancel()
+		if purged > 0 {
+			logger.InfoCF("agent", "Forgotten facts removed from the search index", map[string]interface{}{"chunks": purged})
+		}
+	}
 	// Keep the curated (always-injected) profile in sync with Ghost's
 	// structured memory, so the curated layer is actually used.
 	if n, err := personalcontext.MaterializeCuratedProfile(al.workspace, al.pcStore); err != nil {

@@ -27,7 +27,7 @@ func TestReadLoopNoteTellsAReaderToBuild(t *testing.T) {
 	for _, p := range []string{"SKILL.md", "references/a.md", "references/b.md"} {
 		msgs = append(msgs, callMsg("read_file", `{"path":"skills/canvas-design/`+p+`"}`))
 	}
-	if note := readLoopNote(msgs, true); !strings.Contains(note, "Build the page now") {
+	if note := readLoopNote(msgs, true); !strings.Contains(note, "Call canvas now") {
 		t.Fatalf("three skill reads and no page: %q", note)
 	}
 	if note := readLoopNote(msgs, false); note != "" {

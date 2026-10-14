@@ -3,6 +3,19 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.194] - 2026-10-14
+
+- **Ghost no longer thinks it lacks the canvas.** The list of everything Ghost
+  can do was worded so that it looked as if tools in it were never available,
+  and Ghost told you it "didn't have the canvas tool" while holding it. The
+  list now says when a tool is already in hand.
+- **Forgotten facts leave the search index too.** A coffee preference you told
+  Ghost to forget could still come back as "already in my memory" from the
+  search index. On start Ghost now removes every entry that says what you
+  asked it to forget, however it was worded.
+- **Ghost keeps its internal notes to itself,** and gives a dinner idea instead
+  of declining it for lack of information.
+
 ## [0.24.193] - 2026-10-14
 
 - **Pages are built, not queued for approval.** A fresh 100-turn run showed

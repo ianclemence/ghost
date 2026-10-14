@@ -10,15 +10,20 @@ const catalogueDescRunes = 56
 // OnDemandCatalogue lists, in a few words each, the tools a turn is not
 // always handed. The model reads it in any language and asks for what fits
 // with find_tools, so tool choice does not depend on matching the owner's
-// words against a keyword list. It is the same on every turn, so it keeps the
-// prompt prefix cacheable.
-func OnDemandCatalogue(reg *ToolRegistry) string {
+// words against a keyword list. It is the same on every turn, so the prompt
+// prefix stays cacheable.
+func OnDemandCatalogue(reg, offered *ToolRegistry, profile ToolProfile) string {
 	if reg == nil {
 		return ""
 	}
 	var lines []string
 	browser, computer, external := 0, 0, 0
-	for _, name := range reg.List() {
+	for _, name := range FilterNamesByProfile(profile, reg.List()) {
+		if offered != nil {
+			if _, have := offered.Get(name); have {
+				continue
+			}
+		}
 		switch {
 		case coreToolNames[name] || name == "find_tools" || reg.IsHidden(name):
 			continue
@@ -51,7 +56,7 @@ func OnDemandCatalogue(reg *ToolRegistry) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	return "Other things Ghost can do, not handed to you every turn. When a request fits one of these, call find_tools with what you need, in a few English words, before you say Ghost cannot: " +
+	return "More of what Ghost can do. If one of these is already in your function list this turn, just call it. If it is not, call find_tools with what you need, in a few English words, before you say Ghost cannot: " +
 		strings.Join(lines, "; ") + "."
 }
 
