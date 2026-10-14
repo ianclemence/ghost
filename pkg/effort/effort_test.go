@@ -91,3 +91,19 @@ func TestPolicyToolCallBounds(t *testing.T) {
 		t.Fatalf("normal allows %d tool calls: multi-source research needs room", got)
 	}
 }
+
+func TestBuildingAPageIsNeverAQuickTurn(t *testing.T) {
+	for _, msg := range []string{
+		"Build me a simple landing page for a specialty coffee roaster in Chiang Mai called Doi Roast.",
+		"Create a one-page portfolio site for a photographer named Ploy.",
+		"Build a small habit-tracker page with a counter that remembers its value.",
+		"design a pricing page for Lumen",
+	} {
+		if got := Classify(msg); got == Quick {
+			t.Errorf("%q was classified Quick", msg)
+		}
+	}
+	if Classify("what's 12 times 12") != Quick {
+		t.Error("plain arithmetic should stay Quick")
+	}
+}

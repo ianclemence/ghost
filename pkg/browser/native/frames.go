@@ -3,6 +3,7 @@ package native
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -64,4 +65,25 @@ func (s *Session) CaptureJPEG(ctx context.Context, quality int) ([]byte, error) 
 		return nil, err
 	}
 	return base64.StdEncoding.DecodeString(res.Data)
+}
+
+// EvalValue runs script in the page and returns its JSON-serialisable result.
+func (s *Session) EvalValue(ctx context.Context, expr string) (json.RawMessage, error) {
+	var res struct {
+		Result struct {
+			Value json.RawMessage `json:"value"`
+		} `json:"result"`
+		ExceptionDetails *struct {
+			Text string `json:"text"`
+		} `json:"exceptionDetails"`
+	}
+	if err := s.cdp.send(ctx, "Runtime.evaluate", map[string]interface{}{
+		"expression": expr, "returnByValue": true, "awaitPromise": true,
+	}, &res); err != nil {
+		return nil, err
+	}
+	if res.ExceptionDetails != nil {
+		return nil, errors.New("script: " + res.ExceptionDetails.Text)
+	}
+	return res.Result.Value, nil
 }

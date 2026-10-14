@@ -15,17 +15,17 @@ Build what a person would want to keep, not what a model produces by default.
 A page is finished when it has a point of view, every state is handled, and no
 detail makes a thumb or an eye work harder than it should.
 
-Read the reference that matches the job before you write the page:
+This file is enough for a small tool, widget or chart. Open a reference only when the job needs it, and one at a time:
 
-- `references/site-patterns.md` — landing page, pricing, portfolio, dashboard, tool, game: sections, content, rhythm.
-- `references/motion.md` — when to animate, easing, timing, press feedback, entrances, reduced motion.
-- `references/anti-slop.md` — the tells of a generic page, and what to do instead.
+- `references/site-patterns.md` for a multi-section page (landing, pricing, portfolio, dashboard): sections, content, rhythm.
+- `references/motion.md` when the page animates beyond a press and a fade.
+- `references/anti-slop.md` when the owner calls the result plain or generic.
 
 ## The five decisions, in order
 
 1. **Who is it for, and what is the one thing they should do?** One primary action per screen. Write it down before any markup.
 2. **What is the point of view?** Pick one memorable idea and commit: editorial and warm, instrument-panel precise, playful and tactile, quiet and premium. A coffee roaster is not a fintech app. Every later choice (type, colour, radius, motion) serves that idea.
-3. **What is real?** Use the owner's real name, place, products and numbers. Never lorem ipsum, "Your text here", "Feature 1", or invented testimonials and statistics presented as true. If you lack content, ask once, or write honest specific copy and say it is a draft.
+3. **What is real?** Use the owner's real name, place, products and numbers. Never lorem ipsum, "Your text here", "Feature 1", or invented testimonials and statistics presented as true. Build first: when you lack content, write honest, specific copy, say it is a draft, and ask for the real details after you have shown the page. Never hold the build back with questions.
 4. **What are the states?** Empty, loading, error, success, disabled, long text, one item, a hundred items. Design them, do not leave them to the browser.
 5. **What is the motion budget?** Decide what animates and why (see `references/motion.md`). Most things should not.
 

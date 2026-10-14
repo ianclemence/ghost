@@ -102,6 +102,7 @@ type Signals struct {
 	MemoryDep         bool
 	Research          bool
 	Urgent            bool
+	Build             bool
 	PriorFailures     int
 	VerificationFails int
 }
@@ -116,7 +117,10 @@ var (
 	// clock questions still stay cheap.
 	researchRE = regexp.MustCompile(`\b(latest|breaking|trending|research|look for|look up|find out|dig into|compare|news (on|about)|price of|what .* costs?)\b`)
 	urgentRE   = regexp.MustCompile(`\b(now|asap|urgent|immediately|right away)\b`)
-	toolRE     = regexp.MustCompile(`\b(schedule|remind|calendar|email|send|create|delete|move|rename|download|upload|browse|open|run|install|summarize|summary|save|write|edit|translate|analyze|plan|organize|search|look up|generate|draft)\b`)
+	// Building something to look at and use takes reading guidance, writing
+	// a page, and fixing what the canvas points out: never a Quick turn.
+	buildRE = regexp.MustCompile(`\b(build|create|make|design|prototype|draw|sketch)\b[^.?!]{0,60}\b(page|site|website|web app|app|dashboard|game|calculator|chart|landing|portfolio|mock-?up|ui|screen|widget|tracker|tool|animation|motion|diagram)\b`)
+	toolRE  = regexp.MustCompile(`\b(schedule|remind|calendar|email|send|create|delete|move|rename|download|upload|browse|open|run|install|summarize|summary|save|write|edit|translate|analyze|plan|organize|search|look up|generate|draft)\b`)
 )
 
 // Analyze extracts deterministic signals from a raw message.
@@ -131,6 +135,7 @@ func Analyze(msg string) Signals {
 		MemoryDep:   memoryRE.MatchString(m),
 		Research:    researchRE.MatchString(m),
 		Urgent:      urgentRE.MatchString(m),
+		Build:       buildRE.MatchString(m),
 	}
 }
 
@@ -155,6 +160,9 @@ func ClassifySignals(s Signals) Level {
 	}
 	if s.ToolHints >= 2 {
 		score += 1
+	}
+	if s.Build {
+		score += 3
 	}
 	if s.Length > 1200 {
 		score += 1
