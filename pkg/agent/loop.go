@@ -480,7 +480,13 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(tools.NewSkillManageTool(workspace))
 
 	// Bounded Curated Memory — agent can maintain a persistent, curated profile of the user and project
-	registry.Register(tools.NewMemoryCurateTool(workspace))
+	curate := tools.NewMemoryCurateTool(workspace)
+	curate.OnRemoved = func(text string) {
+		if store, err := personalcontext.Open(workspace); err == nil {
+			personalcontext.ForgetStatement(store, workspace, text)
+		}
+	}
+	registry.Register(curate)
 	// Receipts: explain any belief with its quote, source message, and
 	// lifecycle. Read-only, never invents evidence. When the surface renders
 	// cards (the phone), the receipt also ships as a memory_receipt card.

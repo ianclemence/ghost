@@ -312,3 +312,22 @@ func TestForgettingCatchesALineThatSaysTheSameThingInOtherWords(t *testing.T) {
 		t.Errorf("an unrelated line was removed:\n%s", b)
 	}
 }
+
+func TestForgetStatementRetiresBeliefsThatSayTheSameThing(t *testing.T) {
+	ws := t.TempDir()
+	s := mustOpen(t, ws)
+	src := []Source{{Type: SourceConversation, Kind: SourceUserDeclared, Ref: "m1", Timestamp: time.Now()}}
+	for pred, val := range map[string]string{"fact/email": "Their email address is new@example.com", "preference/drink": "Likes green tea in the evening"} {
+		if _, err := s.Create(Entry{ID: newEntryID(), Kind: KindFact, Subject: "user", Predicate: pred, Status: StatusCurrent,
+			Value: json.RawMessage(`"` + val + `"`), Confidence: 0.9, Sources: src}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := ForgetStatement(s, ws, "Their email address is new@example.com"); n != 1 {
+		t.Fatalf("want one belief retired, got %d", n)
+	}
+	cur := s.Current()
+	if len(cur) != 1 || cur[0].Predicate != "preference/drink" {
+		t.Fatalf("only the email belief should go: %+v", cur)
+	}
+}

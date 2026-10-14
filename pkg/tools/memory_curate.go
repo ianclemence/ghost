@@ -28,6 +28,9 @@ type MemoryCurateTool struct {
 
 	memoryCharLimit  int
 	profileCharLimit int
+	// OnRemoved is told the text of a note removed from the curated memory,
+	// so the same statement does not live on in Ghost's other stores.
+	OnRemoved func(text string)
 }
 
 const (
@@ -480,9 +483,11 @@ func (t *MemoryCurateTool) removeEntry(target string, args map[string]interface{
 
 	// Find matching entry in the merged view, then remove per-file.
 	matchCount := 0
+	removedText := ""
 	for _, e := range entries {
 		if strings.Contains(e, oldText) {
 			matchCount++
+			removedText = e
 		}
 	}
 
@@ -512,6 +517,9 @@ func (t *MemoryCurateTool) removeEntry(target string, args map[string]interface{
 	logger.InfoCF("memory_curate", "Entry removed", map[string]interface{}{
 		"target": target,
 	})
+	if t.OnRemoved != nil && removedText != "" {
+		t.OnRemoved(removedText)
+	}
 
 	remaining := t.readEntriesFor(target, contextID)
 	return t.successResponse(target, remaining, "Entry removed.")

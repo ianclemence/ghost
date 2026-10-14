@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.195] - 2026-10-14
+
+- **Removing a note removes the belief behind it.** When Ghost deleted a line
+  from its curated memory, for example an email address you said to drop, the
+  same fact could stay in its belief log and come back later. Removing a note
+  now also retires every belief that says the same thing.
+
 ## [0.24.194] - 2026-10-14
 
 - **Ghost no longer thinks it lacks the canvas.** The list of everything Ghost

@@ -408,3 +408,24 @@ func ForgottenValues(workspace string) []string {
 	}
 	return out
 }
+
+// EntryText is what a belief says, as one line.
+func EntryText(e Entry) string { return strings.TrimSpace(entryValueString(e)) }
+
+// ForgetStatement forgets every belief, unconfirmed ones included, that says
+// the same thing as text. It is what removing a note must do, or the same
+// statement lives on in the belief log.
+func ForgetStatement(store *Store, workspace, text string) int {
+	n := 0
+	for _, e := range store.All() {
+		if e.Status != StatusCurrent && e.Status != StatusUncertain {
+			continue
+		}
+		if utils.SameStatement(EntryText(e), text) {
+			if _, err := ForgetPipelineWith(store, workspace, e.ID, ""); err == nil {
+				n++
+			}
+		}
+	}
+	return n
+}
