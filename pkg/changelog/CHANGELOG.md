@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.185] - 2026-10-14
+
+- **One ask, one card.** Re-asking for something that's already waiting
+  on your approval no longer opens a second approval card — Ghost
+  re-presents the still-open one instead.
+- **Forgotten means removed, not never-happened.** Asking about
+  something you told Ghost to forget now answers that it was removed
+  on your word, instead of claiming it never came up.
+- **Stale approvals disappear on time.** The approval list no longer
+  shows requests past their expiry while waiting for the sweeper.
+
 ## [0.24.184] - 2026-10-14
 
 - **Less lore, more enforcement.** A pass over the codebase's comments

@@ -592,3 +592,20 @@ func TestStatusOfTracksResolveLifecycle(t *testing.T) {
 		t.Fatal("unknown id must report false")
 	}
 }
+
+// Pending listings show answerable work: an expired-but-unswept row must
+// not appear as pending (surfaces read this list, the sweep only ticks).
+func TestPendingListingHidesExpired(t *testing.T) {
+	db, _ := sql.Open("sqlite", ":memory:")
+	defer db.Close()
+	b, _ := Open(db, ModeAsk, time.Minute)
+	b.nowFunc = time.Now
+	req, _ := b.Require("req-1", "sess-1", "a", "c", "act", "", "", RiskConsequential, nil)
+	if got := b.Requests(StatusPending, 10); len(got) != 1 || got[0].ID != req.ID {
+		t.Fatalf("live request must list as pending: %+v", got)
+	}
+	b.nowFunc = func() time.Time { return req.ExpiresAt.Add(time.Second) }
+	if got := b.Requests(StatusPending, 10); len(got) != 0 {
+		t.Fatalf("expired request must not list as pending: %+v", got)
+	}
+}

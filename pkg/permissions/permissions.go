@@ -542,6 +542,14 @@ func (b *Broker) Requests(status RequestStatus, limit int) []*Request {
 	if status != "" {
 		q += ` WHERE status=?`
 		args = append(args, string(status))
+		if status == StatusPending {
+			// Listings show answerable work. Expired-but-unswept rows
+			// are already unresolvable (Resolve rejects them), so
+			// showing them as pending lies to every surface until the
+			// sweep tick runs.
+			q += ` AND (expires_at IS NULL OR expires_at = '' OR expires_at > ?)`
+			args = append(args, b.now().Format(time.RFC3339))
+		}
 	}
 	q += ` ORDER BY created_at DESC LIMIT ?`
 	args = append(args, limit)

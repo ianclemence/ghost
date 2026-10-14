@@ -86,6 +86,29 @@ func matchScore(query []string, e personalcontext.Entry) int {
 	return n
 }
 
+// forgottenMatch reports whether the query overlaps a recorded forgetting.
+// Tombstones hold only the belief key (subject+predicate, value hashed),
+// so a match reveals at most what the owner already named. It exists so a
+// "did I ever tell you" question is answered as redaction ("removed on
+// your word"), never as denial ("never happened").
+func (t *MemoryCorrectTool) forgottenMatch(q []string) (personalcontext.Tombstone, bool) {
+	if t.store == nil {
+		return personalcontext.Tombstone{}, false
+	}
+	for _, tomb := range t.store.Tombstones() {
+		hay := strings.ToLower(tomb.Subject + " " + tomb.Predicate)
+		for _, w := range q {
+			if len(w) < 3 || correctStop[w] {
+				continue
+			}
+			if strings.Contains(hay, w) {
+				return tomb, true
+			}
+		}
+	}
+	return personalcontext.Tombstone{}, false
+}
+
 func describeBelief(e personalcontext.Entry) string {
 	when := e.CreatedAt.Format("2 Jan")
 	return fmt.Sprintf("%s: %q (told %s)", e.ID, personalcontext.Value(e), when)
@@ -126,6 +149,9 @@ func (t *MemoryCorrectTool) find(session, about string) *ToolResult {
 		}
 	}
 	if len(hits) == 0 {
+		if tomb, ok := t.forgottenMatch(q); ok {
+			return NewToolResult(fmt.Sprintf("That was forgotten on %s at the owner's request. Say it was removed — never that it never existed.", tomb.At.Format("2 Jan 2006")))
+		}
 		return NewToolResult("Nothing stored matches that. Say so; do not guess what was stored.")
 	}
 	sort.SliceStable(hits, func(i, j int) bool {

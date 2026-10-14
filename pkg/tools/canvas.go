@@ -187,7 +187,7 @@ func (t *CanvasTool) Execute(ctx context.Context, args map[string]interface{}) *
 	if read, _ := args["read_saved"].(bool); read {
 		raw, err := ReadCanvasSaved(t.workspace, "canvas/"+canvasSlug(title)+"-v1.html")
 		if err != nil || raw == nil {
-			return &ToolResult{ForLLM: fmt.Sprintf("The canvas %q has saved nothing yet.", title), Silent: true}
+			return &ToolResult{ForLLM: fmt.Sprintf("The canvas %q has no saved state (its page never called ghost.save). This says nothing about pages shown in this chat — those live in the conversation, not in saved state.", title), Silent: true}
 		}
 		return &ToolResult{ForLLM: fmt.Sprintf("What the canvas %q saved (JSON): %s", title, raw), Silent: true}
 	}

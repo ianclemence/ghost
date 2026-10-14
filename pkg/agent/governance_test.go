@@ -143,3 +143,27 @@ func TestContextCapabilityGate(t *testing.T) {
 		t.Fatal("personal read-only must allow")
 	}
 }
+
+// Re-asking for an already-pending approval must re-present the same
+// card, not mint a duplicate (seen live: a sentence-form "yes" opened a
+// second file.delete request beside the still-pending original).
+func TestAskDedupesPendingApproval(t *testing.T) {
+	g := openTestGovernance(t)
+	args := map[string]interface{}{"path": "scratch.txt"}
+	first := g.AuthorizeTool("req-1", "sess-d", "file.delete", "delete_file", args)
+	if first.Allowed || first.PendingID == "" {
+		t.Fatalf("must pause with durable request: %+v", first)
+	}
+	second := g.AuthorizeTool("req-2", "sess-d", "file.delete", "delete_file", args)
+	if second.Allowed {
+		t.Fatal("second ask must still pause")
+	}
+	if second.PendingID != first.PendingID {
+		t.Fatalf("duplicate card minted: %q vs %q", first.PendingID, second.PendingID)
+	}
+	// A different target is a different ask and gets its own card.
+	other := g.AuthorizeTool("req-3", "sess-d", "file.delete", "delete_file", map[string]interface{}{"path": "other.txt"})
+	if other.PendingID == "" || other.PendingID == first.PendingID {
+		t.Fatalf("different target must mint its own card: %+v", other)
+	}
+}

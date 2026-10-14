@@ -450,8 +450,21 @@ func (g *Governance) authorize(requestID, sessionKey, capabilityID, tool string,
 		if msg := tools.NotConfigured(tool); msg != "" {
 			return AuthorizeResult{Allowed: false, AskMessage: msg}
 		}
+		// No duplicate cards: if the session already has a live pending
+		// request for this exact ask (same capability, action, and
+		// continuation), re-present it instead of minting a second card
+		// for the same ask (seen live: a sentence-form "yes" opened a
+		// duplicate file.delete request beside the still-pending
+		// original). The owner answers one card.
+		action := toolAction(tool, args)
+		wantCont := continuationOf(args)
+		if dup, ok := g.Broker.PendingForSession(sessionKey); ok && dup != nil &&
+			dup.Capability == capabilityID && dup.Action == action && equalCont(dup.Continuation, wantCont) {
+			return AuthorizeResult{Allowed: false, PendingID: dup.ID,
+				AskMessage: approvalAskTextEx(capabilityID, tool, args, dup)}
+		}
 		req, err := g.Broker.RequireWithTrajectory(requestID, sessionKey, g.AgentID, g.trajectoryFor(requestID), capabilityID,
-			toolAction(tool, args), scopeTarget(args), humanReason(capabilityID, tool, args),
+			action, scopeTarget(args), humanReason(capabilityID, tool, args),
 			risk, continuationOf(args))
 		if err != nil {
 			return AuthorizeResult{Allowed: false,
@@ -851,4 +864,19 @@ func (g *Governance) routineAllows(sessionKey, capabilityID string) bool {
 		}
 	}
 	return false
+}
+
+// equalCont reports whether two continuations carry the same ask identity.
+// Continuations are string maps built by continuationOf, so plain equality
+// decides duplicate cards without parsing tool-specific arg shapes.
+func equalCont(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
 }

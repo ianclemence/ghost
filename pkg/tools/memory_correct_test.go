@@ -129,3 +129,25 @@ func TestHeldChangeIsSurfacedAndResolved(t *testing.T) {
 		t.Fatalf("dismissing must leave the stored belief current, got %s", got.Status)
 	}
 }
+
+// A forgotten belief must be reported as removed, never as never-known:
+// find with no hits but a matching tombstone says so.
+func TestMemoryCorrectFindReportsForgotten(t *testing.T) {
+	st, e := tripStore(t)
+	tool := NewMemoryCorrectTool(st)
+	ctx := context.Background()
+	res := tool.Execute(ctx, map[string]interface{}{"action": "forget", "entry_id": e.ID, "confirmed": true})
+	if res.IsError {
+		t.Fatalf("confirmed forget failed: %+v", res)
+	}
+	res = tool.Execute(ctx, map[string]interface{}{"action": "find", "about": "shenzhen trip dates"})
+	if res.IsError {
+		t.Fatalf("find after forget must not error: %+v", res)
+	}
+	if !strings.Contains(res.ForLLM, "forgotten") {
+		t.Fatalf("find must report the forgetting, got %q", res.ForLLM)
+	}
+	if strings.Contains(res.ForLLM, "Nothing stored matches") {
+		t.Fatalf("find must not claim nothing was ever stored: %q", res.ForLLM)
+	}
+}
