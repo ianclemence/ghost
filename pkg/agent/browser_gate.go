@@ -235,7 +235,7 @@ func (al *AgentLoop) authorizeBrowserCall(requestID, sessionKey, tool string, ar
 	scope := scopeFor(sessionKey, args)
 	// Canonical action identity: capability + tool:action, matching the
 	// governance path so a grant approved in one form is the same grant.
-	switch g.Broker.Evaluate(browserCapability, toolAction(tool, args), scope, risk) {
+	switch g.evaluateTurn(requestID, browserCapability, toolAction(tool, args), scope, risk) {
 	case permissions.VerdictAllow:
 		if al.livePlane != nil && liveSessionID != "" {
 			al.livePlane.SetControlOwner(liveSessionID, live.OwnerGhost)

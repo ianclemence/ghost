@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.186] - 2026-10-14
+
+- **Outside text can no longer talk Ghost into acting.** Anything Ghost
+  reads from the web, your inbox, your calendar, a connected app, an
+  external tool server or a subagent now arrives fenced as untrusted
+  data, and a fence look-alike inside it cannot close the fence early.
+- **Reading outside content makes outward acts ask first.** Once a turn
+  has read something from outside, sending, submitting, running a command
+  or changing a calendar asks you every time, even where an "always
+  allow" or full mode would normally let it through. Reading, remembering
+  and replying are unaffected, and the turn's end lifts the rule.
+
 ## [0.24.185] - 2026-10-14
 
 - **One ask, one card.** Re-asking for something that's already waiting

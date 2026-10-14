@@ -3620,6 +3620,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			if tools.IsWebTool(tc.Name) {
 				turnTouchedWeb = true
 			}
+			if tool, ok := activeTools.Get(tc.Name); ok && tools.IsUntrustedSource(tc.Name, tool) {
+				al.governance.MarkUntrustedRead(opts.RequestID)
+			}
 			var toolResult *tools.ToolResult
 			toolGoverned, toolStop := false, false
 			if isComputerTool(tc.Name) {

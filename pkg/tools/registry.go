@@ -476,6 +476,9 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 	result := executeWithReliability(ctx, tool, args)
 	duration := time.Since(start)
 	scrubResult(result)
+	if result != nil && !result.IsError && IsUntrustedSource(name, tool) {
+		result.ForLLM = WrapUntrusted(name, result.ForLLM)
+	}
 
 	// A tool that implements AsyncTool but finished inline never detached:
 	// drop its running entry so the indicator can't stick.

@@ -53,6 +53,9 @@ type Governance struct {
 	// turn a denial into an allow.
 	guardMu sync.Mutex
 	guards  []Guard
+
+	taintMu sync.Mutex
+	tainted map[string]bool
 }
 
 // Guard is a deny-only authorization check evaluated after broker policy.
@@ -121,6 +124,7 @@ func (g *Governance) trajectoryFor(requestID string) string {
 
 // TurnEnded closes the trace with the canonical outcome.
 func (g *Governance) TurnEnded(requestID, sessionKey, trajectoryID string, err error) {
+	g.ClearUntrustedRead(requestID)
 	if !g.active() || g.Events == nil {
 		return
 	}
@@ -137,6 +141,51 @@ func (g *Governance) TurnEnded(requestID, sessionKey, trajectoryID string, err e
 	g.trajMu.Lock()
 	delete(g.trajectories, requestID)
 	g.trajMu.Unlock()
+}
+
+func (g *Governance) MarkUntrustedRead(requestID string) {
+	if !g.active() || requestID == "" {
+		return
+	}
+	g.taintMu.Lock()
+	defer g.taintMu.Unlock()
+	if g.tainted == nil {
+		g.tainted = map[string]bool{}
+	}
+	g.tainted[requestID] = true
+}
+
+func (g *Governance) ClearUntrustedRead(requestID string) {
+	if !g.active() {
+		return
+	}
+	g.taintMu.Lock()
+	delete(g.tainted, requestID)
+	g.taintMu.Unlock()
+}
+
+func (g *Governance) readUntrusted(requestID string) bool {
+	if !g.active() || requestID == "" {
+		return false
+	}
+	g.taintMu.Lock()
+	defer g.taintMu.Unlock()
+	return g.tainted[requestID]
+}
+
+func outward(risk permissions.Risk) bool {
+	return risk == permissions.RiskConsequential || risk == permissions.RiskHighImpact
+}
+
+// evaluateTurn is the broker verdict for one call, made stricter when the
+// turn has read outside content: an outward act then asks every time, even
+// under a standing grant or full mode.
+func (g *Governance) evaluateTurn(requestID, capability, action, scope string, risk permissions.Risk) permissions.Verdict {
+	verdict := g.Broker.Evaluate(capability, action, scope, risk)
+	if verdict == permissions.VerdictAllow && outward(risk) && g.readUntrusted(requestID) {
+		return permissions.VerdictAsk
+	}
+	return verdict
 }
 
 // CapabilityCommitted records capability.started once per turn.
@@ -406,7 +455,7 @@ func (g *Governance) authorize(requestID, sessionKey, capabilityID, tool string,
 	}
 	// Authoritative broker policy.
 	scope := scopeFor(sessionKey, args)
-	decision := permissions.VerdictDecision(g.Broker.Evaluate(capabilityID, toolAction(tool, args), scope, risk))
+	decision := permissions.VerdictDecision(g.evaluateTurn(requestID, capabilityID, toolAction(tool, args), scope, risk))
 	denial := permissions.Deny(permissions.CodePolicyDenied,
 		fmt.Sprintf("That %s action isn't allowed by permission policy, so I didn't run it.", capabilityID),
 		"Tell me which narrower scope should allow it, or approve it when I ask.")

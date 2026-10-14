@@ -207,7 +207,7 @@ func (al *AgentLoop) authorizeComputerCall(requestID, sessionKey, tool string, a
 	// Durable lease for control ops is acquired only after authorization.
 	// Canonical action identity: capability + tool:action, matching the
 	// governance path so a grant approved in one form is the same grant.
-	switch g.Broker.Evaluate(computerCapability, toolAction(tool, args), scopeFor(sessionKey, args), risk) {
+	switch g.evaluateTurn(requestID, computerCapability, toolAction(tool, args), scopeFor(sessionKey, args), risk) {
 	case permissions.VerdictAllow:
 		return al.bindComputer(owner, contextID, sessionKey, taskID, generation, op, "allow")
 	case permissions.VerdictDeny:

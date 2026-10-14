@@ -71,6 +71,8 @@ func newConnectorTool(m *connector.Manifest, c connector.Capability, e connector
 
 func (t *connectorTool) Name() string { return t.cap.ID }
 
+func (t *connectorTool) UntrustedOutput() bool { return true }
+
 func (t *connectorTool) Description() string {
 	d := strings.TrimSpace(t.cap.Description)
 	if d == "" {
