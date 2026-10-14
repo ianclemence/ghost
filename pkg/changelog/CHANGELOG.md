@@ -3,6 +3,19 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.191] - 2026-10-14
+
+- **"Here's your page" now means there is a page.** Twice, asked for a bakery
+  site, Ghost read its design notes and then answered as if the page were
+  built without ever building it. A reply that claims a page was made when
+  nothing was published is now taken back, and Ghost is told to build it
+  before it answers.
+- **Forgetting a person removes their record too.** "Forget everything about
+  Mali" cleared what Ghost believed about her but left her in the list of
+  people you know, while Ghost said it was all gone. When the last thing
+  Ghost believes about someone is forgotten, their entry in your people goes
+  with it.
+
 ## [0.24.190] - 2026-10-14
 
 - **A page request no longer ends in a pile of re-read guidance.** One build

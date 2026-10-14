@@ -2,8 +2,10 @@ package agent
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
+	"github.com/ianclemence/ghost/pkg/effort"
 	"github.com/ianclemence/ghost/pkg/providers"
 )
 
@@ -51,3 +53,22 @@ func readLoopNote(messages []providers.Message, canvasOffered bool) string {
 	}
 	return ""
 }
+
+var buildClaimRE = regexp.MustCompile(`(?i)(here'?s (your|the|a|my)\b|\bi('ve| have)? (built|made|created|put together|drafted)\b|\b(is|it'?s|are) (built|ready|live|done)\b|\bhas been (built|created)\b|เรียบร้อย|ให้แล้ว|สร้าง.{0,30}แล้ว|ทำ.{0,30}แล้ว|\b(he construido|te hice|aquí tienes)\b)`)
+
+// claimsBuildWithoutBuilding is the shape of a turn that was asked for a page
+// and ended by describing one: the canvas was available, never called, and the
+// reply talks as though there were something to look at.
+func claimsBuildWithoutBuilding(userMsg, reply string, canvasOffered bool, used []string) bool {
+	if !canvasOffered || !effort.Analyze(userMsg).Build {
+		return false
+	}
+	for _, u := range used {
+		if u == "canvas" || u == "publish_artifact" {
+			return false
+		}
+	}
+	return buildClaimRE.MatchString(reply)
+}
+
+const unbuiltNote = "Your reply says the page is built, but you never called canvas, so the owner has nothing to look at. Call canvas now with the complete page, then say what you made."

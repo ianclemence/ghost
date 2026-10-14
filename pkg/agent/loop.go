@@ -46,6 +46,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/evolution"
 	"github.com/ianclemence/ghost/pkg/failurecorpus"
 	"github.com/ianclemence/ghost/pkg/hardware"
+	"github.com/ianclemence/ghost/pkg/life"
 	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/media"
@@ -698,6 +699,20 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		}
 	} else {
 		logger.InfoC("agent", "RAG is disabled in config")
+	}
+
+	personalcontext.OnForgetSubject = func(subject string) {
+		people := life.OpenPeople(workspace)
+		found, err := people.Find(subject)
+		if err != nil {
+			return
+		}
+		for _, p := range found {
+			first := strings.Fields(p.Name)
+			if strings.EqualFold(p.Name, subject) || (len(first) > 0 && strings.EqualFold(first[0], subject)) {
+				_ = people.Forget(p.ID)
+			}
+		}
 	}
 
 	if ragStore != nil {
@@ -3421,6 +3436,23 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			// fix (an empty balance), say so instead of failing in silence.
 			al.noteModelFailure(opts.SessionKey, err)
 			return "", iteration, fmt.Errorf("LLM call failed: %w", err)
+		}
+
+		// Asked for a page, and about to end the turn by describing one that
+		// was never built: take the reply back and make the model build it.
+		if len(response.ToolCalls) == 0 && !turnNotes["unbuilt"] {
+			_, canvasNow := activeTools.Get("canvas")
+			if claimsBuildWithoutBuilding(opts.UserMessage, response.Content, canvasNow, usedTools) {
+				turnNotes["unbuilt"] = true
+				if hold != nil {
+					hold.discard()
+					opts.OnChunk = streamSink
+				}
+				messages = append(messages,
+					providers.Message{Role: "assistant", Content: response.Content},
+					providers.Message{Role: "system", Content: unbuiltNote})
+				continue
+			}
 		}
 
 		// The iteration has settled. Prose that went on to call tools was a
