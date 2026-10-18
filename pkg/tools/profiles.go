@@ -53,6 +53,9 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		// Animated explainers: a spec the phone plays and the Pod renders to
 		// video locally. Nothing is sent anywhere.
 		"motion",
+		// Hand-drawn animation and drawings written as strokes in code, looked at
+		// and rendered on the Pod. The film's page has no network; nothing is sent.
+		"film",
 		// Dashboards read the owner's data (one SELECT, read-only transaction
 		// for a connected database); they never change anything.
 		"dashboard",
@@ -282,7 +285,7 @@ var turnIntentTools = []struct {
 		"invite", "calendar", "schedule a meeting", "set up a meeting", "book a meeting", "add to my calendar", "put it in my calendar",
 		"draft", "let them know", "tell her", "tell him", "tell them"},
 		[]string{"draft", "email_search"}},
-	{[]string{"image", "picture", "photo", "screenshot", "draw something"}, []string{"image_generate", "vision"}},
+	{[]string{"image", "picture", "photo", "screenshot"}, []string{"image_generate", "vision"}},
 	{[]string{"video", "clip", "frames"}, []string{"video_frames"}},
 	{[]string{"speak", "tts", "read aloud", "say this", "audio"}, []string{"tts"}},
 	{[]string{"wake word", "voice wake", "listen"}, []string{"voice_wake"}},
@@ -321,6 +324,10 @@ var turnIntentTools = []struct {
 	// Motion: animated explainers and videos made from the owner's data.
 	{[]string{"animate", "animation", "animated", "explainer", "motion", "video", "mp4", "clip", "reel", "tiktok", "walkthrough", "make it move"},
 		[]string{"motion", "finances", "knowledge"}},
+	// Film: hand-drawn animation, cartoons and drawings made in code.
+	{[]string{"animate", "animation", "animated", "cartoon", "flipbook", "hand-drawn", "hand drawn", "motion video", "short film", "make a film",
+		"stop motion", "draw ", "drawing", "sketch", "illustration", "doodle", "pencil", "storyboard", "bouncing", "character animation", "make it move"},
+		[]string{"film", "vision"}},
 	// Knowledge: what the owner reads and studies.
 	{[]string{"reading", "i read", "finished reading", "book", "chapter", "page ", "studying", "study", "revise", "revision", "exam", "course",
 		"lesson", "module", "lecture", "learning", "learn ", "podcast", "article", "highlight", "quote", "flashcard", "quiz me", "test me"},

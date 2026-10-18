@@ -1,0 +1,136 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A ball that remembers · starter film</title>
+<style>body{margin:0;background:#242321;display:grid;place-items:center;min-height:100vh}canvas{max-width:100vw;max-height:100vh;object-fit:contain}</style>
+<canvas id="c"></canvas>
+<script src="core.js"></script>
+<script src="studio.js"></script>
+<script src="cels.js"></script>
+<script>
+'use strict';
+// STARTER FILM. Replace the subject, keep the method.
+//
+// Every drawing in a hand-drawn film is a set of strokes, and a stroke is a list
+// of points: so any drawing, and therefore any frame, can be written as
+// JavaScript. Here a code function draws one ball as strokes for a given
+// squash, stretch and position; the film calls it once per exposure, holds each
+// drawing for two frames (animation "on twos"), and the engine's pencil brush
+// turns the points into marks. Nothing is a bitmap, a rig or a filter.
+//
+// BRIEF   A ball is dropped, bounces three times, each lower, and comes to rest.
+//         Weight comes from spacing (fast fall, slow apex) and a squash at each
+//         contact. 6 seconds, 16:9, pencil on warm paper, no sound.
+// BEATS   0.0 held at the top, one blink of anticipation - 0.5 falls - bounces
+//         with decreasing height - rests, settles, holds.
+//
+// To change it: edit ballCel() to draw a different subject (a character, a leaf,
+// a boat), edit DROP/BOUNCE/GRAVITY for timing, edit the scene for the setting.
+//
+// COORDINATES. This script runs before defineFilm() sets the frame format, so
+// CX, CY, W and H are NOT final at file scope (they still describe a 1:1 frame).
+// Author every drawing in LOCAL units, here with (0,0) at the middle of the floor
+// and up as negative y, and place that origin in the scene with c.translate(CX, ...).
+// Reading CX at file scope puts the drawing off-screen in any other format.
+
+const LOOK = new URLSearchParams(location.search).get('look') || 'pencil';
+if (!['pencil', 'ink'].includes(LOOK)) throw new Error('Use ?look=pencil or ink');
+const FPS = 24, HOLD = 2;                 // drawings on twos
+const FLOOR_Y = 250;                      // the floor sits this far below the frame centre (used in the scene)
+const R = 120;                            // the ball's radius, in frame units
+const DROP = 430;                         // starting height above the floor
+const GRAVITY = 3000;                     // px/s^2: larger reads as heavier
+const BOUNCE = 0.52;                      // each bounce keeps this share of its height
+
+// ---- Motion: where the ball is at time t, as plain physics -----------------
+// A list of arcs: [start time, apex height, duration]. The first arc is the drop.
+const arcs = [];
+{ let t = 0.55, h = DROP;                // hold at the top first
+  arcs.push({ t0: t, h, dur: Math.sqrt(2 * h / GRAVITY), drop: true }); t += arcs[0].dur;
+  for (h *= BOUNCE; h > 14; h *= BOUNCE) { const dur = 2 * Math.sqrt(2 * h / GRAVITY); arcs.push({ t0: t, h, dur }); t += dur; }
+  arcs.END = t; }
+const DUR = Math.max(6, Math.ceil((arcs.END + 1.3) * FPS / HOLD) * HOLD / FPS);
+
+function ballAt(t) {                      // -> { x, h (above floor), vy, contact (0..1) }
+  const x = lerp(-640, 560, easeOutQuint(clamp((t - 0.55) / (arcs.END - 0.55), 0, 1)) * .85 + clamp((t - .55) / (arcs.END - .55), 0, 1) * .15);
+  if (t < arcs[0].t0) return { x, h: DROP, vy: 0, contact: 0 };
+  for (const a of arcs) {
+    if (t >= a.t0 && t < a.t0 + a.dur) {
+      const u = (t - a.t0) / a.dur, s = a.drop ? u : u * 2 - 1;          // drop: 0..1 down; bounce: -1..1 up then down
+      const h = a.drop ? a.h * (1 - u * u) : a.h * (1 - s * s);
+      const vy = a.drop ? -GRAVITY * (t - a.t0) : -GRAVITY * (t - a.t0 - a.dur / 2);
+      return { x, h, vy, contact: 0 };
+    }
+  }
+  // After the last arc: a tiny settle, then still.
+  const since = t - arcs.END;
+  return { x, h: Math.max(0, 6 * Math.exp(-since * 9) * Math.abs(Math.sin(since * 22))), vy: 0, contact: 0 };
+}
+// Squash happens in a short window around each contact; stretch follows speed.
+function shapeAt(t) {
+  const b = ballAt(t); let sy = 1 + Math.min(.22, Math.abs(b.vy) / 9000);
+  for (const a of arcs) {
+    const tc = a.drop ? a.t0 + a.dur : a.t0 + a.dur;                      // the moment this arc ends in contact
+    const dt = Math.abs(t - tc), w = .075;
+    if (dt < w) sy = Math.min(sy, 1 - .34 * (a.drop ? 1 : Math.max(.35, a.h / DROP * 2.2)) * (1 - dt / w));
+  }
+  return { ...b, sy, sx: 1 / Math.sqrt(sy) };
+}
+
+// ---- Drawing: one ball, written as strokes ---------------------------------
+// A cel is {strokes:[{id, points, width, opacity, pressure, close}]}. Ids are
+// the semantic names of the marks. Keep the same ids in every drawing of a
+// subject so inbetweenCel() can blend two drawings, though here every exposure
+// is drawn fresh, which is exactly why holds stay perfectly still.
+function ellipseArc(cx, cy, rx, ry, a0, a1, n) {
+  return Array.from({ length: n }, (_, i) => { const a = lerp(a0, a1, i / (n - 1)); return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)]; });
+}
+function ballCel(p) {
+  const cx = p.x, cy = -p.h - R * p.sy, rx = R * p.sx, ry = R * p.sy, strokes = [];
+  const add = (id, points, width, opacity = 1, extra = {}) => strokes.push({ id, points, width, opacity, ...extra });
+  add('outline', ellipseArc(cx, cy, rx, ry, -Math.PI / 2, Math.PI * 1.5, 31).slice(0, 30), 3.4, 1, { close: true });
+  add('outline/second', ellipseArc(cx + 3, cy + 2, rx * .98, ry * .98, 0.5, 2.7, 9), 1.8, .5);
+  // Shading is local to the form: curved hatching on the lower right, quieter at the top left.
+  for (let i = 0; i < 6; i++) {
+    const k = .62 + i * .06, a0 = .15 + i * .06, a1 = 1.45 + i * .05;
+    add('shade/' + i, ellipseArc(cx + rx * .04, cy + ry * .02, rx * k, ry * k, a0, a1, 6), 1.3 + (i % 2) * .4, .6 - i * .04);
+  }
+  add('highlight', ellipseArc(cx, cy, rx * .72, ry * .72, 3.75, 4.35, 5), 2, .85);
+  add('knot', [[cx - rx * .2, cy + ry * .1], [cx - rx * .05, cy + ry * .22], [cx + rx * .12, cy + ry * .16]], 1.4, .65);
+  return { strokes };
+}
+function shadowCel(p) {                    // a few flat scribbles on the floor, wider and fainter when the ball is high
+  const k = 1 / (1 + p.h / 260), w = R * 1.25 * k * (p.sx || 1), strokes = [];
+  for (let i = 0; i < 5; i++) {
+    const y = 6 + i * 6, half = w * (1 - i * .16);
+    strokes.push({ id: 'shadow/' + i, points: [[p.x - half, y], [p.x - half * .3, y - 1.5], [p.x + half * .4, y + 1], [p.x + half, y]], width: 1.8, opacity: (.55 - i * .06) * k + .12 });
+  }
+  return { strokes };
+}
+
+// ---- One drawing per exposure, held on an exposure sheet --------------------
+const balls = {}, shadows = {}, entries = [];
+for (let k = 0; k * HOLD < DUR * FPS; k++) {
+  const p = shapeAt(Math.min(DUR - 1e-6, k * HOLD / FPS)), id = 'd' + k;
+  balls[id] = compileCel(ballCel(p), { id }); shadows[id] = compileCel(shadowCel(p), { id: 's' + k });
+  entries.push({ id, frames: HOLD });
+}
+const SHEET = exposureSheet(entries, balls, FPS);
+// A long line needs a flatter pressure curve than the default, or it fades to nothing at both ends.
+const longLine = [[0, .55], [.08, .95], [.92, .95], [1, .45]];
+const FLOOR = compileCel({ strokes: [
+  { id: 'floor', points: [[-820, 3], [-300, 0], [300, 2], [820, 0]], width: 2.6, opacity: .9, pressure: longLine },
+  { id: 'floor/second', points: [[-700, 13], [-100, 11], [500, 14]], width: 1.4, opacity: .45, pressure: longLine }] }, { id: 'floor' });
+
+// ---- The scene: paper, floor, shadow, ball ----------------------------------
+function shot(c, tau) {
+  paper(c, '#f5f0e5', null, 87);                       // paper() resets the transform: draw it first
+  const q = SHEET.at(tau), color = LOOK === 'pencil' ? '#2f2923' : '#26221f';
+  c.save(); c.translate(CX, CY + FLOOR_Y);             // local origin: the middle of the floor
+  drawCel(c, FLOOR, { material: LOOK, color });
+  drawCel(c, shadows[q.id], { material: LOOK, color });
+  drawCel(c, q.drawing, { material: LOOK, color });
+  c.restore();
+}
+defineFilm({ palette: { ...PALETTES.pencilMinimal, paper: '#f5f0e5' }, format: { ar: '16:9', width: 1920 }, fps: FPS,
+  timeline: [{ name: 'a-ball-that-remembers', dur: SHEET.duration, fn: shot }] });
+</script>

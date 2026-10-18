@@ -500,6 +500,8 @@ func ShelfKindOf(a Artifact) string {
 	switch {
 	case strings.HasPrefix(p, "motion/") && (strings.HasSuffix(p, ".json") || strings.HasSuffix(p, ".mp4")):
 		return ShelfMotion
+	case strings.HasPrefix(p, "films/") && strings.HasSuffix(p, ".mp4"):
+		return ShelfMotion
 	case strings.HasPrefix(p, "dashboards/") && strings.HasSuffix(p, ".json"):
 		return ShelfDashboards
 	case strings.HasSuffix(p, ".html") || strings.HasSuffix(p, ".htm"):
@@ -594,7 +596,7 @@ func shelfGroup(a Artifact, k string) string {
 // madeDirs are where Ghost keeps what it made. Deleting one of those removes
 // its file too; anything else (an upload, a file in the workspace) is only
 // taken off the shelf and out of the conversation, and stays in Files.
-var madeDirs = []string{"canvas/", "documents/", "motion/", "dashboards/"}
+var madeDirs = []string{"canvas/", "documents/", "motion/", "dashboards/", "films/"}
 
 func madeByGhost(path string) bool {
 	for _, d := range madeDirs {

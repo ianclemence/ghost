@@ -110,8 +110,9 @@ func (t *VisionTool) Execute(ctx context.Context, args map[string]interface{}) *
 	resultJSON, _ := json.MarshalIndent(result, "", "  ")
 
 	return &ToolResult{
-		ForLLM:  fmt.Sprintf("Image loaded from %s (%s, %d bytes). Question: %s", imageURL, mimeType, len(imageData), question),
+		ForLLM:  fmt.Sprintf("Image loaded from %s (%s, %d bytes) and attached below. Look at it and answer: %s", imageURL, mimeType, len(imageData), question),
 		ForUser: string(resultJSON),
+		Images:  []ResultImage{{Mime: mimeType, Data: imageData, Caption: "Image from the vision tool. Question: " + question}},
 	}
 }
 

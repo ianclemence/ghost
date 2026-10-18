@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -23,5 +24,24 @@ func TestUpdateOutcomeSaysWhatHappened(t *testing.T) {
 	}
 	if got := updateOutcomeText("v1", "v2", nil); !strings.Contains(got, "can't say how I'm doing") {
 		t.Errorf("no check: %q", got)
+	}
+}
+
+func TestDevConfigNeverPointsAtTheInstalledWorkspace(t *testing.T) {
+	installed := []byte(`{"agents":{"defaults":{"workspace":"/var/lib/ghost/workspace","model":"m"}},"keep":1}`)
+	out, err := devConfigFor(installed, "/tmp/dev/workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	d := got["agents"].(map[string]interface{})["defaults"].(map[string]interface{})
+	if d["workspace"] != "/tmp/dev/workspace" || d["model"] != "m" || got["keep"].(float64) != 1 {
+		t.Fatalf("got %v", got)
+	}
+	if _, err := devConfigFor([]byte("{not json"), "/x"); err == nil {
+		t.Fatal("a broken config must be reported, not copied")
 	}
 }

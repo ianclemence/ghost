@@ -45,6 +45,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/effort"
 	"github.com/ianclemence/ghost/pkg/evolution"
 	"github.com/ianclemence/ghost/pkg/failurecorpus"
+	"github.com/ianclemence/ghost/pkg/film"
 	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/life"
 	"github.com/ianclemence/ghost/pkg/live"
@@ -387,6 +388,9 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(canvasTool)
 	// Motion: animated explainers, played on the phone and made into videos here.
 	registry.Register(tools.NewMotionTool(workspace, motion.ExportsFor(workspace)))
+	// Film: hand-drawn animation and drawings written as JavaScript strokes,
+	// looked at and rendered to MP4 or picture on the Pod.
+	registry.Register(tools.NewFilmTool(workspace, film.JobsFor(workspace)))
 	// Dashboards: questions about the owner's data answered with SQL, kept live.
 	registry.Register(tools.NewDashboardTool(workspace))
 
@@ -669,6 +673,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		if t, ok := toolsRegistry.Get("motion"); ok {
 			if mt, ok := t.(*tools.MotionTool); ok {
 				mt.SetPublisher(artifactStore)
+			}
+		}
+		if t, ok := toolsRegistry.Get("film"); ok {
+			if ft, ok := t.(*tools.FilmTool); ok {
+				ft.SetPublisher(artifactStore)
 			}
 		}
 		if t, ok := toolsRegistry.Get("dashboard"); ok {
@@ -1031,6 +1040,19 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 					text = fmt.Sprintf("I couldn't make the video of %s: %s", title, j.Error)
 				}
 				al.DeliverToOwner("mobile", "default", text, map[string]interface{}{"motion": true})
+			})
+		}
+	}
+
+	// A film's render runs in the background too; the owner hears when it is made.
+	if tool, ok := al.tools.Get("film"); ok {
+		if ft, ok := tool.(*tools.FilmTool); ok {
+			ft.OnVideo(func(_ context.Context, title string, j film.Job) {
+				text := fmt.Sprintf("The film %s is ready (%.0f seconds). It's in the chat and on your shelf.", title, j.Seconds)
+				if j.State != "done" {
+					text = fmt.Sprintf("I couldn't render the film %s: %s", title, j.Error)
+				}
+				al.DeliverToOwner("mobile", "default", text, map[string]interface{}{"film": true})
 			})
 		}
 	}
@@ -3422,7 +3444,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					}
 				}
 			}
-			activeTools.RestrictTo(tools.FilterNamesByProfile(activeProfile, cap.AllowedTools))
+			restrictToCapability(activeTools, activeProfile, cap)
 		}
 		_, canvasOffered := activeTools.Get("canvas")
 		if note := readLoopNote(messages, canvasOffered); note != "" && !turnNotes[note] {
@@ -3589,7 +3611,10 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		// Save assistant message with tool calls to session
 		al.sessions.AddFullMessage(opts.SessionKey, assistantMsg)
 
-		// Execute tool calls
+		// Execute tool calls. Pictures a tool hands back for the model to look
+		// at are attached after the whole batch of results, never between a
+		// tool call and its result.
+		var batchImages []providers.Message
 		for _, tc := range response.ToolCalls {
 			// Log tool call with arguments preview
 			argsJSON, _ := json.Marshal(tc.Arguments)
@@ -3876,6 +3901,12 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				}
 			}
 
+			if toolResult != nil && len(toolResult.Images) > 0 {
+				if imgMsg, ok := resultImagesMessage(toolResult.Images); ok {
+					batchImages = append(batchImages, imgMsg)
+				}
+			}
+
 			// Record tool usage for curator
 			al.curator.RecordUsage(tc.Name)
 
@@ -3887,6 +3918,8 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				al.nudge.OnSkillToolUsed(opts.SessionKey)
 			}
 		}
+
+		messages = append(messages, batchImages...)
 
 		for _, id := range providers.UnansweredToolCalls(messages) {
 			stub := providers.UnrunToolMessage(id)
@@ -4775,6 +4808,18 @@ func (al *AgentLoop) ModelPresets() []string {
 		}
 	}
 	return out
+}
+
+// restrictToCapability narrows a turn's tools to a committed skill's closed
+// execution path. A skill with no declared path (a user-installed or newer
+// skill) is unrestricted, as GetCapability promises: narrowing to an empty list
+// would leave only read_file, and the model could read the skill's instructions
+// but never act on them.
+func restrictToCapability(active *tools.ToolRegistry, profile tools.ToolProfile, cap skills.Capability) {
+	if len(cap.AllowedTools) == 0 {
+		return
+	}
+	active.RestrictTo(tools.FilterNamesByProfile(profile, cap.AllowedTools))
 }
 
 // SelfCheckRows runs the Doctor against the current configuration and returns

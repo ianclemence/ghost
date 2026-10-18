@@ -1299,12 +1299,45 @@ func seedDevConfigFromInstalled(target appliance.DevTarget) {
 		if rerr != nil {
 			continue
 		}
+		if name == "config.json" {
+			// The installed config names the installed workspace. Copied as it
+			// is, the dev instance would read, write and seed skills into the
+			// real one.
+			patched, perr := devConfigFor(data, target.Workspace)
+			if perr != nil {
+				fmt.Printf("• Could not prepare the installed config for dev: %v\n", perr)
+				return
+			}
+			data = patched
+		}
 		if werr := os.WriteFile(d, data, 0o600); werr != nil {
 			fmt.Printf("• Could not copy %s into dev: %v\n", name, werr)
 			return
 		}
 	}
 	fmt.Println("• Seeded dev provider keys from the installed Ghost (reusable locally).")
+}
+
+// devConfigFor points an installed config at a dev workspace, so a dev
+// instance that reuses the installed provider keys never touches the installed
+// workspace.
+func devConfigFor(installed []byte, workspace string) ([]byte, error) {
+	var cfg map[string]interface{}
+	if err := json.Unmarshal(installed, &cfg); err != nil {
+		return nil, err
+	}
+	agents, _ := cfg["agents"].(map[string]interface{})
+	if agents == nil {
+		agents = map[string]interface{}{}
+		cfg["agents"] = agents
+	}
+	defaults, _ := agents["defaults"].(map[string]interface{})
+	if defaults == nil {
+		defaults = map[string]interface{}{}
+		agents["defaults"] = defaults
+	}
+	defaults["workspace"] = workspace
+	return json.MarshalIndent(cfg, "", "  ")
 }
 
 func gatewayCmd() {

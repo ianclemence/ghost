@@ -42,7 +42,7 @@ func (t *MotionTool) OnVideo(fn func(ctx context.Context, title string, j motion
 func (t *MotionTool) Name() string { return "motion" }
 
 func (t *MotionTool) Description() string {
-	return `Make a short animated explainer (a motion) from a report, numbers, a chart or a walkthrough, for the owner to watch, change and export as an MP4 video with sound. It is written as scenes, not filmed: no video model, every word, number and timing can be changed. Use it when they ask to animate something, make a video or explainer of their data, a short clip for a presentation or social media, or to explain steps visually. Use real numbers only (from what they gave you, a file, their finances, a dashboard query); never invent data. Every number has a source or it goes.
+	return `Make a short animated explainer (a motion) from a report, numbers, a chart or a walkthrough, for the owner to watch, change and export as an MP4 video with sound. It is written as scenes, not filmed: no video model, every word, number and timing can be changed. Use it when they ask to animate or make a video or explainer of their data, a short clip for a presentation or social media, or to explain steps visually. Not for hand-drawn cartoons, characters or drawings: those are the film tool. Use real numbers only (from what they gave you, a file, their finances, a dashboard query); never invent data. Every number has a source or it goes.
 
 Captions are opt-in: a clean picture unless the owner asks for captions or subtitles. Only then set spec captions to "on" (voice/source line burns on screen and a .srt ships beside the MP4). Never turn captions on unasked.
 

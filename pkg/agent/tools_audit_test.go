@@ -106,6 +106,7 @@ var reviewedUngoverned = map[string]string{
 	"finances":       "the owner's own spending records on the Pod; imports a workspace file; no bank, no payment; forgetting needs confirmed=true",
 	"trips":          "the owner's own trip records on the Pod; no booking, no payment; forgetting needs confirmed=true",
 	"knowledge":      "the owner's own reading and study records on the Pod; nothing leaves it; forgetting needs confirmed=true",
+	"film":           "writes Ghost's own film projects under films/ and renders them on the Pod in a local browser (no network: every non-file request is refused) and ffmpeg; the owner's chat shows the result; nothing is sent",
 	"motion":         "writes Ghost's own motion files and renders them to video on the Pod with a local browser and ffmpeg; nothing is sent",
 	"dashboard":      "reads only: one checked SELECT over the owner's own data in a private in-memory copy, or inside a read-only transaction with a time limit on a database the owner connected; credentials never reach the model",
 	"pipeline":       "runs a short recipe of read-only lookups and line filters and returns only the last result; it refuses any tool that is not read-only, cannot call itself or delegate, and its result is fenced as outside content",

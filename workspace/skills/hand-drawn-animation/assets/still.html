@@ -1,0 +1,126 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A fox at dusk · still drawing template</title>
+<style>body{margin:0;background:#242321;display:grid;place-items:center;min-height:100vh}canvas{max-width:100vw;max-height:100vh;object-fit:contain}</style>
+<canvas id="c"></canvas>
+<script src="core.js"></script>
+<script src="studio.js"></script>
+<script src="cels.js"></script>
+<script>
+'use strict';
+// STILL-DRAWING TEMPLATE. A drawing is a film with one frame: the same engine, the
+// same strokes, rendered once with `film still`. Replace the subject, keep the method.
+//
+// THE METHOD (what makes a drawing in code look drawn, not generated)
+//   1. LAYERS, back to front: sky wash -> light source -> far shapes -> middle shapes
+//      -> ground -> subject -> foreground marks -> atmosphere. Each layer is lighter and
+//      bluer the farther it is; the subject is the strongest contrast and the warmest colour.
+//   2. FORMS, not outlines: a subject is built from a few overlapping filled shapes
+//      (body, haunch, chest, head, tail, legs), each filled, shaded on the side away from
+//      the light with hatching, then INKED with a wobbling pressure line. form() does all
+//      three. Silhouette first: if the filled shapes alone read as the animal, it works.
+//   3. LIMITED PALETTE: 4 to 6 colours and their tints. Warm subject on a cool ground.
+//   4. ONE LIGHT: here the low sun on the left. Shade falls right and down.
+//   5. SCALE: the subject fills about a quarter of the frame width or more.
+//   6. NO Math.random: rng(seed) so the picture is the same every time you draw it.
+//
+// COORDINATES: this single scene may use CX, CY, W, H freely because it runs after
+// defineFilm has set the format. (Code that runs at file scope may not; see the skill.)
+
+const C = {
+  skyTop: '#7f89b4', skyMid: '#d4b4c0', skyLow: '#f7cb9d', sun: '#fff1d2',
+  far: '#a79bba', mid: '#8d88a9', fir1: '#b8aec6', fir2: '#7f7a9c', snow1: '#f6f1f2', snow2: '#dfe2ee', snowShade: '#b9c0dc',
+  fox: '#d96a2e', foxLight: '#f2a965', foxShade: '#a8461d', white: '#f8f0e6', dark: '#2b1f1c', line: '#3a241b',
+};
+
+// Shapes are point lists; curvePath() makes a smooth closed path through them. Its third
+// argument is the sharpest turn (radians) that is still kept as a corner: .8 keeps most
+// corners (angular, cut-paper), 2.4 rounds nearly everything (organic: bodies, fur).
+const SOFT = 2.4;
+function fill(c, pts, color, a = 1, corner = SOFT) { c.save(); c.globalAlpha = a; c.fillStyle = color; c.fill(curvePath(pts, true, corner)); c.restore(); }
+
+// Hatching clipped to a shape: the shade side of a form. Lines run at `angle`, `gap` apart.
+function shadeHatch(c, pts, color, { angle = .9, gap = 7, a = .45, w = 1.3, seed = 1 } = {}) {
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), R = rng(seed);
+  c.save(); c.clip(curvePath(pts, true, SOFT)); c.strokeStyle = color; c.globalAlpha = a; c.lineWidth = w; c.lineCap = 'round'; c.beginPath();
+  const L = Math.hypot(x1 - x0, y1 - y0), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, dx = Math.cos(angle), dy = Math.sin(angle);
+  for (let o = -L / 2; o < L / 2; o += gap) {
+    const jx = (R() - .5) * 2, sx = cx - dy * o + jx, sy = cy + dx * o;
+    c.moveTo(sx - dx * L / 2, sy - dy * L / 2); c.lineTo(sx + dx * L / 2, sy + dy * L / 2);
+  }
+  c.stroke(); c.restore();
+}
+
+// form(): fill, shade on the side away from the light, then ink with a wobbling pressure line.
+function form(c, pts, color, { shade = null, seed = 1, line = C.line, w = 2.6, amp = 1.6, hatch = true, close = true } = {}) {
+  fill(c, pts, color);
+  if (shade && hatch) shadeHatch(c, pts, shade, { seed, angle: .9 + (seed % 3) * .12 });
+  c.save(); c.strokeStyle = line; c.lineWidth = w; c.lineCap = 'round'; c.lineJoin = 'round'; wob(c, pts, amp, seed, close, { pressure: .6, corner: SOFT }); c.restore();
+}
+
+function fir(c, x, base, h, color, snow, seed) {                    // a fir: stacked zig-zag tiers, snow on the left of each tier
+  const r = rng(seed), tiers = 5, w = h * .34, pts = [[x, base - h]];
+  for (let i = 1; i <= tiers; i++) { const y = base - h + h * i / tiers, ww = w * (i / tiers) * (.9 + r() * .2); pts.push([x + ww, y], [x + ww * .45, y - h * .02]); }
+  pts.push([x + w * .1, base]); for (let i = tiers; i >= 1; i--) { const y = base - h + h * i / tiers, ww = w * (i / tiers) * (.9 + r() * .2); pts.push([x - ww * .45, y - h * .02], [x - ww, y]); }
+  c.save(); c.fillStyle = color; c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath(); c.fill();
+  c.strokeStyle = alpha(C.line, .35); c.lineWidth = 1.1; c.stroke(); c.restore();
+  if (snow) { c.save(); c.strokeStyle = snow; c.globalAlpha = .7; c.lineWidth = 2; c.lineCap = 'round'; for (let i = 1; i <= tiers; i++) { const y = base - h + h * i / tiers, ww = w * (i / tiers); c.beginPath(); c.moveTo(x - ww * .8, y - 2); c.lineTo(x - ww * .2, y - h * .04); c.stroke(); } c.restore(); }
+}
+
+function still(c, tau) {
+  const sunX = CX - 430, sunY = CY - 70;
+  // 1. SKY: a three-stop wash, warmest at the horizon where the sun is.
+  let g = c.createLinearGradient(0, 0, 0, CY + 90); g.addColorStop(0, C.skyTop); g.addColorStop(.55, C.skyMid); g.addColorStop(1, C.skyLow);
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  g = c.createRadialGradient(sunX, sunY, 10, sunX, sunY, 520); g.addColorStop(0, 'rgba(255,236,190,.85)'); g.addColorStop(1, 'rgba(255,236,190,0)');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.fillStyle = C.sun; c.beginPath(); c.arc(sunX, sunY, 74, 0, TAU); c.fill();
+  // 2. FAR AND MIDDLE: two ridges and two rows of firs, each lighter and bluer with distance.
+  const ridge = (y0, amp, seed, color) => { const pts = [[-40, H]]; for (let x = -40; x <= W + 40; x += 60) pts.push([x, y0 + noise1(x / 260, seed) * amp]); pts.push([W + 40, H]); fill(c, pts, color); };
+  ridge(CY - 20, 36, 3, C.far);
+  const r1 = rng(11); for (let x = -20; x < W + 60; x += 46 + r1() * 30) fir(c, x, CY + 52 + r1() * 8, 150 + r1() * 70, C.fir1, null, x);
+  ridge(CY + 40, 26, 8, alpha(C.mid, .9));
+  const r2 = rng(21); for (let x = 10; x < W + 60; x += 70 + r2() * 50) fir(c, x, CY + 96 + r2() * 10, 220 + r2() * 110, C.fir2, 'rgba(255,255,255,.8)', x + 5);
+  // 3. GROUND: snow, lit from the left, shaded blue toward the right and the foreground.
+  g = c.createLinearGradient(0, CY + 70, 0, H); g.addColorStop(0, C.snow1); g.addColorStop(1, C.snow2);
+  c.fillStyle = g; c.fillRect(0, CY + 70, W, H);
+  for (let i = 0; i < 5; i++) { const y = CY + 130 + i * 78, pts = []; for (let x = -40; x <= W + 40; x += 90) pts.push([x, y + noise1(x / 200 + i * 5, 4 + i) * 22]); c.save(); c.strokeStyle = alpha(C.snowShade, .55); c.lineWidth = 2 + i * .4; c.lineCap = 'round'; wob(c, pts, 2, 40 + i, false, { pressure: .5 }); c.restore(); }
+  // 4. SUBJECT: a fox sitting, facing the sun. Built from overlapping forms, back to front.
+  const fx = CX + 250, fy = CY + 330, s = 1.25, P = pts => pts.map(([x, y]) => [fx + x * s, fy + y * s]);
+  // soft shadow on the snow, away from the sun
+  c.save(); c.fillStyle = alpha(C.snowShade, .55); c.beginPath(); c.ellipse(fx + 60 * s, fy + 6, 190 * s, 22 * s, 0, 0, TAU); c.fill(); c.restore();
+  const tail = P([[120, -50], [190, -40], [270, -80], [320, -150], [310, -215], [280, -170], [235, -115], [175, -85], [118, -95]]);
+  form(c, tail, C.fox, { shade: C.foxShade, seed: 2 });
+  form(c, P([[300, -190], [318, -214], [320, -160], [292, -158]]), C.white, { seed: 3, hatch: false, w: 2 });           // white tail tip
+  const haunch = P([[40, -40], [60, -150], [130, -175], [185, -120], [165, -50], [100, -25]]);
+  form(c, haunch, C.fox, { shade: C.foxShade, seed: 4 });
+  const body = P([[-60, -190], [10, -250], [100, -225], [140, -150], [90, -80], [-30, -70], [-85, -120]]);
+  form(c, body, C.foxLight, { shade: C.foxShade, seed: 5 });
+  const backLeg = P([[60, -40], [95, -40], [100, 0], [40, 2], [38, -12]]);
+  form(c, backLeg, C.dark, { seed: 6, hatch: false, w: 2 });
+  const chest = P([[-90, -230], [-45, -255], [-10, -210], [-30, -110], [-65, -70], [-100, -120]]);
+  form(c, chest, C.white, { shade: '#cdb9a6', seed: 7 });
+  for (const [dx, k] of [[-58, 8], [-22, 9]]) form(c, P([[dx - 14, -110], [dx + 14, -112], [dx + 18, -8], [dx - 20, -6]]), k === 8 ? C.fox : C.foxLight, { shade: C.foxShade, seed: k, w: 2.2 });
+  for (const dx of [-58, -22]) form(c, P([[dx - 18, -40], [dx + 20, -42], [dx + 22, 0], [dx - 24, 2]]), C.dark, { seed: 12 + dx, hatch: false, w: 2 });  // dark socks
+  const head = P([[-105, -300], [-70, -345], [-20, -350], [15, -322], [0, -285], [-45, -262], [-105, -258], [-160, -262], [-175, -274], [-140, -292]]);
+  form(c, head, C.fox, { shade: C.foxShade, seed: 14 });
+  form(c, P([[-160, -265], [-110, -258], [-60, -265], [-30, -290], [-60, -270], [-105, -250], [-160, -258]]), C.white, { seed: 15, hatch: false, w: 2 });  // white muzzle and cheek
+  form(c, P([[-62, -340], [-80, -420], [-30, -352]]), C.fox, { seed: 16, hatch: false, w: 2.4 });                  // ears
+  form(c, P([[-8, -338], [8, -418], [40, -330]]), C.fox, { shade: C.foxShade, seed: 17, w: 2.4 });
+  form(c, P([[-66, -350], [-74, -396], [-44, -356]]), C.dark, { seed: 18, hatch: false, w: 1.6 });
+  fill(c, P([[-178, -276], [-166, -284], [-162, -270], [-174, -266]]), C.dark);                                  // nose
+  c.save(); c.fillStyle = C.dark; c.beginPath(); c.ellipse(fx - 78 * s, fy - 305 * s, 5.5 * s, 7 * s, -.3, 0, TAU); c.fill();   // eye
+  c.fillStyle = '#fff'; c.beginPath(); c.arc(fx - 80 * s, fy - 308 * s, 1.8, 0, TAU); c.fill(); c.restore();
+  // 5. FOREGROUND MARKS: a few tufts and tracks, nearer = bigger and darker.
+  const rf = rng(31); c.save(); c.strokeStyle = alpha(C.snowShade, .9); c.lineWidth = 2; c.lineCap = 'round';
+  for (let i = 0; i < 26; i++) { const x = rf() * W, y = CY + 420 + rf() * 150, h = 8 + rf() * 16; c.beginPath(); c.moveTo(x, y); c.lineTo(x - 3, y - h); c.moveTo(x + 4, y); c.lineTo(x + 6, y - h * .8); c.stroke(); } c.restore();
+  // 6. ATMOSPHERE: snowfall (bigger flakes are nearer) and a soft vignette to hold the eye.
+  const rs = rng(41); c.save(); for (let i = 0; i < 160; i++) { const x = rs() * W, y = rs() * H, r = .8 + rs() * rs() * 3.2; c.fillStyle = `rgba(255,255,255,${.35 + r * .15})`; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); } c.restore();
+  g = c.createRadialGradient(CX, CY, H * .45, CX, CY, H * 1.05); g.addColorStop(0, 'rgba(40,30,60,0)'); g.addColorStop(1, 'rgba(40,30,60,.28)');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+}
+
+// A still is a one-frame film (dur 1/24). `film still` draws it and shows it in the chat.
+defineFilm({ palette: { ...PALETTES.pencilMinimal }, format: { ar: '16:9', width: 1920 }, fps: 24, timeline: [{ name: 'a-fox-at-dusk', dur: 1 / 24, fn: still }] });
+</script>

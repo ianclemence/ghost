@@ -109,3 +109,35 @@ func TestBuildingAPageIsNeverAQuickTurn(t *testing.T) {
 		t.Error("plain arithmetic should stay Quick")
 	}
 }
+
+func TestAnimationRequestsGetTheDeepBudget(t *testing.T) {
+	for _, msg := range []string{
+		"make me a short hand-drawn animation of a little paper boat drifting across a pond, pencil look. keep it about 6 seconds, vertical for my phone",
+		"animate a bouncing ball for me",
+		"can you do a cartoon of a cat chasing a mouse",
+	} {
+		if got := Classify(msg); got != Deep {
+			t.Errorf("%q classified %s, want deep", msg, got)
+		}
+	}
+	for _, msg := range []string{"what time is it", "what's the weather in Nairobi tomorrow?"} {
+		if got := Classify(msg); got == Deep {
+			t.Errorf("%q must not be deep", msg)
+		}
+	}
+}
+
+func TestADrawingRequestIsNeverQuick(t *testing.T) {
+	for _, msg := range []string{"draw me a fox sitting in a snowy forest at dusk", "sketch a lighthouse", "can you doodle a cat"} {
+		got := Classify(msg)
+		if got == Quick {
+			t.Errorf("%q must not be quick (a drawing is written, looked at and corrected)", msg)
+		}
+		if Policy(got).MaxToolCalls < 30 {
+			t.Errorf("%q gets only %d tool calls", msg, Policy(got).MaxToolCalls)
+		}
+	}
+	if Policy(Deep).MaxToolCalls < 50 {
+		t.Error("a deep turn, an animation, needs room to render after it has looked and fixed")
+	}
+}

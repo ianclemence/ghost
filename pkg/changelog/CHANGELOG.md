@@ -14,6 +14,22 @@ Newest first. Ghost shows new entries on first launch after an update;
 - **Ghost can explain how it is built.** Ask how it decides what it may do,
   where its memory lives, or how updates and rollbacks work, and it answers
   from an accurate description of itself.
+- **Ghost can make hand-drawn animations and drawings.** Ask for a cartoon, an
+  animated character, a motion video or a drawing and Ghost draws every frame
+  as strokes in code, looks at its own work and fixes it, then renders an MP4
+  (with sound if the film has a score) or a picture into your chat. It draws in
+  code rather than generating an image unless you ask for a generated one.
+  Pencil, ink, risograph, screen print, sand and pop-up paper looks are
+  included.
+- **Ghost can see the pictures it looks at.** Its image tool used to load a
+  picture without ever showing it to the model, so "look at this" came back
+  blank. Pictures now reach the model, which is how Ghost checks its own
+  drawings before it shows you.
+- **Reading a skill no longer strips Ghost of its tools.** After opening a skill
+  that had no declared tool list, Ghost could read files but do nothing else.
+- **Developer fix: `ghost dev --use-installed-key` no longer touches your real
+  workspace.** It used to copy the installed settings with the installed
+  workspace path, so a throwaway instance could write into the real one.
 
 ## [0.24.197] - 2026-10-18
 

@@ -70,6 +70,18 @@ var capabilityRegistry = map[string]Capability{
 	"github":           {ID: "code.read", Skill: "github", AllowedTools: []string{"code_search", "read_file", "exec"}, Primary: "code_search tool (GitHub connected app)", Fallback: "gh CLI via exec", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
 	"notion":           {ID: "docs", Skill: "notion", AllowedTools: []string{"docs_search", "read_file", "exec"}, Primary: "docs_search tool (Notion connected app)", Fallback: "none", MaxAttempts: 2, Timeout: 10 * time.Second, NetworkRequired: true, Risk: "read_only"},
 
+	// Hand-drawn films and drawings. Everything it does stays on the Pod: it
+	// writes the film's own files under films/ (the same workspace-confined
+	// file tools that are ungoverned outside a skill), renders them in a
+	// browser whose page has no network, and shows the result in the owner's
+	// chat. Nothing leaves the machine and nothing outward is changed, so it
+	// runs without an approval card; the closed path keeps it to those tools.
+	"hand-drawn-animation": {ID: "film.make", Skill: "hand-drawn-animation", AllowedTools: []string{"film", "read_file", "write_file", "edit_file", "append_file", "list_dir", "vision", "clarify"}, Primary: "film tool: strokes in code, looked at, then rendered on the Pod", Fallback: "none", MaxAttempts: 4, Risk: "read_only"},
+
+	// Ghost explaining its own design. It may look at its own health to answer;
+	// both tools only read.
+	"ghost-architecture": {ID: "self.explain", Skill: "ghost-architecture", AllowedTools: []string{"read_file", "self_check", "system_status"}, Primary: "the skill's own description; self_check to report real health", Fallback: "none", MaxAttempts: 2, Risk: "read_only"},
+
 	// Declared write capabilities: narrow grant targets. Runtime gating
 	// for the calendar skill uses the read contract (same consequential
 	// risk); grants may name these IDs to scope standing permission.

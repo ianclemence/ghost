@@ -178,6 +178,25 @@ characters of a script nobody used, a reply stuck repeating itself, a
 replacement character), a trace event naming the sign. Replies are never
 changed on that basis.
 
+## Hand-drawn films and drawings
+
+Ghost makes animations, cartoons and drawings by writing them: every drawing is
+a set of strokes in JavaScript and every frame is one of those drawings. The
+`film` tool sets a project up under `films/<name>/` (the engine and a template
+from the `hand-drawn-animation` skill), loads the film in the Pod's own headless
+browser, and reports script errors with their message and line, blank frames
+and the running time. It writes preview sheets Ghost then looks at with the
+vision tool, renders stills as pictures into the chat, and renders the whole
+film to an MP4 in the background (one at a time, up to 180 seconds; the sound
+comes from the film's own score when it has one). The finished video is decoded
+end to end and its length checked before it replaces anything. The owner is
+told when it is ready.
+
+A film is model-written JavaScript, so its page runs with no network at all:
+every request that is not a local file is sent to a proxy that is not there.
+`image_generate` is kept for when the owner asks for a generated image; a
+drawing request is drawn in code.
+
 ## Self-check and updating from a conversation
 
 Ghost can check itself and update itself when asked in chat.

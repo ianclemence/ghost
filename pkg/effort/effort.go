@@ -56,7 +56,7 @@ func Policy(l Level) Budget {
 			MaxExecutionMs: 15000, MaxRetries: 0, Verification: VerifyBasic,
 			MemoryDepth: 1, AllowCloudEscalation: false}
 	case Deep:
-		return Budget{Level: Deep, MaxOutputTokens: 8000, MaxToolCalls: 40,
+		return Budget{Level: Deep, MaxOutputTokens: 8000, MaxToolCalls: 50,
 			MaxExecutionMs: 120000, MaxRetries: 2, Verification: VerifyStrict,
 			MemoryDepth: 3, AllowCloudEscalation: true}
 	default:
@@ -103,6 +103,8 @@ type Signals struct {
 	Research          bool
 	Urgent            bool
 	Build             bool
+	Animation         bool
+	Drawing           bool
 	PriorFailures     int
 	VerificationFails int
 }
@@ -120,7 +122,12 @@ var (
 	// Building something to look at and use takes reading guidance, writing
 	// a page, and fixing what the canvas points out: never a Quick turn.
 	buildRE = regexp.MustCompile(`\b(build|create|make|design|prototype|draw|sketch)\b[^.?!]{0,60}\b(page|site|website|web app|app|dashboard|game|calculator|chart|landing|portfolio|mock-?up|ui|screen|widget|tracker|tool|animation|motion|diagram)\b|(สร้าง|ทำ|ออกแบบ)[^.?!]{0,40}(หน้าเว็บ|เว็บไซต์|เว็บ|แอป|เกม|แดชบอร์ด)|\b(crea|haz|construye|diseña)\b[^.?!]{0,60}\b(página|sitio|web|app|juego|panel)\b|(做|制作|创建|设计)[^。？！]{0,20}(网页|网站|应用|游戏)`)
-	toolRE  = regexp.MustCompile(`\b(schedule|remind|calendar|email|send|create|delete|move|rename|download|upload|browse|open|run|install|summarize|summary|save|write|edit|translate|analyze|plan|organize|search|look up|generate|draft)\b`)
+	// Making an animation means reading the method, writing a film, looking at
+	// it and fixing it before it is rendered: a dozen or more tool calls.
+	animationRE = regexp.MustCompile(`\b(animat(e|ed|es|ing|ion|ions)|cartoon|flipbook|hand[- ]drawn|short film|motion film|storyboard|stop[- ]motion)\b`)
+	// A drawing is written, looked at and corrected: never a Quick turn.
+	drawingRE = regexp.MustCompile(`\b(draw|drawing|sketch|illustrate|illustration|doodle|poster|paint|painting)\b`)
+	toolRE    = regexp.MustCompile(`\b(schedule|remind|calendar|email|send|create|delete|move|rename|download|upload|browse|open|run|install|summarize|summary|save|write|edit|translate|analyze|plan|organize|search|look up|generate|draft)\b`)
 )
 
 // Analyze extracts deterministic signals from a raw message.
@@ -136,6 +143,8 @@ func Analyze(msg string) Signals {
 		Research:    researchRE.MatchString(m),
 		Urgent:      urgentRE.MatchString(m),
 		Build:       buildRE.MatchString(m),
+		Animation:   animationRE.MatchString(m),
+		Drawing:     drawingRE.MatchString(m),
 	}
 }
 
@@ -163,6 +172,12 @@ func ClassifySignals(s Signals) Level {
 	}
 	if s.Build {
 		score += 3
+	}
+	if s.Drawing {
+		score += 2 // written, looked at, corrected
+	}
+	if s.Animation {
+		score += 4 // always a multi-step job: read, write, check, look, fix, render
 	}
 	if s.Length > 1200 {
 		score += 1
