@@ -37,6 +37,7 @@ import (
 	ghostdb "github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/devices"
 	"github.com/ianclemence/ghost/pkg/doctor"
+	"github.com/ianclemence/ghost/pkg/egress"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/heartbeat"
@@ -186,6 +187,15 @@ func printVersion() {
 }
 
 func main() {
+	agent.SetBuildVersion(version)
+	// Internal: runs inside the sandbox, so it must come before anything that
+	// reads the working directory (a project's .env would otherwise be loaded
+	// into the environment of the command it is about to run).
+	// __egress-exec <socket> -- cmd... bridges the sandbox's loopback to the
+	// host egress proxy, then runs the command.
+	if len(os.Args) >= 5 && os.Args[1] == "__egress-exec" && os.Args[3] == "--" {
+		os.Exit(egress.RunBridge(os.Args[2], os.Args[4:]))
+	}
 	// Try loading .env files from various locations
 	// Priority: current dir > parent dir > config dir > ~/.ghost > ~/ghost
 	var envLoaded bool
@@ -4051,6 +4061,8 @@ func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus
 		}
 		agentLoop.SetRoutineContext(sessionKey, r.ID, r.AllowedCapabilities)
 		defer agentLoop.ClearRoutineContext(sessionKey)
+		ctx, stop := agent.UnattendedContext(ctx)
+		defer stop()
 		resp, err := agentLoop.ProcessDirectWithChannel(ctx, r.Instruction, sessionKey, channel, item.ChatID, nil, nil, nil)
 		if err != nil {
 			return routines.RunOutcome{Completion: product.CompletionFailed, Message: "routine execution failed"}

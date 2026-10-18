@@ -105,6 +105,12 @@ The scheduler is an execution mechanism. It does not become an authority
 because execution originated from a routine. See
 [Memory, Activity, Routines & Artifacts](MEMORY-ACTIVITY-ROUTINES-ARTIFACTS.md).
 
+A turn Ghost starts on its own (a routine, a promise, an idea it acted on)
+also runs under a wall-clock limit, because nobody is there to notice a hung
+page or a provider that never answers. The default is 20 minutes;
+`GHOST_UNATTENDED_TIMEOUT` takes a Go duration (`45m`), and `0` removes it.
+The tool-call cap still bounds how much such a turn does.
+
 ## Artifacts
 
 Publishing an artifact is a capability (`artifact.create`). It produces a
@@ -128,6 +134,49 @@ Execution outcomes map to product-level results:
 A provider failure is not silently converted into success, and it is not
 necessarily a permanent capability failure — the resolver may select another
 available implementation.
+
+## What executed code can reach on the network
+
+Commands Ghost runs (`exec`, `sandbox`) run in a bubblewrap sandbox. By default
+the sandbox shares the Pod's network, so a command can reach the internet and
+also the Pod's own services, the router and every device on the LAN. Set
+`GHOST_EXEC_EGRESS` to narrow that:
+
+| Mode | What a sandboxed command can reach |
+|------|------------------------------------|
+| `open` (default) | Everything the Pod can. |
+| `guard` | The public internet only. Loopback, private and link-local ranges, carrier-grade NAT and the cloud metadata address are refused. |
+| `allowlist` | Only hosts named in the allow file. |
+
+In `guard` and `allowlist` the sandbox has no network of its own. Its only way
+out is a proxy Ghost runs, which resolves each name itself, judges the address
+it actually dials (so a public name pointing at a private address is refused),
+and logs every allow and block. Hosts go in `$GHOST_DIR/egress-allow.txt`
+(`GHOST_EXEC_EGRESS_ALLOW` overrides the path), one per line: an exact host,
+`*.example.com`, or an IP. In `guard` an entry also opens that one private host,
+which is how a single LAN device is reached. The file sits beside the
+configuration, not in the workspace, so code the agent runs cannot edit it.
+
+The cost of enforcing is that only HTTP and HTTPS work from inside the
+sandbox: `curl`, `pip`, `npm`, `go` and git over https do; ssh, ping, MQTT and
+raw sockets do not. That is why `open` stays the default. If the proxy cannot
+start, commands do not run rather than running unguarded.
+
+The Pod's service also runs under a memory ceiling (`MemoryHigh` 70% and
+`MemoryMax` 85% of the machine) and a task limit, so a runaway browser or build
+slows and is killed before it can starve the Pod or SSH.
+
+## Leaks and faults
+
+Ghost's instructions carry a private marker that is meaningless outside them.
+If it appears in the arguments of any tool call, the call is refused and
+logged: something Ghost read has steered it into copying its context out.
+
+Each turn also records what it ran on (release, model, a fingerprint of the
+instructions, the tool set) and, when a reply looks like a fault (stray
+characters of a script nobody used, a reply stuck repeating itself, a
+replacement character), a trace event naming the sign. Replies are never
+changed on that basis.
 
 ## Secrets never reach the model
 

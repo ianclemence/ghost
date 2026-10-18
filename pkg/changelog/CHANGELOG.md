@@ -3,6 +3,26 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.197] - 2026-10-18
+
+- **Commands Ghost runs can be kept off your home network.** Set
+  `GHOST_EXEC_EGRESS=guard` and code Ghost runs reaches the public internet
+  only: not the Pod's own services, your router or the other devices on your
+  network. `allowlist` goes further, and a short file lets one device through.
+  It is off by default; `docs/EXECUTION.md` says what it affects.
+- **Ghost notices if its own instructions are being copied out.** If a page or
+  file talks Ghost into sending its private context somewhere, the action is
+  refused and logged before anything leaves.
+- **A runaway tool can no longer starve the Pod.** The service now has a
+  memory ceiling and a task limit.
+- **Jobs Ghost starts on its own stop after 20 minutes** instead of waiting
+  forever on a hung page or provider.
+- **Ghost can stop and think mid-task.** On bigger requests it gets a scratchpad
+  for checking what it just learned before the next step.
+- **Odd replies leave a trace.** Garbled or looping answers, and the release,
+  model and instructions each turn ran on, are now recorded so a drop in
+  quality can be tied to the change that caused it.
+
 ## [0.24.196] - 2026-10-18
 
 - **Photos and files you send stay in the conversation.** After the app

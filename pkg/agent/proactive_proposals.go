@@ -931,6 +931,8 @@ func (al *AgentLoop) executeLocalPlan(ctx context.Context, idea ideas.Idea, chan
 func (al *AgentLoop) executeDelegatedTurn(ctx context.Context, idea ideas.Idea, channel, chatID, prompt string) (planOutcome, string, map[string]interface{}, error) {
 	session := "proactive:" + idea.ID
 	before := al.sessionMaxEventSeq(session)
+	ctx, stop := UnattendedContext(ctx)
+	defer stop()
 	reply, err := al.ProcessDirectWithChannel(ctx, prompt, session, channel, chatID, nil, nil, nil)
 	if err != nil {
 		return outcomeFailed, "I couldn't finish looking into that.", nil, err

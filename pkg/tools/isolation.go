@@ -3,7 +3,10 @@ package tools
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/ianclemence/ghost/pkg/egress"
 )
 
 // IsolationMode controls OS-level isolation for model-initiated subprocesses.
@@ -62,7 +65,35 @@ func WrapArgv(base []string, cwd, workspace string, allowNetwork bool) ([]string
 		}
 		return base, false, nil
 	}
+	if pol := egress.FromEnv(); allowNetwork && pol.Enforced() {
+		return wrapEgress(base, cwd, workspace, pol)
+	}
 	wrapped := append([]string{"bwrap"}, bwrapArgs(cwd, workspace, allowNetwork)...)
+	wrapped = append(wrapped, base...)
+	return wrapped, true, nil
+}
+
+// wrapEgress runs base in a sandbox with no network of its own. Its only way
+// out is the host proxy, reached through a bridge that Ghost's own binary runs
+// inside the sandbox (see package egress). If that cannot be set up the
+// command does not run: a guard that fails open is not a guard.
+func wrapEgress(base []string, cwd, workspace string, pol egress.Policy) ([]string, bool, error) {
+	sock, err := egress.SocketPath(pol)
+	if err != nil {
+		return nil, false, fmt.Errorf("egress guard is on but its proxy could not start: %w", err)
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return nil, false, fmt.Errorf("egress guard is on but Ghost cannot find its own binary: %w", err)
+	}
+	const inDir = "/run/ghost-egress"
+	args := bwrapArgs(cwd, workspace, false)
+	args = append(args,
+		"--ro-bind", self, inDir+"/ghost",
+		"--bind", filepath.Dir(sock), inDir+"/sock",
+	)
+	wrapped := append([]string{"bwrap"}, args...)
+	wrapped = append(wrapped, inDir+"/ghost", "__egress-exec", inDir+"/sock/"+filepath.Base(sock), "--")
 	wrapped = append(wrapped, base...)
 	return wrapped, true, nil
 }

@@ -546,6 +546,11 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	})
 	registry.Register(clarify)
 
+	// Think — a scratchpad for the middle of a deep turn. Registered but not
+	// core: it is offered only when the turn is classified deep (see
+	// runLLMIteration), so ordinary turns pay nothing for its schema.
+	registry.Register(tools.NewThinkTool())
+
 	// TTS Tool — text-to-speech conversion
 	ttsConfig := tools.TTSConfig{
 		Enabled:      true,
@@ -1661,6 +1666,7 @@ func (al *AgentLoop) SetGovernance(g *Governance) {
 		budgets := newAttemptBudget(nil)
 		g.AddGuard(budgets.guard)
 		g.AddGuard(budgets.routineGuard(g))
+		g.AddGuard(canaryGuard(al.workspace))
 	}
 	// Durable task evidence joins the canonical stream wherever the
 	// runtime owns one. Nil-safe: unwired loops keep transient events only.
@@ -3149,6 +3155,17 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		}
 	}
 
+	// Observe the reply for signs of a fault (a sampling slip, a loop). Only
+	// logged and traced: a reply is never changed on a heuristic's say-so.
+	if !isSlashCommand {
+		if anomalies := outputAnomalies(opts.UserMessage, finalContent); len(anomalies) > 0 {
+			logger.WarnCF("agent", "reply looks anomalous", map[string]interface{}{
+				"session_key": opts.SessionKey, "request_id": opts.RequestID, "signs": strings.Join(anomalies, ","),
+			})
+			telemetry.Global.Record(opts.SessionKey, opts.RequestID, "output_anomaly", opts.Channel, opts.ChatID, strings.Join(anomalies, ","))
+		}
+	}
+
 	// 6. Save final assistant message to session (only if it's a real response, not a tool result turn or slash command)
 	// We don't save iterations that were just tool calls here because runLLMIteration
 	// already handles AddFullMessage for tool turns.
@@ -3326,6 +3343,17 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		activeProfile = al.toolProfile
 	}
 	activeTools := tools.FilterToolsForTurn(al.tools, activeProfile, toolIntentText(opts.UserMessage, messages), len(opts.Media) > 0)
+	// Deep turns chain dependent calls, where a wrong step costs the most: give
+	// them the scratchpad (think). It changes nothing, so no profile can be
+	// widened by it; a profile that does not list it still does not get it.
+	if budget.Level == effort.Deep && activeProfile.Allows("think") {
+		if t, ok := al.tools.Get("think"); ok {
+			activeTools.Register(t)
+		}
+	}
+	// What this turn ran on, so a quality change can be traced to a change.
+	telemetry.Global.Record(opts.SessionKey, opts.RequestID, "turn_versions", opts.Channel, opts.ChatID,
+		turnVersions(al.model, messages[0].Content, activeTools.List()))
 	// A follow-up to browser work keeps the browser. Tools are picked from the
 	// words of each message, and "send me a screenshot of that results page"
 	// names no site: the model was never handed the browser it had used one
