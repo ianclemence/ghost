@@ -92,6 +92,7 @@ var reviewedUngoverned = map[string]string{
 	"switch_lane":    "changes Ghost's own routing lane",
 	"system_status":  "read-only health",
 	"todo":           "Ghost's own task list",
+	"self_check":     "runs Ghost's own health check and reports it: read-only, it looks and never repairs, and nothing leaves the Pod",
 	"think":          "a scratchpad: records nothing, fetches nothing, changes nothing, sends nothing; offered on deep turns only",
 	"tts":            "speech synthesis of given text",
 	"video_frames":   "workspace-confined ffmpeg frame extraction",

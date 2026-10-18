@@ -1673,6 +1673,9 @@ func gatewayCmd() {
 		}
 	}
 
+	// If an update was asked for from a conversation, say how it went there.
+	go reportUpdateOutcome(agentLoop)
+
 	if !apiOnly {
 		if err := heartbeatService.Start(); err != nil {
 			fmt.Printf("Error starting heartbeat service: %v\n", err)

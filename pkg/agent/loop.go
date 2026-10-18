@@ -1018,6 +1018,10 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 	doctorRunner.SetRetrievalSource(al.retrieval.snapshot)
 
+	// Ghost can run its own health check from a conversation: the same one
+	// the console and /v1/doctor run, read-only.
+	al.tools.Register(tools.NewSelfCheckTool(al.SelfCheckRows))
+
 	// A motion's video is made in the background; the owner hears when it is.
 	if tool, ok := al.tools.Get("motion"); ok {
 		if mt, ok := tool.(*tools.MotionTool); ok {
@@ -4773,8 +4777,28 @@ func (al *AgentLoop) ModelPresets() []string {
 	return out
 }
 
+// SelfCheckRows runs the Doctor against the current configuration and returns
+// its findings. It is what the self_check tool and the post-update report use.
+func (al *AgentLoop) SelfCheckRows(ctx context.Context) []tools.SelfCheckRow {
+	if al == nil || al.doctor == nil {
+		return nil
+	}
+	al.RefreshDoctor()
+	results := al.doctor.RunAll(ctx)
+	rows := make([]tools.SelfCheckRow, 0, len(results))
+	for _, r := range results {
+		rows = append(rows, tools.SelfCheckRow{Name: r.Name, Label: r.Label, Status: r.Status, Message: r.Message})
+	}
+	return rows
+}
+
 // updateToolContexts updates the context for tools that need channel/chatID info.
 func (al *AgentLoop) updateToolContexts(channel, chatID string) {
+	if tool, ok := al.tools.Get("update"); ok {
+		if ut, ok := tool.(tools.ContextualTool); ok {
+			ut.SetContext(channel, chatID)
+		}
+	}
 	// Use ContextualTool interface instead of type assertions
 	if tool, ok := al.tools.Get("message"); ok {
 		if mt, ok := tool.(tools.ContextualTool); ok {

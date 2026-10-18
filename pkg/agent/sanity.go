@@ -8,6 +8,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/ianclemence/ghost/pkg/tools"
 )
 
 // Quality problems on a long-lived appliance rarely announce themselves: a
@@ -131,6 +133,7 @@ var buildVersion = "dev"
 func SetBuildVersion(v string) {
 	if v != "" {
 		buildVersion = v
+		tools.SetRunningVersion(v)
 	}
 }
 

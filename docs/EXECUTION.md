@@ -178,6 +178,26 @@ characters of a script nobody used, a reply stuck repeating itself, a
 replacement character), a trace event naming the sign. Replies are never
 changed on that basis.
 
+## Self-check and updating from a conversation
+
+Ghost can check itself and update itself when asked in chat.
+
+- `self_check` runs the same health check as the console (`/v1/doctor`):
+  database, model, tools, browser, skills, storage, routines and connected
+  services. It is read-only and offered when the owner asks Ghost to check
+  itself.
+- `update` installs the latest verified release, after the broker's approval,
+  as its own systemd unit, because it restarts the process that asked. Before
+  starting, it leaves a note (the release it was on and the conversation it
+  came from). When the new release is up, it waits 20 seconds, runs the
+  self-check and tells that conversation whether the update took and whether
+  Ghost is healthy; if the release did not start and the previous one was put
+  back, it says that instead. The report relies on the release that comes up
+  containing this code, so an update from an older release is not reported.
+- `ghost-architecture` is a skill that loads only when the owner asks how Ghost
+  works. It is the one place Ghost's description of its own design lives, so it
+  is kept in step with the code.
+
 ## Secrets never reach the model
 
 Credentials live in the vault and are used inside the tool that needs them

@@ -294,6 +294,7 @@ var turnIntentTools = []struct {
 	{[]string{"merge", "parallel", "batch"}, []string{"batch_delegate"}},
 	{[]string{"how many", "which of my", "across all", "across my", "all my notes", "all my files", "every note", "every file", "count the", "of my notes", "of my files"}, []string{"pipeline"}},
 	{[]string{"compact", "summarize history", "context full"}, []string{"compact_context"}},
+	{[]string{"check yourself", "check your health", "self check", "self-check", "are you healthy", "are you ok", "are you okay", "is everything working", "run diagnostics", "run a diagnostic", "diagnose yourself", "health check", "healthcheck", "are you working"}, []string{"self_check"}},
 	{[]string{"update ghost", "upgrade ghost", "self-update", "update yourself", "update itself", "upgrade yourself", "latest version", "new version", "install the update"}, []string{"update"}},
 	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"doc_parser"}},
 	// The people in the owner's life. Mentioning someone is enough: "my

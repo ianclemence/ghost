@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.198] - 2026-10-18
+
+- **Ghost can check itself.** Ask "are you healthy?" or "run diagnostics" and
+  Ghost runs its own health check and tells you what it found, instead of
+  guessing.
+- **After an update, Ghost tells you how it went.** When you ask it to update
+  itself, it checks itself once it is back and reports in the same
+  conversation: whether the update took, and whether everything is working.
+- **Ghost can explain how it is built.** Ask how it decides what it may do,
+  where its memory lives, or how updates and rollbacks work, and it answers
+  from an accurate description of itself.
+
 ## [0.24.197] - 2026-10-18
 
 - **Commands Ghost runs can be kept off your home network.** Set
