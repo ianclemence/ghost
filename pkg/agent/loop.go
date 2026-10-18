@@ -3040,6 +3040,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			Role:          "user",
 			Content:       opts.UserMessage,
 			SourceChannel: surfaceChannel(opts.Channel),
+			Attachments:   al.storedAttachments(opts.Media),
 		})
 		// Track user turn for memory nudge
 		al.nudge.OnUserTurn(opts.SessionKey)
@@ -5499,4 +5500,31 @@ func toolIterationBudget(configured int) int {
 		return minToolIterations
 	}
 	return configured
+}
+
+// storedAttachments names the owner's stored uploads among a turn's media, so
+// the message that carried them can show them again after a restart.
+func (al *AgentLoop) storedAttachments(media []string) []providers.Attachment {
+	var out []providers.Attachment
+	for _, path := range media {
+		if !uploads.IsStored(al.workspace, path) {
+			continue
+		}
+		rel := path
+		if filepath.IsAbs(rel) {
+			r, err := filepath.Rel(al.workspace, rel)
+			if err != nil {
+				continue
+			}
+			rel = r
+		}
+		parts := strings.Split(filepath.ToSlash(rel), "/")
+		if len(parts) < 3 {
+			continue
+		}
+		if it, ok := uploads.Find(al.workspace, parts[1]); ok {
+			out = append(out, providers.Attachment{ID: it.ID, Name: it.Name, Kind: it.Kind, MIME: it.MIME, Size: it.Size})
+		}
+	}
+	return out
 }

@@ -1170,6 +1170,9 @@ type Message struct {
 	Timestamp int64  `json:"timestamp"`
 	MediaType string `json:"media_type,omitempty"`
 	MediaURL  string `json:"media_url,omitempty"`
+	// Attachments are the stored uploads sent with this message; the phone
+	// fetches each by id from /v1/files/<id>/thumb or /content.
+	Attachments []providers.Attachment `json:"attachments,omitempty"`
 	// Channel is the surface the message arrived on (mobile, cli, telegram,
 	// voice, …). Provenance only — every surface shares one conversation.
 	Channel string `json:"channel,omitempty"`
@@ -3697,6 +3700,10 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 					}
 					if v, ok := meta["resolved"].(bool); ok {
 						m.Resolved = v
+					}
+					if at, ok := meta["attachments"]; ok {
+						atJSON, _ := json.Marshal(at)
+						_ = json.Unmarshal(atJSON, &m.Attachments)
 					}
 				}
 			}

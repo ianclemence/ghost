@@ -47,6 +47,9 @@ func (s *SQLiteStore) AddFullMessage(sessionKey string, msg providers.Message) {
 	if msg.Interrupted {
 		meta["interrupted"] = true
 	}
+	if len(msg.Attachments) > 0 {
+		meta["attachments"] = msg.Attachments
+	}
 	metaJSON, _ := json.Marshal(meta)
 
 	content := msg.Content
@@ -148,6 +151,11 @@ func (s *SQLiteStore) queryHistory(key string, excludeCompacted bool) []provider
 		}
 		if val, ok := meta["interrupted"].(bool); ok {
 			msg.Interrupted = val
+		}
+
+		if at, ok := meta["attachments"]; ok {
+			atJSON, _ := json.Marshal(at)
+			_ = json.Unmarshal(atJSON, &msg.Attachments)
 		}
 
 		if tc, ok := meta["tool_calls"]; ok {

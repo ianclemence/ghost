@@ -3,6 +3,14 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.196] - 2026-10-18
+
+- **Photos and files you send stay in the conversation.** After the app
+  restarted, the photos and files you had sent were gone from the thread even
+  though Ghost still held them. Each message now remembers what it carried, so
+  they come back as they were. Messages sent before this update can't be
+  recovered.
+
 ## [0.24.195] - 2026-10-14
 
 - **Removing a note removes the belief behind it.** When Ghost deleted a line
