@@ -3,6 +3,15 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.199] - 2026-10-21
+
+- **Ghost can tell you how warm the room is.** A DHT11 sensor on the Pod
+  reports the temperature and humidity in the room every 15 seconds. Ask "how
+  hot is it in here?" and Ghost reads the latest reading and says when it was
+  taken; if the sensor has gone quiet it says so instead of guessing.
+- **Ghost warns you when the room gets too hot or too cold,** once per spell
+  rather than on every reading, and never for humidity.
+
 ## [0.24.198] - 2026-10-18
 
 - **Ghost can check itself.** Ask "are you healthy?" or "run diagnostics" and

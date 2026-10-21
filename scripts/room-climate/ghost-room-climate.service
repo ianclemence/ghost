@@ -1,0 +1,25 @@
+[Unit]
+Description=Ghost room climate bridge (Arduino Uno + DHT11 -> sensor inbox)
+After=local-fs.target
+# Start even without the board: the bridge waits and retries.
+
+[Service]
+Type=simple
+Environment=GHOST_WORKSPACE_DIR=/var/lib/ghost/workspace
+ExecStart=/usr/bin/python3 /usr/local/lib/ghost/room-climate/room-climate-bridge.py
+Restart=always
+RestartSec=10
+
+# Hardening: read-only system, writes only into the Ghost workspace.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ghost/workspace
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ghost-room-climate
+
+[Install]
+WantedBy=multi-user.target
