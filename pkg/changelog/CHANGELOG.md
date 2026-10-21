@@ -3,6 +3,71 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.199] - 2026-10-21
+
+- **Ghost can tell you how warm the room is.** A DHT11 sensor on the Pod
+  reports the temperature and humidity in the room every 15 seconds. Ask "how
+  hot is it in here?" and Ghost reads the latest reading and says when it was
+  taken; if the sensor has gone quiet it says so instead of guessing.
+- **Ghost warns you when the room gets too hot or too cold,** once per spell
+  rather than on every reading, and never for humidity.
+
+## [0.24.198] - 2026-10-18
+
+- **Ghost can check itself.** Ask "are you healthy?" or "run diagnostics" and
+  Ghost runs its own health check and tells you what it found, instead of
+  guessing.
+- **After an update, Ghost tells you how it went.** When you ask it to update
+  itself, it checks itself once it is back and reports in the same
+  conversation: whether the update took, and whether everything is working.
+- **Ghost can explain how it is built.** Ask how it decides what it may do,
+  where its memory lives, or how updates and rollbacks work, and it answers
+  from an accurate description of itself.
+- **Ghost can make hand-drawn animations and drawings.** Ask for a cartoon, an
+  animated character, a motion video or a drawing and Ghost draws every frame
+  as strokes in code, looks at its own work and fixes it, then renders an MP4
+  (with sound if the film has a score) or a picture into your chat. It draws in
+  code rather than generating an image unless you ask for a generated one.
+  Pencil, ink, risograph, screen print, sand and pop-up paper looks are
+  included.
+- **Ghost can see the pictures it looks at.** Its image tool used to load a
+  picture without ever showing it to the model, so "look at this" came back
+  blank. Pictures now reach the model, which is how Ghost checks its own
+  drawings before it shows you.
+- **Reading a skill no longer strips Ghost of its tools.** After opening a skill
+  that had no declared tool list, Ghost could read files but do nothing else.
+- **Developer fix: `ghost dev --use-installed-key` no longer touches your real
+  workspace.** It used to copy the installed settings with the installed
+  workspace path, so a throwaway instance could write into the real one.
+
+## [0.24.197] - 2026-10-18
+
+- **Commands Ghost runs can be kept off your home network.** Set
+  `GHOST_EXEC_EGRESS=guard` and code Ghost runs reaches the public internet
+  only: not the Pod's own services, your router or the other devices on your
+  network. `allowlist` goes further, and a short file lets one device through.
+  It is off by default; `docs/EXECUTION.md` says what it affects.
+- **Ghost notices if its own instructions are being copied out.** If a page or
+  file talks Ghost into sending its private context somewhere, the action is
+  refused and logged before anything leaves.
+- **A runaway tool can no longer starve the Pod.** The service now has a
+  memory ceiling and a task limit.
+- **Jobs Ghost starts on its own stop after 20 minutes** instead of waiting
+  forever on a hung page or provider.
+- **Ghost can stop and think mid-task.** On bigger requests it gets a scratchpad
+  for checking what it just learned before the next step.
+- **Odd replies leave a trace.** Garbled or looping answers, and the release,
+  model and instructions each turn ran on, are now recorded so a drop in
+  quality can be tied to the change that caused it.
+
+## [0.24.196] - 2026-10-18
+
+- **Photos and files you send stay in the conversation.** After the app
+  restarted, the photos and files you had sent were gone from the thread even
+  though Ghost still held them. Each message now remembers what it carried, so
+  they come back as they were. Messages sent before this update can't be
+  recovered.
+
 ## [0.24.195] - 2026-10-14
 
 - **Removing a note removes the belief behind it.** When Ghost deleted a line

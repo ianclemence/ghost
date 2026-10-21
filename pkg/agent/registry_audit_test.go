@@ -129,12 +129,13 @@ var allowedCoreAudit = map[string]bool{
 	"trips":          true, // the owner's own trip records, local; no booking
 	"knowledge":      true, // what the owner reads and studies, local records
 	"motion":         true, // animated explainers: local files, rendered to video on the Pod
+	"film":           true, // hand-drawn films and drawings in code: workspace files, rendered on the Pod in a browser with no network
 	"dashboard":      true, // read-only SQL over the owner's own data and connected databases
 	"phone":          true, // what the owner's phone shared, local; place reminders
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,
 	"move_file": true, // renames inside the workspace, never overwrites, same guards as write_file
-	"todo":      true, "canvas": true, "tts": true,
+	"todo":      true, "think": true, "self_check": true, "canvas": true, "tts": true,
 	"compact_context": true, "compaction": true, "switch_lane": true,
 	"lane": true, "voice_wake": true, "profile": true,
 	"skill_manage": true, "clarify": true,

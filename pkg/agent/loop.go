@@ -45,6 +45,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/effort"
 	"github.com/ianclemence/ghost/pkg/evolution"
 	"github.com/ianclemence/ghost/pkg/failurecorpus"
+	"github.com/ianclemence/ghost/pkg/film"
 	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/life"
 	"github.com/ianclemence/ghost/pkg/live"
@@ -387,6 +388,9 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	registry.Register(canvasTool)
 	// Motion: animated explainers, played on the phone and made into videos here.
 	registry.Register(tools.NewMotionTool(workspace, motion.ExportsFor(workspace)))
+	// Film: hand-drawn animation and drawings written as JavaScript strokes,
+	// looked at and rendered to MP4 or picture on the Pod.
+	registry.Register(tools.NewFilmTool(workspace, film.JobsFor(workspace)))
 	// Dashboards: questions about the owner's data answered with SQL, kept live.
 	registry.Register(tools.NewDashboardTool(workspace))
 
@@ -546,6 +550,11 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	})
 	registry.Register(clarify)
 
+	// Think — a scratchpad for the middle of a deep turn. Registered but not
+	// core: it is offered only when the turn is classified deep (see
+	// runLLMIteration), so ordinary turns pay nothing for its schema.
+	registry.Register(tools.NewThinkTool())
+
 	// TTS Tool — text-to-speech conversion
 	ttsConfig := tools.TTSConfig{
 		Enabled:      true,
@@ -664,6 +673,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		if t, ok := toolsRegistry.Get("motion"); ok {
 			if mt, ok := t.(*tools.MotionTool); ok {
 				mt.SetPublisher(artifactStore)
+			}
+		}
+		if t, ok := toolsRegistry.Get("film"); ok {
+			if ft, ok := t.(*tools.FilmTool); ok {
+				ft.SetPublisher(artifactStore)
 			}
 		}
 		if t, ok := toolsRegistry.Get("dashboard"); ok {
@@ -1013,6 +1027,10 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	}
 	doctorRunner.SetRetrievalSource(al.retrieval.snapshot)
 
+	// Ghost can run its own health check from a conversation: the same one
+	// the console and /v1/doctor run, read-only.
+	al.tools.Register(tools.NewSelfCheckTool(al.SelfCheckRows))
+
 	// A motion's video is made in the background; the owner hears when it is.
 	if tool, ok := al.tools.Get("motion"); ok {
 		if mt, ok := tool.(*tools.MotionTool); ok {
@@ -1022,6 +1040,19 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 					text = fmt.Sprintf("I couldn't make the video of %s: %s", title, j.Error)
 				}
 				al.DeliverToOwner("mobile", "default", text, map[string]interface{}{"motion": true})
+			})
+		}
+	}
+
+	// A film's render runs in the background too; the owner hears when it is made.
+	if tool, ok := al.tools.Get("film"); ok {
+		if ft, ok := tool.(*tools.FilmTool); ok {
+			ft.OnVideo(func(_ context.Context, title string, j film.Job) {
+				text := fmt.Sprintf("The film %s is ready (%.0f seconds). It's in the chat and on your shelf.", title, j.Seconds)
+				if j.State != "done" {
+					text = fmt.Sprintf("I couldn't render the film %s: %s", title, j.Error)
+				}
+				al.DeliverToOwner("mobile", "default", text, map[string]interface{}{"film": true})
 			})
 		}
 	}
@@ -1661,6 +1692,7 @@ func (al *AgentLoop) SetGovernance(g *Governance) {
 		budgets := newAttemptBudget(nil)
 		g.AddGuard(budgets.guard)
 		g.AddGuard(budgets.routineGuard(g))
+		g.AddGuard(canaryGuard(al.workspace))
 	}
 	// Durable task evidence joins the canonical stream wherever the
 	// runtime owns one. Nil-safe: unwired loops keep transient events only.
@@ -3040,6 +3072,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 			Role:          "user",
 			Content:       opts.UserMessage,
 			SourceChannel: surfaceChannel(opts.Channel),
+			Attachments:   al.storedAttachments(opts.Media),
 		})
 		// Track user turn for memory nudge
 		al.nudge.OnUserTurn(opts.SessionKey)
@@ -3145,6 +3178,17 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 				"reason":      violation,
 			})
 			finalContent = corrected
+		}
+	}
+
+	// Observe the reply for signs of a fault (a sampling slip, a loop). Only
+	// logged and traced: a reply is never changed on a heuristic's say-so.
+	if !isSlashCommand {
+		if anomalies := outputAnomalies(opts.UserMessage, finalContent); len(anomalies) > 0 {
+			logger.WarnCF("agent", "reply looks anomalous", map[string]interface{}{
+				"session_key": opts.SessionKey, "request_id": opts.RequestID, "signs": strings.Join(anomalies, ","),
+			})
+			telemetry.Global.Record(opts.SessionKey, opts.RequestID, "output_anomaly", opts.Channel, opts.ChatID, strings.Join(anomalies, ","))
 		}
 	}
 
@@ -3325,6 +3369,17 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		activeProfile = al.toolProfile
 	}
 	activeTools := tools.FilterToolsForTurn(al.tools, activeProfile, toolIntentText(opts.UserMessage, messages), len(opts.Media) > 0)
+	// Deep turns chain dependent calls, where a wrong step costs the most: give
+	// them the scratchpad (think). It changes nothing, so no profile can be
+	// widened by it; a profile that does not list it still does not get it.
+	if budget.Level == effort.Deep && activeProfile.Allows("think") {
+		if t, ok := al.tools.Get("think"); ok {
+			activeTools.Register(t)
+		}
+	}
+	// What this turn ran on, so a quality change can be traced to a change.
+	telemetry.Global.Record(opts.SessionKey, opts.RequestID, "turn_versions", opts.Channel, opts.ChatID,
+		turnVersions(al.model, messages[0].Content, activeTools.List()))
 	// A follow-up to browser work keeps the browser. Tools are picked from the
 	// words of each message, and "send me a screenshot of that results page"
 	// names no site: the model was never handed the browser it had used one
@@ -3389,7 +3444,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					}
 				}
 			}
-			activeTools.RestrictTo(tools.FilterNamesByProfile(activeProfile, cap.AllowedTools))
+			restrictToCapability(activeTools, activeProfile, cap)
 		}
 		_, canvasOffered := activeTools.Get("canvas")
 		if note := readLoopNote(messages, canvasOffered); note != "" && !turnNotes[note] {
@@ -3556,7 +3611,10 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		// Save assistant message with tool calls to session
 		al.sessions.AddFullMessage(opts.SessionKey, assistantMsg)
 
-		// Execute tool calls
+		// Execute tool calls. Pictures a tool hands back for the model to look
+		// at are attached after the whole batch of results, never between a
+		// tool call and its result.
+		var batchImages []providers.Message
 		for _, tc := range response.ToolCalls {
 			// Log tool call with arguments preview
 			argsJSON, _ := json.Marshal(tc.Arguments)
@@ -3843,6 +3901,12 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				}
 			}
 
+			if toolResult != nil && len(toolResult.Images) > 0 {
+				if imgMsg, ok := resultImagesMessage(toolResult.Images); ok {
+					batchImages = append(batchImages, imgMsg)
+				}
+			}
+
 			// Record tool usage for curator
 			al.curator.RecordUsage(tc.Name)
 
@@ -3854,6 +3918,8 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				al.nudge.OnSkillToolUsed(opts.SessionKey)
 			}
 		}
+
+		messages = append(messages, batchImages...)
 
 		for _, id := range providers.UnansweredToolCalls(messages) {
 			stub := providers.UnrunToolMessage(id)
@@ -4744,8 +4810,40 @@ func (al *AgentLoop) ModelPresets() []string {
 	return out
 }
 
+// restrictToCapability narrows a turn's tools to a committed skill's closed
+// execution path. A skill with no declared path (a user-installed or newer
+// skill) is unrestricted, as GetCapability promises: narrowing to an empty list
+// would leave only read_file, and the model could read the skill's instructions
+// but never act on them.
+func restrictToCapability(active *tools.ToolRegistry, profile tools.ToolProfile, cap skills.Capability) {
+	if len(cap.AllowedTools) == 0 {
+		return
+	}
+	active.RestrictTo(tools.FilterNamesByProfile(profile, cap.AllowedTools))
+}
+
+// SelfCheckRows runs the Doctor against the current configuration and returns
+// its findings. It is what the self_check tool and the post-update report use.
+func (al *AgentLoop) SelfCheckRows(ctx context.Context) []tools.SelfCheckRow {
+	if al == nil || al.doctor == nil {
+		return nil
+	}
+	al.RefreshDoctor()
+	results := al.doctor.RunAll(ctx)
+	rows := make([]tools.SelfCheckRow, 0, len(results))
+	for _, r := range results {
+		rows = append(rows, tools.SelfCheckRow{Name: r.Name, Label: r.Label, Status: r.Status, Message: r.Message})
+	}
+	return rows
+}
+
 // updateToolContexts updates the context for tools that need channel/chatID info.
 func (al *AgentLoop) updateToolContexts(channel, chatID string) {
+	if tool, ok := al.tools.Get("update"); ok {
+		if ut, ok := tool.(tools.ContextualTool); ok {
+			ut.SetContext(channel, chatID)
+		}
+	}
 	// Use ContextualTool interface instead of type assertions
 	if tool, ok := al.tools.Get("message"); ok {
 		if mt, ok := tool.(tools.ContextualTool); ok {
@@ -5499,4 +5597,31 @@ func toolIterationBudget(configured int) int {
 		return minToolIterations
 	}
 	return configured
+}
+
+// storedAttachments names the owner's stored uploads among a turn's media, so
+// the message that carried them can show them again after a restart.
+func (al *AgentLoop) storedAttachments(media []string) []providers.Attachment {
+	var out []providers.Attachment
+	for _, path := range media {
+		if !uploads.IsStored(al.workspace, path) {
+			continue
+		}
+		rel := path
+		if filepath.IsAbs(rel) {
+			r, err := filepath.Rel(al.workspace, rel)
+			if err != nil {
+				continue
+			}
+			rel = r
+		}
+		parts := strings.Split(filepath.ToSlash(rel), "/")
+		if len(parts) < 3 {
+			continue
+		}
+		if it, ok := uploads.Find(al.workspace, parts[1]); ok {
+			out = append(out, providers.Attachment{ID: it.ID, Name: it.Name, Kind: it.Kind, MIME: it.MIME, Size: it.Size})
+		}
+	}
+	return out
 }

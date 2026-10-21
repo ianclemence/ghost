@@ -111,6 +111,12 @@ type ToolResult struct {
 	// bytes on demand; paths never leave the runtime.
 	ScreenshotPath string `json:"-"`
 
+	// Images are pictures the model should be shown with this result (a
+	// preview sheet it just made, an image it was asked about). The agent
+	// loop attaches them to the turn as an image message; a result's text
+	// cannot carry pixels. Never serialized.
+	Images []ResultImage `json:"-"`
+
 	// Obs is the normalized observation of this execution, set by the
 	// registry. The agent loop forwards it into the canonical event so a
 	// trajectory records status/error-class/retryability structurally.
@@ -240,4 +246,11 @@ func (tr *ToolResult) UserFacing() string {
 func (tr *ToolResult) WithError(err error) *ToolResult {
 	tr.Err = err
 	return tr
+}
+
+// ResultImage is one picture handed to the model alongside a tool result.
+type ResultImage struct {
+	Mime    string // image/png, image/jpeg, ...
+	Data    []byte
+	Caption string // what it is, shown to the model with it
 }

@@ -354,6 +354,8 @@ func (al *AgentLoop) executeCommitmentTurn(ctx context.Context, idea ideas.Idea,
 	}
 	session := "commitment:" + c.ID
 	before := al.sessionMaxEventSeq(session)
+	ctx, stop := UnattendedContext(ctx)
+	defer stop()
 	reply, err := al.ProcessDirectWithChannel(ctx, commitmentTurnPrompt(c), session, channel, chatID, nil, nil, nil)
 	if err != nil {
 		return outcomeFailed, "I couldn't get anywhere with that. Nothing was changed.", nil, err

@@ -371,6 +371,11 @@ CRITICAL — Skill is authoritative. After you READ a SKILL.md, you MUST:
 		parts = append(parts, curateMemoryContext)
 	}
 
+	// The marker that makes a leak of this context recognisable (canary.go).
+	if note := canaryNote(cb.workspace); note != "" {
+		parts = append(parts, note)
+	}
+
 	// Personality override (if set and not default)
 	if cb.personalityName != "" && cb.personalityName != "default" {
 		personalityContent := cb.loadPersonalityContent()

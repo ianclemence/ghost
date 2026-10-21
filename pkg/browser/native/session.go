@@ -29,6 +29,8 @@ type Options struct {
 	StartURL string
 	// Env adds to the browser's environment (KEY=VALUE).
 	Env []string
+	// ExtraArgs are added to Chrome's command line.
+	ExtraArgs []string
 }
 
 // Session is a live page: a Chrome process (or an attached target), a CDP
@@ -49,12 +51,13 @@ func Launch(ctx context.Context, opts Options) (*Session, error) {
 		return attach(ctx, opts.CDPURL)
 	}
 	proc, err := launchChrome(ctx, launchOptions{
-		Binary:   opts.Binary,
-		Headless: opts.Headless,
-		Profile:  opts.Profile,
-		Viewport: opts.Viewport,
-		StartURL: opts.StartURL,
-		Env:      opts.Env,
+		Binary:    opts.Binary,
+		Headless:  opts.Headless,
+		Profile:   opts.Profile,
+		Viewport:  opts.Viewport,
+		StartURL:  opts.StartURL,
+		Env:       opts.Env,
+		ExtraArgs: opts.ExtraArgs,
 	})
 	if err != nil {
 		return nil, err

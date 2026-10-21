@@ -37,7 +37,7 @@ func (t *ImageGenTool) Name() string {
 }
 
 func (t *ImageGenTool) Description() string {
-	return "Generate an image from a text prompt using DALL-E. Returns the generated image as a file path."
+	return "Generate an image from a text prompt using DALL-E. Returns the generated image as a file path. Use it only when the owner asks for a generated or AI image, a photo-like picture, or art in a style code cannot draw. For a drawing, sketch, illustration, diagram, cartoon or animation, draw it in code with the film tool (hand-drawn strokes) or the canvas tool instead."
 }
 
 func (t *ImageGenTool) Parameters() map[string]interface{} {

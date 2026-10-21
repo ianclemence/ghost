@@ -26,6 +26,14 @@ ProtectHome=true
 ReadWritePaths=__GHOST_DIR__ /var/lib/ghost
 PrivateTmp=true
 
+# Resource ceiling. Browsers, installs and sandboxed code all run inside this
+# service's cgroup, so one runaway tool must slow down (MemoryHigh throttles
+# and reclaims) and then be killed (MemoryMax) before it can starve the Pod,
+# the web console or SSH. Percentages follow the machine, 4 GB or 16 GB.
+MemoryHigh=70%
+MemoryMax=85%
+TasksMax=4096
+
 # Logging
 StandardOutput=journal
 StandardError=journal

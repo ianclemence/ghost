@@ -98,6 +98,9 @@ type Message struct {
 	// NoticeKey names the condition an alert or notice reports ("storage-critical"),
 	// so the message can be marked resolved when the condition clears.
 	NoticeKey string `json:"notice_key,omitempty"`
+	// Attachments are the stored uploads (photos and files) the owner sent
+	// with this message, so a surface can draw them again from history.
+	Attachments []Attachment `json:"attachments,omitempty"`
 	// CreatedAt is when the message was persisted (zero when unknown).
 	// Context building date-stamps loaded history with it so the model
 	// can tell when "today"/"tomorrow" was actually said — a bare
@@ -163,4 +166,14 @@ type ToolFunctionDefinition struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	Parameters  map[string]interface{} `json:"parameters"`
+}
+
+// Attachment names one stored upload a message carried. ID is the upload's
+// id (what /v1/files/<id>/... takes); the bytes stay in the uploads store.
+type Attachment struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	MIME string `json:"mime"`
+	Size int64  `json:"size"`
 }

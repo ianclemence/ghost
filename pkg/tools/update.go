@@ -10,6 +10,14 @@ import (
 
 type UpdateTool struct {
 	workspace string
+	channel   string
+	chatID    string
+}
+
+// SetContext records which conversation asked, so the release that comes up
+// after the update can say how it went to the same place.
+func (t *UpdateTool) SetContext(channel, chatID string) {
+	t.channel, t.chatID = channel, chatID
 }
 
 func NewUpdateTool(workspace string) *UpdateTool {
@@ -51,12 +59,17 @@ func (t *UpdateTool) Execute(ctx context.Context, args map[string]interface{}) *
 	if c, _ := args["confirm"].(bool); !c {
 		return ErrorResult("Updating restarts Ghost. Ask the owner to confirm, then call update with confirm=true.")
 	}
+	// The update restarts this process, so leave a note for the release that
+	// comes up: it tells this conversation whether the update took and whether
+	// Ghost is healthy.
+	_ = updaterun.WritePending(updaterun.Pending{From: RunningVersion(), Channel: t.channel, ChatID: t.chatID})
 	if err := updaterun.StartDetachedUpdate(); err != nil {
+		updaterun.ClearPending()
 		return ErrorResult("Couldn't start the update: " + err.Error())
 	}
 	logger.InfoCF("tools", "Update started", map[string]interface{}{"unit": updaterun.UpdateUnit})
 
-	msg := "Update started. Ghost will restart when it finishes; the log is at " + updaterun.UpdateLogPath() + "."
+	msg := "Update started. Ghost will restart when it finishes, then check itself and report back here."
 	return &ToolResult{
 		ForLLM:  msg,
 		ForUser: msg,

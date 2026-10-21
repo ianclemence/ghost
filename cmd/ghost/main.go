@@ -37,6 +37,7 @@ import (
 	ghostdb "github.com/ianclemence/ghost/pkg/db"
 	"github.com/ianclemence/ghost/pkg/devices"
 	"github.com/ianclemence/ghost/pkg/doctor"
+	"github.com/ianclemence/ghost/pkg/egress"
 	"github.com/ianclemence/ghost/pkg/ghoststate"
 	"github.com/ianclemence/ghost/pkg/hardware"
 	"github.com/ianclemence/ghost/pkg/heartbeat"
@@ -186,6 +187,15 @@ func printVersion() {
 }
 
 func main() {
+	agent.SetBuildVersion(version)
+	// Internal: runs inside the sandbox, so it must come before anything that
+	// reads the working directory (a project's .env would otherwise be loaded
+	// into the environment of the command it is about to run).
+	// __egress-exec <socket> -- cmd... bridges the sandbox's loopback to the
+	// host egress proxy, then runs the command.
+	if len(os.Args) >= 5 && os.Args[1] == "__egress-exec" && os.Args[3] == "--" {
+		os.Exit(egress.RunBridge(os.Args[2], os.Args[4:]))
+	}
 	// Try loading .env files from various locations
 	// Priority: current dir > parent dir > config dir > ~/.ghost > ~/ghost
 	var envLoaded bool
@@ -1289,12 +1299,45 @@ func seedDevConfigFromInstalled(target appliance.DevTarget) {
 		if rerr != nil {
 			continue
 		}
+		if name == "config.json" {
+			// The installed config names the installed workspace. Copied as it
+			// is, the dev instance would read, write and seed skills into the
+			// real one.
+			patched, perr := devConfigFor(data, target.Workspace)
+			if perr != nil {
+				fmt.Printf("• Could not prepare the installed config for dev: %v\n", perr)
+				return
+			}
+			data = patched
+		}
 		if werr := os.WriteFile(d, data, 0o600); werr != nil {
 			fmt.Printf("• Could not copy %s into dev: %v\n", name, werr)
 			return
 		}
 	}
 	fmt.Println("• Seeded dev provider keys from the installed Ghost (reusable locally).")
+}
+
+// devConfigFor points an installed config at a dev workspace, so a dev
+// instance that reuses the installed provider keys never touches the installed
+// workspace.
+func devConfigFor(installed []byte, workspace string) ([]byte, error) {
+	var cfg map[string]interface{}
+	if err := json.Unmarshal(installed, &cfg); err != nil {
+		return nil, err
+	}
+	agents, _ := cfg["agents"].(map[string]interface{})
+	if agents == nil {
+		agents = map[string]interface{}{}
+		cfg["agents"] = agents
+	}
+	defaults, _ := agents["defaults"].(map[string]interface{})
+	if defaults == nil {
+		defaults = map[string]interface{}{}
+		agents["defaults"] = defaults
+	}
+	defaults["workspace"] = workspace
+	return json.MarshalIndent(cfg, "", "  ")
 }
 
 func gatewayCmd() {
@@ -1662,6 +1705,9 @@ func gatewayCmd() {
 			fmt.Println("✓ Scheduled service started")
 		}
 	}
+
+	// If an update was asked for from a conversation, say how it went there.
+	go reportUpdateOutcome(agentLoop)
 
 	if !apiOnly {
 		if err := heartbeatService.Start(); err != nil {
@@ -4051,6 +4097,8 @@ func executeRoutine(ctx context.Context, agentLoop *agent.AgentLoop, msgBus *bus
 		}
 		agentLoop.SetRoutineContext(sessionKey, r.ID, r.AllowedCapabilities)
 		defer agentLoop.ClearRoutineContext(sessionKey)
+		ctx, stop := agent.UnattendedContext(ctx)
+		defer stop()
 		resp, err := agentLoop.ProcessDirectWithChannel(ctx, r.Instruction, sessionKey, channel, item.ChatID, nil, nil, nil)
 		if err != nil {
 			return routines.RunOutcome{Completion: product.CompletionFailed, Message: "routine execution failed"}

@@ -39,7 +39,7 @@ func RiskOf(capabilityID string) Risk {
 		"find-nearby", "travel", "scraper", "calendar", "shopping",
 		"reminders", "daily-briefing", "hardware", "homeassistant",
 		"unit-converter", "world-clock", "calculator", "dictionary",
-		"translate", "timer",
+		"translate", "timer", "hand-drawn-animation", "ghost-architecture",
 	} {
 		if cap := skills.GetCapability(skill); cap.ID == capabilityID && cap.Risk != "" {
 			return Risk(cap.Risk)
