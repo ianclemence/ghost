@@ -217,9 +217,22 @@ func blank(b []byte) bool {
 
 // Report is what Check found.
 type Report struct {
-	Meta   Meta
-	Notes  []string // things to fix before rendering
-	Sample []int    // the frames that were drawn to find them
+	Meta    Meta
+	Notes   []string  // things to fix before rendering
+	Sample  []int     // the frames that were drawn to find them
+	Quality []Quality // the measurements behind the notes, one per sample
+}
+
+// Worst returns the least legible sampled frame: the one that would make a
+// film look blank.
+func (r Report) Worst() Quality {
+	var worst Quality
+	for i, q := range r.Quality {
+		if i == 0 || q.Contrast < worst.Contrast || q.DrawnCells < worst.DrawnCells {
+			worst = q
+		}
+	}
+	return worst
 }
 
 // Check opens the film and draws a spread of frames, including the first and
@@ -249,6 +262,13 @@ func Check(ctx context.Context, workspace, file string, o Options) (Report, erro
 		}
 		if blank(b) {
 			r.Notes = append(r.Notes, fmt.Sprintf("frame %d (%.1fs) is a single flat colour: nothing was drawn there", f, float64(f)/float64(p.Meta.FPS)))
+			continue
+		}
+		// A frame that drew something can still be too faint to see on a
+		// phone; measure it rather than hope the model notices.
+		if q, err := AnalyzePNG(b, f); err == nil {
+			r.Quality = append(r.Quality, q)
+			r.Notes = append(r.Notes, q.Notes()...)
 		}
 	}
 	return r, nil
@@ -350,6 +370,12 @@ func Render(ctx context.Context, workspace, file string, o Options, progress Pro
 	if p.Meta.Frames > MaxFrames {
 		return Result{}, fmt.Errorf("the film is %.0f s; one render is limited to %d s. Shorten it or render it in parts", p.Meta.Seconds(), MaxFrames/24)
 	}
+	// A render is a deliverable. Measure three frames before encoding: a film
+	// that draws nothing visible is refused here, with what to fix, instead of
+	// arriving in the owner's chat as a blank video.
+	if err := p.qualityGate(ctx); err != nil {
+		return Result{}, err
+	}
 
 	name := Name(file)
 	outRel := OutDir(file)
@@ -448,7 +474,57 @@ func Render(ctx context.Context, workspace, file string, o Options, progress Pro
 		res.Contact = outRel + "/" + name + "-contact.jpg"
 	}
 	_ = os.Rename(filepath.Join(work, name+"-render.json"), filepath.Join(outAbs, name+"-render.json"))
+	// Full-size preview frames are working files, not deliverables: keep the
+	// latest week's and drop the rest so a small card does not fill with PNGs.
+	PruneFrames(workspace, 7*24*time.Hour)
 	return res, nil
+}
+
+// qualityGate draws a few frames and refuses a film that is too faint or too
+// empty to be seen. The measurements are the same ones Check reports, so the
+// model can fix a film before rendering instead of after.
+func (p *page) qualityGate(ctx context.Context) error {
+	n := p.Meta.Frames
+	seen := map[int]bool{}
+	var fatal []Quality
+	flat := 0
+	for _, f := range []int{0, n / 2, n - 1} {
+		if f < 0 || f >= n || seen[f] {
+			continue
+		}
+		seen[f] = true
+		b, err := p.frame(ctx, f)
+		if err != nil {
+			return err
+		}
+		// A single flat frame is a cut to white or a fade, which is a
+		// deliberate part of a film. A film made only of flat frames is not.
+		if blank(b) {
+			flat++
+			continue
+		}
+		q, err := AnalyzePNG(b, f)
+		if err != nil {
+			continue // a frame that cannot be measured is not a reason to refuse
+		}
+		if q.Fatal() {
+			fatal = append(fatal, q)
+		}
+	}
+	if flat == len(seen) {
+		return fmt.Errorf("refusing to render a film that would look blank: every sampled frame is a single flat colour. Draw the subject, then run check again. Nothing was encoded")
+	}
+	if len(fatal) == 0 {
+		return nil
+	}
+	worst := fatal[0]
+	for _, q := range fatal[1:] {
+		if q.Contrast < worst.Contrast || q.DrawnCells < worst.DrawnCells {
+			worst = q
+		}
+	}
+	return fmt.Errorf("refusing to render a film that would look blank: frame %d has contrast %.2f and marks in %d of %d areas (needs contrast %.2f+ and %d+ areas). Darken the strokes, add tone, and let the subject fill more of the frame; then run check again. Nothing was encoded",
+		worst.Frame, worst.Contrast, worst.DrawnCells, gridCells, fatalContrast, fatalDrawnCells)
 }
 
 // verifyVideo decodes the whole file and checks it is about as long as the
