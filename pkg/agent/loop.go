@@ -887,30 +887,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 
 	router := routing.NewRouter(cfg.Agents.Routing.LightModel, cfg.Agents.Routing.Threshold)
 	fallback := providers.NewFallbackChain(time.Duration(cfg.Agents.Defaults.FallbackCooldown) * time.Second)
-	providersByModel := map[string]providers.LLMProvider{
-		cfg.Agents.Defaults.Model: provider,
-	}
-	fallbackCandidates := []providers.FallbackCandidate{
-		{Name: cfg.Agents.Defaults.Model, Provider: provider, Model: cfg.Agents.Defaults.Model},
-	}
-	for _, model := range cfg.Agents.Defaults.FallbackModels {
-		if model == "" || providersByModel[model] != nil {
-			continue
-		}
-		p, err := providers.CreateProviderForModel(cfg, model)
-		if err != nil {
-			continue
-		}
-		providersByModel[model] = p
-		fallbackCandidates = append(fallbackCandidates, providers.FallbackCandidate{Name: model, Provider: p, Model: model})
-	}
-	if cfg.Agents.Routing.LightModel != "" {
-		if _, ok := providersByModel[cfg.Agents.Routing.LightModel]; !ok {
-			if p, err := providers.CreateProviderForModel(cfg, cfg.Agents.Routing.LightModel); err == nil {
-				providersByModel[cfg.Agents.Routing.LightModel] = p
-			}
-		}
-	}
+	fallbackCandidates, providersByModel := deriveFallbackChain(cfg, provider)
 
 	// Initialize curator
 	curator := tools.NewCurator(database.DB, tools.CuratorConfig{
@@ -1053,6 +1030,11 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 					text = fmt.Sprintf("I couldn't render the film %s: %s", title, j.Error)
 				}
 				al.DeliverToOwner("mobile", "default", text, map[string]interface{}{"film": true})
+			})
+			// A drawing or a check can run for a minute; say what is
+			// happening instead of leaving the owner in silence.
+			ft.OnProgress(func(_ context.Context, text string) {
+				al.DeliverToOwner("mobile", "default", text, map[string]interface{}{"film": true, "progress": true})
 			})
 		}
 	}
@@ -3402,6 +3384,15 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 		}
 	}
+	// A follow-up to a drawing keeps the film tool, so "where is it?" or
+	// "make the sky darker" can act on the film that was just made.
+	if al.recentFilmWork() {
+		if _, ok := activeTools.Get("film"); !ok && activeProfile.Allows("film") {
+			if t, ok := al.tools.Get("film"); ok {
+				activeTools.Register(t)
+			}
+		}
+	}
 	// The owner explicitly asked for a command: offer exec for this turn so
 	// the model can actually attempt it. Visibility only — the broker still
 	// decides execution (exec is high-impact, never auto-authorized).
@@ -4688,33 +4679,80 @@ func (al *AgentLoop) rebuildFallbackChain() {
 	if al == nil || al.cfg == nil {
 		return
 	}
-	active := strings.TrimSpace(al.cfg.Agents.Defaults.Model)
+	al.fallbackModels, al.providersByModel = deriveFallbackChain(al.cfg, al.provider)
+}
+
+// deriveFallbackChain builds the ordered candidates and the model→provider
+// cache. It is shared by boot and by a model switch, so both see the same
+// chain: the active model, the owner's configured fallbacks, the light model,
+// and — only when none of those exist — one available model from another
+// provider as a last resort. Without that last resort a single upstream
+// failure (out of credit, a revoked key) left Ghost with nothing to answer
+// with, which is what "out of credit" looked like to the owner.
+func deriveFallbackChain(cfg *config.Config, provider providers.LLMProvider) ([]providers.FallbackCandidate, map[string]providers.LLMProvider) {
 	byModel := map[string]providers.LLMProvider{}
-	cands := make([]providers.FallbackCandidate, 0, 1+len(al.cfg.Agents.Defaults.FallbackModels))
-	if al.provider != nil && active != "" {
-		byModel[active] = al.provider
-		cands = append(cands, providers.FallbackCandidate{Name: active, Provider: al.provider, Model: active})
+	cands := make([]providers.FallbackCandidate, 0, 1+len(cfg.Agents.Defaults.FallbackModels))
+	active := strings.TrimSpace(cfg.Agents.Defaults.Model)
+	if provider != nil && active != "" {
+		byModel[active] = provider
+		cands = append(cands, providers.FallbackCandidate{Name: active, Provider: provider, Model: active})
 	}
-	for _, model := range al.cfg.Agents.Defaults.FallbackModels {
+	for _, model := range cfg.Agents.Defaults.FallbackModels {
 		if model == "" || byModel[model] != nil {
 			continue
 		}
-		p, err := providers.CreateProviderForModel(al.cfg, model)
+		p, err := providers.CreateProviderForModel(cfg, model)
 		if err != nil {
 			continue
 		}
 		byModel[model] = p
 		cands = append(cands, providers.FallbackCandidate{Name: model, Provider: p, Model: model})
 	}
-	if lm := strings.TrimSpace(al.cfg.Agents.Routing.LightModel); lm != "" {
+	if lm := strings.TrimSpace(cfg.Agents.Routing.LightModel); lm != "" {
 		if _, ok := byModel[lm]; !ok {
-			if p, err := providers.CreateProviderForModel(al.cfg, lm); err == nil {
+			if p, err := providers.CreateProviderForModel(cfg, lm); err == nil {
 				byModel[lm] = p
 			}
 		}
+		// The light model is already configured and paid for; putting it in
+		// the candidate list (not just the provider cache) gives a failed
+		// primary somewhere to go.
+		if p := byModel[lm]; p != nil && lm != active {
+			cands = append(cands, providers.FallbackCandidate{Name: lm, Provider: p, Model: lm})
+		}
 	}
-	al.fallbackModels = cands
-	al.providersByModel = byModel
+	// Strict pin is honored later (buildCandidates returns the primary
+	// alone), so adding a candidate here cannot widen a pinned install.
+	if len(cands) < 2 {
+		options := providers.AvailableModelOptions(cfg)
+		pick := func(local bool) *providers.ModelOption {
+			for i := range options {
+				o := options[i]
+				if o.Kind != "provider" || o.Target == "" || o.Target == active || byModel[o.Target] != nil {
+					continue
+				}
+				isLocal := o.Provider == "ollama" || o.Provider == "vllm"
+				if isLocal != local {
+					continue
+				}
+				return &options[i]
+			}
+			return nil
+		}
+		o := pick(true)
+		if o == nil {
+			o = pick(false)
+		}
+		if o != nil {
+			if p, err := providers.CreateProviderForModel(cfg, o.Target); err == nil {
+				byModel[o.Target] = p
+				cands = append(cands, providers.FallbackCandidate{Name: o.Target, Provider: p, Model: o.Model})
+				logger.InfoCF("agent", "no fallback configured; using an available model as last resort",
+					map[string]interface{}{"model": o.Target})
+			}
+		}
+	}
+	return cands, byModel
 }
 
 // ModelOptions lists the selectable set: named presets, named connections,

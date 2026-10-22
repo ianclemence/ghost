@@ -3189,6 +3189,32 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 			req.RequestID = fmt.Sprintf("req-%d", time.Now().UnixNano())
 		}
 
+		// A resend with a fresh request id is still the same request: the
+		// phone may post a long prompt twice (a double tap, a retry while the
+		// first answer is still coming). Answer the first turn instead of
+		// starting a second pipeline on the same conversation. Attachments
+		// and short deliberate repeats are left alone.
+		fingerprint := ""
+		if len(req.Media) == 0 && len(req.MediaItems) == 0 && len(strings.TrimSpace(req.Content)) >= minDuplicateChars {
+			fingerprint = chatContentFingerprint(req.SessionKey, req.Channel, req.ChatID, req.Content)
+			if prior, dup := duplicateChatRequest(fingerprint, req.RequestID); dup && chatTurns != nil {
+				if t, err := chatTurns.Get(req.SessionKey, prior); err == nil && t != nil {
+					switch t.Status {
+					case turnlog.StatusCompleted:
+						jsonResponse(w, http.StatusOK, map[string]interface{}{
+							"ok": true, "replay": true, "duplicate": true,
+							"request_id": prior, "status": "completed", "outcome": t.Outcome,
+						})
+						return
+					case turnlog.StatusPending, turnlog.StatusRunning, turnlog.StatusWaiting:
+						jsonError(w, http.StatusConflict, "duplicate_turn",
+							"that message is already being answered; attach to that turn instead of resending")
+						return
+					}
+				}
+			}
+		}
+
 		// Durable turn identity: an identical request_id for the same
 		// conversation must never start a second execution (reconnect is
 		// observation, not re-submission). Terminal turns reply with their
@@ -3234,6 +3260,9 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 				}
 			}
 			if cerr == nil && claim.Created {
+				if fingerprint != "" {
+					noteChatRequest(fingerprint, req.RequestID)
+				}
 				// Where the question came from, recorded once so a turn
 				// that has to be finished later answers on the same
 				// surface instead of appearing somewhere the owner never

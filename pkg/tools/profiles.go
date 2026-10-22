@@ -64,6 +64,11 @@ var ProfileAllowlists = map[ToolProfile][]string{
 		"present_card", "draft",
 		// Documents are laid out on the Pod and shown; nothing is sent.
 		"document",
+		// Updating Ghost from the phone: "check for an update" must work on
+		// the surface the owner actually uses. The tool can read the current
+		// and available version without changing anything; an actual update
+		// still requires confirm=true, and the broker still governs it.
+		"update",
 		// The owner's own records on their Pod: people, documents, finances.
 		"people", "vault", "finances", "trips", "phone", "knowledge",
 		// Browser surface on mobile: observe + act (broker-governed like
@@ -298,7 +303,11 @@ var turnIntentTools = []struct {
 	{[]string{"how many", "which of my", "across all", "across my", "all my notes", "all my files", "every note", "every file", "count the", "of my notes", "of my files"}, []string{"pipeline"}},
 	{[]string{"compact", "summarize history", "context full"}, []string{"compact_context"}},
 	{[]string{"check yourself", "check your health", "self check", "self-check", "are you healthy", "are you ok", "are you okay", "is everything working", "run diagnostics", "run a diagnostic", "diagnose yourself", "health check", "healthcheck", "are you working"}, []string{"self_check"}},
-	{[]string{"update ghost", "upgrade ghost", "self-update", "update yourself", "update itself", "upgrade yourself", "latest version", "new version", "install the update"}, []string{"update"}},
+	{[]string{"update ghost", "upgrade ghost", "self-update", "update yourself", "update itself", "upgrade yourself", "latest version", "new version", "install the update",
+		// The question form was missing, so "check for an update" offered no
+		// update tool at all — on the phone, where it matters most.
+		"check for an update", "check for updates", "is there an update", "any update", "any updates", "update available",
+		"up to date", "new release", "latest release", "what version"}, []string{"update"}},
 	{[]string{"pdf", "word", "excel", "document", "docx", "pptx"}, []string{"doc_parser"}},
 	// The people in the owner's life. Mentioning someone is enough: "my
 	// sister", "Sam's birthday", "text Mum" all need to know who.

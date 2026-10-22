@@ -66,6 +66,11 @@ func ghostBinaryPath() string {
 	return "ghost"
 }
 
+// BinaryPath is the ghost executable this process is running from. Tools that
+// need to ask the CLI a read-only question (check for an update) use it rather
+// than guessing a path.
+func BinaryPath() string { return ghostBinaryPath() }
+
 // updateScript is the whole job: run the updater, then leave an unambiguous
 // marker either way, so a poller never has to guess from exit codes it can't see.
 func updateScript(bin string) string {
