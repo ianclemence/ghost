@@ -12,6 +12,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/cevents"
+	"github.com/ianclemence/ghost/pkg/film"
 	"github.com/ianclemence/ghost/pkg/live"
 	"github.com/ianclemence/ghost/pkg/logger"
 	"github.com/ianclemence/ghost/pkg/permissions"
@@ -857,10 +858,29 @@ func (al *AgentLoop) PurgeBrowserProfiles() (int64, int, error) {
 	return s.PurgeProfiles()
 }
 
-// recentCanvasWork reports whether a canvas was made in the last half hour, so a
-// follow-up ("make the button blue", "add a reset") keeps the canvas tool. Such
-// a message names nothing to match on its own, and without the tool Ghost would
-// answer by pasting HTML into the chat instead of showing the new version.
+// recentFilmWork reports whether a film was worked on in the last half hour,
+// so a follow-up keeps the film tool. "Where is it?", "make it darker" and
+// "show me the fox" name nothing the per-turn router can match; without this
+// the model was handed no film tool and had to spend a find_tools round-trip,
+// or told the owner it had lost the drawing it had just made.
+func (al *AgentLoop) recentFilmWork() bool {
+	if al == nil || al.workspace == "" {
+		return false
+	}
+	matches, _ := filepath.Glob(filepath.Join(al.workspace, film.Dir, "*", "*.html"))
+	cutoff := time.Now().Add(-30 * time.Minute)
+	for _, m := range matches {
+		if fi, err := os.Stat(m); err == nil && fi.ModTime().After(cutoff) {
+			return true
+		}
+	}
+	return false
+}
+
+// recentCanvasWork reports whether a canvas was made in the last half hour, so
+// a follow-up ("make the button blue", "add a reset") keeps the canvas tool.
+// Such a message names nothing to match on its own, and without the tool Ghost
+// would answer by pasting HTML into the chat instead of showing the new version.
 func (al *AgentLoop) recentCanvasWork() bool {
 	if al == nil || al.workspace == "" {
 		return false

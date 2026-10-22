@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -97,24 +98,115 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 
 	contentStr := string(content)
 
-	if !strings.Contains(contentStr, oldText) {
-		return ErrorResult("old_text not found in file. Make sure it matches exactly")
+	start, end, fuzzy, problem := editSpan(contentStr, oldText)
+	if problem != "" {
+		return ErrorResult(problem)
 	}
 
-	count := strings.Count(contentStr, oldText)
-	if count > 1 {
-		return ErrorResult(fmt.Sprintf("old_text appears %d times. Please provide more context to make it unique", count))
+	// Keep the file's line endings: a new_text pasted with LF into a CRLF
+	// file should not leave one edited block with different endings.
+	if strings.Contains(contentStr, "\r\n") {
+		newText = strings.ReplaceAll(strings.ReplaceAll(newText, "\r\n", "\n"), "\n", "\r\n")
 	}
 
-	newContent := strings.Replace(contentStr, oldText, newText, 1)
+	newContent := contentStr[:start] + newText + contentStr[end:]
 
 	if err := os.WriteFile(resolvedPath, []byte(newContent), 0644); err != nil {
 		return ErrorResult(fmt.Sprintf("failed to write file: %v", err))
 	}
 
-	res := SilentResult(fmt.Sprintf("File edited: %s", path))
+	note := fmt.Sprintf("File edited: %s", path)
+	if fuzzy {
+		note += " (matched after normalising whitespace)"
+	}
+	res := SilentResult(note)
 	res.Evidence = FileWriteEvidenceFromDisk(resolvedPath)
 	return res
+}
+
+// editSpan finds old_text in content and returns the byte span to replace.
+//
+// A model's old_text goes stale in ordinary ways: it remembers the indentation
+// differently, drops a trailing space, or carries LF into a CRLF file. Failing
+// those edits costs seconds of silence and often a whole turn, so after an
+// exact match fails the text is matched again ignoring whitespace. The match
+// must still be unique; an ambiguous edit is refused rather than guessed.
+func editSpan(content, oldText string) (start, end int, fuzzy bool, problem string) {
+	if oldText == "" {
+		return 0, 0, false, "old_text is empty; provide the text to replace"
+	}
+	if idx := strings.Index(content, oldText); idx >= 0 {
+		count := strings.Count(content, oldText)
+		if count > 1 {
+			return 0, 0, false, fmt.Sprintf("old_text appears %d times. Please provide more context to make it unique", count)
+		}
+		return idx, idx + len(oldText), false, ""
+	}
+	// The same text with the other line ending is still the same edit.
+	for _, variant := range lineEndingVariants(content, oldText) {
+		if idx := strings.Index(content, variant); idx >= 0 && strings.Count(content, variant) == 1 {
+			return idx, idx + len(variant), false, ""
+		}
+	}
+	if strings.TrimSpace(oldText) == "" {
+		return 0, 0, false, "old_text is only whitespace; provide the text to replace"
+	}
+	re, err := regexp.Compile(fuzzyEditPattern(oldText))
+	if err != nil {
+		return 0, 0, false, "old_text not found in file. Make sure it matches exactly"
+	}
+	matches := re.FindAllStringIndex(content, -1)
+	switch len(matches) {
+	case 1:
+		return matches[0][0], matches[0][1], true, ""
+	case 0:
+		return 0, 0, false, "old_text not found in file. The file may have changed since you read it: read it again and anchor to the current text (or use write_file to replace the whole file)."
+	default:
+		return 0, 0, false, fmt.Sprintf("old_text does not match exactly and appears %d times when whitespace is ignored. Add more surrounding lines to make it unique", len(matches))
+	}
+}
+
+// lineEndingVariants rewrites oldText with the file's line endings, so a
+// CRLF/LF mismatch does not fail an otherwise exact edit.
+func lineEndingVariants(content, oldText string) []string {
+	hasCRLF := strings.Contains(content, "\r\n")
+	hasLF := strings.Contains(strings.ReplaceAll(content, "\r\n", ""), "\n")
+	var out []string
+	if hasCRLF && !strings.Contains(oldText, "\r\n") {
+		out = append(out, strings.ReplaceAll(oldText, "\n", "\r\n"))
+	}
+	if hasLF && strings.Contains(oldText, "\r\n") {
+		out = append(out, strings.ReplaceAll(oldText, "\r\n", "\n"))
+	}
+	return out
+}
+
+// fuzzyEditPattern matches old_text with any indentation, any run of spaces or
+// tabs between words, and either line ending. Literal text is quoted, so the
+// only looseness is whitespace.
+func fuzzyEditPattern(oldText string) string {
+	old := strings.ReplaceAll(oldText, "\r\n", "\n")
+	lines := strings.Split(old, "\n")
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	parts := make([]string, 0, len(lines))
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			parts = append(parts, `[ \t]*`)
+			continue
+		}
+		quoted := make([]string, len(fields))
+		for i, f := range fields {
+			quoted[i] = regexp.QuoteMeta(f)
+		}
+		parts = append(parts, `[ \t]*`+strings.Join(quoted, `[ \t]+`)+`[ \t]*`)
+	}
+	return strings.Join(parts, `\r?\n`)
 }
 
 type AppendFileTool struct {

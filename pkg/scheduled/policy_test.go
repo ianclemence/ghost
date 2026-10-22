@@ -9,8 +9,8 @@ func TestDefaultPolicies(t *testing.T) {
 	if DefaultMissedPolicy(TypeReminder) != MissedNotify {
 		t.Fatal("reminders must default to notify")
 	}
-	if DefaultMissedPolicy(TypeAutomation) != MissedNext {
-		t.Fatal("automations must default to next (no double brief)")
+	if DefaultMissedPolicy(TypeAutomation) != MissedRunOnce {
+		t.Fatal("automations must catch up a recent missed run")
 	}
 }
 
@@ -26,10 +26,21 @@ func TestClassifyMissed(t *testing.T) {
 	if d.ShouldRun || !d.NotifyUser {
 		t.Fatalf("stale miss must notify, not run: %+v", d)
 	}
-	// Automation missed -> next, no catch-up duplicates.
-	d = ClassifyMissed(TypeAutomation, "", now.Add(-time.Hour), now)
+	// A brief missed by 2.5h (pod offline over its time) catches up once.
+	d = ClassifyMissed(TypeAutomation, "", now.Add(-2*time.Hour-30*time.Minute), now)
+	if !d.ShouldRun || d.Policy != MissedRunOnce {
+		t.Fatalf("a recent automation miss must catch up: %+v", d)
+	}
+	// Six hours late is no longer the morning: wait for tomorrow, don't
+	// deliver a stale brief.
+	d = ClassifyMissed(TypeAutomation, "", now.Add(-6*time.Hour), now)
 	if d.ShouldRun || d.Policy != MissedNext {
-		t.Fatalf("automation must wait for next: %+v", d)
+		t.Fatalf("a stale automation miss must wait for next: %+v", d)
+	}
+	// An explicit skip is still honored.
+	d = ClassifyMissed(TypeAutomation, MissedSkip, now.Add(-time.Hour), now)
+	if d.ShouldRun || d.Policy != MissedSkip {
+		t.Fatalf("explicit skip must win: %+v", d)
 	}
 	// Reminder missed -> notify.
 	d = ClassifyMissed(TypeReminder, "", now.Add(-time.Hour), now)

@@ -28,6 +28,15 @@ type FilmTool struct {
 	pub       CanvasPublisher
 	// onVideo tells the owner a render is ready (or failed), in their conversation.
 	onVideo func(ctx context.Context, title string, j film.Job)
+	// onProgress says what a long tool call is doing, so a film that takes a
+	// minute is not silence. Optional: unwired in tests and the CLI.
+	onProgress func(ctx context.Context, text string)
+	// locks serializes work on one film. Two turns can arrive at once (a
+	// resent message, a second device); without this they write the same grid
+	// and edit the same file in parallel.
+	locks sync.Map // project file → *sync.Mutex
+	// progressAt throttles progress notes per film.
+	progressAt map[string]time.Time
 }
 
 // filmCheatSheet is the part of the engine's API a new film needs, so the
@@ -61,10 +70,47 @@ func (t *FilmTool) OnVideo(fn func(ctx context.Context, title string, j film.Job
 	t.mu.Unlock()
 }
 
+// OnProgress sets where a one-line progress note goes while a film is being
+// looked at or rendered.
+func (t *FilmTool) OnProgress(fn func(ctx context.Context, text string)) {
+	t.mu.Lock()
+	t.onProgress = fn
+	t.mu.Unlock()
+}
+
+// lock serializes tool calls that touch one film. The returned function
+// releases it; callers defer it.
+func (t *FilmTool) lock(key string) func() {
+	v, _ := t.locks.LoadOrStore(key, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
+// progress publishes at most one note per film every 15 seconds: enough to
+// break a long silence, not enough to become noise.
+func (t *FilmTool) progress(ctx context.Context, key, text string) {
+	t.mu.Lock()
+	fn := t.onProgress
+	if t.progressAt == nil {
+		t.progressAt = map[string]time.Time{}
+	}
+	if last, ok := t.progressAt[key]; ok && time.Since(last) < 15*time.Second {
+		fn = nil
+	}
+	if fn != nil {
+		t.progressAt[key] = time.Now()
+	}
+	t.mu.Unlock()
+	if fn != nil {
+		fn(ctx, text)
+	}
+}
+
 func (t *FilmTool) Name() string { return "film" }
 
 func (t *FilmTool) Description() string {
-	return `Make hand-drawn animations, cartoons, motion films and drawings in code: every drawing is JavaScript strokes on a canvas, rendered by the Pod to an MP4 (with sound if the film has a score) or to a still picture. Use it whenever the owner asks for an animation, a cartoon, a motion video, a flipbook, a drawn film, or to draw something. Draw in code unless they ask you to generate an image or photo. Not for explainers made from the owner's numbers or reports (that is the motion tool).
+	return `Make hand-drawn animations, cartoons, motion films and drawings in code (beta): every drawing is JavaScript strokes on a canvas, rendered by the Pod to an MP4 (with sound if the film has a score) or to a still picture. A render is gated on measured contrast and coverage, so a film that would look blank is refused rather than shipped. Use it whenever the owner asks for an animation, a cartoon, a motion video, a flipbook, a drawn film, or to draw something. Draw in code unless they ask you to generate an image or photo. Not for explainers made from the owner's numbers or reports (that is the motion tool).
 
 Read skills/hand-drawn-animation/SKILL.md first; it is the method (brief, drawings, timing, marks, QA). Then work like an animator, in this order:
 1. new: start a project from a template (default "starter", a small animation; "still" for a drawing or illustration; also sketchbook-bird, four-looks, fly-style, one-year, film-template). It copies the engine beside the film file. Then edit the film's HTML with write_file/edit_file.
@@ -129,8 +175,14 @@ func (t *FilmTool) look(res *ToolResult, caption string, rels ...string) *ToolRe
 // maxResultImageBytes bounds one attached image; base64 inflates it by a third.
 const maxResultImageBytes = 1 << 20
 
-func (t *FilmTool) options(args map[string]interface{}) film.Options {
+func (t *FilmTool) options(args map[string]interface{}, action string) film.Options {
 	o := film.Options{AR: strings.TrimSpace(sarg(args, "ar")), Look: strings.TrimSpace(sarg(args, "look"))}
+	// Ghost lives on a phone. A still that defaults to a landscape frame is a
+	// mismatch with the surface it arrives on, so a drawing is portrait unless
+	// the film or the owner says otherwise.
+	if o.AR == "" && action == "still" {
+		o.AR = "9:16"
+	}
 	if n, ok := args["width"].(float64); ok && n > 0 {
 		o.Width = int(n)
 	}
@@ -149,6 +201,8 @@ func (t *FilmTool) Execute(ctx context.Context, args map[string]interface{}) *To
 				}
 			}
 		}
+		unlock := t.lock("new:" + film.Slug(project))
+		defer unlock()
 		dir, file, err := film.New(t.workspace, project, strings.TrimSpace(sarg(args, "template")), mods)
 		if err != nil {
 			return ErrorResult("Couldn't start the film: " + err.Error())
@@ -159,7 +213,11 @@ func (t *FilmTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	opts := t.options(args)
+	// One film is worked on by one call at a time. A resent prompt used to
+	// start a second pipeline that wrote the same frames and previews.
+	unlock := t.lock(file)
+	defer unlock()
+	opts := t.options(args, action)
 	if action == "photo" {
 		o := film.PhotoOptions{Credit: strings.TrimSpace(sarg(args, "credit")), Keep: args["keep"] == true}
 		if n, ok := args["tol"].(float64); ok {
@@ -174,11 +232,15 @@ func (t *FilmTool) Execute(ctx context.Context, args map[string]interface{}) *To
 
 	switch action {
 	case "check":
+		t.progress(ctx, file, "Looking at the film now — drawing a spread of frames to check it.")
 		r, err := film.Check(ctx, t.workspace, file, opts)
 		if err != nil {
 			return ErrorResult("The film doesn't run yet: " + err.Error() + "\nFix it in " + file + " and run check again.")
 		}
 		msg := fmt.Sprintf("%s loads and draws: %d frames at %d fps (%.1f s), %dx%d. Drew frames %v without a script error.", file, r.Meta.Frames, r.Meta.FPS, r.Meta.Seconds(), r.Meta.OutW(), r.Meta.OutH(), r.Sample)
+		if q := r.Worst(); q.InkPct > 0 || q.Contrast > 0 || q.DrawnCells > 0 {
+			msg += fmt.Sprintf(" Measured: visible marks cover %.1f%% of the frame, in %d of %d areas; tonal range %.2f.", q.CoveragePct, q.DrawnCells, 36, q.Contrast)
+		}
 		if len(r.Notes) > 0 {
 			msg += "\nFix before going on:\n- " + strings.Join(r.Notes, "\n- ")
 		} else {
@@ -187,6 +249,7 @@ func (t *FilmTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		return NewToolResult(msg)
 
 	case "preview":
+		t.progress(ctx, file, "Drawing a preview of the film now.")
 		if s := strings.TrimSpace(sarg(args, "strip")); s != "" {
 			a, b, ok := strings.Cut(s, ",")
 			start, e1 := strconv.Atoi(strings.TrimSpace(a))
@@ -240,6 +303,12 @@ func (t *FilmTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		if err != nil {
 			return ErrorResult(err.Error())
 		}
+		// A still is looked at before it is shown: the same measurement that
+		// gates a render says whether this picture will read on a phone.
+		qualityNote := ""
+		if q, err := film.AnalyzeFile(paths[0]); err == nil && len(q.Notes()) > 0 {
+			qualityNote = " Measured: " + strings.Join(q.Notes(), "; ") + "."
+		}
 		t.mu.Lock()
 		pub := t.pub
 		t.mu.Unlock()
@@ -250,11 +319,12 @@ func (t *FilmTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		if err != nil {
 			return ErrorResult("Drew it, but it couldn't be shown in the chat: " + err.Error())
 		}
-		return t.look(&ToolResult{ForLLM: fmt.Sprintf("Showing the drawing (%dx%d, artifact %s) in the owner's chat, and attached here so you can check it. Say in a sentence what it shows; to change it, edit %s and call still again.", meta.OutW(), meta.OutH(), a.ID, file), Silent: true}, "The drawing the owner sees", paths[0])
+		return t.look(&ToolResult{ForLLM: fmt.Sprintf("Showing the drawing (%dx%d, artifact %s) in the owner's chat, and attached here so you can check it. Say in a sentence what it shows; to change it, edit %s and call still again.%s", meta.OutW(), meta.OutH(), a.ID, file, qualityNote), Silent: true}, "The drawing the owner sees", paths[0])
 
 	case "render":
 		title := film.Name(file)
 		session := SessionKeyFromContext(ctx)
+		t.progress(ctx, file, fmt.Sprintf("Rendering %s now — I'll tell you here when the video is ready.", title))
 		j := t.jobs.Start(t.workspace, file, opts, func(j film.Job) {
 			t.finish(session, title, j)
 		})

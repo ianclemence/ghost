@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ianclemence/ghost/pkg/agent"
@@ -73,3 +76,64 @@ func registerDurableTurns(mux *http.ServeMux, loop *agent.AgentLoop) {
 }
 
 var _ = time.Now
+
+// A resend is not always a reconnect: the phone can post the same message
+// twice with two different request ids (a double tap, a retry while the first
+// answer is still coming). Request-id idempotency cannot see that, and the
+// result was two pipelines running on one conversation — the duplicate boat
+// prompt, two renders of the same film. The fingerprint below closes that gap.
+const (
+	duplicateWindow   = 3 * time.Minute
+	minDuplicateChars = 24 // short repeats ("yes", "try again") are deliberate
+)
+
+type recentChatTurn struct {
+	requestID string
+	at        time.Time
+}
+
+var (
+	recentChatMu sync.Mutex
+	recentChat   = map[string]recentChatTurn{}
+)
+
+// chatContentFingerprint identifies "the same message" across request ids.
+func chatContentFingerprint(session, channel, chatID, content string) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		session, channel, chatID, strings.TrimSpace(content),
+	}, "\x00")))
+	return hex.EncodeToString(sum[:])
+}
+
+// noteChatRequest records a turn that is actually starting.
+func noteChatRequest(key, requestID string) {
+	if key == "" {
+		return
+	}
+	now := time.Now()
+	recentChatMu.Lock()
+	defer recentChatMu.Unlock()
+	if len(recentChat) > 256 {
+		for k, v := range recentChat {
+			if now.Sub(v.at) > duplicateWindow {
+				delete(recentChat, k)
+			}
+		}
+	}
+	recentChat[key] = recentChatTurn{requestID: requestID, at: now}
+}
+
+// duplicateChatRequest returns the earlier request id when this content was
+// already submitted for the same conversation inside the window.
+func duplicateChatRequest(key, requestID string) (string, bool) {
+	if key == "" {
+		return "", false
+	}
+	recentChatMu.Lock()
+	defer recentChatMu.Unlock()
+	v, ok := recentChat[key]
+	if !ok || v.requestID == requestID || time.Since(v.at) > duplicateWindow {
+		return "", false
+	}
+	return v.requestID, true
+}

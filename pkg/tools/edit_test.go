@@ -213,6 +213,95 @@ func TestEditTool_EditFile_MissingNewText(t *testing.T) {
 	}
 }
 
+// TestEditTool_ReAnchorsWhenWhitespaceDrifts covers the ordinary way a stale
+// old_text fails: the model remembers the line but not its indentation.
+func TestEditTool_ReAnchorsWhenWhitespaceDrifts(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "film.js")
+	original := "function draw(c) {\n\tsubject(c, 10, 20)\n\treturn c\n}\n"
+	if err := os.WriteFile(testFile, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewEditFileTool(tmpDir, true)
+	res := tool.Execute(context.Background(), map[string]interface{}{
+		"path":     testFile,
+		"old_text": "    subject(c, 10, 20)  \n    return c",
+		"new_text": "\tsubject(c, 40, 60)\n\treturn c",
+	})
+	if res.IsError {
+		t.Fatalf("expected the edit to re-anchor, got: %s", res.ForLLM)
+	}
+	got, _ := os.ReadFile(testFile)
+	if !strings.Contains(string(got), "subject(c, 40, 60)") || strings.Contains(string(got), "subject(c, 10, 20)") {
+		t.Fatalf("file not edited as intended:\n%s", got)
+	}
+}
+
+// TestEditTool_HandlesLineEndingMismatch keeps an LF old_text usable in a CRLF
+// file.
+func TestEditTool_HandlesLineEndingMismatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "notes.txt")
+	if err := os.WriteFile(testFile, []byte("first\r\nsecond\r\nthird\r\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tool := NewEditFileTool(tmpDir, true)
+	res := tool.Execute(context.Background(), map[string]interface{}{
+		"path":     testFile,
+		"old_text": "second\nthird",
+		"new_text": "SECOND\nTHIRD",
+	})
+	if res.IsError {
+		t.Fatalf("expected a line-ending mismatch to be tolerated, got: %s", res.ForLLM)
+	}
+	got, _ := os.ReadFile(testFile)
+	if !strings.Contains(string(got), "SECOND\r\nTHIRD") {
+		t.Fatalf("CRLF not preserved around the edit:\n%q", got)
+	}
+}
+
+// TestEditTool_RefusesAmbiguousFuzzyMatch: loosening whitespace must never
+// turn a specific edit into a guess.
+func TestEditTool_RefusesAmbiguousFuzzyMatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "code.go")
+	if err := os.WriteFile(testFile, []byte("if x {\n\treturn nil\n}\nif x {\n\treturn nil\n}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tool := NewEditFileTool(tmpDir, true)
+	res := tool.Execute(context.Background(), map[string]interface{}{
+		"path":     testFile,
+		"old_text": "if x {\n    return nil\n}",
+		"new_text": "if z {\n\treturn err\n}",
+	})
+	if !res.IsError {
+		t.Fatal("expected an ambiguous edit to be refused")
+	}
+	if !strings.Contains(res.ForLLM, "times") {
+		t.Fatalf("expected the ambiguity to be explained, got: %s", res.ForLLM)
+	}
+}
+
+// TestEditTool_NotFoundSuggestsReReading: when the text genuinely moved, the
+// error says what to do next instead of repeating "match exactly".
+func TestEditTool_NotFoundSuggestsReReading(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "code.go")
+	if err := os.WriteFile(testFile, []byte("func main() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tool := NewEditFileTool(tmpDir, true)
+	res := tool.Execute(context.Background(), map[string]interface{}{
+		"path":     testFile,
+		"old_text": "func serve() {}",
+		"new_text": "func serve(addr string) {}",
+	})
+	if !res.IsError || !strings.Contains(res.ForLLM, "read it again") {
+		t.Fatalf("expected a re-read hint, got: %s", res.ForLLM)
+	}
+}
+
 // TestEditTool_AppendFile_Success verifies successful file appending
 func TestEditTool_AppendFile_Success(t *testing.T) {
 	tmpDir := t.TempDir()
