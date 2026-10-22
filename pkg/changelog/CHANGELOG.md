@@ -3,6 +3,42 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.200] - 2026-10-22
+
+- **Ghost no longer ships a film it cannot see.** Before a render, Ghost
+  measures three frames for contrast, ink and how much of the frame is drawn,
+  and refuses a film that is too faint or too empty instead of sending you a
+  blank video. `check` reports the same numbers, so there is something concrete
+  to fix. Drawings default to a 9:16 portrait frame, because that is the screen
+  they arrive on.
+- **Two copies of one prompt can no longer work on the same film at once.**
+  A resent message used to start a second pipeline that wrote the same frames
+  and previews as the first. Work on one film is now serialized, and a repeat
+  render still joins the one already running.
+- **A film says what it is doing.** While Ghost draws a preview or starts a
+  render it posts a short progress note, so a minute of work is no longer
+  silence.
+- **"Where is it?" keeps the film tool.** Follow-ups within half an hour of a
+  drawing keep the tool the previous turn used, instead of making Ghost search
+  for it or claim it lost the file.
+- **Check for an update from your phone.** "Is there an update?" now reaches
+  the update tool on the mobile surface, and a read-only `check` reports the
+  installed and available version without changing anything.
+- **Edits survive stale whitespace.** If `old_text` no longer matches exactly,
+  Ghost re-anchors it ignoring indentation, spacing and line-ending differences,
+  and refuses rather than guesses when the match is ambiguous.
+- **A routine missed while the Pod was offline catches up.** If a scheduled
+  run was due within the last four hours, Ghost runs it once on recovery; a
+  morning brief that was due at 08:30 arrives when the Pod comes back, and one
+  that is many hours stale waits for tomorrow instead.
+- **Ghost has somewhere to go when a model stops answering.** With no fallback
+  configured, Ghost now keeps the light model and one available model from
+  another provider as a last resort, instead of failing the whole turn when a
+  provider runs out of credit.
+- **A release cleans up after itself.** Old signed builds in `dist/` are pruned
+  to the two most recent, and the Go build cache is cleared after a publish
+  when the card is over 85% full.
+
 ## [0.24.199] - 2026-10-21
 
 - **Ghost can tell you how warm the room is.** A DHT11 sensor on the Pod

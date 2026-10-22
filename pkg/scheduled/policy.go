@@ -1,12 +1,14 @@
-// Package scheduled — policy additions: missed-run behavior, timezone
+// package scheduled — policy additions: missed-run behavior, timezone
 // resolution, and deterministic idempotency keys.
 //
 // Missed runs (Ghost was offline during a scheduled run) need an explicit
 // per-item decision: run once immediately, skip, run at the next scheduled
-// occurrence, or notify the user. Reminders default to notify-or-run-once
-// (a commitment to the user); recurring automations default to next
-// (never double-deliver a weekly brief); one-shots default to run-once
-// inside a grace window, else skip with notice.
+// occurrence, or notify the user. Reminders default to notify (a commitment
+// whose moment has passed); recurring automations catch up once when they are
+// only a few hours late — a morning brief at 11 is still the morning brief —
+// and wait for the next occurrence beyond that; one-shots default to run-once
+// inside a grace window, else skip with notice. Execution keys make catch-up
+// safe: the same occurrence can never be delivered twice.
 //
 // Timezone is first-class: explicit request > user configuration > Ghost
 // configuration > UTC fallback. Never silently assume UTC when the user's
@@ -39,6 +41,12 @@ const (
 // never executed (stale commitments become notifications, not actions).
 const graceWindow = 24 * time.Hour
 
+// automationGrace is how late a recurring automation may still catch up. It is
+// deliberately shorter than graceWindow: a brief that was due at 08:30 is
+// useful at 11:00 and noise at 22:00. Beyond this, the next occurrence is the
+// honest answer.
+const automationGrace = 4 * time.Hour
+
 // DefaultMissedPolicy returns the policy for an item type when none is
 // configured explicitly.
 func DefaultMissedPolicy(t ItemType) MissedPolicy {
@@ -46,7 +54,10 @@ func DefaultMissedPolicy(t ItemType) MissedPolicy {
 	case TypeReminder:
 		return MissedNotify
 	case TypeAutomation:
-		return MissedNext
+		// A pod that was offline at 08:30 should still deliver the morning
+		// brief when it comes back, not skip the day. ExecutionKey stops the
+		// same occurrence being delivered twice.
+		return MissedRunOnce
 	default:
 		return MissedRunOnce
 	}
@@ -79,6 +90,10 @@ func ClassifyMissed(t ItemType, policy MissedPolicy, scheduledAt, now time.Time)
 	case MissedNotify:
 		return MissedDecision{Policy: policy, NotifyUser: true, Reason: "user will be notified of missed commitment"}
 	case MissedRunOnce:
+		if t == TypeAutomation && late > automationGrace {
+			return MissedDecision{Policy: MissedNext,
+				Reason: "missed run too late to catch up; will run at next occurrence"}
+		}
 		if late > graceWindow {
 			return MissedDecision{Policy: MissedNotify, NotifyUser: true,
 				Reason: "missed run too stale to execute; notifying instead"}

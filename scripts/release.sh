@@ -108,3 +108,21 @@ if [ "${PRERELEASE:-0}" = 1 ]; then CHANNEL=(--prerelease); else CHANNEL=(--late
 gh release create "$VERSION" -R "$REPO_SLUG" --title "Ghost $VERSION" "${CHANNEL[@]}" --notes-file "$NOTES" \
   "$OUT"/ghost_linux_* "$OUT"/ghost-web_linux_* "$OUT/checksums.txt" "$OUT/checksums.txt.sig"
 echo "== published: https://github.com/$REPO_SLUG/releases/tag/$VERSION"
+
+# Each release leaves ~120 MB of signed binaries behind, and the Pod has a
+# small card. Keep the two most recent versions for rollback and drop the
+# rest; never touch $OUT itself.
+echo "== prune old release builds"
+ls -1dt dist/v* 2>/dev/null | tail -n +3 | while read -r old; do
+  [ "$old" = "$OUT" ] && continue
+  echo "   removing $old"
+  rm -rf "$old"
+done
+
+# The build cache is ~1.8 GB after a release. Clearing it on a healthy machine
+# only makes the next build slow; clear it when the card is actually tight.
+USE="$(df -P . | awk 'NR==2 {gsub("%","",$5); print $5}')"
+if [ "${USE:-0}" -ge 85 ]; then
+  echo "== disk at ${USE}%: clearing the Go build cache"
+  go clean -cache || true
+fi

@@ -130,10 +130,11 @@ func (s *Service) tick() {
 	}
 
 	for _, item := range items {
-		// A recurring run that came due while Ghost was off is not replayed
-		// hours later (a morning brief at 9pm is noise). Commitments to the
-		// owner, such as reminders, are delivered late with a note instead; that
-		// is the policy table's call, not ours.
+		// A recurring run that came due while Ghost was off is decided by the
+		// policy table, not by how late it is: a recent automation miss (a
+		// morning brief, a few hours late) runs once on recovery, while a
+		// stale one waits for its next occurrence. Commitments to the owner,
+		// such as reminders, are delivered late with a note instead.
 		if !item.IsOneTime() && item.NextRunAt != nil && now.Sub(*item.NextRunAt) > missedRecurringGrace {
 			d := ClassifyMissed(item.Type, "", *item.NextRunAt, now)
 			if !d.ShouldRun && !d.NotifyUser {
@@ -170,8 +171,10 @@ func (s *Service) tick() {
 	}
 }
 
-// missedRecurringGrace is how late a recurring run may be and still run: enough
-// for a slow boot or a busy tick, not enough to replay yesterday.
+// missedRecurringGrace is how late a recurring run may be before the missed-run
+// policy is consulted: within it a run is simply a slow boot or a busy tick.
+// Beyond it, ClassifyMissed decides whether to catch up (automations have four
+// hours) or wait for the next occurrence.
 const missedRecurringGrace = 30 * time.Minute
 
 // runItemSafely runs one scheduled item in its own goroutine and contains a
