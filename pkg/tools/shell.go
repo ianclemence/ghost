@@ -49,7 +49,7 @@ func (t *ExecTool) Parameters() map[string]interface{} {
 			},
 			"working_dir": map[string]interface{}{
 				"type":        "string",
-				"description": "Optional working directory. Example: \"/home/user/project\".",
+				"description": "Optional working directory. To build or keep a project (clone a repository, run its tests), use \"projects/<name>\": the folder is created if needed and is the one place a command can write besides tmp/. Elsewhere in the workspace is read-only.",
 			},
 		},
 		"required": []string{"command"},
@@ -73,9 +73,16 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 			cwd = wd
 		}
 	}
+	// One absolute path for every check below and for the process itself;
+	// a relative one was judged against the workspace but run elsewhere.
+	cwd = resolveWorkingDir(t.workingDir, cwd)
 
 	if guardError := t.guardCommand(command, cwd); guardError != "" {
 		return ErrorResult(guardError)
+	}
+	// A project's folder must exist before the sandbox can bind it writable.
+	if err := ensureProjectDir(t.workingDir, cwd); err != nil {
+		return ErrorResult(err.Error())
 	}
 
 	cmdCtx, cancel := context.WithTimeout(ctx, t.timeout)
