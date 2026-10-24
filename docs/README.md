@@ -187,6 +187,7 @@ Read in order for a full picture, or jump to the layer you need.
 - [Capability](CAPABILITY.md)
 - [Permission Broker](PERMISSION-BROKER.md)
 - [Execution](EXECUTION.md)
+- [System design review](SYSTEM-DESIGN-REVIEW.md)
 - [Evidence](EVIDENCE.md)
 - [Canonical Events](CANONICAL-EVENT.md)
 - [Memory, Activity, Routines & Artifacts](MEMORY-ACTIVITY-ROUTINES-ARTIFACTS.md)

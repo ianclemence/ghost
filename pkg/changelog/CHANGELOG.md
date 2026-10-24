@@ -3,6 +3,19 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.203] - 2026-10-24
+
+- **Cloning a repository now works from a normal request.** Ghost can write
+  under `projects/` from where it runs, so "clone this into your projects
+  folder" no longer fails with "Read-only file system". Inside a project it
+  sees only that project.
+- **A command can no longer run inside Ghost's own config folder.** It could
+  read and write there. A command now runs in the workspace or in a folder
+  under `projects/`, and a link cannot lead out of one.
+- **Fixed a crash.** Reading the tool list while a tool's hide expired could
+  take the whole process down. Visibility and permission checks are now safe to
+  call from several places at once.
+
 ## [0.24.202] - 2026-10-24
 
 - **Ghost can now clone a repository and work on it.** A command working in
