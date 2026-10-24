@@ -3,6 +3,18 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.202] - 2026-10-24
+
+- **Ghost can now clone a repository and work on it.** A command working in
+  `projects/<name>` gets that folder, created for it, as the one place it can
+  write besides scratch space. Before, the folder never existed, so every
+  clone failed with "Read-only file system". Names are plain (letters, digits,
+  dots, dashes, underscores), links are refused, and nothing outside
+  `projects/` is created.
+- **A command's working directory means one thing.** A relative `working_dir`
+  was checked against the workspace but run somewhere else; it is now resolved
+  once, and `projects/...` is the folder beside the workspace.
+
 ## [0.24.201] - 2026-10-24
 
 - **Ghost can now clone and work on a repository.** The command tool used to
