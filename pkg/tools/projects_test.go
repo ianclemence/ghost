@@ -148,3 +148,102 @@ func TestExecRefusesAnInvalidProjectName(t *testing.T) {
 		t.Fatal("a refused name must not create anything")
 	}
 }
+
+// What the live Ghost did: from its default directory it ran
+// "cd projects && git clone ..." and never named a working_dir. The natural
+// path has to work, and land in the real folder beside the workspace.
+func TestExecFromTheDefaultDirectoryCanUseProjects(t *testing.T) {
+	if !bwrapAvailable() || isolationMode() == IsolationOff {
+		t.Skip("needs the bubblewrap sandbox")
+	}
+	home, ws := projectsHome(t)
+	res := NewExecTool(ws, true).Execute(context.Background(), map[string]interface{}{
+		"command": "cd projects && mkdir demo && echo hi > demo/f",
+	})
+	if res.IsError {
+		t.Fatalf("cd projects && mkdir failed: %s", res.ForLLM)
+	}
+	got, err := os.ReadFile(filepath.Join(home, "projects", "demo", "f"))
+	if err != nil || strings.TrimSpace(string(got)) != "hi" {
+		t.Fatalf("the write did not reach the real projects folder: %v %q", err, got)
+	}
+	res = NewExecTool(ws, true).Execute(context.Background(), map[string]interface{}{"command": "touch elsewhere"})
+	if !res.IsError {
+		t.Fatal("the rest of the workspace must stay read-only")
+	}
+}
+
+func TestExecInsideOneProjectDoesNotSeeTheOthers(t *testing.T) {
+	if !bwrapAvailable() || isolationMode() == IsolationOff {
+		t.Skip("needs the bubblewrap sandbox")
+	}
+	home, ws := projectsHome(t)
+	for _, n := range []string{"a", "b"} {
+		if err := os.MkdirAll(filepath.Join(home, "projects", n), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res := NewExecTool(ws, true).Execute(context.Background(), map[string]interface{}{
+		"command": "ls " + filepath.Join(home, "projects"), "working_dir": "projects/a",
+	})
+	if res.IsError || strings.Contains(res.ForLLM, "b") || !strings.Contains(res.ForLLM, "a") {
+		t.Fatalf("a command in project a must see a and not b: %+v", res)
+	}
+}
+
+// The sandbox binds a working directory outside the workspace read-write, so
+// where a command may run is the boundary that keeps Ghost's config out of reach.
+func TestExecCannotRunInGhostsOwnConfigOrOtherSiblings(t *testing.T) {
+	home, ws := projectsHome(t)
+	cfg := filepath.Join(home, "config")
+	if err := os.MkdirAll(cfg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg, "secret.key"), []byte("TOPSECRET"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tool := NewExecTool(ws, true)
+	for _, wd := range []string{cfg, home, filepath.Join(home, "state"), "/etc"} {
+		res := tool.Execute(context.Background(), map[string]interface{}{"command": "cat secret.key; echo x > planted", "working_dir": wd})
+		if !res.IsError || strings.Contains(res.ForLLM, "TOPSECRET") {
+			t.Errorf("working_dir %q must be refused: %+v", wd, res)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(cfg, "planted")); err == nil {
+		t.Fatal("a command wrote into the config directory")
+	}
+}
+
+func TestExecCannotLeaveAProjectThroughALink(t *testing.T) {
+	home, ws := projectsHome(t)
+	cfg := filepath.Join(home, "config")
+	if err := os.MkdirAll(cfg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, "projects", "p"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(cfg, filepath.Join(home, "projects", "p", "out")); err != nil {
+		t.Fatal(err)
+	}
+	res := NewExecTool(ws, true).Execute(context.Background(), map[string]interface{}{
+		"command": "true", "working_dir": "projects/p/out",
+	})
+	if !res.IsError {
+		t.Fatalf("a link out of a project must not be a way to run in the config dir: %+v", res)
+	}
+}
+
+func TestExecStillRunsInTheWorkspaceAndProjects(t *testing.T) {
+	_, ws := projectsHome(t)
+	tool := NewExecTool(ws, true)
+	for _, wd := range []string{"", ws, "tmp", "projects/ok"} {
+		args := map[string]interface{}{"command": "true"}
+		if wd != "" {
+			args["working_dir"] = wd
+		}
+		if res := tool.Execute(context.Background(), args); res.IsError {
+			t.Errorf("working_dir %q should run: %s", wd, res.ForLLM)
+		}
+	}
+}

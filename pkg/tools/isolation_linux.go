@@ -31,6 +31,30 @@ var sandboxHiddenDirs = []string{
 	"conversations",
 }
 
+// projectsMountArgs makes projects/ writable where the owner and the docs say
+// it is: "projects/<name>" from the command's default directory. The real
+// folder sits beside the workspace, which is read-only, so it is mounted at
+// workspace/projects. A command already working inside one project gets only
+// that project (the working-directory bind), so projects stay apart. If either
+// folder cannot be made safely there is no mount, and the command sees a
+// read-only workspace rather than a link it was never meant to follow.
+func projectsMountArgs(workspace, cwd string) []string {
+	root, err := filepath.Abs(projectsRoot(workspace))
+	if err != nil {
+		return nil
+	}
+	if cwd != "" {
+		if abs, err := filepath.Abs(cwd); err == nil && under(root, abs) {
+			return nil
+		}
+	}
+	mount := filepath.Join(workspace, projectsDirName)
+	if ensureRealDir(root, false) != nil || ensureRealDir(mount, false) != nil {
+		return nil
+	}
+	return []string{"--bind", root, mount}
+}
+
 // bwrapArgs builds the isolation profile. Only existing system directories are
 // bound read-only, so the same profile works on distributions where /lib64 or
 // /sbin do not exist (e.g. some ARM images).
@@ -62,6 +86,7 @@ func bwrapArgs(cwd, workspace string, allowNetwork bool) []string {
 			}
 			args = append(args, "--bind", p, p)
 		}
+		args = append(args, projectsMountArgs(workspace, cwd)...)
 		for _, d := range sandboxHiddenDirs {
 			p := filepath.Join(workspace, d)
 			if _, err := os.Stat(p); err == nil {

@@ -106,3 +106,31 @@ func ensureRealDir(p string, withParents bool) error {
 	}
 	return nil
 }
+
+// confineWorkingDir is the rule for where a command may run: the workspace
+// (where the sandbox makes almost everything read-only) or inside projects/.
+// The sandbox binds a working directory outside the workspace read-write, so a
+// directory like Ghost's own config would otherwise be one name away from being
+// readable and writable. The path is judged where it really leads, so a link
+// inside a project cannot lead out of it.
+func confineWorkingDir(workspace, cwd string) error {
+	ws, err := filepath.Abs(workspace)
+	if err != nil {
+		return err
+	}
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		return err
+	}
+	if under(ws, abs) {
+		return nil
+	}
+	root := projectsRoot(ws)
+	if under(root, abs) {
+		real, realRoot := realPath(abs), realPath(root)
+		if real != "" && realRoot != "" && under(realRoot, real) {
+			return nil
+		}
+	}
+	return fmt.Errorf("a command can run in the workspace or in a folder under %s, not in %s", projectsDirName+"/", cwd)
+}
