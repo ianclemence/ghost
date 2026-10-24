@@ -380,8 +380,39 @@ func (s *Store) BeginExecution(id string, now time.Time) (Idea, error) {
 	}
 	return s.Transition(id, []Status{StatusPending, StatusPresented}, func(i *Idea) error {
 		i.Status = StatusExecuting
+		t := now.UTC()
+		i.ExecutionStartedAt = &t
 		return nil
 	})
+}
+
+// RecoverInterrupted closes proposals left executing by a crash or restart. An
+// idea stays executing until Complete or Fail, and the dedupe check treats
+// executing as live forever, so an interrupted run would block its opportunity
+// for good and show "running" for ever. Anything that began before cutoff is
+// failed with what is actually known: it was started and never confirmed. It is
+// not retried, because the runtime cannot tell how far it got.
+func (s *Store) RecoverInterrupted(now, cutoff time.Time) ([]Idea, error) {
+	if s == nil {
+		return nil, errors.New("ideas store is nil")
+	}
+	running, err := s.List(StatusExecuting, 0)
+	if err != nil {
+		return nil, err
+	}
+	var recovered []Idea
+	for _, idea := range running {
+		if idea.ExecutionStartedAt != nil && !idea.ExecutionStartedAt.Before(cutoff) {
+			continue
+		}
+		updated, err := s.Fail(idea.ID, "interrupted",
+			"Ghost stopped before this finished, so I can't confirm it ran. It was not retried.", now)
+		if err == nil {
+			updated.EvidenceLevel = ""
+			recovered = append(recovered, updated)
+		}
+	}
+	return recovered, nil
 }
 
 // Complete records a verified successful outcome. Only an executing idea can

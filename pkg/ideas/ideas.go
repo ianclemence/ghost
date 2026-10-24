@@ -113,8 +113,11 @@ type Idea struct {
 	// Risk is the runtime-classified risk of the plan (never model-declared).
 	Risk string `json:"risk,omitempty"`
 
-	PresentedAt  *time.Time `json:"presented_at,omitempty"`
-	SnoozedUntil *time.Time `json:"snoozed_until,omitempty"`
+	PresentedAt *time.Time `json:"presented_at,omitempty"`
+	// ExecutionStartedAt is when the runtime claimed the idea to run it, so an
+	// execution that never finished can be told apart from one in flight.
+	ExecutionStartedAt *time.Time `json:"execution_started_at,omitempty"`
+	SnoozedUntil       *time.Time `json:"snoozed_until,omitempty"`
 	// Outcome/Result are written only from runtime evidence after execution.
 	Outcome string `json:"outcome,omitempty"`
 	Result  string `json:"result,omitempty"`
