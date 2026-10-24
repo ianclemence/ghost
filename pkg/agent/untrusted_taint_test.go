@@ -42,3 +42,29 @@ func TestUntrustedReadEndsWithTurn(t *testing.T) {
 		t.Fatal("taint outlived its turn")
 	}
 }
+
+// A hostile page can tell the model to send mail or run a command. The task
+// grant the owner gave the browser must not carry over to those.
+func TestPageReadStopsOtherOutwardActsButNotTheBrowserItself(t *testing.T) {
+	g := openTestGovernance(t)
+	if err := g.Broker.GrantStanding("message.send", "message", permissions.ScopeFor("sess", "", ""), false); err != nil {
+		t.Fatal(err)
+	}
+	args := map[string]interface{}{}
+
+	g.MarkPageRead("req-page")
+	sent := g.AuthorizeStandalone("req-page", "sess", "message.send", "message", args, permissions.RiskConsequential)
+	if sent.Allowed || sent.PendingID == "" {
+		t.Fatalf("an outward act after reading a page must ask: %+v", sent)
+	}
+	if v := g.evaluateTurn("req-page", browserCapability, "browser_click", permissions.ScopeFor("sess", "", ""), permissions.RiskReadOnly); v != permissions.VerdictAllow {
+		t.Fatalf("reading in the browser stays free: %v", v)
+	}
+	if g.readPage("req-other") {
+		t.Fatal("the mark belongs to one request")
+	}
+	g.TurnEnded("req-page", "sess", "", nil)
+	if g.readPage("req-page") {
+		t.Fatal("the mark outlived its turn")
+	}
+}

@@ -14,6 +14,8 @@ func TestTrustForSource(t *testing.T) {
 		{"curate", "inferred"},
 		// Network-derived content is untrusted until user-confirmed.
 		{"memory_tool+web", "untrusted"},
+		{"memory_tool+untrusted", "untrusted"},
+		{"memory_tool+untrusted@context:work", "untrusted"},
 		{"memory_tool+web@context:work", "untrusted"},
 		{"web_fetch", "untrusted"},
 		{"scraper", "untrusted"},

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/modes"
 	"github.com/ianclemence/ghost/pkg/providers"
 )
 
@@ -106,5 +107,46 @@ func TestSetModelRebuildsFallbackChain(t *testing.T) {
 	}
 	if p, ok := al.providersByModel["ollama/qwen3:1.5b"]; !ok || p == nil {
 		t.Fatal("provider cache must resolve the active model after rebuild")
+	}
+}
+
+// "Allow cloud" off is a promise that a failing model does not send the prompt
+// to a cloud provider the owner did not choose.
+func TestBuildCandidatesHonorsAllowCloudOff(t *testing.T) {
+	al := pinTestLoop(t, func(c *config.Config) {
+		c.Agents.Defaults.StrictPin = false
+		c.Agents.Routing.AllowCloud = false
+	})
+	if err := modes.Set(al.workspace, modes.Hybrid); err != nil {
+		t.Fatal(err)
+	}
+	al.fallbackModels = []providers.FallbackCandidate{
+		{Name: "openai:gpt-4o"},
+		{Name: "ollama/qwen3:1.5b"},
+	}
+	for _, c := range al.buildCandidates("ollama/qwen3:0.6b") {
+		if c.Name == "openai:gpt-4o" {
+			t.Fatal("a cloud fallback was offered although allow_cloud is off")
+		}
+	}
+
+	al.cfg.Agents.Routing.AllowCloud = true
+	found := false
+	for _, c := range al.buildCandidates("ollama/qwen3:0.6b") {
+		found = found || c.Name == "openai:gpt-4o"
+	}
+	if !found {
+		t.Fatal("with allow_cloud on the configured cloud fallback must stay available")
+	}
+}
+
+// The owner's explicit primary model is never filtered by the setting.
+func TestAllowCloudOffKeepsAnExplicitCloudPrimary(t *testing.T) {
+	al := pinTestLoop(t, func(c *config.Config) {
+		c.Agents.Routing.AllowCloud = false
+	})
+	got := al.buildCandidates("deepseek-flash")
+	if len(got) == 0 || got[0].Name != "deepseek-flash" {
+		t.Fatalf("the chosen primary must be kept: %+v", got)
 	}
 }

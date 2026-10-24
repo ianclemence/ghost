@@ -261,17 +261,14 @@ func (r *ToolRegistry) SetToolEnabledForSession(sessionKey, tool string, enabled
 // runtime's single answer to that question. Authorization paths consult it so
 // an approval is never requested for a call execution will refuse.
 func (r *ToolRegistry) AllowedFor(name, channel, sessionKey string) bool {
-	return r.isAllowed(name, channel, sessionKey)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.isAllowedLocked(name, channel, sessionKey)
 }
 
-func (r *ToolRegistry) isAllowed(name, channel, sessionKey string) bool {
-	if until, ok := r.hiddenTools[name]; ok {
-		if time.Now().Before(until) {
-			return false
-		}
-		delete(r.hiddenTools, name)
-	}
-	return r.PolicyAllows(name, channel, sessionKey)
+// isAllowedLocked needs r.mu held (read or write).
+func (r *ToolRegistry) isAllowedLocked(name, channel, sessionKey string) bool {
+	return r.isVisible(name) && r.policyAllowsLocked(name, channel, sessionKey)
 }
 
 // PolicyAllows reports the explicit channel/session policy answer for a tool,
@@ -281,6 +278,13 @@ func (r *ToolRegistry) isAllowed(name, channel, sessionKey string) bool {
 // primitive may be promoted on an owner-requested attempt (then governed by
 // the broker), an explicit denial never may.
 func (r *ToolRegistry) PolicyAllows(name, channel, sessionKey string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.policyAllowsLocked(name, channel, sessionKey)
+}
+
+// policyAllowsLocked needs r.mu held (read or write).
+func (r *ToolRegistry) policyAllowsLocked(name, channel, sessionKey string) bool {
 	channel = strings.ToLower(strings.TrimSpace(channel))
 	sessionKey = strings.TrimSpace(sessionKey)
 	if sessionPolicy, ok := r.sessionToolPolicy[sessionKey]; ok {
@@ -297,23 +301,18 @@ func (r *ToolRegistry) PolicyAllows(name, channel, sessionKey string) bool {
 }
 
 // IsHidden reports whether the registry currently withholds a tool from
-// advertisement (RegisterHidden). It expires the entry lazily, exactly like
-// AllowedFor, so a stale hide heals on inspection.
+// advertisement (RegisterHidden). A hide past its time counts as lifted.
 func (r *ToolRegistry) IsHidden(name string) bool {
-	if until, ok := r.hiddenTools[name]; ok {
-		if time.Now().Before(until) {
-			return true
-		}
-		delete(r.hiddenTools, name)
-	}
-	return false
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return !r.isVisible(name)
 }
 
 // HiddenNames lists the tools registered but currently withheld from
-// advertisement (exec, sandbox until they are asked for), expiring stale hides.
+// advertisement (exec, sandbox until they are asked for).
 func (r *ToolRegistry) HiddenNames() []string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	var names []string
 	for name := range r.hiddenTools {
 		if !r.isVisible(name) {
@@ -324,21 +323,18 @@ func (r *ToolRegistry) HiddenNames() []string {
 	return names
 }
 
-// visibleNow is isVisible under the write lock (it prunes expired hides).
+// visibleNow reports whether a tool is advertised right now.
 func (r *ToolRegistry) visibleNow(name string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.isVisible(name)
 }
 
+// isVisible only reads: an expired hide counts as lifted but is not deleted
+// here, because callers hold the read lock and many of them run at once.
 func (r *ToolRegistry) isVisible(name string) bool {
-	if until, ok := r.hiddenTools[name]; ok {
-		if time.Now().Before(until) {
-			return false
-		}
-		delete(r.hiddenTools, name)
-	}
-	return true
+	until, hidden := r.hiddenTools[name]
+	return !hidden || !time.Now().Before(until)
 }
 
 func (r *ToolRegistry) Get(name string) (Tool, bool) {
@@ -378,9 +374,9 @@ func (r *ToolRegistry) ExecuteWithContext(ctx context.Context, name string, args
 			})
 		return ErrorResult(fmt.Sprintf("tool %q not found", name)).WithError(fmt.Errorf("tool not found"))
 	}
-	r.mu.Lock()
-	allowed := r.isAllowed(name, channel, sessionKey)
-	r.mu.Unlock()
+	r.mu.RLock()
+	allowed := r.isAllowedLocked(name, channel, sessionKey)
+	r.mu.RUnlock()
 	if !allowed {
 		return ErrorResult(fmt.Sprintf("tool %q is disabled for this channel/session", name))
 	}

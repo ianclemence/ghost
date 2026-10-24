@@ -3337,8 +3337,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	usageResponses, unmeasuredResponses := 0, 0
 	turnModel := al.model
 	var usedTools []string
-	// turnTouchedWeb tracks whether this turn has executed a network tool.
-	// Memory written after that point is web-derived (tainted): the model
+	// turnTouchedWeb tracks whether this turn has read outside content: the web,
+	// mail, documents, an external server, a browser page.
+	// Memory written after that point is tainted: the model
 	// may be laundering adversary-controlled bytes into recall.
 	turnTouchedWeb := false
 	// Generic capability attempt tracking: bounds primary -> fallback ->
@@ -3780,11 +3781,15 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			if turnTouchedWeb {
 				toolCtx = tools.WithWebDerived(toolCtx)
 			}
-			if tools.IsWebTool(tc.Name) {
+			callTool, _ := activeTools.Get(tc.Name)
+			if tools.ReadsOutsideContent(tc.Name, callTool) {
 				turnTouchedWeb = true
 			}
 			if tool, ok := activeTools.Get(tc.Name); ok && tools.IsUntrustedSource(tc.Name, tool) {
 				al.governance.MarkUntrustedRead(opts.RequestID)
+			}
+			if strings.HasPrefix(tc.Name, "browser_") || strings.HasPrefix(tc.Name, "computer_") {
+				al.governance.MarkPageRead(opts.RequestID)
 			}
 			var toolResult *tools.ToolResult
 			toolGoverned, toolStop := false, false
@@ -4386,6 +4391,10 @@ func (al *AgentLoop) buildCandidates(model string) []providers.FallbackCandidate
 	// fallback. The explicit primary model is always honored (owner's
 	// direct choice); only fallbacks are filtered.
 	mode := modes.Resolve(al.workspace, al.hasCloudKey())
+	// The owner's "allow cloud" setting is the same promise as local mode: a
+	// failing model never sends the prompt to a cloud provider they have not
+	// chosen. The model the owner picked is always kept.
+	cloudFallbackAllowed := al.cfg == nil || al.cfg.Agents.Routing.AllowCloud
 	// Hardware-aware scheduling: never route a fallback to a local model
 	// whose estimated resident memory exceeds current headroom. Loading a
 	// model that doesn't fit would swap/thrash or OOM the Pi. The primary
@@ -4395,7 +4404,7 @@ func (al *AgentLoop) buildCandidates(model string) []providers.FallbackCandidate
 		if seen[c.Name] {
 			continue
 		}
-		if mode == modes.Local && modes.IsCloudProvider(c.Name) {
+		if (mode == modes.Local || !cloudFallbackAllowed) && modes.IsCloudProvider(c.Name) {
 			continue
 		}
 		if !localModelFits(c.Name, availMB) {
@@ -4741,6 +4750,9 @@ func deriveFallbackChain(cfg *config.Config, provider providers.LLMProvider) ([]
 				}
 				isLocal := o.Provider == "ollama" || o.Provider == "vllm"
 				if isLocal != local {
+					continue
+				}
+				if !isLocal && !cfg.Agents.Routing.AllowCloud {
 					continue
 				}
 				return &options[i]

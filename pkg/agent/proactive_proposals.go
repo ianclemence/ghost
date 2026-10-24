@@ -232,6 +232,9 @@ func (al *AgentLoop) EvaluateProposals(now time.Time) int {
 		now = time.Now().UTC()
 	}
 	pol := proactive.Load(al.workspace)
+	if store, err := ideas.New(al.workspace); err == nil {
+		al.recoverInterruptedProposals(store, now)
+	}
 	if !pol.Enabled {
 		return 0
 	}
@@ -326,6 +329,35 @@ func (al *AgentLoop) EvaluateProposals(now time.Time) int {
 		}
 	}
 	return surfaced
+}
+
+// processStart separates an execution this process is running from one a
+// previous process began and never finished.
+var processStart = time.Now().UTC()
+
+// proposalRunWindow is the longest an approved action is given before it
+// counts as lost, whatever process started it.
+const proposalRunWindow = 30 * time.Minute
+
+// recoverInterruptedProposals closes proposals still "executing" from a run
+// that cannot still be going: one a previous process began, or one past the
+// window. They fail with the truth (never confirmed, not retried) instead of
+// showing as running for ever and blocking the opportunity.
+func (al *AgentLoop) recoverInterruptedProposals(store *ideas.Store, now time.Time) {
+	cutoff := now.Add(-proposalRunWindow)
+	if processStart.After(cutoff) {
+		cutoff = processStart
+	}
+	recovered, err := store.RecoverInterrupted(now, cutoff)
+	if err != nil {
+		return
+	}
+	for _, idea := range recovered {
+		if idea.PermissionRequestID != "" && al.governance != nil && al.governance.Broker != nil {
+			_ = al.governance.Broker.Cancel(idea.PermissionRequestID)
+		}
+		al.publishProactive(cevents.ProactiveFailed, idea, "interrupted before it finished")
+	}
 }
 
 // expireProposal closes an unanswered proposal and cancels any broker request

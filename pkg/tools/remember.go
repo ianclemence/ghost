@@ -67,14 +67,14 @@ func (t *RememberTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 
 	// 1. Write to MEMORY.md (Append). Model output is inference, never
-	// authority; web-derived content is marked unverified in the file so
+	// authority; content read from outside sources is marked unverified in the file so
 	// the provenance survives outside the database too.
 	memoryPath := filepath.Join(t.workspace, "memory", "MEMORY.md")
 	os.MkdirAll(filepath.Dir(memoryPath), 0755)
 
 	tag := ""
 	if WebDerivedFromContext(ctx) {
-		tag = " (web-derived, unverified)"
+		tag = " (unverified: from outside content)"
 	}
 	entry := fmt.Sprintf("\n- [%s] (%s)%s %s", time.Now().Format("2006-01-02"), category, tag, content)
 
@@ -90,7 +90,7 @@ func (t *RememberTool) Execute(ctx context.Context, args map[string]interface{})
 
 	// 2. Ingest into RAG (scope-tagged so foreign contexts can't recall it).
 	// The source carries the origin so retrieval ranks by provenance:
-	// model output is inferred, web-derived output is untrusted.
+	// model output is inferred, output after reading outside content is untrusted.
 	if t.rag != nil {
 		scope := ""
 		if t.WriteScopes != nil {
@@ -100,7 +100,7 @@ func (t *RememberTool) Execute(ctx context.Context, args map[string]interface{})
 		}
 		source := "memory_tool"
 		if WebDerivedFromContext(ctx) {
-			source = "memory_tool+web"
+			source = "memory_tool+untrusted"
 		}
 		if err := t.rag.IngestScoped(ctx, content, source, scope); err != nil {
 			return ErrorResult(fmt.Sprintf("Saved to file but failed to ingest into RAG: %v", err))

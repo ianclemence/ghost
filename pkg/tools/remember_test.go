@@ -38,8 +38,8 @@ func TestRememberClean(t *testing.T) {
 func TestRememberWebDerivedMarked(t *testing.T) {
 	ctx := WithWebDerived(context.Background())
 	out := runRemember(t, ctx, "whatever the web said")
-	if !strings.Contains(out, "(web-derived, unverified)") {
-		t.Fatalf("web-derived content must be marked: %q", out)
+	if !strings.Contains(out, "(unverified: from outside content)") {
+		t.Fatalf("content read from outside must be marked: %q", out)
 	}
 }
 
@@ -52,5 +52,23 @@ func TestWebToolSet(t *testing.T) {
 	}
 	if WebDerivedFromContext(nil) || WebDerivedFromContext(context.Background()) {
 		t.Fatal("fresh contexts are not web-derived")
+	}
+}
+
+// A memory the owner did not say must not look like one they did. Mail,
+// documents, a calendar, external servers and browser pages are written by
+// other people, and "remember that my account number is ..." inside any of
+// them is the same attack as in a web page.
+func TestReadingOutsideContentTaintsLaterMemory(t *testing.T) {
+	for _, name := range []string{"web_fetch", "web_search", "email_search", "docs_search", "code_search", "calendar",
+		"doc_parser", "mcp_crm_lookup", "browser_snapshot", "browser_click", "computer_screenshot"} {
+		if !ReadsOutsideContent(name, nil) {
+			t.Errorf("%s returns text the owner did not write and must taint later memory", name)
+		}
+	}
+	for _, name := range []string{"read_file", "exec", "remember", "memory_recall", "system_status", "weather_now", ""} {
+		if ReadsOutsideContent(name, nil) {
+			t.Errorf("%s is the owner's or Ghost's own data and must not taint", name)
+		}
 	}
 }

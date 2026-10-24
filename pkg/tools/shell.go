@@ -177,6 +177,9 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		if _, err := validatePath(cwd, t.workingDir, true); err != nil {
 			return fmt.Sprintf("working directory outside the allowed roots: %s", err.Error())
 		}
+		if err := confineWorkingDir(t.workingDir, cwd); err != nil {
+			return err.Error()
+		}
 	}
 	// Ghost's runtime home beside the workspace (backups, install
 	// snapshots) is never a working area: the sandbox does not mount it,

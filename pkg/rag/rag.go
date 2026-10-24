@@ -611,7 +611,7 @@ func trustForSource(source string) string {
 	if idx := strings.Index(source, scopeTagSep); idx >= 0 {
 		base = source[:idx]
 	}
-	if strings.Contains(base, "+web") || strings.HasPrefix(base, "web") ||
+	if strings.Contains(base, "+web") || strings.Contains(base, "+untrusted") || strings.HasPrefix(base, "web") ||
 		strings.HasPrefix(base, "fetch") || strings.HasPrefix(base, "scrape") {
 		return "untrusted"
 	}
