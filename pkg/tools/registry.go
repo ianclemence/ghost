@@ -309,6 +309,21 @@ func (r *ToolRegistry) IsHidden(name string) bool {
 	return false
 }
 
+// HiddenNames lists the tools registered but currently withheld from
+// advertisement (exec, sandbox until they are asked for), expiring stale hides.
+func (r *ToolRegistry) HiddenNames() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var names []string
+	for name := range r.hiddenTools {
+		if !r.isVisible(name) {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 // visibleNow is isVisible under the write lock (it prunes expired hides).
 func (r *ToolRegistry) visibleNow(name string) bool {
 	r.mu.Lock()
