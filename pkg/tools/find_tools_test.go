@@ -90,3 +90,32 @@ func TestRankToolsPrefersNameOverDescriptionMentions(t *testing.T) {
 		t.Fatalf("ranking wrong: %+v", got)
 	}
 }
+
+func TestFindToolsReachesAHiddenPrimitiveInAnyLanguageOnceThePolicyAllowsIt(t *testing.T) {
+	all := catalogue()
+	all.RegisterHidden(described{"exec", "Run a shell command and return its output."}, 0)
+	// The model reads "clona este repositorio" and searches in English.
+	need := "clone a code repository"
+
+	denied := NewToolRegistry()
+	ctx := WithTurnTools(context.Background(), &TurnTools{Offered: denied, Promote: func(string) bool { return false }})
+	res := NewFindToolsTool(all).Execute(ctx, map[string]interface{}{"need": need})
+	if strings.Contains(res.ForLLM, "exec") {
+		t.Fatalf("a primitive the policy withholds must not be promised:\n%s", res.ForLLM)
+	}
+	if _, ok := denied.Get("exec"); ok {
+		t.Fatal("a withheld primitive was offered")
+	}
+
+	allowed := NewToolRegistry()
+	var promoted []string
+	ctx = WithTurnTools(context.Background(), &TurnTools{Offered: allowed, Promote: func(n string) bool {
+		promoted = append(promoted, n)
+		all.Promote(n)
+		return true
+	}})
+	res = NewFindToolsTool(all).Execute(ctx, map[string]interface{}{"need": need})
+	if !strings.Contains(res.ForLLM, "- exec:") || len(promoted) != 1 || promoted[0] != "exec" {
+		t.Fatalf("exec was not found and promoted: %q promoted=%v", res.ForLLM, promoted)
+	}
+}

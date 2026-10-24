@@ -15,6 +15,11 @@ type turnToolsKey struct{}
 type TurnTools struct {
 	Offered *ToolRegistry
 	Profile ToolProfile
+	// Promote makes a hidden primitive (exec, sandbox) visible and executable
+	// for this turn, and reports false when the profile or channel policy
+	// withholds it. Nil means hidden tools cannot be found. Visibility only:
+	// the permission broker still asks before anything runs.
+	Promote func(name string) bool
 }
 
 func WithTurnTools(ctx context.Context, t *TurnTools) context.Context {
@@ -58,6 +63,15 @@ func tokens(s string) []string {
 
 var searchStop = map[string]bool{"the": true, "a": true, "an": true, "to": true, "of": true, "my": true, "me": true, "for": true, "and": true, "or": true, "in": true, "on": true, "is": true, "it": true, "that": true, "this": true, "with": true, "use": true, "when": true, "your": true, "you": true, "i": true}
 
+// toolSearchAliases are extra words a tool is known by. The model translates
+// the owner's request into English before it searches, and the plain words for
+// what a primitive is for ("clone a repository", "run the tests") are not in
+// its one-line description.
+var toolSearchAliases = map[string]string{
+	"exec":    "shell command terminal bash script git clone repository repo code codebase project build compile test tests install package npm pip cargo make run program cli",
+	"sandbox": "isolated sandbox container untrusted code run safely clone repository build test",
+}
+
 type scored struct {
 	name  string
 	score float64
@@ -92,7 +106,7 @@ func rankTools(need string, candidates map[string]Tool) []scored {
 	docs := map[string][]string{}
 	names := map[string][]string{}
 	for n, tool := range candidates {
-		d := tokens(tool.Description())
+		d := tokens(tool.Description() + " " + toolSearchAliases[n])
 		docs[n] = d
 		names[n] = tokens(n)
 		seen := map[string]bool{}
@@ -143,8 +157,15 @@ func (t *FindToolsTool) Execute(ctx context.Context, args map[string]interface{}
 		return ErrorResult("tool search is not available here")
 	}
 	candidates := map[string]Tool{}
-	for _, name := range FilterNamesByProfile(turn.Profile, t.all.List()) {
-		if _, have := turn.Offered.Get(name); have || t.all.IsHidden(name) || name == t.Name() {
+	names := t.all.List()
+	if turn.Promote != nil {
+		names = append(names, t.all.HiddenNames()...)
+	}
+	for _, name := range FilterNamesByProfile(turn.Profile, names) {
+		if _, have := turn.Offered.Get(name); have || name == t.Name() {
+			continue
+		}
+		if t.all.IsHidden(name) && turn.Promote == nil {
 			continue
 		}
 		if tool, ok := t.all.Get(name); ok {
@@ -155,8 +176,21 @@ func (t *FindToolsTool) Execute(ctx context.Context, args map[string]interface{}
 	if len(ranked) == 0 {
 		return NewToolResult(fmt.Sprintf("No other tool matches %q. Say plainly that you can't do that from here.", need))
 	}
-	if len(ranked) > findToolsLimit {
-		ranked = ranked[:findToolsLimit]
+	// A hidden primitive only counts once it can actually be promoted, so the
+	// model is never told it has a tool that the next call would refuse.
+	kept := ranked[:0]
+	for _, r := range ranked {
+		if len(kept) == findToolsLimit {
+			break
+		}
+		if t.all.IsHidden(r.name) && !turn.Promote(r.name) {
+			continue
+		}
+		kept = append(kept, r)
+	}
+	ranked = kept
+	if len(ranked) == 0 {
+		return NewToolResult(fmt.Sprintf("No other tool matches %q. Say plainly that you can't do that from here.", need))
 	}
 	var b strings.Builder
 	b.WriteString("Now available to you, call them directly:\n")

@@ -3,6 +3,22 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.201] - 2026-10-24
+
+- **Ghost can now clone and work on a repository.** The command tool used to
+  stay hidden until a message literally said "run ...", so "can you clone my
+  repo?" got "the command tool isn't available". A repository address, a git
+  command, a source file name, or the words for "repository" and "clone" now
+  offer it for the turn. You are still asked before anything runs.
+- **Ghost finds its own command tool in any language.** The list of things
+  Ghost can do now names it, and asking for a tool by need can reach it, when
+  your profile and channel allow it.
+- **Your language opens the right tools.** Spending, passports, family and
+  birthdays, trips, charts, drawings, email drafts, images, reading aloud,
+  documents, lights, the browser, updates and more now respond to the words
+  for them in Spanish, French, German, Portuguese, Swahili, Chinese, Japanese,
+  Korean, Arabic, Hindi, Russian, Turkish and Thai, not only English.
+
 ## [0.24.200] - 2026-10-22
 
 - **Ghost no longer ships a film it cannot see.** Before a render, Ghost

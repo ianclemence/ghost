@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestCatalogueNamesWhatIsNotAlwaysOfferedAndSkipsCoreAndHidden(t *testing.T) {
+func TestCatalogueNamesWhatIsNotAlwaysOfferedAndSkipsCore(t *testing.T) {
 	reg := NewToolRegistry()
 	reg.Register(described{"weather_now", "Current weather."})
 	reg.Register(described{"device", "Read or control smart-home devices. More text after the first sentence."})
@@ -13,12 +13,12 @@ func TestCatalogueNamesWhatIsNotAlwaysOfferedAndSkipsCoreAndHidden(t *testing.T)
 	reg.Register(described{"mcp_x_y", "External"})
 	reg.RegisterHidden(described{"exec", "Run a shell command"}, 0)
 	got := OnDemandCatalogue(reg, nil, ProfileFull)
-	for _, want := range []string{"device (Read or control smart-home devices)", "browser_*", "mcp_*", "find_tools"} {
+	for _, want := range []string{"device (Read or control smart-home devices)", "browser_*", "mcp_*", "find_tools", "exec (run commands: clone and build code repositories"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
 	}
-	for _, not := range []string{"weather_now", "exec", "More text"} {
+	for _, not := range []string{"weather_now", "More text"} {
 		if strings.Contains(got, not) {
 			t.Errorf("%q must not appear: %q", not, got)
 		}

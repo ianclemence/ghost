@@ -43,6 +43,11 @@ func OnDemandCatalogue(reg, offered *ToolRegistry, profile ToolProfile) string {
 		}
 		lines = append(lines, name+" ("+shortPhrase(tool.Description())+")")
 	}
+	// exec is hidden until asked for and core once promoted; either way the
+	// owner can ask for it, so the line is the same on every turn.
+	if _, ok := reg.Get("exec"); ok && (profile == "" || profile.Allows("exec")) {
+		lines = append(lines, "exec (run commands: clone and build code repositories, git, tests, scripts)")
+	}
 	sort.Strings(lines)
 	if browser > 0 {
 		lines = append(lines, "browser_* (open and operate real web pages)")

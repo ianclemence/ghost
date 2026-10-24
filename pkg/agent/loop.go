@@ -3397,7 +3397,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	// the model can actually attempt it. Visibility only — the broker still
 	// decides execution (exec is high-impact, never auto-authorized).
 	// Profiles that withhold exec keep it hidden; nothing widens authority.
-	if ownerRequestsCommand(opts.UserMessage) {
+	// Working on code (a repository address, "clone this", a git command, in
+	// any language the owner writes) needs it just as much as a literal "run".
+	if ownerRequestsCommand(opts.UserMessage) || tools.CodeWorkIntent(toolIntentText(opts.UserMessage, messages)) {
 		attemptHiddenPrimitive(activeProfile, al.tools, activeTools, "exec", opts.Channel, opts.SessionKey)
 	}
 	// The version-pinned browser contract rides the stable prompt prefix
@@ -3711,7 +3713,13 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			}
 
 			toolCtx := tools.WithSubagentDepth(ctx, tools.SubagentDepth(ctx))
-			toolCtx = tools.WithTurnTools(toolCtx, &tools.TurnTools{Offered: activeTools, Profile: activeProfile})
+			toolCtx = tools.WithTurnTools(toolCtx, &tools.TurnTools{
+				Offered: activeTools,
+				Profile: activeProfile,
+				Promote: func(name string) bool {
+					return attemptHiddenPrimitive(activeProfile, al.tools, activeTools, name, opts.Channel, opts.SessionKey)
+				},
+			})
 			// Permission broker gate: consequential calls without a grant
 			// pause durably here. The model cannot bypass this — it sits
 			// between capability resolution and execution, not in a prompt.
