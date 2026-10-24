@@ -15,6 +15,20 @@ Newest first. Ghost shows new entries on first launch after an update;
 - **Fixed a crash.** Reading the tool list while a tool's hide expired could
   take the whole process down. Visibility and permission checks are now safe to
   call from several places at once.
+- **"Allow cloud" off now means it.** The setting was saved and shown but
+  nothing read it, so a failing model could still hand your prompt to a cloud
+  provider. Fallbacks to the cloud are skipped when it is off; the model you
+  chose is always kept.
+- **Memory from outside sources is marked.** Anything Ghost remembers after
+  reading mail, a document, a calendar, an external server or a web page is now
+  marked unverified and ranked lower, not only after a web search.
+- **A web page can no longer steer other actions.** After Ghost reads a page or
+  the screen, sending a message or running a command asks you every time, even
+  under a standing permission. The browser keeps the permission you gave it for
+  the task.
+- **An approved action cut short by a restart no longer stays "running".** It
+  is closed as failed, says it could not confirm it ran, and the same suggestion
+  can come back later.
 
 ## [0.24.202] - 2026-10-24
 
