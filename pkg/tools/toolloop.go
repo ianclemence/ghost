@@ -238,12 +238,16 @@ func RunToolLoop(ctx context.Context, config ToolLoopConfig, messages []provider
 				})
 
 			// Execute tool (no async callback for subagents - they run independently)
-			// Web-derived taint applies here exactly as in the main loop.
+			// The taint for reading outside content applies here exactly as in the main loop.
 			callCtx := ctx
 			if turnTouchedWeb {
 				callCtx = WithWebDerived(ctx)
 			}
-			if IsWebTool(tc.Name) {
+			var callTool Tool
+			if config.Tools != nil {
+				callTool, _ = config.Tools.Get(tc.Name)
+			}
+			if ReadsOutsideContent(tc.Name, callTool) {
 				turnTouchedWeb = true
 			}
 			var toolResult *ToolResult

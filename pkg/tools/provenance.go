@@ -18,6 +18,16 @@ var WebTools = map[string]bool{
 	"web_fetch":  true,
 }
 
+// ReadsOutsideContent reports whether a tool's output is text someone other
+// than the owner or Ghost wrote: the web, mail, documents, a calendar,
+// external servers, and whatever a browser or the screen shows. A turn that
+// has read any of it must not write memory as if the owner had said it.
+func ReadsOutsideContent(name string, t Tool) bool {
+	name = strings.TrimSpace(name)
+	return IsWebTool(name) || IsUntrustedSource(name, t) ||
+		strings.HasPrefix(name, "browser_") || strings.HasPrefix(name, "computer_")
+}
+
 // IsWebTool reports whether the tool returns network-origin content.
 func IsWebTool(name string) bool {
 	return WebTools[strings.TrimSpace(name)]

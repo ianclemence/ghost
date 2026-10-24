@@ -56,6 +56,10 @@ type Governance struct {
 
 	taintMu sync.Mutex
 	tainted map[string]bool
+	// pageRead marks turns that read a browser page or the screen. A page is
+	// outside content too, but the browser and computer capabilities already
+	// have the owner's task grant, so this only stops it steering others.
+	pageRead map[string]bool
 }
 
 // Guard is a deny-only authorization check evaluated after broker policy.
@@ -161,7 +165,30 @@ func (g *Governance) ClearUntrustedRead(requestID string) {
 	}
 	g.taintMu.Lock()
 	delete(g.tainted, requestID)
+	delete(g.pageRead, requestID)
 	g.taintMu.Unlock()
+}
+
+// MarkPageRead records that the turn read a browser page or the screen.
+func (g *Governance) MarkPageRead(requestID string) {
+	if !g.active() || requestID == "" {
+		return
+	}
+	g.taintMu.Lock()
+	defer g.taintMu.Unlock()
+	if g.pageRead == nil {
+		g.pageRead = map[string]bool{}
+	}
+	g.pageRead[requestID] = true
+}
+
+func (g *Governance) readPage(requestID string) bool {
+	if !g.active() || requestID == "" {
+		return false
+	}
+	g.taintMu.Lock()
+	defer g.taintMu.Unlock()
+	return g.pageRead[requestID]
 }
 
 func (g *Governance) readUntrusted(requestID string) bool {
@@ -183,6 +210,13 @@ func outward(risk permissions.Risk) bool {
 func (g *Governance) evaluateTurn(requestID, capability, action, scope string, risk permissions.Risk) permissions.Verdict {
 	verdict := g.Broker.Evaluate(capability, action, scope, risk)
 	if verdict == permissions.VerdictAllow && outward(risk) && g.readUntrusted(requestID) {
+		return permissions.VerdictAsk
+	}
+	// Text on a page can tell the model to email, run or write something. The
+	// owner's task grant covers the browser and the screen, not whatever a page
+	// asks for next, so any other outward act asks.
+	if verdict == permissions.VerdictAllow && outward(risk) && capability != browserCapability &&
+		capability != computerCapability && g.readPage(requestID) {
 		return permissions.VerdictAsk
 	}
 	return verdict
