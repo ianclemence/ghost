@@ -135,3 +135,35 @@ func confineWorkingDir(workspace, cwd string) error {
 	}
 	return fmt.Errorf("a command can run in the workspace or in a folder under %s, not in %s", projectsDirName+"/", cwd)
 }
+
+// projectRelativePath turns a relative path that starts with "projects/" into
+// the real path under the projects folder beside the workspace. Everything else
+// is returned unchanged.
+func projectRelativePath(workspace, path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	clean := filepath.ToSlash(filepath.Clean(path))
+	if clean == projectsDirName || strings.HasPrefix(clean, projectsDirName+"/") {
+		return filepath.Join(filepath.Dir(workspace), filepath.FromSlash(clean))
+	}
+	return path
+}
+
+// inProjects reports whether a resolved path is inside the projects folder.
+// Ghost's own estate is the workspace; a project's folders are named whatever
+// the project calls them, and a package called skills or state is not Ghost's.
+func inProjects(workspace, resolved string) bool {
+	if workspace == "" {
+		return false
+	}
+	ws, err := filepath.Abs(workspace)
+	if err != nil {
+		return false
+	}
+	abs, err := filepath.Abs(resolved)
+	if err != nil {
+		return false
+	}
+	return under(projectsRoot(ws), abs)
+}

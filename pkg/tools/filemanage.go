@@ -33,6 +33,18 @@ func workspaceOnlyPath(path, workspace string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// A project is the owner's own work and lives beside the workspace. It may be
+	// deleted or moved like any file, but the projects folder itself may not.
+	if inProjects(workspace, resolved) {
+		root := projectsRoot(abs)
+		if filepath.Clean(resolved) == filepath.Clean(root) {
+			return "", fmt.Errorf("that is the whole projects folder; name a project inside it, such as projects/<name>")
+		}
+		if real, realRoot := realPath(resolved), realPath(root); real == "" || realRoot == "" || !under(realRoot, real) {
+			return "", fmt.Errorf("access denied: path leaves the projects folder")
+		}
+		return resolved, nil
+	}
 	if !under(abs, resolved) {
 		return "", fmt.Errorf("access denied: only files inside the workspace can be changed this way")
 	}
@@ -55,7 +67,8 @@ func NewDeleteFileTool(workspace string, restrict bool) *DeleteFileTool {
 func (t *DeleteFileTool) Name() string { return "delete_file" }
 
 func (t *DeleteFileTool) Description() string {
-	return "Delete a file (or, with recursive, a folder) from your workspace. Use when: the owner asks you to delete or remove a file, or you are tidying files you made. Only works inside the workspace and never on Ghost's own files. Cannot be undone."
+	return "Delete a file (or, with recursive, a folder) from your workspace, or a whole project as projects/<name>. Use when: the owner asks you to delete or remove a file or project, or you are tidying files you made. Never works on Ghost's own files. Cannot be undone. " +
+		"Before deleting a project that is a git repository, check it for uncommitted changes and for commits that exist only here (git status, git log @{u}..), and tell the owner what would be lost."
 }
 
 func (t *DeleteFileTool) Parameters() map[string]interface{} {
@@ -64,7 +77,7 @@ func (t *DeleteFileTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"path": map[string]interface{}{
 				"type":        "string",
-				"description": "Path to delete, relative to the workspace. Example: \"notes/old-draft.md\".",
+				"description": "Path to delete, relative to the workspace, or projects/<name> for a project. Example: \"notes/old-draft.md\".",
 			},
 			"recursive": map[string]interface{}{
 				"type":        "boolean",
@@ -131,7 +144,7 @@ func (t *DeleteFileTool) checkAllowed(resolved string, info os.FileInfo, recursi
 	if isDefaultWorkspaceEntry(t.workspace, resolved) {
 		return defaultEntryDeny(t.workspace, resolved)
 	}
-	if err := guardPrimaryFile(resolved); err != nil {
+	if err := guardPrimaryFileIn(t.workspace, resolved); err != nil {
 		return err
 	}
 	if err := guardGhostEstateWrite(t.workspace, resolved); err != nil {
@@ -144,7 +157,7 @@ func (t *DeleteFileTool) checkAllowed(resolved string, info os.FileInfo, recursi
 		if werr != nil {
 			return nil
 		}
-		if err := guardPrimaryFile(p); err != nil {
+		if err := guardPrimaryFileIn(t.workspace, p); err != nil {
 			return fmt.Errorf("this folder holds a protected file (%s); nothing was deleted", filepath.Base(p))
 		}
 		if err := guardGhostEstateWrite(t.workspace, p); err != nil {
@@ -212,7 +225,7 @@ func (t *MoveFileTool) Execute(ctx context.Context, args map[string]interface{})
 		if isDefaultWorkspaceEntry(t.workspace, p) {
 			return ErrorResult(defaultEntryDeny(t.workspace, p).Error())
 		}
-		if err := guardPrimaryFile(p); err != nil {
+		if err := guardPrimaryFileIn(t.workspace, p); err != nil {
 			return ErrorResult(err.Error())
 		}
 		if err := guardGhostEstateWrite(t.workspace, p); err != nil {

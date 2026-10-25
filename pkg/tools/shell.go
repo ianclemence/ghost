@@ -74,6 +74,7 @@ func (t *ExecTool) Description() string {
 	return "Run a shell command and return its output. Use when: a skill or task requires an exact command (e.g. a CLI tool), or you need real local/OS data. Do NOT use when: a Ghost skill already does the job, or to double-check a web fact you could look up. Reading a web page is web_fetch's job, not curl's — never reach for this to read a page. " +
 		"A command gets 60 seconds unless you pass timeout_seconds (up to 1800); for a build, an install or a test run, pass it up front. Everything the command started stops when it returns, so never background work with & or nohup: run it in the foreground with enough time. " +
 		"Commands run under sh, not bash: no [[ ]], arrays or ${PIPESTATUS}; use bash -c '...' if you need them. " +
+		"Git works here and your commits are made as Ghost; there are no credentials, so pushing and private repositories need the owner. " +
 		"Returns combined stdout/stderr and the exit code."
 }
 
@@ -154,7 +155,8 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	}
 	// Never let a model-initiated command inherit Ghost's credentials:
 	// start from a minimal allowlist and confine HOME to the workspace.
-	HardenCommand(cmd, t.workingDir, nil)
+	ensureGitIdentity(t.workingDir)
+	HardenCommand(cmd, t.workingDir, gitSandboxEnv())
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

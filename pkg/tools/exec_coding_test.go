@@ -121,7 +121,7 @@ func TestACancelledCallerIsNotReportedAsATimeout(t *testing.T) {
 // command, so a build run with & never finishes; the description says not to.
 func TestExecDescriptionWarnsAgainstBackgrounding(t *testing.T) {
 	d := NewExecTool(t.TempDir(), true).Description()
-	for _, want := range []string{"timeout_seconds", "never background", "1800", "not bash"} {
+	for _, want := range []string{"timeout_seconds", "never background", "1800", "not bash", "made as Ghost"} {
 		if !strings.Contains(strings.ToLower(d), strings.ToLower(want)) {
 			t.Errorf("exec description must mention %q", want)
 		}

@@ -3,6 +3,27 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.207] - 2026-10-25
+
+- **Ghost can edit a project's files, not just run commands in it.** Reading,
+  listing, searching, editing and writing now understand `projects/<name>/...`.
+  Before, the file tools said a project file "does not exist", and a project
+  with a folder called `skills` or `state` had its own edits refused as if they
+  were Ghost's. Ghost's own files are protected exactly as before, and a link
+  inside a project cannot lead out of it.
+- **Reading code can no longer change what Ghost is allowed to do.** Ghost read
+  a library whose examples say `Name: "greet"`, took that for a skill called
+  greet, and then held every command for approval under it. A skill is now
+  committed to only by reading its own SKILL.md.
+- **Git works.** In the sandbox git refused any repo you own ("dubious
+  ownership"), refused the first commit ("Author identity unknown") and would
+  wait for a username nobody could type. Commits are now made as Ghost, git
+  trusts the project it is in, and a push without credentials fails at once with
+  a clear message so Ghost tells you instead of waiting.
+- **Removing a project works.** `delete_file` can remove `projects/<name>` (with
+  your approval, as before), never the projects folder itself, and it is told to
+  check for uncommitted or unpushed work first and tell you what would be lost.
+
 ## [0.24.206] - 2026-10-25
 
 - **Ghost can now run a real build or test suite.** Asked to build a Go

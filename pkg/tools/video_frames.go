@@ -77,7 +77,7 @@ func (t *VideoFramesTool) Execute(ctx context.Context, args map[string]interface
 		if err != nil {
 			return ErrorResult(err.Error())
 		}
-		if err := guardPrimaryFile(outputPath); err != nil {
+		if err := guardPrimaryFileIn(t.workspace, outputPath); err != nil {
 			return ErrorResult(err.Error())
 		}
 		if err := guardGhostEstateWrite(t.workspace, outputPath); err != nil {
