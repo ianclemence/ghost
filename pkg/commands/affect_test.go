@@ -6,9 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/ianclemence/ghost/pkg/affect"
 )
 
 func runAffectHandler(t *testing.T, ws string) string {
@@ -22,39 +19,35 @@ func runAffectHandler(t *testing.T, ws string) string {
 	return out
 }
 
-func TestAffectShowsNeutralOnFresh(t *testing.T) {
+// Ghost no longer scores the tone of the owner's messages. /affect says so
+// instead of showing numbers that nothing keeps.
+func TestAffectSaysNothingIsScored(t *testing.T) {
 	out := runAffectHandler(t, t.TempDir())
-	if !strings.Contains(out, "cordial") || !strings.Contains(out, "Turns together") {
-		t.Fatalf("fresh state must render neutral: %q", out)
+	if !strings.Contains(out, "does not score the tone") {
+		t.Fatalf("/affect must say plainly that nothing is scored: %q", out)
 	}
-	if strings.Contains(out, "sk-") {
-		t.Fatal("affect display must never carry secret-shaped content")
+	for _, stale := range []string{"Affinity", "Turns together", "cordial"} {
+		if strings.Contains(out, stale) {
+			t.Fatalf("/affect still shows %q: %q", stale, out)
+		}
 	}
 }
 
-func TestAffectShowsAggregates(t *testing.T) {
-	ws := t.TempDir()
-	s := affect.New()
-	s = s.Turn(0.9, 0.7, 0.9, false, time.Now())
-	if err := affect.Save(ws, s); err != nil {
+// An older install may still have the file; /reset context removes it too.
+func TestResetContextClearsAnOldRelationalFile(t *testing.T) {
+	ws, _ := resetFixture(t)
+	old := filepath.Join(ws, "personal-context", "affect.json")
+	if err := os.MkdirAll(filepath.Dir(old), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	out := runAffectHandler(t, ws)
-	if !strings.Contains(out, "warm") {
-		t.Fatalf("warm aggregate must display: %q", out)
-	}
-}
-
-func TestResetContextClearsAffect(t *testing.T) {
-	ws, _ := resetFixture(t)
-	if err := affect.Save(ws, affect.New()); err != nil {
+	if err := os.WriteFile(old, []byte(`{"valence":-0.3,"affinity":0}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out := runResetHandler(t, ws, "/reset context")
 	if !strings.Contains(out, "Reset complete:") {
 		t.Fatalf("expected completion, got %q", out)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "personal-context", "affect.json")); !os.IsNotExist(err) {
-		t.Fatal("affect aggregate must die with /reset context")
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatal("the old relational file must go with /reset context")
 	}
 }

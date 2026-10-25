@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -35,16 +37,10 @@ func TestOnlyTheOwnersConversationTeachesGhostAboutThem(t *testing.T) {
 	if cur := openPCStore(t, ws).Current(); len(cur) != 0 {
 		t.Fatalf("a session that is not the owner's wrote %d facts about the owner: %+v", len(cur), cur)
 	}
-	if al.Affect().Turns != 0 {
-		t.Fatalf("a probe moved the owner's relational score: %d turns", al.Affect().Turns)
-	}
 
 	runTurn(t, al, "my favorite color is blue", channels.SharedConversationKey)
 	if cur := openPCStore(t, ws).Current(); len(cur) != 1 {
 		t.Fatalf("the owner's own conversation must still be remembered, got %d facts", len(cur))
-	}
-	if al.Affect().Turns != 1 {
-		t.Fatalf("the owner's turn must count, got %d", al.Affect().Turns)
 	}
 }
 
@@ -76,7 +72,7 @@ func TestProbeSessionsAreNotJournaledIntoTheOwnersNotes(t *testing.T) {
 
 func TestThePromptNamesEveryStoreGhostKeepsAboutTheOwner(t *testing.T) {
 	section := buildOwnerRecordSection()
-	for _, want := range []string{"Personal Context", "/forget", "Daily journals", "Relational state", "/affect", "warm and cold turn counts", "never say a mechanism does not exist"} {
+	for _, want := range []string{"Personal Context", "/forget", "Daily journals", "does not score the tone", "keeps no mood or affinity total", "never say a mechanism does not exist"} {
 		if !strings.Contains(strings.ToLower(section), strings.ToLower(want)) {
 			t.Errorf("the owner-record section must mention %q", want)
 		}
@@ -92,5 +88,30 @@ func TestSummariesDoNotRecordJudgmentsAboutTheOwner(t *testing.T) {
 		if !strings.Contains(p, want) {
 			t.Errorf("the summary prompt must say %q", want)
 		}
+	}
+}
+
+// Nothing scores the owner's tone and nothing tells the model how close it is
+// to them; any such file left on disk is deleted when Ghost starts.
+func TestStartingGhostDeletesTheOldRelationalScore(t *testing.T) {
+	ws := t.TempDir()
+	old := filepath.Join(ws, "personal-context", "affect.json")
+	if err := os.MkdirAll(filepath.Dir(old), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(old, []byte(`{"valence":-0.36,"affinity":0,"turns":1653}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	al := productionRuleLoop(t, ws)
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatal("the old mood and affinity file survived startup")
+	}
+	runTurn(t, al, "I love this, amazing work, thank you!", channels.SharedConversationKey)
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatal("a turn recreated the relational score")
+	}
+	prompt := al.contextBuilder.BuildSystemPrompt(nil)
+	if strings.Contains(prompt, "Relational state: affinity") {
+		t.Fatal("the model is still told an affinity number")
 	}
 }

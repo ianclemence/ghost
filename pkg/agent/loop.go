@@ -24,7 +24,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/ianclemence/ghost/pkg/affect"
 	"github.com/ianclemence/ghost/pkg/artifacts"
 	"github.com/ianclemence/ghost/pkg/browser"
 	"github.com/ianclemence/ghost/pkg/bus"
@@ -79,30 +78,25 @@ type AgentLoop struct {
 	// sessions replace it.
 	ownerSession func(sessionKey string) bool
 
-	bus            *bus.MessageBus
-	provider       providers.LLMProvider
-	workspace      string
-	model          string
-	temperature    float64
-	maxTokens      int // Maximum output tokens for the LLM
-	contextWindow  int // Maximum context window size in tokens
-	maxIterations  int
-	sessions       *session.SessionManager
-	state          *state.Manager
-	media          media.MediaStore
-	contextBuilder *ContextBuilder
-	tools          *tools.ToolRegistry
-	toolProfile    tools.ToolProfile
-	commands       *commands.Registry
-	commandExec    *commands.Executor
-	router         *routing.Router
-	fallback       *providers.FallbackChain
-	fallbackModels []providers.FallbackCandidate
-	// affect holds the relational aggregate (valence/arousal/affinity).
-	// Updated once per turn from scored user text, decayed with time,
-	// persisted as aggregates only. It grounds expressed affect and
-	// gates proactivity — never capability.
-	affect           affect.State
+	bus              *bus.MessageBus
+	provider         providers.LLMProvider
+	workspace        string
+	model            string
+	temperature      float64
+	maxTokens        int // Maximum output tokens for the LLM
+	contextWindow    int // Maximum context window size in tokens
+	maxIterations    int
+	sessions         *session.SessionManager
+	state            *state.Manager
+	media            media.MediaStore
+	contextBuilder   *ContextBuilder
+	tools            *tools.ToolRegistry
+	toolProfile      tools.ToolProfile
+	commands         *commands.Registry
+	commandExec      *commands.Executor
+	router           *routing.Router
+	fallback         *providers.FallbackChain
+	fallbackModels   []providers.FallbackCandidate
 	installer        *skills.SkillInstaller
 	providersByModel map[string]providers.LLMProvider
 	cfg              *config.Config
@@ -956,8 +950,9 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 		commitmentExtractor: commitments.NewSemanticExtractor(provider, cfg.Agents.Defaults.Model),
 		rag:                 ragStore,
 		db:                  database,
-		affect:              loadAffect(workspace),
 	}
+
+	removeRelationalScore(workspace)
 
 	cmdRuntime := &commands.Runtime{
 		Tools:          toolsRegistry,
@@ -987,9 +982,6 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	// builder resolves through the Loader, so builtins and customs
 	// alike inject on the next turn).
 	cmdRuntime.OnPersonalityChanged = contextBuilder.SetPersonality
-	// Relational state renders live: the model grounds expressed affect
-	// in measured aggregates, never vibes.
-	contextBuilder.SetAffectRender(func() string { return al.Affect().Render(time.Now()) })
 	cmdExec := commands.NewExecutor(cmdRegistry, cmdRuntime)
 	al.commandExec = cmdExec
 
@@ -4069,15 +4061,6 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	// zero). Best-effort: never fails the turn.
 	recordTurnUsage(al, opts, turnModel, iteration, promptTokens, completionTokens, totalTokens, measuredCost, usageResponses, unmeasuredResponses, usageSource, cacheUse)
 
-	// Relational bookkeeping: score the user's turn, fold it into the
-	// affect aggregate, persist best-effort. Never fails the turn.
-	// Scheduler turns are machine prose, not relational signal — scoring
-	// them would let automation output (warm poems, reminders) inflate
-	// affinity on its own.
-	if al.learnsAboutOwner(opts.SessionKey) {
-		al.recordAffect(opts.UserMessage)
-	}
-
 	return finalContent, iteration, nil
 }
 
@@ -4098,36 +4081,14 @@ func estimatePromptTokens(messages []providers.Message) int {
 	return total/4 + 1
 }
 
-// loadAffect reads the persisted relational aggregate; a corrupt file
-// starts neutral (with a log line) rather than failing boot — feeling is
-// reconstructed from contact, never invented, and never fatal.
-func loadAffect(workspace string) affect.State {
-	s, err := affect.Load(workspace)
-	if err != nil {
-		logger.WarnCF("agent", "affect state unreadable, starting neutral",
-			map[string]interface{}{"error": err.Error()})
-		return affect.New()
-	}
-	return s
-}
-
-// recordAffect folds one user turn into the relational aggregate.
-func (al *AgentLoop) recordAffect(userText string) {
-	if strings.TrimSpace(userText) == "" {
+// removeRelationalScore deletes the mood and affinity file when one is present.
+// Nothing records or reads it, and a profile of someone's tone that nothing
+// needs should not stay on disk.
+func removeRelationalScore(workspace string) {
+	if workspace == "" {
 		return
 	}
-	v, a, c, friction := affect.Score(userText)
-	al.affect = al.affect.Turn(v, a, c, friction, time.Now())
-	if err := affect.Save(al.workspace, al.affect); err != nil {
-		logger.WarnCF("agent", "affect persist failed",
-			map[string]interface{}{"error": err.Error()})
-	}
-}
-
-// Affect exposes the current relational aggregate (decayed to now) for
-// commands and proactivity gating.
-func (al *AgentLoop) Affect() affect.State {
-	return al.affect.Decayed(time.Now())
+	_ = os.Remove(filepath.Join(workspace, "personal-context", "affect.json"))
 }
 
 func (al *AgentLoop) selectModel(opts processOptions, messages []providers.Message) (string, float64) {
