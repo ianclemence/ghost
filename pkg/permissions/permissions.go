@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/ianclemence/ghost/pkg/skills"
 )
@@ -793,6 +794,43 @@ func (b *Broker) insert(r *Request) error {
 	return err
 }
 
+// SecretShapedName reports whether an argument or field name looks like it
+// holds a secret: one of its words is key, token, secret, password and the
+// like. It reads words, not substrings, so "api_key" and "apiKey" count and
+// "keyword" does not; a search term must survive the trip through an approval.
+func SecretShapedName(name string) bool {
+	var words []string
+	var cur []rune
+	flush := func() {
+		if len(cur) > 0 {
+			words = append(words, strings.ToLower(string(cur)))
+			cur = cur[:0]
+		}
+	}
+	prev := rune(0)
+	for _, r := range name {
+		switch {
+		case r == '_' || r == '-' || r == '.' || r == ' ':
+			flush()
+		case unicode.IsUpper(r) && unicode.IsLower(prev):
+			flush()
+			cur = append(cur, r)
+		default:
+			cur = append(cur, r)
+		}
+		prev = r
+	}
+	flush()
+	for _, w := range words {
+		switch w {
+		case "key", "keys", "token", "tokens", "secret", "secrets", "password", "passwd", "passphrase",
+			"credential", "credentials", "apikey", "bearer", "cookie", "cookies":
+			return true
+		}
+	}
+	return false
+}
+
 // stripSecretValues drops secret-shaped keys from continuations. Values
 // are never masked-in-place (a masked secret is still a secret-shaped
 // liability); the key is removed and intent stays intact.
@@ -802,10 +840,7 @@ func stripSecretValues(m map[string]string) map[string]string {
 	}
 	out := make(map[string]string, len(m))
 	for k, v := range m {
-		lk := strings.ToLower(k)
-		if strings.Contains(lk, "key") || strings.Contains(lk, "token") ||
-			strings.Contains(lk, "secret") || strings.Contains(lk, "password") ||
-			strings.Contains(lk, "credential") {
+		if SecretShapedName(k) {
 			continue
 		}
 		out[k] = v

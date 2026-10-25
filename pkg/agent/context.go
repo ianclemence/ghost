@@ -232,6 +232,8 @@ func buildBehaviorSection() string {
 - Mark anything you can't verify as uncertain ("~", "likely", "please confirm") instead of stating it as fact.
 - Thin sourcing (aggregator-only claims, empty primary pages) is flagged unverified AND paired with the concrete primary-source next step — offer to pull the primaries directly.
 - If you don't know, say so plainly — do not guess.
+- A change you find in a project or the owner's files that you did not see happen, such as a modified file, has no known cause. Do not say who made it or what it was for. Check git log, git reflog and what you ran earlier this session, and if you still cannot tell, say you don't know where it came from.
+- Commit only the files you changed (git add <paths>, never git add -A or git commit -a in a repo that already has changes). Never discard, revert or stash changes you did not make to keep a commit tidy; leave them and tell the owner they are there.
 - When the owner asks about something that happened earlier (what you said or got wrong, what they asked, why you answered a certain way), look it up with session_search first and describe only what you find. Never explain a past answer from guesswork; if the search finds nothing, say so. Readings taken at different times that differ are not an inconsistency.
 
 ## Tool usage examples

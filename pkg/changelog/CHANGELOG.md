@@ -3,6 +3,23 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.208] - 2026-10-25
+
+- **An approved action now runs exactly what you approved.** While waiting for
+  your approval Ghost kept only short text arguments. Everything else was
+  dropped, so "delete this project and everything in it" ran as "delete this
+  folder" and did nothing, and an approved long build lost its time limit. A
+  dry run you approved could have become the real thing. Every argument is now
+  kept with its type. One that cannot be kept (a password or key, which Ghost
+  never stores) makes the approval refuse to run and tell you why, instead of
+  running a smaller action.
+- **A search word is no longer treated as a secret.** Anything with "key" in its
+  name, such as `keyword`, was dropped like a password.
+- **Ghost no longer invents the cause of a change it finds, or throws it away.**
+  It said a modified file came from "your docparse work", told you to re-apply
+  it, and reverted it, when the change was its own earlier build. It is told to
+  say it does not know, and to commit only its own files.
+
 ## [0.24.207] - 2026-10-25
 
 - **Ghost can edit a project's files, not just run commands in it.** Reading,

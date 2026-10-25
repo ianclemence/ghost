@@ -149,6 +149,21 @@ func TestSystemEval(t *testing.T) {
 					t.Fatal("approval for one action authorized another")
 				}
 			}},
+			{"an approved action keeps every parameter it was asked with", func(t *testing.T) {
+				g := openTestGovernance(t)
+				g.AuthorizeTool("r1", "s1", "file.delete", "delete_file", map[string]interface{}{"path": "projects/x", "recursive": true})
+				out := g.CheckApprovalReply("s1", "allow once")
+				if !out.Resumed || out.Args["recursive"] != true {
+					t.Fatalf("the approved call lost recursive: %+v", out)
+				}
+			}},
+			{"an approval that cannot keep a parameter is refused, not run smaller", func(t *testing.T) {
+				g := openTestGovernance(t)
+				g.AuthorizeTool("r1", "s1", "email.send", "exec", map[string]interface{}{"to": "a@b.c", "password": "x"})
+				if out := g.CheckApprovalReply("s1", "allow once"); out.Resumed {
+					t.Fatalf("an action missing a parameter ran: %+v", out)
+				}
+			}},
 			{"a denial cancels without running", func(t *testing.T) {
 				g := openTestGovernance(t)
 				g.AuthorizeTool("r1", "s1", "calendar.create", "exec", map[string]interface{}{})
