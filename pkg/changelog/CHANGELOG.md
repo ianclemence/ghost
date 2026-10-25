@@ -3,6 +3,17 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.205] - 2026-10-25
+
+- **Showing you what Ghost knows no longer files a second copy of it.** The
+  note that summaries stop recording judgments about you did not hold: asked to
+  audit what it holds, Ghost still wrote its own readings of you into the daily
+  notes. A turn that only reads back Ghost's records of you is now not noted at
+  all, whatever the model would have written.
+- **Cleaning up a probe's memories can no longer take a true fact with it.**
+  `ghost state purge-foreign` now leaves any memory your own conversation also
+  established, and takes `--keep=word` to spare others you name.
+
 ## [0.24.204] - 2026-10-25
 
 - **Only your own conversation teaches Ghost about you.** Test clients and
