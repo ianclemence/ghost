@@ -158,3 +158,15 @@ func TestTurnToolNamesReadsOnlyTheLatestTurn(t *testing.T) {
 		t.Fatal("a turn that built a page is not a read-back")
 	}
 }
+
+// The live Ghost found go.mod modified, said it came from "your docparse work",
+// told the owner to re-apply it, and reverted it. The reflog showed it was Ghost's
+// own earlier build. An unexplained change is unexplained, and not Ghost's to discard.
+func TestGroundingKeepsGhostFromInventingCausesOrDiscardingOthersWork(t *testing.T) {
+	section := buildBehaviorSection()
+	for _, want := range []string{"has no known cause", "say you don't know where it came from", "git add <paths>", "Never discard, revert or stash changes you did not make"} {
+		if !strings.Contains(section, want) {
+			t.Errorf("the grounding rules must say %q", want)
+		}
+	}
+}

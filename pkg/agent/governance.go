@@ -601,21 +601,6 @@ func humanReason(capabilityID, tool string, args map[string]interface{}) string 
 	return fmt.Sprintf("%s via %s", capabilityID, tool)
 }
 
-func continuationOf(args map[string]interface{}) map[string]string {
-	out := map[string]string{}
-	for k, v := range args {
-		// Never persist secret-shaped values into continuations.
-		lk := strings.ToLower(k)
-		if strings.Contains(lk, "key") || strings.Contains(lk, "token") || strings.Contains(lk, "secret") {
-			continue
-		}
-		if s, ok := v.(string); ok && len(s) < 500 {
-			out[k] = s
-		}
-	}
-	return out
-}
-
 // denyText builds user-visible refusals: stable code + reason + remedy.
 // Chat renders the whole line; the code travels in logs. Gate deny and
 // refuse closures wrap their messages with this so every refusal carries
@@ -688,10 +673,7 @@ func (g *Governance) CheckApprovalReply(sessionKey, text string) ResumeOutcome {
 	if !ok {
 		return ResumeOutcome{}
 	}
-	contArgs := map[string]interface{}{}
-	for k, v := range pending.Continuation {
-		contArgs[k] = v
-	}
+	contArgs, _ := argsFromContinuation(pending.Continuation)
 	resolved, err := g.Broker.Resolve(pending.ID, grant, scopeFor(sessionKey, contArgs))
 	if err != nil {
 		return ResumeOutcome{Message: "That approval already expired. Please make the request again."}
@@ -761,10 +743,7 @@ func (g *Governance) ResumeApproved(r *permissions.Request, grant permissions.Gr
 	if !ok {
 		return ResumeOutcome{}, false, "that approval expired before it could run"
 	}
-	contArgs := map[string]interface{}{}
-	for k, v := range approved.Continuation {
-		contArgs[k] = v
-	}
+	contArgs, _ := argsFromContinuation(approved.Continuation)
 	// A standing (always/task) approval is re-checked against live policy:
 	// a grant revoked, denied, or expired between the tap and the resume
 	// must not authorize the call.
@@ -785,9 +764,10 @@ func (g *Governance) ResumeApproved(r *permissions.Request, grant permissions.Gr
 // continuation. The action field may carry a ":detail" suffix (see
 // toolAction); only the tool name resumes.
 func resumeFrom(r *permissions.Request, grant permissions.GrantType) ResumeOutcome {
-	args := map[string]interface{}{}
-	for k, v := range r.Continuation {
-		args[k] = v
+	args, dropped := argsFromContinuation(r.Continuation)
+	if len(dropped) > 0 {
+		return ResumeOutcome{Message: "I can't run that approved action: it included " + strings.Join(dropped, ", ") +
+			", which I don't keep while waiting for an approval, so what would run is not what you approved. Ask me again and I will ask you again."}
 	}
 	tool := r.Action
 	if idx := strings.Index(tool, ":"); idx > 0 {
