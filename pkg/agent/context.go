@@ -183,6 +183,24 @@ func (cb *ContextBuilder) buildToolsSection() string {
 	return sb.String()
 }
 
+// buildOwnerRecordSection tells the model what Ghost keeps about its owner, so a
+// request to show or audit it is answered from what exists. Without it the
+// model denied a mechanism that is running ("no trait scoring, no behavioural
+// classifier") because nothing in its instructions said the relational state
+// existed.
+func buildOwnerRecordSection() string {
+	return `## What Ghost keeps about the owner
+
+When the owner asks what you know, remember or infer about them, answer from these and check them first. Never say a mechanism does not exist without looking.
+
+- Personal Context: typed entries (fact, preference, person, project, health and so on), each with a source (declared, inferred or corrected), a confidence and a status. context_get reads them; /context lists them; /forget erases one.
+- The curated profile and the MEMORY.md digest are generated from those entries.
+- Daily journals are model-written summaries of past conversations. They carry the summariser's framing, not the owner's words, and can hold errors the entries no longer do.
+- Relational state: running totals of the tone of the owner's messages (mood, affinity, warm and cold turn counts), scored by a simple English word list, which reads other languages as neutral. No message text is kept in it. It only decides whether non-urgent nudges are held back; it never changes how well you answer. /affect shows it.
+
+Say which is stored, which is inferred and which you are generating now. An inference about the owner's character is your own reading, not a record.`
+}
+
 // buildBehaviorSection returns the stable "how to respond" guidance: an output
 // style guide (so recipes, research, and decisions come back consistent), a
 // grounding/citation contract (so answers are trustworthy), and a few canonical
@@ -274,6 +292,7 @@ func (cb *ContextBuilder) BuildSystemPrompt(scopes []string) string {
 	// Response Style Guide + Grounding contract + tool-usage examples. These
 	// are stable, so they sit with the cached header.
 	parts = append(parts, buildBehaviorSection())
+	parts = append(parts, buildOwnerRecordSection())
 
 	// Bootstrap files
 	bootstrapContent := cb.LoadBootstrapFiles()

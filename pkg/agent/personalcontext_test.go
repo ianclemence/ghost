@@ -32,6 +32,7 @@ func newTestAgentLoop(t *testing.T, workspace string) *AgentLoop {
 	}
 	msgBus := bus.NewMessageBus()
 	al, _ := NewAgentLoop(cfg, msgBus, &mockProvider{})
+	al.ownerSession = func(string) bool { return true }
 	t.Cleanup(func() { al.Stop() })
 	return al
 }

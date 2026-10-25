@@ -74,6 +74,11 @@ import (
 )
 
 type AgentLoop struct {
+	// ownerSession decides which sessions may teach Ghost about its owner; nil
+	// means the production rule. Tests that exercise memory across many
+	// sessions replace it.
+	ownerSession func(sessionKey string) bool
+
 	bus            *bus.MessageBus
 	provider       providers.LLMProvider
 	workspace      string
@@ -2684,7 +2689,7 @@ func (al *AgentLoop) extractPersonalContext(opts processOptions) {
 	// Their content (e.g. an automation's own prompt) must never become
 	// user memory, and their prose must not score as relational signal.
 	// The scheduled item itself is the durable record of that intent.
-	if isAutomationSession(opts.SessionKey) {
+	if isAutomationSession(opts.SessionKey) || !al.learnsAboutOwner(opts.SessionKey) {
 		return
 	}
 
@@ -2827,6 +2832,38 @@ var quickCaptureRE = regexp.MustCompile(`(?i)^\s*(?:remember this|note that|note
 // "routine:<id>". Both are Ghost talking to itself on a timer — their
 // content must never be ingested as user memory, nor scored as
 // relational signal.
+// learnsAboutOwner reports whether a turn may teach Ghost about its owner.
+// Every surface the owner uses talks into the one shared conversation, so a
+// turn under any other key is somebody else's: a test client, a sub-agent, a
+// scripted probe. Without this its text became facts about the owner (a
+// girlfriend, a dog, a death in the family) and moved the owner's relational
+// score. A session that belongs to a scoped context still learns, into its own
+// scope.
+func (al *AgentLoop) learnsAboutOwner(sessionKey string) bool {
+	return !isMachineTurn(sessionKey) && al.ownerKey(sessionKey)
+}
+
+// journalsSession reports whether a session's summary belongs in the daily notes.
+func (al *AgentLoop) journalsSession(sessionKey string) bool {
+	return isMachineTurn(sessionKey) || al.ownerKey(sessionKey)
+}
+
+func (al *AgentLoop) ownerKey(sessionKey string) bool {
+	if al.ownerSession != nil {
+		return al.ownerSession(sessionKey)
+	}
+	return al.isOwnerSession(sessionKey)
+}
+
+// isOwnerSession is the production rule: the shared conversation, or a session
+// bound to a context with its own write scope.
+func (al *AgentLoop) isOwnerSession(sessionKey string) bool {
+	if sessionKey == channels.SharedConversationKey {
+		return true
+	}
+	return al.governance != nil && len(al.governance.SessionWriteScopes(sessionKey)) > 0
+}
+
 func isAutomationSession(sessionKey string) bool {
 	return strings.HasPrefix(sessionKey, "automation:") ||
 		strings.HasPrefix(sessionKey, "routine:")
@@ -4037,7 +4074,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	// Scheduler turns are machine prose, not relational signal — scoring
 	// them would let automation output (warm poems, reminders) inflate
 	// affinity on its own.
-	if !isAutomationSession(opts.SessionKey) {
+	if al.learnsAboutOwner(opts.SessionKey) {
 		al.recordAffect(opts.UserMessage)
 	}
 
@@ -5226,6 +5263,7 @@ func summarizePrompt(batch []providers.Message, existingSummary string, now time
 		"This summary continues the same task — it is not a restart. Assume details missing from it, do not redo completed work, and treat the thread as one logical chain.\n" +
 		"Current date and time: " + now.Format("Monday, 2006-01-02 15:04") + ".\n" +
 		"Write dates as absolute dates only — \"Thu, Sep 24, 2026 at 09:00\", never \"today\", \"tomorrow\", \"yesterday\", \"tonight\", or a bare \"later\". This summary will be read days or weeks from now, when those words would name the wrong day. Each message below is stamped with when it was written; convert every relative reference against the current date.\n"
+	prompt += "Record what was asked, decided and done, in the owner's own facts. Do not record judgments about the owner's personality, mood, habits, motives or character, and do not record the assistant's own analysis of them: those are readings, not facts, and a summary is read back later as if it were remembered. If the conversation was the owner asking what Ghost knows or infers about them, record only that the request happened and what was disclosed from stored records.\n"
 	if existingSummary != "" {
 		prompt += "Existing context (rewrite any relative dates in it to absolute dates): " + existingSummary + "\n"
 	}
@@ -5470,6 +5508,12 @@ func scopeTag(scopes []string) string {
 
 // autoJournal summarizes the session and appends it to the daily note.
 func (al *AgentLoop) autoJournal(sessionKey string) {
+	// Ghost's own scheduled work is journaled; a session that is neither the
+	// owner's nor a timer's is a probe, and its test persona would end up in
+	// the owner's daily notes as if it were their life.
+	if !al.journalsSession(sessionKey) {
+		return
+	}
 	// Only journal if there's enough history
 	history := al.sessions.GetHistory(sessionKey)
 	if len(history) < 4 {
