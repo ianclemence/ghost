@@ -134,12 +134,14 @@ func (t *BrowserTool) Name() string {
 	return "browser_" + t.action
 }
 
-// Timeout bounds one browser operation well under the turn budget: a hung
-// Chromium subprocess must fail honestly instead of eating the whole turn.
+// Timeout bounds one browser operation at the owner's ceiling: a page or a
+// sign-in flow may legitimately take minutes, and cutting it short is worse
+// than waiting. Ten minutes without a response is the limit; past that a hung
+// Chromium must fail honestly instead of eating the whole turn.
 // (No retry opt-in here: click/type/submit can carry side effects, and
 // retrying a write could duplicate an action.)
 func (t *BrowserTool) Timeout() time.Duration {
-	return 90 * time.Second
+	return 10 * time.Minute
 }
 
 // OnTimeout closes the browser session after a hung call so leaked Chromium

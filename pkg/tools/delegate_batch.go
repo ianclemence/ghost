@@ -39,7 +39,7 @@ func (t *BatchDelegateTool) Name() string {
 }
 
 func (t *BatchDelegateTool) Description() string {
-	return "Execute multiple independent tasks in parallel using subagents. Returns results for all tasks."
+	return "Run two or more genuinely independent tasks in parallel, each with a fresh context. Use only for parallel facets, context isolation, or a conflicting tool/instruction set; do not use it for sequential steps or work that shares state. State each task's exact deliverable and what its result must contain."
 }
 
 func (t *BatchDelegateTool) Parameters() map[string]interface{} {

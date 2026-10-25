@@ -101,8 +101,9 @@ type SubagentManager struct {
 	// consequential tools. Set by the embedding runtime; nil fails closed.
 	ConsequentialAuth SubagentConsequentialAuth
 	// allowedCapabilities is the explicit capability scope delegated to
-	// subtasks. Non-empty = deny-by-default. Empty = legacy unscoped (still
-	// bounded by the actuator blocklist and the broker).
+	// subtasks. It is deny-by-default: a subtask may only use capabilities in
+	// this list. The constructor starts with the read-only default; the
+	// embedding runtime narrows or widens it explicitly.
 	allowedCapabilities []string
 	// enqueue, when set, makes a spawn durable: the task is recorded as a
 	// job and execution belongs to the runner that owns that record, not
@@ -166,17 +167,25 @@ func (sm *SubagentManager) SetDefaultModel(model string) {
 	}
 }
 
+// defaultSubagentCapabilities is the least agency a delegated task starts
+// with: read a file, search and fetch the web, recall memory. Anything more
+// must be granted explicitly by the parent runtime.
+var defaultSubagentCapabilities = []string{
+	"file.read", "web.search", "web.fetch", "memory.recall",
+}
+
 func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace string, bus *bus.MessageBus) *SubagentManager {
 	return &SubagentManager{
-		tasks:         make(map[string]*SubagentTask),
-		provider:      provider,
-		defaultModel:  defaultModel,
-		bus:           bus,
-		workspace:     workspace,
-		tools:         NewToolRegistry(),
-		maxIterations: 10,
-		nextID:        1,
-		policy:        DefaultSubagentPolicy,
+		tasks:               make(map[string]*SubagentTask),
+		provider:            provider,
+		defaultModel:        defaultModel,
+		bus:                 bus,
+		workspace:           workspace,
+		tools:               NewToolRegistry(),
+		maxIterations:       10,
+		nextID:              1,
+		policy:              DefaultSubagentPolicy,
+		allowedCapabilities: append([]string(nil), defaultSubagentCapabilities...),
 	}
 }
 
@@ -189,12 +198,16 @@ func (sm *SubagentManager) SetTools(tools *ToolRegistry) {
 }
 
 // SetAllowedCapabilities sets the explicit capability scope for delegated
-// subtasks. Non-empty is deny-by-default: a subtask may only use tools whose
-// resolved capability is listed. The parent must not delegate capabilities
-// it does not itself possess.
+// subtasks. It is deny-by-default: a subtask may only use tools whose
+// resolved capability is listed. An empty list keeps the read-only default
+// rather than silently widening to everything. The parent must not delegate
+// capabilities it does not itself possess.
 func (sm *SubagentManager) SetAllowedCapabilities(caps []string) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if len(caps) == 0 {
+		caps = defaultSubagentCapabilities
+	}
 	sm.allowedCapabilities = append([]string(nil), caps...)
 }
 
@@ -724,7 +737,7 @@ func (t *SubagentTool) Name() string {
 }
 
 func (t *SubagentTool) Description() string {
-	return "Run a subagent on a task and WAIT for its result before you continue. Use for a bounded step you need the answer to now. For long work that should not block the conversation, use spawn instead."
+	return "Use a subagent for one independent subtask and wait for its result. Use only when (1) two or more independent facets can run in parallel, (2) the subtask will generate a lot of context you will not need (roughly 1,000+ tokens), or (3) a separate tool set or instruction set would conflict with this turn. Do NOT use for a sequential step you could do yourself: each delegation is a nested loop with a lossy summary and extra cost. State the exact deliverable and what the result must contain."
 }
 
 func (t *SubagentTool) Parameters() map[string]interface{} {

@@ -43,6 +43,12 @@ func TestSetupStepsNeverCarrySecrets(t *testing.T) {
 		if !strings.Contains(steps, "Apps") {
 			t.Errorf("%s: setup steps must point at the Apps screen: %s", e.id, steps)
 		}
+		if strings.Contains(strings.ToLower(steps), "terminal") {
+			t.Errorf("%s: setup steps must not send a non-technical owner to a terminal: %s", e.id, steps)
+		}
+		if !strings.Contains(steps, "Ghost opens") {
+			t.Errorf("%s: setup steps should have Ghost open the screen: %s", e.id, steps)
+		}
 	}
 }
 

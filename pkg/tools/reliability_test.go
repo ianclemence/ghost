@@ -133,8 +133,8 @@ func (s *nilTool) Execute(ctx context.Context, args map[string]interface{}) *Too
 // whole turn: BrowserTool declares 90s, far under the 5-minute default.
 func TestBrowserToolBoundedTimeout(t *testing.T) {
 	tool := &BrowserTool{action: "navigate"}
-	if got := tool.Timeout(); got != 90*time.Second {
-		t.Fatalf("browser timeout = %v, want 90s", got)
+	if got := tool.Timeout(); got != 10*time.Minute {
+		t.Fatalf("browser timeout = %v, want 10m", got)
 	}
 	hang := &stubTool{name: "hang", hang: 300 * time.Millisecond, timeout: 50 * time.Millisecond}
 	start := time.Now()

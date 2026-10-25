@@ -141,3 +141,25 @@ func TestADrawingRequestIsNeverQuick(t *testing.T) {
 		t.Error("a deep turn, an animation, needs room to render after it has looked and fixed")
 	}
 }
+
+// A sign-in, a purchase or a browser step needs room to observe, act and
+// verify. Quick's six-call budget is for glances, never for a live action.
+func TestLiveActionsNeverGetTheQuickBudget(t *testing.T) {
+	for _, msg := range []string{
+		"Sign in to Google Ads Manager for me",
+		"Book me a table for two at 7 tonight",
+		"Buy the cheapest flight to Bangkok",
+		"Fill in the form with my details",
+		"Connect my Gmail",
+		"Set up Spotify on my phone",
+	} {
+		if got := Classify(msg); got == Quick {
+			t.Errorf("%q was classified Quick; a live action needs more room", msg)
+		}
+	}
+	for _, msg := range []string{"hi", "what time is it", "thanks!"} {
+		if got := Classify(msg); got != Quick {
+			t.Errorf("%q = %s, want quick", msg, got)
+		}
+	}
+}

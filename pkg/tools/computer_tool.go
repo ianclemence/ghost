@@ -70,6 +70,11 @@ func NewComputerTool(action string) *ComputerTool {
 
 func (t *ComputerTool) Name() string { return "computer_" + t.action }
 
+// Timeout gives one computer action the same ten-minute ceiling as the
+// browser. Reading a screen is quick, but a drag, a long paste or a slow UI
+// should finish rather than be cut off for speed.
+func (t *ComputerTool) Timeout() time.Duration { return 10 * time.Minute }
+
 func (t *ComputerTool) Description() string {
 	switch t.action {
 	case "inspect_ui":

@@ -15,8 +15,8 @@ import (
 // ConnectionsTool reports which external apps Ghost can reach and the exact
 // next step to finish setup. Read-only: it never returns, stores, or asks for
 // secrets, and it never sends them through chat. The model uses it to answer
-// "is my Gmail connected?" and to walk the owner through setup on web, phone,
-// or terminal.
+// "is my Gmail connected?" and to do setup on web or phone, leaving the owner
+// only the secret entry or sign-in that only they can perform.
 type ConnectionsTool struct{}
 
 func NewConnectionsTool() *ConnectionsTool { return &ConnectionsTool{} }
@@ -24,7 +24,7 @@ func NewConnectionsTool() *ConnectionsTool { return &ConnectionsTool{} }
 func (t *ConnectionsTool) Name() string { return "connections" }
 
 func (t *ConnectionsTool) Description() string {
-	return "Check which external apps are connected (Gmail, Google Calendar, Outlook, Spotify, Home Assistant, GitHub, Notion, weather, flights), whether a website login is saved in the vault, and get the exact next step to connect one. Use when the user asks to connect or check an app, or whether something is set up. Never returns secrets and never asks the user to paste a secret into chat — the owner pastes it once in the secure screen or terminal prompt."
+	return "Check which external apps are connected (Gmail, Google Calendar, Outlook, Spotify, Home Assistant, GitHub, Notion, weather, flights), whether a website login is saved in the vault, and get the exact next step to connect one. Use when the user asks to connect or check an app, or whether something is set up. Never returns secrets and never asks the user to paste a secret into chat — the owner enters it once in the secure screen. Do the setup yourself where the tool allows it; never send a non-technical owner to a terminal."
 }
 
 func (t *ConnectionsTool) Parameters() map[string]interface{} {
@@ -95,16 +95,16 @@ func connectionEntries() []connEntry {
 
 // setupSteps returns plain-language next steps with no secret material. The
 // path differs by how the app authenticates: browser sign-in, pasted key,
-// or a URL+token pair. Secrets always go into a secure screen or a terminal
-// prompt — never through the model.
+// or a URL+token pair. Secrets always go into a secure screen — never through
+// the model and never through a terminal command.
 func setupSteps(e connEntry) string {
 	switch e.setup {
 	case string(connectedapp.SetupConsoleOAuth):
-		return fmt.Sprintf("Sign-in needed. Open Ghost's web console or phone app → Apps → %s → Configure. A sign-in page opens and Ghost finishes on its own. You can't complete this one from a terminal.", e.name)
+		return fmt.Sprintf("Sign-in needed. Ghost opens the web console or phone app → Apps → %s → Configure; the owner finishes the sign-in in the browser.", e.name)
 	case string(connectedapp.SetupPastePair):
-		return fmt.Sprintf("Open Ghost's web console or phone app → Apps → %s → Configure and paste the instance URL plus its long-lived token. Stored encrypted on your device.", e.name)
+		return fmt.Sprintf("Ghost opens the web console or phone app → Apps → %s → Configure; the owner enters the instance URL and its long-lived token there. Stored encrypted on your device.", e.name)
 	default:
-		return fmt.Sprintf("Open Ghost's web console or phone app → Apps → %s → Configure and paste the key once. Stored encrypted on your device. If you prefer the terminal, Ghost can run the sign-in flow with you there.", e.name)
+		return fmt.Sprintf("Ghost opens the web console or phone app → Apps → %s → Configure; the owner enters the key once there. Stored encrypted on your device.", e.name)
 	}
 }
 

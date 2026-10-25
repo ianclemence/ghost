@@ -23,7 +23,8 @@ func (t *VaultItemsTool) Name() string { return "vault_items" }
 func (t *VaultItemsTool) Description() string {
 	return "See what the owner has saved in their Vault that you can use: logins (the site and the username), contacts (their details in full), cards (a nickname, the brand and the last four digits) and keys (their names). " +
 		"Passwords, card numbers, security codes and key values are never shown to you and cannot be. Use it before signing in to a site or filling in a form with the owner's details. " +
-		"To sign in to a site that has a login, use browser_login. If it has none, use request_credentials."
+		"To sign in to a site that has a login, use browser_login. If it has none, use request_credentials. " +
+		"To use a key in a command, name its variable in the command exactly as the Vault lists it (for example `DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY ./build/scout doctor`); Ghost supplies the value only to a command that names it. Never print a key, write it to a file, or ask the owner for it."
 }
 
 func (t *VaultItemsTool) Parameters() map[string]interface{} {
@@ -55,14 +56,21 @@ func (t *VaultItemsTool) Execute(_ context.Context, args map[string]interface{})
 	}
 	var sb strings.Builder
 	var cur credentials.ItemKind
+	commandKey := false
 	for _, it := range items {
 		if it.Kind != cur {
 			cur = it.Kind
 			fmt.Fprintf(&sb, "%ss:\n", strings.Title(string(cur))) //nolint:staticcheck // ASCII kind names
 		}
 		fmt.Fprintf(&sb, "- %s: %s\n", it.Title, it.Line)
+		if it.Kind == credentials.KindKey && strings.Contains(it.Line, "commands can read it as $") {
+			commandKey = true
+		}
 	}
 	sb.WriteString("\nPasswords, card numbers, security codes and key values are not shown to you. Logins are used with browser_login.")
+	if commandKey {
+		sb.WriteString("\nA key marked \"commands can read it as $NAME\" is supplied only to a command that names that variable. Run it as `NAME=$NAME <command>` (for example `DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY ./build/scout doctor`); never print it, write it to a file, or ask the owner for it.")
+	}
 	return NewToolResult(strings.TrimSpace(sb.String()))
 }
 

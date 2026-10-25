@@ -30,7 +30,7 @@ func (t *SpawnTool) Name() string {
 }
 
 func (t *SpawnTool) Description() string {
-	return "Start a subagent on a task in the BACKGROUND and carry on talking with the owner; it reports back when done. Use for long or independent work. For a quick delegated step whose result you need before replying, use subagent instead."
+	return "Start one independent subtask in the background when it does not need this conversation's context and can run while you keep working. Use the same three triggers as subagent: parallel facets, context isolation for a large subtask, or a conflicting tool/instruction set. Do NOT use for sequential work or a step whose result you need now; do that yourself or use subagent. State the exact deliverable and what the result must contain."
 }
 
 func (t *SpawnTool) Parameters() map[string]interface{} {

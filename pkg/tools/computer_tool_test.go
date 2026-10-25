@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ianclemence/ghost/pkg/computer"
 )
@@ -93,5 +94,16 @@ func TestComputerToolControlDoesNotOverclaim(t *testing.T) {
 	}
 	if res.Evidence["x"] != "12" {
 		t.Fatalf("evidence missing coords: %+v", res.Evidence)
+	}
+}
+
+// A browser or computer action gets ten minutes to finish; stopping sooner is
+// for a real blocker, not for pacing.
+func TestComputerAndBrowserActionsGetTenMinutes(t *testing.T) {
+	if got := NewComputerTool("click").Timeout(); got != 10*time.Minute {
+		t.Fatalf("computer action timeout = %v, want 10m", got)
+	}
+	if got := NewBrowserTool("", "navigate").Timeout(); got != 10*time.Minute {
+		t.Fatalf("browser action timeout = %v, want 10m", got)
 	}
 }

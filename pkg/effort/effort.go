@@ -105,6 +105,7 @@ type Signals struct {
 	Build             bool
 	Animation         bool
 	Drawing           bool
+	LiveAction        bool
 	PriorFailures     int
 	VerificationFails int
 }
@@ -128,6 +129,11 @@ var (
 	// A drawing is written, looked at and corrected: never a Quick turn.
 	drawingRE = regexp.MustCompile(`\b(draw|drawing|sketch|illustrate|illustration|doodle|poster|paint|painting)\b`)
 	toolRE    = regexp.MustCompile(`\b(schedule|remind|calendar|email|send|create|delete|move|rename|download|upload|browse|open|run|install|summarize|summary|save|write|edit|translate|analyze|plan|organize|search|look up|generate|draft)\b`)
+	// A live action is a transaction, a sign-in, or a browser/computer step.
+	// These need room to observe, act, and check the result; the six-call
+	// Quick budget would cut them off mid-flow. It only forces Normal, so a
+	// genuinely complex request still climbs to Deep.
+	liveActionRE = regexp.MustCompile(`(?i)\b(sign[ -]?in|log[ -]?in|login|sign[ -]?up|checkout|check out|buy|purchase|order|book|reserve|fill (in|out)|submit|apply|connect|set up|configure|install|pay|refund|browse|navigate|click|tap)\b`)
 )
 
 // Analyze extracts deterministic signals from a raw message.
@@ -145,6 +151,7 @@ func Analyze(msg string) Signals {
 		Build:       buildRE.MatchString(m),
 		Animation:   animationRE.MatchString(m),
 		Drawing:     drawingRE.MatchString(m),
+		LiveAction:  liveActionRE.MatchString(m),
 	}
 }
 
@@ -178,6 +185,9 @@ func ClassifySignals(s Signals) Level {
 	}
 	if s.Animation {
 		score += 4 // always a multi-step job: read, write, check, look, fix, render
+	}
+	if s.LiveAction {
+		score += 1 // sign-ins and transactions need more than a six-call glance
 	}
 	if s.Length > 1200 {
 		score += 1

@@ -68,6 +68,9 @@ func newDurableManager(p providers.LLMProvider) *SubagentManager {
 	reg := NewToolRegistry()
 	reg.Register(namedTool{name: "schedule"})
 	sm.SetTools(reg)
+	// This fixture exercises durable execution, not delegation scope; grant
+	// only the capability its scripted tool needs.
+	sm.SetAllowedCapabilities([]string{"routine.create", "routine.modify", "routine.cancel"})
 	return sm
 }
 

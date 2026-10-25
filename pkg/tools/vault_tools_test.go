@@ -57,6 +57,31 @@ func TestAnEmptyVaultSaysSo(t *testing.T) {
 	}
 }
 
+// A key the owner allowed commands to use is useless if Ghost does not know how
+// to hand it over: the command must name the variable, and the value reaches
+// only that command.
+func TestACommandKeyTellsGhostHowToUseIt(t *testing.T) {
+	vaultFixture(t)
+	if _, err := credentials.SaveItem(credentials.Item{
+		Kind: credentials.KindKey, Title: "DeepSeek", Service: "DeepSeek",
+		Value: "sk_live_never_show_key", EnvName: "DEEPSEEK_API_KEY", UseInCommands: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res := NewVaultItemsTool().Execute(context.Background(), nil)
+	if res.IsError {
+		t.Fatal(res.ForLLM)
+	}
+	if strings.Contains(res.ForLLM, "sk_live_never_show_key") {
+		t.Fatalf("the key value reached the model: %s", res.ForLLM)
+	}
+	for _, want := range []string{"commands can read it as $DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY", "never print it"} {
+		if !strings.Contains(res.ForLLM, want) {
+			t.Errorf("Ghost should be told %q:\n%s", want, res.ForLLM)
+		}
+	}
+}
+
 func credentialsTool(published *[]cards.Card) *RequestCredentialsTool {
 	tool := NewRequestCredentialsTool()
 	tool.SetContext("mobile", "default")

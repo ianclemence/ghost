@@ -3,6 +3,27 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.210] - 2026-10-26
+
+- **Vault is in Settings, where you look for it.** It sits between Data sources
+  and Phone, and About stays last. The Vault now says plainly what Ghost can and
+  cannot see: it never sees a saved card's number or security code, but it can
+  see logins and contact details so it can type them in for you.
+- **Ghost does the work instead of handing you a command.** Most people are not
+  technical, so Ghost no longer tells you to run a command, edit a config or
+  use a terminal. It uses the Vault and its tools itself. Your part is only what
+  only you can do: enter a secret in a private form, finish a sign-in, grant an
+  approval, or answer a question only you can answer.
+- **Actions run to completion.** A browser or computer step can take up to ten
+  minutes without Ghost stopping it, and Ghost is told to finish the steps a
+  request needs rather than report progress and ask whether to continue. If it
+  cannot finish, it says what remains and the one real blocker. A sign-in or
+  purchase no longer gets the six-call budget meant for a quick glance.
+- **Helpers are used for the right reasons.** Ghost delegates only when work is
+  genuinely independent, would flood the conversation with context, or needs a
+  conflicting tool set — not as a sequential handoff. A helper now starts with
+  the least authority it needs and must be granted anything more.
+
 ## [0.24.209] - 2026-10-26
 
 - **A Vault for what Ghost uses on your behalf.** Logins, payment cards,

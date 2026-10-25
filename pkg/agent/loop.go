@@ -4052,7 +4052,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		graceMessages := append([]providers.Message{}, messages...)
 		graceMessages = append(graceMessages, providers.Message{
 			Role:    "system",
-			Content: "You have reached the tool budget. Do not request more tools. Answer the user now using the information you already gathered. If it is insufficient, say so plainly and ask one focused follow-up question.",
+			Content: "You have reached the tool budget for this turn. Do not request more tools. Answer the user now using what you already gathered: say what is done, what remains, and the one real blocker if there is one. Do not ask the user to do work a tool could do.",
 		})
 		if resp, gerr := al.callLLM(ctx, al.model, graceMessages, nil, opts); gerr == nil && resp != nil {
 			finalContent = strings.TrimSpace(resp.Content)
