@@ -431,3 +431,9 @@ func ForgetStatement(store *Store, workspace, text string) int {
 	}
 	return n
 }
+
+// HousekeepingReasonPrefix marks a retraction Ghost's maintenance made on its
+// own account, such as clearing facts a test client filed. It is recorded as
+// that, never as the owner asking, so it does not keep a subject out of the
+// owner's notes from then on.
+const HousekeepingReasonPrefix = "housekeeping: "

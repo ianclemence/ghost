@@ -180,6 +180,8 @@ func ForgetPipeline(workspace, id, reason string) (ForgetReport, error) {
 func ForgetPipelineWith(store *Store, workspace, id, reason string) (ForgetReport, error) {
 	report := ForgetReport{ClaimID: id}
 	switch {
+	case strings.HasPrefix(reason, HousekeepingReasonPrefix):
+		// Maintenance, not the owner's wish: recorded as what it is.
 	case strings.TrimSpace(reason) == "":
 		reason = OwnerForgetReason
 	case !strings.Contains(strings.ToLower(reason), "owner asked"):

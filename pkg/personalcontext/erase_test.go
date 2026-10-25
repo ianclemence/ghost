@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -134,5 +135,77 @@ func TestRetiringWithoutARetractionKeepsTheRecord(t *testing.T) {
 	}
 	if !strings.Contains(rawFile(t, s.Path()), "Lives in Bangkok") {
 		t.Fatal("a plain retire must keep the record inspectable")
+	}
+}
+
+// Ghost's service runs as root. An atomic rewrite through a new file must not
+// hand the owner's memory file to root. Skipped unless run as root.
+func TestRewriteKeepsTheFileOwner(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("ownership only changes when run as root")
+	}
+	ws := t.TempDir()
+	s := mustOpen(t, ws)
+	e, _ := s.Create(Entry{ID: newEntryID(), Kind: KindFact, Subject: "user", Predicate: "fact/dentist", Status: StatusCurrent,
+		Value: json.RawMessage(`"Their dentist is Dr. Lee at Samitivej"`), Confidence: 0.9, Sources: eraseSrc()})
+	const owner = 1234
+	if err := os.Chown(s.Path(), owner, owner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ForgetPipelineWith(s, ws, e.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(s.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, ok := info.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != owner || int(st.Gid) != owner {
+		t.Fatalf("the rewrite changed the file's owner: %+v", info.Sys())
+	}
+}
+
+func TestForeignCurrentFindsWhatOtherSessionsFiled(t *testing.T) {
+	s := mustOpen(t, t.TempDir())
+	mk := func(pred, val, ref string, scopes []string) {
+		t.Helper()
+		if _, err := s.Create(Entry{ID: newEntryID(), Kind: KindFact, Subject: "user", Predicate: pred, Status: StatusCurrent, Scopes: scopes,
+			Value: json.RawMessage(`"` + val + `"`), Confidence: 0.9,
+			Sources: []Source{{Type: SourceConversation, Kind: SourceInferred, Ref: ref, Timestamp: time.Now()}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("fact/city", "Lives in Bangkok", "main:req-1", nil)
+	mk("fact/dog", "Has a golden retriever", "memtest:req-2", nil)
+	mk("fact/job", "Is a pentester", "research-live-100e", nil)
+	mk("fact/club", "Supports a club", "work-session:req-3", []string{"context:work"})
+
+	got := s.ForeignCurrent(func(session string) bool { return session == "main" })
+	if len(got) != 2 {
+		t.Fatalf("want the two probe-filed facts, got %d: %+v", len(got), got)
+	}
+	for _, e := range got {
+		if SessionOf(e) == "main" || len(e.Scopes) > 0 {
+			t.Fatalf("an owner or scoped entry was listed: %+v", e)
+		}
+	}
+}
+
+func TestHousekeepingForgetIsNotRecordedAsTheOwnerAsking(t *testing.T) {
+	ws := t.TempDir()
+	s := mustOpen(t, ws)
+	e, _ := s.Create(Entry{ID: newEntryID(), Kind: KindFact, Subject: "user", Predicate: "fact/dog", Status: StatusCurrent,
+		Value: json.RawMessage(`"Has a golden retriever named Biscuit"`), Confidence: 0.9, Sources: eraseSrc()})
+	if _, err := ForgetPipelineWith(s, ws, e.ID, HousekeepingReasonPrefix+"filed by a probe"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Get(e.ID)
+	if strings.Contains(strings.ToLower(got.RetractReason), "owner asked") || !strings.HasPrefix(got.RetractReason, HousekeepingReasonPrefix) {
+		t.Fatalf("housekeeping was recorded as the owner's wish: %q", got.RetractReason)
+	}
+	if strings.Contains(rawFile(t, s.Path()), "Biscuit") {
+		t.Fatal("the content must still be erased")
+	}
+	if ForgottenMatcher(ws) != nil {
+		t.Fatal("housekeeping must not keep a subject out of the owner's notes as though they had asked")
 	}
 }

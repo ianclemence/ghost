@@ -3149,6 +3149,8 @@ func stateCmd() {
 		stateBackupCmd(cfg)
 	case "prune":
 		statePruneCmd(cfg)
+	case "purge-foreign":
+		statePurgeForeignCmd(cfg)
 	default:
 		stateHelp()
 	}
@@ -3339,6 +3341,7 @@ func stateHelp() {
 	fmt.Println("  import <archive> [--force]             Restore an archive into a fresh Ghost installation")
 	fmt.Println("  backup [--cron]                        Take a recovery snapshot (same archive, retention kept)")
 	fmt.Println("  prune [--keep=N]                       Enforce snapshot retention (default keeps 5)")
+	fmt.Println("  purge-foreign [--apply]                List (or, with --apply, forget) memories learned in sessions that are not yours")
 	fmt.Println()
 	fmt.Println("Import only runs on a fresh installation unless --force is given.")
 	fmt.Println("Rebound (device-specific) state is never exported; secrets need --include-secrets.")
