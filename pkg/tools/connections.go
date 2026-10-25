@@ -100,11 +100,11 @@ func connectionEntries() []connEntry {
 func setupSteps(e connEntry) string {
 	switch e.setup {
 	case string(connectedapp.SetupConsoleOAuth):
-		return fmt.Sprintf("Sign-in needed. Ghost opens the web console or phone app → Apps → %s → Configure; the owner finishes the sign-in in the browser.", e.name)
+		return fmt.Sprintf("One step is yours: Apps → %s → Configure → finish the sign-in in the browser. Ghost handles the rest.", e.name)
 	case string(connectedapp.SetupPastePair):
-		return fmt.Sprintf("Ghost opens the web console or phone app → Apps → %s → Configure; the owner enters the instance URL and its long-lived token there. Stored encrypted on your device.", e.name)
+		return fmt.Sprintf("One step is yours: Apps → %s → Configure → enter the instance URL and its long-lived token. Ghost handles the rest.", e.name)
 	default:
-		return fmt.Sprintf("Ghost opens the web console or phone app → Apps → %s → Configure; the owner enters the key once there. Stored encrypted on your device.", e.name)
+		return fmt.Sprintf("One step is yours: Apps → %s → Configure → enter the key once. Ghost handles the rest.", e.name)
 	}
 }
 

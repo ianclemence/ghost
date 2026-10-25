@@ -3,6 +3,13 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.211] - 2026-10-26
+
+- **Connecting an app now names the one step only you can do.** Ghost no longer
+  says it will open a screen it cannot open. When an app needs a sign-in or a
+  key, Ghost points at the Apps screen, says plainly what is yours, and handles
+  everything around it.
+
 ## [0.24.210] - 2026-10-26
 
 - **Vault is in Settings, where you look for it.** It sits between Data sources
