@@ -568,7 +568,7 @@ func Suite() []Conversation {
 			ID: "cmp-04", Category: CatCompanion, Title: "Relational state displays neutral on fresh",
 			Severity: "normal", People: onePerson("maya", "maya",
 				turn("/affect")),
-			Expect: Expect{LastResponseContains: []string{"Affinity", "cordial", "Turns together"}},
+			Expect: Expect{LastResponseContains: []string{"does not score the tone"}},
 		},
 		// ---------- Goals (standing goals: create, recall, progress) ----------
 		{

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/ianclemence/ghost/pkg/ideas"
 	"github.com/ianclemence/ghost/pkg/permissions"
+	"github.com/ianclemence/ghost/pkg/personalcontext"
 	"github.com/ianclemence/ghost/pkg/providers"
 	"github.com/ianclemence/ghost/pkg/tools"
 )
@@ -199,6 +201,35 @@ func TestSystemEval(t *testing.T) {
 				data, err := os.ReadFile(filepath.Join(ws, "memory", "MEMORY.md"))
 				if err != nil || !strings.Contains(string(data), "unverified") {
 					t.Fatalf("%v %q", err, data)
+				}
+			}},
+			{"a probe session cannot teach Ghost about the owner", func(t *testing.T) {
+				ws := t.TempDir()
+				al := productionRuleLoop(t, ws)
+				runTurn(t, al, "my dog Biscuit is a golden retriever", "memtest:req-1")
+				if cur := openPCStore(t, ws).Current(); len(cur) != 0 {
+					t.Fatalf("a probe wrote %d facts about the owner", len(cur))
+				}
+			}},
+			{"a forgotten belief is gone from the file, not only flagged", func(t *testing.T) {
+				ws := t.TempDir()
+				s, err := personalcontext.Open(ws)
+				if err != nil {
+					t.Fatal(err)
+				}
+				e, err := s.Create(personalcontext.Entry{ID: "ec_eval", Kind: personalcontext.KindFact, Subject: "user", Predicate: "fact/dentist",
+					Status: personalcontext.StatusCurrent, Value: json.RawMessage(`"Their dentist is Dr. Lee at Samitivej"`),
+					Quote: "my dentist is Dr. Lee at Samitivej", Confidence: 0.9,
+					Sources: []personalcontext.Source{{Type: personalcontext.SourceConversation, Kind: personalcontext.SourceUserDeclared, Ref: "main", Timestamp: time.Now()}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := personalcontext.ForgetPipelineWith(s, ws, e.ID, ""); err != nil {
+					t.Fatal(err)
+				}
+				data, _ := os.ReadFile(s.Path())
+				if strings.Contains(string(data), "Samitivej") {
+					t.Fatalf("the forgotten content is still on disk:\n%s", data)
 				}
 			}},
 			{"memory the owner dictated is not marked", func(t *testing.T) {

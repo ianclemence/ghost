@@ -34,11 +34,6 @@ import (
 // More signals (journal sentiment trends, calendar-adjacent intents,
 // aspirational goals) attach to ScanNotices as they earn confidence.
 
-// minAffinityForProactive is the relationship floor for non-urgent
-// outreach. Below it Ghost stays quiet unless something is urgent:
-// a distant relationship that pings you is a stranger, not a friend.
-const minAffinityForProactive = 0.35
-
 // SetRoutineSignals wires the routine/scheduler handles the signal scan
 // reads. Called once at startup; nil-safe when automation is disabled.
 func (al *AgentLoop) SetRoutineSignals(rs *routines.Service, ss *scheduled.Service) {
@@ -61,18 +56,13 @@ func (al *AgentLoop) ScanNotices() []Notice {
 	return out
 }
 
-// PollProactive scans signals, gates each through the noticer (and the
-// affinity floor), and delivers approvals. It returns how many notices
+// PollProactive scans signals, gates each through the noticer, and delivers approvals. It returns how many notices
 // went out. Safe to call on every heartbeat tick: gating makes repeats
 // no-ops. Deferred outbox items drain first so held/offline notices
 // still reach the owner.
 func (al *AgentLoop) PollProactive() int {
 	delivered := 0
-	affinity := al.Affect().Affinity
 	for _, nt := range dueHeld(al.workspace, time.Now()) {
-		if affinity < minAffinityForProactive && !nt.Urgency {
-			continue
-		}
 		if al.MaybeNotify(nt) == DecisionNotify {
 			delivered++
 		}
@@ -83,11 +73,6 @@ func (al *AgentLoop) PollProactive() int {
 		if !nt.Urgency {
 			al.OfferAttention(attention.Item{Key: "notice:" + nt.DedupeKey, Source: "notice:" + noticeKind(nt.Topic),
 				Line: nt.Message, Priority: nt.Priority, Reliable: nt.Confidence >= 0.8})
-			continue
-		}
-		if affinity < minAffinityForProactive && !nt.Urgency {
-			logger.InfoCF("agent", "proactive skipped: affinity floor",
-				map[string]interface{}{"topic": nt.Topic, "affinity": affinity})
 			continue
 		}
 		if al.MaybeNotify(nt) == DecisionNotify {

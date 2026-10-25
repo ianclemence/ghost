@@ -36,6 +36,11 @@ type Tombstone struct {
 	ValueHash string    `json:"value_hash"`
 	Reason    string    `json:"reason,omitempty"`
 	At        time.Time `json:"at"`
+	// Names and Whole let Ghost keep a forgotten fact out of its notes without
+	// keeping the fact: salted hashes of the words that identify it, never the
+	// words. A line is matched by hashing its own words the same way.
+	Names []string `json:"names,omitempty"`
+	Whole string   `json:"whole,omitempty"`
 }
 
 func (s *Store) tombstonesPath() string {
@@ -115,6 +120,7 @@ func (s *Store) ForgetWithReason(id, reason string) (Entry, error) {
 	if err := s.append(rev); err != nil {
 		return Entry{}, err
 	}
+	names, whole := s.fingerprint(*e)
 	if err := s.appendTombstone(Tombstone{
 		ID:        id,
 		Subject:   e.Subject,
@@ -122,9 +128,15 @@ func (s *Store) ForgetWithReason(id, reason string) (Entry, error) {
 		ValueHash: valueHash(e.Value),
 		Reason:    strings.TrimSpace(reason),
 		At:        now,
+		Names:     names,
+		Whole:     whole,
 	}); err != nil {
 		return rev, err
 	}
+	if err := s.eraseContentLocked(map[string]bool{id: true}); err != nil {
+		return rev, err
+	}
+	rev.Value, rev.Quote = erasedValue, ""
 	return rev, nil
 }
 
@@ -168,6 +180,8 @@ func ForgetPipeline(workspace, id, reason string) (ForgetReport, error) {
 func ForgetPipelineWith(store *Store, workspace, id, reason string) (ForgetReport, error) {
 	report := ForgetReport{ClaimID: id}
 	switch {
+	case strings.HasPrefix(reason, HousekeepingReasonPrefix):
+		// Maintenance, not the owner's wish: recorded as what it is.
 	case strings.TrimSpace(reason) == "":
 		reason = OwnerForgetReason
 	case !strings.Contains(strings.ToLower(reason), "owner asked"):

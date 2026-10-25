@@ -3,6 +3,35 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.204] - 2026-10-25
+
+- **Only your own conversation teaches Ghost about you.** Test clients and
+  scripted probes talk to the same gateway under names of their own, and what
+  they said was filed as facts about you (a girlfriend, a dog, a death in the
+  family) and written into your daily notes. Facts and notes now come only from
+  your conversation, or from a context with its own scope. Ghost's own scheduled
+  work is still noted. `ghost state purge-foreign` lists, and with `--apply`
+  forgets, anything already filed that way.
+- **Forgetting now erases.** A forgotten memory left a "rejected" line beside
+  the original, which still held the words you asked Ghost to forget, and the
+  sentence it was read from. Both are now removed from the file. Ghost keeps
+  only scrambled fingerprints of the identifying words, enough to keep the
+  subject out of its notes without keeping the content. Memories forgotten
+  earlier are cleaned the first time Ghost starts.
+- **Ghost no longer scores your mood.** It kept running totals of the tone of
+  your messages, from a word list that only understood English, and told the
+  model every turn that it was "distant" from you; probe traffic had pushed it
+  to the floor. Nothing records, shows or gates on it now, and the old file is
+  deleted at startup. `/affect` says so.
+- **Ghost can say what it keeps about you.** Asked what it knows or infers, it
+  denied having any profiling at all. Its instructions now list what exists.
+- **Summaries no longer record judgments about you.** Ghost's own reading of
+  your character, produced in answer to a question, could be saved in the daily
+  notes and later read back as something remembered.
+- **Things Ghost creates in your workspace are yours.** The service runs as
+  root, so project folders and rewritten memory files came out root-owned.
+  They now keep your ownership.
+
 ## [0.24.203] - 2026-10-24
 
 - **Cloning a repository now works from a normal request.** Ghost can write

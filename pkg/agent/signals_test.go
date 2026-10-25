@@ -128,8 +128,6 @@ func TestPollProactiveDeliversOnce(t *testing.T) {
 		[]byte("# Prefs\n\n`quiet_hours: 00:00 - 00:00`\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	// Warm affinity so the floor doesn't gate the test signal.
-	al.affect = al.affect.Turn(0.9, 0.5, 0.9, false, time.Now())
 	if n := al.PollProactive(); n != 0 {
 		t.Fatalf("a non-urgent failure must wait for the morning digest, got %d", n)
 	}
@@ -145,24 +143,5 @@ func TestPollProactiveDeliversOnce(t *testing.T) {
 	}
 	if len(al.attentionQueue().Pending()) != 1 {
 		t.Fatalf("repeat poll must not duplicate the digest item")
-	}
-}
-
-// Distant affinity holds non-urgent outreach.
-func TestPollProactiveAffinityFloor(t *testing.T) {
-	al, rsvc, ssvc, store := signalLoop(t)
-	id := mkRoutine(t, rsvc, "briefing")
-	item, _ := ssvc.GetItem(id)
-	item.State = scheduled.StateFailed
-	if err := store.Update(item); err != nil {
-		t.Fatal(err)
-	}
-	if err := al.state.SetLastActiveSession("telegram", "123"); err != nil {
-		t.Fatal(err)
-	}
-	// Affinity starts at 0.5 neutral — force distant.
-	al.affect.Affinity = 0.1
-	if n := al.PollProactive(); n != 0 {
-		t.Fatalf("distant affinity must hold non-urgent notices, got %d", n)
 	}
 }

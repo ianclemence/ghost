@@ -274,25 +274,27 @@ func ForgottenMatcher(workspace string) func(string) bool {
 	for _, e := range s.Current() {
 		relearned[strings.ToLower(e.Subject+"\x00"+e.Predicate)] = true
 	}
-	var forgotten []Entry
-	var values []string
-	for _, e := range s.All() {
+	var forgotten []Tombstone
+	for _, t := range s.Tombstones() {
 		// Told again after forgetting: it is a memory again, notes included.
-		if relearned[strings.ToLower(e.Subject+"\x00"+e.Predicate)] {
+		if relearned[strings.ToLower(t.Subject+"\x00"+t.Predicate)] {
 			continue
 		}
-		if e.Status == StatusRejected && strings.Contains(strings.ToLower(e.RetractReason), "owner asked") {
-			forgotten = append(forgotten, e)
-			if v := strings.TrimSpace(entryValueString(e)); v != "" {
-				values = append(values, v)
-			}
+		if strings.Contains(strings.ToLower(t.Reason), "owner asked") && (len(t.Names) > 0 || t.Whole != "") {
+			forgotten = append(forgotten, t)
 		}
 	}
-	if len(values) == 0 {
+	if len(forgotten) == 0 {
 		return nil
 	}
-	names, topics := forgetNames(values), topicWords(forgotten)
-	return func(text string) bool { return mentions(text, values, names, topics) }
+	return func(text string) bool {
+		for _, t := range forgotten {
+			if s.matchesForgotten(text, t) {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 // ScrubForgottenNotes runs DropForgotten over every note Ghost has already
@@ -429,3 +431,9 @@ func ForgetStatement(store *Store, workspace, text string) int {
 	}
 	return n
 }
+
+// HousekeepingReasonPrefix marks a retraction Ghost's maintenance made on its
+// own account, such as clearing facts a test client filed. It is recorded as
+// that, never as the owner asking, so it does not keep a subject out of the
+// owner's notes from then on.
+const HousekeepingReasonPrefix = "housekeeping: "

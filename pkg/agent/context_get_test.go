@@ -84,6 +84,7 @@ func newTestAgentLoopWithProvider(t *testing.T, workspace string, provider provi
 	}
 	msgBus := bus.NewMessageBus()
 	al, _ := NewAgentLoop(cfg, msgBus, provider)
+	al.ownerSession = func(string) bool { return true }
 	t.Cleanup(func() { al.Stop() })
 	return al
 }

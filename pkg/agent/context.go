@@ -33,11 +33,7 @@ type ContextBuilder struct {
 	// builtins resolve from code, customs from disk. Nothing reads the
 	// personalities directory directly anymore.
 	personalityLoader *personality.Loader
-	// affectRender grounds expressed affect in measured state: when set,
-	// the one-line relational render is injected so the model speaks
-	// from the numbers, never from vibes.
-	affectRender    func() string
-	personalityName string
+	personalityName   string
 
 	// promptCache caches the compiled system prompt; promptVersion returns a
 	// value that changes whenever an injected input changes (memory version,
@@ -52,12 +48,6 @@ type ContextBuilder struct {
 func (cb *ContextBuilder) SetPromptCache(c *contextcache.Cache, version func() string) {
 	cb.promptCache = c
 	cb.promptVersion = version
-}
-
-// SetAffectRender installs the live relational-state line for prompt
-// injection. Nil disables it.
-func (cb *ContextBuilder) SetAffectRender(fn func() string) {
-	cb.affectRender = fn
 }
 
 // SkillsVersion fingerprints the installed skill set for the system-prompt
@@ -183,6 +173,24 @@ func (cb *ContextBuilder) buildToolsSection() string {
 	return sb.String()
 }
 
+// buildOwnerRecordSection tells the model what Ghost keeps about its owner, so a
+// request to show or audit it is answered from what exists. Without it the
+// model denied a mechanism that is running ("no trait scoring, no behavioural
+// classifier") because nothing in its instructions said the relational state
+// existed.
+func buildOwnerRecordSection() string {
+	return `## What Ghost keeps about the owner
+
+When the owner asks what you know, remember or infer about them, answer from these and check them first. Never say a mechanism does not exist without looking.
+
+- Personal Context: typed entries (fact, preference, person, project, health and so on), each with a source (declared, inferred or corrected), a confidence and a status. context_get reads them; /context lists them; /forget erases one.
+- The curated profile and the MEMORY.md digest are generated from those entries.
+- Daily journals are model-written summaries of past conversations. They carry the summariser's framing, not the owner's words, and can hold errors the entries no longer do.
+- Ghost does not score the tone of the owner's messages and keeps no mood or affinity total. An older version did; its file is deleted when Ghost starts. If asked, say so plainly.
+
+Say which is stored, which is inferred and which you are generating now. An inference about the owner's character is your own reading, not a record.`
+}
+
 // buildBehaviorSection returns the stable "how to respond" guidance: an output
 // style guide (so recipes, research, and decisions come back consistent), a
 // grounding/citation contract (so answers are trustworthy), and a few canonical
@@ -274,6 +282,7 @@ func (cb *ContextBuilder) BuildSystemPrompt(scopes []string) string {
 	// Response Style Guide + Grounding contract + tool-usage examples. These
 	// are stable, so they sit with the cached header.
 	parts = append(parts, buildBehaviorSection())
+	parts = append(parts, buildOwnerRecordSection())
 
 	// Bootstrap files
 	bootstrapContent := cb.LoadBootstrapFiles()
@@ -349,14 +358,6 @@ CRITICAL — Skill is authoritative. After you READ a SKILL.md, you MUST:
 					personalcontext.Value(pc.Current), pc.Current.CreatedAt.Format("2 Jan"), personalcontext.Value(pc.Candidate), pc.Current.ID, pc.Candidate.ID)
 			}
 			parts = append(parts, strings.TrimRight(b.String(), "\n"))
-		}
-	}
-
-	// Relational state: one grounded line. Expressed affect must trace to
-	// these numbers — the anti-theater rule.
-	if cb.affectRender != nil {
-		if line := cb.affectRender(); line != "" {
-			parts = append(parts, line)
 		}
 	}
 
