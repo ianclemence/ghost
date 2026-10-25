@@ -97,6 +97,12 @@ func Open(workspace string) (*Store, error) {
 	if err := s.load(); err != nil {
 		return nil, err
 	}
+	s.mu.Lock()
+	err := s.scrubForgottenLocked()
+	s.mu.Unlock()
+	if err != nil {
+		return nil, fmt.Errorf("scrub forgotten beliefs: %w", err)
+	}
 	return s, nil
 }
 
