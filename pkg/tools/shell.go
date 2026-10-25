@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/ianclemence/ghost/pkg/credentials"
 	"os"
 	"os/exec"
 	"regexp"
@@ -157,6 +158,15 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 	// start from a minimal allowlist and confine HOME to the workspace.
 	ensureGitIdentity(t.workingDir)
 	HardenCommand(cmd, t.workingDir, gitSandboxEnv())
+	// A key the owner has allowed commands to use reaches a command that names
+	// it as $NAME, and only one that does. It is withheld from a turn that has
+	// read outside content (a page or a message could have written the command),
+	// and the output is scrubbed of it like any other secret.
+	if !WebDerivedFromContext(ctx) {
+		for name, val := range credentials.KeysNamedIn(command) {
+			cmd.Env = append(cmd.Env, name+"="+val)
+		}
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

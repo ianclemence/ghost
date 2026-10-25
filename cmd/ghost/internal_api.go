@@ -370,7 +370,7 @@ func isLoopbackRequest(r *http.Request) bool {
 // local token (pkg/localtrust), which the command sandbox cannot read.
 var localTokenPrefixes = []string{
 	"/v1/permissions/", "/v1/mode", "/v1/pairing/", "/v1/connect/",
-	"/v1/console/", "/v1/system/", "/v1/website-logins", "/v1/connected-apps",
+	"/v1/console/", "/v1/system/", "/v1/website-logins", "/v1/vault/", "/v1/connected-apps",
 	"/v1/connectors", "/v1/tool-servers", "/v1/skills", "/v1/providers",
 	"/v1/intelligence/", "/v1/reset", "/v1/exec", "/v1/live/surfaces/",
 	"/v1/browser/signout", "/v1/channels/reconnect",
@@ -378,10 +378,10 @@ var localTokenPrefixes = []string{
 
 // requiresLocalToken reports whether loopback trust for r needs the token.
 // Reading is allowed on loopback alone, except for the password-reset route
-// and website logins, whose reads are themselves sensitive.
+// and website logins and the Vault, whose reads are themselves sensitive.
 func requiresLocalToken(r *http.Request) bool {
 	path := r.URL.Path
-	if strings.HasPrefix(path, "/v1/console/") || strings.HasPrefix(path, "/v1/website-logins") {
+	if strings.HasPrefix(path, "/v1/console/") || strings.HasPrefix(path, "/v1/website-logins") || strings.HasPrefix(path, "/v1/vault/") {
 		return true
 	}
 	switch r.Method {
@@ -6403,6 +6403,7 @@ func startInternalAPI(agentLoop *agent.AgentLoop, scheduledService *scheduled.Se
 	registerActivityStream(mux)
 	registerConnectionsRoutes(mux)
 	registerWebsiteLoginRoutes(mux)
+	registerVaultRoutes(mux)
 	// Sign out everywhere: close every browser session and delete every
 	// profile (cookies, storage). The revocation counterpart to persistent
 	// browser profiles.

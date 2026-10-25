@@ -348,7 +348,7 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 	// Submit declares purchase-class intent: quote + broker approval +
 	// receipt evidence. The gate treats it as high impact, always ask.
 	registerBrowser("submit")
-	// Sign in with an owner-saved website login (Apps → Website logins).
+	// Sign in with an owner-saved login (Vault → Logins).
 	// Transact-class: the broker asks before authenticating as the owner.
 	registerBrowser("login")
 
@@ -515,6 +515,15 @@ func createToolRegistry(workspace string, restrict bool, cfg *config.Config, msg
 		cards.Publish(msgBus, nil, channel, chatID, conversationOf(sessionID), c)
 	})
 	registry.Register(draft)
+
+	// The Vault: what the owner keeps for Ghost to use (read as much as Ghost
+	// may), and the private form that asks for a sign-in it does not have.
+	registry.Register(tools.NewVaultItemsTool())
+	askSignIn := tools.NewRequestCredentialsTool()
+	askSignIn.SetPublisher(func(channel, chatID, sessionID string, c cards.Card) {
+		cards.Publish(msgBus, nil, channel, chatID, conversationOf(sessionID), c)
+	})
+	registry.Register(askSignIn)
 
 	// Targeted long-tail memory retrieval: the agent searches its own notes
 	// (daily notes, MEMORY.md, captures) on demand, ranked by relevance+recency.
@@ -3444,6 +3453,8 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				activeTools.Register(t)
 			}
 		}
+		// The sign-in a page asks for is a follow-up too.
+		tools.AddVaultToBrowser(al.tools, activeTools)
 	}
 	// A follow-up to a canvas keeps the canvas tool, for the same reason.
 	if al.recentCanvasWork() {

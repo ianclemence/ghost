@@ -188,6 +188,16 @@ var intentKeywordsI18n = map[string][]string{
 		"skrini", "kompyuta", "屏幕", "桌面", "电脑", "画面", "デスクトップ", "パソコン", "화면", "바탕화면", "컴퓨터", "الشاشة", "سطح المكتب", "الكمبيوتر",
 		"स्क्रीन", "डेस्कटॉप", "कंप्यूटर", "экран", "рабочий стол", "компьютер", "ekran", "masaüstü", "bilgisayar", "หน้าจอ", "เดสก์ท็อป", "คอมพิวเตอร์",
 	},
+	"vault_items": {
+		"bóveda", "tarjeta de crédito", "tarjeta de débito", "contraseña", "clave api", "mis contactos",
+		"coffre-fort", "carte bancaire", "carte de crédit", "mot de passe", "clé api", "mes contacts",
+		"passwort", "kreditkarte", "api-schlüssel", "meine kontakte", "cofre", "cartão de crédito", "senha", "chave de api", "meus contatos",
+		"nenosiri", "kadi ya benki", "funguo la api", "密码", "密碼", "银行卡", "信用卡", "保险库", "api密钥", "我的联系人",
+		"パスワード", "クレジットカード", "金庫", "apiキー", "連絡先", "비밀번호", "신용카드", "금고", "api 키", "연락처",
+		"كلمة المرور", "كلمة السر", "بطاقة ائتمان", "خزنة", "पासवर्ड", "क्रेडिट कार्ड", "तिजोरी",
+		"пароль", "банковская карта", "кредитная карта", "сейф", "api-ключ", "şifre", "kredi kartı", "kasa", "api anahtarı",
+		"รหัสผ่าน", "บัตรเครดิต", "ห้องนิรภัย",
+	},
 	"pipeline": {
 		"cuántos de mis", "en todos mis", "todas mis notas", "todos mis archivos", "combien de mes", "dans toutes mes", "toutes mes notes", "tous mes fichiers",
 		"wie viele meiner", "in allen meinen", "alle meine notizen", "alle meine dateien", "quantos dos meus", "em todas as minhas", "todas as minhas notas",

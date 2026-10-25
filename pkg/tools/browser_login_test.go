@@ -15,8 +15,8 @@ func TestBrowserLoginNeedsASavedLogin(t *testing.T) {
 	if res == nil || !res.IsError {
 		t.Fatal("a missing login must be an honest error")
 	}
-	if !strings.Contains(res.ForLLM, "Website logins") {
-		t.Errorf("must point at the secure setup screen, got %q", res.ForLLM)
+	if !strings.Contains(res.ForLLM, "request_credentials") {
+		t.Errorf("must point at the private sign-in form, got %q", res.ForLLM)
 	}
 	if strings.Contains(res.ForLLM, "password?") || strings.Contains(res.ForLLM, "What is your password") {
 		t.Error("must never ask for a password in chat")

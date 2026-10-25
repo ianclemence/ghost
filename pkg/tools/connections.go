@@ -140,16 +140,16 @@ func (t *ConnectionsTool) Execute(ctx context.Context, args map[string]interface
 			}
 			fmt.Fprintf(&sb, "- %s — %s\n", e.name, state)
 		}
-		// Website logins are the other half of "is something set up": a
-		// sealed login is what lets the browser open a session. Hosts only,
-		// never secrets — ListWebLogins returns metadata by construction.
+		// Saved logins are the other half of "is something set up": a sealed
+		// login is what lets the browser open a session. Hosts only, never
+		// secrets — ListWebLogins returns metadata by construction.
 		if sealed := credentials.ListWebLogins(); len(sealed) > 0 {
-			sb.WriteString("\nWebsite logins (sealed in the vault — sign in with browser_login, never ask for the password):\n")
+			sb.WriteString("\nSaved logins (sealed in the Vault — sign in with browser_login; if a site has none, use request_credentials; never ask for the password):\n")
 			for _, w := range sealed {
 				fmt.Fprintf(&sb, "- %s — login saved\n", w.Host)
 			}
 		} else {
-			sb.WriteString("\nNo website logins saved. The owner adds them under Apps → Website logins.")
+			sb.WriteString("\nNo saved logins. The owner adds them in the Vault → Logins, or with request_credentials for the site at hand.")
 		}
 		sb.WriteString("\nAsk about one app to get its setup steps.")
 		return NewToolResult(strings.TrimSpace(sb.String()))

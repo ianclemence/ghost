@@ -37,8 +37,23 @@ func SecretValues() []string {
 		return secretCacheVals
 	}
 	vals := collectSecretValues(filepath.Join(dir, ".secrets.json"))
+	// Passwords held in memory for a single task are secrets too.
+	for _, s := range ephemeralSecrets() {
+		if len(strings.TrimSpace(s)) >= minScrubLen {
+			vals = append(vals, strings.TrimSpace(s))
+		}
+	}
+	sort.Slice(vals, func(i, j int) bool { return len(vals[i]) > len(vals[j]) })
 	secretCacheDir, secretCacheAt, secretCacheVals = dir, time.Now(), vals
 	return vals
+}
+
+// invalidateSecretCache makes the next scrub see a secret just saved or removed
+// instead of the copy held for up to three seconds.
+func invalidateSecretCache() {
+	secretCacheMu.Lock()
+	secretCacheAt = time.Time{}
+	secretCacheMu.Unlock()
 }
 
 func collectSecretValues(path string) []string {
@@ -83,6 +98,11 @@ func collectSecretValues(path string) []string {
 				var l WebLogin
 				if json.Unmarshal([]byte(t), &l) == nil {
 					add(l.Password)
+				}
+				// Vault items: card numbers (in every spelling), security
+				// codes, keys.
+				for _, s := range secretFieldsOf(t) {
+					add(s)
 				}
 				// So are database connections: the address and its password.
 				var d Database

@@ -146,6 +146,10 @@ var (
 	browserHighToolNames = []string{"browser_submit", "browser_upload"}
 )
 
+// vaultToolNames are read alongside the browser: what the owner has saved, and
+// the private form that asks for a sign-in that is missing.
+var vaultToolNames = []string{"vault_items", "request_credentials"}
+
 func concatNames(groups ...[]string) []string {
 	var out []string
 	for _, g := range groups {
@@ -166,6 +170,10 @@ func browserMobileToolNames() []string {
 // admin/full posture). Heartbeat and minimal stay browser-free.
 func init() {
 	ProfileAllowlists[ProfileMobileSafe] = append(ProfileAllowlists[ProfileMobileSafe], browserMobileToolNames()...)
+	// Signing in to a site needs the Vault beside the browser.
+	for _, p := range []ToolProfile{ProfileMobileSafe, ProfileCoding, ProfileResearch, ProfileAdmin} {
+		ProfileAllowlists[p] = append(ProfileAllowlists[p], vaultToolNames...)
+	}
 	codingBrowser := concatNames(browserMobileToolNames(), []string{"browser_upload"})
 	ProfileAllowlists[ProfileCoding] = append(ProfileAllowlists[ProfileCoding], codingBrowser...)
 	ProfileAllowlists[ProfileResearch] = append(ProfileAllowlists[ProfileResearch], codingBrowser...)
@@ -359,6 +367,10 @@ var turnIntentTools = []struct {
 	{[]string{"light", "lights", "thermostat", "home assistant", "smart home", "turn on", "turn off", "turn the", "device", "scene"}, []string{"device"}},
 	// Durable handoff artifacts (low risk, evidence-backed).
 	{[]string{"artifact", "hand off", "handoff", "publish", "report", "deliverable"}, []string{"publish_artifact"}},
+	// The Vault: logins, cards, contacts and keys the owner keeps for Ghost to use.
+	{[]string{"vault", "saved login", "saved password", "my password", "my logins", "credit card", "debit card", "my card", "card number",
+		"api key", "my contacts", "contact details", "my address", "my phone number", "my email address"},
+		[]string{"vault_items", "request_credentials"}},
 	// Browser/computer tools are discovered by EXPLICIT exact tool names
 	// plus intent keywords (never brittle token overlap). The governing
 	// gates remain the authority; this only controls what the model sees.
@@ -373,6 +385,7 @@ var turnIntentTools = []struct {
 		"shop for", "shopping", "add to cart", "add to my cart", "to my cart", "compare prices", "price check",
 		"search online", "look up online", "look it up online", "find online", "on the web",
 		"log in to", "login to", "sign in to", "sign up for", "book a ", "reserve a ",
+		"sign in", "log in", "login", "password", "credentials", "my account", "ads manager", "google ads", "campaigns",
 		// Travel and price shopping live on the web: "cheapest one-way Bangkok
 		// to Shenzhen" names no site, and used to get no browser at all.
 		"flights", "airfare", "fares", "one-way", "one way", "round trip", "round-trip",
@@ -469,7 +482,32 @@ func FilterToolsForTurn(registry *ToolRegistry, profile ToolProfile, userMsg str
 			}
 		}
 	}
+	AddVaultToBrowser(base, out)
 	return out
+}
+
+// AddVaultToBrowser offers the Vault tools wherever a browser tool is offered:
+// a page that asks for a sign-in is where the need for them appears, and the
+// model should not have to search for the form it must use.
+func AddVaultToBrowser(from, to *ToolRegistry) {
+	hasBrowser := false
+	for _, n := range to.List() {
+		if strings.HasPrefix(n, "browser_") {
+			hasBrowser = true
+			break
+		}
+	}
+	if !hasBrowser {
+		return
+	}
+	for _, n := range vaultToolNames {
+		if _, have := to.Get(n); have {
+			continue
+		}
+		if tool, ok := from.Get(n); ok {
+			to.Register(tool)
+		}
+	}
 }
 
 func stringInSlice(list []string, s string) bool {

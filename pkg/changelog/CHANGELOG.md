@@ -3,6 +3,27 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.209] - 2026-10-26
+
+- **A Vault for what Ghost uses on your behalf.** Logins, payment cards,
+  contacts and API keys now live in one place under Settings → Vault, sealed on
+  your Pod. Ghost sees a login's site and username, a card's brand and last
+  four digits, contact details and key names — never a password, a card number,
+  a security code or a key's value. It can fill a sign-in, type your details
+  into a form, or use a key in a command only when that command names the
+  variable and you allowed it.
+- **Ghost can ask for a sign-in privately.** When a site needs a login Ghost
+  does not have, it puts a form in the conversation: you type the username and
+  password, choose whether to save it, and submit. The answer goes from your
+  phone to the Vault; it never passes through the model or the chat. A saved
+  login is used only on its own site.
+- **Icons without leaking your site list.** The Pod fetches a login's favicon
+  itself and keeps it, and cards show the brand mark that matches the number
+  you typed.
+- **Connected Apps is now just apps.** Website logins moved into the Vault, and
+  the approval card above the conversation is opaque so the thread no longer
+  shows through it.
+
 ## [0.24.208] - 2026-10-25
 
 - **An approved action now runs exactly what you approved.** While waiting for

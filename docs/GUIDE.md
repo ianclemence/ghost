@@ -79,7 +79,7 @@ Google disconnects Ghost every seven days. And a one-click sign-in, with none of
 this, needs a Ghost-owned app and a public address, which is what
 [Ghost Connect](CONNECT.md) is for.
 
-**Website logins.** Save a login once under Apps. Ghost signs in with it without
+**Logins.** Save a login once in the Vault (in the app) or under Apps (on the web). Ghost signs in with it without
 the password passing through the model, and only to the site it belongs to. If a
 site asks for a human check (a CAPTCHA, "Verify you are human", a code sent to
 your phone), Ghost says so and stops; it does not try to get around it. Open its

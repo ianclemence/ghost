@@ -36,12 +36,19 @@ func (t *BrowserTool) executeLogin(ctx context.Context, args map[string]interfac
 			who = "that site"
 		}
 		return ErrorResult(fmt.Sprintf(
-			"No saved login for %s. Ask the owner to add it under Apps, Website logins in the web console, or Connected apps in the app, then try again — never ask them for the password here.", who))
+			"No saved login for %s. Call request_credentials for this site: it puts a private sign-in form on the owner's screen. Never ask them for the username or password in the chat.", who))
 	}
 
 	pageURL := strings.TrimSpace(sarg(args, "url"))
 	if pageURL == "" {
 		pageURL = login.URL
+	}
+	// A saved sign-in is typed on its own site and nowhere else. The address
+	// can come from the model, which a web page may have steered, so it is held
+	// to the site the login was saved for.
+	if !onLoginSite(login.Host, pageURL) {
+		return ErrorResult("That address is not on " + login.Host + ", the site this login was saved for, so I won't type it there. " +
+			"Use an address on " + login.Host + ", or tell the owner the page has sent you somewhere else.")
 	}
 	name := loginProfileName(login.Host)
 
@@ -50,6 +57,11 @@ func (t *BrowserTool) executeLogin(ctx context.Context, args map[string]interfac
 	if found, blocked := t.findLoginPage(ctx, pageURL); blocked != "" {
 		return ErrorResult(blocked)
 	} else if found != "" {
+		// The page may have sent the browser elsewhere on the way to its form.
+		if !onLoginSite(login.Host, found) {
+			return ErrorResult("The sign-in page sent the browser to " + credentials.NormalizeWebHost(found) + ", which is not " + login.Host + ", so I haven't typed the saved login there. " +
+				"Tell the owner the site redirected somewhere unexpected.")
+		}
 		pageURL = found
 	}
 
@@ -129,6 +141,13 @@ func (t *BrowserTool) findLoginPage(ctx context.Context, pageURL string) (found,
 	return "", ""
 }
 
+// onLoginSite reports whether an address is on the same registered site as the
+// host a login was saved for. (The name says what it allows: a sign-in page may
+// live on a sibling host, accounts.example.com for www.example.com.)
+func onLoginSite(loginHost, address string) bool {
+	return credentials.SameSite(loginHost, credentials.NormalizeWebHost(address))
+}
+
 func appendSelector(args []string, flag, arg, fallback string) []string {
 	v := strings.TrimSpace(arg)
 	if v == "" {
@@ -206,7 +225,7 @@ func (t *BrowserTool) fillVault(ctx context.Context, ref, vaultRef string) *Tool
 	login, found := credentials.WebLoginFor(host)
 	if !found {
 		return ErrorResult(fmt.Sprintf(
-			"No saved login for %s. Ask the owner to add it under Apps, Website logins (or Connected apps in the app), then try again — never ask them for the password here.", host))
+			"No saved login for %s. Call request_credentials for this site: it puts a private sign-in form on the owner's screen. Never ask them for the username or password here.", host))
 	}
 	var secret string
 	switch field {

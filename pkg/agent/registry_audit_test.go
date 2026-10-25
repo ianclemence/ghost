@@ -83,6 +83,14 @@ func TestRegistryGovernanceAudit(t *testing.T) {
 //   - memory_explain: read-only receipt for one belief (verbatim quote,
 //     source message id, confidence, lifecycle). Never writes memory and
 //     never fabricates a quote for an older belief.
+//   - vault_items: read-only metadata for the owner's saved vault entries
+//     (site names, usernames, card labels — never card numbers, security
+//     codes, or passwords). Actual sign-ins are handed to the browser by
+//     vault_use/browser automation, which are governed separately.
+//   - request_credentials: asks the owner to type a missing credential into
+//     a private on-device form. It stores nothing itself and never returns
+//     the secret to the model; the form posts to the owner's own vault, and
+//     the entry is only used when the owner submits it.
 //
 // Workspace / product core (no external or privileged effect):
 //   - write_file, append_file, edit_file: filesystem writes confined to the
@@ -117,21 +125,23 @@ var allowedCoreAudit = map[string]bool{
 	"weather_now": true, "flight_status": true, "aqi_now": true,
 	"currency_convert": true, "crypto_price": true, "places_nearby": true,
 	"email_search": true, "code_search": true, "docs_search": true,
-	"connections":    true,
-	"system_status":  true,
-	"memory_explain": true,
-	"present_card":   true, // renders a validated block card to the owner's own screen
-	"draft":          true, // shows a draft; sending is the owner's own tap on the card, never the model's
-	"document":       true, // lays out a workspace document as a PDF, locally
-	"people":         true, // the owner's own records of people, local
-	"vault":          true, // the owner's own document records, local
-	"finances":       true, // the owner's own spending records, local; no bank, no payment
-	"trips":          true, // the owner's own trip records, local; no booking
-	"knowledge":      true, // what the owner reads and studies, local records
-	"motion":         true, // animated explainers: local files, rendered to video on the Pod
-	"film":           true, // hand-drawn films and drawings in code: workspace files, rendered on the Pod in a browser with no network
-	"dashboard":      true, // read-only SQL over the owner's own data and connected databases
-	"phone":          true, // what the owner's phone shared, local; place reminders
+	"connections":         true,
+	"system_status":       true,
+	"memory_explain":      true,
+	"vault_items":         true, // metadata only: no passwords, card numbers, or security codes
+	"request_credentials": true, // asks the owner for a missing sign-in; never returns the secret to the model
+	"present_card":        true, // renders a validated block card to the owner's own screen
+	"draft":               true, // shows a draft; sending is the owner's own tap on the card, never the model's
+	"document":            true, // lays out a workspace document as a PDF, locally
+	"people":              true, // the owner's own records of people, local
+	"vault":               true, // the owner's own document records, local
+	"finances":            true, // the owner's own spending records, local; no bank, no payment
+	"trips":               true, // the owner's own trip records, local; no booking
+	"knowledge":           true, // what the owner reads and studies, local records
+	"motion":              true, // animated explainers: local files, rendered to video on the Pod
+	"film":                true, // hand-drawn films and drawings in code: workspace files, rendered on the Pod in a browser with no network
+	"dashboard":           true, // read-only SQL over the owner's own data and connected databases
+	"phone":               true, // what the owner's phone shared, local; place reminders
 	// workspace / product core
 	"write_file": true, "append_file": true, "edit_file": true,
 	"move_file": true, // renames inside the workspace, never overwrites, same guards as write_file

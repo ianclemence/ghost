@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Website logins.
@@ -32,6 +33,12 @@ type WebLogin struct {
 	UsernameSelector string `json:"username_selector,omitempty"`
 	PasswordSelector string `json:"password_selector,omitempty"`
 	SubmitSelector   string `json:"submit_selector,omitempty"`
+	// Title and Notes are the owner's own words for the entry; the times let
+	// the Vault list the newest first. The browser reads none of them.
+	Title     string    `json:"title,omitempty"`
+	Notes     string    `json:"notes,omitempty"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
 // WebLoginMeta is the owner-facing view: enough to recognise the entry, never
@@ -130,7 +137,8 @@ func SaveWebLogin(l WebLogin) error {
 func WebLoginFor(host string) (WebLogin, bool) {
 	raw := New(configDirForWrites()).secretValue(webLoginID(host))
 	if raw == "" {
-		return WebLogin{}, false
+		// A sign-in typed for one task and not saved.
+		return ephemeralWebLogin(host)
 	}
 	var l WebLogin
 	if err := json.Unmarshal([]byte(raw), &l); err != nil {

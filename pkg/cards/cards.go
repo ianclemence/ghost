@@ -65,6 +65,12 @@ const (
 	// calendar invite, a text message), shown in full and editable before
 	// anything leaves. Sending is the owner's own act on the card. See draft.go.
 	KindDraft Kind = "draft"
+	// KindCredentials is Ghost asking for a sign-in it needs and does not have.
+	// The owner types it into the card on their phone, and it goes from the
+	// phone to the Vault on the Pod. It never passes through the conversation,
+	// so the model never reads it, and the card holds only the site it is for.
+	// See credentials.go.
+	KindCredentials Kind = "credentials"
 )
 
 // CardVersion is the version of the block vocabulary a card was written in. A
@@ -147,6 +153,10 @@ func (c Card) Validate() error {
 		}
 	case KindDraft:
 		if err := validateDraftData(c.Data); err != nil {
+			return err
+		}
+	case KindCredentials:
+		if err := validateCredentialData(c.Data); err != nil {
 			return err
 		}
 	case KindCheckoutSheet:
@@ -321,6 +331,52 @@ func (s *Store) Resolve(channel, id, actionID string) (Card, bool) {
 		return list[i], true
 	}
 	return Card{}, false
+}
+
+// ResolveAs is Resolve with the words the resolved card shows, for a card whose
+// outcome is more than its button ("Signed in to ads.google.com"). The label is
+// the Pod's own text and carries nothing the owner typed.
+func (s *Store) ResolveAs(channel, id, actionID, label string) (Card, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list := s.items[channel]
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		if list[i].Resolved != nil {
+			return list[i], false
+		}
+		offered := actionID == "dismiss"
+		for _, a := range list[i].Actions {
+			if a.ID == actionID {
+				offered = true
+			}
+		}
+		if !offered || strings.TrimSpace(label) == "" {
+			return list[i], false
+		}
+		list[i].Resolved = &Resolution{ActionID: actionID, Label: label, At: time.Now().UTC()}
+		s.items[channel] = list
+		s.saveLocked()
+		return list[i], true
+	}
+	return Card{}, false
+}
+
+// FindAnywhere returns an unexpired card by id, whichever channel showed it.
+func (s *Store) FindAnywhere(id string) (channel string, c Card, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for ch, list := range s.items {
+		for _, e := range list {
+			if e.ID == id && (e.ExpiresAt.IsZero() || now.Before(e.ExpiresAt)) {
+				return ch, e, true
+			}
+		}
+	}
+	return "", Card{}, false
 }
 
 // Publish stores a card and emits it on the bus with card_update metadata.
