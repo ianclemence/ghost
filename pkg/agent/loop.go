@@ -2835,6 +2835,45 @@ func (al *AgentLoop) learnsAboutOwner(sessionKey string) bool {
 	return !isMachineTurn(sessionKey) && al.ownerKey(sessionKey)
 }
 
+// ownerRecordReaders are the tools that only read back what Ghost already
+// keeps about its owner.
+var ownerRecordReaders = map[string]bool{
+	"context_get": true, "memory_recall": true, "session_search": true, "session_state": true, "find_tools": true,
+}
+
+// onlyReadBackTheOwnerRecord reports whether a turn did nothing but read Ghost's
+// records of its owner. Journaling such a turn adds no fact: it files a second
+// copy of the record, with whatever the model said about it, and the next
+// disclosure then reads that commentary back as though it had been recorded.
+// Telling the summariser not to do this did not hold, so the turn is skipped.
+func onlyReadBackTheOwnerRecord(used []string) bool {
+	if len(used) == 0 {
+		return false
+	}
+	for _, name := range used {
+		if !ownerRecordReaders[name] {
+			return false
+		}
+	}
+	return true
+}
+
+// turnToolNames lists the tools the latest turn called: those on the assistant
+// messages after the last user message.
+func turnToolNames(history []providers.Message) []string {
+	seen := map[string]bool{}
+	var out []string
+	for i := len(history) - 1; i >= 0 && history[i].Role != "user"; i-- {
+		for _, tc := range history[i].ToolCalls {
+			if !seen[tc.Name] {
+				seen[tc.Name] = true
+				out = append(out, tc.Name)
+			}
+		}
+	}
+	return out
+}
+
 // journalsSession reports whether a session's summary belongs in the daily notes.
 func (al *AgentLoop) journalsSession(sessionKey string) bool {
 	return isMachineTurn(sessionKey) || al.ownerKey(sessionKey)
@@ -3273,7 +3312,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	// 10. Auto-journaling. Derived work: it yields to an interactive turn
 	// rather than competing with the owner for the model, and the next turn
 	// picks it up.
-	if !opts.NoHistory && opts.SessionKey != "heartbeat" && !strings.HasPrefix(opts.UserMessage, "/") {
+	if !opts.NoHistory && opts.SessionKey != "heartbeat" && !strings.HasPrefix(opts.UserMessage, "/") && !onlyReadBackTheOwnerRecord(turnToolNames(al.sessions.GetHistory(opts.SessionKey))) {
 		al.backgroundWG.Add(1)
 		go func() {
 			defer al.backgroundWG.Done()

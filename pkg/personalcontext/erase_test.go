@@ -209,3 +209,25 @@ func TestHousekeepingForgetIsNotRecordedAsTheOwnerAsking(t *testing.T) {
 		t.Fatal("housekeeping must not keep a subject out of the owner's notes as though they had asked")
 	}
 }
+
+// A fact a probe filed, that the owner's own conversation also said, is true. A
+// purge must not take the only surviving copy with it.
+func TestForeignCurrentKeepsWhatTheOwnerAlsoSaid(t *testing.T) {
+	s := mustOpen(t, t.TempDir())
+	mk := func(id, val, ref string, status Status) {
+		t.Helper()
+		if _, err := s.Create(Entry{ID: id, Kind: KindProject, Subject: "user", Predicate: "project/current", Status: status,
+			Value: json.RawMessage(`"` + val + `"`), Confidence: 0.9,
+			Sources: []Source{{Type: SourceConversation, Kind: SourceInferred, Ref: ref, Timestamp: time.Now()}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("ec_owner_dup", "Is designing a Ghost Pod", "main:req-1", StatusRejected)
+	mk("ec_probe_copy", "Is  designing a GHOST Pod", "weatherfix-repro-1", StatusCurrent)
+	mk("ec_probe_only", "Is building a reaction-time game", "research-live-100c", StatusCurrent)
+
+	got := s.ForeignCurrent(func(session string) bool { return session == "main" })
+	if len(got) != 1 || got[0].ID != "ec_probe_only" {
+		t.Fatalf("only the fact nobody in the owner's conversation said may be listed: %+v", got)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"github.com/ianclemence/ghost/pkg/bus"
 	"github.com/ianclemence/ghost/pkg/channels"
 	"github.com/ianclemence/ghost/pkg/config"
+	"github.com/ianclemence/ghost/pkg/providers"
 )
 
 // A loop with the production rule, unlike newTestAgentLoop, which trusts every
@@ -113,5 +114,47 @@ func TestStartingGhostDeletesTheOldRelationalScore(t *testing.T) {
 	prompt := al.contextBuilder.BuildSystemPrompt(nil)
 	if strings.Contains(prompt, "Relational state: affinity") {
 		t.Fatal("the model is still told an affinity number")
+	}
+}
+
+// Asking Ghost to show what it knows reads the record and changes nothing.
+// Journaling that turn files the model's commentary on the owner as a memory.
+func TestReadingBackTheOwnerRecordIsNotJournaled(t *testing.T) {
+	cases := []struct {
+		used []string
+		want bool
+	}{
+		{[]string{"context_get", "memory_recall", "session_search"}, true},
+		{[]string{"find_tools", "context_get"}, true},
+		{[]string{"context_get", "web_search"}, false},
+		{[]string{"context_get", "remember"}, false},
+		{[]string{"exec"}, false},
+		{nil, false},
+	}
+	for _, c := range cases {
+		if got := onlyReadBackTheOwnerRecord(c.used); got != c.want {
+			t.Errorf("onlyReadBackTheOwnerRecord(%v) = %v, want %v", c.used, got, c.want)
+		}
+	}
+}
+
+func TestTurnToolNamesReadsOnlyTheLatestTurn(t *testing.T) {
+	call := func(names ...string) providers.Message {
+		m := providers.Message{Role: "assistant"}
+		for _, n := range names {
+			m.ToolCalls = append(m.ToolCalls, providers.ToolCall{Name: n})
+		}
+		return m
+	}
+	history := []providers.Message{
+		{Role: "user", Content: "build me a page"}, call("canvas", "write_file"), {Role: "tool"}, {Role: "assistant", Content: "done"},
+		{Role: "user", Content: "what do you know about me"}, call("context_get"), {Role: "tool"}, call("memory_recall"), {Role: "tool"}, {Role: "assistant", Content: "here"},
+	}
+	got := turnToolNames(history)
+	if !onlyReadBackTheOwnerRecord(got) || len(got) != 2 {
+		t.Fatalf("the latest turn only read the record, got %v", got)
+	}
+	if onlyReadBackTheOwnerRecord(turnToolNames(history[:4])) {
+		t.Fatal("a turn that built a page is not a read-back")
 	}
 }

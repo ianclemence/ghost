@@ -19,11 +19,14 @@ const foreignForgetReason = personalcontext.HousekeepingReasonPrefix + "recorded
 // their content and scrubbing the notes derived from them).
 func statePurgeForeignCmd(cfg *config.Config) {
 	apply := false
+	var keep []string
 	for _, a := range os.Args[3:] {
-		switch a {
-		case "--apply":
+		switch {
+		case a == "--apply":
 			apply = true
-		case "--help", "-h":
+		case strings.HasPrefix(a, "--keep="):
+			keep = append(keep, strings.ToLower(strings.TrimPrefix(a, "--keep=")))
+		case a == "--help" || a == "-h":
 			stateHelp()
 			return
 		default:
@@ -38,7 +41,7 @@ func statePurgeForeignCmd(cfg *config.Config) {
 		fmt.Printf("Error opening memory: %v\n", err)
 		os.Exit(1)
 	}
-	foreign := store.ForeignCurrent(func(session string) bool { return session == channels.SharedConversationKey })
+	foreign := dropKept(store.ForeignCurrent(func(session string) bool { return session == channels.SharedConversationKey }), keep)
 	if len(foreign) == 0 {
 		fmt.Println("Every current memory was learned in your own conversation.")
 		return
@@ -60,4 +63,23 @@ func statePurgeForeignCmd(cfg *config.Config) {
 		forgotten++
 	}
 	fmt.Printf("\nForgotten: %d of %d.\n", forgotten, len(foreign))
+}
+
+// dropKept removes the entries the owner chose to spare: any whose key
+// (predicate) contains one of the --keep= words.
+func dropKept(entries []personalcontext.Entry, keep []string) []personalcontext.Entry {
+	if len(keep) == 0 {
+		return entries
+	}
+	var out []personalcontext.Entry
+next:
+	for _, e := range entries {
+		for _, k := range keep {
+			if k != "" && strings.Contains(strings.ToLower(e.Predicate), k) {
+				continue next
+			}
+		}
+		out = append(out, e)
+	}
+	return out
 }
