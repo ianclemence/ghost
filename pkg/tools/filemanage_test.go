@@ -188,7 +188,7 @@ func TestDefaultWorkspaceIsNeverDeletedOrMoved(t *testing.T) {
 		"rm -rf /var/lib/ghost/workspace", "rm -rf screenshots downloads", "find . -delete",
 		"sh -c 'rm -rf skills'", "truncate -s0 memory/MEMORY.md",
 	} {
-		if msg, denied := execDeniedPrimaryFiles(cmd); !denied {
+		if msg, denied := execDeniedPrimaryFiles(cmd, "", ""); !denied {
 			t.Errorf("the shell must refuse %q (got %q)", cmd, msg)
 		}
 	}

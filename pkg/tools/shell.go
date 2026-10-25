@@ -19,6 +19,41 @@ type ExecTool struct {
 	restrictToWorkspace bool
 }
 
+// maxExecTimeout is the longest a single command may be given. A build or test
+// run on a small machine takes minutes, not seconds; beyond half an hour a
+// command is a job, not a tool call.
+const maxExecTimeout = 30 * time.Minute
+
+// execGrace is how long past a command's own deadline the reliability wrapper
+// waits, so the tool reports its timeout itself.
+const execGrace = 10 * time.Second
+
+// callTimeout is the time a call to exec may run: timeout_seconds when the
+// caller gave a sensible one, otherwise the default.
+func (t *ExecTool) callTimeout(args map[string]interface{}) time.Duration {
+	var secs float64
+	switch v := args["timeout_seconds"].(type) {
+	case float64:
+		secs = v
+	case int:
+		secs = float64(v)
+	case int64:
+		secs = float64(v)
+	}
+	if secs < 1 {
+		return t.timeout
+	}
+	if d := time.Duration(secs * float64(time.Second)); d < maxExecTimeout {
+		return d
+	}
+	return maxExecTimeout
+}
+
+// TimeoutFor implements CallTimeoutTool.
+func (t *ExecTool) TimeoutFor(args map[string]interface{}) time.Duration {
+	return t.callTimeout(args) + execGrace
+}
+
 func NewExecTool(workingDir string, restrict bool) *ExecTool {
 	denyPatterns := []*regexp.Regexp{}
 
@@ -36,7 +71,10 @@ func (t *ExecTool) Name() string {
 }
 
 func (t *ExecTool) Description() string {
-	return "Run a shell command and return its output. Use when: a skill or task requires an exact command (e.g. a CLI tool), or you need real local/OS data. Do NOT use when: a Ghost skill already does the job, or to double-check a web fact you could look up. Reading a web page is web_fetch's job, not curl's — never reach for this to read a page. Returns combined stdout/stderr and the exit code."
+	return "Run a shell command and return its output. Use when: a skill or task requires an exact command (e.g. a CLI tool), or you need real local/OS data. Do NOT use when: a Ghost skill already does the job, or to double-check a web fact you could look up. Reading a web page is web_fetch's job, not curl's — never reach for this to read a page. " +
+		"A command gets 60 seconds unless you pass timeout_seconds (up to 1800); for a build, an install or a test run, pass it up front. Everything the command started stops when it returns, so never background work with & or nohup: run it in the foreground with enough time. " +
+		"Commands run under sh, not bash: no [[ ]], arrays or ${PIPESTATUS}; use bash -c '...' if you need them. " +
+		"Returns combined stdout/stderr and the exit code."
 }
 
 func (t *ExecTool) Parameters() map[string]interface{} {
@@ -46,6 +84,12 @@ func (t *ExecTool) Parameters() map[string]interface{} {
 			"command": map[string]interface{}{
 				"type":        "string",
 				"description": "The exact shell command to run. Example: \"curl -s https://api.example.com/x\" — run a command a skill gives you verbatim.",
+			},
+			"timeout_seconds": map[string]interface{}{
+				"type":        "integer",
+				"description": "How long the command may run, in seconds. Default 60, maximum 1800. Use a larger value for builds, dependency installs and test suites.",
+				"minimum":     1,
+				"maximum":     int(maxExecTimeout / time.Second),
 			},
 			"working_dir": map[string]interface{}{
 				"type":        "string",
@@ -85,7 +129,8 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 		return ErrorResult(err.Error())
 	}
 
-	cmdCtx, cancel := context.WithTimeout(ctx, t.timeout)
+	timeout := t.callTimeout(args)
+	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	var argv []string
@@ -123,7 +168,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 
 	if err != nil {
 		if cmdCtx.Err() == context.DeadlineExceeded {
-			msg := fmt.Sprintf("Command timed out after %v", t.timeout)
+			msg := fmt.Sprintf("Command timed out after %v and was stopped. If it was working (a build, an install, a test run), run it again in the foreground with a larger timeout_seconds (up to %d); nothing it started keeps running after exec returns.", timeout, int(maxExecTimeout/time.Second))
 			return &ToolResult{
 				ForLLM:  msg,
 				ForUser: msg,
@@ -168,7 +213,7 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 	// Primary-file protection is the same second layer for integrity:
 	// no command may name the database/config at all or take a
 	// destructive shape anywhere near Ghost's primary estate.
-	if msg, denied := execDeniedPrimaryFiles(command); denied {
+	if msg, denied := execDeniedPrimaryFiles(command, cwd, t.workingDir); denied {
 		return msg
 	}
 	// The working directory honors the same roots as the file tools, so
