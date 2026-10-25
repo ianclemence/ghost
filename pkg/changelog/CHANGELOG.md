@@ -3,6 +3,28 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.204] - 2026-10-25
+
+- **Only your own conversation teaches Ghost about you.** Test clients and
+  scripted probes talk to the same gateway under names of their own, and what
+  they said was filed as facts about you (a girlfriend, a dog, a death in the
+  family) and moved your relational score. Facts, daily notes and that score now
+  come only from your conversation, or from a context with its own scope.
+  Ghost's own scheduled work is still noted.
+- **Forgetting now erases.** A forgotten memory left a "rejected" line beside
+  the original, which still held the words you asked Ghost to forget, and the
+  sentence it was read from. Both are now removed from the file. Ghost keeps
+  only scrambled fingerprints of the identifying words, enough to keep the
+  subject out of its notes without keeping the notes' content. Memories forgotten
+  earlier are cleaned the first time Ghost starts.
+- **Ghost can say what it keeps about you.** Asked what it knows or infers, it
+  denied having any profiling at all. Its instructions now list what exists: your
+  memories, the profile built from them, the daily notes, and the running mood
+  and affinity totals that `/affect` shows.
+- **Summaries no longer record judgments about you.** Ghost's own reading of
+  your character, produced in answer to a question, could be saved in the daily
+  notes and later read back as something remembered.
+
 ## [0.24.203] - 2026-10-24
 
 - **Cloning a repository now works from a normal request.** Ghost can write
