@@ -76,7 +76,7 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	if err := guardPrimaryFile(resolvedPath); err != nil {
+	if err := guardPrimaryFileIn(t.allowedDir, resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 	if err := guardGhostEstateWrite(t.allowedDir, resolvedPath); err != nil {
@@ -262,7 +262,7 @@ func (t *AppendFileTool) Execute(ctx context.Context, args map[string]interface{
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	if err := guardPrimaryFile(resolvedPath); err != nil {
+	if err := guardPrimaryFileIn(t.workspace, resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 	if err := guardGhostEstateWrite(t.workspace, resolvedPath); err != nil {

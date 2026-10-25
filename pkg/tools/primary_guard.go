@@ -31,6 +31,15 @@ var contractFiles = []string{"AGENTS.md", "SOUL.md", "IDENTITY.md", "HEARTBEAT.m
 // tool path (write, edit, append, frame output) before any byte lands on
 // disk.
 func guardPrimaryFile(resolvedPath string) error {
+	return guardPrimaryFileIn("", resolvedPath)
+}
+
+// guardPrimaryFileIn is guardPrimaryFile for a path that may be in a project:
+// the guard protects Ghost's estate, and a project's own folders are not it.
+func guardPrimaryFileIn(workspace, resolvedPath string) error {
+	if inProjects(workspace, resolvedPath) {
+		return nil
+	}
 	clean := filepath.Clean(resolvedPath)
 	base := filepath.Base(clean)
 

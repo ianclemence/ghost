@@ -30,6 +30,10 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 		return "", fmt.Errorf("failed to resolve workspace path: %w", err)
 	}
 
+	// "projects/..." names the projects folder beside the workspace, the same
+	// way it does for a command's working directory.
+	path = projectRelativePath(absWorkspace, path)
+
 	var absPath string
 	if filepath.IsAbs(path) {
 		absPath = filepath.Clean(path)
@@ -64,6 +68,13 @@ func validatePath(path, workspace string, restrict bool) (string, error) {
 		// escape.
 		projectRoot := filepath.Dir(absWorkspace)
 		if under(projectRoot, absPath) {
+			// A link inside a project must not lead out of projects/, any more
+			// than one inside the workspace may lead out of it.
+			if root := projectsRoot(absWorkspace); under(root, absPath) {
+				if real, realRoot := realPath(absPath), realPath(root); real == "" || realRoot == "" || !under(realRoot, real) {
+					return "", fmt.Errorf("access denied: path leaves the projects folder")
+				}
+			}
 			return absPath, nil
 		}
 
@@ -202,7 +213,7 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	if err := guardPrimaryFile(resolvedPath); err != nil {
+	if err := guardPrimaryFileIn(t.workspace, resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 	if err := guardGhostEstateWrite(t.workspace, resolvedPath); err != nil {

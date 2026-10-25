@@ -5407,6 +5407,14 @@ func skillManageRisk(args map[string]interface{}) permissions.Risk {
 // frontmatter, with no per-skill branches.
 func committedSkill(messages []providers.Message) string {
 	start := turnStart(messages)
+	readCalls := map[string]bool{}
+	for i := start; i < len(messages); i++ {
+		for _, tc := range messages[i].ToolCalls {
+			if tc.Function != nil && tc.Function.Name == "read_file" {
+				readCalls[tc.ID] = true
+			}
+		}
+	}
 	for i := len(messages) - 1; i >= start; i-- {
 		msg := messages[i]
 		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
@@ -5418,7 +5426,11 @@ func committedSkill(messages []providers.Message) string {
 				}
 			}
 		}
-		if msg.Role == "tool" && strings.Contains(strings.ToLower(msg.Content), "name:") {
+		// A skill is committed to by reading its SKILL.md, not by a tool result
+		// that happens to contain "name:". File contents are untrusted: reading
+		// a Go SDK whose examples say Name: "greet" must not put the turn under
+		// a skill called greet.
+		if msg.Role == "tool" && readCalls[msg.ToolCallID] {
 			if name := skillNameFromFrontmatter(msg.Content); name != "" {
 				return name
 			}
@@ -5474,19 +5486,23 @@ func skillNameFromArgs(args string) string {
 	return ""
 }
 
+// skillNameFromFrontmatter reads the name from a SKILL.md frontmatter block: a
+// document that opens with "---", with name: inside the block. Anything else,
+// source code included, names no skill.
 func skillNameFromFrontmatter(content string) string {
-	lower := strings.ToLower(content)
-	// Look for "name: <skill>" on its own line.
-	for _, line := range strings.Split(lower, "\n") {
+	lines := strings.Split(strings.TrimLeft(content, "\ufeff \t\r\n"), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return ""
+	}
+	for _, line := range lines[1:] {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "name:") {
-			name := strings.TrimSpace(strings.TrimPrefix(line, "name:"))
-			name = strings.Trim(name, "\"'.,")
-			if fields := strings.Fields(name); len(fields) > 0 {
+		if line == "---" {
+			break
+		}
+		if low := strings.ToLower(line); strings.HasPrefix(low, "name:") {
+			name := strings.Trim(strings.TrimSpace(line[len("name:"):]), "\"'.,")
+			if fields := strings.Fields(strings.ToLower(name)); len(fields) > 0 {
 				return fields[0]
-			}
-			if name != "" {
-				return name
 			}
 		}
 	}
