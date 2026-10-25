@@ -250,7 +250,7 @@ func hasDirSegment(p, seg string) bool {
 // has any legitimate reason to name them at all. Everything else is
 // denied only in a destructive context, so ordinary reads and listings
 // keep working.
-func execDeniedPrimaryFiles(command string) (string, bool) {
+func execDeniedPrimaryFiles(command, cwd, workspace string) (string, bool) {
 	// Blanket: naming these from the shell is never legitimate.
 	blanket := []string{"ghost.db"}
 	if dir := strings.TrimSpace(os.Getenv("GHOST_CONFIG_DIR")); dir != "" {
@@ -266,10 +266,19 @@ func execDeniedPrimaryFiles(command string) (string, bool) {
 	}
 
 	// Destructive context: a write-shaped command may never reference a
-	// primary file or a top-level estate path.
-	if hasDestructiveShape(command) {
-		if name, ok := primaryNameIn(command); ok {
-			return fmt.Sprintf("that command would destroy a Ghost primary file (%s); primary files are never deleted or modified from the shell", name), true
+	// primary file or a top-level estate path. Redirects that write nothing
+	// (2>&1, >/dev/null) do not make a command write-shaped, and the writable
+	// owner areas (tmp/, data/, ...) are not the estate. A command run inside a
+	// project is judged only on the absolute paths it names: a bare word like
+	// "memory" or "state" there is a project's own package or file.
+	if scan := stripHarmlessRedirects(command); hasDestructiveShape(scan) {
+		scan = scrubWritableAreas(scan, workspace)
+		if inProject(cwd, workspace) {
+			if name, ok := primaryAbsoluteIn(scan, workspace); ok {
+				return fmt.Sprintf("that command would destroy a Ghost primary file (%s); primary files are never deleted or modified from the shell", name), true
+			}
+		} else if name, ok := primaryNameIn(scan); ok {
+			return fmt.Sprintf("that command would destroy a Ghost primary file (%s); primary files are never deleted or modified from the shell. To work on a project, run it from the project folder (working_dir projects/<name>)", name), true
 		}
 	}
 	// find … -delete over the whole tree removes everything without naming
@@ -280,6 +289,73 @@ func execDeniedPrimaryFiles(command string) (string, bool) {
 	// Broad recursive wipe of whatever directory the command runs in.
 	if recursiveWipeOfTree(command) {
 		return "that command would recursively wipe the working tree, which contains Ghost's primary files; primary files are never deleted", true
+	}
+	return "", false
+}
+
+// harmlessRedirectRe matches redirects that write nothing of the model's: a
+// file descriptor joined to another (2>&1, >&2) and output thrown away.
+var harmlessRedirectRe = regexp.MustCompile(`[0-9&]*>>?\s*/dev/null|[0-9]*>&[0-9-]+|&>\s*/dev/null`)
+
+func stripHarmlessRedirects(command string) string {
+	return harmlessRedirectRe.ReplaceAllString(command, " ")
+}
+
+// writableAreas are the parts of the workspace a command may write by design.
+var writableAreas = []string{"tmp", "data", "knowledge", "learning"}
+
+// scrubWritableAreas removes absolute paths into the writable owner areas, so
+// naming /…/workspace/tmp/build.log does not read as naming the workspace.
+func scrubWritableAreas(command, workspace string) string {
+	if workspace == "" {
+		return command
+	}
+	ws, err := filepath.Abs(workspace)
+	if err != nil {
+		return command
+	}
+	for _, area := range writableAreas {
+		command = regexp.MustCompile(regexp.QuoteMeta(ws+"/"+area)+`(/[^\s;&|<>"']*)?`).ReplaceAllString(command, " ")
+	}
+	return command
+}
+
+// inProject reports whether a command runs inside projects/, where the sandbox
+// shows only that project and Ghost's estate is not there to be touched.
+func inProject(cwd, workspace string) bool {
+	if cwd == "" || workspace == "" {
+		return false
+	}
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		return false
+	}
+	root, err := filepath.Abs(projectsRoot(workspace))
+	if err != nil {
+		return false
+	}
+	return under(root, abs)
+}
+
+// primaryAbsoluteIn finds a primary file or estate path named by its absolute
+// path: under the workspace, or the installed binary.
+func primaryAbsoluteIn(command, workspace string) (string, bool) {
+	if workspace != "" {
+		if ws, err := filepath.Abs(workspace); err == nil {
+			for _, frag := range primaryFragments {
+				if !strings.HasPrefix(frag, "/") && strings.Contains(command, ws+"/"+frag) {
+					return frag, true
+				}
+			}
+			if strings.HasSuffix(strings.TrimSpace(command), ws) || strings.Contains(command, ws+" ") {
+				return "workspace", true
+			}
+		}
+	}
+	for _, frag := range primaryFragments {
+		if strings.HasPrefix(frag, "/") && strings.Contains(command, frag) {
+			return frag, true
+		}
 	}
 	return "", false
 }

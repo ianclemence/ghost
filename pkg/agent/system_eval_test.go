@@ -295,6 +295,24 @@ func TestSystemEval(t *testing.T) {
 					t.Fatalf("not stopped in time: %+v after %v", res, time.Since(started))
 				}
 			}},
+			{"a long command can be given the time it needs, up to a limit", func(t *testing.T) {
+				_, ws := evalWorkspace(t)
+				ex := tools.NewExecTool(ws, true)
+				if got := ex.TimeoutFor(map[string]interface{}{"timeout_seconds": float64(1200)}); got <= 5*time.Minute {
+					t.Fatalf("a 20-minute build would be cut off at %v", got)
+				}
+				if got := ex.TimeoutFor(map[string]interface{}{"timeout_seconds": float64(86400)}); got > 31*time.Minute {
+					t.Fatalf("the ceiling is not enforced: %v", got)
+				}
+			}},
+			{"a timed-out command tells the model how to recover", func(t *testing.T) {
+				_, ws := evalWorkspace(t)
+				res := tools.NewExecTool(ws, true).Execute(tools.GrantExec(context.Background(), "exec"),
+					map[string]interface{}{"command": "sleep 5", "timeout_seconds": float64(1)})
+				if !res.IsError || !strings.Contains(res.ForLLM, "timeout_seconds") {
+					t.Fatalf("%+v", res)
+				}
+			}},
 			{"a command cannot run outside the workspace and projects", func(t *testing.T) {
 				_, ws := evalWorkspace(t)
 				ex := tools.NewExecTool(ws, true)

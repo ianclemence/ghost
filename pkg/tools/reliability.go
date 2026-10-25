@@ -24,6 +24,14 @@ type RetryableTool interface {
 	RetryPolicy() (maxRetries int, wait time.Duration)
 }
 
+// CallTimeoutTool lets a tool set its time budget per call, for work whose
+// length the caller knows better than the tool does (a build, a test run). The
+// budget it returns must include a little grace past its own deadline so the
+// tool reports its own timeout before this wrapper cuts it off.
+type CallTimeoutTool interface {
+	TimeoutFor(args map[string]interface{}) time.Duration
+}
+
 // TimeoutCleanupTool lets a tool release external resources after one of
 // its calls times out (stale sessions, leaked subprocesses). It runs
 // best-effort after a timeout only — never on success, so warm sessions
@@ -46,6 +54,11 @@ func executeWithReliability(ctx context.Context, tool Tool, args map[string]inte
 			timeout = d
 		}
 	}
+	if ct, ok := tool.(CallTimeoutTool); ok {
+		if d := ct.TimeoutFor(args); d > 0 {
+			timeout = d
+		}
+	}
 
 	maxRetries, wait := 0, time.Duration(0)
 	if rt, ok := tool.(RetryableTool); ok {
@@ -65,11 +78,18 @@ func executeWithReliability(ctx context.Context, tool Tool, args map[string]inte
 	for attempt := 0; ; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
 		result = tool.Execute(attemptCtx, args)
-		hardTimeout = attemptCtx.Err() != nil
+		// Out of its own time only if the deadline passed while the caller was
+		// still there. A caller that went away cancels the attempt too, and that
+		// is not the tool running long.
+		hardTimeout = errors.Is(attemptCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil
 		if attemptCtx.Err() != nil {
 			// The attempt was cancelled/timed out; prefer that as the failure so
 			// a stale result isn't reported as success.
 			result = &ToolResult{ForLLM: "tool timed out", IsError: true, TimedOut: true, Err: attemptCtx.Err()}
+			if ctx.Err() != nil {
+				result.ForLLM = "tool stopped: the request was cancelled"
+				result.TimedOut = false
+			}
 		}
 		cancel()
 

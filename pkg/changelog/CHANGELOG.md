@@ -3,6 +3,24 @@
 Newest first. Ghost shows new entries on first launch after an update;
 `ghost update --notes` reprints them.
 
+## [0.24.206] - 2026-10-25
+
+- **Ghost can now run a real build or test suite.** Asked to build a Go
+  project, it hit a fixed one-minute limit twice, then lost minutes trying to
+  run the build in the background (which cannot work) and being refused for
+  harmless commands. A command can now be given up to 30 minutes with
+  `timeout_seconds`, a timeout says how to recover, and the tool's description
+  says plainly that nothing keeps running once a command returns.
+- **Fewer false refusals.** A command was refused as "would destroy a Ghost
+  primary file" whenever it had a redirect and a word like `state`, `memory`
+  or `workspace` anywhere, so `go test ./pkg/memory/... 2>&1` and a log in the
+  scratch area were blocked. Harmless redirects (`2>&1`, `>/dev/null`) and the
+  writable scratch areas no longer count, and inside a project only absolute
+  paths into Ghost's own files are protected. Real writes to them are still
+  refused.
+- **A cancelled request is no longer reported as a timeout.** A command stopped
+  because you disconnected said it had "timed out after 5m0s".
+
 ## [0.24.205] - 2026-10-25
 
 - **Showing you what Ghost knows no longer files a second copy of it.** The
