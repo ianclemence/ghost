@@ -37,6 +37,7 @@ func (s *Store) eraseContentLocked(ids map[string]bool) error {
 		return fmt.Errorf("open entries log: %w", err)
 	}
 	defer in.Close()
+	orig, _ := in.Stat()
 
 	tmp := s.path + ".erase"
 	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
@@ -82,6 +83,7 @@ func (s *Store) eraseContentLocked(ids map[string]bool) error {
 		os.Remove(tmp)
 		return err
 	}
+	keepOwner(tmp, orig)
 	if err := os.Rename(tmp, s.path); err != nil {
 		os.Remove(tmp)
 		return fmt.Errorf("replace entries log: %w", err)

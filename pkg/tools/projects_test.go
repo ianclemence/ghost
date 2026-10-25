@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -244,6 +245,33 @@ func TestExecStillRunsInTheWorkspaceAndProjects(t *testing.T) {
 		}
 		if res := tool.Execute(context.Background(), args); res.IsError {
 			t.Errorf("working_dir %q should run: %s", wd, res.ForLLM)
+		}
+	}
+}
+
+// The service runs as root. Folders it creates in the owner's workspace belong
+// to the owner, not to root. Skipped unless run as root.
+func TestProjectFoldersBelongToTheWorkspaceOwner(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("ownership only changes when run as root")
+	}
+	home, ws := projectsHome(t)
+	const owner = 1234
+	for _, p := range []string{home, ws} {
+		if err := os.Chown(p, owner, owner); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ensureProjectDir(ws, filepath.Join(home, "projects", "scout")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{filepath.Join(home, "projects"), filepath.Join(home, "projects", "scout")} {
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st, ok := info.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != owner {
+			t.Fatalf("%s is not owned by the workspace owner: %+v", p, info.Sys())
 		}
 	}
 }

@@ -96,6 +96,7 @@ func ensureRealDir(p string, withParents bool) error {
 		if err := create(p, 0o755); err != nil && !os.IsExist(err) {
 			return err
 		}
+		inheritOwner(p)
 	}
 	info, err := os.Lstat(p)
 	if err != nil {
